@@ -188,7 +188,7 @@ async def activate_kill_switch(reason: str = "manual"):
         raise HTTPException(500, "Safety layer not initialized")
     from risk.safety_layer import KillSwitchReason
     safety_layer.activate_kill_switch(KillSwitchReason.MANUAL, f"Manual activation: {reason}")
-    from notifications.telegram import get_notifier
+    from notifications.whatsapp import get_notifier
     asyncio.create_task(get_notifier().alert_kill_switch(reason))
     return {"status": "kill_switch_activated", "reason": reason}
 
@@ -457,8 +457,8 @@ async def run_pipeline(req: PipelineRequest):
     if len(_decision_log) > 100:
         _decision_log.pop(0)
 
-    # Send Telegram alert for non-HOLD signals
-    from notifications.telegram import get_notifier
+    # Send WhatsApp alert for non-HOLD signals
+    from notifications.whatsapp import get_notifier
     notifier = get_notifier()
     asyncio.create_task(notifier.alert_pipeline_result(req.symbol, result))
 
@@ -495,15 +495,15 @@ async def scheduler_status():
     }
 
 
-@app.post("/notifications/telegram/test")
-async def test_telegram():
-    """Test Telegram notification config"""
-    from notifications.telegram import get_notifier
+@app.post("/notifications/whatsapp/test")
+async def test_whatsapp():
+    """Test WhatsApp notification config"""
+    from notifications.whatsapp import get_notifier
     notifier = get_notifier()
     if not notifier.enabled:
         return {
             "status": "not_configured",
-            "message": "Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to .env",
+            "message": "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, WHATSAPP_TO to .env",
         }
     ok = await notifier.test()
     return {"status": "sent" if ok else "failed"}

@@ -63,9 +63,11 @@ class TradingConfig(BaseSettings):
     QUESTDB_HOST: str = Field("localhost")
     QUESTDB_PORT: int = Field(9000)
 
-    # ── Notifications ─────────────────────────────────────────────────────
-    TELEGRAM_BOT_TOKEN: Optional[str] = Field(None, env="TELEGRAM_BOT_TOKEN")
-    TELEGRAM_CHAT_ID: Optional[str] = Field(None, env="TELEGRAM_CHAT_ID")
+    # ── Notifications (WhatsApp via Twilio) ───────────────────────────────
+    TWILIO_ACCOUNT_SID: Optional[str] = Field(None, env="TWILIO_ACCOUNT_SID")
+    TWILIO_AUTH_TOKEN: Optional[str] = Field(None, env="TWILIO_AUTH_TOKEN")
+    TWILIO_WHATSAPP_FROM: Optional[str] = Field(None, env="TWILIO_WHATSAPP_FROM")
+    WHATSAPP_TO: Optional[str] = Field(None, env="WHATSAPP_TO")
 
     # ── Instruments to Trade ─────────────────────────────────────────────
     FUTURES_WATCHLIST: list[str] = Field(
