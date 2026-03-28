@@ -1,0 +1,69 @@
+version: "3.9"
+
+# JARVIS TRADER — Local Infrastructure
+# Run with: docker compose up -d
+# Starts QuestDB (tick data), PostgreSQL (audit/orders), Redis (cache/signals)
+
+services:
+
+  # ── QuestDB — Time-Series Database for Market Data ───────────────────────
+  questdb:
+    image: questdb/questdb:8.2.3
+    container_name: jarvis_questdb
+    restart: unless-stopped
+    ports:
+      - "9000:9000"    # HTTP API + Web console (http://localhost:9000)
+      - "9009:9009"    # InfluxDB line protocol (for data ingestion)
+      - "8812:8812"    # PostgreSQL wire protocol
+    volumes:
+      - questdb_data:/var/lib/questdb
+    environment:
+      QDB_HTTP_ENABLED: "true"
+      QDB_HTTP_BIND_TO: "0.0.0.0:9000"
+
+  # ── PostgreSQL — Relational DB for Orders, Portfolio, Audit Trail ─────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: jarvis_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: jarvis
+      POSTGRES_PASSWORD: jarvis
+      POSTGRES_DB: jarvis_trader
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # ── Redis — Cache, Signal Bus, Feature Store ──────────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    container_name: jarvis_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+
+  # ── Grafana — Monitoring Dashboard ───────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: jarvis_grafana
+    restart: unless-stopped
+    ports:
+      - "3030:3000"   # http://localhost:3030 (avoid conflict with Next.js)
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: jarvis123
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - postgres
+
+volumes:
+  questdb_data:
+  postgres_data:
+  redis_data:
+  grafana_data:
