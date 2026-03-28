@@ -14,7 +14,12 @@ from datetime import datetime
 from typing import Optional
 
 import pandas as pd
-import pandas_ta as ta  # 150+ technical indicators
+try:
+    import pandas_ta as ta  # 150+ technical indicators
+    PANDAS_TA_AVAILABLE = True
+except ImportError:
+    ta = None
+    PANDAS_TA_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +56,29 @@ class TechnicalReport:
     is_oversold: bool = False
     trend: str = "neutral"  # "uptrend", "downtrend", "neutral", "ranging"
     regime: str = "unknown"  # "trending", "mean_reverting", "volatile"
+
+    def to_dict(self) -> dict:
+        return {
+            "symbol": self.symbol,
+            "timestamp": self.timestamp.isoformat(),
+            "timeframe": self.timeframe,
+            "signal": self.signal,
+            "confidence": self.confidence,
+            "trend_score": self.trend_score,
+            "momentum_score": self.momentum_score,
+            "volatility_score": self.volatility_score,
+            "volume_score": self.volume_score,
+            "support_levels": self.support_levels,
+            "resistance_levels": self.resistance_levels,
+            "current_price": self.current_price,
+            "summary": self.summary,
+            "reasoning": self.reasoning,
+            "indicators": self.indicators,
+            "is_overbought": self.is_overbought,
+            "is_oversold": self.is_oversold,
+            "trend": self.trend,
+            "regime": self.regime,
+        }
 
 
 class TechnicalAnalystAgent:
@@ -109,6 +137,16 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         Compute technical indicators using pandas-ta.
         All deterministic — no LLM involved here.
         """
+        if not PANDAS_TA_AVAILABLE:
+            logger.warning("pandas_ta not installed — returning minimal indicator set")
+            df_tmp = df.copy()
+            df_tmp.columns = [c.lower() for c in df_tmp.columns]
+            current = df_tmp.iloc[-1]
+            return {
+                "current_price": float(current.get("close", 0.0)),
+                "support_levels": [],
+                "resistance_levels": [],
+            }
         df = df.copy()
         df.columns = [c.lower() for c in df.columns]
 

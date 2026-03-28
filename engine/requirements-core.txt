@@ -1,0 +1,63 @@
+# JARVIS TRADER — Core Requirements (Windows-compatible, no C binaries)
+# Install with: pip install -r requirements-core.txt
+#
+# Excluded from full requirements.txt:
+#   ta-lib         — needs pre-compiled C binary (hard on Windows)
+#   vectorbt       — heavy Cython deps
+#   nautilus_trader — complex build requirements
+#   langchain*     — not used in core pipeline, add later if needed
+#   ib_async       — add when IBKR account is ready
+#   schwab-py      — add when Schwab account is ready
+#   questdb        — optional time-series DB, add when needed
+#   prometheus-client — optional monitoring, add when needed
+#   edgartools     — SEC filings, add when FundamentalAnalyst needs it
+
+# ── Core Framework ─────────────────────────────────────────────────────────
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+pydantic==2.11.2
+pydantic-settings==2.8.1
+
+# ── LLM ────────────────────────────────────────────────────────────────────
+anthropic==0.50.0
+
+# ── Market Data ────────────────────────────────────────────────────────────
+yfinance==0.2.54          # Yahoo Finance — free historical OHLCV, no key needed
+polygon-api-client==1.14.4 # Polygon.io — optional, needs API key
+alpaca-py==0.35.0         # Alpaca — paper trading data, free with API key
+
+# ── Technical Analysis ─────────────────────────────────────────────────────
+pandas-ta==0.4.67b0       # 150+ indicators, pure Python (no C binary needed)
+
+# ── Data Processing ────────────────────────────────────────────────────────
+pandas>=2.2.3
+numpy>=2.2.6
+scipy>=1.15.2
+
+# ── Databases ──────────────────────────────────────────────────────────────
+psycopg2-binary==2.9.10   # PostgreSQL (binary wheel, no build needed)
+redis==5.2.1              # Redis client
+
+# ── HTTP & Async ───────────────────────────────────────────────────────────
+httpx==0.28.1
+websockets==14.2
+aiohttp==3.11.14
+
+# ── Sentiment & News ───────────────────────────────────────────────────────
+finnhub-python==2.4.22    # Finnhub — free tier: 60 req/min
+praw==7.8.1               # Reddit API (for WSB/r/stocks)
+
+# ── Economic Data ──────────────────────────────────────────────────────────
+fredapi==0.5.2            # FRED — Federal Reserve data, free, no key needed
+
+# ── Scheduling ─────────────────────────────────────────────────────────────
+apscheduler==3.11.0
+
+# ── Utilities ──────────────────────────────────────────────────────────────
+python-dotenv==1.1.0
+loguru==0.7.3
+rich==13.9.4              # Pretty terminal output
+
+# ── Testing ────────────────────────────────────────────────────────────────
+pytest==8.3.5
+pytest-asyncio==0.26.0

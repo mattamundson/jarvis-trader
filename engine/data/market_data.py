@@ -170,22 +170,26 @@ class PolygonDataConnector:
             return pd.DataFrame()
 
         bars = []
-        for agg in self._client.list_aggs(
-            symbol,
-            multiplier,
-            timespan,
-            from_date,
-            to_date,
-            limit=50000,
-        ):
-            bars.append({
-                "timestamp": datetime.fromtimestamp(agg.timestamp / 1000),
-                "open": agg.open,
-                "high": agg.high,
-                "low": agg.low,
-                "close": agg.close,
-                "volume": agg.volume,
-            })
+        try:
+            for agg in self._client.list_aggs(
+                symbol,
+                multiplier,
+                timespan,
+                from_date,
+                to_date,
+                limit=50000,
+            ):
+                bars.append({
+                    "timestamp": datetime.fromtimestamp(agg.timestamp / 1000),
+                    "open": agg.open,
+                    "high": agg.high,
+                    "low": agg.low,
+                    "close": agg.close,
+                    "volume": agg.volume,
+                })
+        except Exception as e:
+            logger.warning(f"Polygon request failed for {symbol}: {e}. Falling back to next source.")
+            return pd.DataFrame()
 
         return pd.DataFrame(bars)
 
@@ -321,7 +325,9 @@ class MarketDataManager:
             tf_map = {"1m": ("minute", 1), "5m": ("minute", 5), "15m": ("minute", 15),
                       "1h": ("hour", 1), "1d": ("day", 1)}
             timespan, multiplier = tf_map.get(timeframe, ("minute", 5))
-            return self.polygon.get_historical_bars(symbol, from_date, to_date, timespan, multiplier)
+            df = self.polygon.get_historical_bars(symbol, from_date, to_date, timespan, multiplier)
+            if not df.empty:
+                return df
 
         # Last resort: yfinance (free, delayed)
         logger.warning(f"Using yfinance for {symbol} (delayed data)")

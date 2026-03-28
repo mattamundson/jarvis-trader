@@ -1,8 +1,8 @@
 // All calls proxy through Next.js rewrites → http://localhost:8010
 const ENGINE = "/api/engine";
 
-export async function fetchEngine<T>(path: string): Promise<T> {
-  const res = await fetch(`${ENGINE}${path}`, { cache: "no-store" });
+export async function fetchEngine<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${ENGINE}${path}`, { cache: "no-store", ...options });
   if (!res.ok) throw new Error(`Engine error ${res.status}: ${path}`);
   return res.json();
 }

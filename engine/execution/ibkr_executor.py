@@ -16,16 +16,28 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
-from ib_async import (
-    IB,
-    Future,
-    Stock,
-    Order,
-    MarketOrder,
-    LimitOrder,
-    StopOrder,
-    StopLimitOrder,
-)
+try:
+    from ib_async import (
+        IB,
+        Future,
+        Stock,
+        Order,
+        MarketOrder,
+        LimitOrder,
+        StopOrder,
+        StopLimitOrder,
+    )
+    IB_AVAILABLE = True
+except ImportError:
+    IB_AVAILABLE = False
+    IB = None
+    Future = None
+    Stock = None
+    Order = None
+    MarketOrder = None
+    LimitOrder = None
+    StopOrder = None
+    StopLimitOrder = None
 
 from risk.safety_layer import SafetyLayer, OrderRequest, KillSwitchReason
 
@@ -98,6 +110,11 @@ class IBKRExecutor:
     RECONNECT_DELAY_SECONDS: float = 5.0
 
     def __init__(self, settings, safety_layer: SafetyLayer) -> None:
+        if not IB_AVAILABLE:
+            raise RuntimeError(
+                "ib_async is not installed. Run: pip install ib_async\n"
+                "IB Gateway must also be running on the configured port."
+            )
         self._settings = settings
         self._safety = safety_layer
         self._ib: IB = IB()

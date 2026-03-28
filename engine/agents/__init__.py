@@ -15,6 +15,7 @@ from .trader import TraderAgent, TradeDecision
 from .risk_manager import RiskManagerAgent, RiskDecision
 from .fund_manager import FundManagerAgent, FundDecision
 from .pipeline import TradingPipeline
+from .thinkscript_generator import ThinkScriptGeneratorAgent, ThinkScriptResult
 
 __all__ = [
     # Technical analysis
@@ -44,4 +45,7 @@ __all__ = [
     "FundDecision",
     # Pipeline orchestrator
     "TradingPipeline",
+    # ThinkScript generation
+    "ThinkScriptGeneratorAgent",
+    "ThinkScriptResult",
 ]

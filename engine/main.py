@@ -11,6 +11,9 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -19,6 +22,7 @@ from config import settings
 from data.market_data import MarketDataManager
 from risk.safety_layer import SafetyLayer, OrderRequest
 from agents.technical_analyst import TechnicalAnalystAgent
+from agents.pipeline import TradingPipeline
 
 # ── Logging ──────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -31,12 +35,14 @@ logger = logging.getLogger("jarvis_trader")
 data_manager: MarketDataManager | None = None
 safety_layer: SafetyLayer | None = None
 technical_analyst: TechnicalAnalystAgent | None = None
+trading_pipeline: TradingPipeline | None = None
+scheduler: AsyncIOScheduler | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler
 
     logger.info("🤖 JARVIS TRADER starting up...")
     logger.info(f"   Live trading: {'ENABLED ⚠️' if settings.LIVE_TRADING_ENABLED else 'DISABLED (paper mode)'}")
@@ -57,8 +63,73 @@ async def lifespan(app: FastAPI):
         llm_client = SimpleLLMClient()
         technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
         logger.info("✅ Technical Analyst agent initialized")
+
+        # Trading Pipeline (wires all agents together)
+        from agents.pipeline import TradingPipeline
+        trading_pipeline = TradingPipeline(
+            agents={"technical": technical_analyst},
+            safety_layer=safety_layer,
+        )
+        logger.info("✅ Trading Pipeline initialized")
     else:
         logger.warning("⚠️  No ANTHROPIC_API_KEY — LLM agents disabled. Add to .env to enable.")
+
+    # Scheduled analysis (runs during market hours)
+    scheduler = AsyncIOScheduler(timezone="America/Chicago")
+
+    async def run_watchlist_analysis():
+        """Run pipeline on all watchlist symbols — called by scheduler"""
+        if not trading_pipeline or not safety_layer:
+            return
+        safety = safety_layer.get_status()
+        if safety.get("kill_switch_active"):
+            logger.info("⏭️  Scheduler: skipping — kill switch active")
+            return
+
+        symbols_to_scan = [
+            (sym, True) for sym in settings.FUTURES_WATCHLIST[:2]  # Top 2 futures
+        ] + [
+            (sym, False) for sym in settings.OPTIONS_WATCHLIST[:3]  # Top 3 equities
+        ]
+
+        logger.info(f"⏰ Scheduled scan: {[s[0] for s in symbols_to_scan]}")
+        for symbol, is_futures in symbols_to_scan:
+            try:
+                result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
+                action = result.get("final_action", "hold")
+                if action not in ("hold",):
+                    logger.info(f"📊 {symbol}: {action.upper()} ({result.get('confidence', 0):.0%} confidence)")
+                    _decision_log.append({
+                        "id": len(_decision_log) + 1,
+                        "timestamp": datetime.now().isoformat(),
+                        "symbol": symbol,
+                        "action": action,
+                        "confidence": result.get("confidence", 0),
+                        "source": "scheduler",
+                        "summary": result.get("summary", ""),
+                    })
+                    if len(_decision_log) > 100:
+                        _decision_log.pop(0)
+            except Exception as e:
+                logger.error(f"Scheduler analysis failed for {symbol}: {e}")
+
+    # Run every 30 minutes on weekdays, 9:30am-4:00pm Chicago time
+    if settings.ANTHROPIC_API_KEY:
+        scheduler.add_job(
+            run_watchlist_analysis,
+            CronTrigger(
+                day_of_week="mon-fri",
+                hour="9-15",
+                minute="0,30",
+                timezone="America/Chicago"
+            ),
+            id="watchlist_scan",
+            name="Watchlist Auto-Scan",
+            max_instances=1,
+            misfire_grace_time=300,
+        )
+        scheduler.start()
+        logger.info("⏰ Scheduler started — watchlist scan every 30min (9:30am-4pm CT weekdays)")
 
     logger.info("✅ JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
@@ -68,6 +139,8 @@ async def lifespan(app: FastAPI):
     # Teardown
     if data_manager and data_manager.ibkr:
         await data_manager.ibkr.disconnect()
+    if scheduler and scheduler.running:
+        scheduler.shutdown(wait=False)
     logger.info("👋 JARVIS TRADER shutdown complete")
 
 
@@ -115,6 +188,8 @@ async def activate_kill_switch(reason: str = "manual"):
         raise HTTPException(500, "Safety layer not initialized")
     from risk.safety_layer import KillSwitchReason
     safety_layer.activate_kill_switch(KillSwitchReason.MANUAL, f"Manual activation: {reason}")
+    from notifications.telegram import get_notifier
+    asyncio.create_task(get_notifier().alert_kill_switch(reason))
     return {"status": "kill_switch_activated", "reason": reason}
 
 
@@ -280,25 +355,228 @@ async def get_sentiment_recent():
 
 @app.get("/watchlist")
 async def get_watchlist():
-    """Return configured watchlists as ticker items"""
+    """Return configured watchlists as ticker items with live prices"""
+    import yfinance as yf
+
+    futures_map = {
+        "MES": "ES=F", "MNQ": "NQ=F", "MCL": "CL=F",
+        "MGC": "GC=F", "MHG": "HG=F", "MYM": "YM=F", "M2K": "RTY=F",
+    }
+    all_symbols = list(settings.FUTURES_WATCHLIST) + list(settings.OPTIONS_WATCHLIST)
+    prices: dict = {}
+    try:
+        yf_tickers_map = {s: futures_map.get(s, s) for s in all_symbols}
+        tickers_obj = yf.Tickers(" ".join(set(yf_tickers_map.values())))
+        for sym, yf_sym in yf_tickers_map.items():
+            try:
+                info = tickers_obj.tickers[yf_sym].fast_info
+                current = float(info.last_price) if hasattr(info, "last_price") and info.last_price else None
+                prev = float(info.previous_close) if hasattr(info, "previous_close") and info.previous_close else None
+                chg = ((current - prev) / prev) if current and prev and prev > 0 else None
+                prices[sym] = {"last_price": current, "change_pct": chg}
+            except Exception:
+                prices[sym] = {"last_price": None, "change_pct": None}
+    except Exception:
+        pass
+
     items = []
+    names = {"MES": "Micro E-mini S&P 500", "MNQ": "Micro E-mini Nasdaq", "MCL": "Micro Crude Oil",
+             "MGC": "Micro Gold", "MHG": "Micro Copper", "MYM": "Micro Dow", "M2K": "Micro Russell 2000"}
     for sym in settings.FUTURES_WATCHLIST:
-        items.append({
-            "symbol": sym,
-            "name": {"MES": "Micro E-mini S&P 500", "MNQ": "Micro E-mini Nasdaq", "MCL": "Micro Crude Oil"}.get(sym, sym),
-            "type": "futures",
-            "last_price": None,
-            "change_pct": None,
-        })
+        p = prices.get(sym, {})
+        items.append({"symbol": sym, "name": names.get(sym, sym), "type": "futures",
+                      "last_price": p.get("last_price"), "change_pct": p.get("change_pct")})
     for sym in settings.OPTIONS_WATCHLIST:
-        items.append({
-            "symbol": sym,
-            "name": sym,
-            "type": "options",
-            "last_price": None,
-            "change_pct": None,
-        })
+        p = prices.get(sym, {})
+        items.append({"symbol": sym, "name": sym, "type": "options",
+                      "last_price": p.get("last_price"), "change_pct": p.get("change_pct")})
     return items
+
+
+# ── Live Prices ────────────────────────────────────────────────────────────
+
+@app.get("/prices/snapshot")
+async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
+    """
+    Get current prices and daily change % for comma-separated symbols.
+    Futures micro contracts (MES, MNQ, MCL etc) are mapped to continuous contracts.
+    """
+    import yfinance as yf
+
+    futures_map = {"MES": "ES=F", "MNQ": "NQ=F", "MCL": "CL=F",
+                   "MGC": "GC=F", "MHG": "HG=F", "MYM": "YM=F", "M2K": "RTY=F"}
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not symbol_list:
+        return {}
+
+    yf_tickers = [futures_map.get(s, s) for s in symbol_list]
+    try:
+        tickers = yf.Tickers(" ".join(yf_tickers))
+        result = {}
+        for original, yf_ticker in zip(symbol_list, yf_tickers):
+            try:
+                info = tickers.tickers[yf_ticker].fast_info
+                current = float(info.last_price) if hasattr(info, "last_price") and info.last_price else None
+                prev = float(info.previous_close) if hasattr(info, "previous_close") and info.previous_close else None
+                chg = ((current - prev) / prev) if current and prev and prev > 0 else None
+                result[original] = {"symbol": original, "last_price": current, "prev_close": prev,
+                                    "change_pct": chg, "yf_ticker": yf_ticker}
+            except Exception as e:
+                result[original] = {"symbol": original, "last_price": None, "prev_close": None,
+                                    "change_pct": None, "error": str(e)}
+        return result
+    except Exception as e:
+        raise HTTPException(500, f"Price fetch failed: {e}")
+
+
+# ── Pipeline ──────────────────────────────────────────────────────────────
+
+class PipelineRequest(BaseModel):
+    symbol: str
+    is_futures: bool = False
+
+
+@app.post("/pipeline/run")
+async def run_pipeline(req: PipelineRequest):
+    """Run the full 5-stage AI trading pipeline for a symbol"""
+    if not trading_pipeline:
+        raise HTTPException(503, "Pipeline not available (no ANTHROPIC_API_KEY)")
+
+    result = await trading_pipeline.analyze_and_decide(req.symbol, req.is_futures)
+
+    # Log to decision feed
+    _decision_log.append({
+        "id": len(_decision_log) + 1,
+        "timestamp": datetime.now().isoformat(),
+        "symbol": req.symbol,
+        "action": result.get("final_action", "hold"),
+        "confidence": result.get("confidence", 0),
+        "source": "pipeline",
+        "summary": result.get("summary", ""),
+    })
+    if len(_decision_log) > 100:
+        _decision_log.pop(0)
+
+    # Send Telegram alert for non-HOLD signals
+    from notifications.telegram import get_notifier
+    notifier = get_notifier()
+    asyncio.create_task(notifier.alert_pipeline_result(req.symbol, result))
+
+    return result
+
+
+@app.get("/pipeline/status")
+async def pipeline_status():
+    """Pipeline availability and last run info"""
+    return {
+        "available": trading_pipeline is not None,
+        "last_run": _decision_log[-1] if _decision_log else None,
+        "decision_count": len(_decision_log),
+    }
+
+
+@app.get("/scheduler/status")
+async def scheduler_status():
+    """Scheduled job status"""
+    if not scheduler:
+        return {"running": False, "jobs": []}
+    jobs = []
+    for job in scheduler.get_jobs():
+        next_run = job.next_run_time
+        jobs.append({
+            "id": job.id,
+            "name": job.name,
+            "next_run": next_run.isoformat() if next_run else None,
+        })
+    return {
+        "running": scheduler.running,
+        "jobs": jobs,
+        "total_decisions_logged": len(_decision_log),
+    }
+
+
+@app.post("/notifications/telegram/test")
+async def test_telegram():
+    """Test Telegram notification config"""
+    from notifications.telegram import get_notifier
+    notifier = get_notifier()
+    if not notifier.enabled:
+        return {
+            "status": "not_configured",
+            "message": "Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to .env",
+        }
+    ok = await notifier.test()
+    return {"status": "sent" if ok else "failed"}
+
+
+# ── ThinkScript Generation ─────────────────────────────────────────────────
+
+from agents.thinkscript_generator import ThinkScriptGeneratorAgent
+
+thinkscript_generator: ThinkScriptGeneratorAgent | None = None
+
+class ThinkScriptRequest(BaseModel):
+    symbol: str
+    timeframe: str = "15m"
+    is_futures: bool = False
+
+@app.post("/thinkscript/generate")
+async def generate_thinkscript(req: ThinkScriptRequest):
+    """Generate ThinkScript code for ThinkorSwim from JARVIS analysis"""
+    gen = ThinkScriptGeneratorAgent(
+        llm_client=technical_analyst.llm_client if technical_analyst else None
+    )
+
+    # Get technical analysis first
+    tech_report = None
+    if technical_analyst:
+        try:
+            tech_report = await technical_analyst.analyze(req.symbol, req.timeframe, req.is_futures)
+        except Exception:
+            pass
+
+    result = await gen.generate(
+        symbol=req.symbol,
+        timeframe=req.timeframe,
+        technical_report=tech_report,
+        script_type="study",
+    )
+
+    return {
+        "symbol": result.symbol,
+        "timeframe": result.timeframe,
+        "title": result.title,
+        "code": result.code,
+        "description": result.description,
+        "usage_instructions": result.usage_instructions,
+        "signals_included": result.signals_included,
+        "timestamp": result.timestamp.isoformat(),
+    }
+
+
+# ── Macro Data (FRED) ──────────────────────────────────────────────────────
+
+@app.get("/macro/snapshot")
+async def get_macro_snapshot():
+    """Current macro environment from FRED (Fed Funds, yields, VIX, unemployment)"""
+    from data.fred_data import get_fred_service
+    service = get_fred_service()
+    try:
+        snapshot = service.get_macro_snapshot()
+        return snapshot
+    except Exception as e:
+        raise HTTPException(500, f"FRED data unavailable: {e}")
+
+
+@app.get("/macro/series/{series_id}")
+async def get_macro_series(series_id: str, periods: int = 24):
+    """Get historical data for a FRED series (e.g. FEDFUNDS, GS10, VIXCLS)"""
+    from data.fred_data import get_fred_service
+    service = get_fred_service()
+    history = service.get_series_history(series_id.upper(), periods)
+    if not history:
+        raise HTTPException(404, f"FRED series {series_id} not found or unavailable")
+    return {"series_id": series_id.upper(), "data": history, "count": len(history)}
 
 
 if __name__ == "__main__":

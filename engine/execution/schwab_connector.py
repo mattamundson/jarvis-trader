@@ -291,7 +291,7 @@ class SchwabConnector:
         )
 
         # ── Safety check (mandatory — ALWAYS before broker call) ──────────────
-        from engine.risk.safety_layer import OrderRequest  # noqa: PLC0415
+        from risk.safety_layer import OrderRequest  # noqa: PLC0415
 
         # Estimate order value: limit_price * quantity * 100 (options multiplier)
         estimated_value = (limit_price or 0.0) * abs(quantity) * 100

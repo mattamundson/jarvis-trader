@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import useSWR from "swr";
 import { Activity, AlertTriangle, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { KillSwitch } from "@/components/KillSwitch";
@@ -22,8 +22,8 @@ import type {
 
 const REFRESH_MS = 5000;
 
-function fetcher(url: string) {
-  return fetchEngine(url);
+function fetcher<T = unknown>(url: string): Promise<T> {
+  return fetchEngine<T>(url);
 }
 
 export default function DashboardPage() {
@@ -63,12 +63,33 @@ export default function DashboardPage() {
     { refreshInterval: REFRESH_MS * 2 }
   );
 
+  const engineOnline = !healthErr && !!health;
+
+  const [analysisSymbol, setAnalysisSymbol] = React.useState("SPY");
+  const [isRunning, setIsRunning] = React.useState(false);
+  const [lastResult, setLastResult] = React.useState<Record<string, unknown> | null>(null);
+
+  const runAnalysis = useCallback(async () => {
+    if (!engineOnline || isRunning) return;
+    setIsRunning(true);
+    try {
+      const res = await fetchEngine("/pipeline/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: analysisSymbol, is_futures: false }),
+      });
+      setLastResult(res as Record<string, unknown>);
+    } catch (e) {
+      console.error("Pipeline error:", e);
+    } finally {
+      setIsRunning(false);
+    }
+  }, [engineOnline, isRunning, analysisSymbol]);
+
   const onKillSwitchToggle = useCallback(() => {
     mutateSafety();
     mutateHealth();
   }, [mutateSafety, mutateHealth]);
-
-  const engineOnline = !healthErr && !!health;
 
   return (
     <div className="min-h-screen bg-background">
@@ -87,6 +108,11 @@ export default function DashboardPage() {
                 IBKR Futures + Schwab Options
               </p>
             </div>
+            <nav className="hidden lg:flex items-center gap-4 ml-6">
+              <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Analysis
+              </a>
+            </nav>
           </div>
 
           <div className="flex items-center gap-3">
@@ -184,6 +210,44 @@ export default function DashboardPage() {
             )}
 
             <SentimentPanel sentiments={sentiments ?? []} />
+
+            {/* Run Analysis */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Run Analysis
+              </p>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono uppercase focus:outline-none focus:ring-1 focus:ring-accent"
+                  value={analysisSymbol}
+                  onChange={(e) => setAnalysisSymbol(e.target.value.toUpperCase())}
+                  placeholder="SPY"
+                  maxLength={10}
+                />
+                <button
+                  onClick={runAnalysis}
+                  disabled={!engineOnline || isRunning}
+                  className="rounded-lg bg-accent/20 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isRunning ? "Running…" : "Analyze"}
+                </button>
+              </div>
+              {lastResult && (
+                <div className="rounded-lg bg-muted/50 p-2 text-xs space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Action</span>
+                    <span className={`font-bold uppercase ${
+                      String(lastResult.final_action) === "buy" ? "text-bull" :
+                      String(lastResult.final_action) === "sell" ? "text-bear" : "text-muted-foreground"
+                    }`}>{String(lastResult.final_action ?? "—")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Confidence</span>
+                    <span className="tabular-nums">{((Number(lastResult.confidence) || 0) * 100).toFixed(0)}%</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>
