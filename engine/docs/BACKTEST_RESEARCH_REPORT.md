@@ -1,6 +1,6 @@
 # JARVIS TRADER — Backtest Research Report
 
-**Version**: 3.0 (Research-Grade, Bug-Fixed + Exit Fix)
+**Version**: 4.0 (Research-Grade, Bug-Fixed + Exit Fix + Walk-Forward + Multi-Instrument Sensitivity)
 **Date**: 2026-03-29
 **Author**: JARVIS Autonomous Trading System
 **Status**: FINAL (corrected backtests with fixed-exit matrix, Monte Carlo, and sensitivity analysis complete)
@@ -525,10 +525,25 @@ WFE = Mean(OOS_Return) / Mean(IS_Return)
 
 ### 4.3 Walk-Forward Results
 
-[TBD - walk-forward results pending. Walk-forward validation has not yet been executed. Given the low trade counts across most symbol/timeframe combinations (median ~12 trades), splitting the data into IS/OOS windows may produce windows with zero or near-zero trades, making WFE calculation unreliable. Walk-forward should be prioritized for MGC 1d (29 trades) and MES 1d (51 trades) as they have sufficient sample size.]
+#### MGC 1d Walk-Forward (7 Windows, 6-month IS / 3-month OOS)
 
-**WFE Score**: [TBD - walk-forward results pending]
-**Interpretation**: [TBD - walk-forward results pending]
+**WFE Score: 0.27 — OVERFIT** (threshold: >0.50 = good, <0.30 = overfit)
+
+| Window | Train | Test | IS Return | OOS Return | OOS PF | OOS Sharpe | OOS Trades |
+|--------|-------|------|-----------|-----------|--------|------------|------------|
+| 1 | 2024-01 to 2024-07 | 2024-07 to 2024-10 | +0.1% | -4.8% | 0.02 | -4.90 | 7 |
+| 2 | 2024-04 to 2024-10 | 2024-10 to 2025-01 | +19.7% | -1.4% | 0.71 | -0.85 | 7 |
+| 3 | 2024-07 to 2025-01 | 2025-01 to 2025-04 | +12.1% | +6.5% | 2.39 | 2.06 | 13 |
+| 4 | 2024-10 to 2025-04 | 2025-04 to 2025-07 | +11.6% | -1.6% | 0.42 | -1.77 | 5 |
+| 5 | 2025-01 to 2025-07 | 2025-07 to 2025-10 | +9.4% | +19.6% | 5.97 | 4.45 | 14 |
+| 6 | 2025-04 to 2025-10 | 2025-10 to 2026-01 | +8.2% | +2.0% | 1.67 | 1.19 | 10 |
+| 7 | 2025-07 to 2026-01 | 2026-01 to 2026-03 | +9.5% | -1.5% | 0.00 | -2.98 | 2 |
+
+**Summary:** Avg IS = 10.1%, Avg OOS = 2.7%, WFE = 0.27. OOS profitable in 3 of 7 windows (43%).
+
+**Interpretation:** The +34.4% backtest return is overstated — approximately 73% of the in-sample edge does not carry forward to unseen data. The strategy works in trending gold markets (Windows 3 and 5, which coincide with strong gold rallies) but fails in ranging or choppy conditions (Windows 1, 2, 4). Window 7 has only 2 trades in its OOS period, making it statistically meaningless. The realistic live edge for MGC 1d is approximately +2.7% annualized, not +34.4%. This is a clear overfitting signal — the optimizer is finding parameters that exploit specific historical price patterns rather than a durable structural edge.
+
+**Verdict: FAIL** — WFE = 0.27 falls below the 0.30 threshold for marginal acceptability. MGC 1d should be downgraded from the tradeable universe until walk-forward efficiency improves through either (a) a longer OOS test period, (b) regime-adaptive parameter selection, or (c) structural signal improvements.
 
 ---
 
@@ -654,6 +669,42 @@ The Stop ATR multiple is the only parameter with meaningful sensitivity. At Stop
 
 **Verdict: ROBUST** — the strategy is structure-driven and not STC-threshold dependent. But robustness without performance is merely a consistently mediocre system.
 
+### 6.4 Sensitivity Results (MCL 1h)
+
+**Overall Stability Score: 85/100 — ACCEPTABLE**
+
+MCL 1h sensitivity analysis (base parameters: STC_OS=15, STC_OB=83, Stop=0.70 ATR, T1=1.50 ATR):
+
+**Individual Parameter Stability Scores:**
+
+| Parameter | Stability Score | Interpretation |
+|-----------|----------------|----------------|
+| STC Oversold | 100/100 | Completely invariant — performance identical across 10-20 range |
+| STC Overbought | 100/100 | Completely invariant — performance identical across 77-89 range |
+| Stop ATR Multiple | 73/100 | ROBUST but with critical dead zone (see below) |
+| T1 ATR Multiple | 66/100 | ACCEPTABLE — optimal range narrower than expected |
+
+**Critical Finding — Stop ATR Dead Zone:**
+
+The current global `STOP_ATR = 0.70` constant sits in MCL's dead zone. At Stop=0.70, only 8 trades are generated — the tight stop filters out the vast majority of valid setups before they can develop. The optimal stop range for MCL 1h is **0.77-0.90 ATR**, which unlocks 63-66 trades (vs. 8 at 0.70), with returns of +17% to +21% and Profit Factors of 1.70-1.81.
+
+| Stop ATR | Trades | Return | PF | Notes |
+|----------|--------|--------|----|-------|
+| 0.70 | 8 | +8.5% | 1.89 | Current — dead zone, insufficient trades |
+| 0.77 | 63 | +21.1% | 1.81 | Optimal lower bound |
+| 0.84 | 66 | +17.4% | 1.70 | Optimal midpoint |
+| 0.90 | 63 | +17.0% | 1.72 | Optimal upper bound |
+
+Widening the stop from 0.70 to 0.77 ATR unlocks **58 additional valid trades** and nearly triples the return from +8.5% to +21.1%.
+
+**T1 ATR Sensitivity:**
+
+T1=1.50 is too wide for MCL 1h — the target is rarely hit. The optimal range is **T1=1.00-1.20 ATR**, which produces higher target exit rates and better risk-adjusted returns.
+
+**Monte Carlo (MCL 1h at optimal parameters):** 100% probability of profit, max drawdown P95 = 4.93%.
+
+**Verdict: ACCEPTABLE** — MCL 1h has the highest sensitivity-adjusted edge in the matrix when using per-instrument optimal parameters (Stop=0.77-0.84, T1=1.00-1.20). The current global STOP_ATR=0.70 constant is actively harming MCL performance. Per-instrument parameter profiles are required for live deployment.
+
 ---
 
 ## 7. Statistical Significance
@@ -747,7 +798,7 @@ All criteria must be met before deploying to paper trading:
 | # | Criterion | Threshold | Result | Pass? |
 |---|-----------|-----------|--------|-------|
 | 1 | Corrected Profit Factor | > 1.5 across 3+ symbols | 3 combos have PF > 1.5: SPY 1h (3.00), MCL 1h (1.89), MNQ 1h (1.51) | **PASS** |
-| 2 | Walk-Forward Efficiency | > 0.50 | [TBD - walk-forward results pending] | **PENDING** |
+| 2 | Walk-Forward Efficiency | > 0.50 | MGC 1d WFE = 0.27 (OVERFIT). No symbol passes yet. | **FAIL** |
 | 3 | Monte Carlo P5% | > $100,000 (profitable in worst 5%) | SPY 1h P5% = $100,753 (passes technically, but gains trivially small) | **MARGINAL** |
 | 4 | Statistical Significance | p < 0.05 on at least 2 symbols | SPY 1h p ~= 0.29 — NOT significant. No symbol passes. | **FAIL** |
 | 5 | Maximum Drawdown | < 15% across all tests | Most combos show ~5% DD (max 5.9% on MES 1h) | **PASS** |
@@ -779,6 +830,12 @@ The fixed-exit backtests provide a materially improved picture:
 6. MGC daily is the most consistent daily result (PF 1.33, Sharpe 0.65, lowest MaxDD at 3.6%)
 7. Drawdowns are well-controlled (all under 6%) — the risk management framework works
 8. The sensitivity analysis confirms the strategy is ROBUST — not overfit
+
+**v4.0 Findings — Walk-Forward and Multi-Instrument Sensitivity:**
+1. **MGC 1d WFE = 0.27** (overfit territory). The realistic live edge is approximately +2.7% annualized, not the +34.4% shown in backtest. Approximately 73% of in-sample edge evaporates on unseen data. MGC 1d should be downgraded from the tradeable universe pending improvements.
+2. **MCL 1h has the highest sensitivity-adjusted edge** when using per-instrument optimal stop (0.77-0.84 ATR). The global STOP_ATR=0.70 constant sits in MCL's dead zone, producing only 8 trades. Widening to 0.77 unlocks 58 additional trades and nearly triples returns.
+3. **Per-instrument parameter profiles are required for live deployment.** A single global parameter set (STOP_ATR=0.70, T1=1.50) actively harms MCL and potentially other instruments. Each symbol/timeframe combination needs its own optimized stop and target levels.
+4. **MNQ 1h optimizer confirmed**: STC_OS=15, STC_OB=92, Stop=0.70, T1=1.0, regime=ON produces 86 trades, PF=1.51, +22.6% return — validating MNQ 1h as the top candidate for paper trading.
 
 **What is NOT real / needs work:**
 1. The original MES 1h +47% return was almost entirely look-ahead bias (remains confirmed)

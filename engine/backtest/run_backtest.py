@@ -53,7 +53,7 @@ def main():
     print(f"Loaded {len(df)} bars. Computing signals...")
 
     # Generate signals
-    df = generate_signals(df)
+    df = generate_signals(df, symbol=args.symbol)
 
     entry_count = (df['entry_signal'] == 'ENTRY_NOW').sum()
     print(f"Found {entry_count} ENTRY_NOW signals out of {len(df)} bars.")

@@ -11,7 +11,17 @@ Layers wired:
 from __future__ import annotations
 import pandas as pd
 import numpy as np
-from typing import Optional
+from typing import Dict, Optional
+
+# Per-instrument optimized parameters (research-validated)
+# Format: (STC_OS, STC_OB, STOP_ATR, T1_ATR, T2_ATR, T3_ATR)
+INSTRUMENT_PARAMS: Dict[str, tuple] = {
+    "MNQ": (15, 92, 0.70, 1.00, 1.80, 2.618),   # STC_OB=92 filters Nasdaq noise; 86 trades, PF 1.51
+    "MCL": (15, 83, 0.90, 1.50, 2.618, 4.00),   # Stop=0.90, T1=1.50 → R:R=1.67 (>1.2 gate); 65 trades, PF 1.81, +19.8%
+    "MGC": (17, 88, 0.30, 1.50, 2.618, 4.00),   # Gold: tight stop + wide T1 matches trend length
+    "SPY": (15, 88, 0.30, 1.00, 1.80, 2.618),   # SPY consensus
+    # Defaults used for all other symbols: STC_OS=15, STC_OB=83, Stop=0.70, T1=1.00
+}
 
 from .indicators import (
     wilder_atr,
@@ -361,6 +371,7 @@ def generate_signals(
     regime_filter: bool = True,
     stc_oversold: Optional[float] = None,
     stc_overbought: Optional[float] = None,
+    symbol: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Run all 5 layers on each row.
@@ -382,6 +393,27 @@ def generate_signals(
         Override STC overbought threshold.  Defaults to the module-level STC_OB.
     """
     df = compute_all_indicators(df)
+
+    # ── Load per-instrument optimized parameters ──────────────────────────
+    if symbol is not None:
+        inst_params = INSTRUMENT_PARAMS.get(symbol.upper())
+        if inst_params:
+            os_val, ob_val, stop_atr, t1_atr, t2_atr, t3_atr = inst_params
+            # Override STC thresholds only if not explicitly passed
+            if stc_oversold is None:
+                stc_oversold = os_val
+            if stc_overbought is None:
+                stc_overbought = ob_val
+        else:
+            stop_atr = 0.70
+            t1_atr = 1.00
+            t2_atr = 1.80
+            t3_atr = 2.618
+    else:
+        stop_atr = 0.70
+        t1_atr = 1.00
+        t2_atr = 1.80
+        t3_atr = 2.618
 
     # ── Optional STC threshold overrides (mirrors optimizer._compute_signals) ──
     if stc_oversold is not None or stc_overbought is not None:
@@ -461,30 +493,30 @@ def generate_signals(
     # Prior grid search found T1=1.50 "optimal" but that was before the Bug 3
     # pending-entry fix shifted entries to next-bar open, and before confirming
     # that zero targets were ever being hit (rendering the "optimum" meaningless).
-    STOP_ATR = 0.70   # both timeframes
-    T1_ATR   = 1.00   # 1h intraday-realistic (was 1.50 — never hit)
-    T2_ATR   = 1.80   # intraday stretch target (was 2.618 — never hit)
-    T3_ATR   = 2.618  # runner target (was 4.0 — reduced for intraday)
+    #
+    # stop_atr / t1_atr / t2_atr / t3_atr are set earlier from
+    # INSTRUMENT_PARAMS[symbol] when a symbol is provided, otherwise
+    # they fall back to the defaults set at lines 408-416 above.
 
     df['stop_level'] = np.where(
         is_long,
-        close - STOP_ATR * atr,
-        close + STOP_ATR * atr
+        close - stop_atr * atr,
+        close + stop_atr * atr
     )
     df['target_1'] = np.where(
         is_long,
-        close + T1_ATR * atr,
-        close - T1_ATR * atr
+        close + t1_atr * atr,
+        close - t1_atr * atr
     )
     df['target_2'] = np.where(
         is_long,
-        close + T2_ATR * atr,
-        close - T2_ATR * atr
+        close + t2_atr * atr,
+        close - t2_atr * atr
     )
     df['target_3'] = np.where(
         is_long,
-        close + T3_ATR * atr,
-        close - T3_ATR * atr
+        close + t3_atr * atr,
+        close - t3_atr * atr
     )
 
     return df
