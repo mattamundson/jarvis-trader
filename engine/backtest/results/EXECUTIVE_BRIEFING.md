@@ -19,9 +19,9 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 |------|--------|-----|--------|-----|------|--------|--------|-------|-----|---------|
 | 1 | MGC | 1d | 47 | 51.1 | 2.60 | 2.04 | +34.4% | 3.0% | 0.27 | **OVERFIT** |
 | 2 | SPY | 1h | 23 | 65.2 | 3.00 | -1.55 | +0.7% | 5.0% | -1.11 | **OVERFIT** |
-| 3 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +0.2% | — | 0.24 | **OVERFIT** |
+| 3 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | 0.24 | **OVERFIT** |
 | 4 | MCL | 1h | 65 | 60.0 | 1.83 | 0.15 | +0.2% | — | -0.16 | **OVERFIT** |
-| — | MES | 1h | — | — | 0.96 | — | -0.4% | — | -0.17 | **OVERFIT** |
+| 5 | MES | 1h | 21 | 42.9 | 0.96 | -0.12 | -4.0% | 0.1% | -0.17 | **OVERFIT** |
 
 *Test period: Jun 2024 -- Mar 2026 (1h) / Jan 2025 -- Mar 2026 (1d). All returns gross of commissions ($2.50/contract + 1 tick slippage applied).*
 
