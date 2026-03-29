@@ -1,20 +1,67 @@
 // All calls proxy through Next.js rewrites → http://localhost:8010
 const ENGINE = "/api/engine";
+const FETCH_TIMEOUT_MS = 30000; // 30 seconds
+const RETRY_DELAY_MS = 2000; // 2 seconds
+
+async function fetchWithTimeout<T>(
+  url: string,
+  options?: RequestInit
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Engine error ${res.status}: ${url}`);
+    }
+
+    return res.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function fetchWithRetry<T>(
+  url: string,
+  options?: RequestInit,
+  attempt: number = 1
+): Promise<T> {
+  try {
+    return await fetchWithTimeout<T>(url, options);
+  } catch (e) {
+    const error = e instanceof Error ? e : new Error(String(e));
+
+    // Only retry on network errors, not on HTTP errors
+    const isNetworkError =
+      error.message.includes("Failed to fetch") ||
+      error.message.includes("AbortError") ||
+      error.name === "AbortError";
+
+    if (isNetworkError && attempt < 2) {
+      // Single retry with 2s delay
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      return fetchWithRetry<T>(url, options, attempt + 1);
+    }
+
+    throw error;
+  }
+}
 
 export async function fetchEngine<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${ENGINE}${path}`, { cache: "no-store", ...options });
-  if (!res.ok) throw new Error(`Engine error ${res.status}: ${path}`);
-  return res.json();
+  return fetchWithRetry<T>(`${ENGINE}${path}`, { cache: "no-store", ...options });
 }
 
 export async function postEngine<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${ENGINE}${path}`, {
+  return fetchWithRetry<T>(`${ENGINE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`Engine error ${res.status}: ${path}`);
-  return res.json();
 }
 
 // API types (mirror engine Pydantic models)
@@ -220,72 +267,6 @@ export interface JournalEntry {
   lesson: string | null;
 }
 
-// ── Analytics / Validation types ──────────────────────────────────────────────
-
-/**
- * Mirrors engine PerformanceMetrics dataclass + get_validation_report() shape.
- * Returned by GET /analytics/performance
- */
-export interface AnalyticsPerformanceMetrics {
-  profit_factor: number | null;
-  sharpe_ratio: number | null;
-  win_rate: number | null;
-  avg_win: number;
-  avg_loss: number;
-  max_drawdown: number;
-  total_trades: number;
-  total_pnl: number;
-  period_days: number;
-  meets_paper_threshold: boolean;
-}
-
-export interface ValidationReport {
-  status: "PASS" | "FAIL" | "INSUFFICIENT_DATA";
-  metrics: AnalyticsPerformanceMetrics;
-  thresholds: {
-    profit_factor: number;
-    sharpe_ratio: number;
-    min_trades_required: number;
-  };
-  recommendation: string;
-}
-
-export interface CompareToBacktestResponse {
-  forward: AnalyticsPerformanceMetrics;
-  backtest: {
-    profit_factor: number;
-    sharpe_ratio: number;
-  };
-  comparison: {
-    profit_factor: {
-      forward: number;
-      backtest: number;
-      diff: number;
-      retention_pct: number;
-    };
-    sharpe_ratio: {
-      forward: number;
-      backtest: number;
-      diff: number;
-      retention_pct: number;
-    };
-    win_rate: {
-      forward: number;
-      backtest: null;
-      note: string;
-    };
-  };
-  degradation_ok: boolean;
-}
-
-export async function getValidationReport(): Promise<ValidationReport> {
-  return fetchEngine<ValidationReport>("/analytics/performance");
-}
-
-export async function getCompareToBacktest(): Promise<CompareToBacktestResponse> {
-  return fetchEngine<CompareToBacktestResponse>("/analytics/performance/compare");
-}
-
 // ── MGC Paper Trading types ───────────────────────────────────────────────────
 
 export interface MGCSignalResponse {
@@ -295,8 +276,6 @@ export interface MGCSignalResponse {
   target_1: number | null;
   regime: string | null;
   confidence: number | null;
-  timestamp: string | null;
-  [key: string]: unknown;
 }
 
 export interface PendingSignal {
@@ -308,10 +287,9 @@ export interface PendingSignal {
   target_1: number | null;
   regime: string | null;
   status: string | null;
-  [key: string]: unknown;
 }
 
-export interface MonthlyBreakdown {
+export interface MGCPerformanceMonthly {
   month: string;
   trades: number;
   pnl: number;
@@ -325,8 +303,7 @@ export interface MGCPerformanceResponse {
   net_pnl: number | null;
   max_drawdown: number | null;
   kill_switch_active: boolean;
-  monthly_breakdown: MonthlyBreakdown[] | null;
-  [key: string]: unknown;
+  monthly_breakdown: MGCPerformanceMonthly[] | null;
 }
 
 export interface PaperTradePayload {
@@ -338,41 +315,34 @@ export interface PaperTradePayload {
   contracts: number;
 }
 
-export async function fetchMGCSignal(): Promise<MGCSignalResponse> {
-  return fetchEngine<MGCSignalResponse>("/paper/mgc-signal");
+// ── Analytics / Validation types ──────────────────────────────────────────────
+
+export interface ValidationReportMetrics {
+  profit_factor: number | null;
+  sharpe_ratio: number | null;
+  win_rate: number | null;
+  max_drawdown: number;
+  total_pnl: number;
+  total_trades: number;
+  avg_win: number;
+  avg_loss: number;
+  period_days: number;
 }
 
-export async function fetchPendingSignals(): Promise<PendingSignal[]> {
-  return fetchEngine<PendingSignal[]>("/paper/pending-signals");
+export interface ValidationReport {
+  status: "PASS" | "FAIL" | "INSUFFICIENT_DATA";
+  recommendation: string;
+  metrics: ValidationReportMetrics;
 }
 
-export async function fetchMGCPerformance(): Promise<MGCPerformanceResponse> {
-  return fetchEngine<MGCPerformanceResponse>("/paper/mgc-performance");
+export interface CompareMetricResult {
+  retention_pct: number;
 }
 
-export async function logPaperTrade(data: PaperTradePayload): Promise<unknown> {
-  return postEngine("/paper/mgc-log-trade", data);
-}
-
-// ── IB Gateway types ─────────────────────────────────────────────────────────
-
-export interface IBGatewayStatusInfo {
-  /** Overall engine health status string (e.g. "healthy", "degraded") */
-  status: string;
-  /** True when IB Gateway is connected */
-  ibkr_connected: boolean;
-  /** True when running in paper mode */
-  paper_mode: boolean;
-  /** True when live trading is enabled */
-  live_trading: boolean;
-  /** Kill switch state */
-  kill_switch_active: boolean;
-  /** Account identifier if returned by the engine */
-  account_id?: string | null;
-  /** ISO timestamp of most recent successful engine response */
-  last_sync?: string | null;
-  /** Seconds since the engine started */
-  uptime_seconds?: number;
-  /** Engine version string */
-  version?: string;
+export interface CompareToBacktestResponse {
+  comparison: {
+    profit_factor?: CompareMetricResult;
+    sharpe_ratio?: CompareMetricResult;
+    [key: string]: CompareMetricResult | undefined;
+  };
 }
