@@ -133,11 +133,20 @@ export default function DashboardPage() {
               <a href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Performance
               </a>
+              <a href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Validation
+              </a>
               <a href="/journal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Journal
               </a>
+              <a href="/paper" className="text-xs text-accent font-semibold hover:text-foreground transition-colors">
+                Paper Trading
+              </a>
               <a href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Watchlist
+              </a>
+              <a href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Settings
               </a>
             </nav>
           </div>
