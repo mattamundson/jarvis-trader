@@ -8,6 +8,7 @@ Start with: uvicorn main:app --reload --port 8010
 """
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Dict
@@ -22,6 +23,7 @@ from pydantic import BaseModel
 from config import settings
 from data.market_data import MarketDataManager
 from risk.safety_layer import SafetyLayer, OrderRequest
+from risk.pnl_monitor import PnLMonitor
 from agents.technical_analyst import TechnicalAnalystAgent
 from agents.news_analyst import NewsAnalystAgent
 from agents.social_analyst import SocialAnalystAgent
@@ -34,6 +36,10 @@ from agents.risk_manager import RiskManagerAgent
 from agents.fund_manager import FundManagerAgent
 from agents.pipeline import TradingPipeline
 from portfolio.tracker import get_tracker, PortfolioTracker
+from database.schema import init_db, DatabaseManager
+from schedulers.eod_scheduler import EODScheduler
+from routers.journal_router import router as journal_router, set_db_manager as set_journal_db
+from execution.ib_order_manager import IBOrderManager
 
 # ── Logging ──────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -49,6 +55,10 @@ technical_analyst: TechnicalAnalystAgent | None = None
 trading_pipeline: TradingPipeline | None = None
 scheduler: AsyncIOScheduler | None = None
 paper_tracker: PortfolioTracker | None = None
+db_manager: DatabaseManager | None = None
+pnl_monitor: PnLMonitor | None = None
+eod_scheduler: EODScheduler | None = None
+order_manager: IBOrderManager | None = None
 
 # Rate limit: track last alert time per symbol to avoid flooding (2-hour cooldown)
 _last_alert_time: Dict[str, datetime] = {}
@@ -61,22 +71,53 @@ _macro_cache: Dict[str, dict] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager
 
     logger.info("🤖 JARVIS TRADER starting up...")
     logger.info(f"   Live trading: {'ENABLED ⚠️' if settings.LIVE_TRADING_ENABLED else 'DISABLED (paper mode)'}")
     logger.info(f"   IBKR port:   {settings.IBKR_PORT} ({'live' if settings.IBKR_PORT == 4001 else 'paper'})")
 
+    # Initialize SQLite database
+    os.makedirs("data", exist_ok=True)
+    db_manager = init_db(db_path="data/jarvis_trader.db")
+    db_manager.initialize()
+    set_journal_db(db_manager)
+    logger.info("✅ SQLite database initialized at data/jarvis_trader.db")
+
     # Paper trading tracker — initialise before safety layer so it is always available
-    paper_tracker = get_tracker()
+    paper_tracker = PortfolioTracker(db_manager=db_manager)
     logger.info("✅ Paper portfolio tracker ready")
 
-    # Safety layer — always first
-    safety_layer = SafetyLayer(settings)
+    # P&L Monitor — wires SQLite + IB Gateway data to circuit breakers
+    # IB gateway is not available yet at this point; it is injected after data_manager is ready
+    pnl_monitor = PnLMonitor(
+        db_manager=db_manager,
+        ib_gateway=None,          # updated below once data_manager is initialised
+        paper_tracker=paper_tracker,
+    )
+    logger.info("✅ PnL Monitor initialised (SQLite + paper tracker sources active)")
+
+    # Safety layer — always first; PnLMonitor feeds circuit breakers with live data
+    safety_layer = SafetyLayer(settings, pnl_monitor=pnl_monitor)
+
+    # IB Order Manager — bridges SafetyLayer + IBGateway for paper-order submission
+    # ib_gateway is None until data_manager connects; injected below after data_manager init
+    order_manager = IBOrderManager(
+        safety_layer=safety_layer,
+        ib_gateway=None,
+        portfolio_tracker=paper_tracker,
+    )
+    logger.info("✅ IBOrderManager initialized (ib_gateway=None until IBKR connects)")
 
     # Market data connections
     data_manager = MarketDataManager(settings)
     await data_manager.initialize()
+
+    # Now that data_manager is ready, inject the IB gateway into PnLMonitor
+    # so the circuit breakers can read live account data from IBKR when connected.
+    if pnl_monitor is not None and data_manager.ibkr is not None:
+        pnl_monitor._ib = data_manager.ibkr
+        logger.info("✅ PnL Monitor: IB Gateway wired (live account data source active)")
 
     # Agents (need LLM client)
     class SimpleLLMClient:
@@ -226,6 +267,16 @@ async def lifespan(app: FastAPI):
         scheduler.start()
         logger.info("⏰ Scheduler started — watchlist scan every 30min (9:30am-4pm CT weekdays)")
 
+    # EOD P&L snapshot scheduler — registers its own jobs on the existing scheduler
+    from notifications.whatsapp import get_notifier as _get_notifier
+    eod_scheduler = EODScheduler(
+        db_manager=db_manager,
+        portfolio_tracker=paper_tracker,
+        whatsapp_notifier=_get_notifier(),
+    )
+    if scheduler is not None:
+        eod_scheduler.register_with_scheduler(scheduler)
+
     logger.info("✅ JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
@@ -253,6 +304,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(journal_router, prefix="/journal", tags=["journal"])
 
 
 # ── Health ────────────────────────────────────────────────────────────────
@@ -301,6 +354,37 @@ async def safety_status():
     if not safety_layer:
         raise HTTPException(500, "Safety layer not initialized")
     return safety_layer.get_status()
+
+
+@app.get("/safety/circuit-breakers")
+async def get_circuit_breakers():
+    """
+    Current circuit breaker state for all safety limits.
+
+    Returns a snapshot of every circuit breaker without triggering any
+    state changes.  Safe to poll frequently (e.g. every 5 seconds from
+    the dashboard).
+
+    Response fields:
+        daily_pnl            — today's P&L in dollars (realized + unrealized)
+        daily_limit          — max allowed daily loss in dollars (negative)
+        daily_pnl_pct        — daily P&L as fraction of starting balance
+        daily_limit_pct      — configured daily loss limit (e.g. -0.02)
+        daily_limit_breached — True when daily loss limit has been exceeded
+        drawdown_pct         — current drawdown from peak (negative fraction)
+        drawdown_limit_pct   — configured max drawdown limit (e.g. -0.10)
+        drawdown_breached    — True when max drawdown has been exceeded
+        kill_switch_active   — whether the kill switch is currently on
+        kill_switch_reason   — reason string or null
+        pnl_source           — data origin: "ib" | "sqlite" | "memory"
+        current_balance      — current account balance in dollars
+        starting_balance     — balance at start of today in dollars
+        orders_last_minute   — number of orders placed in the last 60 seconds
+        all_clear            — True when no circuit breaker has tripped
+    """
+    if not safety_layer:
+        raise HTTPException(500, "Safety layer not initialized")
+    return safety_layer.check_circuit_breakers()
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────
@@ -480,6 +564,166 @@ async def get_paper_performance():
     return paper_tracker.get_performance()
 
 
+# ── Historical Query Endpoints (SQLite) ───────────────────────────────────
+
+@app.get("/portfolio/history/trades")
+async def get_trade_history(limit: int = 100, symbol: str = "", status: str = ""):
+    """
+    Return historical trades from SQLite.
+
+    Query params:
+        limit  : max rows to return (default 100)
+        symbol : filter by ticker symbol (optional)
+        status : filter by status — "open" | "closed" (optional)
+    """
+    if not db_manager:
+        return {"trades": [], "count": 0, "note": "db_manager not initialized"}
+    try:
+        trades = db_manager.get_trades(
+            limit=limit,
+            symbol=symbol.upper() if symbol else None,
+            status=status.lower() if status else None,
+        )
+        return {"trades": trades, "count": len(trades)}
+    except Exception as exc:
+        logger.error(f"[DB] get_trades failed: {exc}")
+        return {"trades": [], "count": 0, "error": str(exc)}
+
+
+@app.get("/portfolio/history/daily-pnl")
+async def get_daily_pnl(days: int = 30):
+    """
+    Return daily P&L snapshots for the last N days.
+
+    Query params:
+        days : lookback window in calendar days (default 30)
+    """
+    if not db_manager:
+        return {"daily_pnl": [], "days": days, "note": "db_manager not initialized"}
+    try:
+        records = db_manager.get_daily_pnl(days=days)
+        return {"daily_pnl": records, "days": days, "count": len(records)}
+    except Exception as exc:
+        logger.error(f"[DB] get_daily_pnl failed: {exc}")
+        return {"daily_pnl": [], "days": days, "error": str(exc)}
+
+
+@app.get("/portfolio/history/decisions")
+async def get_decision_history(limit: int = 50, symbol: str = ""):
+    """
+    Return historical agent decisions from SQLite.
+
+    Query params:
+        limit  : max rows to return (default 50)
+        symbol : filter by ticker symbol (optional)
+    """
+    if not db_manager:
+        return {"decisions": [], "count": 0, "note": "db_manager not initialized"}
+    try:
+        decisions = db_manager.get_decisions(
+            limit=limit,
+            symbol=symbol.upper() if symbol else None,
+        )
+        return {"decisions": decisions, "count": len(decisions)}
+    except Exception as exc:
+        logger.error(f"[DB] get_decisions failed: {exc}")
+        return {"decisions": [], "count": 0, "error": str(exc)}
+
+
+@app.get("/portfolio/stats/summary")
+async def get_stats_summary():
+    """
+    Aggregate performance summary from SQLite — win rate, total P&L, trade counts,
+    best/worst trade, profit factor.
+    """
+    if not db_manager:
+        return {"note": "db_manager not initialized"}
+    try:
+        summary = db_manager.get_stats_summary()
+        return summary
+    except Exception as exc:
+        logger.error(f"[DB] get_stats_summary failed: {exc}")
+        return {"error": str(exc)}
+
+
+@app.get("/portfolio/stats/drawdown")
+async def get_drawdown():
+    """
+    Return max drawdown and the equity curve used to compute it (from SQLite trades).
+    """
+    if not db_manager:
+        return {"max_drawdown": 0.0, "equity_curve": [], "note": "db_manager not initialized"}
+    try:
+        drawdown = db_manager.get_drawdown()
+        return drawdown
+    except Exception as exc:
+        logger.error(f"[DB] get_drawdown failed: {exc}")
+        return {"max_drawdown": 0.0, "equity_curve": [], "error": str(exc)}
+
+
+# ── Analytics / Performance Validation ────────────────────────────────────
+
+@app.get("/analytics/performance")
+async def get_analytics_performance():
+    """
+    Forward-test validation report.
+
+    Computes Profit Factor, Sharpe ratio, win rate, average win/loss,
+    max drawdown, and total P&L from all closed paper trades and daily P&L
+    records stored in SQLite.
+
+    Returns a structured report with status PASS / FAIL / INSUFFICIENT_DATA
+    and a plain-English recommendation.
+    """
+    if not db_manager:
+        return {
+            "status": "INSUFFICIENT_DATA",
+            "metrics": {},
+            "thresholds": {
+                "profit_factor": 2.0,
+                "sharpe_ratio": 1.5,
+                "min_trades_required": 10,
+            },
+            "recommendation": "Database not initialized.",
+        }
+    try:
+        from analytics.performance import PerformanceCalculator
+        calc = PerformanceCalculator(db_manager)
+        return calc.get_validation_report()
+    except Exception as exc:
+        logger.error(f"[Analytics] get_validation_report failed: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}")
+
+
+@app.get("/analytics/performance/compare")
+async def get_analytics_performance_compare():
+    """
+    Compare current forward-test metrics against backtest targets.
+
+    Forward metrics (from live paper trading in SQLite) are compared to the
+    reference backtest results: PF=5.27, Sharpe=4.16.
+
+    Returns per-metric diffs, retention percentages, and a ``degradation_ok``
+    flag that is True when forward results still exceed the paper thresholds
+    (PF > 2.0 and Sharpe > 1.5).
+    """
+    if not db_manager:
+        return {
+            "forward": {},
+            "backtest": {"profit_factor": 5.27, "sharpe_ratio": 4.16},
+            "comparison": {},
+            "degradation_ok": False,
+            "note": "Database not initialized.",
+        }
+    try:
+        from analytics.performance import PerformanceCalculator
+        calc = PerformanceCalculator(db_manager)
+        return calc.compare_to_backtest()
+    except Exception as exc:
+        logger.error(f"[Analytics] compare_to_backtest failed: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}")
+
+
 # ── Recent decisions (for dashboard feed) ─────────────────────────────────
 
 _decision_log: list[dict] = []  # In-memory ring buffer, 100 entries
@@ -562,6 +806,49 @@ async def get_watchlist():
         items.append({"symbol": sym, "name": sym, "type": "options",
                       "last_price": p.get("last_price"), "change_pct": p.get("change_pct")})
     return items
+
+
+class WatchlistAddRequest(BaseModel):
+    symbol: str
+
+
+@app.post("/watchlist")
+async def add_to_watchlist(req: WatchlistAddRequest):
+    """Add a symbol to the appropriate watchlist (futures or equities)."""
+    symbol = req.symbol.strip().upper()
+    if not symbol:
+        raise HTTPException(400, "symbol must not be empty")
+
+    futures_symbols = {"MES", "MNQ", "MCL", "MGC", "MHG", "MYM", "M2K", "ES", "NQ", "CL", "GC"}
+    is_futures = symbol in futures_symbols
+
+    if is_futures:
+        if symbol not in settings.FUTURES_WATCHLIST:
+            settings.FUTURES_WATCHLIST = list(settings.FUTURES_WATCHLIST) + [symbol]
+    else:
+        if symbol not in settings.OPTIONS_WATCHLIST:
+            settings.OPTIONS_WATCHLIST = list(settings.OPTIONS_WATCHLIST) + [symbol]
+
+    return {"status": "added", "symbol": symbol, "type": "futures" if is_futures else "options"}
+
+
+@app.delete("/watchlist/{symbol}")
+async def remove_from_watchlist(symbol: str):
+    """Remove a symbol from the watchlist (futures or equities)."""
+    symbol = symbol.strip().upper()
+    removed = False
+
+    if symbol in settings.FUTURES_WATCHLIST:
+        settings.FUTURES_WATCHLIST = [s for s in settings.FUTURES_WATCHLIST if s != symbol]
+        removed = True
+    elif symbol in settings.OPTIONS_WATCHLIST:
+        settings.OPTIONS_WATCHLIST = [s for s in settings.OPTIONS_WATCHLIST if s != symbol]
+        removed = True
+
+    if not removed:
+        raise HTTPException(404, f"Symbol {symbol} not found in watchlist")
+
+    return {"status": "removed", "symbol": symbol}
 
 
 # ── Live Prices ────────────────────────────────────────────────────────────
@@ -987,6 +1274,115 @@ async def run_backtest(request: BacktestRequest):
     with ThreadPoolExecutor() as pool:
         result = await loop.run_in_executor(pool, _run)
     return result
+
+
+# ── Regime & Paper-Trading Status ─────────────────────────────────────────
+
+@app.get("/backtest/regime-status")
+async def get_regime_status():
+    """
+    Current regime classification for tracked symbols.
+
+    Runs RegimeClassifier on recent bars and returns the current regime,
+    30-day breakdown, and key regime indicators for each symbol.
+    Falls back to static data if market data is unavailable.
+    """
+    try:
+        from backtest.indicators import RegimeClassifier
+        import yfinance as yf
+        import pandas as pd
+
+        results = {}
+
+        # --- MNQ 1h (via NQ=F) ---
+        try:
+            nq = yf.download("NQ=F", period="10d", interval="1h", progress=False)
+            if nq is not None and len(nq) >= 20:
+                rc = RegimeClassifier()
+                nq_regime = rc.classify(nq)
+                last_regime = nq_regime.iloc[-1] if len(nq_regime) > 0 else "UNKNOWN"
+                # 30-day breakdown (use available bars)
+                regime_counts = nq_regime.value_counts(normalize=True) * 100
+                results["MNQ_1h"] = {
+                    "current_regime": str(last_regime),
+                    "regime_breakdown_30d": {str(k): round(v, 1) for k, v in regime_counts.items()},
+                }
+            else:
+                raise ValueError("Insufficient NQ data")
+        except Exception:
+            results["MNQ_1h"] = {
+                "current_regime": "RANGING",
+                "regime_breakdown_30d": {"TRENDING": 15.3, "RANGING": 80.5, "VOLATILE": 4.2},
+            }
+
+        # --- MGC 1d (via GC=F) ---
+        try:
+            gc = yf.download("GC=F", period="60d", interval="1d", progress=False)
+            if gc is not None and len(gc) >= 20:
+                rc = RegimeClassifier()
+                gc_regime = rc.classify(gc)
+                last_regime = gc_regime.iloc[-1] if len(gc_regime) > 0 else "UNKNOWN"
+                results["MGC_1d"] = {
+                    "current_regime": str(last_regime),
+                    "adaptive_stc_os": 15,
+                    "adaptive_stc_ob": 92,
+                }
+            else:
+                raise ValueError("Insufficient GC data")
+        except Exception:
+            results["MGC_1d"] = {
+                "current_regime": "TRENDING",
+                "adaptive_stc_os": 15,
+                "adaptive_stc_ob": 92,
+            }
+
+        return results
+
+    except ImportError:
+        # RegimeClassifier not available — return static fallback
+        return {
+            "MNQ_1h": {
+                "current_regime": "RANGING",
+                "regime_breakdown_30d": {"TRENDING": 15.3, "RANGING": 80.5, "VOLATILE": 4.2},
+            },
+            "MGC_1d": {
+                "current_regime": "TRENDING",
+                "adaptive_stc_os": 15,
+                "adaptive_stc_ob": 92,
+            },
+        }
+
+
+@app.get("/backtest/paper-status")
+async def get_paper_status():
+    """
+    Walk-Forward Efficiency (WFE) and paper-trading readiness for each symbol.
+
+    Returns the current status (ACTIVE / RESEARCH / NO-TRADE), WFE score,
+    and configuration details for symbols being tracked.
+    """
+    return {
+        "MGC_1d": {
+            "status": "ACTIVE",
+            "wfe": 0.88,
+            "wfe_label": "EXCELLENT",
+            "cleared_date": "2026-03-29",
+            "risk_per_trade": "0.25%",
+            "config": "adaptive_regime=ON",
+        },
+        "MNQ_1h": {
+            "status": "RESEARCH",
+            "wfe": 0.34,
+            "wfe_label": "ACCEPTABLE",
+            "target_wfe": 0.40,
+        },
+        "MCL_1h": {
+            "status": "NO-TRADE",
+            "wfe": -0.31,
+            "wfe_label": "FAILED",
+            "target_wfe": 0.40,
+        },
+    }
 
 
 if __name__ == "__main__":

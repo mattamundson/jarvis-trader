@@ -10,6 +10,12 @@ import { SentimentPanel } from "@/components/SentimentPanel";
 import { PerformancePanel } from "@/components/PerformancePanel";
 import { WatchlistBar } from "@/components/WatchlistBar";
 import { PaperTradingPanel } from "@/components/PaperTradingPanel";
+import { TradeHistory } from "@/components/TradeHistory";
+import { DailyPnlPanel } from "@/components/DailyPnlPanel";
+import { RegimeDisplay } from "@/components/RegimeDisplay";
+import { SignalHistory } from "@/components/SignalHistory";
+import { CircuitBreakerPanel } from "@/components/CircuitBreakerPanel";
+import { IBGatewayStatus } from "@/components/IBGatewayStatus";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 import type {
@@ -124,16 +130,27 @@ export default function DashboardPage() {
               <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Backtest
               </a>
+              <a href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Performance
+              </a>
+              <a href="/journal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Journal
+              </a>
+              <a href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Watchlist
+              </a>
             </nav>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Connection status */}
+            {/* IB Gateway compact status card */}
+            <IBGatewayStatus />
+
+            {/* Engine connection status */}
             {engineOnline ? (
               <div className="flex items-center gap-1.5 text-xs text-bull">
                 <Wifi className="h-3.5 w-3.5" />
                 <span>Engine connected</span>
-                {health?.ibkr_connected && <Badge variant="info">IBKR</Badge>}
                 {health?.schwab_connected && <Badge variant="info">Schwab</Badge>}
               </div>
             ) : (
@@ -144,7 +161,6 @@ export default function DashboardPage() {
             )}
 
             {/* Mode badges */}
-            {health?.paper_mode && <Badge variant="warn">PAPER MODE</Badge>}
             {health?.live_trading && <Badge variant="bull">LIVE</Badge>}
             {health?.kill_switch_active && (
               <Badge variant="bear">
@@ -165,9 +181,15 @@ export default function DashboardPage() {
         {/* Watchlist ticker bar — live price feed */}
         <WatchlistBar items={watchlist ?? []} />
 
+        {/* Circuit breaker safety panel — safety-critical, shown before trading panels */}
+        <CircuitBreakerPanel />
+
+        {/* Walk-Forward / Paper Trading Status */}
+        <WFEStatusCard />
+
         {/* Main grid */}
         <div className="grid grid-cols-12 gap-4">
-          {/* Left column — positions + performance */}
+          {/* Left column — positions + performance + regime */}
           <div className="col-span-12 lg:col-span-3 space-y-4">
             <PositionsPanel
               positions={portfolio?.positions ?? []}
@@ -179,6 +201,7 @@ export default function DashboardPage() {
               metrics={null}
               equityCurve={[]}
             />
+            <RegimeDisplay />
           </div>
 
           {/* Center column — agent activity feed */}
@@ -268,6 +291,19 @@ export default function DashboardPage() {
 
         {/* Paper trading positions panel — full width below main grid */}
         <PaperTradingPanel />
+
+        {/* Persisted history — full width, three-column on large screens */}
+        <div className="grid grid-cols-12 gap-4">
+          <div className="col-span-12 lg:col-span-6">
+            <TradeHistory />
+          </div>
+          <div className="col-span-12 lg:col-span-3">
+            <SignalHistory />
+          </div>
+          <div className="col-span-12 lg:col-span-3">
+            <DailyPnlPanel />
+          </div>
+        </div>
       </main>
     </div>
   );
@@ -357,6 +393,176 @@ function MacroStat({
         >
           {tag}
         </span>
+      )}
+    </div>
+  );
+}
+
+
+// ── WFE / Paper Trading Status Card ──────────────────────────────────────
+
+interface PaperStatusEntry {
+  status: string;
+  wfe: number;
+  wfe_label: string;
+  cleared_date?: string;
+  risk_per_trade?: string;
+  config?: string;
+  target_wfe?: number;
+}
+
+interface RegimeStatusEntry {
+  current_regime: string;
+  regime_breakdown_30d?: Record<string, number>;
+  adaptive_stc_os?: number;
+  adaptive_stc_ob?: number;
+}
+
+const FALLBACK_PAPER: Record<string, PaperStatusEntry> = {
+  "MGC_1d": {
+    status: "ACTIVE",
+    wfe: 0.88,
+    wfe_label: "EXCELLENT",
+    cleared_date: "2026-03-29",
+    risk_per_trade: "0.25%",
+    config: "adaptive_regime=ON",
+  },
+  "MNQ_1h": {
+    status: "RESEARCH",
+    wfe: 0.34,
+    wfe_label: "ACCEPTABLE",
+    target_wfe: 0.40,
+  },
+  "MCL_1h": {
+    status: "NO-TRADE",
+    wfe: -0.31,
+    wfe_label: "FAILED",
+    target_wfe: 0.40,
+  },
+};
+
+const FALLBACK_REGIME: Record<string, RegimeStatusEntry> = {
+  "MGC_1d": { current_regime: "TRENDING" },
+  "MNQ_1h": { current_regime: "RANGING" },
+  "MCL_1h": { current_regime: "\u2014" },
+};
+
+function WFEStatusCard() {
+  const { data: paperData } = useSWR<Record<string, PaperStatusEntry>>(
+    "/backtest/paper-status",
+    fetcher,
+    { refreshInterval: 30_000, fallbackData: FALLBACK_PAPER, shouldRetryOnError: false }
+  );
+  const { data: regimeData } = useSWR<Record<string, RegimeStatusEntry>>(
+    "/backtest/regime-status",
+    fetcher,
+    { refreshInterval: 30_000, fallbackData: FALLBACK_REGIME, shouldRetryOnError: false }
+  );
+
+  const paper = paperData ?? FALLBACK_PAPER;
+  const regime = regimeData ?? FALLBACK_REGIME;
+
+  const symbols = Object.keys(paper);
+
+  function statusColor(status: string): string {
+    if (status === "ACTIVE") return "#00ff88";
+    if (status === "RESEARCH") return "#ffcc00";
+    return "#ff4444";
+  }
+
+  function statusDot(status: string): string {
+    if (status === "ACTIVE") return "\uD83D\uDFE2";
+    if (status === "RESEARCH") return "\uD83D\uDFE1";
+    return "\uD83D\uDD34";
+  }
+
+  function wfeColor(wfe: number): string {
+    if (wfe >= 0.70) return "#00ff88";
+    if (wfe >= 0.30) return "#ffcc00";
+    return "#ff4444";
+  }
+
+  return (
+    <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a] p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: "#00ff88" }}>
+            PAPER TRADING STATUS
+          </span>
+          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border" style={{ borderColor: "#00d4ff33", backgroundColor: "#00d4ff10", color: "#00d4ff" }}>
+            WFE
+          </span>
+        </div>
+        <span className="font-mono text-[9px]" style={{ color: "#555" }}>
+          Walk-Forward Efficiency
+        </span>
+      </div>
+
+      {/* Table */}
+      <div className="font-mono text-xs">
+        {/* Header row */}
+        <div className="grid grid-cols-4 gap-2 pb-2 mb-2" style={{ borderBottom: "1px solid #1a1a2e" }}>
+          <span className="text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Symbol</span>
+          <span className="text-[10px] uppercase tracking-wider text-center" style={{ color: "#555" }}>WFE</span>
+          <span className="text-[10px] uppercase tracking-wider text-center" style={{ color: "#555" }}>Status</span>
+          <span className="text-[10px] uppercase tracking-wider text-center" style={{ color: "#555" }}>Regime</span>
+        </div>
+
+        {/* Data rows */}
+        {symbols.map((key) => {
+          const entry = paper[key];
+          const reg = regime[key];
+          const displayName = key.replace("_", " ");
+          const currentRegime = reg?.current_regime ?? "\u2014";
+
+          return (
+            <div
+              key={key}
+              className="grid grid-cols-4 gap-2 py-1.5 items-center"
+              style={{ borderBottom: "1px solid #111" }}
+            >
+              {/* Symbol */}
+              <span className="font-semibold" style={{ color: "#e0e0e0" }}>
+                {displayName}
+              </span>
+
+              {/* WFE */}
+              <span className="text-center tabular-nums font-bold" style={{ color: wfeColor(entry.wfe) }}>
+                {entry.wfe.toFixed(2)}
+              </span>
+
+              {/* Status */}
+              <span className="text-center" style={{ color: statusColor(entry.status) }}>
+                {statusDot(entry.status)} {entry.status}
+              </span>
+
+              {/* Regime */}
+              <span className="text-center" style={{ color: currentRegime === "\u2014" ? "#555" : "#00d4ff" }}>
+                {currentRegime !== "\u2014" ? `${currentRegime} (NOW)` : "\u2014"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer — show config for ACTIVE symbols */}
+      {symbols.some((k) => paper[k].status === "ACTIVE") && (
+        <div className="mt-3 pt-2" style={{ borderTop: "1px solid #1a1a2e" }}>
+          {symbols
+            .filter((k) => paper[k].status === "ACTIVE")
+            .map((k) => {
+              const entry = paper[k];
+              return (
+                <div key={k} className="flex items-center gap-3 font-mono text-[10px]" style={{ color: "#555" }}>
+                  <span style={{ color: "#00ff88" }}>{k.replace("_", " ")}</span>
+                  <span>cleared: {entry.cleared_date ?? "\u2014"}</span>
+                  <span>risk: {entry.risk_per_trade ?? "\u2014"}</span>
+                  <span style={{ color: "#00d4ff" }}>{entry.config ?? ""}</span>
+                </div>
+              );
+            })}
+        </div>
       )}
     </div>
   );

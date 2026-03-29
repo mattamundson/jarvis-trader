@@ -182,7 +182,7 @@ class BacktestResult:
 TICK_SIZES: Dict[str, float] = {
     'ES': 0.25, 'MES': 0.25, 'NQ': 0.25, 'MNQ': 0.25,
     'YM': 1.0, 'MYM': 1.0, 'RTY': 0.10, 'M2K': 0.10,
-    'CL': 0.01, 'GC': 0.10,
+    'CL': 0.01, 'GC': 0.10, 'MGC': 0.10, 'MCL': 0.01,
 }
 DEFAULT_TICK_SIZE_FUTURES = 0.25
 DEFAULT_TICK_SIZE_ETF = 0.01
@@ -203,6 +203,7 @@ class Backtester:
         slippage_ticks: int = 1,
         trailing_stop: bool = False,
         trailing_atr_mult: float = 0.70,
+        trailing_post_t1: bool = False,
     ):
         self.initial_capital = initial_capital
         self.risk_per_trade = risk_per_trade
@@ -214,6 +215,7 @@ class Backtester:
         self.slippage_ticks = slippage_ticks
         self.trailing_stop = trailing_stop
         self.trailing_atr_mult = trailing_atr_mult
+        self.trailing_post_t1 = trailing_post_t1
 
     def _transaction_cost(self, contracts: int, tick_size: float = 0.25) -> float:
         """Round-trip cost: commission + slippage per contract."""
@@ -470,7 +472,9 @@ class Backtester:
                 # -- Trailing ATR stop logic ------------------------------------------
                 if self.trailing_stop and open_trade is not None:
                     remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
-                    if remaining > 0:
+                    # When trailing_post_t1=True, only activate after T1 has been hit
+                    t1_gate = (not self.trailing_post_t1) or ('target_1' in targets_hit)
+                    if remaining > 0 and t1_gate:
                         bar_atr = row.get('atr', 0)
                         if bar_atr > 0:
                             # Only activate trailing stop after price has moved
