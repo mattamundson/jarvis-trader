@@ -267,6 +267,100 @@ async def lifespan(app: FastAPI):
         scheduler.start()
         logger.info("⏰ Scheduler started — watchlist scan every 30min (9:30am-4pm CT weekdays)")
 
+    # ── Daily MGC signal scanner (runs 18:00 ET / 23:00 UTC) ────────────
+    async def run_daily_mgc_signal():
+        """Fetch today's MGC daily bar, run adaptive-regime signals, log pending entries."""
+        import json as _json
+        from pathlib import Path
+        try:
+            import yfinance as yf
+            from backtest.signals import generate_signals as _gen_signals
+
+            logger.info("[MGC-daily] Fetching GC=F daily bar...")
+            gc_df = yf.download("GC=F", period="90d", interval="1d", progress=False)
+            if gc_df is None or gc_df.empty or len(gc_df) < 20:
+                logger.warning("[MGC-daily] Insufficient data from yfinance — skipping")
+                return
+
+            # Flatten MultiIndex columns if present (yfinance sometimes returns them)
+            if hasattr(gc_df.columns, 'levels') and gc_df.columns.nlevels > 1:
+                gc_df.columns = [c[0] if isinstance(c, tuple) else c for c in gc_df.columns]
+
+            # Normalise column names to lowercase
+            gc_df.columns = [c.lower() for c in gc_df.columns]
+
+            sig_df = _gen_signals(gc_df, symbol="MGC", adaptive_regime=True)
+
+            last_row = sig_df.iloc[-1]
+            signal_val = str(last_row.get("entry_signal", "")).upper()
+            logger.info(f"[MGC-daily] Last bar signal: {signal_val}")
+
+            if signal_val == "ENTRY_NOW":
+                direction = str(last_row.get("bias", "LONG")).upper()
+                entry_est = float(last_row.get("close", 0))
+                stop_lvl = float(last_row.get("stop_level", 0))
+                t1 = float(last_row.get("target_1", 0))
+                regime = str(last_row.get("regime_type", "UNKNOWN"))
+
+                pending_file = Path(__file__).parent / "backtest" / "results" / "pending_signals.json"
+                existing = []
+                if pending_file.exists():
+                    try:
+                        existing = _json.loads(pending_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        existing = []
+
+                new_signal = {
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "symbol": "MGC",
+                    "signal": "ENTRY_NOW",
+                    "direction": direction,
+                    "entry_price_estimate": round(entry_est, 2),
+                    "stop_level": round(stop_lvl, 2),
+                    "target_1": round(t1, 2),
+                    "regime_type": regime,
+                    "status": "pending",
+                }
+                existing.append(new_signal)
+                pending_file.write_text(_json.dumps(existing, indent=2), encoding="utf-8")
+                logger.info(f"[MGC-daily] ENTRY_NOW logged -> {pending_file.name}: {direction} @ ~{entry_est:.2f}")
+
+                # Send WhatsApp alert for MGC entry signal
+                from notifications.whatsapp import get_notifier as _mgc_notifier
+                notifier = _mgc_notifier()
+                if notifier.enabled:
+                    msg = (
+                        f"JARVIS MGC DAILY SIGNAL\n"
+                        f"Direction: {direction}\n"
+                        f"Entry est: {entry_est:.2f}\n"
+                        f"Stop: {stop_lvl:.2f}\n"
+                        f"Target 1: {t1:.2f}\n"
+                        f"Regime: {regime}"
+                    )
+                    await notifier.send(msg)
+            else:
+                logger.info("[MGC-daily] No ENTRY_NOW — no pending signal logged")
+
+        except Exception as exc:
+            logger.error(f"[MGC-daily] Failed: {exc}", exc_info=True)
+
+    scheduler.add_job(
+        run_daily_mgc_signal,
+        CronTrigger(
+            day_of_week="mon-fri",
+            hour=23,
+            minute=0,
+            timezone="UTC",   # 23:00 UTC = 18:00 ET
+        ),
+        id="mgc_daily_signal",
+        name="MGC Daily Signal Scanner",
+        max_instances=1,
+        misfire_grace_time=600,
+    )
+    if not scheduler.running:
+        scheduler.start()
+    logger.info("⏰ MGC daily signal job registered — 18:00 ET (23:00 UTC) weekdays")
+
     # EOD P&L snapshot scheduler — registers its own jobs on the existing scheduler
     from notifications.whatsapp import get_notifier as _get_notifier
     eod_scheduler = EODScheduler(
@@ -1288,7 +1382,7 @@ async def get_regime_status():
     Falls back to static data if market data is unavailable.
     """
     try:
-        from backtest.indicators import RegimeClassifier
+        from backtest.regime import RegimeClassifier
         import yfinance as yf
         import pandas as pd
 
@@ -1299,10 +1393,10 @@ async def get_regime_status():
             nq = yf.download("NQ=F", period="10d", interval="1h", progress=False)
             if nq is not None and len(nq) >= 20:
                 rc = RegimeClassifier()
-                nq_regime = rc.classify(nq)
-                last_regime = nq_regime.iloc[-1] if len(nq_regime) > 0 else "UNKNOWN"
+                nq_classified = rc.classify(nq)
+                last_regime = nq_classified['regime_type'].iloc[-1] if len(nq_classified) > 0 else "UNKNOWN"
                 # 30-day breakdown (use available bars)
-                regime_counts = nq_regime.value_counts(normalize=True) * 100
+                regime_counts = nq_classified['regime_type'].value_counts(normalize=True) * 100
                 results["MNQ_1h"] = {
                     "current_regime": str(last_regime),
                     "regime_breakdown_30d": {str(k): round(v, 1) for k, v in regime_counts.items()},
@@ -1320,12 +1414,13 @@ async def get_regime_status():
             gc = yf.download("GC=F", period="60d", interval="1d", progress=False)
             if gc is not None and len(gc) >= 20:
                 rc = RegimeClassifier()
-                gc_regime = rc.classify(gc)
-                last_regime = gc_regime.iloc[-1] if len(gc_regime) > 0 else "UNKNOWN"
+                gc_classified = rc.classify(gc)
+                last_regime = gc_classified['regime_type'].iloc[-1] if len(gc_classified) > 0 else "UNKNOWN"
+                last_row = gc_classified.iloc[-1]
                 results["MGC_1d"] = {
                     "current_regime": str(last_regime),
-                    "adaptive_stc_os": 15,
-                    "adaptive_stc_ob": 92,
+                    "adaptive_stc_os": int(last_row.get('adaptive_stc_os', 15)),
+                    "adaptive_stc_ob": int(last_row.get('adaptive_stc_ob', 92)),
                 }
             else:
                 raise ValueError("Insufficient GC data")
@@ -1383,6 +1478,222 @@ async def get_paper_status():
             "target_wfe": 0.40,
         },
     }
+
+
+# ── MGC Paper Trading — Live Signal Generation ──────────────────────────────
+
+class MGCTradeLogRequest(BaseModel):
+    entry_date: str
+    exit_date: str
+    entry_price: float
+    exit_price: float
+    contracts: int = 1
+    direction: str = "LONG"
+    exit_reason: str = "unknown"
+    regime_type: str = "unknown"
+
+
+@app.get("/paper/mgc-signal")
+async def get_mgc_signal():
+    """
+    Generate today's MGC (Gold Micro) signal using the walk-forward validated
+    adaptive regime strategy (WFE=0.88).
+
+    Fetches 200 daily bars of GC=F via yfinance, runs the full indicator +
+    regime + signal pipeline, and returns the last bar's signal with entry/exit
+    levels.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _generate_signal():
+        import yfinance as yf
+        from backtest.signals import compute_all_indicators, generate_signals
+        from backtest.regime import RegimeClassifier
+        from backtest.paper_config import MGC_PAPER_CONFIG
+
+        # Fetch data
+        gc = yf.download("GC=F", period="200d", interval="1d", progress=False)
+        if gc is None or len(gc) < 50:
+            return {"error": "Insufficient GC=F data from yfinance", "bars_received": len(gc) if gc is not None else 0}
+
+        # Flatten MultiIndex columns if present (yfinance sometimes returns them)
+        if hasattr(gc.columns, 'nlevels') and gc.columns.nlevels > 1:
+            gc.columns = gc.columns.get_level_values(0)
+
+        # Normalize column names to lowercase
+        gc.columns = [c.lower() for c in gc.columns]
+
+        # Run full signal pipeline with adaptive regime
+        df = generate_signals(
+            gc,
+            symbol='MGC',
+            adaptive_regime=True,
+            regime_filter=True,
+        )
+
+        if df.empty:
+            return {"error": "Signal generation returned empty DataFrame"}
+
+        # Extract last bar
+        last = df.iloc[-1]
+        config = MGC_PAPER_CONFIG
+
+        # Determine direction from bias
+        bias = str(last.get('bias', 'NEUTRAL'))
+        if bias in ('STRONG_BULL', 'LEAN_BULL'):
+            direction = "LONG"
+        elif bias in ('STRONG_BEAR', 'LEAN_BEAR'):
+            direction = "SHORT"
+        else:
+            direction = None
+
+        entry_signal = str(last.get('entry_signal', 'NO_TRADE'))
+        regime_type = str(last.get('regime_type', 'UNKNOWN'))
+
+        # Map signal to simplified output
+        if entry_signal == 'ENTRY_NOW':
+            signal = "ENTRY_NOW"
+        elif entry_signal == 'WAIT_FOR_PULLBACK':
+            signal = "WAIT_FOR_PULLBACK"
+        elif entry_signal == 'FADE_EXTREME':
+            signal = "FADE_EXTREME"
+        else:
+            signal = "NO_ENTRY"
+
+        # Get date from index
+        signal_date = str(df.index[-1].date()) if hasattr(df.index[-1], 'date') else str(df.index[-1])[:10]
+
+        return {
+            "date": signal_date,
+            "symbol": "MGC",
+            "signal": signal,
+            "direction": direction,
+            "regime": regime_type,
+            "adaptive_stc_os": int(last.get('adaptive_stc_os', 15)),
+            "adaptive_stc_ob": int(last.get('adaptive_stc_ob', 92)),
+            "entry_price": round(float(last['close']), 2),
+            "stop_level": round(float(last.get('stop_level', 0)), 2),
+            "target_1": round(float(last.get('target_1', 0)), 2),
+            "target_2": round(float(last.get('target_2', 0)), 2),
+            "atr": round(float(last.get('atr', 0)), 2),
+            "bias": bias,
+            "stc_val": round(float(last.get('stc_val', 50)), 2),
+            "stc_signal": str(last.get('stc_signal', 'neutral')),
+            "ema_trend": str(last.get('ema_trend', 'neutral')),
+            "config": f"adaptive_regime=ON, risk={config['risk_per_trade']*100:.2f}%",
+        }
+
+    try:
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            result = await loop.run_in_executor(pool, _generate_signal)
+        if "error" in result:
+            raise HTTPException(503, result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Signal generation failed: {e}")
+        raise HTTPException(500, f"MGC signal generation failed: {e}")
+
+
+@app.post("/paper/mgc-log-trade")
+async def log_mgc_paper_trade(req: MGCTradeLogRequest):
+    """
+    Log a completed MGC paper trade and return updated performance metrics.
+
+    The trade is recorded via PaperTradeTracker (JSON persistence in
+    backtest/results/paper_trades_MGC.json) with automatic P&L calculation
+    including commission and slippage.
+    """
+    try:
+        from backtest.paper_tracker import PaperTradeTracker
+        from backtest.paper_config import MGC_PAPER_CONFIG
+
+        tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
+
+        trade_dict = {
+            "entry_date": req.entry_date,
+            "exit_date": req.exit_date,
+            "entry_price": req.entry_price,
+            "exit_price": req.exit_price,
+            "contracts": req.contracts,
+            "side": req.direction.lower(),
+            "exit_reason": req.exit_reason,
+            "regime_type": req.regime_type.lower(),
+        }
+
+        tracker.add_trade(trade_dict)
+
+        # Check kill conditions
+        should_kill, kill_reason = tracker.check_kill_conditions()
+
+        metrics = tracker.get_metrics()
+        metrics["trade_logged"] = True
+        metrics["kill_threshold_breached"] = should_kill
+        metrics["kill_reason"] = kill_reason if should_kill else None
+
+        # Send WhatsApp alert for new trade
+        try:
+            from notifications.whatsapp import get_notifier
+            notifier = get_notifier()
+            if notifier.enabled:
+                pnl = trade_dict.get("pnl", 0)
+                msg = (
+                    f"JARVIS PAPER-MGC: {req.direction} trade closed\n"
+                    f"Entry: {req.entry_price:.2f} -> Exit: {req.exit_price:.2f}\n"
+                    f"Reason: {req.exit_reason}\n"
+                    f"Total trades: {metrics['total_trades']}, "
+                    f"Win rate: {metrics['win_rate']:.0%}"
+                )
+                if should_kill:
+                    msg += f"\n*** KILL THRESHOLD BREACHED: {kill_reason} ***"
+                asyncio.create_task(notifier.send(msg))
+        except Exception:
+            pass  # notification failure should not block the trade log
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Trade log failed: {e}")
+        raise HTTPException(500, f"Failed to log MGC paper trade: {e}")
+
+
+@app.get("/paper/mgc-performance")
+async def get_mgc_paper_performance():
+    """
+    Return current MGC paper trading performance metrics.
+
+    Reads from the PaperTradeTracker JSON store and returns:
+    total trades, P&L, win rate, profit factor, max drawdown,
+    regime breakdown, exit reason breakdown, and kill condition status.
+    """
+    try:
+        from backtest.paper_tracker import PaperTradeTracker
+        from backtest.paper_config import MGC_PAPER_CONFIG
+
+        tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
+        metrics = tracker.get_metrics()
+
+        # Add kill condition check
+        should_kill, kill_reason = tracker.check_kill_conditions()
+        metrics["kill_threshold_breached"] = should_kill
+        metrics["kill_reason"] = kill_reason if should_kill else None
+        metrics["monthly_summary"] = tracker.monthly_summary()
+        metrics["config"] = {
+            "symbol": MGC_PAPER_CONFIG["symbol"],
+            "interval": MGC_PAPER_CONFIG["interval"],
+            "adaptive_regime": MGC_PAPER_CONFIG["adaptive_regime"],
+            "risk_per_trade": MGC_PAPER_CONFIG["risk_per_trade"],
+            "initial_capital": MGC_PAPER_CONFIG["initial_capital"],
+            "wfe": 0.88,
+        }
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Performance query failed: {e}")
+        raise HTTPException(500, f"Failed to get MGC performance: {e}")
 
 
 if __name__ == "__main__":
