@@ -252,6 +252,7 @@ class Backtester:
         open_contracts_t1 = 0
         open_contracts_t2 = 0
         open_contracts_t3 = 0
+        targets_hit: List[str] = []  # Track which targets were hit during trade
 
         daily_start_capital = capital
         current_date = None
@@ -298,8 +299,12 @@ class Backtester:
                 stop_dist = abs(entry_price - stop_price)
                 if stop_dist > 0:
                     # R:R check with recalculated values
+                    # Bug 6: lowered from 1.5 to 1.2 — with T1=1.0 ATR and
+                    # stop=0.70 ATR the base R:R is 1.43.  A 1.5 threshold
+                    # would reject almost everything after next-bar-open
+                    # slippage shifts the ratio slightly.
                     rr = abs(target_1 - entry_price) / stop_dist
-                    if rr >= 1.5:
+                    if rr >= 1.2:
                         total_contracts = self._calculate_contracts(
                             capital, entry_price, stop_price, multiplier
                         )
@@ -325,6 +330,7 @@ class Backtester:
                                 regime=pe.get('regime', ''),
                                 bias=pe['bias'],
                             )
+                            targets_hit = []  # Reset target tracking for new trade
                             # Bug 2: deduct entry transaction cost
                             capital -= self._transaction_cost(total_contracts, tick_size)
 
@@ -365,7 +371,7 @@ class Backtester:
 
                 # --- Helper: process target exits ---
                 def _check_targets():
-                    nonlocal open_contracts_t1, open_contracts_t2, capital
+                    nonlocal open_contracts_t1, open_contracts_t2, capital, targets_hit
                     hit_any = False
                     # Check target 1
                     if open_contracts_t1 > 0 and t1_touched:
@@ -380,6 +386,7 @@ class Backtester:
                         open_contracts_t1 = 0
                         # Move stop to breakeven after T1 hit
                         open_trade.stop_price = open_trade.entry_price
+                        targets_hit.append('target_1')
                         hit_any = True
 
                     # Check target 2
@@ -393,12 +400,13 @@ class Backtester:
                         capital -= self._transaction_cost(open_contracts_t2, tick_size)
                         open_trade.pnl += pnl
                         open_contracts_t2 = 0
+                        targets_hit.append('target_2')
                         hit_any = True
                     return hit_any
 
                 # --- Helper: process stop exit ---
                 def _check_stop():
-                    nonlocal open_contracts_t1, open_contracts_t2, open_contracts_t3, capital, open_trade
+                    nonlocal open_contracts_t1, open_contracts_t2, open_contracts_t3, capital, open_trade, targets_hit
                     if not stop_touched:
                         return False
                     remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
@@ -414,12 +422,19 @@ class Backtester:
                     open_trade.exit_price = exit_price
                     open_trade.exit_date = idx
                     open_trade.pnl += pnl
-                    open_trade.exit_reason = "stop"
+                    # Bug 6 fix: Label exit reason based on highest target hit.
+                    # If T1 was hit earlier (partial exit), remaining contracts
+                    # stopped at breakeven — label as "target_1" not "stop".
+                    if targets_hit:
+                        open_trade.exit_reason = targets_hit[-1]  # highest target hit
+                    else:
+                        open_trade.exit_reason = "stop"
                     completed_trades.append(open_trade)
                     open_trade = None
                     open_contracts_t1 = 0
                     open_contracts_t2 = 0
                     open_contracts_t3 = 0
+                    targets_hit = []
                     return True
 
                 # --- Execute in priority order ---
@@ -437,11 +452,12 @@ class Backtester:
                 # Check if all contracts have been exited via targets
                 if open_trade is not None and (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) == 0:
                     # All tranches exited via targets
-                    open_trade.exit_reason = "target_2" if not t1_touched else "target_1"
+                    open_trade.exit_reason = targets_hit[-1] if targets_hit else "target_1"
                     open_trade.exit_price = close
                     open_trade.exit_date = idx
                     completed_trades.append(open_trade)
                     open_trade = None
+                    targets_hit = []
 
                 # Bug 4 fix: End of day — close at end of EACH trading day
                 remaining_contracts = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
@@ -467,12 +483,18 @@ class Backtester:
                         open_trade.pnl += pnl
                         open_trade.exit_price = exit_price
                         open_trade.exit_date = idx
-                        open_trade.exit_reason = "eod"
+                        # Bug 6 fix: If targets were hit earlier in the trade,
+                        # label as the highest target hit, not just "eod".
+                        if targets_hit:
+                            open_trade.exit_reason = targets_hit[-1]
+                        else:
+                            open_trade.exit_reason = "eod"
                         completed_trades.append(open_trade)
                         open_trade = None
                         open_contracts_t1 = 0
                         open_contracts_t2 = 0
                         open_contracts_t3 = 0
+                        targets_hit = []
 
             # -- Check for new entry signal (Bug 3: store as pending, don't enter now) --
             if open_trade is None and pending_entry is None and not kill_switch:
@@ -497,9 +519,9 @@ class Backtester:
                     if stop_dist <= 0:
                         continue
 
-                    # R:R pre-check on signal bar
+                    # R:R pre-check on signal bar (Bug 6: lowered from 1.5 to 1.2)
                     rr = abs(target_1 - signal_price) / stop_dist
-                    if rr < 1.5:
+                    if rr < 1.2:
                         continue
 
                     pending_entry = {
