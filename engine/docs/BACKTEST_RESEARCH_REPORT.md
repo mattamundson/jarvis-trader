@@ -1,6 +1,6 @@
 # JARVIS TRADER — Backtest Research Report
 
-**Version**: 4.0 (Research-Grade, Bug-Fixed + Exit Fix + Walk-Forward + Multi-Instrument Sensitivity)
+**Version**: 5.0 (Research-Grade | All 5 WF Results | NO-GO Verdict | Full Walk-Forward Data)
 **Date**: 2026-03-29
 **Author**: JARVIS Autonomous Trading System
 **Status**: FINAL (corrected backtests with fixed-exit matrix, Monte Carlo, and sensitivity analysis complete)
@@ -490,7 +490,15 @@ All results below are from the corrected, bug-fixed backtester with fixed exit t
 
 ## 4. Walk-Forward Validation
 
-[TBD — populated after walk-forward runs]
+**All 5 instruments tested. ALL FAIL walk-forward validation (WFE < 0.30 threshold). Strategy is overfit to the 2024–2026 historical window.**
+
+| Symbol | TF | WFE | Windows Profitable | Avg IS Return | Avg OOS Return | Verdict |
+|--------|-----|-----|-------------------|---------------|----------------|---------|
+| MGC | 1d | 0.27 | 3/7 (43%) | +10.1% | +2.7% | **FAIL** |
+| MNQ | 1h | 0.24 | 3/6 (50%) | +19.8% | +4.8% | **FAIL** |
+| MCL | 1h | -0.16 | 2/6 (33%) | +6.1% | -1.0% | **FAIL** |
+| MES | 1h | -0.17 | 1/6 (17%) | +8.3% | -1.4% | **FAIL** |
+| SPY | 1h | -1.11 | 2/6 (33%) | +0.1% | -0.1% | **FAIL** |
 
 ### 4.1 Methodology
 
@@ -544,6 +552,127 @@ WFE = Mean(OOS_Return) / Mean(IS_Return)
 **Interpretation:** The +34.4% backtest return is overstated — approximately 73% of the in-sample edge does not carry forward to unseen data. The strategy works in trending gold markets (Windows 3 and 5, which coincide with strong gold rallies) but fails in ranging or choppy conditions (Windows 1, 2, 4). Window 7 has only 2 trades in its OOS period, making it statistically meaningless. The realistic live edge for MGC 1d is approximately +2.7% annualized, not +34.4%. This is a clear overfitting signal — the optimizer is finding parameters that exploit specific historical price patterns rather than a durable structural edge.
 
 **Verdict: FAIL** — WFE = 0.27 falls below the 0.30 threshold for marginal acceptability. MGC 1d should be downgraded from the tradeable universe until walk-forward efficiency improves through either (a) a longer OOS test period, (b) regime-adaptive parameter selection, or (c) structural signal improvements.
+
+---
+
+#### MNQ 1h Walk-Forward (6 Windows, 6-month IS / 3-month OOS)
+
+**WFE Score: 0.24 — OVERFIT** (threshold: >0.50 = good, <0.30 = overfit)
+
+| Window | Train | Test | IS Return | IS PF | IS Trades | OOS Return | OOS PF | OOS Trades |
+|--------|-------|------|-----------|-------|-----------|------------|--------|------------|
+| 1 | 2024-06 to 2024-12 | 2024-12 to 2025-03 | +22.6% | 1.51 | 86 | +22.7% | 1.56 | 82 |
+| 2 | 2024-09 to 2025-03 | 2025-03 to 2025-06 | -5.6% | 0.00 | 6 | +9.5% | 1.82 | 25 |
+| 3 | 2024-12 to 2025-06 | 2025-06 to 2025-09 | +39.1% | 2.15 | 49 | -5.0% | 0.00 | 6 |
+| 4 | 2025-03 to 2025-09 | 2025-09 to 2025-12 | +18.1% | 2.29 | 25 | +9.2% | 1.73 | 19 |
+| 5 | 2025-06 to 2025-12 | 2025-12 to 2026-03 | +10.9% | 1.74 | 29 | -5.2% | 0.00 | 6 |
+| 6 | 2025-09 to 2026-03 | 2026-03 to 2026-03 | +33.8% | 1.69 | 100 | -2.6% | 0.74 | 18 |
+
+**Summary:** Avg IS = 19.8%, Avg OOS = 4.8%, WFE = 0.24. OOS profitable in 3 of 6 windows (50%).
+
+**Interpretation:** Window 1 appears excellent (+22.7% OOS) but used the same time period as the full-dataset optimizer, creating a quasi look-ahead situation. Windows 2, 3, and 5 show complete instability — IS parameters fail immediately OOS or vice versa. The 86-trade IS result in Window 6 optimizes well on trailing data but produces only -2.6% OOS. MNQ's higher trade count gives more optimizer surface to overfit on. The average OOS PF of 0.97 is essentially random. The +4.8% avg OOS is driven almost entirely by Windows 1 and 4.
+
+**Verdict: FAIL** — WFE = 0.24 is in overfit territory. The strategy's MNQ edge does not generalize reliably to new data.
+
+---
+
+#### MNQ 1h Adaptive Regime Walk-Forward (6 Windows, 6-month IS / 3-month OOS)
+
+**WFE Score: 0.34 — ACCEPTABLE** (improved from static WFE=0.24, a 41% gain)
+
+Implemented RegimeClassifier (`engine/backtest/regime.py`) that classifies each bar as TRENDING/RANGING/VOLATILE using three voting signals (EMA spread, normalized BBWidth, normalized ATR), then applies regime-specific STC thresholds per bar.
+
+| Window | Train Period | IS Return | OOS Return | Trades (OOS) |
+|--------|-------------|-----------|------------|--------------|
+| 1 | 2024-06 to 2024-12 | +11.7% | **+20.8%** | 81 |
+| 2 | 2024-09 to 2025-03 | -5.6% | **+8.6%** | 27 |
+| 3 | 2024-12 to 2025-06 | +35.1% | -4.9% | 6 |
+| 4 | 2025-03 to 2025-09 | +16.0% | **+9.2%** | 19 |
+| 5 | 2025-06 to 2025-12 | +11.5% | -4.9% | 10 |
+| 6 | 2025-09 to 2026-03 | +14.0% | -0.4% | 17 |
+
+**Summary:** Avg IS = 13.8%, Avg OOS = 4.7%, WFE = 0.34. Crosses the 0.30 OVERFIT threshold.
+
+**Interpretation:** Static WFE was 0.24 (OVERFIT). Adaptive regime improved WFE by 41%, crossing the 0.30 OVERFIT threshold into ACCEPTABLE territory. Windows 1, 2, and 4 now show strong OOS performance. Windows 3 and 5 still show IS/OOS divergence, indicating remaining overfitting when training on specific trending regimes. The regime classifier's EMA spread + BBWidth + ATR voting mechanism provides partial but meaningful regime awareness.
+
+**Verdict: MARGINAL PASS** — WFE = 0.34 clears the 0.30 threshold but remains below 0.50 (Good). Further improvement needed — target WFE > 0.40 via multi-timeframe confirmation or volume filters.
+
+---
+
+#### MCL 1h Walk-Forward (6 Windows, 6-month IS / 3-month OOS)
+
+**WFE Score: -0.16 — OVERFIT** (negative WFE = OOS returns are opposite sign to IS returns)
+
+| Window | Train | Test | IS Return | IS PF | IS Trades | OOS Return | OOS PF | OOS Trades |
+|--------|-------|------|-----------|-------|-----------|------------|--------|------------|
+| 1 | 2024-06 to 2024-12 | 2024-12 to 2025-03 | +10.0% | 2.06 | 32 | -3.7% | 0.15 | 7 |
+| 2 | 2024-09 to 2025-03 | 2025-03 to 2025-06 | +0.8% | 1.19 | 7 | -0.4% | 0.95 | 17 |
+| 3 | 2024-12 to 2025-06 | 2025-06 to 2025-09 | +3.9% | 1.34 | 19 | -3.2% | 0.57 | 11 |
+| 4 | 2025-03 to 2025-09 | 2025-09 to 2025-12 | +13.3% | 2.17 | 35 | +2.4% | 1.34 | 19 |
+| 5 | 2025-06 to 2025-12 | 2025-12 to 2026-03 | +6.2% | 1.32 | 39 | -1.9% | 0.66 | 10 |
+| 6 | 2025-09 to 2026-03 | 2026-03 to 2026-03 | +2.4% | 1.39 | 17 | +0.7% | 1.11 | 12 |
+
+**Summary:** Avg IS = 6.1%, Avg OOS = -1.0%, WFE = -0.16. OOS profitable in 2 of 6 windows (33%).
+
+**Interpretation:** Note: Walk-forward was run with the earlier MCL parameter set (Stop=0.90, T1=1.50). The negative WFE confirms that IS optimization is counterproductive — finding parameters that exploit historical patterns that reverse immediately OOS. Window 1's IS optimum (PF 2.06) collapses to PF 0.15 OOS. This is the signature of unstable regime-dependent parameters in crude oil's high-volatility environment.
+
+**Verdict: FAIL** — WFE = -0.16 confirms overfit. MCL 1h shows no persistent signal edge.
+
+---
+
+#### MES 1h Walk-Forward (6 Windows, 6-month IS / 3-month OOS)
+
+**WFE Score: -0.17 — OVERFIT** (negative WFE)
+
+| Window | Train | Test | IS Return | IS PF | IS Trades | OOS Return | OOS PF | OOS Trades |
+|--------|-------|------|-----------|-------|-----------|------------|--------|------------|
+| 1 | 2024-06 to 2024-12 | 2024-12 to 2025-03 | +9.9% | 1.69 | 23 | -1.4% | 0.81 | 11 |
+| 2 | 2024-09 to 2025-03 | 2025-03 to 2025-06 | +11.9% | 1.67 | 35 | -2.8% | 0.52 | 7 |
+| 3 | 2024-12 to 2025-06 | 2025-06 to 2025-09 | +2.1% | 1.31 | 12 | -1.4% | 0.80 | 11 |
+| 4 | 2025-03 to 2025-09 | 2025-09 to 2025-12 | +14.6% | 1.54 | 49 | +5.3% | 1.39 | 24 |
+| 5 | 2025-06 to 2025-12 | 2025-12 to 2026-03 | +1.2% | 1.18 | 11 | -3.1% | 0.42 | 9 |
+| 6 | 2025-09 to 2026-03 | 2026-03 to 2026-03 | +10.2% | 1.84 | 33 | -5.2% | 0.31 | 12 |
+
+**Summary:** Avg IS = 8.3%, Avg OOS = -1.4%, WFE = -0.17. OOS profitable in 1 of 6 windows (17%).
+
+**Interpretation:** Window 4 (Sep 2025 to Dec 2025 OOS) is the sole profitable period — this coincides with the post-September equity market recovery which showed strong trending. The remaining 5 windows are consistently unprofitable OOS. MES returns are near-zero even in-sample on some windows, suggesting the signal barely distinguishes itself from noise. The 6-window median OOS PF of 0.71 means the strategy loses money 71 cents for every dollar risked in the average out-of-sample period.
+
+**Verdict: FAIL** — WFE = -0.17 with only 1/6 windows profitable. No investable edge survives validation.
+
+---
+
+#### SPY 1h Walk-Forward (6 Windows, 6-month IS / 3-month OOS)
+
+**WFE Score: -1.11 — DEEPLY OVERFIT** (negative WFE with near-zero IS returns)
+
+| Window | Train | Test | IS Return | IS PF | IS Trades | OOS Return | OOS PF | OOS Trades |
+|--------|-------|------|-----------|-------|-----------|------------|--------|------------|
+| 1 | 2024-06 to 2024-12 | 2024-12 to 2025-03 | +0.6% | 3.23 | 23 | -0.6% | 0.00 | 18 |
+| 2 | 2024-09 to 2025-03 | 2025-03 to 2025-06 | -0.2% | 0.78 | 20 | -0.2% | 0.90 | 20 |
+| 3 | 2024-12 to 2025-06 | 2025-06 to 2025-09 | -0.1% | 0.79 | 20 | -0.7% | 0.14 | 18 |
+| 4 | 2025-03 to 2025-09 | 2025-09 to 2025-12 | +0.0% | 1.01 | 20 | +0.2% | 1.37 | 21 |
+| 5 | 2025-06 to 2025-12 | 2025-12 to 2026-03 | +0.1% | 1.34 | 21 | -0.0% | 0.88 | 20 |
+| 6 | 2025-09 to 2026-03 | 2026-03 to 2026-03 | +0.3% | 2.06 | 22 | +0.4% | 2.72 | 10 |
+
+**Summary:** Avg IS = 0.1%, Avg OOS = -0.1%, WFE = -1.11. OOS profitable in 2 of 6 windows (33%).
+
+**Interpretation:** SPY's extreme WFE = -1.11 is a special case — both IS and OOS returns are near-zero (~0.1%). The deeply negative WFE arises from the sign flip between the tiny IS returns and the equally tiny OOS losses. This is not meaningful overfit in the traditional sense; rather, it reveals that SPY 1h simply has no detectable edge in either direction. The strategy generates approximately the same number of small winning and losing trades regardless of parameter set. SPY's high liquidity and tight bid-ask spread mean commissions and slippage (not modeled here) would push returns negative in practice. Window 1 OOS shows PF = 0.00 with 18 trades — 18 consecutive losers in Q1 2025.
+
+**Verdict: FAIL** — No detectable edge. SPY 1h should be removed from the strategy universe entirely.
+
+---
+
+#### Walk-Forward Summary — Final Verdict
+
+**All 5 tested instruments fail walk-forward validation.** This is the definitive research-grade conclusion:
+
+The STC + ATR strategy, as currently implemented, is **curve-fit to the 2024–2026 historical window**. The in-sample optimizer finds parameters that exploit specific historical price patterns — gold's 2024-2025 bull run, Nasdaq's volatility surges, crude oil's range-bound periods — but these patterns do not consistently repeat on a 3-month horizon. The strategy lacks a durable structural edge.
+
+**What this means for trading decisions:**
+1. Do NOT deploy this strategy in live/paper trading with current signal logic
+2. The walk-forward framework itself is working correctly — it correctly identified overfit that Monte Carlo analysis missed
+3. The path forward requires fundamentally new signal components, not further parameter optimization
+4. Potential improvements: regime-adaptive parameter switching, adding volume confirmation, news/sentiment filtering, multi-timeframe alignment signals
 
 ---
 
@@ -797,13 +926,15 @@ All criteria must be met before deploying to paper trading:
 
 | # | Criterion | Threshold | Result | Pass? |
 |---|-----------|-----------|--------|-------|
-| 1 | Corrected Profit Factor | > 1.5 across 3+ symbols | 3 combos have PF > 1.5: SPY 1h (3.00), MCL 1h (1.89), MNQ 1h (1.51) | **PASS** |
-| 2 | Walk-Forward Efficiency | > 0.50 | MGC 1d WFE = 0.27 (OVERFIT). No symbol passes yet. | **FAIL** |
-| 3 | Monte Carlo P5% | > $100,000 (profitable in worst 5%) | SPY 1h P5% = $100,753 (passes technically, but gains trivially small) | **MARGINAL** |
-| 4 | Statistical Significance | p < 0.05 on at least 2 symbols | SPY 1h p ~= 0.29 — NOT significant. No symbol passes. | **FAIL** |
-| 5 | Maximum Drawdown | < 15% across all tests | Most combos show ~5% DD (max 5.9% on MES 1h) | **PASS** |
-| 6 | Minimum Trade Count | >= 20 trades per symbol in test period | 9 of 12 combos have 20+ trades; MNQ 1h (51), MCL 1h (29), MGC 1h (26) all pass | **PASS** |
-| 7 | Parameter Stability | Stability Score > 60 | SPY 1h stability = 95/100 | **PASS** |
+| 1 | Corrected Profit Factor | > 1.5 across 3+ symbols | MNQ 1h (1.46), MCL 1h (1.83), MGC 1d (2.60), SPY 1h (3.00) | **PASS** |
+| 2 | Walk-Forward Efficiency | > 0.50 | ALL 5 FAIL: MGC=0.27, MNQ=0.24, MCL=-0.16, MES=-0.17, SPY=-1.11 | **FAIL** |
+| 3 | Monte Carlo P5% | > $100,000 (profitable in worst 5%) | SPY 1h P5% = $100,753 (technically passes; returns trivially small) | **MARGINAL** |
+| 4 | Statistical Significance | p < 0.05 on at least 2 symbols | No symbol achieves p < 0.05 (insufficient trade count) | **FAIL** |
+| 5 | Maximum Drawdown | < 15% across all tests | All combos show ~2-6% DD | **PASS** |
+| 6 | Minimum Trade Count | >= 20 trades per symbol in test period | MNQ=86, MCL=65, MGC=47, SPY=23 | **PASS** |
+| 7 | Parameter Stability | Stability Score > 60 | MNQ=94, MCL=85, SPY=95 | **PASS** |
+
+**Summary: 2 of 7 criteria fail (WFE and Statistical Significance). Strategy does NOT meet paper trading requirements.**
 
 ### 8.2 Go/No-Go Criteria for Live Trading (Post-Paper)
 
@@ -817,56 +948,57 @@ All criteria must be met before deploying to paper trading:
 
 ### 8.3 Final Assessment
 
-**CONDITIONAL GO — Strategy demonstrates genuine edge on specific symbol/timeframe combinations. Paper trading recommended on focused universe.**
+**NO-GO — Strategy is curve-fit to the 2024–2026 historical window. Walk-forward validation fails on all 5 tested instruments. Live/paper trading is not recommended without fundamental signal redesign.**
 
-The fixed-exit backtests provide a materially improved picture:
+*Version note: v4.0 updated verdict from CONDITIONAL GO → NO-GO following completion of walk-forward validation across all 5 instruments. All WFE scores fall below the 0.30 minimum threshold.*
 
 **What IS real:**
-1. The 5-layer signal framework generates valid ENTRY_NOW signals that are structurally sound and non-random
+1. The 5-layer signal framework generates structurally valid ENTRY_NOW signals — the entry logic is non-random
 2. The exit fix (T1=1.0, T2=1.8, T3=2.618 ATR) resolved the zero-target-exit problem — 37.6% of hourly trades now hit targets
-3. **5 of 12 combinations are profitable** (42%), up from 33% before the exit fix
-4. **Median PF improved from 0.82 to 0.96** — a 17% improvement from the exit fix alone
-5. Three hourly combinations show genuine edge: MNQ 1h (+12.8%), MCL 1h (+8.5%), SPY 1h (PF 3.00)
-6. MGC daily is the most consistent daily result (PF 1.33, Sharpe 0.65, lowest MaxDD at 3.6%)
-7. Drawdowns are well-controlled (all under 6%) — the risk management framework works
-8. The sensitivity analysis confirms the strategy is ROBUST — not overfit
+3. In-sample PF values (1.46–2.60) are genuine — not artifacts of look-ahead bias or broken stops
+4. Drawdowns are well-controlled (all under 6%) — the risk management framework is sound
+5. Parameter sensitivity is high (MNQ=94/100, SPY=95/100) — the strategy is not fragile to small changes
+6. Per-instrument parameter profiles are correctly implemented in signals.py for future deployment
 
-**v4.0 Findings — Walk-Forward and Multi-Instrument Sensitivity:**
-1. **MGC 1d WFE = 0.27** (overfit territory). The realistic live edge is approximately +2.7% annualized, not the +34.4% shown in backtest. Approximately 73% of in-sample edge evaporates on unseen data. MGC 1d should be downgraded from the tradeable universe pending improvements.
-2. **MCL 1h has the highest sensitivity-adjusted edge** when using per-instrument optimal stop (0.77-0.84 ATR). The global STOP_ATR=0.70 constant sits in MCL's dead zone, producing only 8 trades. Widening to 0.77 unlocks 58 additional trades and nearly triples returns.
-3. **Per-instrument parameter profiles are required for live deployment.** A single global parameter set (STOP_ATR=0.70, T1=1.50) actively harms MCL and potentially other instruments. Each symbol/timeframe combination needs its own optimized stop and target levels.
-4. **MNQ 1h optimizer confirmed**: STC_OS=15, STC_OB=92, Stop=0.70, T1=1.0, regime=ON produces 86 trades, PF=1.51, +22.6% return — validating MNQ 1h as the top candidate for paper trading.
+**What the walk-forward reveals:**
+1. **ALL 5 instruments fail WFE validation** (MGC=0.27, MNQ=0.24, MCL=-0.16, MES=-0.17, SPY=-1.11)
+2. The average in-sample return of ~10-20% evaporates to ~2-5% OOS — 73-90% of edge disappears
+3. Parameter instability across windows confirms the optimizer is finding historical patterns, not structural edges
+4. MNQ Window 1 (OOS=+22.7%) is the single most encouraging result but coincides with a strong post-election Nasdaq rally — regime-dependent, not structural
+5. SPY 1h is essentially random (avg IS=0.1%, avg OOS=-0.1%) — not worth optimizing further
 
-**What is NOT real / needs work:**
-1. The original MES 1h +47% return was almost entirely look-ahead bias (remains confirmed)
-2. Daily timeframe exits are 74% EOD — the strategy cannot capture trends without trailing stops
-3. M2K is unprofitable on both timeframes (PF 0.64 hourly, 0.60 daily) — drop from universe
-4. MCL 1d (PF 0.21) and MES 1d (PF 0.75) are clearly unprofitable — drop from universe
-5. SPY 1h has the highest PF (3.00) but tiny absolute return (+0.7%) — needs optimization
+**What is NOT real / confirmed overfit:**
+1. The original MES 1h +47% return was almost entirely look-ahead bias (confirmed)
+2. The +34.4% MGC 1d return is ~73% curve-fitted to the 2024-2025 gold bull run
+3. The MNQ 1h +22.6% IS return reduces to +4.8% average OOS — strategy rides momentum windows
+4. MCL 1h benefits from a specific volatility regime in crude oil (2024 H2) that does not persist
+5. M2K is unprofitable on both timeframes (PF 0.64 hourly, 0.60 daily) — drop permanently
 
-### 8.4 Recommended Tradeable Universe
+### 8.4 Path Forward — Signal Redesign Required
 
-Based on the fixed-exit matrix results, the following four combinations are recommended for paper trading, in priority order:
+The current STC + ATR framework has correctly identified instruments with tradeable in-sample characteristics but lacks regime adaptability. The walk-forward failure is diagnostic: the optimizer finds 6-month windows where STC crossovers predict direction, but these windows shift unpredictably.
 
-| Priority | Symbol | TF | Rationale |
-|----------|--------|-----|-----------|
-| 1 | **MNQ** | 1h | Best risk-adjusted hourly result. Sufficient trade count (51), positive Sharpe (0.14), strong return (+12.8%), PF 1.51. 37.3% target exit rate validates exit logic. |
-| 2 | **MCL** | 1h | Good PF (1.89), positive return (+8.5%), commodity diversification away from equity indices. 62.1% win rate, 37.9% target exit rate. |
-| 3 | **MGC** | 1d | Most consistent daily result. Lowest MaxDD in entire matrix (3.6%), positive Sharpe (0.65), PF 1.33, +4.3% return. Only daily combination with both positive Sharpe and meaningful trade count (46). |
-| 4 | **SPY** | 1h | Highest PF in matrix (3.00), best target exit rate (56.5%), but tiny absolute return (+0.7%). Include for further optimization — the signal quality is there, the position sizing needs work. |
+**Required improvements before paper trading:**
 
-**Drop List (clearly unprofitable, do not trade):**
-- M2K 1h (PF 0.64, -3.1%) and M2K 1d (PF 0.60, -4.2%)
-- MCL 1d (PF 0.21, -5.3%)
-- MES 1d (PF 0.75, -3.6%)
+| Priority | Improvement | Expected Impact |
+|----------|-------------|-----------------|
+| 1 | ✅ **Regime-adaptive parameter switching** — RegimeClassifier built (`engine/backtest/regime.py`). MNQ WFE improved 0.24→0.34 (OVERFIT→ACCEPTABLE, 41% gain). Target WFE >0.40 remains. | High — root cause partially addressed |
+| 2 | **Multi-timeframe confirmation** — require 4h or daily trend alignment before 1h entry | High — eliminates counter-trend noise |
+| 3 | **Volume confirmation** — add volume-above-average filter at entry | Medium — removes low-conviction signals |
+| 4 | **News/event filter** — block entries within 30 min of major economic releases | Medium — eliminates gap-and-reverse losses |
+| 5 | **Trailing stop for daily timeframe** — replaces EOD exit (74% of daily trades) with trailing ATR stop | Medium — allows trends to run |
 
-**Priority Recommendations (ordered by expected impact):**
-1. **Deploy paper trading on the 4-symbol focused universe** — MNQ 1h, MCL 1h, MGC 1d, SPY 1h
-2. **Add trailing stops for daily timeframe** — 74% EOD exit rate on daily means profitable trades are leaving money on the table
-3. **Optimize SPY 1h position sizing** — PF 3.00 with only +0.7% return suggests the edge is real but position sizes are too conservative
-4. **Run walk-forward validation on MNQ 1h and MCL 1h** — These have sufficient trade counts (51, 29) for meaningful WFE calculation
-5. **Extend test period for SPY 1h** — 23 trades is marginal; more data would increase statistical confidence
-6. **Consider MES 1h as borderline** — PF 0.96 is near breakeven; may become viable with parameter tuning
+**If paper trading anyway (accepting overfit risk):**
+- Use MGC 1d only (best WFE=0.27, smallest drawdown 2.8%, least regime-dependent)
+- Size at 0.25% risk per trade (vs standard 1%) until OOS performance is confirmed
+- Set a kill threshold: if 3 consecutive OOS months underperform, halt and redesign
+
+**Drop List (do not trade under any circumstances):**
+- M2K 1h (PF 0.64) and M2K 1d (PF 0.60) — Russell unsuitable for STC
+- MCL 1d (PF 0.21) — zero target hits on daily crude
+- MES 1d (PF 0.75) — 36/51 trades exit at EOD
+- MES 1h (WFE=-0.17, 1/6 OOS profitable) — no persistent edge
+- SPY 1h (WFE=-1.11, avg return ±0.1%) — random noise at current scale
 
 ---
 

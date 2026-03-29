@@ -25,6 +25,8 @@ def main():
     parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital")
     parser.add_argument("--risk", type=float, default=0.01, help="Risk per trade (fraction)")
     parser.add_argument("--output", default=None, help="Save JSON results to file")
+    parser.add_argument("--trailing-stop", action="store_true", help="Enable trailing ATR stop")
+    parser.add_argument("--trailing-atr-mult", type=float, default=0.70, help="Trailing stop ATR multiplier")
     args = parser.parse_args()
 
     print(f"JARVIS TRADER Backtester")
@@ -63,6 +65,8 @@ def main():
     backtester = Backtester(
         initial_capital=args.capital,
         risk_per_trade=args.risk,
+        trailing_stop=args.trailing_stop,
+        trailing_atr_mult=args.trailing_atr_mult,
     )
 
     print("Running simulation...")
