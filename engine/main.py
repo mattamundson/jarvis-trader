@@ -20,6 +20,35 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from api.models import (
+    HealthResponse,
+    FullHealthResponse,
+    IBConnectionTestResponse,
+    IBConnectResponse,
+    SafetyStatusResponse,
+    CircuitBreakerStatus,
+    SafetyConfigResponse,
+    KillSwitchToggleResponse,
+    TechnicalAnalysisResponse,
+    BarsResponse,
+    RedditSentimentResponse,
+    NewsSentimentResponse,
+    PortfolioResponse,
+    PaperPositionsResponse,
+    PaperTradeResponse,
+    PaperPerformanceResponse,
+    PendingSignalsResponse,
+    PaperKillSwitchStatus,
+    PaperKillSwitchToggleResponse,
+    ResetSignalsResponse,
+    TradeHistoryResponse,
+    DailyPnLResponse,
+    DecisionHistoryResponse,
+    StatsSummaryResponse,
+    DrawdownResponse,
+    WebSocketStatusResponse,
+)
+
 from config import settings
 from data.market_data import MarketDataManager
 from risk.safety_layer import SafetyLayer, OrderRequest
@@ -40,6 +69,9 @@ from database.schema import init_db, DatabaseManager
 from schedulers.eod_scheduler import EODScheduler
 from routers.journal_router import router as journal_router, set_db_manager as set_journal_db
 from execution.ib_order_manager import IBOrderManager
+from routers.webhook_router import router as webhook_router, set_pipeline_callback, get_recent_webhooks
+from websocket.manager import WebSocketManager
+from websocket.events import set_ws_manager
 
 # ── Logging ──────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -59,6 +91,7 @@ db_manager: DatabaseManager | None = None
 pnl_monitor: PnLMonitor | None = None
 eod_scheduler: EODScheduler | None = None
 order_manager: IBOrderManager | None = None
+ws_manager: WebSocketManager | None = None
 
 # Rate limit: track last alert time per symbol to avoid flooding (2-hour cooldown)
 _last_alert_time: Dict[str, datetime] = {}
@@ -71,7 +104,7 @@ _macro_cache: Dict[str, dict] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ws_manager
 
     logger.info("🤖 JARVIS TRADER starting up...")
     logger.info(f"   Live trading: {'ENABLED ⚠️' if settings.LIVE_TRADING_ENABLED else 'DISABLED (paper mode)'}")
@@ -371,6 +404,11 @@ async def lifespan(app: FastAPI):
     if scheduler is not None:
         eod_scheduler.register_with_scheduler(scheduler)
 
+    # WebSocket manager for real-time event streaming
+    ws_manager = WebSocketManager()
+    set_ws_manager(ws_manager)
+    logger.info("✅ WebSocket manager initialized for real-time events")
+
     logger.info("✅ JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
@@ -391,6 +429,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+# ── API Versioning ────────────────────────────────────────────────────────────
+# Create v1 router with /v1 prefix for future versioning support
+v1_router = APIRouter(prefix="/v1", tags=["v1"])
+
+# Register all endpoints with the v1 router below.
+# For now, we serve the same endpoints under both / (legacy) and /v1 (new).
+# This allows clients to transition gradually.
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3010", "http://localhost:3000", "http://localhost:3004"],
@@ -400,13 +448,14 @@ app.add_middleware(
 )
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(v1_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────
 
 _start_time = datetime.now(timezone.utc)
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health():
     safety = safety_layer.get_status() if safety_layer else {}
 
@@ -436,7 +485,7 @@ async def health():
     }
 
 
-@app.get("/health/full")
+@app.get("/health/full", response_model=FullHealthResponse)
 async def full_health_check():
     """Comprehensive health check of all JARVIS TRADER subsystems."""
     status: dict = {}
@@ -540,33 +589,37 @@ async def full_health_check():
 
 # ── Safety / Kill Switch ──────────────────────────────────────────────────
 
-@app.post("/safety/kill-switch/activate")
+@app.post("/safety/kill-switch/activate", response_model=KillSwitchToggleResponse)
 async def activate_kill_switch(reason: str = "manual"):
     if not safety_layer:
         raise HTTPException(500, "Safety layer not initialized")
     from risk.safety_layer import KillSwitchReason
     safety_layer.activate_kill_switch(KillSwitchReason.MANUAL, f"Manual activation: {reason}")
     from notifications.whatsapp import get_notifier
+    from websocket.events import emit_kill_switch_change
     asyncio.create_task(get_notifier().alert_kill_switch(reason))
+    asyncio.create_task(emit_kill_switch_change(active=True, reason=reason))
     return {"status": "kill_switch_activated", "reason": reason}
 
 
-@app.post("/safety/kill-switch/deactivate")
+@app.post("/safety/kill-switch/deactivate", response_model=KillSwitchToggleResponse)
 async def deactivate_kill_switch():
     if not safety_layer:
         raise HTTPException(500, "Safety layer not initialized")
+    from websocket.events import emit_kill_switch_change
     safety_layer.deactivate_kill_switch(authorized_by="matt_dashboard")
+    asyncio.create_task(emit_kill_switch_change(active=False, reason="Manual deactivation"))
     return {"status": "kill_switch_deactivated"}
 
 
-@app.get("/safety/status")
+@app.get("/safety/status", response_model=SafetyStatusResponse)
 async def safety_status():
     if not safety_layer:
         raise HTTPException(500, "Safety layer not initialized")
     return safety_layer.get_status()
 
 
-@app.get("/safety/circuit-breakers")
+@app.get("/safety/circuit-breakers", response_model=CircuitBreakerStatus)
 async def get_circuit_breakers():
     """
     Current circuit breaker state for all safety limits.
@@ -597,7 +650,7 @@ async def get_circuit_breakers():
     return safety_layer.check_circuit_breakers()
 
 
-@app.get("/safety/config")
+@app.get("/safety/config", response_model=SafetyConfigResponse)
 async def get_safety_config():
     """
     Return current risk parameter configuration (read-only).
@@ -621,7 +674,7 @@ async def get_safety_config():
     }
 
 
-@app.post("/safety/reset-daily-pnl")
+@app.post("/safety/reset-daily-pnl", response_model=dict)
 async def reset_daily_pnl():
     """Reset the in-memory daily P&L counter (useful for testing)."""
     if not safety_layer:
@@ -639,7 +692,7 @@ class AnalysisRequest(BaseModel):
     is_futures: bool = False
 
 
-@app.post("/analyze/technical")
+@app.post("/analyze/technical", response_model=TechnicalAnalysisResponse)
 async def run_technical_analysis(req: AnalysisRequest):
     """Run the Technical Analyst agent on a symbol"""
     if not technical_analyst:
@@ -674,7 +727,7 @@ async def run_technical_analysis(req: AnalysisRequest):
     }
 
 
-@app.get("/analyze/bars/{symbol}")
+@app.get("/analyze/bars/{symbol}", response_model=BarsResponse)
 async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: bool = False):
     """Get OHLCV bars for a symbol"""
     if not data_manager:
@@ -692,7 +745,7 @@ async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: b
     }
 
 
-@app.get("/sentiment/reddit")
+@app.get("/sentiment/reddit", response_model=RedditSentimentResponse)
 async def get_reddit_sentiment(filter: str = "all-stocks"):
     """Get trending tickers from Reddit"""
     if not data_manager:
@@ -702,7 +755,7 @@ async def get_reddit_sentiment(filter: str = "all-stocks"):
     return {"filter": filter, "tickers": tickers[:20]}
 
 
-@app.get("/sentiment/news/{symbol}")
+@app.get("/sentiment/news/{symbol}", response_model=NewsSentimentResponse)
 async def get_news_sentiment(symbol: str):
     """Get news sentiment for a symbol via Finnhub"""
     if not data_manager or not data_manager.finnhub:
@@ -714,7 +767,7 @@ async def get_news_sentiment(symbol: str):
 
 # ── Portfolio ─────────────────────────────────────────────────────────────
 
-@app.get("/portfolio")
+@app.get("/portfolio", response_model=PortfolioResponse)
 async def get_portfolio():
     """Current portfolio state — sourced from broker API, never from agent memory"""
     if not safety_layer:
@@ -743,7 +796,7 @@ class PaperTradeRequest(BaseModel):
     close_trade_id: str | None = None  # If set, this call closes an existing trade
 
 
-@app.get("/portfolio/paper/positions")
+@app.get("/portfolio/paper/positions", response_model=PaperPositionsResponse)
 async def get_paper_positions():
     """Return all currently open paper-trade positions."""
     if not paper_tracker:
@@ -754,7 +807,7 @@ async def get_paper_positions():
     }
 
 
-@app.post("/portfolio/paper/trade")
+@app.post("/portfolio/paper/trade", response_model=PaperTradeResponse)
 async def submit_paper_trade(req: PaperTradeRequest):
     """
     Open or close a paper trade.
@@ -800,7 +853,7 @@ async def submit_paper_trade(req: PaperTradeRequest):
         }
 
 
-@app.get("/portfolio/paper/performance")
+@app.get("/portfolio/paper/performance", response_model=PaperPerformanceResponse)
 async def get_paper_performance():
     """Return performance metrics for all closed paper trades."""
     if not paper_tracker:
@@ -810,7 +863,7 @@ async def get_paper_performance():
 
 # ── Pending Signals (MGC daily scanner output) ────────────────────────────
 
-@app.get("/paper/pending-signals")
+@app.get("/paper/pending-signals", response_model=PendingSignalsResponse)
 async def get_pending_signals():
     """
     Return pending entry signals generated by the daily MGC scanner.
@@ -836,7 +889,7 @@ async def get_pending_signals():
 
 # ── Historical Query Endpoints (SQLite) ───────────────────────────────────
 
-@app.get("/portfolio/history/trades")
+@app.get("/portfolio/history/trades", response_model=TradeHistoryResponse)
 async def get_trade_history(limit: int = 100, symbol: str = "", status: str = ""):
     """
     Return historical trades from SQLite.
@@ -860,7 +913,7 @@ async def get_trade_history(limit: int = 100, symbol: str = "", status: str = ""
         return {"trades": [], "count": 0, "error": str(exc)}
 
 
-@app.get("/portfolio/history/daily-pnl")
+@app.get("/portfolio/history/daily-pnl", response_model=DailyPnLResponse)
 async def get_daily_pnl(days: int = 30):
     """
     Return daily P&L snapshots for the last N days.
@@ -878,7 +931,7 @@ async def get_daily_pnl(days: int = 30):
         return {"daily_pnl": [], "days": days, "error": str(exc)}
 
 
-@app.get("/portfolio/history/decisions")
+@app.get("/portfolio/history/decisions", response_model=DecisionHistoryResponse)
 async def get_decision_history(limit: int = 50, symbol: str = ""):
     """
     Return historical agent decisions from SQLite.
@@ -900,7 +953,7 @@ async def get_decision_history(limit: int = 50, symbol: str = ""):
         return {"decisions": [], "count": 0, "error": str(exc)}
 
 
-@app.get("/portfolio/stats/summary")
+@app.get("/portfolio/stats/summary", response_model=StatsSummaryResponse)
 async def get_stats_summary():
     """
     Aggregate performance summary from SQLite — win rate, total P&L, trade counts,
@@ -916,7 +969,7 @@ async def get_stats_summary():
         return {"error": str(exc)}
 
 
-@app.get("/portfolio/stats/drawdown")
+@app.get("/portfolio/stats/drawdown", response_model=DrawdownResponse)
 async def get_drawdown():
     """
     Return max drawdown and the equity curve used to compute it (from SQLite trades).
@@ -929,6 +982,34 @@ async def get_drawdown():
     except Exception as exc:
         logger.error(f"[DB] get_drawdown failed: {exc}")
         return {"max_drawdown": 0.0, "equity_curve": [], "error": str(exc)}
+
+
+# ── Pipeline Run History ───────────────────────────────────────────────────
+
+@app.get("/pipeline/history")
+async def get_pipeline_history(limit: int = 50, symbol: str = ""):
+    """
+    Return historical pipeline run records from SQLite.
+
+    Each record corresponds to one TradingPipeline execution triggered by
+    a TradingView webhook or manual call.
+
+    Query params:
+        limit  : max rows to return (default 50, capped at 200)
+        symbol : filter by ticker symbol (optional, case-insensitive)
+    """
+    if not db_manager:
+        return {"runs": [], "count": 0, "note": "db_manager not initialized"}
+    try:
+        limit = min(max(1, limit), 200)
+        runs = db_manager.get_pipeline_history(
+            limit=limit,
+            symbol=symbol.upper() if symbol else None,
+        )
+        return {"runs": runs, "count": len(runs)}
+    except Exception as exc:
+        logger.error(f"[DB] get_pipeline_history failed: {exc}")
+        return {"runs": [], "count": 0, "error": str(exc)}
 
 
 # ── Analytics / Performance Validation ────────────────────────────────────
@@ -1870,6 +1951,215 @@ async def get_mgc_paper_performance():
     except Exception as e:
         logger.error(f"[PAPER-MGC] Performance query failed: {e}")
         raise HTTPException(500, f"Failed to get MGC performance: {e}")
+
+
+# ── Monte Carlo Backtest Analysis ────────────────────────────────────────────
+
+
+class MonteCarloRequest(BaseModel):
+    """Request for Monte Carlo simulation on backtest results."""
+    results_file: str  # Path to JSON results file (relative to backtest/results/)
+    simulations: int = 1_000  # Number of simulations (default: 1000)
+    max_slippage_ticks: float = 0.0  # Max random slippage per trade in ticks (default: 0)
+    symbol: str = None  # Instrument symbol (auto-detected if None)
+    initial_capital: float = 100_000.0  # Starting capital for simulation
+
+
+@app.post("/backtest/monte-carlo")
+async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
+    """
+    Run Monte Carlo simulation on backtest results to validate strategy robustness.
+
+    Shuffles trade order N times with optional slippage modeling to generate a
+    distribution of possible outcomes. Returns percentile statistics across all
+    simulations plus confidence metrics (probability of ruin, 2x return target, etc).
+
+    Request:
+        results_file: Path to backtest JSON (e.g., "MES_1h_2024-06-01_2026-03-27.json")
+        simulations: Number of Monte Carlo runs (default: 1000)
+        max_slippage_ticks: Uniform random slippage 0-N ticks per trade (default: 0)
+        symbol: Instrument symbol for tick value lookup (auto if None)
+        initial_capital: Starting capital (default: 100000)
+
+    Returns:
+        percentile_statistics: p5, p25, median, p75, p95 for final capital, max drawdown, Sharpe
+        confidence_metrics: prob_profitable, prob_ruin, prob_2x, VaR 5%, CVaR
+        verdict: EXCELLENT/GOOD/MARGINAL/POOR based on distribution quality
+    """
+    try:
+        from pathlib import Path
+        from backtest.monte_carlo import run_monte_carlo, _load_result_from_json
+
+        # Resolve file path
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            # Try relative to backtest/results/
+            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = Path(__file__).parent / "backtest" / "results" / req.results_file
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        # Load backtest result
+        logger.info(f"[MONTE-CARLO] Loading {results_path.name}")
+        bt_result = _load_result_from_json(str(results_path))
+
+        # Auto-detect symbol from filename if not provided
+        symbol = req.symbol
+        if not symbol:
+            stem = results_path.stem
+            for part in stem.split("_"):
+                if part.isupper() and len(part) <= 4:
+                    symbol = part
+                    break
+        if not symbol:
+            symbol = "MES"
+
+        # Run simulation
+        logger.info(f"[MONTE-CARLO] Running {req.simulations:,} simulations for {symbol}")
+        mc_results = run_monte_carlo(
+            bt_result,
+            n_simulations=req.simulations,
+            initial_capital=req.initial_capital,
+            max_slippage_ticks=req.max_slippage_ticks,
+            symbol=symbol,
+            seed=42,
+        )
+
+        return mc_results
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO] File error: {e}")
+        raise HTTPException(404, f"Results file not found: {e}")
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO] Simulation failed: {e}")
+        raise HTTPException(500, f"Monte Carlo simulation failed: {e}")
+
+
+@app.post("/backtest/monte-carlo/chart")
+async def generate_monte_carlo_chart(req: MonteCarloRequest) -> dict:
+    """
+    Generate an interactive HTML equity curve fan chart from Monte Carlo results.
+
+    Creates a visualization showing median equity curve plus 25th-75th and 5th-95th
+    percentile bands. Useful for assessing visual robustness and trade sequencing risk.
+
+    Returns:
+        chart_path: Full file path to generated HTML
+        url: Relative URL if served via static files
+    """
+    try:
+        from pathlib import Path
+        from backtest.monte_carlo_viz import save_fan_chart
+
+        # Resolve file path (same as monte-carlo endpoint)
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = Path(__file__).parent / "backtest" / "results" / req.results_file
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        # But we need the JSON results from run_monte_carlo first!
+        # Check if _monte_carlo.json exists
+        stem = results_path.stem
+        mc_json_path = results_path.parent / f"{stem}_monte_carlo.json"
+        if not mc_json_path.exists():
+            raise FileNotFoundError(
+                f"Monte Carlo JSON not found. Run /backtest/monte-carlo first to generate {mc_json_path.name}"
+            )
+
+        logger.info(f"[MONTE-CARLO-VIZ] Generating chart from {mc_json_path.name}")
+        html_path = save_fan_chart(str(mc_json_path))
+
+        return {
+            "chart_path": str(html_path),
+            "status": "success",
+            "message": f"Chart generated: {Path(html_path).name}",
+        }
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO-VIZ] File error: {e}")
+        raise HTTPException(404, f"Error: {e}")
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO-VIZ] Chart generation failed: {e}")
+        raise HTTPException(500, f"Chart generation failed: {e}")
+
+
+# ── WebSocket Real-Time Events ────────────────────────────────────────────
+
+@app.websocket("/ws/events")
+async def websocket_endpoint(websocket):
+    """
+    WebSocket endpoint for real-time trading events.
+
+    Accepts connections at /ws/events.
+    Sends JSON events for:
+      - order_fill: Order execution
+      - kill_switch: Kill switch state changes
+      - circuit_breaker: Circuit breaker triggers
+      - pipeline_complete: Pipeline analysis completion
+      - safety_event: Safety/risk events
+      - price_update: Price updates
+      - ping: Keep-alive ping
+
+    Connection is kept alive with ping frames every 30 seconds.
+    Client is automatically removed on disconnect or send failure.
+    """
+    if not ws_manager:
+        await websocket.close(code=1011, reason="WebSocket manager not initialized")
+        return
+
+    await ws_manager.connect(websocket)
+
+    try:
+        # Keep the connection alive and listen for client frames
+        ping_interval = 30  # seconds
+        last_ping = datetime.now()
+
+        while True:
+            try:
+                # Receive with timeout to allow periodic ping
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=ping_interval)
+                logger.debug(f"WebSocket received: {data.get('type', 'unknown')}")
+
+            except asyncio.TimeoutError:
+                # Send ping to keep connection alive
+                now = datetime.now()
+                if (now - last_ping).total_seconds() >= ping_interval:
+                    try:
+                        await websocket.send_json({"type": "ping", "timestamp": now.isoformat()})
+                        last_ping = now
+                    except Exception as e:
+                        logger.debug(f"Ping failed: {e}")
+                        break
+
+            except Exception as e:
+                logger.debug(f"WebSocket receive error: {e}")
+                break
+
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {e}")
+    finally:
+        await ws_manager.disconnect(websocket)
+        logger.info("WebSocket connection closed")
+
+
+# ── WebSocket Status Endpoint ─────────────────────────────────────────────
+
+@app.get("/ws/status")
+async def websocket_status():
+    """Get WebSocket manager status — connected client count."""
+    if not ws_manager:
+        return {"status": "not_initialized", "connections": 0}
+    return {"status": "ok", "connections": ws_manager.get_connection_count()}
 
 
 if __name__ == "__main__":
