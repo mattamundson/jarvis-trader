@@ -106,6 +106,28 @@ These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` and u
 
 ---
 
+## Paper Trading — MGC 1d ACTIVE (as of 2026-03-29)
+
+**APPROVED**: MGC 1d adaptive regime cleared walk-forward threshold.
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Capital | $25,000 | Micro gold sizing |
+| Risk/trade | 0.25% | Conservative start |
+| Stop | 0.30 ATR | Validated in WF |
+| T1 Target | 1.00 ATR | Intraday reachable |
+| Adaptive Regime | ON | Key to WFE=0.88 |
+| Kill threshold | 3 consecutive months >50% below IS | Safety gate |
+
+**Performance benchmark (in-sample):** Avg IS return 7.6%/3-month window.
+Kill trigger: any 3-month window below 3.8% return (50% of 7.6% baseline).
+
+**Config file:** `engine/backtest/paper_config.py` (MGC_PAPER_CONFIG)
+**Tracker:** `engine/backtest/paper_tracker.py` (PaperTradeTracker)
+**Trade log:** `engine/backtest/results/paper_trades_MGC.json`
+
+---
+
 ## What NOT to Trade (Permanently Removed)
 
 | Symbol | TF | PF | WFE | Reason |
