@@ -23,6 +23,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Minimum bars required for a full intraday analysis
+_MIN_INTRADAY_BARS = 50
+# Minimum daily bars needed for a degraded-but-useful daily fallback
+_MIN_DAILY_BARS = 5
+
 
 @dataclass
 class TechnicalReport:
@@ -119,18 +124,102 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
     ) -> TechnicalReport:
         """Full technical analysis pipeline for a symbol"""
 
-        # 1. Fetch OHLCV data
+        # 1. Fetch OHLCV data (intraday preferred)
         df = await self._data.get_bars(symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures)
-        if df.empty or len(df) < 50:
-            logger.warning(f"Insufficient data for {symbol} ({len(df)} bars)")
-            return self._empty_report(symbol, timeframe)
+
+        using_daily_fallback = False
+        effective_timeframe = timeframe
+
+        if df.empty or len(df) < _MIN_INTRADAY_BARS:
+            logger.warning(
+                f"Insufficient intraday data for {symbol} "
+                f"({len(df) if not df.empty else 0} bars on {timeframe}). "
+                f"Falling back to daily bars."
+            )
+            # --- Daily fallback: fetch ~1 year of daily bars for indicator depth ---
+            df = self._fetch_daily_fallback(symbol)
+            if df.empty or len(df) < _MIN_DAILY_BARS:
+                logger.error(f"Daily fallback also empty for {symbol} — returning empty report")
+                # Last-ditch: still try to populate current_price from yfinance .info
+                price = self._fetch_current_price(symbol)
+                report = self._empty_report(symbol, timeframe)
+                report.current_price = price
+                return report
+            using_daily_fallback = True
+            effective_timeframe = "1d (fallback)"
 
         # 2. Compute all indicators (deterministic Python — no LLM)
         indicators = self._compute_indicators(df)
 
-        # 3. LLM synthesis
-        report = await self._llm_synthesize(symbol, timeframe, df, indicators)
+        # 3. Always ensure current_price is populated.
+        #    _compute_indicators sets it from the last close, but if that's still
+        #    zero (e.g. pandas_ta not available and column missing), fall back to
+        #    yfinance .info.
+        if not indicators.get("current_price"):
+            indicators["current_price"] = self._fetch_current_price(symbol)
+
+        # 4. LLM synthesis
+        report = await self._llm_synthesize(symbol, effective_timeframe, df, indicators)
+
+        # 5. Tag the report when we used daily bars
+        if using_daily_fallback:
+            report.timeframe = timeframe  # preserve original timeframe in schema
+            note = " [Using daily bars — market closed/after-hours]"
+            if not report.summary.endswith(note):
+                report.summary = report.summary + note
+
         return report
+
+    # ------------------------------------------------------------------
+    # Helper: fetch daily OHLCV bars directly via yfinance (no data_manager)
+    # ------------------------------------------------------------------
+    def _fetch_daily_fallback(self, symbol: str) -> pd.DataFrame:
+        """
+        Fetch up to 1 year of daily bars via yfinance.
+        Returns a normalized DataFrame with lowercase OHLCV columns.
+        """
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period="1y", interval="1d")
+            if df.empty:
+                logger.warning(f"yfinance daily fetch returned empty for {symbol}")
+                return pd.DataFrame()
+            df = df.reset_index().rename(columns={
+                "Datetime": "timestamp",
+                "Date": "timestamp",
+                "Open": "open",
+                "High": "high",
+                "Low": "low",
+                "Close": "close",
+                "Volume": "volume",
+            })
+            cols = [c for c in ["timestamp", "open", "high", "low", "close", "volume"] if c in df.columns]
+            logger.info(f"Daily fallback: fetched {len(df)} daily bars for {symbol}")
+            return df[cols]
+        except Exception as e:
+            logger.error(f"_fetch_daily_fallback failed for {symbol}: {e}")
+            return pd.DataFrame()
+
+    # ------------------------------------------------------------------
+    # Helper: fetch current price from yfinance .info with layered fallbacks
+    # ------------------------------------------------------------------
+    def _fetch_current_price(self, symbol: str) -> float:
+        """
+        Returns the best available price for symbol via yfinance.info.
+        Priority: regularMarketPrice > currentPrice > previousClose > 0.0
+        """
+        try:
+            import yfinance as yf
+            info = yf.Ticker(symbol).info
+            for key in ("regularMarketPrice", "currentPrice", "previousClose"):
+                val = info.get(key)
+                if val and float(val) > 0:
+                    logger.info(f"Current price for {symbol} from yfinance.info[{key}]: {val}")
+                    return float(val)
+        except Exception as e:
+            logger.warning(f"_fetch_current_price failed for {symbol}: {e}")
+        return 0.0
 
     def _compute_indicators(self, df: pd.DataFrame) -> dict:
         """

@@ -16,6 +16,11 @@ from .risk_manager import RiskManagerAgent, RiskDecision
 from .fund_manager import FundManagerAgent, FundDecision
 from .pipeline import TradingPipeline
 from .thinkscript_generator import ThinkScriptGeneratorAgent, ThinkScriptResult
+from .schemas import (
+    Action, OrderType, MarketRegime, TrendDirection, EntrySignal,
+    ATRLevels, IBLevels, TPOData, KeltnerBands, MomentumSignals,
+    ResearchCase, pipeline_summary,
+)
 
 __all__ = [
     # Technical analysis
@@ -48,4 +53,8 @@ __all__ = [
     # ThinkScript generation
     "ThinkScriptGeneratorAgent",
     "ThinkScriptResult",
+    # Typed schemas (enums + dataclasses + helpers)
+    "Action", "OrderType", "MarketRegime", "TrendDirection", "EntrySignal",
+    "ATRLevels", "IBLevels", "TPOData", "KeltnerBands", "MomentumSignals",
+    "ResearchCase", "pipeline_summary",
 ]

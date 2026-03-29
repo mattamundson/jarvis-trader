@@ -336,14 +336,25 @@ class MarketDataManager:
             period_map = {7: "7d", 30: "1mo", 90: "3mo", 365: "1y"}
             period = next((v for k, v in period_map.items() if lookback_days <= k), "1mo")
             interval_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "1d": "1d"}
+            yf_interval = interval_map.get(timeframe, "5m")
             ticker = yf.Ticker(symbol)
-            df = ticker.history(period=period, interval=interval_map.get(timeframe, "5m"))
+
+            # Try requested interval first; fall back to daily if rate-limited
+            df = ticker.history(period=period, interval=yf_interval)
+            if df.empty and yf_interval != "1d":
+                logger.warning(f"yfinance rate-limited for {yf_interval} — falling back to 1d")
+                df = ticker.history(period="1y", interval="1d")
+
+            if df.empty:
+                return pd.DataFrame()
+
             df = df.reset_index().rename(columns={
                 "Datetime": "timestamp", "Date": "timestamp",
                 "Open": "open", "High": "high", "Low": "low",
                 "Close": "close", "Volume": "volume"
             })
-            return df[["timestamp", "open", "high", "low", "close", "volume"]]
+            cols = [c for c in ["timestamp", "open", "high", "low", "close", "volume"] if c in df.columns]
+            return df[cols]
         except Exception as e:
             logger.error(f"yfinance fallback failed for {symbol}: {e}")
             return pd.DataFrame()

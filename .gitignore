@@ -7,6 +7,13 @@
 .env.*.local
 *.env
 
+# OAuth / Google Cloud client JSON (never commit)
+client_secret*.json
+*client_secret*.json
+*apps.googleusercontent.com*.json
+credentials.json
+token.json
+
 # Python
 __pycache__/
 *.py[cod]
@@ -59,3 +66,9 @@ Thumbs.db
 # Trading-specific
 # Never commit backtest results with personal financial data
 backtest_results/personal/
+
+# Backtest cache (large CSV data files — regenerate with fetch scripts)
+engine/backtest/cache/
+
+# Backtest result JSON output artifacts (regenerate by running backtest)
+engine/backtest/results/*.json

@@ -22,6 +22,8 @@ import logging
 from datetime import datetime
 from typing import Any, Optional
 
+from .schemas import MarketRegime, TrendDirection, EntrySignal, Action
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["TradingPipeline"]
@@ -139,6 +141,16 @@ class TradingPipeline:
         pipeline_result["completed_at"] = completed_at.isoformat()
         elapsed = (completed_at - started_at).total_seconds()
 
+        # ── Human-readable summary line ────────────────────────────────────────
+        regime = analyst_reports.get("technical", {}).get("regime", "UNKNOWN")
+        trend = analyst_reports.get("technical", {}).get("trend", "UNKNOWN")
+        confidence = fund_decision.get("final_conviction", 0.0) if fund_decision else 0.0
+        pipeline_result["summary"] = (
+            f"{symbol} | regime={regime} trend={trend} | "
+            f"action={final_action.upper()} qty={final_quantity} | "
+            f"conviction={confidence:.0%} human={requires_human}"
+        )
+
         logger.info(
             f"[Pipeline] {symbol} complete in {elapsed:.1f}s — "
             f"final_action={final_action} qty={final_quantity} "
@@ -223,13 +235,13 @@ class TradingPipeline:
                     "bear_arguments": [],
                 }
 
-            # Bull and bear can argue in parallel
-            bull_arg, bear_arg = await asyncio.gather(
-                bull_agent.argue(symbol, analyst_reports),
-                bear_agent.argue(symbol, analyst_reports),
+            # Debate orchestrator runs bull + bear internally
+            debate_result = await debate_agent.run_debate(
+                symbol=symbol,
+                analyst_reports=analyst_reports,
+                bull=bull_agent,
+                bear=bear_agent,
             )
-
-            debate_result = await debate_agent.run_debate(bull_arg, bear_arg)
 
             # Normalise to dict
             if hasattr(debate_result, "to_dict"):
