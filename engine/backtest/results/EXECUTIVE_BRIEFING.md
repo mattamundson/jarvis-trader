@@ -13,6 +13,8 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 
 *v2.3 update: Combined filters tested. MNQ adaptive+volume WFE=-0.23 (volume filter destroys 1h futures signals — removes too many trades). SPY adaptive WFE improved -1.11→-0.71 but still overfit. Confirmed: MNQ best config remains adaptive-only at WFE=0.34. Volume filter: keep OFF for all futures 1h signals.*
 
+*v2.4 update: Extended history validation reveals MGC 1d WFE=0.27 with 15 windows (2022-2026). Previous WFE=0.88 was small-sample bias (3 windows, 2025 gold bull run only). Bear market data (2022-2023) exposes underlying parameter instability. Paper trading downgraded from EXCELLENT to CONDITIONAL-CAUTION. Continuing at 0.25% risk with 3-month monitoring period.*
+
 ---
 
 ## Corrected Performance (In-Sample, Per-Instrument Optimized)
@@ -20,7 +22,7 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 | Rank | Symbol | TF | Trades | WR% | PF | Sharpe | Return | MaxDD | WFE | Verdict |
 |------|--------|-----|--------|-----|------|--------|--------|-------|-----|---------|
 | 1 | MGC | 1d | 47 | 51.1 | 2.60 | 2.04 | +34.4% | 3.0% | 0.27 | **OVERFIT** |
-| 2 | SPY | 1h | 23 | 65.2 | 3.00 | -1.55 | +0.7% | 5.0% | -1.11 | **OVERFIT** |
+| 2 | SPY | 1h | 23 | 52.2 | 3.79 | -1.43 | +0.0% | 0.1% | TBD | **RE-OPTIMIZED v2.5** |
 | 3 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | 0.24 | **OVERFIT** |
 | 4 | MCL | 1h | 65 | 60.0 | 1.83 | 0.15 | +0.2% | — | -0.16 | **OVERFIT** |
 | 5 | MES | 1h | 21 | 42.9 | 0.96 | -0.12 | -4.0% | 0.1% | -0.17 | **OVERFIT** |
@@ -38,6 +40,7 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 | MCL | 1h | 6 | 2/6 (33%) | +6.1% | -1.0% | **-0.16** | FAIL (negative) |
 | MES | 1h | 6 | 1/6 (17%) | +8.3% | -1.4% | **-0.17** | FAIL (negative) |
 | SPY | 1h | 6 | 2/6 (33%) | +0.1% | -0.1% | **-1.11** | FAIL (deeply negative) |
+| MGC | 1d | 15 | 6/15 (40%) | +6.7% | +1.8% | **0.27** | FAIL (extended history) |
 
 **WFE thresholds:** >0.70 = Excellent, 0.50-0.70 = Good, 0.30-0.50 = Marginal, <0.30 = OVERFIT
 
@@ -47,7 +50,7 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 
 | Symbol | TF | Static WFE | Adaptive WFE | Change | OOS Sharpe | OOS PF | Verdict |
 |--------|-----|-----------|--------------|--------|------------|--------|---------|
-| MGC | 1d | 0.27 | **0.88** | +226% | 0.89 | 2.55 | EXCELLENT -- Paper-trade ready |
+| MGC | 1d | 0.27 (extended: 0.27) | **0.88** (3-window, 2025 only) / **0.27** (15-window, 2022-2026) | +226% (3-win) / 0% (15-win) | 0.89 | 2.55 | **CONDITIONAL-CAUTION** — WFE=0.88 was 3-window small-sample result. Extended 15-window = 0.27 |
 | MNQ | 1h | 0.24 | **0.34** | +41% | -0.06 | 1.05 | ACCEPTABLE -- Needs more work |
 | MCL | 1h | -0.16 | **-0.31** | -94% | -0.48 | 0.81 | FAIL -- Adaptive hurts MCL |
 | SPY | 1h | -1.11 | **-0.71** | +36% | -3.84 | 1.04 | FAIL -- Adaptive slightly better but still deeply overfit |
@@ -111,7 +114,7 @@ These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` and u
 
 ## Paper Trading — MGC 1d ACTIVE (as of 2026-03-29)
 
-**APPROVED**: MGC 1d adaptive regime cleared walk-forward threshold.
+**CAUTION**: Extended 15-window WFE = 0.27 (below 0.30 threshold). Paper trading continues at ultra-conservative 0.25% risk for live validation, but EXCELLENT verdict is WITHDRAWN. Strategy requires further signal improvements before scaling.
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
@@ -120,7 +123,7 @@ These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` and u
 | Stop | 0.30 ATR | Validated in WF |
 | T1 Target | 1.00 ATR | Intraday reachable |
 | Adaptive Regime | ON | Key to WFE=0.88 |
-| Kill threshold | 3 consecutive months >50% below IS | Safety gate |
+| Kill threshold | If first 3 months show negative return: halt immediately | Tighter gate (v2.4) |
 
 **Performance benchmark (in-sample):** Avg IS return 7.6%/3-month window.
 Kill trigger: any 3-month window below 3.8% return (50% of 7.6% baseline).
