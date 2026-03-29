@@ -140,6 +140,8 @@ class WalkForwardValidator:
         top_n_params: int = 1,
         fast: bool = True,
         adaptive_regime: bool = False,
+        volume_filter: bool = False,
+        mtf_filter: bool = False,
     ) -> Dict[str, Any]:
         """
         Execute the full walk-forward validation.
@@ -162,7 +164,14 @@ class WalkForwardValidator:
         combos = list(itertools.product(*grid.values()))
         keys = list(grid.keys())
 
-        mode_label = "adaptive-regime" if adaptive_regime else "static"
+        mode_parts = []
+        if adaptive_regime:
+            mode_parts.append("adaptive-regime")
+        if volume_filter:
+            mode_parts.append("volume-filter")
+        if mtf_filter:
+            mode_parts.append("mtf-filter")
+        mode_label = "+".join(mode_parts) if mode_parts else "static"
         print(f"\n{'='*65}")
         print(f"=== WALK-FORWARD VALIDATION: {symbol} [{mode_label}] ===")
         print(f"Windows: {len(windows_spec)} | Train: {self.train_months}mo | Test: {self.test_months}mo")
@@ -192,6 +201,8 @@ class WalkForwardValidator:
             best_params, best_score, is_result = self._optimise_window(
                 df_train, multiplier, capital, combos, keys,
                 adaptive_regime=adaptive_regime,
+                volume_filter=volume_filter,
+                mtf_filter=mtf_filter,
             )
 
             if best_params is None or is_result is None:
@@ -215,6 +226,8 @@ class WalkForwardValidator:
             oos_result = _run_with_params(
                 df_test, multiplier, capital,
                 adaptive_regime=adaptive_regime,
+                volume_filter=volume_filter,
+                mtf_filter=mtf_filter,
                 **best_params,
             )
 
@@ -258,6 +271,8 @@ class WalkForwardValidator:
         combos: list,
         keys: list,
         adaptive_regime: bool = False,
+        volume_filter: bool = False,
+        mtf_filter: bool = False,
     ):
         """
         Run grid optimisation on df_train.
@@ -277,6 +292,8 @@ class WalkForwardValidator:
             r = _run_with_params(
                 df_train, multiplier, capital,
                 adaptive_regime=adaptive_regime,
+                volume_filter=volume_filter,
+                mtf_filter=mtf_filter,
                 **params,
             )
             if r is None:
@@ -390,13 +407,23 @@ def save_results(
     symbol: str,
     interval: str,
     adaptive_regime: bool = False,
+    volume_filter: bool = False,
+    mtf_filter: bool = False,
 ) -> Path:
     """Persist walk-forward results to JSON."""
     engine_root = Path(__file__).parent.parent
     results_dir = engine_root / "backtest" / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    suffix = "_adaptive" if adaptive_regime else ""
+    # Build suffix: _adaptive, _volume, or _adaptive_volume
+    suffix_parts = []
+    if adaptive_regime:
+        suffix_parts.append("adaptive")
+    if volume_filter:
+        suffix_parts.append("volume")
+    if mtf_filter:
+        suffix_parts.append("mtf")
+    suffix = "_" + "_".join(suffix_parts) if suffix_parts else ""
     filename = f"WF_{symbol}_{interval}{suffix}_walk_forward.json"
     out_path = results_dir / filename
 
@@ -444,6 +471,8 @@ def main():
     parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital")
     parser.add_argument("--full-grid", action="store_true", help="Use full parameter grid (slower)")
     parser.add_argument("--adaptive-regime", action="store_true", help="Use regime-adaptive STC thresholds per bar")
+    parser.add_argument("--volume-filter", action="store_true", help="Block entries on below-average volume bars")
+    parser.add_argument("--mtf-filter", action="store_true", help="Apply 4h MTF confirmation filter to block counter-trend entries")
     args = parser.parse_args()
 
     # ── Load data ─────────────────────────────────────────────────────────
@@ -471,11 +500,16 @@ def main():
         capital=args.capital,
         fast=not args.full_grid,
         adaptive_regime=args.adaptive_regime,
+        volume_filter=args.volume_filter,
+        mtf_filter=args.mtf_filter,
     )
 
     # ── Save results ──────────────────────────────────────────────────────
     if result["windows"]:
-        save_results(result, args.symbol, args.interval, adaptive_regime=args.adaptive_regime)
+        save_results(result, args.symbol, args.interval,
+                     adaptive_regime=args.adaptive_regime,
+                     volume_filter=args.volume_filter,
+                     mtf_filter=args.mtf_filter)
     else:
         print("\n[WARN] No valid windows — nothing to save.")
 
