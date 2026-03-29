@@ -76,6 +76,8 @@ def _compute_signals(
     atr_target_mult: float,
     regime_filter: bool,
     adaptive_regime: bool = False,
+    volume_filter: bool = False,
+    mtf_filter: bool = False,
 ) -> pd.DataFrame:
     """Use real signal pipeline with parameterized thresholds."""
     df = compute_all_indicators(df.copy())
@@ -147,6 +149,28 @@ def _compute_signals(
     df['target_2'] = np.where(is_long, close + atr_target_mult * 1.618 * atr, close - atr_target_mult * 1.618 * atr)
     df['target_3'] = np.where(is_long, close + atr_target_mult * 2.0 * atr, close - atr_target_mult * 2.0 * atr)
 
+    # ── Volume confirmation filter ────────────────────────────────────────
+    if volume_filter and 'volume' in df.columns:
+        vol_ma = df['volume'].rolling(20).mean()
+        high_volume = df['volume'] > vol_ma
+        df.loc[(df['entry_signal'] == 'ENTRY_NOW') & ~high_volume, 'entry_signal'] = 'LOW_VOLUME_BLOCK'
+
+    # ── MTF (Multi-Timeframe) confirmation filter ─────────────────────────
+    if mtf_filter:
+        from backtest.mtf_filter import MTFFilter
+        # Resample 1h bars to 4h to get higher-timeframe STC
+        ohlcv_4h = df[['open', 'high', 'low', 'close', 'volume']].resample('4h').agg({
+            'open': 'first', 'high': 'max', 'low': 'min',
+            'close': 'last', 'volume': 'sum',
+        }).dropna(subset=['open', 'high', 'low', 'close'])
+        if len(ohlcv_4h) >= 20:
+            ohlcv_4h['timestamp'] = ohlcv_4h.index
+            df_4h = compute_all_indicators(ohlcv_4h)
+            # compute_all_indicators adds stc_signal, stc_cross_up, stc_cross_down
+            mtf = MTFFilter()
+            aligned = mtf.check_alignment(df, df_4h)
+            df.loc[(df['entry_signal'] == 'ENTRY_NOW') & ~aligned, 'entry_signal'] = 'MTF_BLOCK'
+
     return df
 
 
@@ -155,11 +179,13 @@ def _run_with_params(
     multiplier: float,
     initial_capital: float,
     adaptive_regime: bool = False,
+    volume_filter: bool = False,
+    mtf_filter: bool = False,
     **params,
 ) -> Optional[BacktestResult]:
     """Re-signal and backtest with given parameter set."""
     try:
-        df = _compute_signals(df_base, adaptive_regime=adaptive_regime, **params)
+        df = _compute_signals(df_base, adaptive_regime=adaptive_regime, volume_filter=volume_filter, mtf_filter=mtf_filter, **params)
         backtester = Backtester(
             initial_capital=initial_capital,
             risk_per_trade=0.01,
