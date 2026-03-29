@@ -27,10 +27,12 @@ def main():
     parser.add_argument("--output", default=None, help="Save JSON results to file")
     parser.add_argument("--trailing-stop", action="store_true", help="Enable trailing ATR stop")
     parser.add_argument("--trailing-atr-mult", type=float, default=0.70, help="Trailing stop ATR multiplier")
+    parser.add_argument("--adaptive-regime", action="store_true", help="Use regime-adaptive STC thresholds")
     args = parser.parse_args()
 
     print(f"JARVIS TRADER Backtester")
-    print(f"Symbol: {args.symbol} | Period: {args.start} -> {args.end}")
+    mode_label = " [ADAPTIVE REGIME]" if args.adaptive_regime else ""
+    print(f"Symbol: {args.symbol} | Period: {args.start} -> {args.end}{mode_label}")
     print(f"Capital: ${args.capital:,.0f} | Risk/trade: {args.risk:.1%}")
     print("-" * 50)
 
@@ -55,7 +57,7 @@ def main():
     print(f"Loaded {len(df)} bars. Computing signals...")
 
     # Generate signals
-    df = generate_signals(df, symbol=args.symbol)
+    df = generate_signals(df, symbol=args.symbol, adaptive_regime=args.adaptive_regime)
 
     entry_count = (df['entry_signal'] == 'ENTRY_NOW').sum()
     print(f"Found {entry_count} ENTRY_NOW signals out of {len(df)} bars.")
@@ -79,7 +81,8 @@ def main():
     engine_root = Path(__file__).parent.parent
     results_dir = engine_root / "backtest" / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
-    auto_filename = f"{args.symbol}_{args.interval}_{args.start}_{args.end}.json"
+    mode_tag = "_adaptive" if args.adaptive_regime else ""
+    auto_filename = f"{args.symbol}_{args.interval}{mode_tag}_{args.start}_{args.end}.json"
     auto_path = results_dir / auto_filename
 
     result_data = result.to_dict()
