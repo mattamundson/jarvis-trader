@@ -136,6 +136,7 @@ _notifier: Optional[WhatsAppNotifier] = None
 
 def get_notifier() -> WhatsAppNotifier:
     global _notifier
-    if _notifier is None:
-        _notifier = WhatsAppNotifier()
+    # Always create a fresh instance so updated .env values are picked up
+    # even if the engine was started before the .env was populated.
+    _notifier = WhatsAppNotifier()
     return _notifier

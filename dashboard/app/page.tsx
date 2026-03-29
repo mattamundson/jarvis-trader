@@ -112,6 +112,9 @@ export default function DashboardPage() {
               <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Analysis
               </a>
+              <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Backtest
+              </a>
             </nav>
           </div>
 

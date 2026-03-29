@@ -9,7 +9,8 @@ Start with: uvicorn main:app --reload --port 8010
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Dict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -22,6 +23,15 @@ from config import settings
 from data.market_data import MarketDataManager
 from risk.safety_layer import SafetyLayer, OrderRequest
 from agents.technical_analyst import TechnicalAnalystAgent
+from agents.news_analyst import NewsAnalystAgent
+from agents.social_analyst import SocialAnalystAgent
+from agents.fundamental_analyst import FundamentalistAgent
+from agents.bull_researcher import BullResearcherAgent
+from agents.bear_researcher import BearResearcherAgent
+from agents.debate import DebateOrchestrator
+from agents.trader import TraderAgent
+from agents.risk_manager import RiskManagerAgent
+from agents.fund_manager import FundManagerAgent
 from agents.pipeline import TradingPipeline
 
 # ── Logging ──────────────────────────────────────────────────────────────
@@ -37,6 +47,10 @@ safety_layer: SafetyLayer | None = None
 technical_analyst: TechnicalAnalystAgent | None = None
 trading_pipeline: TradingPipeline | None = None
 scheduler: AsyncIOScheduler | None = None
+
+# Rate limit: track last alert time per symbol to avoid flooding (2-hour cooldown)
+_last_alert_time: Dict[str, datetime] = {}
+ALERT_COOLDOWN_HOURS = 2
 
 
 @asynccontextmanager
@@ -61,16 +75,42 @@ async def lifespan(app: FastAPI):
 
     if settings.ANTHROPIC_API_KEY:
         llm_client = SimpleLLMClient()
-        technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
-        logger.info("✅ Technical Analyst agent initialized")
 
-        # Trading Pipeline (wires all agents together)
-        from agents.pipeline import TradingPipeline
+        # Stage 1: Analysts
+        technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
+        news_agent = NewsAnalystAgent(llm_client, data_manager)
+        social_agent = SocialAnalystAgent(llm_client)
+        fundamental_agent = FundamentalistAgent(llm_client, data_manager)
+
+        # Stage 2: Debate
+        bull_agent = BullResearcherAgent(api_key=settings.ANTHROPIC_API_KEY)
+        bear_agent = BearResearcherAgent(api_key=settings.ANTHROPIC_API_KEY)
+        debate_agent = DebateOrchestrator()
+
+        # Stages 3-5: Trader → Risk → Fund
+        trader_agent = TraderAgent(llm_client)
+        risk_agent = RiskManagerAgent(llm_client)
+        fund_agent = FundManagerAgent(llm_client)
+
+        logger.info("✅ All 10 trading agents initialized")
+
+        # Trading Pipeline — all agents wired
         trading_pipeline = TradingPipeline(
-            agents={"technical": technical_analyst},
+            agents={
+                "technical":    technical_analyst,
+                "news":         news_agent,
+                "social":       social_agent,
+                "fundamental":  fundamental_agent,
+                "bull":         bull_agent,
+                "bear":         bear_agent,
+                "debate":       debate_agent,
+                "trader":       trader_agent,
+                "risk_manager": risk_agent,
+                "fund_manager": fund_agent,
+            },
             safety_layer=safety_layer,
         )
-        logger.info("✅ Trading Pipeline initialized")
+        logger.info("✅ Trading Pipeline initialized — all 5 stages wired")
     else:
         logger.warning("⚠️  No ANTHROPIC_API_KEY — LLM agents disabled. Add to .env to enable.")
 
@@ -78,12 +118,12 @@ async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="America/Chicago")
 
     async def run_watchlist_analysis():
-        """Run pipeline on all watchlist symbols — called by scheduler"""
+        """Run full pipeline on all watchlist symbols — called by scheduler or manual trigger."""
         if not trading_pipeline or not safety_layer:
             return
         safety = safety_layer.get_status()
         if safety.get("kill_switch_active"):
-            logger.info("⏭️  Scheduler: skipping — kill switch active")
+            logger.info("Scheduler: skipping — kill switch active")
             return
 
         symbols_to_scan = [
@@ -92,24 +132,70 @@ async def lifespan(app: FastAPI):
             (sym, False) for sym in settings.OPTIONS_WATCHLIST[:3]  # Top 3 equities
         ]
 
-        logger.info(f"⏰ Scheduled scan: {[s[0] for s in symbols_to_scan]}")
+        logger.info(f"Scheduled scan: {[s[0] for s in symbols_to_scan]}")
+        from notifications.whatsapp import get_notifier
+        notifier = get_notifier()
+
         for symbol, is_futures in symbols_to_scan:
             try:
                 result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
                 action = result.get("final_action", "hold")
+
+                # Extract key fields for logging and alerting
+                fund_dec = result.get("fund_decision") or {}
+                trade_dec = result.get("trade_decision") or {}
+                confidence = fund_dec.get("final_conviction", trade_dec.get("confidence", 0.0))
+                qty = result.get("final_quantity", 0)
+                price_info = trade_dec.get("limit_price") or trade_dec.get("stop_price")
+                reasoning = trade_dec.get("reasoning", "")
+
+                # Always log to decision feed
+                _decision_log.append({
+                    "id": len(_decision_log) + 1,
+                    "timestamp": datetime.now().isoformat(),
+                    "symbol": symbol,
+                    "action": action,
+                    "confidence": confidence,
+                    "source": "scheduler",
+                    "summary": result.get("summary", ""),
+                })
+                if len(_decision_log) > 100:
+                    _decision_log.pop(0)
+
                 if action not in ("hold",):
-                    logger.info(f"📊 {symbol}: {action.upper()} ({result.get('confidence', 0):.0%} confidence)")
-                    _decision_log.append({
-                        "id": len(_decision_log) + 1,
-                        "timestamp": datetime.now().isoformat(),
-                        "symbol": symbol,
-                        "action": action,
-                        "confidence": result.get("confidence", 0),
-                        "source": "scheduler",
-                        "summary": result.get("summary", ""),
-                    })
-                    if len(_decision_log) > 100:
-                        _decision_log.pop(0)
+                    logger.info(f"{symbol}: {action.upper()} qty={qty} confidence={confidence:.0%}")
+
+                    # Rate limit: skip alert if we sent one for this symbol within cooldown window
+                    now = datetime.now()
+                    last_sent = _last_alert_time.get(symbol)
+                    cooldown_expired = (
+                        last_sent is None
+                        or (now - last_sent) >= timedelta(hours=ALERT_COOLDOWN_HOURS)
+                    )
+
+                    if notifier.enabled and cooldown_expired:
+                        price_str = f" @ {price_info:.2f}" if price_info else ""
+                        pct = int(confidence * 100)
+                        short_reason = (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
+                        msg = (
+                            f"JARVIS: {symbol} -> {action.upper()} {qty}{price_str}\n"
+                            f"Confidence: {pct}%\n"
+                            f"Reason: {short_reason}"
+                        )
+                        sent = await notifier.send(msg)
+                        if sent:
+                            _last_alert_time[symbol] = now
+                            logger.info(f"WhatsApp alert sent for {symbol} ({action.upper()})")
+                        else:
+                            logger.warning(f"WhatsApp alert failed for {symbol}")
+                    elif not cooldown_expired:
+                        logger.info(
+                            f"WhatsApp alert for {symbol} suppressed — cooldown active "
+                            f"(last sent {last_sent.strftime('%H:%M')})"
+                        )
+                else:
+                    logger.debug(f"{symbol}: hold — no alert sent")
+
             except Exception as e:
                 logger.error(f"Scheduler analysis failed for {symbol}: {e}")
 
@@ -495,6 +581,108 @@ async def scheduler_status():
     }
 
 
+@app.post("/scheduler/scan-now")
+async def trigger_scan_now():
+    """
+    Manually trigger a full watchlist scan immediately.
+    Runs the same pipeline as the scheduled job — useful for testing outside market hours.
+    Respects kill switch. Does NOT bypass the 2-hour WhatsApp rate limit.
+    """
+    if not trading_pipeline:
+        raise HTTPException(503, "Pipeline not available (no ANTHROPIC_API_KEY)")
+    if not safety_layer:
+        raise HTTPException(503, "Safety layer not initialized")
+
+    safety = safety_layer.get_status()
+    if safety.get("kill_switch_active"):
+        return {"status": "skipped", "reason": "kill_switch_active"}
+
+    symbols_to_scan = [
+        (sym, True) for sym in settings.FUTURES_WATCHLIST[:2]
+    ] + [
+        (sym, False) for sym in settings.OPTIONS_WATCHLIST[:3]
+    ]
+
+    logger.info(f"Manual scan triggered: {[s[0] for s in symbols_to_scan]}")
+
+    from notifications.whatsapp import get_notifier
+    notifier = get_notifier()
+
+    scan_results = []
+    for symbol, is_futures in symbols_to_scan:
+        try:
+            result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
+            action = result.get("final_action", "hold")
+
+            fund_dec = result.get("fund_decision") or {}
+            trade_dec = result.get("trade_decision") or {}
+            confidence = fund_dec.get("final_conviction", trade_dec.get("confidence", 0.0))
+            qty = result.get("final_quantity", 0)
+            price_info = trade_dec.get("limit_price") or trade_dec.get("stop_price")
+            reasoning = trade_dec.get("reasoning", "")
+
+            _decision_log.append({
+                "id": len(_decision_log) + 1,
+                "timestamp": datetime.now().isoformat(),
+                "symbol": symbol,
+                "action": action,
+                "confidence": confidence,
+                "source": "manual_scan",
+                "summary": result.get("summary", ""),
+            })
+            if len(_decision_log) > 100:
+                _decision_log.pop(0)
+
+            alert_sent = False
+            alert_suppressed_reason = None
+
+            if action not in ("hold",):
+                now = datetime.now()
+                last_sent = _last_alert_time.get(symbol)
+                cooldown_expired = (
+                    last_sent is None
+                    or (now - last_sent) >= timedelta(hours=ALERT_COOLDOWN_HOURS)
+                )
+                if notifier.enabled and cooldown_expired:
+                    price_str = f" @ {price_info:.2f}" if price_info else ""
+                    pct = int(confidence * 100)
+                    short_reason = (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
+                    msg = (
+                        f"JARVIS: {symbol} -> {action.upper()} {qty}{price_str}\n"
+                        f"Confidence: {pct}%\n"
+                        f"Reason: {short_reason}"
+                    )
+                    alert_sent = await notifier.send(msg)
+                    if alert_sent:
+                        _last_alert_time[symbol] = now
+                elif not cooldown_expired:
+                    alert_suppressed_reason = f"cooldown_active_since_{last_sent.strftime('%H:%M')}"
+                elif not notifier.enabled:
+                    alert_suppressed_reason = "whatsapp_not_configured"
+
+            scan_results.append({
+                "symbol": symbol,
+                "action": action,
+                "confidence": round(confidence, 4),
+                "final_quantity": qty,
+                "summary": result.get("summary", ""),
+                "errors": result.get("errors", []),
+                "alert_sent": alert_sent,
+                "alert_suppressed_reason": alert_suppressed_reason,
+            })
+
+        except Exception as e:
+            logger.error(f"Manual scan failed for {symbol}: {e}")
+            scan_results.append({"symbol": symbol, "error": str(e)})
+
+    return {
+        "status": "complete",
+        "scanned_at": datetime.now().isoformat(),
+        "symbols_scanned": len(scan_results),
+        "results": scan_results,
+    }
+
+
 @app.post("/notifications/whatsapp/test")
 async def test_whatsapp():
     """Test WhatsApp notification config"""
@@ -577,6 +765,67 @@ async def get_macro_series(series_id: str, periods: int = 24):
     if not history:
         raise HTTPException(404, f"FRED series {series_id} not found or unavailable")
     return {"series_id": series_id.upper(), "data": history, "count": len(history)}
+
+
+
+# ── Backtest endpoint ──────────────────────────────────────────────────────────
+
+class BacktestRequest(BaseModel):
+    symbol: str = "SPY"
+    start: str = "2024-01-01"
+    end: str = "2025-12-31"
+    interval: str = "1d"
+    capital: float = 100000.0
+    risk_per_trade: float = 0.01
+
+
+@app.get("/backtest/results")
+async def get_backtest_results():
+    """Return all saved backtest result JSON files from backtest/results/."""
+    import json
+    from pathlib import Path
+
+    results_dir = Path(__file__).parent / "backtest" / "results"
+    if not results_dir.exists():
+        return []
+
+    results = []
+    for json_file in sorted(results_dir.glob("*.json")):
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+            data["_filename"] = json_file.name
+            results.append(data)
+        except Exception as e:
+            logger.warning(f"Failed to parse {json_file.name}: {e}")
+
+    return results
+
+
+@app.post("/backtest/run")
+async def run_backtest(request: BacktestRequest):
+    """Run a backtest for a symbol over the specified date range."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _run():
+        from backtest import Backtester, BacktestDataLoader, generate_signals
+
+        loader = BacktestDataLoader()
+        df = loader.load(request.symbol, request.start, request.end, request.interval)
+        if df is None or df.empty:
+            raise ValueError(f"No data for {request.symbol}")
+        df = generate_signals(df)
+        multiplier = loader.get_multiplier(request.symbol)
+        backtester = Backtester(
+            initial_capital=request.capital,
+            risk_per_trade=request.risk_per_trade,
+        )
+        result = backtester.run(df, request.symbol, multiplier)
+        return result.to_dict()
+
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as pool:
+        result = await loop.run_in_executor(pool, _run)
+    return result
 
 
 if __name__ == "__main__":
