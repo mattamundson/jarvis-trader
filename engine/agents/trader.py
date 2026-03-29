@@ -17,6 +17,8 @@ from typing import Optional
 
 import httpx
 
+from utils.position_sizing import calculate_position_size, PositionSizeResult
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["TraderAgent", "TradeDecision"]
@@ -129,8 +131,37 @@ class TraderAgent:
                 risk_notes="System safety halt. No trades until kill switch is manually cleared.",
             )
 
+        # ── Fixed-fractional position sizing ──────────────────────────────
+        # account_value: use current_equity from SafetyLayer (broker-sourced);
+        #   fall back to 10,000 if not yet synced from broker.
+        account_value: float = safety_status.get("current_equity") or 10_000.0
+
+        # ATR is stored in analyst_reports["technical"]["indicators"]["atr"]
+        # by TechnicalAnalystAgent._compute_indicators()
+        technical_report = analyst_reports.get("technical", {})
+        indicators = technical_report.get("indicators", {})
+        atr: Optional[float] = indicators.get("atr") if isinstance(indicators, dict) else None
+
+        from ..config import settings  # local import to avoid circular deps at module level
+        max_contracts: int = settings.MAX_CONTRACTS_PER_INSTRUMENT
+
+        position_size: PositionSizeResult = calculate_position_size(
+            symbol=symbol,
+            account_value=account_value,
+            atr=atr,
+            risk_pct=0.01,
+            atr_stop_multiplier=0.70,
+            max_contracts=max_contracts,
+        )
+
+        logger.info(
+            f"[Trader] Position sizing for {symbol}: "
+            f"account=${account_value:,.2f} atr={atr} => {position_size.contracts} contract(s) | "
+            f"{position_size.reasoning}"
+        )
+
         # Build the analysis prompt from all upstream reports
-        prompt = self._build_prompt(symbol, debate_result, analyst_reports, safety_status)
+        prompt = self._build_prompt(symbol, debate_result, analyst_reports, safety_status, position_size)
 
         try:
             api_key = getattr(self._llm, "api_key", None) or os.getenv("ANTHROPIC_API_KEY", "")
@@ -162,7 +193,7 @@ class TraderAgent:
                     response_text = response_text[4:]
 
             result = json.loads(response_text)
-            return self._parse_decision(symbol, result)
+            return self._parse_decision(symbol, result, position_size)
 
         except Exception as e:
             logger.error(f"[Trader] LLM decision failed for {symbol}: {e}")
@@ -180,6 +211,7 @@ class TraderAgent:
         debate_result: dict,
         analyst_reports: dict,
         safety_status: dict,
+        position_size: PositionSizeResult,
     ) -> str:
         technical = analyst_reports.get("technical", {})
         news = analyst_reports.get("news", {})
@@ -231,12 +263,22 @@ Current equity: ${current_equity:,.2f}
 Daily P&L: ${daily_pnl:,.2f}
 Current drawdown: {drawdown:.1%}
 Max single order value: $5,000
-Max contracts per instrument: 2
+Max contracts per instrument: {position_size.contracts}
+
+=== FIXED-FRACTIONAL POSITION SIZING (pre-calculated) ===
+Sized contracts: {position_size.contracts}
+Risk budget (1% of account): ${position_size.risk_per_trade:,.2f}
+ATR stop distance: {position_size.stop_distance:.4f} pts
+Dollar risk per contract: ${position_size.dollar_risk_per_contract:,.2f}
+Sizing detail: {position_size.reasoning}
+
+IMPORTANT: Use quantity={position_size.contracts} for buy/sell orders.
+Only set quantity=0 if action=hold. Do NOT increase quantity above {position_size.contracts}.
 
 Respond with JSON in exactly this format:
 {{
   "action": "<buy|sell|hold>",
-  "quantity": <int: 0 if hold, otherwise 1 or 2 contracts/shares>,
+  "quantity": <int: 0 if hold, otherwise use the pre-calculated sized contracts above>,
   "order_type": "<market|limit|stop_limit>",
   "limit_price": <float or null>,
   "stop_price": <float or null>,
@@ -249,7 +291,12 @@ Respond with JSON in exactly this format:
 
     # ── Result Parsing ─────────────────────────────────────────────────────
 
-    def _parse_decision(self, symbol: str, result: dict) -> TradeDecision:
+    def _parse_decision(
+        self,
+        symbol: str,
+        result: dict,
+        position_size: Optional[PositionSizeResult] = None,
+    ) -> TradeDecision:
         action = result.get("action", "hold").lower()
         if action not in ("buy", "sell", "hold"):
             action = "hold"
@@ -257,6 +304,14 @@ Respond with JSON in exactly this format:
         quantity = int(result.get("quantity", 0))
         if action == "hold":
             quantity = 0
+        elif position_size is not None:
+            # Enforce the fixed-fractional sizing: if the LLM suggested more
+            # contracts than the formula allows, cap it.  If it suggested fewer
+            # (e.g. 1 when sizing says 2) we respect the LLM's conservatism.
+            quantity = min(quantity, position_size.contracts)
+            # Ensure at least 1 for an active signal
+            if quantity < 1:
+                quantity = position_size.contracts
 
         order_type = result.get("order_type", "market").lower()
         if order_type not in ("market", "limit", "stop_limit"):
@@ -272,6 +327,14 @@ Respond with JSON in exactly this format:
         raw_stop = result.get("stop_price")
         stop_price = float(raw_stop) if raw_stop is not None else None
 
+        # Append sizing detail to reasoning for auditability
+        reasoning = result.get("reasoning", "")
+        if position_size is not None and action != "hold":
+            reasoning = (
+                f"{reasoning}\n\n"
+                f"[Position Sizing] {position_size.reasoning}"
+            )
+
         return TradeDecision(
             symbol=symbol,
             action=action,
@@ -282,7 +345,7 @@ Respond with JSON in exactly this format:
             time_in_force=time_in_force,
             signal_score=float(result.get("signal_score", 0.0)),
             confidence=float(result.get("confidence", 0.5)),
-            reasoning=result.get("reasoning", ""),
+            reasoning=reasoning,
             risk_notes=result.get("risk_notes", ""),
             timestamp=datetime.now(),
         )
