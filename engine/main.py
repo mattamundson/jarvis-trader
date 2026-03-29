@@ -10,7 +10,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -404,21 +404,137 @@ app.include_router(journal_router, prefix="/journal", tags=["journal"])
 
 # ── Health ────────────────────────────────────────────────────────────────
 
-_start_time = datetime.now()
+_start_time = datetime.now(timezone.utc)
 
 @app.get("/health")
 async def health():
     safety = safety_layer.get_status() if safety_layer else {}
+
+    # Quick database connectivity check
+    db_ok = False
+    try:
+        if db_manager:
+            db_manager.health_check()
+            db_ok = True
+    except Exception:
+        pass
+
+    now = datetime.now(timezone.utc)
+    status = "ok" if db_ok else "degraded"
+
     return {
-        "status": "online",
-        "version": "0.1.0",
-        "timestamp": datetime.now().isoformat(),
+        "status": status,
+        "version": "1.1.0",
+        "timestamp": now.isoformat(),
         "live_trading": settings.LIVE_TRADING_ENABLED,
         "kill_switch_active": safety.get("kill_switch_active", False),
         "paper_mode": not settings.LIVE_TRADING_ENABLED,
-        "ibkr_connected": data_manager.ibkr.is_connected if data_manager and data_manager.ibkr else False,
+        "database": "connected" if db_ok else "error",
+        "ibkr_connected": data_manager.ibkr.is_connected() if data_manager and data_manager.ibkr else False,
         "schwab_connected": False,  # Schwab connector TODO
-        "uptime_seconds": (datetime.now() - _start_time).total_seconds(),
+        "uptime_seconds": (now - _start_time).total_seconds(),
+    }
+
+
+@app.get("/health/full")
+async def full_health_check():
+    """Comprehensive health check of all JARVIS TRADER subsystems."""
+    status: dict = {}
+    overall = "healthy"
+
+    # 1. Database health
+    try:
+        if db_manager:
+            db_health = db_manager.health_check()
+            status["database"] = {"status": "ok", "details": db_health}
+        else:
+            status["database"] = {"status": "not_initialized"}
+            overall = "degraded"
+    except Exception as e:
+        status["database"] = {"status": "error", "error": str(e)}
+        overall = "degraded"
+
+    # 2. Safety layer
+    try:
+        if safety_layer:
+            kill_switch = safety_layer._kill_switch_active
+            kill_reason = safety_layer._kill_switch_reason
+            status["safety_layer"] = {
+                "status": "ok",
+                "kill_switch_active": kill_switch,
+                "kill_switch_reason": kill_reason.value if kill_reason else None,
+            }
+            if kill_switch:
+                overall = "kill_switch_active"
+        else:
+            status["safety_layer"] = {"status": "not_initialized"}
+            overall = "degraded"
+    except Exception as e:
+        status["safety_layer"] = {"status": "error", "error": str(e)}
+        overall = "degraded"
+
+    # 3. IB Gateway (optional — may not be connected)
+    try:
+        ib_gw = data_manager.ibkr if data_manager else None
+        if ib_gw:
+            ib_health = await ib_gw.health_check()
+            status["ib_gateway"] = ib_health
+        else:
+            status["ib_gateway"] = {"status": "not_configured", "mode": "paper_only"}
+    except Exception as e:
+        status["ib_gateway"] = {"status": "error", "error": str(e)}
+
+    # 4. Circuit breakers
+    try:
+        if safety_layer and hasattr(safety_layer, "check_circuit_breakers"):
+            breakers = safety_layer.check_circuit_breakers()
+            status["circuit_breakers"] = breakers
+            if not breakers.get("all_clear", True):
+                # Only escalate if kill switch hasn't already set a stronger state
+                if overall == "healthy":
+                    overall = "circuit_breaker_tripped"
+        else:
+            status["circuit_breakers"] = {"status": "not_available"}
+    except Exception as e:
+        status["circuit_breakers"] = {"status": "error", "error": str(e)}
+
+    # 5. Portfolio tracker
+    try:
+        if paper_tracker:
+            positions = paper_tracker.get_open_positions()
+            status["portfolio"] = {
+                "status": "ok",
+                "open_positions": len(positions),
+            }
+        else:
+            status["portfolio"] = {"status": "not_initialized"}
+    except Exception as e:
+        status["portfolio"] = {"status": "error", "error": str(e)}
+
+    # 6. PnL monitor
+    try:
+        if pnl_monitor:
+            pnl_state = pnl_monitor.get_current_pnl_state()
+            status["pnl_monitor"] = {
+                "status": "ok",
+                "source": pnl_state.source,
+                "daily_pnl": round(pnl_monitor.get_daily_pnl(), 4),
+                "drawdown_pct": round(pnl_monitor.get_drawdown_pct(), 6),
+                "current_balance": round(pnl_state.current_balance, 2),
+                "starting_balance": round(pnl_state.starting_balance, 2),
+            }
+        else:
+            status["pnl_monitor"] = {"status": "not_initialized"}
+    except Exception as e:
+        status["pnl_monitor"] = {"status": "error", "error": str(e)}
+
+    return {
+        "overall": overall,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "uptime_seconds": (datetime.now(timezone.utc) - _start_time).total_seconds(),
+        "subsystems": status,
+        "version": "1.1.0",
+        "phase": "paper_trading",
     }
 
 
@@ -479,6 +595,40 @@ async def get_circuit_breakers():
     if not safety_layer:
         raise HTTPException(500, "Safety layer not initialized")
     return safety_layer.check_circuit_breakers()
+
+
+@app.get("/safety/config")
+async def get_safety_config():
+    """
+    Return current risk parameter configuration (read-only).
+    Sourced from settings singleton — reflects .env values at startup.
+    """
+    return {
+        "max_daily_loss_pct": settings.MAX_DAILY_LOSS_PCT,
+        "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
+        "max_position_size_pct": settings.MAX_POSITION_SIZE_PCT,
+        "max_contracts_per_instrument": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+        "max_overnight_contracts": settings.MAX_OVERNIGHT_CONTRACTS,
+        "max_orders_per_minute": settings.MAX_ORDERS_PER_MINUTE,
+        "max_single_order_value": settings.MAX_SINGLE_ORDER_VALUE,
+        "max_margin_utilization": settings.MAX_MARGIN_UTILIZATION,
+        "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
+        "require_human_approval": settings.REQUIRE_HUMAN_APPROVAL,
+        "ibkr_host": settings.IBKR_HOST,
+        "ibkr_port": settings.IBKR_PORT,
+        "ibkr_client_id": settings.IBKR_CLIENT_ID,
+        "ibkr_paper_mode": settings.IBKR_PAPER_MODE,
+    }
+
+
+@app.post("/safety/reset-daily-pnl")
+async def reset_daily_pnl():
+    """Reset the in-memory daily P&L counter (useful for testing)."""
+    if not safety_layer:
+        raise HTTPException(500, "Safety layer not initialized")
+    safety_layer._daily_realized_pnl = 0.0
+    safety_layer._daily_order_count = 0
+    return {"status": "daily_pnl_reset", "message": "Daily P&L counter cleared"}
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────
@@ -656,6 +806,32 @@ async def get_paper_performance():
     if not paper_tracker:
         raise HTTPException(503, "Paper tracker not initialized")
     return paper_tracker.get_performance()
+
+
+# ── Pending Signals (MGC daily scanner output) ────────────────────────────
+
+@app.get("/paper/pending-signals")
+async def get_pending_signals():
+    """
+    Return pending entry signals generated by the daily MGC scanner.
+
+    Reads from backtest/results/pending_signals.json. Each entry includes
+    date, symbol, direction, estimated entry price, stop, target, regime,
+    and a status field (pending / filled / expired).
+    """
+    import json as _json
+    from pathlib import Path
+
+    pending_file = Path(__file__).parent / "backtest" / "results" / "pending_signals.json"
+    if not pending_file.exists():
+        return {"signals": [], "count": 0}
+
+    try:
+        signals = _json.loads(pending_file.read_text(encoding="utf-8"))
+    except Exception:
+        signals = []
+
+    return {"signals": signals, "count": len(signals)}
 
 
 # ── Historical Query Endpoints (SQLite) ───────────────────────────────────
