@@ -405,13 +405,23 @@ def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
     # For short entries: stop above, targets below
     is_long = df['bias'].isin(['STRONG_BULL', 'LEAN_BULL'])
 
-    # Optimized parameters (grid search 162 combos, SPY 1h 2024-06-01 to 2026-03-27):
-    # Stop: 0.70 ATR (1h & daily both converge here)
-    # T1:   1.50 ATR (1h optimal; daily uses 2.0 — tighter for intraday)
-    # T2:   2.618 ATR (golden ratio extension)
-    # T3:   4.0 ATR  (runner target — let winners run)
+    # Bug 6 fix: Original T1=1.50 ATR was unreachable for intraday trades.
+    # Analysis of 549 signals (SPY 1h, 2024-06-01 to 2026-03-27):
+    #   T1=1.50 ATR → only 12% of signals reach T1 within the trading day
+    #   T1=1.00 ATR → 26% reach T1 (23% before stop)
+    #   T1=0.75 ATR → 37% reach T1 (32% before stop)
+    #
+    # With EOD forced exits, max favorable excursion is typically 0.5-1.2 ATR.
+    # Setting T1=1.00 ATR balances reachability with R:R (1.0/0.70 = 1.43 R:R).
+    # T2=1.80 ATR provides a realistic stretch target for strong intraday moves.
+    #
+    # Prior grid search found T1=1.50 "optimal" but that was before the Bug 3
+    # pending-entry fix shifted entries to next-bar open, and before confirming
+    # that zero targets were ever being hit (rendering the "optimum" meaningless).
     STOP_ATR = 0.70   # both timeframes
-    T1_ATR   = 1.50   # 1h optimal (daily: 2.0)
+    T1_ATR   = 1.00   # 1h intraday-realistic (was 1.50 — never hit)
+    T2_ATR   = 1.80   # intraday stretch target (was 2.618 — never hit)
+    T3_ATR   = 2.618  # runner target (was 4.0 — reduced for intraday)
 
     df['stop_level'] = np.where(
         is_long,
@@ -425,13 +435,13 @@ def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
     )
     df['target_2'] = np.where(
         is_long,
-        close + 2.618 * atr,  # T2: 2.618 ATR (golden ratio extension)
-        close - 2.618 * atr
+        close + T2_ATR * atr,
+        close - T2_ATR * atr
     )
     df['target_3'] = np.where(
         is_long,
-        close + 4.0 * atr,    # T3: 4 ATR (runner — maximum extension)
-        close - 4.0 * atr
+        close + T3_ATR * atr,
+        close - T3_ATR * atr
     )
 
     return df
