@@ -356,13 +356,51 @@ def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str
     return 'NO_TRADE'
 
 
-def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
+def generate_signals(
+    df: pd.DataFrame,
+    regime_filter: bool = True,
+    stc_oversold: Optional[float] = None,
+    stc_overbought: Optional[float] = None,
+) -> pd.DataFrame:
     """
     Run all 5 layers on each row.
     Adds: regime, structure_position, bias, entry_signal,
           stop_level, target_1, target_2, target_3
+
+    Parameters
+    ----------
+    regime_filter : bool, default True
+        When True (default), EXHAUSTED and COMPRESSION regimes block all
+        entries — the conservative, research-validated behaviour that produces
+        51 trades / PF 1.51 for MNQ 1h.
+        When False, EXHAUSTED and COMPRESSION are downgraded to RANGE_BOUND so
+        structure-based entries can still fire.  Pass False only when the
+        optimizer's winning parameter set includes regime_filter=False.
+    stc_oversold : float, optional
+        Override STC oversold threshold.  Defaults to the module-level STC_OS.
+    stc_overbought : float, optional
+        Override STC overbought threshold.  Defaults to the module-level STC_OB.
     """
     df = compute_all_indicators(df)
+
+    # ── Optional STC threshold overrides (mirrors optimizer._compute_signals) ──
+    if stc_oversold is not None or stc_overbought is not None:
+        os_val = stc_oversold if stc_oversold is not None else STC_OS
+        ob_val = stc_overbought if stc_overbought is not None else STC_OB
+
+        stc_prev = df['stc_val'].shift(1).fillna(50)
+        df['stc_cross_up'] = (df['stc_val'] > os_val) & (stc_prev <= os_val)
+        df['stc_cross_down'] = (df['stc_val'] < ob_val) & (stc_prev >= ob_val)
+
+        stc_signal = pd.Series('neutral', index=df.index)
+        stc_signal[df['stc_val'] < os_val] = 'oversold'
+        stc_signal[df['stc_val'] > ob_val] = 'overbought'
+        rising = (df['stc_val'] > stc_prev) & (stc_signal == 'neutral')
+        falling = (df['stc_val'] < stc_prev) & (stc_signal == 'neutral')
+        stc_signal[rising] = 'rising'
+        stc_signal[falling] = 'falling'
+        df['stc_signal'] = stc_signal
+        df['stc_prev'] = stc_prev
 
     regimes = []
     structures = []
@@ -372,6 +410,11 @@ def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
 
     for idx, row in df.iterrows():
         regime = layer1_regime(row)
+        # Regime filter bypass: match optimizer._compute_signals() behaviour.
+        # When regime_filter=False, downgrade blocking regimes to RANGE_BOUND
+        # so structure-based entries (IB breakout, buyer/seller control) fire.
+        if not regime_filter and regime in ('EXHAUSTED', 'COMPRESSION'):
+            regime = 'RANGE_BOUND'
         structure = layer2_structure(row)
         bias = layer3_bias(row)
         entry = layer4_entry(row, regime, bias, structure)
