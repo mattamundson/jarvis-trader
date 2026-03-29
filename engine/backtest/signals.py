@@ -372,6 +372,10 @@ def generate_signals(
     stc_oversold: Optional[float] = None,
     stc_overbought: Optional[float] = None,
     symbol: Optional[str] = None,
+    adaptive_regime: bool = False,
+    volume_filter: bool = False,
+    volume_period: int = 20,
+    mtf_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """
     Run all 5 layers on each row.
@@ -391,8 +395,32 @@ def generate_signals(
         Override STC oversold threshold.  Defaults to the module-level STC_OS.
     stc_overbought : float, optional
         Override STC overbought threshold.  Defaults to the module-level STC_OB.
+    adaptive_regime : bool, default False
+        When True, classify each bar's market regime (TRENDING/RANGING/VOLATILE)
+        and dynamically apply regime-specific STC thresholds bar-by-bar.
+        Walk-forward analysis identified regime dependency as the root cause of
+        WFE failure — this flag enables the adaptive fix.
+        WARNING: adds ~3s overhead per 10,000 bars. Disable for fast grid search.
+    volume_filter : bool, default False
+        When True, block ENTRY_NOW signals on bars where volume is below the
+        N-period rolling average. Blocked entries are tagged 'LOW_VOLUME_BLOCK'.
+    volume_period : int, default 20
+        Lookback period for the volume moving average used by volume_filter.
+    mtf_df : pd.DataFrame, optional
+        Higher-timeframe DataFrame (e.g. 4h) with indicators pre-computed via
+        compute_all_indicators(). When provided, the MTFFilter is applied as a
+        final gate: 1h ENTRY_NOW signals are blocked unless the 4h STC trend
+        aligns with the entry direction. Adds 'mtf_aligned' column to output.
     """
     df = compute_all_indicators(df)
+
+    # ── Optional regime-adaptive STC classification ───────────────────────
+    if adaptive_regime:
+        from backtest.regime import RegimeClassifier
+        clf = RegimeClassifier()
+        df = clf.classify(df)
+        # adaptive_stc_os / adaptive_stc_ob columns now exist; they will
+        # override the static thresholds on a per-bar basis below.
 
     # ── Load per-instrument optimized parameters ──────────────────────────
     if symbol is not None:
@@ -415,8 +443,30 @@ def generate_signals(
         t2_atr = 1.80
         t3_atr = 2.618
 
-    # ── Optional STC threshold overrides (mirrors optimizer._compute_signals) ──
-    if stc_oversold is not None or stc_overbought is not None:
+    # ── Adaptive regime: recompute STC signals using per-bar thresholds ─────
+    if adaptive_regime and 'adaptive_stc_os' in df.columns:
+        # Each bar uses the regime-specific OS/OB for its crossover detection.
+        # This is a vectorized per-bar computation: broadcasting column vs column.
+        stc_v = df['stc_val']
+        stc_prev_v = stc_v.shift(1).fillna(50)
+        adapt_os = df['adaptive_stc_os']
+        adapt_ob = df['adaptive_stc_ob']
+
+        df['stc_cross_up']   = (stc_v > adapt_os) & (stc_prev_v <= adapt_os)
+        df['stc_cross_down'] = (stc_v < adapt_ob) & (stc_prev_v >= adapt_ob)
+
+        stc_signal = pd.Series('neutral', index=df.index)
+        stc_signal[stc_v < adapt_os] = 'oversold'
+        stc_signal[stc_v > adapt_ob] = 'overbought'
+        rising  = (stc_v > stc_prev_v) & (stc_signal == 'neutral')
+        falling = (stc_v < stc_prev_v) & (stc_signal == 'neutral')
+        stc_signal[rising]  = 'rising'
+        stc_signal[falling] = 'falling'
+        df['stc_signal'] = stc_signal
+        df['stc_prev']   = stc_prev_v
+
+    # ── Optional static STC threshold overrides (mirrors optimizer._compute_signals) ──
+    elif stc_oversold is not None or stc_overbought is not None:
         os_val = stc_oversold if stc_oversold is not None else STC_OS
         ob_val = stc_overbought if stc_overbought is not None else STC_OB
 
@@ -518,5 +568,25 @@ def generate_signals(
         close + t3_atr * atr,
         close - t3_atr * atr
     )
+
+    # ── Volume confirmation filter (Improvement #3) ────────────────────
+    if volume_filter and 'volume' in df.columns:
+        vol_ma = df['volume'].rolling(volume_period).mean()
+        high_volume = df['volume'] > vol_ma
+        # Block entries on low-volume bars
+        df.loc[(df['entry_signal'] == 'ENTRY_NOW') & ~high_volume, 'entry_signal'] = 'LOW_VOLUME_BLOCK'
+        df['volume_ma'] = vol_ma
+        df['high_volume'] = high_volume
+
+    # ── Multi-Timeframe (MTF) confirmation filter ─────────────────────────
+    if mtf_df is not None:
+        from .mtf_filter import MTFFilter
+        mtf = MTFFilter(cross_lookback=3)
+        df['mtf_aligned'] = mtf.check_alignment(df, mtf_df)
+        # Block entries where 4h trend does not align
+        blocked = (df['entry_signal'] == 'ENTRY_NOW') & (~df['mtf_aligned'])
+        df.loc[blocked, 'entry_signal'] = 'MTF_BLOCKED'
+    else:
+        df['mtf_aligned'] = True
 
     return df

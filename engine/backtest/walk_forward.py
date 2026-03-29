@@ -139,6 +139,7 @@ class WalkForwardValidator:
         capital: float = 100_000.0,
         top_n_params: int = 1,
         fast: bool = True,
+        adaptive_regime: bool = False,
     ) -> Dict[str, Any]:
         """
         Execute the full walk-forward validation.
@@ -161,8 +162,9 @@ class WalkForwardValidator:
         combos = list(itertools.product(*grid.values()))
         keys = list(grid.keys())
 
+        mode_label = "adaptive-regime" if adaptive_regime else "static"
         print(f"\n{'='*65}")
-        print(f"=== WALK-FORWARD VALIDATION: {symbol} ===")
+        print(f"=== WALK-FORWARD VALIDATION: {symbol} [{mode_label}] ===")
         print(f"Windows: {len(windows_spec)} | Train: {self.train_months}mo | Test: {self.test_months}mo")
         print(f"Grid: {len(combos)} param combos ({'fast' if fast else 'full'})")
         print(f"{'='*65}")
@@ -189,6 +191,7 @@ class WalkForwardValidator:
             # ── Optimise on train data ────────────────────────────────────
             best_params, best_score, is_result = self._optimise_window(
                 df_train, multiplier, capital, combos, keys,
+                adaptive_regime=adaptive_regime,
             )
 
             if best_params is None or is_result is None:
@@ -210,7 +213,9 @@ class WalkForwardValidator:
 
             # ── Backtest OOS with best params ─────────────────────────────
             oos_result = _run_with_params(
-                df_test, multiplier, capital, **best_params,
+                df_test, multiplier, capital,
+                adaptive_regime=adaptive_regime,
+                **best_params,
             )
 
             if oos_result is None:
@@ -252,6 +257,7 @@ class WalkForwardValidator:
         capital: float,
         combos: list,
         keys: list,
+        adaptive_regime: bool = False,
     ):
         """
         Run grid optimisation on df_train.
@@ -268,7 +274,11 @@ class WalkForwardValidator:
             if (idx + 1) % 25 == 0 or idx == total - 1:
                 print(f"  Optimising: {idx+1}/{total}", end="\r")
 
-            r = _run_with_params(df_train, multiplier, capital, **params)
+            r = _run_with_params(
+                df_train, multiplier, capital,
+                adaptive_regime=adaptive_regime,
+                **params,
+            )
             if r is None:
                 continue
 
@@ -379,13 +389,15 @@ def save_results(
     result: Dict[str, Any],
     symbol: str,
     interval: str,
+    adaptive_regime: bool = False,
 ) -> Path:
     """Persist walk-forward results to JSON."""
     engine_root = Path(__file__).parent.parent
     results_dir = engine_root / "backtest" / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"WF_{symbol}_{interval}_walk_forward.json"
+    suffix = "_adaptive" if adaptive_regime else ""
+    filename = f"WF_{symbol}_{interval}{suffix}_walk_forward.json"
     out_path = results_dir / filename
 
     payload = {
@@ -431,6 +443,7 @@ def main():
     parser.add_argument("--step-months", type=int, default=3, help="Step size between windows (months)")
     parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital")
     parser.add_argument("--full-grid", action="store_true", help="Use full parameter grid (slower)")
+    parser.add_argument("--adaptive-regime", action="store_true", help="Use regime-adaptive STC thresholds per bar")
     args = parser.parse_args()
 
     # ── Load data ─────────────────────────────────────────────────────────
@@ -457,11 +470,12 @@ def main():
         multiplier=multiplier,
         capital=args.capital,
         fast=not args.full_grid,
+        adaptive_regime=args.adaptive_regime,
     )
 
     # ── Save results ──────────────────────────────────────────────────────
     if result["windows"]:
-        save_results(result, args.symbol, args.interval)
+        save_results(result, args.symbol, args.interval, adaptive_regime=args.adaptive_regime)
     else:
         print("\n[WARN] No valid windows — nothing to save.")
 

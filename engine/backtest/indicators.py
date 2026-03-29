@@ -287,6 +287,16 @@ def range_consumed_pct(
     return min(200.0, abs(current_price - prior_close) / atr * 100)
 
 
+def volume_ratio(volume: pd.Series, period: int = 20) -> pd.Series:
+    """
+    Volume Ratio: current volume / rolling mean volume.
+    Values > 1.0 indicate above-average volume (high conviction).
+    Values < 1.0 indicate below-average volume (low conviction).
+    """
+    vol_ma = volume.rolling(period).mean()
+    return (volume / vol_ma.replace(0, np.nan)).fillna(0.0)
+
+
 def ema_ribbon(close: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """
     EMA Ribbon (8/21/34) from Saty ATR Levels script.

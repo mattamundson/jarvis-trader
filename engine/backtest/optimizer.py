@@ -75,22 +75,40 @@ def _compute_signals(
     atr_stop_mult: float,
     atr_target_mult: float,
     regime_filter: bool,
+    adaptive_regime: bool = False,
 ) -> pd.DataFrame:
     """Use real signal pipeline with parameterized thresholds."""
     df = compute_all_indicators(df.copy())
 
     # Re-apply STC signals with parameterized thresholds (overrides the
     # hardcoded STC_OS / STC_OB baked into compute_all_indicators)
-    stc_cross_up = (df['stc_val'] > stc_oversold) & (df['stc_val'].shift(1).fillna(50) <= stc_oversold)
-    stc_cross_down = (df['stc_val'] < stc_overbought) & (df['stc_val'].shift(1).fillna(50) >= stc_overbought)
-
-    stc_signal = pd.Series('neutral', index=df.index)
-    stc_signal[df['stc_val'] < stc_oversold] = 'oversold'
-    stc_signal[df['stc_val'] > stc_overbought] = 'overbought'
-    rising_mask = (df['stc_val'] > df['stc_val'].shift(1).fillna(50)) & (stc_signal == 'neutral')
-    falling_mask = (df['stc_val'] < df['stc_val'].shift(1).fillna(50)) & (stc_signal == 'neutral')
-    stc_signal[rising_mask] = 'rising'
-    stc_signal[falling_mask] = 'falling'
+    if adaptive_regime:
+        from backtest.regime import RegimeClassifier
+        df = RegimeClassifier().classify(df)
+        adapt_os = df['adaptive_stc_os']
+        adapt_ob = df['adaptive_stc_ob']
+        stc_v = df['stc_val']
+        stc_prev = stc_v.shift(1).fillna(50)
+        stc_cross_up = (stc_v > adapt_os) & (stc_prev <= adapt_os)
+        stc_cross_down = (stc_v < adapt_ob) & (stc_prev >= adapt_ob)
+        stc_signal = pd.Series('neutral', index=df.index)
+        stc_signal[stc_v < adapt_os] = 'oversold'
+        stc_signal[stc_v > adapt_ob] = 'overbought'
+        rising_mask = (stc_v > stc_prev) & (stc_signal == 'neutral')
+        falling_mask = (stc_v < stc_prev) & (stc_signal == 'neutral')
+        stc_signal[rising_mask] = 'rising'
+        stc_signal[falling_mask] = 'falling'
+    else:
+        stc_cross_up = (df['stc_val'] > stc_oversold) & (df['stc_val'].shift(1).fillna(50) <= stc_oversold)
+        stc_cross_down = (df['stc_val'] < stc_overbought) & (df['stc_val'].shift(1).fillna(50) >= stc_overbought)
+        stc_signal = pd.Series('neutral', index=df.index)
+        stc_signal[df['stc_val'] < stc_oversold] = 'oversold'
+        stc_signal[df['stc_val'] > stc_overbought] = 'overbought'
+        stc_prev = df['stc_val'].shift(1).fillna(50)
+        rising_mask = (df['stc_val'] > stc_prev) & (stc_signal == 'neutral')
+        falling_mask = (df['stc_val'] < stc_prev) & (stc_signal == 'neutral')
+        stc_signal[rising_mask] = 'rising'
+        stc_signal[falling_mask] = 'falling'
 
     df['stc_signal'] = stc_signal
     df['stc_cross_up'] = stc_cross_up
@@ -136,11 +154,12 @@ def _run_with_params(
     df_base: pd.DataFrame,
     multiplier: float,
     initial_capital: float,
+    adaptive_regime: bool = False,
     **params,
 ) -> Optional[BacktestResult]:
     """Re-signal and backtest with given parameter set."""
     try:
-        df = _compute_signals(df_base, **params)
+        df = _compute_signals(df_base, adaptive_regime=adaptive_regime, **params)
         backtester = Backtester(
             initial_capital=initial_capital,
             risk_per_trade=0.01,

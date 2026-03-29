@@ -101,6 +101,9 @@ class BacktestResult:
     # Breakdown by regime
     regime_stats: dict = field(default_factory=dict)  # {regime_name: {trades, win_rate, pf}}
 
+    # Trailing stop tracking
+    trailing_stop_exits: int = 0
+
     # Trade duration
     avg_holding_bars: float = 0.0
     median_holding_bars: float = 0.0
@@ -168,6 +171,7 @@ class BacktestResult:
             "avg_holding_bars": round(self.avg_holding_bars, 2),
             "median_holding_bars": round(self.median_holding_bars, 2),
             "max_holding_bars": self.max_holding_bars,
+            "trailing_stop_exits": self.trailing_stop_exits,
             "max_drawdown_duration_bars": self.max_drawdown_duration_bars,
             "equity_curve": [round(v, 2) for v in self.equity_curve],
             "trades": [t.to_dict() for t in self.trades],
@@ -197,6 +201,8 @@ class Backtester:
         t2_exit_pct: float = 0.30,  # % to exit at target 2
         commission_per_contract: float = 2.50,
         slippage_ticks: int = 1,
+        trailing_stop: bool = False,
+        trailing_atr_mult: float = 0.70,
     ):
         self.initial_capital = initial_capital
         self.risk_per_trade = risk_per_trade
@@ -206,6 +212,8 @@ class Backtester:
         self.t2_exit_pct = t2_exit_pct
         self.commission_per_contract = commission_per_contract
         self.slippage_ticks = slippage_ticks
+        self.trailing_stop = trailing_stop
+        self.trailing_atr_mult = trailing_atr_mult
 
     def _transaction_cost(self, contracts: int, tick_size: float = 0.25) -> float:
         """Round-trip cost: commission + slippage per contract."""
@@ -459,6 +467,62 @@ class Backtester:
                     open_trade = None
                     targets_hit = []
 
+                # -- Trailing ATR stop logic ------------------------------------------
+                if self.trailing_stop and open_trade is not None:
+                    remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
+                    if remaining > 0:
+                        bar_atr = row.get('atr', 0)
+                        if bar_atr > 0:
+                            # Only activate trailing stop after price has moved
+                            # favorably by at least 0.5 ATR from entry (noise filter)
+                            if open_trade.direction == 'long':
+                                favorable_excursion = close - open_trade.entry_price
+                                if favorable_excursion >= 0.5 * bar_atr:
+                                    # Trail stop up: use close (not intrabar high)
+                                    # for daily; for intraday the close is the
+                                    # most reliable reference we have per bar.
+                                    new_trail = close - self.trailing_atr_mult * bar_atr
+                                    if new_trail > open_trade.stop_price:
+                                        open_trade.stop_price = new_trail  # ratchet up only
+                                    # Check if trailing stop was hit this bar
+                                    if low <= open_trade.stop_price:
+                                        exit_price = open_trade.stop_price
+                                        pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
+                                        capital += pnl
+                                        capital -= self._transaction_cost(remaining, tick_size)
+                                        open_trade.pnl += pnl
+                                        open_trade.exit_price = exit_price
+                                        open_trade.exit_date = idx
+                                        open_trade.exit_reason = "trailing_stop"
+                                        completed_trades.append(open_trade)
+                                        open_trade = None
+                                        open_contracts_t1 = 0
+                                        open_contracts_t2 = 0
+                                        open_contracts_t3 = 0
+                                        targets_hit = []
+                            else:  # short
+                                favorable_excursion = open_trade.entry_price - close
+                                if favorable_excursion >= 0.5 * bar_atr:
+                                    new_trail = close + self.trailing_atr_mult * bar_atr
+                                    if new_trail < open_trade.stop_price:
+                                        open_trade.stop_price = new_trail  # ratchet down only
+                                    # Check if trailing stop was hit this bar
+                                    if high >= open_trade.stop_price:
+                                        exit_price = open_trade.stop_price
+                                        pnl = remaining * (open_trade.entry_price - exit_price) * multiplier
+                                        capital += pnl
+                                        capital -= self._transaction_cost(remaining, tick_size)
+                                        open_trade.pnl += pnl
+                                        open_trade.exit_price = exit_price
+                                        open_trade.exit_date = idx
+                                        open_trade.exit_reason = "trailing_stop"
+                                        completed_trades.append(open_trade)
+                                        open_trade = None
+                                        open_contracts_t1 = 0
+                                        open_contracts_t2 = 0
+                                        open_contracts_t3 = 0
+                                        targets_hit = []
+
                 # Bug 4 fix: End of day — close at end of EACH trading day
                 remaining_contracts = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
                 if remaining_contracts > 0 and open_trade is not None:
@@ -579,6 +643,7 @@ class Backtester:
         result.winning_trades = len(wins)
         result.losing_trades = len(losses)
         result.win_rate = len(wins) / len(trades) if trades else 0.0
+        result.trailing_stop_exits = sum(1 for t in trades if t.exit_reason == 'trailing_stop')
         result.gross_profit = sum(t.pnl for t in wins)
         result.gross_loss = sum(t.pnl for t in losses)
         result.profit_factor = (
