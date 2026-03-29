@@ -376,6 +376,8 @@ def generate_signals(
     volume_filter: bool = False,
     volume_period: int = 20,
     mtf_df: Optional[pd.DataFrame] = None,
+    news_blackout: bool = False,
+    news_blackout_window: int = 30,
 ) -> pd.DataFrame:
     """
     Run all 5 layers on each row.
@@ -411,6 +413,13 @@ def generate_signals(
         compute_all_indicators(). When provided, the MTFFilter is applied as a
         final gate: 1h ENTRY_NOW signals are blocked unless the 4h STC trend
         aligns with the entry direction. Adds 'mtf_aligned' column to output.
+    news_blackout : bool, default False
+        When True, block ENTRY_NOW signals that fall within `news_blackout_window`
+        minutes of major economic events (FOMC, CPI, NFP, GDP). Blocked entries
+        are tagged 'NEWS_BLACKOUT'. Adds 'news_blocked' column to output.
+    news_blackout_window : int, default 30
+        Minutes before AND after each event to block entries. For daily bars,
+        use 480 (8 hours) to block the entire trading day of the event.
     """
     df = compute_all_indicators(df)
 
@@ -588,5 +597,21 @@ def generate_signals(
         df.loc[blocked, 'entry_signal'] = 'MTF_BLOCKED'
     else:
         df['mtf_aligned'] = True
+
+    # ── News/Event Blackout filter (Improvement #4) ─────────────────────
+    if news_blackout:
+        from .news_blackout import EconomicCalendar
+        calendar = EconomicCalendar()
+        # Vectorized: check each bar's timestamp against the calendar
+        news_blocked_mask = pd.Series(False, index=df.index)
+        for idx_ts in df.index:
+            if calendar.is_blackout(idx_ts, window_minutes=news_blackout_window):
+                news_blocked_mask.loc[idx_ts] = True
+        df['news_blocked'] = news_blocked_mask
+        # Only block ENTRY_NOW signals (leave other signal types unchanged)
+        blocked = (df['entry_signal'] == 'ENTRY_NOW') & df['news_blocked']
+        df.loc[blocked, 'entry_signal'] = 'NEWS_BLACKOUT'
+    else:
+        df['news_blocked'] = False
 
     return df
