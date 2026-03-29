@@ -56,13 +56,15 @@ This is the critical table — what generalizes vs what is curve-fit.
 
 | Symbol | TF | Static WFE | Adaptive WFE | OOS Profitable | Static Verdict | Adaptive Verdict |
 |--------|-----|-----------|--------------|----------------|----------------|------------------|
-| MGC | 1d | 0.27 | **0.88** | 2/3 (67%) | OVERFIT | **EXCELLENT** — Paper-trade ready |
+| MGC | 1d | 0.27 | **0.88*** | 2/3 (67%) | OVERFIT | **CONDITIONAL-CAUTION** — Extended 15-window WFE = 0.27 |
 | MNQ | 1h | 0.24 | **0.34** | 3/6 (50%) | OVERFIT | ACCEPTABLE — Needs WFE > 0.40 |
 | MCL | 1h | -0.16 | **-0.31** | 2/6 (33%) | OVERFIT | FAIL — Adaptive hurts MCL |
 | MES | 1h | -0.17 | N/A | 1/6 (17%) | OVERFIT | Not tested (no edge) |
 | SPY | 1h | -1.11 | N/A | 2/6 (33%) | OVERFIT | Not tested (random noise) |
 
 **WFE thresholds:** > 0.70 = Excellent | 0.50-0.70 = Good | 0.30-0.50 = Marginal | < 0.30 = OVERFIT
+
+*\* MGC adaptive WFE=0.88 was a 3-window result (2025 data only). Extended 15-window validation (2022-2026) = 0.27 — confirms small-sample bias. Bear market data exposes overfitting.*
 
 **Key finding:** 73-90% of in-sample edge evaporates on unseen data with static parameters. The regime-adaptive approach recovers 88% of edge for MGC (gold) by dynamically switching STC thresholds based on detected market regime.
 
@@ -82,7 +84,7 @@ This is the critical table — what generalizes vs what is curve-fit.
 
 ## Paper Trading Status
 
-**MGC 1d adaptive: ACTIVE since 2026-03-29**
+**MGC 1d adaptive: ACTIVE — CONDITIONAL-CAUTION (extended WFE=0.27)**
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
