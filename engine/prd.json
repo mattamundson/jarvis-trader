@@ -28,7 +28,7 @@
       ],
       "priority": 2,
       "passes": true,
-      "notes": "MES 1h proxy backtest (SPY\u00d710 scale, ES=F rate-limited): 20 trades, Win 30%, PF 3.27, Sharpe 3.73, +0.1% return. Fixed cache timezone bug in data_loader.py (utc=True). Real ES=F data to replace when Yahoo rate limit clears."
+      "notes": "Real ES=F data (Yahoo v8 API bypass): 61 trades, Win 36.1%, PF 5.27, Sharpe 4.16, +47.2%. Avg win $2,649 / avg loss -$284. Cache: MES_2024-06-01_2026-03-27_1h.csv (10,350 bars)"
     },
     {
       "id": "US-003",
@@ -41,7 +41,7 @@
       ],
       "priority": 3,
       "passes": true,
-      "notes": "MNQ 1h backtest (NQ=F cached): 71 trades, Win 26.8%, PF 3.31, Sharpe 2.95, +0.4% return. Fixed mixed-timezone cache bug. Results: backtest/results/MNQ_1h_2024-06-01_2026-03-27.json"
+      "notes": "Real NQ=F data (Yahoo v8 API bypass): 71 trades, Win 26.8%, PF 3.32, Sharpe 2.94, +35.8%. Cache: MNQ_2024-06-01_2026-03-27_1h.csv (10,400 bars)"
     },
     {
       "id": "US-004",
