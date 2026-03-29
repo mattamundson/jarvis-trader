@@ -9,6 +9,7 @@ import { AgentFeed } from "@/components/AgentFeed";
 import { SentimentPanel } from "@/components/SentimentPanel";
 import { PerformancePanel } from "@/components/PerformancePanel";
 import { WatchlistBar } from "@/components/WatchlistBar";
+import { PaperTradingPanel } from "@/components/PaperTradingPanel";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 import type {
@@ -18,6 +19,7 @@ import type {
   AgentDecision,
   SentimentData,
   WatchlistItem,
+  MacroSnapshot,
 } from "@/lib/api";
 
 const REFRESH_MS = 5000;
@@ -61,6 +63,13 @@ export default function DashboardPage() {
     "/watchlist",
     fetcher,
     { refreshInterval: REFRESH_MS * 2 }
+  );
+
+  // Macro snapshot for VIX header — poll every 60s (FRED data doesn't change faster)
+  const { data: macro } = useSWR<MacroSnapshot>(
+    "/macro/snapshot",
+    fetcher,
+    { refreshInterval: 60_000, shouldRetryOnError: false }
   );
 
   const engineOnline = !healthErr && !!health;
@@ -150,7 +159,10 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-4 space-y-4">
-        {/* Watchlist ticker bar */}
+        {/* Macro / VIX header bar */}
+        <MacroBar macro={macro ?? null} />
+
+        {/* Watchlist ticker bar — live price feed */}
         <WatchlistBar items={watchlist ?? []} />
 
         {/* Main grid */}
@@ -253,10 +265,103 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Paper trading positions panel — full width below main grid */}
+        <PaperTradingPanel />
       </main>
     </div>
   );
 }
+
+// ── Macro Bar ────────────────────────────────────────────────────────────
+
+function MacroBar({ macro }: { macro: MacroSnapshot | null }) {
+  if (!macro) return null;
+
+  const vix = typeof macro.vix === "number" ? macro.vix : null;
+  const fedFunds = typeof macro.fed_funds_rate === "number" ? macro.fed_funds_rate : null;
+  const tenYear = typeof macro.ten_year_yield === "number" ? macro.ten_year_yield : null;
+
+  // Determine VIX regime color
+  function vixColor(v: number): string {
+    if (v >= 30) return "text-bear";
+    if (v >= 20) return "text-warn";
+    return "text-bull";
+  }
+
+  const hasAnyData = vix != null || fedFunds != null || tenYear != null;
+  if (!hasAnyData) return null;
+
+  return (
+    <div className="flex items-center gap-5 rounded-lg border border-border bg-card/60 px-4 py-2 overflow-x-auto scrollbar-none">
+      <span className="font-mono text-[10px] font-bold text-muted-foreground tracking-widest shrink-0 uppercase">
+        Macro
+      </span>
+      <div className="h-4 w-px bg-border shrink-0" />
+
+      {vix != null && (
+        <MacroStat
+          label="VIX"
+          value={vix.toFixed(2)}
+          colorClass={vixColor(vix)}
+          tag={vix >= 30 ? "HIGH FEAR" : vix >= 20 ? "ELEVATED" : "LOW"}
+          tagColor={vixColor(vix)}
+        />
+      )}
+
+      {fedFunds != null && (
+        <MacroStat
+          label="FED FUNDS"
+          value={`${fedFunds.toFixed(2)}%`}
+          colorClass="text-foreground/80"
+        />
+      )}
+
+      {tenYear != null && (
+        <MacroStat
+          label="10Y YIELD"
+          value={`${tenYear.toFixed(2)}%`}
+          colorClass={tenYear >= 5 ? "text-bear" : tenYear >= 4 ? "text-warn" : "text-foreground/80"}
+        />
+      )}
+    </div>
+  );
+}
+
+function MacroStat({
+  label,
+  value,
+  colorClass,
+  tag,
+  tagColor,
+}: {
+  label: string;
+  value: string;
+  colorClass: string;
+  tag?: string;
+  tagColor?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      <span className="font-mono text-[10px] text-muted-foreground tracking-wider">{label}</span>
+      <span className={`font-mono text-xs font-bold tabular-nums ${colorClass}`}>{value}</span>
+      {tag && (
+        <span
+          className={`font-mono text-[9px] font-semibold tracking-widest px-1.5 py-0.5 rounded border ${
+            tagColor === "text-bear"
+              ? "border-bear/30 bg-bear/10 text-bear"
+              : tagColor === "text-warn"
+              ? "border-warn/30 bg-warn/10 text-warn"
+              : "border-bull/30 bg-bull/10 text-bull"
+          }`}
+        >
+          {tag}
+        </span>
+      )}
+    </div>
+  );
+}
+
 
 function RiskRow({
   label,

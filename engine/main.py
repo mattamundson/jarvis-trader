@@ -33,6 +33,7 @@ from agents.trader import TraderAgent
 from agents.risk_manager import RiskManagerAgent
 from agents.fund_manager import FundManagerAgent
 from agents.pipeline import TradingPipeline
+from portfolio.tracker import get_tracker, PortfolioTracker
 
 # ── Logging ──────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -47,20 +48,28 @@ safety_layer: SafetyLayer | None = None
 technical_analyst: TechnicalAnalystAgent | None = None
 trading_pipeline: TradingPipeline | None = None
 scheduler: AsyncIOScheduler | None = None
+paper_tracker: PortfolioTracker | None = None
 
 # Rate limit: track last alert time per symbol to avoid flooding (2-hour cooldown)
 _last_alert_time: Dict[str, datetime] = {}
 ALERT_COOLDOWN_HOURS = 2
 
+# 5-minute macro snapshot cache (keyed by "snapshot", stores flattened dict + "_ts")
+_macro_cache: Dict[str, dict] = {}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker
 
     logger.info("🤖 JARVIS TRADER starting up...")
     logger.info(f"   Live trading: {'ENABLED ⚠️' if settings.LIVE_TRADING_ENABLED else 'DISABLED (paper mode)'}")
     logger.info(f"   IBKR port:   {settings.IBKR_PORT} ({'live' if settings.IBKR_PORT == 4001 else 'paper'})")
+
+    # Paper trading tracker — initialise before safety layer so it is always available
+    paper_tracker = get_tracker()
+    logger.info("✅ Paper portfolio tracker ready")
 
     # Safety layer — always first
     safety_layer = SafetyLayer(settings)
@@ -395,6 +404,82 @@ async def get_portfolio():
     }
 
 
+# ── Paper Trading Portfolio ───────────────────────────────────────────────
+
+class PaperTradeRequest(BaseModel):
+    symbol: str
+    action: str                     # "buy" | "sell" | "sell_short" | "buy_to_cover"
+    quantity: float
+    price: float
+    notes: str = ""
+    close_trade_id: str | None = None  # If set, this call closes an existing trade
+
+
+@app.get("/portfolio/paper/positions")
+async def get_paper_positions():
+    """Return all currently open paper-trade positions."""
+    if not paper_tracker:
+        raise HTTPException(503, "Paper tracker not initialized")
+    return {
+        "positions": paper_tracker.get_open_positions(),
+        "count": len(paper_tracker.get_open_positions()),
+    }
+
+
+@app.post("/portfolio/paper/trade")
+async def submit_paper_trade(req: PaperTradeRequest):
+    """
+    Open or close a paper trade.
+
+    - If close_trade_id is omitted (or null):  opens a new position.
+    - If close_trade_id is provided:           closes that position at req.price.
+
+    Body fields:
+        symbol        : ticker (e.g. "SPY", "MES")
+        action        : "buy" | "sell" | "sell_short" | "buy_to_cover"
+        quantity      : number of shares/contracts
+        price         : fill price
+        notes         : optional free-text (pipeline summary, reasoning, etc.)
+        close_trade_id: trade_id to close (optional)
+    """
+    if not paper_tracker:
+        raise HTTPException(503, "Paper tracker not initialized")
+
+    if req.close_trade_id:
+        try:
+            trade = paper_tracker.close_trade(req.close_trade_id, req.price)
+        except KeyError:
+            raise HTTPException(404, f"No open trade with id={req.close_trade_id!r}")
+        return {
+            "status": "closed",
+            "trade": trade.to_dict(),
+        }
+    else:
+        trade_id = paper_tracker.open_trade(
+            symbol=req.symbol,
+            action=req.action,
+            quantity=req.quantity,
+            price=req.price,
+            notes=req.notes,
+        )
+        return {
+            "status": "opened",
+            "trade_id": trade_id,
+            "symbol": req.symbol.upper(),
+            "action": req.action,
+            "quantity": req.quantity,
+            "entry_price": req.price,
+        }
+
+
+@app.get("/portfolio/paper/performance")
+async def get_paper_performance():
+    """Return performance metrics for all closed paper trades."""
+    if not paper_tracker:
+        raise HTTPException(503, "Paper tracker not initialized")
+    return paper_tracker.get_performance()
+
+
 # ── Recent decisions (for dashboard feed) ─────────────────────────────────
 
 _decision_log: list[dict] = []  # In-memory ring buffer, 100 entries
@@ -530,18 +615,53 @@ async def run_pipeline(req: PipelineRequest):
 
     result = await trading_pipeline.analyze_and_decide(req.symbol, req.is_futures)
 
+    final_action = result.get("final_action", "hold")
+
     # Log to decision feed
     _decision_log.append({
         "id": len(_decision_log) + 1,
         "timestamp": datetime.now().isoformat(),
         "symbol": req.symbol,
-        "action": result.get("final_action", "hold"),
+        "action": final_action,
         "confidence": result.get("confidence", 0),
         "source": "pipeline",
         "summary": result.get("summary", ""),
     })
     if len(_decision_log) > 100:
         _decision_log.pop(0)
+
+    # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
+    if not settings.LIVE_TRADING_ENABLED and final_action != "hold" and paper_tracker:
+        try:
+            trade_dec = result.get("trade_decision") or {}
+            # Prefer limit_price, fall back to stop_price, then last known price from indicators
+            entry_price = (
+                trade_dec.get("limit_price")
+                or trade_dec.get("stop_price")
+                or (result.get("technical", {}) or {}).get("current_price")
+            )
+            final_qty = result.get("final_quantity", 1) or 1
+
+            if entry_price:
+                trade_id = paper_tracker.open_trade(
+                    symbol=req.symbol,
+                    action=final_action,
+                    quantity=float(final_qty),
+                    price=float(entry_price),
+                    notes=result.get("summary", ""),
+                )
+                result["paper_trade_id"] = trade_id
+                logger.info(
+                    f"[PAPER] Auto-logged {req.symbol} {final_action.upper()} "
+                    f"qty={final_qty} @ {entry_price:.4f}  id={trade_id[:8]}"
+                )
+            else:
+                logger.warning(
+                    f"[PAPER] Skipped auto-log for {req.symbol} {final_action.upper()} "
+                    f"— could not determine entry price from pipeline result"
+                )
+        except Exception as exc:
+            logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
 
     # Send WhatsApp alert for non-HOLD signals
     from notifications.whatsapp import get_notifier
@@ -746,14 +866,55 @@ async def generate_thinkscript(req: ThinkScriptRequest):
 
 @app.get("/macro/snapshot")
 async def get_macro_snapshot():
-    """Current macro environment from FRED (Fed Funds, yields, VIX, unemployment)"""
+    """
+    Current macro environment from FRED — flat snapshot for dashboard polling.
+
+    Returns:
+        {"vix": float, "fed_funds_rate": float, "ten_year_yield": float, "unemployment": float}
+
+    Uses a 5-minute in-memory cache so 60s dashboard polling doesn't hammer FRED.
+    The underlying FREDDataService already caches at 1h per series; this adds a
+    dedicated short-TTL cache for the flattened response shape.
+    """
     from data.fred_data import get_fred_service
+
+    # 5-minute in-memory cache for the flattened snapshot
+    now = datetime.now()
+    cached = _macro_cache.get("snapshot")
+    if cached and (now - cached["_ts"]).total_seconds() < 300:
+        return {k: v for k, v in cached.items() if k != "_ts"}
+
     service = get_fred_service()
     try:
-        snapshot = service.get_macro_snapshot()
-        return snapshot
+        raw = service.get_macro_snapshot()
     except Exception as e:
         raise HTTPException(500, f"FRED data unavailable: {e}")
+
+    # The FREDDataService returns nested dicts: {"vix": {"value": 27.4, ...}, ...}
+    # Flatten to the shape the dashboard WatchlistBar expects.
+    def _val(key: str):
+        entry = raw.get(key)
+        if entry is None:
+            return None
+        if isinstance(entry, dict):
+            return entry.get("value")
+        try:
+            return float(entry)
+        except (TypeError, ValueError):
+            return None
+
+    flat = {
+        "vix": _val("vix"),
+        "fed_funds_rate": _val("fed_funds_rate"),
+        "ten_year_yield": _val("ten_year_yield"),
+        "unemployment": _val("unemployment"),
+        "timestamp": raw.get("timestamp", now.isoformat()),
+    }
+
+    # Store in cache with sentinel timestamp
+    _macro_cache["snapshot"] = {**flat, "_ts": now}
+
+    return flat
 
 
 @app.get("/macro/series/{series_id}")

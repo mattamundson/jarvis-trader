@@ -64,6 +64,26 @@ export interface WatchlistItem {
   change_pct: number | null;
 }
 
+export interface PriceSnapshotEntry {
+  symbol: string;
+  last_price: number | null;
+  prev_close: number | null;
+  change_pct: number | null;
+  yf_ticker: string;
+  error?: string;
+}
+
+export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
+
+export interface MacroSnapshot {
+  vix?: number | null;
+  fed_funds_rate?: number | null;
+  ten_year_yield?: number | null;
+  unemployment?: number | null;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
 export interface SentimentData {
   symbol: string;
   score: number;
@@ -103,4 +123,24 @@ export interface PortfolioSnapshot {
   margin_used: number;
   margin_available: number;
   positions: Position[];
+}
+
+export interface PaperPosition {
+  trade_id: string;
+  symbol: string;
+  action: string;
+  quantity: number;
+  entry_price: number;
+  entry_time: string;
+  notes: string;
+}
+
+export interface PaperPerformance {
+  total_pnl: number;
+  win_rate: number;
+  profit_factor: number;
+  num_trades: number;
+  max_dd: number;
+  avg_win: number;
+  avg_loss: number;
 }
