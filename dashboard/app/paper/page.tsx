@@ -2,9 +2,9 @@
 
 import React, { useState, useCallback } from "react";
 import useSWR from "swr";
-import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { fetchEngine, postEngine } from "@/lib/api";
-import type { MGCSignalResponse, PendingSignal, MGCPerformanceResponse, PaperTradePayload } from "@/lib/api";
+import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
+import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals } from "@/lib/api";
+import type { MGCSignalResponse, PendingSignal, MGCPerformanceResponse, PaperTradePayload, KillSwitchStatus } from "@/lib/api";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
@@ -65,8 +65,11 @@ export default function PaperTradingPage() {
           </div>
         </div>
 
-        {/* Middle: Pending Signals Queue */}
-        <PendingSignalsPanel />
+        {/* Kill Switch + Reset Controls */}
+        <KillSwitchPanel />
+
+        {/* Middle: Pending Signals Queue with History Tab */}
+        <SignalQueuePanel />
 
         {/* Bottom: Trade Logger */}
         <TradeLoggerPanel />
@@ -214,17 +217,181 @@ function SignalStat({ label, value, color }: { label: string; value: string; col
 }
 
 
-// ── Section 2: Pending Signals Queue ─────────────────────────────────────────
+// ── Section 2a: Kill Switch Control Panel ────────────────────────────────────
 
-function PendingSignalsPanel() {
+function KillSwitchPanel() {
+  const { data: ks, error, mutate } = useSWR<KillSwitchStatus>(
+    "/paper/kill-switch",
+    fetcher,
+    { refreshInterval: 30_000, shouldRetryOnError: false }
+  );
+  const [acting, setActing] = useState(false);
+  const [resetResult, setResetResult] = useState<string | null>(null);
+
+  const isActive = ks?.active ?? false;
+
+  const handleToggle = useCallback(async () => {
+    if (isActive) {
+      // Deactivate — no confirmation needed
+      setActing(true);
+      try {
+        await toggleKillSwitch("deactivate");
+        await mutate();
+      } finally {
+        setActing(false);
+      }
+    } else {
+      // Activate — confirm first
+      const confirmed = confirm(
+        "ACTIVATE KILL SWITCH?\n\nThis will block all new signals and pause the scheduler. Manual deactivation required to resume."
+      );
+      if (!confirmed) return;
+      setActing(true);
+      try {
+        await toggleKillSwitch("activate", "manual");
+        await mutate();
+      } finally {
+        setActing(false);
+      }
+    }
+  }, [isActive, mutate]);
+
+  const handleReset = useCallback(async () => {
+    const confirmed = confirm(
+      "RESET PENDING SIGNALS?\n\nThis will clear the entire pending signal queue. This action cannot be undone."
+    );
+    if (!confirmed) return;
+    setActing(true);
+    setResetResult(null);
+    try {
+      const result = await resetPendingSignals();
+      setResetResult(`Cleared ${result.cleared} signal(s)`);
+      setTimeout(() => setResetResult(null), 4000);
+    } catch (err) {
+      setResetResult(err instanceof Error ? err.message : "Reset failed");
+      setTimeout(() => setResetResult(null), 5000);
+    } finally {
+      setActing(false);
+    }
+  }, []);
+
+  return (
+    <div className="rounded-xl border bg-[#0a0a0a] p-4"
+      style={{ borderColor: isActive ? "#ff444440" : "#1a1a2e" }}>
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {isActive
+            ? <ShieldOff className="h-4 w-4" style={{ color: "#ff4444" }} />
+            : <ShieldCheck className="h-4 w-4" style={{ color: "#00ff88" }} />}
+          <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: "#00ff88" }}>
+            KILL SWITCH
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+              style={{ backgroundColor: isActive ? "#ff4444" : "#00ff88" }} />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: isActive ? "#ff4444" : "#00ff88" }} />
+          </span>
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: isActive ? "#ff4444" : "#00ff88" }}>
+            {isActive ? "ACTIVE — TRADING HALTED" : "INACTIVE"}
+          </span>
+        </div>
+      </div>
+
+      {/* Status message */}
+      <div className="rounded-lg p-3 mb-3 font-mono text-xs"
+        style={{
+          backgroundColor: isActive ? "#ff444408" : "#00ff8808",
+          border: `1px solid ${isActive ? "#ff444420" : "#00ff8820"}`,
+          color: isActive ? "#ff8888" : "#88ffbb",
+        }}>
+        {isActive ? (
+          <>
+            Paper trading is <strong>HALTED</strong>.
+            {ks?.reason && <> Reason: <strong>{ks.reason}</strong>.</>}
+            {ks?.activated_at && <> Activated: <span className="tabular-nums">{new Date(ks.activated_at).toLocaleString()}</span>.</>}
+            {" "}Manual deactivation required to resume.
+          </>
+        ) : (
+          <>Paper trading is <strong>ACTIVE</strong>. New signals will be processed normally.</>
+        )}
+      </div>
+
+      {error && !ks && (
+        <div className="rounded-lg p-3 mb-3 font-mono text-xs"
+          style={{ backgroundColor: "#ff444410", color: "#ff4444" }}>
+          Engine offline — kill switch status unavailable
+        </div>
+      )}
+
+      {/* Reset result toast */}
+      {resetResult && (
+        <div className="rounded-lg p-3 mb-3 font-mono text-xs"
+          style={{ backgroundColor: "#00d4ff10", border: "1px solid #00d4ff30", color: "#00d4ff" }}>
+          {resetResult}
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleToggle}
+          disabled={acting}
+          className="flex items-center gap-2 rounded-lg px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-40"
+          style={isActive ? {
+            backgroundColor: "#00ff8820", color: "#00ff88", border: "1px solid #00ff8840",
+          } : {
+            backgroundColor: "#ff444420", color: "#ff4444", border: "1px solid #ff444440",
+          }}>
+          {isActive
+            ? <><ShieldCheck className="h-3.5 w-3.5" /> {acting ? "Deactivating..." : "Deactivate Kill Switch"}</>
+            : <><ShieldOff className="h-3.5 w-3.5" /> {acting ? "Activating..." : "Activate Kill Switch"}</>}
+        </button>
+
+        <button
+          onClick={handleReset}
+          disabled={acting}
+          className="flex items-center gap-2 rounded-lg px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-40"
+          style={{ backgroundColor: "#ffcc0015", color: "#ffcc00", border: "1px solid #ffcc0030" }}>
+          <Trash2 className="h-3.5 w-3.5" />
+          {acting ? "Resetting..." : "Reset Signals"}
+        </button>
+
+        <span className="font-mono text-[9px] ml-auto" style={{ color: "#444" }}>
+          When activated: new signals blocked, scheduler paused. Manual deactivation required.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Section 2b: Signal Queue with Pending / History Tabs ─────────────────────
+
+function SignalQueuePanel() {
+  const [tab, setTab] = useState<"pending" | "history">("pending");
+
   const { data: signals, error } = useSWR<PendingSignal[]>(
     "/paper/pending-signals",
     fetcher,
     { refreshInterval: 60_000, shouldRetryOnError: false }
   );
 
-  // Normalize: the endpoint may return an array directly or { signals: [...] }
-  const items: PendingSignal[] = Array.isArray(signals) ? signals : [];
+  const allItems: PendingSignal[] = Array.isArray(signals) ? signals : [];
+  const pendingItems = allItems.filter(
+    (s) => (s.status ?? "pending").toLowerCase() === "pending"
+  );
+  const historyItems = [...allItems].sort((a, b) => {
+    const da = a.date ?? "";
+    const db = b.date ?? "";
+    return db.localeCompare(da);
+  }).slice(0, 10);
+
+  const displayItems = tab === "pending" ? pendingItems : historyItems;
 
   const statusStyle = (status: string | undefined) => {
     const s = (status ?? "pending").toLowerCase();
@@ -237,10 +404,41 @@ function PendingSignalsPanel() {
     <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a] p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: "#00ff88" }}>
-            PENDING SIGNALS QUEUE
-          </span>
-          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
+          {/* Tab buttons */}
+          <button
+            onClick={() => setTab("pending")}
+            className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase px-3 py-1 rounded-lg transition-colors"
+            style={tab === "pending" ? {
+              backgroundColor: "#00ff8818", color: "#00ff88", border: "1px solid #00ff8830",
+            } : {
+              backgroundColor: "transparent", color: "#555", border: "1px solid transparent",
+            }}>
+            PENDING
+            {pendingItems.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full text-[8px] font-bold px-1"
+                style={{ backgroundColor: "#ffcc0025", color: "#ffcc00" }}>
+                {pendingItems.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setTab("history")}
+            className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase px-3 py-1 rounded-lg transition-colors"
+            style={tab === "history" ? {
+              backgroundColor: "#00d4ff18", color: "#00d4ff", border: "1px solid #00d4ff30",
+            } : {
+              backgroundColor: "transparent", color: "#555", border: "1px solid transparent",
+            }}>
+            HISTORY
+            {allItems.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full text-[8px] font-bold px-1"
+                style={{ backgroundColor: "#00d4ff25", color: "#00d4ff" }}>
+                {Math.min(allItems.length, 10)}
+              </span>
+            )}
+          </button>
+
+          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border ml-2"
             style={{ borderColor: "#ffcc0033", backgroundColor: "#ffcc0010", color: "#ffcc00" }}>
             AUTO-REFRESH 60s
           </span>
@@ -252,7 +450,7 @@ function PendingSignalsPanel() {
         )}
       </div>
 
-      {items.length > 0 ? (
+      {displayItems.length > 0 ? (
         <div className="font-mono text-xs">
           {/* Table Header */}
           <div className="grid grid-cols-8 gap-2 pb-2 mb-2" style={{ borderBottom: "1px solid #1a1a2e" }}>
@@ -267,7 +465,7 @@ function PendingSignalsPanel() {
           </div>
 
           {/* Rows */}
-          {items.map((sig, idx) => {
+          {displayItems.map((sig, idx) => {
             const ss = statusStyle(sig.status ?? undefined);
             const dirColor = (sig.direction ?? "").toUpperCase() === "LONG" ? "#00ff88"
               : (sig.direction ?? "").toUpperCase() === "SHORT" ? "#ff4444" : "#ffcc00";
@@ -303,7 +501,9 @@ function PendingSignalsPanel() {
       ) : (
         <div className="rounded-lg p-6 text-center" style={{ backgroundColor: "#0d0d1a" }}>
           <span className="font-mono text-xs" style={{ color: "#555" }}>
-            No pending signals — scheduler runs 18:00 ET weekdays
+            {tab === "pending"
+              ? "No pending signals — scheduler runs 18:00 ET weekdays"
+              : "No signal history yet"}
           </span>
         </div>
       )}

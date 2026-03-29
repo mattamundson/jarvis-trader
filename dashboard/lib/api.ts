@@ -255,6 +255,13 @@ export interface CircuitBreakerState {
   all_clear: boolean;
 }
 
+// ── WebSocket types ─────────────────────────────────────────────────────────
+
+export interface WebSocketStatus {
+  status: "ok" | "not_initialized";
+  connections: number;
+}
+
 // ── Journal types ─────────────────────────────────────────────────────────────
 
 export interface JournalEntry {
@@ -267,16 +274,43 @@ export interface JournalEntry {
   lesson: string | null;
 }
 
-// ── MGC Paper Trading types ───────────────────────────────────────────────────
+// ── WebSocket API ────────────────────────────────────────────────────────────
 
-export interface MGCSignalResponse {
-  direction: string | null;
-  entry_price: number | null;
-  stop_level: number | null;
-  target_1: number | null;
-  regime: string | null;
-  confidence: number | null;
+/**
+ * Check WebSocket server status (connected client count).
+ * Useful for monitoring WebSocket manager health.
+ */
+export async function getWebSocketStatus(): Promise<WebSocketStatus> {
+  return fetchEngine<WebSocketStatus>("/ws/status");
 }
+
+// ── Order Entry types ──────────────────────────────────────────────────────
+
+export interface OrderRequest {
+  symbol: string;
+  direction: "BUY" | "SELL";
+  quantity: number;
+  order_type: "MARKET" | "LIMIT";
+  limit_price: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+}
+
+export interface OrderResponse {
+  order_id: string;
+  symbol: string;
+  direction: string;
+  quantity: number;
+  order_type: string;
+  status: string;
+  timestamp: string;
+}
+
+export async function postOrder(order: OrderRequest): Promise<OrderResponse> {
+  return postEngine<OrderResponse>("/orders/place", order);
+}
+
+// ── MGC Paper Trading types ───────────────────────────────────────────────────
 
 export interface PendingSignal {
   date: string | null;
@@ -287,13 +321,7 @@ export interface PendingSignal {
   target_1: number | null;
   regime: string | null;
   status: string | null;
-}
-
-export interface MGCPerformanceMonthly {
-  month: string;
-  trades: number;
-  pnl: number;
-  win_rate: number | null;
+  confidence?: number | null;
 }
 
 export interface MGCPerformanceResponse {
@@ -303,7 +331,12 @@ export interface MGCPerformanceResponse {
   net_pnl: number | null;
   max_drawdown: number | null;
   kill_switch_active: boolean;
-  monthly_breakdown: MGCPerformanceMonthly[] | null;
+  monthly_breakdown: Array<{
+    month: string;
+    trades: number;
+    pnl: number;
+    win_rate: number | null;
+  }> | null;
 }
 
 export interface PaperTradePayload {
@@ -315,34 +348,50 @@ export interface PaperTradePayload {
   contracts: number;
 }
 
-// ── Analytics / Validation types ──────────────────────────────────────────────
-
-export interface ValidationReportMetrics {
-  profit_factor: number | null;
-  sharpe_ratio: number | null;
-  win_rate: number | null;
-  max_drawdown: number;
-  total_pnl: number;
-  total_trades: number;
-  avg_win: number;
-  avg_loss: number;
-  period_days: number;
+export interface MGCSignalResponse {
+  direction: string | null;
+  date: string;
+  symbol: string;
+  signal: string;
+  regime: string | null;
+  adaptive_stc_os: number;
+  adaptive_stc_ob: number;
+  entry_price: number | null;
+  stop_level: number | null;
+  target_1: number | null;
+  target_2: number | null;
+  atr: number | null;
+  bias: string | null;
+  stc_val: number | null;
+  stc_signal: string | null;
+  ema_trend: string | null;
+  confidence: number | null;
+  config: string | null;
+  error?: string;
+  bars_received?: number;
 }
 
-export interface ValidationReport {
-  status: "PASS" | "FAIL" | "INSUFFICIENT_DATA";
-  recommendation: string;
-  metrics: ValidationReportMetrics;
+// ── Kill Switch API ──────────────────────────────────────────────────────────
+
+export interface KillSwitchStatus {
+  active: boolean;
+  reason: string | null;
+  activated_at: string | null;
 }
 
-export interface CompareMetricResult {
-  retention_pct: number;
+export async function fetchKillSwitchStatus(): Promise<KillSwitchStatus> {
+  return fetchEngine<KillSwitchStatus>("/paper/kill-switch");
 }
 
-export interface CompareToBacktestResponse {
-  comparison: {
-    profit_factor?: CompareMetricResult;
-    sharpe_ratio?: CompareMetricResult;
-    [key: string]: CompareMetricResult | undefined;
-  };
+export async function toggleKillSwitch(
+  action: "activate" | "deactivate",
+  reason?: string
+): Promise<KillSwitchStatus> {
+  const params = new URLSearchParams({ action });
+  if (reason) params.set("reason", reason);
+  return postEngine<KillSwitchStatus>(`/paper/kill-switch?${params.toString()}`);
+}
+
+export async function resetPendingSignals(): Promise<{ cleared: number }> {
+  return postEngine<{ cleared: number }>("/paper/reset-pending-signals");
 }
