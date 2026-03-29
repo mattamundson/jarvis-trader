@@ -22,9 +22,12 @@ import pandas as pd
 import numpy as np
 
 from backtest.data_loader import BacktestDataLoader
-from backtest.indicators import (
-    wilder_atr, kama, stc, phase_oscillator,
-    ema_ribbon,
+from backtest.signals import (
+    compute_all_indicators,
+    layer1_regime,
+    layer2_structure,
+    layer3_bias,
+    layer4_entry,
 )
 from backtest.backtester import Backtester, BacktestResult
 
@@ -73,83 +76,58 @@ def _compute_signals(
     atr_target_mult: float,
     regime_filter: bool,
 ) -> pd.DataFrame:
-    """Recompute signals with given parameters."""
-    close = df["close"]
-    high  = df["high"]
-    low   = df["low"]
-    vol   = df["volume"]
+    """Use real signal pipeline with parameterized thresholds."""
+    df = compute_all_indicators(df.copy())
 
-    atr_vals   = wilder_atr(high, low, close, 14)
-    stc_vals   = stc(close, fast=23, slow=50, k_period=10, d_period=3)
-    phase_vals, phase_compression = phase_oscillator(close, high, low)
-    ema8, ema21, ema34 = ema_ribbon(close)
-    # range_consumed_pct takes scalars — compute as series inline
-    consumed = ((close - close.shift(1)).abs() / atr_vals.replace(0, float('nan'))) * 100
-    kama_vals  = kama(close)
+    # Re-apply STC signals with parameterized thresholds (overrides the
+    # hardcoded STC_OS / STC_OB baked into compute_all_indicators)
+    stc_cross_up = (df['stc_val'] > stc_oversold) & (df['stc_val'].shift(1).fillna(50) <= stc_oversold)
+    stc_cross_down = (df['stc_val'] < stc_overbought) & (df['stc_val'].shift(1).fillna(50) >= stc_overbought)
 
-    signals = []
-    for i in range(len(df)):
-        row = df.iloc[i]
-        atr_i  = atr_vals.iloc[i]
-        stc_i  = stc_vals.iloc[i]
-        phase_i = phase_vals.iloc[i]
-        e8, e21, e34 = ema8.iloc[i], ema21.iloc[i], ema34.iloc[i]
-        cons = consumed.iloc[i]
-        kama_i = kama_vals.iloc[i]
+    stc_signal = pd.Series('neutral', index=df.index)
+    stc_signal[df['stc_val'] < stc_oversold] = 'oversold'
+    stc_signal[df['stc_val'] > stc_overbought] = 'overbought'
+    rising_mask = (df['stc_val'] > df['stc_val'].shift(1).fillna(50)) & (stc_signal == 'neutral')
+    falling_mask = (df['stc_val'] < df['stc_val'].shift(1).fillna(50)) & (stc_signal == 'neutral')
+    stc_signal[rising_mask] = 'rising'
+    stc_signal[falling_mask] = 'falling'
 
-        entry = "NO_TRADE"
+    df['stc_signal'] = stc_signal
+    df['stc_cross_up'] = stc_cross_up
+    df['stc_cross_down'] = stc_cross_down
 
-        if pd.isna(atr_i) or pd.isna(stc_i):
-            signals.append(entry)
-            continue
+    # Run all 4 layers using the real layer functions from signals.py
+    regimes = []
+    structure_positions = []
+    biases = []
+    entries = []
 
-        # Layer 1: Regime filter
-        if regime_filter:
-            if cons > 90:
-                signals.append("NO_TRADE")
-                continue
-            # Phase compression check (skip if already extended)
-            if not pd.isna(phase_i) and abs(phase_i) > 80:
-                signals.append("NO_TRADE")
-                continue
+    for idx, row in df.iterrows():
+        regime = layer1_regime(row)
+        if not regime_filter and regime in ('EXHAUSTED', 'COMPRESSION'):
+            regime = 'RANGE_BOUND'
+        structure = layer2_structure(row)
+        bias = layer3_bias(row)
+        entry = layer4_entry(row, regime, bias, structure)
+        regimes.append(regime)
+        structure_positions.append(structure['position'])
+        biases.append(bias)
+        entries.append(entry)
 
-        # Layer 3: Bias
-        bullish_ema = (not pd.isna(e8)) and (not pd.isna(e34)) and (e8 > e21 > e34)
-        bearish_ema = (not pd.isna(e8)) and (not pd.isna(e34)) and (e8 < e21 < e34)
-        close_above_kama = (not pd.isna(kama_i)) and (row["close"] > kama_i)
+    df['regime'] = regimes
+    df['structure_position'] = structure_positions
+    df['bias'] = biases
+    df['entry_signal'] = entries
 
-        # Layer 4: Entry timing with parameterized STC thresholds
-        # Long entry: STC oversold crossover with bullish bias
-        if stc_i < stc_oversold and (bullish_ema or close_above_kama):
-            entry = "ENTRY_NOW"
-        # Short entry: STC overbought crossover with bearish bias
-        elif stc_i > stc_overbought and (bearish_ema or not close_above_kama):
-            entry = "ENTRY_NOW"
+    # Apply parameterized ATR stop/target
+    atr = df['atr'].fillna(0)
+    close = df['close']
+    is_long = df['bias'].isin(['STRONG_BULL', 'LEAN_BULL'])
 
-        signals.append(entry)
-
-    df = df.copy()
-    df["entry_signal"] = signals
-    df["atr"]          = atr_vals.values
-
-    # Columns required by backtester
-    df["stop_level"]  = df["close"] - atr_stop_mult * df["atr"]
-    df["target_1"]    = df["close"] + atr_target_mult * df["atr"]
-    df["target_2"]    = df["close"] + atr_target_mult * 1.618 * df["atr"]
-    df["target_3"]    = df["close"] + atr_target_mult * 2.0   * df["atr"]
-
-    # Bias column: derive from EMA ribbon
-    ema8_s, ema21_s, ema34_s = ema_ribbon(df["close"])
-    bull_mask = (ema8_s > ema21_s) & (ema21_s > ema34_s)
-    bear_mask = (ema8_s < ema21_s) & (ema21_s < ema34_s)
-    df["bias"] = "NEUTRAL"
-    df.loc[bull_mask, "bias"] = "STRONG_BULL"
-    df.loc[bear_mask, "bias"] = "STRONG_BEAR"
-
-    # Regime column: simple consumed-ATR proxy
-    consumed_s = ((df["close"] - df["close"].shift(1)).abs() / atr_vals.replace(0, float("nan"))) * 100
-    df["regime"] = "TRENDING_BULL"
-    df.loc[consumed_s > 90, "regime"] = "EXHAUSTED"
+    df['stop_level'] = np.where(is_long, close - atr_stop_mult * atr, close + atr_stop_mult * atr)
+    df['target_1'] = np.where(is_long, close + atr_target_mult * atr, close - atr_target_mult * atr)
+    df['target_2'] = np.where(is_long, close + atr_target_mult * 1.618 * atr, close - atr_target_mult * 1.618 * atr)
+    df['target_3'] = np.where(is_long, close + atr_target_mult * 2.0 * atr, close - atr_target_mult * 2.0 * atr)
 
     return df
 
@@ -179,12 +157,12 @@ def _score(r: BacktestResult) -> float:
     """
     if r.total_trades < 3:
         return -999.0
-    pf   = min(r.profit_factor, 10.0)       # cap at 10x
-    wr   = r.win_rate / 100.0
-    sr   = min(r.sharpe_ratio, 20.0)        # cap at 20
-    ret  = r.total_return_pct
-    dd   = max(r.max_drawdown_pct, 0.001)   # avoid div/0
-    return (pf * 0.3 + wr * 0.2 + sr * 0.3 + ret * 0.1) / dd * 0.1
+    pf  = min(r.profit_factor, 10.0)       # cap at 10x
+    wr  = r.win_rate                       # already 0.0-1.0, NO division by 100
+    sr  = min(r.sharpe_ratio, 20.0)        # cap at 20
+    ret = r.total_return_pct
+    dd  = max(r.max_drawdown_pct, 0.001)   # avoid div/0
+    return ((pf * 0.3) + (wr * 0.2) + (sr * 0.3) + (ret * 0.1)) / dd
 
 
 def run_optimization(
