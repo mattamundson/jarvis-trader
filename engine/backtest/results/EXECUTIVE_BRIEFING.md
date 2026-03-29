@@ -1,5 +1,5 @@
 # JARVIS TRADER -- Executive Strategy Briefing
-*Updated: 2026-03-29 v2.0 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
+*Updated: 2026-03-29 v2.3 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
 
 ## The Verdict: NO-GO (Signal Redesign Required)
 
@@ -10,6 +10,8 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 *v2.1 update: Regime-adaptive STC implemented. MNQ 1h WFE improved 0.24→0.34 (41% gain). Target WFE >0.40 before paper trading.*
 
 *v2.2 update: Adaptive walk-forward completed for all 3 viable instruments. MGC 1d WFE surged 0.27→0.88 (EXCELLENT). MCL 1h worsened -0.16→-0.31. MGC 1d now qualifies for paper trading under adaptive regime mode.*
+
+*v2.3 update: Combined filters tested. MNQ adaptive+volume WFE=-0.23 (volume filter destroys 1h futures signals — removes too many trades). SPY adaptive WFE improved -1.11→-0.71 but still overfit. Confirmed: MNQ best config remains adaptive-only at WFE=0.34. Volume filter: keep OFF for all futures 1h signals.*
 
 ---
 
@@ -48,6 +50,7 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 | MGC | 1d | 0.27 | **0.88** | +226% | 0.89 | 2.55 | EXCELLENT -- Paper-trade ready |
 | MNQ | 1h | 0.24 | **0.34** | +41% | -0.06 | 1.05 | ACCEPTABLE -- Needs more work |
 | MCL | 1h | -0.16 | **-0.31** | -94% | -0.48 | 0.81 | FAIL -- Adaptive hurts MCL |
+| SPY | 1h | -1.11 | **-0.71** | +36% | -3.84 | 1.04 | FAIL -- Adaptive slightly better but still deeply overfit |
 
 **Takeaway:** Regime-adaptive mode is highly effective for trending instruments (MGC gold). It improves MNQ modestly. It actively *hurts* MCL -- crude oil's regime transitions are too noisy for the current RegimeClassifier to capture. MCL should remain on the DO NOT TRADE list.
 
@@ -86,11 +89,11 @@ These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` and u
 
 | Priority | Improvement | Addresses |
 |----------|-------------|-----------|
-| **1** | ✅ **Regime-adaptive parameter switching** — RegimeClassifier built. MGC 1d WFE 0.27→0.88 (EXCELLENT), MNQ 1h 0.24→0.34 (ACCEPTABLE), MCL 1h -0.16→-0.31 (STILL FAILS) | Root cause addressed for trending instruments |
+| **1** | ✅ **Regime-adaptive parameter switching** — RegimeClassifier built. MGC 1d WFE 0.27→0.88 (EXCELLENT), MNQ 1h 0.24→0.34 (ACCEPTABLE), MCL 1h -0.16→-0.31 (STILL FAILS). Note: volume filter tested as combined filter — counterproductive for 1h futures (MNQ WFE drops 0.34→-0.23) | Root cause addressed for trending instruments |
 | **2** | **Multi-timeframe confirmation** — require 4h/daily trend alignment before 1h entry | Counter-trend noise |
-| **3** | **Volume confirmation** — entry only when volume > 20-period average | Low-conviction signals |
-| **4** | **News/event blackout** — block entries 30 min around major economic releases | Gap-and-reverse losses |
-| **5** | **Trailing ATR stop** — replace EOD exit with trailing stop for daily timeframe | 74% EOD exits leaving profits on table |
+| **3** | ✅ **Volume confirmation** — Implemented (volume_filter=True available in walk-forward). Note: hurts 1h futures — not recommended for MNQ/MGC. MNQ adaptive+volume WFE=-0.23 vs adaptive-only 0.34 | Low-conviction signals |
+| **4** | ✅ **News/event blackout** — Implemented (news_blackout.py, 81 events, low impact on WFE) | Gap-and-reverse losses |
+| **5** | ✅ **Trailing ATR stop** — Investigated; grid search confirms no improvement for MGC 1d | 74% EOD exits leaving profits on table |
 
 ---
 
@@ -139,19 +142,19 @@ Kill trigger: any 3-month window below 3.8% return (50% of 7.6% baseline).
 | MNQ | 1d | 0.79 | N/A | 43/57 EOD exits; daily NQ too volatile for intraday targets |
 | MGC | 1h | 0.77 | N/A | Gold works daily only; hourly loses money |
 | MES | 1h | 0.96 | -0.17 | Only 1/6 OOS windows profitable |
-| SPY | 1h | 3.00 | -1.11 | Near-zero returns; random at current scale |
+| SPY | 1h | 3.00 | -0.71 | Adaptive improved from -1.11 but still deeply overfit |
 
 ---
 
 ## Immediate Next Steps
 
-1. **Implement regime detection** — build `RegimeClassifier` module that tags each bar as TRENDING/RANGING/VOLATILE using ADX (>25=trending), Bollinger Band Width, and VIX percentile. Switch STC thresholds based on detected regime.
+1. **MNQ 1h needs WFE > 0.40 for paper trading approval** — currently 0.34. Close but not yet over the threshold.
 
-2. **Add multi-timeframe filter** — require 4h STC signal alignment with 1h entry. Run `generate_signals(df_4h)` in parallel and only pass 1h entries that agree with 4h direction.
+2. **MTF filter walk-forward in progress** — multi-timeframe confirmation may push MNQ above the 0.40 threshold. This is the most promising remaining lever.
 
-3. **Re-run walk-forward after each improvement** — use `engine/backtest/walk_forward.py` with `--symbol MNQ --interval 1h`. Target WFE > 0.40 before paper trading.
+3. **Monitor MGC 1d paper trading performance monthly** — WFE=0.88 is excellent but real-world slippage/execution effects need validation.
 
-4. **Extend backtesting history** — fetch data back to 2022 to include bear market conditions. Current 2024-2026 window is predominantly bull market, biasing parameters toward trend-following STC thresholds.
+4. **Consider extending history to 2022** — bear market data would provide more robust validation. Current 2024-2026 window is predominantly bull market, biasing parameters toward trend-following STC thresholds.
 
 ---
 
