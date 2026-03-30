@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Calculator } from "lucide-react";
+import { DollarSign } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchEngine } from "@/lib/api";
 
@@ -76,7 +76,7 @@ export function PositionSizingCalculator() {
       <CardContent className="pt-5 pb-5">
         <div className="flex items-center gap-2 mb-4">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/10">
-            <Calculator className="h-4 w-4 text-accent" />
+            <DollarSign className="h-4 w-4 text-accent" />
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-accent">
@@ -159,7 +159,7 @@ export function PositionSizingCalculator() {
             {loading ? (
               <span className="h-3.5 w-3.5 rounded-full border-2 border-accent-foreground border-t-transparent animate-spin" />
             ) : (
-              <Calculator className="h-3.5 w-3.5" />
+              <DollarSign className="h-3.5 w-3.5" />
             )}
             {loading ? "Calculating..." : "Calculate"}
           </button>

@@ -28,6 +28,8 @@ import { DailyPnLCalendarWidget } from "@/components/DailyPnLCalendarWidget";
 import { MonthlyTargetCard } from "@/components/MonthlyTargetCard";
 import { PnLStreakWidget } from "@/components/PnLStreakWidget";
 import { MaxDrawdownTrackerWidget } from "@/components/MaxDrawdownTrackerWidget";
+import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
+import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -42,11 +44,11 @@ const BACKTEST = {
 };
 
 const TARGETS = {
-  profitFactor: 2.0,
-  sharpeRatio: 1.5,
-  winRate: 50,        // percent
-  maxDrawdown: 10,    // percent (positive = limit)
-  daysActive: 30,
+  profitFactor: 2.0,  // v2.7 live gate (paper gate: 1.5)
+  sharpeRatio: 1.5,   // v2.7 live gate (paper gate: 1.0)
+  winRate: 50,        // percent — v2.7 live gate (paper gate: 45%)
+  maxDrawdown: 8,     // percent (positive = limit) — v2.7 live gate
+  daysActive: 60,     // min 60+ days with 60+ trades — v2.7 graduation rule
 };
 
 const REFRESH_MS = 60_000;
@@ -527,6 +529,9 @@ export default function ScorecardPage() {
           </div>
         </div>
 
+        {/* ── Live vs Backtest Comparison ─────────────────────────────────── */}
+        <BacktestCompareWidget />
+
         {/* ── Rolling Performance Windows ─────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <RollingPerformanceCard />
@@ -738,6 +743,9 @@ export default function ScorecardPage() {
 
         {/* ── Equity Curve ────────────────────────────────────────────────── */}
         <EquityCurveWidget />
+
+        {/* ── Drawdown Chart ──────────────────────────────────────────────── */}
+        <DrawdownChartWidget />
 
         {/* ── Daily P&L Calendar ──────────────────────────────────────────── */}
         <DailyPnLCalendarWidget />

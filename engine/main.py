@@ -15,7 +15,7 @@ import os
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import Dict, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -4062,6 +4062,192 @@ async def get_weekly_stats():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ── Options Trading (v2.7) ────────────────────────────────────────────────
+@app.get("/options/chain/{symbol}")
+async def get_options_chain(symbol: str, expiry: Optional[str] = None):
+    """Fetch options chain with live Greeks for a symbol."""
+    try:
+        from options.chain_fetcher import fetch_chain_yfinance
+        chain = fetch_chain_yfinance(symbol)
+        if chain is None:
+            raise HTTPException(status_code=404, detail=f"No options chain found for {symbol}")
+        return {
+            "symbol": chain.symbol,
+            "underlying_price": chain.underlying_price,
+            "iv_rank": chain.iv_rank,
+            "expiry_dates": [str(chain.expiry)] if hasattr(chain, 'expiry') else [],
+            "calls_count": len(chain.calls) if chain.calls else 0,
+            "puts_count": len(chain.puts) if chain.puts else 0,
+            "calls": [
+                {"strike": c.strike, "expiry": str(c.expiry), "bid": c.bid, "ask": c.ask,
+                 "mid": c.mid, "delta": c.delta, "gamma": c.gamma, "theta": c.theta,
+                 "vega": c.vega, "iv": c.iv, "volume": c.volume}
+                for c in (chain.calls[:20] if chain.calls else [])
+            ],
+            "puts": [
+                {"strike": p.strike, "expiry": str(p.expiry), "bid": p.bid, "ask": p.ask,
+                 "mid": p.mid, "delta": p.delta, "gamma": p.gamma, "theta": p.theta,
+                 "vega": p.vega, "iv": p.iv, "volume": p.volume}
+                for p in (chain.puts[:20] if chain.puts else [])
+            ]
+        }
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Options engine not available")
+    except Exception as e:
+        logger.error(f"Options chain error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/options/positions")
+async def get_options_positions():
+    """Get current options positions."""
+    try:
+        from options.position_manager import OptionsPositionManager
+        manager = OptionsPositionManager()
+        positions = manager.get_positions()
+        return {
+            "positions": [
+                {
+                    "id": p.id,
+                    "symbol": p.symbol,
+                    "strategy": p.strategy.value if hasattr(p.strategy, 'value') else str(p.strategy),
+                    "entry_premium": p.entry_premium,
+                    "current_premium": p.current_premium,
+                    "entry_date": str(p.entry_date),
+                    "expiry": str(p.expiry),
+                    "status": p.status,
+                    "dte": p.dte,
+                    "unrealised_pnl": p.unrealised_pnl,
+                }
+                for p in positions
+            ],
+            "total_positions": len(positions),
+            "expiring_soon": len(manager.get_expiring_soon(days=7)),
+        }
+    except ImportError:
+        return {"positions": [], "total_positions": 0, "expiring_soon": 0, "note": "Options engine loading"}
+    except Exception as e:
+        logger.error(f"Options positions error: {e}")
+        return {"positions": [], "total_positions": 0, "error": str(e)}
+
+
+@app.post("/options/trade")
+async def paper_trade_options(request: Request):
+    """Paper trade an options strategy."""
+    try:
+        from options.strategy_executor import (
+            build_covered_call, build_bull_put_spread, build_bear_call_spread,
+            build_iron_condor, build_protective_put, build_straddle, OptionsStrategy
+        )
+        from options.position_manager import OptionsPositionManager
+        from options.chain_fetcher import fetch_chain_yfinance
+
+        body = await request.json()
+        symbol = body.get("symbol", "MES")
+        strategy = body.get("strategy", "covered_call")
+        expiry_dte = body.get("expiry_dte", 14)
+
+        # Get current price
+        price_data = await get_price_snapshot()
+        underlying_price = price_data.get(symbol, {}).get("last_price", 0) if isinstance(price_data, dict) else 0
+        if not underlying_price:
+            raise HTTPException(status_code=400, detail=f"Cannot get price for {symbol}")
+
+        # Approximate ATR as 1% of price
+        atr = underlying_price * 0.01
+
+        builder_map = {
+            "covered_call": lambda: build_covered_call(symbol, underlying_price, atr, expiry_dte),
+            "bull_put_spread": lambda: build_bull_put_spread(symbol, underlying_price, atr, 10, expiry_dte),
+            "bear_call_spread": lambda: build_bear_call_spread(symbol, underlying_price, atr, 10, expiry_dte),
+            "iron_condor": lambda: build_iron_condor(symbol, underlying_price, atr, 10, expiry_dte),
+            "protective_put": lambda: build_protective_put(symbol, underlying_price, atr, expiry_dte),
+            "straddle": lambda: build_straddle(symbol, underlying_price, expiry_dte),
+        }
+
+        if strategy not in builder_map:
+            raise HTTPException(status_code=400, detail=f"Unknown strategy: {strategy}")
+
+        order = builder_map[strategy]()
+        return {
+            "order": {
+                "symbol": order.symbol,
+                "strategy": order.strategy.value if hasattr(order.strategy, 'value') else str(order.strategy),
+                "legs": order.legs if hasattr(order, 'legs') else [],
+                "estimated_premium": order.estimated_premium,
+                "max_risk": order.max_risk,
+                "max_profit": order.max_profit,
+                "notes": order.notes,
+            },
+            "status": "paper_order_built",
+            "note": "Paper mode — not submitted to broker"
+        }
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Options engine not available")
+    except Exception as e:
+        logger.error(f"Options trade error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/options/greeks")
+async def get_portfolio_greeks():
+    """Get portfolio-level Greeks summary across all options positions."""
+    try:
+        from options.position_manager import OptionsPositionManager
+        manager = OptionsPositionManager()
+        greeks = manager.get_portfolio_greeks()
+        return {
+            "delta": greeks.delta if greeks else 0.0,
+            "gamma": greeks.gamma if greeks else 0.0,
+            "theta": greeks.theta if greeks else 0.0,
+            "vega": greeks.vega if greeks else 0.0,
+            "total_positions": len(manager.get_positions()),
+            "note": "Options engine v2.7 — paper mode"
+        }
+    except ImportError:
+        return {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0, "total_positions": 0}
+    except Exception as e:
+        logger.error(f"Portfolio greeks error: {e}")
+        return {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0, "error": str(e)}
+
+
+@app.post("/options/scan")
+async def scan_options_opportunities(request: Request):
+    """Scan for high IV rank options opportunities."""
+    try:
+        from options.chain_fetcher import fetch_chain_yfinance, get_iv_rank
+
+        body = await request.json()
+        symbols = body.get("symbols", ["SPY", "QQQ", "MES"])
+        min_iv_rank = body.get("min_iv_rank", 30.0)
+
+        opportunities = []
+        for symbol in symbols[:5]:  # Limit to 5 symbols
+            try:
+                iv_rank = get_iv_rank(symbol)
+                if iv_rank >= min_iv_rank:
+                    opportunities.append({
+                        "symbol": symbol,
+                        "iv_rank": round(iv_rank, 1),
+                        "assessment": "High IV — premium selling favored" if iv_rank > 50 else "Moderate IV",
+                    })
+            except Exception:
+                pass
+
+        opportunities.sort(key=lambda x: x["iv_rank"], reverse=True)
+        return {
+            "opportunities": opportunities,
+            "min_iv_rank_filter": min_iv_rank,
+            "scanned": len(symbols),
+            "found": len(opportunities)
+        }
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Options engine not available")
+    except Exception as e:
+        logger.error(f"Options scan error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BarChart3 } from "lucide-react";
+import { BarChart2 } from "lucide-react";
 
 interface RollingMetrics {
   days: number;
@@ -66,7 +66,7 @@ export function RollingPerformanceCard() {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
+            <BarChart2 className="h-4 w-4" />
             Rolling Performance
           </CardTitle>
           <div className="flex gap-1">
