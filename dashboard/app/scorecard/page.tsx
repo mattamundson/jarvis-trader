@@ -27,6 +27,7 @@ import { PaperBalanceWidget } from "@/components/PaperBalanceWidget";
 import { DailyPnLCalendarWidget } from "@/components/DailyPnLCalendarWidget";
 import { MonthlyTargetCard } from "@/components/MonthlyTargetCard";
 import { PnLStreakWidget } from "@/components/PnLStreakWidget";
+import { MaxDrawdownTrackerWidget } from "@/components/MaxDrawdownTrackerWidget";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -850,7 +851,4 @@ function TradeStat({
       <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
         {label}
       </p>
-      <p className={`text-sm font-mono font-bold ${valueClass}`}>{value}</p>
-    </div>
-  );
-}
+      <p classNa

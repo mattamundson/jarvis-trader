@@ -88,7 +88,9 @@ class MockRiskManager(MockAgent):
     async def review(self, trade_decision, safety_status, portfolio):
         self.call_count += 1
         return {
+            "symbol": trade_decision.get("symbol", "UNKNOWN"),
             "approved": True,
+            "veto_reason": None,
             "modified": False,
             "original_action": trade_decision.get("action", "HOLD"),
             "approved_action": trade_decision.get("action", "HOLD"),
@@ -103,6 +105,7 @@ class MockFundManager(MockAgent):
     async def approve(self, trade_decision, risk_decision, portfolio, open_positions):
         self.call_count += 1
         return {
+            "symbol": trade_decision.get("symbol", "UNKNOWN"),
             "execute": True,
             "action": trade_decision.get("action", "HOLD"),
             "contracts": risk_decision.get("approved_contracts", 0),

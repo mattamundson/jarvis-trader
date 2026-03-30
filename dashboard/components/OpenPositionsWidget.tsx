@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -9,127 +9,124 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { TrendingUp, TrendingDown, RefreshCw, WifiOff } from "lucide-react";
 
 const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
-interface Position {
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface OpenPosition {
   trade_id?: string;
   symbol: string;
-  action: string;
+  action: string;          // "buy" | "sell" | "sell_short" | "buy_to_cover" | etc.
   quantity: number;
-  entry_price?: number;
-  current_price?: number;
-  unrealized_pnl?: number;
-  entry_time?: string;
+  entry_price: number;
+  entry_time?: string;     // ISO-8601
+  exit_price?: number | null;
+  exit_time?: string | null;
+  pnl?: number | null;
+  notes?: string;
+  is_open?: boolean;
+  // Extended fields (present when added via add_paper_trade with DB)
+  stop_loss?: number | null;
+  take_profit?: number | null;
+  // Live price fields (if engine enriches the response)
+  current_price?: number | null;
+  unrealized_pnl?: number | null;
 }
 
-interface PositionsResponse {
-  positions?: Position[];
-  total_unrealized_pnl?: number;
-  count?: number;
+interface PaperPositionsResponse {
+  positions: OpenPosition[];
+  count: number;
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Maps action string to LONG / SHORT label. */
+function getDirection(action: string): "LONG" | "SHORT" {
+  const a = action.toLowerCase();
+  if (a === "buy" || a === "buy_to_open" || a === "buy_to_cover") return "LONG";
+  return "SHORT";
+}
+
+/** Formats elapsed time from an ISO-8601 entry_time string to now. */
+function formatTimeInTrade(entryTime: string): string {
+  const entryMs = new Date(entryTime).getTime();
+  if (isNaN(entryMs)) return "—";
+  const diffMs = Date.now() - entryMs;
+  if (diffMs < 0) return "—";
+  const totalMins = Math.floor(diffMs / 60_000);
+  if (totalMins < 60) return `${totalMins}m`;
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  if (hours < 24) return `${hours}h ${mins}m`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return `${days}d ${remHours}h`;
+}
+
+/** Formats a dollar value with sign. */
+function fmtPnl(val: number): string {
+  const sign = val >= 0 ? "+" : "";
+  return `${sign}$${Math.abs(val).toFixed(2)}`;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function OpenPositionsWidget() {
-  const [data, setData] = useState<PositionsResponse | null>(null);
+  const [data, setData] = useState<PaperPositionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchPositions = async () => {
+  const fetchPositions = useCallback(async () => {
+    setRefreshing(true);
     try {
       const res = await fetch(`${ENGINE_URL}/portfolio/paper/positions`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: PositionsResponse = await res.json();
+      if (!res.ok) throw new Error(`Engine returned HTTP ${res.status}`);
+      const json = (await res.json()) as PaperPositionsResponse;
       setData(json);
       setError(null);
+      setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch");
+      setError(err instanceof Error ? err.message : "Failed to reach engine");
+    } finally {
+      setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchPositions();
-    const interval = setInterval(fetchPositions, 30_000);
+    const interval = setInterval(fetchPositions, 15_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchPositions]);
 
-  const positions = data?.positions ?? [];
+  const positions: OpenPosition[] = data?.positions ?? [];
   const count = data?.count ?? positions.length;
-  const totalUnrealizedPnl =
-    data?.total_unrealized_pnl ??
-    positions.reduce((sum, p) => sum + (p.unrealized_pnl ?? 0), 0);
+  const hasPositions = count > 0;
+  const engineOffline = error !== null && data === null;
+
+  // Compute total unrealized P&L across all open positions
+  const totalUnrealizedPnl = positions.reduce(
+    (sum, p) => sum + (p.unrealized_pnl ?? 0),
+    0
+  );
 
   return (
-    <Card>
+    <Card
+      className={cn(
+        "border-2 transition-colors",
+        engineOffline
+          ? "border-destructive/40"
+          : hasPositions
+          ? "border-warn/50 bg-warn/5"
+          : "border-border"
+      )}
+    >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="text-base font-semibold">Open Positions</CardTitle>
-        <div className="flex gap-2">
-          {count > 0 && (
-            <Badge variant={totalUnrealizedPnl >= 0 ? "bull" : "bear"}>
-              {totalUnrealizedPnl >= 0 ? "+" : ""}${totalUnrealizedPnl.toFixed(2)} Unrealized
-            </Badge>
-          )}
-          <Badge variant={count > 0 ? "warn" : "neutral"}>{count} Open</Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {error && (
-          <p className="text-sm text-red-400 mb-2">Engine error: {error}</p>
-        )}
-        {count === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">
-            No open positions
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-muted-foreground uppercase">
-                <th className="text-left pb-2">Symbol</th>
-                <th className="text-left pb-2">Side</th>
-                <th className="text-right pb-2">Qty</th>
-                <th className="text-right pb-2">Entry</th>
-                <th className="text-right pb-2">Current</th>
-                <th className="text-right pb-2">Unreal. P&amp;L</th>
-              </tr>
-            </thead>
-            <tbody>
-              {positions.map((pos) => (
-                <tr
-                  key={pos.trade_id ?? pos.symbol}
-                  className="border-t border-border"
-                >
-                  <td className="py-2 font-mono">{pos.symbol}</td>
-                  <td className="py-2">
-                    <Badge variant={pos.action.toUpperCase() === "LONG" || pos.action.toLowerCase() === "buy" ? "bull" : "bear"}>
-                      {pos.action.toUpperCase()}
-                    </Badge>
-                  </td>
-                  <td className="py-2 text-right font-mono">{pos.quantity}</td>
-                  <td className="py-2 text-right font-mono">
-                    {pos.entry_price?.toFixed(2) ?? "—"}
-                  </td>
-                  <td className="py-2 text-right font-mono">
-                    {pos.current_price?.toFixed(2) ?? "—"}
-                  </td>
-                  <td
-                    className={cn(
-                      "py-2 text-right font-mono font-medium",
-                      pos.unrealized_pnl != null && pos.unrealized_pnl > 0
-                        ? "text-green-400"
-                        : pos.unrealized_pnl != null && pos.unrealized_pnl < 0
-                        ? "text-red-400"
-                        : ""
-                    )}
-                  >
-                    {pos.unrealized_pnl != null
-                      ? `${pos.unrealized_pnl >= 0 ? "+" : ""}$${Math.abs(pos.unrealized_pnl).toFixed(2)}`
-                      : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <p className="text-xs text-muted-foreground mt-2">Refreshes every 30s</p>
-      </CardContent>
-    </Card>
-  );
-}
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-base font-semibold tracking-tight">
+            Open Positions
+          </CardTitle>
+          {/* 15s refresh indicator */}
+ 
