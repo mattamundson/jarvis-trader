@@ -37,6 +37,7 @@ import { ValidationChecklist } from "@/components/ValidationChecklist";
 import { GoLivePlanCard } from "@/components/GoLivePlanCard";
 import { PhaseProgressWidget } from "@/components/PhaseProgressWidget";
 import { SharpeRatioWidget } from "@/components/SharpeRatioWidget";
+import { LiveReadinessWidget } from "@/components/LiveReadinessWidget";
 
 // ── Constants — Backtest reference (MES 1h, best run) ────────────────────────
 
@@ -1541,21 +1542,4 @@ export default function ValidationPage() {
         {/* Section I: Position Reconciliation */}
         <section>
           <SectionLabel>I — Position Reconciliation</SectionLabel>
-          <ReconciliationWidget />
-        </section>
-
-        {/* Section J: Go-Live Roadmap */}
-        <section>
-          <SectionLabel>J — Go-Live Roadmap</SectionLabel>
-          <GoLivePlanCard />
-        </section>
-
-        {/* Section K: Sharpe Ratio Focus Widget */}
-        <section>
-          <SectionLabel>K — Sharpe Ratio: June 2026 Target Tracker</SectionLabel>
-          <SharpeRatioWidget />
-        </section>
-      </main>
-    </div>
-  );
-}
+  

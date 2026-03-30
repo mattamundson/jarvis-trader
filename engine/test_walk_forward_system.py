@@ -10,10 +10,9 @@ Verifies:
 """
 from __future__ import annotations
 
-import sys
 import json
+import sys
 from pathlib import Path
-from datetime import datetime
 
 # Ensure backtest module is importable
 engine_root = Path(__file__).parent
@@ -31,7 +30,7 @@ def test_walk_forward_validator_class():
 
     # Instantiate with custom window parameters
     validator = WalkForwardValidator(train_months=6, test_months=3, step_months=3)
-    print(f"✓ Created WalkForwardValidator")
+    print("✓ Created WalkForwardValidator")
     print(f"  Train window: {validator.train_months} months")
     print(f"  Test window: {validator.test_months} months")
     print(f"  Step size: {validator.step_months} months")
@@ -46,6 +45,7 @@ def test_window_generation():
     print("="*70)
 
     import pandas as pd
+
     from backtest.walk_forward import WalkForwardValidator
 
     # Create synthetic data spanning 24 months
@@ -62,7 +62,7 @@ def test_window_generation():
     windows = validator.generate_windows(df, "TEST")
 
     print(f"✓ Generated {len(windows)} rolling windows")
-    for i, w in enumerate(windows[:3]):  # Show first 3
+    for _i, w in enumerate(windows[:3]):  # Show first 3
         print(f"\n  Window {w['window_num']}:")
         print(f"    Train: {w['train_start'].strftime('%Y-%m-%d')} to {w['train_end'].strftime('%Y-%m-%d')} ({w['train_bars']} bars)")
         print(f"    Test:  {w['test_start'].strftime('%Y-%m-%d')} to {w['test_end'].strftime('%Y-%m-%d')} ({w['test_bars']} bars)")
@@ -76,8 +76,8 @@ def test_full_walk_forward_run():
     print("TEST 3: Full Walk-Forward Run (SPY 1h, 2024-06-01 to 2025-06-01)")
     print("="*70)
 
-    from backtest.walk_forward import WalkForwardValidator
     from backtest.data_loader import BacktestDataLoader
+    from backtest.walk_forward import WalkForwardValidator
 
     # Load real data
     loader = BacktestDataLoader()
@@ -103,9 +103,9 @@ def test_full_walk_forward_run():
         adaptive_regime=False,
     )
 
-    print(f"\n✓ Walk-forward validation complete!")
+    print("\n✓ Walk-forward validation complete!")
     summary = result["summary"]
-    print(f"\nResults Summary:")
+    print("\nResults Summary:")
     print(f"  Windows: {summary['total_windows']}")
     print(f"  Avg IS Return: {summary['avg_is_return']*100:.2f}%")
     print(f"  Avg OOS Return: {summary['avg_oos_return']*100:.2f}%")
@@ -131,8 +131,8 @@ def test_results_serialization():
     print("TEST 4: Results Serialization")
     print("="*70)
 
-    from backtest.walk_forward import WalkForwardValidator, save_results
     from backtest.data_loader import BacktestDataLoader
+    from backtest.walk_forward import WalkForwardValidator, save_results
 
     # Quick run to get results
     loader = BacktestDataLoader()
@@ -171,7 +171,6 @@ def test_cli_entry_point():
     print("TEST 5: CLI Entry Point")
     print("="*70)
 
-    from backtest.walk_forward import main
 
     print("✓ walk_forward.main() is importable")
     print("  Usage: python -m backtest.walk_forward --symbol SPY --interval 1h")
@@ -189,7 +188,7 @@ def main():
         # Run tests
         test_walk_forward_validator_class()
         test_window_generation()
-        result = test_full_walk_forward_run()
+        test_full_walk_forward_run()
         test_results_serialization()
         test_cli_entry_point()
 

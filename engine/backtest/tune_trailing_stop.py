@@ -6,15 +6,16 @@ Usage (from engine/ dir):
     .venv/Scripts/python -m backtest.tune_trailing_stop
 """
 from __future__ import annotations
-import sys
+
 import os
+import sys
 
 # Ensure engine/ is on the path when run as a module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from backtest.backtester import Backtester
 from backtest.data_loader import BacktestDataLoader
 from backtest.signals import generate_signals
-from backtest.backtester import Backtester
 
 
 def run_grid():
@@ -131,14 +132,14 @@ def run_grid():
 
     # Best by score
     best = max(results, key=lambda r: r['score'])
-    print(f"\nBest by Return x (1-MaxDD):")
+    print("\nBest by Return x (1-MaxDD):")
     print(f"  ATR Mult={best['mult']:.2f}, Post-T1={'Yes' if best['post_t1'] else 'No'}")
     print(f"  Score={best['score']:.4f} (vs baseline {base_score:.4f})")
     print(f"  Return={best['ret']:+.1%}, MaxDD={best['maxdd']:.1%}, PF={best['pf']:.2f}")
 
     # Best by Return x Calmar
     best_rc = max(results, key=lambda r: r['ret_x_calmar'])
-    print(f"\nBest by Return x Calmar:")
+    print("\nBest by Return x Calmar:")
     print(f"  ATR Mult={best_rc['mult']:.2f}, Post-T1={'Yes' if best_rc['post_t1'] else 'No'}")
     print(f"  Return x Calmar={best_rc['ret_x_calmar']:.4f} (vs baseline {base_ret_x_calmar:.4f})")
     print(f"  Return={best_rc['ret']:+.1%}, MaxDD={best_rc['maxdd']:.1%}, Calmar={best_rc['calmar']:.2f}")
@@ -153,7 +154,7 @@ def run_grid():
                   f"Sharpe={row['sharpe']:.2f}")
 
     # Check if any trailing config beats baseline
-    print(f"\n--- vs Baseline ---")
+    print("\n--- vs Baseline ---")
     improvements = [r for r in results if r['score'] > base_score]
     if improvements:
         print(f"  {len(improvements)} configs beat baseline:")
@@ -182,11 +183,11 @@ def run_grid():
     elif best['score'] > base_score:
         print(f"  MARGINAL improvement with trailing: ATR Mult={best['mult']:.2f}, "
               f"Post-T1={'Yes' if best['post_t1'] else 'No'}")
-        print(f"  Improvement is <5% — consider keeping no trailing stop for simplicity.")
+        print("  Improvement is <5% — consider keeping no trailing stop for simplicity.")
     else:
-        print(f"  DO NOT USE trailing stop for MGC 1d.")
-        print(f"  Baseline (no trailing) outperforms all trailing configs.")
-        print(f"  The fixed target system (T1/T2/T3) already handles exits optimally for gold's trend characteristics.")
+        print("  DO NOT USE trailing stop for MGC 1d.")
+        print("  Baseline (no trailing) outperforms all trailing configs.")
+        print("  The fixed target system (T1/T2/T3) already handles exits optimally for gold's trend characteristics.")
 
 
 if __name__ == "__main__":

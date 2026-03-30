@@ -11,10 +11,11 @@ Usage:
     is_blocked = cal.is_blackout(some_timestamp, window_minutes=30)
 """
 from __future__ import annotations
-from datetime import datetime, timedelta
-from typing import List, Tuple, Optional
-import pandas as pd
 
+from datetime import datetime, timedelta
+from typing import List, Optional, Tuple
+
+import pandas as pd
 
 # ── Event type definitions ──────────────────────────────────────────────────
 EVENT_FOMC = "FOMC_DECISION"
@@ -184,7 +185,7 @@ class EconomicCalendar:
 
         window = timedelta(minutes=window_minutes)
 
-        for event_dt, event_name, impact in self._events:
+        for event_dt, _event_name, impact in self._events:
             if impact < min_impact:
                 continue
             if abs(timestamp - event_dt) <= window:

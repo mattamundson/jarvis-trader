@@ -9,12 +9,12 @@ Design principle from TradeTrap paper:
   - Hard limits cannot be overridden by agent reasoning
   - Kill switch can only be re-enabled by human (Matt)
 """
+import asyncio
+import logging
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
-import logging
 from typing import Optional
-import asyncio
 
 try:
     from engine.execution.ib_gateway import IBGatewayManager

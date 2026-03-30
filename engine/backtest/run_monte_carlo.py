@@ -26,7 +26,7 @@ import sys
 import time
 from pathlib import Path
 
-from backtest.monte_carlo import run_monte_carlo, _load_result_from_json, format_report
+from backtest.monte_carlo import _load_result_from_json, format_report, run_monte_carlo
 
 
 def main():
@@ -109,7 +109,7 @@ def main():
             break
 
     print(f"{'='*70}")
-    print(f"JARVIS TRADER — Monte Carlo Simulation Runner")
+    print("JARVIS TRADER — Monte Carlo Simulation Runner")
     print(f"{'='*70}")
     print(f"Results file: {results_file}")
     print(f"Symbol:       {symbol}")

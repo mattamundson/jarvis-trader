@@ -10,18 +10,18 @@ Usage:
     python -m backtest.sensitivity --symbol SPY --interval 1h --start 2024-06-01 --end 2026-03-27
 """
 from __future__ import annotations
+
 import argparse
 import json
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from typing import Any, Dict, List, Optional
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from backtest.data_loader import BacktestDataLoader
 from backtest.backtester import Backtester, BacktestResult
+from backtest.data_loader import BacktestDataLoader
 from backtest.optimizer import _compute_signals
-
 
 # ── Parameter ranges for sensitivity sweep ────────────────────────────────────
 

@@ -9,14 +9,15 @@ This test uses mock/stub agents (no live LLM calls) to validate that:
   4. TradingPipeline runs all 5 stages with stub agents
   5. Final pipeline_result dict has all expected keys
 """
-import sys
-import os
 import asyncio
+import os
+import sys
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 from dotenv import load_dotenv
+
 load_dotenv('.env')
 
 
@@ -26,18 +27,6 @@ def test_imports():
     print("TEST 1: Import verification")
     print("=" * 60)
 
-    from backtest.data_loader import BacktestDataLoader
-    from backtest.signals import generate_signals, compute_all_indicators
-    from agents.technical_analyst import TechnicalAnalystAgent, TechnicalReport
-    from agents.pipeline import TradingPipeline
-    from agents.schemas import MarketRegime, TrendDirection, EntrySignal, Action
-    from agents import (
-        BullResearcherAgent, BearResearcherAgent, DebateOrchestrator,
-        NewsAnalystAgent, SocialAnalystAgent, FundamentalistAgent,
-        TraderAgent, RiskManagerAgent, FundManagerAgent,
-        TradeDecision, RiskDecision, FundDecision,
-    )
-    from notifications.whatsapp import WhatsAppNotifier
 
     print("  All imports OK")
     return True
@@ -83,12 +72,12 @@ def test_signal_generation(df):
     entry_bars = df_sig[df_sig['entry_signal'] == 'ENTRY_NOW']
     print(f"  Generated signals for {len(df_sig)} bars")
     print(f"  ENTRY_NOW signals: {len(entry_bars)}")
-    print(f"  Signal distribution:")
+    print("  Signal distribution:")
     print(f"    {df_sig['entry_signal'].value_counts().to_dict()}")
 
     if len(entry_bars) > 0:
         last = entry_bars.iloc[-1]
-        print(f"\n  Last ENTRY_NOW bar:")
+        print("\n  Last ENTRY_NOW bar:")
         print(f"    Timestamp: {last.name}")
         print(f"    Close:     {last['close']:.2f}")
         print(f"    Regime:    {last['regime']}")
@@ -238,7 +227,7 @@ async def test_pipeline(df_sig):
         print(f"  FAIL: Missing keys in pipeline_result: {missing}")
         return None
 
-    print(f"\n  Pipeline Result:")
+    print("\n  Pipeline Result:")
     print(f"    Symbol:         {result['symbol']}")
     print(f"    Final Action:   {result['final_action']}")
     print(f"    Final Quantity:  {result['final_quantity']}")

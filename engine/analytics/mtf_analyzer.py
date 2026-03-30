@@ -72,7 +72,7 @@ def _compute_stc(closes: list[float]) -> float:
         return 50.0
     ema1 = _ema(closes, _STC_FAST)
     ema2 = _ema(closes, _STC_SLOW)
-    macd = [a - b for a, b in zip(ema1, ema2)]
+    macd = [a - b for a, b in zip(ema1, ema2, strict=False)]
     d1 = _ema(_stoch(macd, _STC_LEN), 3)
     d2 = _ema(_stoch(d1, _STC_LEN), 3)
     return round(d2[-1], 2) if d2 else 50.0

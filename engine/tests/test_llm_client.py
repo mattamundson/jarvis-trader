@@ -8,13 +8,11 @@ Tests:
 - Retry logic (mocked)
 """
 
-import asyncio
-import json
-import pytest
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from llm import JarvisLLMClient
 from llm.cost_tracker import CostTracker

@@ -19,25 +19,23 @@ captured in pipeline_result["errors"].
 """
 import asyncio
 import logging
-import time
 import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from .schemas import MarketRegime, TrendDirection, EntrySignal, Action
 from database import repository
 
 try:
     from cache import (
-        cache_signal, get_cached_signal, should_use_cache,
-        set_cooldown, is_on_cooldown
+        cache_signal,
+        get_cached_signal,
+        should_use_cache,
     )
     _CACHE_AVAILABLE = True
 except Exception:  # pragma: no cover — optional dependency
     _CACHE_AVAILABLE = False
 
 try:
-    from notifications.whatsapp import format_pipeline_run_alert, get_notifier as _get_wa_notifier
     _WA_AVAILABLE = True
 except Exception:  # pragma: no cover — optional dependency
     _WA_AVAILABLE = False
@@ -469,13 +467,13 @@ class TradingPipeline:
         """
         # Risk manager veto
         if risk_decision and not risk_decision.get("approved", False):
-            logger.info(f"[Resolution] Risk manager veto → HOLD")
+            logger.info("[Resolution] Risk manager veto → HOLD")
             return "hold", 0, False
 
         # Fund manager decision (only runs if risk approved)
         if fund_decision:
             if not fund_decision.get("execute", False):
-                logger.info(f"[Resolution] Fund manager rejected → HOLD")
+                logger.info("[Resolution] Fund manager rejected → HOLD")
                 return "hold", 0, False
 
             action = fund_decision.get("action", "HOLD").lower()
@@ -493,7 +491,7 @@ class TradingPipeline:
             return action, quantity, requires_human
 
         # Default to HOLD if nothing else available
-        logger.warning(f"[Resolution] No decision available → HOLD")
+        logger.warning("[Resolution] No decision available → HOLD")
         return "hold", 0, False
 
     # ── Portfolio Data ─────────────────────────────────────────────────────
@@ -637,13 +635,12 @@ class TradingPipeline:
         Returns:
             dict with pipeline result or skip reason
         """
-        symbol = signal.get("symbol", "MES")
+        signal.get("symbol", "MES")
         action = signal.get("action", "HOLD")
-        source = signal.get("source", "tradingview")
+        signal.get("source", "tradingview")
 
-        run_id = str(uuid.uuid4())[:8]
+        str(uuid.uuid4())[:8]
 
         # Only run pipeline for actionable signals
         if action not in ("LONG", "SHORT", "CLOSE"):
-            out = {"status": "skipped", "reason": f"Non-actionable action: {action}", "run_id": run_id}
-     
+            pass

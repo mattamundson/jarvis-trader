@@ -372,7 +372,6 @@ class SchwabConnector:
 
         # ── Map action to schwab-py instruction ───────────────────────────────
         try:
-            import schwab  # noqa: PLC0415
             from schwab.orders.options import (  # noqa: PLC0415
                 OptionSymbol,
                 option_buy_to_close_limit,

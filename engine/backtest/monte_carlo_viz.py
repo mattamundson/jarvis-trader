@@ -442,7 +442,7 @@ def save_fan_chart(
         output_html_path = Path(output_html_path)
 
     # Generate curves
-    print(f"Generating equity curves for visualization...")
+    print("Generating equity curves for visualization...")
     equity_curves, x_axis = generate_equity_curves_for_sims(
         trades_list,
         n_simulations=1_000,

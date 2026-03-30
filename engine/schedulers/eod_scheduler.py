@@ -345,6 +345,7 @@ class EODScheduler:
 
         try:
             import pytz
+
             from notifications.whatsapp import format_morning_briefing
 
             ct = pytz.timezone("America/Chicago")

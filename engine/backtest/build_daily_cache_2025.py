@@ -59,7 +59,7 @@ def mes_daily_from_spy_returns_proxy() -> Path:
     es_last = float(es["close"].iloc[-1])
     spy_last = float(spy24["close"].iloc[-1])
 
-    s0 = spy25.iloc[0]
+    spy25.iloc[0]
     prev_spy_c = spy_last
     prev_es_c = es_last
 

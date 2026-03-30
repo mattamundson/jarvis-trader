@@ -5,12 +5,10 @@ Strongly-typed response models for all API endpoints.
 Enables automatic validation, OpenAPI schema generation,
 and client code generation.
 """
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # ── Enums ────────────────────────────────────────────────────────────────────
 

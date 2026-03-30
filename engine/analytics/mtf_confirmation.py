@@ -10,10 +10,10 @@ Design:
   If any higher timeframe disagrees, signal is SKIPPED or DOWNGRADED.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Literal
-from datetime import datetime, timezone
 import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Dict, Literal, Optional
 
 logger = logging.getLogger(__name__)
 

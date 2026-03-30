@@ -97,7 +97,7 @@ def test_halt_logic():
         tracker = ConsecutiveLossTracker(data_dir=tmpdir)
 
         # Record 7 losses
-        for i in range(7):
+        for _i in range(7):
             tracker.record_trade("MES", -50.0)
 
         assert tracker.get_consecutive_losses() == 7, "Should have 7 losses"
@@ -237,7 +237,7 @@ def main():
     passed = 0
     failed = 0
 
-    for name, test_func in tests:
+    for _name, test_func in tests:
         try:
             test_func()
             passed += 1

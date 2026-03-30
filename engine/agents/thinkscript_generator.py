@@ -4,10 +4,10 @@ ThinkScript Generator Agent
 Takes JARVIS TRADER analysis results and generates ThinkScript code
 that can be pasted directly into ThinkorSwim charts.
 """
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
-import logging
 
 logger = logging.getLogger(__name__)
 

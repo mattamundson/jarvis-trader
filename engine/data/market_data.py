@@ -4,10 +4,10 @@ JARVIS TRADER — Market Data Layer
 Unified interface to IBKR, Schwab, Polygon, and Finnhub.
 All streaming goes through Redis for agent consumption.
 """
-import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ class IBKRDataConnector:
         if not self._connected:
             return pd.DataFrame()
 
-        from ib_async import Contract, Future, Stock
+        from ib_async import Future, Stock
 
         if is_futures:
             contract = Future(symbol, exchange=exchange)
@@ -113,7 +113,7 @@ class IBKRDataConnector:
             logger.error("Not connected to IBKR")
             return
 
-        from ib_async import Contract, Future, Stock
+        from ib_async import Future, Stock
 
         if is_futures:
             contract = Future(symbol, exchange="CME")

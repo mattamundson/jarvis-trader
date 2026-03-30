@@ -19,7 +19,7 @@ The final DebateResult contains the raw reports, a computed combined_signal
 """
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 

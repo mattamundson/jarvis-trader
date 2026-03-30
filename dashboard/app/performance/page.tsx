@@ -12,6 +12,8 @@ import { WeeklyPnLCard } from "@/components/WeeklyPnLCard";
 import { TopSymbolsWidget } from "@/components/TopSymbolsWidget";
 import AvgTradeTimeWidget from "@/components/AvgTradeTimeWidget";
 import { EquityCurveWidget } from "@/components/EquityCurveWidget";
+import { EntryQualityWidget } from "@/components/EntryQualityWidget";
+import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
 
 // ── Static Data (from EXECUTIVE_BRIEFING.md v2.3, 2026-03-29) ──────────────
 
@@ -694,6 +696,12 @@ export default function PerformancePage() {
         {/* Section 9: Equity Curve */}
         <EquityCurveWidget />
 
+        {/* Section 10: Entry Quality */}
+        <EntryQualityWidget />
+
+        {/* Section 11: Recent Closed Trades */}
+        <RecentTradesTableWidget />
+
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>
           <p className="font-mono text-[10px]" style={{ color: "#333" }}>
@@ -707,33 +715,4 @@ export default function PerformancePage() {
   );
 }
 
-// ── Summary Card ─────────────────────────────────────────────────────────────
-
-function SummaryCard({
-  label,
-  value,
-  sub,
-  color,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  color: string;
-}) {
-  return (
-    <div
-      className="rounded-xl p-4"
-      style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}
-    >
-      <p className="font-mono text-[10px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>
-        {label}
-      </p>
-      <p className="font-mono text-2xl font-bold tabular-nums" style={{ color }}>
-        {value}
-      </p>
-      <p className="font-mono text-[10px] mt-1" style={{ color: "#555" }}>
-        {sub}
-      </p>
-    </div>
-  );
-}
+// ── Summary Card ───────�

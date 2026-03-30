@@ -6,9 +6,9 @@ Usage: python init_db.py [--reset] [--db-path PATH]
 """
 import argparse
 import os
-import sys
 import shutil
 from datetime import datetime
+
 
 def main():
     parser = argparse.ArgumentParser(description='Initialize JARVIS TRADER database')

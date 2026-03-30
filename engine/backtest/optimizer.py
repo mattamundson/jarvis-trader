@@ -1,5 +1,5 @@
 """
-JARVIS TRADER — Parameter Optimizer
+JARVIS TRADER - Parameter Optimizer
 Grid-searches STC thresholds, ATR multiples, and regime filters
 against cached backtest data. No live data fetches required.
 
@@ -92,62 +92,56 @@ def build_daily_bias(df_daily: pd.DataFrame) -> pd.Series:
     return bias
 
 
-def _apply_mtf_filter(df: pd.DataFrame, daily_bias: pd.Series) -> pd.DataFrame:
+def _apply_mtf_filter(df: pd.DataFrame, daily_bias: pd.Series) -> tuple:
     """
     Apply MTF daily-bias filter to a 1h DataFrame's entry_signal column.
+    Vectorized implementation - O(N) merge instead of O(N*M) row loop.
 
     Rules:
-        BULL day  -> block SHORT entries  (set ENTRY_NOW to NO_TRADE for bear signals)
-        BEAR day  -> block LONG  entries  (set ENTRY_NOW to NO_TRADE for bull signals)
-        NEUTRAL   -> block all  entries
+        BULL day  -> only allow STRONG_BULL (long) entries
+        BEAR day  -> only allow STRONG_BEAR (short) entries
+        NEUTRAL   -> block all entries
 
-    Direction is inferred from the bias column already computed by _compute_signals:
-        STRONG_BULL  -> long signal
-        STRONG_BEAR  -> short signal
-        NEUTRAL      -> ambiguous, filtered out in NEUTRAL days anyway
-
-    If the daily bias Series has no coverage for a given date the bar is left as-is.
+    Direction is inferred from the bias column already computed by _compute_signals.
+    Uses pandas merge_asof to forward-fill daily bias onto 1h bars efficiently.
     """
     df = df.copy()
 
-    # Normalise 1h index to date for the lookup
-    bar_dates = pd.to_datetime(df.index).normalize()
+    # Build a sorted daily bias DataFrame for merge_asof
+    daily_df = daily_bias.rename("daily_bias").reset_index()
+    daily_df.columns = ["date", "daily_bias"]
+    daily_df["date"] = pd.to_datetime(daily_df["date"])
+    daily_df = daily_df.sort_values("date")
 
-    filtered_count = 0
-    for i, bar_date in enumerate(bar_dates):
-        if df["entry_signal"].iloc[i] != "ENTRY_NOW":
-            continue  # not an entry — nothing to filter
+    # Build 1h bar date column (normalized to midnight, tz-naive)
+    bar_dates = pd.to_datetime(df.index).normalize().tz_localize(None)
+    hourly_df = pd.DataFrame({"bar_ts": bar_dates}).reset_index(drop=True)
 
-        d_bias = daily_bias.get(bar_date, None)
-        if d_bias is None:
-            # No daily coverage; try the previous trading day (roll back up to 7 days)
-            for delta in range(1, 8):
-                d_bias = daily_bias.get(bar_date - pd.Timedelta(days=delta), None)
-                if d_bias is not None:
-                    break
+    # Forward-fill daily bias to each 1h bar (tolerance=7 days for weekend gaps)
+    merged = pd.merge_asof(
+        hourly_df.sort_values("bar_ts"),
+        daily_df,
+        left_on="bar_ts",
+        right_on="date",
+        direction="backward",
+        tolerance=pd.Timedelta(days=7),
+    )
+    # Re-align to original df order
+    d_bias_arr = merged["daily_bias"].fillna("NEUTRAL").values
 
-        if d_bias is None:
-            # Still no coverage → block entry (safety: unknown daily regime)
-            df.iloc[i, df.columns.get_loc("entry_signal")] = "NO_TRADE"
-            filtered_count += 1
-            continue
+    # Vectorized filter masks
+    entry_mask = df["entry_signal"].values == "ENTRY_NOW"
+    bar_bias_arr = df["bias"].values
 
-        bar_bias = df["bias"].iloc[i]
+    # Conditions to BLOCK (convert ENTRY_NOW -> NO_TRADE)
+    d_neutral = d_bias_arr == "NEUTRAL"
+    d_bull_but_not_bull = (d_bias_arr == "BULL") & (bar_bias_arr != "STRONG_BULL")
+    d_bear_but_not_bear = (d_bias_arr == "BEAR") & (bar_bias_arr != "STRONG_BEAR")
 
-        if d_bias == "BULL":
-            # Only allow long (STRONG_BULL) entries on bull days
-            if bar_bias != "STRONG_BULL":
-                df.iloc[i, df.columns.get_loc("entry_signal")] = "NO_TRADE"
-                filtered_count += 1
-        elif d_bias == "BEAR":
-            # Only allow short (STRONG_BEAR) entries on bear days
-            if bar_bias != "STRONG_BEAR":
-                df.iloc[i, df.columns.get_loc("entry_signal")] = "NO_TRADE"
-                filtered_count += 1
-        else:
-            # NEUTRAL daily — block all entries
-            df.iloc[i, df.columns.get_loc("entry_signal")] = "NO_TRADE"
-            filtered_count += 1
+    block_mask = entry_mask & (d_neutral | d_bull_but_not_bull | d_bear_but_not_bear)
+    filtered_count = int(block_mask.sum())
+
+    df.loc[df.index[block_mask], "entry_signal"] = "NO_TRADE"
 
     return df, filtered_count
 
@@ -171,7 +165,7 @@ def _compute_signals(
     stc_vals   = stc(close, fast=23, slow=50, k_period=10, d_period=3)
     phase_vals, phase_compression = phase_oscillator(close, high, low)
     ema8, ema21, ema34 = ema_ribbon(close)
-    # range_consumed_pct takes scalars — compute as series inline
+    # range_consumed_pct takes scalars - compute as series inline
     consumed = ((close - close.shift(1)).abs() / atr_vals.replace(0, float('nan'))) * 100
     kama_vals  = kama(close)
 
@@ -273,7 +267,7 @@ def _run_with_params(
 
 def _score(r: BacktestResult) -> float:
     """
-    Composite ranking score — balances return, Sharpe, win rate, and trade count.
+    Composite ranking score - balances return, Sharpe, win rate, and trade count.
     Penalizes <3 trades (insufficient sample) and high drawdown.
     """
     if r.total_trades < 3:

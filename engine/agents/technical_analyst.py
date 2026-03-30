@@ -11,9 +11,9 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 import pandas as pd
+
 try:
     import pandas_ta as ta  # 150+ technical indicators
     PANDAS_TA_AVAILABLE = True

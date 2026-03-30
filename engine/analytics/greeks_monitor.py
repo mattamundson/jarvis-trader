@@ -5,10 +5,10 @@ Phase 3 feature — monitors delta, theta, IV for options positions.
 Currently a stub. Will be expanded when options trading is enabled.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional, Dict, List
 import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -16,7 +16,7 @@ Metrics exposed:
 - jarvis_consecutive_losses: Gauge for consecutive losing trades
 """
 
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Gauge, Histogram
 
 # ── Pipeline Metrics ──────────────────────────────────────────────────────
 pipeline_runs = Counter(

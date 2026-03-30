@@ -8,17 +8,18 @@ Answers:
   3. Did the filter block more losers than winners? (quality analysis)
 """
 from __future__ import annotations
-import sys
+
 import os
+import sys
 
 # Ensure engine/ is on the path when run as a script
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
-import numpy as np
+
+from backtest.backtester import Backtester
 from backtest.data_loader import BacktestDataLoader
 from backtest.signals import generate_signals
-from backtest.backtester import Backtester
 
 
 def main():
@@ -72,7 +73,7 @@ def main():
 
     # ── 5. Print comparison ─────────────────────────────────────────────
     print(f"\n{'='*70}")
-    print(f"  RESULTS COMPARISON")
+    print("  RESULTS COMPARISON")
     print(f"{'='*70}")
     print(f"{'Metric':<30} {'Baseline':>15} {'Vol Filter':>15} {'Delta':>12}")
     print(f"{'-'*72}")
@@ -104,7 +105,7 @@ def main():
 
     # ── 6. Quality analysis: did the filter block losers? ───────────────
     print(f"\n{'='*70}")
-    print(f"  QUALITY ANALYSIS: Were blocked signals losers?")
+    print("  QUALITY ANALYSIS: Were blocked signals losers?")
     print(f"{'='*70}")
 
     # Find the bars that were blocked
@@ -196,7 +197,7 @@ def main():
     print(f"  Avg PnL of blocked (points): {outcomes_df['pnl_points'].mean():+.2f}")
 
     # Exit reason breakdown
-    print(f"\nBlocked signal exit reasons:")
+    print("\nBlocked signal exit reasons:")
     for reason, count in outcomes_df['exit_reason'].value_counts().items():
         avg_pnl = outcomes_df[outcomes_df['exit_reason'] == reason]['pnl_points'].mean()
         print(f"  {reason}: {count} ({count/total_blocked:.0%}), avg PnL: {avg_pnl:+.2f} pts")
@@ -206,13 +207,13 @@ def main():
     if losers_blocked > winners_blocked:
         pct_losers = losers_blocked / total_blocked
         print(f"  VERDICT: Volume filter is BENEFICIAL — {pct_losers:.0%} of blocked were losers.")
-        print(f"  The filter correctly identified low-conviction entries that would have lost.")
+        print("  The filter correctly identified low-conviction entries that would have lost.")
     elif winners_blocked > losers_blocked:
         pct_winners = winners_blocked / total_blocked
         print(f"  VERDICT: Volume filter is HARMFUL — {pct_winners:.0%} of blocked were winners.")
-        print(f"  The filter is removing good trades. Consider disabling or adjusting period.")
+        print("  The filter is removing good trades. Consider disabling or adjusting period.")
     else:
-        print(f"  VERDICT: Volume filter is NEUTRAL — equal winners and losers blocked.")
+        print("  VERDICT: Volume filter is NEUTRAL — equal winners and losers blocked.")
     print(f"{'='*70}")
 
 

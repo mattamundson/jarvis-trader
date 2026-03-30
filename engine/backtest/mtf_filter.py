@@ -12,8 +12,8 @@ Usage:
     # aligned is a boolean Series indexed like df_1h
 """
 from __future__ import annotations
+
 import pandas as pd
-import numpy as np
 
 
 class MTFFilter:

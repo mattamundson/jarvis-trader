@@ -13,19 +13,19 @@ ib_async wraps IB's TWS API over a persistent TCP socket.
 """
 import asyncio
 import logging
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 try:
     from ib_async import (
         IB,
         Future,
-        Stock,
-        Order,
-        MarketOrder,
         LimitOrder,
-        StopOrder,
+        MarketOrder,
+        Order,
+        Stock,
         StopLimitOrder,
+        StopOrder,
     )
     IB_AVAILABLE = True
 except ImportError:
@@ -39,7 +39,7 @@ except ImportError:
     StopOrder = None
     StopLimitOrder = None
 
-from risk.safety_layer import SafetyLayer, OrderRequest, KillSwitchReason
+from risk.safety_layer import KillSwitchReason, OrderRequest, SafetyLayer
 
 logger = logging.getLogger(__name__)
 
@@ -550,7 +550,7 @@ class IBKRExecutor:
             if qty == 0:
                 continue
 
-            closing_order = OrderRequest(
+            OrderRequest(
                 symbol=pos["symbol"],
                 quantity=-qty,                 # opposite side to close
                 order_type="market",

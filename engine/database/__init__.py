@@ -20,13 +20,12 @@ Usage
     order_id = await repository.insert_order({"symbol": "MES", "quantity": 1, ...})
 """
 
-from .schema import DatabaseManager, init_db, get_db
+from .schema import DatabaseManager, get_db, init_db
 
 # PostgreSQL modules require asyncpg — guard for environments where
 # asyncpg is not installed (e.g. paper-trading-only / backtest mode).
 try:
-    from . import connection
-    from . import repository
+    from . import connection, repository
     _pg_available = True
 except ImportError:
     connection = None  # type: ignore[assignment]

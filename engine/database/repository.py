@@ -12,10 +12,9 @@ Provides high-level functions to insert and query trading data:
 """
 import json
 import logging
-from datetime import datetime
-from typing import Optional, Any
+from typing import Optional
 
-from .connection import execute, execute_one, execute_insert, get_pool
+from .connection import execute, execute_insert, execute_one, get_pool
 
 logger = logging.getLogger(__name__)
 
