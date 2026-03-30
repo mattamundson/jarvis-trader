@@ -38,10 +38,7 @@ async def cost_tracker(temp_db):
 @pytest.fixture
 async def llm_client(temp_db):
     """Create a JarvisLLMClient instance."""
-    client = JarvisLLMClient(
-        api_key="test-key-12345",
-        db_path=temp_db
-    )
+    client = JarvisLLMClient(api_key="test-key-12345", db_path=temp_db)
     yield client
     await client.close()
 
@@ -54,7 +51,7 @@ class TestCostCalculation:
         cost = llm_client._calculate_cost(
             model="claude-opus-4-6",
             input_tokens=100_000,  # 0.1M
-            output_tokens=50_000,   # 0.05M
+            output_tokens=50_000,  # 0.05M
         )
         # Opus: $15 per MTok input + $75 per MTok output
         # Input: 0.1 * 15 = $1.50

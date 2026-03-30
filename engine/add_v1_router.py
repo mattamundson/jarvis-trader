@@ -14,7 +14,7 @@ content = main_file.read_text()
 app_creation_pattern = r"(app = FastAPI\([^)]*\))"
 
 # Create the v1 router setup code that should be added after app creation
-v1_router_code = '''
+v1_router_code = """
 
 # ── API Versioning ────────────────────────────────────────────────────────────
 # Create v1 router with /v1 prefix for future versioning support
@@ -23,7 +23,7 @@ v1_router = APIRouter(prefix="/v1", tags=["v1"])
 # Register all endpoints with the v1 router below.
 # For now, we serve the same endpoints under both / (legacy) and /v1 (new).
 # This allows clients to transition gradually.
-'''
+"""
 
 # Find the lifespan context manager to insert router registration after app creation
 # Look for the section where app is defined and add the router setup
@@ -35,7 +35,7 @@ if match:
     # Find the next newline
     next_newline = content.find("\n", insert_pos)
     # Insert the router setup code
-    content = content[:next_newline + 1] + v1_router_code + "\n" + content[next_newline + 1:]
+    content = content[: next_newline + 1] + v1_router_code + "\n" + content[next_newline + 1 :]
     print("✅ Added v1 router setup code")
 else:
     print("⚠️ Could not find app = FastAPI() statement")
@@ -47,7 +47,7 @@ include_pattern = r"(app\.include_router\(journal_router.*?\n)"
 match = re.search(include_pattern, content)
 if match:
     insert_pos = match.end()
-    v1_include = 'app.include_router(v1_router)\n'
+    v1_include = "app.include_router(v1_router)\n"
     content = content[:insert_pos] + v1_include + content[insert_pos:]
     print("✅ Added v1_router include statement")
 else:

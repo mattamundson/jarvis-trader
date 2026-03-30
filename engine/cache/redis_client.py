@@ -14,6 +14,7 @@ from typing import Any, Optional
 try:
     import redis.asyncio as redis
     from redis.exceptions import ConnectionError, RedisError, ResponseError
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False

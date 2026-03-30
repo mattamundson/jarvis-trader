@@ -4,6 +4,7 @@ ThinkScript Generator Agent
 Takes JARVIS TRADER analysis results and generates ThinkScript code
 that can be pasted directly into ThinkorSwim charts.
 """
+
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -83,45 +84,66 @@ Always include:
         if self.llm_client:
             return await self._generate_with_llm(symbol, timeframe, script_type, analysis_context)
         else:
-            return self._generate_template(symbol, timeframe, script_type, technical_report, pipeline_result)
+            return self._generate_template(
+                symbol, timeframe, script_type, technical_report, pipeline_result
+            )
 
     def _build_context(self, symbol, timeframe, technical_report, pipeline_result) -> str:
         parts = [f"Symbol: {symbol}", f"Timeframe: {timeframe}"]
 
         if technical_report:
-            parts.extend([
-                f"Signal: {getattr(technical_report, 'signal', 'N/A')}",
-                f"Trend: {getattr(technical_report, 'trend', 'N/A')}",
-                f"Regime: {getattr(technical_report, 'regime', 'N/A')}",
-                f"Trend Score: {getattr(technical_report, 'trend_score', 0):.2f}",
-                f"Momentum Score: {getattr(technical_report, 'momentum_score', 0):.2f}",
-                f"Current Price: {getattr(technical_report, 'current_price', 0)}",
-            ])
-            support = getattr(technical_report, 'support_levels', [])
-            resistance = getattr(technical_report, 'resistance_levels', [])
+            parts.extend(
+                [
+                    f"Signal: {getattr(technical_report, 'signal', 'N/A')}",
+                    f"Trend: {getattr(technical_report, 'trend', 'N/A')}",
+                    f"Regime: {getattr(technical_report, 'regime', 'N/A')}",
+                    f"Trend Score: {getattr(technical_report, 'trend_score', 0):.2f}",
+                    f"Momentum Score: {getattr(technical_report, 'momentum_score', 0):.2f}",
+                    f"Current Price: {getattr(technical_report, 'current_price', 0)}",
+                ]
+            )
+            support = getattr(technical_report, "support_levels", [])
+            resistance = getattr(technical_report, "resistance_levels", [])
             if support:
                 parts.append(f"Support Levels: {[f'{s:.2f}' for s in support[:3]]}")
             if resistance:
                 parts.append(f"Resistance Levels: {[f'{r:.2f}' for r in resistance[:3]]}")
 
-            indicators = getattr(technical_report, 'indicators', {})
+            indicators = getattr(technical_report, "indicators", {})
             if indicators:
-                key_indicators = {k: v for k, v in indicators.items()
-                                  if k in ('ema_20', 'ema_50', 'rsi_14', 'macd', 'bb_upper', 'bb_lower', 'atr_14', 'vwap')}
+                key_indicators = {
+                    k: v
+                    for k, v in indicators.items()
+                    if k
+                    in (
+                        "ema_20",
+                        "ema_50",
+                        "rsi_14",
+                        "macd",
+                        "bb_upper",
+                        "bb_lower",
+                        "atr_14",
+                        "vwap",
+                    )
+                }
                 if key_indicators:
                     parts.append(f"Key Indicators: {key_indicators}")
 
         if pipeline_result:
-            parts.extend([
-                f"Final Action: {pipeline_result.get('final_action', 'hold')}",
-                f"Confidence: {pipeline_result.get('confidence', 0):.1%}",
-                f"Bull Score: {pipeline_result.get('bull_score', 0):.2f}",
-                f"Bear Score: {pipeline_result.get('bear_score', 0):.2f}",
-            ])
+            parts.extend(
+                [
+                    f"Final Action: {pipeline_result.get('final_action', 'hold')}",
+                    f"Confidence: {pipeline_result.get('confidence', 0):.1%}",
+                    f"Bull Score: {pipeline_result.get('bull_score', 0):.2f}",
+                    f"Bear Score: {pipeline_result.get('bear_score', 0):.2f}",
+                ]
+            )
 
         return "\n".join(parts)
 
-    async def _generate_with_llm(self, symbol, timeframe, script_type, analysis_context) -> ThinkScriptResult:
+    async def _generate_with_llm(
+        self, symbol, timeframe, script_type, analysis_context
+    ) -> ThinkScriptResult:
         """Generate ThinkScript using Claude."""
         import anthropic
 
@@ -176,7 +198,9 @@ Return ONLY the ThinkScript code — no explanation, no markdown fences, just ra
             logger.error(f"LLM generation failed: {e}")
             return self._generate_template(symbol, timeframe, script_type, None, None)
 
-    def _generate_template(self, symbol, timeframe, script_type, technical_report, pipeline_result) -> ThinkScriptResult:
+    def _generate_template(
+        self, symbol, timeframe, script_type, technical_report, pipeline_result
+    ) -> ThinkScriptResult:
         """Generate a solid template study when LLM is unavailable."""
         signal = "bullish"
         confidence = 0.5
@@ -184,30 +208,47 @@ Return ONLY the ThinkScript code — no explanation, no markdown fences, just ra
         resistance = []
 
         if technical_report:
-            signal = getattr(technical_report, 'signal', 'neutral')
-            support = getattr(technical_report, 'support_levels', [])[:2]
-            resistance = getattr(technical_report, 'resistance_levels', [])[:2]
+            signal = getattr(technical_report, "signal", "neutral")
+            support = getattr(technical_report, "support_levels", [])[:2]
+            resistance = getattr(technical_report, "resistance_levels", [])[:2]
         if pipeline_result:
-            confidence = pipeline_result.get('confidence', 0.5)
-            signal = pipeline_result.get('final_action', signal)
+            confidence = pipeline_result.get("confidence", 0.5)
+            signal = pipeline_result.get("final_action", signal)
 
-        support_lines = "\n".join([
-            f'plot Support{i+1} = {s:.2f};\nSupport{i+1}.SetDefaultColor(Color.GREEN);\nSupport{i+1}.SetLineWeight(2);'
-            for i, s in enumerate(support)
-        ]) if support else "# No support levels detected"
+        support_lines = (
+            "\n".join(
+                [
+                    f"plot Support{i + 1} = {s:.2f};\nSupport{i + 1}.SetDefaultColor(Color.GREEN);\nSupport{i + 1}.SetLineWeight(2);"
+                    for i, s in enumerate(support)
+                ]
+            )
+            if support
+            else "# No support levels detected"
+        )
 
-        resistance_lines = "\n".join([
-            f'plot Resistance{i+1} = {r:.2f};\nResistance{i+1}.SetDefaultColor(Color.RED);\nResistance{i+1}.SetLineWeight(2);'
-            for i, r in enumerate(resistance)
-        ]) if resistance else "# No resistance levels detected"
+        resistance_lines = (
+            "\n".join(
+                [
+                    f"plot Resistance{i + 1} = {r:.2f};\nResistance{i + 1}.SetDefaultColor(Color.RED);\nResistance{i + 1}.SetLineWeight(2);"
+                    for i, r in enumerate(resistance)
+                ]
+            )
+            if resistance
+            else "# No resistance levels detected"
+        )
 
-        bias_color = "Color.GREEN" if "buy" in signal.lower() or "bull" in signal.lower() else \
-                     "Color.RED" if "sell" in signal.lower() or "bear" in signal.lower() else "Color.YELLOW"
+        bias_color = (
+            "Color.GREEN"
+            if "buy" in signal.lower() or "bull" in signal.lower()
+            else "Color.RED"
+            if "sell" in signal.lower() or "bear" in signal.lower()
+            else "Color.YELLOW"
+        )
 
         code = f"""# ============================================================
 # JARVIS TRADER — {symbol} Analysis Study
 # Timeframe: {timeframe} | Signal: {signal.upper()} | Confidence: {confidence:.0%}
-# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+# Generated: {datetime.now().strftime("%Y-%m-%d %H:%M")}
 # ============================================================
 
 input fastEMA = 20;

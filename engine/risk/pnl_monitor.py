@@ -7,6 +7,7 @@ Source priority (highest to lowest):
   2. SQLite       — persisted daily_pnl snapshots (survives restarts)
   3. In-memory    — PortfolioTracker paper-trade fallback (no persistence)
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,6 +20,7 @@ logger = logging.getLogger("jarvis_trader.pnl_monitor")
 
 # ── State container ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class PnLState:
     """
@@ -27,19 +29,21 @@ class PnLState:
     All monetary values are in dollars (positive = profit, negative = loss).
     max_drawdown_pct is expressed as a negative percentage (e.g. -0.05 = -5%).
     """
+
     daily_realized_pnl: float = 0.0
     daily_unrealized_pnl: float = 0.0
     total_pnl: float = 0.0
     starting_balance: float = 0.0
     current_balance: float = 0.0
-    max_drawdown_pct: float = 0.0        # negative or zero
-    source: str = "memory"               # "ib" | "sqlite" | "memory"
+    max_drawdown_pct: float = 0.0  # negative or zero
+    source: str = "memory"  # "ib" | "sqlite" | "memory"
     timestamp: str = field(
         default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     )
 
 
 # ── Monitor ───────────────────────────────────────────────────────────────────
+
 
 class PnLMonitor:
     """
@@ -151,7 +155,7 @@ class PnLMonitor:
         if current <= 0:
             return 0.0
 
-        drawdown = (current - peak) / peak   # negative when current < peak
+        drawdown = (current - peak) / peak  # negative when current < peak
         return drawdown
 
     def should_halt_trading(
@@ -337,7 +341,7 @@ class PnLMonitor:
                 total_pnl=daily_pnl,
                 starting_balance=starting_balance,
                 current_balance=total_equity,
-                max_drawdown_pct=0.0,   # computed separately via get_drawdown_pct()
+                max_drawdown_pct=0.0,  # computed separately via get_drawdown_pct()
                 source="ib",
                 timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
             )
@@ -378,7 +382,7 @@ class PnLMonitor:
                 total_pnl=realized + unrealized,
                 starting_balance=starting,
                 current_balance=ending if ending > 0 else starting,
-                max_drawdown_pct=-max_dd,   # stored as positive in DB; expose as negative
+                max_drawdown_pct=-max_dd,  # stored as positive in DB; expose as negative
                 source="sqlite",
                 timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
             )

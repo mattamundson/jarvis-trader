@@ -54,12 +54,13 @@ try:
     from ib_async import (
         util as ib_util,
     )
+
     IB_INSYNC_AVAILABLE = True
     logger.info("ib_async loaded successfully (IB_INSYNC_AVAILABLE=True)")
 except ImportError:
     try:
         # Fallback: some installs still use the original package name
-        from ib_insync import (  # type: ignore[import]
+        from ib_insync import (  # type: ignore[import]  # noqa: F401
             IB,
             Contract,
             Future,
@@ -69,9 +70,10 @@ except ImportError:
             StopLimitOrder,
             StopOrder,
         )
-        from ib_insync import (
+        from ib_insync import (  # noqa: F401
             util as ib_util,
         )
+
         IB_INSYNC_AVAILABLE = True
         logger.info("ib_insync loaded successfully (IB_INSYNC_AVAILABLE=True)")
     except ImportError:
@@ -121,7 +123,7 @@ FUTURES_SYMBOL_MAP: dict[str, dict] = {
 # ── Config ────────────────────────────────────────────────────────────────────
 
 # SAFETY: Live trading (port 4001) is permanently disabled in this module.
-LIVE_TRADING_PORT = 4001   # Referenced only to explicitly reject it
+LIVE_TRADING_PORT = 4001  # Referenced only to explicitly reject it
 PAPER_TRADING_PORT = 4002  # The only permitted port
 
 
@@ -132,6 +134,7 @@ class IBGatewayConfig:
 
     Port is hardcoded to 4002 (paper). Attempting to set 4001 raises ValueError.
     """
+
     host: str = "127.0.0.1"
     port: int = PAPER_TRADING_PORT  # Paper trading ONLY — do not change to 4001
     client_id: int = 1
@@ -156,6 +159,7 @@ class IBGatewayConfig:
 
 # ── Status enum ──────────────────────────────────────────────────────────────
 
+
 class IBConnectionStatus(Enum):
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
@@ -164,6 +168,7 @@ class IBConnectionStatus(Enum):
 
 
 # ── Manager ───────────────────────────────────────────────────────────────────
+
 
 class IBGatewayManager:
     """
@@ -218,9 +223,7 @@ class IBGatewayManager:
         """
         # SAFETY: Live trading (port 4001) is permanently disabled in this module.
         if self._config.port == LIVE_TRADING_PORT:
-            logger.critical(
-                "SAFETY VIOLATION in connect(): port 4001 rejected. Aborting."
-            )
+            logger.critical("SAFETY VIOLATION in connect(): port 4001 rejected. Aborting.")
             self._status = IBConnectionStatus.ERROR
             self._last_error = "Port 4001 (live trading) is permanently disabled"
             return False
@@ -358,7 +361,9 @@ class IBGatewayManager:
                 currency=spec["currency"],
                 multiplier=spec["multiplier"],
             )
-            logger.debug("Resolved %s → Future(%s, %s)", symbol, spec["underlying"], spec["exchange"])
+            logger.debug(
+                "Resolved %s → Future(%s, %s)", symbol, spec["underlying"], spec["exchange"]
+            )
             return contract
 
         # Generic equity fallback
@@ -419,10 +424,7 @@ class IBGatewayManager:
             return None
 
         if not self.is_connected():
-            logger.error(
-                "place_paper_order: not connected to IB Gateway. "
-                "Call connect() first."
-            )
+            logger.error("place_paper_order: not connected to IB Gateway. Call connect() first.")
             return None
 
         action_upper = action.upper()
@@ -438,7 +440,12 @@ class IBGatewayManager:
 
         logger.info(
             "place_paper_order | symbol=%s action=%s qty=%d type=%s lmt=%s aux=%s",
-            symbol, action_upper, quantity, order_type_upper, limit_price, aux_price,
+            symbol,
+            action_upper,
+            quantity,
+            order_type_upper,
+            limit_price,
+            aux_price,
         )
 
         try:
@@ -498,14 +505,21 @@ class IBGatewayManager:
 
             logger.info(
                 "Order placed | symbol=%s action=%s qty=%d type=%s order_id=%d",
-                symbol, action_upper, quantity, order_type_upper, order_id,
+                symbol,
+                action_upper,
+                quantity,
+                order_type_upper,
+                order_id,
             )
             return order_id
 
         except Exception as exc:
             logger.error(
                 "place_paper_order failed | symbol=%s action=%s qty=%d: %s",
-                symbol, action, quantity, exc,
+                symbol,
+                action,
+                quantity,
+                exc,
                 exc_info=True,
             )
             return None
@@ -563,19 +577,21 @@ class IBGatewayManager:
                 order = trade.order
                 status = trade.orderStatus
                 contract = trade.contract
-                result.append({
-                    "order_id": order.orderId,
-                    "symbol": contract.symbol,
-                    "action": order.action,
-                    "quantity": order.totalQuantity,
-                    "order_type": order.orderType,
-                    "limit_price": getattr(order, "lmtPrice", None),
-                    "aux_price": getattr(order, "auxPrice", None),
-                    "status": status.status,
-                    "filled": status.filled,
-                    "remaining": status.remaining,
-                    "avg_fill_price": status.avgFillPrice,
-                })
+                result.append(
+                    {
+                        "order_id": order.orderId,
+                        "symbol": contract.symbol,
+                        "action": order.action,
+                        "quantity": order.totalQuantity,
+                        "order_type": order.orderType,
+                        "limit_price": getattr(order, "lmtPrice", None),
+                        "aux_price": getattr(order, "auxPrice", None),
+                        "status": status.status,
+                        "filled": status.filled,
+                        "remaining": status.remaining,
+                        "avg_fill_price": status.avgFillPrice,
+                    }
+                )
             return result
 
         except Exception as exc:
@@ -597,9 +613,7 @@ class IBGatewayManager:
             return {}
 
         try:
-            account_values = await self._ib.accountSummaryAsync(
-                account=self._config.account or ""
-            )
+            account_values = await self._ib.accountSummaryAsync(account=self._config.account or "")
 
             KEYS_OF_INTEREST = {
                 "NetLiquidation",
@@ -648,18 +662,20 @@ class IBGatewayManager:
             result = []
             for pos in positions:
                 contract = pos.contract
-                result.append({
-                    "symbol": contract.symbol,
-                    "sec_type": contract.secType,
-                    "exchange": getattr(contract, "exchange", ""),
-                    "currency": contract.currency,
-                    "position": pos.position,
-                    "avg_cost": pos.avgCost,
-                    "market_price": None,   # Requires market data subscription
-                    "market_value": None,   # Populate via portfolio items if needed
-                    "unrealized_pnl": None,
-                    "account": pos.account,
-                })
+                result.append(
+                    {
+                        "symbol": contract.symbol,
+                        "sec_type": contract.secType,
+                        "exchange": getattr(contract, "exchange", ""),
+                        "currency": contract.currency,
+                        "position": pos.position,
+                        "avg_cost": pos.avgCost,
+                        "market_price": None,  # Requires market data subscription
+                        "market_value": None,  # Populate via portfolio items if needed
+                        "unrealized_pnl": None,
+                        "account": pos.account,
+                    }
+                )
             return result
 
         except Exception as exc:

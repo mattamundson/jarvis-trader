@@ -3,6 +3,7 @@ Build 2025 daily OHLCV cache without redundant Yahoo calls.
 - SPY: resample from SPY_1h_730d.csv (already in cache).
 - MES: Yahoo ES=F 1d for MES multiplier logic (single request; may rate-limit).
 """
+
 from __future__ import annotations
 
 import time
@@ -28,8 +29,10 @@ def spy_daily_from_hourly() -> Path:
         {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
     )
     daily = daily.dropna(subset=["open", "high", "low", "close"])
-    daily = daily[(daily.index >= pd.Timestamp(START, tz=daily.index.tz))
-                  & (daily.index < pd.Timestamp(END, tz=daily.index.tz))]
+    daily = daily[
+        (daily.index >= pd.Timestamp(START, tz=daily.index.tz))
+        & (daily.index < pd.Timestamp(END, tz=daily.index.tz))
+    ]
     daily = daily.reset_index()
     if daily.columns[0] != "timestamp":
         daily = daily.rename(columns={daily.columns[0]: "timestamp"})
@@ -93,8 +96,12 @@ def mes_daily_from_yahoo() -> Path:
         time.sleep(35 + attempt * 45)
         try:
             raw = yf.download(
-                "ES=F", start=START, end=END, interval="1d",
-                progress=False, auto_adjust=True,
+                "ES=F",
+                start=START,
+                end=END,
+                interval="1d",
+                progress=False,
+                auto_adjust=True,
             )
         except Exception:
             raw = None
@@ -128,7 +135,9 @@ def main():
     import argparse
 
     p = argparse.ArgumentParser()
-    p.add_argument("--mes-only", action="store_true", help="Only fetch MES/ES=F daily (SPY cache unchanged)")
+    p.add_argument(
+        "--mes-only", action="store_true", help="Only fetch MES/ES=F daily (SPY cache unchanged)"
+    )
     args = p.parse_args()
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)

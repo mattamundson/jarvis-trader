@@ -26,6 +26,7 @@ from .schema import DatabaseManager, get_db, init_db
 # asyncpg is not installed (e.g. paper-trading-only / backtest mode).
 try:
     from . import connection, repository
+
     _pg_available = True
 except ImportError:
     connection = None  # type: ignore[assignment]

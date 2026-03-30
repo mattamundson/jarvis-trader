@@ -17,6 +17,7 @@ Round 2+ — Rebuttal rounds (sequential): each agent receives the opponent's
 The final DebateResult contains the raw reports, a computed combined_signal
 (-1 to +1), a debate_summary label, and a recommended direction.
 """
+
 import asyncio
 import logging
 from dataclasses import dataclass
@@ -47,7 +48,9 @@ class DebateResult:
     bear_conviction: float = 0.0
 
     # Narrative summary of which side "won" the debate
-    debate_summary: str = "Inconclusive"  # "Bull thesis stronger" | "Bear thesis stronger" | "Inconclusive"
+    debate_summary: str = (
+        "Inconclusive"  # "Bull thesis stronger" | "Bear thesis stronger" | "Inconclusive"
+    )
 
     # Final trading direction
     recommended_direction: str = "flat"  # "long" | "short" | "flat"

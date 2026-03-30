@@ -4,6 +4,7 @@ JARVIS TRADER — API Key Authentication
 FastAPI dependency for X-API-Key header validation.
 Health, docs, and OpenAPI endpoints are exempt from authentication.
 """
+
 import logging
 from typing import Annotated, Optional
 

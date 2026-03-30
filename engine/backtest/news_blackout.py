@@ -10,6 +10,7 @@ Usage:
     cal = EconomicCalendar()
     is_blocked = cal.is_blackout(some_timestamp, window_minutes=30)
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -180,7 +181,7 @@ class EconomicCalendar:
             timestamp = timestamp.to_pydatetime()
 
         # Strip timezone if present
-        if hasattr(timestamp, 'tzinfo') and timestamp.tzinfo is not None:
+        if hasattr(timestamp, "tzinfo") and timestamp.tzinfo is not None:
             timestamp = timestamp.replace(tzinfo=None)
 
         window = timedelta(minutes=window_minutes)
@@ -206,7 +207,7 @@ class EconomicCalendar:
         if isinstance(timestamp, pd.Timestamp):
             timestamp = timestamp.to_pydatetime()
 
-        if hasattr(timestamp, 'tzinfo') and timestamp.tzinfo is not None:
+        if hasattr(timestamp, "tzinfo") and timestamp.tzinfo is not None:
             timestamp = timestamp.replace(tzinfo=None)
 
         window = timedelta(minutes=window_minutes)
@@ -243,9 +244,9 @@ class EconomicCalendar:
             end = end.to_pydatetime()
 
         # Strip tz
-        if hasattr(start, 'tzinfo') and start.tzinfo is not None:
+        if hasattr(start, "tzinfo") and start.tzinfo is not None:
             start = start.replace(tzinfo=None)
-        if hasattr(end, 'tzinfo') and end.tzinfo is not None:
+        if hasattr(end, "tzinfo") and end.tzinfo is not None:
             end = end.replace(tzinfo=None)
 
         results = []
@@ -253,16 +254,19 @@ class EconomicCalendar:
             if impact < min_impact:
                 continue
             if start <= event_dt <= end:
-                results.append({
-                    "datetime": event_dt,
-                    "event_name": event_name,
-                    "impact_level": impact,
-                })
+                results.append(
+                    {
+                        "datetime": event_dt,
+                        "event_name": event_name,
+                        "impact_level": impact,
+                    }
+                )
         return results
 
     def summary(self) -> str:
         """Print a summary of the calendar contents."""
         from collections import Counter
+
         counts = Counter(name for _, name, _ in self._events)
         lines = [
             f"EconomicCalendar: {len(self._events)} total events",

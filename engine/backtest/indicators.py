@@ -3,6 +3,7 @@ JARVIS TRADER — Backtest Indicators
 Pure-Python implementations of all ThinkorSwim-derived indicators.
 No TA-Lib dependency. Uses numpy and pandas only.
 """
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
@@ -13,11 +14,9 @@ import pandas as pd
 
 def wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
     """Wilder's Average True Range (used by Saty ATR Levels script)."""
-    tr = pd.concat([
-        high - low,
-        (high - close.shift(1)).abs(),
-        (low - close.shift(1)).abs()
-    ], axis=1).max(axis=1)
+    tr = pd.concat(
+        [high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()], axis=1
+    ).max(axis=1)
 
     atr = pd.Series(index=close.index, dtype=float)
     atr.iloc[:period] = np.nan
@@ -30,15 +29,15 @@ def wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 
 
 def sma_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
     """SMA of True Range (used by Keltner channels)."""
-    tr = pd.concat([
-        high - low,
-        (high - close.shift(1)).abs(),
-        (low - close.shift(1)).abs()
-    ], axis=1).max(axis=1)
+    tr = pd.concat(
+        [high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()], axis=1
+    ).max(axis=1)
     return tr.rolling(period).mean()
 
 
-def kama(close: pd.Series, period: int = 10, fast_period: int = 2, slow_period: int = 30) -> pd.Series:
+def kama(
+    close: pd.Series, period: int = 10, fast_period: int = 2, slow_period: int = 30
+) -> pd.Series:
     """
     Kaufman Adaptive Moving Average (KAMA).
     Used by NextSignalMomentum script. Period=10, slow=30.
@@ -56,7 +55,7 @@ def kama(close: pd.Series, period: int = 10, fast_period: int = 2, slow_period: 
 
     for i in range(period, len(close)):
         change = abs(close.iloc[i] - close.iloc[i - period])
-        volatility = close.diff().abs().iloc[i - period + 1:i + 1].sum()
+        volatility = close.diff().abs().iloc[i - period + 1 : i + 1].sum()
 
         if volatility == 0:
             er = 0.0
@@ -69,8 +68,9 @@ def kama(close: pd.Series, period: int = 10, fast_period: int = 2, slow_period: 
     return result
 
 
-def stc(close: pd.Series, fast: int = 23, slow: int = 50,
-        k_period: int = 10, d_period: int = 3) -> pd.Series:
+def stc(
+    close: pd.Series, fast: int = 23, slow: int = 50, k_period: int = 10, d_period: int = 3
+) -> pd.Series:
     """
     Schaff Trend Cycle (STC).
     Used by shared_OB_STYLE_CYCLE script.
@@ -111,7 +111,7 @@ def phase_oscillator(
     ema_len: int = 21,
     atr_len: int = 14,
     bb_len: int = 21,
-    bb_std: float = 2.0
+    bb_std: float = 2.0,
 ) -> Tuple[pd.Series, pd.Series]:
     """
     Saty Phase Oscillator.
@@ -142,11 +142,7 @@ def phase_oscillator(
 
 
 def volume_stack(
-    open_: pd.Series,
-    high: pd.Series,
-    low: pd.Series,
-    close: pd.Series,
-    volume: pd.Series
+    open_: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series
 ) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """
     Saty Volume Stack.
@@ -165,11 +161,7 @@ def volume_stack(
 
 
 def keltner_channels(
-    close: pd.Series,
-    high: pd.Series,
-    low: pd.Series,
-    sma_len: int = 20,
-    atr_factor: float = 1.5
+    close: pd.Series, high: pd.Series, low: pd.Series, sma_len: int = 20, atr_factor: float = 1.5
 ) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """
     Keltner Channel (used by OB_OMEGA and KMaster scripts).
@@ -189,7 +181,7 @@ def ib_levels(
     timestamps: pd.DatetimeIndex,
     market_open_hour: int = 9,
     market_open_minute: int = 30,
-    ib_minutes: int = 60
+    ib_minutes: int = 60,
 ) -> pd.DataFrame:
     """
     Initial Balance levels for each trading day.
@@ -198,49 +190,40 @@ def ib_levels(
     if not isinstance(timestamps, pd.DatetimeIndex):
         timestamps = pd.DatetimeIndex(timestamps)
 
-    df = pd.DataFrame({
-        'high': high.values,
-        'low': low.values,
-        'ts': timestamps
-    })
-    df['date'] = df['ts'].dt.date
-    df['time_min'] = df['ts'].dt.hour * 60 + df['ts'].dt.minute
+    df = pd.DataFrame({"high": high.values, "low": low.values, "ts": timestamps})
+    df["date"] = df["ts"].dt.date
+    df["time_min"] = df["ts"].dt.hour * 60 + df["ts"].dt.minute
 
     open_min = market_open_hour * 60 + market_open_minute
     close_min = open_min + ib_minutes
 
     ib_data = {}
-    for date, group in df.groupby('date'):
-        ib_bars = group[(group['time_min'] >= open_min) & (group['time_min'] < close_min)]
+    for date, group in df.groupby("date"):
+        ib_bars = group[(group["time_min"] >= open_min) & (group["time_min"] < close_min)]
         if len(ib_bars) == 0:
             continue
-        ib_high = ib_bars['high'].max()
-        ib_low = ib_bars['low'].min()
+        ib_high = ib_bars["high"].max()
+        ib_low = ib_bars["low"].min()
         ib_range = ib_high - ib_low
         ib_data[date] = {
-            'ib_high': ib_high,
-            'ib_low': ib_low,
-            'ib_range': ib_range,
-            'quad_25': ib_low + 0.25 * ib_range,
-            'quad_50': ib_low + 0.50 * ib_range,
-            'quad_75': ib_low + 0.75 * ib_range,
-            'ext_50_up': ib_high + 0.50 * ib_range,
-            'ext_100_up': ib_high + 1.00 * ib_range,
-            'ext_300_up': ib_high + 3.00 * ib_range,
-            'ext_50_down': ib_low - 0.50 * ib_range,
-            'ext_100_down': ib_low - 1.00 * ib_range,
-            'ext_300_down': ib_low - 3.00 * ib_range,
+            "ib_high": ib_high,
+            "ib_low": ib_low,
+            "ib_range": ib_range,
+            "quad_25": ib_low + 0.25 * ib_range,
+            "quad_50": ib_low + 0.50 * ib_range,
+            "quad_75": ib_low + 0.75 * ib_range,
+            "ext_50_up": ib_high + 0.50 * ib_range,
+            "ext_100_up": ib_high + 1.00 * ib_range,
+            "ext_300_up": ib_high + 3.00 * ib_range,
+            "ext_50_down": ib_low - 0.50 * ib_range,
+            "ext_100_down": ib_low - 1.00 * ib_range,
+            "ext_300_down": ib_low - 3.00 * ib_range,
         }
 
-    return pd.DataFrame.from_dict(ib_data, orient='index')
+    return pd.DataFrame.from_dict(ib_data, orient="index")
 
 
-def cci(
-    high: pd.Series,
-    low: pd.Series,
-    close: pd.Series,
-    period: int = 50
-) -> pd.Series:
+def cci(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 50) -> pd.Series:
     """
     Commodity Channel Index (CCI).
     Used by shared_mtftrendbar script with period=50.
@@ -248,17 +231,13 @@ def cci(
     """
     typical = (high + low + close) / 3
     ma = typical.rolling(period).mean()
-    mean_dev = typical.rolling(period).apply(
-        lambda x: np.mean(np.abs(x - x.mean())), raw=True
-    )
+    mean_dev = typical.rolling(period).apply(lambda x: np.mean(np.abs(x - x.mean())), raw=True)
     result = (typical - ma) / (0.015 * mean_dev.replace(0, np.nan))
     return result.fillna(0)
 
 
 def atr_fib_levels(
-    prior_close: float,
-    atr: float,
-    ratios: Optional[List[float]] = None
+    prior_close: float, atr: float, ratios: Optional[List[float]] = None
 ) -> Dict[str, float]:
     """
     ATR Fibonacci levels from prior close (Saty ATR Levels script).
@@ -275,11 +254,7 @@ def atr_fib_levels(
     return result
 
 
-def range_consumed_pct(
-    current_price: float,
-    prior_close: float,
-    atr: float
-) -> float:
+def range_consumed_pct(current_price: float, prior_close: float, atr: float) -> float:
     """
     How much of the daily ATR range has been consumed.
     < 70% = room to run, > 90% = exhausted.

@@ -16,6 +16,7 @@ Human approval gate:
   exceeds $2,000, requires_human_approval is set True. The FundDecision is
   logged and surfaced to Matt but NOT forwarded to execution automatically.
 """
+
 import json
 import logging
 import os
@@ -37,11 +38,12 @@ HUMAN_APPROVAL_VALUE_THRESHOLD = 2_000.0
 @dataclass
 class FundDecision:
     """Final approval decision from the Fund Manager."""
+
     approved: bool
-    final_quantity: int    # May be reduced from risk_manager's approved quantity
-    priority: str          # "immediate" | "wait_for_pullback" | "skip"
+    final_quantity: int  # May be reduced from risk_manager's approved quantity
+    priority: str  # "immediate" | "wait_for_pullback" | "skip"
     portfolio_impact: str  # Brief description of effect on overall portfolio
-    reasoning: str         # Full Fund Manager reasoning
+    reasoning: str  # Full Fund Manager reasoning
 
     # True when the trade needs Matt's sign-off before execution
     requires_human_approval: bool = False
@@ -297,20 +299,20 @@ class FundManagerAgent:
         return f"""Make the final portfolio-level decision on this trade.
 
 === PROPOSED TRADE (after Risk Manager review) ===
-Symbol: {trade.get('symbol')}
-Action: {trade.get('action')}
+Symbol: {trade.get("symbol")}
+Action: {trade.get("action")}
 Effective quantity: {effective_qty}
-Order type: {trade.get('order_type')}
+Order type: {trade.get("order_type")}
 Effective limit price: {effective_limit}
-Signal score: {trade.get('signal_score')}
-Confidence: {trade.get('confidence')}
-Trader reasoning: {trade.get('reasoning', 'N/A')}
+Signal score: {trade.get("signal_score")}
+Confidence: {trade.get("confidence")}
+Trader reasoning: {trade.get("reasoning", "N/A")}
 
 === RISK MANAGER VERDICT ===
-Approved: {risk.get('approved')}
-Risk score: {risk.get('risk_score', 'N/A')}
-Modified quantity: {risk.get('modified_quantity', 'none')}
-Risk reasoning: {risk.get('reasoning', 'N/A')}
+Approved: {risk.get("approved")}
+Risk score: {risk.get("risk_score", "N/A")}
+Modified quantity: {risk.get("modified_quantity", "none")}
+Risk reasoning: {risk.get("reasoning", "N/A")}
 
 === PORTFOLIO HEALTH ===
 Total value: ${total_value:,.2f}

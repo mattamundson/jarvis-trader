@@ -6,6 +6,7 @@ timeframes. Uses yfinance with a 30-minute per-timeframe cache.
 
 Fallback: stub data (50 / NEUTRAL) when network unavailable.
 """
+
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -21,8 +22,11 @@ _CACHE_TTL = {"1h": 1800, "4h": 3600, "1d": 14400}
 _cache: dict = {}
 
 _SYMBOL_MAP = {
-    "MES": "ES=F", "MNQ": "NQ=F", "MCL": "CL=F",
-    "SPY": "SPY", "QQQ": "QQQ",
+    "MES": "ES=F",
+    "MNQ": "NQ=F",
+    "MCL": "CL=F",
+    "SPY": "SPY",
+    "QQQ": "QQQ",
 }
 
 
@@ -30,9 +34,9 @@ _SYMBOL_MAP = {
 class TFSignal:
     timeframe: str
     stc_value: float
-    stc_signal: str   # BULLISH | BEARISH | NEUTRAL
+    stc_signal: str  # BULLISH | BEARISH | NEUTRAL
     price: float
-    source: str       # live | cache | stub
+    source: str  # live | cache | stub
     error: Optional[str] = None
 
 
@@ -40,11 +44,11 @@ class TFSignal:
 class MTFState:
     symbol: str
     signals: list[TFSignal] = field(default_factory=list)
-    alignment: str = "NEUTRAL"   # BULLISH | BEARISH | MIXED | NEUTRAL
+    alignment: str = "NEUTRAL"  # BULLISH | BEARISH | MIXED | NEUTRAL
     confidence: float = 0.0
     aligned_timeframes: int = 0
     total_timeframes: int = 3
-    recommendation: str = "WAIT" # BUY | SELL | WAIT
+    recommendation: str = "WAIT"  # BUY | SELL | WAIT
     source: str = "stub"
 
 
@@ -61,7 +65,7 @@ def _ema(data: list[float], period: int) -> list[float]:
 def _stoch(data: list[float], period: int) -> list[float]:
     result = []
     for i in range(len(data)):
-        window = data[max(0, i - period + 1): i + 1]
+        window = data[max(0, i - period + 1) : i + 1]
         lo, hi = min(window), max(window)
         result.append((data[i] - lo) / (hi - lo) * 100 if hi != lo else 50.0)
     return result
@@ -98,6 +102,7 @@ def _fetch_tf(yf_sym: str, tf: str) -> TFSignal:
 
     try:
         import yfinance as yf
+
         period, interval = {"1h": ("60d", "1h"), "4h": ("120d", "1h"), "1d": ("365d", "1d")}[tf]
         hist = yf.Ticker(yf_sym).history(period=period, interval=interval)
         if hist.empty or len(hist) < 60:
@@ -128,9 +133,12 @@ def analyze_mtf(symbol: str) -> MTFState:
         alignment = "MIXED" if (bull + bear) >= 2 else "NEUTRAL"
         conf, rec = 0.0, "WAIT"
     return MTFState(
-        symbol=symbol, signals=signals,
-        alignment=alignment, confidence=round(conf, 2),
-        aligned_timeframes=max(bull, bear), total_timeframes=n,
+        symbol=symbol,
+        signals=signals,
+        alignment=alignment,
+        confidence=round(conf, 2),
+        aligned_timeframes=max(bull, bear),
+        total_timeframes=n,
         recommendation=rec,
         source="stub" if all(s.source == "stub" for s in signals) else "live",
     )

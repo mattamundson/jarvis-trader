@@ -19,6 +19,7 @@ from typing import Dict, List, Optional
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
 
+
 class Action(Enum):
     BUY = "BUY"
     SELL = "SELL"
@@ -60,14 +61,16 @@ class EntrySignal(Enum):
 
 # ── Sub-Components ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ATRLevels:
     """ATR-Fibonacci levels from Saty ATR Levels script."""
+
     atr_value: float = 0.0
     prior_close: float = 0.0
-    trigger_up: float = 0.0    # prior_close + 0.236 * atr
+    trigger_up: float = 0.0  # prior_close + 0.236 * atr
     trigger_down: float = 0.0  # prior_close - 0.236 * atr
-    levels_up: Dict[str, float] = field(default_factory=dict)   # "0.382": price, etc.
+    levels_up: Dict[str, float] = field(default_factory=dict)  # "0.382": price, etc.
     levels_down: Dict[str, float] = field(default_factory=dict)
     range_consumed_pct: float = 0.0  # 0-100+
     ema_8: float = 0.0
@@ -94,6 +97,7 @@ class ATRLevels:
 @dataclass
 class IBLevels:
     """Initial Balance levels from Corey IBv1 script."""
+
     ib_high: float = 0.0
     ib_low: float = 0.0
     ib_range: float = 0.0
@@ -129,6 +133,7 @@ class IBLevels:
 @dataclass
 class TPOData:
     """Volume/Time Profile data."""
+
     poc: float = 0.0
     vah: float = 0.0
     val: float = 0.0
@@ -136,7 +141,7 @@ class TPOData:
     profile_low: float = 0.0
     va_balance: float = 0.0
     imbalance: str = "balanced"  # "bullish"/"bearish"/"balanced"
-    tpo_score: float = 0.0       # -5 to +5 composite
+    tpo_score: float = 0.0  # -5 to +5 composite
     vpoc_levels: List[float] = field(default_factory=list)
     price_location: str = "in_va"  # "above_vah"/"in_va"/"below_val"
 
@@ -158,11 +163,12 @@ class TPOData:
 @dataclass
 class KeltnerBands:
     """Multi-timeframe Keltner Channel data."""
+
     timeframe: str = "5m"
     basis: float = 0.0
-    inner_upper: float = 0.0   # +1.5x ATR
+    inner_upper: float = 0.0  # +1.5x ATR
     inner_lower: float = 0.0
-    outer_upper: float = 0.0   # +2.0x ATR
+    outer_upper: float = 0.0  # +2.0x ATR
     outer_lower: float = 0.0
     extreme_upper: float = 0.0  # +3.0x ATR
     extreme_lower: float = 0.0
@@ -187,6 +193,7 @@ class KeltnerBands:
 @dataclass
 class MomentumSignals:
     """All momentum indicator readings."""
+
     stc_value: float = 50.0
     stc_signal: str = "neutral"  # "oversold"/"overbought"/"rising"/"falling"/"neutral"
     phase_value: float = 0.0
@@ -219,9 +226,11 @@ class MomentumSignals:
 
 # ── Stage 1 Outputs ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TechnicalReport:
     """Output of TechnicalAnalyst agent (Stage 1)."""
+
     symbol: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     timeframe: str = "1d"
@@ -277,6 +286,7 @@ class TechnicalReport:
 @dataclass
 class NewsReport:
     """Output of NewsAnalyst agent (Stage 1)."""
+
     symbol: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     sentiment: str = "neutral"
@@ -304,6 +314,7 @@ class NewsReport:
 @dataclass
 class SocialReport:
     """Output of SocialAnalyst agent (Stage 1)."""
+
     symbol: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     options_flow: str = "neutral"  # "bullish_sweep"/"bearish_sweep"/"neutral"
@@ -329,12 +340,13 @@ class SocialReport:
 @dataclass
 class FundamentalReport:
     """Output of FundamentalAnalyst agent (Stage 1)."""
+
     symbol: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     earnings_date: Optional[str] = None
     economic_events: List[str] = field(default_factory=list)
     sector_strength: str = "neutral"  # "strong"/"weak"/"neutral"
-    macro_bias: str = "neutral"       # "bullish"/"bearish"/"neutral"
+    macro_bias: str = "neutral"  # "bullish"/"bearish"/"neutral"
     confidence: float = 0.0
     notes: str = ""
 
@@ -353,9 +365,11 @@ class FundamentalReport:
 
 # ── Stage 2 Outputs ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ResearchCase:
     """Output of Bull/Bear Researcher agents (Stage 2)."""
+
     symbol: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     direction: str = "bull"  # "bull"/"bear"
@@ -387,6 +401,7 @@ class ResearchCase:
 @dataclass
 class DebateResult:
     """Output of Debate agent (Stage 2)."""
+
     symbol: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     bull_score: float = 0.0  # 0-10
@@ -419,9 +434,11 @@ class DebateResult:
 
 # ── Stage 3 Output ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TradeDecision:
     """Output of Trader agent (Stage 3)."""
+
     symbol: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     action: Action = Action.HOLD
@@ -460,9 +477,11 @@ class TradeDecision:
 
 # ── Stage 4 Output ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class RiskDecision:
     """Output of RiskManager agent (Stage 4)."""
+
     symbol: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     approved: bool = False
@@ -499,9 +518,11 @@ class RiskDecision:
 
 # ── Stage 5 Output ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class FundDecision:
     """Output of FundManager agent (Stage 5 — final go/no-go)."""
+
     symbol: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     execute: bool = False
@@ -537,6 +558,7 @@ class FundDecision:
 
 
 # ── Helper Functions ───────────────────────────────────────────────────────────
+
 
 def pipeline_summary(fund_decision: FundDecision) -> str:
     """Return a one-line human-readable summary of the final decision."""

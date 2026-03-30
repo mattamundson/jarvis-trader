@@ -7,6 +7,7 @@ Generates interactive HTML equity curve fan charts showing:
   - 25th-75th percentile band (darker shading)
   - 5th-95th percentile band (lighter shading)
 """
+
 from __future__ import annotations
 
 import json
@@ -437,7 +438,9 @@ def save_fan_chart(
         mode_tag = ""
         if max_slippage and max_slippage > 0:
             mode_tag = f"_slip{int(max_slippage)}tk"
-        output_html_path = results_path.parent / f"{symbol}_{interval}_monte_carlo{mode_tag}_chart.html"
+        output_html_path = (
+            results_path.parent / f"{symbol}_{interval}_monte_carlo{mode_tag}_chart.html"
+        )
     else:
         output_html_path = Path(output_html_path)
 
@@ -484,9 +487,17 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Generate Monte Carlo visualization")
-    parser.add_argument("--json", required=True, help="Path to backtest or Monte Carlo JSON results")
-    parser.add_argument("--original", default=None, help="Path to original backtest JSON (if --json is Monte Carlo output)")
-    parser.add_argument("--output", default=None, help="Output HTML path (auto-generated if not provided)")
+    parser.add_argument(
+        "--json", required=True, help="Path to backtest or Monte Carlo JSON results"
+    )
+    parser.add_argument(
+        "--original",
+        default=None,
+        help="Path to original backtest JSON (if --json is Monte Carlo output)",
+    )
+    parser.add_argument(
+        "--output", default=None, help="Output HTML path (auto-generated if not provided)"
+    )
     args = parser.parse_args()
 
     html_path = save_fan_chart(args.json, args.output, args.original)

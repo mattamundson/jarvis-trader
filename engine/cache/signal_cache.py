@@ -121,6 +121,7 @@ async def should_use_cache(
     cached = await get_cached_signal(symbol)
     if cached is None:
         from . import redis_client
+
         redis_client.increment_miss()
         return False
 
@@ -128,13 +129,17 @@ async def should_use_cache(
     if current_regime is not None:
         cached_regime = cached.get("analyst_reports", {}).get("technical", {}).get("regime")
         if cached_regime and cached_regime != current_regime:
-            logger.debug(f"{symbol}: regime changed ({cached_regime} -> {current_regime}) — rerunning pipeline")
+            logger.debug(
+                f"{symbol}: regime changed ({cached_regime} -> {current_regime}) — rerunning pipeline"
+            )
             from . import redis_client
+
             redis_client.increment_miss()
             return False
 
     logger.debug(f"{symbol}: using cached signal")
     from . import redis_client
+
     redis_client.increment_hit()
     return True
 

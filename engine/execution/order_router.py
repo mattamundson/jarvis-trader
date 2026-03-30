@@ -9,6 +9,7 @@ Routes orders to the correct broker based on instrument type.
 Design principle: the router is intentionally dumb. It reads instrument type
 from the OrderRequest and dispatches — no strategy logic lives here.
 """
+
 import logging
 from typing import TYPE_CHECKING
 
@@ -68,7 +69,10 @@ class OrderRouter:
 
         logger.info(
             "OrderRouter.route_order | symbol=%s is_futures=%s is_options=%s equity=$%.0f",
-            symbol, is_futures, is_options, portfolio_equity,
+            symbol,
+            is_futures,
+            is_options,
+            portfolio_equity,
         )
 
         # ── Futures → IBKR ────────────────────────────────────────────────────
@@ -148,6 +152,7 @@ class OrderRouter:
             global _repository
             if _repository is None:
                 from database import repository
+
                 _repository = repository
 
             symbol = order.get("symbol", "UNKNOWN") if isinstance(order, dict) else "UNKNOWN"
@@ -157,19 +162,21 @@ class OrderRouter:
             broker = "ibkr" if is_futures else "schwab" if is_options else "ibkr"
 
             # Log to PostgreSQL
-            order_id = await _repository.insert_order({
-                "symbol": symbol,
-                "quantity": quantity,
-                "order_type": order_type,
-                "limit_price": order.get("limit_price") if isinstance(order, dict) else None,
-                "stop_price": order.get("stop_price") if isinstance(order, dict) else None,
-                "is_futures": is_futures,
-                "is_options": is_options,
-                "status": status,
-                "broker": broker,
-                "broker_order_id": result.get("order_id") or result.get("broker_order_id"),
-                "notes": result.get("reason") or result.get("error"),
-            })
+            order_id = await _repository.insert_order(
+                {
+                    "symbol": symbol,
+                    "quantity": quantity,
+                    "order_type": order_type,
+                    "limit_price": order.get("limit_price") if isinstance(order, dict) else None,
+                    "stop_price": order.get("stop_price") if isinstance(order, dict) else None,
+                    "is_futures": is_futures,
+                    "is_options": is_options,
+                    "status": status,
+                    "broker": broker,
+                    "broker_order_id": result.get("order_id") or result.get("broker_order_id"),
+                    "notes": result.get("reason") or result.get("error"),
+                }
+            )
             logger.debug(f"[DB] Order {order_id} logged: {symbol} {quantity} {status}")
 
         except Exception as e:
@@ -275,6 +282,7 @@ class OrderRouter:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _order_request_to_dict(order) -> dict:
     """Convert an OrderRequest dataclass to the dict format expected by SchwabConnector."""

@@ -5,6 +5,7 @@ Test suite for X-API-Key authentication and slowapi rate limiting.
 
 Run with: pytest tests/test_auth_and_rate_limit.py -v
 """
+
 import sys
 from pathlib import Path
 
@@ -18,21 +19,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest.mock as mock
 
 # Mock complex dependencies that aren't needed for auth tests
-sys.modules['data.market_data'] = mock.MagicMock()
-sys.modules['risk.safety_layer'] = mock.MagicMock()
-sys.modules['risk.pnl_monitor'] = mock.MagicMock()
-sys.modules['agents'] = mock.MagicMock()
-sys.modules['portfolio.tracker'] = mock.MagicMock()
-sys.modules['database.schema'] = mock.MagicMock()
-sys.modules['schedulers.eod_scheduler'] = mock.MagicMock()
-sys.modules['routers.journal_router'] = mock.MagicMock()
-sys.modules['routers.webhook_router'] = mock.MagicMock()
-sys.modules['execution.ib_order_manager'] = mock.MagicMock()
-sys.modules['notifications.whatsapp'] = mock.MagicMock()
-sys.modules['apscheduler'] = mock.MagicMock()
-sys.modules['apscheduler.schedulers'] = mock.MagicMock()
-sys.modules['apscheduler.schedulers.asyncio'] = mock.MagicMock()
-sys.modules['apscheduler.triggers.cron'] = mock.MagicMock()
+sys.modules["data.market_data"] = mock.MagicMock()
+sys.modules["risk.safety_layer"] = mock.MagicMock()
+sys.modules["risk.pnl_monitor"] = mock.MagicMock()
+sys.modules["agents"] = mock.MagicMock()
+sys.modules["portfolio.tracker"] = mock.MagicMock()
+sys.modules["database.schema"] = mock.MagicMock()
+sys.modules["schedulers.eod_scheduler"] = mock.MagicMock()
+sys.modules["routers.journal_router"] = mock.MagicMock()
+sys.modules["routers.webhook_router"] = mock.MagicMock()
+sys.modules["execution.ib_order_manager"] = mock.MagicMock()
+sys.modules["notifications.whatsapp"] = mock.MagicMock()
+sys.modules["apscheduler"] = mock.MagicMock()
+sys.modules["apscheduler.schedulers"] = mock.MagicMock()
+sys.modules["apscheduler.schedulers.asyncio"] = mock.MagicMock()
+sys.modules["apscheduler.triggers.cron"] = mock.MagicMock()
 
 # Import FastAPI app
 from main import app

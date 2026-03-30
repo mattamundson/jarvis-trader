@@ -8,6 +8,7 @@ sentiment signal.
 Refresh interval: every 30 minutes.
 Model: Claude Haiku (claude-haiku-4-5-20251001) — lightweight task
 """
+
 import json
 import logging
 import os
@@ -28,6 +29,7 @@ APEWISDOM_URL = "https://apewisdom.io/api/v1.0/filter/all-stocks"
 @dataclass
 class SocialReport:
     """Structured output from the Social Analyst agent"""
+
     symbol: str
     timestamp: datetime
 
@@ -156,8 +158,16 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                     data = resp.json()
                     # Extract bullish/bearish counts from recent messages
                     messages = data.get("messages", [])
-                    bull = sum(1 for m in messages if m.get("entities", {}).get("sentiment", {}).get("basic") == "Bullish")
-                    bear = sum(1 for m in messages if m.get("entities", {}).get("sentiment", {}).get("basic") == "Bearish")
+                    bull = sum(
+                        1
+                        for m in messages
+                        if m.get("entities", {}).get("sentiment", {}).get("basic") == "Bullish"
+                    )
+                    bear = sum(
+                        1
+                        for m in messages
+                        if m.get("entities", {}).get("sentiment", {}).get("basic") == "Bearish"
+                    )
                     return {
                         "bullish_count": bull,
                         "bearish_count": bear,
@@ -198,7 +208,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 Total tickers tracked by ApeWisdom: {total_tickers}
 
 ApeWisdom Reddit Data:
-- Rank: {rank if rank else 'Not in top trending'}
+- Rank: {rank if rank else "Not in top trending"}
 - Mentions (24h): {mention_count}
 - Mentions (48h ago): {mentions_24h_ago}
 - Upvotes (24h): {upvotes}
@@ -213,7 +223,7 @@ StockTwits Data:
 - Recent messages: {total_st}
 - Bullish sentiment: {bull_pct:.0f}%
 - Bearish sentiment: {bear_pct:.0f}%
-- Watchlist count: {stocktwits_data.get('watchlist_count', 'N/A')}
+- Watchlist count: {stocktwits_data.get("watchlist_count", "N/A")}
 """
 
         prompt = f"""{social_context}
@@ -228,7 +238,9 @@ Respond with JSON in exactly this format:
 }}"""
 
         try:
-            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv("ANTHROPIC_API_KEY", "")
+            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
+                "ANTHROPIC_API_KEY", ""
+            )
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(

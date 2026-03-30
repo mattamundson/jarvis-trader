@@ -4,6 +4,7 @@ JARVIS TRADER — Agents package
 Exports all trading analysis agents, debate infrastructure,
 and the three senior decision-making agents plus the pipeline orchestrator.
 """
+
 from .bear_researcher import BearReport, BearResearcherAgent
 from .bull_researcher import BullReport, BullResearcherAgent
 from .debate import DebateOrchestrator, DebateResult
@@ -63,7 +64,16 @@ __all__ = [
     "ThinkScriptGeneratorAgent",
     "ThinkScriptResult",
     # Typed schemas (enums + dataclasses + helpers)
-    "Action", "OrderType", "MarketRegime", "TrendDirection", "EntrySignal",
-    "ATRLevels", "IBLevels", "TPOData", "KeltnerBands", "MomentumSignals",
-    "ResearchCase", "pipeline_summary",
+    "Action",
+    "OrderType",
+    "MarketRegime",
+    "TrendDirection",
+    "EntrySignal",
+    "ATRLevels",
+    "IBLevels",
+    "TPOData",
+    "KeltnerBands",
+    "MomentumSignals",
+    "ResearchCase",
+    "pipeline_summary",
 ]

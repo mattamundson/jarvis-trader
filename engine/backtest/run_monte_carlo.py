@@ -18,6 +18,7 @@ Examples:
     # Different symbol: MCL with 1 tick slippage
     python -m backtest.run_monte_carlo --results-file results/MCL_1h_2024-06-01_2026-03-27.json --symbol MCL --max-slippage 1
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,41 +39,38 @@ def main():
     parser.add_argument(
         "--results-file",
         required=True,
-        help="Path to backtest result JSON file (relative to engine/ or absolute)"
+        help="Path to backtest result JSON file (relative to engine/ or absolute)",
     )
     parser.add_argument(
         "--simulations",
         type=int,
         default=1_000,
-        help="Number of simulations to run (default: 1000)"
+        help="Number of simulations to run (default: 1000)",
     )
     parser.add_argument(
         "--max-slippage",
         type=float,
         default=0.0,
-        help="Max random slippage per trade in ticks, uniform 0 to N (default: 0, no slippage)"
+        help="Max random slippage per trade in ticks, uniform 0 to N (default: 0, no slippage)",
     )
     parser.add_argument(
         "--symbol",
         default=None,
-        help="Instrument symbol for tick value lookup (auto-detected from filename if not provided)"
+        help="Instrument symbol for tick value lookup (auto-detected from filename if not provided)",
     )
     parser.add_argument(
         "--capital",
         type=float,
         default=100_000.0,
-        help="Initial capital for simulation (default: 100000)"
+        help="Initial capital for simulation (default: 100000)",
     )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for reproducibility (default: 42)"
+        "--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)"
     )
     parser.add_argument(
         "--output",
         default=None,
-        help="Save results to custom path (default: auto-generated in results/)"
+        help="Save results to custom path (default: auto-generated in results/)",
     )
     args = parser.parse_args()
 
@@ -108,9 +106,9 @@ def main():
             interval = itv
             break
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("JARVIS TRADER — Monte Carlo Simulation Runner")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Results file: {results_file}")
     print(f"Symbol:       {symbol}")
     print(f"Interval:     {interval}")
@@ -118,7 +116,7 @@ def main():
     if args.max_slippage > 0:
         print(f"Slippage:     Uniform 0-{args.max_slippage} ticks per trade")
     print(f"Capital:      ${args.capital:,.0f}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print()
 
     # Load backtest result

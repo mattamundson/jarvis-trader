@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class GreeksSnapshot:
     """Snapshot of options Greeks for a position."""
+
     symbol: str
     timestamp: datetime
     delta: Optional[float] = None
@@ -77,8 +78,7 @@ class GreeksMonitor:
         if not self._enabled:
             return []
         return [
-            s.symbol for s in self._cache.values()
-            if s.theta is not None and s.theta < threshold
+            s.symbol for s in self._cache.values() if s.theta is not None and s.theta < threshold
         ]
 
     def get_iv_alert(self, high_threshold: float = 0.50) -> List[str]:
@@ -89,8 +89,7 @@ class GreeksMonitor:
         if not self._enabled:
             return []
         return [
-            s.symbol for s in self._cache.values()
-            if s.iv is not None and s.iv > high_threshold
+            s.symbol for s in self._cache.values() if s.iv is not None and s.iv > high_threshold
         ]
 
     def health_check(self) -> dict:

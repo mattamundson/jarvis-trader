@@ -4,6 +4,7 @@ Telegram Notifications
 Sends trading alerts to Telegram when JARVIS produces actionable signals.
 Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env to enable.
 """
+
 import logging
 from datetime import datetime
 from typing import Optional
@@ -24,7 +25,8 @@ class TelegramNotifier:
         self.token = settings.TELEGRAM_BOT_TOKEN
         self.chat_id = settings.TELEGRAM_CHAT_ID
         self.enabled = bool(
-            self.token and self.chat_id
+            self.token
+            and self.chat_id
             and self.token != "your_bot_token_here"
             and self.chat_id != "your_chat_id_here"
         )
@@ -32,7 +34,9 @@ class TelegramNotifier:
         if self.enabled:
             logger.info("Telegram notifications enabled")
         else:
-            logger.info("Telegram not configured — add TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID to .env")
+            logger.info(
+                "Telegram not configured — add TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID to .env"
+            )
 
     async def send(self, message: str, parse_mode: str = "HTML") -> bool:
         """Send a message. Returns True on success."""
@@ -42,12 +46,15 @@ class TelegramNotifier:
         url = self.BASE_URL.format(token=self.token, method="sendMessage")
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(url, json={
-                    "chat_id": self.chat_id,
-                    "text": message,
-                    "parse_mode": parse_mode,
-                    "disable_web_page_preview": True,
-                })
+                resp = await client.post(
+                    url,
+                    json={
+                        "chat_id": self.chat_id,
+                        "text": message,
+                        "parse_mode": parse_mode,
+                        "disable_web_page_preview": True,
+                    },
+                )
                 if resp.status_code == 200:
                     return True
                 else:
@@ -102,11 +109,13 @@ class TelegramNotifier:
         if fund and fund.get("requires_human_approval"):
             lines.extend(["", "<b>HUMAN APPROVAL REQUIRED</b> — check dashboard"])
 
-        lines.extend([
-            "",
-            f"<code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>",
-            "<a href='http://localhost:3010'>Open Dashboard</a>",
-        ])
+        lines.extend(
+            [
+                "",
+                f"<code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>",
+                "<a href='http://localhost:3010'>Open Dashboard</a>",
+            ]
+        )
 
         message = "\n".join(lines)
         return await self.send(message)

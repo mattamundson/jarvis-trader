@@ -15,12 +15,12 @@ Usage:
     cd engine
     .venv/Scripts/python -m backtest.walk_forward --symbol SPY --interval 1h --start 2024-06-01 --end 2026-03-27
 """
+
 from __future__ import annotations
 
 import argparse
 import itertools
 import json
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,22 +28,20 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from backtest.backtester import Backtester, BacktestResult
+from backtest.backtester import BacktestResult
 from backtest.data_loader import BacktestDataLoader
 from backtest.optimizer import (
     FAST_GRID,
     PARAM_GRID,
-    OptResult,
-    _compute_signals,
     _run_with_params,
     _score,
     build_daily_bias,
 )
 
-
 # ---------------------------------------------------------------------------
 # Walk-Forward Validator
 # ---------------------------------------------------------------------------
+
 
 class WalkForwardValidator:
     """Rolling walk-forward optimisation and out-of-sample validation."""
@@ -110,15 +108,17 @@ class WalkForwardValidator:
                     break
                 continue
 
-            windows.append({
-                "window_num": window_num,
-                "train_start": train_start,
-                "train_end": train_end,
-                "test_start": test_start,
-                "test_end": test_end,
-                "train_bars": train_bars,
-                "test_bars": test_bars,
-            })
+            windows.append(
+                {
+                    "window_num": window_num,
+                    "train_start": train_start,
+                    "train_end": train_end,
+                    "test_start": test_start,
+                    "test_end": test_end,
+                    "train_bars": train_bars,
+                    "test_bars": test_bars,
+                }
+            )
             window_num += 1
 
             # Advance by step_months (non-overlapping test periods)
@@ -164,7 +164,9 @@ class WalkForwardValidator:
         daily_bias_series: Optional[Any] = None
         if mtf_filter:
             if df_daily is None or df_daily.empty:
-                print("[WalkForward] WARNING: --mtf-filter requested but no daily data provided. MTF filter disabled.")
+                print(
+                    "[WalkForward] WARNING: --mtf-filter requested but no daily data provided. MTF filter disabled."
+                )
                 mtf_filter = False
             else:
                 daily_bias_series = build_daily_bias(df_daily)
@@ -194,11 +196,13 @@ class WalkForwardValidator:
         if mtf_filter:
             mode_parts.append("mtf-filter")
         mode_label = "+".join(mode_parts) if mode_parts else "static"
-        print(f"\n{'='*65}")
+        print(f"\n{'=' * 65}")
         print(f"=== WALK-FORWARD VALIDATION: {symbol} [{mode_label}] ===")
-        print(f"Windows: {len(windows_spec)} | Train: {self.train_months}mo | Test: {self.test_months}mo")
+        print(
+            f"Windows: {len(windows_spec)} | Train: {self.train_months}mo | Test: {self.test_months}mo"
+        )
         print(f"Grid: {len(combos)} param combos ({'fast' if fast else 'full'})")
-        print(f"{'='*65}")
+        print(f"{'=' * 65}")
 
         results_windows: List[Dict[str, Any]] = []
 
@@ -221,7 +225,11 @@ class WalkForwardValidator:
 
             # ── Optimise on train data ────────────────────────────────────
             best_params, best_score, is_result = self._optimise_window(
-                df_train, multiplier, capital, combos, keys,
+                df_train,
+                multiplier,
+                capital,
+                combos,
+                keys,
                 adaptive_regime=adaptive_regime,
                 volume_filter=volume_filter,
                 mtf_filter=mtf_filter,
@@ -229,7 +237,7 @@ class WalkForwardValidator:
             )
 
             if best_params is None or is_result is None:
-                print(f"  [SKIP] Optimisation returned no valid results.")
+                print("  [SKIP] Optimisation returned no valid results.")
                 continue
 
             print(
@@ -241,13 +249,15 @@ class WalkForwardValidator:
             print(
                 f"  IS:  PF={is_result.profit_factor:.2f}  "
                 f"Sharpe={is_result.sharpe_ratio:.2f}  "
-                f"Return={is_result.total_return_pct*100:.1f}%  "
+                f"Return={is_result.total_return_pct * 100:.1f}%  "
                 f"Trades={is_result.total_trades}"
             )
 
             # ── Backtest OOS with best params ─────────────────────────────
             oos_result = _run_with_params(
-                df_test, multiplier, capital,
+                df_test,
+                multiplier,
+                capital,
                 adaptive_regime=adaptive_regime,
                 volume_filter=volume_filter,
                 mtf_filter=mtf_filter,
@@ -256,26 +266,28 @@ class WalkForwardValidator:
             )
 
             if oos_result is None:
-                print(f"  OOS: [FAILED] — backtest returned None")
+                print("  OOS: [FAILED] — backtest returned None")
                 continue
 
             print(
                 f"  OOS: PF={oos_result.profit_factor:.2f}  "
                 f"Sharpe={oos_result.sharpe_ratio:.2f}  "
-                f"Return={oos_result.total_return_pct*100:.1f}%  "
+                f"Return={oos_result.total_return_pct * 100:.1f}%  "
                 f"Trades={oos_result.total_trades}"
             )
 
-            results_windows.append({
-                "window": wnum,
-                "train_period": train_label,
-                "test_period": test_label,
-                "train_bars": win["train_bars"],
-                "test_bars": win["test_bars"],
-                "best_params": best_params,
-                "is_result": is_result,
-                "oos_result": oos_result,
-            })
+            results_windows.append(
+                {
+                    "window": wnum,
+                    "train_period": train_label,
+                    "test_period": test_label,
+                    "train_bars": win["train_bars"],
+                    "test_bars": win["test_bars"],
+                    "best_params": best_params,
+                    "is_result": is_result,
+                    "oos_result": oos_result,
+                }
+            )
 
         # ── Summary ───────────────────────────────────────────────────────
         summary = self._compute_summary(results_windows)
@@ -309,13 +321,15 @@ class WalkForwardValidator:
 
         total = len(combos)
         for idx, values in enumerate(combos):
-            params = dict(zip(keys, values))
+            params = dict(zip(keys, values, strict=False))
 
             if (idx + 1) % 25 == 0 or idx == total - 1:
-                print(f"  Optimising: {idx+1}/{total}", end="\r")
+                print(f"  Optimising: {idx + 1}/{total}", end="\r")
 
             r = _run_with_params(
-                df_train, multiplier, capital,
+                df_train,
+                multiplier,
+                capital,
                 adaptive_regime=adaptive_regime,
                 volume_filter=volume_filter,
                 mtf_filter=mtf_filter,
@@ -395,23 +409,21 @@ class WalkForwardValidator:
         else:
             wfe_label = "OVERFIT"
 
-        print(f"\n{'='*65}")
+        print(f"\n{'=' * 65}")
         print("=== SUMMARY ===")
-        print(f"Avg IS Return:  {summary['avg_is_return']*100:.1f}%")
-        print(f"Avg OOS Return: {summary['avg_oos_return']*100:.1f}%")
+        print(f"Avg IS Return:  {summary['avg_is_return'] * 100:.1f}%")
+        print(f"Avg OOS Return: {summary['avg_oos_return'] * 100:.1f}%")
         print(f"WFE: {wfe:.2f} ({wfe_label})")
         print(f"Avg OOS Sharpe:        {summary['avg_oos_sharpe']:.2f}")
         print(f"Avg OOS Profit Factor: {summary['avg_oos_profit_factor']:.2f}")
-        print(
-            f"OOS Windows Profitable: "
-            f"{summary['windows_profitable']}/{summary['total_windows']}"
-        )
-        print(f"{'='*65}")
+        print(f"OOS Windows Profitable: {summary['windows_profitable']}/{summary['total_windows']}")
+        print(f"{'=' * 65}")
 
 
 # ---------------------------------------------------------------------------
 # Result serialisation
 # ---------------------------------------------------------------------------
+
 
 def _serialise_result(r: BacktestResult) -> dict:
     """Convert a BacktestResult to a JSON-safe dict (skip equity_curve for brevity)."""
@@ -462,16 +474,18 @@ def save_results(
     }
 
     for w in result["windows"]:
-        payload["windows"].append({
-            "window": w["window"],
-            "train_period": w["train_period"],
-            "test_period": w["test_period"],
-            "train_bars": w["train_bars"],
-            "test_bars": w["test_bars"],
-            "best_params": w["best_params"],
-            "is_result": _serialise_result(w["is_result"]),
-            "oos_result": _serialise_result(w["oos_result"]),
-        })
+        payload["windows"].append(
+            {
+                "window": w["window"],
+                "train_period": w["train_period"],
+                "test_period": w["test_period"],
+                "train_bars": w["train_bars"],
+                "test_bars": w["test_bars"],
+                "best_params": w["best_params"],
+                "is_result": _serialise_result(w["is_result"]),
+                "oos_result": _serialise_result(w["oos_result"]),
+            }
+        )
 
     out_path.write_text(json.dumps(payload, indent=2))
     print(f"\nResults saved to: {out_path}")
@@ -481,6 +495,7 @@ def save_results(
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -493,12 +508,22 @@ def main():
     parser.add_argument("--end", default="2026-03-27", help="End date (YYYY-MM-DD)")
     parser.add_argument("--train-months", type=int, default=6, help="Training window (months)")
     parser.add_argument("--test-months", type=int, default=3, help="Testing window (months)")
-    parser.add_argument("--step-months", type=int, default=3, help="Step size between windows (months)")
+    parser.add_argument(
+        "--step-months", type=int, default=3, help="Step size between windows (months)"
+    )
     parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital")
     parser.add_argument("--full-grid", action="store_true", help="Use full parameter grid (slower)")
-    parser.add_argument("--adaptive-regime", action="store_true", help="Use regime-adaptive STC thresholds per bar")
-    parser.add_argument("--volume-filter", action="store_true", help="Block entries on below-average volume bars")
-    parser.add_argument("--mtf-filter", action="store_true", help="Apply 4h MTF confirmation filter to block counter-trend entries")
+    parser.add_argument(
+        "--adaptive-regime", action="store_true", help="Use regime-adaptive STC thresholds per bar"
+    )
+    parser.add_argument(
+        "--volume-filter", action="store_true", help="Block entries on below-average volume bars"
+    )
+    parser.add_argument(
+        "--mtf-filter",
+        action="store_true",
+        help="Apply 4h MTF confirmation filter to block counter-trend entries",
+    )
     args = parser.parse_args()
 
     # ── Load data ─────────────────────────────────────────────────────────
@@ -512,7 +537,7 @@ def main():
 
     # ── Run walk-forward engine ────────────────────────────────────────────
     print("\nRunning walk-forward engine...")
-    engine = WalkForwardEngine(
+    engine = WalkForwardValidator(
         df=df,
         symbol=args.symbol,
         interval=args.interval,
@@ -527,7 +552,7 @@ def main():
     )
 
     result = engine.run()
-    print(f"\nWalk-forward engine complete:")
+    print("\nWalk-forward engine complete:")
     print(f"  Total windows: {result['windows_completed']}")
     print(f"  Avg Sharpe: {result['avg_sharpe']:.2f}")
     print(f"  Best window Sharpe: {result['best_window_sharpe']:.2f}")

@@ -9,9 +9,9 @@ import asyncio
 
 async def test_redis_init():
     """Test Redis initialization and fallback."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TEST 1: Redis Initialization")
-    print("="*60)
+    print("=" * 60)
 
     from cache import close_redis, get_redis_client, init_redis
 
@@ -34,9 +34,9 @@ async def test_redis_init():
 
 async def test_signal_cache():
     """Test signal caching."""
-    print("="*60)
+    print("=" * 60)
     print("TEST 2: Signal Caching (Pipeline Results)")
-    print("="*60)
+    print("=" * 60)
 
     from cache import (
         cache_signal,
@@ -54,11 +54,9 @@ async def test_signal_cache():
         "symbol": "MES",
         "final_action": "buy",
         "final_quantity": 2,
-        "analyst_reports": {
-            "technical": {"regime": "UPTREND", "trend": "UP"}
-        },
+        "analyst_reports": {"technical": {"regime": "UPTREND", "trend": "UP"}},
         "confidence": 0.85,
-        "summary": "Test signal"
+        "summary": "Test signal",
     }
 
     print("\nCaching signal for MES...")
@@ -88,9 +86,9 @@ async def test_signal_cache():
 
 async def test_alert_cooldown():
     """Test alert cooldown tracking."""
-    print("="*60)
+    print("=" * 60)
     print("TEST 3: Alert Cooldown (WhatsApp Rate Limiting)")
-    print("="*60)
+    print("=" * 60)
 
     from cache import clear_cooldown, close_redis, init_redis, is_on_cooldown, set_cooldown
 
@@ -124,9 +122,9 @@ async def test_alert_cooldown():
 
 async def test_indicator_cache():
     """Test indicator caching."""
-    print("="*60)
+    print("=" * 60)
     print("TEST 4: Indicator Cache (Technical Analysis)")
-    print("="*60)
+    print("=" * 60)
 
     from cache import close_redis, get_indicators, init_redis, store_indicators
 
@@ -159,9 +157,9 @@ async def test_indicator_cache():
 
 async def test_graceful_fallback():
     """Test graceful fallback to in-memory cache."""
-    print("="*60)
+    print("=" * 60)
     print("TEST 5: Graceful Fallback (Invalid Redis URL)")
-    print("="*60)
+    print("=" * 60)
 
     from cache import cache_signal, close_redis, get_cached_signal, init_redis
 
@@ -190,9 +188,9 @@ async def test_graceful_fallback():
 
 async def main():
     """Run all tests."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("JARVIS TRADER — Redis Cache Integration Tests")
-    print("="*60)
+    print("=" * 60)
 
     try:
         # Test 1: Initialization
@@ -210,15 +208,18 @@ async def main():
         # Test 5: Fallback
         await test_graceful_fallback()
 
-        print("="*60)
+        print("=" * 60)
         print("✅ ALL TESTS COMPLETED")
-        print("="*60)
+        print("=" * 60)
         print("\nNote: Some tests may show graceful fallback if Redis is not running.")
-        print("      This is expected behavior — the system continues working with in-memory cache.")
+        print(
+            "      This is expected behavior — the system continues working with in-memory cache."
+        )
 
     except Exception as e:
         print(f"\n❌ Test failed with error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

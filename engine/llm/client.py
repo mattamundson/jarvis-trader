@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class LLMCallResult:
     """Result of an LLM API call with metrics."""
+
     success: bool
     model: str
     input_tokens: int
@@ -170,7 +171,9 @@ class JarvisLLMClient:
 
             except RateLimitError as e:
                 last_error = e
-                logger.warning(f"[{current_model}] Rate limit (429) for {agent_name} — attempt {retries + 1}/3")
+                logger.warning(
+                    f"[{current_model}] Rate limit (429) for {agent_name} — attempt {retries + 1}/3"
+                )
                 retries += 1
 
                 if retries >= 3:
@@ -194,7 +197,9 @@ class JarvisLLMClient:
             except (APIConnectionError, APIStatusError) as e:
                 last_error = e
                 status = getattr(e, "status_code", "unknown")
-                logger.warning(f"[{current_model}] API error ({status}) for {agent_name} — attempt {retries + 1}/3")
+                logger.warning(
+                    f"[{current_model}] API error ({status}) for {agent_name} — attempt {retries + 1}/3"
+                )
                 retries += 1
 
                 if retries >= 3:

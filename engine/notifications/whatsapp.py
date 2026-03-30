@@ -15,6 +15,7 @@ Setup:
 
 For production (non-sandbox): request a WhatsApp-approved number from Twilio.
 """
+
 import logging
 from datetime import datetime
 from typing import Optional
@@ -34,14 +35,21 @@ class WhatsAppNotifier:
     def __init__(self):
         self.account_sid = settings.TWILIO_ACCOUNT_SID
         self.auth_token = settings.TWILIO_AUTH_TOKEN
-        self.from_number = settings.TWILIO_WHATSAPP_FROM   # e.g. whatsapp:+14155238886
-        self.to_number = settings.WHATSAPP_TO               # e.g. whatsapp:+12125551234
+        self.from_number = settings.TWILIO_WHATSAPP_FROM  # e.g. whatsapp:+14155238886
+        self.to_number = settings.WHATSAPP_TO  # e.g. whatsapp:+12125551234
 
-        placeholders = {"your_account_sid_here", "your_auth_token_here",
-                        "your_whatsapp_from_here", "your_whatsapp_to_here", None, ""}
-        self.enabled = not any(v in placeholders for v in [
-            self.account_sid, self.auth_token, self.from_number, self.to_number
-        ])
+        placeholders = {
+            "your_account_sid_here",
+            "your_auth_token_here",
+            "your_whatsapp_from_here",
+            "your_whatsapp_to_here",
+            None,
+            "",
+        }
+        self.enabled = not any(
+            v in placeholders
+            for v in [self.account_sid, self.auth_token, self.from_number, self.to_number]
+        )
 
         if self.enabled:
             logger.info(f"WhatsApp notifications enabled → {self.to_number}")
@@ -167,6 +175,7 @@ async def send_whatsapp_message(
     # Lazy import to avoid circular dependencies at module load time
     try:
         from database.schema import get_db
+
         _db = get_db()
     except Exception:
         _db = None

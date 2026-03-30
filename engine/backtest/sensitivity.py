@@ -9,6 +9,7 @@ A robust strategy shows stable performance across a range of values.
 Usage:
     python -m backtest.sensitivity --symbol SPY --interval 1h --start 2024-06-01 --end 2026-03-27
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,25 +27,25 @@ from backtest.optimizer import _compute_signals
 # ── Parameter ranges for sensitivity sweep ────────────────────────────────────
 
 PARAM_RANGES: Dict[str, list] = {
-    'stc_os':   [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-    'stc_ob':   [77, 78, 79, 80, 81, 83, 85, 86, 87, 88, 89],
-    'stop_atr': [0.40, 0.50, 0.56, 0.63, 0.70, 0.77, 0.84, 0.90, 1.00],
-    't1_atr':   [1.00, 1.20, 1.35, 1.50, 1.65, 1.80, 2.00, 2.20, 2.50],
+    "stc_os": [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    "stc_ob": [77, 78, 79, 80, 81, 83, 85, 86, 87, 88, 89],
+    "stop_atr": [0.40, 0.50, 0.56, 0.63, 0.70, 0.77, 0.84, 0.90, 1.00],
+    "t1_atr": [1.00, 1.20, 1.35, 1.50, 1.65, 1.80, 2.00, 2.20, 2.50],
 }
 
 # Map sensitivity param names → _compute_signals kwarg names
 _PARAM_TO_KWARG = {
-    'stc_os':   'stc_oversold',
-    'stc_ob':   'stc_overbought',
-    'stop_atr': 'atr_stop_mult',
-    't1_atr':   'atr_target_mult',
+    "stc_os": "stc_oversold",
+    "stc_ob": "stc_overbought",
+    "stop_atr": "atr_stop_mult",
+    "t1_atr": "atr_target_mult",
 }
 
 DEFAULT_BASE_PARAMS = {
-    'stc_os':   15,
-    'stc_ob':   83,
-    'stop_atr': 0.70,
-    't1_atr':   1.50,
+    "stc_os": 15,
+    "stc_ob": 83,
+    "stop_atr": 0.70,
+    "t1_atr": 1.50,
 }
 
 
@@ -77,18 +78,18 @@ def _extract_metrics(result: Optional[BacktestResult]) -> Dict[str, float]:
     """Pull the key metrics from a BacktestResult."""
     if result is None or result.total_trades < 1:
         return {
-            'pf': 0.0,
-            'sharpe': 0.0,
-            'return': 0.0,
-            'win_rate': 0.0,
-            'trades': 0,
+            "pf": 0.0,
+            "sharpe": 0.0,
+            "return": 0.0,
+            "win_rate": 0.0,
+            "trades": 0,
         }
     return {
-        'pf': round(min(result.profit_factor, 999.0), 3),
-        'sharpe': round(result.sharpe_ratio, 3),
-        'return': round(result.total_return_pct * 100, 2),
-        'win_rate': round(result.win_rate * 100, 1),
-        'trades': result.total_trades,
+        "pf": round(min(result.profit_factor, 999.0), 3),
+        "sharpe": round(result.sharpe_ratio, 3),
+        "return": round(result.total_return_pct * 100, 2),
+        "win_rate": round(result.win_rate * 100, 1),
+        "trades": result.total_trades,
     }
 
 
@@ -130,11 +131,13 @@ def run_sensitivity_analysis(
 
     # ── Run base case ─────────────────────────────────────────────────────
     base_result_raw = _run_single_backtest(
-        df, multiplier, capital,
-        stc_os=base_params['stc_os'],
-        stc_ob=base_params['stc_ob'],
-        stop_atr=base_params['stop_atr'],
-        t1_atr=base_params['t1_atr'],
+        df,
+        multiplier,
+        capital,
+        stc_os=base_params["stc_os"],
+        stc_ob=base_params["stc_ob"],
+        stop_atr=base_params["stop_atr"],
+        t1_atr=base_params["t1_atr"],
     )
     base_metrics = _extract_metrics(base_result_raw)
 
@@ -158,31 +161,35 @@ def run_sensitivity_analysis(
             run_params[param_name] = val
 
             result = _run_single_backtest(
-                df, multiplier, capital,
-                stc_os=run_params['stc_os'],
-                stc_ob=run_params['stc_ob'],
-                stop_atr=run_params['stop_atr'],
-                t1_atr=run_params['t1_atr'],
+                df,
+                multiplier,
+                capital,
+                stc_os=run_params["stc_os"],
+                stc_ob=run_params["stc_ob"],
+                stop_atr=run_params["stop_atr"],
+                t1_atr=run_params["t1_atr"],
             )
             metrics = _extract_metrics(result)
 
             # Percent change from base PF
-            if base_metrics['pf'] > 0:
+            if base_metrics["pf"] > 0:
                 pct_change = round(
-                    ((metrics['pf'] - base_metrics['pf']) / base_metrics['pf']) * 100, 1
+                    ((metrics["pf"] - base_metrics["pf"]) / base_metrics["pf"]) * 100, 1
                 )
             else:
                 pct_change = 0.0
 
-            param_results.append({
-                'value': val,
-                'pf': metrics['pf'],
-                'sharpe': metrics['sharpe'],
-                'return': metrics['return'],
-                'win_rate': metrics['win_rate'],
-                'trades': metrics['trades'],
-                'pct_change_from_base': pct_change,
-            })
+            param_results.append(
+                {
+                    "value": val,
+                    "pf": metrics["pf"],
+                    "sharpe": metrics["sharpe"],
+                    "return": metrics["return"],
+                    "win_rate": metrics["win_rate"],
+                    "trades": metrics["trades"],
+                    "pct_change_from_base": pct_change,
+                }
+            )
 
         sensitivity[param_name] = param_results
 
@@ -195,19 +202,14 @@ def run_sensitivity_analysis(
             # Base value not in range; use the closest 6 values centered on it
             sorted_by_dist = sorted(values, key=lambda v: abs(v - base_val))
             nearby_values = sorted_by_dist[:7]
-            nearby_pfs = [
-                r['pf'] for r in param_results if r['value'] in nearby_values
-            ]
+            nearby_pfs = [r["pf"] for r in param_results if r["value"] in nearby_values]
             stability_scores[param_name] = _compute_stability(nearby_pfs)
             continue
 
         # 3 values on each side + the base itself
         start_idx = max(0, base_idx - 3)
         end_idx = min(len(values), base_idx + 4)  # exclusive
-        nearby_pfs = [
-            r['pf'] for r in param_results
-            if r['value'] in values[start_idx:end_idx]
-        ]
+        nearby_pfs = [r["pf"] for r in param_results if r["value"] in values[start_idx:end_idx]]
         stability_scores[param_name] = _compute_stability(nearby_pfs)
 
     print()  # newline after progress
@@ -215,29 +217,29 @@ def run_sensitivity_analysis(
     # ── Overall stability & verdict ───────────────────────────────────────
     all_scores = list(stability_scores.values())
     overall = round(np.mean(all_scores), 1) if all_scores else 0.0
-    stability_scores['overall'] = overall
+    stability_scores["overall"] = overall
 
     min_score = min(all_scores) if all_scores else 0.0
     if min_score > 70:
-        verdict = 'ROBUST'
+        verdict = "ROBUST"
     elif min_score > 50:
-        verdict = 'ACCEPTABLE'
+        verdict = "ACCEPTABLE"
     else:
-        verdict = 'FRAGILE'
+        verdict = "FRAGILE"
 
     return {
-        'base_params': base_params,
-        'base_result': base_metrics,
-        'sensitivity': sensitivity,
-        'stability_scores': stability_scores,
-        'verdict': verdict,
+        "base_params": base_params,
+        "base_result": base_metrics,
+        "sensitivity": sensitivity,
+        "stability_scores": stability_scores,
+        "verdict": verdict,
     }
 
 
 def format_sensitivity_report(result: Dict[str, Any]) -> str:
     """Format the sensitivity analysis result as a human-readable report."""
-    bp = result['base_params']
-    br = result['base_result']
+    bp = result["base_params"]
+    br = result["base_result"]
     lines = []
 
     lines.append("=== PARAMETER SENSITIVITY ANALYSIS ===")
@@ -253,16 +255,16 @@ def format_sensitivity_report(result: Dict[str, Any]) -> str:
     lines.append("")
 
     param_labels = {
-        'stc_os':   'STC_OS (Oversold Threshold)',
-        'stc_ob':   'STC_OB (Overbought Threshold)',
-        'stop_atr': 'Stop ATR Multiple',
-        't1_atr':   'T1 ATR Multiple (Target 1)',
+        "stc_os": "STC_OS (Oversold Threshold)",
+        "stc_ob": "STC_OB (Overbought Threshold)",
+        "stop_atr": "Stop ATR Multiple",
+        "t1_atr": "T1 ATR Multiple (Target 1)",
     }
 
-    for param_name, data_points in result['sensitivity'].items():
+    for param_name, data_points in result["sensitivity"].items():
         label = param_labels.get(param_name, param_name)
         base_val = bp[param_name]
-        stability = result['stability_scores'].get(param_name, 0.0)
+        stability = result["stability_scores"].get(param_name, 0.0)
 
         lines.append(f"{label}:")
         lines.append(
@@ -271,12 +273,12 @@ def format_sensitivity_report(result: Dict[str, Any]) -> str:
         )
 
         for pt in data_points:
-            is_base = (pt['value'] == base_val)
+            is_base = pt["value"] == base_val
             marker = "  <- base" if is_base else ""
             vs_base = "--" if is_base else f"{pt['pct_change_from_base']:+.0f}%"
 
             # Format value: integer for stc params, float for ATR params
-            if param_name in ('stc_os', 'stc_ob'):
+            if param_name in ("stc_os", "stc_ob"):
                 val_str = f"{int(pt['value']):>8}"
             else:
                 val_str = f"{pt['value']:>8.2f}"
@@ -297,25 +299,23 @@ def format_sensitivity_report(result: Dict[str, Any]) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="JARVIS TRADER — Parameter Sensitivity Analysis"
-    )
-    parser.add_argument("--symbol",   default="SPY",       help="Symbol to analyze")
-    parser.add_argument("--interval", default="1h",        help="Bar interval (1h, 1d)")
-    parser.add_argument("--start",    default="2024-06-01", help="Start date")
-    parser.add_argument("--end",      default="2026-03-27", help="End date")
-    parser.add_argument("--capital",  type=float, default=100_000.0, help="Initial capital")
-    parser.add_argument("--stc-os",   type=int,   default=15,   help="Base STC oversold")
-    parser.add_argument("--stc-ob",   type=int,   default=83,   help="Base STC overbought")
+    parser = argparse.ArgumentParser(description="JARVIS TRADER — Parameter Sensitivity Analysis")
+    parser.add_argument("--symbol", default="SPY", help="Symbol to analyze")
+    parser.add_argument("--interval", default="1h", help="Bar interval (1h, 1d)")
+    parser.add_argument("--start", default="2024-06-01", help="Start date")
+    parser.add_argument("--end", default="2026-03-27", help="End date")
+    parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital")
+    parser.add_argument("--stc-os", type=int, default=15, help="Base STC oversold")
+    parser.add_argument("--stc-ob", type=int, default=83, help="Base STC overbought")
     parser.add_argument("--stop-atr", type=float, default=0.70, help="Base stop ATR mult")
-    parser.add_argument("--t1-atr",   type=float, default=1.50, help="Base T1 ATR mult")
+    parser.add_argument("--t1-atr", type=float, default=1.50, help="Base T1 ATR mult")
     args = parser.parse_args()
 
     base_params = {
-        'stc_os':   args.stc_os,
-        'stc_ob':   args.stc_ob,
-        'stop_atr': args.stop_atr,
-        't1_atr':   args.t1_atr,
+        "stc_os": args.stc_os,
+        "stc_ob": args.stc_ob,
+        "stop_atr": args.stop_atr,
+        "t1_atr": args.t1_atr,
     }
 
     print(f"\n[Sensitivity] Loading data for {args.symbol} ({args.interval})...")
@@ -328,11 +328,11 @@ def main():
     multiplier = loader.get_multiplier(args.symbol)
     print(f"[Sensitivity] {len(df)} bars loaded. Multiplier={multiplier}")
     print(f"[Sensitivity] Base params: {base_params}")
-    print(f"[Sensitivity] Running ~{sum(len(v) for v in PARAM_RANGES.values())} backtest variations...\n")
-
-    result = run_sensitivity_analysis(
-        df, args.symbol, multiplier, base_params, args.capital
+    print(
+        f"[Sensitivity] Running ~{sum(len(v) for v in PARAM_RANGES.values())} backtest variations...\n"
     )
+
+    result = run_sensitivity_analysis(df, args.symbol, multiplier, base_params, args.capital)
 
     # Print report
     report = format_sensitivity_report(result)

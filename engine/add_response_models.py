@@ -48,8 +48,7 @@ from api.models import (
 # Add after pydantic import
 if "from pydantic import BaseModel" in content:
     content = content.replace(
-        "from pydantic import BaseModel",
-        "from pydantic import BaseModel\n" + import_addition
+        "from pydantic import BaseModel", "from pydantic import BaseModel\n" + import_addition
     )
     print("✅ Added API models import")
 
@@ -57,7 +56,7 @@ if "from pydantic import BaseModel" in content:
 if "from fastapi import FastAPI, HTTPException, Depends, Request" in content:
     content = content.replace(
         "from fastapi import FastAPI, HTTPException, Depends, Request",
-        "from fastapi import FastAPI, HTTPException, Depends, Request, APIRouter"
+        "from fastapi import FastAPI, HTTPException, Depends, Request, APIRouter",
     )
     print("✅ Updated FastAPI import to include APIRouter")
 
@@ -108,12 +107,12 @@ if "v1_router = APIRouter" not in content:
         lifespan_pos = content.find("@asynccontextmanager\nasync def lifespan(app: FastAPI):")
         if lifespan_pos > 0:
             # Insert before lifespan
-            v1_setup = '''
+            v1_setup = """
 # ── API Versioning ────────────────────────────────────────────────────────────
 # Create v1 router with /v1 prefix for future versioning support
 v1_router = APIRouter(prefix="/v1", tags=["v1"])
 
-'''
+"""
             content = content[:lifespan_pos] + v1_setup + content[lifespan_pos:]
             print("✅ Added v1_router setup")
 
@@ -127,7 +126,11 @@ if "app.include_router(v1_router)" not in content:
             # Find the end of the line
             line_end = content.find("\n", include_pos)
             # Insert the v1 router include
-            content = content[:line_end + 1] + 'app.include_router(v1_router)\n' + content[line_end + 1:]
+            content = (
+                content[: line_end + 1]
+                + "app.include_router(v1_router)\n"
+                + content[line_end + 1 :]
+            )
             print("✅ Registered v1_router")
 
 # Write back

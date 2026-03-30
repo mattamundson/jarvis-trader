@@ -8,6 +8,7 @@ a structured news signal.
 Refresh interval: every 5 minutes during market hours.
 Model: Claude Sonnet 4.6
 """
+
 import json
 import logging
 import os
@@ -24,6 +25,7 @@ __all__ = ["NewsAnalystAgent", "NewsReport"]
 @dataclass
 class NewsReport:
     """Structured output from the News Analyst agent"""
+
     symbol: str
     timestamp: datetime
 
@@ -121,6 +123,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         if finnhub_key:
             try:
                 from datetime import timedelta
+
                 today = datetime.utcnow()
                 from_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
                 to_date = today.strftime("%Y-%m-%d")
@@ -139,12 +142,14 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                         data = resp.json()
                         # Finnhub returns a list sorted newest-first
                         for item in data[:20]:
-                            headlines.append({
-                                "headline": item.get("headline", ""),
-                                "source": item.get("source", ""),
-                                "datetime": item.get("datetime", 0),
-                                "summary": item.get("summary", "")[:200],
-                            })
+                            headlines.append(
+                                {
+                                    "headline": item.get("headline", ""),
+                                    "source": item.get("source", ""),
+                                    "datetime": item.get("datetime", 0),
+                                    "summary": item.get("summary", "")[:200],
+                                }
+                            )
                     else:
                         logger.warning(f"Finnhub news returned {resp.status_code} for {symbol}")
             except Exception as e:
@@ -156,12 +161,14 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 dm_news = await self._data.get_news(symbol, limit=10)
                 if dm_news:
                     for item in dm_news:
-                        headlines.append({
-                            "headline": item.get("headline", item.get("title", "")),
-                            "source": item.get("source", "data_manager"),
-                            "datetime": item.get("datetime", item.get("published_at", "")),
-                            "summary": item.get("summary", item.get("description", ""))[:200],
-                        })
+                        headlines.append(
+                            {
+                                "headline": item.get("headline", item.get("title", "")),
+                                "source": item.get("source", "data_manager"),
+                                "datetime": item.get("datetime", item.get("published_at", "")),
+                                "summary": item.get("summary", item.get("description", ""))[:200],
+                            }
+                        )
             except Exception as e:
                 logger.warning(f"Data manager news fetch failed for {symbol}: {e}")
 
@@ -204,7 +211,9 @@ Respond with JSON in exactly this format:
 }}"""
 
         try:
-            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv("ANTHROPIC_API_KEY", "")
+            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
+                "ANTHROPIC_API_KEY", ""
+            )
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(

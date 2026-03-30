@@ -14,6 +14,7 @@ Contract multipliers ($ per point):
     MNQ  / NQ=F   — Micro E-mini Nasdaq   — $2.00/pt
     MCL  / CL=F   — Micro Crude Oil        — $100.00/pt
 """
+
 import logging
 import math
 from dataclasses import dataclass
@@ -47,18 +48,20 @@ class PositionSizeResult:
     All inputs and outputs of a position-size calculation, preserved for
     audit logging and dashboard display.
     """
-    contracts: int                   # Final clamped contract count (>= 1)
-    risk_per_trade: float            # Dollar risk budget for this trade
-    stop_distance: float             # Price-point distance used as stop (atr * multiplier)
+
+    contracts: int  # Final clamped contract count (>= 1)
+    risk_per_trade: float  # Dollar risk budget for this trade
+    stop_distance: float  # Price-point distance used as stop (atr * multiplier)
     dollar_risk_per_contract: float  # Dollar risk per contract at stop
-    account_value: float             # Account value used in the calculation
-    symbol: str                      # Instrument symbol
-    reasoning: str                   # Human-readable walk-through of the math
+    account_value: float  # Account value used in the calculation
+    symbol: str  # Instrument symbol
+    reasoning: str  # Human-readable walk-through of the math
 
 
 # ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------
+
 
 def get_contract_multiplier(symbol: str) -> float:
     """
@@ -162,8 +165,8 @@ def calculate_position_size(
         )
 
     # ── Core formula ───────────────────────────────────────────────────────
-    risk_per_trade = account_value * risk_pct          # e.g. $10,000 * 0.01 = $100
-    stop_distance = atr * atr_stop_multiplier          # e.g. 10.0 pts * 0.70 = 7.0 pts
+    risk_per_trade = account_value * risk_pct  # e.g. $10,000 * 0.01 = $100
+    stop_distance = atr * atr_stop_multiplier  # e.g. 10.0 pts * 0.70 = 7.0 pts
     dollar_risk_per_contract = stop_distance * multiplier  # e.g. 7.0 * $5 = $35
 
     if dollar_risk_per_contract <= 0.0:

@@ -14,6 +14,7 @@ Checks:
   ✅ Anthropic LLM API
   ✅ Infrastructure (PostgreSQL, Redis, QuestDB)
 """
+
 import asyncio
 import os
 import sys
@@ -47,7 +48,7 @@ print("\n📦 Python Environment")
 py_ok = check(
     f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
     sys.version_info >= (3, 10),
-    "need 3.10+" if sys.version_info < (3, 10) else "OK"
+    "need 3.10+" if sys.version_info < (3, 10) else "OK",
 )
 if not py_ok:
     errors += 1
@@ -98,12 +99,17 @@ print("\n🔑 Configuration")
 env_file = Path(".env")
 env_example = Path(".env.example")
 
-if not check(".env file", env_file.exists(), "copy .env.example to .env and fill in keys" if not env_file.exists() else "found"):
+if not check(
+    ".env file",
+    env_file.exists(),
+    "copy .env.example to .env and fill in keys" if not env_file.exists() else "found",
+):
     errors += 1
     print("     Run: copy .env.example .env")
 else:
     # Load and check required keys
     from dotenv import load_dotenv
+
     load_dotenv()
 
     required_keys = [
@@ -127,18 +133,26 @@ else:
     # Check safety defaults
     live = os.getenv("LIVE_TRADING_ENABLED", "False")
     approval = os.getenv("REQUIRE_HUMAN_APPROVAL", "True")
-    check("LIVE_TRADING_ENABLED=False (safe default)", live == "False",
-          f"Currently: {live} — ⚠️ WARNING if True!" if live != "False" else "safe")
-    check("REQUIRE_HUMAN_APPROVAL=True (safe default)", approval == "True",
-          f"Currently: {approval}" if approval == "True" else "⚠️ DISABLED!")
+    check(
+        "LIVE_TRADING_ENABLED=False (safe default)",
+        live == "False",
+        f"Currently: {live} — ⚠️ WARNING if True!" if live != "False" else "safe",
+    )
+    check(
+        "REQUIRE_HUMAN_APPROVAL=True (safe default)",
+        approval == "True",
+        f"Currently: {approval}" if approval == "True" else "⚠️ DISABLED!",
+    )
 
 # ── Infrastructure ────────────────────────────────────────────────────────
 print("\n🗄️  Infrastructure")
+
 
 async def check_connections():
     # Redis
     try:
         import redis.asyncio as aioredis
+
         r = await aioredis.from_url("redis://localhost:6379")
         await r.ping()
         await r.aclose()
@@ -149,6 +163,7 @@ async def check_connections():
     # PostgreSQL
     try:
         import asyncpg
+
         conn = await asyncpg.connect("postgresql://jarvis:jarvis@localhost:5432/jarvis_trader")
         await conn.close()
         check_warn("PostgreSQL", True, "connected on localhost:5432")
@@ -158,6 +173,7 @@ async def check_connections():
     # QuestDB
     try:
         import httpx
+
         async with httpx.AsyncClient() as client:
             resp = await client.get("http://localhost:9000/status", timeout=3)
             check_warn("QuestDB", resp.status_code == 200, "connected on localhost:9000")
@@ -167,18 +183,27 @@ async def check_connections():
     # IBKR Gateway
     try:
         import socket
+
         port = int(os.getenv("IBKR_PORT", "4002"))
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(2)
         result = s.connect_ex(("127.0.0.1", port))
         s.close()
         if result == 0:
-            check_warn(f"IB Gateway (port {port})", True, f"reachable — {'paper' if port == 4002 else 'LIVE'} mode")
+            check_warn(
+                f"IB Gateway (port {port})",
+                True,
+                f"reachable — {'paper' if port == 4002 else 'LIVE'} mode",
+            )
         else:
-            check_warn(f"IB Gateway (port {port})", False,
-                      "not running — download from interactivebrokers.com/en/trading/ibgateway.php")
+            check_warn(
+                f"IB Gateway (port {port})",
+                False,
+                "not running — download from interactivebrokers.com/en/trading/ibgateway.php",
+            )
     except Exception:
         check_warn("IB Gateway", False, "check failed")
+
 
 asyncio.run(check_connections())
 

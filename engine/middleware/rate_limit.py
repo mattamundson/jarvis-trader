@@ -3,6 +3,7 @@ JARVIS TRADER — Rate Limiting
 ==============================
 slowapi-based rate limiting with graduated limits per endpoint.
 """
+
 import logging
 
 from fastapi import Request

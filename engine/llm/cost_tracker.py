@@ -63,17 +63,11 @@ class CostTracker:
         )
 
         # Index by timestamp for range queries
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_timestamp ON llm_calls(timestamp)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON llm_calls(timestamp)")
         # Index by model for per-model summaries
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_model ON llm_calls(model)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_model ON llm_calls(model)")
         # Index by agent for per-agent summaries
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_agent ON llm_calls(agent_name)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent ON llm_calls(agent_name)")
 
         conn.commit()
         conn.close()
@@ -111,7 +105,16 @@ class CostTracker:
             (timestamp, model, input_tokens, output_tokens, cost_usd, latency_ms, agent_name, success)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (timestamp, model, input_tokens, output_tokens, cost_usd, latency_ms, agent_name, success),
+            (
+                timestamp,
+                model,
+                input_tokens,
+                output_tokens,
+                cost_usd,
+                latency_ms,
+                agent_name,
+                success,
+            ),
         )
 
         conn.commit()
@@ -133,7 +136,9 @@ class CostTracker:
         # Calculate the date range
         now = datetime.now(timezone.utc)
         target_date = (now - timedelta(days=days_back)).date()
-        start_ts = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc).isoformat()
+        start_ts = datetime.combine(
+            target_date, datetime.min.time(), tzinfo=timezone.utc
+        ).isoformat()
         end_ts = datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc).isoformat()
 
         # Total cost and call count
@@ -267,11 +272,13 @@ class CostTracker:
         )
         daily_breakdown = []
         for date, count, cost in cursor.fetchall():
-            daily_breakdown.append({
-                "date": date,
-                "calls": count,
-                "cost_usd": round(cost or 0.0, 4),
-            })
+            daily_breakdown.append(
+                {
+                    "date": date,
+                    "calls": count,
+                    "cost_usd": round(cost or 0.0, 4),
+                }
+            )
 
         # Per-model cost
         cursor.execute(

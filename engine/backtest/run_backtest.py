@@ -6,6 +6,7 @@ Usage:
     .venv/Scripts/python -m backtest.run_backtest --symbol SPY --start 2024-01-01 --end 2025-12-31
     .venv/Scripts/python -m backtest.run_backtest --symbol MES --start 2024-01-01 --capital 50000
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,7 +57,7 @@ def main():
     # Generate signals
     df = generate_signals(df)
 
-    entry_count = (df['entry_signal'] == 'ENTRY_NOW').sum()
+    entry_count = (df["entry_signal"] == "ENTRY_NOW").sum()
     print(f"Found {entry_count} ENTRY_NOW signals out of {len(df)} bars.")
 
     # Run backtest
@@ -103,7 +104,7 @@ def main():
         "full_metrics": result_data,
     }
 
-    with open(auto_path, 'w') as f:
+    with open(auto_path, "w") as f:
         json.dump(json_payload, f, indent=2)
     print(f"\nResults saved to: {auto_path}")
 
@@ -111,7 +112,7 @@ def main():
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             json.dump(result.to_dict(), f, indent=2)
         print(f"Results also saved to: {output_path}")
 

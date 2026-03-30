@@ -14,6 +14,7 @@ Regime Classification:
   - HIGH_VOLATILITY: ATR consumed > 80% or extreme phase values
   - TRANSITION:     Regime just changed (within last 5 bars)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ import pandas as pd
 @dataclass
 class RegimeMetrics:
     """Performance metrics for a single regime."""
+
     regime: str
     trade_count: int = 0
     winning_trades: int = 0
@@ -45,21 +47,21 @@ class RegimeMetrics:
 
     def to_dict(self) -> dict:
         return {
-            'regime': self.regime,
-            'trade_count': self.trade_count,
-            'winning_trades': self.winning_trades,
-            'losing_trades': self.losing_trades,
-            'win_rate': round(self.win_rate, 4) if self.trade_count > 0 else 0.0,
-            'gross_profit': round(self.gross_profit, 2),
-            'gross_loss': round(self.gross_loss, 2),
-            'profit_factor': round(self.profit_factor, 3) if self.gross_loss != 0 else 0.0,
-            'avg_win': round(self.avg_win, 2) if self.winning_trades > 0 else 0.0,
-            'avg_loss': round(self.avg_loss, 2) if self.losing_trades > 0 else 0.0,
-            'total_pnl': round(self.total_pnl, 2),
-            'sharpe_ratio': round(self.sharpe_ratio, 2),
-            'max_win': round(self.max_win, 2),
-            'max_loss': round(self.max_loss, 2),
-            'expectancy': round(self.expectancy, 2),
+            "regime": self.regime,
+            "trade_count": self.trade_count,
+            "winning_trades": self.winning_trades,
+            "losing_trades": self.losing_trades,
+            "win_rate": round(self.win_rate, 4) if self.trade_count > 0 else 0.0,
+            "gross_profit": round(self.gross_profit, 2),
+            "gross_loss": round(self.gross_loss, 2),
+            "profit_factor": round(self.profit_factor, 3) if self.gross_loss != 0 else 0.0,
+            "avg_win": round(self.avg_win, 2) if self.winning_trades > 0 else 0.0,
+            "avg_loss": round(self.avg_loss, 2) if self.losing_trades > 0 else 0.0,
+            "total_pnl": round(self.total_pnl, 2),
+            "sharpe_ratio": round(self.sharpe_ratio, 2),
+            "max_win": round(self.max_win, 2),
+            "max_loss": round(self.max_loss, 2),
+            "expectancy": round(self.expectancy, 2),
         }
 
 
@@ -90,8 +92,8 @@ class RegimeAnalyzer:
         if not isinstance(self.df.index, pd.DatetimeIndex):
             if isinstance(self.df.index, pd.RangeIndex):
                 # Try to use a timestamp column
-                if 'timestamp' in self.df.columns:
-                    self.df.index = pd.to_datetime(self.df['timestamp'])
+                if "timestamp" in self.df.columns:
+                    self.df.index = pd.to_datetime(self.df["timestamp"])
                 else:
                     raise ValueError("DataFrame must have datetime index or 'timestamp' column")
             else:
@@ -113,7 +115,7 @@ class RegimeAnalyzer:
         try:
             bar = self.df.loc[self.df.index <= entry_timestamp].iloc[-1]
         except (KeyError, IndexError):
-            return 'UNKNOWN'
+            return "UNKNOWN"
 
         bar_idx = self.df.index.get_loc(bar.name)
 
@@ -125,52 +127,52 @@ class RegimeAnalyzer:
 
             # If regimes are not uniform, it's a transition
             if len(set(regimes_prior_5)) > 1:
-                return 'TRANSITION'
+                return "TRANSITION"
 
         return self._classify_single_bar(bar)
 
     def _classify_single_bar(self, row: pd.Series) -> str:
         """Classify a single bar's regime."""
-        atr_consumed = float(row.get('atr_consumed_pct', 0) or 0)
-        phase = float(row.get('phase_val', 0) or 0)
-        compression = bool(row.get('phase_compression', False))
-        ema_8 = float(row.get('ema_8', 0) or 0)
-        ema_21 = float(row.get('ema_21', 0) or 0)
-        ema_34 = float(row.get('ema_34', 0) or 0)
+        atr_consumed = float(row.get("atr_consumed_pct", 0) or 0)
+        phase = float(row.get("phase_val", 0) or 0)
+        compression = bool(row.get("phase_compression", False))
+        ema_8 = float(row.get("ema_8", 0) or 0)
+        ema_21 = float(row.get("ema_21", 0) or 0)
+        ema_34 = float(row.get("ema_34", 0) or 0)
 
         # High volatility: ATR consumed > 80% or extreme phase
         if atr_consumed > 80 or abs(phase) > 61.8:
-            return 'HIGH_VOLATILITY'
+            return "HIGH_VOLATILITY"
 
         # Range bound: compressed EMAs + low ATR consumed
         if compression and atr_consumed < 50:
-            return 'RANGE_BOUND'
+            return "RANGE_BOUND"
 
         # Determine EMA trend
         if ema_8 > ema_21 > ema_34:
-            ema_trend = 'bullish'
+            ema_trend = "bullish"
         elif ema_8 < ema_21 < ema_34:
-            ema_trend = 'bearish'
+            ema_trend = "bearish"
         else:
-            ema_trend = 'neutral'
+            ema_trend = "neutral"
 
         # Trending up: bullish ribbon + positive phase
-        if ema_trend == 'bullish' and atr_consumed < 70 and phase > 0:
-            return 'TRENDING_UP'
+        if ema_trend == "bullish" and atr_consumed < 70 and phase > 0:
+            return "TRENDING_UP"
 
         # Trending down: bearish ribbon + negative phase
-        if ema_trend == 'bearish' and atr_consumed < 70 and phase < 0:
-            return 'TRENDING_DOWN'
+        if ema_trend == "bearish" and atr_consumed < 70 and phase < 0:
+            return "TRENDING_DOWN"
 
         # Default: range bound
-        return 'RANGE_BOUND'
+        return "RANGE_BOUND"
 
     def analyze_trades(
         self,
         trades: List[Dict],
-        pnl_column: str = 'pnl',
-        entry_date_column: str = 'entry_date',
-        regime_column: str = 'regime',
+        pnl_column: str = "pnl",
+        entry_date_column: str = "entry_date",
+        regime_column: str = "regime",
     ) -> Dict[str, RegimeMetrics]:
         """
         Analyze a list of trades (dicts with entry_date and pnl).
@@ -193,15 +195,15 @@ class RegimeAnalyzer:
             Dict mapping regime name -> RegimeMetrics
         """
         regime_trades: Dict[str, List[float]] = {
-            'TRENDING_UP': [],
-            'TRENDING_DOWN': [],
-            'TRENDING_BULL': [],
-            'TRENDING_BEAR': [],
-            'RANGE_BOUND': [],
-            'HIGH_VOLATILITY': [],
-            'COMPRESSION': [],
-            'EXHAUSTED': [],
-            'TRANSITION': [],
+            "TRENDING_UP": [],
+            "TRENDING_DOWN": [],
+            "TRENDING_BULL": [],
+            "TRENDING_BEAR": [],
+            "RANGE_BOUND": [],
+            "HIGH_VOLATILITY": [],
+            "COMPRESSION": [],
+            "EXHAUSTED": [],
+            "TRANSITION": [],
         }
 
         # Classify each trade and bucket by regime
@@ -222,7 +224,7 @@ class RegimeAnalyzer:
             elif self.df is not None:
                 regime = self.classify_regime_at_entry(entry_ts)
             else:
-                regime = 'UNKNOWN'
+                regime = "UNKNOWN"
 
             # Normalize regime names
             regime = regime.upper()
@@ -234,7 +236,7 @@ class RegimeAnalyzer:
         # Compute metrics for each regime
         self.regime_stats = {}
         for regime, pnls in regime_trades.items():
-            if len(pnls) == 0 or regime == 'UNKNOWN':
+            if len(pnls) == 0 or regime == "UNKNOWN":
                 continue
 
             pnls = np.array(pnls)
@@ -250,7 +252,9 @@ class RegimeAnalyzer:
             avg_loss = float(losing.mean()) if len(losing) > 0 else 0.0
 
             # Profit factor: gross_profit / gross_loss
-            pf = gross_profit / gross_loss if gross_loss != 0 else (1.0 if gross_profit > 0 else 0.0)
+            pf = (
+                gross_profit / gross_loss if gross_loss != 0 else (1.0 if gross_profit > 0 else 0.0)
+            )
 
             # Sharpe: std of returns
             sharpe = float(pnls.std() / abs(pnls.mean())) if pnls.mean() != 0 else 0.0
@@ -286,7 +290,13 @@ class RegimeAnalyzer:
 
         lines = ["=== REGIME-SPECIFIC PERFORMANCE ===", ""]
 
-        for regime in ['TRENDING_UP', 'TRENDING_DOWN', 'RANGE_BOUND', 'HIGH_VOLATILITY', 'TRANSITION']:
+        for regime in [
+            "TRENDING_UP",
+            "TRENDING_DOWN",
+            "RANGE_BOUND",
+            "HIGH_VOLATILITY",
+            "TRANSITION",
+        ]:
             if regime not in self.regime_stats:
                 continue
 
@@ -295,8 +305,12 @@ class RegimeAnalyzer:
                 continue
 
             lines.append(f"{regime}")
-            lines.append(f"  Trades: {m.trade_count} | Win Rate: {m.win_rate:.1%} | Profit Factor: {m.profit_factor:.2f}")
-            lines.append(f"  Total P&L: ${m.total_pnl:,.0f} | Avg Win: ${m.avg_win:,.0f} | Avg Loss: ${m.avg_loss:,.0f}")
+            lines.append(
+                f"  Trades: {m.trade_count} | Win Rate: {m.win_rate:.1%} | Profit Factor: {m.profit_factor:.2f}"
+            )
+            lines.append(
+                f"  Total P&L: ${m.total_pnl:,.0f} | Avg Win: ${m.avg_win:,.0f} | Avg Loss: ${m.avg_loss:,.0f}"
+            )
             lines.append(f"  Sharpe: {m.sharpe_ratio:.2f} | Expectancy: ${m.expectancy:,.0f}")
             lines.append("")
 
@@ -304,10 +318,7 @@ class RegimeAnalyzer:
 
     def to_dict(self) -> dict:
         """Return regime metrics as a dict for JSON serialization."""
-        return {
-            regime: metrics.to_dict()
-            for regime, metrics in self.regime_stats.items()
-        }
+        return {regime: metrics.to_dict() for regime, metrics in self.regime_stats.items()}
 
     def identify_edge_sources(self) -> Dict[str, any]:
         """
@@ -336,11 +347,11 @@ class RegimeAnalyzer:
         }
 
         return {
-            'profitable_regimes': profitable,
-            'unprofitable_regimes': unprofitable,
-            'best_regime': best_regime,
-            'best_pf': round(self.regime_stats[best_regime].profit_factor, 3),
-            'worst_regime': worst_regime,
-            'worst_pf': round(self.regime_stats[worst_regime].profit_factor, 3),
-            'regime_distribution': {r: round(pct, 3) for r, pct in regime_dist.items()},
+            "profitable_regimes": profitable,
+            "unprofitable_regimes": unprofitable,
+            "best_regime": best_regime,
+            "best_pf": round(self.regime_stats[best_regime].profit_factor, 3),
+            "worst_regime": worst_regime,
+            "worst_pf": round(self.regime_stats[worst_regime].profit_factor, 3),
+            "regime_distribution": {r: round(pct, 3) for r, pct in regime_dist.items()},
         }

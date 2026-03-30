@@ -6,6 +6,7 @@ Usage:
     cd engine
     .venv/Scripts/python -m backtest.test_news_blackout
 """
+
 from __future__ import annotations
 
 import sys
@@ -34,7 +35,9 @@ def main():
     events_in_range = cal.get_events_in_range("2024-06-01", "2026-03-27")
     print(f"\nEvents in backtest range (2024-06-01 to 2026-03-27): {len(events_in_range)}")
     for evt in events_in_range[:10]:
-        print(f"  {evt['datetime'].strftime('%Y-%m-%d %H:%M')}  {evt['event_name']:20s}  impact={evt['impact_level']}")
+        print(
+            f"  {evt['datetime'].strftime('%Y-%m-%d %H:%M')}  {evt['event_name']:20s}  impact={evt['impact_level']}"
+        )
     if len(events_in_range) > 10:
         print(f"  ... and {len(events_in_range) - 10} more events")
 
@@ -63,37 +66,45 @@ def main():
     print("\n" + "-" * 70)
     print("Generating BASELINE signals (news_blackout=False)...")
     df_baseline = generate_signals(df.copy(), symbol="MNQ", news_blackout=False)
-    baseline_entries = (df_baseline['entry_signal'] == 'ENTRY_NOW').sum()
+    baseline_entries = (df_baseline["entry_signal"] == "ENTRY_NOW").sum()
     print(f"Baseline ENTRY_NOW signals: {baseline_entries}")
 
     # ── 4. Blackout-filtered signals ────────────────────────────────────
     print(f"\nGenerating BLACKOUT-FILTERED signals (window={window_minutes}min)...")
     df_filtered = generate_signals(
-        df.copy(), symbol="MNQ",
-        news_blackout=True, news_blackout_window=window_minutes,
+        df.copy(),
+        symbol="MNQ",
+        news_blackout=True,
+        news_blackout_window=window_minutes,
     )
-    filtered_entries = (df_filtered['entry_signal'] == 'ENTRY_NOW').sum()
-    blocked_entries = (df_filtered['entry_signal'] == 'NEWS_BLACKOUT').sum()
-    total_news_blocked_bars = df_filtered['news_blocked'].sum()
+    filtered_entries = (df_filtered["entry_signal"] == "ENTRY_NOW").sum()
+    blocked_entries = (df_filtered["entry_signal"] == "NEWS_BLACKOUT").sum()
+    total_news_blocked_bars = df_filtered["news_blocked"].sum()
 
     print(f"Filtered ENTRY_NOW signals: {filtered_entries}")
     print(f"NEWS_BLACKOUT blocked signals: {blocked_entries}")
     print(f"Total bars in blackout zones: {total_news_blocked_bars}")
-    print(f"Signals blocked: {blocked_entries} / {baseline_entries} "
-          f"({blocked_entries/baseline_entries*100:.1f}%)" if baseline_entries > 0 else "")
+    print(
+        f"Signals blocked: {blocked_entries} / {baseline_entries} "
+        f"({blocked_entries / baseline_entries * 100:.1f}%)"
+        if baseline_entries > 0
+        else ""
+    )
 
     # ── 5. Analyze which events blocked which signals ───────────────────
     if blocked_entries > 0:
         print("\n" + "-" * 70)
         print("BLOCKED SIGNAL DETAILS:")
-        blocked_rows = df_filtered[df_filtered['entry_signal'] == 'NEWS_BLACKOUT']
+        blocked_rows = df_filtered[df_filtered["entry_signal"] == "NEWS_BLACKOUT"]
         event_type_counts = {}
         for idx_ts in blocked_rows.index:
             evt = cal.get_blackout_event(idx_ts, window_minutes=window_minutes)
             if evt:
                 event_dt, event_name, impact = evt
                 event_type_counts[event_name] = event_type_counts.get(event_name, 0) + 1
-                print(f"  {idx_ts} -> blocked by {event_name} @ {event_dt.strftime('%Y-%m-%d %H:%M')}")
+                print(
+                    f"  {idx_ts} -> blocked by {event_name} @ {event_dt.strftime('%Y-%m-%d %H:%M')}"
+                )
 
         print("\nBlocked by event type:")
         for name, count in sorted(event_type_counts.items(), key=lambda x: -x[1]):
@@ -128,13 +139,28 @@ def main():
         ("Total Trades", result_baseline.total_trades, result_filtered.total_trades, "d"),
         ("Win Rate", result_baseline.win_rate, result_filtered.win_rate, ".1%"),
         ("Profit Factor", result_baseline.profit_factor, result_filtered.profit_factor, ".2f"),
-        ("Total Return %", result_baseline.total_return_pct * 100, result_filtered.total_return_pct * 100, ".1f"),
+        (
+            "Total Return %",
+            result_baseline.total_return_pct * 100,
+            result_filtered.total_return_pct * 100,
+            ".1f",
+        ),
         ("Sharpe Ratio", result_baseline.sharpe_ratio, result_filtered.sharpe_ratio, ".2f"),
         ("Sortino Ratio", result_baseline.sortino_ratio, result_filtered.sortino_ratio, ".2f"),
-        ("Max Drawdown %", result_baseline.max_drawdown_pct * 100, result_filtered.max_drawdown_pct * 100, ".1f"),
+        (
+            "Max Drawdown %",
+            result_baseline.max_drawdown_pct * 100,
+            result_filtered.max_drawdown_pct * 100,
+            ".1f",
+        ),
         ("Avg Win $", result_baseline.avg_win, result_filtered.avg_win, ",.0f"),
         ("Avg Loss $", result_baseline.avg_loss, result_filtered.avg_loss, ",.0f"),
-        ("Max Consec Losses", result_baseline.max_consecutive_losses, result_filtered.max_consecutive_losses, "d"),
+        (
+            "Max Consec Losses",
+            result_baseline.max_consecutive_losses,
+            result_filtered.max_consecutive_losses,
+            "d",
+        ),
         ("Expectancy $", result_baseline.expectancy, result_filtered.expectancy, ",.0f"),
         ("Calmar Ratio", result_baseline.calmar_ratio, result_filtered.calmar_ratio, ".2f"),
     ]
@@ -179,8 +205,8 @@ def main():
         # We need to find signal bars that were ENTRY_NOW in baseline but
         # NEWS_BLACKOUT in filtered. Those signal bars correspond to trades
         # entered on the NEXT bar.
-        entry_now_baseline = set(df_baseline[df_baseline['entry_signal'] == 'ENTRY_NOW'].index)
-        entry_now_filtered = set(df_filtered[df_filtered['entry_signal'] == 'ENTRY_NOW'].index)
+        entry_now_baseline = set(df_baseline[df_baseline["entry_signal"] == "ENTRY_NOW"].index)
+        entry_now_filtered = set(df_filtered[df_filtered["entry_signal"] == "ENTRY_NOW"].index)
         blocked_signal_bars = entry_now_baseline - entry_now_filtered
 
         # Map: for each trade, find which signal bar generated it
@@ -214,13 +240,19 @@ def main():
             elif blocked_total_pnl == 0:
                 print("  --> NEUTRAL: Blocked trades broke even")
             else:
-                print("  --> CAUTION: Blocked trades were NET WINNERS "
-                      "(filter may be removing good trades)")
+                print(
+                    "  --> CAUTION: Blocked trades were NET WINNERS "
+                    "(filter may be removing good trades)"
+                )
 
             if non_blocked_trades:
-                non_blocked_wr = sum(1 for t in non_blocked_trades if t.pnl > 0) / len(non_blocked_trades)
-                print(f"\nNon-blocked trades win rate: {non_blocked_wr:.1%} "
-                      f"vs blocked trades: {blocked_wr:.1%}")
+                non_blocked_wr = sum(1 for t in non_blocked_trades if t.pnl > 0) / len(
+                    non_blocked_trades
+                )
+                print(
+                    f"\nNon-blocked trades win rate: {non_blocked_wr:.1%} "
+                    f"vs blocked trades: {blocked_wr:.1%}"
+                )
         else:
             print("No trades matched blocked signal bars (may be due to pending entry logic).")
     else:
@@ -235,18 +267,30 @@ def main():
 
     if pf_delta > 0 and wr_delta >= 0:
         print("  NEWS BLACKOUT IMPROVES performance:")
-        print(f"  PF: {result_baseline.profit_factor:.2f} -> {result_filtered.profit_factor:.2f} ({pf_delta:+.2f})")
-        print(f"  WR: {result_baseline.win_rate:.1%} -> {result_filtered.win_rate:.1%} ({wr_delta:+.1f}pp)")
-        print(f"  Return: {result_baseline.total_return_pct*100:.1f}% -> {result_filtered.total_return_pct*100:.1f}% ({ret_delta:+.1f}pp)")
+        print(
+            f"  PF: {result_baseline.profit_factor:.2f} -> {result_filtered.profit_factor:.2f} ({pf_delta:+.2f})"
+        )
+        print(
+            f"  WR: {result_baseline.win_rate:.1%} -> {result_filtered.win_rate:.1%} ({wr_delta:+.1f}pp)"
+        )
+        print(
+            f"  Return: {result_baseline.total_return_pct * 100:.1f}% -> {result_filtered.total_return_pct * 100:.1f}% ({ret_delta:+.1f}pp)"
+        )
         print("  RECOMMENDATION: Enable news_blackout=True in production.")
     elif pf_delta < -0.05:
         print("  NEWS BLACKOUT HURTS performance:")
-        print(f"  PF: {result_baseline.profit_factor:.2f} -> {result_filtered.profit_factor:.2f} ({pf_delta:+.2f})")
+        print(
+            f"  PF: {result_baseline.profit_factor:.2f} -> {result_filtered.profit_factor:.2f} ({pf_delta:+.2f})"
+        )
         print("  RECOMMENDATION: Keep news_blackout=False (or widen window).")
     else:
         print("  NEWS BLACKOUT has MARGINAL effect:")
-        print(f"  PF: {result_baseline.profit_factor:.2f} -> {result_filtered.profit_factor:.2f} ({pf_delta:+.2f})")
-        print(f"  WR: {result_baseline.win_rate:.1%} -> {result_filtered.win_rate:.1%} ({wr_delta:+.1f}pp)")
+        print(
+            f"  PF: {result_baseline.profit_factor:.2f} -> {result_filtered.profit_factor:.2f} ({pf_delta:+.2f})"
+        )
+        print(
+            f"  WR: {result_baseline.win_rate:.1%} -> {result_filtered.win_rate:.1%} ({wr_delta:+.1f}pp)"
+        )
         print("  RECOMMENDATION: Use if risk-averse; marginal impact on returns.")
     print("=" * 70)
 

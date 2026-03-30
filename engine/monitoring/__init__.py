@@ -1,4 +1,5 @@
 """Monitoring and observability for JARVIS TRADER."""
+
 from .metrics import (
     record_llm_call,
     record_llm_cost,

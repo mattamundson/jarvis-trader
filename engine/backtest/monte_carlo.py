@@ -4,6 +4,7 @@ Validates backtest robustness by randomizing trade order N times.
 If the strategy is truly profitable, the original equity curve should
 sit in the upper portion of the shuffled distribution.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,6 +21,7 @@ from backtest.backtester import BacktestResult, Trade
 # Core simulation
 # ---------------------------------------------------------------------------
 
+
 def _get_tick_value(symbol: str) -> float:
     """Get tick value in dollars for a given symbol.
 
@@ -30,11 +32,11 @@ def _get_tick_value(symbol: str) -> float:
         Dollar value per tick
     """
     tick_values = {
-        "MES": 1.25,    # Micro E-mini S&P 500
-        "MNQ": 0.50,    # Micro E-mini Nasdaq-100
-        "SPY": 0.01,    # SPY per-share resolution
-        "ES": 50.0,     # E-mini S&P 500
-        "NQ": 20.0,     # E-mini Nasdaq-100
+        "MES": 1.25,  # Micro E-mini S&P 500
+        "MNQ": 0.50,  # Micro E-mini Nasdaq-100
+        "SPY": 0.01,  # SPY per-share resolution
+        "ES": 50.0,  # E-mini S&P 500
+        "NQ": 20.0,  # E-mini Nasdaq-100
     }
     return tick_values.get(symbol, 0.01)
 
@@ -179,7 +181,9 @@ def run_monte_carlo(
     prob_ruin = float((final_capitals < initial_capital).mean() * 100.0)
     var_5 = float(np.percentile(final_capitals, 5))
     bottom_5_mask = final_capitals <= np.percentile(final_capitals, 5)
-    expected_shortfall = float(final_capitals[bottom_5_mask].mean()) if bottom_5_mask.any() else var_5
+    expected_shortfall = (
+        float(final_capitals[bottom_5_mask].mean()) if bottom_5_mask.any() else var_5
+    )
 
     # --- Verdict ---
     original_above_p75 = orig_final >= dist_final["p75"]
@@ -225,6 +229,7 @@ def run_monte_carlo(
 # ---------------------------------------------------------------------------
 # Report formatter
 # ---------------------------------------------------------------------------
+
 
 def format_report(mc: dict) -> str:
     """Return a human-readable Monte Carlo report string."""
@@ -281,6 +286,7 @@ def format_report(mc: dict) -> str:
 # CLI entry-point
 # ---------------------------------------------------------------------------
 
+
 def _load_result_from_json(path: str) -> BacktestResult:
     """Load a backtest JSON file and reconstruct a BacktestResult object."""
     with open(path, "r") as f:
@@ -296,47 +302,57 @@ def _load_result_from_json(path: str) -> BacktestResult:
         # Full format
         for td in data["trades"]:
             from datetime import datetime
-            entry_dt = datetime.fromisoformat(td["entry_date"]) if td.get("entry_date") else datetime.now()
+
+            entry_dt = (
+                datetime.fromisoformat(td["entry_date"]) if td.get("entry_date") else datetime.now()
+            )
             exit_dt = datetime.fromisoformat(td["exit_date"]) if td.get("exit_date") else None
-            trades.append(Trade(
-                entry_date=entry_dt,
-                symbol=td.get("symbol", data.get("symbol", "UNK")),
-                direction=td.get("direction", "long"),
-                entry_price=td.get("entry_price", 0.0),
-                stop_price=td.get("stop_price", 0.0),
-                target_1=td.get("target_1", 0.0),
-                target_2=td.get("target_2", 0.0),
-                contracts=td.get("contracts", 1),
-                multiplier=td.get("multiplier", 1.0),
-                exit_date=exit_dt,
-                exit_price=td.get("exit_price"),
-                pnl=td.get("pnl", 0.0),
-                pnl_pct=td.get("pnl_pct", 0.0),
-                exit_reason=td.get("exit_reason", ""),
-                holding_bars=td.get("holding_bars", 0),
-                regime=td.get("regime", ""),
-                bias=td.get("bias", ""),
-            ))
+            trades.append(
+                Trade(
+                    entry_date=entry_dt,
+                    symbol=td.get("symbol", data.get("symbol", "UNK")),
+                    direction=td.get("direction", "long"),
+                    entry_price=td.get("entry_price", 0.0),
+                    stop_price=td.get("stop_price", 0.0),
+                    target_1=td.get("target_1", 0.0),
+                    target_2=td.get("target_2", 0.0),
+                    contracts=td.get("contracts", 1),
+                    multiplier=td.get("multiplier", 1.0),
+                    exit_date=exit_dt,
+                    exit_price=td.get("exit_price"),
+                    pnl=td.get("pnl", 0.0),
+                    pnl_pct=td.get("pnl_pct", 0.0),
+                    exit_reason=td.get("exit_reason", ""),
+                    holding_bars=td.get("holding_bars", 0),
+                    regime=td.get("regime", ""),
+                    bias=td.get("bias", ""),
+                )
+            )
     elif "trades_list" in data and data["trades_list"]:
         # Simplified format
         from datetime import datetime
+
         symbol = data.get("symbol", "UNK")
         for td in data["trades_list"]:
-            entry_dt = datetime.fromisoformat(td["entry_date"]) if td.get("entry_date") else datetime.now()
+            entry_dt = (
+                datetime.fromisoformat(td["entry_date"]) if td.get("entry_date") else datetime.now()
+            )
             exit_dt = datetime.fromisoformat(td["exit_date"]) if td.get("exit_date") else None
-            trades.append(Trade(
-                entry_date=entry_dt,
-                symbol=symbol,
-                direction="long",
-                entry_price=0.0,
-                stop_price=0.0,
-                target_1=0.0,
-                target_2=0.0,
-                contracts=1,
-                multiplier=1.0,
-                exit_date=exit_dt,
-                pnl=td.get("pnl", 0.0),
-            ))
+            trades.append(
+                Trade(
+                    entry_date=entry_dt,
+                    symbol=symbol,
+                    direction="long",
+                    entry_price=0.0,
+                    stop_price=0.0,
+                    target_1=0.0,
+                    target_2=0.0,
+                    contracts=1,
+                    multiplier=1.0,
+                    exit_date=exit_dt,
+                    pnl=td.get("pnl", 0.0),
+                )
+            )
 
     initial_capital = data.get("initial_capital", 100_000.0)
     total_pnl = sum(t.pnl for t in trades)
@@ -362,10 +378,21 @@ def _load_result_from_json(path: str) -> BacktestResult:
 def main():
     parser = argparse.ArgumentParser(description="Monte Carlo simulation on backtest results")
     parser.add_argument("--result", required=True, help="Path to backtest result JSON file")
-    parser.add_argument("--n-sims", type=int, default=1_000, help="Number of simulations (default: 1000)")
-    parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital (default: 100000)")
-    parser.add_argument("--max-slippage", type=float, default=0.0, help="Max random slippage per trade in ticks (default: 0)")
-    parser.add_argument("--symbol", default="MES", help="Instrument symbol for tick value (default: MES)")
+    parser.add_argument(
+        "--n-sims", type=int, default=1_000, help="Number of simulations (default: 1000)"
+    )
+    parser.add_argument(
+        "--capital", type=float, default=100_000.0, help="Initial capital (default: 100000)"
+    )
+    parser.add_argument(
+        "--max-slippage",
+        type=float,
+        default=0.0,
+        help="Max random slippage per trade in ticks (default: 0)",
+    )
+    parser.add_argument(
+        "--symbol", default="MES", help="Instrument symbol for tick value (default: MES)"
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     args = parser.parse_args()
 

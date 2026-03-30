@@ -7,6 +7,7 @@ Compares baseline (fixed stop) vs trailing ATR stop on:
 
 Reports: trade count, win rate, PF, return, MaxDD, exit type breakdown.
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,9 +34,9 @@ def run_comparison(
     loader = BacktestDataLoader()
     multiplier = loader.get_multiplier(symbol)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  {symbol} {interval}  |  {start} -> {end}  |  Multiplier: {multiplier}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     # Load data
     df = loader.load(symbol, start, end, interval)
@@ -45,7 +46,7 @@ def run_comparison(
 
     print(f"Loaded {len(df)} bars. Computing signals...")
     df = generate_signals(df, symbol=symbol)
-    entry_count = (df['entry_signal'] == 'ENTRY_NOW').sum()
+    entry_count = (df["entry_signal"] == "ENTRY_NOW").sum()
     print(f"Found {entry_count} ENTRY_NOW signals.")
 
     # --- Baseline (fixed stop) ---
@@ -67,7 +68,7 @@ def run_comparison(
     def exit_breakdown(result):
         reasons = Counter(t.exit_reason for t in result.trades)
         total = max(len(result.trades), 1)
-        return {r: (c, f"{c/total:.0%}") for r, c in reasons.most_common()}
+        return {r: (c, f"{c / total:.0%}") for r, c in reasons.most_common()}
 
     baseline_exits = exit_breakdown(result_baseline)
     trailing_exits = exit_breakdown(result_trailing)
@@ -78,21 +79,55 @@ def run_comparison(
 
     metrics = [
         ("Total Trades", result_baseline.total_trades, result_trailing.total_trades, ""),
-        ("Win Rate", f"{result_baseline.win_rate:.1%}", f"{result_trailing.win_rate:.1%}",
-         f"{(result_trailing.win_rate - result_baseline.win_rate):+.1%}"),
-        ("Profit Factor", f"{result_baseline.profit_factor:.2f}", f"{result_trailing.profit_factor:.2f}",
-         f"{result_trailing.profit_factor - result_baseline.profit_factor:+.2f}"),
-        ("Total Return", f"{result_baseline.total_return_pct:+.1%}", f"{result_trailing.total_return_pct:+.1%}",
-         f"{(result_trailing.total_return_pct - result_baseline.total_return_pct):+.1%}"),
-        ("Total PnL ($)", f"${result_baseline.total_pnl:,.0f}", f"${result_trailing.total_pnl:,.0f}",
-         f"${result_trailing.total_pnl - result_baseline.total_pnl:+,.0f}"),
-        ("Max Drawdown", f"{result_baseline.max_drawdown_pct:.1%}", f"{result_trailing.max_drawdown_pct:.1%}",
-         f"{(result_trailing.max_drawdown_pct - result_baseline.max_drawdown_pct):+.1%}"),
-        ("Sharpe", f"{result_baseline.sharpe_ratio:.2f}", f"{result_trailing.sharpe_ratio:.2f}",
-         f"{result_trailing.sharpe_ratio - result_baseline.sharpe_ratio:+.2f}"),
+        (
+            "Win Rate",
+            f"{result_baseline.win_rate:.1%}",
+            f"{result_trailing.win_rate:.1%}",
+            f"{(result_trailing.win_rate - result_baseline.win_rate):+.1%}",
+        ),
+        (
+            "Profit Factor",
+            f"{result_baseline.profit_factor:.2f}",
+            f"{result_trailing.profit_factor:.2f}",
+            f"{result_trailing.profit_factor - result_baseline.profit_factor:+.2f}",
+        ),
+        (
+            "Total Return",
+            f"{result_baseline.total_return_pct:+.1%}",
+            f"{result_trailing.total_return_pct:+.1%}",
+            f"{(result_trailing.total_return_pct - result_baseline.total_return_pct):+.1%}",
+        ),
+        (
+            "Total PnL ($)",
+            f"${result_baseline.total_pnl:,.0f}",
+            f"${result_trailing.total_pnl:,.0f}",
+            f"${result_trailing.total_pnl - result_baseline.total_pnl:+,.0f}",
+        ),
+        (
+            "Max Drawdown",
+            f"{result_baseline.max_drawdown_pct:.1%}",
+            f"{result_trailing.max_drawdown_pct:.1%}",
+            f"{(result_trailing.max_drawdown_pct - result_baseline.max_drawdown_pct):+.1%}",
+        ),
+        (
+            "Sharpe",
+            f"{result_baseline.sharpe_ratio:.2f}",
+            f"{result_trailing.sharpe_ratio:.2f}",
+            f"{result_trailing.sharpe_ratio - result_baseline.sharpe_ratio:+.2f}",
+        ),
         ("Avg Win ($)", f"${result_baseline.avg_win:,.0f}", f"${result_trailing.avg_win:,.0f}", ""),
-        ("Avg Loss ($)", f"${result_baseline.avg_loss:,.0f}", f"${result_trailing.avg_loss:,.0f}", ""),
-        ("Avg Holding Bars", f"{result_baseline.avg_holding_bars:.1f}", f"{result_trailing.avg_holding_bars:.1f}", ""),
+        (
+            "Avg Loss ($)",
+            f"${result_baseline.avg_loss:,.0f}",
+            f"${result_trailing.avg_loss:,.0f}",
+            "",
+        ),
+        (
+            "Avg Holding Bars",
+            f"{result_baseline.avg_holding_bars:.1f}",
+            f"{result_trailing.avg_holding_bars:.1f}",
+            "",
+        ),
     ]
 
     for label, base_val, trail_val, delta in metrics:
