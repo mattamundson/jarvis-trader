@@ -1,5 +1,5 @@
 # JARVIS TRADER -- Executive Strategy Briefing
-*Updated: 2026-03-29 v2.3 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
+*Updated: 2026-03-29 v2.5 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
 
 ## The Verdict: NO-GO (Signal Redesign Required)
 
@@ -15,6 +15,8 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 
 *v2.4 update: Extended history validation reveals MGC 1d WFE=0.27 with 15 windows (2022-2026). Previous WFE=0.88 was small-sample bias (3 windows, 2025 gold bull run only). Bear market data (2022-2023) exposes underlying parameter instability. Paper trading downgraded from EXCELLENT to CONDITIONAL-CAUTION. Continuing at 0.25% risk with 3-month monitoring period.*
 
+*v2.5 update: SPY 1h and MES 1h re-optimized (US-005/US-007). SPY PF 3.00->3.79, Sharpe -1.55->-1.43 (T2 tightened 1.80->1.618). MES PF 0.96->1.69, Sharpe -0.12->0.09, return -4.0%->+0.1% (stop 0.70->0.50, T1 1.00->2.00, regime OFF). INSTRUMENT_PARAMS in signals.py now includes per-instrument regime_filter as 7th tuple element.*
+
 ---
 
 ## Corrected Performance (In-Sample, Per-Instrument Optimized)
@@ -25,7 +27,7 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 | 2 | SPY | 1h | 23 | 52.2 | 3.79 | -1.43 | +0.0% | 0.1% | TBD | **RE-OPTIMIZED v2.5** |
 | 3 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | 0.24 | **OVERFIT** |
 | 4 | MCL | 1h | 65 | 60.0 | 1.83 | 0.15 | +0.2% | — | -0.16 | **OVERFIT** |
-| 5 | MES | 1h | 21 | 42.9 | 0.96 | -0.12 | -4.0% | 0.1% | -0.17 | **OVERFIT** |
+| 5 | MES | 1h | 23 | 34.8 | 1.69 | 0.09 | +0.1% | 0.1% | TBD | **RE-OPTIMIZED v2.5** |
 
 *Test period: Jun 2024 -- Mar 2026 (1h) / Jan 2025 -- Mar 2026 (1d). All returns gross of commissions ($2.50/contract + 1 tick slippage applied).*
 
@@ -75,16 +77,18 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 
 ## Per-Instrument Parameter Profiles (Implemented in signals.py)
 
-| Param | MGC 1d | MNQ 1h | MCL 1h | SPY 1h |
-|-------|--------|--------|--------|--------|
-| STC_OS | 17 | 15 | 15 | 15 |
-| STC_OB | 88 | 92 | 83 | 88 |
-| Stop ATR | 0.30 | 0.70 | 0.90 | 0.30 |
-| T1 ATR | 1.50 | 1.00 | 1.50 | 1.00 |
-| T2 ATR | 2.618 | 1.80 | 2.618 | 1.80 |
-| Regime Filter | ON | ON | ON | ON |
+| Param | MGC 1d | MNQ 1h | MCL 1h | SPY 1h | MES 1h |
+|-------|--------|--------|--------|--------|--------|
+| STC_OS | 17 | 15 | 15 | 15 | 15 |
+| STC_OB | 88 | 92 | 83 | 88 | 83 |
+| Stop ATR | 0.30 | 0.70 | 0.90 | 0.30 | 0.50 |
+| T1 ATR | 1.50 | 1.00 | 1.50 | 1.00 | 2.00 |
+| T2 ATR | 2.618 | 1.80 | 2.618 | 1.618 | 3.236 |
+| Regime Filter | ON | ON | ON | ON | **OFF** |
 
-These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` and used by `run_backtest.py`. They represent the best-known in-sample parameters but should NOT be treated as validated for live trading until walk-forward efficiency improves.
+*SPY and MES params updated 2026-03-29 via optimizer consensus (US-005/US-007). MES regime_filter=OFF per optimizer -- structure-based entries in EXHAUSTED/COMPRESSION regimes improve MES PF from 0.96 to 1.69.*
+
+These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` (7-element tuples including regime_filter) and used by `run_backtest.py`. They represent the best-known in-sample parameters but should NOT be treated as validated for live trading until walk-forward efficiency improves.
 
 ---
 
@@ -144,8 +148,8 @@ Kill trigger: any 3-month window below 3.8% return (50% of 7.6% baseline).
 | MES | 1d | 0.75 | N/A | 36/51 trades exit at EOD — targets unreachable |
 | MNQ | 1d | 0.79 | N/A | 43/57 EOD exits; daily NQ too volatile for intraday targets |
 | MGC | 1h | 0.77 | N/A | Gold works daily only; hourly loses money |
-| MES | 1h | 0.96 | -0.17 | Only 1/6 OOS windows profitable |
-| SPY | 1h | 3.00 | -0.71 | Adaptive improved from -1.11 but still deeply overfit |
+| MES | 1h | 1.69 | -0.17 | Re-optimized v2.5: PF 0.96->1.69 (regime OFF), still only 1/6 OOS profitable |
+| SPY | 1h | 3.79 | -0.71 | Re-optimized v2.5: PF 3.00->3.79, near-zero returns, still deeply overfit |
 
 ---
 
