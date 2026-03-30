@@ -250,6 +250,228 @@ class Backtester:
             return DEFAULT_TICK_SIZE_ETF
         return DEFAULT_TICK_SIZE_FUTURES
 
+    def _process_pending_entry(
+        self,
+        pending_entry: dict,
+        row: pd.Series,
+        idx,
+        df: pd.DataFrame,
+        multiplier: float,
+        tick_size: float,
+    ) -> tuple[Optional[Trade], int, int, int, list, float]:
+        """Process a pending entry signal (avoid look-ahead bias)."""
+        entry_price = row["open"]
+        atr_val = pending_entry["atr"]
+        direction = pending_entry["direction"]
+
+        # Recalculate stop and targets from actual entry price
+        if direction == "long":
+            stop_price = entry_price - pending_entry["stop_atr_mult"] * atr_val
+            target_1 = entry_price + pending_entry["t1_atr_mult"] * atr_val
+            target_2 = entry_price + pending_entry["t2_atr_mult"] * atr_val
+        else:
+            stop_price = entry_price + pending_entry["stop_atr_mult"] * atr_val
+            target_1 = entry_price - pending_entry["t1_atr_mult"] * atr_val
+            target_2 = entry_price - pending_entry["t2_atr_mult"] * atr_val
+
+        stop_dist = abs(entry_price - stop_price)
+        if stop_dist <= 0:
+            return None, 0, 0, 0, [], 0.0
+
+        rr = abs(target_1 - entry_price) / stop_dist
+        if rr < 1.2:
+            return None, 0, 0, 0, [], 0.0
+
+        total_contracts = self._calculate_contracts(
+            row.get("capital", self.initial_capital), entry_price, stop_price, multiplier
+        )
+        if total_contracts < 1:
+            return None, 0, 0, 0, [], 0.0
+
+        t1_contracts = max(1, int(total_contracts * self.t1_exit_pct))
+        t2_contracts = max(0, int(total_contracts * self.t2_exit_pct))
+        t3_contracts = max(0, total_contracts - t1_contracts - t2_contracts)
+
+        open_trade = Trade(
+            entry_date=idx,
+            symbol=row.get("symbol", ""),
+            direction=direction,
+            entry_price=entry_price,
+            stop_price=stop_price,
+            target_1=target_1,
+            target_2=target_2,
+            contracts=total_contracts,
+            multiplier=multiplier,
+            regime=pending_entry.get("regime", ""),
+            bias=pending_entry["bias"],
+        )
+        capital_used = self._transaction_cost(total_contracts, tick_size)
+        return open_trade, t1_contracts, t2_contracts, t3_contracts, [], capital_used
+
+    def _check_targets_exit(
+        self,
+        open_trade: Trade,
+        open_contracts_t1: int,
+        open_contracts_t2: int,
+        multiplier: float,
+        tick_size: float,
+        t1_touched: bool,
+        t2_touched: bool,
+    ) -> tuple[int, int, float, list]:
+        """Check and process target exits."""
+        targets_hit = []
+        capital_change = 0.0
+
+        if open_contracts_t1 > 0 and t1_touched:
+            exit_price = open_trade.target_1
+            if open_trade.direction == "long":
+                pnl = open_contracts_t1 * (exit_price - open_trade.entry_price) * multiplier
+            else:
+                pnl = open_contracts_t1 * (open_trade.entry_price - exit_price) * multiplier
+            capital_change += pnl - self._transaction_cost(open_contracts_t1, tick_size)
+            open_trade.pnl += pnl
+            open_contracts_t1 = 0
+            open_trade.stop_price = open_trade.entry_price
+            targets_hit.append("target_1")
+
+        if open_contracts_t2 > 0 and t2_touched:
+            exit_price = open_trade.target_2
+            if open_trade.direction == "long":
+                pnl = open_contracts_t2 * (exit_price - open_trade.entry_price) * multiplier
+            else:
+                pnl = open_contracts_t2 * (open_trade.entry_price - exit_price) * multiplier
+            capital_change += pnl - self._transaction_cost(open_contracts_t2, tick_size)
+            open_trade.pnl += pnl
+            open_contracts_t2 = 0
+            targets_hit.append("target_2")
+
+        return open_contracts_t1, open_contracts_t2, capital_change, targets_hit
+
+    def _check_stop_exit(
+        self,
+        open_trade: Trade,
+        open_contracts_t1: int,
+        open_contracts_t2: int,
+        open_contracts_t3: int,
+        multiplier: float,
+        tick_size: float,
+        stop_touched: bool,
+        targets_hit: list,
+    ) -> tuple[Optional[Trade], int, int, int, float, list]:
+        """Check and process stop loss exit."""
+        if not stop_touched or (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) <= 0:
+            return open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, 0.0, targets_hit
+
+        remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
+        exit_price = open_trade.stop_price
+        if open_trade.direction == "long":
+            pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
+        else:
+            pnl = remaining * (open_trade.entry_price - exit_price) * multiplier
+        capital_change = pnl - self._transaction_cost(remaining, tick_size)
+        open_trade.exit_price = exit_price
+        open_trade.pnl += pnl
+        open_trade.exit_reason = targets_hit[-1] if targets_hit else "stop"
+
+        return None, 0, 0, 0, capital_change, targets_hit
+
+    def _process_trailing_stop_long(
+        self,
+        open_trade: Trade,
+        open_contracts: int,
+        multiplier: float,
+        tick_size: float,
+        bar_atr: float,
+        close: float,
+        low: float,
+    ) -> tuple[Optional[Trade], int, float, bool]:
+        """Process trailing stop for long positions."""
+        capital_change = 0.0
+        exited = False
+
+        favorable_excursion = close - open_trade.entry_price
+        if favorable_excursion >= 0.5 * bar_atr:
+            new_trail = close - self.trailing_atr_mult * bar_atr
+            if new_trail > open_trade.stop_price:
+                open_trade.stop_price = new_trail
+
+            if low <= open_trade.stop_price:
+                exit_price = open_trade.stop_price
+                pnl = open_contracts * (exit_price - open_trade.entry_price) * multiplier
+                capital_change = pnl - self._transaction_cost(open_contracts, tick_size)
+                open_trade.exit_price = exit_price
+                open_trade.pnl += pnl
+                open_trade.exit_reason = "trailing_stop"
+                exited = True
+                open_trade = None
+
+        return open_trade, open_contracts, capital_change, exited
+
+    def _process_trailing_stop_short(
+        self,
+        open_trade: Trade,
+        open_contracts: int,
+        multiplier: float,
+        tick_size: float,
+        bar_atr: float,
+        close: float,
+        high: float,
+    ) -> tuple[Optional[Trade], int, float, bool]:
+        """Process trailing stop for short positions."""
+        capital_change = 0.0
+        exited = False
+
+        favorable_excursion = open_trade.entry_price - close
+        if favorable_excursion >= 0.5 * bar_atr:
+            new_trail = close + self.trailing_atr_mult * bar_atr
+            if new_trail < open_trade.stop_price:
+                open_trade.stop_price = new_trail
+
+            if high >= open_trade.stop_price:
+                exit_price = open_trade.stop_price
+                pnl = open_contracts * (open_trade.entry_price - exit_price) * multiplier
+                capital_change = pnl - self._transaction_cost(open_contracts, tick_size)
+                open_trade.exit_price = exit_price
+                open_trade.pnl += pnl
+                open_trade.exit_reason = "trailing_stop"
+                exited = True
+                open_trade = None
+
+        return open_trade, open_contracts, capital_change, exited
+
+    def _check_eod_close(
+        self,
+        open_trade: Trade,
+        open_contracts_t1: int,
+        open_contracts_t2: int,
+        open_contracts_t3: int,
+        multiplier: float,
+        tick_size: float,
+        is_eod: bool,
+        close: float,
+        idx,
+        targets_hit: list,
+    ) -> tuple[Optional[Trade], int, int, int, float, list]:
+        """Check for end-of-day close."""
+        if not is_eod:
+            return open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, 0.0, targets_hit
+
+        remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
+        if remaining <= 0:
+            return open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, 0.0, targets_hit
+
+        if open_trade.direction == "long":
+            pnl = remaining * (close - open_trade.entry_price) * multiplier
+        else:
+            pnl = remaining * (open_trade.entry_price - close) * multiplier
+        capital_change = pnl - self._transaction_cost(remaining, tick_size)
+        open_trade.pnl += pnl
+        open_trade.exit_price = close
+        open_trade.exit_date = idx
+        open_trade.exit_reason = targets_hit[-1] if targets_hit else "eod"
+
+        return None, 0, 0, 0, capital_change, targets_hit
+
     def run(
         self,
         df: pd.DataFrame,
@@ -307,313 +529,82 @@ class Backtester:
 
             # -- Execute pending entry from previous bar's signal (Bug 3 fix) --
             if pending_entry is not None and open_trade is None and not kill_switch:
-                pe = pending_entry
+                row_with_capital = row.copy()
+                row_with_capital["capital"] = capital
+                row_with_capital["symbol"] = symbol
+                new_trade, t1c, t2c, t3c, targets_hit, capital_cost = self._process_pending_entry(
+                    pending_entry, row_with_capital, idx, df, multiplier, tick_size
+                )
                 pending_entry = None
-
-                entry_price = row["open"]  # actual fill = next bar's open
-                atr_val = pe["atr"]
-                direction = pe["direction"]
-
-                # Recalculate stop and targets from actual entry price
-                if direction == "long":
-                    stop_price = entry_price - pe["stop_atr_mult"] * atr_val
-                    target_1 = entry_price + pe["t1_atr_mult"] * atr_val
-                    target_2 = entry_price + pe["t2_atr_mult"] * atr_val
-                else:
-                    stop_price = entry_price + pe["stop_atr_mult"] * atr_val
-                    target_1 = entry_price - pe["t1_atr_mult"] * atr_val
-                    target_2 = entry_price - pe["t2_atr_mult"] * atr_val
-
-                stop_dist = abs(entry_price - stop_price)
-                if stop_dist > 0:
-                    # R:R check with recalculated values
-                    # Bug 6: lowered from 1.5 to 1.2 — with T1=1.0 ATR and
-                    # stop=0.70 ATR the base R:R is 1.43.  A 1.5 threshold
-                    # would reject almost everything after next-bar-open
-                    # slippage shifts the ratio slightly.
-                    rr = abs(target_1 - entry_price) / stop_dist
-                    if rr >= 1.2:
-                        total_contracts = self._calculate_contracts(
-                            capital, entry_price, stop_price, multiplier
-                        )
-                        if total_contracts >= 1:
-                            t1_contracts = max(1, int(total_contracts * self.t1_exit_pct))
-                            t2_contracts = max(0, int(total_contracts * self.t2_exit_pct))
-                            t3_contracts = max(0, total_contracts - t1_contracts - t2_contracts)
-
-                            open_contracts_t1 = t1_contracts
-                            open_contracts_t2 = t2_contracts
-                            open_contracts_t3 = t3_contracts
-
-                            open_trade = Trade(
-                                entry_date=idx,
-                                symbol=symbol,
-                                direction=direction,
-                                entry_price=entry_price,
-                                stop_price=stop_price,
-                                target_1=target_1,
-                                target_2=target_2,
-                                contracts=total_contracts,
-                                multiplier=multiplier,
-                                regime=pe.get("regime", ""),
-                                bias=pe["bias"],
-                            )
-                            targets_hit = []  # Reset target tracking for new trade
-                            # Bug 2: deduct entry transaction cost
-                            capital -= self._transaction_cost(total_contracts, tick_size)
-
-            # -- Manage open trade -------------------------------------------------
-            if open_trade is not None:
-                open_trade.holding_bars += 1
-                bar_open = row["open"]
-                high = row["high"]
-                low = row["low"]
-                close = row["close"]
-
-                # Bug 6 fix: Determine intra-bar priority using OHLC order.
-                # When a bar spans BOTH stop and target levels, we need to
-                # infer which was hit first.  Use bar open relative to entry:
-                #   - Long trade, bar opens above entry → price moved favorably
-                #     first → check targets before stop.
-                #   - Long trade, bar opens below entry → adverse move first
-                #     → check stop before targets.
-                # This prevents the old bug where stop ALWAYS took priority
-                # (if/elif structure), causing zero target exits.
-
-                # Determine which levels are touched on this bar
-                if open_trade.direction == "long":
-                    stop_touched = low <= open_trade.stop_price
-                    t1_touched = high >= open_trade.target_1 if open_contracts_t1 > 0 else False
-                    t2_touched = high >= open_trade.target_2 if open_contracts_t2 > 0 else False
-                    # Infer order: if open is closer to target side, targets likely hit first
-                    target_first = bar_open >= open_trade.entry_price
-                else:
-                    stop_touched = high >= open_trade.stop_price
-                    t1_touched = low <= open_trade.target_1 if open_contracts_t1 > 0 else False
-                    t2_touched = low <= open_trade.target_2 if open_contracts_t2 > 0 else False
-                    target_first = bar_open <= open_trade.entry_price
-
-                # If both stop and target hit on same bar, use open-based priority
-                both_stop_and_target = stop_touched and (t1_touched or t2_touched)
-                check_targets_first = both_stop_and_target and target_first
-
-                # --- Helper: process target exits ---
-                def _check_targets():  # noqa: B023
-                    nonlocal open_contracts_t1, open_contracts_t2, capital, targets_hit
-                    hit_any = False
-                    # Check target 1
-                    if open_contracts_t1 > 0 and t1_touched:
-                        exit_price = open_trade.target_1
-                        if open_trade.direction == "long":
-                            pnl = (
-                                open_contracts_t1
-                                * (exit_price - open_trade.entry_price)
-                                * multiplier
-                            )
-                        else:
-                            pnl = (
-                                open_contracts_t1
-                                * (open_trade.entry_price - exit_price)
-                                * multiplier
-                            )
-                        capital += pnl
-                        capital -= self._transaction_cost(open_contracts_t1, tick_size)
-                        open_trade.pnl += pnl
-                        open_contracts_t1 = 0
-                        # Move stop to breakeven after T1 hit
-                        open_trade.stop_price = open_trade.entry_price
-                        targets_hit.append("target_1")
-                        hit_any = True
-
-                    # Check target 2
-                    if open_contracts_t2 > 0 and t2_touched:
-                        exit_price = open_trade.target_2
-                        if open_trade.direction == "long":
-                            pnl = (
-                                open_contracts_t2
-                                * (exit_price - open_trade.entry_price)
-                                * multiplier
-                            )
-                        else:
-                            pnl = (
-                                open_contracts_t2
-                                * (open_trade.entry_price - exit_price)
-                                * multiplier
-                            )
-                        capital += pnl
-                        capital -= self._transaction_cost(open_contracts_t2, tick_size)
-                        open_trade.pnl += pnl
-                        open_contracts_t2 = 0
-                        targets_hit.append("target_2")
-                        hit_any = True
-                    return hit_any
-
-                # --- Helper: process stop exit ---
-                def _check_stop():  # noqa: B023
-                    nonlocal \
-                        open_contracts_t1, \
-                        open_contracts_t2, \
-                        open_contracts_t3, \
-                        capital, \
-                        open_trade, \
-                        targets_hit
-                    if not stop_touched:
-                        return False
-                    remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
-                    if remaining <= 0:
-                        return False
-                    exit_price = open_trade.stop_price
-                    if open_trade.direction == "long":
-                        pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
-                    else:
-                        pnl = remaining * (open_trade.entry_price - exit_price) * multiplier
-                    capital += pnl
-                    capital -= self._transaction_cost(remaining, tick_size)
-                    open_trade.exit_price = exit_price
-                    open_trade.exit_date = idx
-                    open_trade.pnl += pnl
-                    # Bug 6 fix: Label exit reason based on highest target hit.
-                    # If T1 was hit earlier (partial exit), remaining contracts
-                    # stopped at breakeven — label as "target_1" not "stop".
-                    if targets_hit:
-                        open_trade.exit_reason = targets_hit[-1]  # highest target hit
-                    else:
-                        open_trade.exit_reason = "stop"
-                    completed_trades.append(open_trade)
-                    open_trade = None
-                    open_contracts_t1 = 0
-                    open_contracts_t2 = 0
-                    open_contracts_t3 = 0
+                if new_trade is not None:
+                    open_trade = new_trade
+                    open_contracts_t1 = t1c
+                    open_contracts_t2 = t2c
+                    open_contracts_t3 = t3c
                     targets_hit = []
-                    return True
+                    capital -= capital_cost
 
-                # --- Execute in priority order ---
-                if check_targets_first:
-                    # Targets first, then stop on remaining contracts
-                    _check_targets()
-                    if open_trade is not None:
-                        _check_stop()
-                else:
-                    # Stop first (default when no conflict, or adverse open)
-                    stopped = _check_stop()
-                    if not stopped:
-                        _check_targets()
+            # -- Manage open trade (process exits on this bar) ---------
+            close = row["close"]
+            open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, \
+                capital_from_exits, targets_hit, closed_trades = self._process_trade_on_bar(
+                    open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3,
+                    targets_hit, row, idx, df, multiplier, tick_size, close
+                )
+            capital += capital_from_exits
+            completed_trades.extend([t for t in closed_trades if t])
 
-                # Check if all contracts have been exited via targets
-                if (
-                    open_trade is not None
-                    and (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) == 0
-                ):
-                    # All tranches exited via targets
-                    open_trade.exit_reason = targets_hit[-1] if targets_hit else "target_1"
-                    open_trade.exit_price = close
-                    open_trade.exit_date = idx
-                    completed_trades.append(open_trade)
-                    open_trade = None
-                    targets_hit = []
-
-                # -- Trailing ATR stop logic ------------------------------------------
-                if self.trailing_stop and open_trade is not None:
-                    remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
-                    # When trailing_post_t1=True, only activate after T1 has been hit
-                    t1_gate = (not self.trailing_post_t1) or ("target_1" in targets_hit)
-                    if remaining > 0 and t1_gate:
-                        bar_atr = row.get("atr", 0)
-                        if bar_atr > 0:
-                            # Only activate trailing stop after price has moved
-                            # favorably by at least 0.5 ATR from entry (noise filter)
-                            if open_trade.direction == "long":
-                                favorable_excursion = close - open_trade.entry_price
-                                if favorable_excursion >= 0.5 * bar_atr:
-                                    # Trail stop up: use close (not intrabar high)
-                                    # for daily; for intraday the close is the
-                                    # most reliable reference we have per bar.
-                                    new_trail = close - self.trailing_atr_mult * bar_atr
-                                    if new_trail > open_trade.stop_price:
-                                        open_trade.stop_price = new_trail  # ratchet up only
-                                    # Check if trailing stop was hit this bar
-                                    if low <= open_trade.stop_price:
-                                        exit_price = open_trade.stop_price
-                                        pnl = (
-                                            remaining
-                                            * (exit_price - open_trade.entry_price)
-                                            * multiplier
-                                        )
-                                        capital += pnl
-                                        capital -= self._transaction_cost(remaining, tick_size)
-                                        open_trade.pnl += pnl
-                                        open_trade.exit_price = exit_price
-                                        open_trade.exit_date = idx
-                                        open_trade.exit_reason = "trailing_stop"
-                                        completed_trades.append(open_trade)
-                                        open_trade = None
-                                        open_contracts_t1 = 0
-                                        open_contracts_t2 = 0
-                                        open_contracts_t3 = 0
-                                        targets_hit = []
-                            else:  # short
-                                favorable_excursion = open_trade.entry_price - close
-                                if favorable_excursion >= 0.5 * bar_atr:
-                                    new_trail = close + self.trailing_atr_mult * bar_atr
-                                    if new_trail < open_trade.stop_price:
-                                        open_trade.stop_price = new_trail  # ratchet down only
-                                    # Check if trailing stop was hit this bar
-                                    if high >= open_trade.stop_price:
-                                        exit_price = open_trade.stop_price
-                                        pnl = (
-                                            remaining
-                                            * (open_trade.entry_price - exit_price)
-                                            * multiplier
-                                        )
-                                        capital += pnl
-                                        capital -= self._transaction_cost(remaining, tick_size)
-                                        open_trade.pnl += pnl
-                                        open_trade.exit_price = exit_price
-                                        open_trade.exit_date = idx
-                                        open_trade.exit_reason = "trailing_stop"
-                                        completed_trades.append(open_trade)
-                                        open_trade = None
-                                        open_contracts_t1 = 0
-                                        open_contracts_t2 = 0
-                                        open_contracts_t3 = 0
-                                        targets_hit = []
-
-                # Bug 4 fix: End of day — close at end of EACH trading day
-                remaining_contracts = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
-                if remaining_contracts > 0 and open_trade is not None:
-                    next_idx_pos = df.index.get_loc(idx)
-                    is_last_bar = next_idx_pos == len(df) - 1
-
-                    # For intraday: also close if next bar is a different day
-                    is_eod = is_last_bar
-                    if not is_last_bar and hasattr(idx, "hour"):
-                        next_bar_date = df.index[next_idx_pos + 1].date()
-                        is_eod = next_bar_date != row_date
-
-                    if is_eod:
-                        exit_price = close
-                        remaining = remaining_contracts
+            # -- Trailing ATR stop logic ------------------------------------------
+            if self.trailing_stop and open_trade is not None:
+                remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
+                t1_gate = (not self.trailing_post_t1) or ("target_1" in targets_hit)
+                if remaining > 0 and t1_gate:
+                    bar_atr = row.get("atr", 0)
+                    if bar_atr > 0:
                         if open_trade.direction == "long":
-                            pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
+                            open_trade, open_contracts_t1, capital_ts, ts_exited = \
+                                self._process_trailing_stop_long(
+                                    open_trade, remaining, multiplier, tick_size,
+                                    bar_atr, close, low
+                                )
+                            if ts_exited:
+                                open_contracts_t2 = 0
+                                open_contracts_t3 = 0
+                                targets_hit = []
+                            capital += capital_ts
                         else:
-                            pnl = remaining * (open_trade.entry_price - exit_price) * multiplier
-                        capital += pnl
-                        capital -= self._transaction_cost(remaining, tick_size)
-                        open_trade.pnl += pnl
-                        open_trade.exit_price = exit_price
-                        open_trade.exit_date = idx
-                        # Bug 6 fix: If targets were hit earlier in the trade,
-                        # label as the highest target hit, not just "eod".
-                        if targets_hit:
-                            open_trade.exit_reason = targets_hit[-1]
-                        else:
-                            open_trade.exit_reason = "eod"
-                        completed_trades.append(open_trade)
-                        open_trade = None
-                        open_contracts_t1 = 0
-                        open_contracts_t2 = 0
-                        open_contracts_t3 = 0
-                        targets_hit = []
+                            open_trade, open_contracts_t1, capital_ts, ts_exited = \
+                                self._process_trailing_stop_short(
+                                    open_trade, remaining, multiplier, tick_size,
+                                    bar_atr, close, high
+                                )
+                            if ts_exited:
+                                open_contracts_t2 = 0
+                                open_contracts_t3 = 0
+                                targets_hit = []
+                            capital += capital_ts
+                        if ts_exited:
+                            completed_trades.append(open_trade) if open_trade else None
+
+            # End of day close
+            remaining_contracts = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
+            if remaining_contracts > 0 and open_trade is not None:
+                next_idx_pos = df.index.get_loc(idx)
+                is_last_bar = next_idx_pos == len(df) - 1
+                is_eod = is_last_bar
+                if not is_last_bar and hasattr(idx, "hour"):
+                    next_bar_date = df.index[next_idx_pos + 1].date()
+                    is_eod = next_bar_date != row_date
+
+                open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, \
+                    capital_eod, targets_hit = self._check_eod_close(
+                        open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3,
+                        multiplier, tick_size, is_eod, close, idx, targets_hit
+                    )
+                capital += capital_eod
+                if open_trade is None:
+                    # Trade was closed at EOD
+                    pass
 
             # -- Check for new entry signal (Bug 3: store as pending, don't enter now) --
             if open_trade is None and pending_entry is None and not kill_switch:
@@ -680,6 +671,206 @@ class Backtester:
         risk_dollars = capital * self.risk_per_trade
         contracts = risk_dollars / (stop_dist * multiplier)
         return max(0, min(int(contracts), 50))  # cap at 50
+
+    def _compute_returns_and_drawdown(self, result: BacktestResult) -> None:
+        """Compute basic return metrics and max drawdown."""
+        equity = np.array(result.equity_curve)
+        if len(equity) > 1:
+            peak = np.maximum.accumulate(equity)
+            dd = (equity - peak) / peak
+            result.max_drawdown_pct = float(abs(dd.min()))
+            result.max_drawdown_dollars = float(abs((equity - peak).min()))
+
+    def _compute_sharpe_sortino(self, result: BacktestResult) -> None:
+        """Compute Sharpe and Sortino ratios from equity curve."""
+        equity = np.array(result.equity_curve)
+        if len(equity) <= 2:
+            return
+        daily_returns = np.diff(equity) / equity[:-1]
+        daily_returns = daily_returns[~np.isnan(daily_returns)]
+        if len(daily_returns) <= 1 or daily_returns.std() <= 0:
+            return
+        result.sharpe_ratio = float(
+            (daily_returns.mean() / daily_returns.std()) * np.sqrt(252)
+        )
+        downside = daily_returns[daily_returns < 0]
+        if len(downside) > 1:
+            downside_std = downside.std()
+            if downside_std > 0:
+                result.sortino_ratio = float(
+                    (daily_returns.mean() / downside_std) * np.sqrt(252)
+                )
+
+    def _compute_extended_metrics(self, result: BacktestResult) -> None:
+        """Compute extended metrics (Calmar, Expectancy, Recovery, Payoff)."""
+        if result.max_drawdown_pct > 0:
+            result.calmar_ratio = result.total_return_pct / result.max_drawdown_pct
+        if result.trades:
+            loss_rate = 1 - result.win_rate
+            result.expectancy = (result.win_rate * result.avg_win) + (loss_rate * result.avg_loss)
+        if result.max_drawdown_dollars > 0:
+            result.recovery_factor = result.total_pnl / result.max_drawdown_dollars
+        if result.avg_loss != 0:
+            result.payoff_ratio = abs(result.avg_win / result.avg_loss)
+
+    def _compute_direction_breakdown(self, result: BacktestResult, trades: list) -> None:
+        """Compute long vs short statistics."""
+        long_trades = [t for t in trades if t.direction == "long"]
+        short_trades = [t for t in trades if t.direction == "short"]
+        result.long_trades = len(long_trades)
+        result.short_trades = len(short_trades)
+
+        if long_trades:
+            long_wins = [t for t in long_trades if t.pnl > 0]
+            result.long_win_rate = len(long_wins) / len(long_trades)
+            long_gross_profit = sum(t.pnl for t in long_trades if t.pnl > 0)
+            long_gross_loss = sum(t.pnl for t in long_trades if t.pnl <= 0)
+            result.long_profit_factor = (
+                long_gross_profit / abs(long_gross_loss) if long_gross_loss else float("inf")
+            )
+
+        if short_trades:
+            short_wins = [t for t in short_trades if t.pnl > 0]
+            result.short_win_rate = len(short_wins) / len(short_trades)
+            short_gross_profit = sum(t.pnl for t in short_trades if t.pnl > 0)
+            short_gross_loss = sum(t.pnl for t in short_trades if t.pnl <= 0)
+            result.short_profit_factor = (
+                short_gross_profit / abs(short_gross_loss) if short_gross_loss else float("inf")
+            )
+
+    def _compute_regime_breakdown(self, result: BacktestResult, trades: list) -> None:
+        """Compute regime-based statistics."""
+        regime_groups: Dict[str, list] = {}
+        for t in trades:
+            r = t.regime or "UNKNOWN"
+            if r not in regime_groups:
+                regime_groups[r] = []
+            regime_groups[r].append(t)
+
+        for regime, regime_trades in regime_groups.items():
+            regime_wins = [t for t in regime_trades if t.pnl > 0]
+            regime_gross_profit = sum(t.pnl for t in regime_trades if t.pnl > 0)
+            regime_gross_loss = sum(t.pnl for t in regime_trades if t.pnl <= 0)
+            result.regime_stats[regime] = {
+                "trades": len(regime_trades),
+                "win_rate": len(regime_wins) / len(regime_trades) if regime_trades else 0,
+                "profit_factor": regime_gross_profit / abs(regime_gross_loss)
+                if regime_gross_loss
+                else float("inf"),
+                "total_pnl": sum(t.pnl for t in regime_trades),
+            }
+
+    def _process_trade_on_bar(
+        self,
+        open_trade: Optional[Trade],
+        open_contracts_t1: int,
+        open_contracts_t2: int,
+        open_contracts_t3: int,
+        targets_hit: list,
+        row: pd.Series,
+        idx,
+        df: pd.DataFrame,
+        multiplier: float,
+        tick_size: float,
+        close: float,
+    ) -> tuple[Optional[Trade], int, int, int, float, list, list]:
+        """Process trade exits (targets, stops, trailing, EOD) on a single bar."""
+        completed = []
+        capital_change = 0.0
+
+        if open_trade is None:
+            return None, open_contracts_t1, open_contracts_t2, open_contracts_t3, capital_change, targets_hit, completed
+
+        open_trade.holding_bars += 1
+        bar_open = row["open"]
+        high = row["high"]
+        low = row["low"]
+
+        # Determine which levels are touched
+        if open_trade.direction == "long":
+            stop_touched = low <= open_trade.stop_price
+            t1_touched = high >= open_trade.target_1 if open_contracts_t1 > 0 else False
+            t2_touched = high >= open_trade.target_2 if open_contracts_t2 > 0 else False
+            target_first = bar_open >= open_trade.entry_price
+        else:
+            stop_touched = high >= open_trade.stop_price
+            t1_touched = low <= open_trade.target_1 if open_contracts_t1 > 0 else False
+            t2_touched = low <= open_trade.target_2 if open_contracts_t2 > 0 else False
+            target_first = bar_open <= open_trade.entry_price
+
+        # Process exits in priority order
+        both_stop_and_target = stop_touched and (t1_touched or t2_touched)
+        check_targets_first = both_stop_and_target and target_first
+
+        if check_targets_first:
+            open_contracts_t1, open_contracts_t2, capital_from_targets, new_targets = \
+                self._check_targets_exit(
+                    open_trade, open_contracts_t1, open_contracts_t2, multiplier,
+                    tick_size, t1_touched, t2_touched
+                )
+            capital_change += capital_from_targets
+            targets_hit.extend(new_targets)
+            if open_trade is not None:
+                open_trade, new_t1, new_t2, new_t3, capital_from_stop, targets_hit = \
+                    self._check_stop_exit(
+                        open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3,
+                        multiplier, tick_size, stop_touched, targets_hit
+                    )
+                if open_trade is None:
+                    completed.append(True)
+                open_contracts_t1, open_contracts_t2, open_contracts_t3 = new_t1, new_t2, new_t3
+                capital_change += capital_from_stop
+        else:
+            open_trade, new_t1, new_t2, new_t3, capital_from_stop, targets_hit = \
+                self._check_stop_exit(
+                    open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3,
+                    multiplier, tick_size, stop_touched, targets_hit
+                )
+            if open_trade is None:
+                completed.append(True)
+            else:
+                open_contracts_t1, open_contracts_t2, open_contracts_t3 = new_t1, new_t2, new_t3
+                capital_change += capital_from_stop
+                open_contracts_t1, open_contracts_t2, capital_from_targets, new_targets = \
+                    self._check_targets_exit(
+                        open_trade, open_contracts_t1, open_contracts_t2, multiplier,
+                        tick_size, t1_touched, t2_touched
+                    )
+                capital_change += capital_from_targets
+                targets_hit.extend(new_targets)
+
+        # Check all contracts exited via targets
+        if open_trade is not None and (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) == 0:
+            open_trade.exit_reason = targets_hit[-1] if targets_hit else "target_1"
+            open_trade.exit_price = close
+            open_trade.exit_date = idx
+            completed.append(open_trade)
+            open_trade = None
+            targets_hit = []
+
+        return open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, capital_change, targets_hit, completed
+
+    def _compute_duration_metrics(self, result: BacktestResult, trades: list) -> None:
+        """Compute trade duration and drawdown duration."""
+        if trades:
+            holding_bars = [t.holding_bars for t in trades]
+            result.avg_holding_bars = float(np.mean(holding_bars))
+            result.median_holding_bars = float(np.median(holding_bars))
+            result.max_holding_bars = max(holding_bars)
+
+        equity = np.array(result.equity_curve)
+        if len(equity) > 1:
+            peak = np.maximum.accumulate(equity)
+            in_dd = equity < peak
+            max_dd_dur = 0
+            cur_dd_dur = 0
+            for is_dd in in_dd:
+                if is_dd:
+                    cur_dd_dur += 1
+                else:
+                    max_dd_dur = max(max_dd_dur, cur_dd_dur)
+                    cur_dd_dur = 0
+            result.max_drawdown_duration_bars = max(max_dd_dur, cur_dd_dur)
 
     def _calculate_metrics(self, result: BacktestResult) -> BacktestResult:
         """Fill in all metrics from the trades list."""
@@ -751,89 +942,12 @@ class Backtester:
         result.max_consecutive_wins = max_consec_win
         result.max_consecutive_losses = max_consec_loss
 
-        # --- Extended metrics ---
-
-        # Calmar Ratio: total return / max drawdown
-        if result.max_drawdown_pct > 0:
-            result.calmar_ratio = result.total_return_pct / result.max_drawdown_pct
-
-        # Expectancy per trade (in $)
-        if trades:
-            loss_rate = 1 - result.win_rate
-            result.expectancy = (result.win_rate * result.avg_win) + (loss_rate * result.avg_loss)
-
-        # Recovery Factor
-        if result.max_drawdown_dollars > 0:
-            result.recovery_factor = result.total_pnl / result.max_drawdown_dollars
-
-        # Payoff Ratio
-        if result.avg_loss != 0:
-            result.payoff_ratio = abs(result.avg_win / result.avg_loss)
-
-        # Long vs Short breakdown
-        long_trades_list = [t for t in trades if t.direction == "long"]
-        short_trades_list = [t for t in trades if t.direction == "short"]
-        result.long_trades = len(long_trades_list)
-        result.short_trades = len(short_trades_list)
-
-        if long_trades_list:
-            long_wins = [t for t in long_trades_list if t.pnl > 0]
-            result.long_win_rate = len(long_wins) / len(long_trades_list)
-            long_gross_profit = sum(t.pnl for t in long_trades_list if t.pnl > 0)
-            long_gross_loss = sum(t.pnl for t in long_trades_list if t.pnl <= 0)
-            result.long_profit_factor = (
-                long_gross_profit / abs(long_gross_loss) if long_gross_loss else float("inf")
-            )
-
-        if short_trades_list:
-            short_wins = [t for t in short_trades_list if t.pnl > 0]
-            result.short_win_rate = len(short_wins) / len(short_trades_list)
-            short_gross_profit = sum(t.pnl for t in short_trades_list if t.pnl > 0)
-            short_gross_loss = sum(t.pnl for t in short_trades_list if t.pnl <= 0)
-            result.short_profit_factor = (
-                short_gross_profit / abs(short_gross_loss) if short_gross_loss else float("inf")
-            )
-
-        # Regime breakdown
-        regime_groups: Dict[str, list] = {}
-        for t in trades:
-            r = t.regime or "UNKNOWN"
-            if r not in regime_groups:
-                regime_groups[r] = []
-            regime_groups[r].append(t)
-
-        for regime, regime_trades in regime_groups.items():
-            regime_wins = [t for t in regime_trades if t.pnl > 0]
-            regime_gross_profit = sum(t.pnl for t in regime_trades if t.pnl > 0)
-            regime_gross_loss = sum(t.pnl for t in regime_trades if t.pnl <= 0)
-            result.regime_stats[regime] = {
-                "trades": len(regime_trades),
-                "win_rate": len(regime_wins) / len(regime_trades) if regime_trades else 0,
-                "profit_factor": regime_gross_profit / abs(regime_gross_loss)
-                if regime_gross_loss
-                else float("inf"),
-                "total_pnl": sum(t.pnl for t in regime_trades),
-            }
-
-        # Trade duration
-        if trades:
-            holding_bars = [t.holding_bars for t in trades]
-            result.avg_holding_bars = float(np.mean(holding_bars))
-            result.median_holding_bars = float(np.median(holding_bars))
-            result.max_holding_bars = max(holding_bars)
-
-        # Drawdown duration
-        if len(equity) > 1:
-            peak = np.maximum.accumulate(equity)
-            in_dd = equity < peak
-            max_dd_dur = 0
-            cur_dd_dur = 0
-            for is_dd in in_dd:
-                if is_dd:
-                    cur_dd_dur += 1
-                    max_dd_dur = max(max_dd_dur, cur_dd_dur)
-                else:
-                    cur_dd_dur = 0
-            result.max_drawdown_duration_bars = max_dd_dur
+        # Delegate to helper methods
+        self._compute_returns_and_drawdown(result)
+        self._compute_sharpe_sortino(result)
+        self._compute_extended_metrics(result)
+        self._compute_direction_breakdown(result, trades)
+        self._compute_regime_breakdown(result, trades)
+        self._compute_duration_metrics(result, trades)
 
         return result

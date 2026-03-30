@@ -186,6 +186,76 @@ class SafetyLayer:
 
     # ── Pre-Trade Checks ─────────────────────────────────────────────────
 
+    def _check_drawdown(self, portfolio_equity: float, warnings: list) -> RiskCheckResult | None:
+        """Check max drawdown limits. Returns None if passed."""
+        if self._pnl_monitor is not None:
+            drawdown = -self._pnl_monitor.get_drawdown_pct()
+            if drawdown > self._config.MAX_DRAWDOWN_PCT:
+                self.activate_kill_switch(
+                    KillSwitchReason.MAX_DRAWDOWN,
+                    f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%} (source: pnl_monitor)",
+                )
+                return RiskCheckResult(
+                    approved=False, rejection_reason="Max drawdown breached — kill switch activated"
+                )
+            elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
+                warnings.append(
+                    f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
+                )
+        elif self._equity_peak > 0:
+            drawdown = (self._equity_peak - portfolio_equity) / self._equity_peak
+            if drawdown > self._config.MAX_DRAWDOWN_PCT:
+                self.activate_kill_switch(
+                    KillSwitchReason.MAX_DRAWDOWN,
+                    f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%}",
+                )
+                return RiskCheckResult(
+                    approved=False, rejection_reason="Max drawdown breached — kill switch activated"
+                )
+            elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
+                warnings.append(
+                    f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
+                )
+        return None
+
+    def _apply_loss_tracker_adjustment(
+        self, order: OrderRequest, warnings: list
+    ) -> RiskCheckResult | tuple[OrderRequest, list]:
+        """Apply loss tracker adjustments. Returns error result or (adjusted_order, warnings)."""
+        if self._loss_tracker is None:
+            return order, warnings
+
+        if self._loss_tracker.is_halted():
+            return RiskCheckResult(
+                approved=False, rejection_reason=self._loss_tracker.get_halt_reason()
+            )
+
+        multiplier = self._loss_tracker.get_position_size_multiplier()
+        if multiplier < 1.0:
+            reduced_quantity = max(1, int(abs(order.quantity) * multiplier))
+            adjusted_order = OrderRequest(
+                symbol=order.symbol,
+                quantity=reduced_quantity if order.quantity > 0 else -reduced_quantity,
+                order_type=order.order_type,
+                limit_price=order.limit_price,
+                stop_price=order.stop_price,
+                is_futures=order.is_futures,
+                is_options=order.is_options,
+                estimated_value=order.estimated_value * multiplier,
+            )
+            consecutive_losses = self._loss_tracker.get_consecutive_losses()
+            warnings.append(
+                f"Consecutive losses: {consecutive_losses} — "
+                f"position size reduced by {(1.0 - multiplier):.0%} "
+                f"(qty: {order.quantity} → {adjusted_order.quantity})"
+            )
+            logger.warning(
+                f"Position size reduction applied: {order.symbol} qty {order.quantity} → "
+                f"{adjusted_order.quantity} (multiplier={multiplier:.2f})"
+            )
+            return adjusted_order, warnings
+        return order, warnings
+
     def check_order(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
         """
         Run all pre-trade safety checks.
@@ -216,54 +286,20 @@ class SafetyLayer:
             )
 
         # 3. Daily loss limit
-        # Use PnLMonitor (live SQLite/IB data) when available; fall back to in-memory value.
-        if self._pnl_monitor is not None:
-            daily_pnl_for_check = self._pnl_monitor.get_daily_pnl()
-        else:
-            daily_pnl_for_check = self._daily_realized_pnl
-
-        if daily_pnl_for_check < -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT):
+        daily_pnl = self._pnl_monitor.get_daily_pnl() if self._pnl_monitor else self._daily_realized_pnl
+        if daily_pnl < -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT):
             self.activate_kill_switch(
                 KillSwitchReason.DAILY_LOSS_LIMIT,
-                f"Daily loss {daily_pnl_for_check:.2f} exceeded limit",
+                f"Daily loss {daily_pnl:.2f} exceeded limit",
             )
             return RiskCheckResult(
                 approved=False, rejection_reason="Daily loss limit breached — kill switch activated"
             )
 
         # 4. Max drawdown
-        # Use PnLMonitor drawdown when available (reads from SQLite peak history);
-        # fall back to the in-memory equity-peak calculation.
-        if self._pnl_monitor is not None:
-            drawdown = (
-                -self._pnl_monitor.get_drawdown_pct()
-            )  # monitor returns negative; negate for comparison
-            if drawdown > self._config.MAX_DRAWDOWN_PCT:
-                self.activate_kill_switch(
-                    KillSwitchReason.MAX_DRAWDOWN,
-                    f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%} (source: pnl_monitor)",
-                )
-                return RiskCheckResult(
-                    approved=False, rejection_reason="Max drawdown breached — kill switch activated"
-                )
-            elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
-                warnings.append(
-                    f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
-                )
-        elif self._equity_peak > 0:
-            drawdown = (self._equity_peak - portfolio_equity) / self._equity_peak
-            if drawdown > self._config.MAX_DRAWDOWN_PCT:
-                self.activate_kill_switch(
-                    KillSwitchReason.MAX_DRAWDOWN,
-                    f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%}",
-                )
-                return RiskCheckResult(
-                    approved=False, rejection_reason="Max drawdown breached — kill switch activated"
-                )
-            elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
-                warnings.append(
-                    f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
-                )
+        drawdown_result = self._check_drawdown(portfolio_equity, warnings)
+        if drawdown_result is not None:
+            return drawdown_result
 
         # 5. Order size limit
         if order.estimated_value > self._config.MAX_SINGLE_ORDER_VALUE:
@@ -282,7 +318,6 @@ class SafetyLayer:
 
         # 7. Order rate throttle (anti-runaway)
         import time
-
         now = time.time()
         self._recent_order_timestamps = [t for t in self._recent_order_timestamps if now - t < 60]
         if len(self._recent_order_timestamps) >= self._config.MAX_ORDERS_PER_MINUTE:
@@ -302,39 +337,10 @@ class SafetyLayer:
             )
 
         # 9. Consecutive loss tracking & position size modulation
-        adjusted_order = order
-        if self._loss_tracker is not None:
-            # Check if trading is halted due to too many consecutive losses
-            if self._loss_tracker.is_halted():
-                return RiskCheckResult(
-                    approved=False, rejection_reason=self._loss_tracker.get_halt_reason()
-                )
-
-            # Get position size multiplier based on consecutive losses
-            multiplier = self._loss_tracker.get_position_size_multiplier()
-            if multiplier < 1.0:
-                # Reduce order quantity based on multiplier
-                reduced_quantity = max(1, int(abs(order.quantity) * multiplier))
-                adjusted_order = OrderRequest(
-                    symbol=order.symbol,
-                    quantity=reduced_quantity if order.quantity > 0 else -reduced_quantity,
-                    order_type=order.order_type,
-                    limit_price=order.limit_price,
-                    stop_price=order.stop_price,
-                    is_futures=order.is_futures,
-                    is_options=order.is_options,
-                    estimated_value=adjusted_order.estimated_value * multiplier,
-                )
-                consecutive_losses = self._loss_tracker.get_consecutive_losses()
-                warnings.append(
-                    f"Consecutive losses: {consecutive_losses} — "
-                    f"position size reduced by {(1.0 - multiplier):.0%} "
-                    f"(qty: {order.quantity} → {adjusted_order.quantity})"
-                )
-                logger.warning(
-                    f"Position size reduction applied: {order.symbol} qty {order.quantity} → "
-                    f"{adjusted_order.quantity} (multiplier={multiplier:.2f})"
-                )
+        loss_result = self._apply_loss_tracker_adjustment(order, warnings)
+        if isinstance(loss_result, RiskCheckResult):
+            return loss_result
+        adjusted_order, warnings = loss_result
 
         # All checks passed
         self._recent_order_timestamps.append(now)
