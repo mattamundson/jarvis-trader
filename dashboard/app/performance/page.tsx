@@ -9,6 +9,9 @@ import { MonthlyBreakdownWidget } from "@/components/MonthlyBreakdownWidget";
 import { DrawdownChart } from "@/components/DrawdownChart";
 import { AccountROIWidget } from "@/components/AccountROIWidget";
 import { WeeklyPnLCard } from "@/components/WeeklyPnLCard";
+import { TopSymbolsWidget } from "@/components/TopSymbolsWidget";
+import AvgTradeTimeWidget from "@/components/AvgTradeTimeWidget";
+import { EquityCurveWidget } from "@/components/EquityCurveWidget";
 
 // ── Static Data (from EXECUTIVE_BRIEFING.md v2.3, 2026-03-29) ──────────────
 
@@ -27,9 +30,9 @@ interface BacktestRow {
 }
 
 const BACKTEST_DATA: BacktestRow[] = [
-  { rank: 1, symbol: "MGC", tf: "1d", trades: 47, wr: 51.1, pf: 2.60, sharpe: 2.04, returnPct: 34.4, maxDD: 3.0, wfe: 0.27, status: "ACTIVE" },
+  { rank: 1, symbol: "MGC", tf: "1d", trades: 47, wr: 51.1, pf: 2.60, sharpe: 2.04, returnPct: 34.4, maxDD: 3.0, wfe: 0.14, status: "DO NOT TRADE" },
   { rank: 2, symbol: "SPY", tf: "1h", trades: 23, wr: 65.2, pf: 3.00, sharpe: -1.55, returnPct: 0.7, maxDD: 5.0, wfe: -1.11, status: "DO NOT TRADE" },
-  { rank: 3, symbol: "MNQ", tf: "1h", trades: 86, wr: 47.7, pf: 1.46, sharpe: 0.19, returnPct: 13.6, maxDD: 0.1, wfe: 0.24, status: "RESEARCH" },
+  { rank: 3, symbol: "MNQ", tf: "1h", trades: 86, wr: 47.7, pf: 1.46, sharpe: 0.19, returnPct: 13.6, maxDD: 0.1, wfe: 0.48, status: "RESEARCH" },
   { rank: 4, symbol: "MCL", tf: "1h", trades: 65, wr: 60.0, pf: 1.83, sharpe: 0.15, returnPct: 0.2, maxDD: null, wfe: -0.16, status: "DO NOT TRADE" },
   { rank: 5, symbol: "MES", tf: "1h", trades: 21, wr: 42.9, pf: 0.96, sharpe: -0.12, returnPct: -4.0, maxDD: 0.1, wfe: -0.17, status: "DO NOT TRADE" },
 ];
@@ -47,8 +50,8 @@ interface WFERow {
 }
 
 const WFE_DATA: WFERow[] = [
-  { symbol: "MGC", tf: "1d", staticWFE: 0.27, adaptiveWFE: 0.88, change: "+226%", oosSharpe: 0.89, oosPF: 2.55, verdict: "EXCELLENT", verdictColor: "#00ff88" },
-  { symbol: "MNQ", tf: "1h", staticWFE: 0.24, adaptiveWFE: 0.34, change: "+41%", oosSharpe: -0.06, oosPF: 1.05, verdict: "ACCEPTABLE", verdictColor: "#ffcc00" },
+  { symbol: "MGC", tf: "1d", staticWFE: 0.14, adaptiveWFE: 0.88, change: "+526%", oosSharpe: 0.89, oosPF: 2.55, verdict: "OVERFIT", verdictColor: "#ff4444" },
+  { symbol: "MNQ", tf: "1h", staticWFE: 0.24, adaptiveWFE: 0.48, change: "+100%", oosSharpe: -0.06, oosPF: 1.05, verdict: "ACCEPTABLE", verdictColor: "#ffcc00" },
   { symbol: "MCL", tf: "1h", staticWFE: -0.16, adaptiveWFE: -0.31, change: "-94%", oosSharpe: -0.48, oosPF: 0.81, verdict: "FAIL", verdictColor: "#ff4444" },
   { symbol: "SPY", tf: "1h", staticWFE: -1.11, adaptiveWFE: -0.71, change: "+36%", oosSharpe: -3.84, oosPF: 1.04, verdict: "FAIL", verdictColor: "#ff4444" },
 ];
@@ -64,7 +67,7 @@ interface ImprovementRow {
 }
 
 const IMPROVEMENT_DATA: ImprovementRow[] = [
-  { improvement: "Regime-Adaptive STC", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.24 \u2192 0.34", mgcImpact: "WFE 0.27 \u2192 0.88", keep: "YES", keepColor: "#00ff88" },
+  { improvement: "Regime-Adaptive STC", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.24 \u2192 0.48", mgcImpact: "WFE 0.14 \u2192 0.88 (adaptive)", keep: "YES", keepColor: "#00ff88" },
   { improvement: "Volume Filter", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.34 \u2192 -0.23 (SKIP)", mgcImpact: "WFE 0.88 \u2192 0.20 (SKIP)", keep: "NO for futures", keepColor: "#ff4444" },
   { improvement: "MTF Alignment", status: "Implemented", statusColor: "#00ff88", mnqImpact: "Testing...", mgcImpact: "N/A (daily)", keep: "TBD", keepColor: "#ffcc00" },
   { improvement: "News Blackout", status: "Implemented", statusColor: "#00ff88", mnqImpact: "1% blocked", mgcImpact: "N/A", keep: "Live only", keepColor: "#888888" },
@@ -636,7 +639,7 @@ export default function PerformancePage() {
               className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded"
               style={{ backgroundColor: "#ffcc0018", border: "1px solid #ffcc0040", color: "#ffcc00" }}
             >
-              VERDICT: CONDITIONAL GO (MGC 1d ONLY)
+              VERDICT: RESEARCH ONLY (MGC HALTED — OVERFIT)
             </span>
             <span
               className="font-mono text-[10px] tracking-wider px-2 py-1 rounded"
@@ -649,10 +652,10 @@ export default function PerformancePage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryCard label="Active Instruments" value="1" sub="MGC 1d" color="#00ff88" />
-          <SummaryCard label="Research" value="1" sub="MNQ 1h (WFE 0.34)" color="#ffcc00" />
+          <SummaryCard label="Active Instruments" value="0" sub="MGC 1d HALTED (WFE 0.14)" color="#ff4444" />
+          <SummaryCard label="Research" value="1" sub="MNQ 1h (WFE 0.48)" color="#ffcc00" />
           <SummaryCard label="Do Not Trade" value="9" sub="Failed walk-forward" color="#ff4444" />
-          <SummaryCard label="Best WFE" value="0.88" sub="MGC 1d Adaptive" color="#00ff88" />
+          <SummaryCard label="Best WFE" value="0.48" sub="MNQ 1h (static 0.14 for MGC)" color="#ffcc00" />
         </div>
 
         {/* Weekly live performance summary */}
@@ -681,6 +684,15 @@ export default function PerformancePage() {
 
         {/* Section 6: Drawdown Chart */}
         <DrawdownChart />
+
+        {/* Section 7: Top Symbols by P&L */}
+        <TopSymbolsWidget />
+
+        {/* Section 8: Avg Trade Hold Time */}
+        <AvgTradeTimeWidget />
+
+        {/* Section 9: Equity Curve */}
+        <EquityCurveWidget />
 
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>

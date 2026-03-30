@@ -5,13 +5,16 @@ import useSWR from "swr";
 import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
 import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals } from "@/lib/api";
 import type { MGCSignalResponse, PendingSignal, MGCPerformanceResponse, PaperTradePayload, KillSwitchStatus } from "@/lib/api";
+import { OpenPositionsWidget } from "@/components/OpenPositionsWidget";
 import { RiskStatusWidget } from "@/components/RiskStatusWidget";
 import { CircuitBreakerWidget } from "@/components/CircuitBreakerWidget";
 import { RecentSignalsWidget } from "@/components/RecentSignalsWidget";
 import { MarketRegimeWidget } from "@/components/MarketRegimeWidget";
 import { RecentDecisionsWidget } from "@/components/RecentDecisionsWidget";
+import { SessionSummaryWidget } from "@/components/SessionSummaryWidget";
 import { TodaySummaryWidget } from "@/components/TodaySummaryWidget";
 import { PositionSizingWidget } from "@/components/PositionSizingWidget";
+import { SignalQueueWidget } from "@/components/SignalQueueWidget";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
@@ -33,7 +36,7 @@ export default function PaperTradingPage() {
                 JARVIS TRADER
               </h1>
               <p className="text-xs text-muted-foreground">
-                MGC Daily Paper Trading
+                MGC Daily Paper Trading — SUSPENDED
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
@@ -62,6 +65,23 @@ export default function PaperTradingPage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-4 space-y-4">
+        {/* WFE Halt Banner */}
+        <div className="rounded-xl p-4 font-mono"
+          style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
+          <div className="flex items-start gap-3">
+            <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
+              PAPER TRADING SUSPENDED
+            </span>
+            <span className="text-[10px]" style={{ color: "#ff8888" }}>
+              MGC 1d WFE corrected to 0.14 (was 0.27) — below 0.30 threshold. Status: OVERFIT.
+              Paper trading suspended pending MTF filter validation.
+            </span>
+          </div>
+        </div>
+
+        {/* Open Positions — safety-critical, first widget at top of page */}
+        <OpenPositionsWidget />
+
         {/* Risk Status — always visible at top of page */}
         <RiskStatusWidget />
 
@@ -73,6 +93,9 @@ export default function PaperTradingPage() {
 
         {/* ATR-based position sizing */}
         <PositionSizingWidget />
+
+        {/* Current signal state: entry signal, direction, regime, STC, ATR levels */}
+        <SignalQueueWidget />
 
         {/* Recent pipeline signals */}
         <RecentSignalsWidget />
@@ -101,6 +124,9 @@ export default function PaperTradingPage() {
 
         {/* Recent AI Decisions */}
         <RecentDecisionsWidget />
+
+        {/* Today's session summary (P&L, trades, win rate, best/worst trade) */}
+        <SessionSummaryWidget />
       </main>
     </div>
   );

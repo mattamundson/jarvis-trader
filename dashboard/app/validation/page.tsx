@@ -35,6 +35,8 @@ import { TradingDaysCountdownCard } from "@/components/TradingDaysCountdownCard"
 import { BacktestVsPaperWidget } from "@/components/BacktestVsPaperWidget";
 import { ValidationChecklist } from "@/components/ValidationChecklist";
 import { GoLivePlanCard } from "@/components/GoLivePlanCard";
+import { PhaseProgressWidget } from "@/components/PhaseProgressWidget";
+import { SharpeRatioWidget } from "@/components/SharpeRatioWidget";
 
 // ── Constants — Backtest reference (MES 1h, best run) ────────────────────────
 
@@ -103,7 +105,7 @@ function PassIcon({ pass }: { pass: boolean | null }) {
 
 // ── Section 1: Strategy Validation Scorecard ─────────────────────────────────
 
-type CheckStatus = "PASS" | "FAIL" | "MARGINAL";
+type CheckStatus = "PASS" | "FAIL" | "MARGINAL" | "WARN";
 
 interface ScorecardRow {
   check: string;
@@ -116,8 +118,8 @@ const SCORECARD_DATA: ScorecardRow[] = [
   {
     check: "Walk-Forward Efficiency",
     criterion: "WFE > 0.30",
-    result: "MGC: 0.88 / MNQ: 0.34",
-    status: "PASS",
+    result: "MGC: 0.14 (OVERFIT) / MNQ: 0.48",
+    status: "WARN",
   },
   {
     check: "OOS Profitable Windows",
@@ -1411,6 +1413,7 @@ export default function ValidationPage() {
 
       <main className="mx-auto max-w-[1400px] px-6 py-6 space-y-6">
         <ValidationChecklist />
+        <PhaseProgressWidget />
         <TradingDaysCountdownCard />
         <BacktestVsPaperWidget />
 
@@ -1545,6 +1548,12 @@ export default function ValidationPage() {
         <section>
           <SectionLabel>J — Go-Live Roadmap</SectionLabel>
           <GoLivePlanCard />
+        </section>
+
+        {/* Section K: Sharpe Ratio Focus Widget */}
+        <section>
+          <SectionLabel>K — Sharpe Ratio: June 2026 Target Tracker</SectionLabel>
+          <SharpeRatioWidget />
         </section>
       </main>
     </div>
