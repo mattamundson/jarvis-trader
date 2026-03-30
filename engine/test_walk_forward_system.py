@@ -8,6 +8,7 @@ Verifies:
 3. Results serialization and JSON output
 4. CLI entry points
 """
+
 from __future__ import annotations
 
 import json
@@ -22,9 +23,9 @@ if str(engine_root) not in sys.path:
 
 def test_walk_forward_validator_class():
     """Test WalkForwardValidator class instantiation."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TEST 1: WalkForwardValidator Class")
-    print("="*70)
+    print("=" * 70)
 
     from backtest.walk_forward import WalkForwardValidator
 
@@ -40,9 +41,9 @@ def test_walk_forward_validator_class():
 
 def test_window_generation():
     """Test window generation on sample data."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TEST 2: Window Generation")
-    print("="*70)
+    print("=" * 70)
 
     import pandas as pd
 
@@ -50,13 +51,16 @@ def test_window_generation():
 
     # Create synthetic data spanning 24 months
     dates = pd.date_range("2024-01-01", periods=500, freq="1h")
-    df = pd.DataFrame({
-        "open": 100.0,
-        "high": 101.0,
-        "low": 99.0,
-        "close": 100.5,
-        "volume": 1000000,
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.5,
+            "volume": 1000000,
+        },
+        index=dates,
+    )
 
     validator = WalkForwardValidator(train_months=6, test_months=3, step_months=3)
     windows = validator.generate_windows(df, "TEST")
@@ -64,17 +68,21 @@ def test_window_generation():
     print(f"✓ Generated {len(windows)} rolling windows")
     for _i, w in enumerate(windows[:3]):  # Show first 3
         print(f"\n  Window {w['window_num']}:")
-        print(f"    Train: {w['train_start'].strftime('%Y-%m-%d')} to {w['train_end'].strftime('%Y-%m-%d')} ({w['train_bars']} bars)")
-        print(f"    Test:  {w['test_start'].strftime('%Y-%m-%d')} to {w['test_end'].strftime('%Y-%m-%d')} ({w['test_bars']} bars)")
+        print(
+            f"    Train: {w['train_start'].strftime('%Y-%m-%d')} to {w['train_end'].strftime('%Y-%m-%d')} ({w['train_bars']} bars)"
+        )
+        print(
+            f"    Test:  {w['test_start'].strftime('%Y-%m-%d')} to {w['test_end'].strftime('%Y-%m-%d')} ({w['test_bars']} bars)"
+        )
 
     return windows
 
 
 def test_full_walk_forward_run():
     """Test full walk-forward validation with real data."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TEST 3: Full Walk-Forward Run (SPY 1h, 2024-06-01 to 2025-06-01)")
-    print("="*70)
+    print("=" * 70)
 
     from backtest.data_loader import BacktestDataLoader
     from backtest.walk_forward import WalkForwardValidator
@@ -107,8 +115,8 @@ def test_full_walk_forward_run():
     summary = result["summary"]
     print("\nResults Summary:")
     print(f"  Windows: {summary['total_windows']}")
-    print(f"  Avg IS Return: {summary['avg_is_return']*100:.2f}%")
-    print(f"  Avg OOS Return: {summary['avg_oos_return']*100:.2f}%")
+    print(f"  Avg IS Return: {summary['avg_is_return'] * 100:.2f}%")
+    print(f"  Avg OOS Return: {summary['avg_oos_return'] * 100:.2f}%")
     print(f"  WFE: {summary['wfe']:.3f}")
 
     if summary["wfe"] > 0.5:
@@ -127,9 +135,9 @@ def test_full_walk_forward_run():
 
 def test_results_serialization():
     """Test results serialization to JSON."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TEST 4: Results Serialization")
-    print("="*70)
+    print("=" * 70)
 
     from backtest.data_loader import BacktestDataLoader
     from backtest.walk_forward import WalkForwardValidator, save_results
@@ -167,10 +175,9 @@ def test_results_serialization():
 
 def test_cli_entry_point():
     """Test CLI entry point."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TEST 5: CLI Entry Point")
-    print("="*70)
-
+    print("=" * 70)
 
     print("✓ walk_forward.main() is importable")
     print("  Usage: python -m backtest.walk_forward --symbol SPY --interval 1h")
@@ -180,9 +187,9 @@ def test_cli_entry_point():
 def main():
     """Run all tests."""
     print("\n")
-    print("╔" + "="*68 + "╗")
-    print("║" + " "*15 + "WALK-FORWARD VALIDATION SYSTEM TEST" + " "*19 + "║")
-    print("╚" + "="*68 + "╝")
+    print("╔" + "=" * 68 + "╗")
+    print("║" + " " * 15 + "WALK-FORWARD VALIDATION SYSTEM TEST" + " " * 19 + "║")
+    print("╚" + "=" * 68 + "╝")
 
     try:
         # Run tests
@@ -193,9 +200,9 @@ def main():
         test_cli_entry_point()
 
         # Summary
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print("✓ All core tests passed!")
         print("\nNext steps:")
         print("1. CLI: python -m backtest.run_walk_forward --symbol SPY --interval 1h")
@@ -205,6 +212,7 @@ def main():
     except Exception as exc:
         print(f"\n✗ Test failed: {exc}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

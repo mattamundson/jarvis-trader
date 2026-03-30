@@ -25,6 +25,7 @@ logger = logging.getLogger("jarvis_trader.database.migrations")
 
 # ── Version bookkeeping ────────────────────────────────────────────────────────
 
+
 def _ensure_version_table(conn: sqlite3.Connection) -> None:
     """Create the schema_version table if it does not already exist."""
     conn.execute(
@@ -41,9 +42,7 @@ def _ensure_version_table(conn: sqlite3.Connection) -> None:
 
 def _get_current_version(conn: sqlite3.Connection) -> int:
     """Return the highest applied migration version, or 0 if none yet."""
-    row = conn.execute(
-        "SELECT MAX(version) FROM schema_version"
-    ).fetchone()
+    row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
     return row[0] if (row and row[0] is not None) else 0
 
 
@@ -57,6 +56,7 @@ def _record_version(conn: sqlite3.Connection, version: int, description: str) ->
 
 
 # ── Individual migrations ──────────────────────────────────────────────────────
+
 
 def migration_001(conn: sqlite3.Connection) -> None:
     """
@@ -90,15 +90,9 @@ def migration_001(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pt_symbol     ON paper_trades(symbol)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pt_status     ON paper_trades(status)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pt_entry_time ON paper_trades(entry_time)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_symbol     ON paper_trades(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_status     ON paper_trades(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_entry_time ON paper_trades(entry_time)")
 
     # ── decisions ─────────────────────────────────────────────────────────────
     conn.execute(
@@ -115,15 +109,9 @@ def migration_001(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_dec_symbol    ON decisions(symbol)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_dec_timestamp ON decisions(timestamp)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_dec_action    ON decisions(action)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dec_symbol    ON decisions(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dec_timestamp ON decisions(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dec_action    ON decisions(action)")
 
     # ── daily_pnl ─────────────────────────────────────────────────────────────
     conn.execute(
@@ -142,9 +130,7 @@ def migration_001(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_dpnl_date ON daily_pnl(date)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dpnl_date ON daily_pnl(date)")
 
     # ── positions ─────────────────────────────────────────────────────────────
     conn.execute(
@@ -162,9 +148,7 @@ def migration_001(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pos_symbol ON positions(symbol)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pos_symbol ON positions(symbol)")
 
     # ── settings ──────────────────────────────────────────────────────────────
     conn.execute(
@@ -203,12 +187,8 @@ def migration_002(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_tj_trade_id  ON trade_journal(trade_id)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_tj_timestamp ON trade_journal(timestamp)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tj_trade_id  ON trade_journal(trade_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tj_timestamp ON trade_journal(timestamp)")
     conn.commit()
     logger.info("Migration 002 applied — trade_journal table created.")
 
@@ -241,15 +221,9 @@ def migration_003(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pr_symbol     ON pipeline_runs(symbol)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pr_created_at ON pipeline_runs(created_at)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pr_status     ON pipeline_runs(status)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_symbol     ON pipeline_runs(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_created_at ON pipeline_runs(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_status     ON pipeline_runs(status)")
     conn.commit()
     logger.info("Migration 003 applied — pipeline_runs table created.")
 
@@ -280,9 +254,7 @@ def migration_004(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_journal_notes_created ON journal_notes(created_at DESC)"
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_journal_notes_trade ON journal_notes(trade_id)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_journal_notes_trade ON journal_notes(trade_id)")
     conn.commit()
     logger.info("Migration 004 applied — journal_notes table created.")
 
@@ -324,9 +296,7 @@ def migration_005(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_alert_log_created_at ON alert_log(created_at DESC)"
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_alert_log_type ON alert_log(alert_type)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_alert_log_type ON alert_log(alert_type)")
     conn.commit()
     logger.info("Migration 005 applied — alert_log table created.")
 
@@ -353,6 +323,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
 
 # ── Public entry point ─────────────────────────────────────────────────────────
 
+
 def run_migrations(conn: sqlite3.Connection) -> None:
     """
     Apply any pending migrations to `conn` in version order.
@@ -373,15 +344,10 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     total = len(MIGRATIONS)
 
     if current >= total:
-        logger.debug(
-            f"Database schema is up-to-date (version {current}/{total})."
-        )
+        logger.debug(f"Database schema is up-to-date (version {current}/{total}).")
         return
 
-    logger.info(
-        f"Running migrations {current + 1}–{total} "
-        f"(currently at version {current})..."
-    )
+    logger.info(f"Running migrations {current + 1}–{total} (currently at version {current})...")
 
     for idx, migrate_fn in enumerate(MIGRATIONS):
         version = idx + 1
@@ -394,13 +360,9 @@ def run_migrations(conn: sqlite3.Connection) -> None:
             _record_version(conn, version, description)
             logger.info(f"  Migration {version:03d} complete.")
         except Exception as exc:
-            logger.error(
-                f"  Migration {version:03d} FAILED — rolling back: {exc}"
-            )
+            logger.error(f"  Migration {version:03d} FAILED — rolling back: {exc}")
             conn.rollback()
-            raise RuntimeError(
-                f"Migration {version:03d} failed: {exc}"
-            ) from exc
+            raise RuntimeError(f"Migration {version:03d} failed: {exc}") from exc
 
     final = _get_current_version(conn)
     logger.info(f"All migrations complete.  Schema version: {final}.")

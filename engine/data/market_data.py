@@ -4,6 +4,7 @@ JARVIS TRADER — Market Data Layer
 Unified interface to IBKR, Schwab, Polygon, and Finnhub.
 All streaming goes through Redis for agent consumption.
 """
+
 import logging
 from datetime import datetime, timedelta
 from typing import Callable, Optional
@@ -15,8 +16,18 @@ logger = logging.getLogger(__name__)
 
 class MarketDataBar:
     """Normalized OHLCV bar regardless of data source"""
-    def __init__(self, symbol: str, timestamp: datetime, open: float, high: float,
-                 low: float, close: float, volume: float, source: str):
+
+    def __init__(
+        self,
+        symbol: str,
+        timestamp: datetime,
+        open: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: float,
+        source: str,
+    ):
         self.symbol = symbol
         self.timestamp = timestamp
         self.open = open
@@ -44,17 +55,22 @@ class IBKRDataConnector:
     async def connect(self) -> bool:
         try:
             from ib_async import IB
+
             self._ib = IB()
             await self._ib.connectAsync(self._host, self._port, clientId=self._client_id)
             self._connected = True
-            logger.info(f"✅ IBKR connected to {self._host}:{self._port} (paper={self._port == 4002})")
+            logger.info(
+                f"✅ IBKR connected to {self._host}:{self._port} (paper={self._port == 4002})"
+            )
             return True
         except ImportError:
             logger.warning("ib_async not installed. Run: pip install ib_async")
             return False
         except Exception as e:
             logger.error(f"❌ IBKR connection failed: {e}")
-            logger.info("Ensure IB Gateway is running. Download from: https://www.interactivebrokers.com/en/trading/ibgateway.php")
+            logger.info(
+                "Ensure IB Gateway is running. Download from: https://www.interactivebrokers.com/en/trading/ibgateway.php"
+            )
             return False
 
     async def disconnect(self):
@@ -93,14 +109,19 @@ class IBKRDataConnector:
         if not bars:
             return pd.DataFrame()
 
-        return pd.DataFrame([{
-            "timestamp": bar.date,
-            "open": bar.open,
-            "high": bar.high,
-            "low": bar.low,
-            "close": bar.close,
-            "volume": bar.volume,
-        } for bar in bars])
+        return pd.DataFrame(
+            [
+                {
+                    "timestamp": bar.date,
+                    "open": bar.open,
+                    "high": bar.high,
+                    "low": bar.low,
+                    "close": bar.close,
+                    "volume": bar.volume,
+                }
+                for bar in bars
+            ]
+        )
 
     async def subscribe_real_time(
         self,
@@ -122,16 +143,20 @@ class IBKRDataConnector:
 
         bars = self._ib.reqRealTimeBars(contract, 5, "TRADES", False)
         bars.updateEvent += lambda bars, hasNewBar: (
-            callback(MarketDataBar(
-                symbol=symbol,
-                timestamp=datetime.fromtimestamp(bars[-1].time),
-                open=bars[-1].open_,
-                high=bars[-1].high,
-                low=bars[-1].low,
-                close=bars[-1].close,
-                volume=bars[-1].volume,
-                source="IBKR",
-            )) if hasNewBar else None
+            callback(
+                MarketDataBar(
+                    symbol=symbol,
+                    timestamp=datetime.fromtimestamp(bars[-1].time),
+                    open=bars[-1].open_,
+                    high=bars[-1].high,
+                    low=bars[-1].low,
+                    close=bars[-1].close,
+                    volume=bars[-1].volume,
+                    source="IBKR",
+                )
+            )
+            if hasNewBar
+            else None
         )
 
     @property
@@ -152,6 +177,7 @@ class PolygonDataConnector:
     def connect(self):
         try:
             from polygon import RESTClient
+
             self._client = RESTClient(self._api_key)
             logger.info("✅ Polygon.io connected")
         except ImportError:
@@ -179,16 +205,20 @@ class PolygonDataConnector:
                 to_date,
                 limit=50000,
             ):
-                bars.append({
-                    "timestamp": datetime.fromtimestamp(agg.timestamp / 1000),
-                    "open": agg.open,
-                    "high": agg.high,
-                    "low": agg.low,
-                    "close": agg.close,
-                    "volume": agg.volume,
-                })
+                bars.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(agg.timestamp / 1000),
+                        "open": agg.open,
+                        "high": agg.high,
+                        "low": agg.low,
+                        "close": agg.close,
+                        "volume": agg.volume,
+                    }
+                )
         except Exception as e:
-            logger.warning(f"Polygon request failed for {symbol}: {e}. Falling back to next source.")
+            logger.warning(
+                f"Polygon request failed for {symbol}: {e}. Falling back to next source."
+            )
             return pd.DataFrame()
 
         return pd.DataFrame(bars)
@@ -204,6 +234,7 @@ class FinnhubConnector:
     def connect(self):
         try:
             import finnhub
+
             self._client = finnhub.Client(api_key=self._api_key)
             logger.info("✅ Finnhub connected")
         except ImportError:
@@ -245,6 +276,7 @@ class RedditSentimentConnector:
         Returns list of {ticker, mentions, upvotes, rank, rank_24h_ago}
         """
         import httpx
+
         try:
             async with httpx.AsyncClient() as client:
                 url = self.APEWISDOM_URL.format(filter=filter_name, page=1)
@@ -296,7 +328,9 @@ class MarketDataManager:
             self.finnhub = FinnhubConnector(self._config.FINNHUB_API_KEY)
             self.finnhub.connect()
 
-        logger.info(f"Market data initialized. IBKR={'✅' if ibkr_connected else '⚠️ (not connected)'}")
+        logger.info(
+            f"Market data initialized. IBKR={'✅' if ibkr_connected else '⚠️ (not connected)'}"
+        )
 
     async def get_bars(
         self,
@@ -311,7 +345,13 @@ class MarketDataManager:
         # Try IBKR first
         if self.ibkr and self.ibkr.is_connected:
             duration_map = {1: "1 D", 7: "1 W", 30: "1 M", 90: "3 M", 365: "1 Y"}
-            bar_size_map = {"1m": "1 min", "5m": "5 mins", "15m": "15 mins", "1h": "1 hour", "1d": "1 day"}
+            bar_size_map = {
+                "1m": "1 min",
+                "5m": "5 mins",
+                "15m": "15 mins",
+                "1h": "1 hour",
+                "1d": "1 day",
+            }
             duration = next((v for k, v in duration_map.items() if lookback_days <= k), "1 M")
             bar_size = bar_size_map.get(timeframe, "5 mins")
             df = await self.ibkr.get_historical_bars(symbol, duration, bar_size, is_futures)
@@ -322,8 +362,13 @@ class MarketDataManager:
         if self.polygon:
             from_date = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
             to_date = datetime.now().strftime("%Y-%m-%d")
-            tf_map = {"1m": ("minute", 1), "5m": ("minute", 5), "15m": ("minute", 15),
-                      "1h": ("hour", 1), "1d": ("day", 1)}
+            tf_map = {
+                "1m": ("minute", 1),
+                "5m": ("minute", 5),
+                "15m": ("minute", 15),
+                "1h": ("hour", 1),
+                "1d": ("day", 1),
+            }
             timespan, multiplier = tf_map.get(timeframe, ("minute", 5))
             df = self.polygon.get_historical_bars(symbol, from_date, to_date, timespan, multiplier)
             if not df.empty:
@@ -333,6 +378,7 @@ class MarketDataManager:
         logger.warning(f"Using yfinance for {symbol} (delayed data)")
         try:
             import yfinance as yf
+
             period_map = {7: "7d", 30: "1mo", 90: "3mo", 365: "1y"}
             period = next((v for k, v in period_map.items() if lookback_days <= k), "1mo")
             interval_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "1d": "1d"}
@@ -348,12 +394,22 @@ class MarketDataManager:
             if df.empty:
                 return pd.DataFrame()
 
-            df = df.reset_index().rename(columns={
-                "Datetime": "timestamp", "Date": "timestamp",
-                "Open": "open", "High": "high", "Low": "low",
-                "Close": "close", "Volume": "volume"
-            })
-            cols = [c for c in ["timestamp", "open", "high", "low", "close", "volume"] if c in df.columns]
+            df = df.reset_index().rename(
+                columns={
+                    "Datetime": "timestamp",
+                    "Date": "timestamp",
+                    "Open": "open",
+                    "High": "high",
+                    "Low": "low",
+                    "Close": "close",
+                    "Volume": "volume",
+                }
+            )
+            cols = [
+                c
+                for c in ["timestamp", "open", "high", "low", "close", "volume"]
+                if c in df.columns
+            ]
             return df[cols]
         except Exception as e:
             logger.error(f"yfinance fallback failed for {symbol}: {e}")

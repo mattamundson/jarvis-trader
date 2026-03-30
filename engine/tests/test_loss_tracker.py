@@ -1,6 +1,7 @@
 """
 Tests for ConsecutiveLossTracker and SafetyLayer integration
 """
+
 import tempfile
 
 import pytest

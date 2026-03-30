@@ -31,6 +31,7 @@ For re-auth when token expires (every 7 days):
   python -c "import schwab; schwab.auth.easy_client(...)"
   Token stored at: engine/.schwab_token.json
 """
+
 import logging
 from pathlib import Path
 from typing import Optional
@@ -50,6 +51,7 @@ def check_schwab_ready():
             "finishing implementation, testing, and reviewing TODO items above."
         )
 
+
 # Token file lives in the engine/ directory (one level above this file)
 _TOKEN_PATH = Path(__file__).parent.parent / ".schwab_token.json"
 
@@ -67,9 +69,9 @@ class SchwabConnector:
     def __init__(self, settings, safety_layer):
         self._settings = settings
         self._safety_layer = safety_layer
-        self._client = None          # schwab.AsyncClient set in initialize()
+        self._client = None  # schwab.AsyncClient set in initialize()
         self._connected = False
-        self._account_hash: Optional[str] = None   # Schwab uses hashed account IDs
+        self._account_hash: Optional[str] = None  # Schwab uses hashed account IDs
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -87,8 +89,8 @@ class SchwabConnector:
 
         if not api_key or not app_secret:
             logger.error(
-                "Schwab credentials missing — set SCHWAB_APP_KEY and SCHWAB_APP_SECRET in .env\n"
-                "%s", self.get_auth_instructions()
+                "Schwab credentials missing — set SCHWAB_APP_KEY and SCHWAB_APP_SECRET in .env\n%s",
+                self.get_auth_instructions(),
             )
             self._connected = False
             return False
@@ -167,14 +169,16 @@ class SchwabConnector:
             positions = []
             for pos in positions_raw:
                 instrument = pos.get("instrument", {})
-                positions.append({
-                    "symbol": instrument.get("symbol"),
-                    "asset_type": instrument.get("assetType"),
-                    "quantity": pos.get("longQuantity", 0) - pos.get("shortQuantity", 0),
-                    "average_price": pos.get("averagePrice"),
-                    "market_value": pos.get("marketValue"),
-                    "unrealized_pnl": pos.get("currentDayProfitLoss"),
-                })
+                positions.append(
+                    {
+                        "symbol": instrument.get("symbol"),
+                        "asset_type": instrument.get("assetType"),
+                        "quantity": pos.get("longQuantity", 0) - pos.get("shortQuantity", 0),
+                        "average_price": pos.get("averagePrice"),
+                        "market_value": pos.get("marketValue"),
+                        "unrealized_pnl": pos.get("currentDayProfitLoss"),
+                    }
+                )
 
             return {
                 "account_hash": self._account_hash,
@@ -250,6 +254,7 @@ class SchwabConnector:
             if expiry_date:
                 # schwab-py accepts from_date / to_date as datetime.date objects
                 from datetime import date as _date  # noqa: PLC0415
+
                 parsed = _date.fromisoformat(expiry_date)
                 kwargs["from_date"] = parsed
                 kwargs["to_date"] = parsed
@@ -266,22 +271,24 @@ class SchwabConnector:
                 for exp_str, strikes in exp_map.items():
                     for strike_str, contracts in strikes.items():
                         for contract in contracts:
-                            legs.append({
-                                "option_symbol": contract.get("symbol"),
-                                "expiry": exp_str,
-                                "strike": float(strike_str),
-                                "bid": contract.get("bid"),
-                                "ask": contract.get("ask"),
-                                "last": contract.get("last"),
-                                "volume": contract.get("totalVolume"),
-                                "open_interest": contract.get("openInterest"),
-                                "delta": contract.get("delta"),
-                                "gamma": contract.get("gamma"),
-                                "theta": contract.get("theta"),
-                                "vega": contract.get("vega"),
-                                "iv": contract.get("volatility"),
-                                "in_the_money": contract.get("inTheMoney"),
-                            })
+                            legs.append(
+                                {
+                                    "option_symbol": contract.get("symbol"),
+                                    "expiry": exp_str,
+                                    "strike": float(strike_str),
+                                    "bid": contract.get("bid"),
+                                    "ask": contract.get("ask"),
+                                    "last": contract.get("last"),
+                                    "volume": contract.get("totalVolume"),
+                                    "open_interest": contract.get("openInterest"),
+                                    "delta": contract.get("delta"),
+                                    "gamma": contract.get("gamma"),
+                                    "theta": contract.get("theta"),
+                                    "vega": contract.get("vega"),
+                                    "iv": contract.get("volatility"),
+                                    "in_the_money": contract.get("inTheMoney"),
+                                }
+                            )
                 return legs
 
             return {
@@ -333,7 +340,13 @@ class SchwabConnector:
 
         logger.info(
             "Schwab order attempt | symbol=%s action=%s option=%s qty=%d type=%s limit=%s equity=$%.0f",
-            symbol, action, option_symbol, quantity, order_type, limit_price, portfolio_equity,
+            symbol,
+            action,
+            option_symbol,
+            quantity,
+            order_type,
+            limit_price,
+            portfolio_equity,
         )
 
         # ── Safety check (mandatory — ALWAYS before broker call) ──────────────
@@ -355,7 +368,8 @@ class SchwabConnector:
         if not risk_result.approved:
             logger.warning(
                 "Schwab order REJECTED by safety layer | symbol=%s reason=%s",
-                symbol, risk_result.rejection_reason,
+                symbol,
+                risk_result.rejection_reason,
             )
             return {
                 "status": "rejected",
@@ -385,13 +399,13 @@ class SchwabConnector:
             )
 
             _builders = {
-                ("buy_to_open", "limit"):    option_buy_to_open_limit,
-                ("buy_to_open", "market"):   option_buy_to_open_market,
-                ("sell_to_open", "limit"):   option_sell_to_open_limit,
-                ("sell_to_open", "market"):  option_sell_to_open_market,
-                ("buy_to_close", "limit"):   option_buy_to_close_limit,
-                ("buy_to_close", "market"):  option_buy_to_close_market,
-                ("sell_to_close", "limit"):  option_sell_to_close_limit,
+                ("buy_to_open", "limit"): option_buy_to_open_limit,
+                ("buy_to_open", "market"): option_buy_to_open_market,
+                ("sell_to_open", "limit"): option_sell_to_open_limit,
+                ("sell_to_open", "market"): option_sell_to_open_market,
+                ("buy_to_close", "limit"): option_buy_to_close_limit,
+                ("buy_to_close", "market"): option_buy_to_close_market,
+                ("sell_to_close", "limit"): option_sell_to_close_limit,
                 ("sell_to_close", "market"): option_sell_to_close_market,
             }
 
@@ -418,7 +432,10 @@ class SchwabConnector:
                 order_id = response.headers.get("Location", "").split("/")[-1]
                 logger.info(
                     "Schwab order PLACED | symbol=%s action=%s qty=%d order_id=%s",
-                    symbol, action, quantity, order_id,
+                    symbol,
+                    action,
+                    quantity,
+                    order_id,
                 )
                 return {
                     "status": "placed",
@@ -477,7 +494,8 @@ class SchwabConnector:
                     else:
                         logger.warning(
                             "Failed to cancel order %s — HTTP %s",
-                            order_id, response.status_code,
+                            order_id,
+                            response.status_code,
                         )
                 except Exception as exc:
                     logger.error("Error cancelling order %s: %s", order_id, exc)
@@ -512,17 +530,19 @@ class SchwabConnector:
                 legs = o.get("orderLegCollection", [{}])
                 first_leg = legs[0] if legs else {}
                 instrument = first_leg.get("instrument", {})
-                orders.append({
-                    "order_id": str(o.get("orderId", "")),
-                    "symbol": instrument.get("symbol"),
-                    "asset_type": instrument.get("assetType"),
-                    "quantity": o.get("quantity"),
-                    "remaining_quantity": o.get("remainingQuantity"),
-                    "order_type": o.get("orderType"),
-                    "price": o.get("price"),
-                    "status": o.get("status"),
-                    "entered_time": o.get("enteredTime"),
-                })
+                orders.append(
+                    {
+                        "order_id": str(o.get("orderId", "")),
+                        "symbol": instrument.get("symbol"),
+                        "asset_type": instrument.get("assetType"),
+                        "quantity": o.get("quantity"),
+                        "remaining_quantity": o.get("remainingQuantity"),
+                        "order_type": o.get("orderType"),
+                        "price": o.get("price"),
+                        "status": o.get("status"),
+                        "entered_time": o.get("enteredTime"),
+                    }
+                )
             return orders
 
         except Exception as exc:
@@ -540,7 +560,7 @@ class SchwabConnector:
             "\n"
             "To re-authenticate, run the following from the engine/ directory:\n"
             "\n"
-            "  python -c \"\n"
+            '  python -c "\n'
             "  import schwab\n"
             "  schwab.auth.easy_client(\n"
             "      api_key='<SCHWAB_APP_KEY>',\n"
@@ -548,7 +568,7 @@ class SchwabConnector:
             "      callback_url='https://127.0.0.1',\n"
             "      token_path='.schwab_token.json',\n"
             "  )\n"
-            "  \"\n"
+            '  "\n'
             "\n"
             "A browser window will open. Log in to Schwab and approve the app.\n"
             "The token will be saved to engine/.schwab_token.json automatically.\n"

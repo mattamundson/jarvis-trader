@@ -17,6 +17,7 @@ The pipeline is non-blocking at each stage — if an analyst fails it returns
 a neutral/empty report and the pipeline continues. Failures are logged and
 captured in pipeline_result["errors"].
 """
+
 import asyncio
 import logging
 import uuid
@@ -31,6 +32,7 @@ try:
         get_cached_signal,
         should_use_cache,
     )
+
     _CACHE_AVAILABLE = True
 except Exception:  # pragma: no cover — optional dependency
     _CACHE_AVAILABLE = False
@@ -115,7 +117,9 @@ class TradingPipeline:
             if await should_use_cache(symbol):
                 cached = await get_cached_signal(symbol)
                 if cached:
-                    logger.info(f"[Pipeline] {symbol} cache hit — skipping full pipeline (saves LLM calls)")
+                    logger.info(
+                        f"[Pipeline] {symbol} cache hit — skipping full pipeline (saves LLM calls)"
+                    )
                     cached["cache_hit"] = True
                     # Update completed_at timestamp for response
                     cached["completed_at"] = datetime.now().isoformat()
@@ -134,7 +138,9 @@ class TradingPipeline:
         # ── Stage 3: Trader Decision ───────────────────────────────────────
 
         safety_status = self._safety.get_status()
-        trade_decision = await self._run_trader(symbol, debate_result, analyst_reports, safety_status, errors)
+        trade_decision = await self._run_trader(
+            symbol, debate_result, analyst_reports, safety_status, errors
+        )
         pipeline_result["trade_decision"] = trade_decision
 
         # ── Stage 4: Risk Manager Review ──────────────────────────────────
@@ -142,7 +148,9 @@ class TradingPipeline:
         # We always pass an empty portfolio if none is available — callers should
         # inject a real portfolio dict via a wrapper or subclass
         portfolio = await self._get_portfolio()
-        risk_decision = await self._run_risk_manager(trade_decision, safety_status, portfolio, errors)
+        risk_decision = await self._run_risk_manager(
+            trade_decision, safety_status, portfolio, errors
+        )
         pipeline_result["risk_decision"] = risk_decision
 
         # ── Stage 5: Fund Manager (only if Risk Manager approved) ──────────
@@ -201,6 +209,7 @@ class TradingPipeline:
         # Emit WebSocket event for pipeline completion
         try:
             from websocket.events import emit_pipeline_complete
+
             timing = {
                 "started_at": started_at.isoformat(),
                 "completed_at": completed_at.isoformat(),
@@ -236,7 +245,11 @@ class TradingPipeline:
                 elif isinstance(report, dict):
                     return report
                 else:
-                    return {"signal": 0.0, "confidence": 0.0, "summary": f"{name} returned unexpected type"}
+                    return {
+                        "signal": 0.0,
+                        "confidence": 0.0,
+                        "summary": f"{name} returned unexpected type",
+                    }
             except Exception as e:
                 err = f"{name} analyst failed: {e}"
                 logger.warning(f"[Pipeline] {err}")
@@ -435,7 +448,9 @@ class TradingPipeline:
                     "timestamp": datetime.now().isoformat(),
                 }
 
-            fund = await fund_manager.approve(trade_decision, risk_decision, portfolio, open_positions)
+            fund = await fund_manager.approve(
+                trade_decision, risk_decision, portfolio, open_positions
+            )
             return fund.to_dict() if hasattr(fund, "to_dict") else fund
 
         except Exception as e:
@@ -453,7 +468,9 @@ class TradingPipeline:
                 "timestamp": datetime.now().isoformat(),
             }
 
-    def _resolve_final_action(self, trade_decision: dict, risk_decision: dict, fund_decision: dict) -> tuple:
+    def _resolve_final_action(
+        self, trade_decision: dict, risk_decision: dict, fund_decision: dict
+    ) -> tuple:
         """
         Resolve final action from multi-stage decisions.
 
@@ -479,7 +496,9 @@ class TradingPipeline:
             action = fund_decision.get("action", "HOLD").lower()
             quantity = fund_decision.get("contracts", fund_decision.get("quantity", 0))
             requires_human = fund_decision.get("human_approval_required", False)
-            logger.info(f"[Resolution] Fund approved → {action} qty={quantity} human={requires_human}")
+            logger.info(
+                f"[Resolution] Fund approved → {action} qty={quantity} human={requires_human}"
+            )
             return action, quantity, requires_human
 
         # Fallback: use trade decision if we got here (risk approved but no fund decision)
@@ -515,7 +534,9 @@ class TradingPipeline:
                 logger.warning(f"[Pipeline] Portfolio fetch failed: {e}")
 
         # Safe default — Risk Manager and Fund Manager handle missing data gracefully
-        equity = self._safety._current_equity if hasattr(self._safety, "_current_equity") else 10_000.0
+        equity = (
+            self._safety._current_equity if hasattr(self._safety, "_current_equity") else 10_000.0
+        )
         return {
             "total_value": equity,
             "available_cash": equity * 0.5,
@@ -573,14 +594,17 @@ class TradingPipeline:
                 await repository.insert_decision(
                     agent_name="debate",
                     symbol=symbol,
-                    signal=debate_result.get("bull_score", 0.5) - debate_result.get("bear_score", 0.5),
+                    signal=debate_result.get("bull_score", 0.5)
+                    - debate_result.get("bear_score", 0.5),
                     confidence=0.5,  # Debate doesn't have a direct confidence
                     reasoning=debate_result.get("summary", ""),
                 )
 
             # Log trader decision (main decision point)
             if trade_decision and isinstance(trade_decision, dict):
-                final_conviction = fund_decision.get("final_conviction", 0.0) if fund_decision else 0.0
+                final_conviction = (
+                    fund_decision.get("final_conviction", 0.0) if fund_decision else 0.0
+                )
                 await repository.insert_decision(
                     agent_name="trader",
                     symbol=symbol,

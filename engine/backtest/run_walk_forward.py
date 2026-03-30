@@ -21,6 +21,7 @@ Core Metrics:
     - Parameter Stability: Do optimal params vary across windows?
     - Degradation Profile: Consistent decay or erratic performance?
 """
+
 from __future__ import annotations
 
 import sys

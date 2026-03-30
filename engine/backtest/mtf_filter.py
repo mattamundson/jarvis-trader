@@ -11,6 +11,7 @@ Usage:
     aligned = mtf.check_alignment(df_1h, df_4h)
     # aligned is a boolean Series indexed like df_1h
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -54,9 +55,7 @@ class MTFFilter:
         """
         self.cross_lookback = cross_lookback
 
-    def _align_htf_to_ltf(
-        self, df_1h: pd.DataFrame, df_4h: pd.DataFrame
-    ) -> pd.DataFrame:
+    def _align_htf_to_ltf(self, df_1h: pd.DataFrame, df_4h: pd.DataFrame) -> pd.DataFrame:
         """
         Forward-fill 4h indicator values onto the 1h index.
 
@@ -70,16 +69,10 @@ class MTFFilter:
 
         # Rolling lookback: did a cross happen within the last N 4h bars?
         htf["htf_recent_cross_up"] = (
-            htf["htf_stc_cross_up"]
-            .rolling(self.cross_lookback, min_periods=1)
-            .max()
-            .astype(bool)
+            htf["htf_stc_cross_up"].rolling(self.cross_lookback, min_periods=1).max().astype(bool)
         )
         htf["htf_recent_cross_down"] = (
-            htf["htf_stc_cross_down"]
-            .rolling(self.cross_lookback, min_periods=1)
-            .max()
-            .astype(bool)
+            htf["htf_stc_cross_down"].rolling(self.cross_lookback, min_periods=1).max().astype(bool)
         )
 
         # Reindex onto 1h timestamps using forward-fill
@@ -125,20 +118,14 @@ class MTFFilter:
         # ---- LONG entries ----
         is_long_entry = is_entry & bias.isin(self.LONG_BIASES)
         if is_long_entry.any():
-            long_allow = (
-                htf_signal.isin(self.LONG_ALLOW_STATES)
-                | htf_cross_up
-            )
+            long_allow = htf_signal.isin(self.LONG_ALLOW_STATES) | htf_cross_up
             # Block long entries where 4h does NOT support longs
             aligned[is_long_entry & ~long_allow] = False
 
         # ---- SHORT entries ----
         is_short_entry = is_entry & bias.isin(self.SHORT_BIASES)
         if is_short_entry.any():
-            short_allow = (
-                htf_signal.isin(self.SHORT_ALLOW_STATES)
-                | htf_cross_down
-            )
+            short_allow = htf_signal.isin(self.SHORT_ALLOW_STATES) | htf_cross_down
             # Block short entries where 4h does NOT support shorts
             aligned[is_short_entry & ~short_allow] = False
 

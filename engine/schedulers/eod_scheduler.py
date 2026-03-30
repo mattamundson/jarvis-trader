@@ -7,6 +7,7 @@ Schedule
 * EOD snapshot  : 3:05 PM CT (20:05 UTC) Mon–Fri — captures final daily P&L
 * Weekly review : 3:30 PM CT (20:30 UTC) Friday  — 5-day rolling summary
 """
+
 from __future__ import annotations
 
 import logging
@@ -413,10 +414,7 @@ class EODScheduler:
             ]
             for level, label, advice in thresholds:
                 if state.vix_value >= level:
-                    msg = (
-                        f"VIX Alert: {state.vix_value:.1f} ({label})\n"
-                        f"{advice}\nJARVIS TRADER"
-                    )
+                    msg = f"VIX Alert: {state.vix_value:.1f} ({label})\n{advice}\nJARVIS TRADER"
                     await self._notifier.send(msg)
                     break
         except Exception as e:
@@ -545,7 +543,9 @@ class EODScheduler:
             return
 
         pnl_sign = "+" if summary["total_pnl"] >= 0 else ""
-        pf_str = f"{summary['profit_factor']:.2f}" if summary["profit_factor"] is not None else "N/A"
+        pf_str = (
+            f"{summary['profit_factor']:.2f}" if summary["profit_factor"] is not None else "N/A"
+        )
         win_pct = int(summary["win_rate"] * 100)
 
         lines = [

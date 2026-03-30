@@ -19,6 +19,7 @@ Usage:
     clf = RegimeClassifier()
     df = clf.classify(df)   # adds 'regime_type', 'adaptive_stc_os', 'adaptive_stc_ob' columns
 """
+
 from __future__ import annotations
 
 from typing import Dict, Tuple
@@ -31,9 +32,9 @@ import pandas as pd
 # RANGING benefits from STC_OS=19/OB=83 (more frequent crossovers match the regime).
 
 REGIME_PARAMS: Dict[str, Tuple[float, float]] = {
-    "TRENDING":  (15, 92),   # STC_OS, STC_OB — strict entry, wide hold
-    "RANGING":   (19, 83),   # looser entry catches mean-reversion swings
-    "VOLATILE":  (15, 88),   # default — entries suppressed by ATR gate in backtester
+    "TRENDING": (15, 92),  # STC_OS, STC_OB — strict entry, wide hold
+    "RANGING": (19, 83),  # looser entry catches mean-reversion swings
+    "VOLATILE": (15, 88),  # default — entries suppressed by ATR gate in backtester
 }
 
 
@@ -113,6 +114,7 @@ class RegimeClassifier:
         Value < 0.7 = compressed volatility (typically precedes breakout).
         """
         from backtest.indicators import wilder_atr
+
         atr = wilder_atr(high, low, close, period=self.atr_period)
         atr_median = atr.rolling(self.atr_lookback).median()
         return (atr / atr_median.replace(0, np.nan)).fillna(1.0)
@@ -133,13 +135,13 @@ class RegimeClassifier:
         """
         df = df.copy()
 
-        spread = self._ema_spread(df['close'])
-        bbw    = self._bb_width(df['close'])
-        atr_n  = self._normalized_atr(df['high'], df['low'], df['close'])
+        spread = self._ema_spread(df["close"])
+        bbw = self._bb_width(df["close"])
+        atr_n = self._normalized_atr(df["high"], df["low"], df["close"])
 
-        df['ema_spread']   = spread
-        df['bb_width_norm'] = bbw
-        df['atr_norm']     = atr_n
+        df["ema_spread"] = spread
+        df["bb_width_norm"] = bbw
+        df["atr_norm"] = atr_n
 
         # ── Vote-based classification ─────────────────────────────────────────
         # Signal 1: EMA spread votes TRENDING if spread > threshold
@@ -157,27 +159,27 @@ class RegimeClassifier:
         # TRENDING if 2+ trending votes and not volatile
         # RANGING otherwise
         trending_votes = vote_trending + vote_bb_trending
-        regime = pd.Series('RANGING', index=df.index)
-        regime[trending_votes >= 2] = 'TRENDING'
-        regime[vote_volatile == 1]  = 'VOLATILE'
+        regime = pd.Series("RANGING", index=df.index)
+        regime[trending_votes >= 2] = "TRENDING"
+        regime[vote_volatile == 1] = "VOLATILE"
 
-        df['regime_type'] = regime
+        df["regime_type"] = regime
 
         # ── Map to adaptive STC parameters ──────────────────────────────────
-        df['adaptive_stc_os'] = regime.map(
-            {k: v[0] for k, v in REGIME_PARAMS.items()}
-        ).fillna(15).astype(float)
+        df["adaptive_stc_os"] = (
+            regime.map({k: v[0] for k, v in REGIME_PARAMS.items()}).fillna(15).astype(float)
+        )
 
-        df['adaptive_stc_ob'] = regime.map(
-            {k: v[1] for k, v in REGIME_PARAMS.items()}
-        ).fillna(88).astype(float)
+        df["adaptive_stc_ob"] = (
+            regime.map({k: v[1] for k, v in REGIME_PARAMS.items()}).fillna(88).astype(float)
+        )
 
         return df
 
     def regime_summary(self, df: pd.DataFrame) -> Dict[str, float]:
         """Return percentage breakdown of regimes in df."""
-        if 'regime_type' not in df.columns:
+        if "regime_type" not in df.columns:
             df = self.classify(df)
-        counts = df['regime_type'].value_counts()
+        counts = df["regime_type"].value_counts()
         total = len(df)
         return {k: round(v / total * 100, 1) for k, v in counts.items()}

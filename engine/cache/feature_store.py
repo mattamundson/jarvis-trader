@@ -107,10 +107,7 @@ async def invalidate_indicators(
                 cursor = 0
                 deleted = 0
                 while True:
-                    cursor, keys = await redis_client_obj.scan(
-                        cursor,
-                        match="jarvis:indicators:*"
-                    )
+                    cursor, keys = await redis_client_obj.scan(cursor, match="jarvis:indicators:*")
                     if keys:
                         await redis_client_obj.delete(*keys)
                         deleted += len(keys)

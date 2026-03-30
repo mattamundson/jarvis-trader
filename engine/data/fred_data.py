@@ -4,6 +4,7 @@ FRED Economic Data
 Federal Reserve Economic Data — free, no API key needed via fredapi.
 Provides macro context for trading decisions.
 """
+
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -14,17 +15,17 @@ logger = logging.getLogger(__name__)
 
 # Key FRED series for trading context
 FRED_SERIES = {
-    "fed_funds_rate": "FEDFUNDS",       # Federal Funds Rate
-    "ten_year_yield": "GS10",           # 10-Year Treasury Yield
-    "two_year_yield": "GS2",            # 2-Year Treasury Yield
-    "vix": "VIXCLS",                    # CBOE Volatility Index
-    "unemployment": "UNRATE",           # Unemployment Rate
-    "cpi_yoy": "CPIAUCSL",             # Consumer Price Index (YoY inflation)
-    "pce_inflation": "PCEPI",          # PCE Price Index (Fed's preferred)
-    "gdp_growth": "A191RL1Q225SBEA",   # Real GDP Growth Rate (quarterly)
-    "yield_curve_2_10": None,          # Computed: 10Y - 2Y spread
-    "ism_manufacturing": "MANEMP",     # Manufacturing Employment proxy
-    "retail_sales": "RSXFS",          # Retail Sales ex-Food Services
+    "fed_funds_rate": "FEDFUNDS",  # Federal Funds Rate
+    "ten_year_yield": "GS10",  # 10-Year Treasury Yield
+    "two_year_yield": "GS2",  # 2-Year Treasury Yield
+    "vix": "VIXCLS",  # CBOE Volatility Index
+    "unemployment": "UNRATE",  # Unemployment Rate
+    "cpi_yoy": "CPIAUCSL",  # Consumer Price Index (YoY inflation)
+    "pce_inflation": "PCEPI",  # PCE Price Index (Fed's preferred)
+    "gdp_growth": "A191RL1Q225SBEA",  # Real GDP Growth Rate (quarterly)
+    "yield_curve_2_10": None,  # Computed: 10Y - 2Y spread
+    "ism_manufacturing": "MANEMP",  # Manufacturing Employment proxy
+    "retail_sales": "RSXFS",  # Retail Sales ex-Food Services
 }
 
 
@@ -43,6 +44,7 @@ class FREDDataService:
     def _get_client(self):
         try:
             from fredapi import Fred
+
             if self._api_key:
                 return Fred(api_key=self._api_key)
             # fredapi works without a key for most series (rate-limited)
@@ -101,11 +103,27 @@ class FREDDataService:
         vix = self.get_latest("VIXCLS")
         unemployment = self.get_latest("UNRATE")
 
-        snapshot["fed_funds_rate"] = {"value": fed_funds, "unit": "%", "description": "Federal Funds Rate"}
-        snapshot["ten_year_yield"] = {"value": ten_year, "unit": "%", "description": "10-Year Treasury Yield"}
-        snapshot["two_year_yield"] = {"value": two_year, "unit": "%", "description": "2-Year Treasury Yield"}
+        snapshot["fed_funds_rate"] = {
+            "value": fed_funds,
+            "unit": "%",
+            "description": "Federal Funds Rate",
+        }
+        snapshot["ten_year_yield"] = {
+            "value": ten_year,
+            "unit": "%",
+            "description": "10-Year Treasury Yield",
+        }
+        snapshot["two_year_yield"] = {
+            "value": two_year,
+            "unit": "%",
+            "description": "2-Year Treasury Yield",
+        }
         snapshot["vix"] = {"value": vix, "unit": "index", "description": "CBOE Volatility Index"}
-        snapshot["unemployment"] = {"value": unemployment, "unit": "%", "description": "Unemployment Rate"}
+        snapshot["unemployment"] = {
+            "value": unemployment,
+            "unit": "%",
+            "description": "Unemployment Rate",
+        }
 
         # Derived
         if ten_year and two_year:
@@ -176,8 +194,7 @@ class FREDDataService:
         if data is None:
             return []
         return [
-            {"date": str(idx.date()), "value": float(val)}
-            for idx, val in data.dropna().items()
+            {"date": str(idx.date()), "value": float(val)} for idx, val in data.dropna().items()
         ]
 
 

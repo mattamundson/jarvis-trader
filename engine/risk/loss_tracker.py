@@ -10,6 +10,7 @@ This allows loss tracking to survive application restarts.
 Design principle: Non-LLM deterministic rules. All position size
 reductions are hardcoded based on consecutive loss count.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 # ── Data classes ───────────────────────────────────────────────────────────
 
+
 @dataclass
 class LossTrackerState:
     """
@@ -36,6 +38,7 @@ class LossTrackerState:
         last_trade_timestamp: When the last trade was executed
         halt_until: Timestamp when trading can resume (if halted)
     """
+
     global_consecutive_losses: int = 0
     symbol_losses: dict[str, int] = field(default_factory=dict)
     last_trade_symbol: Optional[str] = None
@@ -160,10 +163,7 @@ class ConsecutiveLossTracker:
                     f"Reset global {old_global}→0, symbol {old_symbol}→0"
                 )
             else:
-                logger.info(
-                    f"Trade WINNER: {symbol} PnL=${pnl:.2f} | "
-                    f"Reset global {old_global}→0"
-                )
+                logger.info(f"Trade WINNER: {symbol} PnL=${pnl:.2f} | Reset global {old_global}→0")
         else:
             # Loser increments both counters
             self._state.global_consecutive_losses += 1
@@ -279,8 +279,7 @@ class ConsecutiveLossTracker:
         losses = self._state.global_consecutive_losses
         halt_until = self._state.halt_until
         return (
-            f"Consecutive loss limit reached ({losses} losses) — "
-            f"trading paused until {halt_until}"
+            f"Consecutive loss limit reached ({losses} losses) — trading paused until {halt_until}"
         )
 
     # ── Reset API ──────────────────────────────────────────────────────────
@@ -300,14 +299,14 @@ class ConsecutiveLossTracker:
             self._state.symbol_losses = {}  # Clear all symbol losses
             self._state.halt_until = None  # Also clear halt
             self._save_state()
-            logger.warning(f"[MANUAL RESET] Global consecutive losses: {old_global} → 0 (all symbols reset)")
+            logger.warning(
+                f"[MANUAL RESET] Global consecutive losses: {old_global} → 0 (all symbols reset)"
+            )
         else:
             old_symbol = self._state.symbol_losses.get(symbol, 0)
             self._state.symbol_losses[symbol] = 0
             self._save_state()
-            logger.warning(
-                f"[MANUAL RESET] Symbol {symbol} consecutive losses: {old_symbol} → 0"
-            )
+            logger.warning(f"[MANUAL RESET] Symbol {symbol} consecutive losses: {old_symbol} → 0")
 
     # ── Status Report ──────────────────────────────────────────────────────
 

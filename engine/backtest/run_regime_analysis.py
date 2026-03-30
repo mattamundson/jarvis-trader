@@ -10,6 +10,7 @@ Usage:
       - regime_analysis.json (metrics per regime)
       - regime_analysis.html (visualization)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,7 +28,11 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--results-file", required=True, help="Path to backtest results JSON")
-    parser.add_argument("--data-file", default=None, help="Path to OHLCV CSV (optional; uses embedded regime if not provided)")
+    parser.add_argument(
+        "--data-file",
+        default=None,
+        help="Path to OHLCV CSV (optional; uses embedded regime if not provided)",
+    )
     parser.add_argument("--output-dir", default=None, help="Output directory (default: results/)")
     args = parser.parse_args()
 
@@ -48,17 +53,17 @@ def main():
 
     # Load backtest results
     print("Loading backtest results...")
-    with open(results_path, 'r') as f:
+    with open(results_path, "r") as f:
         results = json.load(f)
 
     # Prefer full_metrics trades which have regime data; fall back to trades_list
-    if 'full_metrics' in results and 'trades' in results['full_metrics']:
-        trades = results['full_metrics']['trades']
+    if "full_metrics" in results and "trades" in results["full_metrics"]:
+        trades = results["full_metrics"]["trades"]
     else:
-        trades = results.get('trades_list', [])
+        trades = results.get("trades_list", [])
 
-    symbol = results.get('symbol', 'UNKNOWN')
-    interval = results.get('interval', '1h')
+    symbol = results.get("symbol", "UNKNOWN")
+    interval = results.get("interval", "1h")
 
     if not trades:
         print("[ERROR] No trades found in results file")
@@ -77,12 +82,12 @@ def main():
             try:
                 df = pd.read_csv(data_path)
                 # Try to parse timestamp column
-                if 'timestamp' in df.columns:
-                    df['timestamp'] = pd.to_datetime(df['timestamp'])
-                    df.set_index('timestamp', inplace=True)
-                elif 'datetime' in df.columns:
-                    df['datetime'] = pd.to_datetime(df['datetime'])
-                    df.set_index('datetime', inplace=True)
+                if "timestamp" in df.columns:
+                    df["timestamp"] = pd.to_datetime(df["timestamp"])
+                    df.set_index("timestamp", inplace=True)
+                elif "datetime" in df.columns:
+                    df["datetime"] = pd.to_datetime(df["datetime"])
+                    df.set_index("datetime", inplace=True)
                 else:
                     # Try to parse index
                     df.index = pd.to_datetime(df.index)
@@ -102,7 +107,7 @@ def main():
     print("Analyzing regimes...")
     analyzer = RegimeAnalyzer(df)
     # Use embedded regime data if available (from full_metrics.trades)
-    analyzer.analyze_trades(trades, regime_column='regime')
+    analyzer.analyze_trades(trades, regime_column="regime")
 
     print(analyzer.summary())
 
@@ -114,7 +119,7 @@ def main():
     print(f"Best regime: {sources.get('best_regime')} (PF {sources.get('best_pf')})")
     print(f"Worst regime: {sources.get('worst_regime')} (PF {sources.get('worst_pf')})")
     print("\nRegime distribution:")
-    for regime, pct in sources.get('regime_distribution', {}).items():
+    for regime, pct in sources.get("regime_distribution", {}).items():
         print(f"  {regime}: {pct:.1%}")
 
     # Determine output paths
@@ -130,14 +135,14 @@ def main():
     json_path = output_dir / json_filename
 
     json_data = {
-        'symbol': symbol,
-        'interval': interval,
-        'analysis_date': datetime.now().isoformat(),
-        'regime_metrics': analyzer.to_dict(),
-        'edge_sources': sources,
+        "symbol": symbol,
+        "interval": interval,
+        "analysis_date": datetime.now().isoformat(),
+        "regime_metrics": analyzer.to_dict(),
+        "edge_sources": sources,
     }
 
-    with open(json_path, 'w') as f:
+    with open(json_path, "w") as f:
         json.dump(json_data, f, indent=2)
 
     print(f"\nJSON results saved to: {json_path}")
@@ -147,7 +152,7 @@ def main():
     html_path = output_dir / html_filename
 
     html_content = _generate_html(symbol, interval, analyzer, sources)
-    with open(html_path, 'w') as f:
+    with open(html_path, "w") as f:
         f.write(html_content)
 
     print(f"HTML visualization saved to: {html_path}")
@@ -157,7 +162,13 @@ def main():
 def _generate_html(symbol: str, interval: str, analyzer, sources: dict) -> str:
     """Generate HTML visualization of regime analysis."""
     regimes = list(analyzer.regime_stats.keys())
-    regimes_sorted = ['TRENDING_UP', 'TRENDING_DOWN', 'RANGE_BOUND', 'HIGH_VOLATILITY', 'TRANSITION']
+    regimes_sorted = [
+        "TRENDING_UP",
+        "TRENDING_DOWN",
+        "RANGE_BOUND",
+        "HIGH_VOLATILITY",
+        "TRANSITION",
+    ]
     regimes = [r for r in regimes_sorted if r in analyzer.regime_stats]
 
     # Extract data for charts
@@ -168,13 +179,13 @@ def _generate_html(symbol: str, interval: str, analyzer, sources: dict) -> str:
 
     # Color scheme
     colors = {
-        'TRENDING_UP': '#2ecc71',
-        'TRENDING_DOWN': '#e74c3c',
-        'RANGE_BOUND': '#f39c12',
-        'HIGH_VOLATILITY': '#9b59b6',
-        'TRANSITION': '#95a5a6',
+        "TRENDING_UP": "#2ecc71",
+        "TRENDING_DOWN": "#e74c3c",
+        "RANGE_BOUND": "#f39c12",
+        "HIGH_VOLATILITY": "#9b59b6",
+        "TRANSITION": "#95a5a6",
     }
-    regime_colors = [colors.get(r, '#95a5a6') for r in regimes]
+    regime_colors = [colors.get(r, "#95a5a6") for r in regimes]
 
     html = f"""
 <!DOCTYPE html>
@@ -337,13 +348,13 @@ def _generate_html(symbol: str, interval: str, analyzer, sources: dict) -> str:
             <div class="summary-grid">
                 <div class="summary-card">
                     <h3>Best Regime</h3>
-                    <div class="value">{sources.get('best_regime', 'N/A')}</div>
-                    <p style="color: #2ecc71; margin-top: 10px;">PF {sources.get('best_pf', 0)}</p>
+                    <div class="value">{sources.get("best_regime", "N/A")}</div>
+                    <p style="color: #2ecc71; margin-top: 10px;">PF {sources.get("best_pf", 0)}</p>
                 </div>
                 <div class="summary-card">
                     <h3>Worst Regime</h3>
-                    <div class="value">{sources.get('worst_regime', 'N/A')}</div>
-                    <p style="color: #e74c3c; margin-top: 10px;">PF {sources.get('worst_pf', 0)}</p>
+                    <div class="value">{sources.get("worst_regime", "N/A")}</div>
+                    <p style="color: #e74c3c; margin-top: 10px;">PF {sources.get("worst_pf", 0)}</p>
                 </div>
                 <div class="summary-card">
                     <h3>Total Trades</h3>
@@ -403,8 +414,8 @@ def _generate_html(symbol: str, interval: str, analyzer, sources: dict) -> str:
 
     for regime in regimes:
         m = analyzer.regime_stats[regime]
-        pf_class = 'positive' if m.profit_factor > 1.0 else 'negative'
-        pnl_class = 'positive' if m.total_pnl > 0 else 'negative'
+        pf_class = "positive" if m.profit_factor > 1.0 else "negative"
+        pnl_class = "positive" if m.total_pnl > 0 else "negative"
 
         html += f"""
                             <tr>
@@ -420,7 +431,8 @@ def _generate_html(symbol: str, interval: str, analyzer, sources: dict) -> str:
                             </tr>
 """
 
-    html += """
+    html += (
+        """
                         </tbody>
                     </table>
                 </div>
@@ -433,12 +445,24 @@ def _generate_html(symbol: str, interval: str, analyzer, sources: dict) -> str:
     </div>
 
     <script>
-        const regimes = """ + json.dumps(regimes) + """;
-        const tradeCounts = """ + json.dumps(trade_counts) + """;
-        const winRates = """ + json.dumps(win_rates) + """;
-        const pfs = """ + json.dumps(pfs) + """;
-        const pnls = """ + json.dumps(pnls) + """;
-        const colors = """ + json.dumps(regime_colors) + """;
+        const regimes = """
+        + json.dumps(regimes)
+        + """;
+        const tradeCounts = """
+        + json.dumps(trade_counts)
+        + """;
+        const winRates = """
+        + json.dumps(win_rates)
+        + """;
+        const pfs = """
+        + json.dumps(pfs)
+        + """;
+        const pnls = """
+        + json.dumps(pnls)
+        + """;
+        const colors = """
+        + json.dumps(regime_colors)
+        + """;
 
         // Profit Factor Chart
         new Chart(document.getElementById('pfChart'), {
@@ -542,9 +566,10 @@ def _generate_html(symbol: str, interval: str, analyzer, sources: dict) -> str:
 </body>
 </html>
 """
+    )
 
     return html
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

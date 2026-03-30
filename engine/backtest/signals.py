@@ -8,24 +8,13 @@ Layers wired:
   3 — Bias          (layer3_bias)
   4 — Entry Timing  (layer4_entry)
 """
+
 from __future__ import annotations
 
 from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
-
-# Per-instrument optimized parameters (research-validated)
-# Format: (STC_OS, STC_OB, STOP_ATR, T1_ATR, T2_ATR, T3_ATR, REGIME_FILTER)
-# 7th element (REGIME_FILTER): True = block EXHAUSTED/COMPRESSION entries, False = allow them
-INSTRUMENT_PARAMS: Dict[str, tuple] = {
-    "MNQ": (15, 92, 0.70, 1.00, 1.80, 2.618, True),    # STC_OB=92 filters Nasdaq noise; 86 trades, PF 1.51
-    "MCL": (15, 83, 0.90, 1.50, 2.618, 4.00, True),    # Stop=0.90, T1=1.50 → R:R=1.67; 65 trades, PF 1.81
-    "MGC": (17, 88, 0.30, 1.50, 2.618, 4.00, True),    # Gold: tight stop + wide T1 matches trend length
-    "SPY": (15, 88, 0.30, 1.00, 1.618, 2.618, True),   # SPY 1h optimizer consensus (2024-06→2026-03): PF 3.79, 23 trades
-    "MES": (15, 83, 0.50, 2.00, 3.236, 4.00, False),   # MES 1h optimizer consensus (2024-06→2026-03): PF 1.69, 23 trades
-    # Defaults used for all other symbols: STC_OS=15, STC_OB=83, Stop=0.70, T1=1.00, regime ON
-}
 
 from .indicators import (
     cci,
@@ -39,6 +28,62 @@ from .indicators import (
     wilder_atr,
 )
 
+# Per-instrument optimized parameters (research-validated)
+# Format: (STC_OS, STC_OB, STOP_ATR, T1_ATR, T2_ATR, T3_ATR, REGIME_FILTER)
+# 7th element (REGIME_FILTER): True = block EXHAUSTED/COMPRESSION entries, False = allow them
+INSTRUMENT_PARAMS: Dict[str, tuple] = {
+    "MNQ": (
+        15,
+        92,
+        0.70,
+        1.00,
+        1.80,
+        2.618,
+        True,
+    ),  # STC_OB=92 filters Nasdaq noise; 86 trades, PF 1.51
+    "MCL": (
+        15,
+        83,
+        0.90,
+        1.50,
+        2.618,
+        4.00,
+        True,
+    ),  # Stop=0.90, T1=1.50 → R:R=1.67; 65 trades, PF 1.81
+    "MGC": (
+        17,
+        88,
+        0.30,
+        1.50,
+        2.618,
+        4.00,
+        True,
+    ),  # Gold: tight stop + wide T1 matches trend length
+    "SPY": (
+        15,
+        88,
+        0.30,
+        1.00,
+        1.618,
+        2.618,
+        True,
+    ),  # SPY 1h optimizer consensus (2024-06→2026-03): PF 3.79, 23 trades
+    "MES": (
+        15,
+        83,
+        0.50,
+        2.00,
+        3.236,
+        4.00,
+        False,
+    ),  # MES 1h optimizer consensus (2024-06→2026-03): PF 1.69, 23 trades
+    # Defaults used for all other symbols: STC_OS=15, STC_OB=83, Stop=0.70, T1=1.00, regime ON
+}
+
+# Default STC thresholds
+STC_OS = 15  # Oversold threshold
+STC_OB = 83  # Overbought threshold
+
 
 def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -49,13 +94,14 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     # ── ATR (Wilder's, period=14) ─────────────────────────────────────────
-    df['atr'] = wilder_atr(df['high'], df['low'], df['close'], period=14)
+    df["atr"] = wilder_atr(df["high"], df["low"], df["close"], period=14)
 
     # ── KAMA (period=10) ──────────────────────────────────────────────────
-    df['kama_val'] = kama(df['close'], period=10)
-    df['kama_signal'] = np.where(
-        df['close'] > df['kama_val'], 'long',
-        np.where(df['close'] < df['kama_val'], 'short', 'neutral')
+    df["kama_val"] = kama(df["close"], period=10)
+    df["kama_signal"] = np.where(
+        df["close"] > df["kama_val"],
+        "long",
+        np.where(df["close"] < df["kama_val"], "short", "neutral"),
     )
 
     # ── STC (fast=23, slow=50, K=10, D=3) ────────────────────────────────
@@ -67,159 +113,159 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # Key difference: 1h uses a lower oversold threshold (15 vs 23) for earlier
     # entries, and a tighter T1 (1.5 vs 2.0 ATR) appropriate for intraday moves.
     # OB threshold (83) and stop (0.70 ATR) are consistent across timeframes.
-    STC_OS = 15   # 1h optimal (daily: 23)
-    STC_OB = 83   # consistent across timeframes
+    STC_OS = 15  # 1h optimal (daily: 23)
+    STC_OB = 83  # consistent across timeframes
 
-    df['stc_val'] = stc(df['close'], fast=23, slow=50, k_period=10, d_period=3)
+    df["stc_val"] = stc(df["close"], fast=23, slow=50, k_period=10, d_period=3)
 
     def _stc_signal(row):
-        val = row['stc_val']
-        prev_val = row.get('stc_prev', 50)
+        val = row["stc_val"]
+        prev_val = row.get("stc_prev", 50)
         if val < STC_OS:
-            return 'oversold'
+            return "oversold"
         elif val > STC_OB:
-            return 'overbought'
+            return "overbought"
         elif val > prev_val:
-            return 'rising'
+            return "rising"
         elif val < prev_val:
-            return 'falling'
-        return 'neutral'
+            return "falling"
+        return "neutral"
 
-    df['stc_prev'] = df['stc_val'].shift(1).fillna(50)
-    df['stc_signal'] = df.apply(_stc_signal, axis=1)
-    df['stc_cross_up'] = (df['stc_val'] > STC_OS) & (df['stc_prev'] <= STC_OS)
-    df['stc_cross_down'] = (df['stc_val'] < STC_OB) & (df['stc_prev'] >= STC_OB)
+    df["stc_prev"] = df["stc_val"].shift(1).fillna(50)
+    df["stc_signal"] = df.apply(_stc_signal, axis=1)
+    df["stc_cross_up"] = (df["stc_val"] > STC_OS) & (df["stc_prev"] <= STC_OS)
+    df["stc_cross_down"] = (df["stc_val"] < STC_OB) & (df["stc_prev"] >= STC_OB)
 
     # ── Phase Oscillator ──────────────────────────────────────────────────
     phase, compression = phase_oscillator(
-        df['close'], df['high'], df['low'],
-        ema_len=21, atr_len=14, bb_len=21, bb_std=2.0
+        df["close"], df["high"], df["low"], ema_len=21, atr_len=14, bb_len=21, bb_std=2.0
     )
-    df['phase_val'] = phase
-    df['phase_compression'] = compression
+    df["phase_val"] = phase
+    df["phase_compression"] = compression
 
     def _phase_signal(row):
-        p = row['phase_val']
-        if row['phase_compression']:
-            return 'compression'
+        p = row["phase_val"]
+        if row["phase_compression"]:
+            return "compression"
         elif p >= 61.8:
-            return 'extended_up'
+            return "extended_up"
         elif p <= -61.8:
-            return 'extended_down'
+            return "extended_down"
         elif p > 23.6:
-            return 'bullish'
+            return "bullish"
         elif p < -23.6:
-            return 'bearish'
-        return 'neutral'
+            return "bearish"
+        return "neutral"
 
-    df['phase_signal'] = df.apply(_phase_signal, axis=1)
+    df["phase_signal"] = df.apply(_phase_signal, axis=1)
 
     # ── Volume Stack ──────────────────────────────────────────────────────
     buy_vol, sell_vol, buy_pct = volume_stack(
-        df['open'], df['high'], df['low'], df['close'], df['volume']
+        df["open"], df["high"], df["low"], df["close"], df["volume"]
     )
-    df['buy_vol'] = buy_vol
-    df['sell_vol'] = sell_vol
-    df['buy_pct'] = buy_pct
+    df["buy_vol"] = buy_vol
+    df["sell_vol"] = sell_vol
+    df["buy_pct"] = buy_pct
 
-    df['volume_signal'] = np.where(
-        df['buy_pct'] > 60, 'buyer_dominant',
-        np.where(df['buy_pct'] < 40, 'seller_dominant', 'balanced')
+    df["volume_signal"] = np.where(
+        df["buy_pct"] > 60,
+        "buyer_dominant",
+        np.where(df["buy_pct"] < 40, "seller_dominant", "balanced"),
     )
 
     # ── Keltner Channels (1.5x, 2.0x, 3.0x) ─────────────────────────────
     kelt_u15, kelt_b, kelt_l15 = keltner_channels(
-        df['close'], df['high'], df['low'], sma_len=20, atr_factor=1.5
+        df["close"], df["high"], df["low"], sma_len=20, atr_factor=1.5
     )
     kelt_u20, _, kelt_l20 = keltner_channels(
-        df['close'], df['high'], df['low'], sma_len=20, atr_factor=2.0
+        df["close"], df["high"], df["low"], sma_len=20, atr_factor=2.0
     )
     kelt_u30, _, kelt_l30 = keltner_channels(
-        df['close'], df['high'], df['low'], sma_len=20, atr_factor=3.0
+        df["close"], df["high"], df["low"], sma_len=20, atr_factor=3.0
     )
-    df['kelt_basis'] = kelt_b
-    df['kelt_inner_upper'] = kelt_u15
-    df['kelt_inner_lower'] = kelt_l15
-    df['kelt_outer_upper'] = kelt_u20
-    df['kelt_outer_lower'] = kelt_l20
-    df['kelt_extreme_upper'] = kelt_u30
-    df['kelt_extreme_lower'] = kelt_l30
+    df["kelt_basis"] = kelt_b
+    df["kelt_inner_upper"] = kelt_u15
+    df["kelt_inner_lower"] = kelt_l15
+    df["kelt_outer_upper"] = kelt_u20
+    df["kelt_outer_lower"] = kelt_l20
+    df["kelt_extreme_upper"] = kelt_u30
+    df["kelt_extreme_lower"] = kelt_l30
 
     # ── EMA Ribbon (8/21/34) ──────────────────────────────────────────────
-    ema8, ema21, ema34 = ema_ribbon(df['close'])
-    df['ema_8'] = ema8
-    df['ema_21'] = ema21
-    df['ema_34'] = ema34
+    ema8, ema21, ema34 = ema_ribbon(df["close"])
+    df["ema_8"] = ema8
+    df["ema_21"] = ema21
+    df["ema_34"] = ema34
 
     def _ema_trend(row):
-        if row['ema_8'] > row['ema_21'] > row['ema_34']:
-            return 'bullish'
-        elif row['ema_8'] < row['ema_21'] < row['ema_34']:
-            return 'bearish'
-        return 'neutral'
+        if row["ema_8"] > row["ema_21"] > row["ema_34"]:
+            return "bullish"
+        elif row["ema_8"] < row["ema_21"] < row["ema_34"]:
+            return "bearish"
+        return "neutral"
 
-    df['ema_trend'] = df.apply(_ema_trend, axis=1)
+    df["ema_trend"] = df.apply(_ema_trend, axis=1)
 
     # ── ATR Range Consumed ────────────────────────────────────────────────
-    prior_close = df['close'].shift(1)
-    df['atr_consumed_pct'] = df.apply(
-        lambda r: range_consumed_pct(r['close'], prior_close.loc[r.name], r['atr'])
-        if pd.notna(prior_close.loc[r.name]) and pd.notna(r['atr']) else 0.0,
-        axis=1
+    prior_close = df["close"].shift(1)
+    df["atr_consumed_pct"] = df.apply(
+        lambda r: (
+            range_consumed_pct(r["close"], prior_close.loc[r.name], r["atr"])
+            if pd.notna(prior_close.loc[r.name]) and pd.notna(r["atr"])
+            else 0.0
+        ),
+        axis=1,
     )
 
     # ── CCI (period=50) ───────────────────────────────────────────────────
-    df['cci_50'] = cci(df['high'], df['low'], df['close'], period=50)
+    df["cci_50"] = cci(df["high"], df["low"], df["close"], period=50)
 
     # ── Layer 2 — Structure Map ───────────────────────────────────────────
     # VPOC approximation: rolling 20-bar volume-weighted average price.
     # True VPOC requires tick-level data; VWAP over the lookback window is
     # the best proxy available from OHLCV bars.
-    df['vpoc'] = (
-        (df['close'] * df['volume']).rolling(20).sum()
-        / df['volume'].rolling(20).sum()
-    )
+    df["vpoc"] = (df["close"] * df["volume"]).rolling(20).sum() / df["volume"].rolling(20).sum()
 
     # Value Area approximation via rolling quantiles of bar highs/lows.
     # VAH ≈ 85th-percentile of recent highs (top ~15% of price action).
     # VAL ≈ 15th-percentile of recent lows  (bottom ~15% of price action).
     # This captures the 70% value area centred on VPOC without tick data.
-    df['va_high'] = df['high'].rolling(20).quantile(0.85)
-    df['va_low'] = df['low'].rolling(20).quantile(0.15)
+    df["va_high"] = df["high"].rolling(20).quantile(0.85)
+    df["va_low"] = df["low"].rolling(20).quantile(0.15)
 
     # IB proxy for daily bars: prior bar's high/low acts as the
     # "Initial Balance" range that price must accept or reject today.
-    df['ib_high'] = df['high'].shift(1)
-    df['ib_low'] = df['low'].shift(1)
+    df["ib_high"] = df["high"].shift(1)
+    df["ib_low"] = df["low"].shift(1)
 
     # Prior-bar IB flags (needed for breakout-detection in layer4_entry)
-    df['prev_above_ib_high'] = df['close'].shift(1) > df['ib_high'].shift(1)
+    df["prev_above_ib_high"] = df["close"].shift(1) > df["ib_high"].shift(1)
 
     # Price position relative to structure
-    df['above_vah'] = df['close'] > df['va_high']
-    df['below_val'] = df['close'] < df['va_low']
-    df['above_ib_high'] = df['close'] > df['ib_high']
-    df['below_ib_low'] = df['close'] < df['ib_low']
+    df["above_vah"] = df["close"] > df["va_high"]
+    df["below_val"] = df["close"] < df["va_low"]
+    df["above_ib_high"] = df["close"] > df["ib_high"]
+    df["below_ib_low"] = df["close"] < df["ib_low"]
 
     return df
 
 
 def layer1_regime(row: pd.Series) -> str:
     """Determine market regime from Layer 1 indicators."""
-    consumed = row.get('atr_consumed_pct', 0)
-    phase = row.get('phase_val', 0)
-    compression = row.get('phase_compression', False)
-    ema_trend = row.get('ema_trend', 'neutral')
+    consumed = row.get("atr_consumed_pct", 0)
+    phase = row.get("phase_val", 0)
+    compression = row.get("phase_compression", False)
+    ema_trend = row.get("ema_trend", "neutral")
 
     if consumed > 90:
-        return 'EXHAUSTED'
+        return "EXHAUSTED"
     if compression and consumed < 50:
-        return 'COMPRESSION'
-    if ema_trend == 'bullish' and consumed < 70 and phase > 0:
-        return 'TRENDING_BULL'
-    if ema_trend == 'bearish' and consumed < 70 and phase < 0:
-        return 'TRENDING_BEAR'
-    return 'RANGE_BOUND'
+        return "COMPRESSION"
+    if ema_trend == "bullish" and consumed < 70 and phase > 0:
+        return "TRENDING_BULL"
+    if ema_trend == "bearish" and consumed < 70 and phase < 0:
+        return "TRENDING_BEAR"
+    return "RANGE_BOUND"
 
 
 def layer2_structure(row: pd.Series) -> dict:
@@ -235,26 +281,26 @@ def layer2_structure(row: pd.Series) -> dict:
       SELLER_CONTROL  — price below VAL AND below IB Low  (accepted below value)
       NEUTRAL_STRUCTURE — inside value area or mixed signals
     """
-    above_vah = bool(row.get('above_vah', False))
-    below_val = bool(row.get('below_val', False))
-    above_ib_high = bool(row.get('above_ib_high', False))
-    below_ib_low = bool(row.get('below_ib_low', False))
+    above_vah = bool(row.get("above_vah", False))
+    below_val = bool(row.get("below_val", False))
+    above_ib_high = bool(row.get("above_ib_high", False))
+    below_ib_low = bool(row.get("below_ib_low", False))
 
     result = {
-        'position': 'NEUTRAL_STRUCTURE',
-        'above_vah': above_vah,
-        'below_val': below_val,
-        'above_ib_high': above_ib_high,
-        'below_ib_low': below_ib_low,
-        'vpoc': float(row.get('vpoc', 0) or 0),
-        'va_high': float(row.get('va_high', 0) or 0),
-        'va_low': float(row.get('va_low', 0) or 0),
+        "position": "NEUTRAL_STRUCTURE",
+        "above_vah": above_vah,
+        "below_val": below_val,
+        "above_ib_high": above_ib_high,
+        "below_ib_low": below_ib_low,
+        "vpoc": float(row.get("vpoc", 0) or 0),
+        "va_high": float(row.get("va_high", 0) or 0),
+        "va_low": float(row.get("va_low", 0) or 0),
     }
 
     if above_vah and above_ib_high:
-        result['position'] = 'BUYER_CONTROL'
+        result["position"] = "BUYER_CONTROL"
     elif below_val and below_ib_low:
-        result['position'] = 'SELLER_CONTROL'
+        result["position"] = "SELLER_CONTROL"
 
     return result
 
@@ -265,41 +311,41 @@ def layer3_bias(row: pd.Series) -> str:
     bear_count = 0
 
     # KAMA signal
-    if row.get('kama_signal') == 'long':
+    if row.get("kama_signal") == "long":
         bull_count += 1
-    elif row.get('kama_signal') == 'short':
+    elif row.get("kama_signal") == "short":
         bear_count += 1
 
     # STC direction
-    stc_sig = row.get('stc_signal', 'neutral')
-    if stc_sig in ('oversold', 'rising'):
+    stc_sig = row.get("stc_signal", "neutral")
+    if stc_sig in ("oversold", "rising"):
         bull_count += 1
-    elif stc_sig in ('overbought', 'falling'):
+    elif stc_sig in ("overbought", "falling"):
         bear_count += 1
 
     # Volume
-    vol_sig = row.get('volume_signal', 'balanced')
-    if vol_sig == 'buyer_dominant':
+    vol_sig = row.get("volume_signal", "balanced")
+    if vol_sig == "buyer_dominant":
         bull_count += 1
-    elif vol_sig == 'seller_dominant':
+    elif vol_sig == "seller_dominant":
         bear_count += 1
 
     # EMA trend
-    ema = row.get('ema_trend', 'neutral')
-    if ema == 'bullish':
+    ema = row.get("ema_trend", "neutral")
+    if ema == "bullish":
         bull_count += 1
-    elif ema == 'bearish':
+    elif ema == "bearish":
         bear_count += 1
 
     if bull_count >= 4:
-        return 'STRONG_BULL'
-    elif bull_count >= 3 or (bull_count == 2 and ema == 'bullish'):
-        return 'LEAN_BULL'
+        return "STRONG_BULL"
+    elif bull_count >= 3 or (bull_count == 2 and ema == "bullish"):
+        return "LEAN_BULL"
     elif bear_count >= 4:
-        return 'STRONG_BEAR'
-    elif bear_count >= 3 or (bear_count == 2 and ema == 'bearish'):
-        return 'LEAN_BEAR'
-    return 'NEUTRAL'
+        return "STRONG_BEAR"
+    elif bear_count >= 3 or (bear_count == 2 and ema == "bearish"):
+        return "LEAN_BEAR"
+    return "NEUTRAL"
 
 
 def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str:
@@ -313,61 +359,69 @@ def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str
       - IB High breakout: close crossed above IB High this bar (was below
         on the prior bar) → ENTRY_NOW regardless of STC crossover
     """
-    if regime == 'EXHAUSTED':
-        phase = row.get('phase_val', 0)
-        consumed = row.get('atr_consumed_pct', 0)
+    if regime == "EXHAUSTED":
+        phase = row.get("phase_val", 0)
+        consumed = row.get("atr_consumed_pct", 0)
         if consumed > 90 and (phase > 61.8 or phase < -61.8):
-            return 'FADE_EXTREME'
-        return 'NO_TRADE'
+            return "FADE_EXTREME"
+        return "NO_TRADE"
 
-    if bias == 'NEUTRAL':
-        return 'NO_TRADE'
+    if bias == "NEUTRAL":
+        return "NO_TRADE"
 
-    structure_position = structure.get('position', 'NEUTRAL_STRUCTURE')
-    above_ib_high = structure.get('above_ib_high', False)
-    below_ib_low = structure.get('below_ib_low', False)
+    structure_position = structure.get("position", "NEUTRAL_STRUCTURE")
+    above_ib_high = structure.get("above_ib_high", False)
+    below_ib_low = structure.get("below_ib_low", False)
 
     # ── Structure-boosted ENTRY_NOW ───────────────────────────────────────
     # 1. Full alignment: structure confirms bias AND regime is trending
-    if (structure_position == 'BUYER_CONTROL'
-            and bias in ('STRONG_BULL', 'LEAN_BULL')
-            and regime in ('TRENDING_BULL',)):
-        return 'ENTRY_NOW'
+    if (
+        structure_position == "BUYER_CONTROL"
+        and bias in ("STRONG_BULL", "LEAN_BULL")
+        and regime in ("TRENDING_BULL",)
+    ):
+        return "ENTRY_NOW"
 
-    if (structure_position == 'SELLER_CONTROL'
-            and bias in ('STRONG_BEAR', 'LEAN_BEAR')
-            and regime in ('TRENDING_BEAR',)):
-        return 'ENTRY_NOW'
+    if (
+        structure_position == "SELLER_CONTROL"
+        and bias in ("STRONG_BEAR", "LEAN_BEAR")
+        and regime in ("TRENDING_BEAR",)
+    ):
+        return "ENTRY_NOW"
 
     # 2. IB High breakout: price just crossed above prior bar's high this bar
     #    (prev_above_ib_high=False means it was below IB High last bar)
-    prev_above = bool(row.get('prev_above_ib_high', False))
-    if above_ib_high and not prev_above and bias in ('STRONG_BULL', 'LEAN_BULL'):
-        return 'ENTRY_NOW'
+    prev_above = bool(row.get("prev_above_ib_high", False))
+    if above_ib_high and not prev_above and bias in ("STRONG_BULL", "LEAN_BULL"):
+        return "ENTRY_NOW"
 
     # 3. IB Low breakdown: price just crossed below prior bar's low this bar
-    bool(row.get('prev_above_ib_high', False))
+    bool(row.get("prev_above_ib_high", False))
     # For the downside breakout we re-use the same prev flag directionally:
     # below_ib_low=True this bar means price broke below — no prior-cross flag
     # stored for lows, so accept the signal if we're below IB Low fresh (i.e.
     # IB Low breakout: below_ib_low True and structure is SELLER_CONTROL).
-    if below_ib_low and structure_position == 'SELLER_CONTROL' and bias in ('STRONG_BEAR', 'LEAN_BEAR'):
-        return 'ENTRY_NOW'
+    if (
+        below_ib_low
+        and structure_position == "SELLER_CONTROL"
+        and bias in ("STRONG_BEAR", "LEAN_BEAR")
+    ):
+        return "ENTRY_NOW"
 
     # ── Standard STC crossover entry ─────────────────────────────────────
-    stc_cross_up = row.get('stc_cross_up', False)
-    stc_cross_down = row.get('stc_cross_down', False)
+    stc_cross_up = row.get("stc_cross_up", False)
+    stc_cross_down = row.get("stc_cross_down", False)
 
-    if bias in ('STRONG_BULL', 'LEAN_BULL') and stc_cross_up:
-        return 'ENTRY_NOW'
-    if bias in ('STRONG_BEAR', 'LEAN_BEAR') and stc_cross_down:
-        return 'ENTRY_NOW'
+    if bias in ("STRONG_BULL", "LEAN_BULL") and stc_cross_up:
+        return "ENTRY_NOW"
+    if bias in ("STRONG_BEAR", "LEAN_BEAR") and stc_cross_down:
+        return "ENTRY_NOW"
 
-    stc_val = row.get('stc_val', 50)
+    stc_val = row.get("stc_val", 50)
     if 20 <= stc_val <= 80:
-        return 'WAIT_FOR_PULLBACK'
+        return "WAIT_FOR_PULLBACK"
 
-    return 'NO_TRADE'
+    return "NO_TRADE"
 
 
 def generate_signals(
@@ -430,6 +484,7 @@ def generate_signals(
     # ── Optional regime-adaptive STC classification ───────────────────────
     if adaptive_regime:
         from backtest.regime import RegimeClassifier
+
         clf = RegimeClassifier()
         df = clf.classify(df)
         # adaptive_stc_os / adaptive_stc_ob columns now exist; they will
@@ -462,45 +517,45 @@ def generate_signals(
         t3_atr = 2.618
 
     # ── Adaptive regime: recompute STC signals using per-bar thresholds ─────
-    if adaptive_regime and 'adaptive_stc_os' in df.columns:
+    if adaptive_regime and "adaptive_stc_os" in df.columns:
         # Each bar uses the regime-specific OS/OB for its crossover detection.
         # This is a vectorized per-bar computation: broadcasting column vs column.
-        stc_v = df['stc_val']
+        stc_v = df["stc_val"]
         stc_prev_v = stc_v.shift(1).fillna(50)
-        adapt_os = df['adaptive_stc_os']
-        adapt_ob = df['adaptive_stc_ob']
+        adapt_os = df["adaptive_stc_os"]
+        adapt_ob = df["adaptive_stc_ob"]
 
-        df['stc_cross_up']   = (stc_v > adapt_os) & (stc_prev_v <= adapt_os)
-        df['stc_cross_down'] = (stc_v < adapt_ob) & (stc_prev_v >= adapt_ob)
+        df["stc_cross_up"] = (stc_v > adapt_os) & (stc_prev_v <= adapt_os)
+        df["stc_cross_down"] = (stc_v < adapt_ob) & (stc_prev_v >= adapt_ob)
 
-        stc_signal = pd.Series('neutral', index=df.index)
-        stc_signal[stc_v < adapt_os] = 'oversold'
-        stc_signal[stc_v > adapt_ob] = 'overbought'
-        rising  = (stc_v > stc_prev_v) & (stc_signal == 'neutral')
-        falling = (stc_v < stc_prev_v) & (stc_signal == 'neutral')
-        stc_signal[rising]  = 'rising'
-        stc_signal[falling] = 'falling'
-        df['stc_signal'] = stc_signal
-        df['stc_prev']   = stc_prev_v
+        stc_signal = pd.Series("neutral", index=df.index)
+        stc_signal[stc_v < adapt_os] = "oversold"
+        stc_signal[stc_v > adapt_ob] = "overbought"
+        rising = (stc_v > stc_prev_v) & (stc_signal == "neutral")
+        falling = (stc_v < stc_prev_v) & (stc_signal == "neutral")
+        stc_signal[rising] = "rising"
+        stc_signal[falling] = "falling"
+        df["stc_signal"] = stc_signal
+        df["stc_prev"] = stc_prev_v
 
     # ── Optional static STC threshold overrides (mirrors optimizer._compute_signals) ──
     elif stc_oversold is not None or stc_overbought is not None:
         os_val = stc_oversold if stc_oversold is not None else STC_OS
         ob_val = stc_overbought if stc_overbought is not None else STC_OB
 
-        stc_prev = df['stc_val'].shift(1).fillna(50)
-        df['stc_cross_up'] = (df['stc_val'] > os_val) & (stc_prev <= os_val)
-        df['stc_cross_down'] = (df['stc_val'] < ob_val) & (stc_prev >= ob_val)
+        stc_prev = df["stc_val"].shift(1).fillna(50)
+        df["stc_cross_up"] = (df["stc_val"] > os_val) & (stc_prev <= os_val)
+        df["stc_cross_down"] = (df["stc_val"] < ob_val) & (stc_prev >= ob_val)
 
-        stc_signal = pd.Series('neutral', index=df.index)
-        stc_signal[df['stc_val'] < os_val] = 'oversold'
-        stc_signal[df['stc_val'] > ob_val] = 'overbought'
-        rising = (df['stc_val'] > stc_prev) & (stc_signal == 'neutral')
-        falling = (df['stc_val'] < stc_prev) & (stc_signal == 'neutral')
-        stc_signal[rising] = 'rising'
-        stc_signal[falling] = 'falling'
-        df['stc_signal'] = stc_signal
-        df['stc_prev'] = stc_prev
+        stc_signal = pd.Series("neutral", index=df.index)
+        stc_signal[df["stc_val"] < os_val] = "oversold"
+        stc_signal[df["stc_val"] > ob_val] = "overbought"
+        rising = (df["stc_val"] > stc_prev) & (stc_signal == "neutral")
+        falling = (df["stc_val"] < stc_prev) & (stc_signal == "neutral")
+        stc_signal[rising] = "rising"
+        stc_signal[falling] = "falling"
+        df["stc_signal"] = stc_signal
+        df["stc_prev"] = stc_prev
 
     regimes = []
     structures = []
@@ -513,40 +568,40 @@ def generate_signals(
         # Regime filter bypass: match optimizer._compute_signals() behaviour.
         # When regime_filter=False, downgrade blocking regimes to RANGE_BOUND
         # so structure-based entries (IB breakout, buyer/seller control) fire.
-        if not regime_filter and regime in ('EXHAUSTED', 'COMPRESSION'):
-            regime = 'RANGE_BOUND'
+        if not regime_filter and regime in ("EXHAUSTED", "COMPRESSION"):
+            regime = "RANGE_BOUND"
         structure = layer2_structure(row)
         bias = layer3_bias(row)
         entry = layer4_entry(row, regime, bias, structure)
 
         regimes.append(regime)
         structures.append(structure)
-        structure_positions.append(structure['position'])
+        structure_positions.append(structure["position"])
         biases.append(bias)
         entries.append(entry)
 
-    df['regime'] = regimes
-    df['structure_position'] = structure_positions
-    df['bias'] = biases
-    df['entry_signal'] = entries
+    df["regime"] = regimes
+    df["structure_position"] = structure_positions
+    df["bias"] = biases
+    df["entry_signal"] = entries
 
     # Optionally expose individual structure booleans as columns for downstream
     # analysis / filtering without unpacking the dict manually.
-    df['s_above_vah'] = [s['above_vah'] for s in structures]
-    df['s_below_val'] = [s['below_val'] for s in structures]
-    df['s_above_ib_high'] = [s['above_ib_high'] for s in structures]
-    df['s_below_ib_low'] = [s['below_ib_low'] for s in structures]
-    df['s_vpoc'] = [s['vpoc'] for s in structures]
-    df['s_va_high'] = [s['va_high'] for s in structures]
-    df['s_va_low'] = [s['va_low'] for s in structures]
+    df["s_above_vah"] = [s["above_vah"] for s in structures]
+    df["s_below_val"] = [s["below_val"] for s in structures]
+    df["s_above_ib_high"] = [s["above_ib_high"] for s in structures]
+    df["s_below_ib_low"] = [s["below_ib_low"] for s in structures]
+    df["s_vpoc"] = [s["vpoc"] for s in structures]
+    df["s_va_high"] = [s["va_high"] for s in structures]
+    df["s_va_low"] = [s["va_low"] for s in structures]
 
     # Stop and target levels using ATR Fibonacci
-    atr = df['atr'].fillna(0)
-    close = df['close']
+    atr = df["atr"].fillna(0)
+    close = df["close"]
 
     # For long entries: stop below, targets above
     # For short entries: stop above, targets below
-    is_long = df['bias'].isin(['STRONG_BULL', 'LEAN_BULL'])
+    is_long = df["bias"].isin(["STRONG_BULL", "LEAN_BULL"])
 
     # Bug 6 fix: Original T1=1.50 ATR was unreachable for intraday trades.
     # Analysis of 549 signals (SPY 1h, 2024-06-01 to 2026-03-27):
@@ -566,61 +621,49 @@ def generate_signals(
     # INSTRUMENT_PARAMS[symbol] when a symbol is provided, otherwise
     # they fall back to the defaults set at lines 408-416 above.
 
-    df['stop_level'] = np.where(
-        is_long,
-        close - stop_atr * atr,
-        close + stop_atr * atr
-    )
-    df['target_1'] = np.where(
-        is_long,
-        close + t1_atr * atr,
-        close - t1_atr * atr
-    )
-    df['target_2'] = np.where(
-        is_long,
-        close + t2_atr * atr,
-        close - t2_atr * atr
-    )
-    df['target_3'] = np.where(
-        is_long,
-        close + t3_atr * atr,
-        close - t3_atr * atr
-    )
+    df["stop_level"] = np.where(is_long, close - stop_atr * atr, close + stop_atr * atr)
+    df["target_1"] = np.where(is_long, close + t1_atr * atr, close - t1_atr * atr)
+    df["target_2"] = np.where(is_long, close + t2_atr * atr, close - t2_atr * atr)
+    df["target_3"] = np.where(is_long, close + t3_atr * atr, close - t3_atr * atr)
 
     # ── Volume confirmation filter (Improvement #3) ────────────────────
-    if volume_filter and 'volume' in df.columns:
-        vol_ma = df['volume'].rolling(volume_period).mean()
-        high_volume = df['volume'] > vol_ma
+    if volume_filter and "volume" in df.columns:
+        vol_ma = df["volume"].rolling(volume_period).mean()
+        high_volume = df["volume"] > vol_ma
         # Block entries on low-volume bars
-        df.loc[(df['entry_signal'] == 'ENTRY_NOW') & ~high_volume, 'entry_signal'] = 'LOW_VOLUME_BLOCK'
-        df['volume_ma'] = vol_ma
-        df['high_volume'] = high_volume
+        df.loc[(df["entry_signal"] == "ENTRY_NOW") & ~high_volume, "entry_signal"] = (
+            "LOW_VOLUME_BLOCK"
+        )
+        df["volume_ma"] = vol_ma
+        df["high_volume"] = high_volume
 
     # ── Multi-Timeframe (MTF) confirmation filter ─────────────────────────
     if mtf_df is not None:
         from .mtf_filter import MTFFilter
+
         mtf = MTFFilter(cross_lookback=3)
-        df['mtf_aligned'] = mtf.check_alignment(df, mtf_df)
+        df["mtf_aligned"] = mtf.check_alignment(df, mtf_df)
         # Block entries where 4h trend does not align
-        blocked = (df['entry_signal'] == 'ENTRY_NOW') & (~df['mtf_aligned'])
-        df.loc[blocked, 'entry_signal'] = 'MTF_BLOCKED'
+        blocked = (df["entry_signal"] == "ENTRY_NOW") & (~df["mtf_aligned"])
+        df.loc[blocked, "entry_signal"] = "MTF_BLOCKED"
     else:
-        df['mtf_aligned'] = True
+        df["mtf_aligned"] = True
 
     # ── News/Event Blackout filter (Improvement #4) ─────────────────────
     if news_blackout:
         from .news_blackout import EconomicCalendar
+
         calendar = EconomicCalendar()
         # Vectorized: check each bar's timestamp against the calendar
         news_blocked_mask = pd.Series(False, index=df.index)
         for idx_ts in df.index:
             if calendar.is_blackout(idx_ts, window_minutes=news_blackout_window):
                 news_blocked_mask.loc[idx_ts] = True
-        df['news_blocked'] = news_blocked_mask
+        df["news_blocked"] = news_blocked_mask
         # Only block ENTRY_NOW signals (leave other signal types unchanged)
-        blocked = (df['entry_signal'] == 'ENTRY_NOW') & df['news_blocked']
-        df.loc[blocked, 'entry_signal'] = 'NEWS_BLACKOUT'
+        blocked = (df["entry_signal"] == "ENTRY_NOW") & df["news_blocked"]
+        df.loc[blocked, "entry_signal"] = "NEWS_BLACKOUT"
     else:
-        df['news_blocked'] = False
+        df["news_blocked"] = False
 
     return df

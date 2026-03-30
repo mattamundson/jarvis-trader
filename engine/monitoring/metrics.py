@@ -83,6 +83,7 @@ consecutive_losses = Gauge(
 
 # ── Helper functions for metric recording ──────────────────────────────────
 
+
 def record_pipeline_run(symbol: str, decision: str):
     """Record a pipeline execution."""
     pipeline_runs.labels(symbol=symbol, decision=decision).inc()
@@ -95,11 +96,7 @@ def record_pipeline_duration(duration: float, symbol: str):
 
 def record_llm_call(model: str, agent: str, success: bool):
     """Record an LLM API call."""
-    llm_calls.labels(
-        model=model,
-        agent=agent,
-        success=str(success)
-    ).inc()
+    llm_calls.labels(model=model, agent=agent, success=str(success)).inc()
 
 
 def record_llm_cost(model: str, cost_usd: float):

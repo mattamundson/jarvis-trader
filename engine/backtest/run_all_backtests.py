@@ -9,6 +9,7 @@ Usage:
     python -m backtest.run_all_backtests --compare-old
     python -m backtest.run_all_backtests --symbols SPY --intervals 1h --compare-old
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,6 +40,7 @@ RESULTS_DIR = Path(__file__).parent / "results"
 # ---------------------------------------------------------------------------
 # Single backtest runner
 # ---------------------------------------------------------------------------
+
 
 def run_single_backtest(
     symbol: str,
@@ -116,6 +118,7 @@ def run_single_backtest(
 # ---------------------------------------------------------------------------
 # Output formatting
 # ---------------------------------------------------------------------------
+
 
 def print_matrix_table(results: List[Dict[str, Any]], capital: float) -> None:
     """Print the formatted comparison table to stdout."""
@@ -211,7 +214,11 @@ def print_comparison_table(
         new_return = r["total_return_pct"] if r["status"] == "OK" else 0
 
         old_pf_str = f"{old_pf:.2f}" if old_pf < 999 else "Inf"
-        new_pf_str = f"{new_pf:.2f}" if r["status"] == "OK" and new_pf < 999 else ("Inf" if r["status"] == "OK" else "N/A")
+        new_pf_str = (
+            f"{new_pf:.2f}"
+            if r["status"] == "OK" and new_pf < 999
+            else ("Inf" if r["status"] == "OK" else "N/A")
+        )
 
         print(
             f"{r['symbol']:<8}{r['interval']:<5}"
@@ -230,6 +237,7 @@ def print_comparison_table(
 # ---------------------------------------------------------------------------
 # Load old results from JSON files in results/
 # ---------------------------------------------------------------------------
+
 
 def load_old_results() -> Dict[str, Dict[str, Any]]:
     """
@@ -267,6 +275,7 @@ def load_old_results() -> Dict[str, Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Save results
 # ---------------------------------------------------------------------------
+
 
 def save_matrix_results(results: List[Dict[str, Any]], capital: float) -> Path:
     """Save the full matrix to a timestamped JSON file."""
@@ -329,6 +338,7 @@ def save_per_symbol_results(results: List[Dict[str, Any]]) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(

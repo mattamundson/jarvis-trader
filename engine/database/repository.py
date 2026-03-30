@@ -10,6 +10,7 @@ Provides high-level functions to insert and query trading data:
   - Safety events (kill switch, circuit breaker, rejections)
   - Performance metrics (daily P&L, win rate)
 """
+
 import json
 import logging
 from typing import Optional
@@ -31,6 +32,7 @@ __all__ = [
 
 
 # ── Orders (Trade Execution) ───────────────────────────────────────────────
+
 
 async def insert_order(
     order_data: dict,
@@ -95,11 +97,14 @@ async def insert_order(
 
     order_id = await execute_insert(query, *params)
     if order_id:
-        logger.debug(f"[DB] Order {order_id} inserted: {order_data.get('symbol')} {order_data.get('quantity')}")
+        logger.debug(
+            f"[DB] Order {order_id} inserted: {order_data.get('symbol')} {order_data.get('quantity')}"
+        )
     return order_id
 
 
 # ── Agent Decisions (Full Decision Provenance) ──────────────────────────────
+
 
 async def insert_decision(
     agent_name: str,
@@ -172,11 +177,14 @@ async def insert_decision(
 
     decision_id = await execute_insert(query, *params)
     if decision_id:
-        logger.debug(f"[DB] Decision {decision_id}: {agent_name} {symbol} signal={signal:.2f} conf={confidence:.0%}")
+        logger.debug(
+            f"[DB] Decision {decision_id}: {agent_name} {symbol} signal={signal:.2f} conf={confidence:.0%}"
+        )
     return decision_id
 
 
 # ── Portfolio Snapshots (Account State) ────────────────────────────────────
+
 
 async def insert_portfolio_snapshot(
     total_equity: float,
@@ -238,11 +246,14 @@ async def insert_portfolio_snapshot(
 
     snapshot_id = await execute_insert(query, *params)
     if snapshot_id:
-        logger.debug(f"[DB] Portfolio snapshot {snapshot_id}: equity={total_equity:.2f}, cash={cash_balance:.2f}")
+        logger.debug(
+            f"[DB] Portfolio snapshot {snapshot_id}: equity={total_equity:.2f}, cash={cash_balance:.2f}"
+        )
     return snapshot_id
 
 
 # ── Safety Events (Alerts & Circuit Breakers) ──────────────────────────────
+
 
 async def insert_safety_event(
     event_type: str,
@@ -294,6 +305,7 @@ async def insert_safety_event(
 
 # ── Alerts (Notifications) ─────────────────────────────────────────────────
 
+
 async def insert_alert(
     level: str,
     title: str,
@@ -328,6 +340,7 @@ async def insert_alert(
 
 
 # ── Queries (Read Operations) ──────────────────────────────────────────────
+
 
 async def get_recent_orders(
     symbol: str = None,

@@ -17,6 +17,7 @@ Architecture contract
   is not possible from this class; submit_order() always goes through the layer.
 - No LLM reasoning in this module — pure plumbing and logging.
 """
+
 from __future__ import annotations
 
 import logging
@@ -59,7 +60,9 @@ class IBOrderManager:
         self._gateway = ib_gateway
         self._tracker = portfolio_tracker
 
-        gateway_status = self._gateway.is_connected() if self._gateway is not None else "not_connected"
+        gateway_status = (
+            self._gateway.is_connected() if self._gateway is not None else "not_connected"
+        )
         logger.info(
             "IBOrderManager initialised | gateway_connected=%s tracker=%s",
             gateway_status,
@@ -102,9 +105,13 @@ class IBOrderManager:
               routed_to_ib (bool).
         """
         logger.info(
-            "IBOrderManager.submit_order | symbol=%s action=%s qty=%d "
-            "price=%.4f type=%s limit=%s",
-            symbol, action.upper(), quantity, price, order_type, limit_price,
+            "IBOrderManager.submit_order | symbol=%s action=%s qty=%d price=%.4f type=%s limit=%s",
+            symbol,
+            action.upper(),
+            quantity,
+            price,
+            order_type,
+            limit_price,
         )
 
         if self._safety.is_killed:
@@ -154,9 +161,7 @@ class IBOrderManager:
                        is_futures, contract_month, exchange, currency.
         """
         if not self._gateway.is_connected():
-            logger.warning(
-                "sync_positions_from_ib: IB Gateway not connected — skipping sync"
-            )
+            logger.warning("sync_positions_from_ib: IB Gateway not connected — skipping sync")
             return []
 
         logger.info("sync_positions_from_ib: fetching positions from IB Gateway...")
@@ -171,9 +176,7 @@ class IBOrderManager:
             )
             return []
 
-        logger.info(
-            "sync_positions_from_ib: received %d positions from IB", len(ib_positions)
-        )
+        logger.info("sync_positions_from_ib: received %d positions from IB", len(ib_positions))
 
         if self._tracker is None:
             logger.debug(
@@ -275,9 +278,7 @@ class IBOrderManager:
         try:
             ib_positions: list[dict] = await gateway.get_positions()
         except Exception as exc:
-            logger.error(
-                "reconcile: get_positions() raised: %s", exc, exc_info=True
-            )
+            logger.error("reconcile: get_positions() raised: %s", exc, exc_info=True)
             return result
 
         result["ib_positions"] = ib_positions
@@ -322,25 +323,23 @@ class IBOrderManager:
             if sym in ib_map and sym not in tracker_map:
                 result["missing_in_tracker"].append(sym)
                 logger.warning(
-                    "reconcile DISCREPANCY: %s is in IB (qty=%.0f) "
-                    "but NOT in PortfolioTracker",
+                    "reconcile DISCREPANCY: %s is in IB (qty=%.0f) but NOT in PortfolioTracker",
                     sym,
                     ib_qty,
                 )
             elif sym in tracker_map and sym not in ib_map:
                 result["missing_in_ib"].append(sym)
                 logger.warning(
-                    "reconcile DISCREPANCY: %s is in PortfolioTracker (qty=%.0f) "
-                    "but NOT in IB",
+                    "reconcile DISCREPANCY: %s is in PortfolioTracker (qty=%.0f) but NOT in IB",
                     sym,
                     tr_qty,
                 )
             elif abs(ib_qty - tr_qty) > 0.01:
                 mismatch = {
-                    "symbol":      sym,
-                    "ib_qty":      ib_qty,
+                    "symbol": sym,
+                    "ib_qty": ib_qty,
                     "tracker_qty": tr_qty,
-                    "delta":       ib_qty - tr_qty,
+                    "delta": ib_qty - tr_qty,
                 }
                 result["qty_mismatches"].append(mismatch)
                 logger.warning(
@@ -383,7 +382,7 @@ class IBOrderManager:
         """Return a quick summary dict suitable for health checks and dashboards."""
         return {
             "ib_gateway_connected": self._gateway.is_connected(),
-            "kill_switch_active":   self._safety.is_killed,
-            "safety_layer_status":  self._safety.get_status(),
-            "tracker_attached":     self._tracker is not None,
+            "kill_switch_active": self._safety.is_killed,
+            "safety_layer_status": self._safety.get_status(),
+            "tracker_attached": self._tracker is not None,
         }

@@ -4,6 +4,7 @@ JARVIS TRADER -- MTF Filter Test Script
 Loads MNQ 1h and 4h data, runs generate_signals() with and without the
 MTF filter, and reports how many entries were blocked.
 """
+
 from __future__ import annotations
 
 import os
@@ -38,13 +39,19 @@ def main():
         print("WARNING: Could not load 4h data directly.")
         print("Attempting to resample 1h data to 4h...")
         # Resample 1h -> 4h as fallback
-        df_4h = df_1h.resample("4h").agg({
-            "open": "first",
-            "high": "max",
-            "low": "min",
-            "close": "last",
-            "volume": "sum",
-        }).dropna(subset=["open", "high", "low", "close"])
+        df_4h = (
+            df_1h.resample("4h")
+            .agg(
+                {
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last",
+                    "volume": "sum",
+                }
+            )
+            .dropna(subset=["open", "high", "low", "close"])
+        )
         df_4h["timestamp"] = df_4h.index
         print(f"  Resampled to {len(df_4h)} 4h bars")
     else:
@@ -124,7 +131,7 @@ def main():
     print(f"  MTF-allowed entries: {len(mtf_entries)}")
     print(f"  MTF-blocked entries: {len(mtf_blocked)}")
     if len(baseline_entries) > 0:
-        print(f"  Block rate:          {len(mtf_blocked)/len(baseline_entries)*100:.1f}%")
+        print(f"  Block rate:          {len(mtf_blocked) / len(baseline_entries) * 100:.1f}%")
     print("\n  Suggested walk-forward flag: --mtf-filter")
     print("  (Integration with walk-forward engine is separate work)")
 

@@ -32,13 +32,14 @@ _CACHE_TTL = 900  # seconds
 @dataclass
 class VIXState:
     """Current VIX reading and derived regime."""
+
     vix_value: float
-    regime: str                     # CALM / NORMAL / CAUTION / ELEVATED / EXTREME
-    classification: str             # Same as regime (alias for API consumers)
-    position_size_pct: float        # 0.0-1.0 -- multiply raw contracts by this
+    regime: str  # CALM / NORMAL / CAUTION / ELEVATED / EXTREME
+    classification: str  # Same as regime (alias for API consumers)
+    position_size_pct: float  # 0.0-1.0 -- multiply raw contracts by this
     trading_allowed: bool
-    timestamp: float                # Unix epoch (time.time())
-    source: str = "stub"            # "live" | "cache" | "stub" | "error_fallback"
+    timestamp: float  # Unix epoch (time.time())
+    source: str = "stub"  # "live" | "cache" | "stub" | "error_fallback"
     error: Optional[str] = None
 
     @property

@@ -78,7 +78,9 @@ class PaperTradeTracker:
 
         logger.info(
             "PaperTradeTracker initialized for %s — %d existing trades, store=%s",
-            self._symbol, len(self._trades), self._store_path,
+            self._symbol,
+            len(self._trades),
+            self._store_path,
         )
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -135,8 +137,14 @@ class PaperTradeTracker:
 
         logger.info(
             "[PAPER-MGC] Trade recorded: %s %s entry=%.2f exit=%.2f pnl=$%.2f (%+.2f%%) reason=%s regime=%s",
-            side.upper(), self._symbol, entry, exit_, net_pnl,
-            trade["pnl_pct"], trade["exit_reason"], trade["regime_type"],
+            side.upper(),
+            self._symbol,
+            entry,
+            exit_,
+            net_pnl,
+            trade["pnl_pct"],
+            trade["exit_reason"],
+            trade["regime_type"],
         )
 
         # Check kill conditions after every trade
@@ -208,8 +216,12 @@ class PaperTradeTracker:
         for regime, stats in regime_stats.items():
             regime_breakdown[regime] = {
                 "trades": stats["trades"],
-                "win_rate": round(stats["wins"] / stats["trades"], 4) if stats["trades"] > 0 else 0.0,
-                "avg_pnl": round(stats["total_pnl"] / stats["trades"], 2) if stats["trades"] > 0 else 0.0,
+                "win_rate": round(stats["wins"] / stats["trades"], 4)
+                if stats["trades"] > 0
+                else 0.0,
+                "avg_pnl": round(stats["total_pnl"] / stats["trades"], 2)
+                if stats["trades"] > 0
+                else 0.0,
             }
 
         # Exit reason breakdown
@@ -360,7 +372,9 @@ class PaperTradeTracker:
                 elif isinstance(data, dict) and "trades" in data:
                     return data["trades"]
                 else:
-                    logger.warning("Unexpected JSON structure in %s, starting fresh", self._store_path)
+                    logger.warning(
+                        "Unexpected JSON structure in %s, starting fresh", self._store_path
+                    )
                     return []
         except (json.JSONDecodeError, OSError) as exc:
             logger.error("Failed to load paper trades from %s: %s", self._store_path, exc)

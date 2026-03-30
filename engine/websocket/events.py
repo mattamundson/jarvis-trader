@@ -147,7 +147,9 @@ async def emit_safety_event(event_type: str, details: dict):
         logger.error(f"Error emitting safety_event: {e}")
 
 
-async def emit_price_update(symbol: str, price: float, bid: Optional[float] = None, ask: Optional[float] = None):
+async def emit_price_update(
+    symbol: str, price: float, bid: Optional[float] = None, ask: Optional[float] = None
+):
     """
     Broadcast a price update event.
 

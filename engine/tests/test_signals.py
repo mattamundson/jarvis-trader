@@ -2,6 +2,7 @@
 JARVIS TRADER — Signal Generation Tests
 Testing of the 5-layer Tony Stark trading framework signals.
 """
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -142,9 +143,9 @@ class TestComputeAllIndicators:
 
         # Assert - at end of strong uptrend, EMAs should align bullishly
         last_rows = df.tail(10)
-        assert (
-            (last_rows["ema_8"] >= last_rows["ema_21"]).sum() >= 5
-        ), "EMA 8 should exceed 21 in bullish trend"
+        assert (last_rows["ema_8"] >= last_rows["ema_21"]).sum() >= 5, (
+            "EMA 8 should exceed 21 in bullish trend"
+        )
 
 
 class TestSTCCrossover:
@@ -245,7 +246,9 @@ class TestATRStops:
         signals = generate_signals(df, symbol="MES")
 
         # Assert - stops should be below close for longs (skip warmup period of ~150 bars)
-        long_rows = signals.iloc[150:][signals.iloc[150:]["bias"].isin(["STRONG_BULL", "LEAN_BULL"])]
+        long_rows = signals.iloc[150:][
+            signals.iloc[150:]["bias"].isin(["STRONG_BULL", "LEAN_BULL"])
+        ]
         if len(long_rows) > 0:
             assert (long_rows["stop_level"] < long_rows["close"]).all(), (
                 "Long stops should be below current price"
@@ -260,7 +263,9 @@ class TestATRStops:
         signals = generate_signals(df, symbol="MES")
 
         # Assert - stops should be above close for shorts (skip warmup period of ~150 bars)
-        short_rows = signals.iloc[150:][signals.iloc[150:]["bias"].isin(["STRONG_BEAR", "LEAN_BEAR"])]
+        short_rows = signals.iloc[150:][
+            signals.iloc[150:]["bias"].isin(["STRONG_BEAR", "LEAN_BEAR"])
+        ]
         if len(short_rows) > 0:
             assert (short_rows["stop_level"] > short_rows["close"]).all(), (
                 "Short stops should be above current price"
@@ -291,7 +296,9 @@ class TestATRTargets:
         signals = generate_signals(df, symbol="MES")
 
         # Assert - targets should be above close and in order (skip warmup period of ~150 bars)
-        long_rows = signals.iloc[150:][signals.iloc[150:]["bias"].isin(["STRONG_BULL", "LEAN_BULL"])]
+        long_rows = signals.iloc[150:][
+            signals.iloc[150:]["bias"].isin(["STRONG_BULL", "LEAN_BULL"])
+        ]
         if len(long_rows) > 0:
             assert (long_rows["target_1"] > long_rows["close"]).all()
             assert (long_rows["target_2"] >= long_rows["target_1"]).all()
@@ -306,7 +313,9 @@ class TestATRTargets:
         signals = generate_signals(df, symbol="MES")
 
         # Assert - targets should be below close and in order (skip warmup period of ~150 bars)
-        short_rows = signals.iloc[150:][signals.iloc[150:]["bias"].isin(["STRONG_BEAR", "LEAN_BEAR"])]
+        short_rows = signals.iloc[150:][
+            signals.iloc[150:]["bias"].isin(["STRONG_BEAR", "LEAN_BEAR"])
+        ]
         if len(short_rows) > 0:
             assert (short_rows["target_1"] < short_rows["close"]).all()
             assert (short_rows["target_2"] <= short_rows["target_1"]).all()
@@ -340,9 +349,9 @@ class TestLayer3Bias:
         # Assert - skip warmup period (~150 bars for STC)
         # In bullish trend, expect STRONG_BULL or LEAN_BULL
         bullish_count = (signals.iloc[150:]["bias"].isin(["STRONG_BULL", "LEAN_BULL"])).sum()
-        assert (
-            bullish_count > 0
-        ), "Bullish trend should produce bullish bias (STRONG_BULL or LEAN_BULL)"
+        assert bullish_count > 0, (
+            "Bullish trend should produce bullish bias (STRONG_BULL or LEAN_BULL)"
+        )
 
     def test_bias_strong_bear_all_aligned(self, bearish_ohlcv_df):
         """All bearish indicators → STRONG_BEAR or LEAN_BEAR."""
@@ -355,9 +364,9 @@ class TestLayer3Bias:
         # Assert - skip warmup period (~150 bars for STC)
         # In bearish trend, expect STRONG_BEAR or LEAN_BEAR
         bearish_count = (signals.iloc[150:]["bias"].isin(["STRONG_BEAR", "LEAN_BEAR"])).sum()
-        assert (
-            bearish_count > 0
-        ), "Bearish trend should produce bearish bias (STRONG_BEAR or LEAN_BEAR)"
+        assert bearish_count > 0, (
+            "Bearish trend should produce bearish bias (STRONG_BEAR or LEAN_BEAR)"
+        )
 
     def test_bias_neutral_mixed_indicators(self, ranging_ohlcv_df):
         """Mixed signals → NEUTRAL bias."""
@@ -369,9 +378,7 @@ class TestLayer3Bias:
 
         # Assert
         neutral_count = (signals["bias"] == "NEUTRAL").sum()
-        assert (
-            neutral_count > 0
-        ), "Range-bound data should produce NEUTRAL bias"
+        assert neutral_count > 0, "Range-bound data should produce NEUTRAL bias"
 
 
 class TestLayer1Regime:

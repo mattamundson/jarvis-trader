@@ -51,18 +51,21 @@ def _get_db() -> DatabaseManager:
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+
 class JournalEntryCreate(BaseModel):
     """Payload for creating a new journal entry."""
+
     trade_id: str
     note: str
-    tags: Optional[str] = None        # comma-separated, e.g. "missed_entry,good_setup"
-    mood: Optional[str] = None        # confident | uncertain | frustrated | neutral
+    tags: Optional[str] = None  # comma-separated, e.g. "missed_entry,good_setup"
+    mood: Optional[str] = None  # confident | uncertain | frustrated | neutral
     lesson: Optional[str] = None
-    timestamp: Optional[str] = None   # ISO-8601 UTC; server fills in now() if omitted
+    timestamp: Optional[str] = None  # ISO-8601 UTC; server fills in now() if omitted
 
 
 class JournalEntryUpdate(BaseModel):
     """Payload for partially updating an existing journal entry."""
+
     note: Optional[str] = None
     tags: Optional[str] = None
     mood: Optional[str] = None
@@ -71,6 +74,7 @@ class JournalEntryUpdate(BaseModel):
 
 class JournalEntryResponse(BaseModel):
     """Response shape for a single journal entry row."""
+
     id: int
     trade_id: str
     timestamp: str
@@ -100,6 +104,7 @@ _VALID_MOODS = {"confident", "uncertain", "frustrated", "neutral"}
 
 
 # ── POST /journal/entries ──────────────────────────────────────────────────
+
 
 @router.post(
     "/entries",
@@ -140,6 +145,7 @@ def create_journal_entry(payload: JournalEntryCreate) -> CreateEntryResponse:
 
 # ── GET /journal/entries ───────────────────────────────────────────────────
 
+
 @router.get(
     "/entries",
     response_model=List[JournalEntryResponse],
@@ -163,6 +169,7 @@ def list_journal_entries(
 
 
 # ── PATCH /journal/entries/{entry_id} ─────────────────────────────────────
+
 
 @router.patch(
     "/entries/{entry_id}",
@@ -204,19 +211,20 @@ def update_journal_entry(
     # For correctness we do a fresh targeted query here.
     conn = db._connect()  # type: ignore[attr-defined]
     try:
-        row = conn.execute(
-            "SELECT * FROM trade_journal WHERE id = ?", (entry_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM trade_journal WHERE id = ?", (entry_id,)).fetchone()
     finally:
         conn.close()
 
     if row is None:
-        raise HTTPException(status_code=404, detail=f"Journal entry {entry_id} not found after update.")
+        raise HTTPException(
+            status_code=404, detail=f"Journal entry {entry_id} not found after update."
+        )
 
     return JournalEntryResponse(**dict(row))
 
 
 # ── DELETE /journal/entries/{entry_id} ────────────────────────────────────
+
 
 @router.delete(
     "/entries/{entry_id}",
@@ -238,6 +246,7 @@ def delete_journal_entry(entry_id: int) -> DeleteResponse:
 
 
 # ── GET /journal/tags ──────────────────────────────────────────────────────
+
 
 @router.get(
     "/tags",
@@ -264,15 +273,17 @@ _VALID_NOTE_TYPES = {"observation", "lesson", "alert"}
 
 class JournalNoteCreate(BaseModel):
     """Payload for creating a new journal note."""
-    note_type: str = "observation"      # observation | lesson | alert
+
+    note_type: str = "observation"  # observation | lesson | alert
     title: str
     body: Optional[str] = ""
-    tags: Optional[List[str]] = None    # JSON array of tag strings
-    trade_id: Optional[str] = None      # optional soft FK to paper_trades
+    tags: Optional[List[str]] = None  # JSON array of tag strings
+    trade_id: Optional[str] = None  # optional soft FK to paper_trades
 
 
 class JournalNoteResponse(BaseModel):
     """Response shape for a single journal note row."""
+
     id: int
     trade_id: Optional[str]
     note_type: str
@@ -298,6 +309,7 @@ class DeleteNoteResponse(BaseModel):
 
 # ── GET /journal/notes ─────────────────────────────────────────────────────
 
+
 @router.get(
     "/notes",
     response_model=List[JournalNoteResponse],
@@ -305,7 +317,9 @@ class DeleteNoteResponse(BaseModel):
 )
 def get_journal_notes(
     limit: int = Query(default=50, ge=1, le=200, description="Maximum number of results"),
-    note_type: Optional[str] = Query(default=None, description="Filter by note type: observation | lesson | alert"),
+    note_type: Optional[str] = Query(
+        default=None, description="Filter by note type: observation | lesson | alert"
+    ),
     trade_id: Optional[str] = Query(default=None, description="Filter by linked paper trade UUID"),
 ) -> List[JournalNoteResponse]:
     """
@@ -338,6 +352,7 @@ def get_journal_notes(
 
 
 # ── POST /journal/notes ────────────────────────────────────────────────────
+
 
 @router.post(
     "/notes",
@@ -374,6 +389,7 @@ def create_journal_note(payload: JournalNoteCreate) -> CreateNoteResponse:
 
 
 # ── DELETE /journal/notes/{note_id} ───────────────────────────────────────
+
 
 @router.delete(
     "/notes/{note_id}",

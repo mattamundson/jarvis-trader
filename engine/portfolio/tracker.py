@@ -36,16 +36,17 @@ _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
 
 # ── Data model ────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class PaperTrade:
     """Represents a single simulated trade, open or closed."""
 
     trade_id: str
     symbol: str
-    action: str            # "buy" | "sell" | "buy_to_open" | "sell_to_open" etc.
+    action: str  # "buy" | "sell" | "buy_to_open" | "sell_to_open" etc.
     quantity: float
     entry_price: float
-    entry_time: str        # ISO-8601
+    entry_time: str  # ISO-8601
 
     # Filled in on close
     exit_price: Optional[float] = None
@@ -65,6 +66,7 @@ class PaperTrade:
 
 
 # ── Tracker ───────────────────────────────────────────────────────────────────
+
 
 class PortfolioTracker:
     """
@@ -94,10 +96,10 @@ class PortfolioTracker:
         self._db = db_manager  # may be None
 
         # In-memory state
-        self._open: Dict[str, PaperTrade] = {}    # trade_id → PaperTrade
+        self._open: Dict[str, PaperTrade] = {}  # trade_id → PaperTrade
         self._closed: List[PaperTrade] = []
         # Symbol-keyed live positions (richer dict kept in sync with DB when available)
-        self._positions: Dict[str, dict] = {}     # symbol → position dict
+        self._positions: Dict[str, dict] = {}  # symbol → position dict
 
         # Load from DB first (if available), then overlay JSONL for audit integrity
         if self._db is not None:
@@ -159,7 +161,11 @@ class PortfolioTracker:
 
         logger.info(
             "[PAPER] OPEN  %s %s qty=%s @ %.4f  id=%s",
-            symbol.upper(), action.upper(), quantity, price, trade_id[:8],
+            symbol.upper(),
+            action.upper(),
+            quantity,
+            price,
+            trade_id[:8],
         )
         return trade_id
 
@@ -203,17 +209,23 @@ class PortfolioTracker:
 
         logger.info(
             "[PAPER] CLOSE %s @ %.4f  pnl=%+.2f  id=%s",
-            trade.symbol, exit_price, trade.pnl, trade_id[:8],
+            trade.symbol,
+            exit_price,
+            trade.pnl,
+            trade_id[:8],
         )
         return trade
 
     def get_open_positions(self) -> List[dict]:
         """Return all currently open trades as dicts, newest first."""
-        return [t.to_dict() for t in sorted(
-            self._open.values(),
-            key=lambda t: t.entry_time,
-            reverse=True,
-        )]
+        return [
+            t.to_dict()
+            for t in sorted(
+                self._open.values(),
+                key=lambda t: t.entry_time,
+                reverse=True,
+            )
+        ]
 
     def get_performance(self) -> dict:
         """
@@ -332,12 +344,19 @@ class PortfolioTracker:
                     strategy_params=strategy_params,
                 )
             except Exception as exc:
-                logger.error("DB insert_paper_trade (add_paper_trade) failed for %s: %s", trade_id[:8], exc)
+                logger.error(
+                    "DB insert_paper_trade (add_paper_trade) failed for %s: %s", trade_id[:8], exc
+                )
 
         logger.info(
             "[PAPER] ADD   %s %s qty=%s @ %.4f  sl=%s tp=%s  id=%s",
-            symbol.upper(), side.upper(), quantity, entry_price,
-            stop_loss, take_profit, trade_id[:8],
+            symbol.upper(),
+            side.upper(),
+            quantity,
+            entry_price,
+            stop_loss,
+            take_profit,
+            trade_id[:8],
         )
         return trade_id
 
@@ -390,7 +409,10 @@ class PortfolioTracker:
 
         logger.info(
             "[PAPER] CLOSE %s @ %.4f  pnl=%+.2f  id=%s",
-            trade.symbol, exit_price, trade.pnl, trade_id[:8],
+            trade.symbol,
+            exit_price,
+            trade.pnl,
+            trade_id[:8],
         )
         return trade
 
@@ -571,7 +593,9 @@ class PortfolioTracker:
                         if trade_id:
                             by_id[trade_id] = record
                     except json.JSONDecodeError as exc:
-                        logger.warning("Skipping malformed line %d in trades.jsonl: %s", line_num, exc)
+                        logger.warning(
+                            "Skipping malformed line %d in trades.jsonl: %s", line_num, exc
+                        )
         except OSError as exc:
             logger.error("Could not read trades.jsonl: %s", exc)
             return
@@ -591,7 +615,8 @@ class PortfolioTracker:
             except (TypeError, KeyError) as exc:
                 logger.warning(
                     "Skipping bad trade record %s: %s",
-                    record.get("trade_id", "?"), exc,
+                    record.get("trade_id", "?"),
+                    exc,
                 )
 
         # Sort closed trades chronologically

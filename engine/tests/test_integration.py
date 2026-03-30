@@ -29,8 +29,8 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Path bootstrap — make the engine package importable from tests/
 # ---------------------------------------------------------------------------
-_ENGINE_DIR = Path(__file__).parent.parent          # engine/
-_PROJECT_ROOT = _ENGINE_DIR.parent                  # jarvis-trader/
+_ENGINE_DIR = Path(__file__).parent.parent  # engine/
+_PROJECT_ROOT = _ENGINE_DIR.parent  # jarvis-trader/
 if str(_ENGINE_DIR.parent) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR.parent))
 
@@ -63,6 +63,7 @@ def _engine_running() -> bool:
 # TestSQLitePersistence
 # ===========================================================================
 
+
 class TestSQLitePersistence(unittest.TestCase):
     """Verify every public DatabaseManager method against a real SQLite file."""
 
@@ -72,6 +73,7 @@ class TestSQLitePersistence(unittest.TestCase):
         db_path = os.path.join(self._tmpdir, "test.db")
 
         from engine.database.schema import DatabaseManager
+
         self.db = DatabaseManager(db_path=db_path)
         self.db.initialize()
 
@@ -84,6 +86,7 @@ class TestSQLitePersistence(unittest.TestCase):
     def test_db_initializes_cleanly(self) -> None:
         """All expected tables must exist after initialize()."""
         from engine.database.schema import DatabaseManager
+
         db_path = os.path.join(self._tmpdir, "clean_init.db")
         db = DatabaseManager(db_path=db_path)
         db.initialize()
@@ -104,7 +107,7 @@ class TestSQLitePersistence(unittest.TestCase):
                 required,
                 tables,
                 msg=f"Expected table '{required}' not found after initialize(). "
-                    f"Tables present: {tables}",
+                f"Tables present: {tables}",
             )
 
     # ── trade lifecycle ────────────────────────────────────────────────────
@@ -179,7 +182,7 @@ class TestSQLitePersistence(unittest.TestCase):
 
         # Second manager — simulates restart
         db2 = DatabaseManager(db_path=shared_db_path)
-        db2.initialize()   # idempotent — must not wipe existing data
+        db2.initialize()  # idempotent — must not wipe existing data
         recovered = db2.get_trade_by_id(trade_id)
 
         self.assertIsNotNone(recovered, "Trade should survive a manager restart")
@@ -296,11 +299,13 @@ class TestSQLitePersistence(unittest.TestCase):
 # TestPositionSizing
 # ===========================================================================
 
+
 class TestPositionSizing(unittest.TestCase):
     """Verify calculate_position_size arithmetic and edge-case handling."""
 
     def setUp(self) -> None:
         from engine.utils.position_sizing import calculate_position_size
+
         self._calc = calculate_position_size
 
     # ── standard case ──────────────────────────────────────────────────────
@@ -339,8 +344,7 @@ class TestPositionSizing(unittest.TestCase):
             account_value=50_000.0,
             atr=0.0,
         )
-        self.assertEqual(result.contracts, 1,
-                         "Zero ATR must always fall back to 1 contract")
+        self.assertEqual(result.contracts, 1, "Zero ATR must always fall back to 1 contract")
         self.assertAlmostEqual(result.stop_distance, 0.0)
 
     def test_fallback_on_none_atr(self) -> None:
@@ -362,12 +366,13 @@ class TestPositionSizing(unittest.TestCase):
         result = self._calc(
             symbol="MES",
             account_value=1_000_000.0,
-            atr=1.0,        # tiny stop → lots of raw contracts
+            atr=1.0,  # tiny stop → lots of raw contracts
             risk_pct=0.01,
             max_contracts=3,
         )
         self.assertLessEqual(
-            result.contracts, 3,
+            result.contracts,
+            3,
             "Contracts must never exceed max_contracts cap",
         )
 
@@ -390,8 +395,9 @@ class TestPositionSizing(unittest.TestCase):
         )
         # Should use _DEFAULT_MULTIPLIER — same as MES ($5/pt), same arithmetic as test_mes_standard
         # raw = floor(100 / 43.75) = 2, clamped to min(2, 5) = 2
-        self.assertGreaterEqual(result.contracts, 1,
-                                "Unknown symbol must return at least 1 contract")
+        self.assertGreaterEqual(
+            result.contracts, 1, "Unknown symbol must return at least 1 contract"
+        )
         # Confirm the dollar_risk_per_contract used the default multiplier
         expected_drpc = result.stop_distance * _DEFAULT_MULTIPLIER
         self.assertAlmostEqual(result.dollar_risk_per_contract, expected_drpc, places=4)
@@ -412,6 +418,7 @@ class TestPositionSizing(unittest.TestCase):
 # TestTrackerSQLiteIntegration
 # ===========================================================================
 
+
 class TestTrackerSQLiteIntegration(unittest.TestCase):
     """Verify PortfolioTracker <-> DatabaseManager integration."""
 
@@ -424,6 +431,7 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
     def _make_db(self, name: str = "test.db"):
         """Create and initialise a fresh DatabaseManager in the temp dir."""
         from engine.database.schema import DatabaseManager
+
         db_path = os.path.join(self._tmpdir, name)
         db = DatabaseManager(db_path=db_path)
         db.initialize()
@@ -432,6 +440,7 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
     def _make_tracker(self, db=None, jsonl_name: str = "trades.jsonl"):
         """Create a PortfolioTracker wired to a temp JSONL file."""
         from engine.portfolio.tracker import PortfolioTracker
+
         jsonl_path = Path(self._tmpdir) / jsonl_name
         return PortfolioTracker(store_path=jsonl_path, db_manager=db)
 
@@ -541,21 +550,24 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         tracker = self._make_tracker(db=None)
         trade_id = tracker.open_trade("MES", "buy", 3, 5000.0)
         closed = tracker.close_trade(trade_id, exit_price=5010.0)
-        self.assertAlmostEqual(closed.pnl, 30.0)   # (5010-5000)*3
+        self.assertAlmostEqual(closed.pnl, 30.0)  # (5010-5000)*3
 
     def test_tracker_pnl_short(self) -> None:
         """P&L for a short trade: (entry - exit) * qty."""
         tracker = self._make_tracker(db=None)
         trade_id = tracker.open_trade("MES", "sell", 2, 5100.0)
         closed = tracker.close_trade(trade_id, exit_price=5080.0)
-        self.assertAlmostEqual(closed.pnl, 40.0)   # (5100-5080)*2
+        self.assertAlmostEqual(closed.pnl, 40.0)  # (5100-5080)*2
 
 
 # ===========================================================================
 # TestPortfolioEndpoints  (requires engine running on localhost:8010)
 # ===========================================================================
 
-@unittest.skipIf(not _engine_running(), "Engine not running on localhost:8010 — skipping live endpoint tests")
+
+@unittest.skipIf(
+    not _engine_running(), "Engine not running on localhost:8010 — skipping live endpoint tests"
+)
 class TestPortfolioEndpoints(unittest.TestCase):
     """
     Live HTTP smoke-tests against a running JARVIS engine.
@@ -605,7 +617,8 @@ class TestPortfolioEndpoints(unittest.TestCase):
         """GET /portfolio must return HTTP 200."""
         status, body = self._get("/portfolio")
         self.assertEqual(
-            status, 200,
+            status,
+            200,
             f"Expected HTTP 200 from /portfolio, got {status}",
         )
 
@@ -613,7 +626,8 @@ class TestPortfolioEndpoints(unittest.TestCase):
         """GET /safety/status must return 200."""
         status, body = self._get("/safety/status")
         self.assertEqual(
-            status, 200,
+            status,
+            200,
             f"Expected HTTP 200 from /safety/status, got {status}",
         )
 
@@ -621,7 +635,8 @@ class TestPortfolioEndpoints(unittest.TestCase):
         """GET /decisions/recent must return 200."""
         status, body = self._get("/decisions/recent")
         self.assertEqual(
-            status, 200,
+            status,
+            200,
             f"Expected HTTP 200 from /decisions/recent, got {status}",
         )
 
@@ -636,7 +651,8 @@ class TestPortfolioEndpoints(unittest.TestCase):
         status, body = self._get("/portfolio/history/trades")
         # Accept 200 (route live) or 404 (not yet wired in Phase 3)
         self.assertIn(
-            status, (200, 404),
+            status,
+            (200, 404),
             f"Unexpected status {status} from /portfolio/history/trades",
         )
         if status == 200:
@@ -650,7 +666,8 @@ class TestPortfolioEndpoints(unittest.TestCase):
         """
         status, body = self._get("/portfolio/history/daily-pnl")
         self.assertIn(
-            status, (200, 404),
+            status,
+            (200, 404),
             f"Unexpected status {status} from /portfolio/history/daily-pnl",
         )
         if status == 200:
@@ -663,12 +680,14 @@ class TestPortfolioEndpoints(unittest.TestCase):
         """
         status, body = self._get("/safety/circuit-breakers")
         self.assertIn(
-            status, (200, 404),
+            status,
+            (200, 404),
             f"Unexpected status {status} from /safety/circuit-breakers",
         )
         if status == 200:
             self.assertIn(
-                "all_clear", body,
+                "all_clear",
+                body,
                 f"/safety/circuit-breakers missing 'all_clear' field. Body: {body}",
             )
 
@@ -679,12 +698,14 @@ class TestPortfolioEndpoints(unittest.TestCase):
         """
         status, body = self._get("/analytics/performance")
         self.assertIn(
-            status, (200, 404),
+            status,
+            (200, 404),
             f"Unexpected status {status} from /analytics/performance",
         )
         if status == 200:
             self.assertIn(
-                "status", body,
+                "status",
+                body,
                 f"/analytics/performance missing 'status' field. Body: {body}",
             )
 
@@ -725,6 +746,7 @@ class TestWebhookRouter(unittest.TestCase):
         os.environ.pop("TRADINGVIEW_WEBHOOK_SECRET", None)
         # Re-import the module so the module-level WEBHOOK_SECRET re-reads the env.
         import engine.routers.webhook_router as _wh_mod
+
         _wh_mod.WEBHOOK_SECRET = os.getenv("TRADINGVIEW_WEBHOOK_SECRET", "")
 
     # ── 1. GET /webhook/tradingview/test ────────────────────────────────────
@@ -732,12 +754,12 @@ class TestWebhookRouter(unittest.TestCase):
     def test_webhook_get_test_endpoint(self) -> None:
         """GET /webhook/tradingview/test must return 200 with status 'ok'."""
         resp = _webhook_client.get("/webhook/tradingview/test")
-        self.assertEqual(resp.status_code, 200,
-                         f"Expected 200, got {resp.status_code}. Body: {resp.text}")
+        self.assertEqual(
+            resp.status_code, 200, f"Expected 200, got {resp.status_code}. Body: {resp.text}"
+        )
         body = resp.json()
         self.assertIn("status", body, f"Response missing 'status' key. Body: {body}")
-        self.assertEqual(body["status"], "ok",
-                         f"Expected status='ok', got {body['status']!r}")
+        self.assertEqual(body["status"], "ok", f"Expected status='ok', got {body['status']!r}")
 
     # ── 2. POST HOLD — ignored / received ───────────────────────────────────
 
@@ -752,8 +774,9 @@ class TestWebhookRouter(unittest.TestCase):
         """
         payload = {"action": "HOLD", "symbol": "MES"}
         resp = _webhook_client.post("/webhook/tradingview", json=payload)
-        self.assertEqual(resp.status_code, 200,
-                         f"Expected 200, got {resp.status_code}. Body: {resp.text}")
+        self.assertEqual(
+            resp.status_code, 200, f"Expected 200, got {resp.status_code}. Body: {resp.text}"
+        )
         body = resp.json()
         self.assertIn("status", body, f"Response missing 'status' key. Body: {body}")
         self.assertIn(
@@ -789,8 +812,9 @@ class TestWebhookRouter(unittest.TestCase):
             "regime": "BULL",
         }
         resp = _webhook_client.post("/webhook/tradingview", json=payload)
-        self.assertEqual(resp.status_code, 200,
-                         f"Expected 200, got {resp.status_code}. Body: {resp.text}")
+        self.assertEqual(
+            resp.status_code, 200, f"Expected 200, got {resp.status_code}. Body: {resp.text}"
+        )
         body = resp.json()
         self.assertIn("status", body, f"Response missing 'status' key. Body: {body}")
         accepted_statuses = ("received", "queued", "completed", "error")
@@ -813,13 +837,15 @@ class TestWebhookRouter(unittest.TestCase):
             headers={"Content-Type": "application/json"},
         )
         self.assertNotEqual(
-            resp.status_code, 500,
+            resp.status_code,
+            500,
             f"Server returned 500 on malformed input. Body: {resp.text}",
         )
         # Acceptable: 400 (explicit bad-request), 422 (FastAPI validation), or
         # 200 with an error status field
         self.assertIn(
-            resp.status_code, (200, 400, 422),
+            resp.status_code,
+            (200, 400, 422),
             f"Unexpected status code {resp.status_code} for malformed JSON",
         )
 
@@ -843,7 +869,8 @@ class TestWebhookRouter(unittest.TestCase):
         payload_wrong = {"symbol": "MES", "action": "LONG", "secret": "WRONG_SECRET"}
         resp_wrong = _webhook_client.post("/webhook/tradingview", json=payload_wrong)
         self.assertIn(
-            resp_wrong.status_code, (401, 403),
+            resp_wrong.status_code,
+            (401, 403),
             f"Expected 401/403 for wrong secret, got {resp_wrong.status_code}",
         )
 
@@ -851,7 +878,8 @@ class TestWebhookRouter(unittest.TestCase):
         payload_missing = {"symbol": "MES", "action": "LONG"}
         resp_missing = _webhook_client.post("/webhook/tradingview", json=payload_missing)
         self.assertIn(
-            resp_missing.status_code, (401, 403),
+            resp_missing.status_code,
+            (401, 403),
             f"Expected 401/403 for missing secret, got {resp_missing.status_code}",
         )
 
@@ -994,7 +1022,8 @@ class TestSignalPipeline(unittest.TestCase):
         """
         resp = _pipeline_client.get("/pipeline/history")
         self.assertEqual(
-            resp.status_code, 200,
+            resp.status_code,
+            200,
             f"Expected HTTP 200 from /pipeline/history, got {resp.status_code}. Body: {resp.text}",
         )
         body = resp.json()
@@ -1013,7 +1042,8 @@ class TestSignalPipeline(unittest.TestCase):
         payload = {"symbol": "MES", "action": "HOLD"}
         resp = _pipeline_client.post("/pipeline/run-signal", json=payload)
         self.assertEqual(
-            resp.status_code, 400,
+            resp.status_code,
+            400,
             f"Expected HTTP 400 for HOLD action, got {resp.status_code}. Body: {resp.text}",
         )
 
@@ -1033,16 +1063,19 @@ class TestSignalPipeline(unittest.TestCase):
         if resp.status_code == 200:
             body = resp.json()
             self.assertIn(
-                "status", body,
+                "status",
+                body,
                 f"Expected 'status' key in 200 response body. Body: {body}",
             )
             self.assertEqual(
-                body["status"], "error",
+                body["status"],
+                "error",
                 f"Expected status='error' in 200 body, got {body['status']!r}. Body: {body}",
             )
         else:
             self.assertEqual(
-                resp.status_code, 503,
+                resp.status_code,
+                503,
                 f"Expected HTTP 503 when pipeline not initialized, "
                 f"got {resp.status_code}. Body: {resp.text}",
             )
@@ -1059,10 +1092,12 @@ class TestSignalPipeline(unittest.TestCase):
         body = resp.json()
         self.assertIn("runs", body, f"Missing 'runs' key. Body: {body}")
         self.assertIn("count", body, f"Missing 'count' key. Body: {body}")
-        self.assertIsInstance(body["runs"], list,
-                              f"'runs' must be a list, got {type(body['runs']).__name__}")
-        self.assertIsInstance(body["count"], int,
-                              f"'count' must be an int, got {type(body['count']).__name__}")
+        self.assertIsInstance(
+            body["runs"], list, f"'runs' must be a list, got {type(body['runs']).__name__}"
+        )
+        self.assertIsInstance(
+            body["count"], int, f"'count' must be an int, got {type(body['count']).__name__}"
+        )
 
     # ── 5. GET /pipeline/history?limit=5 honours the limit param ────────────
 
@@ -1072,12 +1107,14 @@ class TestSignalPipeline(unittest.TestCase):
         The limit query parameter must be honoured by the endpoint.
         """
         resp = _pipeline_client.get("/pipeline/history?limit=5")
-        self.assertEqual(resp.status_code, 200,
-                         f"Expected 200, got {resp.status_code}. Body: {resp.text}")
+        self.assertEqual(
+            resp.status_code, 200, f"Expected 200, got {resp.status_code}. Body: {resp.text}"
+        )
         body = resp.json()
         self.assertIn("runs", body)
         self.assertLessEqual(
-            len(body["runs"]), 5,
+            len(body["runs"]),
+            5,
             f"Expected at most 5 runs with limit=5, got {len(body['runs'])}",
         )
 
@@ -1089,13 +1126,15 @@ class TestSignalPipeline(unittest.TestCase):
         If the database is empty this test still passes (empty list is valid).
         """
         resp = _pipeline_client.get("/pipeline/history?symbol=MES")
-        self.assertEqual(resp.status_code, 200,
-                         f"Expected 200, got {resp.status_code}. Body: {resp.text}")
+        self.assertEqual(
+            resp.status_code, 200, f"Expected 200, got {resp.status_code}. Body: {resp.text}"
+        )
         body = resp.json()
         self.assertIn("runs", body)
         for run in body["runs"]:
             self.assertEqual(
-                run.get("symbol"), "MES",
+                run.get("symbol"),
+                "MES",
                 f"Expected all runs to have symbol='MES', got {run.get('symbol')!r}. Run: {run}",
             )
 
@@ -1103,6 +1142,7 @@ class TestSignalPipeline(unittest.TestCase):
 # ===========================================================================
 # === Webhook Deduplication Tests ===
 # ===========================================================================
+
 
 @unittest.skipUnless(_WEBHOOK_AVAILABLE, "Webhook router could not be imported")
 class TestWebhookDedup(unittest.TestCase):
@@ -1118,6 +1158,7 @@ class TestWebhookDedup(unittest.TestCase):
         fully independent of each other and of TestWebhookRouter runs.
         """
         import engine.routers.webhook_router as _wh_mod
+
         _wh_mod._dedup_cache.clear()
         # Ensure no webhook secret is set so auth does not interfere.
         os.environ.pop("TRADINGVIEW_WEBHOOK_SECRET", None)
@@ -1138,13 +1179,15 @@ class TestWebhookDedup(unittest.TestCase):
         }
         resp = _webhook_client.post("/webhook/tradingview", json=payload)
         self.assertEqual(
-            resp.status_code, 200,
+            resp.status_code,
+            200,
             f"Expected HTTP 200, got {resp.status_code}. Body: {resp.text}",
         )
         body = resp.json()
         self.assertIn("status", body, f"Missing 'status' key. Body: {body}")
         self.assertNotEqual(
-            body["status"], "duplicate",
+            body["status"],
+            "duplicate",
             f"First signal should NOT be rejected as duplicate. Body: {body}",
         )
 
@@ -1163,25 +1206,28 @@ class TestWebhookDedup(unittest.TestCase):
         }
         # First call — must succeed (not duplicate)
         resp1 = _webhook_client.post("/webhook/tradingview", json=payload)
-        self.assertEqual(resp1.status_code, 200,
-                         f"First request failed. Body: {resp1.text}")
+        self.assertEqual(resp1.status_code, 200, f"First request failed. Body: {resp1.text}")
         body1 = resp1.json()
         self.assertNotEqual(
-            body1.get("status"), "duplicate",
+            body1.get("status"),
+            "duplicate",
             f"First call should not be a duplicate. Body: {body1}",
         )
 
         # Second call — must be rejected as duplicate
         resp2 = _webhook_client.post("/webhook/tradingview", json=payload)
-        self.assertEqual(resp2.status_code, 200,
-                         f"Second request returned non-200. Body: {resp2.text}")
+        self.assertEqual(
+            resp2.status_code, 200, f"Second request returned non-200. Body: {resp2.text}"
+        )
         body2 = resp2.json()
         self.assertEqual(
-            body2.get("status"), "duplicate",
+            body2.get("status"),
+            "duplicate",
             f"Second identical call should be rejected as duplicate. Body: {body2}",
         )
         self.assertIn(
-            "message", body2,
+            "message",
+            body2,
             f"Duplicate response should include 'message' field. Body: {body2}",
         )
 
@@ -1189,6 +1235,7 @@ class TestWebhookDedup(unittest.TestCase):
 # ===========================================================================
 # TestSession4Endpoints
 # ===========================================================================
+
 
 @unittest.skipUnless(_engine_running(), "JARVIS engine not running on localhost:8010")
 class TestSession4Endpoints(unittest.TestCase):
@@ -1323,7 +1370,9 @@ class TestSession4Endpoints(unittest.TestCase):
         except ConnectionError as exc:
             raise unittest.SkipTest(f"Engine not reachable: {exc}") from exc
         self.assertEqual(status, 200, f"Expected 200, got {status}. Body: {data}")
-        self.assertEqual(data.get("imported"), 0, f"Expected 0 imports for empty list. Body: {data}")
+        self.assertEqual(
+            data.get("imported"), 0, f"Expected 0 imports for empty list. Body: {data}"
+        )
         self.assertIn("errors", data, f"Response missing 'errors' field. Body: {data}")
 
     def test_import_trades_single(self) -> None:
@@ -1359,6 +1408,7 @@ class TestSession4Endpoints(unittest.TestCase):
 # ===========================================================================
 # TestSession4ExtendedEndpoints
 # ===========================================================================
+
 
 class TestSession4ExtendedEndpoints(unittest.TestCase):
     """Tests for Session 4 extended endpoints (analytics, weekly, notifications).
@@ -1455,7 +1505,8 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
         status, data = self._get("/portfolio/stats/commissions")
         self.assertEqual(status, 200, f"Expected 200, got {status}. Body: {data}")
         self.assertIn(
-            "total_commissions", data,
+            "total_commissions",
+            data,
             f"Response missing 'total_commissions' field. Body: {data}",
         )
 
@@ -1473,7 +1524,8 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
         """POST /portfolio/import/trades with >1000 trades must return HTTP 400."""
         status, data = self._post("/portfolio/import/trades", {"trades": [{}] * 1001})
         self.assertEqual(
-            status, 400,
+            status,
+            400,
             f"Expected 400 for >1000-trade payload, got {status}. Body: {data}",
         )
 
@@ -1490,6 +1542,7 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
 # ===========================================================================
 # TestSession4ContinuationEndpoints
 # ===========================================================================
+
 
 class TestSession4ContinuationEndpoints(unittest.TestCase):
     """Tests for Session 4 continuation endpoints.
@@ -1508,6 +1561,7 @@ class TestSession4ContinuationEndpoints(unittest.TestCase):
     def _get(self, path: str) -> tuple[int, dict]:
         """GET path and return (status_code, body)."""
         import json as _json
+
         req = urllib.request.Request(f"{self.BASE_URL}{path}")
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -1543,7 +1597,8 @@ class TestSession4ContinuationEndpoints(unittest.TestCase):
         """GET /analytics/performance/rolling?days=0 should return error or empty dict."""
         status, data = self._get("/analytics/performance/rolling?days=0")
         self.assertIn(
-            status, [200, 400, 422],
+            status,
+            [200, 400, 422],
             f"Expected 200/400/422 for days=0, got {status}. Body: {data}",
         )
 

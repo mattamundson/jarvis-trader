@@ -1,6 +1,7 @@
 """
 JARVIS TRADER — Utility modules
 """
+
 from .position_sizing import (
     INSTRUMENT_MULTIPLIERS,
     PositionSizeResult,

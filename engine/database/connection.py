@@ -6,6 +6,7 @@ Async connection pooling for JARVIS TRADER trade logging.
 Provides graceful fallback if Postgres is unavailable — the system
 logs warnings but continues to operate without crashing.
 """
+
 import asyncio
 import logging
 from typing import Optional
@@ -129,10 +130,7 @@ async def execute(
 
     try:
         async with pool.acquire() as conn:
-            return await asyncio.wait_for(
-                conn.fetch(query, *args),
-                timeout=timeout
-            )
+            return await asyncio.wait_for(conn.fetch(query, *args), timeout=timeout)
     except asyncio.TimeoutError:
         logger.error(f"[DB] Query timeout (>10s): {query[:50]}")
         return None
@@ -164,10 +162,7 @@ async def execute_one(
 
     try:
         async with pool.acquire() as conn:
-            record = await asyncio.wait_for(
-                conn.fetchrow(query, *args),
-                timeout=timeout
-            )
+            record = await asyncio.wait_for(conn.fetchrow(query, *args), timeout=timeout)
             return dict(record) if record else None
     except asyncio.TimeoutError:
         logger.error(f"[DB] Query timeout: {query[:50]}")
@@ -200,10 +195,7 @@ async def execute_insert(
 
     try:
         async with pool.acquire() as conn:
-            record = await asyncio.wait_for(
-                conn.fetchrow(query, *args),
-                timeout=timeout
-            )
+            record = await asyncio.wait_for(conn.fetchrow(query, *args), timeout=timeout)
             return record[0] if record else None
     except asyncio.TimeoutError:
         logger.error(f"[DB] INSERT timeout: {query[:50]}")
@@ -240,10 +232,7 @@ async def execute_many(
 
     try:
         async with pool.acquire() as conn:
-            await asyncio.wait_for(
-                conn.executemany(query, args_list),
-                timeout=timeout
-            )
+            await asyncio.wait_for(conn.executemany(query, args_list), timeout=timeout)
             logger.debug(f"[DB] Bulk insert: {len(args_list)} rows")
             return True
     except asyncio.TimeoutError:

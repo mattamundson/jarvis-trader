@@ -24,10 +24,11 @@ Bias = Literal["BULL", "BEAR", "NEUTRAL"]
 @dataclass
 class TimeframeSignal:
     """STC signal state for a single timeframe."""
+
     timeframe: Timeframe
     symbol: str
-    stc_os: Optional[float] = None   # STC value (< 20 = bullish)
-    stc_ob: Optional[float] = None   # STC value (> 80 = bearish)
+    stc_os: Optional[float] = None  # STC value (< 20 = bullish)
+    stc_ob: Optional[float] = None  # STC value (> 80 = bearish)
     bias: Bias = "NEUTRAL"
     regime: Optional[str] = None
     timestamp: Optional[datetime] = None
@@ -44,10 +45,11 @@ class TimeframeSignal:
 @dataclass
 class MTFConfirmationResult:
     """Result of multi-timeframe confirmation check."""
+
     symbol: str
-    base_signal: str                    # LONG, SHORT, HOLD
+    base_signal: str  # LONG, SHORT, HOLD
     confirmed: bool
-    confirmation_level: int             # 1 = 1h only, 2 = 1h+4h, 3 = all three
+    confirmation_level: int  # 1 = 1h only, 2 = 1h+4h, 3 = all three
     timeframe_signals: Dict[str, TimeframeSignal] = field(default_factory=dict)
     reason: str = ""
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

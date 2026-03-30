@@ -11,6 +11,7 @@ Setup:
 
 ib_async wraps IB's TWS API over a persistent TCP socket.
 """
+
 import asyncio
 import logging
 from datetime import date
@@ -27,6 +28,7 @@ try:
         StopLimitOrder,
         StopOrder,
     )
+
     IB_AVAILABLE = True
 except ImportError:
     IB_AVAILABLE = False
@@ -50,7 +52,7 @@ __all__ = ["IBKRExecutor"]
 _FUTURES_EXCHANGE: dict[str, str] = {
     "MES": "CME",
     "MNQ": "CME",
-    "M2K": "CME",   # Micro Russell 2000
+    "M2K": "CME",  # Micro Russell 2000
     "MCL": "NYMEX",
     "MGC": "COMEX",
     "MHG": "COMEX",
@@ -58,7 +60,7 @@ _FUTURES_EXCHANGE: dict[str, str] = {
 }
 
 # Quarterly expiry month codes (futures notation)
-_QUARTERLY_MONTHS: list[int] = [3, 6, 9, 12]           # Mar / Jun / Sep / Dec
+_QUARTERLY_MONTHS: list[int] = [3, 6, 9, 12]  # Mar / Jun / Sep / Dec
 _MONTH_CODE: dict[int, str] = {3: "H", 6: "M", 9: "U", 12: "Z"}
 
 # Approximate expiry day (third Friday of expiry month).
@@ -68,6 +70,7 @@ _EXPIRY_DAY_APPROX: int = 21
 
 
 # ── Contract month helper ─────────────────────────────────────────────────────
+
 
 def _nearest_quarterly_expiry(reference: Optional[date] = None) -> str:
     """
@@ -97,6 +100,7 @@ def _nearest_quarterly_expiry(reference: Optional[date] = None) -> str:
 
 
 # ── IBKRExecutor ──────────────────────────────────────────────────────────────
+
 
 class IBKRExecutor:
     """
@@ -159,8 +163,7 @@ class IBKRExecutor:
                         await asyncio.sleep(self.RECONNECT_DELAY_SECONDS)
 
             logger.error(
-                "Failed to connect to IB Gateway after "
-                f"{self.MAX_RECONNECT_ATTEMPTS} attempts."
+                f"Failed to connect to IB Gateway after {self.MAX_RECONNECT_ATTEMPTS} attempts."
             )
             # Notify safety layer so it knows the broker link is down
             self._safety.activate_kill_switch(
@@ -232,12 +235,12 @@ class IBKRExecutor:
                 return 0.0
 
         summary = {
-            "total_equity":      _f("NetLiquidation"),
-            "cash":              _f("TotalCashValue"),
-            "available_funds":   _f("AvailableFunds"),
-            "margin_used":       _f("MaintMarginReq"),
-            "unrealized_pnl":    _f("UnrealizedPnL"),
-            "daily_pnl":         _f("DailyPnL"),
+            "total_equity": _f("NetLiquidation"),
+            "cash": _f("TotalCashValue"),
+            "available_funds": _f("AvailableFunds"),
+            "margin_used": _f("MaintMarginReq"),
+            "unrealized_pnl": _f("UnrealizedPnL"),
+            "daily_pnl": _f("DailyPnL"),
         }
         logger.debug(f"Account summary: {summary}")
         return summary
@@ -266,16 +269,16 @@ class IBKRExecutor:
             is_futures = contract.secType == "FUT"
             positions.append(
                 {
-                    "symbol":           contract.symbol,
-                    "sec_type":         contract.secType,
-                    "quantity":         pos.position,
-                    "avg_cost":         pos.avgCost,
-                    "market_value":     pos.position * pos.avgCost,  # approximate
-                    "unrealized_pnl":   0.0,  # not available directly from reqPositions
-                    "is_futures":       is_futures,
-                    "contract_month":   contract.lastTradeDateOrContractMonth if is_futures else None,
-                    "exchange":         contract.exchange,
-                    "currency":         contract.currency,
+                    "symbol": contract.symbol,
+                    "sec_type": contract.secType,
+                    "quantity": pos.position,
+                    "avg_cost": pos.avgCost,
+                    "market_value": pos.position * pos.avgCost,  # approximate
+                    "unrealized_pnl": 0.0,  # not available directly from reqPositions
+                    "is_futures": is_futures,
+                    "contract_month": contract.lastTradeDateOrContractMonth if is_futures else None,
+                    "exchange": contract.exchange,
+                    "currency": contract.currency,
                 }
             )
 
@@ -300,16 +303,16 @@ class IBKRExecutor:
         for trade in open_orders:
             orders.append(
                 {
-                    "ibkr_order_id":  trade.order.orderId,
-                    "symbol":         trade.contract.symbol,
-                    "action":         trade.order.action,
-                    "quantity":       trade.order.totalQuantity,
-                    "order_type":     trade.order.orderType,
-                    "limit_price":    trade.order.lmtPrice,
-                    "stop_price":     trade.order.auxPrice,
-                    "status":         trade.orderStatus.status,
-                    "filled":         trade.orderStatus.filled,
-                    "remaining":      trade.orderStatus.remaining,
+                    "ibkr_order_id": trade.order.orderId,
+                    "symbol": trade.contract.symbol,
+                    "action": trade.order.action,
+                    "quantity": trade.order.totalQuantity,
+                    "order_type": trade.order.orderType,
+                    "limit_price": trade.order.lmtPrice,
+                    "stop_price": trade.order.auxPrice,
+                    "status": trade.orderStatus.status,
+                    "filled": trade.orderStatus.filled,
+                    "remaining": trade.orderStatus.remaining,
                 }
             )
 
@@ -340,12 +343,12 @@ class IBKRExecutor:
                 f"reason={result.rejection_reason}"
             )
             return {
-                "submitted":    False,
-                "reason":       result.rejection_reason,
-                "symbol":       order.symbol,
-                "quantity":     order.quantity,
-                "order_type":   order.order_type,
-                "warnings":     result.warnings,
+                "submitted": False,
+                "reason": result.rejection_reason,
+                "symbol": order.symbol,
+                "quantity": order.quantity,
+                "order_type": order.order_type,
+                "warnings": result.warnings,
             }
 
         if result.warnings:
@@ -357,8 +360,8 @@ class IBKRExecutor:
             logger.error("submit_order: IB Gateway not reachable — order not sent")
             return {
                 "submitted": False,
-                "reason":    "IB Gateway not connected",
-                "symbol":    order.symbol,
+                "reason": "IB Gateway not connected",
+                "symbol": order.symbol,
             }
 
         # ── Step 3: Build contract ────────────────────────────────────────────
@@ -373,8 +376,8 @@ class IBKRExecutor:
             logger.error(f"Contract qualification failed for {order.symbol}: {exc}")
             return {
                 "submitted": False,
-                "reason":    f"Contract qualification failed: {exc}",
-                "symbol":    order.symbol,
+                "reason": f"Contract qualification failed: {exc}",
+                "symbol": order.symbol,
             }
 
         # ── Step 4: Build IB Order object ─────────────────────────────────────
@@ -390,31 +393,31 @@ class IBKRExecutor:
             if order.limit_price is None:
                 return {
                     "submitted": False,
-                    "reason":    "limit_price required for limit orders",
-                    "symbol":    order.symbol,
+                    "reason": "limit_price required for limit orders",
+                    "symbol": order.symbol,
                 }
             ib_order = LimitOrder(action, qty, order.limit_price)
         elif ot == "stop":
             if order.stop_price is None:
                 return {
                     "submitted": False,
-                    "reason":    "stop_price required for stop orders",
-                    "symbol":    order.symbol,
+                    "reason": "stop_price required for stop orders",
+                    "symbol": order.symbol,
                 }
             ib_order = StopOrder(action, qty, order.stop_price)
         elif ot == "stop_limit":
             if order.limit_price is None or order.stop_price is None:
                 return {
                     "submitted": False,
-                    "reason":    "Both limit_price and stop_price required for stop_limit orders",
-                    "symbol":    order.symbol,
+                    "reason": "Both limit_price and stop_price required for stop_limit orders",
+                    "symbol": order.symbol,
                 }
             ib_order = StopLimitOrder(action, qty, order.limit_price, order.stop_price)
         else:
             return {
                 "submitted": False,
-                "reason":    f"Unknown order_type '{order.order_type}'",
-                "symbol":    order.symbol,
+                "reason": f"Unknown order_type '{order.order_type}'",
+                "symbol": order.symbol,
             }
 
         # ── Step 5: Place the order ───────────────────────────────────────────
@@ -430,27 +433,26 @@ class IBKRExecutor:
             )
 
             return {
-                "submitted":      True,
-                "ibkr_order_id":  ibkr_order_id,
-                "symbol":         order.symbol,
-                "action":         action,
-                "quantity":       qty,
-                "order_type":     order.order_type,
-                "limit_price":    order.limit_price,
-                "stop_price":     order.stop_price,
-                "warnings":       result.warnings,
-                "trade":          trade,   # ib_async Trade object for callers that want to track fill
+                "submitted": True,
+                "ibkr_order_id": ibkr_order_id,
+                "symbol": order.symbol,
+                "action": action,
+                "quantity": qty,
+                "order_type": order.order_type,
+                "limit_price": order.limit_price,
+                "stop_price": order.stop_price,
+                "warnings": result.warnings,
+                "trade": trade,  # ib_async Trade object for callers that want to track fill
             }
 
         except Exception as exc:
             logger.error(
-                f"placeOrder failed — symbol={order.symbol} action={action} "
-                f"qty={qty}: {exc}"
+                f"placeOrder failed — symbol={order.symbol} action={action} qty={qty}: {exc}"
             )
             return {
                 "submitted": False,
-                "reason":    f"placeOrder exception: {exc}",
-                "symbol":    order.symbol,
+                "reason": f"placeOrder exception: {exc}",
+                "symbol": order.symbol,
             }
 
     # ── Order cancellation ────────────────────────────────────────────────────
@@ -467,9 +469,7 @@ class IBKRExecutor:
         try:
             # Find the Trade object that matches the order ID
             open_trades = self._ib.openTrades()
-            target_trade = next(
-                (t for t in open_trades if t.order.orderId == ibkr_order_id), None
-            )
+            target_trade = next((t for t in open_trades if t.order.orderId == ibkr_order_id), None)
 
             if target_trade is None:
                 logger.warning(f"cancel_order: order id {ibkr_order_id} not found in open trades")
@@ -500,14 +500,11 @@ class IBKRExecutor:
                 try:
                     self._ib.cancelOrder(trade.order)
                     logger.info(
-                        f"Cancelled order id={trade.order.orderId} "
-                        f"symbol={trade.contract.symbol}"
+                        f"Cancelled order id={trade.order.orderId} symbol={trade.contract.symbol}"
                     )
                     count += 1
                 except Exception as exc:
-                    logger.error(
-                        f"Failed to cancel order id={trade.order.orderId}: {exc}"
-                    )
+                    logger.error(f"Failed to cancel order id={trade.order.orderId}: {exc}")
 
             logger.warning(f"cancel_all_orders: {count} cancellations sent")
             return count
@@ -539,9 +536,7 @@ class IBKRExecutor:
 
         logger.critical(
             f"FLATTENING ALL POSITIONS ({len(positions)} open): "
-            + ", ".join(
-                f"{p['symbol']} qty={p['quantity']}" for p in positions
-            )
+            + ", ".join(f"{p['symbol']} qty={p['quantity']}" for p in positions)
         )
 
         results: list[dict] = []
@@ -552,7 +547,7 @@ class IBKRExecutor:
 
             OrderRequest(
                 symbol=pos["symbol"],
-                quantity=-qty,                 # opposite side to close
+                quantity=-qty,  # opposite side to close
                 order_type="market",
                 is_futures=pos["is_futures"],
                 estimated_value=abs(pos.get("market_value", 0.0)),
@@ -585,19 +580,17 @@ class IBKRExecutor:
                 )
                 results.append(
                     {
-                        "submitted":     True,
+                        "submitted": True,
                         "ibkr_order_id": ib_order.orderId,
-                        "symbol":        pos["symbol"],
-                        "action":        action,
-                        "quantity":      abs(qty),
-                        "trade":         trade,
+                        "symbol": pos["symbol"],
+                        "action": action,
+                        "quantity": abs(qty),
+                        "trade": trade,
                     }
                 )
             except Exception as exc:
                 logger.error(f"FLATTEN order failed for {pos['symbol']}: {exc}")
-                results.append(
-                    {"submitted": False, "reason": str(exc), "symbol": pos["symbol"]}
-                )
+                results.append({"submitted": False, "reason": str(exc), "symbol": pos["symbol"]})
 
         return results
 
@@ -625,17 +618,17 @@ class IBKRExecutor:
 
             cd = details_list[0]
             return {
-                "symbol":               cd.contract.symbol,
-                "exchange":             cd.contract.exchange,
-                "currency":             cd.contract.currency,
-                "multiplier":           cd.contract.multiplier,
-                "min_tick":             cd.minTick,
-                "long_initial_margin":  cd.longInitialMargin,
+                "symbol": cd.contract.symbol,
+                "exchange": cd.contract.exchange,
+                "currency": cd.contract.currency,
+                "multiplier": cd.contract.multiplier,
+                "min_tick": cd.minTick,
+                "long_initial_margin": cd.longInitialMargin,
                 "short_initial_margin": cd.shortInitialMargin,
-                "maintenance_margin":   cd.maintMargin,
-                "initial_margin":       cd.initMargin,
-                "contract_month":       cd.contract.lastTradeDateOrContractMonth,
-                "trading_hours":        cd.tradingHours,
+                "maintenance_margin": cd.maintMargin,
+                "initial_margin": cd.initMargin,
+                "contract_month": cd.contract.lastTradeDateOrContractMonth,
+                "trading_hours": cd.tradingHours,
             }
 
         except Exception as exc:
@@ -668,8 +661,5 @@ class IBKRExecutor:
             currency="USD",
         )
 
-        logger.debug(
-            f"Built futures contract: {symbol_upper} {contract_month} "
-            f"on {exchange}"
-        )
+        logger.debug(f"Built futures contract: {symbol_upper} {contract_month} on {exchange}")
         return contract

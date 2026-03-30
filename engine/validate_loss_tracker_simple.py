@@ -3,6 +3,7 @@
 Simple validation script for ConsecutiveLossTracker
 (without external dependencies)
 """
+
 import sys
 import tempfile
 from pathlib import Path
@@ -211,7 +212,9 @@ def test_status_report():
         assert status["global_consecutive_losses"] == 3
         assert status["symbol_losses"]["MES"] == 2
         assert status["symbol_losses"]["MNQ"] == 1
-        assert status["position_size_multiplier"] == 0.5, f"With 3 losses should be 0.5x, got {status['position_size_multiplier']}"
+        assert status["position_size_multiplier"] == 0.5, (
+            f"With 3 losses should be 0.5x, got {status['position_size_multiplier']}"
+        )
         assert status["is_halted"] is False
         assert status["last_trade_symbol"] == "MNQ"
 
@@ -247,6 +250,7 @@ def main():
         except Exception as e:
             print(f"\n❌ ERROR: {e}")
             import traceback
+
             traceback.print_exc()
             failed += 1
 

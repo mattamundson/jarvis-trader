@@ -9,6 +9,7 @@ basic financials before the same LLM regime assessment.
 Refresh interval: daily (macro data does not change intraday).
 Model: Claude Sonnet 4.6
 """
+
 import json
 import logging
 import os
@@ -32,12 +33,30 @@ FRED_SERIES = {
 }
 
 # Futures symbols prefix map (for classification)
-FUTURES_PREFIXES = {"MES", "MNQ", "MCL", "MGC", "M2K", "MYM", "ES", "NQ", "CL", "GC", "YM", "RTY", "ZB", "ZN", "SI", "HG"}
+FUTURES_PREFIXES = {
+    "MES",
+    "MNQ",
+    "MCL",
+    "MGC",
+    "M2K",
+    "MYM",
+    "ES",
+    "NQ",
+    "CL",
+    "GC",
+    "YM",
+    "RTY",
+    "ZB",
+    "ZN",
+    "SI",
+    "HG",
+}
 
 
 @dataclass
 class FundamentalReport:
     """Structured output from the Fundamental Analyst agent"""
+
     symbol: str
     timestamp: datetime
 
@@ -153,7 +172,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 
                     # Parse CSV: header row + data rows, find last non-empty value
                     text = resp.text
-                    lines = [l.strip() for l in text.splitlines() if l.strip()]
+                    lines = [line.strip() for line in text.splitlines() if line.strip()]
                     # Lines format: "DATE,VALUE"
                     last_value = None
                     for line in reversed(lines[1:]):  # skip header
@@ -261,7 +280,15 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 macro_block += f"- Yield Curve Spread (10Y - FF): {spread:.2f}% ({'INVERTED' if spread < 0 else 'normal'})\n"
         if "vix" in key_metrics:
             vix_val = key_metrics["vix"]
-            vix_regime = "LOW FEAR" if vix_val < 15 else ("ELEVATED" if vix_val < 25 else ("HIGH FEAR" if vix_val < 35 else "EXTREME FEAR"))
+            vix_regime = (
+                "LOW FEAR"
+                if vix_val < 15
+                else (
+                    "ELEVATED"
+                    if vix_val < 25
+                    else ("HIGH FEAR" if vix_val < 35 else "EXTREME FEAR")
+                )
+            )
             macro_block += f"- VIX (Fear Index): {vix_val:.1f} [{vix_regime}]\n"
 
         # Build equity section (if applicable)
@@ -304,7 +331,9 @@ Respond with JSON in exactly this format:
 }}"""
 
         try:
-            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv("ANTHROPIC_API_KEY", "")
+            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
+                "ANTHROPIC_API_KEY", ""
+            )
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(

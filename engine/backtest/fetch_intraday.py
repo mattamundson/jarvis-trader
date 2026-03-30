@@ -7,6 +7,7 @@ Usage:
     python -m backtest.fetch_intraday --symbol SPY --interval 1h --days 180
     python -m backtest.fetch_intraday --symbol MES --interval 1h --days 730
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,37 +47,43 @@ def _fetch_via_polygon(
 
     # Map interval to Polygon timespan/multiplier
     tf_map = {
-        "1m":  ("minute", 1),
-        "5m":  ("minute", 5),
+        "1m": ("minute", 1),
+        "5m": ("minute", 5),
         "15m": ("minute", 15),
         "30m": ("minute", 30),
-        "1h":  ("hour", 1),
-        "1d":  ("day", 1),
+        "1h": ("hour", 1),
+        "1d": ("day", 1),
     }
     timespan, multiplier = tf_map.get(interval, ("hour", 1))
     ticker_sym = FUTURES_MAP.get(symbol.upper(), symbol)
 
-    end   = datetime.now()
+    end = datetime.now()
     start = end - timedelta(days=days)
     from_date = start.strftime("%Y-%m-%d")
-    to_date   = end.strftime("%Y-%m-%d")
+    to_date = end.strftime("%Y-%m-%d")
 
     print(f"[Fetcher] Trying Polygon.io for {symbol} ({ticker_sym}) {interval}...")
     try:
         client = RESTClient(api_key)
         bars = []
         for agg in client.list_aggs(
-            ticker_sym, multiplier, timespan,
-            from_date, to_date, limit=50000,
+            ticker_sym,
+            multiplier,
+            timespan,
+            from_date,
+            to_date,
+            limit=50000,
         ):
-            bars.append({
-                "timestamp": datetime.fromtimestamp(agg.timestamp / 1000),
-                "open":   agg.open,
-                "high":   agg.high,
-                "low":    agg.low,
-                "close":  agg.close,
-                "volume": agg.volume,
-            })
+            bars.append(
+                {
+                    "timestamp": datetime.fromtimestamp(agg.timestamp / 1000),
+                    "open": agg.open,
+                    "high": agg.high,
+                    "low": agg.low,
+                    "close": agg.close,
+                    "volume": agg.volume,
+                }
+            )
 
         if not bars:
             print(f"[Fetcher] Polygon returned no bars for {symbol}")
@@ -121,7 +128,7 @@ def fetch_intraday(
 
     # Fall back to yfinance (chunked to avoid rate limits)
     chunk = CHUNK_DAYS.get(interval, 60)
-    end   = datetime.now()
+    end = datetime.now()
     start = end - timedelta(days=days)
 
     all_frames = []
@@ -129,12 +136,14 @@ def fetch_intraday(
     total_chunks = (days + chunk - 1) // chunk
     fetched = 0
 
-    print(f"[Fetcher] Fetching {symbol} ({ticker_sym}) {interval} — {days} days in {total_chunks} chunks...")
+    print(
+        f"[Fetcher] Fetching {symbol} ({ticker_sym}) {interval} — {days} days in {total_chunks} chunks..."
+    )
 
     while cursor < end:
         chunk_end = min(cursor + timedelta(days=chunk), end)
         start_str = cursor.strftime("%Y-%m-%d")
-        end_str   = chunk_end.strftime("%Y-%m-%d")
+        end_str = chunk_end.strftime("%Y-%m-%d")
 
         for attempt in range(3):
             try:
@@ -143,9 +152,13 @@ def fetch_intraday(
                 if raw is not None and not raw.empty:
                     all_frames.append(raw)
                     fetched += 1
-                    print(f"  chunk {fetched}/{total_chunks}: {start_str}→{end_str} ({len(raw)} bars) ✓")
+                    print(
+                        f"  chunk {fetched}/{total_chunks}: {start_str}→{end_str} ({len(raw)} bars) ✓"
+                    )
                 else:
-                    print(f"  chunk {fetched+1}/{total_chunks}: {start_str}→{end_str} empty — skipping")
+                    print(
+                        f"  chunk {fetched + 1}/{total_chunks}: {start_str}→{end_str} empty — skipping"
+                    )
                 break
             except Exception as e:
                 if "Rate" in str(e) or "429" in str(e):
@@ -190,10 +203,10 @@ def fetch_intraday(
 
 def main():
     parser = argparse.ArgumentParser(description="JARVIS Intraday Data Fetcher")
-    parser.add_argument("--symbol",   default="SPY")
-    parser.add_argument("--interval", default="1h", choices=["1m","5m","15m","30m","1h","1d"])
-    parser.add_argument("--days",     type=int, default=180, help="How many days back to fetch")
-    parser.add_argument("--force",    action="store_true", help="Re-fetch even if cached")
+    parser.add_argument("--symbol", default="SPY")
+    parser.add_argument("--interval", default="1h", choices=["1m", "5m", "15m", "30m", "1h", "1d"])
+    parser.add_argument("--days", type=int, default=180, help="How many days back to fetch")
+    parser.add_argument("--force", action="store_true", help="Re-fetch even if cached")
     args = parser.parse_args()
 
     df = fetch_intraday(args.symbol, args.interval, args.days, args.force)

@@ -10,42 +10,45 @@ Usage:
 Auto-saves top 5 results to:
     backtest/results/{SYMBOL}_{interval}_optimal_params.json
 """
+
 from __future__ import annotations
+
 import argparse
 import itertools
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-import numpy as np
 
+from backtest.backtester import Backtester, BacktestResult
 from backtest.data_loader import BacktestDataLoader
 from backtest.indicators import (
-    wilder_atr, kama, stc, phase_oscillator,
     ema_ribbon,
+    kama,
+    phase_oscillator,
+    stc,
+    wilder_atr,
 )
-from backtest.backtester import Backtester, BacktestResult
-
 
 # ── Parameter grid ────────────────────────────────────────────────────────────
 
 PARAM_GRID = {
-    "stc_oversold":    [15, 17, 19, 21, 23],          # default=19
-    "stc_overbought":  [83, 85, 88, 90, 92],          # default=88
-    "atr_stop_mult":   [0.3, 0.4, 0.5, 0.6, 0.7],    # default=0.5
-    "atr_target_mult": [0.8, 1.0, 1.2, 1.5, 2.0],    # default=1.0
-    "regime_filter":   [True, False],                  # default=True
+    "stc_oversold": [15, 17, 19, 21, 23],  # default=19
+    "stc_overbought": [83, 85, 88, 90, 92],  # default=88
+    "atr_stop_mult": [0.3, 0.4, 0.5, 0.6, 0.7],  # default=0.5
+    "atr_target_mult": [0.8, 1.0, 1.2, 1.5, 2.0],  # default=1.0
+    "regime_filter": [True, False],  # default=True
 }
 
 # Reduced grid for fast runs (comment out to do full grid)
 FAST_GRID = {
-    "stc_oversold":    [15, 19, 23],
-    "stc_overbought":  [83, 88, 92],
-    "atr_stop_mult":   [0.3, 0.5, 0.7],
+    "stc_oversold": [15, 19, 23],
+    "stc_overbought": [83, 88, 92],
+    "atr_stop_mult": [0.3, 0.5, 0.7],
     "atr_target_mult": [1.0, 1.5, 2.0],
-    "regime_filter":   [True, False],
+    "regime_filter": [True, False],
 }
 
 
@@ -157,23 +160,23 @@ def _compute_signals(
 ) -> pd.DataFrame:
     """Recompute signals with given parameters."""
     close = df["close"]
-    high  = df["high"]
-    low   = df["low"]
-    vol   = df["volume"]
+    high = df["high"]
+    low = df["low"]
+    df["volume"]
 
-    atr_vals   = wilder_atr(high, low, close, 14)
-    stc_vals   = stc(close, fast=23, slow=50, k_period=10, d_period=3)
+    atr_vals = wilder_atr(high, low, close, 14)
+    stc_vals = stc(close, fast=23, slow=50, k_period=10, d_period=3)
     phase_vals, phase_compression = phase_oscillator(close, high, low)
     ema8, ema21, ema34 = ema_ribbon(close)
     # range_consumed_pct takes scalars - compute as series inline
-    consumed = ((close - close.shift(1)).abs() / atr_vals.replace(0, float('nan'))) * 100
-    kama_vals  = kama(close)
+    consumed = ((close - close.shift(1)).abs() / atr_vals.replace(0, float("nan"))) * 100
+    kama_vals = kama(close)
 
     signals = []
     for i in range(len(df)):
         row = df.iloc[i]
-        atr_i  = atr_vals.iloc[i]
-        stc_i  = stc_vals.iloc[i]
+        atr_i = atr_vals.iloc[i]
+        stc_i = stc_vals.iloc[i]
         phase_i = phase_vals.iloc[i]
         e8, e21, e34 = ema8.iloc[i], ema21.iloc[i], ema34.iloc[i]
         cons = consumed.iloc[i]
@@ -212,13 +215,13 @@ def _compute_signals(
 
     df = df.copy()
     df["entry_signal"] = signals
-    df["atr"]          = atr_vals.values
+    df["atr"] = atr_vals.values
 
     # Columns required by backtester
-    df["stop_level"]  = df["close"] - atr_stop_mult * df["atr"]
-    df["target_1"]    = df["close"] + atr_target_mult * df["atr"]
-    df["target_2"]    = df["close"] + atr_target_mult * 1.618 * df["atr"]
-    df["target_3"]    = df["close"] + atr_target_mult * 2.0   * df["atr"]
+    df["stop_level"] = df["close"] - atr_stop_mult * df["atr"]
+    df["target_1"] = df["close"] + atr_target_mult * df["atr"]
+    df["target_2"] = df["close"] + atr_target_mult * 1.618 * df["atr"]
+    df["target_3"] = df["close"] + atr_target_mult * 2.0 * df["atr"]
 
     # Bias column: derive from EMA ribbon
     ema8_s, ema21_s, ema34_s = ema_ribbon(df["close"])
@@ -229,7 +232,9 @@ def _compute_signals(
     df.loc[bear_mask, "bias"] = "STRONG_BEAR"
 
     # Regime column: simple consumed-ATR proxy
-    consumed_s = ((df["close"] - df["close"].shift(1)).abs() / atr_vals.replace(0, float("nan"))) * 100
+    consumed_s = (
+        (df["close"] - df["close"].shift(1)).abs() / atr_vals.replace(0, float("nan"))
+    ) * 100
     df["regime"] = "TRENDING_BULL"
     df.loc[consumed_s > 90, "regime"] = "EXHAUSTED"
 
@@ -249,7 +254,13 @@ def _run_with_params(
     """Re-signal and backtest with given parameter set."""
     try:
         # Filter to only the params that _compute_signals accepts
-        signal_keys = {"stc_oversold", "stc_overbought", "atr_stop_mult", "atr_target_mult", "regime_filter"}
+        signal_keys = {
+            "stc_oversold",
+            "stc_overbought",
+            "atr_stop_mult",
+            "atr_target_mult",
+            "regime_filter",
+        }
         signal_params = {k: v for k, v in params.items() if k in signal_keys}
 
         # Pass daily_bias through if present (MTF filter)
@@ -261,7 +272,7 @@ def _run_with_params(
             risk_per_trade=0.01,
         )
         return backtester.run(df, "OPT", multiplier)
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -272,11 +283,11 @@ def _score(r: BacktestResult) -> float:
     """
     if r.total_trades < 3:
         return -999.0
-    pf   = min(r.profit_factor, 10.0)       # cap at 10x
-    wr   = r.win_rate / 100.0
-    sr   = min(r.sharpe_ratio, 20.0)        # cap at 20
-    ret  = r.total_return_pct
-    dd   = max(r.max_drawdown_pct, 0.001)   # avoid div/0
+    pf = min(r.profit_factor, 10.0)  # cap at 10x
+    wr = r.win_rate / 100.0
+    sr = min(r.sharpe_ratio, 20.0)  # cap at 20
+    ret = r.total_return_pct
+    dd = max(r.max_drawdown_pct, 0.001)  # avoid div/0
     return (pf * 0.3 + wr * 0.2 + sr * 0.3 + ret * 0.1) / dd * 0.1
 
 
@@ -301,15 +312,15 @@ def run_optimization(
     grid = FAST_GRID if fast else PARAM_GRID
 
     combos = list(itertools.product(*grid.values()))
-    keys   = list(grid.keys())
-    total  = len(combos)
+    keys = list(grid.keys())
+    total = len(combos)
     print(f"\n[Optimizer] {symbol} | {len(df)} bars | {total} parameter combinations")
     print("-" * 60)
 
     results: list[OptResult] = []
 
     for idx, values in enumerate(combos):
-        params = dict(zip(keys, values))
+        params = dict(zip(keys, values, strict=False))
 
         if (idx + 1) % 20 == 0 or idx == total - 1:
             print(f"  Progress: {idx + 1}/{total}", end="\r")
@@ -319,35 +330,37 @@ def run_optimization(
             continue
 
         score = _score(r)
-        results.append(OptResult(
-            stc_oversold    = params["stc_oversold"],
-            stc_overbought  = params["stc_overbought"],
-            atr_stop_mult   = params["atr_stop_mult"],
-            atr_target_mult = params["atr_target_mult"],
-            regime_filter   = params["regime_filter"],
-            trades          = r.total_trades,
-            win_rate        = round(r.win_rate, 1),
-            profit_factor   = round(min(r.profit_factor, 999.0), 2),
-            sharpe          = round(r.sharpe_ratio, 2),
-            total_return_pct= round(r.total_return_pct, 3),
-            max_dd_pct      = round(r.max_drawdown_pct, 3),
-            score           = round(score, 4),
-        ))
+        results.append(
+            OptResult(
+                stc_oversold=params["stc_oversold"],
+                stc_overbought=params["stc_overbought"],
+                atr_stop_mult=params["atr_stop_mult"],
+                atr_target_mult=params["atr_target_mult"],
+                regime_filter=params["regime_filter"],
+                trades=r.total_trades,
+                win_rate=round(r.win_rate, 1),
+                profit_factor=round(min(r.profit_factor, 999.0), 2),
+                sharpe=round(r.sharpe_ratio, 2),
+                total_return_pct=round(r.total_return_pct, 3),
+                max_dd_pct=round(r.max_drawdown_pct, 3),
+                score=round(score, 4),
+            )
+        )
 
     print()  # newline after progress
     results.sort(key=lambda x: x.score, reverse=True)
     top = results[:top_n]
 
     # ── Print results table ────────────────────────────────────────────────
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"OPTIMIZATION RESULTS -- TOP {top_n}: {symbol} ({start} to {end})")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     header = f"{'Rank':>4}  {'STC_OS':>6}  {'STC_OB':>6}  {'Stop':>5}  {'T1':>5}  {'Regime':>6}  {'Trades':>6}  {'WR%':>5}  {'PF':>6}  {'Sharpe':>6}  {'Ret%':>6}  {'Score':>7}"
     print(header)
     print("-" * 70)
     for i, r in enumerate(top):
         print(
-            f"{i+1:>4}  {r.stc_oversold:>6}  {r.stc_overbought:>6}  "
+            f"{i + 1:>4}  {r.stc_oversold:>6}  {r.stc_overbought:>6}  "
             f"{r.atr_stop_mult:>5.2f}  {r.atr_target_mult:>5.2f}  "
             f"{'ON' if r.regime_filter else 'OFF':>6}  "
             f"{r.trades:>6}  {r.win_rate:>5.1f}  {r.profit_factor:>6.2f}  "
@@ -357,17 +370,25 @@ def run_optimization(
     # ── Identify best parameters per metric ───────────────────────────────
     valid = [r for r in results if r.trades >= 3]
     if valid:
-        best_wr  = max(valid, key=lambda x: x.win_rate)
-        best_pf  = max(valid, key=lambda x: x.profit_factor)
-        best_sr  = max(valid, key=lambda x: x.sharpe)
+        best_wr = max(valid, key=lambda x: x.win_rate)
+        best_pf = max(valid, key=lambda x: x.profit_factor)
+        best_sr = max(valid, key=lambda x: x.sharpe)
         best_ret = max(valid, key=lambda x: x.total_return_pct)
 
-        print(f"\n{'-'*70}")
+        print(f"\n{'-' * 70}")
         print("BEST BY INDIVIDUAL METRIC:")
-        print(f"  Win Rate:     OS={best_wr.stc_oversold}  OB={best_wr.stc_overbought}  Stop={best_wr.atr_stop_mult}  T1={best_wr.atr_target_mult}  -> {best_wr.win_rate}% WR")
-        print(f"  Profit Factor:OS={best_pf.stc_oversold}  OB={best_pf.stc_overbought}  Stop={best_pf.atr_stop_mult}  T1={best_pf.atr_target_mult}  -> PF {best_pf.profit_factor}")
-        print(f"  Sharpe:       OS={best_sr.stc_oversold}  OB={best_sr.stc_overbought}  Stop={best_sr.atr_stop_mult}  T1={best_sr.atr_target_mult}  -> {best_sr.sharpe}")
-        print(f"  Total Return: OS={best_ret.stc_oversold}  OB={best_ret.stc_overbought}  Stop={best_ret.atr_stop_mult}  T1={best_ret.atr_target_mult}  -> {best_ret.total_return_pct}%")
+        print(
+            f"  Win Rate:     OS={best_wr.stc_oversold}  OB={best_wr.stc_overbought}  Stop={best_wr.atr_stop_mult}  T1={best_wr.atr_target_mult}  -> {best_wr.win_rate}% WR"
+        )
+        print(
+            f"  Profit Factor:OS={best_pf.stc_oversold}  OB={best_pf.stc_overbought}  Stop={best_pf.atr_stop_mult}  T1={best_pf.atr_target_mult}  -> PF {best_pf.profit_factor}"
+        )
+        print(
+            f"  Sharpe:       OS={best_sr.stc_oversold}  OB={best_sr.stc_overbought}  Stop={best_sr.atr_stop_mult}  T1={best_sr.atr_target_mult}  -> {best_sr.sharpe}"
+        )
+        print(
+            f"  Total Return: OS={best_ret.stc_oversold}  OB={best_ret.stc_overbought}  Stop={best_ret.atr_stop_mult}  T1={best_ret.atr_target_mult}  -> {best_ret.total_return_pct}%"
+        )
 
     # ── Auto-save top 5 to backtest/results/{SYMBOL}_{interval}_optimal_params.json ──
     top5 = results[:5]
@@ -386,18 +407,18 @@ def run_optimization(
             return max(counts, key=counts.get)
 
         consensus = {
-            "stc_oversold":    _mode([r.stc_oversold    for r in top5]),
-            "stc_overbought":  _mode([r.stc_overbought  for r in top5]),
-            "atr_stop_mult":   _mode([r.atr_stop_mult   for r in top5]),
+            "stc_oversold": _mode([r.stc_oversold for r in top5]),
+            "stc_overbought": _mode([r.stc_overbought for r in top5]),
+            "atr_stop_mult": _mode([r.atr_stop_mult for r in top5]),
             "atr_target_mult": _mode([r.atr_target_mult for r in top5]),
-            "regime_filter":   _mode([r.regime_filter   for r in top5]),
+            "regime_filter": _mode([r.regime_filter for r in top5]),
         }
 
         payload = {
-            "symbol":    symbol,
-            "interval":  interval,
-            "start":     start,
-            "end":       end,
+            "symbol": symbol,
+            "interval": interval,
+            "start": start,
+            "end": end,
             "top_params": [asdict(r) for r in top5],
             "consensus": consensus,
         }
@@ -415,13 +436,13 @@ def run_optimization(
 
 def main():
     parser = argparse.ArgumentParser(description="JARVIS Parameter Optimizer")
-    parser.add_argument("--symbol",   default="SPY")
-    parser.add_argument("--start",    default="2024-01-01")
-    parser.add_argument("--end",      default="2025-01-01")
+    parser.add_argument("--symbol", default="SPY")
+    parser.add_argument("--start", default="2024-01-01")
+    parser.add_argument("--end", default="2025-01-01")
     parser.add_argument("--interval", default="1d")
-    parser.add_argument("--full",     action="store_true", help="Full grid (slow) vs fast grid")
-    parser.add_argument("--top",      type=int, default=10)
-    parser.add_argument("--output",   default=None, help="Save JSON results")
+    parser.add_argument("--full", action="store_true", help="Full grid (slow) vs fast grid")
+    parser.add_argument("--top", type=int, default=10)
+    parser.add_argument("--output", default=None, help="Save JSON results")
     args = parser.parse_args()
 
     run_optimization(

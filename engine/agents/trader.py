@@ -8,6 +8,7 @@ then produces a concrete, order-ready TradeDecision.
 Model: Claude Opus 4.6 — most capable model, used here because this is the
 critical decision point where all analysis converges into an actionable order.
 """
+
 import json
 import logging
 import os
@@ -30,23 +31,24 @@ class TradeDecision:
     Fully specified trade decision produced by the Trader agent.
     Consumed by RiskManagerAgent and FundManagerAgent before execution.
     """
+
     symbol: str
-    action: str           # "buy" | "sell" | "hold"
-    quantity: int         # Number of contracts/shares (0 if hold)
-    order_type: str       # "market" | "limit" | "stop_limit"
-    time_in_force: str    # "day" | "gtc" | "ioc"
+    action: str  # "buy" | "sell" | "hold"
+    quantity: int  # Number of contracts/shares (0 if hold)
+    order_type: str  # "market" | "limit" | "stop_limit"
+    time_in_force: str  # "day" | "gtc" | "ioc"
 
     # Price parameters (None when not applicable)
     limit_price: Optional[float]
     stop_price: Optional[float]
 
     # Signal metadata
-    signal_score: float   # -1.0 (strong sell) to +1.0 (strong buy)
-    confidence: float     # 0.0 to 1.0
+    signal_score: float  # -1.0 (strong sell) to +1.0 (strong buy)
+    confidence: float  # 0.0 to 1.0
 
     # Qualitative output
-    reasoning: str        # Full explanation of the decision
-    risk_notes: str       # What could go wrong
+    reasoning: str  # Full explanation of the decision
+    risk_notes: str  # What could go wrong
 
     # Audit trail
     timestamp: datetime = field(default_factory=datetime.now)
@@ -143,6 +145,7 @@ class TraderAgent:
         atr: Optional[float] = indicators.get("atr") if isinstance(indicators, dict) else None
 
         from ..config import settings  # local import to avoid circular deps at module level
+
         max_contracts: int = settings.MAX_CONTRACTS_PER_INSTRUMENT
 
         position_size: PositionSizeResult = calculate_position_size(
@@ -161,7 +164,9 @@ class TraderAgent:
         )
 
         # Build the analysis prompt from all upstream reports
-        prompt = self._build_prompt(symbol, debate_result, analyst_reports, safety_status, position_size)
+        prompt = self._build_prompt(
+            symbol, debate_result, analyst_reports, safety_status, position_size
+        )
 
         try:
             api_key = getattr(self._llm, "api_key", None) or os.getenv("ANTHROPIC_API_KEY", "")
@@ -227,35 +232,35 @@ class TraderAgent:
         return f"""Make a trade decision for {symbol}.
 
 === BULL/BEAR DEBATE RESULT ===
-Verdict: {debate_result.get('verdict', 'N/A')}
-Bull score: {debate_result.get('bull_score', 'N/A')}
-Bear score: {debate_result.get('bear_score', 'N/A')}
-Debate summary: {debate_result.get('summary', 'N/A')}
-Key bull arguments: {debate_result.get('bull_arguments', [])}
-Key bear arguments: {debate_result.get('bear_arguments', [])}
+Verdict: {debate_result.get("verdict", "N/A")}
+Bull score: {debate_result.get("bull_score", "N/A")}
+Bear score: {debate_result.get("bear_score", "N/A")}
+Debate summary: {debate_result.get("summary", "N/A")}
+Key bull arguments: {debate_result.get("bull_arguments", [])}
+Key bear arguments: {debate_result.get("bear_arguments", [])}
 
 === TECHNICAL ANALYSIS ===
-Signal: {technical.get('signal', 'N/A')} | Confidence: {technical.get('confidence', 'N/A')}
-Trend: {technical.get('trend', 'N/A')} | Regime: {technical.get('regime', 'N/A')}
-Current price: {technical.get('current_price', 'N/A')}
-Support levels: {technical.get('support_levels', [])}
-Resistance levels: {technical.get('resistance_levels', [])}
-Summary: {technical.get('summary', 'N/A')}
+Signal: {technical.get("signal", "N/A")} | Confidence: {technical.get("confidence", "N/A")}
+Trend: {technical.get("trend", "N/A")} | Regime: {technical.get("regime", "N/A")}
+Current price: {technical.get("current_price", "N/A")}
+Support levels: {technical.get("support_levels", [])}
+Resistance levels: {technical.get("resistance_levels", [])}
+Summary: {technical.get("summary", "N/A")}
 
 === NEWS ANALYSIS ===
-Signal: {news.get('signal', 'N/A')} | Confidence: {news.get('confidence', 'N/A')}
-Event type: {news.get('event_type', 'none')}
-Bullish catalysts: {news.get('catalysts_bull', [])}
-Bearish catalysts: {news.get('catalysts_bear', [])}
-Summary: {news.get('summary', 'N/A')}
+Signal: {news.get("signal", "N/A")} | Confidence: {news.get("confidence", "N/A")}
+Event type: {news.get("event_type", "none")}
+Bullish catalysts: {news.get("catalysts_bull", [])}
+Bearish catalysts: {news.get("catalysts_bear", [])}
+Summary: {news.get("summary", "N/A")}
 
 === SOCIAL SENTIMENT ===
-Signal: {social.get('signal', 'N/A')} | Confidence: {social.get('confidence', 'N/A')}
-Summary: {social.get('summary', 'N/A')}
+Signal: {social.get("signal", "N/A")} | Confidence: {social.get("confidence", "N/A")}
+Summary: {social.get("summary", "N/A")}
 
 === FUNDAMENTAL ANALYSIS ===
-Signal: {fundamental.get('signal', 'N/A')} | Confidence: {fundamental.get('confidence', 'N/A')}
-Summary: {fundamental.get('summary', 'N/A')}
+Signal: {fundamental.get("signal", "N/A")} | Confidence: {fundamental.get("confidence", "N/A")}
+Summary: {fundamental.get("summary", "N/A")}
 
 === PORTFOLIO / RISK CONTEXT ===
 Live trading enabled: {live_enabled}
@@ -330,10 +335,7 @@ Respond with JSON in exactly this format:
         # Append sizing detail to reasoning for auditability
         reasoning = result.get("reasoning", "")
         if position_size is not None and action != "hold":
-            reasoning = (
-                f"{reasoning}\n\n"
-                f"[Position Sizing] {position_size.reasoning}"
-            )
+            reasoning = f"{reasoning}\n\n[Position Sizing] {position_size.reasoning}"
 
         return TradeDecision(
             symbol=symbol,

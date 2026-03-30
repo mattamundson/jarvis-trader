@@ -2,6 +2,7 @@
 JARVIS TRADER — Event-Driven Backtester
 Walk-forward simulation of the 5-layer trading strategy.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ import pandas as pd
 @dataclass
 class Trade:
     """A single completed or open trade."""
+
     entry_date: datetime
     symbol: str
     direction: str  # "long"/"short"
@@ -58,6 +60,7 @@ class Trade:
 @dataclass
 class BacktestResult:
     """Complete results of a backtest run."""
+
     symbol: str
     start_date: str
     end_date: str
@@ -87,10 +90,10 @@ class BacktestResult:
     equity_curve: List[float] = field(default_factory=list)
 
     # Extended metrics (research-grade)
-    calmar_ratio: float = 0.0           # total_return_pct / max_drawdown_pct
-    expectancy: float = 0.0             # (win_rate * avg_win) + (loss_rate * avg_loss)
-    recovery_factor: float = 0.0        # total_pnl / max_drawdown_dollars
-    payoff_ratio: float = 0.0           # abs(avg_win) / abs(avg_loss)
+    calmar_ratio: float = 0.0  # total_return_pct / max_drawdown_pct
+    expectancy: float = 0.0  # (win_rate * avg_win) + (loss_rate * avg_loss)
+    recovery_factor: float = 0.0  # total_pnl / max_drawdown_dollars
+    payoff_ratio: float = 0.0  # abs(avg_win) / abs(avg_loss)
 
     # Breakdown by direction
     long_trades: int = 0
@@ -167,8 +170,12 @@ class BacktestResult:
             "short_trades": self.short_trades,
             "long_win_rate": round(self.long_win_rate, 4),
             "short_win_rate": round(self.short_win_rate, 4),
-            "long_profit_factor": round(self.long_profit_factor, 3) if self.long_profit_factor != float('inf') else "inf",
-            "short_profit_factor": round(self.short_profit_factor, 3) if self.short_profit_factor != float('inf') else "inf",
+            "long_profit_factor": round(self.long_profit_factor, 3)
+            if self.long_profit_factor != float("inf")
+            else "inf",
+            "short_profit_factor": round(self.short_profit_factor, 3)
+            if self.short_profit_factor != float("inf")
+            else "inf",
             "regime_stats": self.regime_stats,
             "avg_holding_bars": round(self.avg_holding_bars, 2),
             "median_holding_bars": round(self.median_holding_bars, 2),
@@ -182,9 +189,18 @@ class BacktestResult:
 
 # Tick sizes by symbol type
 TICK_SIZES: Dict[str, float] = {
-    'ES': 0.25, 'MES': 0.25, 'NQ': 0.25, 'MNQ': 0.25,
-    'YM': 1.0, 'MYM': 1.0, 'RTY': 0.10, 'M2K': 0.10,
-    'CL': 0.01, 'GC': 0.10, 'MGC': 0.10, 'MCL': 0.01,
+    "ES": 0.25,
+    "MES": 0.25,
+    "NQ": 0.25,
+    "MNQ": 0.25,
+    "YM": 1.0,
+    "MYM": 1.0,
+    "RTY": 0.10,
+    "M2K": 0.10,
+    "CL": 0.01,
+    "GC": 0.10,
+    "MGC": 0.10,
+    "MCL": 0.01,
 }
 DEFAULT_TICK_SIZE_FUTURES = 0.25
 DEFAULT_TICK_SIZE_ETF = 0.01
@@ -226,7 +242,7 @@ class Backtester:
     def _get_tick_size(self, symbol: str, multiplier: float) -> float:
         """Determine tick size from symbol or multiplier heuristic."""
         # Strip common suffixes
-        base = symbol.replace('=F', '').replace('-F', '').upper()
+        base = symbol.replace("=F", "").replace("-F", "").upper()
         if base in TICK_SIZES:
             return TICK_SIZES[base]
         # ETFs have multiplier 1.0
@@ -274,7 +290,7 @@ class Backtester:
         pending_entry: Optional[dict] = None
 
         for idx, row in df.iterrows():
-            row_date = idx.date() if hasattr(idx, 'date') else None
+            row_date = idx.date() if hasattr(idx, "date") else None
 
             # Reset daily tracking
             if row_date != current_date:
@@ -294,19 +310,19 @@ class Backtester:
                 pe = pending_entry
                 pending_entry = None
 
-                entry_price = row['open']  # actual fill = next bar's open
-                atr_val = pe['atr']
-                direction = pe['direction']
+                entry_price = row["open"]  # actual fill = next bar's open
+                atr_val = pe["atr"]
+                direction = pe["direction"]
 
                 # Recalculate stop and targets from actual entry price
-                if direction == 'long':
-                    stop_price = entry_price - pe['stop_atr_mult'] * atr_val
-                    target_1 = entry_price + pe['t1_atr_mult'] * atr_val
-                    target_2 = entry_price + pe['t2_atr_mult'] * atr_val
+                if direction == "long":
+                    stop_price = entry_price - pe["stop_atr_mult"] * atr_val
+                    target_1 = entry_price + pe["t1_atr_mult"] * atr_val
+                    target_2 = entry_price + pe["t2_atr_mult"] * atr_val
                 else:
-                    stop_price = entry_price + pe['stop_atr_mult'] * atr_val
-                    target_1 = entry_price - pe['t1_atr_mult'] * atr_val
-                    target_2 = entry_price - pe['t2_atr_mult'] * atr_val
+                    stop_price = entry_price + pe["stop_atr_mult"] * atr_val
+                    target_1 = entry_price - pe["t1_atr_mult"] * atr_val
+                    target_2 = entry_price - pe["t2_atr_mult"] * atr_val
 
                 stop_dist = abs(entry_price - stop_price)
                 if stop_dist > 0:
@@ -339,8 +355,8 @@ class Backtester:
                                 target_2=target_2,
                                 contracts=total_contracts,
                                 multiplier=multiplier,
-                                regime=pe.get('regime', ''),
-                                bias=pe['bias'],
+                                regime=pe.get("regime", ""),
+                                bias=pe["bias"],
                             )
                             targets_hit = []  # Reset target tracking for new trade
                             # Bug 2: deduct entry transaction cost
@@ -349,10 +365,10 @@ class Backtester:
             # -- Manage open trade -------------------------------------------------
             if open_trade is not None:
                 open_trade.holding_bars += 1
-                bar_open = row['open']
-                high = row['high']
-                low = row['low']
-                close = row['close']
+                bar_open = row["open"]
+                high = row["high"]
+                low = row["low"]
+                close = row["close"]
 
                 # Bug 6 fix: Determine intra-bar priority using OHLC order.
                 # When a bar spans BOTH stop and target levels, we need to
@@ -365,7 +381,7 @@ class Backtester:
                 # (if/elif structure), causing zero target exits.
 
                 # Determine which levels are touched on this bar
-                if open_trade.direction == 'long':
+                if open_trade.direction == "long":
                     stop_touched = low <= open_trade.stop_price
                     t1_touched = high >= open_trade.target_1 if open_contracts_t1 > 0 else False
                     t2_touched = high >= open_trade.target_2 if open_contracts_t2 > 0 else False
@@ -382,50 +398,72 @@ class Backtester:
                 check_targets_first = both_stop_and_target and target_first
 
                 # --- Helper: process target exits ---
-                def _check_targets():
+                def _check_targets():  # noqa: B023
                     nonlocal open_contracts_t1, open_contracts_t2, capital, targets_hit
                     hit_any = False
                     # Check target 1
                     if open_contracts_t1 > 0 and t1_touched:
                         exit_price = open_trade.target_1
-                        if open_trade.direction == 'long':
-                            pnl = open_contracts_t1 * (exit_price - open_trade.entry_price) * multiplier
+                        if open_trade.direction == "long":
+                            pnl = (
+                                open_contracts_t1
+                                * (exit_price - open_trade.entry_price)
+                                * multiplier
+                            )
                         else:
-                            pnl = open_contracts_t1 * (open_trade.entry_price - exit_price) * multiplier
+                            pnl = (
+                                open_contracts_t1
+                                * (open_trade.entry_price - exit_price)
+                                * multiplier
+                            )
                         capital += pnl
                         capital -= self._transaction_cost(open_contracts_t1, tick_size)
                         open_trade.pnl += pnl
                         open_contracts_t1 = 0
                         # Move stop to breakeven after T1 hit
                         open_trade.stop_price = open_trade.entry_price
-                        targets_hit.append('target_1')
+                        targets_hit.append("target_1")
                         hit_any = True
 
                     # Check target 2
                     if open_contracts_t2 > 0 and t2_touched:
                         exit_price = open_trade.target_2
-                        if open_trade.direction == 'long':
-                            pnl = open_contracts_t2 * (exit_price - open_trade.entry_price) * multiplier
+                        if open_trade.direction == "long":
+                            pnl = (
+                                open_contracts_t2
+                                * (exit_price - open_trade.entry_price)
+                                * multiplier
+                            )
                         else:
-                            pnl = open_contracts_t2 * (open_trade.entry_price - exit_price) * multiplier
+                            pnl = (
+                                open_contracts_t2
+                                * (open_trade.entry_price - exit_price)
+                                * multiplier
+                            )
                         capital += pnl
                         capital -= self._transaction_cost(open_contracts_t2, tick_size)
                         open_trade.pnl += pnl
                         open_contracts_t2 = 0
-                        targets_hit.append('target_2')
+                        targets_hit.append("target_2")
                         hit_any = True
                     return hit_any
 
                 # --- Helper: process stop exit ---
-                def _check_stop():
-                    nonlocal open_contracts_t1, open_contracts_t2, open_contracts_t3, capital, open_trade, targets_hit
+                def _check_stop():  # noqa: B023
+                    nonlocal \
+                        open_contracts_t1, \
+                        open_contracts_t2, \
+                        open_contracts_t3, \
+                        capital, \
+                        open_trade, \
+                        targets_hit
                     if not stop_touched:
                         return False
                     remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
                     if remaining <= 0:
                         return False
                     exit_price = open_trade.stop_price
-                    if open_trade.direction == 'long':
+                    if open_trade.direction == "long":
                         pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
                     else:
                         pnl = remaining * (open_trade.entry_price - exit_price) * multiplier
@@ -462,7 +500,10 @@ class Backtester:
                         _check_targets()
 
                 # Check if all contracts have been exited via targets
-                if open_trade is not None and (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) == 0:
+                if (
+                    open_trade is not None
+                    and (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) == 0
+                ):
                     # All tranches exited via targets
                     open_trade.exit_reason = targets_hit[-1] if targets_hit else "target_1"
                     open_trade.exit_price = close
@@ -475,13 +516,13 @@ class Backtester:
                 if self.trailing_stop and open_trade is not None:
                     remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
                     # When trailing_post_t1=True, only activate after T1 has been hit
-                    t1_gate = (not self.trailing_post_t1) or ('target_1' in targets_hit)
+                    t1_gate = (not self.trailing_post_t1) or ("target_1" in targets_hit)
                     if remaining > 0 and t1_gate:
-                        bar_atr = row.get('atr', 0)
+                        bar_atr = row.get("atr", 0)
                         if bar_atr > 0:
                             # Only activate trailing stop after price has moved
                             # favorably by at least 0.5 ATR from entry (noise filter)
-                            if open_trade.direction == 'long':
+                            if open_trade.direction == "long":
                                 favorable_excursion = close - open_trade.entry_price
                                 if favorable_excursion >= 0.5 * bar_atr:
                                     # Trail stop up: use close (not intrabar high)
@@ -493,7 +534,11 @@ class Backtester:
                                     # Check if trailing stop was hit this bar
                                     if low <= open_trade.stop_price:
                                         exit_price = open_trade.stop_price
-                                        pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
+                                        pnl = (
+                                            remaining
+                                            * (exit_price - open_trade.entry_price)
+                                            * multiplier
+                                        )
                                         capital += pnl
                                         capital -= self._transaction_cost(remaining, tick_size)
                                         open_trade.pnl += pnl
@@ -515,7 +560,11 @@ class Backtester:
                                     # Check if trailing stop was hit this bar
                                     if high >= open_trade.stop_price:
                                         exit_price = open_trade.stop_price
-                                        pnl = remaining * (open_trade.entry_price - exit_price) * multiplier
+                                        pnl = (
+                                            remaining
+                                            * (open_trade.entry_price - exit_price)
+                                            * multiplier
+                                        )
                                         capital += pnl
                                         capital -= self._transaction_cost(remaining, tick_size)
                                         open_trade.pnl += pnl
@@ -533,18 +582,18 @@ class Backtester:
                 remaining_contracts = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
                 if remaining_contracts > 0 and open_trade is not None:
                     next_idx_pos = df.index.get_loc(idx)
-                    is_last_bar = (next_idx_pos == len(df) - 1)
+                    is_last_bar = next_idx_pos == len(df) - 1
 
                     # For intraday: also close if next bar is a different day
                     is_eod = is_last_bar
-                    if not is_last_bar and hasattr(idx, 'hour'):
+                    if not is_last_bar and hasattr(idx, "hour"):
                         next_bar_date = df.index[next_idx_pos + 1].date()
-                        is_eod = (next_bar_date != row_date)
+                        is_eod = next_bar_date != row_date
 
                     if is_eod:
                         exit_price = close
                         remaining = remaining_contracts
-                        if open_trade.direction == 'long':
+                        if open_trade.direction == "long":
                             pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
                         else:
                             pnl = remaining * (open_trade.entry_price - exit_price) * multiplier
@@ -568,18 +617,18 @@ class Backtester:
 
             # -- Check for new entry signal (Bug 3: store as pending, don't enter now) --
             if open_trade is None and pending_entry is None and not kill_switch:
-                entry_sig = row.get('entry_signal', 'NO_TRADE')
-                bias = row.get('bias', 'NEUTRAL')
+                entry_sig = row.get("entry_signal", "NO_TRADE")
+                bias = row.get("bias", "NEUTRAL")
 
-                if entry_sig == 'ENTRY_NOW' and bias not in ('NEUTRAL',):
-                    direction = 'long' if 'BULL' in bias else 'short'
-                    signal_price = row['close']
-                    stop_price = row.get('stop_level', signal_price * 0.99)
-                    target_1 = row.get('target_1', signal_price * 1.01)
-                    target_2 = row.get('target_2', signal_price * 1.02)
+                if entry_sig == "ENTRY_NOW" and bias not in ("NEUTRAL",):
+                    direction = "long" if "BULL" in bias else "short"
+                    signal_price = row["close"]
+                    stop_price = row.get("stop_level", signal_price * 0.99)
+                    target_1 = row.get("target_1", signal_price * 1.01)
+                    target_2 = row.get("target_2", signal_price * 1.02)
 
                     # Compute ATR multiples for recalculation at actual entry
-                    atr_val = row.get('atr', 1.0)
+                    atr_val = row.get("atr", 1.0)
                     if atr_val <= 0:
                         atr_val = abs(signal_price - stop_price)
                     if atr_val <= 0:
@@ -595,13 +644,13 @@ class Backtester:
                         continue
 
                     pending_entry = {
-                        'direction': direction,
-                        'bias': bias,
-                        'stop_atr_mult': stop_dist / atr_val,
-                        't1_atr_mult': abs(target_1 - signal_price) / atr_val,
-                        't2_atr_mult': abs(target_2 - signal_price) / atr_val,
-                        'atr': atr_val,
-                        'regime': row.get('regime', ''),
+                        "direction": direction,
+                        "bias": bias,
+                        "stop_atr_mult": stop_dist / atr_val,
+                        "t1_atr_mult": abs(target_1 - signal_price) / atr_val,
+                        "t2_atr_mult": abs(target_2 - signal_price) / atr_val,
+                        "atr": atr_val,
+                        "regime": row.get("regime", ""),
                     }
 
             # Update equity curve
@@ -622,11 +671,7 @@ class Backtester:
         return self._calculate_metrics(result)
 
     def _calculate_contracts(
-        self,
-        capital: float,
-        entry: float,
-        stop: float,
-        multiplier: float
+        self, capital: float, entry: float, stop: float, multiplier: float
     ) -> int:
         """contracts = (capital x risk%) / (stop_distance x multiplier)"""
         stop_dist = abs(entry - stop)
@@ -649,12 +694,11 @@ class Backtester:
         result.winning_trades = len(wins)
         result.losing_trades = len(losses)
         result.win_rate = len(wins) / len(trades) if trades else 0.0
-        result.trailing_stop_exits = sum(1 for t in trades if t.exit_reason == 'trailing_stop')
+        result.trailing_stop_exits = sum(1 for t in trades if t.exit_reason == "trailing_stop")
         result.gross_profit = sum(t.pnl for t in wins)
         result.gross_loss = sum(t.pnl for t in losses)
         result.profit_factor = (
-            result.gross_profit / abs(result.gross_loss)
-            if result.gross_loss != 0 else float('inf')
+            result.gross_profit / abs(result.gross_loss) if result.gross_loss != 0 else float("inf")
         )
         result.total_pnl = result.gross_profit + result.gross_loss
         result.total_return_pct = result.total_pnl / result.initial_capital
@@ -727,8 +771,8 @@ class Backtester:
             result.payoff_ratio = abs(result.avg_win / result.avg_loss)
 
         # Long vs Short breakdown
-        long_trades_list = [t for t in trades if t.direction == 'long']
-        short_trades_list = [t for t in trades if t.direction == 'short']
+        long_trades_list = [t for t in trades if t.direction == "long"]
+        short_trades_list = [t for t in trades if t.direction == "short"]
         result.long_trades = len(long_trades_list)
         result.short_trades = len(short_trades_list)
 
@@ -737,19 +781,23 @@ class Backtester:
             result.long_win_rate = len(long_wins) / len(long_trades_list)
             long_gross_profit = sum(t.pnl for t in long_trades_list if t.pnl > 0)
             long_gross_loss = sum(t.pnl for t in long_trades_list if t.pnl <= 0)
-            result.long_profit_factor = long_gross_profit / abs(long_gross_loss) if long_gross_loss else float('inf')
+            result.long_profit_factor = (
+                long_gross_profit / abs(long_gross_loss) if long_gross_loss else float("inf")
+            )
 
         if short_trades_list:
             short_wins = [t for t in short_trades_list if t.pnl > 0]
             result.short_win_rate = len(short_wins) / len(short_trades_list)
             short_gross_profit = sum(t.pnl for t in short_trades_list if t.pnl > 0)
             short_gross_loss = sum(t.pnl for t in short_trades_list if t.pnl <= 0)
-            result.short_profit_factor = short_gross_profit / abs(short_gross_loss) if short_gross_loss else float('inf')
+            result.short_profit_factor = (
+                short_gross_profit / abs(short_gross_loss) if short_gross_loss else float("inf")
+            )
 
         # Regime breakdown
         regime_groups: Dict[str, list] = {}
         for t in trades:
-            r = t.regime or 'UNKNOWN'
+            r = t.regime or "UNKNOWN"
             if r not in regime_groups:
                 regime_groups[r] = []
             regime_groups[r].append(t)
@@ -759,10 +807,12 @@ class Backtester:
             regime_gross_profit = sum(t.pnl for t in regime_trades if t.pnl > 0)
             regime_gross_loss = sum(t.pnl for t in regime_trades if t.pnl <= 0)
             result.regime_stats[regime] = {
-                'trades': len(regime_trades),
-                'win_rate': len(regime_wins) / len(regime_trades) if regime_trades else 0,
-                'profit_factor': regime_gross_profit / abs(regime_gross_loss) if regime_gross_loss else float('inf'),
-                'total_pnl': sum(t.pnl for t in regime_trades),
+                "trades": len(regime_trades),
+                "win_rate": len(regime_wins) / len(regime_trades) if regime_trades else 0,
+                "profit_factor": regime_gross_profit / abs(regime_gross_loss)
+                if regime_gross_loss
+                else float("inf"),
+                "total_pnl": sum(t.pnl for t in regime_trades),
             }
 
         # Trade duration

@@ -3,6 +3,7 @@
 Simple validation script for ConsecutiveLossTracker integration
 (without requiring pytest)
 """
+
 import sys
 import tempfile
 from pathlib import Path
@@ -208,6 +209,7 @@ def main():
         except Exception as e:
             print(f"\n❌ ERROR: {e}")
             import traceback
+
             traceback.print_exc()
             failed += 1
 

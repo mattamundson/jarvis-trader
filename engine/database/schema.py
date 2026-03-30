@@ -44,6 +44,7 @@ logger = logging.getLogger("jarvis_trader.database")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _utcnow() -> str:
     """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
@@ -70,6 +71,7 @@ def _from_json(value: Optional[str]) -> Any:
 
 # ── DatabaseManager ───────────────────────────────────────────────────────────
 
+
 class DatabaseManager:
     """
     Thread-safe SQLite manager for JARVIS TRADER.
@@ -86,8 +88,7 @@ class DatabaseManager:
         # Resolve relative paths against the engine root (two levels up from here)
         engine_root = Path(__file__).parent.parent
         self._db_path: Path = (
-            Path(db_path) if Path(db_path).is_absolute()
-            else engine_root / db_path
+            Path(db_path) if Path(db_path).is_absolute() else engine_root / db_path
         )
         self._lock = threading.Lock()
         logger.info(f"DatabaseManager initialised — db_path={self._db_path}")
@@ -108,7 +109,7 @@ class DatabaseManager:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA synchronous=NORMAL")   # safe with WAL, faster than FULL
+        conn.execute("PRAGMA synchronous=NORMAL")  # safe with WAL, faster than FULL
         return conn
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
@@ -220,8 +221,7 @@ class DatabaseManager:
                 updated = cur.rowcount > 0
                 if updated:
                     logger.debug(
-                        f"[DB] close_trade trade_id={trade_id[:8]} "
-                        f"exit={exit_price} pnl={pnl:+.4f}"
+                        f"[DB] close_trade trade_id={trade_id[:8]} exit={exit_price} pnl={pnl:+.4f}"
                     )
                 else:
                     logger.warning(
@@ -244,10 +244,7 @@ class DatabaseManager:
             )
             params: tuple = (symbol.upper(),)
         else:
-            sql = (
-                "SELECT * FROM paper_trades WHERE status='open' "
-                "ORDER BY entry_time DESC"
-            )
+            sql = "SELECT * FROM paper_trades WHERE status='open' ORDER BY entry_time DESC"
             params = ()
 
         with self._lock:
@@ -273,10 +270,7 @@ class DatabaseManager:
             )
             params: tuple = (symbol.upper(), limit)
         else:
-            sql = (
-                "SELECT * FROM paper_trades WHERE status='closed' "
-                "ORDER BY exit_time DESC LIMIT ?"
-            )
+            sql = "SELECT * FROM paper_trades WHERE status='closed' ORDER BY exit_time DESC LIMIT ?"
             params = (limit,)
 
         with self._lock:
@@ -416,13 +410,8 @@ class DatabaseManager:
         ``paper_trades`` instead, so that PortfolioTracker always gets a
         meaningful result regardless of which table is populated.
         """
-        sql_positions = (
-            "SELECT * FROM positions WHERE quantity != 0 ORDER BY symbol ASC"
-        )
-        sql_paper = (
-            "SELECT * FROM paper_trades WHERE status = 'open' "
-            "ORDER BY entry_time DESC"
-        )
+        sql_positions = "SELECT * FROM positions WHERE quantity != 0 ORDER BY symbol ASC"
+        sql_paper = "SELECT * FROM paper_trades WHERE status = 'open' ORDER BY entry_time DESC"
         with self._lock:
             conn = self._connect()
             try:
@@ -470,10 +459,7 @@ class DatabaseManager:
             params.append(symbol.upper())
 
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        sql = (
-            f"SELECT * FROM paper_trades {where} "
-            f"ORDER BY entry_time DESC LIMIT ?"
-        )
+        sql = f"SELECT * FROM paper_trades {where} ORDER BY entry_time DESC LIMIT ?"
         params.append(limit)
 
         with self._lock:
@@ -536,13 +522,13 @@ class DatabaseManager:
                 conn.close()
 
         return {
-            "total_trades":   int(tr["total_trades"])   if tr else 0,
+            "total_trades": int(tr["total_trades"]) if tr else 0,
             "winning_trades": int(tr["winning_trades"]) if tr and tr["winning_trades"] else 0,
-            "losing_trades":  int(tr["losing_trades"])  if tr and tr["losing_trades"]  else 0,
-            "total_pnl":      float(tr["total_pnl"])    if tr else 0.0,
-            "best_day":       float(dp["best_day"])     if dp else 0.0,
-            "worst_day":      float(dp["worst_day"])    if dp else 0.0,
-            "active_days":    int(dp["active_days"])    if dp else 0,
+            "losing_trades": int(tr["losing_trades"]) if tr and tr["losing_trades"] else 0,
+            "total_pnl": float(tr["total_pnl"]) if tr else 0.0,
+            "best_day": float(dp["best_day"]) if dp else 0.0,
+            "worst_day": float(dp["worst_day"]) if dp else 0.0,
+            "active_days": int(dp["active_days"]) if dp else 0,
         }
 
     def get_drawdown(self) -> Dict[str, Any]:
@@ -574,10 +560,10 @@ class DatabaseManager:
 
         if not rows:
             return {
-                "current_drawdown":        0.0,
-                "peak_balance":            0.0,
+                "current_drawdown": 0.0,
+                "peak_balance": 0.0,
                 "max_historical_drawdown": 0.0,
-                "drawdown_pct":            0.0,
+                "drawdown_pct": 0.0,
             }
 
         peak: float = 0.0
@@ -597,10 +583,10 @@ class DatabaseManager:
         dd_pct = (current_dd / peak * 100.0) if peak > 0 else 0.0
 
         return {
-            "current_drawdown":        round(current_dd, 4),
-            "peak_balance":            round(peak, 4),
+            "current_drawdown": round(current_dd, 4),
+            "peak_balance": round(peak, 4),
             "max_historical_drawdown": round(max_dd, 4),
-            "drawdown_pct":            round(dd_pct, 4),
+            "drawdown_pct": round(dd_pct, 4),
         }
 
     # ── decisions ─────────────────────────────────────────────────────────
@@ -1010,9 +996,7 @@ class DatabaseManager:
                 cur = conn.execute(sql, params)
                 conn.commit()
                 row_id: int = cur.lastrowid  # type: ignore[assignment]
-                logger.debug(
-                    f"[DB] add_journal_entry id={row_id} trade_id={trade_id[:8]}"
-                )
+                logger.debug(f"[DB] add_journal_entry id={row_id} trade_id={trade_id[:8]}")
                 return row_id
             finally:
                 conn.close()
@@ -1461,7 +1445,15 @@ class DatabaseManager:
 
         Useful for the /health or /status endpoints.
         """
-        tables = ["paper_trades", "decisions", "daily_pnl", "positions", "settings", "trade_journal", "pipeline_runs"]
+        tables = [
+            "paper_trades",
+            "decisions",
+            "daily_pnl",
+            "positions",
+            "settings",
+            "trade_journal",
+            "pipeline_runs",
+        ]
         counts: Dict[str, int] = {}
         schema_version: int = 0
 
@@ -1469,13 +1461,9 @@ class DatabaseManager:
             conn = self._connect()
             try:
                 for table in tables:
-                    row = conn.execute(
-                        f"SELECT COUNT(*) AS n FROM {table}"
-                    ).fetchone()
+                    row = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
                     counts[table] = row["n"] if row else 0
-                sv_row = conn.execute(
-                    "SELECT MAX(version) AS v FROM schema_version"
-                ).fetchone()
+                sv_row = conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
                 if sv_row and sv_row["v"] is not None:
                     schema_version = sv_row["v"]
             finally:

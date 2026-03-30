@@ -5,6 +5,7 @@ Strongly-typed response models for all API endpoints.
 Enables automatic validation, OpenAPI schema generation,
 and client code generation.
 """
+
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -12,8 +13,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # ── Enums ────────────────────────────────────────────────────────────────────
 
+
 class StatusEnum(str, Enum):
     """System status values."""
+
     ok = "ok"
     degraded = "degraded"
     error = "error"
@@ -24,6 +27,7 @@ class StatusEnum(str, Enum):
 
 class HealthStatusEnum(str, Enum):
     """Health status values."""
+
     healthy = "healthy"
     degraded = "degraded"
     error = "error"
@@ -31,6 +35,7 @@ class HealthStatusEnum(str, Enum):
 
 class SignalEnum(str, Enum):
     """Trading signal values."""
+
     buy = "buy"
     sell = "sell"
     hold = "hold"
@@ -41,6 +46,7 @@ class SignalEnum(str, Enum):
 
 class OrderActionEnum(str, Enum):
     """Order action values."""
+
     buy = "buy"
     sell = "sell"
     sell_short = "sell_short"
@@ -49,13 +55,16 @@ class OrderActionEnum(str, Enum):
 
 # ── Base Models ──────────────────────────────────────────────────────────────
 
+
 class BaseResponse(BaseModel):
     """Base response model with common fields."""
+
     model_config = ConfigDict(from_attributes=True)
 
 
 class ErrorResponse(BaseModel):
     """Standard error response."""
+
     error: str = Field(..., description="Error message")
     detail: Optional[str] = Field(None, description="Detailed error information")
     status_code: int = Field(..., description="HTTP status code")
@@ -63,6 +72,7 @@ class ErrorResponse(BaseModel):
 
 class PaginatedResponse(BaseModel):
     """Base for paginated responses."""
+
     count: int = Field(..., description="Total number of items")
     page: int = Field(1, description="Current page number")
     page_size: int = Field(50, description="Items per page")
@@ -70,23 +80,29 @@ class PaginatedResponse(BaseModel):
 
 # ── Health Check Models ──────────────────────────────────────────────────────
 
+
 class PaperTradingStatus(BaseModel):
     """Paper trading subsystem status."""
+
     paper_kill_switch: bool = Field(False, description="Paper trading kill switch state")
     safety_kill_switch: bool = Field(False, description="Safety layer kill switch state")
     open_positions: int = Field(0, description="Number of open paper positions")
     scheduler_running: bool = Field(False, description="Whether the scheduler is running")
-    scheduler_jobs: List[str] = Field(default_factory=list, description="Active scheduler job names")
+    scheduler_jobs: List[str] = Field(
+        default_factory=list, description="Active scheduler job names"
+    )
 
 
 class CacheStatus(BaseModel):
     """Cache subsystem status."""
+
     data_files: int = Field(0, description="Number of cached data files")
     results_files: int = Field(0, description="Number of cached result files")
 
 
 class HealthResponse(BaseModel):
     """Basic health check endpoint response."""
+
     status: str = Field(..., description="System status")
     version: str = Field(..., description="API version")
     timestamp: str = Field(..., description="Current timestamp")
@@ -103,6 +119,7 @@ class HealthResponse(BaseModel):
 
 class SubsystemStatus(BaseModel):
     """Individual subsystem status."""
+
     status: str = Field(..., description="Subsystem status")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional details")
     error: Optional[str] = Field(None, description="Error message if any")
@@ -114,6 +131,7 @@ class SubsystemStatus(BaseModel):
 
 class FullHealthResponse(BaseModel):
     """Comprehensive health check with subsystem status."""
+
     overall: str = Field(..., description="Overall system health")
     timestamp: str = Field(..., description="Current timestamp")
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
@@ -126,8 +144,10 @@ class FullHealthResponse(BaseModel):
 
 # ── IB Gateway Models ───────────────────────────────────────────────────────
 
+
 class IBConnectionTestResponse(BaseModel):
     """IB Gateway connection test result."""
+
     connected: bool = Field(..., description="Whether connection is active")
     gateway_version: Optional[str] = Field(None, description="Gateway version")
     server: Optional[str] = Field(None, description="Server address")
@@ -138,6 +158,7 @@ class IBConnectionTestResponse(BaseModel):
 
 class IBConnectResponse(BaseModel):
     """IB Gateway connection attempt response."""
+
     status: str = Field(..., description="Connection status")
     message: str = Field(..., description="Status message")
     connected: bool = Field(False, description="Whether connection succeeded")
@@ -145,8 +166,10 @@ class IBConnectResponse(BaseModel):
 
 # ── Safety & Risk Models ────────────────────────────────────────────────────
 
+
 class SafetyStatusResponse(BaseModel):
     """Current safety layer state."""
+
     kill_switch_active: bool = Field(False, description="Kill switch state")
     kill_switch_reason: Optional[str] = Field(None, description="Kill switch reason")
     daily_pnl: float = Field(0, description="Today's P&L")
@@ -165,6 +188,7 @@ class SafetyStatusResponse(BaseModel):
 
 class CircuitBreakerStatus(BaseModel):
     """Detailed circuit breaker snapshot."""
+
     daily_pnl: float = Field(0, description="Today's P&L")
     daily_limit: float = Field(-5000, description="Daily loss limit")
     daily_pnl_pct: float = Field(0, description="Daily P&L percentage")
@@ -184,6 +208,7 @@ class CircuitBreakerStatus(BaseModel):
 
 class SafetyConfigResponse(BaseModel):
     """Risk configuration (read-only)."""
+
     max_daily_loss_pct: float = Field(-0.10, description="Maximum daily loss percentage")
     max_drawdown_pct: float = Field(-0.20, description="Maximum drawdown percentage")
     max_orders_per_minute: int = Field(30, description="Max orders per minute")
@@ -192,6 +217,7 @@ class SafetyConfigResponse(BaseModel):
 
 class KillSwitchToggleResponse(BaseModel):
     """Kill switch activation/deactivation result."""
+
     status: str = Field(..., description="Kill switch status")
     reason: Optional[str] = Field(None, description="Activation reason")
     activated_at: Optional[str] = Field(None, description="Activation timestamp")
@@ -199,8 +225,10 @@ class KillSwitchToggleResponse(BaseModel):
 
 # ── Analysis Models ──────────────────────────────────────────────────────────
 
+
 class TechnicalAnalysisResponse(BaseModel):
     """Technical analysis results."""
+
     symbol: str = Field(..., description="Analyzed symbol")
     timestamp: str = Field(..., description="Analysis timestamp")
     timeframe: str = Field("5m", description="Timeframe used")
@@ -219,6 +247,7 @@ class TechnicalAnalysisResponse(BaseModel):
 
 class BarsResponse(BaseModel):
     """Historical OHLCV data."""
+
     symbol: str = Field(..., description="Symbol")
     timeframe: str = Field(..., description="Timeframe")
     bars: List[Dict[str, Any]] = Field(default_factory=list, description="OHLCV bars")
@@ -227,20 +256,24 @@ class BarsResponse(BaseModel):
 
 class RedditSentimentResponse(BaseModel):
     """Reddit trending tickers."""
+
     filter: str = Field("all-stocks", description="Filter applied")
     tickers: List[str] = Field(default_factory=list, description="Trending tickers")
 
 
 class NewsSentimentResponse(BaseModel):
     """News sentiment via Finnhub."""
+
     symbol: str = Field(..., description="Symbol analyzed")
     sentiment: Dict[str, Any] = Field(default_factory=dict, description="Sentiment data")
 
 
 # ── Portfolio Models ─────────────────────────────────────────────────────────
 
+
 class Position(BaseModel):
     """Single portfolio position."""
+
     symbol: str = Field(..., description="Position symbol")
     quantity: float = Field(..., description="Position quantity")
     average_price: float = Field(..., description="Average entry price")
@@ -250,6 +283,7 @@ class Position(BaseModel):
 
 class PortfolioResponse(BaseModel):
     """Current portfolio state."""
+
     total_equity: float = Field(0, description="Total portfolio equity")
     cash_balance: float = Field(0, description="Cash balance")
     unrealized_pnl: float = Field(0, description="Total unrealized P&L")
@@ -262,14 +296,17 @@ class PortfolioResponse(BaseModel):
 
 # ── Paper Trading Models ────────────────────────────────────────────────────
 
+
 class PaperPositionsResponse(BaseModel):
     """Open paper trading positions."""
+
     positions: List[Dict[str, Any]] = Field(default_factory=list, description="Open positions")
     count: int = Field(0, description="Number of positions")
 
 
 class PaperTradeResponse(BaseModel):
     """Trade submission result."""
+
     status: str = Field(..., description="Trade status")
     trade_id: Optional[str] = Field(None, description="Trade identifier")
     symbol: Optional[str] = Field(None, description="Traded symbol")
@@ -280,21 +317,26 @@ class PaperTradeResponse(BaseModel):
 
 class PaperPerformanceResponse(BaseModel):
     """Paper trading performance metrics."""
+
     performance: Dict[str, Any] = Field(default_factory=dict, description="Performance metrics")
 
 
 # ── Signals Models ───────────────────────────────────────────────────────────
 
+
 class PendingSignalsResponse(BaseModel):
     """Signals from daily scanner."""
+
     signals: List[Dict[str, Any]] = Field(default_factory=list, description="Pending signals")
     count: int = Field(0, description="Number of signals")
 
 
 # ── Kill Switch Models ───────────────────────────────────────────────────────
 
+
 class PaperKillSwitchStatus(BaseModel):
     """Paper trading kill switch state."""
+
     active: bool = Field(False, description="Whether kill switch is active")
     reason: Optional[str] = Field(None, description="Activation reason")
     activated_at: Optional[str] = Field(None, description="Activation timestamp")
@@ -302,6 +344,7 @@ class PaperKillSwitchStatus(BaseModel):
 
 class PaperKillSwitchToggleResponse(BaseModel):
     """Paper trading kill switch toggle result."""
+
     status: str = Field(..., description="Toggle status")
     reason: Optional[str] = Field(None, description="Activation reason")
     activated_at: Optional[str] = Field(None, description="Activation timestamp")
@@ -309,20 +352,24 @@ class PaperKillSwitchToggleResponse(BaseModel):
 
 class ResetSignalsResponse(BaseModel):
     """Pending signals reset result."""
+
     status: str = Field(..., description="Reset status")
     signals_cleared: int = Field(0, description="Number of signals cleared")
 
 
 # ── Historical Data Models ───────────────────────────────────────────────────
 
+
 class TradeHistoryResponse(BaseModel):
     """Historical trades."""
+
     trades: List[Dict[str, Any]] = Field(default_factory=list, description="Trade records")
     count: int = Field(0, description="Number of trades")
 
 
 class DailyPnLResponse(BaseModel):
     """Daily P&L history."""
+
     daily_pnl: List[Dict[str, Any]] = Field(default_factory=list, description="Daily P&L records")
     days: int = Field(0, description="Number of trading days")
     count: int = Field(0, description="Number of records")
@@ -330,12 +377,14 @@ class DailyPnLResponse(BaseModel):
 
 class DecisionHistoryResponse(BaseModel):
     """Agent decisions."""
+
     decisions: List[Dict[str, Any]] = Field(default_factory=list, description="Decision records")
     count: int = Field(0, description="Number of decisions")
 
 
 class StatsSummaryResponse(BaseModel):
     """Performance statistics."""
+
     total_trades: int = Field(0, description="Total number of trades")
     winning_trades: int = Field(0, description="Number of winning trades")
     losing_trades: int = Field(0, description="Number of losing trades")
@@ -350,6 +399,7 @@ class StatsSummaryResponse(BaseModel):
 
 class DrawdownResponse(BaseModel):
     """Drawdown metrics."""
+
     current_drawdown_pct: float = Field(0, description="Current drawdown percentage")
     max_drawdown_pct: float = Field(0, description="Maximum drawdown percentage")
     peak_equity: float = Field(0, description="Peak equity value")
@@ -358,8 +408,10 @@ class DrawdownResponse(BaseModel):
 
 # ── WebSocket Models ─────────────────────────────────────────────────────────
 
+
 class WebSocketClient(BaseModel):
     """Connected WebSocket client info."""
+
     client_id: str = Field(..., description="Client identifier")
     connected_at: str = Field(..., description="Connection timestamp")
     event_types_subscribed: List[str] = Field(
@@ -369,6 +421,7 @@ class WebSocketClient(BaseModel):
 
 class WebSocketStatusResponse(BaseModel):
     """WebSocket manager status."""
+
     manager_active: bool = Field(False, description="Whether manager is active")
     connected_clients: int = Field(0, description="Number of connected clients")
     clients: List[WebSocketClient] = Field(default_factory=list, description="Client details")

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Fetch and cache data for expanded backtesting matrix."""
+
 import sys
 import time
 from pathlib import Path
@@ -9,10 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backtest.data_loader import BacktestDataLoader
 
-SYMBOLS = ['MCL', 'MGC', 'M2K', 'GC', 'CL', 'RTY', 'SPY', 'MES', 'MNQ']
-INTERVALS = ['1h', '1d']  # Yahoo Finance does not support 4h interval natively
-START = '2024-06-01'
-END = '2026-03-27'
+SYMBOLS = ["MCL", "MGC", "M2K", "GC", "CL", "RTY", "SPY", "MES", "MNQ"]
+INTERVALS = ["1h", "1d"]  # Yahoo Finance does not support 4h interval natively
+START = "2024-06-01"
+END = "2026-03-27"
+
 
 def main():
     loader = BacktestDataLoader()
@@ -48,7 +50,7 @@ def main():
     print(f"{'Symbol':<8} {'Interval':<10} {'Bars':>8} {'Status'}")
     print("-" * 40)
     for key, count in results.items():
-        symbol, interval = key.rsplit('_', 1)
+        symbol, interval = key.rsplit("_", 1)
         status = "OK" if count > 0 else "MISSING"
         print(f"{symbol:<8} {interval:<10} {count:>8} {status}")
 
@@ -61,6 +63,7 @@ def main():
     ok = sum(1 for v in results.values() if v > 0)
     fail = sum(1 for v in results.values() if v == 0)
     print(f"\nTotal: {ok} succeeded, {fail} failed out of {total}")
+
 
 if __name__ == "__main__":
     main()

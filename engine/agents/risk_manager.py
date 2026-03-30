@@ -17,6 +17,7 @@ Layer 2 — Soft rules (LLM reasoning, Claude Opus 4.6):
 This two-layer design keeps critical safety checks deterministic while still
 giving the pipeline sophisticated contextual risk reasoning.
 """
+
 import json
 import logging
 import os
@@ -36,6 +37,7 @@ __all__ = ["RiskManagerAgent", "RiskDecision"]
 @dataclass
 class RiskDecision:
     """Result from the Risk Manager's review of a trade decision."""
+
     approved: bool
     reasoning: str
 
@@ -165,7 +167,11 @@ class RiskManagerAgent:
         # 2. Daily loss limit — compare daily_pnl against max_daily_loss config
         daily_pnl = safety.get("daily_pnl", 0.0)
         current_equity = safety.get("current_equity", 0.0)
-        max_daily_loss = -(current_equity * settings.MAX_DAILY_LOSS_PCT) if current_equity > 0 else -(settings.MAX_DAILY_LOSS_PCT * 10_000)
+        max_daily_loss = (
+            -(current_equity * settings.MAX_DAILY_LOSS_PCT)
+            if current_equity > 0
+            else -(settings.MAX_DAILY_LOSS_PCT * 10_000)
+        )
         if daily_pnl < max_daily_loss:
             return (
                 f"Daily P&L ${daily_pnl:,.2f} breaches max daily loss "
@@ -275,16 +281,16 @@ class RiskManagerAgent:
         return f"""Review this trade for risk:
 
 === PROPOSED TRADE ===
-Symbol: {trade.get('symbol')}
-Action: {trade.get('action')}
-Quantity: {trade.get('quantity')}
-Order type: {trade.get('order_type')}
-Limit price: {trade.get('limit_price')}
-Stop price: {trade.get('stop_price')}
-Signal score: {trade.get('signal_score')}
-Confidence: {trade.get('confidence')}
-Trader reasoning: {trade.get('reasoning', 'N/A')}
-Trader risk notes: {trade.get('risk_notes', 'N/A')}
+Symbol: {trade.get("symbol")}
+Action: {trade.get("action")}
+Quantity: {trade.get("quantity")}
+Order type: {trade.get("order_type")}
+Limit price: {trade.get("limit_price")}
+Stop price: {trade.get("stop_price")}
+Signal score: {trade.get("signal_score")}
+Confidence: {trade.get("confidence")}
+Trader reasoning: {trade.get("reasoning", "N/A")}
+Trader risk notes: {trade.get("risk_notes", "N/A")}
 
 === PORTFOLIO STATE ===
 Total portfolio value: ${total_value:,.2f}
@@ -294,9 +300,9 @@ Open positions:
 {positions_text}
 
 === SAFETY STATUS ===
-Daily P&L: ${safety.get('daily_pnl', 0):,.2f}
-Current drawdown: {safety.get('drawdown_pct', 0):.1%}
-Live trading enabled: {safety.get('live_trading_enabled', False)}
+Daily P&L: ${safety.get("daily_pnl", 0):,.2f}
+Current drawdown: {safety.get("drawdown_pct", 0):.1%}
+Live trading enabled: {safety.get("live_trading_enabled", False)}
 
 Evaluate these risk dimensions:
 1. Correlation risk — are we already heavily exposed to this sector/instrument?

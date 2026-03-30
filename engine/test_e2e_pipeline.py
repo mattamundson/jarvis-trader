@@ -9,6 +9,7 @@ This test uses mock/stub agents (no live LLM calls) to validate that:
   4. TradingPipeline runs all 5 stages with stub agents
   5. Final pipeline_result dict has all expected keys
 """
+
 import asyncio
 import os
 import sys
@@ -18,7 +19,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from dotenv import load_dotenv
 
-load_dotenv('.env')
+load_dotenv(".env")
 
 
 def test_imports():
@@ -26,7 +27,6 @@ def test_imports():
     print("=" * 60)
     print("TEST 1: Import verification")
     print("=" * 60)
-
 
     print("  All imports OK")
     return True
@@ -39,6 +39,7 @@ def test_data_load():
     print("=" * 60)
 
     from backtest.data_loader import BacktestDataLoader
+
     loader = BacktestDataLoader()
     df = loader.load("MNQ", "2025-01-01", "2025-03-01", "1h")
 
@@ -62,14 +63,22 @@ def test_signal_generation(df):
 
     df_sig = generate_signals(df, symbol="MNQ", adaptive_regime=True)
 
-    required_cols = ['regime', 'structure_position', 'bias', 'entry_signal',
-                     'stop_level', 'target_1', 'target_2', 'target_3']
+    required_cols = [
+        "regime",
+        "structure_position",
+        "bias",
+        "entry_signal",
+        "stop_level",
+        "target_1",
+        "target_2",
+        "target_3",
+    ]
     missing = [c for c in required_cols if c not in df_sig.columns]
     if missing:
         print(f"  FAIL: Missing columns: {missing}")
         return None
 
-    entry_bars = df_sig[df_sig['entry_signal'] == 'ENTRY_NOW']
+    entry_bars = df_sig[df_sig["entry_signal"] == "ENTRY_NOW"]
     print(f"  Generated signals for {len(df_sig)} bars")
     print(f"  ENTRY_NOW signals: {len(entry_bars)}")
     print("  Signal distribution:")
@@ -101,6 +110,7 @@ async def test_pipeline(df_sig):
 
     class StubAnalyst:
         """Returns a neutral technical report."""
+
         async def analyze(self, symbol, **kwargs):
             return {
                 "signal": 0.3,
@@ -117,6 +127,7 @@ async def test_pipeline(df_sig):
 
     class StubDebate:
         """Returns a mildly bullish debate result."""
+
         async def run_debate(self, symbol, analyst_reports, bull, bear):
             return {
                 "verdict": "lean_bullish",
@@ -137,6 +148,7 @@ async def test_pipeline(df_sig):
 
     class StubTrader:
         """Returns a BUY decision."""
+
         async def decide(self, symbol, debate_result, analyst_reports, safety_status):
             return {
                 "symbol": symbol,
@@ -155,6 +167,7 @@ async def test_pipeline(df_sig):
 
     class StubRiskManager:
         """Approves the trade."""
+
         async def review(self, trade_decision, safety_status, portfolio):
             return {
                 "approved": True,
@@ -168,6 +181,7 @@ async def test_pipeline(df_sig):
 
     class StubFundManager:
         """Final approval with human review required."""
+
         async def approve(self, trade_decision, risk_decision, portfolio, open_positions):
             return {
                 "approved": True,
@@ -182,6 +196,7 @@ async def test_pipeline(df_sig):
 
     class StubSafetyLayer:
         """Mimics the SafetyLayer interface."""
+
         _current_equity = 10_000.0
         _daily_realized_pnl = 0.0
 
@@ -216,11 +231,20 @@ async def test_pipeline(df_sig):
 
     # Verify all expected keys exist
     expected_keys = [
-        "symbol", "is_futures", "started_at", "completed_at",
-        "analyst_reports", "debate_result", "trade_decision",
-        "risk_decision", "fund_decision",
-        "final_action", "final_quantity", "requires_human",
-        "errors", "summary",
+        "symbol",
+        "is_futures",
+        "started_at",
+        "completed_at",
+        "analyst_reports",
+        "debate_result",
+        "trade_decision",
+        "risk_decision",
+        "fund_decision",
+        "final_action",
+        "final_quantity",
+        "requires_human",
+        "errors",
+        "summary",
     ]
     missing = [k for k in expected_keys if k not in result]
     if missing:
@@ -236,7 +260,13 @@ async def test_pipeline(df_sig):
     print(f"    Summary:        {result['summary']}")
 
     # Verify stages populated
-    for stage in ['analyst_reports', 'debate_result', 'trade_decision', 'risk_decision', 'fund_decision']:
+    for stage in [
+        "analyst_reports",
+        "debate_result",
+        "trade_decision",
+        "risk_decision",
+        "fund_decision",
+    ]:
         val = result.get(stage)
         status = "OK" if val is not None else "MISSING"
         print(f"    {stage}: {status}")
@@ -270,6 +300,7 @@ async def main():
         except Exception as e:
             print(f"  FAIL: {e}")
             import traceback
+
             traceback.print_exc()
 
     # Test 4: Pipeline E2E
@@ -279,6 +310,7 @@ async def main():
     except Exception as e:
         print(f"  FAIL: {e}")
         import traceback
+
         traceback.print_exc()
 
     # Summary

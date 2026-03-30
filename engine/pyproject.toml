@@ -115,6 +115,25 @@ ignore = [
     "E501",  # line too long (handled by black)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = [
+    "F401",  # unused imports in tests
+    "F841",  # unused variables in tests
+    "E402",  # module level import not at top of file in tests
+]
+"**/test_*.py" = [
+    "F401",  # unused imports in tests
+    "F841",  # unused variables in tests
+    "E402",  # module level import not at top of file in tests
+]
+"**/conftest.py" = [
+    "F401",  # pytest fixtures are often unused in the file they're defined
+    "E402",  # conftest can have imports mid-file
+]
+"backtest/backtester.py" = [
+    "B023",  # false positive: nested functions in loops used as closures
+]
+
 [tool.coverage.run]
 # Test coverage
 source = ["engine"]

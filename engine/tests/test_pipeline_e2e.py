@@ -2,6 +2,7 @@
 JARVIS TRADER — Pipeline E2E Tests
 End-to-end testing of the multi-agent trading pipeline.
 """
+
 from datetime import datetime
 from unittest.mock import MagicMock
 
@@ -235,6 +236,7 @@ class TestAnalystStages:
     @pytest.mark.asyncio
     async def test_analyst_exception_logged_as_error(self, trading_pipeline, mock_agents_dict):
         """Analyst raises exception → error logged and pipeline continues."""
+
         # Arrange
         async def failing_analyze(*args, **kwargs):
             raise ValueError("Data feed error")
@@ -311,6 +313,7 @@ class TestTraderStage:
     @pytest.mark.asyncio
     async def test_trader_exception_defaults_to_hold(self, trading_pipeline, mock_agents_dict):
         """Trader raises exception → defaults to HOLD."""
+
         # Arrange
         async def failing_decide(*args, **kwargs):
             raise RuntimeError("Model unavailable")
@@ -342,6 +345,7 @@ class TestRiskManagerStage:
     @pytest.mark.asyncio
     async def test_risk_manager_veto_blocks_fund_manager(self, trading_pipeline, mock_agents_dict):
         """Risk manager veto → fund manager skipped."""
+
         # Arrange
         async def rejecting_review(*args, **kwargs):
             return {
@@ -391,6 +395,7 @@ class TestFundManagerStage:
     @pytest.mark.asyncio
     async def test_fund_manager_reduces_quantity(self, trading_pipeline, mock_agents_dict):
         """Fund manager can reduce order quantity."""
+
         # Arrange
         async def conservative_approve(*args, **kwargs):
             return {
@@ -417,9 +422,7 @@ class TestPipelineKillSwitch:
     async def test_pipeline_respects_kill_switch(self, trading_pipeline, mock_safety_layer):
         """Kill switch active → pipeline rejects."""
         # Arrange
-        mock_safety_layer.activate_kill_switch(
-            "MANUAL", "Testing kill switch"
-        )
+        mock_safety_layer.activate_kill_switch("MANUAL", "Testing kill switch")
 
         # Act
         await trading_pipeline.analyze_and_decide("MES", is_futures=True)
@@ -472,6 +475,7 @@ class TestFinalActionResolution:
     @pytest.mark.asyncio
     async def test_final_action_hold_when_risk_vetoes(self, trading_pipeline, mock_agents_dict):
         """Risk manager veto → final_action=HOLD."""
+
         # Arrange
         async def rejecting_review(*args, **kwargs):
             return {
@@ -533,7 +537,9 @@ class TestPipelinePortfolio:
         assert result["risk_decision"] is not None
 
     @pytest.mark.asyncio
-    async def test_portfolio_passed_to_risk_manager(self, trading_pipeline, mock_agents_dict, mock_portfolio):
+    async def test_portfolio_passed_to_risk_manager(
+        self, trading_pipeline, mock_agents_dict, mock_portfolio
+    ):
         """Portfolio dict passed to risk manager."""
         # Arrange
         captured_portfolio = {}

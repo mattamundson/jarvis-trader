@@ -54,6 +54,7 @@ _DEDUP_WINDOW = 30.0  # seconds
 def _is_duplicate(symbol: str, action: str, price: float | None) -> bool:
     """Return True if an identical webhook was received within the dedup window."""
     import time
+
     now = time.time()
     key = f"{symbol.upper()}:{action.upper()}:{round(price or 0, 2)}"
 
@@ -75,6 +76,7 @@ def _is_duplicate(symbol: str, action: str, price: float | None) -> bool:
 # Public helpers called from main.py
 # ---------------------------------------------------------------------------
 
+
 def set_pipeline_callback(cb: Callable[..., Awaitable[dict]]) -> None:
     """Register the async function to call when a valid signal arrives."""
     global _pipeline_callback
@@ -90,17 +92,19 @@ def get_recent_webhooks(limit: int = 20) -> list[dict]:
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+
 class TradingViewPayload(BaseModel):
     """Inbound webhook payload from a TradingView alert."""
+
     symbol: str
-    action: str                          # LONG | SHORT | CLOSE | HOLD
+    action: str  # LONG | SHORT | CLOSE | HOLD
     price: Optional[float] = None
     timeframe: Optional[str] = None
     indicator: Optional[str] = None
     os_value: Optional[float] = None
     atr: Optional[float] = None
     regime: Optional[str] = None
-    secret: Optional[str] = None        # Optional webhook secret
+    secret: Optional[str] = None  # Optional webhook secret
     # Accept arbitrary extra fields from custom alert messages
     model_config = {"extra": "allow"}
 
@@ -157,9 +161,7 @@ async def receive_tradingview_webhook(payload: TradingViewPayload):
 
     # ── 3. Deduplication check ─────────────────────────────────────────────
     if _is_duplicate(symbol, action, price):
-        logger.warning(
-            "Duplicate webhook rejected: %s %s @ %s", symbol, action, price
-        )
+        logger.warning("Duplicate webhook rejected: %s %s @ %s", symbol, action, price)
         return {
             "status": "duplicate",
             "symbol": symbol,
@@ -216,7 +218,9 @@ async def receive_tradingview_webhook(payload: TradingViewPayload):
             regime=payload.regime,
         )
         return {
-            "status": result.get("status", "completed") if isinstance(result, dict) else "completed",
+            "status": result.get("status", "completed")
+            if isinstance(result, dict)
+            else "completed",
             "symbol": symbol,
             "action": action,
             "pipeline_triggered": True,
@@ -237,9 +241,9 @@ async def receive_tradingview_webhook(payload: TradingViewPayload):
 async def get_dedup_stats():
     """Get current dedup cache stats."""
     import time
+
     now = time.time()
-    active = {k: round(now - ts, 1) for k, ts in _dedup_cache.items()
-              if now - ts < _DEDUP_WINDOW}
+    active = {k: round(now - ts, 1) for k, ts in _dedup_cache.items() if now - ts < _DEDUP_WINDOW}
     return {
         "active_entries": len(active),
         "window_seconds": _DEDUP_WINDOW,

@@ -9,6 +9,7 @@ Design principle from TradeTrap paper:
   - Hard limits cannot be overridden by agent reasoning
   - Kill switch can only be re-enabled by human (Matt)
 """
+
 import asyncio
 import logging
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from typing import Optional
 
 try:
     from engine.execution.ib_gateway import IBGatewayManager
+
     _IB_GATEWAY_AVAILABLE = True
 except ImportError:
     IBGatewayManager = None  # type: ignore[assignment,misc]
@@ -55,8 +57,8 @@ class KillSwitchReason(Enum):
 @dataclass
 class OrderRequest:
     symbol: str
-    quantity: int          # Positive = buy, negative = sell
-    order_type: str        # "market", "limit", "stop", "stop_limit"
+    quantity: int  # Positive = buy, negative = sell
+    order_type: str  # "market", "limit", "stop", "stop_limit"
     limit_price: float | None = None
     stop_price: float | None = None
     is_futures: bool = False
@@ -102,7 +104,7 @@ class SafetyLayer:
             Passing None preserves full backward-compatibility.
         """
         self._config = config
-        self._ib_gateway = ib_gateway      # used only by submit_paper_order()
+        self._ib_gateway = ib_gateway  # used only by submit_paper_order()
         self._pnl_monitor: Optional[object] = pnl_monitor  # PnLMonitor | None
         self._loss_tracker: Optional[object] = loss_tracker  # ConsecutiveLossTracker | None
         self._kill_switch_active = False
@@ -136,11 +138,13 @@ class SafetyLayer:
         logger.critical(f"🔴 KILL SWITCH ACTIVATED: {reason.value}. {message}")
         # Log to PostgreSQL asynchronously (never block)
         try:
-            asyncio.create_task(self._log_safety_event(
-                "kill_switch_activate",
-                reason.value,
-                {"reason": reason.value, "message": message}
-            ))
+            asyncio.create_task(
+                self._log_safety_event(
+                    "kill_switch_activate",
+                    reason.value,
+                    {"reason": reason.value, "message": message},
+                )
+            )
         except RuntimeError:
             # No running event loop (e.g., in tests or sync context)
             logger.debug("No running event loop for async logging")
@@ -152,11 +156,13 @@ class SafetyLayer:
         logger.info(f"✅ Kill switch deactivated by: {authorized_by}")
         # Log to PostgreSQL asynchronously
         try:
-            asyncio.create_task(self._log_safety_event(
-                "kill_switch_deactivate",
-                f"Deactivated by {authorized_by}",
-                {"authorized_by": authorized_by, "resolved": True}
-            ))
+            asyncio.create_task(
+                self._log_safety_event(
+                    "kill_switch_deactivate",
+                    f"Deactivated by {authorized_by}",
+                    {"authorized_by": authorized_by, "resolved": True},
+                )
+            )
         except RuntimeError:
             # No running event loop (e.g., in tests or sync context)
             logger.debug("No running event loop for async logging")
@@ -169,7 +175,9 @@ class SafetyLayer:
         """Return safety layer status for agents."""
         return {
             "is_killed": self._kill_switch_active,
-            "kill_switch_reason": self._kill_switch_reason.value if self._kill_switch_reason else None,
+            "kill_switch_reason": self._kill_switch_reason.value
+            if self._kill_switch_reason
+            else None,
             "daily_realized_pnl": self._daily_realized_pnl,
             "equity_peak": self._equity_peak,
             "current_equity": self._current_equity,
@@ -190,21 +198,21 @@ class SafetyLayer:
         if self._kill_switch_active:
             return RiskCheckResult(
                 approved=False,
-                rejection_reason=f"Kill switch active: {self._kill_switch_reason.value if self._kill_switch_reason else 'unknown'}"
+                rejection_reason=f"Kill switch active: {self._kill_switch_reason.value if self._kill_switch_reason else 'unknown'}",
             )
 
         # 1. Live trading gate
         if not self._config.LIVE_TRADING_ENABLED:
             return RiskCheckResult(
                 approved=False,
-                rejection_reason="Live trading is disabled (LIVE_TRADING_ENABLED=False)"
+                rejection_reason="Live trading is disabled (LIVE_TRADING_ENABLED=False)",
             )
 
         # 2. Human approval gate
         if self._config.REQUIRE_HUMAN_APPROVAL:
             return RiskCheckResult(
                 approved=False,
-                rejection_reason="Human approval required (REQUIRE_HUMAN_APPROVAL=True) — this is normal in initial deployment"
+                rejection_reason="Human approval required (REQUIRE_HUMAN_APPROVAL=True) — this is normal in initial deployment",
             )
 
         # 3. Daily loss limit
@@ -217,48 +225,51 @@ class SafetyLayer:
         if daily_pnl_for_check < -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT):
             self.activate_kill_switch(
                 KillSwitchReason.DAILY_LOSS_LIMIT,
-                f"Daily loss {daily_pnl_for_check:.2f} exceeded limit"
+                f"Daily loss {daily_pnl_for_check:.2f} exceeded limit",
             )
             return RiskCheckResult(
-                approved=False,
-                rejection_reason="Daily loss limit breached — kill switch activated"
+                approved=False, rejection_reason="Daily loss limit breached — kill switch activated"
             )
 
         # 4. Max drawdown
         # Use PnLMonitor drawdown when available (reads from SQLite peak history);
         # fall back to the in-memory equity-peak calculation.
         if self._pnl_monitor is not None:
-            drawdown = -self._pnl_monitor.get_drawdown_pct()   # monitor returns negative; negate for comparison
+            drawdown = (
+                -self._pnl_monitor.get_drawdown_pct()
+            )  # monitor returns negative; negate for comparison
             if drawdown > self._config.MAX_DRAWDOWN_PCT:
                 self.activate_kill_switch(
                     KillSwitchReason.MAX_DRAWDOWN,
-                    f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%} (source: pnl_monitor)"
+                    f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%} (source: pnl_monitor)",
                 )
                 return RiskCheckResult(
-                    approved=False,
-                    rejection_reason="Max drawdown breached — kill switch activated"
+                    approved=False, rejection_reason="Max drawdown breached — kill switch activated"
                 )
             elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
-                warnings.append(f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit")
+                warnings.append(
+                    f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
+                )
         elif self._equity_peak > 0:
             drawdown = (self._equity_peak - portfolio_equity) / self._equity_peak
             if drawdown > self._config.MAX_DRAWDOWN_PCT:
                 self.activate_kill_switch(
                     KillSwitchReason.MAX_DRAWDOWN,
-                    f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%}"
+                    f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%}",
                 )
                 return RiskCheckResult(
-                    approved=False,
-                    rejection_reason="Max drawdown breached — kill switch activated"
+                    approved=False, rejection_reason="Max drawdown breached — kill switch activated"
                 )
             elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
-                warnings.append(f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit")
+                warnings.append(
+                    f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
+                )
 
         # 5. Order size limit
         if order.estimated_value > self._config.MAX_SINGLE_ORDER_VALUE:
             return RiskCheckResult(
                 approved=False,
-                rejection_reason=f"Order value ${order.estimated_value:,.0f} exceeds max ${self._config.MAX_SINGLE_ORDER_VALUE:,.0f}"
+                rejection_reason=f"Order value ${order.estimated_value:,.0f} exceeds max ${self._config.MAX_SINGLE_ORDER_VALUE:,.0f}",
             )
 
         # 6. Position size limit
@@ -266,28 +277,28 @@ class SafetyLayer:
         if position_pct > self._config.MAX_POSITION_SIZE_PCT:
             return RiskCheckResult(
                 approved=False,
-                rejection_reason=f"Position size {position_pct:.1%} exceeds max {self._config.MAX_POSITION_SIZE_PCT:.1%}"
+                rejection_reason=f"Position size {position_pct:.1%} exceeds max {self._config.MAX_POSITION_SIZE_PCT:.1%}",
             )
 
         # 7. Order rate throttle (anti-runaway)
         import time
+
         now = time.time()
         self._recent_order_timestamps = [t for t in self._recent_order_timestamps if now - t < 60]
         if len(self._recent_order_timestamps) >= self._config.MAX_ORDERS_PER_MINUTE:
             self.activate_kill_switch(
                 KillSwitchReason.ANOMALOUS_ORDER_RATE,
-                f"Order rate exceeded {self._config.MAX_ORDERS_PER_MINUTE}/min"
+                f"Order rate exceeded {self._config.MAX_ORDERS_PER_MINUTE}/min",
             )
             return RiskCheckResult(
-                approved=False,
-                rejection_reason="Anomalous order rate — kill switch activated"
+                approved=False, rejection_reason="Anomalous order rate — kill switch activated"
             )
 
         # 8. Futures-specific: contract limits
         if order.is_futures and abs(order.quantity) > self._config.MAX_CONTRACTS_PER_INSTRUMENT:
             return RiskCheckResult(
                 approved=False,
-                rejection_reason=f"Requested {abs(order.quantity)} contracts exceeds max {self._config.MAX_CONTRACTS_PER_INSTRUMENT}"
+                rejection_reason=f"Requested {abs(order.quantity)} contracts exceeds max {self._config.MAX_CONTRACTS_PER_INSTRUMENT}",
             )
 
         # 9. Consecutive loss tracking & position size modulation
@@ -296,8 +307,7 @@ class SafetyLayer:
             # Check if trading is halted due to too many consecutive losses
             if self._loss_tracker.is_halted():
                 return RiskCheckResult(
-                    approved=False,
-                    rejection_reason=self._loss_tracker.get_halt_reason()
+                    approved=False, rejection_reason=self._loss_tracker.get_halt_reason()
                 )
 
             # Get position size multiplier based on consecutive losses
@@ -328,8 +338,14 @@ class SafetyLayer:
 
         # All checks passed
         self._recent_order_timestamps.append(now)
-        logger.info(f"✅ Order approved: {adjusted_order.symbol} qty={adjusted_order.quantity} est_value=${adjusted_order.estimated_value:,.0f}")
-        return RiskCheckResult(approved=True, warnings=warnings, adjusted_order=adjusted_order if adjusted_order != order else None)
+        logger.info(
+            f"✅ Order approved: {adjusted_order.symbol} qty={adjusted_order.quantity} est_value=${adjusted_order.estimated_value:,.0f}"
+        )
+        return RiskCheckResult(
+            approved=True,
+            warnings=warnings,
+            adjusted_order=adjusted_order if adjusted_order != order else None,
+        )
 
     # ── Paper Order Submission (Safety → IB Gateway) ──────────────────────
 
@@ -376,7 +392,10 @@ class SafetyLayer:
             )
             logger.warning(
                 "submit_paper_order BLOCKED by kill switch — symbol=%s action=%s qty=%d: %s",
-                symbol, action, quantity, reason,
+                symbol,
+                action,
+                quantity,
+                reason,
             )
             return {"approved": False, "reason": reason, "order_id": None, "routed_to_ib": False}
 
@@ -388,8 +407,21 @@ class SafetyLayer:
         # Detect futures by common micro/mini root symbols (heuristic; callers
         # can override by subclassing or by building the OrderRequest directly
         # and calling check_order() + submit_paper_order separately).
-        _FUTURES_ROOTS = {"MES", "MNQ", "M2K", "MCL", "MGC", "MHG", "MSI",
-                          "ES", "NQ", "RTY", "CL", "GC", "HG"}
+        _FUTURES_ROOTS = {
+            "MES",
+            "MNQ",
+            "M2K",
+            "MCL",
+            "MGC",
+            "MHG",
+            "MSI",
+            "ES",
+            "NQ",
+            "RTY",
+            "CL",
+            "GC",
+            "HG",
+        }
         is_futures = symbol.upper() in _FUTURES_ROOTS
 
         ib_order_type = order_type.lower()
@@ -420,7 +452,10 @@ class SafetyLayer:
         if not risk_result.approved:
             logger.warning(
                 "submit_paper_order REJECTED by SafetyLayer — symbol=%s action=%s qty=%d: %s",
-                symbol, action, quantity, risk_result.rejection_reason,
+                symbol,
+                action,
+                quantity,
+                risk_result.rejection_reason,
             )
             return {
                 "approved": False,
@@ -438,7 +473,9 @@ class SafetyLayer:
             logger.info(
                 "submit_paper_order: safety checks PASSED — no IB gateway attached "
                 "(dry-run mode). symbol=%s action=%s qty=%d",
-                symbol, action, quantity,
+                symbol,
+                action,
+                quantity,
             )
             return {
                 "approved": True,
@@ -451,7 +488,9 @@ class SafetyLayer:
             logger.error(
                 "submit_paper_order: safety checks PASSED but IB gateway is NOT connected. "
                 "symbol=%s action=%s qty=%d",
-                symbol, action, quantity,
+                symbol,
+                action,
+                quantity,
             )
             return {
                 "approved": True,
@@ -471,7 +510,11 @@ class SafetyLayer:
             logger.info(
                 "submit_paper_order ROUTED to IB Gateway (paper) — symbol=%s action=%s "
                 "qty=%d order_type=%s order_id=%s",
-                symbol, action_upper, quantity, order_type.upper(), order_id,
+                symbol,
+                action_upper,
+                quantity,
+                order_type.upper(),
+                order_id,
             )
             return {
                 "approved": True,
@@ -482,7 +525,9 @@ class SafetyLayer:
         except Exception as exc:
             logger.error(
                 "submit_paper_order: IB Gateway place_paper_order raised — symbol=%s: %s",
-                symbol, exc, exc_info=True,
+                symbol,
+                exc,
+                exc_info=True,
             )
             return {
                 "approved": True,
@@ -507,8 +552,7 @@ class SafetyLayer:
         # Auto-trigger daily loss check
         if daily_pnl < -(equity * self._config.MAX_DAILY_LOSS_PCT):
             self.activate_kill_switch(
-                KillSwitchReason.DAILY_LOSS_LIMIT,
-                f"Intraday sync: daily PnL {daily_pnl:.2f}"
+                KillSwitchReason.DAILY_LOSS_LIMIT, f"Intraday sync: daily PnL {daily_pnl:.2f}"
             )
 
     def check_circuit_breakers(self) -> dict:
@@ -540,8 +584,14 @@ class SafetyLayer:
             daily_pnl_for_check = self._daily_realized_pnl
 
         # Daily loss circuit breaker
-        daily_limit = -(self._current_equity * self._config.MAX_DAILY_LOSS_PCT) if self._current_equity > 0 else 0
-        daily_pnl_pct = (daily_pnl_for_check / self._current_equity) if self._current_equity > 0 else 0
+        daily_limit = (
+            -(self._current_equity * self._config.MAX_DAILY_LOSS_PCT)
+            if self._current_equity > 0
+            else 0
+        )
+        daily_pnl_pct = (
+            (daily_pnl_for_check / self._current_equity) if self._current_equity > 0 else 0
+        )
         daily_limit_pct = -self._config.MAX_DAILY_LOSS_PCT
         daily_limit_breached = daily_pnl_for_check < daily_limit
 
@@ -564,7 +614,9 @@ class SafetyLayer:
             "drawdown_limit_pct": drawdown_limit_pct,
             "drawdown_breached": drawdown_breached,
             "kill_switch_active": self._kill_switch_active,
-            "kill_switch_reason": self._kill_switch_reason.value if self._kill_switch_reason else None,
+            "kill_switch_reason": self._kill_switch_reason.value
+            if self._kill_switch_reason
+            else None,
         }
 
     # ── Loss Tracking API ──────────────────────────────────────────────────
@@ -584,9 +636,7 @@ class SafetyLayer:
         """
         if self._loss_tracker is not None:
             is_win = self._loss_tracker.record_trade(symbol, pnl)
-            logger.info(
-                f"Trade recorded: {symbol} PnL=${pnl:.2f} ({'WIN' if is_win else 'LOSS'})"
-            )
+            logger.info(f"Trade recorded: {symbol} PnL=${pnl:.2f} ({'WIN' if is_win else 'LOSS'})")
         else:
             logger.debug(f"Loss tracker not available; trade not recorded: {symbol} PnL=${pnl:.2f}")
 
@@ -599,14 +649,8 @@ class SafetyLayer:
         dict with comprehensive loss tracking state
         """
         if self._loss_tracker is None:
-            return {
-                "enabled": False,
-                "message": "Loss tracker not available"
-            }
-        return {
-            "enabled": True,
-            **self._loss_tracker.get_status()
-        }
+            return {"enabled": False, "message": "Loss tracker not available"}
+        return {"enabled": True, **self._loss_tracker.get_status()}
 
     def reset_loss_tracker(self, symbol: Optional[str] = None) -> dict:
         """
@@ -625,10 +669,7 @@ class SafetyLayer:
             return {"status": "Loss tracker not available"}
 
         self._loss_tracker.reset(symbol=symbol)
-        return {
-            "status": "Reset successful",
-            **self._loss_tracker.get_status()
-        }
+        return {"status": "Reset successful", **self._loss_tracker.get_status()}
 
     async def _log_safety_event(
         self,
@@ -648,6 +689,7 @@ class SafetyLayer:
         """
         try:
             from database import repository
+
             await repository.insert_safety_event(
                 event_type=event_type,
                 reason=reason,

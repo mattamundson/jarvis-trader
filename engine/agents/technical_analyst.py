@@ -7,6 +7,7 @@ and produces a structured JSON report consumed by the downstream research agents
 Runs every 15 minutes during market hours.
 Model: Claude Sonnet 4.6 (fast, cost-efficient for repeated analysis)
 """
+
 import json
 import logging
 from dataclasses import dataclass, field
@@ -16,6 +17,7 @@ import pandas as pd
 
 try:
     import pandas_ta as ta  # 150+ technical indicators
+
     PANDAS_TA_AVAILABLE = True
 except ImportError:
     ta = None
@@ -32,6 +34,7 @@ _MIN_DAILY_BARS = 5
 @dataclass
 class TechnicalReport:
     """Structured output from the Technical Analyst agent"""
+
     symbol: str
     timestamp: datetime
     timeframe: str
@@ -41,10 +44,10 @@ class TechnicalReport:
     confidence: float  # 0.0 to 1.0
 
     # Individual indicator scores
-    trend_score: float      # Based on MA crossovers, ADX
-    momentum_score: float   # RSI, MACD, Stochastic
-    volatility_score: float # ATR, Bollinger Band position
-    volume_score: float     # Volume vs average, OBV
+    trend_score: float  # Based on MA crossovers, ADX
+    momentum_score: float  # RSI, MACD, Stochastic
+    volatility_score: float  # ATR, Bollinger Band position
+    volume_score: float  # Volume vs average, OBV
 
     # Key levels
     support_levels: list[float] = field(default_factory=list)
@@ -125,7 +128,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         """Full technical analysis pipeline for a symbol"""
 
         # 1. Fetch OHLCV data (intraday preferred)
-        df = await self._data.get_bars(symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures)
+        df = await self._data.get_bars(
+            symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures
+        )
 
         using_daily_fallback = False
         effective_timeframe = timeframe
@@ -180,21 +185,28 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         """
         try:
             import yfinance as yf
+
             ticker = yf.Ticker(symbol)
             df = ticker.history(period="1y", interval="1d")
             if df.empty:
                 logger.warning(f"yfinance daily fetch returned empty for {symbol}")
                 return pd.DataFrame()
-            df = df.reset_index().rename(columns={
-                "Datetime": "timestamp",
-                "Date": "timestamp",
-                "Open": "open",
-                "High": "high",
-                "Low": "low",
-                "Close": "close",
-                "Volume": "volume",
-            })
-            cols = [c for c in ["timestamp", "open", "high", "low", "close", "volume"] if c in df.columns]
+            df = df.reset_index().rename(
+                columns={
+                    "Datetime": "timestamp",
+                    "Date": "timestamp",
+                    "Open": "open",
+                    "High": "high",
+                    "Low": "low",
+                    "Close": "close",
+                    "Volume": "volume",
+                }
+            )
+            cols = [
+                c
+                for c in ["timestamp", "open", "high", "low", "close", "volume"]
+                if c in df.columns
+            ]
             logger.info(f"Daily fallback: fetched {len(df)} daily bars for {symbol}")
             return df[cols]
         except Exception as e:
@@ -211,6 +223,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         """
         try:
             import yfinance as yf
+
             info = yf.Ticker(symbol).info
             for key in ("regularMarketPrice", "currentPrice", "previousClose"):
                 val = info.get(key)
@@ -271,10 +284,18 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 
         indicators["rsi"] = float(df["RSI_14"].iloc[-1]) if "RSI_14" in df else None
         indicators["macd"] = float(df["MACD_12_26_9"].iloc[-1]) if "MACD_12_26_9" in df else None
-        indicators["macd_signal"] = float(df["MACDs_12_26_9"].iloc[-1]) if "MACDs_12_26_9" in df else None
-        indicators["macd_histogram"] = float(df["MACDh_12_26_9"].iloc[-1]) if "MACDh_12_26_9" in df else None
-        indicators["stoch_k"] = float(df["STOCHk_14_3_3"].iloc[-1]) if "STOCHk_14_3_3" in df else None
-        indicators["stoch_d"] = float(df["STOCHd_14_3_3"].iloc[-1]) if "STOCHd_14_3_3" in df else None
+        indicators["macd_signal"] = (
+            float(df["MACDs_12_26_9"].iloc[-1]) if "MACDs_12_26_9" in df else None
+        )
+        indicators["macd_histogram"] = (
+            float(df["MACDh_12_26_9"].iloc[-1]) if "MACDh_12_26_9" in df else None
+        )
+        indicators["stoch_k"] = (
+            float(df["STOCHk_14_3_3"].iloc[-1]) if "STOCHk_14_3_3" in df else None
+        )
+        indicators["stoch_d"] = (
+            float(df["STOCHd_14_3_3"].iloc[-1]) if "STOCHd_14_3_3" in df else None
+        )
         indicators["cci"] = float(df["CCI_14_0.015"].iloc[-1]) if "CCI_14_0.015" in df else None
         indicators["williams_r"] = float(df["WILLR_14"].iloc[-1]) if "WILLR_14" in df else None
 
@@ -291,7 +312,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         if all(indicators.get(k) for k in ["bb_upper", "bb_lower"]):
             bb_range = indicators["bb_upper"] - indicators["bb_lower"]
             if bb_range > 0:
-                indicators["bb_pct_b"] = (float(current["close"]) - indicators["bb_lower"]) / bb_range
+                indicators["bb_pct_b"] = (
+                    float(current["close"]) - indicators["bb_lower"]
+                ) / bb_range
 
         # ── Volume Indicators ────────────────────────────────────────────
         df.ta.obv(append=True)
@@ -307,8 +330,11 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # ── Price Context ────────────────────────────────────────────────
         indicators["current_price"] = float(current["close"])
         indicators["price_change_pct"] = (
-            (float(current["close"]) - float(df["close"].iloc[-20])) / float(df["close"].iloc[-20]) * 100
-            if len(df) >= 20 else 0.0
+            (float(current["close"]) - float(df["close"].iloc[-20]))
+            / float(df["close"].iloc[-20])
+            * 100
+            if len(df) >= 20
+            else 0.0
         )
 
         # Simple support/resistance (recent swing lows/highs)
@@ -334,36 +360,36 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         """
         prompt = f"""Analyze these technical indicators for {symbol} on {timeframe} timeframe:
 
-Current Price: ${indicators.get('current_price', 'N/A')}
-Price Change (20 bars): {indicators.get('price_change_pct', 'N/A'):.1f}%
+Current Price: ${indicators.get("current_price", "N/A")}
+Price Change (20 bars): {indicators.get("price_change_pct", "N/A"):.1f}%
 
 TREND:
-- SMA 20: {indicators.get('sma_20', 'N/A')}
-- SMA 50: {indicators.get('sma_50', 'N/A')}
-- SMA 200: {indicators.get('sma_200', 'N/A')}
-- EMA 9: {indicators.get('ema_9', 'N/A')}
-- ADX (trend strength): {indicators.get('adx', 'N/A')} (>25 = trending, <20 = ranging)
+- SMA 20: {indicators.get("sma_20", "N/A")}
+- SMA 50: {indicators.get("sma_50", "N/A")}
+- SMA 200: {indicators.get("sma_200", "N/A")}
+- EMA 9: {indicators.get("ema_9", "N/A")}
+- ADX (trend strength): {indicators.get("adx", "N/A")} (>25 = trending, <20 = ranging)
 
 MOMENTUM:
-- RSI: {indicators.get('rsi', 'N/A')} (>70 overbought, <30 oversold)
-- MACD: {indicators.get('macd', 'N/A')} | Signal: {indicators.get('macd_signal', 'N/A')} | Histogram: {indicators.get('macd_histogram', 'N/A')}
-- Stochastic %K: {indicators.get('stoch_k', 'N/A')} | %D: {indicators.get('stoch_d', 'N/A')}
-- Williams %R: {indicators.get('williams_r', 'N/A')}
+- RSI: {indicators.get("rsi", "N/A")} (>70 overbought, <30 oversold)
+- MACD: {indicators.get("macd", "N/A")} | Signal: {indicators.get("macd_signal", "N/A")} | Histogram: {indicators.get("macd_histogram", "N/A")}
+- Stochastic %K: {indicators.get("stoch_k", "N/A")} | %D: {indicators.get("stoch_d", "N/A")}
+- Williams %R: {indicators.get("williams_r", "N/A")}
 
 VOLATILITY:
-- ATR (14): {indicators.get('atr', 'N/A')}
-- Bollinger Upper: {indicators.get('bb_upper', 'N/A')}
-- Bollinger Mid: {indicators.get('bb_mid', 'N/A')}
-- Bollinger Lower: {indicators.get('bb_lower', 'N/A')}
-- BB %B (0=lower, 1=upper): {indicators.get('bb_pct_b', 'N/A')}
+- ATR (14): {indicators.get("atr", "N/A")}
+- Bollinger Upper: {indicators.get("bb_upper", "N/A")}
+- Bollinger Mid: {indicators.get("bb_mid", "N/A")}
+- Bollinger Lower: {indicators.get("bb_lower", "N/A")}
+- BB %B (0=lower, 1=upper): {indicators.get("bb_pct_b", "N/A")}
 
 VOLUME:
-- Volume Ratio (vs 20-avg): {indicators.get('volume_ratio', 'N/A'):.2f}x
-- OBV trend: {'rising' if indicators.get('obv', 0) > 0 else 'falling'}
+- Volume Ratio (vs 20-avg): {indicators.get("volume_ratio", "N/A"):.2f}x
+- OBV trend: {"rising" if indicators.get("obv", 0) > 0 else "falling"}
 
 KEY LEVELS:
-- Support: {indicators.get('support_levels', [])}
-- Resistance: {indicators.get('resistance_levels', [])}
+- Support: {indicators.get("support_levels", [])}
+- Resistance: {indicators.get("resistance_levels", [])}
 
 Respond with JSON in exactly this format:
 {{
@@ -383,12 +409,13 @@ Respond with JSON in exactly this format:
 
         try:
             import anthropic
+
             client = anthropic.Anthropic(api_key=self._llm.api_key)
             message = client.messages.create(
                 model="claude-sonnet-4-6",
                 max_tokens=1024,
                 system=self.SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
             )
             response_text = message.content[0].text.strip()
 

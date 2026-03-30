@@ -8,6 +8,7 @@ Notes:
 - For 1h we try 2024-01-01 as earliest feasible start
 - For 1d we fetch from 2022-01-01
 """
+
 import os
 import sys
 import time

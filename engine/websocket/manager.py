@@ -34,13 +34,17 @@ class WebSocketManager:
         await websocket.accept()
         async with self._lock:
             self.active_connections.add(websocket)
-        logger.info(f"WebSocket client connected. Total connections: {len(self.active_connections)}")
+        logger.info(
+            f"WebSocket client connected. Total connections: {len(self.active_connections)}"
+        )
 
     async def disconnect(self, websocket: WebSocket):
         """Remove a disconnected client from active connections."""
         async with self._lock:
             self.active_connections.discard(websocket)
-        logger.info(f"WebSocket client disconnected. Total connections: {len(self.active_connections)}")
+        logger.info(
+            f"WebSocket client disconnected. Total connections: {len(self.active_connections)}"
+        )
 
     async def broadcast(self, event_type: str, data: dict):
         """

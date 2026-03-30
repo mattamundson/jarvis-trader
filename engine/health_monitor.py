@@ -10,6 +10,8 @@ Usage (run alongside the engine):
     .venv\Scripts\python health_monitor.py
 """
 
+import base64
+import json as _json
 import logging
 import sys
 import time
@@ -40,6 +42,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("health_monitor")
 
+
 # ---------------------------------------------------------------------------
 # Config — load from .env without third-party deps
 # ---------------------------------------------------------------------------
@@ -63,27 +66,31 @@ def _load_env(env_path: Path) -> dict:
 _env = _load_env(ENGINE_DIR / ".env")
 
 HEALTH_URL = "http://localhost:8010/health"
-POLL_INTERVAL = 60          # seconds between checks
-REQUEST_TIMEOUT = 10        # seconds before considering engine dead
-ALERT_COOLDOWN = 300        # seconds between repeated DOWN alerts (5 min)
+POLL_INTERVAL = 60  # seconds between checks
+REQUEST_TIMEOUT = 10  # seconds before considering engine dead
+ALERT_COOLDOWN = 300  # seconds between repeated DOWN alerts (5 min)
 
-TWILIO_ACCOUNT_SID  = _env.get("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN   = _env.get("TWILIO_AUTH_TOKEN", "")
-TWILIO_FROM         = _env.get("TWILIO_WHATSAPP_FROM", "")
-WHATSAPP_TO         = _env.get("WHATSAPP_TO", "")
+TWILIO_ACCOUNT_SID = _env.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = _env.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM = _env.get("TWILIO_WHATSAPP_FROM", "")
+WHATSAPP_TO = _env.get("WHATSAPP_TO", "")
 
-_PLACEHOLDERS = {"", None, "your_account_sid_here", "your_auth_token_here",
-                 "your_whatsapp_from_here", "your_whatsapp_to_here"}
+_PLACEHOLDERS = {
+    "",
+    None,
+    "your_account_sid_here",
+    "your_auth_token_here",
+    "your_whatsapp_from_here",
+    "your_whatsapp_to_here",
+}
 
-WHATSAPP_ENABLED = not any(v in _PLACEHOLDERS for v in [
-    TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, WHATSAPP_TO
-])
+WHATSAPP_ENABLED = not any(
+    v in _PLACEHOLDERS for v in [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, WHATSAPP_TO]
+)
 
 # ---------------------------------------------------------------------------
 # WhatsApp alert (stdlib only — urllib + base64 for Basic Auth)
 # ---------------------------------------------------------------------------
-import base64
-import json as _json
 
 
 def _send_whatsapp(message: str) -> bool:
@@ -93,22 +100,22 @@ def _send_whatsapp(message: str) -> bool:
         return False
 
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
-    body = urllib.parse.urlencode({
-        "From": TWILIO_FROM,
-        "To":   WHATSAPP_TO,
-        "Body": message,
-    }).encode("utf-8")
+    body = urllib.parse.urlencode(
+        {
+            "From": TWILIO_FROM,
+            "To": WHATSAPP_TO,
+            "Body": message,
+        }
+    ).encode("utf-8")
 
-    credentials = base64.b64encode(
-        f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}".encode()
-    ).decode()
+    credentials = base64.b64encode(f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}".encode()).decode()
 
     req = urllib.request.Request(
         url,
         data=body,
         headers={
             "Authorization": f"Basic {credentials}",
-            "Content-Type":  "application/x-www-form-urlencoded",
+            "Content-Type": "application/x-www-form-urlencoded",
         },
         method="POST",
     )
@@ -120,7 +127,9 @@ def _send_whatsapp(message: str) -> bool:
             logger.info("WhatsApp alert sent  SID=%s", data.get("sid"))
             return True
     except urllib.error.HTTPError as exc:
-        logger.error("Twilio HTTP %s: %s", exc.code, exc.read().decode("utf-8", errors="replace")[:300])
+        logger.error(
+            "Twilio HTTP %s: %s", exc.code, exc.read().decode("utf-8", errors="replace")[:300]
+        )
     except Exception as exc:
         logger.error("WhatsApp send failed: %s", exc)
     return False
@@ -161,9 +170,15 @@ def run() -> None:
     logger.info("=" * 60)
     logger.info("JARVIS TRADER Health Monitor started")
     logger.info("Polling : %s", HEALTH_URL)
-    logger.info("Interval: %ds  |  Timeout: %ds  |  Alert cooldown: %ds",
-                POLL_INTERVAL, REQUEST_TIMEOUT, ALERT_COOLDOWN)
-    logger.info("WhatsApp alerts: %s", "ENABLED" if WHATSAPP_ENABLED else "DISABLED (configure .env)")
+    logger.info(
+        "Interval: %ds  |  Timeout: %ds  |  Alert cooldown: %ds",
+        POLL_INTERVAL,
+        REQUEST_TIMEOUT,
+        ALERT_COOLDOWN,
+    )
+    logger.info(
+        "WhatsApp alerts: %s", "ENABLED" if WHATSAPP_ENABLED else "DISABLED (configure .env)"
+    )
     logger.info("=" * 60)
 
     was_down = False

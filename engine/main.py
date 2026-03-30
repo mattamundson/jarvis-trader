@@ -6,6 +6,7 @@ Runs on port 8010 (separate from GMS JARVIS on 8009).
 
 Start with: uvicorn main:app --reload --port 8010
 """
+
 import asyncio
 import json
 import logging
@@ -32,6 +33,7 @@ from agents.pipeline import TradingPipeline
 from agents.risk_manager import RiskManagerAgent
 from agents.social_analyst import SocialAnalystAgent
 from agents.technical_analyst import TechnicalAnalystAgent
+from agents.thinkscript_generator import ThinkScriptGeneratorAgent
 from agents.trader import TraderAgent
 from api.models import (
     BarsResponse,
@@ -78,6 +80,7 @@ logger = logging.getLogger("jarvis_trader")
 
 class JSONFormatter(logging.Formatter):
     """Custom JSON-structured log formatter"""
+
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -130,6 +133,7 @@ def setup_logging(log_level: str = "INFO") -> None:
     file_handler.setFormatter(json_formatter)
     root_logger.addHandler(file_handler)
 
+
 # ── Global State ─────────────────────────────────────────────────────────
 data_manager: MarketDataManager | None = None
 safety_layer: SafetyLayer | None = None
@@ -156,14 +160,31 @@ _macro_cache: Dict[str, dict] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ws_manager, cost_tracker, loss_tracker
+    global \
+        data_manager, \
+        safety_layer, \
+        technical_analyst, \
+        trading_pipeline, \
+        scheduler, \
+        paper_tracker, \
+        db_manager, \
+        pnl_monitor, \
+        eod_scheduler, \
+        order_manager, \
+        ws_manager, \
+        cost_tracker, \
+        loss_tracker
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
 
     logger.info("🤖 JARVIS TRADER starting up...")
-    logger.info(f"   Live trading: {'ENABLED ⚠️' if settings.LIVE_TRADING_ENABLED else 'DISABLED (paper mode)'}")
-    logger.info(f"   IBKR port:   {settings.IBKR_PORT} ({'live' if settings.IBKR_PORT == 4001 else 'paper'})")
+    logger.info(
+        f"   Live trading: {'ENABLED ⚠️' if settings.LIVE_TRADING_ENABLED else 'DISABLED (paper mode)'}"
+    )
+    logger.info(
+        f"   IBKR port:   {settings.IBKR_PORT} ({'live' if settings.IBKR_PORT == 4001 else 'paper'})"
+    )
 
     # Initialize SQLite database
     os.makedirs("data", exist_ok=True)
@@ -180,7 +201,7 @@ async def lifespan(app: FastAPI):
     # IB gateway is not available yet at this point; it is injected after data_manager is ready
     pnl_monitor = PnLMonitor(
         db_manager=db_manager,
-        ib_gateway=None,          # updated below once data_manager is initialised
+        ib_gateway=None,  # updated below once data_manager is initialised
         paper_tracker=paper_tracker,
     )
     logger.info("✅ PnL Monitor initialised (SQLite + paper tracker sources active)")
@@ -235,14 +256,14 @@ async def lifespan(app: FastAPI):
         # Trading Pipeline — all agents wired
         trading_pipeline = TradingPipeline(
             agents={
-                "technical":    technical_analyst,
-                "news":         news_agent,
-                "social":       social_agent,
-                "fundamental":  fundamental_agent,
-                "bull":         bull_agent,
-                "bear":         bear_agent,
-                "debate":       debate_agent,
-                "trader":       trader_agent,
+                "technical": technical_analyst,
+                "news": news_agent,
+                "social": social_agent,
+                "fundamental": fundamental_agent,
+                "bull": bull_agent,
+                "bear": bear_agent,
+                "debate": debate_agent,
+                "trader": trader_agent,
                 "risk_manager": risk_agent,
                 "fund_manager": fund_agent,
             },
@@ -264,14 +285,20 @@ async def lifespan(app: FastAPI):
             logger.info("Scheduler: skipping — kill switch active")
             return
 
-        symbols_to_scan = [
-            (sym, True) for sym in settings.FUTURES_WATCHLIST[:2]  # Top 2 futures
-        ] + [
-            (sym, False) for sym in settings.OPTIONS_WATCHLIST[:3]  # Top 3 equities
-        ]
+        symbols_to_scan = (
+            [
+                (sym, True)
+                for sym in settings.FUTURES_WATCHLIST[:2]  # Top 2 futures
+            ]
+            + [
+                (sym, False)
+                for sym in settings.OPTIONS_WATCHLIST[:3]  # Top 3 equities
+            ]
+        )
 
         logger.info(f"Scheduled scan: {[s[0] for s in symbols_to_scan]}")
         from notifications.whatsapp import get_notifier
+
         notifier = get_notifier()
 
         for symbol, is_futures in symbols_to_scan:
@@ -288,15 +315,17 @@ async def lifespan(app: FastAPI):
                 reasoning = trade_dec.get("reasoning", "")
 
                 # Always log to decision feed
-                _decision_log.append({
-                    "id": len(_decision_log) + 1,
-                    "timestamp": datetime.now().isoformat(),
-                    "symbol": symbol,
-                    "action": action,
-                    "confidence": confidence,
-                    "source": "scheduler",
-                    "summary": result.get("summary", ""),
-                })
+                _decision_log.append(
+                    {
+                        "id": len(_decision_log) + 1,
+                        "timestamp": datetime.now().isoformat(),
+                        "symbol": symbol,
+                        "action": action,
+                        "confidence": confidence,
+                        "source": "scheduler",
+                        "summary": result.get("summary", ""),
+                    }
+                )
                 if len(_decision_log) > 100:
                     _decision_log.pop(0)
 
@@ -306,15 +335,16 @@ async def lifespan(app: FastAPI):
                     # Rate limit: skip alert if we sent one for this symbol within cooldown window
                     now = datetime.now()
                     last_sent = _last_alert_time.get(symbol)
-                    cooldown_expired = (
-                        last_sent is None
-                        or (now - last_sent) >= timedelta(hours=ALERT_COOLDOWN_HOURS)
+                    cooldown_expired = last_sent is None or (now - last_sent) >= timedelta(
+                        hours=ALERT_COOLDOWN_HOURS
                     )
 
                     if notifier.enabled and cooldown_expired:
                         price_str = f" @ {price_info:.2f}" if price_info else ""
                         pct = int(confidence * 100)
-                        short_reason = (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
+                        short_reason = (
+                            (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
+                        )
                         msg = (
                             f"JARVIS: {symbol} -> {action.upper()} {qty}{price_str}\n"
                             f"Confidence: {pct}%\n"
@@ -342,10 +372,7 @@ async def lifespan(app: FastAPI):
         scheduler.add_job(
             run_watchlist_analysis,
             CronTrigger(
-                day_of_week="mon-fri",
-                hour="9-15",
-                minute="0,30",
-                timezone="America/Chicago"
+                day_of_week="mon-fri", hour="9-15", minute="0,30", timezone="America/Chicago"
             ),
             id="watchlist_scan",
             name="Watchlist Auto-Scan",
@@ -360,6 +387,7 @@ async def lifespan(app: FastAPI):
         """Fetch today's MGC daily bar, run adaptive-regime signals, log pending entries."""
         import json as _json
         from pathlib import Path
+
         try:
             import yfinance as yf
 
@@ -372,7 +400,7 @@ async def lifespan(app: FastAPI):
                 return
 
             # Flatten MultiIndex columns if present (yfinance sometimes returns them)
-            if hasattr(gc_df.columns, 'levels') and gc_df.columns.nlevels > 1:
+            if hasattr(gc_df.columns, "levels") and gc_df.columns.nlevels > 1:
                 gc_df.columns = [c[0] if isinstance(c, tuple) else c for c in gc_df.columns]
 
             # Normalise column names to lowercase
@@ -391,7 +419,9 @@ async def lifespan(app: FastAPI):
                 t1 = float(last_row.get("target_1", 0))
                 regime = str(last_row.get("regime_type", "UNKNOWN"))
 
-                pending_file = Path(__file__).parent / "backtest" / "results" / "pending_signals.json"
+                pending_file = (
+                    Path(__file__).parent / "backtest" / "results" / "pending_signals.json"
+                )
                 existing = []
                 if pending_file.exists():
                     try:
@@ -412,10 +442,13 @@ async def lifespan(app: FastAPI):
                 }
                 existing.append(new_signal)
                 pending_file.write_text(_json.dumps(existing, indent=2), encoding="utf-8")
-                logger.info(f"[MGC-daily] ENTRY_NOW logged -> {pending_file.name}: {direction} @ ~{entry_est:.2f}")
+                logger.info(
+                    f"[MGC-daily] ENTRY_NOW logged -> {pending_file.name}: {direction} @ ~{entry_est:.2f}"
+                )
 
                 # Send WhatsApp alert for MGC entry signal
                 from notifications.whatsapp import get_notifier as _mgc_notifier
+
                 notifier = _mgc_notifier()
                 if notifier.enabled:
                     msg = (
@@ -439,7 +472,7 @@ async def lifespan(app: FastAPI):
             day_of_week="mon-fri",
             hour=23,
             minute=0,
-            timezone="UTC",   # 23:00 UTC = 18:00 ET
+            timezone="UTC",  # 23:00 UTC = 18:00 ET
         ),
         id="mgc_daily_signal",
         name="MGC Daily Signal Scanner",
@@ -452,6 +485,7 @@ async def lifespan(app: FastAPI):
 
     # EOD P&L snapshot scheduler — registers its own jobs on the existing scheduler
     from notifications.whatsapp import get_notifier as _get_notifier
+
     eod_scheduler = EODScheduler(
         db_manager=db_manager,
         portfolio_tracker=paper_tracker,
@@ -520,6 +554,7 @@ app.include_router(v1_router)
 
 _start_time = datetime.now(timezone.utc)
 
+
 @app.get("/health", response_model=HealthResponse)
 async def health():
     safety = safety_layer.get_status() if safety_layer else {}
@@ -544,7 +579,9 @@ async def health():
         "kill_switch_active": safety.get("kill_switch_active", False),
         "paper_mode": not settings.LIVE_TRADING_ENABLED,
         "database": "connected" if db_ok else "error",
-        "ibkr_connected": data_manager.ibkr.is_connected() if data_manager and data_manager.ibkr else False,
+        "ibkr_connected": data_manager.ibkr.is_connected()
+        if data_manager and data_manager.ibkr
+        else False,
         "schwab_connected": False,  # Schwab connector TODO
         "uptime_seconds": (now - _start_time).total_seconds(),
     }
@@ -676,7 +713,11 @@ async def system_preflight():
                 conn = sqlite3.connect(str(db_manager._db_path))
                 try:
                     conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()
-                    add_check("Database", "pass", f"SQLite healthy — {str(db_manager._db_path).split('/')[-1]}")
+                    add_check(
+                        "Database",
+                        "pass",
+                        f"SQLite healthy — {str(db_manager._db_path).split('/')[-1]}",
+                    )
                 finally:
                     conn.close()
     except Exception as e:
@@ -727,12 +768,16 @@ async def system_preflight():
     # 5. VIX overlay
     try:
         from analytics.vix_overlay import fetch_vix
+
         vix_state = fetch_vix()
         vix_val = getattr(vix_state, "vix_value", None)
         source = getattr(vix_state, "source", "unknown")
         if vix_val is not None:
-            add_check("VIX Data", "pass" if source != "error_fallback" else "warn",
-                     f"VIX={vix_val:.1f} (source: {source})")
+            add_check(
+                "VIX Data",
+                "pass" if source != "error_fallback" else "warn",
+                f"VIX={vix_val:.1f} (source: {source})",
+            )
         else:
             add_check("VIX Data", "warn", "VIX unavailable — using fallback")
     except Exception as e:
@@ -743,6 +788,7 @@ async def system_preflight():
         from datetime import datetime as _dt
 
         import pytz
+
         ct_tz = pytz.timezone("America/Chicago")
         now_ct = _dt.now(ct_tz)
         weekday = now_ct.weekday()
@@ -752,9 +798,15 @@ async def system_preflight():
         elif 8 <= hour < 15:
             add_check("Market Session", "pass", f"RTH active ({now_ct.strftime('%H:%M')} CT)")
         elif 17 <= hour or hour < 6:
-            add_check("Market Session", "pass", f"Futures session active ({now_ct.strftime('%H:%M')} CT)")
+            add_check(
+                "Market Session", "pass", f"Futures session active ({now_ct.strftime('%H:%M')} CT)"
+            )
         else:
-            add_check("Market Session", "warn", f"Outside primary trading hours ({now_ct.strftime('%H:%M')} CT)")
+            add_check(
+                "Market Session",
+                "warn",
+                f"Outside primary trading hours ({now_ct.strftime('%H:%M')} CT)",
+            )
     except Exception as e:
         add_check("Market Session", "warn", str(e))
 
@@ -781,7 +833,11 @@ async def system_preflight():
             if pnl_monitor is not None:
                 pnl_state = pnl_monitor.get_current_pnl_state()
                 balance = round(pnl_state.current_balance, 2)
-                add_check("Portfolio Tracker", "pass", f"Balance: ${balance:,.2f} | {len(positions)} open position(s)")
+                add_check(
+                    "Portfolio Tracker",
+                    "pass",
+                    f"Balance: ${balance:,.2f} | {len(positions)} open position(s)",
+                )
             else:
                 add_check("Portfolio Tracker", "pass", f"{len(positions)} open position(s)")
     except Exception as e:
@@ -794,20 +850,23 @@ async def system_preflight():
         "fail_count": sum(1 for c in checks if c["status"] == "fail"),
         "warn_count": sum(1 for c in checks if c["status"] == "warn"),
         "checks": checks,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
 # ── Safety / Kill Switch ──────────────────────────────────────────────────
+
 
 @app.post("/safety/kill-switch/activate", response_model=KillSwitchToggleResponse)
 async def activate_kill_switch(reason: str = "manual"):
     if not safety_layer:
         raise HTTPException(500, "Safety layer not initialized")
     from risk.safety_layer import KillSwitchReason
+
     safety_layer.activate_kill_switch(KillSwitchReason.MANUAL, f"Manual activation: {reason}")
     from notifications.whatsapp import get_notifier
     from websocket.events import emit_kill_switch_change
+
     asyncio.create_task(get_notifier().alert_kill_switch(reason))
     asyncio.create_task(emit_kill_switch_change(active=True, reason=reason))
     return {"status": "kill_switch_activated", "reason": reason}
@@ -818,6 +877,7 @@ async def deactivate_kill_switch():
     if not safety_layer:
         raise HTTPException(500, "Safety layer not initialized")
     from websocket.events import emit_kill_switch_change
+
     safety_layer.deactivate_kill_switch(authorized_by="matt_dashboard")
     asyncio.create_task(emit_kill_switch_change(active=False, reason="Manual deactivation"))
     return {"status": "kill_switch_deactivated"}
@@ -916,10 +976,11 @@ async def get_loss_tracker_status():
         return loss_tracker.get_status()
     except Exception as e:
         logger.error(f"[LOSS-TRACKER] Status query failed: {e}")
-        raise HTTPException(500, f"Failed to get loss tracker status: {e}")
+        raise HTTPException(500, f"Failed to get loss tracker status: {e}") from e
 
 
 # ── Risk Limits Settings ───────────────────────────────────────────────────
+
 
 @app.get("/settings/risk")
 async def get_risk_settings():
@@ -932,7 +993,9 @@ async def get_risk_settings():
 
         # Get config defaults from env / TradingConfig
         config = {
-            "daily_loss_limit": float(os.getenv("DAILY_LOSS_LIMIT", str(settings.MAX_DAILY_LOSS_PCT * 10000))),
+            "daily_loss_limit": float(
+                os.getenv("DAILY_LOSS_LIMIT", str(settings.MAX_DAILY_LOSS_PCT * 10000))
+            ),
             "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
             "max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
             "risk_per_trade_pct": float(os.getenv("RISK_PER_TRADE_PCT", "0.01")),
@@ -956,7 +1019,7 @@ async def get_risk_settings():
             "editable_keys": list(config.keys()),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/settings/risk")
@@ -966,8 +1029,12 @@ async def update_risk_settings(payload: dict):
         raise HTTPException(status_code=503, detail="Database not initialized")
 
     ALLOWED_KEYS = {
-        "daily_loss_limit", "max_drawdown_pct", "max_contracts",
-        "risk_per_trade_pct", "atr_stop_multiplier", "atr_target_multiplier",
+        "daily_loss_limit",
+        "max_drawdown_pct",
+        "max_contracts",
+        "risk_per_trade_pct",
+        "atr_stop_multiplier",
+        "atr_target_multiplier",
     }
 
     VALIDATORS = {
@@ -1006,8 +1073,10 @@ async def update_risk_settings(payload: dict):
 
 # ── Strategy Parameters ────────────────────────────────────────────────────────
 
+
 class StrategyParams(BaseModel):
     """Strategy parameter configuration."""
+
     ema_short: int = 8
     ema_long: int = 21
     ema_smoother: int = 34
@@ -1093,13 +1162,14 @@ async def update_strategy_params(params: StrategyParams):
             "new_params": params.model_dump(),
         }
     except ValueError as e:
-        raise HTTPException(400, f"Invalid parameter: {e}")
+        raise HTTPException(400, f"Invalid parameter: {e}") from e
     except Exception as e:
         logger.error(f"[STRATEGY] Update failed: {e}")
-        raise HTTPException(500, f"Failed to update strategy parameters: {e}")
+        raise HTTPException(500, f"Failed to update strategy parameters: {e}") from e
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────
+
 
 class AnalysisRequest(BaseModel):
     symbol: str
@@ -1148,7 +1218,9 @@ async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: b
     if not data_manager:
         raise HTTPException(503, "Data manager not initialized")
 
-    df = await data_manager.get_bars(symbol, lookback_days=days, timeframe=timeframe, is_futures=futures)
+    df = await data_manager.get_bars(
+        symbol, lookback_days=days, timeframe=timeframe, is_futures=futures
+    )
     if df.empty:
         raise HTTPException(404, f"No data available for {symbol}")
 
@@ -1183,7 +1255,7 @@ async def get_llm_stats(days_back: int = 0):
         return await cost_tracker.get_daily_summary(days_back=days_back)
     except Exception as e:
         logger.error(f"[LLM-STATS] Daily summary failed: {e}")
-        raise HTTPException(500, f"Failed to get LLM stats: {e}")
+        raise HTTPException(500, f"Failed to get LLM stats: {e}") from e
 
 
 @app.get("/sentiment/reddit", response_model=RedditSentimentResponse)
@@ -1208,6 +1280,7 @@ async def get_news_sentiment(symbol: str):
 
 # ── Portfolio ─────────────────────────────────────────────────────────────
 
+
 @app.get("/portfolio", response_model=PortfolioResponse)
 async def get_portfolio():
     """Current portfolio state — sourced from broker API, never from agent memory"""
@@ -1228,9 +1301,10 @@ async def get_portfolio():
 
 # ── Paper Trading Portfolio ───────────────────────────────────────────────
 
+
 class PaperTradeRequest(BaseModel):
     symbol: str
-    action: str                     # "buy" | "sell" | "sell_short" | "buy_to_cover"
+    action: str  # "buy" | "sell" | "sell_short" | "buy_to_cover"
     quantity: float
     price: float
     notes: str = ""
@@ -1270,8 +1344,8 @@ async def submit_paper_trade(req: PaperTradeRequest):
     if req.close_trade_id:
         try:
             trade = paper_tracker.close_trade(req.close_trade_id, req.price)
-        except KeyError:
-            raise HTTPException(404, f"No open trade with id={req.close_trade_id!r}")
+        except KeyError as e:
+            raise HTTPException(404, f"No open trade with id={req.close_trade_id!r}") from e
 
         # Send WhatsApp notification for closed trade
         try:
@@ -1281,6 +1355,7 @@ async def submit_paper_trade(req: PaperTradeRequest):
             if trade.entry_time:
                 try:
                     from dateutil import parser as dtparser
+
                     entry_dt = dtparser.parse(trade.entry_time)
                     if entry_dt.tzinfo is None:
                         entry_dt = entry_dt.replace(tzinfo=timezone.utc)
@@ -1333,6 +1408,7 @@ async def get_paper_performance():
 
 # ── Pending Signals (MGC daily scanner output) ────────────────────────────
 
+
 @app.get("/paper/pending-signals", response_model=PendingSignalsResponse)
 async def get_pending_signals():
     """
@@ -1358,6 +1434,7 @@ async def get_pending_signals():
 
 
 # ── Historical Query Endpoints (SQLite) ───────────────────────────────────
+
 
 @app.get("/portfolio/history/trades", response_model=TradeHistoryResponse)
 async def get_trade_history(limit: int = 100, symbol: str = "", status: str = ""):
@@ -1456,6 +1533,7 @@ async def get_drawdown():
 
 # ── Streak Stats ──────────────────────────────────────────────────────────
 
+
 @app.get("/portfolio/stats/streaks")
 async def get_trading_streaks():
     """Calculate current and maximum win/loss streaks from closed trades."""
@@ -1464,6 +1542,7 @@ async def get_trading_streaks():
 
     try:
         import sqlite3
+
         with db_manager._lock:
             conn = sqlite3.connect(str(db_manager._db_path))
             try:
@@ -1518,10 +1597,11 @@ async def get_trading_streaks():
             "recent_results": results[-10:],
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ── Pipeline Run History ───────────────────────────────────────────────────
+
 
 @app.get("/pipeline/history")
 async def get_pipeline_history(limit: int = 50, symbol: str = ""):
@@ -1551,6 +1631,7 @@ async def get_pipeline_history(limit: int = 50, symbol: str = ""):
 
 # ── Analytics / Performance Validation ────────────────────────────────────
 
+
 @app.get("/analytics/performance")
 async def get_analytics_performance():
     """
@@ -1576,11 +1657,12 @@ async def get_analytics_performance():
         }
     try:
         from analytics.performance import PerformanceCalculator
+
         calc = PerformanceCalculator(db_manager)
         return calc.get_validation_report()
     except Exception as exc:
         logger.error(f"[Analytics] get_validation_report failed: {exc}")
-        raise HTTPException(500, f"Analytics error: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}") from exc
 
 
 @app.get("/analytics/performance/rolling")
@@ -1591,10 +1673,11 @@ async def get_rolling_performance(days: int = 30):
     days = max(1, min(days, 90))  # clamp to 1-90 days
     try:
         from analytics.performance import PerformanceCalculator
+
         calc = PerformanceCalculator(db_manager)
         return calc.calculate_rolling(days=days)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/analytics/performance/compare")
@@ -1619,11 +1702,12 @@ async def get_analytics_performance_compare():
         }
     try:
         from analytics.performance import PerformanceCalculator
+
         calc = PerformanceCalculator(db_manager)
         return calc.compare_to_backtest()
     except Exception as exc:
         logger.error(f"[Analytics] compare_to_backtest failed: {exc}")
-        raise HTTPException(500, f"Analytics error: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}") from exc
 
 
 @app.get("/analytics/mtf")
@@ -1634,6 +1718,7 @@ async def get_mtf_analysis(symbol: str = "MES"):
     """
     try:
         from analytics.mtf_analyzer import analyze_mtf
+
         sym = symbol.strip().upper()
         result = analyze_mtf(sym)
         return {
@@ -1655,7 +1740,7 @@ async def get_mtf_analysis(symbol: str = "MES"):
             },
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/watchlist/scan")
@@ -1666,6 +1751,7 @@ async def watchlist_scan(symbols: str = "MES,MNQ,MCL"):
     """
     try:
         from analytics.mtf_analyzer import analyze_mtf
+
         symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
         if not symbol_list:
             raise HTTPException(status_code=400, detail="No symbols provided")
@@ -1674,27 +1760,31 @@ async def watchlist_scan(symbols: str = "MES,MNQ,MCL"):
         for sym in symbol_list[:5]:  # cap at 5 to avoid abuse
             try:
                 mtf_result = analyze_mtf(sym)
-                results.append({
-                    "symbol": sym,
-                    "recommendation": mtf_result.recommendation,
-                    "alignment": mtf_result.alignment,
-                    "timeframes": {
-                        s.timeframe: {
-                            "stc_value": s.stc_value,
-                            "stc_signal": s.stc_signal,
-                        }
-                        for s in mtf_result.signals
-                    },
-                    "error": None,
-                })
+                results.append(
+                    {
+                        "symbol": sym,
+                        "recommendation": mtf_result.recommendation,
+                        "alignment": mtf_result.alignment,
+                        "timeframes": {
+                            s.timeframe: {
+                                "stc_value": s.stc_value,
+                                "stc_signal": s.stc_signal,
+                            }
+                            for s in mtf_result.signals
+                        },
+                        "error": None,
+                    }
+                )
             except Exception as sym_err:
-                results.append({
-                    "symbol": sym,
-                    "recommendation": "WAIT",
-                    "alignment": "NEUTRAL",
-                    "timeframes": {},
-                    "error": str(sym_err),
-                })
+                results.append(
+                    {
+                        "symbol": sym,
+                        "recommendation": "WAIT",
+                        "alignment": "NEUTRAL",
+                        "timeframes": {},
+                        "error": str(sym_err),
+                    }
+                )
 
         # Determine overall market bias
         buy_count = sum(1 for r in results if r["recommendation"] == "BUY")
@@ -1717,12 +1807,13 @@ async def watchlist_scan(symbols: str = "MES,MNQ,MCL"):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ── Recent decisions (for dashboard feed) ─────────────────────────────────
 
 _decision_log: list[dict] = []  # In-memory ring buffer, 100 entries
+
 
 @app.get("/decisions/recent")
 async def get_recent_decisions(limit: int = 20):
@@ -1741,6 +1832,7 @@ async def log_decision(decision: dict):
 
 # ── Sentiment feed ────────────────────────────────────────────────────────
 
+
 @app.get("/sentiment/recent")
 async def get_sentiment_recent():
     """Return latest sentiment scores across sources"""
@@ -1750,13 +1842,15 @@ async def get_sentiment_recent():
     try:
         reddit_data = await data_manager.reddit.get_trending_tickers("all-stocks")
         for item in reddit_data[:3]:
-            results.append({
-                "symbol": item.get("ticker", ""),
-                "score": (item.get("sentiment", 0.5) - 0.5) * 2,  # Normalize to -1..1
-                "post_count": item.get("mentions", 0),
-                "source": "reddit",
-                "timestamp": datetime.now().isoformat(),
-            })
+            results.append(
+                {
+                    "symbol": item.get("ticker", ""),
+                    "score": (item.get("sentiment", 0.5) - 0.5) * 2,  # Normalize to -1..1
+                    "post_count": item.get("mentions", 0),
+                    "source": "reddit",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
     except Exception:
         pass
     return results
@@ -1764,14 +1858,20 @@ async def get_sentiment_recent():
 
 # ── Watchlist ─────────────────────────────────────────────────────────────
 
+
 @app.get("/watchlist")
 async def get_watchlist():
     """Return configured watchlists as ticker items with live prices"""
     import yfinance as yf
 
     futures_map = {
-        "MES": "ES=F", "MNQ": "NQ=F", "MCL": "CL=F",
-        "MGC": "GC=F", "MHG": "HG=F", "MYM": "YM=F", "M2K": "RTY=F",
+        "MES": "ES=F",
+        "MNQ": "NQ=F",
+        "MCL": "CL=F",
+        "MGC": "GC=F",
+        "MHG": "HG=F",
+        "MYM": "YM=F",
+        "M2K": "RTY=F",
     }
     all_symbols = list(settings.FUTURES_WATCHLIST) + list(settings.OPTIONS_WATCHLIST)
     prices: dict = {}
@@ -1781,8 +1881,16 @@ async def get_watchlist():
         for sym, yf_sym in yf_tickers_map.items():
             try:
                 info = tickers_obj.tickers[yf_sym].fast_info
-                current = float(info.last_price) if hasattr(info, "last_price") and info.last_price else None
-                prev = float(info.previous_close) if hasattr(info, "previous_close") and info.previous_close else None
+                current = (
+                    float(info.last_price)
+                    if hasattr(info, "last_price") and info.last_price
+                    else None
+                )
+                prev = (
+                    float(info.previous_close)
+                    if hasattr(info, "previous_close") and info.previous_close
+                    else None
+                )
                 chg = ((current - prev) / prev) if current and prev and prev > 0 else None
                 prices[sym] = {"last_price": current, "change_pct": chg}
             except Exception:
@@ -1791,16 +1899,37 @@ async def get_watchlist():
         pass
 
     items = []
-    names = {"MES": "Micro E-mini S&P 500", "MNQ": "Micro E-mini Nasdaq", "MCL": "Micro Crude Oil",
-             "MGC": "Micro Gold", "MHG": "Micro Copper", "MYM": "Micro Dow", "M2K": "Micro Russell 2000"}
+    names = {
+        "MES": "Micro E-mini S&P 500",
+        "MNQ": "Micro E-mini Nasdaq",
+        "MCL": "Micro Crude Oil",
+        "MGC": "Micro Gold",
+        "MHG": "Micro Copper",
+        "MYM": "Micro Dow",
+        "M2K": "Micro Russell 2000",
+    }
     for sym in settings.FUTURES_WATCHLIST:
         p = prices.get(sym, {})
-        items.append({"symbol": sym, "name": names.get(sym, sym), "type": "futures",
-                      "last_price": p.get("last_price"), "change_pct": p.get("change_pct")})
+        items.append(
+            {
+                "symbol": sym,
+                "name": names.get(sym, sym),
+                "type": "futures",
+                "last_price": p.get("last_price"),
+                "change_pct": p.get("change_pct"),
+            }
+        )
     for sym in settings.OPTIONS_WATCHLIST:
         p = prices.get(sym, {})
-        items.append({"symbol": sym, "name": sym, "type": "options",
-                      "last_price": p.get("last_price"), "change_pct": p.get("change_pct")})
+        items.append(
+            {
+                "symbol": sym,
+                "name": sym,
+                "type": "options",
+                "last_price": p.get("last_price"),
+                "change_pct": p.get("change_pct"),
+            }
+        )
     return items
 
 
@@ -1849,6 +1978,7 @@ async def remove_from_watchlist(symbol: str):
 
 # ── Live Prices ────────────────────────────────────────────────────────────
 
+
 @app.get("/prices/snapshot")
 async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
     """
@@ -1857,8 +1987,15 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
     """
     import yfinance as yf
 
-    futures_map = {"MES": "ES=F", "MNQ": "NQ=F", "MCL": "CL=F",
-                   "MGC": "GC=F", "MHG": "HG=F", "MYM": "YM=F", "M2K": "RTY=F"}
+    futures_map = {
+        "MES": "ES=F",
+        "MNQ": "NQ=F",
+        "MCL": "CL=F",
+        "MGC": "GC=F",
+        "MHG": "HG=F",
+        "MYM": "YM=F",
+        "M2K": "RTY=F",
+    }
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     if not symbol_list:
         return {}
@@ -1870,17 +2007,35 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
         for original, yf_ticker in zip(symbol_list, yf_tickers, strict=False):
             try:
                 info = tickers.tickers[yf_ticker].fast_info
-                current = float(info.last_price) if hasattr(info, "last_price") and info.last_price else None
-                prev = float(info.previous_close) if hasattr(info, "previous_close") and info.previous_close else None
+                current = (
+                    float(info.last_price)
+                    if hasattr(info, "last_price") and info.last_price
+                    else None
+                )
+                prev = (
+                    float(info.previous_close)
+                    if hasattr(info, "previous_close") and info.previous_close
+                    else None
+                )
                 chg = ((current - prev) / prev) if current and prev and prev > 0 else None
-                result[original] = {"symbol": original, "last_price": current, "prev_close": prev,
-                                    "change_pct": chg, "yf_ticker": yf_ticker}
+                result[original] = {
+                    "symbol": original,
+                    "last_price": current,
+                    "prev_close": prev,
+                    "change_pct": chg,
+                    "yf_ticker": yf_ticker,
+                }
             except Exception as e:
-                result[original] = {"symbol": original, "last_price": None, "prev_close": None,
-                                    "change_pct": None, "error": str(e)}
+                result[original] = {
+                    "symbol": original,
+                    "last_price": None,
+                    "prev_close": None,
+                    "change_pct": None,
+                    "error": str(e),
+                }
         return result
     except Exception as e:
-        raise HTTPException(500, f"Price fetch failed: {e}")
+        raise HTTPException(500, f"Price fetch failed: {e}") from e
 
 
 # ── Earnings calendar awareness ──────────────────────────────────────────────────
@@ -1916,7 +2071,11 @@ async def get_upcoming_earnings(days: int = 7):
                 if cal is None:
                     continue
                 if hasattr(cal, "columns"):
-                    dates = cal["Earnings Date"].dropna().tolist() if "Earnings Date" in cal.columns else []
+                    dates = (
+                        cal["Earnings Date"].dropna().tolist()
+                        if "Earnings Date" in cal.columns
+                        else []
+                    )
                 elif isinstance(cal, dict):
                     dates = cal.get("Earnings Date", [])
                     if not isinstance(dates, list):
@@ -1964,10 +2123,11 @@ async def get_upcoming_earnings(days: int = 7):
             "source": "unavailable",
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────
+
 
 class PipelineRequest(BaseModel):
     symbol: str
@@ -1985,15 +2145,17 @@ async def run_pipeline(req: PipelineRequest):
     final_action = result.get("final_action", "hold")
 
     # Log to decision feed
-    _decision_log.append({
-        "id": len(_decision_log) + 1,
-        "timestamp": datetime.now().isoformat(),
-        "symbol": req.symbol,
-        "action": final_action,
-        "confidence": result.get("confidence", 0),
-        "source": "pipeline",
-        "summary": result.get("summary", ""),
-    })
+    _decision_log.append(
+        {
+            "id": len(_decision_log) + 1,
+            "timestamp": datetime.now().isoformat(),
+            "symbol": req.symbol,
+            "action": final_action,
+            "confidence": result.get("confidence", 0),
+            "source": "pipeline",
+            "summary": result.get("summary", ""),
+        }
+    )
     if len(_decision_log) > 100:
         _decision_log.pop(0)
 
@@ -2032,6 +2194,7 @@ async def run_pipeline(req: PipelineRequest):
 
     # Send WhatsApp alert for non-HOLD signals
     from notifications.whatsapp import get_notifier
+
     notifier = get_notifier()
     asyncio.create_task(notifier.alert_pipeline_result(req.symbol, result))
 
@@ -2052,6 +2215,7 @@ async def pipeline_status():
 async def signals_stats():
     """Return webhook signal statistics including deduplication cache size."""
     from routers.webhook_router import _dedup_cache as _webhook_dedup
+
     recent = get_recent_webhooks(limit=50)
     return {
         "total_received": len(recent),
@@ -2068,11 +2232,13 @@ async def scheduler_status():
     jobs = []
     for job in scheduler.get_jobs():
         next_run = job.next_run_time
-        jobs.append({
-            "id": job.id,
-            "name": job.name,
-            "next_run": next_run.isoformat() if next_run else None,
-        })
+        jobs.append(
+            {
+                "id": job.id,
+                "name": job.name,
+                "next_run": next_run.isoformat() if next_run else None,
+            }
+        )
     return {
         "running": scheduler.running,
         "jobs": jobs,
@@ -2096,15 +2262,14 @@ async def trigger_scan_now():
     if safety.get("kill_switch_active"):
         return {"status": "skipped", "reason": "kill_switch_active"}
 
-    symbols_to_scan = [
-        (sym, True) for sym in settings.FUTURES_WATCHLIST[:2]
-    ] + [
+    symbols_to_scan = [(sym, True) for sym in settings.FUTURES_WATCHLIST[:2]] + [
         (sym, False) for sym in settings.OPTIONS_WATCHLIST[:3]
     ]
 
     logger.info(f"Manual scan triggered: {[s[0] for s in symbols_to_scan]}")
 
     from notifications.whatsapp import get_notifier
+
     notifier = get_notifier()
 
     scan_results = []
@@ -2120,15 +2285,17 @@ async def trigger_scan_now():
             price_info = trade_dec.get("limit_price") or trade_dec.get("stop_price")
             reasoning = trade_dec.get("reasoning", "")
 
-            _decision_log.append({
-                "id": len(_decision_log) + 1,
-                "timestamp": datetime.now().isoformat(),
-                "symbol": symbol,
-                "action": action,
-                "confidence": confidence,
-                "source": "manual_scan",
-                "summary": result.get("summary", ""),
-            })
+            _decision_log.append(
+                {
+                    "id": len(_decision_log) + 1,
+                    "timestamp": datetime.now().isoformat(),
+                    "symbol": symbol,
+                    "action": action,
+                    "confidence": confidence,
+                    "source": "manual_scan",
+                    "summary": result.get("summary", ""),
+                }
+            )
             if len(_decision_log) > 100:
                 _decision_log.pop(0)
 
@@ -2138,9 +2305,8 @@ async def trigger_scan_now():
             if action not in ("hold",):
                 now = datetime.now()
                 last_sent = _last_alert_time.get(symbol)
-                cooldown_expired = (
-                    last_sent is None
-                    or (now - last_sent) >= timedelta(hours=ALERT_COOLDOWN_HOURS)
+                cooldown_expired = last_sent is None or (now - last_sent) >= timedelta(
+                    hours=ALERT_COOLDOWN_HOURS
                 )
                 if notifier.enabled and cooldown_expired:
                     price_str = f" @ {price_info:.2f}" if price_info else ""
@@ -2159,16 +2325,18 @@ async def trigger_scan_now():
                 elif not notifier.enabled:
                     alert_suppressed_reason = "whatsapp_not_configured"
 
-            scan_results.append({
-                "symbol": symbol,
-                "action": action,
-                "confidence": round(confidence, 4),
-                "final_quantity": qty,
-                "summary": result.get("summary", ""),
-                "errors": result.get("errors", []),
-                "alert_sent": alert_sent,
-                "alert_suppressed_reason": alert_suppressed_reason,
-            })
+            scan_results.append(
+                {
+                    "symbol": symbol,
+                    "action": action,
+                    "confidence": round(confidence, 4),
+                    "final_quantity": qty,
+                    "summary": result.get("summary", ""),
+                    "errors": result.get("errors", []),
+                    "alert_sent": alert_sent,
+                    "alert_suppressed_reason": alert_suppressed_reason,
+                }
+            )
 
         except Exception as e:
             logger.error(f"Manual scan failed for {symbol}: {e}")
@@ -2186,6 +2354,7 @@ async def trigger_scan_now():
 async def test_whatsapp():
     """Test WhatsApp notification config"""
     from notifications.whatsapp import get_notifier
+
     notifier = get_notifier()
     if not notifier.enabled:
         return {
@@ -2249,19 +2418,19 @@ async def check_vix_alert():
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ── ThinkScript Generation ─────────────────────────────────────────────────
 
-from agents.thinkscript_generator import ThinkScriptGeneratorAgent
-
 thinkscript_generator: ThinkScriptGeneratorAgent | None = None
+
 
 class ThinkScriptRequest(BaseModel):
     symbol: str
     timeframe: str = "15m"
     is_futures: bool = False
+
 
 @app.post("/thinkscript/generate")
 async def generate_thinkscript(req: ThinkScriptRequest):
@@ -2299,6 +2468,7 @@ async def generate_thinkscript(req: ThinkScriptRequest):
 
 # ── Macro Data (FRED) ──────────────────────────────────────────────────────
 
+
 @app.get("/macro/snapshot")
 async def get_macro_snapshot():
     """
@@ -2323,7 +2493,7 @@ async def get_macro_snapshot():
     try:
         raw = service.get_macro_snapshot()
     except Exception as e:
-        raise HTTPException(500, f"FRED data unavailable: {e}")
+        raise HTTPException(500, f"FRED data unavailable: {e}") from e
 
     # The FREDDataService returns nested dicts: {"vix": {"value": 27.4, ...}, ...}
     # Flatten to the shape the dashboard WatchlistBar expects.
@@ -2356,6 +2526,7 @@ async def get_macro_snapshot():
 async def get_macro_series(series_id: str, periods: int = 24):
     """Get historical data for a FRED series (e.g. FEDFUNDS, GS10, VIXCLS)"""
     from data.fred_data import get_fred_service
+
     service = get_fred_service()
     history = service.get_series_history(series_id.upper(), periods)
     if not history:
@@ -2363,8 +2534,8 @@ async def get_macro_series(series_id: str, periods: int = 24):
     return {"series_id": series_id.upper(), "data": history, "count": len(history)}
 
 
-
 # ── Backtest endpoint ──────────────────────────────────────────────────────────
+
 
 class BacktestRequest(BaseModel):
     symbol: str = "SPY"
@@ -2426,9 +2597,10 @@ async def run_backtest(request: BacktestRequest):
 
 class WalkForwardRequest(BaseModel):
     """Request for walk-forward validation."""
+
     symbol: str
     start: str  # ISO date
-    end: str    # ISO date
+    end: str  # ISO date
     interval: str = "1h"
     capital: float = 100_000.0
     adaptive_regime: bool = True
@@ -2482,14 +2654,18 @@ async def run_walk_forward(request: WalkForwardRequest):
             if df_1h is None or df_1h.empty:
                 raise ValueError(f"No data for {request.symbol}")
 
-            df_1h = generate_signals(df_1h, symbol=request.symbol, adaptive_regime=request.adaptive_regime)
+            df_1h = generate_signals(
+                df_1h, symbol=request.symbol, adaptive_regime=request.adaptive_regime
+            )
 
             # Load daily data if MTF filter requested
             df_daily = None
             if request.mtf_filter:
                 df_daily = loader.load(request.symbol, request.start, request.end, "1d")
                 if df_daily is not None:
-                    df_daily = generate_signals(df_daily, symbol=request.symbol, adaptive_regime=request.adaptive_regime)
+                    df_daily = generate_signals(
+                        df_daily, symbol=request.symbol, adaptive_regime=request.adaptive_regime
+                    )
 
             multiplier = loader.get_multiplier(request.symbol)
 
@@ -2517,14 +2693,15 @@ async def run_walk_forward(request: WalkForwardRequest):
 
     except ValueError as e:
         logger.error(f"[WALK-FORWARD] Data error: {e}")
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, str(e)) from e
     except Exception as e:
         logger.error(f"[WALK-FORWARD] Validation failed: {e}")
-        raise HTTPException(500, f"Walk-forward validation failed: {e}")
+        raise HTTPException(500, f"Walk-forward validation failed: {e}") from e
 
 
 class RegimeAnalysisRequest(BaseModel):
     """Request for regime analysis on backtest results."""
+
     results_file: str  # Path to JSON results file (relative to backtest/results/)
     symbol: str = None  # Auto-detected if None
 
@@ -2617,15 +2794,19 @@ async def analyze_regime(request: RegimeAnalysisRequest):
             regime_stats[regime]["trades"].append(trade)
 
         # Compute derived metrics
-        for regime, stats in regime_stats.items():
+        for _, stats in regime_stats.items():
             count = stats["trade_count"]
             stats["win_rate"] = stats["winning_trades"] / count if count > 0 else 0.0
             pnls = [t.get("pnl", 0.0) for t in stats["trades"]]
             gross_profit = sum(p for p in pnls if p > 0)
             gross_loss = abs(sum(p for p in pnls if p < 0))
             stats["profit_factor"] = gross_profit / gross_loss if gross_loss > 0 else 0.0
-            stats["avg_win"] = stats["total_pnl"] / stats["winning_trades"] if stats["winning_trades"] > 0 else 0.0
-            stats["avg_loss"] = stats["total_pnl"] / stats["losing_trades"] if stats["losing_trades"] > 0 else 0.0
+            stats["avg_win"] = (
+                stats["total_pnl"] / stats["winning_trades"] if stats["winning_trades"] > 0 else 0.0
+            )
+            stats["avg_loss"] = (
+                stats["total_pnl"] / stats["losing_trades"] if stats["losing_trades"] > 0 else 0.0
+            )
             # Clean up trades from output
             del stats["trades"]
 
@@ -2643,8 +2824,16 @@ async def analyze_regime(request: RegimeAnalysisRequest):
             else:
                 verdict = "POOR"
 
-        best_regime = max(regime_stats.items(), key=lambda x: x[1].get("total_pnl", 0))[0] if regime_stats else None
-        worst_regime = min(regime_stats.items(), key=lambda x: x[1].get("total_pnl", 0))[0] if regime_stats else None
+        best_regime = (
+            max(regime_stats.items(), key=lambda x: x[1].get("total_pnl", 0))[0]
+            if regime_stats
+            else None
+        )
+        worst_regime = (
+            min(regime_stats.items(), key=lambda x: x[1].get("total_pnl", 0))[0]
+            if regime_stats
+            else None
+        )
 
         return {
             "regime_metrics": regime_stats,
@@ -2656,13 +2845,14 @@ async def analyze_regime(request: RegimeAnalysisRequest):
 
     except FileNotFoundError as e:
         logger.error(f"[REGIME-ANALYSIS] File error: {e}")
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, str(e)) from e
     except Exception as e:
         logger.error(f"[REGIME-ANALYSIS] Analysis failed: {e}")
-        raise HTTPException(500, f"Regime analysis failed: {e}")
+        raise HTTPException(500, f"Regime analysis failed: {e}") from e
 
 
 # ── Regime & Paper-Trading Status ─────────────────────────────────────────
+
 
 @app.get("/backtest/regime-status")
 async def get_regime_status():
@@ -2674,7 +2864,6 @@ async def get_regime_status():
     Falls back to static data if market data is unavailable.
     """
     try:
-        import pandas as pd
         import yfinance as yf
 
         from backtest.regime import RegimeClassifier
@@ -2687,9 +2876,11 @@ async def get_regime_status():
             if nq is not None and len(nq) >= 20:
                 rc = RegimeClassifier()
                 nq_classified = rc.classify(nq)
-                last_regime = nq_classified['regime_type'].iloc[-1] if len(nq_classified) > 0 else "UNKNOWN"
+                last_regime = (
+                    nq_classified["regime_type"].iloc[-1] if len(nq_classified) > 0 else "UNKNOWN"
+                )
                 # 30-day breakdown (use available bars)
-                regime_counts = nq_classified['regime_type'].value_counts(normalize=True) * 100
+                regime_counts = nq_classified["regime_type"].value_counts(normalize=True) * 100
                 results["MNQ_1h"] = {
                     "current_regime": str(last_regime),
                     "regime_breakdown_30d": {str(k): round(v, 1) for k, v in regime_counts.items()},
@@ -2708,12 +2899,14 @@ async def get_regime_status():
             if gc is not None and len(gc) >= 20:
                 rc = RegimeClassifier()
                 gc_classified = rc.classify(gc)
-                last_regime = gc_classified['regime_type'].iloc[-1] if len(gc_classified) > 0 else "UNKNOWN"
+                last_regime = (
+                    gc_classified["regime_type"].iloc[-1] if len(gc_classified) > 0 else "UNKNOWN"
+                )
                 last_row = gc_classified.iloc[-1]
                 results["MGC_1d"] = {
                     "current_regime": str(last_regime),
-                    "adaptive_stc_os": int(last_row.get('adaptive_stc_os', 15)),
-                    "adaptive_stc_ob": int(last_row.get('adaptive_stc_ob', 92)),
+                    "adaptive_stc_os": int(last_row.get("adaptive_stc_os", 15)),
+                    "adaptive_stc_ob": int(last_row.get("adaptive_stc_ob", 92)),
                 }
             else:
                 raise ValueError("Insufficient GC data")
@@ -2775,6 +2968,7 @@ async def get_paper_status():
 
 # ── MGC Paper Trading — Live Signal Generation ──────────────────────────────
 
+
 class MGCTradeLogRequest(BaseModel):
     entry_date: str
     exit_date: str
@@ -2807,10 +3001,13 @@ async def get_mgc_signal():
         # Fetch data
         gc = yf.download("GC=F", period="200d", interval="1d", progress=False)
         if gc is None or len(gc) < 50:
-            return {"error": "Insufficient GC=F data from yfinance", "bars_received": len(gc) if gc is not None else 0}
+            return {
+                "error": "Insufficient GC=F data from yfinance",
+                "bars_received": len(gc) if gc is not None else 0,
+            }
 
         # Flatten MultiIndex columns if present (yfinance sometimes returns them)
-        if hasattr(gc.columns, 'nlevels') and gc.columns.nlevels > 1:
+        if hasattr(gc.columns, "nlevels") and gc.columns.nlevels > 1:
             gc.columns = gc.columns.get_level_values(0)
 
         # Normalize column names to lowercase
@@ -2819,7 +3016,7 @@ async def get_mgc_signal():
         # Run full signal pipeline with adaptive regime
         df = generate_signals(
             gc,
-            symbol='MGC',
+            symbol="MGC",
             adaptive_regime=True,
             regime_filter=True,
         )
@@ -2832,29 +3029,31 @@ async def get_mgc_signal():
         config = MGC_PAPER_CONFIG
 
         # Determine direction from bias
-        bias = str(last.get('bias', 'NEUTRAL'))
-        if bias in ('STRONG_BULL', 'LEAN_BULL'):
+        bias = str(last.get("bias", "NEUTRAL"))
+        if bias in ("STRONG_BULL", "LEAN_BULL"):
             direction = "LONG"
-        elif bias in ('STRONG_BEAR', 'LEAN_BEAR'):
+        elif bias in ("STRONG_BEAR", "LEAN_BEAR"):
             direction = "SHORT"
         else:
             direction = None
 
-        entry_signal = str(last.get('entry_signal', 'NO_TRADE'))
-        regime_type = str(last.get('regime_type', 'UNKNOWN'))
+        entry_signal = str(last.get("entry_signal", "NO_TRADE"))
+        regime_type = str(last.get("regime_type", "UNKNOWN"))
 
         # Map signal to simplified output
-        if entry_signal == 'ENTRY_NOW':
+        if entry_signal == "ENTRY_NOW":
             signal = "ENTRY_NOW"
-        elif entry_signal == 'WAIT_FOR_PULLBACK':
+        elif entry_signal == "WAIT_FOR_PULLBACK":
             signal = "WAIT_FOR_PULLBACK"
-        elif entry_signal == 'FADE_EXTREME':
+        elif entry_signal == "FADE_EXTREME":
             signal = "FADE_EXTREME"
         else:
             signal = "NO_ENTRY"
 
         # Get date from index
-        signal_date = str(df.index[-1].date()) if hasattr(df.index[-1], 'date') else str(df.index[-1])[:10]
+        signal_date = (
+            str(df.index[-1].date()) if hasattr(df.index[-1], "date") else str(df.index[-1])[:10]
+        )
 
         return {
             "date": signal_date,
@@ -2862,18 +3061,18 @@ async def get_mgc_signal():
             "signal": signal,
             "direction": direction,
             "regime": regime_type,
-            "adaptive_stc_os": int(last.get('adaptive_stc_os', 15)),
-            "adaptive_stc_ob": int(last.get('adaptive_stc_ob', 92)),
-            "entry_price": round(float(last['close']), 2),
-            "stop_level": round(float(last.get('stop_level', 0)), 2),
-            "target_1": round(float(last.get('target_1', 0)), 2),
-            "target_2": round(float(last.get('target_2', 0)), 2),
-            "atr": round(float(last.get('atr', 0)), 2),
+            "adaptive_stc_os": int(last.get("adaptive_stc_os", 15)),
+            "adaptive_stc_ob": int(last.get("adaptive_stc_ob", 92)),
+            "entry_price": round(float(last["close"]), 2),
+            "stop_level": round(float(last.get("stop_level", 0)), 2),
+            "target_1": round(float(last.get("target_1", 0)), 2),
+            "target_2": round(float(last.get("target_2", 0)), 2),
+            "atr": round(float(last.get("atr", 0)), 2),
             "bias": bias,
-            "stc_val": round(float(last.get('stc_val', 50)), 2),
-            "stc_signal": str(last.get('stc_signal', 'neutral')),
-            "ema_trend": str(last.get('ema_trend', 'neutral')),
-            "config": f"adaptive_regime=ON, risk={config['risk_per_trade']*100:.2f}%",
+            "stc_val": round(float(last.get("stc_val", 50)), 2),
+            "stc_signal": str(last.get("stc_signal", "neutral")),
+            "ema_trend": str(last.get("ema_trend", "neutral")),
+            "config": f"adaptive_regime=ON, risk={config['risk_per_trade'] * 100:.2f}%",
         }
 
     try:
@@ -2887,7 +3086,7 @@ async def get_mgc_signal():
         raise
     except Exception as e:
         logger.error(f"[PAPER-MGC] Signal generation failed: {e}")
-        raise HTTPException(500, f"MGC signal generation failed: {e}")
+        raise HTTPException(500, f"MGC signal generation failed: {e}") from e
 
 
 @app.post("/paper/mgc-log-trade")
@@ -2929,6 +3128,7 @@ async def log_mgc_paper_trade(req: MGCTradeLogRequest):
         # Send WhatsApp alert for new trade
         try:
             from notifications.whatsapp import get_notifier
+
             notifier = get_notifier()
             if notifier.enabled:
                 trade_dict.get("pnl", 0)
@@ -2949,7 +3149,7 @@ async def log_mgc_paper_trade(req: MGCTradeLogRequest):
 
     except Exception as e:
         logger.error(f"[PAPER-MGC] Trade log failed: {e}")
-        raise HTTPException(500, f"Failed to log MGC paper trade: {e}")
+        raise HTTPException(500, f"Failed to log MGC paper trade: {e}") from e
 
 
 @app.get("/paper/mgc-performance")
@@ -2986,7 +3186,7 @@ async def get_mgc_paper_performance():
 
     except Exception as e:
         logger.error(f"[PAPER-MGC] Performance query failed: {e}")
-        raise HTTPException(500, f"Failed to get MGC performance: {e}")
+        raise HTTPException(500, f"Failed to get MGC performance: {e}") from e
 
 
 # ── Monte Carlo Backtest Analysis ────────────────────────────────────────────
@@ -2994,6 +3194,7 @@ async def get_mgc_paper_performance():
 
 class MonteCarloRequest(BaseModel):
     """Request for Monte Carlo simulation on backtest results."""
+
     results_file: str  # Path to JSON results file (relative to backtest/results/)
     simulations: int = 1_000  # Number of simulations (default: 1000)
     max_slippage_ticks: float = 0.0  # Max random slippage per trade in ticks (default: 0)
@@ -3070,10 +3271,10 @@ async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
 
     except FileNotFoundError as e:
         logger.error(f"[MONTE-CARLO] File error: {e}")
-        raise HTTPException(404, f"Results file not found: {e}")
+        raise HTTPException(404, f"Results file not found: {e}") from e
     except Exception as e:
         logger.error(f"[MONTE-CARLO] Simulation failed: {e}")
-        raise HTTPException(500, f"Monte Carlo simulation failed: {e}")
+        raise HTTPException(500, f"Monte Carlo simulation failed: {e}") from e
 
 
 @app.post("/backtest/monte-carlo/chart")
@@ -3125,13 +3326,14 @@ async def generate_monte_carlo_chart(req: MonteCarloRequest) -> dict:
 
     except FileNotFoundError as e:
         logger.error(f"[MONTE-CARLO-VIZ] File error: {e}")
-        raise HTTPException(404, f"Error: {e}")
+        raise HTTPException(404, f"Error: {e}") from e
     except Exception as e:
         logger.error(f"[MONTE-CARLO-VIZ] Chart generation failed: {e}")
-        raise HTTPException(500, f"Chart generation failed: {e}")
+        raise HTTPException(500, f"Chart generation failed: {e}") from e
 
 
 # ── WebSocket Real-Time Events ────────────────────────────────────────────
+
 
 @app.websocket("/ws/events")
 async def websocket_endpoint(websocket):
@@ -3192,6 +3394,7 @@ async def websocket_endpoint(websocket):
 
 # ── WebSocket Status Endpoint ─────────────────────────────────────────────
 
+
 @app.get("/ws/status")
 async def websocket_status():
     """Get WebSocket manager status — connected client count."""
@@ -3249,7 +3452,7 @@ async def generate_performance_report(format: str = "html"):
                 },
             )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def _build_performance_report_html(
@@ -3294,7 +3497,9 @@ def _build_performance_report_html(
 
     sharpe_class = "pass" if sharpe_pass else ("fail" if sharpe else "neutral")
     sharpe_status_class = "pass" if sharpe_pass else "fail"
-    sharpe_status_txt = "Pass (>= 1.5)" if sharpe_pass else ("Fail (>= 1.5)" if sharpe else "No data")
+    sharpe_status_txt = (
+        "Pass (>= 1.5)" if sharpe_pass else ("Fail (>= 1.5)" if sharpe else "No data")
+    )
 
     gross_pnl_safe = gross_pnl or 0
     pnl_class = "pass" if gross_pnl_safe >= 0 else "fail"
@@ -3388,7 +3593,7 @@ def _build_performance_report_html(
         '    <div class="card-status neutral">Target &gt;= 30</div>\n'
         "  </div>\n"
         '  <div class="card">\n'
-        "    <div class=\"card-label\">Gross P&amp;L</div>\n"
+        '    <div class="card-label">Gross P&amp;L</div>\n'
         f'    <div class="card-value {pnl_class}">{fmt_usd(gross_pnl)}</div>\n'
         '    <div class="card-status neutral">Paper account</div>\n'
         "  </div>\n"
@@ -3464,7 +3669,7 @@ async def get_todays_session():
                        WHERE status = 'closed'
                          AND date(exit_time) = ?
                        ORDER BY exit_time ASC""",
-                    (today_ct,)
+                    (today_ct,),
                 )
                 cols = [d[0] for d in cursor.description]
                 trades = [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
@@ -3475,7 +3680,7 @@ async def get_todays_session():
                        FROM paper_trades
                        WHERE status = 'open'
                          AND date(entry_time) = ?""",
-                    (today_ct,)
+                    (today_ct,),
                 )
                 cols2 = [d[0] for d in cursor2.description]
                 open_today = [dict(zip(cols2, row, strict=False)) for row in cursor2.fetchall()]
@@ -3507,7 +3712,7 @@ async def get_todays_session():
             "last_updated": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/portfolio/stats/commissions")
@@ -3547,7 +3752,7 @@ async def get_commission_stats():
             "rates": RATES,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/analytics/trades/by-day")
@@ -3574,22 +3779,32 @@ async def get_trades_by_day():
             finally:
                 conn.close()
 
-        DAY_NAMES = {"0": "Sun", "1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat"}
+        DAY_NAMES = {
+            "0": "Sun",
+            "1": "Mon",
+            "2": "Tue",
+            "3": "Wed",
+            "4": "Thu",
+            "5": "Fri",
+            "6": "Sat",
+        }
         result = []
         for row in rows:
             dow, cnt, wins, total_pnl, avg_pnl = row
-            result.append({
-                "day": DAY_NAMES.get(str(dow), str(dow)),
-                "count": cnt,
-                "wins": wins,
-                "losses": cnt - wins,
-                "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
-                "total_pnl": round(total_pnl or 0, 2),
-                "avg_pnl": round(avg_pnl or 0, 2),
-            })
+            result.append(
+                {
+                    "day": DAY_NAMES.get(str(dow), str(dow)),
+                    "count": cnt,
+                    "wins": wins,
+                    "losses": cnt - wins,
+                    "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
+                    "total_pnl": round(total_pnl or 0, 2),
+                    "avg_pnl": round(avg_pnl or 0, 2),
+                }
+            )
         return {"days": result, "total_days_analyzed": len(result)}
     except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 
 @app.get("/analytics/trades/by-symbol")
@@ -3619,20 +3834,22 @@ async def get_trades_by_symbol():
         result = []
         for row in rows:
             symbol, cnt, wins, total_pnl, avg_pnl, best, worst = row
-            result.append({
-                "symbol": symbol,
-                "count": cnt,
-                "wins": wins,
-                "losses": cnt - wins,
-                "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
-                "total_pnl": round(total_pnl or 0, 2),
-                "avg_pnl": round(avg_pnl or 0, 2),
-                "best_trade": round(best or 0, 2),
-                "worst_trade": round(worst or 0, 2),
-            })
+            result.append(
+                {
+                    "symbol": symbol,
+                    "count": cnt,
+                    "wins": wins,
+                    "losses": cnt - wins,
+                    "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
+                    "total_pnl": round(total_pnl or 0, 2),
+                    "avg_pnl": round(avg_pnl or 0, 2),
+                    "best_trade": round(best or 0, 2),
+                    "worst_trade": round(worst or 0, 2),
+                }
+            )
         return {"symbols": result, "total_symbols": len(result)}
     except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 
 @app.get("/alerts/history")
@@ -3644,7 +3861,7 @@ async def get_alert_history(limit: int = 100, alert_type: str | None = None):
         rows = db_manager.get_alert_history(limit=min(limit, 500), alert_type=alert_type)
         return {"alerts": rows, "count": len(rows)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/alerts/stats")
@@ -3662,14 +3879,16 @@ async def get_alert_stats():
                     GROUP BY alert_type, status
                     ORDER BY count DESC
                 """)
-                rows = [{"alert_type": r[0], "status": r[1], "count": r[2]} for r in cursor.fetchall()]
+                rows = [
+                    {"alert_type": r[0], "status": r[1], "count": r[2]} for r in cursor.fetchall()
+                ]
                 total_cursor = conn.execute("SELECT COUNT(*) FROM alert_log")
                 total = total_cursor.fetchone()[0]
             finally:
                 conn.close()
         return {"stats": rows, "total": total}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/portfolio/import/trades")
@@ -3715,7 +3934,7 @@ async def import_paper_trades(request: Request):
                                 str(t.get("exit_time", datetime.now(timezone.utc).isoformat())),
                                 str(t.get("strategy", "imported")),
                                 str(t.get("notes", "")),
-                            )
+                            ),
                         )
                         imported += 1
                     except Exception as e:
@@ -3728,7 +3947,7 @@ async def import_paper_trades(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 
 @app.get("/analytics/trades/by-hour")
@@ -3762,21 +3981,22 @@ async def get_trades_by_hour():
             wins = row["wins"]
             losses = row["losses"]
             win_rate = round(wins / count * 100, 1) if count > 0 else 0.0
-            hours.append({
-                "hour": h,
-                "hour_label": f"{h:02d}:00",
-                "count": count,
-                "wins": wins,
-                "losses": losses,
-                "win_rate": win_rate,
-                "total_pnl": row["total_pnl"] or 0.0,
-                "avg_pnl": row["avg_pnl"] or 0.0,
-            })
+            hours.append(
+                {
+                    "hour": h,
+                    "hour_label": f"{h:02d}:00",
+                    "count": count,
+                    "wins": wins,
+                    "losses": losses,
+                    "win_rate": win_rate,
+                    "total_pnl": row["total_pnl"] or 0.0,
+                    "avg_pnl": row["avg_pnl"] or 0.0,
+                }
+            )
 
         return {"hours": hours, "total_hours_analyzed": len(hours)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/portfolio/stats/weekly")
@@ -3784,13 +4004,15 @@ async def get_weekly_stats():
     """7-day rolling performance summary."""
     try:
         from datetime import timedelta
+
         cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
         with db_manager._lock:
             conn = sqlite3.connect(str(db_manager._db_path))
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT
                     COUNT(*) as total_trades,
                     SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
@@ -3804,7 +4026,9 @@ async def get_weekly_stats():
                 WHERE status = 'CLOSED'
                   AND exit_time IS NOT NULL
                   AND exit_time >= ?
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
             row = cursor.fetchone()
             conn.close()
 
@@ -3837,7 +4061,7 @@ async def get_weekly_stats():
             "trading_days": row["trading_days"] or 0,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 if __name__ == "__main__":

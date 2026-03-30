@@ -24,19 +24,20 @@ MIN_TRADES_REQUIRED = 10  # Minimum closed trades to produce a meaningful result
 
 BACKTEST_PROFIT_FACTOR = 5.27
 BACKTEST_SHARPE = 4.16
-BACKTEST_WIN_RATE = 0.68          # 68 %
-BACKTEST_MAX_DRAWDOWN = -0.082    # -8.2 %
-BACKTEST_TOTAL_RETURN = 0.472     # +47.2 %
+BACKTEST_WIN_RATE = 0.68  # 68 %
+BACKTEST_MAX_DRAWDOWN = -0.082  # -8.2 %
+BACKTEST_TOTAL_RETURN = 0.472  # +47.2 %
 BACKTEST_SYMBOL = "MES"
 BACKTEST_TIMEFRAME = "1h"
 BACKTEST_PERIOD = "2023-2024"
 
 # ── Validation thresholds for live/paper readiness ───────────────────────────
 
-MIN_TRADING_DAYS_REQUIRED = 30    # calendar days of live data needed
+MIN_TRADING_DAYS_REQUIRED = 30  # calendar days of live data needed
 
 
 # ── PerformanceMetrics dataclass ──────────────────────────────────────────────
+
 
 @dataclass
 class PerformanceMetrics:
@@ -45,16 +46,16 @@ class PerformanceMetrics:
     and daily P&L records stored in SQLite.
     """
 
-    profit_factor: float          # sum(wins) / abs(sum(losses)); inf if no losses
-    sharpe_ratio: float           # annualized: sqrt(252) * mean_return / std_return
-    win_rate: float               # winning_trades / total_closed_trades (0–1)
-    avg_win: float                # average P&L of winning trades (positive)
-    avg_loss: float               # average P&L of losing trades (negative)
-    max_drawdown: float           # maximum peak-to-trough drawdown as a fraction (negative)
-    total_trades: int             # count of closed trades in the analysis window
-    total_pnl: float              # sum of all closed trade P&L values
-    meets_paper_threshold: bool   # True if PF > 2.0 AND Sharpe > 1.5
-    period_days: int              # calendar days spanned by the data window
+    profit_factor: float  # sum(wins) / abs(sum(losses)); inf if no losses
+    sharpe_ratio: float  # annualized: sqrt(252) * mean_return / std_return
+    win_rate: float  # winning_trades / total_closed_trades (0–1)
+    avg_win: float  # average P&L of winning trades (positive)
+    avg_loss: float  # average P&L of losing trades (negative)
+    max_drawdown: float  # maximum peak-to-trough drawdown as a fraction (negative)
+    total_trades: int  # count of closed trades in the analysis window
+    total_pnl: float  # sum of all closed trade P&L values
+    meets_paper_threshold: bool  # True if PF > 2.0 AND Sharpe > 1.5
+    period_days: int  # calendar days spanned by the data window
 
     def as_dict(self) -> Dict[str, Any]:
         """Return all fields as a plain dict, safe for JSON serialisation."""
@@ -62,6 +63,7 @@ class PerformanceMetrics:
 
 
 # ── PerformanceCalculator ─────────────────────────────────────────────────────
+
 
 class PerformanceCalculator:
     """
@@ -112,16 +114,10 @@ class PerformanceCalculator:
         # Apply date filters (exit_time is ISO-8601; string comparison works for
         # the YYYY-MM-DDTHH:MM:SS format used throughout the project).
         if start_date:
-            raw_trades = [
-                t for t in raw_trades
-                if t.get("exit_time", "") >= start_date
-            ]
+            raw_trades = [t for t in raw_trades if t.get("exit_time", "") >= start_date]
         if end_date:
             cutoff = end_date + "T23:59:59"
-            raw_trades = [
-                t for t in raw_trades
-                if t.get("exit_time", "") <= cutoff
-            ]
+            raw_trades = [t for t in raw_trades if t.get("exit_time", "") <= cutoff]
 
         # ── Fetch daily P&L records ───────────────────────────────────────
         daily_rows = self._db.get_daily_pnl(
@@ -182,16 +178,10 @@ class PerformanceCalculator:
         trades:
             List of trade dicts each containing a ``pnl`` key (may be None).
         """
-        gross_profit = sum(
-            t.get("pnl", 0.0) or 0.0
-            for t in trades
-            if (t.get("pnl") or 0.0) > 0.0
+        gross_profit = sum(t.get("pnl", 0.0) or 0.0 for t in trades if (t.get("pnl") or 0.0) > 0.0)
+        gross_loss = abs(
+            sum(t.get("pnl", 0.0) or 0.0 for t in trades if (t.get("pnl") or 0.0) < 0.0)
         )
-        gross_loss = abs(sum(
-            t.get("pnl", 0.0) or 0.0
-            for t in trades
-            if (t.get("pnl") or 0.0) < 0.0
-        ))
 
         if gross_profit == 0.0:
             return 0.0
@@ -303,9 +293,10 @@ class PerformanceCalculator:
 
             # Simple Sharpe (annualized from daily returns if we have enough data)
             import statistics
+
             avg_pnl = statistics.mean(pnls) if pnls else 0
             std_pnl = statistics.stdev(pnls) if len(pnls) >= 2 else None
-            sharpe = (avg_pnl / std_pnl * (252 ** 0.5)) if std_pnl and std_pnl > 0 else None
+            sharpe = (avg_pnl / std_pnl * (252**0.5)) if std_pnl and std_pnl > 0 else None
 
             # Max drawdown within the window
             running = 0.0
@@ -378,13 +369,9 @@ class PerformanceCalculator:
         else:
             failing = []
             if metrics.profit_factor < PROFIT_FACTOR_TARGET:
-                failing.append(
-                    f"PF={metrics.profit_factor:.2f} (target >= {PROFIT_FACTOR_TARGET})"
-                )
+                failing.append(f"PF={metrics.profit_factor:.2f} (target >= {PROFIT_FACTOR_TARGET})")
             if metrics.sharpe_ratio < SHARPE_TARGET:
-                failing.append(
-                    f"Sharpe={metrics.sharpe_ratio:.2f} (target >= {SHARPE_TARGET})"
-                )
+                failing.append(f"Sharpe={metrics.sharpe_ratio:.2f} (target >= {SHARPE_TARGET})")
             status = "FAIL"
             recommendation = (
                 f"Forward-test FAILED: {'; '.join(failing)}. "
@@ -476,15 +463,11 @@ class PerformanceCalculator:
             deg_pf = None
 
         if has_live_data and backtest_sharpe > 0.0 and metrics.sharpe_ratio > 0.0:
-            deg_sharpe: Optional[float] = round(
-                metrics.sharpe_ratio / backtest_sharpe, 4
-            )
+            deg_sharpe: Optional[float] = round(metrics.sharpe_ratio / backtest_sharpe, 4)
         else:
             deg_sharpe = None
 
-        degradation_note = (
-            "No live data yet" if not has_live_data else None
-        )
+        degradation_note = "No live data yet" if not has_live_data else None
 
         degradation_factor: Dict[str, Any] = {
             "profit_factor": deg_pf,

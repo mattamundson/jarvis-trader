@@ -3,6 +3,7 @@ JARVIS TRADER — Backtest Data Loader
 Fetches historical OHLCV data via yfinance with futures symbol mapping.
 Results are cached to disk to avoid Yahoo Finance rate limits on repeated runs.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,18 +37,18 @@ FUTURES_MAP: Dict[str, str] = {
 }
 
 CONTRACT_MULTIPLIERS: Dict[str, float] = {
-    "MES": 5.0,    # $5 per point
-    "ES": 50.0,    # $50 per point
-    "MNQ": 2.0,    # $2 per point
-    "NQ": 20.0,    # $20 per point
+    "MES": 5.0,  # $5 per point
+    "ES": 50.0,  # $50 per point
+    "MNQ": 2.0,  # $2 per point
+    "NQ": 20.0,  # $20 per point
     "MCL": 100.0,  # $100 per barrel (micro = 100 barrels)
     "CL": 1000.0,  # $1000 per barrel
-    "MGC": 10.0,   # $10 per oz
-    "GC": 100.0,   # $100 per oz
-    "M2K": 5.0,    # $5 per point
-    "RTY": 50.0,   # $50 per point
-    "MYM": 0.5,    # $0.50 per point
-    "YM": 5.0,     # $5 per point
+    "MGC": 10.0,  # $10 per oz
+    "GC": 100.0,  # $100 per oz
+    "M2K": 5.0,  # $5 per point
+    "RTY": 50.0,  # $50 per point
+    "MYM": 0.5,  # $0.50 per point
+    "YM": 5.0,  # $5 per point
     # ETFs (no multiplier)
     "SPY": 1.0,
     "QQQ": 1.0,
@@ -99,9 +100,7 @@ class BacktestDataLoader:
                 continue
         return None
 
-    def _fetch_direct_yahoo(
-        self, ticker: str, start: str, end: str, interval: str
-    ) -> pd.DataFrame:
+    def _fetch_direct_yahoo(self, ticker: str, start: str, end: str, interval: str) -> pd.DataFrame:
         """
         Bypass yfinance rate limits by hitting Yahoo Finance v8 API directly.
         Uses browser User-Agent to avoid detection.
@@ -174,7 +173,9 @@ class BacktestDataLoader:
 
                 chunk_df = pd.DataFrame(
                     {
-                        "timestamp": pd.to_datetime(timestamps, unit="s", utc=True).tz_localize(None),
+                        "timestamp": pd.to_datetime(timestamps, unit="s", utc=True).tz_localize(
+                            None
+                        ),
                         "open": quotes.get("open", []),
                         "high": quotes.get("high", []),
                         "low": quotes.get("low", []),
@@ -207,11 +208,7 @@ class BacktestDataLoader:
         return df
 
     def load(
-        self,
-        symbol: str,
-        start: str,
-        end: str,
-        interval: str = "1d"
+        self, symbol: str, start: str, end: str, interval: str = "1d"
     ) -> Optional[pd.DataFrame]:
         """
         Load OHLCV data for a symbol.
@@ -222,8 +219,10 @@ class BacktestDataLoader:
         cache_file = self._cache_path(symbol, start, end, interval)
 
         # Check primary cache path first, then fall back to alternate naming patterns
-        cache_to_try = cache_file if cache_file.exists() else self._find_alternate_cache(
-            symbol, start, end, interval
+        cache_to_try = (
+            cache_file
+            if cache_file.exists()
+            else self._find_alternate_cache(symbol, start, end, interval)
         )
 
         if cache_to_try is not None:
@@ -231,8 +230,8 @@ class BacktestDataLoader:
                 df = pd.read_csv(cache_to_try)
                 # Normalize column names (handle both 'timestamp' and 'Datetime')
                 df.columns = [c.lower() for c in df.columns]
-                if 'datetime' in df.columns:
-                    df = df.rename(columns={'datetime': 'timestamp'})
+                if "datetime" in df.columns:
+                    df = df.rename(columns={"datetime": "timestamp"})
                 df = df.set_index(pd.to_datetime(df["timestamp"]))
                 # Normalize to UTC then strip tz — handles mixed-tz CSV files
                 df.index = pd.to_datetime(df.index, utc=True).tz_localize(None)
@@ -259,12 +258,7 @@ class BacktestDataLoader:
         raw = None
         try:
             raw = yf.download(
-                ticker,
-                start=start,
-                end=end,
-                interval=interval,
-                progress=False,
-                auto_adjust=True
+                ticker, start=start, end=end, interval=interval, progress=False, auto_adjust=True
             )
         except Exception as e:
             print(f"[DataLoader] yf.download failed ({e}), retrying via Ticker.history...")
@@ -290,20 +284,19 @@ class BacktestDataLoader:
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = [c[0].lower() for c in raw.columns]
         else:
-            raw.columns = [c.lower() if isinstance(c, str) else str(c).lower()
-                           for c in raw.columns]
+            raw.columns = [c.lower() if isinstance(c, str) else str(c).lower() for c in raw.columns]
 
         # Ensure standard columns exist
-        required = {'open', 'high', 'low', 'close', 'volume'}
+        required = {"open", "high", "low", "close", "volume"}
         missing = required - set(raw.columns)
         if missing:
             print(f"[DataLoader] Missing columns: {missing}")
             return None
 
-        df = raw[['open', 'high', 'low', 'close', 'volume']].copy()
+        df = raw[["open", "high", "low", "close", "volume"]].copy()
         df.index = pd.to_datetime(df.index)
-        df['timestamp'] = df.index
-        df = df.dropna(subset=['open', 'high', 'low', 'close'])
+        df["timestamp"] = df.index
+        df = df.dropna(subset=["open", "high", "low", "close"])
 
         print(f"[DataLoader] Loaded {len(df)} bars for {symbol} ({ticker})")
 
@@ -316,11 +309,7 @@ class BacktestDataLoader:
         return df
 
     def load_multi(
-        self,
-        symbols: List[str],
-        start: str,
-        end: str,
-        interval: str = "1d"
+        self, symbols: List[str], start: str, end: str, interval: str = "1d"
     ) -> Dict[str, pd.DataFrame]:
         """Load multiple symbols. Returns dict of {symbol: DataFrame}."""
         result = {}
