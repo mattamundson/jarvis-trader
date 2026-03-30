@@ -9,6 +9,7 @@ Start with: uvicorn main:app --reload --port 8010
 import asyncio
 import logging
 import os
+import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Dict
@@ -16,7 +17,7 @@ from typing import Dict
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -46,8 +47,6 @@ from api.models import (
     DecisionHistoryResponse,
     StatsSummaryResponse,
     DrawdownResponse,
-    TradingDaysResponse,
-    PaperPhaseSummaryResponse,
     WebSocketStatusResponse,
 )
 
@@ -450,6 +449,7 @@ app.add_middleware(
 )
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(webhook_router)
 app.include_router(v1_router)
 
 
@@ -589,6 +589,151 @@ async def full_health_check():
     }
 
 
+@app.get("/system/preflight")
+async def system_preflight():
+    """
+    Run all critical pre-flight checks before accepting trading signals.
+    Returns a list of checks with pass/fail/warn status.
+    """
+    checks = []
+    all_pass = True
+
+    def add_check(name: str, status: str, detail: str):
+        nonlocal all_pass
+        if status == "fail":
+            all_pass = False
+        checks.append({"name": name, "status": status, "detail": detail})
+
+    # 1. Database health
+    try:
+        if db_manager is None:
+            add_check("Database", "fail", "Not initialized")
+        else:
+            with db_manager._lock:
+                conn = sqlite3.connect(str(db_manager._db_path))
+                try:
+                    conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()
+                    add_check("Database", "pass", f"SQLite healthy — {str(db_manager._db_path).split('/')[-1]}")
+                finally:
+                    conn.close()
+    except Exception as e:
+        add_check("Database", "fail", str(e))
+
+    # 2. Kill switch clear
+    try:
+        if safety_layer is None:
+            add_check("Kill Switch", "warn", "SafetyLayer not initialized")
+        else:
+            ks = safety_layer._kill_switch_active
+            if ks:
+                add_check("Kill Switch", "fail", "KILL SWITCH IS ACTIVE — trading blocked")
+            else:
+                add_check("Kill Switch", "pass", "Kill switch clear")
+    except Exception as e:
+        add_check("Kill Switch", "warn", f"Could not check: {e}")
+
+    # 3. Circuit breakers
+    try:
+        if safety_layer is not None:
+            cb_result = safety_layer.check_circuit_breakers()
+            daily_breached = cb_result.get("daily_limit_breached", False)
+            drawdown_breached_flag = cb_result.get("drawdown_breached", False)
+            if daily_breached or drawdown_breached_flag:
+                tripped = []
+                if daily_breached:
+                    tripped.append("daily_loss_limit")
+                if drawdown_breached_flag:
+                    tripped.append("drawdown_limit")
+                add_check("Circuit Breakers", "fail", f"Tripped: {', '.join(tripped)}")
+            else:
+                add_check("Circuit Breakers", "pass", "All circuit breakers clear")
+        else:
+            add_check("Circuit Breakers", "warn", "SafetyLayer not initialized")
+    except Exception as e:
+        add_check("Circuit Breakers", "warn", f"Could not check: {e}")
+
+    # 4. Trading pipeline
+    try:
+        if trading_pipeline is None:
+            add_check("Pipeline", "fail", "TradingPipeline not initialized")
+        else:
+            add_check("Pipeline", "pass", "TradingPipeline ready")
+    except Exception as e:
+        add_check("Pipeline", "fail", str(e))
+
+    # 5. VIX overlay
+    try:
+        from analytics.vix_overlay import fetch_vix
+        vix_state = fetch_vix()
+        vix_val = getattr(vix_state, "vix_value", None)
+        source = getattr(vix_state, "source", "unknown")
+        if vix_val is not None:
+            add_check("VIX Data", "pass" if source != "error_fallback" else "warn",
+                     f"VIX={vix_val:.1f} (source: {source})")
+        else:
+            add_check("VIX Data", "warn", "VIX unavailable — using fallback")
+    except Exception as e:
+        add_check("VIX Data", "warn", f"VIX check failed: {e}")
+
+    # 6. Market session
+    try:
+        import pytz
+        from datetime import datetime as _dt
+        ct_tz = pytz.timezone("America/Chicago")
+        now_ct = _dt.now(ct_tz)
+        weekday = now_ct.weekday()
+        hour = now_ct.hour
+        if weekday >= 5:
+            add_check("Market Session", "warn", "Weekend — market closed")
+        elif 8 <= hour < 15:
+            add_check("Market Session", "pass", f"RTH active ({now_ct.strftime('%H:%M')} CT)")
+        elif 17 <= hour or hour < 6:
+            add_check("Market Session", "pass", f"Futures session active ({now_ct.strftime('%H:%M')} CT)")
+        else:
+            add_check("Market Session", "warn", f"Outside primary trading hours ({now_ct.strftime('%H:%M')} CT)")
+    except Exception as e:
+        add_check("Market Session", "warn", str(e))
+
+    # 7. IB Gateway connection (paper port 4002)
+    try:
+        ib_gw = data_manager.ibkr if data_manager else None
+        if ib_gw is None:
+            add_check("IB Gateway", "warn", "Not initialized (paper only — optional)")
+        else:
+            connected = getattr(ib_gw, "is_connected", lambda: False)()
+            if connected:
+                add_check("IB Gateway", "pass", "Paper port 4002 connected")
+            else:
+                add_check("IB Gateway", "warn", "Not connected (paper only — optional)")
+    except Exception as e:
+        add_check("IB Gateway", "warn", f"Could not check: {e}")
+
+    # 8. Portfolio tracker
+    try:
+        if paper_tracker is None:
+            add_check("Portfolio Tracker", "fail", "Not initialized")
+        else:
+            positions = paper_tracker.get_open_positions()
+            if pnl_monitor is not None:
+                pnl_state = pnl_monitor.get_current_pnl_state()
+                balance = round(pnl_state.current_balance, 2)
+                add_check("Portfolio Tracker", "pass", f"Balance: ${balance:,.2f} | {len(positions)} open position(s)")
+            else:
+                add_check("Portfolio Tracker", "pass", f"{len(positions)} open position(s)")
+    except Exception as e:
+        add_check("Portfolio Tracker", "fail", str(e))
+
+    return {
+        "all_pass": all_pass,
+        "check_count": len(checks),
+        "pass_count": sum(1 for c in checks if c["status"] == "pass"),
+        "fail_count": sum(1 for c in checks if c["status"] == "fail"),
+        "warn_count": sum(1 for c in checks if c["status"] == "warn"),
+        "checks": checks,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
 # ── Safety / Kill Switch ──────────────────────────────────────────────────
 
 @app.post("/safety/kill-switch/activate", response_model=KillSwitchToggleResponse)
@@ -684,6 +829,91 @@ async def reset_daily_pnl():
     safety_layer._daily_realized_pnl = 0.0
     safety_layer._daily_order_count = 0
     return {"status": "daily_pnl_reset", "message": "Daily P&L counter cleared"}
+
+
+# ── Risk Limits Settings ───────────────────────────────────────────────────
+
+@app.get("/settings/risk")
+async def get_risk_settings():
+    """Get current risk/circuit breaker settings."""
+    try:
+        # Get live circuit breaker state
+        cb_status = {}
+        if safety_layer:
+            cb_status = safety_layer.check_circuit_breakers()
+
+        # Get config defaults from env / TradingConfig
+        config = {
+            "daily_loss_limit": float(os.getenv("DAILY_LOSS_LIMIT", str(settings.MAX_DAILY_LOSS_PCT * 10000))),
+            "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
+            "max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+            "risk_per_trade_pct": float(os.getenv("RISK_PER_TRADE_PCT", "0.01")),
+            "atr_stop_multiplier": float(os.getenv("ATR_STOP_MULTIPLIER", "0.70")),
+            "atr_target_multiplier": float(os.getenv("ATR_TARGET_MULTIPLIER", "1.50")),
+        }
+
+        # Override with DB settings if available (DB values take precedence over env)
+        if db_manager:
+            for key in config:
+                val = db_manager.get_setting(key)
+                if val is not None:
+                    try:
+                        config[key] = type(config[key])(val)
+                    except (ValueError, TypeError):
+                        pass
+
+        return {
+            "config": config,
+            "circuit_breakers": cb_status,
+            "editable_keys": list(config.keys()),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/settings/risk")
+async def update_risk_settings(payload: dict):
+    """Update risk settings (persists to DB settings table)."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    ALLOWED_KEYS = {
+        "daily_loss_limit", "max_drawdown_pct", "max_contracts",
+        "risk_per_trade_pct", "atr_stop_multiplier", "atr_target_multiplier",
+    }
+
+    VALIDATORS = {
+        "daily_loss_limit": lambda v: float(v) > 0,
+        "max_drawdown_pct": lambda v: 0 < float(v) <= 1.0,
+        "max_contracts": lambda v: 1 <= int(v) <= 10,
+        "risk_per_trade_pct": lambda v: 0 < float(v) <= 0.05,
+        "atr_stop_multiplier": lambda v: 0.1 <= float(v) <= 3.0,
+        "atr_target_multiplier": lambda v: 0.1 <= float(v) <= 5.0,
+    }
+
+    updated = {}
+    errors = {}
+
+    for key, value in payload.items():
+        if key not in ALLOWED_KEYS:
+            errors[key] = "Unknown setting"
+            continue
+
+        validator = VALIDATORS.get(key)
+        try:
+            if validator and not validator(value):
+                errors[key] = f"Value {value} out of allowed range"
+                continue
+            db_manager.set_setting(key, str(value))
+            updated[key] = value
+        except Exception as e:
+            errors[key] = str(e)[:80]
+
+    return {
+        "updated": updated,
+        "errors": errors,
+        "count": len(updated),
+    }
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────
@@ -833,6 +1063,35 @@ async def submit_paper_trade(req: PaperTradeRequest):
             trade = paper_tracker.close_trade(req.close_trade_id, req.price)
         except KeyError:
             raise HTTPException(404, f"No open trade with id={req.close_trade_id!r}")
+
+        # Send WhatsApp notification for closed trade
+        try:
+            from notifications.whatsapp import format_trade_closed_alert, send_whatsapp_message
+
+            duration_min = None
+            if trade.entry_time:
+                try:
+                    from dateutil import parser as dtparser
+                    entry_dt = dtparser.parse(trade.entry_time)
+                    if entry_dt.tzinfo is None:
+                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+                    duration_min = (datetime.now(timezone.utc) - entry_dt).total_seconds() / 60
+                except Exception:
+                    pass
+
+            msg = format_trade_closed_alert(
+                symbol=trade.symbol,
+                side=trade.action,
+                quantity=int(trade.quantity),
+                entry_price=float(trade.entry_price),
+                exit_price=float(trade.exit_price),
+                pnl=float(trade.pnl),
+                duration_minutes=duration_min,
+            )
+            asyncio.create_task(send_whatsapp_message(msg))
+        except Exception:
+            pass  # Never let notification failure break the trade close
+
         return {
             "status": "closed",
             "trade": trade.to_dict(),
@@ -986,178 +1245,71 @@ async def get_drawdown():
         return {"max_drawdown": 0.0, "equity_curve": [], "error": str(exc)}
 
 
-REQUIRED_TRADING_DAYS = 30
+# ── Streak Stats ──────────────────────────────────────────────────────────
 
-
-@app.get("/portfolio/stats/trading-days", response_model=TradingDaysResponse)
-async def get_trading_days():
-    """
-    Return the number of unique calendar days that had at least one closed trade.
-
-    Merges dates from both ``daily_pnl`` (rows with trade_count > 0) and
-    ``paper_trades`` (distinct date(entry_time) for closed trades) so the
-    count is accurate even when the EOD snapshot has not run yet today.
-    """
+@app.get("/portfolio/stats/streaks")
+async def get_trading_streaks():
+    """Calculate current and maximum win/loss streaks from closed trades."""
     if not db_manager:
-        return TradingDaysResponse(
-            active_trading_days=0,
-            first_trade_date=None,
-            last_trade_date=None,
-            required_days_for_live=REQUIRED_TRADING_DAYS,
-            days_remaining=REQUIRED_TRADING_DAYS,
-            ready_for_live=False,
-            session_duration_calendar_days=0,
-        )
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
     try:
-        sql_daily = (
-            "SELECT DISTINCT date FROM daily_pnl WHERE trade_count > 0 ORDER BY date ASC"
-        )
-        sql_paper = (
-            "SELECT DISTINCT date(entry_time) AS date FROM paper_trades "
-            "WHERE status = 'closed'"
-        )
+        import sqlite3
         with db_manager._lock:
-            conn = db_manager._connect()
+            conn = sqlite3.connect(str(db_manager._db_path))
             try:
-                rows_daily = conn.execute(sql_daily).fetchall()
-                rows_paper = conn.execute(sql_paper).fetchall()
+                rows = conn.execute(
+                    """SELECT pnl FROM paper_trades
+                       WHERE status = 'closed' AND pnl IS NOT NULL
+                       ORDER BY exit_time ASC"""
+                ).fetchall()
             finally:
                 conn.close()
 
-        dates = set()
-        for row in rows_daily:
-            if row["date"]:
-                dates.add(str(row["date"])[:10])
-        for row in rows_paper:
-            if row["date"]:
-                dates.add(str(row["date"])[:10])
+        if not rows:
+            return {
+                "current_streak": 0,
+                "current_type": "none",
+                "max_win_streak": 0,
+                "max_loss_streak": 0,
+                "total_trades": 0,
+                "recent_results": [],
+            }
 
-        sorted_dates = sorted(dates)
-        active_days = len(sorted_dates)
-        first_date = sorted_dates[0] if sorted_dates else None
-        last_date = sorted_dates[-1] if sorted_dates else None
+        pnls = [r[0] for r in rows]
+        results = ["W" if p > 0 else "L" for p in pnls]
 
-        if first_date and last_date and first_date != last_date:
-            from datetime import date as _date
-            d0 = _date.fromisoformat(first_date)
-            d1 = _date.fromisoformat(last_date)
-            calendar_days = (d1 - d0).days
-        else:
-            calendar_days = 0
+        # Current streak
+        current_type = results[-1]
+        current = 0
+        for r in reversed(results):
+            if r == current_type:
+                current += 1
+            else:
+                break
 
-        days_remaining = max(0, REQUIRED_TRADING_DAYS - active_days)
-        return TradingDaysResponse(
-            active_trading_days=active_days,
-            first_trade_date=first_date,
-            last_trade_date=last_date,
-            required_days_for_live=REQUIRED_TRADING_DAYS,
-            days_remaining=days_remaining,
-            ready_for_live=(active_days >= REQUIRED_TRADING_DAYS),
-            session_duration_calendar_days=calendar_days,
-        )
-    except Exception as exc:
-        logger.error(f"[DB] get_trading_days failed: {exc}")
-        return TradingDaysResponse(
-            active_trading_days=0,
-            first_trade_date=None,
-            last_trade_date=None,
-            required_days_for_live=REQUIRED_TRADING_DAYS,
-            days_remaining=REQUIRED_TRADING_DAYS,
-            ready_for_live=False,
-            session_duration_calendar_days=0,
-        )
+        # Max streaks
+        max_win = max_loss = win_run = loss_run = 0
+        for r in results:
+            if r == "W":
+                win_run += 1
+                loss_run = 0
+            else:
+                loss_run += 1
+                win_run = 0
+            max_win = max(max_win, win_run)
+            max_loss = max(max_loss, loss_run)
 
-
-@app.get("/portfolio/stats/paper-phase-summary", response_model=PaperPhaseSummaryResponse)
-async def get_paper_phase_summary():
-    """
-    Comprehensive paper-trading phase summary for the scorecard page.
-
-    Combines trade counts, balance, return percentage, active trading days,
-    and live-readiness into a single response so the scorecard only needs
-    one API call.
-    """
-    if not db_manager:
-        return PaperPhaseSummaryResponse(
-            phase="paper",
-            started_at=None,
-            trading_days=0,
-            required_trading_days=REQUIRED_TRADING_DAYS,
-            total_trades=0,
-            current_balance=10000.0,
-            initial_balance=10000.0,
-            total_return_pct=0.0,
-            validation_ready=False,
-        )
-    try:
-        initial_balance = float(
-            db_manager.get_setting("INITIAL_ACCOUNT_VALUE", default=10000.0) or 10000.0
-        )
-
-        sql_trades = (
-            "SELECT COUNT(*) AS total_trades, COALESCE(SUM(pnl), 0.0) AS total_pnl, "
-            "MIN(entry_time) AS first_entry "
-            "FROM paper_trades WHERE status = 'closed'"
-        )
-        sql_daily_dates = (
-            "SELECT DISTINCT date FROM daily_pnl WHERE trade_count > 0"
-        )
-        sql_paper_dates = (
-            "SELECT DISTINCT date(entry_time) AS date FROM paper_trades "
-            "WHERE status = 'closed'"
-        )
-
-        with db_manager._lock:
-            conn = db_manager._connect()
-            try:
-                tr = conn.execute(sql_trades).fetchone()
-                rows_daily = conn.execute(sql_daily_dates).fetchall()
-                rows_paper = conn.execute(sql_paper_dates).fetchall()
-            finally:
-                conn.close()
-
-        total_trades = int(tr["total_trades"]) if tr else 0
-        total_pnl = float(tr["total_pnl"]) if tr else 0.0
-        first_entry = str(tr["first_entry"]) if tr and tr["first_entry"] else None
-
-        dates: set = set()
-        for row in rows_daily:
-            if row["date"]:
-                dates.add(str(row["date"])[:10])
-        for row in rows_paper:
-            if row["date"]:
-                dates.add(str(row["date"])[:10])
-
-        trading_days = len(dates)
-        current_balance = initial_balance + total_pnl
-        total_return_pct = (
-            round((total_pnl / initial_balance) * 100, 4) if initial_balance else 0.0
-        )
-
-        return PaperPhaseSummaryResponse(
-            phase="paper",
-            started_at=first_entry,
-            trading_days=trading_days,
-            required_trading_days=REQUIRED_TRADING_DAYS,
-            total_trades=total_trades,
-            current_balance=round(current_balance, 2),
-            initial_balance=round(initial_balance, 2),
-            total_return_pct=total_return_pct,
-            validation_ready=(trading_days >= REQUIRED_TRADING_DAYS),
-        )
-    except Exception as exc:
-        logger.error(f"[DB] get_paper_phase_summary failed: {exc}")
-        return PaperPhaseSummaryResponse(
-            phase="paper",
-            started_at=None,
-            trading_days=0,
-            required_trading_days=REQUIRED_TRADING_DAYS,
-            total_trades=0,
-            current_balance=10000.0,
-            initial_balance=10000.0,
-            total_return_pct=0.0,
-            validation_ready=False,
-        )
+        return {
+            "current_streak": current,
+            "current_type": "win" if current_type == "W" else "loss",
+            "max_win_streak": max_win,
+            "max_loss_streak": max_loss,
+            "total_trades": len(results),
+            "recent_results": results[-10:],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Pipeline Run History ───────────────────────────────────────────────────
@@ -1222,77 +1374,40 @@ async def get_analytics_performance():
         raise HTTPException(500, f"Analytics error: {exc}")
 
 
+@app.get("/analytics/performance/rolling")
+async def get_rolling_performance(days: int = 30):
+    """Get rolling performance metrics for the last N days (7, 14, or 30)."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+    days = max(1, min(days, 90))  # clamp to 1-90 days
+    try:
+        from analytics.performance import PerformanceCalculator
+        calc = PerformanceCalculator(db_manager)
+        return calc.calculate_rolling(days=days)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/analytics/performance/compare")
 async def get_analytics_performance_compare():
     """
-    Compare current live/paper metrics against confirmed backtest targets.
+    Compare current forward-test metrics against backtest targets.
 
-    Backtest baseline (MES 1h, 2023-2024):
-      PF=5.27, Sharpe=4.16, WinRate=68%, MaxDD=-8.2%, TotalReturn=+47.2%
+    Forward metrics (from live paper trading in SQLite) are compared to the
+    reference backtest results: PF=5.27, Sharpe=4.16.
 
-    Live/paper values are read from SQLite via PerformanceCalculator.
-    Returns:
-      backtest              — confirmed backtest values + metadata
-      live_paper            — current forward-test metrics (zeros when no data)
-      validation_thresholds — per-metric pass/fail vs required minimums
-      ready_for_live        — True only when all thresholds are met
-      degradation_factor    — live/backtest ratio per metric (null = no live data)
+    Returns per-metric diffs, retention percentages, and a ``degradation_ok``
+    flag that is True when forward results still exceed the paper thresholds
+    (PF > 2.0 and Sharpe > 1.5).
     """
-    from analytics.performance import (
-        BACKTEST_PROFIT_FACTOR,
-        BACKTEST_SHARPE,
-        BACKTEST_WIN_RATE,
-        BACKTEST_MAX_DRAWDOWN,
-        BACKTEST_TOTAL_RETURN,
-        BACKTEST_SYMBOL,
-        BACKTEST_TIMEFRAME,
-        BACKTEST_PERIOD,
-        PROFIT_FACTOR_TARGET,
-        SHARPE_TARGET,
-        MIN_TRADING_DAYS_REQUIRED,
-    )
-
-    # Canonical no-data response (db not ready or no trades yet)
-    _empty_response = {
-        "backtest": {
-            "profit_factor": BACKTEST_PROFIT_FACTOR,
-            "sharpe_ratio": BACKTEST_SHARPE,
-            "win_rate": BACKTEST_WIN_RATE,
-            "max_drawdown": BACKTEST_MAX_DRAWDOWN,
-            "total_return_pct": BACKTEST_TOTAL_RETURN,
-            "symbol": BACKTEST_SYMBOL,
-            "timeframe": BACKTEST_TIMEFRAME,
-            "period": BACKTEST_PERIOD,
-        },
-        "live_paper": {
-            "profit_factor": 0.0,
-            "sharpe_ratio": 0.0,
-            "win_rate": 0.0,
-            "max_drawdown": 0.0,
-            "total_return_pct": 0.0,
-            "trade_count": 0,
-            "trading_days": 0,
-        },
-        "validation_thresholds": {
-            "profit_factor": {"required": PROFIT_FACTOR_TARGET, "met": False},
-            "sharpe_ratio": {"required": SHARPE_TARGET, "met": False},
-            "min_trading_days": {
-                "required": MIN_TRADING_DAYS_REQUIRED,
-                "current": 0,
-                "met": False,
-            },
-        },
-        "ready_for_live": False,
-        "degradation_factor": {
-            "profit_factor": None,
-            "sharpe_ratio": None,
-            "note": "No live data yet",
-        },
-    }
-
     if not db_manager:
-        return {**_empty_response, "note": "Database not initialized."}
-
+        return {
+            "forward": {},
+            "backtest": {"profit_factor": 5.27, "sharpe_ratio": 4.16},
+            "comparison": {},
+            "degradation_ok": False,
+            "note": "Database not initialized.",
+        }
     try:
         from analytics.performance import PerformanceCalculator
         calc = PerformanceCalculator(db_manager)
@@ -1302,189 +1417,98 @@ async def get_analytics_performance_compare():
         raise HTTPException(500, f"Analytics error: {exc}")
 
 
-@app.get("/validation/readiness-check")
-async def get_readiness_check():
-    """Comprehensive pre-live trading readiness check."""
-    checks = []
-
-    def add_check(name: str, passed: bool, value: str, requirement: str, critical: bool = True):
-        checks.append({
-            "name": name,
-            "passed": passed,
-            "value": value,
-            "requirement": requirement,
-            "critical": critical,
-        })
-
-    # --- Performance checks ---
+@app.get("/analytics/mtf")
+async def get_mtf_analysis(symbol: str = "MES"):
+    """
+    Multi-timeframe STC analysis for a single symbol.
+    Returns 1h, 4h, and 1d STC signals with alignment and recommendation.
+    """
     try:
-        if db_manager:
-            from analytics.performance import PerformanceCalculator
-            calc = PerformanceCalculator(db_manager)
-            summary = calc.calculate_summary()
-
-            pf = summary.get("profit_factor")
-            sharpe = summary.get("sharpe_ratio")
-            win_rate = summary.get("win_rate", 0)
-            drawdown = summary.get("max_drawdown", 0)
-            total_trades = summary.get("total_trades", 0)
-
-            add_check("Profit Factor", bool(pf and pf >= 2.0),
-                      f"{pf:.2f}" if pf else "N/A", ">= 2.0")
-            add_check("Sharpe Ratio", bool(sharpe and sharpe >= 1.5),
-                      f"{sharpe:.2f}" if sharpe else "N/A", ">= 1.5")
-            add_check("Win Rate", bool(win_rate and win_rate >= 0.50),
-                      f"{win_rate*100:.1f}%" if win_rate else "N/A", ">= 50%", critical=False)
-            add_check("Max Drawdown", bool(abs(drawdown) <= 0.15),
-                      f"{drawdown*100:.1f}%", "<= -15%", critical=False)
-            add_check("Minimum Trades", total_trades >= 30,
-                      str(total_trades), ">= 30 trades")
-        else:
-            for name in ["Profit Factor", "Sharpe Ratio", "Minimum Trades"]:
-                add_check(name, False, "N/A", "Database required")
+        from analytics.mtf_analyzer import analyze_mtf
+        sym = symbol.strip().upper()
+        result = analyze_mtf(sym)
+        return {
+            "symbol": result.symbol,
+            "recommendation": result.recommendation,
+            "alignment": result.alignment,
+            "confidence": result.confidence,
+            "aligned_timeframes": result.aligned_timeframes,
+            "total_timeframes": result.total_timeframes,
+            "source": result.source,
+            "timeframes": {
+                s.timeframe: {
+                    "stc_value": s.stc_value,
+                    "stc_signal": s.stc_signal,
+                    "price": s.price,
+                    "source": s.source,
+                }
+                for s in result.signals
+            },
+        }
     except Exception as e:
-        add_check("Performance Data", False, f"Error: {str(e)[:50]}", "Available")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    # --- Trading days check ---
+
+@app.get("/watchlist/scan")
+async def watchlist_scan(symbols: str = "MES,MNQ,MCL"):
+    """
+    Run MTF analysis on all watchlist symbols and return a consolidated signal summary.
+    symbols: comma-separated list (default: MES,MNQ,MCL)
+    """
     try:
-        if db_manager:
-            import sqlite3
-            conn = sqlite3.connect(db_manager.db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(DISTINCT date) FROM daily_pnl WHERE trade_count > 0")
-            days = cursor.fetchone()[0] or 0
-            conn.close()
-            add_check("Trading Days", days >= 30, str(days), ">= 30 days")
+        from analytics.mtf_analyzer import analyze_mtf
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if not symbol_list:
+            raise HTTPException(status_code=400, detail="No symbols provided")
+
+        results = []
+        for sym in symbol_list[:5]:  # cap at 5 to avoid abuse
+            try:
+                mtf_result = analyze_mtf(sym)
+                results.append({
+                    "symbol": sym,
+                    "recommendation": mtf_result.recommendation,
+                    "alignment": mtf_result.alignment,
+                    "timeframes": {
+                        s.timeframe: {
+                            "stc_value": s.stc_value,
+                            "stc_signal": s.stc_signal,
+                        }
+                        for s in mtf_result.signals
+                    },
+                    "error": None,
+                })
+            except Exception as sym_err:
+                results.append({
+                    "symbol": sym,
+                    "recommendation": "WAIT",
+                    "alignment": "NEUTRAL",
+                    "timeframes": {},
+                    "error": str(sym_err),
+                })
+
+        # Determine overall market bias
+        buy_count = sum(1 for r in results if r["recommendation"] == "BUY")
+        sell_count = sum(1 for r in results if r["recommendation"] == "SELL")
+        if buy_count > sell_count:
+            market_bias = "BULLISH"
+        elif sell_count > buy_count:
+            market_bias = "BEARISH"
         else:
-            add_check("Trading Days", False, "N/A", "Database required")
-    except Exception:
-        add_check("Trading Days", False, "Error", ">= 30 days")
+            market_bias = "NEUTRAL"
 
-    # --- System checks ---
-    # Kill switch
-    try:
-        if safety_layer:
-            cb = safety_layer.get_circuit_breaker_status()
-            kill_active = cb.get("kill_switch_active", False)
-            add_check("Kill Switch Clear", not kill_active,
-                      "ACTIVE" if kill_active else "CLEAR", "Not active", critical=True)
-        else:
-            add_check("Kill Switch Clear", False, "N/A", "Safety layer required")
-    except Exception:
-        add_check("Kill Switch Clear", False, "Error", "Safety layer required")
-
-    # Database health
-    try:
-        if db_manager:
-            health = db_manager.health_check()
-            db_ok = health.get("status") == "healthy"
-            add_check("Database", db_ok, "Healthy" if db_ok else "Unhealthy", "Healthy", critical=False)
-        else:
-            add_check("Database", False, "Not initialized", "Initialized", critical=False)
-    except Exception:
-        add_check("Database", False, "Error", "Healthy", critical=False)
-
-    critical_checks = [c for c in checks if c["critical"]]
-    all_critical_pass = all(c["passed"] for c in critical_checks)
-    all_pass = all(c["passed"] for c in checks)
-    passed_count = sum(1 for c in checks if c["passed"])
-
-    return {
-        "ready_for_live": all_critical_pass,
-        "all_checks_pass": all_pass,
-        "checks": checks,
-        "passed": passed_count,
-        "total": len(checks),
-        "summary": "READY" if all_critical_pass else "NOT READY",
-    }
-
-
-# ── Market session status ──────────────────────────────────────────────────
-
-@app.get("/market/session")
-async def get_market_session():
-    """Return current market session status."""
-    from datetime import datetime, time, timezone
-    import pytz
-
-    ct = pytz.timezone("America/Chicago")
-    now_ct = datetime.now(ct)
-    weekday = now_ct.weekday()  # 0=Mon, 6=Sun
-    current_time = now_ct.time()
-
-    # Market hours in CT
-    pre_market_start = time(7, 0)   # 7:00 AM CT
-    rth_start = time(8, 30)         # 8:30 AM CT (RTH open = 9:30 ET)
-    rth_end = time(15, 0)           # 3:00 PM CT (RTH close = 4:00 ET)
-    after_hours_end = time(17, 0)   # 5:00 PM CT (futures reset)
-
-    # Futures sessions (CME Globex) in CT
-    futures_open = time(17, 0)      # 5:00 PM CT day before (Sunday evening)
-    futures_close = time(16, 0)     # 4:00 PM CT
-
-    is_weekend = weekday >= 5
-
-    if is_weekend and weekday == 6 and current_time >= time(17, 0):
-        session = "FUTURES_OPEN"
-        label = "Futures Open (Sunday Evening)"
-        color = "green"
-    elif is_weekend:
-        session = "WEEKEND"
-        label = "Weekend — Markets Closed"
-        color = "gray"
-    elif current_time < pre_market_start:
-        session = "OVERNIGHT"
-        label = "Overnight Session"
-        color = "blue"
-    elif current_time < rth_start:
-        session = "PRE_MARKET"
-        label = "Pre-Market"
-        color = "yellow"
-    elif current_time < rth_end:
-        session = "RTH"
-        label = "Regular Trading Hours"
-        color = "green"
-    elif current_time < after_hours_end:
-        session = "AFTER_HOURS"
-        label = "After Hours"
-        color = "yellow"
-    else:
-        session = "FUTURES_OPEN"
-        label = "Futures Open"
-        color = "green"
-
-    # Next session transition
-    # Calculate minutes until next transition
-    def minutes_until(target_time):
-        target_dt = now_ct.replace(hour=target_time.hour, minute=target_time.minute, second=0, microsecond=0)
-        if target_dt <= now_ct:
-            # Add a day
-            from datetime import timedelta
-            target_dt += timedelta(days=1)
-        return int((target_dt - now_ct).total_seconds() / 60)
-
-    next_transitions = {
-        "OVERNIGHT": ("Pre-Market", minutes_until(pre_market_start)),
-        "PRE_MARKET": ("RTH Open", minutes_until(rth_start)),
-        "RTH": ("RTH Close", minutes_until(rth_end)),
-        "AFTER_HOURS": ("Futures Open", minutes_until(after_hours_end)),
-        "FUTURES_OPEN": ("RTH Open", minutes_until(rth_start)),
-        "WEEKEND": ("Futures Open Sunday", None),
-    }
-
-    next_session, mins_until = next_transitions.get(session, ("Unknown", None))
-
-    return {
-        "session": session,
-        "label": label,
-        "color": color,
-        "is_trading_hours": session == "RTH",
-        "is_futures_active": session in ("RTH", "FUTURES_OPEN", "PRE_MARKET", "AFTER_HOURS", "OVERNIGHT"),
-        "timestamp_ct": now_ct.isoformat(),
-        "next_session": next_session,
-        "minutes_until_next": mins_until,
-        "day_of_week": now_ct.strftime("%A"),
-    }
+        return {
+            "symbols": results,
+            "market_bias": market_bias,
+            "buy_count": buy_count,
+            "sell_count": sell_count,
+            "wait_count": len(results) - buy_count - sell_count,
+            "scanned_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Recent decisions (for dashboard feed) ─────────────────────────────────
@@ -1650,6 +1674,90 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
         raise HTTPException(500, f"Price fetch failed: {e}")
 
 
+# ── Earnings calendar awareness ──────────────────────────────────────────────────
+
+
+@app.get("/market/earnings")
+async def get_upcoming_earnings(days: int = 7):
+    """Check for upcoming earnings near our watched symbols."""
+    WATCHED = {
+        "SPY": "S&P 500 ETF",
+        "QQQ": "Nasdaq ETF",
+        "AAPL": "Apple (QQQ weight)",
+        "MSFT": "Microsoft (QQQ weight)",
+        "NVDA": "Nvidia (QQQ weight)",
+        "AMZN": "Amazon",
+        "META": "Meta",
+        "GOOGL": "Alphabet",
+    }
+
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=days)
+    upcoming = []
+
+    try:
+        import yfinance as yf
+
+        for symbol, name in WATCHED.items():
+            try:
+                ticker = yf.Ticker(symbol)
+                cal = ticker.calendar
+                if cal is None:
+                    continue
+                if hasattr(cal, "columns"):
+                    dates = cal["Earnings Date"].dropna().tolist() if "Earnings Date" in cal.columns else []
+                elif isinstance(cal, dict):
+                    dates = cal.get("Earnings Date", [])
+                    if not isinstance(dates, list):
+                        dates = [dates]
+                else:
+                    continue
+                for d in dates:
+                    if d is None:
+                        continue
+                    if hasattr(d, "to_pydatetime"):
+                        d = d.to_pydatetime()
+                    if not hasattr(d, "tzinfo"):
+                        continue
+                    if d.tzinfo is None:
+                        import pytz
+
+                        d = pytz.utc.localize(d)
+                    if now <= d <= cutoff:
+                        upcoming.append(
+                            {
+                                "symbol": symbol,
+                                "name": name,
+                                "date": d.strftime("%Y-%m-%d"),
+                                "days_away": (d - now).days,
+                            }
+                        )
+            except Exception:
+                continue
+
+        upcoming.sort(key=lambda x: x["days_away"])
+        return {
+            "upcoming_earnings": upcoming,
+            "count": len(upcoming),
+            "days_lookahead": days,
+            "note": "High-impact earnings can increase volatility on MES/MNQ",
+            "source": "yfinance",
+        }
+
+    except ImportError:
+        return {
+            "upcoming_earnings": [],
+            "count": 0,
+            "days_lookahead": days,
+            "note": "yfinance not installed",
+            "source": "unavailable",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Pipeline ──────────────────────────────────────────────────────────────
 
 class PipelineRequest(BaseModel):
@@ -1728,6 +1836,18 @@ async def pipeline_status():
         "available": trading_pipeline is not None,
         "last_run": _decision_log[-1] if _decision_log else None,
         "decision_count": len(_decision_log),
+    }
+
+
+@app.get("/signals/stats")
+async def signals_stats():
+    """Return webhook signal statistics including deduplication cache size."""
+    from routers.webhook_router import _dedup_cache as _webhook_dedup
+    recent = get_recent_webhooks(limit=50)
+    return {
+        "total_received": len(recent),
+        "recent_webhooks": recent[:10],
+        "dedup_cache_size": len(_webhook_dedup),
     }
 
 
@@ -1867,45 +1987,57 @@ async def test_whatsapp():
     return {"status": "sent" if ok else "failed"}
 
 
-@app.post("/notifications/morning-briefing")
-async def send_morning_briefing():
-    """Manually trigger the WhatsApp morning briefing."""
-    if not db_manager:
-        raise HTTPException(status_code=503, detail="Database not initialized")
+# ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────
 
+
+@app.post("/notifications/vix-alert-check")
+async def check_vix_alert():
+    """Check VIX and send WhatsApp alert if above key thresholds."""
     try:
-        from notifications.whatsapp import format_morning_briefing, send_whatsapp_message
+        from analytics.vix_overlay import VIXOverlay
+        from notifications.whatsapp import send_whatsapp_message
 
-        # Gather open positions
-        positions = paper_tracker.get_open_positions() if paper_tracker else []
+        vix = VIXOverlay()
+        state = vix.get_state()
 
-        # Get yesterday's P&L
-        from datetime import datetime, timedelta, timezone
-        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
-        daily_pnl_rows = db_manager.get_daily_pnl(days=2)
-        yesterday_pnl = next(
-            (r for r in daily_pnl_rows if r.get("date", "").startswith(yesterday[:10])),
-            None,
-        )
+        thresholds = [
+            (40, "EXTREME VIX", "Consider halting all trading"),
+            (30, "ELEVATED VIX", "Reduce position size, widen stops"),
+            (20, "CAUTION VIX", "Monitor closely, use regime filter"),
+        ]
 
-        # Circuit breakers
-        cb_status = safety_layer.check_circuit_breakers() if safety_layer else {}
+        alert_level = None
+        guidance = None
+        for level, label, advice in thresholds:
+            if state.vix_value >= level:
+                alert_level = label
+                guidance = advice
+                break
 
-        # Session info
-        import pytz
-        ct = pytz.timezone("America/Chicago")
-        now_ct = datetime.now(ct)
-        session_info = {"day_of_week": now_ct.strftime("%A")}
+        if alert_level is None:
+            return {
+                "sent": False,
+                "vix": state.vix_value,
+                "regime": state.regime,
+                "reason": "VIX normal — no alert needed",
+            }
 
-        msg = format_morning_briefing(
-            session_info=session_info,
-            positions=positions,
-            daily_pnl=yesterday_pnl,
-            circuit_breakers=cb_status,
+        msg = (
+            "JARVIS TRADER - VIX Alert\n\n"
+            f"VIX: {state.vix_value:.1f} - {alert_level}\n"
+            f"Classification: {state.classification}\n\n"
+            f"{guidance}\n\n"
+            f"Source: {state.source}"
         )
 
         success = await send_whatsapp_message(msg)
-        return {"sent": success, "message_preview": msg[:200]}
+        return {
+            "sent": success,
+            "vix": state.vix_value,
+            "regime": state.regime,
+            "alert_level": alert_level,
+            "guidance": guidance,
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2056,41 +2188,6 @@ async def get_backtest_results():
     return results
 
 
-@app.get("/backtest/walk-forward-results")
-async def get_walk_forward_results():
-    """Return all walk-forward JSON result files from backtest/results/."""
-    import json
-    from pathlib import Path
-
-    results_dir = Path(__file__).parent / "backtest" / "results"
-    if not results_dir.exists():
-        return {"results": []}
-
-    wf_files = sorted(results_dir.glob("WF_*.json"))
-    results = []
-    for f in wf_files:
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            summary = data.get("summary", {})
-            results.append({
-                "filename": f.name,
-                "symbol": data.get("symbol", "?"),
-                "interval": data.get("interval", "?"),
-                "generated": data.get("generated", ""),
-                "wfe": summary.get("wfe", 0),
-                "avg_oos_return": summary.get("avg_oos_return", 0),
-                "avg_oos_sharpe": summary.get("avg_oos_sharpe", 0),
-                "avg_oos_pf": summary.get("avg_oos_profit_factor", 0),
-                "windows_profitable": summary.get("windows_profitable", 0),
-                "total_windows": summary.get("total_windows", 0),
-                "mode": "adaptive" if "adaptive" in f.name.lower() else "static",
-            })
-        except Exception as e:
-            logger.warning(f"Failed to parse WF file {f.name}: {e}")
-
-    return {"results": results}
-
-
 @app.post("/backtest/run")
 async def run_backtest(request: BacktestRequest):
     """Run a backtest for a symbol over the specified date range."""
@@ -2112,238 +2209,6 @@ async def run_backtest(request: BacktestRequest):
         result = backtester.run(df, request.symbol, multiplier)
         return result.to_dict()
 
-    loop = asyncio.get_event_loop()
-    with ThreadPoolExecutor() as pool:
-        result = await loop.run_in_executor(pool, _run)
-    return result
-
-
-@app.post("/backtest/regime-analysis")
-async def run_regime_analysis(request: BacktestRequest):
-    """
-    Analyze backtest results broken down by market regime.
-
-    Takes a symbol, date range, and interval; runs the backtest and then
-    performs regime-specific performance analysis across TRENDING_UP/DOWN,
-    RANGE_BOUND, HIGH_VOLATILITY, etc.
-
-    Returns:
-      - regime_metrics: Dict mapping regime -> {trade_count, win_rate, pf, sharpe, etc}
-      - edge_sources: Which regimes are profitable, distribution of trades
-    """
-    from concurrent.futures import ThreadPoolExecutor
-    import json
-
-    def _run():
-        from backtest import Backtester, BacktestDataLoader, generate_signals
-        from backtest.regime_analysis import RegimeAnalyzer
-        from pathlib import Path
-
-        # Run the backtest first
-        loader = BacktestDataLoader()
-        df = loader.load(request.symbol, request.start, request.end, request.interval)
-        if df is None or df.empty:
-            raise ValueError(f"No data for {request.symbol}")
-
-        df = generate_signals(df, symbol=request.symbol)
-        multiplier = loader.get_multiplier(request.symbol)
-        backtester = Backtester(
-            initial_capital=request.capital,
-            risk_per_trade=request.risk_per_trade,
-        )
-        result = backtester.run(df, request.symbol, multiplier)
-
-        # Get trades with regime data
-        trades = [t.to_dict() for t in result.trades]
-
-        # Perform regime analysis
-        analyzer = RegimeAnalyzer(df=None)
-        analyzer.analyze_trades(trades, regime_column='regime')
-
-        # Save regime analysis results
-        results_dir = Path(__file__).parent / "backtest" / "results"
-        results_dir.mkdir(parents=True, exist_ok=True)
-
-        regime_filename = f"{request.symbol}_{request.interval}_regime_analysis.json"
-        regime_path = results_dir / regime_filename
-
-        analysis_data = {
-            'symbol': request.symbol,
-            'interval': request.interval,
-            'start': request.start,
-            'end': request.end,
-            'analysis_date': datetime.now(timezone.utc).isoformat(),
-            'regime_metrics': analyzer.to_dict(),
-            'edge_sources': analyzer.identify_edge_sources(),
-            'backtest_summary': {
-                'total_trades': result.total_trades,
-                'win_rate': result.win_rate,
-                'profit_factor': result.profit_factor,
-                'total_return_pct': result.total_return_pct,
-                'sharpe_ratio': result.sharpe_ratio,
-            }
-        }
-
-        with open(regime_path, 'w') as f:
-            json.dump(analysis_data, f, indent=2)
-
-        return {
-            'regime_metrics': analyzer.to_dict(),
-            'edge_sources': analyzer.identify_edge_sources(),
-            'backtest_summary': analysis_data['backtest_summary'],
-            'results_file': regime_filename,
-        }
-
-    loop = asyncio.get_event_loop()
-    with ThreadPoolExecutor() as pool:
-        result = await loop.run_in_executor(pool, _run)
-    return result
-
-
-# ── Walk-Forward Validation ─────────────────────────────────────────────
-
-class WalkForwardRequest(BaseModel):
-    symbol: str = "SPY"
-    interval: str = "1h"
-    start: str = "2024-06-01"
-    end: str = "2026-03-27"
-    train_months: int = 6
-    test_months: int = 3
-    step_months: int = 3
-    capital: float = 100_000.0
-    full_grid: bool = False
-    adaptive_regime: bool = False
-    volume_filter: bool = False
-    mtf_filter: bool = False
-
-
-@app.post("/backtest/walk-forward")
-async def run_walk_forward(request: WalkForwardRequest):
-    """
-    Execute walk-forward validation to detect parameter overfitting.
-
-    Rolls through historical data, optimizing on training windows and validating
-    on out-of-sample test windows. Returns Walk-Forward Efficiency (WFE) and
-    detailed per-window metrics.
-
-    Args:
-        symbol: Trading symbol (e.g., "SPY", "MES", "MCL")
-        interval: Timeframe ("1d", "1h", "15m", etc.)
-        start: Start date (YYYY-MM-DD)
-        end: End date (YYYY-MM-DD)
-        train_months: Training window size (default: 6)
-        test_months: Test window size (default: 3)
-        step_months: Step size between windows (default: 3)
-        capital: Initial capital for backtests (default: 100,000)
-        full_grid: Use full param grid (slower) vs fast grid
-        adaptive_regime: Use regime-adaptive STC thresholds
-        volume_filter: Block entries on below-average volume
-        mtf_filter: Apply 4h MTF confirmation filter
-
-    Returns:
-        Detailed walk-forward results with:
-        - WFE (Walk-Forward Efficiency): OOS Sharpe / IS Sharpe
-          * > 0.70 = Excellent (minimal overfitting)
-          * 0.50-0.70 = Good (acceptable degradation)
-          * 0.30-0.50 = Marginal (significant overfitting)
-          * < 0.30 = Poor (likely unusable)
-        - Per-window IS and OOS metrics
-        - Parameter stability across windows
-        - Results file path
-    """
-    def _run():
-        try:
-            from backtest.walk_forward import WalkForwardValidator, save_results
-            from backtest.data_loader import BacktestDataLoader
-            import json
-
-            # Load data
-            loader = BacktestDataLoader()
-            logger.info(f"[WF] Loading {request.symbol} ({request.interval}) from {request.start} to {request.end}...")
-            df = loader.load(request.symbol, request.start, request.end, request.interval)
-
-            if df is None or df.empty:
-                return {
-                    "error": f"No data returned for {request.symbol}",
-                    "symbol": request.symbol,
-                    "interval": request.interval,
-                }
-
-            logger.info(f"[WF] Loaded {len(df)} bars. Running walk-forward validation...")
-
-            # Run walk-forward validation
-            validator = WalkForwardValidator(
-                train_months=request.train_months,
-                test_months=request.test_months,
-                step_months=request.step_months,
-            )
-
-            multiplier = loader.get_multiplier(request.symbol)
-            result = validator.run(
-                df,
-                request.symbol,
-                multiplier=multiplier,
-                capital=request.capital,
-                fast=not request.full_grid,
-                adaptive_regime=request.adaptive_regime,
-                volume_filter=request.volume_filter,
-                mtf_filter=request.mtf_filter,
-            )
-
-            # Save results to JSON
-            results_path = save_results(
-                result,
-                request.symbol,
-                request.interval,
-                adaptive_regime=request.adaptive_regime,
-                volume_filter=request.volume_filter,
-                mtf_filter=request.mtf_filter,
-            )
-
-            logger.info(f"[WF] Walk-forward validation complete. Results saved to {results_path}")
-
-            # Return summary + file path
-            return {
-                "success": True,
-                "symbol": request.symbol,
-                "interval": request.interval,
-                "windows_count": result["summary"]["total_windows"],
-                "summary": result["summary"],
-                "results_file": str(results_path),
-                "windows": [
-                    {
-                        "window": w["window"],
-                        "train_period": w["train_period"],
-                        "test_period": w["test_period"],
-                        "best_params": w["best_params"],
-                        "is_metrics": {
-                            "trades": w["is_result"].total_trades,
-                            "win_rate": round(w["is_result"].win_rate, 4),
-                            "profit_factor": round(min(w["is_result"].profit_factor, 999.0), 3),
-                            "sharpe": round(w["is_result"].sharpe_ratio, 3),
-                            "return_pct": round(w["is_result"].total_return_pct * 100, 2),
-                        },
-                        "oos_metrics": {
-                            "trades": w["oos_result"].total_trades,
-                            "win_rate": round(w["oos_result"].win_rate, 4),
-                            "profit_factor": round(min(w["oos_result"].profit_factor, 999.0), 3),
-                            "sharpe": round(w["oos_result"].sharpe_ratio, 3),
-                            "return_pct": round(w["oos_result"].total_return_pct * 100, 2),
-                        },
-                    }
-                    for w in result["windows"]
-                ],
-            }
-
-        except Exception as exc:
-            logger.error(f"[WF] Walk-forward validation failed: {exc}", exc_info=True)
-            return {
-                "error": str(exc),
-                "symbol": request.symbol,
-                "interval": request.interval,
-            }
-
-    from concurrent.futures import ThreadPoolExecutor
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor() as pool:
         result = await loop.run_in_executor(pool, _run)
@@ -2618,145 +2483,931 @@ async def log_mgc_paper_trade(req: MGCTradeLogRequest):
             from notifications.whatsapp import get_notifier
             notifier = get_notifier()
             if notifier.enabled:
-                # Alert would be sent here with trade details
-                logger.info(f"[WHATSAPP] Would send alert for trade: {trade}")
-        except Exception as exc:
-            logger.warning(f"[WHATSAPP] Alert failed: {exc}")
+                pnl = trade_dict.get("pnl", 0)
+                msg = (
+                    f"JARVIS PAPER-MGC: {req.direction} trade closed\n"
+                    f"Entry: {req.entry_price:.2f} -> Exit: {req.exit_price:.2f}\n"
+                    f"Reason: {req.exit_reason}\n"
+                    f"Total trades: {metrics['total_trades']}, "
+                    f"Win rate: {metrics['win_rate']:.0%}"
+                )
+                if should_kill:
+                    msg += f"\n*** KILL THRESHOLD BREACHED: {kill_reason} ***"
+                asyncio.create_task(notifier.send(msg))
+        except Exception:
+            pass  # notification failure should not block the trade log
 
         return metrics
 
-    except Exception as exc:
-        logger.error(f"[PAPER-MGC-LOG] Failed to log trade: {exc}", exc_info=True)
-        raise HTTPException(500, f"Failed to log trade: {exc}")
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Trade log failed: {e}")
+        raise HTTPException(500, f"Failed to log MGC paper trade: {e}")
 
 
-# ── Market Regime Status ──────────────────────────────────────────────────
-
-@app.get("/analytics/regime")
-async def get_analytics_regime():
+@app.get("/paper/mgc-performance")
+async def get_mgc_paper_performance():
     """
-    Current 5-layer market regime assessment.
+    Return current MGC paper trading performance metrics.
 
-    Returns the composite regime (BULLISH / BEARISH / NEUTRAL / UNKNOWN),
-    a confidence score, and per-layer detail for:
-      vix       -- VIX overlay (stub until Phase 3 data feed)
-      mtf       -- Multi-timeframe alignment (stub)
-      stc       -- Schaff Trend Cycle signal (from last pipeline run if available)
-      ema_trend -- EMA trend direction (from last pipeline run if available)
-      volume    -- Volume vs average (stub)
-
-    When the pipeline has been run at least once, signal values from the
-    most recent decision log entry are surfaced. Otherwise all layers
-    report stub status.
+    Reads from the PaperTradeTracker JSON store and returns:
+    total trades, P&L, win rate, profit factor, max drawdown,
+    regime breakdown, exit reason breakdown, and kill condition status.
     """
-    now = datetime.now(timezone.utc)
-
-    # VIX layer -- read from VIXOverlay stub
-    vix_value: float | None = None
-    vix_classification = "UNKNOWN"
     try:
-        from analytics.vix_overlay import VIXOverlay
-        overlay = VIXOverlay()
-        vix_state = overlay.get_current_state()
-        vix_value = vix_state.vix_value
-        vix_classification = vix_state.regime  # CALM / NORMAL / CAUTION / ELEVATED / EXTREME
-    except Exception:
-        pass
+        from backtest.paper_tracker import PaperTradeTracker
+        from backtest.paper_config import MGC_PAPER_CONFIG
 
-    # STC / EMA trend -- pull from most recent decision log entries
-    stc_signal = "UNKNOWN"
-    ema_direction = "UNKNOWN"
+        tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
+        metrics = tracker.get_metrics()
+
+        # Add kill condition check
+        should_kill, kill_reason = tracker.check_kill_conditions()
+        metrics["kill_threshold_breached"] = should_kill
+        metrics["kill_reason"] = kill_reason if should_kill else None
+        metrics["monthly_summary"] = tracker.monthly_summary()
+        metrics["config"] = {
+            "symbol": MGC_PAPER_CONFIG["symbol"],
+            "interval": MGC_PAPER_CONFIG["interval"],
+            "adaptive_regime": MGC_PAPER_CONFIG["adaptive_regime"],
+            "risk_per_trade": MGC_PAPER_CONFIG["risk_per_trade"],
+            "initial_capital": MGC_PAPER_CONFIG["initial_capital"],
+            "wfe": 0.88,
+        }
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Performance query failed: {e}")
+        raise HTTPException(500, f"Failed to get MGC performance: {e}")
+
+
+# ── Monte Carlo Backtest Analysis ────────────────────────────────────────────
+
+
+class MonteCarloRequest(BaseModel):
+    """Request for Monte Carlo simulation on backtest results."""
+    results_file: str  # Path to JSON results file (relative to backtest/results/)
+    simulations: int = 1_000  # Number of simulations (default: 1000)
+    max_slippage_ticks: float = 0.0  # Max random slippage per trade in ticks (default: 0)
+    symbol: str = None  # Instrument symbol (auto-detected if None)
+    initial_capital: float = 100_000.0  # Starting capital for simulation
+
+
+@app.post("/backtest/monte-carlo")
+async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
+    """
+    Run Monte Carlo simulation on backtest results to validate strategy robustness.
+
+    Shuffles trade order N times with optional slippage modeling to generate a
+    distribution of possible outcomes. Returns percentile statistics across all
+    simulations plus confidence metrics (probability of ruin, 2x return target, etc).
+
+    Request:
+        results_file: Path to backtest JSON (e.g., "MES_1h_2024-06-01_2026-03-27.json")
+        simulations: Number of Monte Carlo runs (default: 1000)
+        max_slippage_ticks: Uniform random slippage 0-N ticks per trade (default: 0)
+        symbol: Instrument symbol for tick value lookup (auto if None)
+        initial_capital: Starting capital (default: 100000)
+
+    Returns:
+        percentile_statistics: p5, p25, median, p75, p95 for final capital, max drawdown, Sharpe
+        confidence_metrics: prob_profitable, prob_ruin, prob_2x, VaR 5%, CVaR
+        verdict: EXCELLENT/GOOD/MARGINAL/POOR based on distribution quality
+    """
     try:
-        for entry in reversed(_decision_log):
-            if "stc_signal" in entry:
-                stc_signal = str(entry["stc_signal"]).upper()
+        from pathlib import Path
+        from backtest.monte_carlo import run_monte_carlo, _load_result_from_json
+
+        # Resolve file path
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            # Try relative to backtest/results/
+            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = Path(__file__).parent / "backtest" / "results" / req.results_file
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        # Load backtest result
+        logger.info(f"[MONTE-CARLO] Loading {results_path.name}")
+        bt_result = _load_result_from_json(str(results_path))
+
+        # Auto-detect symbol from filename if not provided
+        symbol = req.symbol
+        if not symbol:
+            stem = results_path.stem
+            for part in stem.split("_"):
+                if part.isupper() and len(part) <= 4:
+                    symbol = part
+                    break
+        if not symbol:
+            symbol = "MES"
+
+        # Run simulation
+        logger.info(f"[MONTE-CARLO] Running {req.simulations:,} simulations for {symbol}")
+        mc_results = run_monte_carlo(
+            bt_result,
+            n_simulations=req.simulations,
+            initial_capital=req.initial_capital,
+            max_slippage_ticks=req.max_slippage_ticks,
+            symbol=symbol,
+            seed=42,
+        )
+
+        return mc_results
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO] File error: {e}")
+        raise HTTPException(404, f"Results file not found: {e}")
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO] Simulation failed: {e}")
+        raise HTTPException(500, f"Monte Carlo simulation failed: {e}")
+
+
+@app.post("/backtest/monte-carlo/chart")
+async def generate_monte_carlo_chart(req: MonteCarloRequest) -> dict:
+    """
+    Generate an interactive HTML equity curve fan chart from Monte Carlo results.
+
+    Creates a visualization showing median equity curve plus 25th-75th and 5th-95th
+    percentile bands. Useful for assessing visual robustness and trade sequencing risk.
+
+    Returns:
+        chart_path: Full file path to generated HTML
+        url: Relative URL if served via static files
+    """
+    try:
+        from pathlib import Path
+        from backtest.monte_carlo_viz import save_fan_chart
+
+        # Resolve file path (same as monte-carlo endpoint)
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = Path(__file__).parent / "backtest" / "results" / req.results_file
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        # But we need the JSON results from run_monte_carlo first!
+        # Check if _monte_carlo.json exists
+        stem = results_path.stem
+        mc_json_path = results_path.parent / f"{stem}_monte_carlo.json"
+        if not mc_json_path.exists():
+            raise FileNotFoundError(
+                f"Monte Carlo JSON not found. Run /backtest/monte-carlo first to generate {mc_json_path.name}"
+            )
+
+        logger.info(f"[MONTE-CARLO-VIZ] Generating chart from {mc_json_path.name}")
+        html_path = save_fan_chart(str(mc_json_path))
+
+        return {
+            "chart_path": str(html_path),
+            "status": "success",
+            "message": f"Chart generated: {Path(html_path).name}",
+        }
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO-VIZ] File error: {e}")
+        raise HTTPException(404, f"Error: {e}")
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO-VIZ] Chart generation failed: {e}")
+        raise HTTPException(500, f"Chart generation failed: {e}")
+
+
+# ── WebSocket Real-Time Events ────────────────────────────────────────────
+
+@app.websocket("/ws/events")
+async def websocket_endpoint(websocket):
+    """
+    WebSocket endpoint for real-time trading events.
+
+    Accepts connections at /ws/events.
+    Sends JSON events for:
+      - order_fill: Order execution
+      - kill_switch: Kill switch state changes
+      - circuit_breaker: Circuit breaker triggers
+      - pipeline_complete: Pipeline analysis completion
+      - safety_event: Safety/risk events
+      - price_update: Price updates
+      - ping: Keep-alive ping
+
+    Connection is kept alive with ping frames every 30 seconds.
+    Client is automatically removed on disconnect or send failure.
+    """
+    if not ws_manager:
+        await websocket.close(code=1011, reason="WebSocket manager not initialized")
+        return
+
+    await ws_manager.connect(websocket)
+
+    try:
+        # Keep the connection alive and listen for client frames
+        ping_interval = 30  # seconds
+        last_ping = datetime.now()
+
+        while True:
+            try:
+                # Receive with timeout to allow periodic ping
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=ping_interval)
+                logger.debug(f"WebSocket received: {data.get('type', 'unknown')}")
+
+            except asyncio.TimeoutError:
+                # Send ping to keep connection alive
+                now = datetime.now()
+                if (now - last_ping).total_seconds() >= ping_interval:
+                    try:
+                        await websocket.send_json({"type": "ping", "timestamp": now.isoformat()})
+                        last_ping = now
+                    except Exception as e:
+                        logger.debug(f"Ping failed: {e}")
+                        break
+
+            except Exception as e:
+                logger.debug(f"WebSocket receive error: {e}")
                 break
-        for entry in reversed(_decision_log):
-            if "ema_trend" in entry:
-                ema_direction = str(entry["ema_trend"]).upper()
-                break
-    except Exception:
-        pass
 
-    # Derive composite regime from available signals
-    bullish_signals = 0
-    bearish_signals = 0
-    total_active = 0
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {e}")
+    finally:
+        await ws_manager.disconnect(websocket)
+        logger.info("WebSocket connection closed")
 
-    if vix_classification in ("CALM", "NORMAL"):
-        bullish_signals += 1
-        total_active += 1
-    elif vix_classification in ("ELEVATED", "EXTREME"):
-        bearish_signals += 1
-        total_active += 1
-    elif vix_classification == "CAUTION":
-        total_active += 1  # neutral vote
 
-    if stc_signal in ("BULLISH", "BUY", "LONG", "POSITIVE", "ABOVE_SIGNAL"):
-        bullish_signals += 1
-        total_active += 1
-    elif stc_signal in ("BEARISH", "SELL", "SHORT", "NEGATIVE", "BELOW_SIGNAL"):
-        bearish_signals += 1
-        total_active += 1
+# ── WebSocket Status Endpoint ─────────────────────────────────────────────
 
-    if ema_direction in ("UPTREND", "UP", "BULLISH", "LONG"):
-        bullish_signals += 1
-        total_active += 1
-    elif ema_direction in ("DOWNTREND", "DOWN", "BEARISH", "SHORT"):
-        bearish_signals += 1
-        total_active += 1
+@app.get("/ws/status")
+async def websocket_status():
+    """Get WebSocket manager status — connected client count."""
+    if not ws_manager:
+        return {"status": "not_initialized", "connections": 0}
+    return {"status": "ok", "connections": ws_manager.get_connection_count()}
 
-    if total_active == 0:
-        composite_regime = "UNKNOWN"
-        confidence = 0.0
-        trade_filter = "unknown"
-    elif bullish_signals > bearish_signals:
-        composite_regime = "BULLISH"
-        confidence = round(bullish_signals / total_active, 2)
-        trade_filter = "pass"
-    elif bearish_signals > bullish_signals:
-        composite_regime = "BEARISH"
-        confidence = round(bearish_signals / total_active, 2)
-        trade_filter = "block"
-    else:
-        composite_regime = "NEUTRAL"
-        confidence = 0.5
-        trade_filter = "unknown"
 
-    # VIX EXTREME always blocks regardless of other signals
-    if vix_classification == "EXTREME":
-        composite_regime = "BEARISH"
-        confidence = 1.0
-        trade_filter = "block"
+# ── Performance Report Endpoint ───────────────────────────────────────────────
 
-    return {
-        "timestamp": now.isoformat(),
-        "regime": composite_regime,
-        "confidence": confidence,
-        "layers": {
-            "vix": {
-                "status": "stub",
-                "value": vix_value,
-                "classification": vix_classification,
-            },
-            "mtf": {
-                "status": "stub",
-                "timeframes_aligned": None,
-            },
-            "stc": {
-                "status": "stub",
-                "value": None,
-                "signal": stc_signal,
-            },
-            "ema_trend": {
-                "status": "stub",
-                "direction": ema_direction,
-            },
-            "volume": {
-                "status": "stub",
-                "above_average": None,
-            },
-        },
-        "note": "Regime filter stubs active -- live data feeds needed for full activation",
-        "trade_filter": trade_filter,
-    }
+
+@app.get("/reports/performance")
+async def generate_performance_report(format: str = "html"):
+    """Generate a self-contained HTML performance report."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    try:
+        from analytics.performance import PerformanceCalculator
+        from datetime import datetime, timezone
+
+        calc = PerformanceCalculator(db_manager)
+        summary = calc.calculate_summary()
+        compare = calc.compare_to_backtest()
+
+        # Get trade history
+        trades = db_manager.get_trade_history(limit=200)
+        daily_pnl = db_manager.get_daily_pnl(days=90)
+
+        now = datetime.now(timezone.utc)
+
+        # Build HTML report
+        html = _build_performance_report_html(
+            summary=summary,
+            compare=compare,
+            trades=trades,
+            daily_pnl=daily_pnl,
+            generated_at=now.isoformat(),
+        )
+
+        from fastapi.responses import HTMLResponse, Response
+
+        if format == "html":
+            return HTMLResponse(content=html)
+        else:
+            # Return as downloadable file
+            return Response(
+                content=html,
+                media_type="text/html",
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="jarvis-performance-{now.strftime("%Y%m%d")}.html"'
+                    )
+                },
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _build_performance_report_html(
+    summary: dict,
+    compare: dict,
+    trades: list,
+    daily_pnl: list,
+    generated_at: str,
+) -> str:
+    """Build a self-contained HTML performance report."""
+
+    def fmt_pct(v, decimals=1):
+        if v is None:
+            return "N/A"
+        return f"{v * 100:.{decimals}f}%"
+
+    def fmt_num(v, decimals=2):
+        if v is None:
+            return "N/A"
+        return f"{v:.{decimals}f}"
+
+    def fmt_usd(v):
+        if v is None:
+            return "N/A"
+        return f"${v:,.2f}"
+
+    # Summary metrics
+    pf = summary.get("profit_factor")
+    sharpe = summary.get("sharpe_ratio")
+    win_rate = summary.get("win_rate")
+    max_dd = summary.get("max_drawdown", 0)
+    total_trades = summary.get("total_trades", 0)
+    gross_pnl = summary.get("gross_pnl", 0)
+
+    # Validation status
+    pf_pass = pf and pf >= 2.0
+    sharpe_pass = sharpe and sharpe >= 1.5
+
+    pf_class = "pass" if pf_pass else ("fail" if pf else "neutral")
+    pf_status_class = "pass" if pf_pass else "fail"
+    pf_status_txt = "Pass (>= 2.0)" if pf_pass else ("Fail (>= 2.0)" if pf else "No data")
+
+    sharpe_class = "pass" if sharpe_pass else ("fail" if sharpe else "neutral")
+    sharpe_status_class = "pass" if sharpe_pass else "fail"
+    sharpe_status_txt = "Pass (>= 1.5)" if sharpe_pass else ("Fail (>= 1.5)" if sharpe else "No data")
+
+    gross_pnl_safe = gross_pnl or 0
+    pnl_class = "pass" if gross_pnl_safe >= 0 else "fail"
+
+    # Trade rows
+    trade_rows = ""
+    for t in trades[:100]:
+        pnl = t.get("pnl", 0) or 0
+        color = "#22c55e" if pnl >= 0 else "#ef4444"
+        entry_price = t.get("entry_price", 0) or 0
+        exit_price = t.get("exit_price", 0) or 0
+        trade_rows += (
+            "<tr>"
+            f"<td>{t.get('symbol', '?')}</td>"
+            f"<td>{t.get('side', '?').upper()}</td>"
+            f"<td>{t.get('quantity', '?')}</td>"
+            f"<td>${entry_price:.2f}</td>"
+            f"<td>${exit_price:.2f}</td>"
+            f'<td style="color:{color}">{fmt_usd(pnl)}</td>'
+            f"<td>{str(t.get('entry_time', ''))[:10]}</td>"
+            "</tr>"
+        )
+
+    # Daily P&L data for chart
+    pnl_data = [r.get("realized_pnl", 0) for r in daily_pnl[-30:]]
+    pnl_json = str(pnl_data).replace("None", "0")
+    dates_json = str([str(r.get("date", ""))[:10] for r in daily_pnl[-30:]])
+
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '<meta charset="UTF-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        "<title>JARVIS TRADER - Performance Report</title>\n"
+        '<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>\n'
+        "<style>\n"
+        "  * { box-sizing: border-box; margin: 0; padding: 0; }\n"
+        "  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n"
+        "          background: #0a0a0a; color: #e5e5e5; padding: 24px; }\n"
+        "  h1 { font-size: 1.5rem; margin-bottom: 4px; }\n"
+        "  .subtitle { color: #6b6b6b; font-size: 0.875rem; margin-bottom: 24px; }\n"
+        "  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));"
+        " gap: 12px; margin-bottom: 24px; }\n"
+        "  .card { background: #161616; border: 1px solid #262626; border-radius: 8px; padding: 16px; }\n"
+        "  .card-label { font-size: 0.75rem; color: #6b6b6b; text-transform: uppercase; letter-spacing: 0.05em; }\n"
+        "  .card-value { font-size: 1.5rem; font-weight: 600; margin-top: 4px; }\n"
+        "  .card-status { font-size: 0.75rem; margin-top: 4px; }\n"
+        "  .pass { color: #22c55e; }\n"
+        "  .fail { color: #ef4444; }\n"
+        "  .neutral { color: #6b6b6b; }\n"
+        "  .section { background: #161616; border: 1px solid #262626; border-radius: 8px;"
+        " padding: 20px; margin-bottom: 16px; }\n"
+        "  .section h2 { font-size: 1rem; margin-bottom: 16px; color: #a3a3a3; }\n"
+        "  table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }\n"
+        "  th { text-align: left; padding: 8px 12px; border-bottom: 1px solid #262626;"
+        " color: #6b6b6b; font-weight: 500; }\n"
+        "  td { padding: 8px 12px; border-bottom: 1px solid #1a1a1a; }\n"
+        "  tr:hover td { background: #1a1a1a; }\n"
+        "  canvas { max-height: 200px; }\n"
+        "</style>\n"
+        "</head>\n"
+        "<body>\n"
+        "<h1>JARVIS TRADER - Performance Report</h1>\n"
+        f'<p class="subtitle">Generated {generated_at[:10]} | Paper Trading Phase</p>\n'
+        "\n"
+        '<div class="grid">\n'
+        '  <div class="card">\n'
+        '    <div class="card-label">Profit Factor</div>\n'
+        f'    <div class="card-value {pf_class}">{fmt_num(pf)}</div>\n'
+        f'    <div class="card-status {pf_status_class}">{pf_status_txt}</div>\n'
+        "  </div>\n"
+        '  <div class="card">\n'
+        '    <div class="card-label">Sharpe Ratio</div>\n'
+        f'    <div class="card-value {sharpe_class}">{fmt_num(sharpe)}</div>\n'
+        f'    <div class="card-status {sharpe_status_class}">{sharpe_status_txt}</div>\n'
+        "  </div>\n"
+        '  <div class="card">\n'
+        '    <div class="card-label">Win Rate</div>\n'
+        f'    <div class="card-value neutral">{fmt_pct(win_rate)}</div>\n'
+        '    <div class="card-status neutral">Target &gt;= 50%</div>\n'
+        "  </div>\n"
+        '  <div class="card">\n'
+        '    <div class="card-label">Max Drawdown</div>\n'
+        f'    <div class="card-value fail">{fmt_pct(max_dd)}</div>\n'
+        '    <div class="card-status neutral">Limit &lt;= -15%</div>\n'
+        "  </div>\n"
+        '  <div class="card">\n'
+        '    <div class="card-label">Total Trades</div>\n'
+        f'    <div class="card-value neutral">{total_trades}</div>\n'
+        '    <div class="card-status neutral">Target &gt;= 30</div>\n'
+        "  </div>\n"
+        '  <div class="card">\n'
+        "    <div class=\"card-label\">Gross P&amp;L</div>\n"
+        f'    <div class="card-value {pnl_class}">{fmt_usd(gross_pnl)}</div>\n'
+        '    <div class="card-status neutral">Paper account</div>\n'
+        "  </div>\n"
+        "</div>\n"
+        "\n"
+        '<div class="section">\n'
+        "  <h2>Daily P&amp;L - Last 30 Days</h2>\n"
+        '  <canvas id="pnlChart"></canvas>\n'
+        "</div>\n"
+        "\n"
+        '<div class="section">\n'
+        "  <h2>Trade History (latest 100)</h2>\n"
+        "  <table>\n"
+        "    <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th>"
+        "<th>Entry</th><th>Exit</th><th>P&amp;L</th><th>Date</th></tr></thead>\n"
+        f"    <tbody>{trade_rows}</tbody>\n"
+        "  </table>\n"
+        "</div>\n"
+        "\n"
+        "<script>\n"
+        "const ctx = document.getElementById('pnlChart').getContext('2d');\n"
+        f"const pnlData = {pnl_json};\n"
+        f"const labels = {dates_json};\n"
+        "new Chart(ctx, {\n"
+        "  type: 'bar',\n"
+        "  data: {\n"
+        "    labels: labels,\n"
+        "    datasets: [{\n"
+        "      label: 'Daily P&L',\n"
+        "      data: pnlData,\n"
+        "      backgroundColor: pnlData.map(v => v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'),\n"
+        "      borderColor: pnlData.map(v => v >= 0 ? '#22c55e' : '#ef4444'),\n"
+        "      borderWidth: 1,\n"
+        "    }],\n"
+        "  },\n"
+        "  options: {\n"
+        "    responsive: true,\n"
+        "    plugins: { legend: { display: false } },\n"
+        "    scales: {\n"
+        "      x: { ticks: { color: '#6b6b6b', maxTicksLimit: 10 } },\n"
+        "      y: { ticks: { color: '#6b6b6b' }, grid: { color: '#1a1a1a' } },\n"
+        "    },\n"
+        "  },\n"
+        "});\n"
+        "</script>\n"
+        "</body>\n"
+        "</html>"
+    )
+
+
+@app.get("/portfolio/stats/session-today")
+async def get_todays_session():
+    """Get today's trading session stats (current calendar day in CT)."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    try:
+        import sqlite3
+        import pytz
+        from datetime import datetime, timezone
+
+        ct = pytz.timezone("America/Chicago")
+        now_ct = datetime.now(ct)
+        today_ct = now_ct.strftime("%Y-%m-%d")
+
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                cursor = conn.execute(
+                    """SELECT pnl, side, symbol, quantity, entry_price, exit_price, entry_time, exit_time
+                       FROM paper_trades
+                       WHERE status = 'closed'
+                         AND date(exit_time) = ?
+                       ORDER BY exit_time ASC""",
+                    (today_ct,)
+                )
+                cols = [d[0] for d in cursor.description]
+                trades = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+                # Open positions opened today
+                cursor2 = conn.execute(
+                    """SELECT symbol, side, quantity, entry_price, entry_time
+                       FROM paper_trades
+                       WHERE status = 'open'
+                         AND date(entry_time) = ?""",
+                    (today_ct,)
+                )
+                cols2 = [d[0] for d in cursor2.description]
+                open_today = [dict(zip(cols2, row)) for row in cursor2.fetchall()]
+            finally:
+                conn.close()
+
+        pnls = [float(t.get("pnl", 0) or 0) for t in trades]
+        wins = [p for p in pnls if p > 0]
+        losses = [p for p in pnls if p < 0]
+
+        gross_pnl = sum(pnls)
+        win_count = len(wins)
+        loss_count = len(losses)
+        win_rate = win_count / len(pnls) if pnls else None
+
+        return {
+            "date": today_ct,
+            "session": "RTH" if 8 <= now_ct.hour < 15 else "EXTENDED",
+            "closed_trades": len(trades),
+            "open_trades": len(open_today),
+            "gross_pnl": round(gross_pnl, 2),
+            "wins": win_count,
+            "losses": loss_count,
+            "win_rate": round(win_rate, 3) if win_rate is not None else None,
+            "best_trade": round(max(pnls), 2) if pnls else None,
+            "worst_trade": round(min(pnls), 2) if pnls else None,
+            "avg_pnl": round(sum(pnls) / len(pnls), 2) if pnls else None,
+            "symbols_traded": list({t.get("symbol") for t in trades}),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/portfolio/stats/commissions")
+async def get_commission_stats():
+    """
+    Estimate total commissions paid during paper trading phase.
+    MES: $1.57/contract/side (CME exchange + NFA + brokerage estimate)
+    MNQ: $1.57/contract/side
+    MCL: $2.05/contract/side
+    """
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
+    try:
+        RATES = {"MES": 1.57, "MNQ": 1.57, "MCL": 2.05, "DEFAULT": 1.57}
+        trades = db_manager.get_trade_history(limit=10000)
+        total_commissions = 0.0
+        by_symbol: dict[str, float] = {}
+        for t in trades:
+            sym = (t.get("symbol") or "").upper()
+            qty = int(t.get("quantity") or 1)
+            rate = RATES.get(sym, RATES["DEFAULT"])
+            commission = rate * qty * 2  # entry + exit
+            total_commissions += commission
+            by_symbol[sym] = by_symbol.get(sym, 0.0) + commission
+
+        # Net PnL after commissions
+        gross_pnl = sum(float(t.get("pnl") or 0) for t in trades if t.get("status") == "closed")
+        net_pnl = gross_pnl - total_commissions
+
+        return {
+            "total_commissions": round(total_commissions, 2),
+            "gross_pnl": round(gross_pnl, 2),
+            "net_pnl": round(net_pnl, 2),
+            "by_symbol": {k: round(v, 2) for k, v in by_symbol.items()},
+            "trade_count": len(trades),
+            "avg_commission_per_trade": round(total_commissions / max(len(trades), 1), 2),
+            "rates": RATES,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/analytics/trades/by-day")
+async def get_trades_by_day():
+    """Day-of-week breakdown of paper trade performance.
+    Returns win rate, avg pnl, count for each day (Mon-Fri).
+    """
+    try:
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                rows = conn.execute(
+                    """SELECT
+                         strftime('%w', exit_time) AS dow,
+                         COUNT(*) AS cnt,
+                         SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                         SUM(pnl) AS total_pnl,
+                         AVG(pnl) AS avg_pnl
+                       FROM paper_trades
+                       WHERE status = 'CLOSED' AND exit_time IS NOT NULL
+                       GROUP BY dow
+                       ORDER BY dow"""
+                ).fetchall()
+            finally:
+                conn.close()
+
+        DAY_NAMES = {"0": "Sun", "1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat"}
+        result = []
+        for row in rows:
+            dow, cnt, wins, total_pnl, avg_pnl = row
+            result.append({
+                "day": DAY_NAMES.get(str(dow), str(dow)),
+                "count": cnt,
+                "wins": wins,
+                "losses": cnt - wins,
+                "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
+                "total_pnl": round(total_pnl or 0, 2),
+                "avg_pnl": round(avg_pnl or 0, 2),
+            })
+        return {"days": result, "total_days_analyzed": len(result)}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/analytics/trades/by-symbol")
+async def get_trades_by_symbol():
+    """Per-symbol breakdown of paper trade performance."""
+    try:
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                rows = conn.execute(
+                    """SELECT
+                         symbol,
+                         COUNT(*) AS cnt,
+                         SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                         SUM(pnl) AS total_pnl,
+                         AVG(pnl) AS avg_pnl,
+                         MAX(pnl) AS best_trade,
+                         MIN(pnl) AS worst_trade
+                       FROM paper_trades
+                       WHERE status = 'CLOSED'
+                       GROUP BY symbol
+                       ORDER BY total_pnl DESC"""
+                ).fetchall()
+            finally:
+                conn.close()
+
+        result = []
+        for row in rows:
+            symbol, cnt, wins, total_pnl, avg_pnl, best, worst = row
+            result.append({
+                "symbol": symbol,
+                "count": cnt,
+                "wins": wins,
+                "losses": cnt - wins,
+                "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
+                "total_pnl": round(total_pnl or 0, 2),
+                "avg_pnl": round(avg_pnl or 0, 2),
+                "best_trade": round(best or 0, 2),
+                "worst_trade": round(worst or 0, 2),
+            })
+        return {"symbols": result, "total_symbols": len(result)}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/alerts/history")
+async def get_alert_history(limit: int = 100, alert_type: str | None = None):
+    """Return recent alert log entries."""
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
+    try:
+        rows = db_manager.get_alert_history(limit=min(limit, 500), alert_type=alert_type)
+        return {"alerts": rows, "count": len(rows)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/alerts/stats")
+async def get_alert_stats():
+    """Return alert counts grouped by type and status."""
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
+    try:
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                cursor = conn.execute("""
+                    SELECT alert_type, status, COUNT(*) as count
+                    FROM alert_log
+                    GROUP BY alert_type, status
+                    ORDER BY count DESC
+                """)
+                rows = [{"alert_type": r[0], "status": r[1], "count": r[2]} for r in cursor.fetchall()]
+                total_cursor = conn.execute("SELECT COUNT(*) FROM alert_log")
+                total = total_cursor.fetchone()[0]
+            finally:
+                conn.close()
+        return {"stats": rows, "total": total}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/portfolio/import/trades")
+async def import_paper_trades(request: Request):
+    """Bulk import paper trades from JSON array.
+
+    Body: {"trades": [{"symbol": "MES", "action": "LONG", "entry_price": 5000.0,
+                       "exit_price": 5010.0, "quantity": 1, "pnl": 50.0,
+                       "entry_time": "2026-03-01T09:30:00Z",
+                       "exit_time": "2026-03-01T10:00:00Z"}, ...]}
+    Returns: {"imported": N, "skipped": 0, "errors": []}
+    """
+    try:
+        body = await request.json()
+        trades = body.get("trades", [])
+        if not isinstance(trades, list):
+            raise HTTPException(status_code=400, detail="'trades' must be a list")
+        if len(trades) > 1000:
+            raise HTTPException(status_code=400, detail="Max 1000 trades per import")
+
+        imported = 0
+        errors = []
+
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                for i, t in enumerate(trades):
+                    try:
+                        conn.execute(
+                            """INSERT INTO paper_trades
+                               (symbol, action, entry_price, exit_price, quantity,
+                                pnl, status, entry_time, exit_time, strategy, notes)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                            (
+                                str(t.get("symbol", "UNKNOWN")),
+                                str(t.get("action", "LONG")),
+                                float(t.get("entry_price", 0)),
+                                float(t.get("exit_price", 0)),
+                                int(t.get("quantity", 1)),
+                                float(t.get("pnl", 0)),
+                                "CLOSED",
+                                str(t.get("entry_time", datetime.now(timezone.utc).isoformat())),
+                                str(t.get("exit_time", datetime.now(timezone.utc).isoformat())),
+                                str(t.get("strategy", "imported")),
+                                str(t.get("notes", "")),
+                            )
+                        )
+                        imported += 1
+                    except Exception as e:
+                        errors.append({"index": i, "error": str(e)})
+                conn.commit()
+            finally:
+                conn.close()
+
+        return {"imported": imported, "skipped": len(errors), "errors": errors[:10]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/analytics/trades/by-hour")
+async def get_trades_by_hour():
+    """Hour-of-day trade performance breakdown."""
+    try:
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    CAST(strftime('%H', exit_time) AS INTEGER) as hour,
+                    COUNT(*) as count,
+                    SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) as losses,
+                    ROUND(SUM(pnl), 2) as total_pnl,
+                    ROUND(AVG(pnl), 2) as avg_pnl
+                FROM paper_trades
+                WHERE status = 'CLOSED' AND exit_time IS NOT NULL
+                GROUP BY hour
+                ORDER BY hour
+            """)
+            rows = cursor.fetchall()
+            conn.close()
+
+        hours = []
+        for row in rows:
+            h = row["hour"]
+            count = row["count"]
+            wins = row["wins"]
+            losses = row["losses"]
+            win_rate = round(wins / count * 100, 1) if count > 0 else 0.0
+            hours.append({
+                "hour": h,
+                "hour_label": f"{h:02d}:00",
+                "count": count,
+                "wins": wins,
+                "losses": losses,
+                "win_rate": win_rate,
+                "total_pnl": row["total_pnl"] or 0.0,
+                "avg_pnl": row["avg_pnl"] or 0.0,
+            })
+
+        return {"hours": hours, "total_hours_analyzed": len(hours)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/notifications/whatsapp/test")
+async def test_whatsapp_notification():
+    """Send a test WhatsApp notification."""
+    try:
+        from notifications.whatsapp import send_whatsapp_message
+        test_msg = f"[JARVIS TEST] Manual notification test at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}. System operational."
+        result = await send_whatsapp_message(test_msg, alert_type="test")
+        return {
+            "sent": True,
+            "message": test_msg,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        return {
+            "sent": False,
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+@app.get("/portfolio/stats/weekly")
+async def get_weekly_stats():
+    """7-day rolling performance summary."""
+    try:
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total_trades,
+                    SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) as losses,
+                    ROUND(SUM(pnl), 2) as total_pnl,
+                    ROUND(AVG(pnl), 2) as avg_pnl,
+                    ROUND(MAX(pnl), 2) as best_trade,
+                    ROUND(MIN(pnl), 2) as worst_trade,
+                    COUNT(DISTINCT DATE(exit_time)) as trading_days
+                FROM paper_trades
+                WHERE status = 'CLOSED'
+                  AND exit_time IS NOT NULL
+                  AND exit_time >= ?
+            """, (cutoff,))
+            row = cursor.fetchone()
+            conn.close()
+
+        if not row or row["total_trades"] == 0:
+            return {
+                "period": "7d",
+                "total_trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_rate": 0.0,
+                "total_pnl": 0.0,
+                "avg_pnl": 0.0,
+                "best_trade": 0.0,
+                "worst_trade": 0.0,
+                "trading_days": 0,
+            }
+
+        total = row["total_trades"]
+        wins = row["wins"] or 0
+        return {
+            "period": "7d",
+            "total_trades": total,
+            "wins": wins,
+            "losses": row["losses"] or 0,
+            "win_rate": round(wins / total * 100, 1) if total > 0 else 0.0,
+            "total_pnl": row["total_pnl"] or 0.0,
+            "avg_pnl": row["avg_pnl"] or 0.0,
+            "best_trade": row["best_trade"] or 0.0,
+            "worst_trade": row["worst_trade"] or 0.0,
+            "trading_days": row["trading_days"] or 0,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8010, reload=True)
