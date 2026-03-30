@@ -12,12 +12,15 @@ import {
 } from "lucide-react";
 import { MarketSessionStatusCard } from "@/components/MarketSessionStatusCard";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
+import { JournalStatsWidget } from "@/components/JournalStatsWidget";
+import { TodaySessionWidget } from "@/components/TodaySessionWidget";
+import { PipelineDecisionsWidget } from "@/components/PipelineDecisionsWidget";
 
 // ── Category badge colors ────────────────────────────────────────────────────
 
 type Category = "CRITICAL" | "FINDING" | "IMPROVEMENT" | "VERDICT" | "BREAKTHROUGH" | "BUG FIX";
 type Status = "Resolved" | "Active" | "Superseded";
-type HypothesisResult = "Pending" | "In Progress" | "FAILED" | "No improvement" | "Partial (0.34)" | "No (WFE same 0.27)";
+type HypothesisResult = "Pending" | "In Progress" | "FAILED" | "No improvement" | "Partial (0.34)" | "Partial (0.57)" | "No (WFE same 0.27)";
 
 const CATEGORY_STYLES: Record<Category, string> = {
   CRITICAL: "bg-red-500/15 text-red-400 border-red-500/30",
@@ -44,6 +47,18 @@ interface ResearchEntry {
 }
 
 const RESEARCH_LOG: ResearchEntry[] = [
+  {
+    date: "2026-03-30",
+    entry: "v2.7: MCL 1h static WFE=0.82 APPROVED, MNQ 1h adaptive WFE=0.57 APPROVED. 2 instruments cleared for paper trading.",
+    category: "BREAKTHROUGH",
+    status: "Active",
+  },
+  {
+    date: "2026-03-30",
+    entry: "MTF filter REJECTED: MNQ 1h WFE dropped 0.57\u21920.17. Volume filter REJECTED: WFE 0.57\u2192-0.23. Both confirmed harmful.",
+    category: "FINDING",
+    status: "Active",
+  },
   {
     date: "2026-03-29",
     entry: "MGC 1d adaptive WFE=0.88 (3-window) \u2014 small-sample bias exposed by 15-window",
@@ -123,8 +138,8 @@ const HYPOTHESES: Hypothesis[] = [
   {
     hypothesis: "MTF filter improves MNQ 1h",
     prediction: "WFE >0.40",
-    tested: "No",
-    result: "Pending",
+    tested: "Yes",
+    result: "FAILED",
   },
   {
     hypothesis: "Adaptive regime improves MGC 1d",
@@ -136,7 +151,7 @@ const HYPOTHESES: Hypothesis[] = [
     hypothesis: "Adaptive regime improves MNQ 1h",
     prediction: "WFE >0.40",
     tested: "Yes",
-    result: "Partial (0.34)",
+    result: "Partial (0.57)",
   },
 ];
 
@@ -331,8 +346,17 @@ export default function JournalPage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+        {/* ── Today's Session ────────────────────────────────────────────────── */}
+        <TodaySessionWidget />
+
         {/* ── Market Session Status ──────────────────────────────────────────── */}
         <MarketSessionStatusCard />
+
+        {/* ── Journal Statistics ─────────────────────────────────────────────── */}
+        <JournalStatsWidget />
+
+        {/* ── Pipeline Decision Log ──────────────────────────────────────────── */}
+        <PipelineDecisionsWidget />
 
         {/* ── Recent Trades ──────────────────────────────────────────────────── */}
         <RecentTradesTableWidget />
@@ -488,7 +512,7 @@ export default function JournalPage() {
 
         {/* Footer timestamp */}
         <div className="text-center font-mono text-[10px] text-neutral-700 py-4">
-          JARVIS TRADER RESEARCH JOURNAL &middot; Last updated 2026-03-29
+          JARVIS TRADER RESEARCH JOURNAL &middot; Last updated 2026-03-30 (v2.7)
         </div>
       </main>
     </div>

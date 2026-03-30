@@ -17,7 +17,7 @@ import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
 import { WinRateBySymbolWidget } from "@/components/WinRateBySymbolWidget";
 import { DailyPnLCalendarWidget } from "@/components/DailyPnLCalendarWidget";
 
-// ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
+// ── Static Data (v2.7 FINAL WFE — 2026-03-30, corrected) ────────────────────
 
 interface BacktestRow {
   rank: number;
@@ -54,10 +54,11 @@ interface WFERow {
 }
 
 const WFE_DATA: WFERow[] = [
-  { symbol: "MGC", tf: "1d", staticWFE: 0.14, adaptiveWFE: 0.88, change: "+526%", oosSharpe: 0.89, oosPF: 2.55, verdict: "OVERFIT", verdictColor: "#ff4444" },
-  { symbol: "MNQ", tf: "1h", staticWFE: 0.48, adaptiveWFE: 0.57, change: "+19%", oosSharpe: -0.06, oosPF: 1.05, verdict: "APPROVED", verdictColor: "#00ff88" },
-  { symbol: "MCL", tf: "1h", staticWFE: 0.82, adaptiveWFE: -0.31, change: "-138%", oosSharpe: -0.48, oosPF: 0.81, verdict: "APPROVED", verdictColor: "#00ff88" },
-  { symbol: "SPY", tf: "1h", staticWFE: -1.11, adaptiveWFE: -0.71, change: "+36%", oosSharpe: -3.84, oosPF: 1.04, verdict: "FAIL", verdictColor: "#ff4444" },
+  { symbol: "MCL", tf: "1h", staticWFE: 0.82, adaptiveWFE: -0.31, change: "-138%", oosSharpe: -0.48, oosPF: 0.81, verdict: "APPROVED (static)", verdictColor: "#00ff88" },
+  { symbol: "MNQ", tf: "1h", staticWFE: 0.48, adaptiveWFE: 0.57, change: "+19%", oosSharpe: -0.06, oosPF: 1.05, verdict: "APPROVED (adaptive)", verdictColor: "#00ff88" },
+  { symbol: "MGC", tf: "1d", staticWFE: 0.14, adaptiveWFE: 0.88, change: "+526%", oosSharpe: 0.89, oosPF: 2.55, verdict: "HALTED", verdictColor: "#ff8800" },
+  { symbol: "MES", tf: "1h", staticWFE: 0.09, adaptiveWFE: 0.09, change: "0%", oosSharpe: -0.12, oosPF: 0.96, verdict: "DO NOT TRADE", verdictColor: "#ff4444" },
+  { symbol: "SPY", tf: "1h", staticWFE: -1.11, adaptiveWFE: -0.71, change: "+36%", oosSharpe: -3.84, oosPF: 1.04, verdict: "DO NOT TRADE", verdictColor: "#ff4444" },
 ];
 
 interface ImprovementRow {
@@ -72,8 +73,8 @@ interface ImprovementRow {
 
 const IMPROVEMENT_DATA: ImprovementRow[] = [
   { improvement: "Regime-Adaptive STC", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.24 \u2192 0.48", mgcImpact: "WFE 0.14 \u2192 0.88 (adaptive)", keep: "YES", keepColor: "#00ff88" },
-  { improvement: "Volume Filter", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.34 \u2192 -0.23 (SKIP)", mgcImpact: "WFE 0.88 \u2192 0.20 (SKIP)", keep: "NO for futures", keepColor: "#ff4444" },
-  { improvement: "MTF Alignment", status: "Implemented", statusColor: "#00ff88", mnqImpact: "Testing...", mgcImpact: "N/A (daily)", keep: "TBD", keepColor: "#ffcc00" },
+  { improvement: "Volume Filter", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.57 \u2192 -0.23 (REJECTED)", mgcImpact: "WFE 0.88 \u2192 0.20 (SKIP)", keep: "NO for futures", keepColor: "#ff4444" },
+  { improvement: "MTF Alignment", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.57 \u2192 0.17 (REJECTED)", mgcImpact: "N/A (daily)", keep: "NO", keepColor: "#ff4444" },
   { improvement: "News Blackout", status: "Implemented", statusColor: "#00ff88", mnqImpact: "1% blocked", mgcImpact: "N/A", keep: "Live only", keepColor: "#888888" },
   { improvement: "Trailing Stop", status: "Investigated", statusColor: "#ffcc00", mnqImpact: "No improvement", mgcImpact: "Hurts returns", keep: "NO", keepColor: "#ff4444" },
 ];
@@ -721,4 +722,42 @@ export default function PerformancePage() {
         {/* Section 3: Signal Improvement Tracker */}
         <ImprovementTracker />
 
-        {
+        {/* Section 4: Do Not Trade List */}
+        <DoNotTradeList />
+
+        {/* Section 5: Monthly Breakdown */}
+        <MonthlyBreakdownWidget />
+
+        {/* Section 6: Drawdown Chart */}
+        <DrawdownChart />
+
+        {/* Section 7: Top Symbols by P&L */}
+        <TopSymbolsWidget />
+
+        {/* Section 8: Avg Trade Hold Time */}
+        <AvgTradeTimeWidget />
+
+        {/* Section 9: Equity Curve */}
+        <EquityCurveWidget />
+
+        {/* Section 10: Entry Quality */}
+        <EntryQualityWidget />
+
+        {/* Section 11: Recent Closed Trades */}
+        <RecentTradesTableWidget />
+
+        {/* Section 12: Win Rate by Symbol */}
+        <WinRateBySymbolWidget />
+
+        {/* Footer */}
+        <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>
+          <p className="font-mono text-[10px]" style={{ color: "#333" }}>
+            Source: 55+ result files in engine/backtest/results/ | Includes optimizer JSONs, corrected backtests,
+            sensitivity analysis (3 instruments), Monte Carlo (4 instruments, 10k sims each), and walk-forward
+            validation (5 instruments, 6-7 windows each).
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}

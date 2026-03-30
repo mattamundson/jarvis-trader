@@ -27,6 +27,8 @@ import { ConnectionHealthCard } from "@/components/ConnectionHealthCard";
 import { DatabaseStatsCard } from "@/components/DatabaseStatsCard";
 import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
+import { AgentPipelineStatusWidget } from "@/components/AgentPipelineStatusWidget";
+import { DatabaseStatusWidget } from "@/components/DatabaseStatusWidget";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -522,6 +524,9 @@ export default function HealthPage() {
         {/* Pre-Flight Widget */}
         <PreFlightWidget />
 
+        {/* Agent Pipeline Status — 10-agent flow diagram + per-agent status */}
+        <AgentPipelineStatusWidget />
+
         {/* Subsystem grid */}
         {data && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -543,6 +548,9 @@ export default function HealthPage() {
 
         {/* Database Statistics — record counts across trades, decisions, alerts */}
         <DatabaseStatsCard />
+
+        {/* Database Status Widget — connection, file size, table record counts */}
+        <DatabaseStatusWidget />
 
         {/* Auto-refresh notice */}
         <p className="text-xs text-muted-foreground text-center pb-2">
