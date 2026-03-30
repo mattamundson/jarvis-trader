@@ -45,6 +45,7 @@ env/
 
 # Node.js / Next.js
 node_modules/
+node_modules.bak/
 .next/
 .nuxt/
 out/
