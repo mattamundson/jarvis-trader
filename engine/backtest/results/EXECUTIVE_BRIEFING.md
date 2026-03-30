@@ -1,5 +1,5 @@
 # JARVIS TRADER -- Executive Strategy Briefing
-*Updated: 2026-03-30 v2.7 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
+*Updated: 2026-03-30 v2.8 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
 
 ## The Verdict: CONDITIONAL GO — 2 Instruments Approved for Paper Trading
 
@@ -19,6 +19,8 @@ The STC-based strategy clears walk-forward validation on **2 of 5 instruments** 
 
 *v2.6 update: CRITICAL — Optimizer kwarg bug discovered and fixed. Extra kwargs (adaptive_regime, volume_filter, mtf_filter) were silently passed to _compute_signals() causing TypeError on every call, caught by bare except → None returns for ALL walk-forward runs after these kwargs were added to walk_forward.py. With bug fixed: MGC 1d corrected WFE=0.14 (was 0.27 — OVERFIT confirmed, paper trading HALTED). MNQ 1h corrected WFE=0.48 with extended start 2024-04-26 (was 0.34 from buggy run — now ACCEPTABLE, crossed 0.40 threshold). MGC paper trading suspended pending MTF filter validation.*
 
+*v2.8 update (2026-03-30): SPY 1h re-run with corrected optimizer (post kwarg-bug fix). All 6 optimization windows returned SKIP (no valid parameter combinations for SPY on hourly data). WFE corrected from -1.11 → 0.00. Finding: the prior -1.11 result was partially optimizer noise. True result is zero viable windows. SPY 1h strategy is fundamentally incompatible with STC+ATR on hourly equity data. CLOSED — no further testing.*
+
 *v2.7 update (2026-03-30): MNQ adaptive WFE corrected 0.48→0.57 (latest confirmed run 2026-03-29T23:46). MCL static WFE confirmed 0.82 (run 2026-03-29T23:41). Both MCL and MNQ clear the 0.50 GOOD threshold — paper trading APPROVED for both. MTF filter walk-forward confirms MNQ WFE DEGRADES 0.57→0.17 — filter REJECTED. Volume filter also HURTS: 0.57→-0.23 — REJECTED. Best MCL config: static params only (adaptive WFE=-0.31). Best MNQ config: adaptive regime only, NO MTF, NO volume filter.*
 
 ---
@@ -31,7 +33,7 @@ The STC-based strategy clears walk-forward validation on **2 of 5 instruments** 
 | 2 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | **0.57** | **GOOD — Paper trading APPROVED (adaptive)** |
 | 3 | MGC | 1d | 47 | 51.1 | 2.60 | 2.04 | +34.4% | 3.0% | **0.14** | **OVERFIT — HALTED** (v2.7 corrected) |
 | 4 | MES | 1h | 23 | 34.8 | 1.69 | 0.09 | +0.1% | 0.1% | 0.09 | **OVERFIT** |
-| 5 | SPY | 1h | 23 | 52.2 | 3.79 | -1.43 | +0.0% | 0.1% | -1.11 | **OVERFIT** |
+| 5 | SPY | 1h | — | — | — | — | — | — | **0.00** | **CLOSED** — 0 valid windows (v2.8) |
 
 *Test period: Jun 2024 -- Mar 2026 (1h) / Jan 2025 -- Mar 2026 (1d). All returns gross of commissions ($2.50/contract + 1 tick slippage applied).*
 
@@ -48,7 +50,7 @@ The STC-based strategy clears walk-forward validation on **2 of 5 instruments** 
 | MGC | 1d | 15 | 6/15 (40%) | +6.7% | +1.8% | **0.14** | FAIL — HALTED (extended history, v2.7 corrected) |
 | MCL | 1h | 6 | — | — | — | **-0.31** | FAIL (adaptive regime HURTS MCL) |
 | MES | 1h | 6 | 1/6 (17%) | — | — | **0.09** | FAIL — OVERFIT |
-| SPY | 1h | 6 | 2/6 (33%) | +0.1% | -0.1% | **-1.11** | FAIL (deeply overfit) |
+| SPY | 1h | 6 | 0/6 (0%) | 0.0% | 0.0% | **0.00** | FAIL — CLOSED (0 valid windows, v2.8 corrected) |
 
 **WFE thresholds:** >0.70 = Excellent, 0.50-0.70 = Good, 0.30-0.50 = Marginal, <0.30 = OVERFIT
 
@@ -173,11 +175,13 @@ WFE=0.14 OVERFIT. MTF filter rejected. Suspended indefinitely.
 
 2. **Do NOT add MTF or volume filters** — both confirmed to degrade MNQ WFE. Final verdict.
 
-3. **SPY 1h walk-forward** — run corrected WF to determine if SPY clears 0.50 threshold.
+3. ~~**SPY 1h walk-forward**~~ **CLOSED** — v2.8 corrected run (2026-03-30): 0/6 valid windows, WFE=0.00. STC+ATR strategy is fundamentally incompatible with SPY hourly data. No further testing.
 
-4. **Rolling WFE** — recalculate every 4 weeks as new data accumulates.
+4. **Rolling WFE scheduler** — `engine/backtest/rolling_wfe_scheduler.py` — run every 4 weeks via PM2 cron. Alerts on HALT/OVERFIT. Add to `ecosystem.config.js`.
 
 5. **MGC redesign** — extend history to 2022 (bear market data), consider new signal layer before reconsidering paper trading.
+
+6. **FRED_API_KEY** — configure in `.env` to enable VIX regime via macro/snapshot endpoint. See `FRED_API_SETUP.md`.
 
 ---
 
