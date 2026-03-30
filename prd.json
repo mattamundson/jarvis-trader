@@ -15,8 +15,8 @@
         "config.py validates all required env vars are present at startup and fails fast with clear error messages"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": "Anthropic sk-ant-api03, Polygon, Twilio SID/Auth, Google OAuth all exposed in git history. Cannot revoke keys programmatically — document for Matt."
+      "passes": true,
+      "notes": "All acceptance criteria implemented: .gitignore hardened, .env.example created with all vars documented, SECURITY_REMEDIATION.md provides step-by-step revocation guide, pre-commit hook blocks commits with API key patterns, config.py validates all required env vars at startup with clear error messages."
     },
     {
       "id": "US-002",

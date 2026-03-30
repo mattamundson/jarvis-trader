@@ -1,3 +1,57 @@
+## US-001: API Key Security Remediation ✅ COMPLETE
+**Date:** 2026-03-29
+
+### Implementation Summary
+- Enhanced .gitignore to block .env, *.pem, credentials.json, *secret*.json, *oauth*.json, and related patterns
+- Created comprehensive .env.example with ALL environment variables referenced in config.py
+  - Documented each variable with description and recommended value format
+  - Includes risk controls, broker configs, market data, LLM, databases, Twilio, instruments, and logging
+  - 280+ lines with inline comments explaining each section
+- Created SECURITY_REMEDIATION.md with step-by-step guide for Matt to:
+  - Revoke Anthropic, Polygon, Twilio, and Google OAuth credentials
+  - Run BFG Repo-Cleaner to scrub all secrets from git history
+  - Regenerate new API keys and populate .env
+  - Force-push cleaned history to remote
+  - Verify no secrets remain with verification commands
+- Created scripts/check-secrets.sh pre-commit hook that:
+  - Scans staged files for API key patterns (sk-ant-, AC-SID, TWILIO_*, POLYGON_*, GOCSPX-)
+  - Blocks commits if secrets are detected
+  - Provides clear error messages and remediation steps
+  - Regex patterns for all exposed credential types
+- Enhanced engine/config.py with startup validation:
+  - _validate_required_env_vars() function checks all critical and optional env vars
+  - Fails fast with clear error messages listing missing variables and descriptions
+  - Warns about optional features without blocking (Twilio, Alpaca, Finnhub, etc.)
+  - Integrated into TradingConfig singleton initialization
+
+### Files Modified
+- .gitignore: Added *.pem, *.key, *.pfx, *secret*.json, *oauth*.json patterns
+- engine/config.py: Added _validate_required_env_vars() function and startup validation call
+
+### Files Created
+- .env.example: 280+ lines with all environment variables documented
+- SECURITY_REMEDIATION.md: 380+ line step-by-step guide with 8 major sections
+- scripts/check-secrets.sh: Executable pre-commit hook with regex pattern detection
+
+### Test Verification
+✅ .gitignore verified — blocks .env, *.pem, credentials.json, all secret patterns
+✅ .env.example contains EVERY key referenced in config.py with detailed descriptions
+✅ SECURITY_REMEDIATION.md provides complete step-by-step instructions
+✅ Pre-commit hook script created and executable (chmod +x)
+✅ config.py validates all required env vars on startup with clear error messages
+✅ Startup validation integrated into TradingConfig singleton
+
+### Installation Instructions for Matt
+1. Install pre-commit hook: `chmod +x scripts/check-secrets.sh && ln -s ../../scripts/check-secrets.sh .git/hooks/pre-commit`
+2. Follow SECURITY_REMEDIATION.md steps 1-4: Revoke exposed keys at each service
+3. Follow steps 5-7: Run BFG Repo-Cleaner and force-push cleaned history
+4. Copy .env.example to .env and populate with NEW API keys
+5. Verify with: `git log -p --all | grep -i "sk-ant\|twilio\|polygon" | wc -l` (should output 0)
+
+### Commit
+Commit: feat: US-001 - API Key Security Remediation
+---
+
 ## Codebase Patterns
 - engine/main.py is 3,413 lines — the central FastAPI server. All endpoint registration happens here.
 - All new modules follow async patterns with graceful fallback (Redis → in-memory, PostgreSQL → log warning)
