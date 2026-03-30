@@ -334,6 +334,7 @@ class TestPositionSize:
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
         mock_settings.MAX_POSITION_SIZE_PCT = 0.05
+        mock_settings.MAX_SINGLE_ORDER_VALUE = 10_000.0  # Allow order size check to pass
         safety = SafetyLayer(mock_settings)
 
         portfolio_equity = 100_000.0

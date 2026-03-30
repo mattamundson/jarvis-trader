@@ -220,7 +220,7 @@ class SafetyLayer:
                     approved=False,
                     rejection_reason="Max drawdown breached — kill switch activated"
                 )
-            elif drawdown > self._config.MAX_DRAWDOWN_PCT * 0.8:
+            elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
                 warnings.append(f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit")
         elif self._equity_peak > 0:
             drawdown = (self._equity_peak - portfolio_equity) / self._equity_peak
@@ -233,7 +233,7 @@ class SafetyLayer:
                     approved=False,
                     rejection_reason="Max drawdown breached — kill switch activated"
                 )
-            elif drawdown > self._config.MAX_DRAWDOWN_PCT * 0.8:
+            elif drawdown >= self._config.MAX_DRAWDOWN_PCT * 0.8:
                 warnings.append(f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit")
 
         # 5. Order size limit
