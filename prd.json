@@ -34,8 +34,8 @@
         "No duplicate route registrations in main.py"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": "main.py was edited by ~15 agents and truncated/restored. Some endpoint registrations may have been lost."
+      "passes": true,
+      "notes": "Completed: Added 6 missing endpoints (llm/stats, safety/loss-tracker, backtest/walk-forward, backtest/regime-analysis, strategy/params GET/PUT). Initialized cost_tracker and loss_tracker in lifespan. Removed duplicate /notifications/whatsapp/test route. Created comprehensive ENDPOINT_REGISTRY.md documenting all 82 endpoints with module sources. Verified no duplicate routes. All acceptance criteria satisfied."
     },
     {
       "id": "US-003",
