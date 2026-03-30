@@ -7,7 +7,9 @@ Runs on port 8010 (separate from GMS JARVIS on 8009).
 Start with: uvicorn main:app --reload --port 8010
 """
 import asyncio
+import json
 import logging
+import logging.handlers
 import os
 import sqlite3
 from contextlib import asynccontextmanager
@@ -74,12 +76,63 @@ from routers.webhook_router import router as webhook_router, set_pipeline_callba
 from websocket.manager import WebSocketManager
 from websocket.events import set_ws_manager
 
-# ── Logging ──────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+# ── Logging (initialized in lifespan) ────────────────────────────────────
 logger = logging.getLogger("jarvis_trader")
+
+
+class JSONFormatter(logging.Formatter):
+    """Custom JSON-structured log formatter"""
+    def format(self, record: logging.LogRecord) -> str:
+        log_data = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": record.levelname,
+            "module": record.module,
+            "funcName": record.funcName,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_data)
+
+
+def setup_logging(log_level: str = "INFO") -> None:
+    """
+    Configure structured logging with file rotation and console output.
+    Called during lifespan startup BEFORE any other module initialization.
+    """
+    # Ensure logs directory exists
+    os.makedirs("logs", exist_ok=True)
+
+    # Parse log level
+    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+
+    # Root logger configuration
+    root_logger = logging.getLogger()
+    root_logger.setLevel(numeric_level)
+
+    # Clear any existing handlers
+    root_logger.handlers.clear()
+
+    # JSON formatter for structured logs
+    json_formatter = JSONFormatter()
+
+    # Console handler (for Docker/stdout)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(numeric_level)
+    console_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+    root_logger.addHandler(console_handler)
+
+    # File handler with rotation (10MB files, keep 5 backups)
+    file_handler = logging.handlers.RotatingFileHandler(
+        filename="logs/jarvis.log",
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5,
+    )
+    file_handler.setLevel(numeric_level)
+    file_handler.setFormatter(json_formatter)
+    root_logger.addHandler(file_handler)
 
 # ── Global State ─────────────────────────────────────────────────────────
 data_manager: MarketDataManager | None = None
@@ -93,6 +146,8 @@ pnl_monitor: PnLMonitor | None = None
 eod_scheduler: EODScheduler | None = None
 order_manager: IBOrderManager | None = None
 ws_manager: WebSocketManager | None = None
+cost_tracker: "CostTracker | None" = None
+loss_tracker: "ConsecutiveLossTracker | None" = None
 
 # Rate limit: track last alert time per symbol to avoid flooding (2-hour cooldown)
 _last_alert_time: Dict[str, datetime] = {}
@@ -106,6 +161,9 @@ _macro_cache: Dict[str, dict] = {}
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
     global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ws_manager
+
+    # Setup structured logging with file rotation FIRST, before any other initialization
+    setup_logging(log_level=settings.LOG_LEVEL)
 
     logger.info("🤖 JARVIS TRADER starting up...")
     logger.info(f"   Live trading: {'ENABLED ⚠️' if settings.LIVE_TRADING_ENABLED else 'DISABLED (paper mode)'}")

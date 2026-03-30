@@ -13,9 +13,12 @@ import { PaperTradingPanel } from "@/components/PaperTradingPanel";
 import { TradeHistory } from "@/components/TradeHistory";
 import { DailyPnlPanel } from "@/components/DailyPnlPanel";
 import { RegimeDisplay } from "@/components/RegimeDisplay";
+import { MTFConfirmationWidget } from "@/components/MTFConfirmationWidget";
 import { SignalHistory } from "@/components/SignalHistory";
 import { CircuitBreakerPanel } from "@/components/CircuitBreakerPanel";
 import { IBGatewayStatus } from "@/components/IBGatewayStatus";
+import { StrategyParamsPanel } from "@/components/StrategyParamsPanel";
+import { SessionTodayWidget } from "@/components/SessionTodayWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 import type {
@@ -145,8 +148,14 @@ export default function DashboardPage() {
               <a href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Watchlist
               </a>
+              <a href="/scorecard" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Scorecard
+              </a>
               <a href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Settings
+              </a>
+              <a href="/health" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Health
               </a>
             </nav>
           </div>
@@ -200,6 +209,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-12 gap-4">
           {/* Left column — positions + performance + regime */}
           <div className="col-span-12 lg:col-span-3 space-y-4">
+            <SessionTodayWidget />
             <PositionsPanel
               positions={portfolio?.positions ?? []}
               totalEquity={portfolio?.total_equity ?? 0}
@@ -211,6 +221,7 @@ export default function DashboardPage() {
               equityCurve={[]}
             />
             <RegimeDisplay />
+            <MTFConfirmationWidget symbol="MES" />
           </div>
 
           {/* Center column — agent activity feed */}
@@ -257,6 +268,9 @@ export default function DashboardPage() {
             )}
 
             <SentimentPanel sentiments={sentiments ?? []} />
+
+            {/* Strategy Parameters */}
+            <StrategyParamsPanel />
 
             {/* Run Analysis */}
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">

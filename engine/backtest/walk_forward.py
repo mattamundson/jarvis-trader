@@ -37,6 +37,7 @@ from backtest.optimizer import (
     _compute_signals,
     _run_with_params,
     _score,
+    build_daily_bias,
 )
 
 
@@ -142,6 +143,7 @@ class WalkForwardValidator:
         adaptive_regime: bool = False,
         volume_filter: bool = False,
         mtf_filter: bool = False,
+        df_daily: Optional[pd.DataFrame] = None,
     ) -> Dict[str, Any]:
         """
         Execute the full walk-forward validation.
@@ -152,8 +154,28 @@ class WalkForwardValidator:
           3. Backtest on the OOS test data with those parameters.
           4. Record IS and OOS BacktestResults.
 
+        When mtf_filter=True, df_daily must be provided. The daily EMA8/21/34
+        bias is computed once and used to filter counter-trend 1h entries in
+        each window.
+
         Returns a dict with 'windows' and 'summary' keys.
         """
+        # Pre-compute daily bias series for MTF filter
+        daily_bias_series: Optional[Any] = None
+        if mtf_filter:
+            if df_daily is None or df_daily.empty:
+                print("[WalkForward] WARNING: --mtf-filter requested but no daily data provided. MTF filter disabled.")
+                mtf_filter = False
+            else:
+                daily_bias_series = build_daily_bias(df_daily)
+                bull_count = (daily_bias_series == "BULL").sum()
+                bear_count = (daily_bias_series == "BEAR").sum()
+                neutral_count = (daily_bias_series == "NEUTRAL").sum()
+                print(
+                    f"[MTF] Daily bias computed: {len(daily_bias_series)} days "
+                    f"| BULL={bull_count} BEAR={bear_count} NEUTRAL={neutral_count}"
+                )
+
         windows_spec = self.generate_windows(df, symbol)
 
         if not windows_spec:
@@ -203,6 +225,7 @@ class WalkForwardValidator:
                 adaptive_regime=adaptive_regime,
                 volume_filter=volume_filter,
                 mtf_filter=mtf_filter,
+                daily_bias=daily_bias_series,
             )
 
             if best_params is None or is_result is None:
@@ -228,6 +251,7 @@ class WalkForwardValidator:
                 adaptive_regime=adaptive_regime,
                 volume_filter=volume_filter,
                 mtf_filter=mtf_filter,
+                daily_bias=daily_bias_series,
                 **best_params,
             )
 
@@ -273,6 +297,7 @@ class WalkForwardValidator:
         adaptive_regime: bool = False,
         volume_filter: bool = False,
         mtf_filter: bool = False,
+        daily_bias: Optional[Any] = None,
     ):
         """
         Run grid optimisation on df_train.
@@ -294,6 +319,7 @@ class WalkForwardValidator:
                 adaptive_regime=adaptive_regime,
                 volume_filter=volume_filter,
                 mtf_filter=mtf_filter,
+                daily_bias=daily_bias,
                 **params,
             )
             if r is None:
@@ -478,41 +504,6 @@ def main():
     # ── Load data ─────────────────────────────────────────────────────────
     loader = BacktestDataLoader()
     print(f"Loading {args.symbol} ({args.interval}) from {args.start} to {args.end}...")
+
     df = loader.load(args.symbol, args.start, args.end, args.interval)
-
-    if df is None or df.empty:
-        print(f"[ERROR] No data returned for {args.symbol}")
-        return
-
-    multiplier = loader.get_multiplier(args.symbol)
-
-    # ── Run walk-forward ──────────────────────────────────────────────────
-    validator = WalkForwardValidator(
-        train_months=args.train_months,
-        test_months=args.test_months,
-        step_months=args.step_months,
-    )
-
-    result = validator.run(
-        df=df,
-        symbol=args.symbol,
-        multiplier=multiplier,
-        capital=args.capital,
-        fast=not args.full_grid,
-        adaptive_regime=args.adaptive_regime,
-        volume_filter=args.volume_filter,
-        mtf_filter=args.mtf_filter,
-    )
-
-    # ── Save results ──────────────────────────────────────────────────────
-    if result["windows"]:
-        save_results(result, args.symbol, args.interval,
-                     adaptive_regime=args.adaptive_regime,
-                     volume_filter=args.volume_filter,
-                     mtf_filter=args.mtf_filter)
-    else:
-        print("\n[WARN] No valid windows — nothing to save.")
-
-
-if __name__ == "__main__":
-    main()
+    if df

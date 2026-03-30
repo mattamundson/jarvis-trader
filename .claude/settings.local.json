@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(python3:*)",
+      "Bash(curl:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(npm run:*)",
+      "Bash(netstat:*)",
+      "Bash(cmd:*)",
+      "Bash(python:*)",
+      "Bash(\"C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/.venv/Scripts/python\":*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "chrome"
+  ]
+}

@@ -13,6 +13,31 @@ from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 import logging
+from typing import Optional
+import asyncio
+
+try:
+    from engine.execution.ib_gateway import IBGatewayManager
+    _IB_GATEWAY_AVAILABLE = True
+except ImportError:
+    IBGatewayManager = None  # type: ignore[assignment,misc]
+    _IB_GATEWAY_AVAILABLE = False
+
+try:
+    from risk.pnl_monitor import PnLMonitor
+except ImportError:
+    try:
+        from engine.risk.pnl_monitor import PnLMonitor
+    except ImportError:
+        PnLMonitor = None  # type: ignore[assignment,misc]
+
+try:
+    from risk.loss_tracker import ConsecutiveLossTracker
+except ImportError:
+    try:
+        from engine.risk.loss_tracker import ConsecutiveLossTracker
+    except ImportError:
+        ConsecutiveLossTracker = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +69,7 @@ class RiskCheckResult:
     approved: bool
     rejection_reason: str | None = None
     warnings: list[str] = field(default_factory=list)
+    adjusted_order: Optional[OrderRequest] = None  # Order with position size adjusted for losses
 
 
 class SafetyLayer:
@@ -52,8 +78,33 @@ class SafetyLayer:
     Instantiated once at startup and shared across all agents.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, ib_gateway=None, pnl_monitor=None, loss_tracker=None):
+        """
+        Parameters
+        ----------
+        config:
+            JARVIS settings object (LIVE_TRADING_ENABLED, MAX_DAILY_LOSS_PCT, …).
+        ib_gateway : IBGatewayManager | None
+            Optional IB Gateway handle used by submit_paper_order().
+            Passing None keeps the SafetyLayer fully backward-compatible — all
+            existing callers that construct ``SafetyLayer(config)`` continue to
+            work without changes.  The gateway is NEVER used by check_order()
+            or any other existing method.
+        pnl_monitor : PnLMonitor | None
+            Optional PnLMonitor instance.  When provided, circuit-breaker checks
+            in check_order() and sync_from_broker() read live P&L from the best
+            available source (IB Gateway → SQLite → in-memory tracker) rather
+            than relying solely on the values last set by sync_from_broker().
+            Passing None preserves full backward-compatibility.
+        loss_tracker : ConsecutiveLossTracker | None
+            Optional ConsecutiveLossTracker instance. When provided, tracks
+            consecutive losing trades and modulates position size accordingly.
+            Passing None preserves full backward-compatibility.
+        """
         self._config = config
+        self._ib_gateway = ib_gateway      # used only by submit_paper_order()
+        self._pnl_monitor: Optional[object] = pnl_monitor  # PnLMonitor | None
+        self._loss_tracker: Optional[object] = loss_tracker  # ConsecutiveLossTracker | None
         self._kill_switch_active = False
         self._kill_switch_reason: KillSwitchReason | None = None
 
@@ -76,12 +127,24 @@ class SafetyLayer:
         self._kill_switch_active = True
         self._kill_switch_reason = reason
         logger.critical(f"🔴 KILL SWITCH ACTIVATED: {reason.value}. {message}")
+        # Log to PostgreSQL asynchronously (never block)
+        asyncio.create_task(self._log_safety_event(
+            "kill_switch_activate",
+            reason.value,
+            {"reason": reason.value, "message": message}
+        ))
 
     def deactivate_kill_switch(self, authorized_by: str = "human") -> None:
         """Resume trading. Only callable by human action (not by agents)."""
         self._kill_switch_active = False
         self._kill_switch_reason = None
         logger.info(f"✅ Kill switch deactivated by: {authorized_by}")
+        # Log to PostgreSQL asynchronously
+        asyncio.create_task(self._log_safety_event(
+            "kill_switch_deactivate",
+            f"Deactivated by {authorized_by}",
+            {"authorized_by": authorized_by, "resolved": True}
+        ))
 
     @property
     def is_killed(self) -> bool:
@@ -119,10 +182,16 @@ class SafetyLayer:
             )
 
         # 3. Daily loss limit
-        if self._daily_realized_pnl < -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT):
+        # Use PnLMonitor (live SQLite/IB data) when available; fall back to in-memory value.
+        if self._pnl_monitor is not None:
+            daily_pnl_for_check = self._pnl_monitor.get_daily_pnl()
+        else:
+            daily_pnl_for_check = self._daily_realized_pnl
+
+        if daily_pnl_for_check < -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT):
             self.activate_kill_switch(
                 KillSwitchReason.DAILY_LOSS_LIMIT,
-                f"Daily loss {self._daily_realized_pnl:.2f} exceeded limit"
+                f"Daily loss {daily_pnl_for_check:.2f} exceeded limit"
             )
             return RiskCheckResult(
                 approved=False,
@@ -130,7 +199,22 @@ class SafetyLayer:
             )
 
         # 4. Max drawdown
-        if self._equity_peak > 0:
+        # Use PnLMonitor drawdown when available (reads from SQLite peak history);
+        # fall back to the in-memory equity-peak calculation.
+        if self._pnl_monitor is not None:
+            drawdown = -self._pnl_monitor.get_drawdown_pct()   # monitor returns negative; negate for comparison
+            if drawdown > self._config.MAX_DRAWDOWN_PCT:
+                self.activate_kill_switch(
+                    KillSwitchReason.MAX_DRAWDOWN,
+                    f"Drawdown {drawdown:.1%} exceeded max {self._config.MAX_DRAWDOWN_PCT:.1%} (source: pnl_monitor)"
+                )
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason="Max drawdown breached — kill switch activated"
+                )
+            elif drawdown > self._config.MAX_DRAWDOWN_PCT * 0.8:
+                warnings.append(f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit")
+        elif self._equity_peak > 0:
             drawdown = (self._equity_peak - portfolio_equity) / self._equity_peak
             if drawdown > self._config.MAX_DRAWDOWN_PCT:
                 self.activate_kill_switch(
@@ -180,10 +264,206 @@ class SafetyLayer:
                 rejection_reason=f"Requested {abs(order.quantity)} contracts exceeds max {self._config.MAX_CONTRACTS_PER_INSTRUMENT}"
             )
 
+        # 9. Consecutive loss tracking & position size modulation
+        adjusted_order = order
+        if self._loss_tracker is not None:
+            # Check if trading is halted due to too many consecutive losses
+            if self._loss_tracker.is_halted():
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason=self._loss_tracker.get_halt_reason()
+                )
+
+            # Get position size multiplier based on consecutive losses
+            multiplier = self._loss_tracker.get_position_size_multiplier()
+            if multiplier < 1.0:
+                # Reduce order quantity based on multiplier
+                reduced_quantity = max(1, int(abs(order.quantity) * multiplier))
+                adjusted_order = OrderRequest(
+                    symbol=order.symbol,
+                    quantity=reduced_quantity if order.quantity > 0 else -reduced_quantity,
+                    order_type=order.order_type,
+                    limit_price=order.limit_price,
+                    stop_price=order.stop_price,
+                    is_futures=order.is_futures,
+                    is_options=order.is_options,
+                    estimated_value=adjusted_order.estimated_value * multiplier,
+                )
+                consecutive_losses = self._loss_tracker.get_consecutive_losses()
+                warnings.append(
+                    f"Consecutive losses: {consecutive_losses} — "
+                    f"position size reduced by {(1.0 - multiplier):.0%} "
+                    f"(qty: {order.quantity} → {adjusted_order.quantity})"
+                )
+                logger.warning(
+                    f"Position size reduction applied: {order.symbol} qty {order.quantity} → "
+                    f"{adjusted_order.quantity} (multiplier={multiplier:.2f})"
+                )
+
         # All checks passed
         self._recent_order_timestamps.append(now)
-        logger.info(f"✅ Order approved: {order.symbol} qty={order.quantity} est_value=${order.estimated_value:,.0f}")
-        return RiskCheckResult(approved=True, warnings=warnings)
+        logger.info(f"✅ Order approved: {adjusted_order.symbol} qty={adjusted_order.quantity} est_value=${adjusted_order.estimated_value:,.0f}")
+        return RiskCheckResult(approved=True, warnings=warnings, adjusted_order=adjusted_order if adjusted_order != order else None)
+
+    # ── Paper Order Submission (Safety → IB Gateway) ──────────────────────
+
+    async def submit_paper_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        price: float,
+        order_type: str = "MKT",
+        limit_price: float | None = None,
+    ) -> dict:
+        """
+        Run all safety checks then, if they pass, route the order to IB
+        Gateway in paper-trading mode (port 4002).
+
+        This is the ONLY approved path from the SafetyLayer to the broker.
+        No LLM reasoning happens here — pure deterministic gate.
+
+        Parameters
+        ----------
+        symbol      : Ticker / futures root (e.g. "MES", "AAPL").
+        action      : "BUY" or "SELL" (case-insensitive).
+        quantity    : Positive integer — always pass the absolute lot size.
+                      Direction is expressed via *action*.
+        price       : Estimated execution price (used for value checks).
+        order_type  : "MKT" (default) or "LMT".
+        limit_price : Required when order_type == "LMT".
+
+        Returns
+        -------
+        dict with keys:
+            approved    (bool)   — True only when every safety check passed.
+            reason      (str)    — Human-readable outcome (approval or rejection message).
+            order_id    (str|None) — IB order ID string if the order was placed, else None.
+            routed_to_ib (bool)  — True only when the order reached IB Gateway.
+        """
+        # ── 0. Kill switch — checked first, before anything else ──────────
+        if self._kill_switch_active:
+            reason = (
+                f"Kill switch active: {self._kill_switch_reason.value}"
+                if self._kill_switch_reason
+                else "Kill switch active"
+            )
+            logger.warning(
+                "submit_paper_order BLOCKED by kill switch — symbol=%s action=%s qty=%d: %s",
+                symbol, action, quantity, reason,
+            )
+            return {"approved": False, "reason": reason, "order_id": None, "routed_to_ib": False}
+
+        # ── 1. Build an OrderRequest so we can re-use check_order() fully ─
+        action_upper = action.upper()
+        signed_qty = quantity if action_upper == "BUY" else -quantity
+        estimated_value = abs(quantity) * price
+
+        # Detect futures by common micro/mini root symbols (heuristic; callers
+        # can override by subclassing or by building the OrderRequest directly
+        # and calling check_order() + submit_paper_order separately).
+        _FUTURES_ROOTS = {"MES", "MNQ", "M2K", "MCL", "MGC", "MHG", "MSI",
+                          "ES", "NQ", "RTY", "CL", "GC", "HG"}
+        is_futures = symbol.upper() in _FUTURES_ROOTS
+
+        ib_order_type = order_type.lower()
+        # Normalise "MKT"→"market", "LMT"→"limit" for OrderRequest
+        if ib_order_type in ("mkt", "market"):
+            normalised_order_type = "market"
+        elif ib_order_type in ("lmt", "limit"):
+            normalised_order_type = "limit"
+        else:
+            normalised_order_type = ib_order_type
+
+        order = OrderRequest(
+            symbol=symbol,
+            quantity=signed_qty,
+            order_type=normalised_order_type,
+            limit_price=limit_price,
+            is_futures=is_futures,
+            estimated_value=estimated_value,
+        )
+
+        # ── 2. Full pre-trade safety gate ─────────────────────────────────
+        # check_order() re-checks the kill switch internally (check #0 above
+        # is an early-exit optimisation to avoid building OrderRequest at all
+        # when we already know the kill switch is on).
+        portfolio_equity = self._current_equity if self._current_equity > 0 else estimated_value
+        risk_result = self.check_order(order, portfolio_equity)
+
+        if not risk_result.approved:
+            logger.warning(
+                "submit_paper_order REJECTED by SafetyLayer — symbol=%s action=%s qty=%d: %s",
+                symbol, action, quantity, risk_result.rejection_reason,
+            )
+            return {
+                "approved": False,
+                "reason": risk_result.rejection_reason or "Safety check failed",
+                "order_id": None,
+                "routed_to_ib": False,
+            }
+
+        if risk_result.warnings:
+            for w in risk_result.warnings:
+                logger.warning("submit_paper_order safety warning (order allowed): %s", w)
+
+        # ── 3. Route to IB Gateway if available ───────────────────────────
+        if self._ib_gateway is None:
+            logger.info(
+                "submit_paper_order: safety checks PASSED — no IB gateway attached "
+                "(dry-run mode). symbol=%s action=%s qty=%d",
+                symbol, action, quantity,
+            )
+            return {
+                "approved": True,
+                "reason": "Safety checks passed — IB gateway not attached (dry-run)",
+                "order_id": None,
+                "routed_to_ib": False,
+            }
+
+        if not self._ib_gateway.is_connected():
+            logger.error(
+                "submit_paper_order: safety checks PASSED but IB gateway is NOT connected. "
+                "symbol=%s action=%s qty=%d",
+                symbol, action, quantity,
+            )
+            return {
+                "approved": True,
+                "reason": "Safety checks passed — IB gateway not connected",
+                "order_id": None,
+                "routed_to_ib": False,
+            }
+
+        try:
+            order_id = await self._ib_gateway.place_paper_order(
+                symbol=symbol,
+                action=action_upper,
+                quantity=quantity,
+                order_type=order_type.upper(),
+                limit_price=limit_price,
+            )
+            logger.info(
+                "submit_paper_order ROUTED to IB Gateway (paper) — symbol=%s action=%s "
+                "qty=%d order_type=%s order_id=%s",
+                symbol, action_upper, quantity, order_type.upper(), order_id,
+            )
+            return {
+                "approved": True,
+                "reason": "Order submitted to IB Gateway (paper trading)",
+                "order_id": str(order_id) if order_id is not None else None,
+                "routed_to_ib": True,
+            }
+        except Exception as exc:
+            logger.error(
+                "submit_paper_order: IB Gateway place_paper_order raised — symbol=%s: %s",
+                symbol, exc, exc_info=True,
+            )
+            return {
+                "approved": True,
+                "reason": f"Safety checks passed but IB Gateway raised: {exc}",
+                "order_id": None,
+                "routed_to_ib": False,
+            }
 
     # ── Portfolio State Sync (from broker, NOT from agents) ───────────────
 
@@ -205,18 +485,150 @@ class SafetyLayer:
                 f"Intraday sync: daily PnL {daily_pnl:.2f}"
             )
 
-    def get_status(self) -> dict:
+    def check_circuit_breakers(self) -> dict:
+        """
+        Return the current status of all circuit breakers as a single dict.
+
+        This method is safe to call at any time — it does NOT activate the kill
+        switch.  Use it for dashboard polling and the /safety/circuit-breakers
+        API endpoint.
+
+        Returns
+        -------
+        dict with keys:
+            daily_pnl            (float)  — today's realized + unrealized P&L in $
+            daily_limit          (float)  — maximum allowed daily loss in $ (negative)
+            daily_pnl_pct        (float)  — daily P&L as fraction of starting balance
+            daily_limit_pct      (float)  — configured daily loss limit (negative fraction)
+            daily_limit_breached (bool)  — if daily loss limit has been breached
+            drawdown_pct         (float)  — current drawdown from peak (negative)
+            drawdown_limit_pct   (float)  — configured max drawdown (negative)
+            drawdown_breached    (bool)  — if drawdown limit has been breached
+            kill_switch_active   (bool)  — if emergency halt is engaged
+            kill_switch_reason   (str)   — reason for kill switch if active
+        """
+        # Use PnLMonitor when available; fall back to in-memory values
+        if self._pnl_monitor is not None:
+            daily_pnl_for_check = self._pnl_monitor.get_daily_pnl()
+        else:
+            daily_pnl_for_check = self._daily_realized_pnl
+
+        # Daily loss circuit breaker
+        daily_limit = -(self._current_equity * self._config.MAX_DAILY_LOSS_PCT) if self._current_equity > 0 else 0
+        daily_pnl_pct = (daily_pnl_for_check / self._current_equity) if self._current_equity > 0 else 0
+        daily_limit_pct = -self._config.MAX_DAILY_LOSS_PCT
+        daily_limit_breached = daily_pnl_for_check < daily_limit
+
+        # Drawdown circuit breaker
+        drawdown_pct = 0.0
+        if self._pnl_monitor is not None:
+            drawdown_pct = -self._pnl_monitor.get_drawdown_pct()
+        elif self._equity_peak > 0:
+            drawdown_pct = (self._equity_peak - self._current_equity) / self._equity_peak
+        drawdown_limit_pct = -self._config.MAX_DRAWDOWN_PCT
+        drawdown_breached = drawdown_pct > self._config.MAX_DRAWDOWN_PCT
+
         return {
+            "daily_pnl": daily_pnl_for_check,
+            "daily_limit": daily_limit,
+            "daily_pnl_pct": daily_pnl_pct,
+            "daily_limit_pct": daily_limit_pct,
+            "daily_limit_breached": daily_limit_breached,
+            "drawdown_pct": drawdown_pct,
+            "drawdown_limit_pct": drawdown_limit_pct,
+            "drawdown_breached": drawdown_breached,
             "kill_switch_active": self._kill_switch_active,
             "kill_switch_reason": self._kill_switch_reason.value if self._kill_switch_reason else None,
-            "live_trading_enabled": self._config.LIVE_TRADING_ENABLED,
-            "require_human_approval": self._config.REQUIRE_HUMAN_APPROVAL,
-            "daily_pnl": self._daily_realized_pnl,
-            "equity_peak": self._equity_peak,
-            "current_equity": self._current_equity,
-            "drawdown_pct": (
-                (self._equity_peak - self._current_equity) / self._equity_peak
-                if self._equity_peak > 0 else 0.0
-            ),
-            "orders_last_minute": len(self._recent_order_timestamps),
         }
+
+    # ── Loss Tracking API ──────────────────────────────────────────────────
+
+    def record_trade_result(self, symbol: str, pnl: float) -> None:
+        """
+        Record a trade result to the loss tracker.
+
+        Called by the trader agent or risk manager after a trade closes.
+
+        Parameters
+        ----------
+        symbol : str
+            Trading symbol (e.g., "MES", "AAPL")
+        pnl : float
+            Profit/loss in dollars
+        """
+        if self._loss_tracker is not None:
+            is_win = self._loss_tracker.record_trade(symbol, pnl)
+            logger.info(
+                f"Trade recorded: {symbol} PnL=${pnl:.2f} ({'WIN' if is_win else 'LOSS'})"
+            )
+        else:
+            logger.debug(f"Loss tracker not available; trade not recorded: {symbol} PnL=${pnl:.2f}")
+
+    def get_loss_tracker_status(self) -> dict:
+        """
+        Return current loss tracker status.
+
+        Returns
+        -------
+        dict with comprehensive loss tracking state
+        """
+        if self._loss_tracker is None:
+            return {
+                "enabled": False,
+                "message": "Loss tracker not available"
+            }
+        return {
+            "enabled": True,
+            **self._loss_tracker.get_status()
+        }
+
+    def reset_loss_tracker(self, symbol: Optional[str] = None) -> dict:
+        """
+        Manually reset loss tracker (human intervention).
+
+        Parameters
+        ----------
+        symbol : str | None
+            If None, reset global counter. Otherwise reset for this symbol.
+
+        Returns
+        -------
+        dict with updated status
+        """
+        if self._loss_tracker is None:
+            return {"status": "Loss tracker not available"}
+
+        self._loss_tracker.reset(symbol=symbol)
+        return {
+            "status": "Reset successful",
+            **self._loss_tracker.get_status()
+        }
+
+    async def _log_safety_event(
+        self,
+        event_type: str,
+        reason: str,
+        details: dict = None,
+    ) -> None:
+        """
+        Log a safety event to PostgreSQL.
+
+        Gracefully handles database unavailability — never blocks execution.
+
+        Args:
+            event_type: Type of event (kill_switch_activate, kill_switch_deactivate, etc.)
+            reason: Human-readable reason
+            details: Event details dict
+        """
+        try:
+            from database import repository
+            await repository.insert_safety_event(
+                event_type=event_type,
+                reason=reason,
+                details=details,
+                resolved=details.get("resolved", False) if details else False,
+            )
+            logger.debug(f"[DB] Safety event logged: {event_type}")
+        except Exception as e:
+            # Never block safety operations due to logging errors
+            logger.warning(f"[DB] Failed to log safety event: {e}")

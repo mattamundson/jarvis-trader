@@ -1,0 +1,193 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+const STARTING_BALANCE = 10_000;
+
+interface PaperPhaseSummaryResponse {
+  current_balance?: number;
+  balance?: number;
+  total_pnl?: number;
+  trading_days?: number;
+  days_traded?: number;
+  [key: string]: unknown;
+}
+
+interface ROIState {
+  currentBalance: number;
+  totalPnl: number;
+  roi: number;
+  tradingDays: number;
+  dailyAvgPnl: number;
+  annualizedROI: number;
+}
+
+function fmt$(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value >= 0 ? "+" : "-";
+  return `${sign}$${abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtPct(value: number, decimals = 2): string {
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${value.toFixed(decimals)}%`;
+}
+
+function badgeVariant(roi: number): "bull" | "info" | "bear" {
+  if (roi >= 5) return "bull";
+  if (roi >= 0) return "info";
+  return "bear";
+}
+
+export function AccountROIWidget() {
+  const [data, setData] = useState<ROIState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  async function fetchStats() {
+    try {
+      const res = await fetch(`${ENGINE_URL}/portfolio/stats/paper-phase-summary`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json: PaperPhaseSummaryResponse = await res.json();
+
+      const currentBalance =
+        json.current_balance ??
+        json.balance ??
+        STARTING_BALANCE + (json.total_pnl ?? 0);
+
+      const totalPnl = json.total_pnl ?? currentBalance - STARTING_BALANCE;
+      const roi = (totalPnl / STARTING_BALANCE) * 100;
+      const tradingDays = Math.max(json.trading_days ?? json.days_traded ?? 1, 1);
+      const dailyAvgPnl = totalPnl / tradingDays;
+      const annualizedROI = (dailyAvgPnl * 252) / STARTING_BALANCE * 100;
+
+      setData({ currentBalance, totalPnl, roi, tradingDays, dailyAvgPnl, annualizedROI });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchStats();
+    const id = setInterval(fetchStats, 300_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle>Account ROI</CardTitle>
+        {data && (
+          <Badge variant={badgeVariant(data.roi)}>
+            {data.roi >= 0 ? "PROFIT" : "LOSS"}
+          </Badge>
+        )}
+      </CardHeader>
+
+      <CardContent>
+        {loading && (
+          <div className="flex items-center justify-center py-6">
+            <span className="font-mono text-xs animate-pulse" style={{ color: "#555" }}>
+              Loading...
+            </span>
+          </div>
+        )}
+
+        {error && !loading && (
+          <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "#ff444410", border: "1px solid #ff444430" }}>
+            <span className="font-mono text-xs" style={{ color: "#ff4444" }}>
+              {error}
+            </span>
+          </div>
+        )}
+
+        {data && !loading && (
+          <>
+            {/* Big ROI metric */}
+            <div className="flex items-baseline gap-3 mb-4">
+              <span
+                className="font-mono text-4xl font-bold tabular-nums"
+                style={{ color: data.roi >= 0 ? "#00ff88" : "#ff4444" }}
+              >
+                {data.roi >= 0 ? "+" : ""}{data.roi.toFixed(2)}%
+              </span>
+              <Badge variant={badgeVariant(data.roi)}>
+                {data.roi >= 5 ? "On Track" : data.roi >= 0 ? "Break Even" : "Drawdown"}
+              </Badge>
+            </div>
+
+            {/* 2x2 stats grid */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <StatCell
+                label="Starting Balance"
+                value={`$${STARTING_BALANCE.toLocaleString()}`}
+                valueColor="#888"
+              />
+              <StatCell
+                label="Current P&L"
+                value={fmt$(data.totalPnl)}
+                valueColor={data.totalPnl >= 0 ? "#00ff88" : "#ff4444"}
+              />
+              <StatCell
+                label="Daily Avg"
+                value={`${fmt$(data.dailyAvgPnl)}/day`}
+                valueColor={data.dailyAvgPnl >= 0 ? "#00ff88" : "#ff4444"}
+              />
+              <StatCell
+                label="Annualized"
+                value={
+                  data.tradingDays >= 5
+                    ? `${fmtPct(data.annualizedROI, 1)}/yr`
+                    : "Calculating..."
+                }
+                valueColor={
+                  data.tradingDays < 5
+                    ? "#555"
+                    : data.annualizedROI >= 0
+                    ? "#00ff88"
+                    : "#ff4444"
+                }
+              />
+            </div>
+
+            {/* Note */}
+            <p className="font-mono text-[10px]" style={{ color: "#444" }}>
+              Paper account · {STARTING_BALANCE.toLocaleString()} starting capital
+              {data.tradingDays < 5 && " · Annualized projection available after 5 trading days"}
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatCell({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor: string;
+}) {
+  return (
+    <div
+      className="rounded-lg p-3"
+      style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}
+    >
+      <p className="font-mono text-[10px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>
+        {label}
+      </p>
+      <p className="font-mono text-sm font-bold tabular-nums" style={{ color: valueColor }}>
+        {value}
+      </p>
+    </div>
+  );
+}

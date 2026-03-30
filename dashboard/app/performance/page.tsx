@@ -2,6 +2,13 @@
 
 import React, { useState } from "react";
 import { Activity, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
+import { WeeklyStatsWidget } from "@/components/WeeklyStatsWidget";
+import { CommissionTrackerWidget } from "@/components/CommissionTrackerWidget";
+import { TradeDurationWidget } from "@/components/TradeDurationWidget";
+import { MonthlyBreakdownWidget } from "@/components/MonthlyBreakdownWidget";
+import { DrawdownChart } from "@/components/DrawdownChart";
+import { AccountROIWidget } from "@/components/AccountROIWidget";
+import { WeeklyPnLCard } from "@/components/WeeklyPnLCard";
 
 // ── Static Data (from EXECUTIVE_BRIEFING.md v2.3, 2026-03-29) ──────────────
 
@@ -580,6 +587,9 @@ export default function PerformancePage() {
               <a href="/watchlist" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Watchlist
               </a>
+              <a href="/scorecard" className="text-xs transition-colors" style={{ color: "#888" }}>
+                Scorecard
+              </a>
               <a href="/settings" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Settings
               </a>
@@ -602,6 +612,12 @@ export default function PerformancePage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+        {/* Account ROI */}
+        <AccountROIWidget />
+
+        {/* Weekly P&L */}
+        <WeeklyPnLCard />
+
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -639,6 +655,15 @@ export default function PerformancePage() {
           <SummaryCard label="Best WFE" value="0.88" sub="MGC 1d Adaptive" color="#00ff88" />
         </div>
 
+        {/* Weekly live performance summary */}
+        <WeeklyStatsWidget />
+
+        {/* Commission cost tracker */}
+        <CommissionTrackerWidget />
+
+        {/* Trade duration analysis */}
+        <TradeDurationWidget />
+
         {/* Section 1: Backtest Performance Matrix */}
         <BacktestMatrix />
 
@@ -650,6 +675,12 @@ export default function PerformancePage() {
 
         {/* Section 4: Do Not Trade List */}
         <DoNotTradeList />
+
+        {/* Section 5: Monthly Breakdown */}
+        <MonthlyBreakdownWidget />
+
+        {/* Section 6: Drawdown Chart */}
+        <DrawdownChart />
 
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>

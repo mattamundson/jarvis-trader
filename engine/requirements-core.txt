@@ -12,11 +12,15 @@
 #   prometheus-client — optional monitoring, add when needed
 #   edgartools     — SEC filings, add when FundamentalAnalyst needs it
 
+# ── Monitoring ──────────────────────────────────────────────────────────────
+prometheus-fastapi-instrumentator==6.1.0  # Prometheus metrics export for FastAPI
+
 # ── Core Framework ─────────────────────────────────────────────────────────
 fastapi==0.115.12
 uvicorn[standard]==0.34.0
 pydantic==2.11.2
 pydantic-settings==2.8.1
+slowapi==0.1.9            # Rate limiting for FastAPI
 
 # ── LLM ────────────────────────────────────────────────────────────────────
 anthropic==0.50.0
@@ -35,8 +39,9 @@ numpy>=2.2.6
 scipy>=1.15.2
 
 # ── Databases ──────────────────────────────────────────────────────────────
+asyncpg==0.31.0           # Async PostgreSQL driver (pure Python, no build needed)
 psycopg2-binary==2.9.10   # PostgreSQL (binary wheel, no build needed)
-redis==5.2.1              # Redis client
+redis[hiredis]==5.2.1     # Redis async client (hiredis optional, for faster parsing)
 
 # ── HTTP & Async ───────────────────────────────────────────────────────────
 httpx==0.28.1
@@ -57,6 +62,7 @@ apscheduler==3.11.0
 python-dotenv==1.1.0
 loguru==0.7.3
 rich==13.9.4              # Pretty terminal output
+tenacity==9.0.0           # Retry logic with exponential backoff
 
 # ── Testing ────────────────────────────────────────────────────────────────
 pytest==8.3.5

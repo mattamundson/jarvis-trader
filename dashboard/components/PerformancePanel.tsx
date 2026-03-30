@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+import useSWR from "swr";
 import {
   AreaChart,
   Area,
@@ -10,6 +12,7 @@ import {
 } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { formatCurrency, formatPercent, formatNumber } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
 interface PerformanceMetrics {
   sharpe_ratio: number;
@@ -26,12 +29,31 @@ interface EquityPoint {
   equity: number;
 }
 
+interface EquityCurveData {
+  points: EquityPoint[];
+}
+
 interface PerformancePanelProps {
-  metrics: PerformanceMetrics | null;
-  equityCurve: EquityPoint[];
+  metrics?: PerformanceMetrics | null;
+  equityCurve?: EquityPoint[];
+}
+
+function fetcher<T>(url: string): Promise<T> {
+  return fetchEngine<T>(url);
 }
 
 export function PerformancePanel({ metrics, equityCurve }: PerformancePanelProps) {
+  // Fetch equity curve from engine if not provided
+  const { data: fetchedCurveData } = useSWR<EquityCurveData>(
+    "/portfolio/history/equity-curve",
+    fetcher,
+    { refreshInterval: 30_000 }
+  );
+
+  const curve = useMemo(() => {
+    if (equityCurve && equityCurve.length > 0) return equityCurve;
+    return fetchedCurveData?.points ?? [];
+  }, [equityCurve, fetchedCurveData]);
   return (
     <Card>
       <CardHeader>
@@ -39,10 +61,10 @@ export function PerformancePanel({ metrics, equityCurve }: PerformancePanelProps
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Equity curve */}
-        {equityCurve.length > 1 && (
+        {curve.length > 1 && (
           <div className="h-32">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={equityCurve} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <AreaChart data={curve} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -108,8 +130,8 @@ export function PerformancePanel({ metrics, equityCurve }: PerformancePanelProps
             />
           </div>
         ) : (
-          <p className="text-center text-sm text-muted-foreground py-2">
-            No trade history yet
+          <p className="text-center text-sm text-muted-foreground py-4">
+            No data yet
           </p>
         )}
       </CardContent>

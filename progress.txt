@@ -1,0 +1,12 @@
+## Codebase Patterns
+- engine/main.py is 3,413 lines — the central FastAPI server. All endpoint registration happens here.
+- All new modules follow async patterns with graceful fallback (Redis → in-memory, PostgreSQL → log warning)
+- Safety layer is HARDCODED Python — never LLM reasoning for safety decisions
+- Config uses Pydantic BaseSettings loading from .env file
+- Dashboard is Next.js 15 with App Router, components in dashboard/components/
+- Tests use pytest with async mode (asyncio_mode=auto in pyproject.toml)
+- Backtest modules live in engine/backtest/, risk modules in engine/risk/
+- Docker Compose stack: PostgreSQL 16, Redis 7.4, QuestDB 8.2, Grafana 11.4, Prometheus
+- SCHWAB_READY=False guard prevents any real order submission
+- Multi-agent session caused file conflicts — always verify main.py state before modifying
+---

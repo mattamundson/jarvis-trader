@@ -1,20 +1,54 @@
 """
-JARVIS TRADER — Charles Schwab Execution Connector
+SCHWAB CONNECTOR — STATUS: INCOMPLETE (March 2026)
 ===================================================
-Handles equity options orders via the Schwab Trader API.
+
+NOT WIRED TO ORDER ROUTER. OAuth flow partially implemented.
+Do NOT route orders through this module until completion and testing.
+
+This connector is 60% complete. It provides:
+  - OAuth token management (partial)
+  - Account summary queries (working)
+  - Quote fetching for equities/options (working)
+  - Options chain retrieval (working)
+  - Single-leg options order submission (implemented but untested)
+  - Order cancellation (implemented but untested)
+
+MISSING / TODO:
+  - [ ] Full OAuth2 flow integration with dashboard
+  - [ ] Automated token refresh (currently manual every 7 days)
+  - [ ] Integration with order router dispatch
+  - [ ] Testing against live Schwab sandbox
+  - [ ] Error handling refinements
+  - [ ] Logging and observability improvements
+
+Until completion, all equity/options orders must route through
+alternative connectors (e.g., IB Gateway for stocks, manual for options).
+
 NOTE: Schwab API can stream futures QUOTES but CANNOT execute futures ORDERS.
       Use IBKRExecutor for all futures order execution.
 
-Re-auth required:
-  - Schwab refresh token expires every 7 days
-  - Run: python -c "import schwab; schwab.auth.easy_client(...)" to re-auth
-  - Token stored at: engine/.schwab_token.json
+For re-auth when token expires (every 7 days):
+  python -c "import schwab; schwab.auth.easy_client(...)"
+  Token stored at: engine/.schwab_token.json
 """
 import logging
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Guard: mark this module as incomplete
+SCHWAB_READY = False
+
+
+def check_schwab_ready():
+    """Prevent accidental use of incomplete Schwab connector."""
+    if not SCHWAB_READY:
+        raise RuntimeError(
+            "Schwab connector is incomplete (March 2026). "
+            "Do NOT use in production. Set SCHWAB_READY=True only after "
+            "finishing implementation, testing, and reviewing TODO items above."
+        )
 
 # Token file lives in the engine/ directory (one level above this file)
 _TOKEN_PATH = Path(__file__).parent.parent / ".schwab_token.json"
@@ -45,6 +79,8 @@ class SchwabConnector:
         Uses token file at .schwab_token.json (created during auth flow).
         Returns True if connected.
         """
+        check_schwab_ready()
+
         api_key = self._settings.SCHWAB_APP_KEY
         app_secret = self._settings.SCHWAB_APP_SECRET
         callback_url = self._settings.SCHWAB_CALLBACK_URL
@@ -108,6 +144,8 @@ class SchwabConnector:
 
     async def get_account_summary(self) -> dict:
         """Account balances and positions from Schwab."""
+        check_schwab_ready()
+
         if not self.is_connected:
             return {"error": "Schwab not connected"}
 
@@ -155,6 +193,8 @@ class SchwabConnector:
 
     async def get_quotes(self, symbols: list[str]) -> dict[str, dict]:
         """Get real-time quotes for equity/ETF/options symbols."""
+        check_schwab_ready()
+
         if not self.is_connected:
             return {}
 
@@ -194,6 +234,8 @@ class SchwabConnector:
 
         expiry_date format: "YYYY-MM-DD"  (None = nearest expiry)
         """
+        check_schwab_ready()
+
         if not self.is_connected:
             return {"error": "Schwab not connected"}
 
@@ -277,7 +319,11 @@ class SchwabConnector:
 
         Only single-leg orders are supported by design (defined-risk always).
         Spreads and naked shorts are NOT implemented.
+
+        TODO: Remove check_schwab_ready() guard once implementation is complete and tested.
         """
+        check_schwab_ready()
+
         symbol = order.get("symbol", "UNKNOWN")
         action = order.get("action", "")
         option_symbol = order.get("option_symbol", "")
@@ -408,6 +454,8 @@ class SchwabConnector:
 
     async def cancel_all_orders(self) -> int:
         """Cancel all open Schwab orders. Called by kill switch."""
+        check_schwab_ready()
+
         if not self.is_connected:
             logger.warning("cancel_all_orders: Schwab not connected")
             return 0
@@ -443,6 +491,8 @@ class SchwabConnector:
 
     async def get_open_orders(self) -> list[dict]:
         """List all open orders."""
+        check_schwab_ready()
+
         if not self.is_connected:
             return []
 

@@ -22,12 +22,9 @@ import pandas as pd
 import numpy as np
 
 from backtest.data_loader import BacktestDataLoader
-from backtest.signals import (
-    compute_all_indicators,
-    layer1_regime,
-    layer2_structure,
-    layer3_bias,
-    layer4_entry,
+from backtest.indicators import (
+    wilder_atr, kama, stc, phase_oscillator,
+    ema_ribbon,
 )
 from backtest.backtester import Backtester, BacktestResult
 
@@ -68,6 +65,93 @@ class OptResult:
     score: float  # composite ranking score
 
 
+def build_daily_bias(df_daily: pd.DataFrame) -> pd.Series:
+    """
+    Compute daily EMA8/21/34 directional bias from a daily OHLCV DataFrame.
+
+    Returns a pd.Series indexed by date (tz-naive) with values:
+        'BULL'   -- EMA8 > EMA21 > EMA34  (allow longs, filter shorts)
+        'BEAR'   -- EMA8 < EMA21 < EMA34  (allow shorts, filter longs)
+        'NEUTRAL'-- mixed alignment        (filter both directions)
+    """
+    close = df_daily["close"]
+    ema8, ema21, ema34 = ema_ribbon(close)
+
+    # Index normalised to date only (drop time component)
+    idx = pd.to_datetime(df_daily.index).normalize()
+
+    bull_mask = (ema8 > ema21) & (ema21 > ema34)
+    bear_mask = (ema8 < ema21) & (ema21 < ema34)
+
+    bias = pd.Series("NEUTRAL", index=idx)
+    bias.loc[bull_mask.values] = "BULL"
+    bias.loc[bear_mask.values] = "BEAR"
+
+    # Remove duplicate dates (shouldn't occur on daily data but guard anyway)
+    bias = bias[~bias.index.duplicated(keep="last")]
+    return bias
+
+
+def _apply_mtf_filter(df: pd.DataFrame, daily_bias: pd.Series) -> pd.DataFrame:
+    """
+    Apply MTF daily-bias filter to a 1h DataFrame's entry_signal column.
+
+    Rules:
+        BULL day  -> block SHORT entries  (set ENTRY_NOW to NO_TRADE for bear signals)
+        BEAR day  -> block LONG  entries  (set ENTRY_NOW to NO_TRADE for bull signals)
+        NEUTRAL   -> block all  entries
+
+    Direction is inferred from the bias column already computed by _compute_signals:
+        STRONG_BULL  -> long signal
+        STRONG_BEAR  -> short signal
+        NEUTRAL      -> ambiguous, filtered out in NEUTRAL days anyway
+
+    If the daily bias Series has no coverage for a given date the bar is left as-is.
+    """
+    df = df.copy()
+
+    # Normalise 1h index to date for the lookup
+    bar_dates = pd.to_datetime(df.index).normalize()
+
+    filtered_count = 0
+    for i, bar_date in enumerate(bar_dates):
+        if df["entry_signal"].iloc[i] != "ENTRY_NOW":
+            continue  # not an entry — nothing to filter
+
+        d_bias = daily_bias.get(bar_date, None)
+        if d_bias is None:
+            # No daily coverage; try the previous trading day (roll back up to 7 days)
+            for delta in range(1, 8):
+                d_bias = daily_bias.get(bar_date - pd.Timedelta(days=delta), None)
+                if d_bias is not None:
+                    break
+
+        if d_bias is None:
+            # Still no coverage → block entry (safety: unknown daily regime)
+            df.iloc[i, df.columns.get_loc("entry_signal")] = "NO_TRADE"
+            filtered_count += 1
+            continue
+
+        bar_bias = df["bias"].iloc[i]
+
+        if d_bias == "BULL":
+            # Only allow long (STRONG_BULL) entries on bull days
+            if bar_bias != "STRONG_BULL":
+                df.iloc[i, df.columns.get_loc("entry_signal")] = "NO_TRADE"
+                filtered_count += 1
+        elif d_bias == "BEAR":
+            # Only allow short (STRONG_BEAR) entries on bear days
+            if bar_bias != "STRONG_BEAR":
+                df.iloc[i, df.columns.get_loc("entry_signal")] = "NO_TRADE"
+                filtered_count += 1
+        else:
+            # NEUTRAL daily — block all entries
+            df.iloc[i, df.columns.get_loc("entry_signal")] = "NO_TRADE"
+            filtered_count += 1
+
+    return df, filtered_count
+
+
 def _compute_signals(
     df: pd.DataFrame,
     stc_oversold: float,
@@ -75,101 +159,89 @@ def _compute_signals(
     atr_stop_mult: float,
     atr_target_mult: float,
     regime_filter: bool,
-    adaptive_regime: bool = False,
-    volume_filter: bool = False,
-    mtf_filter: bool = False,
+    daily_bias: "pd.Series | None" = None,
 ) -> pd.DataFrame:
-    """Use real signal pipeline with parameterized thresholds."""
-    df = compute_all_indicators(df.copy())
+    """Recompute signals with given parameters."""
+    close = df["close"]
+    high  = df["high"]
+    low   = df["low"]
+    vol   = df["volume"]
 
-    # Re-apply STC signals with parameterized thresholds (overrides the
-    # hardcoded STC_OS / STC_OB baked into compute_all_indicators)
-    if adaptive_regime:
-        from backtest.regime import RegimeClassifier
-        df = RegimeClassifier().classify(df)
-        adapt_os = df['adaptive_stc_os']
-        adapt_ob = df['adaptive_stc_ob']
-        stc_v = df['stc_val']
-        stc_prev = stc_v.shift(1).fillna(50)
-        stc_cross_up = (stc_v > adapt_os) & (stc_prev <= adapt_os)
-        stc_cross_down = (stc_v < adapt_ob) & (stc_prev >= adapt_ob)
-        stc_signal = pd.Series('neutral', index=df.index)
-        stc_signal[stc_v < adapt_os] = 'oversold'
-        stc_signal[stc_v > adapt_ob] = 'overbought'
-        rising_mask = (stc_v > stc_prev) & (stc_signal == 'neutral')
-        falling_mask = (stc_v < stc_prev) & (stc_signal == 'neutral')
-        stc_signal[rising_mask] = 'rising'
-        stc_signal[falling_mask] = 'falling'
-    else:
-        stc_cross_up = (df['stc_val'] > stc_oversold) & (df['stc_val'].shift(1).fillna(50) <= stc_oversold)
-        stc_cross_down = (df['stc_val'] < stc_overbought) & (df['stc_val'].shift(1).fillna(50) >= stc_overbought)
-        stc_signal = pd.Series('neutral', index=df.index)
-        stc_signal[df['stc_val'] < stc_oversold] = 'oversold'
-        stc_signal[df['stc_val'] > stc_overbought] = 'overbought'
-        stc_prev = df['stc_val'].shift(1).fillna(50)
-        rising_mask = (df['stc_val'] > stc_prev) & (stc_signal == 'neutral')
-        falling_mask = (df['stc_val'] < stc_prev) & (stc_signal == 'neutral')
-        stc_signal[rising_mask] = 'rising'
-        stc_signal[falling_mask] = 'falling'
+    atr_vals   = wilder_atr(high, low, close, 14)
+    stc_vals   = stc(close, fast=23, slow=50, k_period=10, d_period=3)
+    phase_vals, phase_compression = phase_oscillator(close, high, low)
+    ema8, ema21, ema34 = ema_ribbon(close)
+    # range_consumed_pct takes scalars — compute as series inline
+    consumed = ((close - close.shift(1)).abs() / atr_vals.replace(0, float('nan'))) * 100
+    kama_vals  = kama(close)
 
-    df['stc_signal'] = stc_signal
-    df['stc_cross_up'] = stc_cross_up
-    df['stc_cross_down'] = stc_cross_down
+    signals = []
+    for i in range(len(df)):
+        row = df.iloc[i]
+        atr_i  = atr_vals.iloc[i]
+        stc_i  = stc_vals.iloc[i]
+        phase_i = phase_vals.iloc[i]
+        e8, e21, e34 = ema8.iloc[i], ema21.iloc[i], ema34.iloc[i]
+        cons = consumed.iloc[i]
+        kama_i = kama_vals.iloc[i]
 
-    # Run all 4 layers using the real layer functions from signals.py
-    regimes = []
-    structure_positions = []
-    biases = []
-    entries = []
+        entry = "NO_TRADE"
 
-    for idx, row in df.iterrows():
-        regime = layer1_regime(row)
-        if not regime_filter and regime in ('EXHAUSTED', 'COMPRESSION'):
-            regime = 'RANGE_BOUND'
-        structure = layer2_structure(row)
-        bias = layer3_bias(row)
-        entry = layer4_entry(row, regime, bias, structure)
-        regimes.append(regime)
-        structure_positions.append(structure['position'])
-        biases.append(bias)
-        entries.append(entry)
+        if pd.isna(atr_i) or pd.isna(stc_i):
+            signals.append(entry)
+            continue
 
-    df['regime'] = regimes
-    df['structure_position'] = structure_positions
-    df['bias'] = biases
-    df['entry_signal'] = entries
+        # Layer 1: Regime filter
+        if regime_filter:
+            if cons > 90:
+                signals.append("NO_TRADE")
+                continue
+            # Phase compression check (skip if already extended)
+            if not pd.isna(phase_i) and abs(phase_i) > 80:
+                signals.append("NO_TRADE")
+                continue
 
-    # Apply parameterized ATR stop/target
-    atr = df['atr'].fillna(0)
-    close = df['close']
-    is_long = df['bias'].isin(['STRONG_BULL', 'LEAN_BULL'])
+        # Layer 3: Bias
+        bullish_ema = (not pd.isna(e8)) and (not pd.isna(e34)) and (e8 > e21 > e34)
+        bearish_ema = (not pd.isna(e8)) and (not pd.isna(e34)) and (e8 < e21 < e34)
+        close_above_kama = (not pd.isna(kama_i)) and (row["close"] > kama_i)
 
-    df['stop_level'] = np.where(is_long, close - atr_stop_mult * atr, close + atr_stop_mult * atr)
-    df['target_1'] = np.where(is_long, close + atr_target_mult * atr, close - atr_target_mult * atr)
-    df['target_2'] = np.where(is_long, close + atr_target_mult * 1.618 * atr, close - atr_target_mult * 1.618 * atr)
-    df['target_3'] = np.where(is_long, close + atr_target_mult * 2.0 * atr, close - atr_target_mult * 2.0 * atr)
+        # Layer 4: Entry timing with parameterized STC thresholds
+        # Long entry: STC oversold crossover with bullish bias
+        if stc_i < stc_oversold and (bullish_ema or close_above_kama):
+            entry = "ENTRY_NOW"
+        # Short entry: STC overbought crossover with bearish bias
+        elif stc_i > stc_overbought and (bearish_ema or not close_above_kama):
+            entry = "ENTRY_NOW"
 
-    # ── Volume confirmation filter ────────────────────────────────────────
-    if volume_filter and 'volume' in df.columns:
-        vol_ma = df['volume'].rolling(20).mean()
-        high_volume = df['volume'] > vol_ma
-        df.loc[(df['entry_signal'] == 'ENTRY_NOW') & ~high_volume, 'entry_signal'] = 'LOW_VOLUME_BLOCK'
+        signals.append(entry)
 
-    # ── MTF (Multi-Timeframe) confirmation filter ─────────────────────────
-    if mtf_filter:
-        from backtest.mtf_filter import MTFFilter
-        # Resample 1h bars to 4h to get higher-timeframe STC
-        ohlcv_4h = df[['open', 'high', 'low', 'close', 'volume']].resample('4h').agg({
-            'open': 'first', 'high': 'max', 'low': 'min',
-            'close': 'last', 'volume': 'sum',
-        }).dropna(subset=['open', 'high', 'low', 'close'])
-        if len(ohlcv_4h) >= 20:
-            ohlcv_4h['timestamp'] = ohlcv_4h.index
-            df_4h = compute_all_indicators(ohlcv_4h)
-            # compute_all_indicators adds stc_signal, stc_cross_up, stc_cross_down
-            mtf = MTFFilter()
-            aligned = mtf.check_alignment(df, df_4h)
-            df.loc[(df['entry_signal'] == 'ENTRY_NOW') & ~aligned, 'entry_signal'] = 'MTF_BLOCK'
+    df = df.copy()
+    df["entry_signal"] = signals
+    df["atr"]          = atr_vals.values
+
+    # Columns required by backtester
+    df["stop_level"]  = df["close"] - atr_stop_mult * df["atr"]
+    df["target_1"]    = df["close"] + atr_target_mult * df["atr"]
+    df["target_2"]    = df["close"] + atr_target_mult * 1.618 * df["atr"]
+    df["target_3"]    = df["close"] + atr_target_mult * 2.0   * df["atr"]
+
+    # Bias column: derive from EMA ribbon
+    ema8_s, ema21_s, ema34_s = ema_ribbon(df["close"])
+    bull_mask = (ema8_s > ema21_s) & (ema21_s > ema34_s)
+    bear_mask = (ema8_s < ema21_s) & (ema21_s < ema34_s)
+    df["bias"] = "NEUTRAL"
+    df.loc[bull_mask, "bias"] = "STRONG_BULL"
+    df.loc[bear_mask, "bias"] = "STRONG_BEAR"
+
+    # Regime column: simple consumed-ATR proxy
+    consumed_s = ((df["close"] - df["close"].shift(1)).abs() / atr_vals.replace(0, float("nan"))) * 100
+    df["regime"] = "TRENDING_BULL"
+    df.loc[consumed_s > 90, "regime"] = "EXHAUSTED"
+
+    # MTF filter: apply daily EMA bias to block counter-trend 1h entries
+    if daily_bias is not None:
+        df, filtered_count = _apply_mtf_filter(df, daily_bias)
 
     return df
 
@@ -178,14 +250,18 @@ def _run_with_params(
     df_base: pd.DataFrame,
     multiplier: float,
     initial_capital: float,
-    adaptive_regime: bool = False,
-    volume_filter: bool = False,
-    mtf_filter: bool = False,
     **params,
 ) -> Optional[BacktestResult]:
     """Re-signal and backtest with given parameter set."""
     try:
-        df = _compute_signals(df_base, adaptive_regime=adaptive_regime, volume_filter=volume_filter, mtf_filter=mtf_filter, **params)
+        # Filter to only the params that _compute_signals accepts
+        signal_keys = {"stc_oversold", "stc_overbought", "atr_stop_mult", "atr_target_mult", "regime_filter"}
+        signal_params = {k: v for k, v in params.items() if k in signal_keys}
+
+        # Pass daily_bias through if present (MTF filter)
+        daily_bias = params.get("daily_bias", None)
+
+        df = _compute_signals(df_base, **signal_params, daily_bias=daily_bias)
         backtester = Backtester(
             initial_capital=initial_capital,
             risk_per_trade=0.01,
@@ -202,12 +278,12 @@ def _score(r: BacktestResult) -> float:
     """
     if r.total_trades < 3:
         return -999.0
-    pf  = min(r.profit_factor, 10.0)       # cap at 10x
-    wr  = r.win_rate                       # already 0.0-1.0, NO division by 100
-    sr  = min(r.sharpe_ratio, 20.0)        # cap at 20
-    ret = r.total_return_pct
-    dd  = max(r.max_drawdown_pct, 0.001)   # avoid div/0
-    return ((pf * 0.3) + (wr * 0.2) + (sr * 0.3) + (ret * 0.1)) / dd
+    pf   = min(r.profit_factor, 10.0)       # cap at 10x
+    wr   = r.win_rate / 100.0
+    sr   = min(r.sharpe_ratio, 20.0)        # cap at 20
+    ret  = r.total_return_pct
+    dd   = max(r.max_drawdown_pct, 0.001)   # avoid div/0
+    return (pf * 0.3 + wr * 0.2 + sr * 0.3 + ret * 0.1) / dd * 0.1
 
 
 def run_optimization(

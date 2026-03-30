@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# PostgreSQL logging (imported here to avoid circular dependency issues)
+_repository = None
+
 __all__ = ["OrderRouter"]
 
 
@@ -72,45 +75,106 @@ class OrderRouter:
         if is_futures:
             if self._ibkr is None or not self._ibkr.is_connected:
                 logger.error("Futures order for %s — IBKR not connected", symbol)
-                return {
+                result = {
                     "status": "error",
                     "reason": "IBKR not connected — cannot execute futures order",
                     "symbol": symbol,
                 }
+                await self._log_order_result(order, result, is_futures, is_options)
+                return result
             logger.info("Routing futures order for %s → IBKR", symbol)
-            return await self._ibkr.submit_futures_order(order, portfolio_equity)
+            result = await self._ibkr.submit_futures_order(order, portfolio_equity)
+            await self._log_order_result(order, result, is_futures, is_options)
+            return result
 
         # ── Options → Schwab ──────────────────────────────────────────────────
         if is_options:
             if self._schwab is None or not self._schwab.is_connected:
                 logger.error("Options order for %s — Schwab not connected", symbol)
-                return {
+                result = {
                     "status": "error",
                     "reason": "Schwab not connected — cannot execute options order",
                     "symbol": symbol,
                 }
+                await self._log_order_result(order, result, is_futures, is_options)
+                return result
             logger.info("Routing options order for %s → Schwab", symbol)
             order_dict = order if isinstance(order, dict) else _order_request_to_dict(order)
-            return await self._schwab.submit_options_order(order_dict, portfolio_equity)
+            result = await self._schwab.submit_options_order(order_dict, portfolio_equity)
+            await self._log_order_result(order, result, is_futures, is_options)
+            return result
 
         # ── Equity → Schwab (fallback to IBKR) ───────────────────────────────
         if self._schwab and self._schwab.is_connected:
             logger.info("Routing equity order for %s → Schwab", symbol)
             order_dict = order if isinstance(order, dict) else _order_request_to_dict(order)
-            return await self._schwab.submit_options_order(order_dict, portfolio_equity)
+            result = await self._schwab.submit_options_order(order_dict, portfolio_equity)
+            await self._log_order_result(order, result, is_futures, is_options)
+            return result
 
         if self._ibkr and self._ibkr.is_connected:
             logger.warning(
                 "Schwab unavailable — routing equity order for %s → IBKR (fallback)", symbol
             )
-            return await self._ibkr.submit_futures_order(order, portfolio_equity)
+            result = await self._ibkr.submit_futures_order(order, portfolio_equity)
+            await self._log_order_result(order, result, is_futures, is_options)
+            return result
 
         logger.error("No broker available for equity order: %s", symbol)
-        return {
+        result = {
             "status": "error",
             "reason": "No broker connected for equity order",
             "symbol": symbol,
         }
+        # Log rejected order to PostgreSQL
+        await self._log_order_result(order, result, is_futures, is_options)
+        return result
+
+    async def _log_order_result(
+        self, order: dict, result: dict, is_futures: bool, is_options: bool
+    ) -> None:
+        """
+        Log order execution result to PostgreSQL for audit trail.
+
+        Gracefully handles database unavailability — never blocks execution.
+
+        Args:
+            order: Original order dict
+            result: Result from broker executor
+            is_futures: Whether this is a futures order
+            is_options: Whether this is an options order
+        """
+        try:
+            global _repository
+            if _repository is None:
+                from database import repository
+                _repository = repository
+
+            symbol = order.get("symbol", "UNKNOWN") if isinstance(order, dict) else "UNKNOWN"
+            quantity = order.get("quantity", 0) if isinstance(order, dict) else 0
+            order_type = order.get("order_type", "market") if isinstance(order, dict) else "market"
+            status = result.get("status", "unknown")
+            broker = "ibkr" if is_futures else "schwab" if is_options else "ibkr"
+
+            # Log to PostgreSQL
+            order_id = await _repository.insert_order({
+                "symbol": symbol,
+                "quantity": quantity,
+                "order_type": order_type,
+                "limit_price": order.get("limit_price") if isinstance(order, dict) else None,
+                "stop_price": order.get("stop_price") if isinstance(order, dict) else None,
+                "is_futures": is_futures,
+                "is_options": is_options,
+                "status": status,
+                "broker": broker,
+                "broker_order_id": result.get("order_id") or result.get("broker_order_id"),
+                "notes": result.get("reason") or result.get("error"),
+            })
+            logger.debug(f"[DB] Order {order_id} logged: {symbol} {quantity} {status}")
+
+        except Exception as e:
+            # Never block order execution due to logging errors
+            logger.warning(f"[DB] Failed to log order to PostgreSQL: {e}")
 
     # ── Kill-Switch Support ───────────────────────────────────────────────────
 

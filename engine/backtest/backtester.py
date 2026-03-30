@@ -784,4 +784,4 @@ class Backtester:
                     cur_dd_dur = 0
             result.max_drawdown_duration_bars = max_dd_dur
 
-        return result
+        return result 
