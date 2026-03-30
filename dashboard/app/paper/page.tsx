@@ -822,4 +822,31 @@ function TradeLoggerPanel() {
               className="w-full rounded-lg border px-3 py-2 font-mono text-xs focus:outline-none focus:ring-1"
               style={{ backgroundColor: "#0d0d1a", borderColor: "#1a1a2e", color: "#e0e0e0" }}
             />
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-3 mt-4">
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="flex-1 rounded-lg px-4 py-2 font-mono text-xs font-semibold text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2"
+            style={{ backgroundColor: "#00ff88", cursor: isSubmitting ? "not-allowed" : "pointer", opacity: isSubmitting ? 0.6 : 1 }}
+          >
+            {isSubmitting ? "Processing…" : "Record Trade"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm({ entry_date: "", exit_date: "", direction: "BUY", entry_price: 0, exit_price: 0, contracts: 1 })}
+            disabled={isSubmitting}
+            className="flex-1 rounded-lg border px-4 py-2 font-mono text-xs font-semibold transition-colors"
+            style={{ borderColor: "#555", color: "#aaa", cursor: isSubmitting ? "not-allowed" : "pointer", opacity: isSubmitting ? 0.6 : 1 }}
+          >
+            Reset
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
    
