@@ -1,9 +1,9 @@
 # JARVIS TRADER -- Executive Strategy Briefing
-*Updated: 2026-03-29 v2.5 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
+*Updated: 2026-03-29 v2.6 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
 
 ## The Verdict: NO-GO (Signal Redesign Required)
 
-The STC-based strategy shows genuine in-sample edge on 4 instruments after fixing 8 critical backtesting bugs. However, **walk-forward validation fails on all 5 tested instruments** — every tested symbol shows Walk-Forward Efficiency below the 0.30 minimum threshold. The strategy is curve-fit to the 2024–2026 historical window and does not reliably generalize to new data. Live or paper trading is not recommended without fundamental signal improvements.
+The STC-based strategy shows genuine in-sample edge on 4 instruments after fixing 8 critical backtesting bugs. However, **walk-forward validation fails on all instruments after correcting an optimizer bug** — MGC is deeply overfit (WFE=0.14), MNQ crosses the 0.40 threshold (WFE=0.48) but with heavy concentration risk. Live or paper trading is not recommended without further out-of-sample validation.
 
 *v1.0 verdict was CONDITIONAL GO based on in-sample results and MGC walk-forward only. v2.0 revises to NO-GO after completing walk-forward validation for all 5 instruments.*
 
@@ -17,15 +17,17 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 
 *v2.5 update: SPY 1h and MES 1h re-optimized (US-005/US-007). SPY PF 3.00->3.79, Sharpe -1.55->-1.43 (T2 tightened 1.80->1.618). MES PF 0.96->1.69, Sharpe -0.12->0.09, return -4.0%->+0.1% (stop 0.70->0.50, T1 1.00->2.00, regime OFF). INSTRUMENT_PARAMS in signals.py now includes per-instrument regime_filter as 7th tuple element.*
 
+*v2.6 update: CRITICAL — Optimizer kwarg bug discovered and fixed. Extra kwargs (adaptive_regime, volume_filter, mtf_filter) were silently passed to _compute_signals() causing TypeError on every call, caught by bare except → None returns for ALL walk-forward runs after these kwargs were added to walk_forward.py. With bug fixed: MGC 1d corrected WFE=0.14 (was 0.27 — OVERFIT confirmed, paper trading HALTED). MNQ 1h corrected WFE=0.48 with extended start 2024-04-26 (was 0.34 from buggy run — now ACCEPTABLE, crossed 0.40 threshold). MGC paper trading suspended pending MTF filter validation.*
+
 ---
 
 ## Corrected Performance (In-Sample, Per-Instrument Optimized)
 
 | Rank | Symbol | TF | Trades | WR% | PF | Sharpe | Return | MaxDD | WFE | Verdict |
 |------|--------|-----|--------|-----|------|--------|--------|-------|-----|---------|
-| 1 | MGC | 1d | 47 | 51.1 | 2.60 | 2.04 | +34.4% | 3.0% | 0.27 | **OVERFIT** |
+| 1 | MGC | 1d | 47 | 51.1 | 2.60 | 2.04 | +34.4% | 3.0% | **0.14** | **OVERFIT** (v2.6 corrected) |
 | 2 | SPY | 1h | 23 | 52.2 | 3.79 | -1.43 | +0.0% | 0.1% | TBD | **RE-OPTIMIZED v2.5** |
-| 3 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | 0.24 | **OVERFIT** |
+| 3 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | **0.48** | **ACCEPTABLE** (v2.6, extended start) |
 | 4 | MCL | 1h | 65 | 60.0 | 1.83 | 0.15 | +0.2% | — | -0.16 | **OVERFIT** |
 | 5 | MES | 1h | 23 | 34.8 | 1.69 | 0.09 | +0.1% | 0.1% | TBD | **RE-OPTIMIZED v2.5** |
 
@@ -37,8 +39,8 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 
 | Symbol | TF | Windows | OOS Profitable | Avg IS Return | Avg OOS Return | WFE | Verdict |
 |--------|-----|---------|----------------|---------------|----------------|------|---------|
-| MGC | 1d | 7 | 3/7 (43%) | +10.1% | +2.7% | **0.27** | FAIL (below 0.30) |
-| MNQ | 1h | 6 | 3/6 (50%) | +19.8% | +4.8% | **0.24** | FAIL (below 0.30) |
+| MGC | 1d | 7 | 3/7 (43%) | +10.1% | +2.7% | ~~0.27~~ → **0.14** | FAIL (v2.6 corrected — optimizer bug was masking true WFE) |
+| MNQ | 1h | 6 | 2/6 (33%) | +13.8% | +6.6% | ~~0.34~~ → **0.48** | ACCEPTABLE (v2.6 corrected, extended start 2024-04-26) |
 | MCL | 1h | 6 | 2/6 (33%) | +6.1% | -1.0% | **-0.16** | FAIL (negative) |
 | MES | 1h | 6 | 1/6 (17%) | +8.3% | -1.4% | **-0.17** | FAIL (negative) |
 | SPY | 1h | 6 | 2/6 (33%) | +0.1% | -0.1% | **-1.11** | FAIL (deeply negative) |
