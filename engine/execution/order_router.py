@@ -1,10 +1,15 @@
 """
 JARVIS TRADER — Unified Order Router
 =====================================
-Routes orders to the correct broker based on instrument type.
-  - Futures        → IBKRExecutor
-  - Equity Options → SchwabConnector
-  - Equity         → SchwabConnector (IBKRExecutor as fallback if Schwab unavailable)
+Routes orders to the correct broker based on instrument type and configuration.
+  - Futures        → IBKRExecutor (live) or IBGatewayConnector (paper trading)
+  - Equity Options → SchwabConnector (live) or IBGatewayConnector (paper trading)
+  - Equity         → SchwabConnector (fallback to IBKRExecutor if unavailable)
+
+Paper Trading Mode:
+  When PAPER_TRADING=True and PAPER_TRADING_BROKER="IB_GATEWAY":
+    All orders route through IBGatewayConnector for simulation and logging.
+    Orders are logged to data/paper_trades.json instead of sent to real brokers.
 
 Design principle: the router is intentionally dumb. It reads instrument type
 from the OrderRequest and dispatches — no strategy logic lives here.
@@ -14,6 +19,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from engine.execution.ib_gateway_connector import IBGatewayConnector
     from engine.execution.ibkr_executor import IBKRExecutor
     from engine.execution.schwab_connector import SchwabConnector
 
@@ -29,25 +35,47 @@ class OrderRouter:
     """
     Single entry-point for all order submission across brokers.
 
-    Both broker handles are optional — the router degrades gracefully if one
+    Supports multiple broker connectors:
+      - IBKRExecutor: Live futures trading via Interactive Brokers
+      - IBGatewayConnector: Paper trading mode (simulated orders with JSON logging)
+      - SchwabConnector: Live equity/options trading via Charles Schwab
+
+    All broker handles are optional — the router degrades gracefully if one
     connector failed to initialize (e.g. IBKR Gateway not running).
+
+    Paper trading routing:
+      If PAPER_TRADING=True, IBGatewayConnector takes priority for all orders.
+      Otherwise routes by instrument type (futures → IBKR, options → Schwab, etc.)
     """
 
     def __init__(
         self,
         ibkr: "IBKRExecutor | None",
         schwab: "SchwabConnector | None",
+        ib_gateway: "IBGatewayConnector | None",
         safety_layer,
+        settings,
     ):
         self._ibkr = ibkr
         self._schwab = schwab
+        self._ib_gateway = ib_gateway
         self._safety_layer = safety_layer
+        self._settings = settings
 
     # ── Routing ───────────────────────────────────────────────────────────────
 
     async def route_order(self, order, portfolio_equity: float) -> dict:
         """
         Route an order to the correct broker and return the execution result.
+
+        Paper Trading (PAPER_TRADING=True):
+          All orders route through IBGatewayConnector (simulated fills, JSON logging)
+
+        Live Trading (PAPER_TRADING=False):
+          Routes by instrument type:
+            - Futures        → IBKRExecutor
+            - Equity Options → SchwabConnector
+            - Equity         → SchwabConnector (fallback to IBKR)
 
         `order` may be either an OrderRequest dataclass or a plain dict with an
         `is_futures` / `is_options` key so the router can make the dispatch
@@ -75,7 +103,32 @@ class OrderRouter:
             portfolio_equity,
         )
 
-        # ── Futures → IBKR ────────────────────────────────────────────────────
+        # ── PAPER TRADING MODE (all orders → IBGatewayConnector) ───────────────
+        if self._settings.PAPER_TRADING:
+            if self._ib_gateway is None or not self._ib_gateway.is_connected:
+                logger.error(
+                    "Paper trading mode enabled but IBGatewayConnector not connected"
+                )
+                result = {
+                    "status": "error",
+                    "reason": "IBGatewayConnector not connected for paper trading",
+                    "symbol": symbol,
+                }
+                await self._log_order_result(order, result, is_futures, is_options)
+                return result
+
+            logger.info(
+                "Paper trading mode: routing order for %s → IBGatewayConnector",
+                symbol,
+            )
+            order_dict = order if isinstance(order, dict) else _order_request_to_dict(order)
+            result = await self._ib_gateway.submit_order(order_dict, portfolio_equity)
+            await self._log_order_result(order, result, is_futures, is_options)
+            return result
+
+        # ── LIVE TRADING MODE (route by instrument type) ────────────────────────
+
+        # Futures → IBKR
         if is_futures:
             if self._ibkr is None or not self._ibkr.is_connected:
                 logger.error("Futures order for %s — IBKR not connected", symbol)
@@ -91,7 +144,7 @@ class OrderRouter:
             await self._log_order_result(order, result, is_futures, is_options)
             return result
 
-        # ── Options → Schwab ──────────────────────────────────────────────────
+        # Options → Schwab
         if is_options:
             if self._schwab is None or not self._schwab.is_connected:
                 logger.error("Options order for %s — Schwab not connected", symbol)
@@ -108,7 +161,7 @@ class OrderRouter:
             await self._log_order_result(order, result, is_futures, is_options)
             return result
 
-        # ── Equity → Schwab (fallback to IBKR) ───────────────────────────────
+        # Equity → Schwab (fallback to IBKR)
         if self._schwab and self._schwab.is_connected:
             logger.info("Routing equity order for %s → Schwab", symbol)
             order_dict = order if isinstance(order, dict) else _order_request_to_dict(order)
@@ -191,10 +244,16 @@ class OrderRouter:
         Called by the kill switch — must be as fast and fault-tolerant as possible.
 
         Returns:
-          {"ibkr_cancelled": N, "schwab_cancelled": M}
+          {
+            "ibkr_cancelled": N,
+            "schwab_cancelled": M,
+            "ib_gateway_cancelled": K,
+            "total_cancelled": N + M + K
+          }
         """
         ibkr_cancelled = 0
         schwab_cancelled = 0
+        ib_gateway_cancelled = 0
         errors = []
 
         if self._ibkr and self._ibkr.is_connected:
@@ -213,10 +272,23 @@ class OrderRouter:
                 logger.error("Kill switch: Schwab cancel_all_orders failed: %s", exc, exc_info=True)
                 errors.append(f"Schwab: {exc}")
 
+        if self._ib_gateway and self._ib_gateway.is_connected:
+            try:
+                ib_gateway_cancelled = await self._ib_gateway.cancel_all_orders()
+                logger.info("Kill switch: IBGatewayConnector cancelled %d orders", ib_gateway_cancelled)
+            except Exception as exc:
+                logger.error(
+                    "Kill switch: IBGatewayConnector cancel_all_orders failed: %s",
+                    exc,
+                    exc_info=True,
+                )
+                errors.append(f"IBGatewayConnector: {exc}")
+
         result = {
             "ibkr_cancelled": ibkr_cancelled,
             "schwab_cancelled": schwab_cancelled,
-            "total_cancelled": ibkr_cancelled + schwab_cancelled,
+            "ib_gateway_cancelled": ib_gateway_cancelled,
+            "total_cancelled": ibkr_cancelled + schwab_cancelled + ib_gateway_cancelled,
         }
         if errors:
             result["errors"] = errors
@@ -228,13 +300,17 @@ class OrderRouter:
 
     async def get_combined_portfolio(self) -> dict:
         """
-        Merge position data from both brokers into a single portfolio view.
+        Merge position data from all brokers into a single portfolio view.
+
+        In paper trading mode: returns simulated positions from IBGatewayConnector
+        In live trading mode: merges positions from IBKR and Schwab
 
         The safety layer holds the authoritative equity figure (synced from
         broker every 60 s). This method provides the position-level detail.
         """
         ibkr_summary: dict = {}
         schwab_summary: dict = {}
+        ib_gateway_summary: dict = {}
 
         if self._ibkr and self._ibkr.is_connected:
             try:
@@ -250,21 +326,32 @@ class OrderRouter:
                 logger.error("get_combined_portfolio: Schwab summary failed: %s", exc)
                 schwab_summary = {"error": str(exc)}
 
+        if self._ib_gateway and self._ib_gateway.is_connected:
+            try:
+                ib_gateway_summary = await self._ib_gateway.get_account_summary()
+            except Exception as exc:
+                logger.error("get_combined_portfolio: IBGatewayConnector summary failed: %s", exc)
+                ib_gateway_summary = {"error": str(exc)}
+
         # Merge positions into a flat list, tagging each with broker
         combined_positions = []
         for pos in ibkr_summary.get("positions", []):
             combined_positions.append({**pos, "broker": "ibkr"})
         for pos in schwab_summary.get("positions", []):
             combined_positions.append({**pos, "broker": "schwab"})
+        for pos in ib_gateway_summary.get("positions", []):
+            combined_positions.append({**pos, "broker": "ib_gateway"})
 
         # Sum equity across brokers where available
         ibkr_equity = ibkr_summary.get("equity") or 0.0
         schwab_equity = schwab_summary.get("equity") or 0.0
+        ib_gateway_equity = ib_gateway_summary.get("equity") or 0.0
 
         return {
-            "total_equity": (ibkr_equity + schwab_equity) or None,
+            "total_equity": (ibkr_equity + schwab_equity + ib_gateway_equity) or None,
             "ibkr": ibkr_summary,
             "schwab": schwab_summary,
+            "ib_gateway": ib_gateway_summary,
             "positions": combined_positions,
             "position_count": len(combined_positions),
             "safety_layer_status": self._safety_layer.get_status(),
@@ -277,6 +364,8 @@ class OrderRouter:
         return {
             "ibkr_connected": self._ibkr.is_connected if self._ibkr else False,
             "schwab_connected": self._schwab.is_connected if self._schwab else False,
+            "ib_gateway_connected": self._ib_gateway.is_connected if self._ib_gateway else False,
+            "paper_trading_mode": self._settings.PAPER_TRADING,
             "kill_switch_active": self._safety_layer.is_killed,
         }
 
