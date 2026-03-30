@@ -43,8 +43,8 @@ The STC-based strategy has genuine in-sample edge on 4 of 12 instrument/timefram
 | 1 | MGC | 1d | 47 | 51.1 | 2.60 | 2.04 | +34.4% | 3.0% | Paper trading (adaptive) |
 | 2 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | Improving — needs WFE > 0.40 |
 | 3 | MCL | 1h | 65 | 60.0 | 1.83 | 0.15 | +0.2% | — | DO NOT TRADE |
-| 4 | SPY | 1h | 23 | 65.2 | 3.00 | -1.55 | +0.7% | 5.0% | DO NOT TRADE |
-| 5 | MES | 1h | 21 | 42.9 | 0.96 | -0.12 | -4.0% | 0.1% | DO NOT TRADE |
+| 4 | SPY | 1h | 23 | 52.2 | 3.79 | -1.43 | +0.0% | 0.1% | DO NOT TRADE |
+| 5 | MES | 1h | 23 | 34.8 | 1.69 | 0.09 | +0.1% | 0.1% | DO NOT TRADE |
 
 *Test period: Jun 2024 -- Mar 2026 (1h) / Jan 2025 -- Mar 2026 (1d). Returns gross of commissions ($2.50/contract + 1 tick slippage).*
 
@@ -74,7 +74,7 @@ This is the critical table — what generalizes vs what is curve-fit.
 
 | # | Improvement | Module | MNQ 1h Impact | MGC 1d Impact | Keep? |
 |---|-------------|--------|---------------|---------------|-------|
-| 1 | Regime-adaptive STC | `regime.py` | WFE 0.24 to 0.34 (+41%) | WFE 0.27 to 0.88 (+226%) | **YES** |
+| 1 | Regime-adaptive STC | `regime.py` | WFE 0.24 to 0.34 (+41%) | WFE 0.27 to 0.88 (+226%) | **YES** (Note: regime_filter=ON anti-predictive for MGC daily — recommend OFF for gold) |
 | 2 | Multi-timeframe (4h alignment) | `mtf_filter.py` | 20.6% entries blocked (counter-trend) | N/A (daily TF) | YES (1h only) |
 | 3 | Volume filter (20-SMA gate) | `signals.py` | WR 47.7% to 60%, PF 1.46 to 2.36 | OFF (unreliable daily vol) | YES (1h only) |
 | 4 | News/event blackout (81 events) | `signals.py` | ~1% signals blocked | ~1% signals blocked | LIVE ONLY |
@@ -92,7 +92,7 @@ This is the critical table — what generalizes vs what is curve-fit.
 | Risk/trade | 0.25% | Conservative start (quarter of standard 1%) |
 | Stop | 0.30 ATR | Validated in walk-forward |
 | T1 Target | 1.00 ATR | Intraday reachable |
-| Adaptive Regime | ON | Key to WFE = 0.88 |
+| Adaptive Regime / Regime Filter | OFF recommended | Regime filter anti-predictive per extended WF: ON windows avg OOS -1.7%, OFF windows avg OOS +5.9% |
 | Volume Filter | OFF | Daily volume data unreliable for MGC |
 | Trailing Stop | OFF | No trailing config beats baseline |
 | Kill threshold | 3 consecutive months > 50% below IS baseline (3.8% per 3-month window) |
@@ -110,23 +110,23 @@ This is the critical table — what generalizes vs what is curve-fit.
 | MCL | 1d | 0.21 | N/A | Zero target hits on daily crude |
 | MCL | 1h | 1.83 | -0.31 | Adaptive regime worsens performance; noisy regime transitions |
 | MES | 1d | 0.75 | N/A | 36/51 trades exit at EOD — targets unreachable |
-| MES | 1h | 0.96 | -0.17 | Only 1/6 OOS windows profitable |
+| MES | 1h | 1.69 | -0.17 | Re-optimized v2.5: PF 0.96->1.69 (+76%, regime OFF), +0.1% return. PF improved with new params but WFE not yet validated |
 | MNQ | 1d | 0.79 | N/A | 43/57 EOD exits; daily NQ too volatile for intraday targets |
 | MGC | 1h | 0.77 | N/A | Gold works daily only; hourly loses money |
-| SPY | 1h | 3.00 | -1.11 | Near-zero returns; random at current scale |
+| SPY | 1h | 3.79 | -0.71 | Re-optimized v2.5: PF 3.00->3.79, near-zero returns, still deeply overfit |
 
 ---
 
 ## Per-Instrument Optimal Parameters (signals.py INSTRUMENT_PARAMS)
 
-| Param | MGC 1d | MNQ 1h | MCL 1h | SPY 1h |
-|-------|--------|--------|--------|--------|
-| STC_OS | 17 | 15 | 15 | 15 |
-| STC_OB | 88 | 92 | 83 | 88 |
-| Stop ATR | 0.30 | 0.70 | 0.90 | 0.30 |
-| T1 ATR | 1.50 | 1.00 | 1.50 | 1.00 |
-| T2 ATR | 2.618 | 1.80 | 2.618 | 1.80 |
-| Regime Filter | ON | ON | ON | ON |
+| Param | MGC 1d | MNQ 1h | MCL 1h | SPY 1h | MES 1h |
+|-------|--------|--------|--------|--------|--------|
+| STC_OS | 17 | 15 | 15 | 15 | 15 |
+| STC_OB | 88 | 92 | 83 | 88 | 83 |
+| Stop ATR | 0.30 | 0.70 | 0.90 | 0.30 | 0.50 |
+| T1 ATR | 1.50 | 1.00 | 1.50 | 1.00 | 2.00 |
+| T2 ATR | 2.618 | 1.80 | 2.618 | 1.618 | 3.236 |
+| Regime Filter | **OFF** (anti-predictive for gold daily) | ON | ON | ON | **OFF** |
 
 ---
 
