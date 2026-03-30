@@ -851,4 +851,9 @@ function TradeStat({
       <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
         {label}
       </p>
-      <p classNa
+      <p className={`text-lg font-bold tabular-nums ${valueClass}`}>
+        {value}
+      </p>
+    </div>
+  );
+}

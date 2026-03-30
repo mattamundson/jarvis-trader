@@ -714,5 +714,3 @@ export default function PerformancePage() {
     </div>
   );
 }
-
-// ── Summary Card ───────�
