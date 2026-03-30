@@ -122,9 +122,16 @@ class SafetyLayer:
 
     # ── Kill Switch ───────────────────────────────────────────────────────
 
-    def activate_kill_switch(self, reason: KillSwitchReason, message: str = "") -> None:
+    def activate_kill_switch(self, reason: KillSwitchReason | str, message: str = "") -> None:
         """Halt all trading. Requires human re-authorization to resume."""
         self._kill_switch_active = True
+        # Convert string to enum if needed (for backward compatibility with tests)
+        if isinstance(reason, str):
+            try:
+                reason = KillSwitchReason[reason]
+            except KeyError:
+                logger.warning(f"Unknown kill switch reason: {reason}")
+                reason = KillSwitchReason.MANUAL
         self._kill_switch_reason = reason
         logger.critical(f"🔴 KILL SWITCH ACTIVATED: {reason.value}. {message}")
         # Log to PostgreSQL asynchronously (never block)
@@ -157,6 +164,17 @@ class SafetyLayer:
     @property
     def is_killed(self) -> bool:
         return self._kill_switch_active
+
+    def get_status(self) -> dict:
+        """Return safety layer status for agents."""
+        return {
+            "is_killed": self._kill_switch_active,
+            "kill_switch_reason": self._kill_switch_reason.value if self._kill_switch_reason else None,
+            "daily_realized_pnl": self._daily_realized_pnl,
+            "equity_peak": self._equity_peak,
+            "current_equity": self._current_equity,
+            "recent_order_count": len(self._recent_order_timestamps),
+        }
 
     # ── Pre-Trade Checks ─────────────────────────────────────────────────
 

@@ -213,7 +213,8 @@ class TradingConfig(BaseSettings):
 settings = TradingConfig()
 
 # Validate all required environment variables on startup
-_validate_required_env_vars()
-
-# Validate paper trading config on startup
-settings.validate_paper_trading_config()
+# Skip validation if we're in pytest to allow test fixtures to set env vars
+if "pytest" not in sys.modules:
+    _validate_required_env_vars()
+    # Validate paper trading config on startup
+    settings.validate_paper_trading_config()

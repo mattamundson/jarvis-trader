@@ -269,7 +269,7 @@ class TradingPipeline:
         """Delegates to the named agent's analyze() method, or returns neutral if absent."""
         agent = self._agents.get(agent_name)
         if agent is None:
-            return {"signal": 0.0, "confidence": 0.0, "summary": f"{agent_name} not configured"}
+            return {"signal": 0.0, "confidence": 0.0, "summary": f"{agent_name} unavailable"}
         return await agent.analyze(symbol, **kwargs)
 
     async def _run_debate(
@@ -454,6 +454,47 @@ class TradingPipeline:
                 "requires_human_approval": True,
                 "timestamp": datetime.now().isoformat(),
             }
+
+    def _resolve_final_action(self, trade_decision: dict, risk_decision: dict, fund_decision: dict) -> tuple:
+        """
+        Resolve final action from multi-stage decisions.
+
+        Logic:
+        1. If risk manager rejected → HOLD
+        2. If fund manager not run (risk rejected) → HOLD
+        3. If fund manager rejected → HOLD
+        4. Otherwise use fund_decision action/quantity
+
+        Returns: (final_action, final_quantity, requires_human)
+        """
+        # Risk manager veto
+        if risk_decision and not risk_decision.get("approved", False):
+            logger.info(f"[Resolution] Risk manager veto → HOLD")
+            return "hold", 0, False
+
+        # Fund manager decision (only runs if risk approved)
+        if fund_decision:
+            if not fund_decision.get("execute", False):
+                logger.info(f"[Resolution] Fund manager rejected → HOLD")
+                return "hold", 0, False
+
+            action = fund_decision.get("action", "HOLD").lower()
+            quantity = fund_decision.get("contracts", fund_decision.get("quantity", 0))
+            requires_human = fund_decision.get("human_approval_required", False)
+            logger.info(f"[Resolution] Fund approved → {action} qty={quantity} human={requires_human}")
+            return action, quantity, requires_human
+
+        # Fallback: use trade decision if we got here (risk approved but no fund decision)
+        if trade_decision:
+            action = trade_decision.get("action", "HOLD").lower()
+            quantity = trade_decision.get("quantity", 0)
+            requires_human = False
+            logger.info(f"[Resolution] No fund decision, using trade → {action} qty={quantity}")
+            return action, quantity, requires_human
+
+        # Default to HOLD if nothing else available
+        logger.warning(f"[Resolution] No decision available → HOLD")
+        return "hold", 0, False
 
     # ── Portfolio Data ─────────────────────────────────────────────────────
 
