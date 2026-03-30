@@ -1,0 +1,40 @@
+"""
+JARVIS TRADER — Rate Limiting
+==============================
+slowapi-based rate limiting with graduated limits per endpoint.
+"""
+import logging
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("jarvis_trader.rate_limit")
+
+# Initialize limiter with get_remote_address key function
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["60/minute"],  # Default: 60 requests per minute
+    storage_uri="memory",  # In-memory storage (for single-process deployments)
+)
+
+
+def get_limiter() -> Limiter:
+    """Return the configured limiter instance."""
+    return limiter
+
+
+async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """
+    Custom exception handler for rate limit exceeded.
+    Returns 429 with JSON detail instead of HTML.
+    """
+    logger.warning(f"Rate limit exceeded for {request.client.host} on {request.url.path}")
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Rate limit exceeded. Please try again later.",
+            "status": 429,
+        },
+    )

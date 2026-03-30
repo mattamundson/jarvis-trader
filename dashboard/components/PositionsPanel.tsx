@@ -44,11 +44,13 @@ export function PositionsPanel({
             No open positions
           </p>
         ) : (
-          <div className="space-y-2">
+          <ul className="space-y-2" role="list">
             {positions.map((pos) => (
-              <PositionRow key={pos.symbol} position={pos} />
+              <li key={pos.symbol}>
+                <PositionRow position={pos} />
+              </li>
             ))}
-          </div>
+          </ul>
         )}
         {unrealizedPnl !== 0 && (
           <div className="mt-3 flex justify-between border-t border-border pt-3 text-xs">
@@ -71,8 +73,15 @@ function PositionRow({ position: pos }: { position: Position }) {
       ? TrendingDown
       : Minus;
 
+  const pnlStatus = pos.unrealized_pnl > 0 ? "profit" : pos.unrealized_pnl < 0 ? "loss" : "neutral";
+  const positionType = pos.quantity > 0 ? "LONG" : "SHORT";
+
   return (
-    <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
+    <div
+      className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2"
+      role="listitem"
+      aria-label={`${pos.symbol} ${positionType} position with ${pnlStatus} P&L of ${formatCurrency(pos.unrealized_pnl)}`}
+    >
       <div className="flex items-center gap-2">
         <Icon
           className={`h-4 w-4 ${
@@ -82,6 +91,7 @@ function PositionRow({ position: pos }: { position: Position }) {
               ? "text-bear"
               : "text-muted-foreground"
           }`}
+          aria-label={pnlStatus}
         />
         <div>
           <div className="flex items-center gap-1.5">

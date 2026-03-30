@@ -47,6 +47,20 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
 
+  # ── Prometheus — Metrics Database ───────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: jarvis_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+
   # ── Grafana — Monitoring Dashboard ───────────────────────────────────────
   grafana:
     image: grafana/grafana:11.4.0
@@ -55,15 +69,19 @@ services:
     ports:
       - "3030:3000"   # http://localhost:3030 (avoid conflict with Next.js)
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: jarvis123
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-jarvis_change_me}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - postgres
+      - prometheus
 
 volumes:
   questdb_data:
   postgres_data:
   redis_data:
   grafana_data:
+  prometheus_data:

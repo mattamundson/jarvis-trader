@@ -1,0 +1,79 @@
+name: JARVIS TRADER Pre-Deploy Verification
+on:
+  push:
+    branches: [main]
+
+jobs:
+  pre-deploy-check:
+    name: Pre-Deploy Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'engine/requirements-core.txt'
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'dashboard/package-lock.json'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -q -r engine/requirements-core.txt
+          pip install -q pytest-cov==5.0.0 mypy==1.8.0 ruff==0.8.0
+
+      - name: Install Node dependencies
+        run: npm ci --prefix dashboard --silent
+
+      - name: Run all checks
+        run: |
+          echo "=== Running Python Linting ==="
+          ruff check engine/ --config engine/ruff.toml
+
+          echo "=== Running Type Checking ==="
+          mypy engine/ --ignore-missing-imports --config-file engine/pyproject.toml
+
+          echo "=== Running Tests ==="
+          pytest engine/tests/ -v --tb=short -x
+
+          echo "=== Building Dashboard ==="
+          npm run build --prefix dashboard
+
+      - name: Verify environment safety
+        run: |
+          # Check that .env does not exist (should use .env.example)
+          if [[ -f "engine/.env" ]]; then
+            echo "ERROR: .env file should not be in repository"
+            exit 1
+          fi
+
+          # Check that .env.example exists
+          if [[ ! -f "engine/.env.example" ]]; then
+            echo "ERROR: .env.example file not found"
+            exit 1
+          fi
+
+          echo "✓ Environment config files verified"
+
+      - name: Final security scan
+        run: |
+          # Double-check no secrets in codebase
+          echo "=== Checking for secrets ==="
+          if grep -r "ANTHROPIC_API_KEY\|SK_" --include="*.py" --include="*.ts" engine/ dashboard/ | grep -v "example\|fake"; then
+            echo "ERROR: Secrets detected before deploy!"
+            exit 1
+          fi
+          echo "✓ No secrets found in code"
+
+      - name: Deploy verification passed
+        run: |
+          echo "✓ All pre-deploy checks passed!"
+          echo "✓ Ready for deployment to production"

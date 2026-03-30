@@ -19,7 +19,6 @@ import {
   BarChart3,
   Gauge,
   Sigma,
-  Download,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +28,13 @@ import type { ValidationReport, CompareToBacktestResponse } from "@/lib/api";
 import { simulateTrade } from "@/lib/settings-api";
 import type { SimulateTradePayload, SimulateTradeResult } from "@/lib/settings-api";
 import { PipelineRunHistory } from "@/components/PipelineRunHistory";
+import { PositionSizingCalculator } from "@/components/PositionSizingCalculator";
+import { ReconciliationWidget } from "@/components/ReconciliationWidget";
+import { ExportDataWidget } from "@/components/ExportDataWidget";
+import { TradingDaysCountdownCard } from "@/components/TradingDaysCountdownCard";
+import { BacktestVsPaperWidget } from "@/components/BacktestVsPaperWidget";
+import { ValidationChecklist } from "@/components/ValidationChecklist";
+import { GoLivePlanCard } from "@/components/GoLivePlanCard";
 
 // ── Constants — Backtest reference (MES 1h, best run) ────────────────────────
 
@@ -1370,6 +1376,24 @@ export default function ValidationPage() {
               >
                 Watchlist
               </a>
+              <a
+                href="/scorecard"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Scorecard
+              </a>
+              <a
+                href="/settings"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Settings
+              </a>
+              <a
+                href="/health"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Health
+              </a>
             </nav>
           </div>
 
@@ -1386,6 +1410,10 @@ export default function ValidationPage() {
       </header>
 
       <main className="mx-auto max-w-[1400px] px-6 py-6 space-y-6">
+        <ValidationChecklist />
+        <TradingDaysCountdownCard />
+        <BacktestVsPaperWidget />
+
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -1495,44 +1523,28 @@ export default function ValidationPage() {
           <PipelineRunHistory />
         </section>
 
-        {/* Section G: Export Data */}
+        {/* Section G: Position Sizing Calculator */}
         <section>
-          <SectionLabel>G — Export Data</SectionLabel>
-          <Card>
-            <CardContent className="pt-5 pb-5">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted">
-                  <Download className="h-4 w-4 text-foreground" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                    Download CSV Reports
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Export paper trade history and daily P&amp;L data for offline analysis
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <a
-                  href="http://localhost:8010/portfolio/export/trades.csv"
-                  download
-                  className="inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/70 transition-colors"
-                >
-                  <Download className="h-3.5 w-3.5 text-accent" />
-                  Export Trades CSV
-                </a>
-                <a
-                  href="http://localhost:8010/portfolio/export/daily-pnl.csv"
-                  download
-                  className="inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/70 transition-colors"
-                >
-                  <Download className="h-3.5 w-3.5 text-accent" />
-                  Export Daily P&amp;L CSV
-                </a>
-              </div>
-            </CardContent>
-          </Card>
+          <SectionLabel>G — Position Sizing Calculator</SectionLabel>
+          <PositionSizingCalculator />
+        </section>
+
+        {/* Section H: Export Data */}
+        <section>
+          <SectionLabel>H — Export Data</SectionLabel>
+          <ExportDataWidget />
+        </section>
+
+        {/* Section I: Position Reconciliation */}
+        <section>
+          <SectionLabel>I — Position Reconciliation</SectionLabel>
+          <ReconciliationWidget />
+        </section>
+
+        {/* Section J: Go-Live Roadmap */}
+        <section>
+          <SectionLabel>J — Go-Live Roadmap</SectionLabel>
+          <GoLivePlanCard />
         </section>
       </main>
     </div>

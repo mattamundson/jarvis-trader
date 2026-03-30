@@ -14,6 +14,20 @@ client_secret*.json
 credentials.json
 token.json
 
+# API Keys and Secrets (comprehensive pattern matching)
+*.pem
+*.key
+*.pfx
+*.p12
+secret*.json
+*secret*.json
+*.key.txt
+*oauth*.json
+*token*.json
+.aws/credentials
+.gcp/
+.gcloud/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -72,3 +86,7 @@ engine/backtest/cache/
 
 # Backtest result JSON output artifacts (regenerate by running backtest)
 engine/backtest/results/*.json
+
+# SQLite database files (runtime data — never commit)
+engine/data/*.db
+engine/data/*.backup_*

@@ -21,6 +21,25 @@ from backtest.backtester import BacktestResult, Trade
 # Core simulation
 # ---------------------------------------------------------------------------
 
+def _get_tick_value(symbol: str) -> float:
+    """Get tick value in dollars for a given symbol.
+
+    Args:
+        symbol: Futures symbol (MES, MNQ, SPY, etc.)
+
+    Returns:
+        Dollar value per tick
+    """
+    tick_values = {
+        "MES": 1.25,    # Micro E-mini S&P 500
+        "MNQ": 0.50,    # Micro E-mini Nasdaq-100
+        "SPY": 0.01,    # SPY per-share resolution
+        "ES": 50.0,     # E-mini S&P 500
+        "NQ": 20.0,     # E-mini Nasdaq-100
+    }
+    return tick_values.get(symbol, 0.01)
+
+
 def _compute_sharpe(equity: np.ndarray, ann_factor: float = 252.0) -> float:
     """Annualised Sharpe from an equity curve (trade-by-trade steps)."""
     if len(equity) < 2:
@@ -45,14 +64,30 @@ def run_monte_carlo(
     result: BacktestResult,
     n_simulations: int = 10_000,
     initial_capital: float = 100_000.0,
+    max_slippage_ticks: float = 0.0,
+    symbol: str = "MES",
     seed: int = 42,
 ) -> dict:
     """Run Monte Carlo simulation on a BacktestResult.
 
     Shuffles the trade P&L sequence *n_simulations* times and collects
     distributions of final capital, max drawdown, and Sharpe ratio.
+
+    Args:
+        result: BacktestResult object with trades
+        n_simulations: Number of Monte Carlo runs (default 1000)
+        initial_capital: Starting capital (default 100000)
+        max_slippage_ticks: Max random slippage per trade in ticks (default 0)
+        symbol: Instrument symbol for tick value lookup (default MES)
+        seed: Random seed for reproducibility (default 42)
+
+    Returns:
+        Dictionary with percentile statistics, confidence metrics, and verdict
     """
     pnls = np.array([t.pnl for t in result.trades], dtype=np.float64)
+
+    # Get tick value for slippage conversion
+    tick_value = _get_tick_value(symbol)
     n_trades = len(pnls)
 
     if n_trades == 0:
@@ -89,6 +124,16 @@ def run_monte_carlo(
 
     # Gather shuffled P&Ls and compute cumulative equity curves
     shuffled_pnls = pnls[idx_matrix]  # (n_simulations, n_trades)
+
+    # Apply random slippage if specified
+    if max_slippage_ticks > 0:
+        # Generate random slippage in ticks: uniform between 0 and max_slippage_ticks
+        # Shape: (n_simulations, n_trades)
+        slippage_ticks = rng.uniform(0, max_slippage_ticks, size=(n_simulations, n_trades))
+        # Convert ticks to dollars and subtract from P&Ls (slippage reduces profit/increases loss)
+        slippage_dollars = slippage_ticks * tick_value
+        shuffled_pnls = shuffled_pnls - slippage_dollars
+
     cum_pnls = np.cumsum(shuffled_pnls, axis=1)  # (n_simulations, n_trades)
 
     # Prepend initial capital column
@@ -131,6 +176,8 @@ def run_monte_carlo(
     # --- Confidence metrics ---
     prob_profitable = float((final_capitals > initial_capital).mean() * 100.0)
     prob_better = float((final_capitals >= orig_final).mean() * 100.0)
+    prob_2x = float((final_capitals >= initial_capital * 2.0).mean() * 100.0)
+    prob_ruin = float((final_capitals < initial_capital).mean() * 100.0)
     var_5 = float(np.percentile(final_capitals, 5))
     bottom_5_mask = final_capitals <= np.percentile(final_capitals, 5)
     expected_shortfall = float(final_capitals[bottom_5_mask].mean()) if bottom_5_mask.any() else var_5
@@ -166,8 +213,11 @@ def run_monte_carlo(
         "confidence": {
             "prob_profitable": round(prob_profitable, 2),
             "prob_better_than_original": round(prob_better, 2),
+            "prob_achieving_2x_return": round(prob_2x, 2),
+            "probability_of_ruin": round(prob_ruin, 2),
             "value_at_risk_5pct": round(var_5, 2),
             "expected_shortfall": round(expected_shortfall, 2),
+            "worst_case_max_drawdown": round(float(np.percentile(max_dds, 5)), 2),
         },
         "verdict": verdict,
     }
@@ -216,9 +266,12 @@ def format_report(mc: dict) -> str:
         "",
         "CONFIDENCE ANALYSIS:",
         f"  Probability of Profit:       {c['prob_profitable']:.1f}%",
+        f"  Probability of Ruin:         {c['probability_of_ruin']:.1f}%",
+        f"  Probability 2x Return:       {c['prob_achieving_2x_return']:.1f}%",
         f"  Original beats X% of sims:   {100.0 - c['prob_better_than_original']:.1f}%",
         f"  5% Value at Risk:            ${c['value_at_risk_5pct']:,.0f}",
         f"  Expected Shortfall (CVaR):   ${c['expected_shortfall']:,.0f}",
+        f"  Worst-case Max DD (p5):      {c['worst_case_max_drawdown']:.1f}%",
         "",
         f"VERDICT: {mc['verdict']}",
     ]
@@ -310,8 +363,10 @@ def _load_result_from_json(path: str) -> BacktestResult:
 def main():
     parser = argparse.ArgumentParser(description="Monte Carlo simulation on backtest results")
     parser.add_argument("--result", required=True, help="Path to backtest result JSON file")
-    parser.add_argument("--n-sims", type=int, default=10_000, help="Number of simulations (default: 10000)")
+    parser.add_argument("--n-sims", type=int, default=1_000, help="Number of simulations (default: 1000)")
     parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital (default: 100000)")
+    parser.add_argument("--max-slippage", type=float, default=0.0, help="Max random slippage per trade in ticks (default: 0)")
+    parser.add_argument("--symbol", default="MES", help="Instrument symbol for tick value (default: MES)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     args = parser.parse_args()
 
@@ -326,11 +381,15 @@ def main():
     print(f"  {len(bt_result.trades)} trades loaded for {bt_result.symbol}")
 
     # Run simulation
-    print(f"Running {args.n_sims:,} Monte Carlo simulations ...")
+    print(f"Running {args.n_sims:,} Monte Carlo simulations...")
+    if args.max_slippage > 0:
+        print(f"  Slippage: uniform 0-{args.max_slippage} ticks ({args.symbol})")
     mc = run_monte_carlo(
         bt_result,
         n_simulations=args.n_sims,
         initial_capital=args.capital,
+        max_slippage_ticks=args.max_slippage,
+        symbol=args.symbol,
         seed=args.seed,
     )
 

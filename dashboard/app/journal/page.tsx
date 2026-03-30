@@ -10,6 +10,8 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { MarketSessionStatusCard } from "@/components/MarketSessionStatusCard";
+import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
 
 // ── Category badge colors ────────────────────────────────────────────────────
 
@@ -329,6 +331,12 @@ export default function JournalPage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+        {/* ── Market Session Status ──────────────────────────────────────────── */}
+        <MarketSessionStatusCard />
+
+        {/* ── Recent Trades ──────────────────────────────────────────────────── */}
+        <RecentTradesTableWidget />
+
         {/* ── Section 1: Research Log ────────────────────────────────────────── */}
         <Section
           title="Research Log"

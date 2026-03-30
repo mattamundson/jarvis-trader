@@ -25,9 +25,19 @@ class TradingConfig(BaseSettings):
     MAX_CONTRACTS_PER_INSTRUMENT: int = Field(2, description="Max micro contracts per instrument")
     MAX_OVERNIGHT_CONTRACTS: int = Field(1, description="Max contracts to hold overnight")
 
+    # ── Consecutive Loss Tracking & Position Sizing ──────────────────────
+    CONSECUTIVE_LOSS_HALF_SIZE: int = Field(3, description="Losses threshold for 0.5x position size")
+    CONSECUTIVE_LOSS_QUARTER_SIZE: int = Field(5, description="Losses threshold for 0.25x position size")
+    CONSECUTIVE_LOSS_HALT: int = Field(7, description="Losses threshold for trading halt")
+    CONSECUTIVE_LOSS_HALT_HOURS: int = Field(24, description="Duration (hours) of trading halt")
+
     # ── Autonomy Tier ─────────────────────────────────────────────────────
     LIVE_TRADING_ENABLED: bool = Field(False, description="Set True to enable live trading")
     REQUIRE_HUMAN_APPROVAL: bool = Field(True, description="All live trades require Matt's approval")
+
+    # ── Paper Trading Mode ─────────────────────────────────────────────────
+    PAPER_TRADING: bool = Field(True, description="Set False only after 30-day forward test passes. Orders logged but NOT sent to broker when True.")
+    PAPER_TRADING_BROKER: str = Field("IB_GATEWAY", description="Broker used for paper trading (IB_GATEWAY for Interactive Brokers Gateway)")
 
     # ── Broker: Interactive Brokers ───────────────────────────────────────
     IBKR_HOST: str = Field("127.0.0.1", description="IB Gateway host")
@@ -46,6 +56,12 @@ class TradingConfig(BaseSettings):
     ALPACA_API_KEY: Optional[str] = Field(None, env="ALPACA_API_KEY")
     ALPACA_SECRET_KEY: Optional[str] = Field(None, env="ALPACA_SECRET_KEY")
     ALPACA_PAPER: bool = Field(True, env="ALPACA_PAPER")
+
+    # ── Logging ───────────────────────────────────────────────────────────────
+    LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL", description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL")
+
+    # ── API Security ──────────────────────────────────────────────────────────
+    API_KEY: str = Field("jarvis-dev-key-change-me", env="API_KEY", description="FastAPI X-API-Key header authentication")
 
     # ── LLM (Vercel AI Gateway via OIDC) ─────────────────────────────────
     # These are auto-provisioned by `vercel env pull` — no manual API keys needed
@@ -79,6 +95,29 @@ class TradingConfig(BaseSettings):
         description="Underlying symbols for options trading"
     )
 
+    def validate_paper_trading_config(self):
+        """
+        Validate that trading configuration is safe:
+        - If PAPER_TRADING=False and SCHWAB_READY=False, raise error
+        This prevents accidental live trading without broker ready.
+        """
+        # Import SCHWAB_READY guard
+        try:
+            from execution.schwab_connector import SCHWAB_READY
+        except ImportError:
+            try:
+                from engine.execution.schwab_connector import SCHWAB_READY
+            except ImportError:
+                SCHWAB_READY = False
+
+        if not self.PAPER_TRADING and not SCHWAB_READY:
+            raise ValueError(
+                "Configuration error: PAPER_TRADING=False requires SCHWAB_READY=True. "
+                "Cannot proceed with live trading without a ready broker connector. "
+                "Either set PAPER_TRADING=True for paper trading mode, or complete the "
+                "Schwab connector implementation and set SCHWAB_READY=True."
+            )
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -87,3 +126,6 @@ class TradingConfig(BaseSettings):
 
 # Singleton
 settings = TradingConfig()
+
+# Validate paper trading config on startup
+settings.validate_paper_trading_config()

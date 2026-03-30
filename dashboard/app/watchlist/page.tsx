@@ -24,6 +24,12 @@ import { fetchEngine } from "@/lib/api";
 import type { WatchlistItem, MGCSignalResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { WatchlistScanWidget } from "@/components/WatchlistScanWidget";
+import { SymbolPerformanceWidget } from "@/components/SymbolPerformanceWidget";
+import { PerformanceTrendWidget } from "@/components/PerformanceTrendWidget";
+import { VIXRegimeCard } from "@/components/VIXRegimeCard";
+import { CurrentSignalWidget } from "@/components/CurrentSignalWidget";
+import { MesContractSpecCard } from "@/components/MesContractSpecCard";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -749,16 +755,34 @@ export default function WatchlistPage() {
                 Paper Trading
               </a>
               <a
+                href="/journal"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Journal
+              </a>
+              <a
                 href="/watchlist"
                 className="text-xs font-semibold text-foreground border-b border-accent pb-0.5 transition-colors"
               >
                 Watchlist
               </a>
               <a
+                href="/scorecard"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Scorecard
+              </a>
+              <a
                 href="/settings"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Settings
+              </a>
+              <a
+                href="/health"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Health
               </a>
             </nav>
           </div>
@@ -775,6 +799,12 @@ export default function WatchlistPage() {
 
       {/* Main content */}
       <main className="mx-auto max-w-[1600px] px-6 py-8 space-y-6">
+
+        {/* Current STC Signal Widget */}
+        <CurrentSignalWidget symbol="MES" />
+
+        {/* Watchlist Scan Widget */}
+        <WatchlistScanWidget symbols="MES,MNQ,MCL,MGC" />
 
         {/* Page title + controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1094,6 +1124,18 @@ export default function WatchlistPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Performance Trend Widget */}
+        <PerformanceTrendWidget />
+
+        {/* VIX Regime Filter Card */}
+        <VIXRegimeCard />
+
+        {/* Symbol Performance Widget */}
+        <SymbolPerformanceWidget />
+
+        {/* MES Contract Spec Card */}
+        <MesContractSpecCard />
 
         {/* Info footer */}
         <p className="text-[11px] text-muted-foreground text-center pb-4">

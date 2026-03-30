@@ -52,9 +52,17 @@ function PriceChip({ symbol, entry }: PriceChipProps) {
   const pct = entry?.change_pct ?? null;
   const price = entry?.last_price ?? null;
   const colorClass = changeColorClass(pct);
+  const priceDisplay = price != null ? `$${formatPrice(price, symbol)}` : "—";
+  const changeDisplay = pct != null ? `${formatChangePct(pct)} ${changeArrow(pct)}` : "";
+  const ariaLabel = `${symbol}: ${priceDisplay} ${changeDisplay}`;
 
   return (
-    <div className="flex items-center gap-1.5 shrink-0 rounded-md border border-border bg-background/60 px-3 py-1.5">
+    <div
+      className="flex items-center gap-1.5 shrink-0 rounded-md border border-border bg-background/60 px-3 py-1.5 ring-offset-2 focus-within:ring-2 focus-within:ring-accent"
+      role="button"
+      tabIndex={0}
+      aria-label={ariaLabel}
+    >
       {/* Symbol */}
       <span className="font-mono text-xs font-bold text-foreground tracking-wider">
         {symbol}
@@ -80,12 +88,15 @@ function PriceChip({ symbol, entry }: PriceChipProps) {
 function LiveDot({ isFresh }: { isFresh: boolean }) {
   if (!isFresh) return null;
   return (
-    <div className="flex items-center gap-1.5 shrink-0">
+    <div className="flex items-center gap-1.5 shrink-0" aria-label="Live data indicator">
       <span className="relative flex h-2 w-2">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-bull opacity-75" />
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-bull" />
+        <span
+          className="animate-ping absolute inline-flex h-full w-full rounded-full bg-bull opacity-75"
+          aria-hidden="true"
+        />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-bull" aria-hidden="true" />
       </span>
-      <span className="font-mono text-[10px] font-bold text-bull tracking-widest">LIVE</span>
+      <span className="font-mono text-xs font-bold text-bull tracking-widest">LIVE</span>
     </div>
   );
 }
@@ -94,7 +105,11 @@ function LiveDot({ isFresh }: { isFresh: boolean }) {
 
 function MarketClosedBadge() {
   return (
-    <span className="shrink-0 rounded border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-warn tracking-widest">
+    <span
+      className="shrink-0 rounded border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-xs font-semibold text-warn tracking-widest"
+      role="status"
+      aria-label="Market is currently closed"
+    >
       MARKET CLOSED
     </span>
   );
@@ -142,7 +157,7 @@ export function WatchlistBar({ items = [] }: WatchlistBarProps) {
         <LiveDot isFresh={isFresh} />
         {marketClosed && <MarketClosedBadge />}
         {!isFresh && !marketClosed && !error && (
-          <span className="font-mono text-[10px] text-muted-foreground tracking-widest">
+          <span className="font-mono text-xs text-muted-foreground tracking-widest">
             LOADING…
           </span>
         )}
@@ -160,7 +175,7 @@ export function WatchlistBar({ items = [] }: WatchlistBarProps) {
       {error && !snapshot && items.length === 0 && (
         <p className="font-mono text-xs text-muted-foreground">
           Engine offline — start{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
             uvicorn main:app --port 8010
           </code>
         </p>

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Brain, Clock } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,11 @@ interface AgentFeedProps {
 }
 
 export function AgentFeed({ decisions }: AgentFeedProps) {
+  const renderedDecisions = useMemo(
+    () => decisions.map((d) => <AgentDecisionCard key={d.id} decision={d} />),
+    [decisions]
+  );
+
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -45,9 +51,7 @@ export function AgentFeed({ decisions }: AgentFeedProps) {
           </p>
         ) : (
           <div className="space-y-3">
-            {decisions.map((d) => (
-              <AgentDecisionCard key={d.id} decision={d} />
-            ))}
+            {renderedDecisions}
           </div>
         )}
       </CardContent>
@@ -59,9 +63,14 @@ function AgentDecisionCard({ decision: d }: { decision: AgentDecision }) {
   const icon = AGENT_ICONS[d.agent_name] ?? "🤖";
   const agentLabel = d.agent_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const variant = signalToVariant(d.signal);
+  const signalLabel = signalToLabel(d.signal);
 
   return (
-    <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+    <div
+      className="rounded-lg border border-border/50 bg-muted/20 p-3"
+      role="article"
+      aria-label={`${agentLabel} signal: ${signalLabel} with ${formatPercent(d.confidence * 100, 0)} confidence`}
+    >
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2">
           <span className="text-base">{icon}</span>

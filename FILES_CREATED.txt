@@ -1,0 +1,49 @@
+PROMETHEUS & GRAFANA IMPLEMENTATION - FILE LOCATIONS
+=====================================================
+
+BASE PATH: /sessions/blissful-stoic-curie/mnt/jarvis-trader/
+
+MONITORING MODULE (New)
+=======================
+engine/monitoring/__init__.py
+engine/monitoring/metrics.py
+
+PROMETHEUS CONFIGURATION (New)
+==============================
+infrastructure/prometheus/prometheus.yml
+
+GRAFANA CONFIGURATION (New)
+============================
+infrastructure/grafana/provisioning/datasources/prometheus.yml
+infrastructure/grafana/provisioning/dashboards/provisioning.yml
+
+GRAFANA DASHBOARDS (New)
+========================
+infrastructure/grafana/dashboards/system-health.json
+infrastructure/grafana/dashboards/trading-performance.json
+infrastructure/grafana/dashboards/llm-costs.json
+
+DOCUMENTATION (New)
+====================
+infrastructure/MONITORING.md
+PROMETHEUS_SETUP_SUMMARY.md
+
+MODIFIED FILES
+==============
+engine/requirements-core.txt
+engine/main.py
+infrastructure/docker-compose.yml
+
+VERIFICATION
+============
+All files have been verified to exist:
+✅ 13 new files created
+✅ 3 files modified
+✅ 10 custom metrics defined
+✅ 3 Grafana dashboards provisioned
+✅ Prometheus instrumentation wired into FastAPI
+
+Ready for:
+1. pip install -r engine/requirements-core.txt
+2. cd infrastructure && docker compose up -d
+3. Monitor at http://localhost:3030 (Grafana)

@@ -19,10 +19,28 @@ captured in pipeline_result["errors"].
 """
 import asyncio
 import logging
+import time
+import uuid
 from datetime import datetime
 from typing import Any, Optional
 
 from .schemas import MarketRegime, TrendDirection, EntrySignal, Action
+from database import repository
+
+try:
+    from cache import (
+        cache_signal, get_cached_signal, should_use_cache,
+        set_cooldown, is_on_cooldown
+    )
+    _CACHE_AVAILABLE = True
+except Exception:  # pragma: no cover — optional dependency
+    _CACHE_AVAILABLE = False
+
+try:
+    from notifications.whatsapp import format_pipeline_run_alert, get_notifier as _get_wa_notifier
+    _WA_AVAILABLE = True
+except Exception:  # pragma: no cover — optional dependency
+    _WA_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +66,16 @@ class TradingPipeline:
     All agents are optional — the pipeline degrades gracefully when absent.
     """
 
-    def __init__(self, agents: dict, safety_layer):
+    def __init__(self, agents: dict, safety_layer, db_manager=None):
         """
         Args:
             agents:       Dict of named agent instances (see class docstring)
             safety_layer: SafetyLayer instance — provides get_status() and kill switch
+            db_manager:   Optional DatabaseManager — if set, pipeline runs are persisted
         """
         self._agents = agents
         self._safety = safety_layer
+        self.db_manager = db_manager
 
     async def analyze_and_decide(
         self,
@@ -90,6 +110,18 @@ class TradingPipeline:
         }
 
         logger.info(f"[Pipeline] Starting analysis for {symbol} (futures={is_futures})")
+
+        # ── Cache Check: Return early if valid cached signal exists ────────────────
+        if _CACHE_AVAILABLE:
+            # Check if cached signal should be used (regime hasn't changed)
+            if await should_use_cache(symbol):
+                cached = await get_cached_signal(symbol)
+                if cached:
+                    logger.info(f"[Pipeline] {symbol} cache hit — skipping full pipeline (saves LLM calls)")
+                    cached["cache_hit"] = True
+                    # Update completed_at timestamp for response
+                    cached["completed_at"] = datetime.now().isoformat()
+                    return cached
 
         # ── Stage 1: Analysts in parallel ─────────────────────────────────
 
@@ -157,6 +189,34 @@ class TradingPipeline:
             f"requires_human={requires_human} errors={len(errors)}"
         )
 
+        # ── Log decisions to PostgreSQL (audit trail) ──────────────────────────
+        await self._log_pipeline_to_postgres(symbol, pipeline_result, trade_decision, errors)
+
+        # ── Cache the pipeline result (signal caching for next 30 minutes) ───────────
+        if _CACHE_AVAILABLE:
+            try:
+                await cache_signal(symbol, pipeline_result)
+                logger.debug(f"[Pipeline] Cached signal for {symbol} (TTL=30min)")
+            except Exception as e:
+                logger.debug(f"[Pipeline] Failed to cache signal: {e}")
+
+        # Emit WebSocket event for pipeline completion
+        try:
+            from websocket.events import emit_pipeline_complete
+            timing = {
+                "started_at": started_at.isoformat(),
+                "completed_at": completed_at.isoformat(),
+                "elapsed_seconds": elapsed,
+            }
+            asyncio.create_task(emit_pipeline_complete(symbol, final_action, timing))
+        except ImportError:
+            # WebSocket module may not be available in all contexts (e.g., backtesting)
+            pass
+        except Exception as e:
+            logger.debug(f"Failed to emit pipeline_complete event: {e}")
+
+        # Add cache_hit flag for logging
+        pipeline_result["cache_hit"] = False
         return pipeline_result
 
     # ── Stage Runners ──────────────────────────────────────────────────────
@@ -426,45 +486,123 @@ class TradingPipeline:
             "positions": [],
         }
 
-    # ── Final Action Resolution ────────────────────────────────────────────
+    # ── PostgreSQL Audit Logging ──────────────────────────────────────────────
 
-    def _resolve_final_action(
+    async def _log_pipeline_to_postgres(
         self,
+        symbol: str,
+        pipeline_result: dict,
         trade_decision: dict,
-        risk_decision: dict,
-        fund_decision: Optional[dict],
-    ) -> tuple[str, int, bool]:
+        errors: list,
+    ) -> None:
         """
-        Determine the final pipeline outcome.
+        Log pipeline execution to PostgreSQL for audit trail and analysis.
+
+        Logs each agent's decision independently, plus the final trade decision.
+        Gracefully handles database unavailability — never blocks the pipeline.
+
+        Args:
+            symbol: Trading symbol
+            pipeline_result: Complete pipeline result dict
+            trade_decision: Final trade decision dict
+            errors: Any errors encountered
+        """
+        try:
+            analyst_reports = pipeline_result.get("analyst_reports", {})
+            fund_decision = pipeline_result.get("fund_decision")
+
+            # Log each analyst's decision
+            for agent_name in ["technical", "news", "social", "fundamental"]:
+                report = analyst_reports.get(agent_name, {})
+                if report and isinstance(report, dict):
+                    await repository.insert_decision(
+                        agent_name=agent_name,
+                        symbol=symbol,
+                        signal=report.get("signal", 0.0),
+                        confidence=report.get("confidence", 0.0),
+                        reasoning=report.get("summary", ""),
+                        indicators=report.get("indicators"),
+                        model_used=report.get("model_used"),
+                        tokens_used=report.get("tokens_used"),
+                        latency_ms=report.get("latency_ms"),
+                        timeframe=report.get("timeframe"),
+                    )
+
+            # Log debate result (if present)
+            debate_result = pipeline_result.get("debate_result", {})
+            if debate_result and isinstance(debate_result, dict):
+                await repository.insert_decision(
+                    agent_name="debate",
+                    symbol=symbol,
+                    signal=debate_result.get("bull_score", 0.5) - debate_result.get("bear_score", 0.5),
+                    confidence=0.5,  # Debate doesn't have a direct confidence
+                    reasoning=debate_result.get("summary", ""),
+                )
+
+            # Log trader decision (main decision point)
+            if trade_decision and isinstance(trade_decision, dict):
+                final_conviction = fund_decision.get("final_conviction", 0.0) if fund_decision else 0.0
+                await repository.insert_decision(
+                    agent_name="trader",
+                    symbol=symbol,
+                    signal=trade_decision.get("signal_score", 0.0),
+                    confidence=trade_decision.get("confidence", final_conviction),
+                    reasoning=trade_decision.get("reasoning", ""),
+                    model_used=trade_decision.get("model_used"),
+                    tokens_used=trade_decision.get("tokens_used"),
+                    latency_ms=trade_decision.get("latency_ms"),
+                )
+
+            # Log risk manager decision (if available)
+            risk_decision = pipeline_result.get("risk_decision", {})
+            if risk_decision and isinstance(risk_decision, dict):
+                await repository.insert_decision(
+                    agent_name="risk_manager",
+                    symbol=symbol,
+                    signal=1.0 if risk_decision.get("approved") else -1.0,
+                    confidence=risk_decision.get("risk_score", 0.5),
+                    reasoning=risk_decision.get("reasoning", ""),
+                )
+
+            # Log fund manager decision (if available)
+            if fund_decision and isinstance(fund_decision, dict):
+                await repository.insert_decision(
+                    agent_name="fund_manager",
+                    symbol=symbol,
+                    signal=1.0 if fund_decision.get("approved") else -1.0,
+                    confidence=fund_decision.get("final_conviction", 0.0),
+                    reasoning=fund_decision.get("reasoning", ""),
+                )
+
+            logger.debug(f"[DB] Pipeline decisions logged for {symbol}")
+
+        except Exception as e:
+            # Never block pipeline execution due to database errors
+            logger.warning(f"[DB] Failed to log pipeline to PostgreSQL: {e}")
+
+    # ── Webhook Entry Point ────────────────────────────────────────────────
+
+    async def run_on_signal(self, signal: dict) -> dict:
+        """
+        Entry point for TradingView webhook signals.
+        Called by webhook_router when a LONG/SHORT/CLOSE alert arrives.
+
+        Args:
+            signal: Normalized webhook event dict with keys:
+                symbol (str), action (str), price (float), timeframe (str),
+                atr (float), regime (str), os_value (float), ob_value (float),
+                received_at (str), source (str)
 
         Returns:
-            (final_action, final_quantity, requires_human)
+            dict with pipeline result or skip reason
         """
-        # Risk Manager vetoed
-        if not risk_decision.get("approved", False):
-            return "hold", 0, False
+        symbol = signal.get("symbol", "MES")
+        action = signal.get("action", "HOLD")
+        source = signal.get("source", "tradingview")
 
-        # No Fund Manager decision (shouldn't happen if risk approved, but guard it)
-        if fund_decision is None:
-            return "hold", 0, False
+        run_id = str(uuid.uuid4())[:8]
 
-        # Fund Manager rejected
-        if not fund_decision.get("approved", False):
-            return "hold", 0, False
-
-        # Fund Manager says skip
-        if fund_decision.get("priority") == "skip":
-            return "hold", 0, False
-
-        final_quantity = int(fund_decision.get("final_quantity", 0))
-        requires_human = bool(fund_decision.get("requires_human_approval", False))
-        action = trade_decision.get("action", "hold")
-
-        if final_quantity == 0:
-            return "hold", 0, requires_human
-
-        if requires_human:
-            # Decision made but execution paused pending human confirmation
-            return "pending_human_approval", final_quantity, True
-
-        return action, final_quantity, False
+        # Only run pipeline for actionable signals
+        if action not in ("LONG", "SHORT", "CLOSE"):
+            out = {"status": "skipped", "reason": f"Non-actionable action: {action}", "run_id": run_id}
+     

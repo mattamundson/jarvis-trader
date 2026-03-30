@@ -5,6 +5,13 @@ import useSWR from "swr";
 import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
 import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals } from "@/lib/api";
 import type { MGCSignalResponse, PendingSignal, MGCPerformanceResponse, PaperTradePayload, KillSwitchStatus } from "@/lib/api";
+import { RiskStatusWidget } from "@/components/RiskStatusWidget";
+import { CircuitBreakerWidget } from "@/components/CircuitBreakerWidget";
+import { RecentSignalsWidget } from "@/components/RecentSignalsWidget";
+import { MarketRegimeWidget } from "@/components/MarketRegimeWidget";
+import { RecentDecisionsWidget } from "@/components/RecentDecisionsWidget";
+import { TodaySummaryWidget } from "@/components/TodaySummaryWidget";
+import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
@@ -55,6 +62,24 @@ export default function PaperTradingPage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-4 space-y-4">
+        {/* Risk Status — always visible at top of page */}
+        <RiskStatusWidget />
+
+        {/* Circuit breaker / safety status */}
+        <CircuitBreakerWidget />
+
+        {/* Today's session summary */}
+        <TodaySummaryWidget />
+
+        {/* ATR-based position sizing */}
+        <PositionSizingWidget />
+
+        {/* Recent pipeline signals */}
+        <RecentSignalsWidget />
+
+        {/* Market regime / MTF analysis */}
+        <MarketRegimeWidget />
+
         {/* Top row: Signal + Performance */}
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 lg:col-span-6">
@@ -73,6 +98,9 @@ export default function PaperTradingPage() {
 
         {/* Bottom: Trade Logger */}
         <TradeLoggerPanel />
+
+        {/* Recent AI Decisions */}
+        <RecentDecisionsWidget />
       </main>
     </div>
   );

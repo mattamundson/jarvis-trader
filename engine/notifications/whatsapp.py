@@ -140,3 +140,99 @@ def get_notifier() -> WhatsAppNotifier:
     # even if the engine was started before the .env was populated.
     _notifier = WhatsAppNotifier()
     return _notifier
+
+
+async def send_whatsapp_message(
+    message: str,
+    alert_type: str = "notification",
+    symbol: Optional[str] = None,
+) -> bool:
+    """
+    Convenience wrapper — send a raw message via the singleton notifier.
+
+    Every send attempt (success or failure) is persisted to the alert_log
+    table so Matt can review the full notification history.
+
+    Parameters
+    ----------
+    message:
+        The WhatsApp message body to send.
+    alert_type:
+        Category label stored in alert_log — e.g. 'trade_opened',
+        'trade_closed', 'morning_briefing', 'vix_alert', 'circuit_breaker'.
+        Defaults to 'notification' for backwards-compatible callers.
+    symbol:
+        Optional ticker symbol (e.g. 'MES') to tag the log entry.
+    """
+    # Lazy import to avoid circular dependencies at module load time
+    try:
+        from database.schema import get_db
+        _db = get_db()
+    except Exception:
+        _db = None
+
+    try:
+        success = await get_notifier().send(message)
+        if _db is not None:
+            try:
+                _db.insert_alert_log(
+                    alert_type=alert_type,
+                    message=message,
+                    symbol=symbol,
+                    status="sent" if success else "failed",
+                )
+            except Exception as log_err:
+                logger.warning(f"alert_log insert failed (non-fatal): {log_err}")
+        return success
+    except Exception as e:
+        if _db is not None:
+            try:
+                _db.insert_alert_log(
+                    alert_type=alert_type,
+                    message=message,
+                    symbol=symbol,
+                    status="failed",
+                    error=str(e),
+                )
+            except Exception as log_err:
+                logger.warning(f"alert_log insert failed (non-fatal): {log_err}")
+        raise
+
+
+def format_trade_closed_alert(
+    symbol: str,
+    side: str,
+    quantity: int,
+    entry_price: float,
+    exit_price: float,
+    pnl: float,
+    duration_minutes: Optional[float] = None,
+) -> str:
+    """Format a trade closed WhatsApp notification."""
+    emoji = "\u2705" if pnl >= 0 else "\u274c"
+    direction = "WIN" if pnl >= 0 else "LOSS"
+    pnl_str = f"+${pnl:.0f}" if pnl >= 0 else f"-${abs(pnl):.0f}"
+
+    # Price movement (points) relative to trade direction
+    pts = exit_price - entry_price if side.lower() in ("buy", "long") else entry_price - exit_price
+    pts_str = f"+{pts:.2f}" if pts >= 0 else f"{pts:.2f}"
+
+    lines = [
+        f"{emoji} *Trade Closed \u2014 {direction}*",
+        f"",
+        f"\U0001f4ca {symbol} {side.upper()} {quantity}ct",
+        f"\U0001f4c8 Entry: ${entry_price:.2f} \u2192 Exit: ${exit_price:.2f} ({pts_str} pts)",
+        f"\U0001f4b0 P&L: *{pnl_str}*",
+    ]
+
+    if duration_minutes is not None:
+        if duration_minutes < 60:
+            dur_str = f"{duration_minutes:.0f}m"
+        else:
+            dur_str = f"{duration_minutes / 60:.1f}h"
+        lines.append(f"\u23f1 Duration: {dur_str}")
+
+    lines.append("")
+    lines.append("JARVIS TRADER \U0001f4e1")
+
+    return "\n".join(lines)

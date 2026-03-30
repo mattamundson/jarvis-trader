@@ -81,8 +81,18 @@ function SentimentRow({ sentiment: s }: { sentiment: SentimentData }) {
             left: s.score >= 0 ? "50%" : `${50 - barWidth / 2}%`,
           }}
         />
-        {/* Center line */}
-        <div className="absolute left-1/2 top-0 h-full w-px bg-border" />
+        {/* Center line (divider) */}
+        <div
+          className="absolute left-1/2 top-0 h-full w-px bg-border"
+          aria-label="Sentiment neutral point"
+          role="separator"
+        />
+      </div>
+      {/* Text label for color indicator */}
+      <div className="flex items-center justify-between text-xs mt-1">
+        <span className="text-muted-foreground">
+          {s.score > 0 ? "Bullish" : s.score < 0 ? "Bearish" : "Neutral"}
+        </span>
       </div>
     </div>
   );

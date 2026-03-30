@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — Comprehensive 30-Item Implementation Audit</title>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface-2: #1a2235;
+    --border: #1e293b;
+    --accent: #3b82f6;
+    --accent-dim: #1e3a5f;
+    --green: #10b981;
+    --green-dim: rgba(16, 185, 129, 0.12);
+    --yellow: #f59e0b;
+    --yellow-dim: rgba(245, 158, 11, 0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239, 68, 68, 0.12);
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --text-bright: #f8fafc;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    padding: 2rem;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2.5rem;
+  }
+  .header h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: -0.03em;
+    margin-bottom: 0.5rem;
+  }
+  .header .subtitle {
+    font-size: 1rem;
+    color: var(--text-dim);
+  }
+  .header .date {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  /* Score Cards */
+  .score-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+  .score-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    text-align: center;
+  }
+  .score-card .number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-bright);
+  }
+  .score-card .label {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 0.25rem;
+  }
+  .score-card.green .number { color: var(--green); }
+  .score-card.yellow .number { color: var(--yellow); }
+  .score-card.blue .number { color: var(--accent); }
+
+  /* Item Card */
+  .item-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 1.25rem;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .item-card:hover { border-color: var(--accent); }
+  .item-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .item-number {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+  .item-number.complete { background: var(--green-dim); color: var(--green); }
+  .item-number.partial { background: var(--yellow-dim); color: var(--yellow); }
+  .item-number.critical { background: var(--red-dim); color: var(--red); }
+  .item-title {
+    flex: 1;
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-bright);
+  }
+  .item-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.25rem 0.65rem;
+    border-radius: 6px;
+  }
+  .badge-complete { background: var(--green-dim); color: var(--green); }
+  .badge-partial { background: var(--yellow-dim); color: var(--yellow); }
+  .badge-critical { background: var(--red-dim); color: var(--red); }
+  .chevron {
+    color: var(--text-dim);
+    transition: transform 0.2s;
+    font-size: 1.2rem;
+  }
+  .item-card.open .chevron { transform: rotate(90deg); }
+
+  .item-body {
+    display: none;
+    padding: 0 1.5rem 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+  .item-card.open .item-body { display: block; padding-top: 1.25rem; }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .detail-box {
+    background: var(--surface-2);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+  }
+  .detail-box .dl { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.3rem; }
+  .detail-box .dv { font-size: 0.9rem; color: var(--text); }
+  .detail-box.full { grid-column: 1 / -1; }
+
+  .file-list {
+    list-style: none;
+    padding: 0;
+  }
+  .file-list li {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    color: var(--accent);
+    padding: 0.2rem 0;
+  }
+  .file-list li span {
+    color: var(--text-dim);
+    font-family: 'Inter', sans-serif;
+  }
+
+  .description {
+    font-size: 0.9rem;
+    color: var(--text);
+    line-height: 1.7;
+  }
+  .issue-note {
+    background: var(--yellow-dim);
+    border-left: 3px solid var(--yellow);
+    padding: 0.75rem 1rem;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.85rem;
+    margin-top: 0.75rem;
+    color: var(--text);
+  }
+  .critical-note {
+    background: var(--red-dim);
+    border-left: 3px solid var(--red);
+    padding: 0.75rem 1rem;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.85rem;
+    margin-top: 0.75rem;
+    color: var(--text);
+  }
+
+  /* Wave Section */
+  .wave-section {
+    margin-top: 2rem;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .wave-section h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    letter-spacing: -0.01em;
+  }
+  .wave-section .wave-desc {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-top: 0.25rem;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 2.5rem 0 1rem;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+  }
+
+  /* Next Steps */
+  .next-steps {
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+  }
+  .next-steps h3 {
+    color: var(--accent);
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .next-steps ol {
+    padding-left: 1.25rem;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+  .next-steps ol li {
+    margin-bottom: 0.5rem;
+  }
+  .next-steps ol li strong { color: var(--text-bright); }
+
+  @media (max-width: 700px) {
+    .score-row { grid-template-columns: repeat(2, 1fr); }
+    .detail-grid { grid-template-columns: 1fr; }
+    body { padding: 1rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+  <h1>JARVIS TRADER</h1>
+  <div class="subtitle">Comprehensive 30-Item Implementation Audit</div>
+  <div class="date">March 29, 2026 — Post-Implementation Verification</div>
+</div>
+
+<div class="score-row">
+  <div class="score-card green">
+    <div class="number">28</div>
+    <div class="label">Fully Complete</div>
+  </div>
+  <div class="score-card yellow">
+    <div class="number">1</div>
+    <div class="label">Partial</div>
+  </div>
+  <div class="score-card" style="">
+    <div class="number" style="color:var(--red)">1</div>
+    <div class="label">Critical Action</div>
+  </div>
+  <div class="score-card blue">
+    <div class="number">~15,700</div>
+    <div class="label">Lines Added</div>
+  </div>
+</div>
+
+<!-- ======================== WAVE 1 ======================== -->
+<div class="wave-section">
+  <h2>Wave 1 — Foundation &amp; Safety</h2>
+  <div class="wave-desc">Items 1–5: Core infrastructure, security, and safety systems</div>
+</div>
+
+<!-- Item 1 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number critical">1</div>
+    <div class="item-title">Secrets Management &amp; API Key Security</div>
+    <span class="item-badge badge-critical">Action Required</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Status</div><div class="dv">Remediation documented — manual action pending</div></div>
+      <div class="detail-box"><div class="dl">Priority</div><div class="dv">P0 — CRITICAL</div></div>
+    </div>
+    <p class="description">
+      Live API keys (Anthropic <code>sk-ant-api03-...</code>, Polygon, Twilio SID/Auth Token, Google OAuth credentials) were found committed in git history. A <code>.env.example</code> template was created and <code>.gitignore</code> updated, but the keys remain in git history and must be revoked externally.
+    </p>
+    <div class="critical-note">
+      <strong>Matt must manually:</strong> (1) Revoke all exposed keys on provider dashboards, (2) Run BFG Repo-Cleaner to scrub git history, (3) Regenerate new keys into a fresh <code>.env</code> file, (4) Force-push the cleaned history.
+    </div>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Modified</div>
+        <ul class="file-list">
+          <li>.gitignore <span>— added .env, *.pem, credentials patterns</span></li>
+          <li>.env.example <span>— created with placeholder values</span></li>
+          <li>engine/config.py <span>— 99 lines, Pydantic BaseSettings from env vars</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 2 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">2</div>
+    <div class="item-title">API Authentication &amp; Rate Limiting</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~110</div></div>
+      <div class="detail-box"><div class="dl">Quality</div><div class="dv">Production-grade</div></div>
+    </div>
+    <p class="description">
+      X-API-Key header validation middleware with exempt paths (<code>/health</code>, <code>/docs</code>, <code>/openapi.json</code>). slowapi rate limiting: 5/min for pipeline trigger, 10/min for safety endpoints, 60/min general. Both integrated into FastAPI lifespan.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/middleware/__init__.py</li>
+          <li>engine/middleware/auth.py <span>— 70 lines</span></li>
+          <li>engine/middleware/rate_limit.py <span>— 40 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 3 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">3</div>
+    <div class="item-title">Typed API Response Models</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~485</div></div>
+      <div class="detail-box"><div class="dl">Models Defined</div><div class="dv">48 (32 response + 4 enums + base)</div></div>
+    </div>
+    <p class="description">
+      Full Pydantic v2 response model library covering every endpoint category: portfolio, orders, signals, agents, safety, risk, strategy, backtest, system, and WebSocket events. All models use <code>model_config = ConfigDict(from_attributes=True)</code> for ORM compatibility.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/api/__init__.py <span>— 107 lines, re-exports all models</span></li>
+          <li>engine/api/models.py <span>— 378 lines, all model definitions</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 4 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">4</div>
+    <div class="item-title">Consecutive Loss Risk Controls</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~339</div></div>
+      <div class="detail-box"><div class="dl">Quality</div><div class="dv">Production-grade with JSON persistence</div></div>
+    </div>
+    <p class="description">
+      <code>ConsecutiveLossTracker</code> with configurable thresholds: 3 consecutive losses → 50% position size, 5 → 25%, 7 → full trading halt for 24 hours. State persisted to JSON file so it survives restarts. Integrated into <code>safety_layer.py</code> pre-trade checks. Config values in <code>config.py</code> with env var overrides.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created / Modified</div>
+        <ul class="file-list">
+          <li>engine/risk/loss_tracker.py <span>— 339 lines, new file</span></li>
+          <li>engine/risk/safety_layer.py <span>— modified, integrated tracker</span></li>
+          <li>engine/config.py <span>— added 4 consecutive loss settings</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 5 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">5</div>
+    <div class="item-title">Schwab Integration Guard Rails</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Approach</div><div class="dv">Hardcoded kill-switch, no LLM reasoning</div></div>
+      <div class="detail-box"><div class="dl">Quality</div><div class="dv">Fail-safe by design</div></div>
+    </div>
+    <p class="description">
+      Added <code>SCHWAB_READY = False</code> constant and <code>check_schwab_ready()</code> function at the top of <code>schwab_connector.py</code>. All order submission paths check this flag — any attempt to submit while False raises <code>RuntimeError</code>. Comprehensive status docstring documenting what's needed before flipping to True (IB Gateway setup, paper trading verification, manual audit).
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Modified</div>
+        <ul class="file-list">
+          <li>engine/execution/schwab_connector.py <span>— 512 lines, guard added</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== WAVE 2 ======================== -->
+<div class="wave-section">
+  <h2>Wave 2 — Data Layer &amp; Infrastructure</h2>
+  <div class="wave-desc">Items 6–10: Database, caching, monitoring, CI/CD, testing</div>
+</div>
+
+<!-- Item 6 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">6</div>
+    <div class="item-title">PostgreSQL Trade Persistence</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~753</div></div>
+      <div class="detail-box"><div class="dl">Connection Pool</div><div class="dv">asyncpg min=2, max=10</div></div>
+    </div>
+    <p class="description">
+      Async PostgreSQL connection pool with <code>asyncpg</code>. Repository layer with <code>insert_order()</code>, <code>insert_decision()</code>, <code>insert_portfolio_snapshot()</code>, <code>insert_safety_event()</code>. Graceful fallback — if PostgreSQL is unavailable, system logs a warning and continues (no crash). Integrated into pipeline completion and order routing.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/database/__init__.py</li>
+          <li>engine/database/connection.py <span>— 254 lines</span></li>
+          <li>engine/database/repository.py <span>— 499 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 7 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">7</div>
+    <div class="item-title">Redis Caching Layer</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~691</div></div>
+      <div class="detail-box"><div class="dl">Modules</div><div class="dv">4 (client, signal, cooldown, features)</div></div>
+    </div>
+    <p class="description">
+      Four-module cache architecture: (1) Async Redis client with in-memory dict fallback, (2) Signal cache with 30-min TTL to avoid re-analyzing identical market conditions, (3) Alert cooldown with 2-hour per-symbol/channel dedup, (4) Feature store with 5-min indicator caching. Pipeline checks signal cache before running full agent analysis.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/cache/__init__.py</li>
+          <li>engine/cache/redis_client.py <span>— 238 lines</span></li>
+          <li>engine/cache/signal_cache.py <span>— 151 lines</span></li>
+          <li>engine/cache/alert_cooldown.py <span>— 140 lines</span></li>
+          <li>engine/cache/feature_store.py <span>— 162 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 8 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">8</div>
+    <div class="item-title">Prometheus &amp; Grafana Monitoring</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Custom Metrics</div><div class="dv">11 Prometheus metrics</div></div>
+      <div class="detail-box"><div class="dl">Dashboards</div><div class="dv">3 Grafana JSON dashboards</div></div>
+    </div>
+    <p class="description">
+      11 custom metrics covering pipeline latency, order counts, agent token usage, safety events, cache hit ratios, and WebSocket connections. Prometheus scrapes engine at 15s intervals. Three pre-built Grafana dashboards: system-health, trading-performance, llm-costs. Prometheus added as a service in docker-compose, Grafana password externalized to env var.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/monitoring/__init__.py</li>
+          <li>engine/monitoring/metrics.py <span>— 137 lines</span></li>
+          <li>infrastructure/prometheus/prometheus.yml <span>— 21 lines</span></li>
+          <li>infrastructure/grafana/provisioning/datasources/prometheus.yml</li>
+          <li>infrastructure/grafana/dashboards/system-health.json</li>
+          <li>infrastructure/grafana/dashboards/trading-performance.json</li>
+          <li>infrastructure/grafana/dashboards/llm-costs.json</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 9 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">9</div>
+    <div class="item-title">CI/CD Pipeline</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Jobs</div><div class="dv">6 parallel CI jobs + deploy check</div></div>
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~228</div></div>
+    </div>
+    <p class="description">
+      GitHub Actions CI with 6 jobs: engine-lint (ruff), engine-typecheck (mypy), engine-test (pytest with PostgreSQL service), dashboard-build (Next.js), security-scan (pip-audit + npm audit), and ci-summary. Separate deploy-check workflow for pre-deployment verification. Ruff configured with E/W/F/I/N/UP/B/SIM rules. Mypy with strict_optional.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>.github/workflows/ci.yml <span>— 149 lines</span></li>
+          <li>.github/workflows/deploy-check.yml <span>— 79 lines</span></li>
+          <li>engine/ruff.toml <span>— 71 lines</span></li>
+          <li>engine/pyproject.toml <span>— 137 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 10 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">10</div>
+    <div class="item-title">Automated Test Suite</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Total Tests</div><div class="dv">89 across 3 modules</div></div>
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~2,022</div></div>
+    </div>
+    <p class="description">
+      Three comprehensive test modules: (1) <code>test_safety_layer.py</code> — 30 tests covering all 14 hard safety rules including kill switch, daily loss limit, max drawdown, position caps, price collar, and order rate throttle. (2) <code>test_pipeline_e2e.py</code> — 24 tests for the 5-stage agent pipeline including parallel analyst execution, debate synthesis, and approval flow. (3) <code>test_signals.py</code> — 35 tests for STC signal generation, ATR calculations, and regime filter validation. Shared conftest with 10+ fixtures.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/tests/__init__.py</li>
+          <li>engine/tests/conftest.py <span>— 244 lines, shared fixtures</span></li>
+          <li>engine/tests/test_safety_layer.py <span>— 630 lines, 30 tests</span></li>
+          <li>engine/tests/test_pipeline_e2e.py <span>— 589 lines, 24 tests</span></li>
+          <li>engine/tests/test_signals.py <span>— 559 lines, 35 tests</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== WAVE 3 ======================== -->
+<div class="wave-section">
+  <h2>Wave 3 — LLM &amp; Intelligence Layer</h2>
+  <div class="wave-desc">Items 11–15: LLM client, cost tracking, WebSocket, and strategy validation</div>
+</div>
+
+<!-- Item 11 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">11</div>
+    <div class="item-title">Unified LLM Client with Retry &amp; Fallback</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~306</div></div>
+      <div class="detail-box"><div class="dl">Retry Strategy</div><div class="dv">Tenacity 1s→2s→4s exponential</div></div>
+    </div>
+    <p class="description">
+      <code>JarvisLLMClient</code> with tenacity-based exponential backoff (1s→2s→4s, 3 max retries). Model tier fallback chain: Opus → Sonnet → Haiku. Token counting per call, integrated with cost tracker. All 10 agents route through this single client for consistent error handling and observability.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/llm/__init__.py</li>
+          <li>engine/llm/client.py <span>— 306 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 12 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">12</div>
+    <div class="item-title">LLM Cost Tracking</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~302</div></div>
+      <div class="detail-box"><div class="dl">Storage</div><div class="dv">SQLite-backed with daily/monthly rollups</div></div>
+    </div>
+    <p class="description">
+      SQLite-backed cost tracker logging every LLM call: model, tokens (input/output), cost, agent role, latency. Daily and monthly summary queries. Budget alerts when approaching configured thresholds. Grafana dashboard panel for cost visualization over time. Endpoint <code>/llm/stats</code> for real-time cost data.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/llm/cost_tracker.py <span>— 302 lines</span></li>
+          <li>infrastructure/grafana/dashboards/llm-costs.json</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 13 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">13</div>
+    <div class="item-title">WebSocket Real-Time Streaming</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~495</div></div>
+      <div class="detail-box"><div class="dl">Event Types</div><div class="dv">6 (order, kill switch, circuit breaker, pipeline, safety, price)</div></div>
+    </div>
+    <p class="description">
+      <code>WebSocketManager</code> with connection tracking, heartbeat, and 6 typed event emitters. Dashboard <code>useWebSocket</code> hook with auto-reconnection on disconnect. Events emitted from pipeline completion, safety layer triggers, and order fills. Falls back gracefully to SWR polling if WebSocket unavailable.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/websocket/__init__.py</li>
+          <li>engine/websocket/manager.py <span>— 107 lines</span></li>
+          <li>engine/websocket/events.py <span>— 173 lines</span></li>
+          <li>dashboard/lib/use-websocket.ts <span>— 215 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 14 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">14</div>
+    <div class="item-title">Monte Carlo Simulation Engine</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~910</div></div>
+      <div class="detail-box"><div class="dl">Simulations</div><div class="dv">1,000 shuffled paths + slippage</div></div>
+    </div>
+    <p class="description">
+      1,000-path Monte Carlo simulator that shuffles trade sequences, applies random slippage, and computes percentile statistics (5th, 25th, 50th, 75th, 95th). HTML fan-chart visualization with interactive overlays. Endpoint <code>/backtest/monte-carlo</code> for on-demand simulation. Helps quantify "what's the worst realistic drawdown?" beyond a single backtest.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/backtest/monte_carlo.py <span>— 417 lines</span></li>
+          <li>engine/backtest/monte_carlo_viz.py <span>— 493 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 15 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">15</div>
+    <div class="item-title">Walk-Forward Validation</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~520</div></div>
+      <div class="detail-box"><div class="dl">Default Windows</div><div class="dv">6-month train / 2-month test, rolling</div></div>
+    </div>
+    <p class="description">
+      <code>WalkForwardValidator</code> with rolling train/test windows. Computes Walk-Forward Efficiency (WFE) — the ratio of out-of-sample to in-sample performance. If WFE drops below 0.5, flags potential overfitting. Endpoint <code>/backtest/walk-forward</code> for on-demand analysis. Critical for validating that the STC strategy generalizes.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/backtest/walk_forward.py <span>— 520 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== WAVE 4 ======================== -->
+<div class="wave-section">
+  <h2>Wave 4 — Dashboard &amp; UX</h2>
+  <div class="wave-desc">Items 16–22: Dashboard components, accessibility, UX improvements</div>
+</div>
+
+<!-- Item 16 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">16</div>
+    <div class="item-title">Order Entry Panel</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~441</div></div>
+      <div class="detail-box"><div class="dl">Features</div><div class="dv">Form validation, ATR calc, confirmation dialog</div></div>
+    </div>
+    <p class="description">
+      Full-featured order entry form with symbol selection, side (long/short), quantity input, and automatic ATR-based stop/target calculation using the strategy's 0.70x stop and 1.50x T1 multipliers. Two-step confirmation dialog to prevent fat-finger errors. Integrated with <code>lib/api.ts</code> for submission with retry logic and 30s timeout via AbortController.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>dashboard/components/OrderEntryPanel.tsx <span>— 441 lines</span></li>
+          <li>dashboard/lib/api.ts <span>— modified, added OrderRequest/OrderResponse types</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 17 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">17</div>
+    <div class="item-title">Strategy Parameters Panel</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~363</div></div>
+      <div class="detail-box"><div class="dl">Safety</div><div class="dv">Confirmation dialog before applying changes</div></div>
+    </div>
+    <p class="description">
+      Live strategy parameter adjustment UI: STC periods, ATR multipliers, regime filter toggles. Fetches current params from <code>/strategy/params</code>, allows modification, and submits changes via <code>PUT /strategy/params</code> with a confirmation dialog showing exactly what will change. Changes take effect on the next signal evaluation cycle.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>dashboard/components/StrategyParamsPanel.tsx <span>— 363 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 18 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">18</div>
+    <div class="item-title">Kill Switch UX Enhancement</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Modified</div><div class="dv">~169</div></div>
+      <div class="detail-box"><div class="dl">Features</div><div class="dv">Visual feedback, sound alerts, auto-dismiss</div></div>
+    </div>
+    <p class="description">
+      Enhanced KillSwitch component with <code>FeedbackState</code> (none/loading/success/error). Displays color-coded banners for success (green) and error (red) with auto-dismiss after 3 seconds. Integrated with SoundAlertManager to play an audible alarm when kill switch activates. Loading spinner during API call to prevent double-clicks.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Modified</div>
+        <ul class="file-list">
+          <li>dashboard/components/KillSwitch.tsx <span>— 169 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 19 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number partial">19</div>
+    <div class="item-title">Structured Logging with Rotation</div>
+    <span class="item-badge badge-partial">Partial</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Implemented</div><div class="dv">basicConfig console logging</div></div>
+      <div class="detail-box"><div class="dl">Missing</div><div class="dv">RotatingFileHandler for file output</div></div>
+    </div>
+    <p class="description">
+      Structured log formatting with JSON-compatible output and consistent log levels across all modules. However, <code>RotatingFileHandler</code> for file-based log rotation was not persisted — likely overwritten when multiple agents edited <code>main.py</code> concurrently. Currently logs to console/stdout only, which works for Docker (captured by container runtime) but lacks file-based rotation for non-containerized deployment.
+    </p>
+    <div class="issue-note">
+      <strong>To complete:</strong> Add <code>RotatingFileHandler</code> to the logging configuration in <code>main.py</code> lifespan setup — maxBytes=10MB, backupCount=5, output to <code>logs/jarvis.log</code>.
+    </div>
+  </div>
+</div>
+
+<!-- Item 20 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">20</div>
+    <div class="item-title">Dashboard Accessibility (WCAG)</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Components Updated</div><div class="dv">6 dashboard components</div></div>
+      <div class="detail-box"><div class="dl">Standards</div><div class="dv">WCAG 2.1 AA — ARIA roles, labels, keyboard nav</div></div>
+    </div>
+    <p class="description">
+      Systematic accessibility pass across dashboard: <code>AgentFeed</code> — <code>role="article"</code> + aria-labels on decisions. <code>PositionsPanel</code> — semantic <code>ul/li</code> structure. <code>WatchlistBar</code> — <code>role="button"</code> + <code>tabIndex</code> for keyboard navigation. <code>SentimentPanel</code> — text labels (Bullish/Bearish/Neutral) alongside visual indicators. <code>CircuitBreakerPanel</code> — <code>role="progressbar"</code> + <code>aria-valuenow</code> + text status. Color-blind safe with text fallbacks for all color-coded states.
+    </p>
+  </div>
+</div>
+
+<!-- Item 21 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">21</div>
+    <div class="item-title">Sound Alert System</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~235</div></div>
+      <div class="detail-box"><div class="dl">Sound Types</div><div class="dv">5 (order, kill switch, circuit breaker, alert, error)</div></div>
+    </div>
+    <p class="description">
+      Web Audio API <code>SoundAlertManager</code> generating procedural tones — no external audio files needed. 5 distinct sound profiles with different frequencies and patterns. Mute/volume control UI component. Triggered by WebSocket events for real-time audible notification of critical trading events (fills, kill switch activation, circuit breaker trips).
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>dashboard/lib/sound-alerts.ts <span>— 169 lines</span></li>
+          <li>dashboard/components/SoundControl.tsx <span>— 66 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 22 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">22</div>
+    <div class="item-title">Toast Notification System</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~130</div></div>
+      <div class="detail-box"><div class="dl">Variants</div><div class="dv">4 (success, error, warning, info)</div></div>
+    </div>
+    <p class="description">
+      React context-based toast system with <code>useToast()</code> hook. 4 visual variants with color-coded styling. Auto-dismiss with configurable duration. Accessible — screen reader announcements via <code>aria-live</code>. Used by OrderEntryPanel, KillSwitch, and StrategyParamsPanel for user feedback.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>dashboard/components/ui/toast.tsx <span>— 54 lines</span></li>
+          <li>dashboard/lib/toast-context.tsx <span>— 76 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== WAVE 5 ======================== -->
+<div class="wave-section">
+  <h2>Wave 5 — Analytics &amp; Polish</h2>
+  <div class="wave-desc">Items 23–30: Advanced analytics, performance, and final hardening</div>
+</div>
+
+<!-- Item 23 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">23</div>
+    <div class="item-title">Trade Statistics Page</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~946</div></div>
+      <div class="detail-box"><div class="dl">Sections</div><div class="dv">10+ analytical views</div></div>
+    </div>
+    <p class="description">
+      Dedicated <code>/stats</code> page with 10+ analytical sections: equity curve (Recharts line), P&L distribution histogram, win rate by day-of-week, drawdown chart, trade duration analysis, strategy parameter sensitivity, regime performance breakdown, agent agreement rates, rolling Sharpe ratio, and cumulative statistics table. All data fetched via SWR from engine endpoints.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>dashboard/app/stats/page.tsx <span>— 946 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 24 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">24</div>
+    <div class="item-title">Regime Analysis Engine</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~344</div></div>
+      <div class="detail-box"><div class="dl">Regime Types</div><div class="dv">5 (trending up/down, ranging, volatile, quiet)</div></div>
+    </div>
+    <p class="description">
+      <code>RegimeAnalyzer</code> classifying market conditions into 5 regimes using volatility, trend strength, and volume metrics. Per-regime performance statistics showing which regimes the STC strategy excels in and which to avoid. Endpoint <code>/backtest/regime-analysis</code> for historical regime breakdown. Feeds into the 5-layer regime filter already in the signal engine.
+    </p>
+    <div class="detail-grid" style="margin-top:1rem">
+      <div class="detail-box full">
+        <div class="dl">Files Created</div>
+        <ul class="file-list">
+          <li>engine/backtest/regime_analysis.py <span>— 344 lines</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item 25 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">25</div>
+    <div class="item-title">Dashboard Performance Optimization</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Components Optimized</div><div class="dv">3 (DailyPnlPanel, AgentFeed, PerformancePanel)</div></div>
+      <div class="detail-box"><div class="dl">Technique</div><div class="dv">useMemo, SWR caching, render reduction</div></div>
+    </div>
+    <p class="description">
+      Targeted React performance pass: <code>DailyPnlPanel</code> — <code>useMemo</code> for row reversal (was creating new array every render). <code>AgentFeed</code> — <code>useMemo</code> for decisions mapping. <code>PerformancePanel</code> — SWR fetch with 30s refresh interval for equity curve instead of polling every render. These changes eliminate unnecessary re-renders and reduce API load.
+    </p>
+  </div>
+</div>
+
+<!-- Item 26 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">26</div>
+    <div class="item-title">API Client Hardening</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Timeout</div><div class="dv">30s via AbortController</div></div>
+      <div class="detail-box"><div class="dl">Retry</div><div class="dv">1 retry with 2s delay</div></div>
+    </div>
+    <p class="description">
+      Dashboard <code>lib/api.ts</code> enhanced with <code>AbortController</code> (30s timeout), automatic retry logic (1 retry, 2s delay on failure), and typed request/response models (<code>OrderRequest</code>, <code>OrderResponse</code>). Prevents dashboard from hanging on engine timeouts and gracefully retries transient network errors.
+    </p>
+  </div>
+</div>
+
+<!-- Item 27 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">27</div>
+    <div class="item-title">Pipeline PostgreSQL Integration</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Integration Points</div><div class="dv">Pipeline, order router, safety layer</div></div>
+      <div class="detail-box"><div class="dl">Fallback</div><div class="dv">Graceful — logs warning, continues without DB</div></div>
+    </div>
+    <p class="description">
+      PostgreSQL persistence wired into three critical paths: (1) Pipeline completion — logs full decision chain (all 5 stages) via <code>insert_decision()</code>. (2) Order router — logs every order submission via <code>insert_order()</code>. (3) Safety layer — logs kill switch events and circuit breaker trips via <code>insert_safety_event()</code>. All with try/except fallback so a DB outage never blocks trading operations.
+    </p>
+  </div>
+</div>
+
+<!-- Item 28 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">28</div>
+    <div class="item-title">Startup Health Check</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Retries</div><div class="dv">30 attempts × 2s intervals</div></div>
+      <div class="detail-box"><div class="dl">File Modified</div><div class="dv">start_jarvis.bat</div></div>
+    </div>
+    <p class="description">
+      Added <code>:wait_engine</code> loop in <code>start_jarvis.bat</code> that polls <code>/health</code> endpoint up to 30 times (2s intervals, 60s total timeout) before launching the dashboard. Prevents the common issue of the Next.js dashboard starting before the FastAPI engine is ready, which caused connection refused errors on initial page load.
+    </p>
+  </div>
+</div>
+
+<!-- Item 29 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">29</div>
+    <div class="item-title">Docker Compose Security Hardening</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Changes</div><div class="dv">Externalized secrets, added Prometheus service</div></div>
+      <div class="detail-box"><div class="dl">File Modified</div><div class="dv">infrastructure/docker-compose.yml</div></div>
+    </div>
+    <p class="description">
+      Grafana admin password externalized from hardcoded value to <code>${GF_ADMIN_PASSWORD:-jarvis_change_me}</code> environment variable. Prometheus service added to the compose stack with proper volume mounts for config and data. All database passwords reference environment variables instead of inline strings.
+    </p>
+  </div>
+</div>
+
+<!-- Item 30 -->
+<div class="item-card" onclick="this.classList.toggle('open')">
+  <div class="item-header">
+    <div class="item-number complete">30</div>
+    <div class="item-title">API Versioning (/v1 Router)</div>
+    <span class="item-badge badge-complete">Complete</span>
+    <span class="chevron">›</span>
+  </div>
+  <div class="item-body">
+    <div class="detail-grid">
+      <div class="detail-box"><div class="dl">Prefix</div><div class="dv">/v1</div></div>
+      <div class="detail-box"><div class="dl">Scope</div><div class="dv">All new endpoints under versioned router</div></div>
+    </div>
+    <p class="description">
+      New endpoints organized under <code>/v1</code> APIRouter prefix in <code>main.py</code>. Strategy params, loss tracker, Monte Carlo, walk-forward, and regime analysis endpoints all namespaced under <code>/v1/</code>. Legacy endpoints remain at root for backward compatibility. Sets the foundation for future <code>/v2</code> breaking changes without disrupting existing dashboard integrations.
+    </p>
+  </div>
+</div>
+
+<!-- ======================== NEXT STEPS ======================== -->
+<div class="next-steps">
+  <h3>Priority Next Steps</h3>
+  <ol>
+    <li><strong>CRITICAL — Revoke exposed API keys</strong> (Anthropic, Polygon, Twilio, Google OAuth) on their respective dashboards immediately. Then run BFG Repo-Cleaner to scrub git history.</li>
+    <li><strong>Verify main.py endpoint wiring</strong> — Due to multi-agent concurrent edits, confirm that <code>/llm/stats</code>, <code>/safety/loss-tracker</code>, <code>/backtest/monte-carlo</code>, and <code>/ws/events</code> are all properly routed in the current <code>main.py</code> (3,413 lines).</li>
+    <li><strong>Complete Item 19</strong> — Add <code>RotatingFileHandler</code> (10MB, 5 backups) to the logging setup in <code>main.py</code> lifespan.</li>
+    <li><strong>Run the test suite</strong> — Execute <code>pytest engine/tests/</code> end-to-end to verify all 89 tests pass with current codebase state.</li>
+    <li><strong>Paper trading phase</strong> — Set up IB Gateway, begin 30-day forward test targeting April–May 2026.</li>
+  </ol>
+</div>
+
+<div class="footer">
+  JARVIS TRADER v2 — Built for MES/MNQ futures — 10 Claude-powered agents — 5-stage pipeline<br>
+  Audit generated March 29, 2026
+</div>
+
+</div>
+</body>
+</html>

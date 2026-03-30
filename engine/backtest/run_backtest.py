@@ -25,14 +25,10 @@ def main():
     parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital")
     parser.add_argument("--risk", type=float, default=0.01, help="Risk per trade (fraction)")
     parser.add_argument("--output", default=None, help="Save JSON results to file")
-    parser.add_argument("--trailing-stop", action="store_true", help="Enable trailing ATR stop")
-    parser.add_argument("--trailing-atr-mult", type=float, default=0.70, help="Trailing stop ATR multiplier")
-    parser.add_argument("--adaptive-regime", action="store_true", help="Use regime-adaptive STC thresholds")
     args = parser.parse_args()
 
     print(f"JARVIS TRADER Backtester")
-    mode_label = " [ADAPTIVE REGIME]" if args.adaptive_regime else ""
-    print(f"Symbol: {args.symbol} | Period: {args.start} -> {args.end}{mode_label}")
+    print(f"Symbol: {args.symbol} | Period: {args.start} -> {args.end}")
     print(f"Capital: ${args.capital:,.0f} | Risk/trade: {args.risk:.1%}")
     print("-" * 50)
 
@@ -57,7 +53,7 @@ def main():
     print(f"Loaded {len(df)} bars. Computing signals...")
 
     # Generate signals
-    df = generate_signals(df, symbol=args.symbol, adaptive_regime=args.adaptive_regime)
+    df = generate_signals(df)
 
     entry_count = (df['entry_signal'] == 'ENTRY_NOW').sum()
     print(f"Found {entry_count} ENTRY_NOW signals out of {len(df)} bars.")
@@ -67,8 +63,6 @@ def main():
     backtester = Backtester(
         initial_capital=args.capital,
         risk_per_trade=args.risk,
-        trailing_stop=args.trailing_stop,
-        trailing_atr_mult=args.trailing_atr_mult,
     )
 
     print("Running simulation...")
@@ -81,8 +75,7 @@ def main():
     engine_root = Path(__file__).parent.parent
     results_dir = engine_root / "backtest" / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
-    mode_tag = "_adaptive" if args.adaptive_regime else ""
-    auto_filename = f"{args.symbol}_{args.interval}{mode_tag}_{args.start}_{args.end}.json"
+    auto_filename = f"{args.symbol}_{args.interval}_{args.start}_{args.end}.json"
     auto_path = results_dir / auto_filename
 
     result_data = result.to_dict()

@@ -274,6 +274,17 @@ export interface JournalEntry {
   lesson: string | null;
 }
 
+export interface JournalNote {
+  id: number;
+  trade_id: string | null;
+  note_type: "observation" | "lesson" | "alert";
+  title: string;
+  body: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 // ── WebSocket API ────────────────────────────────────────────────────────────
 
 /**
@@ -369,6 +380,34 @@ export interface MGCSignalResponse {
   config: string | null;
   error?: string;
   bars_received?: number;
+}
+
+// ── Validation / Analytics types ─────────────────────────────────────────────
+
+export interface ValidationMetrics {
+  profit_factor: number | null;
+  sharpe_ratio: number | null;
+  win_rate: number | null;
+  max_drawdown: number;
+  total_trades: number;
+  period_days: number;
+  total_pnl: number;
+  avg_win: number;
+  avg_loss: number;
+}
+
+export interface ValidationReport {
+  status: "PASS" | "FAIL" | "INSUFFICIENT_DATA";
+  metrics: ValidationMetrics;
+  recommendation: string;
+}
+
+export interface CompareToBacktestResponse {
+  comparison: {
+    profit_factor: { retention_pct: number };
+    sharpe_ratio: { retention_pct: number };
+    [key: string]: { retention_pct: number };
+  };
 }
 
 // ── Kill Switch API ──────────────────────────────────────────────────────────
