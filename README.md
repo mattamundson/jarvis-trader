@@ -6,6 +6,8 @@
 
 Built on a 5-stage LLM pipeline (Claude Opus), regime-adaptive STC signals, walk-forward validation, Monte Carlo simulation, and a full paper trading infrastructure with kill switch and WhatsApp alerts.
 
+**Canonical specification (merged architecture, research ledger, ThinkScript map, dashboard IA):** [docs/JARVIS_TRADER_UNIFIED_CANON.md](docs/JARVIS_TRADER_UNIFIED_CANON.md) — provenance: [docs/CANON_SOURCE_MAP.json](docs/CANON_SOURCE_MAP.json).
+
 ---
 
 ## Quick Start
@@ -575,8 +577,4 @@ Copy `engine/.env.example` to `engine/.env` and fill in values. Never commit `.e
 3. Additional signal confirmations to reduce parameter instability
 4. Extend history back to 2022 to include bear market conditions
 
-**MGC 1d monitoring**: Recalculate WFE monthly with latest 3 windows. Kill if 3 consecutive months fall below 3.8% return.
-
----
-
-*Last updated: 2026-03-29. Source: 55+ result files in `engine/backtest/results/`, 11 walk-forward runs, 4 Monte Carlo simulations (10k each), 1,245-line research report, and all 10 PRD user stories validated.*
+**MGC 1d monitoring**: Recalculate WFE monthly with latest 3 windows. Kill if 3 consecutive mo

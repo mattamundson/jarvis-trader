@@ -276,6 +276,4 @@ export function MonthlyBreakdownWidget() {
           </div>
         )}
       </CardContent>
-    </Card>
-  );
-}
+    </Card

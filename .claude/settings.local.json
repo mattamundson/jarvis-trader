@@ -9,11 +9,7 @@
       "Bash(netstat:*)",
       "Bash(cmd:*)",
       "Bash(python:*)",
-      "Bash(\"C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/.venv/Scripts/python\":*)"
-    ]
-  },
-  "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "chrome"
-  ]
-}
+      "Bash(\"C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/.venv/Scripts/python\":*)",
+      "Bash(ls:*)",
+      "mcp__chrome__use_browser",
+      "mcp__playwright__browser_take_scree

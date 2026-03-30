@@ -836,32 +836,4 @@ export default function ScorecardPage() {
         </div>
 
         {/* Footer note */}
-        <p className="text-[11px] text-muted-foreground text-center pb-4">
-          Backtest baseline: MES 1h &mdash; PF {BACKTEST.profitFactor}, Sharpe {BACKTEST.sharpeRatio},{" "}
-          {BACKTEST.totalReturn}, Win Rate {BACKTEST.winRate}% &mdash; Auto-refresh every 60s
-        </p>
-      </main>
-    </div>
-  );
-}
-
-function TradeStat({
-  label,
-  value,
-  valueClass = "text-foreground",
-}: {
-  label: string;
-  value: string;
-  valueClass?: string;
-}) {
-  return (
-    <div className="space-y-0.5">
-      <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
-        {label}
-      </p>
-      <p className={`text-lg font-bold tabular-nums ${valueClass}`}>
-        {value}
-      </p>
-    </div>
-  );
-}
+        <p c
