@@ -10,3 +10,33 @@
 - SCHWAB_READY=False guard prevents any real order submission
 - Multi-agent session caused file conflicts — always verify main.py state before modifying
 ---
+
+## US-003: Structured Logging with Rotation ✅ COMPLETE
+**Date:** 2026-03-29
+
+### Implementation Summary
+- Added LOG_LEVEL config field (default "INFO") to engine/config.py
+- Created JSONFormatter class in main.py for structured logging with timestamp, level, module, funcName, message
+- Implemented setup_logging() function with:
+  - logs/ directory auto-creation at startup
+  - RotatingFileHandler: maxBytes=10MB, backupCount=5, output to logs/jarvis.log
+  - StreamHandler for Docker/stdout compatibility (non-JSON format for readability)
+  - Both handlers respect LOG_LEVEL from config
+- Integrated setup_logging() into lifespan function startup (FIRST operation, before any module initialization)
+- Imported json and logging.handlers
+
+### Files Modified
+- engine/main.py: Added imports, JSONFormatter class, setup_logging() function, lifespan integration
+- engine/config.py: Added LOG_LEVEL field
+
+### Test Verification
+✅ RotatingFileHandler configured: maxBytes=10MB, backupCount=5
+✅ Log output to logs/jarvis.log
+✅ JSON-structured log format with timestamp, level, module, funcName, message
+✅ Console handler preserved for Docker/stdout
+✅ logs/ directory created if not exists at startup
+✅ LOG_LEVEL configurable via env var (default INFO)
+
+### Commit
+Commit: feat: US-003 - Structured Logging with File Rotation
+---
