@@ -84,9 +84,11 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 | Stop ATR | 0.30 | 0.70 | 0.90 | 0.30 | 0.50 |
 | T1 ATR | 1.50 | 1.00 | 1.50 | 1.00 | 2.00 |
 | T2 ATR | 2.618 | 1.80 | 2.618 | 1.618 | 3.236 |
-| Regime Filter | ON | ON | ON | ON | **OFF** |
+| Regime Filter | **OFF** (anti-predictive for gold daily) | ON | ON | ON | **OFF** |
 
 *SPY and MES params updated 2026-03-29 via optimizer consensus (US-005/US-007). MES regime_filter=OFF per optimizer -- structure-based entries in EXHAUSTED/COMPRESSION regimes improve MES PF from 0.96 to 1.69.*
+
+*MGC regime_filter=ON found to be anti-predictive per 15-window walk-forward analysis: regime=ON windows avg OOS -1.7% (7/8 lost money), regime=OFF windows avg OOS +5.9% (5/7 profitable). Recommend regime_filter=OFF for MGC 1d.*
 
 These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` (7-element tuples including regime_filter) and used by `run_backtest.py`. They represent the best-known in-sample parameters but should NOT be treated as validated for live trading until walk-forward efficiency improves.
 
@@ -126,7 +128,7 @@ These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` (7-el
 | Risk/trade | 0.25% | Conservative start |
 | Stop | 0.30 ATR | Validated in WF |
 | T1 Target | 1.00 ATR | Intraday reachable |
-| Adaptive Regime | ON | Key to WFE=0.88 |
+| Adaptive Regime / Regime Filter | OFF recommended | Regime filter anti-predictive per extended WF: ON windows avg OOS -1.7%, OFF windows avg OOS +5.9% |
 | Kill threshold | If first 3 months show negative return: halt immediately | Tighter gate (v2.4) |
 
 **Performance benchmark (in-sample):** Avg IS return 7.6%/3-month window.
@@ -148,7 +150,7 @@ Kill trigger: any 3-month window below 3.8% return (50% of 7.6% baseline).
 | MES | 1d | 0.75 | N/A | 36/51 trades exit at EOD — targets unreachable |
 | MNQ | 1d | 0.79 | N/A | 43/57 EOD exits; daily NQ too volatile for intraday targets |
 | MGC | 1h | 0.77 | N/A | Gold works daily only; hourly loses money |
-| MES | 1h | 1.69 | -0.17 | Re-optimized v2.5: PF 0.96->1.69 (regime OFF), still only 1/6 OOS profitable |
+| MES | 1h | 1.69 | -0.17 | Re-optimized v2.5: PF 0.96->1.69 (+76%, regime OFF), +0.1% return. PF improved with new params but WFE not yet validated |
 | SPY | 1h | 3.79 | -0.71 | Re-optimized v2.5: PF 3.00->3.79, near-zero returns, still deeply overfit |
 
 ---
