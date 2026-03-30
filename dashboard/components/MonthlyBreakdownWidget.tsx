@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Calendar } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -108,7 +108,7 @@ function Skeleton() {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Calendar className="h-4 w-4" />
+          <CalendarDays className="h-4 w-4" />
           Monthly Breakdown
         </CardTitle>
       </CardHeader>
@@ -165,7 +165,7 @@ export function MonthlyBreakdownWidget() {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Calendar className="h-4 w-4" />
+          <CalendarDays className="h-4 w-4" />
           Monthly Breakdown
         </CardTitle>
       </CardHeader>

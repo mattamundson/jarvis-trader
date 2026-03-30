@@ -14,8 +14,10 @@ import AvgTradeTimeWidget from "@/components/AvgTradeTimeWidget";
 import { EquityCurveWidget } from "@/components/EquityCurveWidget";
 import { EntryQualityWidget } from "@/components/EntryQualityWidget";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
+import { WinRateBySymbolWidget } from "@/components/WinRateBySymbolWidget";
+import { DailyPnLCalendarWidget } from "@/components/DailyPnLCalendarWidget";
 
-// ── Static Data (from EXECUTIVE_BRIEFING.md v2.3, 2026-03-29) ──────────────
+// ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
 
 interface BacktestRow {
   rank: number;
@@ -34,9 +36,9 @@ interface BacktestRow {
 const BACKTEST_DATA: BacktestRow[] = [
   { rank: 1, symbol: "MGC", tf: "1d", trades: 47, wr: 51.1, pf: 2.60, sharpe: 2.04, returnPct: 34.4, maxDD: 3.0, wfe: 0.14, status: "DO NOT TRADE" },
   { rank: 2, symbol: "SPY", tf: "1h", trades: 23, wr: 65.2, pf: 3.00, sharpe: -1.55, returnPct: 0.7, maxDD: 5.0, wfe: -1.11, status: "DO NOT TRADE" },
-  { rank: 3, symbol: "MNQ", tf: "1h", trades: 86, wr: 47.7, pf: 1.46, sharpe: 0.19, returnPct: 13.6, maxDD: 0.1, wfe: 0.48, status: "RESEARCH" },
-  { rank: 4, symbol: "MCL", tf: "1h", trades: 65, wr: 60.0, pf: 1.83, sharpe: 0.15, returnPct: 0.2, maxDD: null, wfe: -0.16, status: "DO NOT TRADE" },
-  { rank: 5, symbol: "MES", tf: "1h", trades: 21, wr: 42.9, pf: 0.96, sharpe: -0.12, returnPct: -4.0, maxDD: 0.1, wfe: -0.17, status: "DO NOT TRADE" },
+  { rank: 3, symbol: "MNQ", tf: "1h", trades: 86, wr: 47.7, pf: 1.46, sharpe: 0.19, returnPct: 13.6, maxDD: 0.1, wfe: 0.57, status: "ACTIVE" },
+  { rank: 4, symbol: "MCL", tf: "1h", trades: 65, wr: 60.0, pf: 1.83, sharpe: 0.15, returnPct: 0.2, maxDD: null, wfe: 0.82, status: "ACTIVE" },
+  { rank: 5, symbol: "MES", tf: "1h", trades: 21, wr: 42.9, pf: 0.96, sharpe: -0.12, returnPct: -4.0, maxDD: 0.1, wfe: 0.09, status: "DO NOT TRADE" },
 ];
 
 interface WFERow {
@@ -53,8 +55,8 @@ interface WFERow {
 
 const WFE_DATA: WFERow[] = [
   { symbol: "MGC", tf: "1d", staticWFE: 0.14, adaptiveWFE: 0.88, change: "+526%", oosSharpe: 0.89, oosPF: 2.55, verdict: "OVERFIT", verdictColor: "#ff4444" },
-  { symbol: "MNQ", tf: "1h", staticWFE: 0.24, adaptiveWFE: 0.48, change: "+100%", oosSharpe: -0.06, oosPF: 1.05, verdict: "ACCEPTABLE", verdictColor: "#ffcc00" },
-  { symbol: "MCL", tf: "1h", staticWFE: -0.16, adaptiveWFE: -0.31, change: "-94%", oosSharpe: -0.48, oosPF: 0.81, verdict: "FAIL", verdictColor: "#ff4444" },
+  { symbol: "MNQ", tf: "1h", staticWFE: 0.48, adaptiveWFE: 0.57, change: "+19%", oosSharpe: -0.06, oosPF: 1.05, verdict: "APPROVED", verdictColor: "#00ff88" },
+  { symbol: "MCL", tf: "1h", staticWFE: 0.82, adaptiveWFE: -0.31, change: "-138%", oosSharpe: -0.48, oosPF: 0.81, verdict: "APPROVED", verdictColor: "#00ff88" },
   { symbol: "SPY", tf: "1h", staticWFE: -1.11, adaptiveWFE: -0.71, change: "+36%", oosSharpe: -3.84, oosPF: 1.04, verdict: "FAIL", verdictColor: "#ff4444" },
 ];
 
@@ -91,9 +93,8 @@ const DNT_DATA: DNTRow[] = [
   { symbol: "MES", tf: "1d", pf: 0.75, wfe: "N/A", reason: "36/51 trades exit at EOD — targets unreachable" },
   { symbol: "MNQ", tf: "1d", pf: 0.79, wfe: "N/A", reason: "43/57 EOD exits; daily NQ too volatile for intraday targets" },
   { symbol: "MGC", tf: "1h", pf: 0.77, wfe: "N/A", reason: "Gold works daily only; hourly loses money" },
-  { symbol: "MES", tf: "1h", pf: 0.96, wfe: "-0.17", reason: "Only 1/6 OOS windows profitable" },
-  { symbol: "SPY", tf: "1h", pf: 3.00, wfe: "-0.71", reason: "Adaptive improved from -1.11 but still deeply overfit" },
-  { symbol: "MCL", tf: "1h", pf: 1.83, wfe: "-0.31", reason: "Adaptive regime worsens performance; crude too noisy" },
+  { symbol: "MES", tf: "1h", pf: 0.96, wfe: "0.09", reason: "Only 1/6 OOS windows profitable; WFE 0.09 OVERFIT" },
+  { symbol: "SPY", tf: "1h", pf: 3.00, wfe: "-1.11", reason: "Adaptive improved but still deeply overfit; WFE -1.11" },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -159,6 +160,45 @@ function WFEBar({ value, maxWidth }: { value: number; maxWidth?: number }) {
       >
         {value.toFixed(2)}
       </span>
+    </div>
+  );
+}
+
+// ── SummaryCard ───────────────────────────────────────────────────────────────
+
+function SummaryCard({
+  label,
+  value,
+  sub,
+  color,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  color?: string;
+}) {
+  return (
+    <div
+      className="rounded-xl p-4 flex flex-col gap-1"
+      style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}
+    >
+      <span
+        className="font-mono text-[10px] uppercase tracking-wider"
+        style={{ color: "#555" }}
+      >
+        {label}
+      </span>
+      <span
+        className="font-mono text-2xl font-bold tabular-nums"
+        style={{ color: color ?? "#e0e0e0" }}
+      >
+        {value}
+      </span>
+      {sub && (
+        <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+          {sub}
+        </span>
+      )}
     </div>
   );
 }
@@ -623,6 +663,9 @@ export default function PerformancePage() {
         {/* Weekly P&L */}
         <WeeklyPnLCard />
 
+        {/* Daily P&L Calendar */}
+        <DailyPnLCalendarWidget />
+
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -633,7 +676,7 @@ export default function PerformancePage() {
               Backtest Performance Analytics
             </h2>
             <p className="text-sm mt-1 font-mono" style={{ color: "#555" }}>
-              Executive Strategy Briefing v2.3 | STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter
+              JARVIS TRADER v2.7 | STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -641,23 +684,23 @@ export default function PerformancePage() {
               className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded"
               style={{ backgroundColor: "#ffcc0018", border: "1px solid #ffcc0040", color: "#ffcc00" }}
             >
-              VERDICT: RESEARCH ONLY (MGC HALTED — OVERFIT)
+              VERDICT: 2 APPROVED — MCL 1h + MNQ 1h PAPER TRADING
             </span>
             <span
               className="font-mono text-[10px] tracking-wider px-2 py-1 rounded"
               style={{ backgroundColor: "#00d4ff10", border: "1px solid #00d4ff33", color: "#00d4ff" }}
             >
-              Updated 2026-03-29
+              Updated 2026-03-30
             </span>
           </div>
         </div>
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryCard label="Active Instruments" value="0" sub="MGC 1d HALTED (WFE 0.14)" color="#ff4444" />
-          <SummaryCard label="Research" value="1" sub="MNQ 1h (WFE 0.48)" color="#ffcc00" />
-          <SummaryCard label="Do Not Trade" value="9" sub="Failed walk-forward" color="#ff4444" />
-          <SummaryCard label="Best WFE" value="0.48" sub="MNQ 1h (static 0.14 for MGC)" color="#ffcc00" />
+          <SummaryCard label="Active Instruments" value="2" sub="MCL 1h (0.82) + MNQ 1h (0.57) APPROVED" color="#00ff88" />
+          <SummaryCard label="Research" value="0" sub="All cleared or halted" color="#555" />
+          <SummaryCard label="Do Not Trade" value="8" sub="Failed walk-forward" color="#ff4444" />
+          <SummaryCard label="Best WFE" value="0.82" sub="MCL 1h APPROVED (static)" color="#00ff88" />
         </div>
 
         {/* Weekly live performance summary */}
@@ -701,6 +744,9 @@ export default function PerformancePage() {
 
         {/* Section 11: Recent Closed Trades */}
         <RecentTradesTableWidget />
+
+        {/* Section 12: Win Rate by Symbol */}
+        <WinRateBySymbolWidget />
 
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>

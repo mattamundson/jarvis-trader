@@ -1,0 +1,385 @@
+{
+  "version": "1.0.0",
+  "entries": [
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\JARVIS_TRADER_SESSION_LOG_2026-03-30.md",
+      "sha256": "30a7652325b6d463a338398527b97bfa2b34f8de431353294fda1703e7ebd5a1",
+      "canon_sections": [
+        "3",
+        "9",
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\jarvis-trader-dashboard-session5-log.md",
+      "sha256": "9f4072c9936716fc51494b836083bfd9fd9e48e8a6ecb9c337d881f653634523",
+      "canon_sections": [
+        "10",
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\Jarvis_Trader_Agent_Master_Claude_Code_Session.md",
+      "sha256": "9b8d7390e88e9e83f4ec021eb8d5198d17b220d7830c106d6a0e48f5aee2a5b4",
+      "canon_sections": [
+        "7",
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\jarvis-trader-skill-project-log.md",
+      "sha256": "2d924946c9fb18de9bd48cf761376ee7cb0e7674f81067fe3cd34c105365e917",
+      "canon_sections": [
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\SESSION_NOTES_ARCHIVE.md",
+      "sha256": "ce1903a70696fcb62688d886c54e45c2e3f73708afbb56f9cf5f90a547fb5e58",
+      "canon_sections": [
+        "9",
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\docs\\jarvis-trader-session-log-2026-03-28.md",
+      "sha256": "8677c955816db47437560644faf0b6c7bf080f2ec812feb88a1ec8a773ea5b82",
+      "canon_sections": [
+        "9",
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\JARVIS_TRADER_MASTER_REPORT_2026-03-30.md",
+      "sha256": "77faa107128ba653193dcd6018955f5aadd45c9ed20049fa74e01af8cc3df41c",
+      "canon_sections": [
+        "4",
+        "10",
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\JARVIS_TRADER_API_VALIDATION_2026-03-30.md",
+      "sha256": "81582524c1d76e18ed57f922c66dd838c490a0b1be74596147f9553d6cf35ab8",
+      "canon_sections": [
+        "10"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\COMPREHENSIVE_VERIFICATION_REPORT.md",
+      "sha256": "1a0a1db727b65b6932d6bf66b166c72968b776da7bd56ee921ff215c39c5f979",
+      "canon_sections": [
+        "4",
+        "10"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\DELIVERABLES.md",
+      "sha256": "c6fe48d95595b2a53530c0be5ec45091c2a2812d93f6f19b5c1dd24fd9e97970",
+      "canon_sections": [
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\TEST_RESULTS.md",
+      "sha256": "f8fe4281a96f9f7c0bcabbfc0477a64e81c04464def2083ea50d6cbe92980df3",
+      "canon_sections": [
+        "8",
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\TRADING_DAILY_ROUTINE.md",
+      "sha256": "ec3cbdca067b6fb4ada4a89925696767e9421632c539ae111c9b3e690a0a7963",
+      "canon_sections": [
+        "9"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\SECURITY_REMEDIATION.md",
+      "sha256": "1c3cdbc917f39e4ab7372c145fe6e2929a09a9c169e281cbba3c609b960eabbe",
+      "canon_sections": [
+        "8"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\CONSECUTIVE_LOSS_IMPLEMENTATION_SUMMARY.md",
+      "sha256": "5dff7c86793bdde99490dc95eb4bd8c6b271362a979572c05208cf2a71dcb9b6",
+      "canon_sections": [
+        "8",
+        "9"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\TOS_SCRIPT_ANALYSIS.md",
+      "sha256": "a73ea16038a5227273ca87645b18a5f7978a0d038aa07ca0274638579909988a",
+      "canon_sections": [
+        "6"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\thinkorswim-scripts\\INTEGRATION_GUIDE.md",
+      "sha256": "c03ce4ca53b9c9adb2db3315045fb8b5f0f74bbf766867e31cc2881435cd9cf7",
+      "canon_sections": [
+        "5",
+        "6"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\agents\\rules\\trading_rules.md",
+      "sha256": "40362aa63aa2f326fff6f2199b42607ef0487e884bd87fcd46178af3cf054706",
+      "canon_sections": [
+        "5",
+        "6",
+        "7"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\docs\\BACKTEST_RESEARCH_REPORT.md",
+      "sha256": "64f68244818dba42f35565c5b80b0d1d0e82afc0ac8dfec478213a31e6372e01",
+      "canon_sections": [
+        "5",
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\results\\EXECUTIVE_BRIEFING.md",
+      "sha256": "6eda187a163d78f30088bb2f7f98039bf26b73bc0e8eb869d672543448f4554a",
+      "canon_sections": [
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\backtest\\results\\SUMMARY.md",
+      "sha256": "7380311609459d5ebf8730f00809dfbb9e42efbb07eb96252a226220b50a74a0",
+      "canon_sections": [
+        "5",
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\README.md",
+      "sha256": "0c33c404a250449e644622d8e478bbf029f630dee3fc10d988a2134f064e4390",
+      "canon_sections": [
+        "2",
+        "4"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\SUMMARY.md",
+      "sha256": "d8e79c625c29d0aac4c4fe45f8f56a03198dc711ee678db54103f959a822213e",
+      "canon_sections": [
+        "5",
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\CHANGELOG.md",
+      "sha256": "ca5931dd9c4cc456100c07eaff52c709c35e0a340106e8a9d5340018ea518a04",
+      "canon_sections": [
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\ENDPOINT_REGISTRY.md",
+      "sha256": "281e02dafe449b34d580121a142bc236ee674a29a3bcb276f247d2c48a3187f2",
+      "canon_sections": [
+        "10"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\INTEGRATION_VERIFICATION.md",
+      "sha256": "16dd8dc12ac66052c4d1b306eabc4203b7ee3789b49e6078f947da89963dc02d",
+      "canon_sections": [
+        "10"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\PAPER_TRADING_RUNBOOK.md",
+      "sha256": "846da5f075034394e32793db8bacb81857c9e3bd864e83efe9f4cc1edefdcffd",
+      "canon_sections": [
+        "9"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\PAPER_TRADING_APPROVAL.md",
+      "sha256": "3f2cd33484e870de0182618c84d215e99f35652570a384e73bc33485cb2487fd",
+      "canon_sections": [
+        "9"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\REGIME_ANALYSIS_README.md",
+      "sha256": "dc42452a42da22428e23b0c4eed4d27c96bd27c474aa3300ade3f69e873a9942",
+      "canon_sections": [
+        "9",
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\WALK_FORWARD_GUIDE.md",
+      "sha256": "7d43ce34a25317c9962744ee7df37e9504911ca361c8802da7ccccce75206b29",
+      "canon_sections": [
+        "9",
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\WALK_FORWARD_IMPLEMENTATION_SUMMARY.md",
+      "sha256": "c8b59b3f4894e3611a7aae9ad733b4866dfc9d8d390314a63d1da3ea9841b82d",
+      "canon_sections": [
+        "9",
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\paper\\MNQ_paper_setup.md",
+      "sha256": "c770cb9e9d38deb904d3d36ac7ed52587fd6e3fa3abcdae08e47655bc654904e",
+      "canon_sections": [
+        "9"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\paper\\MCL_paper_setup.md",
+      "sha256": "eb137da825937c5bbeae48d9b1c1e723739c8ee582f33358deaf9e320f43191c",
+      "canon_sections": [
+        "9"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\prd.json",
+      "sha256": "8f743c4a54c0b77f1756f6bf4c2f4a1f778bd2b22159dfea0f9b83d627a721e3",
+      "canon_sections": [
+        "11"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\master-jarvis\\docs\\SESSION_REPORT.md",
+      "sha256": "72e289eced50e811cf42072eafc73ebaf1942932e319b2f5a60d412f56341d24",
+      "canon_sections": [
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\master-jarvis\\docs\\ARCHITECTURE.md",
+      "sha256": "07d6e2d3f6336e56912dcead85b3334a9b379490bd5e689d107fe30c3df7de8c",
+      "canon_sections": [
+        "3",
+        "4",
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\master-jarvis\\docs\\TRADING_SYSTEM.md",
+      "sha256": "5827a1366b6d520cdf3849e17fe63e1ab15b38d6aa419131ef9fdc4f589c7beb",
+      "canon_sections": [
+        "4",
+        "7",
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\master-jarvis\\docs\\MIGRATION_LOG.md",
+      "sha256": "63ea278c7392cc7a8765bd46a5f7438fdefaf17129b75949c61ed8aaea91cc64",
+      "canon_sections": [
+        "4",
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\master-jarvis\\docs\\STANDING_ORDERS_AUDIT.md",
+      "sha256": "8f11dcb0b87688e7d8b669f79c1dc654ce1d8446b48d502dd054bada700f8094",
+      "canon_sections": [
+        "8"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\Greenfield Metal Sales\\dev\\personal_agent\\JARVIS_v2_vs_TRADER_Analysis.html",
+      "sha256": "0c362628afa8477b98f185f601a465ed13251abfa2662e1af6d524aa130aba82",
+      "canon_sections": [
+        "3"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\.claude\\plans\\zany-frolicking-allen.md",
+      "sha256": "1514e79539bc7d0f634960a943255b4f225d1b174b621c0d665ab877ddcd1a7a",
+      "canon_sections": [
+        "3"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\.claude\\plans\\federated-fluttering-brook.md",
+      "sha256": "446d8a4f493ed30b5020d78a394b4ed7d3037ade7a63025d2141571593a5dc0a",
+      "canon_sections": [
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\.claude\\plans\\snoopy-hugging-pnueli.md",
+      "sha256": "8047ca55f07d3c2a5e272d0bc987f84e51869666f00127a545cc409a08a52599",
+      "canon_sections": [
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\.claude\\projects\\C--Users-mattm-ThinkorSwim-jarvis-trader\\memory\\MEMORY.md",
+      "sha256": "fa1ff7612cc87d8a35bfb12a8acf6a770947dddb61c5bfb1a7c38a7e13947612",
+      "canon_sections": [
+        "5",
+        "11",
+        "12"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    },
+    {
+      "path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\docs\\JARVIS_TRADER_UNIFIED_CANON.md",
+      "sha256": "86fc1020c311058a47469d0f4c10a93dbeff57416d9fe9ad86ac023e99a5e912",
+      "canon_sections": [
+        "meta"
+      ],
+      "ingest_date": "2026-03-30T05:54:29Z"
+    }
+  ]
+}
