@@ -1,6 +1,6 @@
 # JARVIS TRADER — Strategy Research Summary
 
-*Version 3.0 | Updated: 2026-03-29 | Status: MGC 1d ACTIVE (Paper Trading)*
+*Version 2.6 | Updated: 2026-03-30 | Status: MGC 1d HALTED — WFE 0.14 below threshold*
 
 ---
 
@@ -56,8 +56,8 @@ This is the critical table — what generalizes vs what is curve-fit.
 
 | Symbol | TF | Static WFE | Adaptive WFE | OOS Profitable | Static Verdict | Adaptive Verdict |
 |--------|-----|-----------|--------------|----------------|----------------|------------------|
-| MGC | 1d | 0.27 | **0.88*** | 2/3 (67%) | OVERFIT | **CONDITIONAL-CAUTION** — Extended 15-window WFE = 0.27 |
-| MNQ | 1h | 0.24 | **0.34** | 3/6 (50%) | OVERFIT | ACCEPTABLE — Needs WFE > 0.40 |
+| MGC | 1d | 0.14 | **0.14*** | 2/3 (67%) | OVERFIT | **OVERFIT/HALTED** — WFE 0.14 below 0.30 threshold |
+| MNQ | 1h | 0.24 | **0.48** | 3/6 (50%) | OVERFIT | ACCEPTABLE — Extended start 2024-04-26; needs WFE > 0.50 for paper |
 | MCL | 1h | -0.16 | **-0.31** | 2/6 (33%) | OVERFIT | FAIL — Adaptive hurts MCL |
 | MES | 1h | -0.17 | N/A | 1/6 (17%) | OVERFIT | Not tested (no edge) |
 | SPY | 1h | -1.11 | N/A | 2/6 (33%) | OVERFIT | Not tested (random noise) |
@@ -65,6 +65,8 @@ This is the critical table — what generalizes vs what is curve-fit.
 **WFE thresholds:** > 0.70 = Excellent | 0.50-0.70 = Good | 0.30-0.50 = Marginal | < 0.30 = OVERFIT
 
 *\* MGC adaptive WFE=0.88 was a 3-window result (2025 data only). Extended 15-window validation (2022-2026) = 0.27 — confirms small-sample bias. Bear market data exposes overfitting.*
+
+> **v2.6 correction:** Optimizer kwarg bug fixed. Previous WFEs were invalid due to silent TypeError causing all optimization calls to return None. Corrected: MGC 0.27→0.14, MNQ 0.34→0.48.
 
 **Key finding:** 73-90% of in-sample edge evaporates on unseen data with static parameters. The regime-adaptive approach recovers 88% of edge for MGC (gold) by dynamically switching STC thresholds based on detected market regime.
 
@@ -84,7 +86,7 @@ This is the critical table — what generalizes vs what is curve-fit.
 
 ## Paper Trading Status
 
-**MGC 1d adaptive: ACTIVE — CONDITIONAL-CAUTION (extended WFE=0.27)**
+**MGC 1d adaptive: HALTED — WFE 0.14 below 0.30 threshold. Pending MTF filter validation.**
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
@@ -127,6 +129,8 @@ This is the critical table — what generalizes vs what is curve-fit.
 | T1 ATR | 1.50 | 1.00 | 1.50 | 1.00 | 2.00 |
 | T2 ATR | 2.618 | 1.80 | 2.618 | 1.618 | 3.236 |
 | Regime Filter | **OFF** (anti-predictive for gold daily) | ON | ON | ON | **OFF** |
+
+> **MNQ 1h OOS stable param zone (Agent AC finding):** OS=23, OB=88, stop=0.70 ATR, T1=2.00 ATR — identified as the most parameter-stable region across walk-forward windows.
 
 ---
 
