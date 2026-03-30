@@ -400,6 +400,17 @@ All components located in `dashboard/components/`. All verified at 0 TypeScript 
 | 20 | `MarketSessionStatusCard.tsx` | journal/page.tsx (first) | Client-side RTH/Extended/Settlement/Weekend detection, CT time display |
 | 21 | `WeeklyPnLCard.tsx` | performance/page.tsx | Mon-Fri grid, week total, manual refresh |
 | 22 | `DecisionBreakdownCard.tsx` | backtest/page.tsx (bottom) | Signal rate, hold rate, avg confidence from decisions history |
+| 23 | `GoLivePlanCard.tsx` | validation/page.tsx | Static 4-milestone go-live timeline (Paper → Validate → IB Account → Live) |
+| 24 | `WhatsAppStatusCard.tsx` | settings/page.tsx | `/alerts/history` + `/alerts/stats` combined, delivery rate, last alert timestamp |
+| 25 | `IbGatewayDetailCard.tsx` | health/page.tsx | `GET /ib/connection-test`, latency ms with color-coded badge (green/yellow/red) |
+| 26 | `TodaySummaryWidget.tsx` | paper/page.tsx | `GET /portfolio/stats/session-today`: trades, P&L, win rate, open position for today |
+| 27 | `MesContractSpecCard.tsx` | watchlist/page.tsx | Static MES contract reference (tick size $1.25, multiplier $5, margin ~$1,320) |
+| 28 | `PositionSizingWidget.tsx` | paper/page.tsx | `/paper/mgc-signal` + `/settings/risk` combined, effectiveContracts calculation display |
+| 29 | `RecentTradesTableWidget.tsx` | journal/page.tsx | `/portfolio/history/trades?limit=10`, tfoot totals row (total P&L, avg win, avg loss) |
+| 30 | `PnLStreakWidget.tsx` | scorecard/page.tsx | Consecutive profitable day streak computed from daily-pnl endpoint |
+| 31 | `EngineConfigCard.tsx` | settings/page.tsx | `/health` + `/settings/risk` parallel fetch, STC thresholds displayed as static reference |
+| 32 | `StcStrategyExplainerCard.tsx` | backtest/page.tsx | Static STC signal reference card (OS=15, OB=83, ATR=0.70x/1.50x, regime filter) |
+| 33 | `SignalQueueWidget.tsx` | paper/page.tsx | `GET /paper/mgc-signal`, full signal details: action, price, STC value, ATR, regime, confidence |
 
 ### Key Endpoints Discovered This Session
 
@@ -409,12 +420,16 @@ All components located in `dashboard/components/`. All verified at 0 TypeScript 
 | `GET /safety/circuit-breakers` | `{daily_pnl, daily_limit, drawdown_pct, kill_switch_active, all_clear, pnl_source}` |
 | `GET /settings/risk` | `{config: {daily_loss_limit, max_drawdown_pct, max_contracts, risk_per_trade_pct, atr_stop_multiplier, atr_target_multiplier}, circuit_breakers, editable_keys}` |
 | `GET /health` | `{status, version, uptime_seconds, live_trading, kill_switch_active, paper_mode, database, ibkr_connected}` |
+| `GET /ib/connection-test` | `{connected, latency_ms, host, port, client_id, error?}` |
+| `GET /portfolio/stats/session-today` | `{trades, pnl, win_rate, open_position, session}` |
+| `GET /paper/mgc-signal` | `{action, price, stc_value, atr, regime, confidence, timestamp}` |
 
-### Session 5 Status
+### Session 5 Totals
 
-- Session 5 IN PROGRESS — 5 agents running in parallel
-- ~22 new components added across all dashboard pages
-- All components verified at 0 TypeScript errors
+- Components completed this session: **33** (and counting)
+- All TypeScript checks: **0 errors** throughout
+- Key endpoints discovered: `/safety/circuit-breakers`, `/ib/connection-test`, `/portfolio/stats/session-today`, `/paper/mgc-signal`, `/settings/risk`, `/notifications/vix-alert-check`
+- Currently in progress: `PaperPhaseSummaryWidget` + `app/page.tsx` (main dashboard)
 - Target version: v1.6.0
 - Paper trading validation phase continues: April-May 2026
 - Next milestone: 30 trading days achieving PF > 2.0 and Sharpe > 1.5

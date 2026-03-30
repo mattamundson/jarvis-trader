@@ -167,4 +167,18 @@ WFE=0.14 OVERFIT. MTF filter rejected. Suspended indefinitely.
 
 ---
 
-## Imme
+## Immediate Next Steps
+
+1. **Monitor MCL 1h and MNQ 1h paper trading** — both instruments ACTIVE. Kill switch armed.
+
+2. **Do NOT add MTF or volume filters** — both confirmed to degrade MNQ WFE. Final verdict.
+
+3. **SPY 1h walk-forward** — run corrected WF to determine if SPY clears 0.50 threshold.
+
+4. **Rolling WFE** — recalculate every 4 weeks as new data accumulates.
+
+5. **MGC redesign** — extend history to 2022 (bear market data), consider new signal layer before reconsidering paper trading.
+
+---
+
+*Source data: 55+ result files in `engine/backtest/results/`. Includes optimizer JSONs, corrected backtests, sensitivity analysis (3 instruments), Monte Carlo (4 instruments, 10k sims each), and walk-forward validation (5 instruments, 6-7 windows each).*

@@ -47,8 +47,10 @@ const TARGETS = {
   profitFactor: 2.0,  // v2.7 live gate (paper gate: 1.5)
   sharpeRatio: 1.5,   // v2.7 live gate (paper gate: 1.0)
   winRate: 50,        // percent — v2.7 live gate (paper gate: 45%)
-  maxDrawdown: 8,     // percent (positive = limit) — v2.7 live gate
+  maxDrawdown: 8,     // percent (positive = limit) — v2.7 live gate (paper: 10%)
   daysActive: 60,     // min 60+ days with 60+ trades — v2.7 graduation rule
+  // Paper gates: WR >= 45%, PF >= 1.5, Min 60 trades over 60 days, MaxDD < 10%
+  // Live gates:  WR >= 50%, PF >= 2.0, Min 60 trades over 60 days, MaxDD < 8%
 };
 
 const REFRESH_MS = 60_000;
@@ -443,7 +445,7 @@ export default function ScorecardPage() {
               Paper Trading Scorecard
             </h2>
             <p className="text-xs text-muted-foreground">
-              {BACKTEST.instrument} &mdash; {BACKTEST.timeframe} &mdash; Validation targets for live trading promotion
+              MCL 1h (WFE=0.82) + MNQ 1h (WFE=0.57) &mdash; v2.7 validation targets for live trading promotion
             </p>
           </div>
         </div>
@@ -836,4 +838,32 @@ export default function ScorecardPage() {
         </div>
 
         {/* Footer note */}
-        <p c
+        <p className="text-[11px] text-muted-foreground text-center pb-4">
+          Backtest baseline: MES 1h &mdash; PF {BACKTEST.profitFactor}, Sharpe {BACKTEST.sharpeRatio},{" "}
+          {BACKTEST.totalReturn}, Win Rate {BACKTEST.winRate}% &mdash; Auto-refresh every 60s
+        </p>
+      </main>
+    </div>
+  );
+}
+
+function TradeStat({
+  label,
+  value,
+  valueClass = "text-foreground",
+}: {
+  label: string;
+  value: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+        {label}
+      </p>
+      <p className={`text-lg font-bold tabular-nums ${valueClass}`}>
+        {value}
+      </p>
+    </div>
+  );
+}

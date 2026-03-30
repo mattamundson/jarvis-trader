@@ -3,1128 +3,1220 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JARVIS TRADER — Comprehensive 30-Item Implementation Audit</title>
+<title>JARVIS TRADER — 30-Item System Audit | v2.7</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script type="importmap">{ "imports": { "three": "https://esm.sh/three@0.163.0" } }</script>
 <style>
   :root {
-    --bg: #0a0e17;
-    --surface: #111827;
-    --surface-2: #1a2235;
-    --border: #1e293b;
-    --accent: #3b82f6;
-    --accent-dim: #1e3a5f;
-    --green: #10b981;
-    --green-dim: rgba(16, 185, 129, 0.12);
-    --yellow: #f59e0b;
-    --yellow-dim: rgba(245, 158, 11, 0.12);
-    --red: #ef4444;
-    --red-dim: rgba(239, 68, 68, 0.12);
-    --text: #e2e8f0;
-    --text-dim: #94a3b8;
-    --text-bright: #f8fafc;
+    --cyan:   #06b6d4;
+    --cyan2:  #22d3ee;
+    --green:  #10b981;
+    --red:    #ef4444;
+    --amber:  #f59e0b;
+    --navy:   #0a1628;
+    --navy2:  #0f1e35;
+    --navy3:  #162440;
+    --slate:  #1e293b;
+    --border: rgba(6,182,212,0.18);
+    --glow:   0 0 24px rgba(6,182,212,0.18);
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
   body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.65;
-    padding: 2rem;
-  }
-  .container { max-width: 1100px; margin: 0 auto; }
-
-  /* Header */
-  .header {
-    text-align: center;
-    padding: 3rem 2rem;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 2.5rem;
-  }
-  .header h1 {
-    font-size: 2.2rem;
-    font-weight: 700;
-    color: var(--text-bright);
-    letter-spacing: -0.03em;
-    margin-bottom: 0.5rem;
-  }
-  .header .subtitle {
-    font-size: 1rem;
-    color: var(--text-dim);
-  }
-  .header .date {
-    margin-top: 0.75rem;
-    font-size: 0.85rem;
-    color: var(--accent);
-    font-weight: 500;
+    background: var(--navy);
+    color: #e2e8f0;
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
   }
 
-  /* Score Cards */
-  .score-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
-    margin-bottom: 2.5rem;
+  /* ── Canvas hero ── */
+  #hero-canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 0;
   }
-  .score-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.25rem;
-    text-align: center;
-  }
-  .score-card .number {
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--text-bright);
-  }
-  .score-card .label {
-    font-size: 0.8rem;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-top: 0.25rem;
-  }
-  .score-card.green .number { color: var(--green); }
-  .score-card.yellow .number { color: var(--yellow); }
-  .score-card.blue .number { color: var(--accent); }
-
-  /* Item Card */
-  .item-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    margin-bottom: 1.25rem;
+  #hero {
+    position: relative;
+    height: 420px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
     overflow: hidden;
-    transition: border-color 0.2s;
   }
-  .item-card:hover { border-color: var(--accent); }
-  .item-header {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1.25rem 1.5rem;
-    cursor: pointer;
-    user-select: none;
+  .hero-content { position: relative; z-index: 10; text-align: center; }
+
+  /* ── Scan-line overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent, transparent 2px,
+      rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none; z-index: 1000;
   }
-  .item-number {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+
+  /* ── Glitch title ── */
+  .glitch {
+    position: relative;
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 0.12em;
+    animation: flicker 6s infinite;
+  }
+  @keyframes flicker {
+    0%,95%,100% { opacity: 1; }
+    96% { opacity: 0.85; }
+    97% { opacity: 1; }
+    98% { opacity: 0.7; }
+    99% { opacity: 1; }
+  }
+  .glitch::before, .glitch::after {
+    content: attr(data-text);
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .glitch::before {
+    color: var(--cyan);
+    animation: glitch1 3s infinite;
+    clip-path: polygon(0 30%, 100% 30%, 100% 50%, 0 50%);
+  }
+  .glitch::after {
+    color: var(--green);
+    animation: glitch2 3s infinite;
+    clip-path: polygon(0 55%, 100% 55%, 100% 75%, 0 75%);
+  }
+  @keyframes glitch1 {
+    0%,90%,100%   { transform: none; opacity: 0; }
+    91%  { transform: translate(-2px, 0); opacity: 0.6; }
+    92%  { transform: translate(2px, 0);  opacity: 0; }
+  }
+  @keyframes glitch2 {
+    0%,93%,100%   { transform: none; opacity: 0; }
+    94%  { transform: translate(2px, -1px); opacity: 0.5; }
+    95%  { transform: translate(-1px, 1px); opacity: 0; }
+  }
+
+  /* ── Live clock ── */
+  .live-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(16,185,129,0.12);
+    border: 1px solid rgba(16,185,129,0.3);
+    color: var(--green);
+    padding: 3px 12px;
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+  }
+  .live-dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%     { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  /* ── Score ring canvas ── */
+  #score-ring { display: block; margin: 0 auto; }
+
+  /* ── Audit cards ── */
+  .audit-card {
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+    cursor: default;
+  }
+  .audit-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+  }
+  .audit-card.pass::before  { background: var(--green); }
+  .audit-card.warn::before  { background: var(--amber); }
+  .audit-card.fail::before  { background: var(--red); }
+  .audit-card.pending::before { background: #64748b; }
+
+  .audit-card:hover {
+    border-color: rgba(6,182,212,0.4);
+    box-shadow: var(--glow);
+    transform: translateY(-1px);
+  }
+
+  .status-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
     font-weight: 700;
-    font-size: 0.85rem;
-    flex-shrink: 0;
+    letter-spacing: 0.12em;
+    padding: 2px 8px;
+    border-radius: 2px;
   }
-  .item-number.complete { background: var(--green-dim); color: var(--green); }
-  .item-number.partial { background: var(--yellow-dim); color: var(--yellow); }
-  .item-number.critical { background: var(--red-dim); color: var(--red); }
-  .item-title {
-    flex: 1;
-    font-weight: 600;
-    font-size: 1rem;
-    color: var(--text-bright);
-  }
-  .item-badge {
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
+  .badge-pass    { background: rgba(16,185,129,0.15); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+  .badge-warn    { background: rgba(245,158,11,0.15);  color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+  .badge-fail    { background: rgba(239,68,68,0.15);   color: var(--red);   border: 1px solid rgba(239,68,68,0.3); }
+  .badge-pending { background: rgba(100,116,139,0.15); color: #94a3b8;      border: 1px solid rgba(100,116,139,0.3); }
+
+  .card-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #334155;
     letter-spacing: 0.05em;
-    padding: 0.25rem 0.65rem;
-    border-radius: 6px;
   }
-  .badge-complete { background: var(--green-dim); color: var(--green); }
-  .badge-partial { background: var(--yellow-dim); color: var(--yellow); }
-  .badge-critical { background: var(--red-dim); color: var(--red); }
-  .chevron {
-    color: var(--text-dim);
-    transition: transform 0.2s;
-    font-size: 1.2rem;
-  }
-  .item-card.open .chevron { transform: rotate(90deg); }
-
-  .item-body {
-    display: none;
-    padding: 0 1.5rem 1.5rem;
-    border-top: 1px solid var(--border);
-  }
-  .item-card.open .item-body { display: block; padding-top: 1.25rem; }
-
-  .detail-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-  .detail-box {
-    background: var(--surface-2);
-    border-radius: 8px;
-    padding: 0.85rem 1rem;
-  }
-  .detail-box .dl { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.3rem; }
-  .detail-box .dv { font-size: 0.9rem; color: var(--text); }
-  .detail-box.full { grid-column: 1 / -1; }
-
-  .file-list {
-    list-style: none;
-    padding: 0;
-  }
-  .file-list li {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.8rem;
-    color: var(--accent);
-    padding: 0.2rem 0;
-  }
-  .file-list li span {
-    color: var(--text-dim);
-    font-family: 'Inter', sans-serif;
-  }
-
-  .description {
-    font-size: 0.9rem;
-    color: var(--text);
-    line-height: 1.7;
-  }
-  .issue-note {
-    background: var(--yellow-dim);
-    border-left: 3px solid var(--yellow);
-    padding: 0.75rem 1rem;
-    border-radius: 0 6px 6px 0;
-    font-size: 0.85rem;
-    margin-top: 0.75rem;
-    color: var(--text);
-  }
-  .critical-note {
-    background: var(--red-dim);
-    border-left: 3px solid var(--red);
-    padding: 0.75rem 1rem;
-    border-radius: 0 6px 6px 0;
-    font-size: 0.85rem;
-    margin-top: 0.75rem;
-    color: var(--text);
-  }
-
-  /* Wave Section */
-  .wave-section {
-    margin-top: 2rem;
-    margin-bottom: 1.5rem;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .wave-section h2 {
-    font-size: 1.1rem;
+  .card-title {
+    font-family: 'Rajdhani', sans-serif;
     font-weight: 600;
-    color: var(--text-bright);
-    letter-spacing: -0.01em;
+    font-size: 0.95rem;
+    color: #e2e8f0;
+    line-height: 1.3;
+    margin: 6px 0 4px;
   }
-  .wave-section .wave-desc {
-    font-size: 0.85rem;
-    color: var(--text-dim);
-    margin-top: 0.25rem;
+  .card-detail {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: #64748b;
+    line-height: 1.5;
+  }
+  .card-metric {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--cyan);
+    margin-top: 8px;
+    letter-spacing: 0.05em;
+  }
+  .card-category {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #334155;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
   }
 
-  /* Footer */
-  .footer {
+  /* ── Filter bar ── */
+  .filter-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    padding: 5px 14px;
+    border-radius: 2px;
+    border: 1px solid #1e293b;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    background: rgba(6,182,212,0.08);
+  }
+  .filter-btn.active-pass  { border-color: var(--green); color: var(--green); background: rgba(16,185,129,0.08); }
+  .filter-btn.active-warn  { border-color: var(--amber); color: var(--amber); background: rgba(245,158,11,0.08); }
+  .filter-btn.active-fail  { border-color: var(--red);   color: var(--red);   background: rgba(239,68,68,0.08); }
+  .filter-btn.active-pending { border-color: #475569; color: #94a3b8; background: rgba(100,116,139,0.08); }
+
+  /* ── Stat tiles ── */
+  .stat-tile {
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 22px;
     text-align: center;
-    padding: 2.5rem 0 1rem;
-    border-top: 1px solid var(--border);
-    margin-top: 2rem;
-    font-size: 0.8rem;
-    color: var(--text-dim);
+  }
+  .stat-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 2.4rem;
+    line-height: 1;
+    letter-spacing: 0.05em;
+  }
+  .stat-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: #475569;
+    text-transform: uppercase;
+    margin-top: 4px;
   }
 
-  /* Next Steps */
-  .next-steps {
-    background: var(--surface);
-    border: 1px solid var(--accent);
-    border-radius: 10px;
-    padding: 1.5rem;
-    margin-top: 2rem;
-  }
-  .next-steps h3 {
-    color: var(--accent);
-    font-size: 1rem;
-    margin-bottom: 0.75rem;
-  }
-  .next-steps ol {
-    padding-left: 1.25rem;
-    color: var(--text);
-    font-size: 0.9rem;
-  }
-  .next-steps ol li {
-    margin-bottom: 0.5rem;
-  }
-  .next-steps ol li strong { color: var(--text-bright); }
+  /* ── Radar canvas ── */
+  #radar-canvas { display: block; margin: 0 auto; }
 
-  @media (max-width: 700px) {
-    .score-row { grid-template-columns: repeat(2, 1fr); }
-    .detail-grid { grid-template-columns: 1fr; }
-    body { padding: 1rem; }
+  /* ── Progress bar ── */
+  .prog-bar {
+    height: 4px;
+    background: #1e293b;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
   }
+  .prog-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* ── Section heading ── */
+  .section-head {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.25em;
+    color: var(--cyan);
+    text-transform: uppercase;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+
+  /* ── Fade-in animation ── */
+  .fade-in { opacity: 0; transform: translateY(12px); transition: opacity 0.5s ease, transform 0.5s ease; }
+  .fade-in.visible { opacity: 1; transform: none; }
+
+  /* ── Card hidden state ── */
+  .audit-card.hidden { display: none; }
+
+  /* ── Footer ── */
+  .footer-mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #1e293b;
+    text-align: center;
+    padding: 24px 0 32px;
+    letter-spacing: 0.1em;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--navy); }
+  ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 2px; }
 </style>
 </head>
 <body>
-<div class="container">
 
-<div class="header">
-  <h1>JARVIS TRADER</h1>
-  <div class="subtitle">Comprehensive 30-Item Implementation Audit</div>
-  <div class="date">March 29, 2026 — Post-Implementation Verification</div>
-</div>
-
-<div class="score-row">
-  <div class="score-card green">
-    <div class="number">28</div>
-    <div class="label">Fully Complete</div>
-  </div>
-  <div class="score-card yellow">
-    <div class="number">1</div>
-    <div class="label">Partial</div>
-  </div>
-  <div class="score-card" style="">
-    <div class="number" style="color:var(--red)">1</div>
-    <div class="label">Critical Action</div>
-  </div>
-  <div class="score-card blue">
-    <div class="number">~15,700</div>
-    <div class="label">Lines Added</div>
-  </div>
-</div>
-
-<!-- ======================== WAVE 1 ======================== -->
-<div class="wave-section">
-  <h2>Wave 1 — Foundation &amp; Safety</h2>
-  <div class="wave-desc">Items 1–5: Core infrastructure, security, and safety systems</div>
-</div>
-
-<!-- Item 1 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number critical">1</div>
-    <div class="item-title">Secrets Management &amp; API Key Security</div>
-    <span class="item-badge badge-critical">Action Required</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Status</div><div class="dv">Remediation documented — manual action pending</div></div>
-      <div class="detail-box"><div class="dl">Priority</div><div class="dv">P0 — CRITICAL</div></div>
+<!-- ═══════════════════════════════════════════
+     HERO SECTION — Three.js Particle Field
+═══════════════════════════════════════════ -->
+<div id="hero">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero-content">
+    <div class="live-badge mb-4" id="live-clock">
+      <div class="live-dot"></div>
+      <span id="clock-text">LIVE — 2026-03-30</span>
     </div>
-    <p class="description">
-      Live API keys (Anthropic <code>sk-ant-api03-...</code>, Polygon, Twilio SID/Auth Token, Google OAuth credentials) were found committed in git history. A <code>.env.example</code> template was created and <code>.gitignore</code> updated, but the keys remain in git history and must be revoked externally.
+    <h1 class="glitch text-5xl font-bold text-white mb-2" style="font-size:2.6rem; text-shadow: 0 0 40px rgba(6,182,212,0.4);" data-text="JARVIS TRADER AUDIT">
+      JARVIS TRADER AUDIT
+    </h1>
+    <p style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#64748b; letter-spacing:0.2em; margin-top:8px;">
+      30-ITEM SYSTEM AUDIT &nbsp;·&nbsp; VERSION 2.7 &nbsp;·&nbsp; 2026-03-30
     </p>
-    <div class="critical-note">
-      <strong>Matt must manually:</strong> (1) Revoke all exposed keys on provider dashboards, (2) Run BFG Repo-Cleaner to scrub git history, (3) Regenerate new keys into a fresh <code>.env</code> file, (4) Force-push the cleaned history.
+    <p style="font-family:'Rajdhani',sans-serif; font-size:0.9rem; color:#475569; margin-top:6px; letter-spacing:0.05em;">
+      MCL WFE=0.82 EXCELLENT &nbsp;|&nbsp; MNQ WFE=0.57 GOOD &nbsp;|&nbsp; MGC HALTED &nbsp;|&nbsp; Options Engine Built
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STATS ROW
+═══════════════════════════════════════════ -->
+<div style="max-width:1200px; margin:0 auto; padding:0 24px;">
+
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8 fade-in">
+    <div class="stat-tile">
+      <div class="stat-num" style="color:var(--green);" id="count-pass">0</div>
+      <div class="stat-label">PASS</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--green); width:0%" id="bar-pass"></div></div>
     </div>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Modified</div>
-        <ul class="file-list">
-          <li>.gitignore <span>— added .env, *.pem, credentials patterns</span></li>
-          <li>.env.example <span>— created with placeholder values</span></li>
-          <li>engine/config.py <span>— 99 lines, Pydantic BaseSettings from env vars</span></li>
-        </ul>
+    <div class="stat-tile">
+      <div class="stat-num" style="color:var(--amber);" id="count-warn">0</div>
+      <div class="stat-label">WARN</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--amber); width:0%" id="bar-warn"></div></div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-num" style="color:var(--red);" id="count-fail">0</div>
+      <div class="stat-label">FAIL</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--red); width:0%" id="bar-fail"></div></div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-num" style="color:#94a3b8;" id="count-pending">0</div>
+      <div class="stat-label">PENDING</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:#475569; width:0%" id="bar-pending"></div></div>
+    </div>
+    <div class="stat-tile col-span-2 md:col-span-1">
+      <div class="stat-num" style="color:var(--cyan);" id="score-pct">—</div>
+      <div class="stat-label">AUDIT SCORE</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--cyan); width:0%" id="bar-score"></div></div>
+    </div>
+  </div>
+
+  <!-- Score ring + Radar -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 fade-in">
+    <div style="background:var(--navy2); border:1px solid var(--border); border-radius:4px; padding:24px;">
+      <div class="section-head">OVERALL SCORE</div>
+      <canvas id="score-ring" width="260" height="260"></canvas>
+    </div>
+    <div style="background:var(--navy2); border:1px solid var(--border); border-radius:4px; padding:24px;">
+      <div class="section-head">CATEGORY RADAR</div>
+      <canvas id="radar-canvas" width="260" height="260"></canvas>
+    </div>
+  </div>
+
+  <!-- ── Filter bar ── -->
+  <div class="flex flex-wrap gap-2 mb-6 fade-in" id="filter-bar">
+    <button class="filter-btn active" data-filter="all">ALL (30)</button>
+    <button class="filter-btn" data-filter="pass" id="btn-pass">PASS</button>
+    <button class="filter-btn" data-filter="warn" id="btn-warn">WARN</button>
+    <button class="filter-btn" data-filter="fail" id="btn-fail">FAIL</button>
+    <button class="filter-btn" data-filter="pending" id="btn-pending">PENDING</button>
+    <span style="flex:1"></span>
+    <span style="font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:#334155; align-self:center; letter-spacing:0.1em;">
+      COMMIT: e2cd5fc &nbsp;·&nbsp; 28 FILES &nbsp;·&nbsp; +9,695
+    </span>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       AUDIT CARDS — 30 Items
+  ═══════════════════════════════════════════ -->
+  <div id="audit-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10 fade-in">
+
+    <!-- 01 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">01 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">MCL 1h Walk-Forward Engine</div>
+      <div class="card-detail">6/6 windows analyzed · 5/6 OOS profitable · Static params · regime_filter=ON · adaptive=OFF</div>
+      <div class="card-metric">WFE = 0.82 &nbsp;·&nbsp; EXCELLENT &nbsp;·&nbsp; ✅ APPROVED</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--green); width:82%"></div></div>
     </div>
-  </div>
-</div>
 
-<!-- Item 2 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">2</div>
-    <div class="item-title">API Authentication &amp; Rate Limiting</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~110</div></div>
-      <div class="detail-box"><div class="dl">Quality</div><div class="dv">Production-grade</div></div>
-    </div>
-    <p class="description">
-      X-API-Key header validation middleware with exempt paths (<code>/health</code>, <code>/docs</code>, <code>/openapi.json</code>). slowapi rate limiting: 5/min for pipeline trigger, 10/min for safety endpoints, 60/min general. Both integrated into FastAPI lifespan.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/middleware/__init__.py</li>
-          <li>engine/middleware/auth.py <span>— 70 lines</span></li>
-          <li>engine/middleware/rate_limit.py <span>— 40 lines</span></li>
-        </ul>
+    <!-- 02 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">02 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">MNQ 1h Walk-Forward Engine</div>
+      <div class="card-detail">6/6 windows · 4/6 OOS profitable · adaptive_regime=ON · MTF=OFF · Volume=OFF (both rejected)</div>
+      <div class="card-metric">WFE = 0.57 &nbsp;·&nbsp; GOOD &nbsp;·&nbsp; ✅ APPROVED</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--green); width:57%"></div></div>
     </div>
-  </div>
-</div>
 
-<!-- Item 3 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">3</div>
-    <div class="item-title">Typed API Response Models</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~485</div></div>
-      <div class="detail-box"><div class="dl">Models Defined</div><div class="dv">48 (32 response + 4 enums + base)</div></div>
-    </div>
-    <p class="description">
-      Full Pydantic v2 response model library covering every endpoint category: portfolio, orders, signals, agents, safety, risk, strategy, backtest, system, and WebSocket events. All models use <code>model_config = ConfigDict(from_attributes=True)</code> for ORM compatibility.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/api/__init__.py <span>— 107 lines, re-exports all models</span></li>
-          <li>engine/api/models.py <span>— 378 lines, all model definitions</span></li>
-        </ul>
+    <!-- 03 -->
+    <div class="audit-card warn" data-status="warn" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">03 / 30</span>
+        <span class="status-badge badge-warn">WARN</span>
       </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">MGC 1d Walk-Forward Status</div>
+      <div class="card-detail">15-window extended history · prior WFE=0.88 was 3-window small-sample gold bull run bias · correctly halted</div>
+      <div class="card-metric">WFE = 0.14 &nbsp;·&nbsp; OVERFIT &nbsp;·&nbsp; 🛑 HALTED</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--amber); width:14%"></div></div>
     </div>
-  </div>
-</div>
 
-<!-- Item 4 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">4</div>
-    <div class="item-title">Consecutive Loss Risk Controls</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~339</div></div>
-      <div class="detail-box"><div class="dl">Quality</div><div class="dv">Production-grade with JSON persistence</div></div>
-    </div>
-    <p class="description">
-      <code>ConsecutiveLossTracker</code> with configurable thresholds: 3 consecutive losses → 50% position size, 5 → 25%, 7 → full trading halt for 24 hours. State persisted to JSON file so it survives restarts. Integrated into <code>safety_layer.py</code> pre-trade checks. Config values in <code>config.py</code> with env var overrides.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created / Modified</div>
-        <ul class="file-list">
-          <li>engine/risk/loss_tracker.py <span>— 339 lines, new file</span></li>
-          <li>engine/risk/safety_layer.py <span>— modified, integrated tracker</span></li>
-          <li>engine/config.py <span>— added 4 consecutive loss settings</span></li>
-        </ul>
+    <!-- 04 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">04 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">Filter Rejection Validation</div>
+      <div class="card-detail">MTF filter: MNQ WFE 0.57→0.17 (−0.40). Volume filter: 0.57→−0.23 (−0.80). Both empirically rejected and locked OFF.</div>
+      <div class="card-metric">MTF REJECTED · VOLUME REJECTED · Final verdict</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 5 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">5</div>
-    <div class="item-title">Schwab Integration Guard Rails</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Approach</div><div class="dv">Hardcoded kill-switch, no LLM reasoning</div></div>
-      <div class="detail-box"><div class="dl">Quality</div><div class="dv">Fail-safe by design</div></div>
-    </div>
-    <p class="description">
-      Added <code>SCHWAB_READY = False</code> constant and <code>check_schwab_ready()</code> function at the top of <code>schwab_connector.py</code>. All order submission paths check this flag — any attempt to submit while False raises <code>RuntimeError</code>. Comprehensive status docstring documenting what's needed before flipping to True (IB Gateway setup, paper trading verification, manual audit).
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Modified</div>
-        <ul class="file-list">
-          <li>engine/execution/schwab_connector.py <span>— 512 lines, guard added</span></li>
-        </ul>
+    <!-- 05 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">05 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">Optimizer Kwarg Bug Fix (v2.6)</div>
+      <div class="card-detail">CRITICAL: adaptive_regime, volume_filter, mtf_filter were silently passed to _compute_signals() → TypeError → bare except → None returns for ALL WF runs. Fixed in walk_forward.py.</div>
+      <div class="card-metric">Before: MGC=0.27, MNQ=0.34 &nbsp;·&nbsp; After: MGC=0.14, MNQ=0.57</div>
     </div>
-  </div>
-</div>
 
-<!-- ======================== WAVE 2 ======================== -->
-<div class="wave-section">
-  <h2>Wave 2 — Data Layer &amp; Infrastructure</h2>
-  <div class="wave-desc">Items 6–10: Database, caching, monitoring, CI/CD, testing</div>
-</div>
-
-<!-- Item 6 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">6</div>
-    <div class="item-title">PostgreSQL Trade Persistence</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~753</div></div>
-      <div class="detail-box"><div class="dl">Connection Pool</div><div class="dv">asyncpg min=2, max=10</div></div>
-    </div>
-    <p class="description">
-      Async PostgreSQL connection pool with <code>asyncpg</code>. Repository layer with <code>insert_order()</code>, <code>insert_decision()</code>, <code>insert_portfolio_snapshot()</code>, <code>insert_safety_event()</code>. Graceful fallback — if PostgreSQL is unavailable, system logs a warning and continues (no crash). Integrated into pipeline completion and order routing.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/database/__init__.py</li>
-          <li>engine/database/connection.py <span>— 254 lines</span></li>
-          <li>engine/database/repository.py <span>— 499 lines</span></li>
-        </ul>
+    <!-- 06 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">06 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">MES / SPY Overfit Documentation</div>
+      <div class="card-detail">MES WFE=0.09, SPY WFE=−1.11 (adaptive: −0.71). Both documented as NOT CLEARED. Signal redesign required before reconsideration.</div>
+      <div class="card-metric">MES: 0.09 OVERFIT &nbsp;·&nbsp; SPY: −1.11 OVERFIT</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 7 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">7</div>
-    <div class="item-title">Redis Caching Layer</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~691</div></div>
-      <div class="detail-box"><div class="dl">Modules</div><div class="dv">4 (client, signal, cooldown, features)</div></div>
-    </div>
-    <p class="description">
-      Four-module cache architecture: (1) Async Redis client with in-memory dict fallback, (2) Signal cache with 30-min TTL to avoid re-analyzing identical market conditions, (3) Alert cooldown with 2-hour per-symbol/channel dedup, (4) Feature store with 5-min indicator caching. Pipeline checks signal cache before running full agent analysis.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/cache/__init__.py</li>
-          <li>engine/cache/redis_client.py <span>— 238 lines</span></li>
-          <li>engine/cache/signal_cache.py <span>— 151 lines</span></li>
-          <li>engine/cache/alert_cooldown.py <span>— 140 lines</span></li>
-          <li>engine/cache/feature_store.py <span>— 162 lines</span></li>
-        </ul>
+    <!-- 07 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">07 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">greeks_monitor.py</div>
+      <div class="card-detail">Full Black-Scholes Greeks (delta, gamma, theta, vega, rho). Newton-Raphson IV solver. iv_rank(), iv_percentile(). PortfolioGreeks dataclass. 0.30 delta breach alerts.</div>
+      <div class="card-metric">engine/options/greeks_monitor.py &nbsp;·&nbsp; 15.6 KB</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 8 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">8</div>
-    <div class="item-title">Prometheus &amp; Grafana Monitoring</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Custom Metrics</div><div class="dv">11 Prometheus metrics</div></div>
-      <div class="detail-box"><div class="dl">Dashboards</div><div class="dv">3 Grafana JSON dashboards</div></div>
-    </div>
-    <p class="description">
-      11 custom metrics covering pipeline latency, order counts, agent token usage, safety events, cache hit ratios, and WebSocket connections. Prometheus scrapes engine at 15s intervals. Three pre-built Grafana dashboards: system-health, trading-performance, llm-costs. Prometheus added as a service in docker-compose, Grafana password externalized to env var.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/monitoring/__init__.py</li>
-          <li>engine/monitoring/metrics.py <span>— 137 lines</span></li>
-          <li>infrastructure/prometheus/prometheus.yml <span>— 21 lines</span></li>
-          <li>infrastructure/grafana/provisioning/datasources/prometheus.yml</li>
-          <li>infrastructure/grafana/dashboards/system-health.json</li>
-          <li>infrastructure/grafana/dashboards/trading-performance.json</li>
-          <li>infrastructure/grafana/dashboards/llm-costs.json</li>
-        </ul>
+    <!-- 08 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">08 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">strategy_executor.py</div>
+      <div class="card-detail">OptionsStrategy enum (7 types). OptionsOrder + OptionsLeg dataclasses. Builders: covered_call, bull_put_spread, bear_call_spread, iron_condor, protective_put, straddle, strangle. validate_order() with full regime rules.</div>
+      <div class="card-metric">engine/options/strategy_executor.py &nbsp;·&nbsp; 21.5 KB</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 9 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">9</div>
-    <div class="item-title">CI/CD Pipeline</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Jobs</div><div class="dv">6 parallel CI jobs + deploy check</div></div>
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~228</div></div>
-    </div>
-    <p class="description">
-      GitHub Actions CI with 6 jobs: engine-lint (ruff), engine-typecheck (mypy), engine-test (pytest with PostgreSQL service), dashboard-build (Next.js), security-scan (pip-audit + npm audit), and ci-summary. Separate deploy-check workflow for pre-deployment verification. Ruff configured with E/W/F/I/N/UP/B/SIM rules. Mypy with strict_optional.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>.github/workflows/ci.yml <span>— 149 lines</span></li>
-          <li>.github/workflows/deploy-check.yml <span>— 79 lines</span></li>
-          <li>engine/ruff.toml <span>— 71 lines</span></li>
-          <li>engine/pyproject.toml <span>— 137 lines</span></li>
-        </ul>
+    <!-- 09 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">09 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">chain_fetcher.py</div>
+      <div class="card-detail">OptionsChain + OptionsContract dataclasses. fetch_chain_yfinance() with live Greeks calc. filter_by_delta(), find_strike_by_delta(). get_iv_rank() using 21-day rolling HV as proxy.</div>
+      <div class="card-metric">engine/options/chain_fetcher.py &nbsp;·&nbsp; 14.3 KB</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 10 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">10</div>
-    <div class="item-title">Automated Test Suite</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Total Tests</div><div class="dv">89 across 3 modules</div></div>
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~2,022</div></div>
-    </div>
-    <p class="description">
-      Three comprehensive test modules: (1) <code>test_safety_layer.py</code> — 30 tests covering all 14 hard safety rules including kill switch, daily loss limit, max drawdown, position caps, price collar, and order rate throttle. (2) <code>test_pipeline_e2e.py</code> — 24 tests for the 5-stage agent pipeline including parallel analyst execution, debate synthesis, and approval flow. (3) <code>test_signals.py</code> — 35 tests for STC signal generation, ATR calculations, and regime filter validation. Shared conftest with 10+ fixtures.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/tests/__init__.py</li>
-          <li>engine/tests/conftest.py <span>— 244 lines, shared fixtures</span></li>
-          <li>engine/tests/test_safety_layer.py <span>— 630 lines, 30 tests</span></li>
-          <li>engine/tests/test_pipeline_e2e.py <span>— 589 lines, 24 tests</span></li>
-          <li>engine/tests/test_signals.py <span>— 559 lines, 35 tests</span></li>
-        </ul>
+    <!-- 10 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">10 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">premium_calculator.py</div>
+      <div class="card-detail">black_scholes_price(), probability_of_profit() (risk-neutral N(d2)), expected_value(). PremiumScanResult dataclass. get_credit_spread_metrics(). PnL at expiry scenarios.</div>
+      <div class="card-metric">engine/options/premium_calculator.py &nbsp;·&nbsp; 10 KB</div>
     </div>
-  </div>
-</div>
 
-<!-- ======================== WAVE 3 ======================== -->
-<div class="wave-section">
-  <h2>Wave 3 — LLM &amp; Intelligence Layer</h2>
-  <div class="wave-desc">Items 11–15: LLM client, cost tracking, WebSocket, and strategy validation</div>
-</div>
-
-<!-- Item 11 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">11</div>
-    <div class="item-title">Unified LLM Client with Retry &amp; Fallback</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~306</div></div>
-      <div class="detail-box"><div class="dl">Retry Strategy</div><div class="dv">Tenacity 1s→2s→4s exponential</div></div>
-    </div>
-    <p class="description">
-      <code>JarvisLLMClient</code> with tenacity-based exponential backoff (1s→2s→4s, 3 max retries). Model tier fallback chain: Opus → Sonnet → Haiku. Token counting per call, integrated with cost tracker. All 10 agents route through this single client for consistent error handling and observability.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/llm/__init__.py</li>
-          <li>engine/llm/client.py <span>— 306 lines</span></li>
-        </ul>
+    <!-- 11 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">11 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">position_manager.py</div>
+      <div class="card-detail">OptionsPosition dataclass with unrealised_pnl / dte properties. OptionsPositionManager with SQLite persistence (WAL mode). check_roll_candidates(), update_greeks(), close_position().</div>
+      <div class="card-metric">engine/options/position_manager.py &nbsp;·&nbsp; 17.5 KB</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 12 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">12</div>
-    <div class="item-title">LLM Cost Tracking</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~302</div></div>
-      <div class="detail-box"><div class="dl">Storage</div><div class="dv">SQLite-backed with daily/monthly rollups</div></div>
-    </div>
-    <p class="description">
-      SQLite-backed cost tracker logging every LLM call: model, tokens (input/output), cost, agent role, latency. Daily and monthly summary queries. Budget alerts when approaching configured thresholds. Grafana dashboard panel for cost visualization over time. Endpoint <code>/llm/stats</code> for real-time cost data.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/llm/cost_tracker.py <span>— 302 lines</span></li>
-          <li>infrastructure/grafana/dashboards/llm-costs.json</li>
-        </ul>
+    <!-- 12 -->
+    <div class="audit-card pass" data-status="pass" data-cat="api">
+      <div class="flex justify-between items-start">
+        <span class="card-number">12 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">API & Engine</div>
+      <div class="card-title">Options Endpoints Wired (main.py)</div>
+      <div class="card-detail">5 new /options/* routes registered. Lazy imports — engine starts clean even if yfinance unavailable. 501 fallback on ImportError.</div>
+      <div class="card-metric">/options/chain/{symbol} · /positions · /trade · /greeks · /scan</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 13 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">13</div>
-    <div class="item-title">WebSocket Real-Time Streaming</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~495</div></div>
-      <div class="detail-box"><div class="dl">Event Types</div><div class="dv">6 (order, kill switch, circuit breaker, pipeline, safety, price)</div></div>
-    </div>
-    <p class="description">
-      <code>WebSocketManager</code> with connection tracking, heartbeat, and 6 typed event emitters. Dashboard <code>useWebSocket</code> hook with auto-reconnection on disconnect. Events emitted from pipeline completion, safety layer triggers, and order fills. Falls back gracefully to SWR polling if WebSocket unavailable.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/websocket/__init__.py</li>
-          <li>engine/websocket/manager.py <span>— 107 lines</span></li>
-          <li>engine/websocket/events.py <span>— 173 lines</span></li>
-          <li>dashboard/lib/use-websocket.ts <span>— 215 lines</span></li>
-        </ul>
+    <!-- 13 -->
+    <div class="audit-card pass" data-status="pass" data-cat="api">
+      <div class="flex justify-between items-start">
+        <span class="card-number">13 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">API & Engine</div>
+      <div class="card-title">23 API Field Corrections</div>
+      <div class="card-detail">status="online" not "ok". daily_pnl is raw dollars. last_price not price. No volume field in snapshot. decisions/recent has no symbol/hours params. GET /backtest/results does NOT exist.</div>
+      <div class="card-metric">All 23 corrections in JARVIS_TRADER_MASTER.md §1.11</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 14 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">14</div>
-    <div class="item-title">Monte Carlo Simulation Engine</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~910</div></div>
-      <div class="detail-box"><div class="dl">Simulations</div><div class="dv">1,000 shuffled paths + slippage</div></div>
-    </div>
-    <p class="description">
-      1,000-path Monte Carlo simulator that shuffles trade sequences, applies random slippage, and computes percentile statistics (5th, 25th, 50th, 75th, 95th). HTML fan-chart visualization with interactive overlays. Endpoint <code>/backtest/monte-carlo</code> for on-demand simulation. Helps quantify "what's the worst realistic drawdown?" beyond a single backtest.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/backtest/monte_carlo.py <span>— 417 lines</span></li>
-          <li>engine/backtest/monte_carlo_viz.py <span>— 493 lines</span></li>
-        </ul>
+    <!-- 14 -->
+    <div class="audit-card fail" data-status="fail" data-cat="api">
+      <div class="flex justify-between items-start">
+        <span class="card-number">14 / 30</span>
+        <span class="status-badge badge-fail">FAIL</span>
       </div>
+      <div class="card-category mt-2">API & Engine</div>
+      <div class="card-title">FRED API Key Not Configured</div>
+      <div class="card-detail">GET /macro/snapshot returns 422 without FRED_API_KEY. VIX data unavailable via API. Macro regime not functional. Using VIX from prices as proxy only.</div>
+      <div class="card-metric">ACTION REQUIRED: Set FRED_API_KEY in .env</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 15 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">15</div>
-    <div class="item-title">Walk-Forward Validation</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~520</div></div>
-      <div class="detail-box"><div class="dl">Default Windows</div><div class="dv">6-month train / 2-month test, rolling</div></div>
-    </div>
-    <p class="description">
-      <code>WalkForwardValidator</code> with rolling train/test windows. Computes Walk-Forward Efficiency (WFE) — the ratio of out-of-sample to in-sample performance. If WFE drops below 0.5, flags potential overfitting. Endpoint <code>/backtest/walk-forward</code> for on-demand analysis. Critical for validating that the STC strategy generalizes.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/backtest/walk_forward.py <span>— 520 lines</span></li>
-        </ul>
+    <!-- 15 -->
+    <div class="audit-card pass" data-status="pass" data-cat="paper">
+      <div class="flex justify-between items-start">
+        <span class="card-number">15 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Paper Trading</div>
+      <div class="card-title">MCL_PAPER_CONFIG</div>
+      <div class="card-detail">STC_OS=15, STC_OB=83, Stop=0.90 ATR, T1=1.50 ATR. risk=0.25%. regime_filter=ON. adaptive=OFF (WFE=-0.31 when adaptive — confirmed degraded). enabled=True.</div>
+      <div class="card-metric">engine/backtest/paper_config.py · MCL_PAPER_CONFIG</div>
     </div>
-  </div>
-</div>
 
-<!-- ======================== WAVE 4 ======================== -->
-<div class="wave-section">
-  <h2>Wave 4 — Dashboard &amp; UX</h2>
-  <div class="wave-desc">Items 16–22: Dashboard components, accessibility, UX improvements</div>
-</div>
-
-<!-- Item 16 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">16</div>
-    <div class="item-title">Order Entry Panel</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~441</div></div>
-      <div class="detail-box"><div class="dl">Features</div><div class="dv">Form validation, ATR calc, confirmation dialog</div></div>
-    </div>
-    <p class="description">
-      Full-featured order entry form with symbol selection, side (long/short), quantity input, and automatic ATR-based stop/target calculation using the strategy's 0.70x stop and 1.50x T1 multipliers. Two-step confirmation dialog to prevent fat-finger errors. Integrated with <code>lib/api.ts</code> for submission with retry logic and 30s timeout via AbortController.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>dashboard/components/OrderEntryPanel.tsx <span>— 441 lines</span></li>
-          <li>dashboard/lib/api.ts <span>— modified, added OrderRequest/OrderResponse types</span></li>
-        </ul>
+    <!-- 16 -->
+    <div class="audit-card pass" data-status="pass" data-cat="paper">
+      <div class="flex justify-between items-start">
+        <span class="card-number">16 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Paper Trading</div>
+      <div class="card-title">MNQ_PAPER_CONFIG</div>
+      <div class="card-detail">STC_OS=15, STC_OB=92, Stop=0.70 ATR, T1=1.00 ATR. risk=0.25%. adaptive_regime=ON (CRITICAL). volume_filter=OFF (NEVER ENABLE). mtf_filter=OFF (NEVER ENABLE). enabled=True.</div>
+      <div class="card-metric">engine/backtest/paper_config.py · MNQ_PAPER_CONFIG</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 17 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">17</div>
-    <div class="item-title">Strategy Parameters Panel</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~363</div></div>
-      <div class="detail-box"><div class="dl">Safety</div><div class="dv">Confirmation dialog before applying changes</div></div>
-    </div>
-    <p class="description">
-      Live strategy parameter adjustment UI: STC periods, ATR multipliers, regime filter toggles. Fetches current params from <code>/strategy/params</code>, allows modification, and submits changes via <code>PUT /strategy/params</code> with a confirmation dialog showing exactly what will change. Changes take effect on the next signal evaluation cycle.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>dashboard/components/StrategyParamsPanel.tsx <span>— 363 lines</span></li>
-        </ul>
+    <!-- 17 -->
+    <div class="audit-card pass" data-status="pass" data-cat="paper">
+      <div class="flex justify-between items-start">
+        <span class="card-number">17 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Paper Trading</div>
+      <div class="card-title">MGC_PAPER_CONFIG Halted</div>
+      <div class="card-detail">enabled=False. WFE=0.14 OVERFIT. Previous ACTIVE status was based on 3-window small-sample result. Correctly suspended indefinitely. Re-evaluation requires 24+ months new data.</div>
+      <div class="card-metric">engine/backtest/paper_config.py · MGC_PAPER_CONFIG enabled=False</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 18 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">18</div>
-    <div class="item-title">Kill Switch UX Enhancement</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Modified</div><div class="dv">~169</div></div>
-      <div class="detail-box"><div class="dl">Features</div><div class="dv">Visual feedback, sound alerts, auto-dismiss</div></div>
-    </div>
-    <p class="description">
-      Enhanced KillSwitch component with <code>FeedbackState</code> (none/loading/success/error). Displays color-coded banners for success (green) and error (red) with auto-dismiss after 3 seconds. Integrated with SoundAlertManager to play an audible alarm when kill switch activates. Loading spinner during API call to prevent double-clicks.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Modified</div>
-        <ul class="file-list">
-          <li>dashboard/components/KillSwitch.tsx <span>— 169 lines</span></li>
-        </ul>
+    <!-- 18 -->
+    <div class="audit-card pass" data-status="pass" data-cat="paper">
+      <div class="flex justify-between items-start">
+        <span class="card-number">18 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Paper Trading</div>
+      <div class="card-title">Kill Thresholds Per Instrument</div>
+      <div class="card-detail">Monthly loss −3% → halt. Daily loss −2% → pause. Consecutive losses 3 → review. Rolling WFE min: MCL=0.40, MNQ=0.30. Max daily loss −2%, max drawdown −10% (SafetyLayer hardcoded).</div>
+      <div class="card-metric">MCL kill_threshold + MNQ kill_threshold defined in configs</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 19 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number partial">19</div>
-    <div class="item-title">Structured Logging with Rotation</div>
-    <span class="item-badge badge-partial">Partial</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Implemented</div><div class="dv">basicConfig console logging</div></div>
-      <div class="detail-box"><div class="dl">Missing</div><div class="dv">RotatingFileHandler for file output</div></div>
-    </div>
-    <p class="description">
-      Structured log formatting with JSON-compatible output and consistent log levels across all modules. However, <code>RotatingFileHandler</code> for file-based log rotation was not persisted — likely overwritten when multiple agents edited <code>main.py</code> concurrently. Currently logs to console/stdout only, which works for Docker (captured by container runtime) but lacks file-based rotation for non-containerized deployment.
-    </p>
-    <div class="issue-note">
-      <strong>To complete:</strong> Add <code>RotatingFileHandler</code> to the logging configuration in <code>main.py</code> lifespan setup — maxBytes=10MB, backupCount=5, output to <code>logs/jarvis.log</code>.
-    </div>
-  </div>
-</div>
-
-<!-- Item 20 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">20</div>
-    <div class="item-title">Dashboard Accessibility (WCAG)</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Components Updated</div><div class="dv">6 dashboard components</div></div>
-      <div class="detail-box"><div class="dl">Standards</div><div class="dv">WCAG 2.1 AA — ARIA roles, labels, keyboard nav</div></div>
-    </div>
-    <p class="description">
-      Systematic accessibility pass across dashboard: <code>AgentFeed</code> — <code>role="article"</code> + aria-labels on decisions. <code>PositionsPanel</code> — semantic <code>ul/li</code> structure. <code>WatchlistBar</code> — <code>role="button"</code> + <code>tabIndex</code> for keyboard navigation. <code>SentimentPanel</code> — text labels (Bullish/Bearish/Neutral) alongside visual indicators. <code>CircuitBreakerPanel</code> — <code>role="progressbar"</code> + <code>aria-valuenow</code> + text status. Color-blind safe with text fallbacks for all color-coded states.
-    </p>
-  </div>
-</div>
-
-<!-- Item 21 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">21</div>
-    <div class="item-title">Sound Alert System</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~235</div></div>
-      <div class="detail-box"><div class="dl">Sound Types</div><div class="dv">5 (order, kill switch, circuit breaker, alert, error)</div></div>
-    </div>
-    <p class="description">
-      Web Audio API <code>SoundAlertManager</code> generating procedural tones — no external audio files needed. 5 distinct sound profiles with different frequencies and patterns. Mute/volume control UI component. Triggered by WebSocket events for real-time audible notification of critical trading events (fills, kill switch activation, circuit breaker trips).
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>dashboard/lib/sound-alerts.ts <span>— 169 lines</span></li>
-          <li>dashboard/components/SoundControl.tsx <span>— 66 lines</span></li>
-        </ul>
+    <!-- 19 -->
+    <div class="audit-card pass" data-status="pass" data-cat="dashboard">
+      <div class="flex justify-between items-start">
+        <span class="card-number">19 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Dashboard</div>
+      <div class="card-title">Command Center (Iron Man HUD)</div>
+      <div class="card-detail">New /command-center route. Portfolio row (4 cols). MCL/MNQ/MGC signal panels. Risk gauges (4 progress bars). Recent trades. WFE monitor. Options panel. Engine health. Auto-refresh 30s RTH / 5min after-hours.</div>
+      <div class="card-metric">dashboard/app/command-center/page.tsx &nbsp;·&nbsp; 8.31 kB</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 22 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">22</div>
-    <div class="item-title">Toast Notification System</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~130</div></div>
-      <div class="detail-box"><div class="dl">Variants</div><div class="dv">4 (success, error, warning, info)</div></div>
-    </div>
-    <p class="description">
-      React context-based toast system with <code>useToast()</code> hook. 4 visual variants with color-coded styling. Auto-dismiss with configurable duration. Accessible — screen reader announcements via <code>aria-live</code>. Used by OrderEntryPanel, KillSwitch, and StrategyParamsPanel for user feedback.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>dashboard/components/ui/toast.tsx <span>— 54 lines</span></li>
-          <li>dashboard/lib/toast-context.tsx <span>— 76 lines</span></li>
-        </ul>
+    <!-- 20 -->
+    <div class="audit-card pass" data-status="pass" data-cat="dashboard">
+      <div class="flex justify-between items-start">
+        <span class="card-number">20 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Dashboard</div>
+      <div class="card-title">Dashboard Build 16/16 Clean</div>
+      <div class="card-detail">All 16 routes compile with zero TypeScript errors. Fixed: isSubmitting→submitting (paper/page.tsx), Calculator→DollarSign, BarChart3→BarChart2, Calendar→CalendarDays (icon compatibility). Removed node_modules.bak.</div>
+      <div class="card-metric">pnpm run build · Next.js 15.5.14 · ✓ All routes static</div>
     </div>
-  </div>
-</div>
 
-<!-- ======================== WAVE 5 ======================== -->
-<div class="wave-section">
-  <h2>Wave 5 — Analytics &amp; Polish</h2>
-  <div class="wave-desc">Items 23–30: Advanced analytics, performance, and final hardening</div>
-</div>
-
-<!-- Item 23 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">23</div>
-    <div class="item-title">Trade Statistics Page</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~946</div></div>
-      <div class="detail-box"><div class="dl">Sections</div><div class="dv">10+ analytical views</div></div>
-    </div>
-    <p class="description">
-      Dedicated <code>/stats</code> page with 10+ analytical sections: equity curve (Recharts line), P&L distribution histogram, win rate by day-of-week, drawdown chart, trade duration analysis, strategy parameter sensitivity, regime performance breakdown, agent agreement rates, rolling Sharpe ratio, and cumulative statistics table. All data fetched via SWR from engine endpoints.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>dashboard/app/stats/page.tsx <span>— 946 lines</span></li>
-        </ul>
+    <!-- 21 -->
+    <div class="audit-card pass" data-status="pass" data-cat="dashboard">
+      <div class="flex justify-between items-start">
+        <span class="card-number">21 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Dashboard</div>
+      <div class="card-title">Performance Page v2.7 Data</div>
+      <div class="card-detail">MCL: wfe=0.82, status=ACTIVE (was -0.16 / DO NOT TRADE). MNQ: wfe=0.57, status=ACTIVE (was 0.48 / RESEARCH). SPY: wfe=-1.11 canonical. Active Instruments counter: 2 (was 0).</div>
+      <div class="card-metric">dashboard/app/performance/page.tsx · BACKTEST_DATA + WFE_DATA updated</div>
     </div>
-  </div>
-</div>
 
-<!-- Item 24 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">24</div>
-    <div class="item-title">Regime Analysis Engine</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Lines Added</div><div class="dv">~344</div></div>
-      <div class="detail-box"><div class="dl">Regime Types</div><div class="dv">5 (trending up/down, ranging, volatile, quiet)</div></div>
-    </div>
-    <p class="description">
-      <code>RegimeAnalyzer</code> classifying market conditions into 5 regimes using volatility, trend strength, and volume metrics. Per-regime performance statistics showing which regimes the STC strategy excels in and which to avoid. Endpoint <code>/backtest/regime-analysis</code> for historical regime breakdown. Feeds into the 5-layer regime filter already in the signal engine.
-    </p>
-    <div class="detail-grid" style="margin-top:1rem">
-      <div class="detail-box full">
-        <div class="dl">Files Created</div>
-        <ul class="file-list">
-          <li>engine/backtest/regime_analysis.py <span>— 344 lines</span></li>
-        </ul>
+    <!-- 22 -->
+    <div class="audit-card pass" data-status="pass" data-cat="dashboard">
+      <div class="flex justify-between items-start">
+        <span class="card-number">22 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
       </div>
+      <div class="card-category mt-2">Dashboard</div>
+      <div class="card-title">Scorecard Canonical Thresholds</div>
+      <div class="card-detail">TARGETS updated: maxDrawdown 10%→8% (live gate). daysActive 30→60. PF≥1.5 paper / ≥2.0 live gate. Sharpe≥1.0 paper / ≥1.5 live gate. WR≥45% paper / ≥50% live gate.</div>
+      <div class="card-metric">dashboard/app/scorecard/page.tsx · Phase 2→3 canonical gates</div>
+    </div>
+
+    <!-- 23 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">23 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">JARVIS_TRADER_MASTER.md Created</div>
+      <div class="card-detail">1,459 lines · 76 KB · 20 sections (§1.1–§1.20) · Consolidated 40+ source documents. Architecture, Strategy, WFE, Backtests, Paper Trading, Risk, VIX 6-tier, Autonomy, Triggers, API, TOS, Dashboard, Infra, Options, Futures, Go-Live, History, Issues, File Reference.</div>
+      <div class="card-metric">JARVIS_TRADER_MASTER.md · Single source of truth</div>
+    </div>
+
+    <!-- 24 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">24 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">MEMORY.md Updated</div>
+      <div class="card-detail">v2.7 block prepended at top. Single-source-of-truth pointer. Instrument statuses. Options engine note. Dashboard note. All conflict resolutions: VIX 6-tier, WR 45%/50%, DD gates, PF gates, min trades 60 over 60 days.</div>
+      <div class="card-metric">~/.claude/projects/.../memory/MEMORY.md · v2.7 canonical</div>
+    </div>
+
+    <!-- 25 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">25 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">PAPER_TRADING_APPROVAL.md</div>
+      <div class="card-detail">Official approval document. MCL WFE=0.82 EXCELLENT. MNQ WFE=0.57 GOOD. MGC WFE=0.14 HALTED. Filter verdicts final. Re-evaluation schedule (4-week rolling WFE, quarterly, annual).</div>
+      <div class="card-metric">PAPER_TRADING_APPROVAL.md · v2.7 · 2026-03-30</div>
+    </div>
+
+    <!-- 26 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">26 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">EXECUTIVE_BRIEFING.md v2.7</div>
+      <div class="card-detail">Full performance table reranked: MCL #1 (0.82), MNQ #2 (0.57), MGC #3 HALTED, MES #4, SPY #5. Walk-forward table updated with all 8 run results. Paper Trading section: MCL ACTIVE + MNQ ACTIVE + MGC HALTED.</div>
+      <div class="card-metric">engine/backtest/results/EXECUTIVE_BRIEFING.md</div>
+    </div>
+
+    <!-- 27 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">27 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">CANON_SOURCE_MAP.json</div>
+      <div class="card-detail">Machine-readable provenance map for 44 ingested source documents. Each entry: absolute path, SHA-256 checksum, canon sections contributed to, ingest date. Full audit trail for completeness.</div>
+      <div class="card-metric">docs/CANON_SOURCE_MAP.json · v1.0.0 · 44 entries</div>
+    </div>
+
+    <!-- 28 -->
+    <div class="audit-card pass" data-status="pass" data-cat="infrastructure">
+      <div class="flex justify-between items-start">
+        <span class="card-number">28 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Infrastructure</div>
+      <div class="card-title">Safety Layer Architecture</div>
+      <div class="card-detail">Pure Python hardcoded constants — no LLM bypass possible. Circuit breakers: daily loss −2%, max drawdown −10%, order rate >10/min, max contracts 2, margin 40%. Kill switch 3 states. IB port 4002 paper only.</div>
+      <div class="card-metric">engine/risk/safety_layer.py · SACRED · Cannot be bypassed</div>
+    </div>
+
+    <!-- 29 -->
+    <div class="audit-card pending" data-status="pending" data-cat="infrastructure">
+      <div class="flex justify-between items-start">
+        <span class="card-number">29 / 30</span>
+        <span class="status-badge badge-pending">PENDING</span>
+      </div>
+      <div class="card-category mt-2">Infrastructure</div>
+      <div class="card-title">IB Gateway Paper Port 4002</div>
+      <div class="card-detail">Engine starts but ibkr_connected=false. Phase 3 (June 2026+) requires TWS running on paper port 4002. Not required for current paper trading phase (manual decision logging). Graduation gate check #7.</div>
+      <div class="card-metric">Phase 3 gate &nbsp;·&nbsp; IBKR_PORT=4002 &nbsp;·&nbsp; Target: Jun 2026</div>
+    </div>
+
+    <!-- 30 -->
+    <div class="audit-card pending" data-status="pending" data-cat="infrastructure">
+      <div class="flex justify-between items-start">
+        <span class="card-number">30 / 30</span>
+        <span class="status-badge badge-pending">PENDING</span>
+      </div>
+      <div class="card-category mt-2">Infrastructure</div>
+      <div class="card-title">Rolling WFE Recalculation Job</div>
+      <div class="card-detail">4-week cadence WFE recalculation not yet automated. Must recalculate monthly: MCL min 0.40, MNQ min 0.30. Halt instrument if WFE drops below threshold. Currently requires manual backtest run.</div>
+      <div class="card-metric">Sprint 7 item &nbsp;·&nbsp; Scheduler job pending &nbsp;·&nbsp; Target: next session</div>
+    </div>
+
+  </div><!-- /audit-grid -->
+
+  <!-- ── Category summary ── -->
+  <div class="mb-8 fade-in">
+    <div class="section-head">CATEGORY BREAKDOWN</div>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3" id="category-grid">
     </div>
   </div>
-</div>
 
-<!-- Item 25 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">25</div>
-    <div class="item-title">Dashboard Performance Optimization</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Components Optimized</div><div class="dv">3 (DailyPnlPanel, AgentFeed, PerformancePanel)</div></div>
-      <div class="detail-box"><div class="dl">Technique</div><div class="dv">useMemo, SWR caching, render reduction</div></div>
+  <!-- ── Conflict resolution table ── -->
+  <div class="mb-10 fade-in" style="background:var(--navy2); border:1px solid var(--border); border-radius:4px; padding:24px;">
+    <div class="section-head">CANONICAL CONFLICT RESOLUTIONS (v2.7)</div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:0.7rem;">
+        <thead>
+          <tr style="border-bottom:1px solid #1e293b; color:#475569; text-transform:uppercase; letter-spacing:0.1em;">
+            <th style="text-align:left; padding:8px 12px; font-weight:500;">Conflict</th>
+            <th style="text-align:left; padding:8px 12px; font-weight:500;">Prior Values</th>
+            <th style="text-align:left; padding:8px 12px; font-weight:500; color:var(--cyan);">Canonical v2.7</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">VIX regime tiers</td>
+            <td style="padding:8px 12px; color:#ef4444;">4-tier, 5-tier, 6-tier</td>
+            <td style="padding:8px 12px; color:var(--green);">6-tier canonical (§1.7)</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">Win rate paper gate</td>
+            <td style="padding:8px 12px; color:#ef4444;">28%, 45%, 50%, 55%</td>
+            <td style="padding:8px 12px; color:var(--green);">45% paper / 50% live (§1.17)</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">MaxDD circuit breaker</td>
+            <td style="padding:8px 12px; color:#ef4444;">8%, 10%, 15%</td>
+            <td style="padding:8px 12px; color:var(--green);">SafetyLayer −10.0% / live gate −8%</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">Min trade count</td>
+            <td style="padding:8px 12px; color:#ef4444;">40, 60</td>
+            <td style="padding:8px 12px; color:var(--green);">60 trades over 60+ days</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">Profit Factor paper gate</td>
+            <td style="padding:8px 12px; color:#ef4444;">1.5, 2.0, 3.0, 5.27</td>
+            <td style="padding:8px 12px; color:var(--green);">≥1.5 paper / ≥2.0 live gate</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">MGC paper status</td>
+            <td style="padding:8px 12px; color:#ef4444;">ACTIVE, CAUTION, HALTED (conflicting)</td>
+            <td style="padding:8px 12px; color:var(--green);">HALTED — WFE=0.14 OVERFIT</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px; color:#94a3b8;">MCL paper status</td>
+            <td style="padding:8px 12px; color:#ef4444;">DO NOT TRADE</td>
+            <td style="padding:8px 12px; color:var(--green);">APPROVED — WFE=0.82 EXCELLENT</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-    <p class="description">
-      Targeted React performance pass: <code>DailyPnlPanel</code> — <code>useMemo</code> for row reversal (was creating new array every render). <code>AgentFeed</code> — <code>useMemo</code> for decisions mapping. <code>PerformancePanel</code> — SWR fetch with 30s refresh interval for equity curve instead of polling every render. These changes eliminate unnecessary re-renders and reduce API load.
-    </p>
   </div>
+
+</div><!-- /container -->
+
+<div class="footer-mono">
+  JARVIS TRADER · AUDIT REPORT v2.7 · 2026-03-30 · COMMIT e2cd5fc · 28 FILES · +9,695 LINES<br>
+  MCL 1h WFE=0.82 EXCELLENT · MNQ 1h WFE=0.57 GOOD · OPTIONS ENGINE BUILT · 16/16 DASHBOARD ROUTES CLEAN
 </div>
 
-<!-- Item 26 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">26</div>
-    <div class="item-title">API Client Hardening</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Timeout</div><div class="dv">30s via AbortController</div></div>
-      <div class="detail-box"><div class="dl">Retry</div><div class="dv">1 retry with 2s delay</div></div>
-    </div>
-    <p class="description">
-      Dashboard <code>lib/api.ts</code> enhanced with <code>AbortController</code> (30s timeout), automatic retry logic (1 retry, 2s delay on failure), and typed request/response models (<code>OrderRequest</code>, <code>OrderResponse</code>). Prevents dashboard from hanging on engine timeouts and gracefully retries transient network errors.
-    </p>
-  </div>
-</div>
+<!-- ═══════════════════════════════════════════
+     SCRIPTS
+═══════════════════════════════════════════ -->
+<script type="module">
+import * as THREE from 'three';
 
-<!-- Item 27 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">27</div>
-    <div class="item-title">Pipeline PostgreSQL Integration</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Integration Points</div><div class="dv">Pipeline, order router, safety layer</div></div>
-      <div class="detail-box"><div class="dl">Fallback</div><div class="dv">Graceful — logs warning, continues without DB</div></div>
-    </div>
-    <p class="description">
-      PostgreSQL persistence wired into three critical paths: (1) Pipeline completion — logs full decision chain (all 5 stages) via <code>insert_decision()</code>. (2) Order router — logs every order submission via <code>insert_order()</code>. (3) Safety layer — logs kill switch events and circuit breaker trips via <code>insert_safety_event()</code>. All with try/except fallback so a DB outage never blocks trading operations.
-    </p>
-  </div>
-</div>
+// ── Clock ──────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('clock-text').textContent =
+    `LIVE — ${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}  ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} CT`;
+}
+setInterval(updateClock, 1000);
+updateClock();
 
-<!-- Item 28 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">28</div>
-    <div class="item-title">Startup Health Check</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Retries</div><div class="dv">30 attempts × 2s intervals</div></div>
-      <div class="detail-box"><div class="dl">File Modified</div><div class="dv">start_jarvis.bat</div></div>
-    </div>
-    <p class="description">
-      Added <code>:wait_engine</code> loop in <code>start_jarvis.bat</code> that polls <code>/health</code> endpoint up to 30 times (2s intervals, 60s total timeout) before launching the dashboard. Prevents the common issue of the Next.js dashboard starting before the FastAPI engine is ready, which caused connection refused errors on initial page load.
-    </p>
-  </div>
-</div>
+// ── Three.js Particle Field ─────────────────
+const canvas = document.getElementById('hero-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setClearColor(0x000000, 0);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-<!-- Item 29 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">29</div>
-    <div class="item-title">Docker Compose Security Hardening</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Changes</div><div class="dv">Externalized secrets, added Prometheus service</div></div>
-      <div class="detail-box"><div class="dl">File Modified</div><div class="dv">infrastructure/docker-compose.yml</div></div>
-    </div>
-    <p class="description">
-      Grafana admin password externalized from hardcoded value to <code>${GF_ADMIN_PASSWORD:-jarvis_change_me}</code> environment variable. Prometheus service added to the compose stack with proper volume mounts for config and data. All database passwords reference environment variables instead of inline strings.
-    </p>
-  </div>
-</div>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+camera.position.set(0, 0, 28);
 
-<!-- Item 30 -->
-<div class="item-card" onclick="this.classList.toggle('open')">
-  <div class="item-header">
-    <div class="item-number complete">30</div>
-    <div class="item-title">API Versioning (/v1 Router)</div>
-    <span class="item-badge badge-complete">Complete</span>
-    <span class="chevron">›</span>
-  </div>
-  <div class="item-body">
-    <div class="detail-grid">
-      <div class="detail-box"><div class="dl">Prefix</div><div class="dv">/v1</div></div>
-      <div class="detail-box"><div class="dl">Scope</div><div class="dv">All new endpoints under versioned router</div></div>
-    </div>
-    <p class="description">
-      New endpoints organized under <code>/v1</code> APIRouter prefix in <code>main.py</code>. Strategy params, loss tracker, Monte Carlo, walk-forward, and regime analysis endpoints all namespaced under <code>/v1/</code>. Legacy endpoints remain at root for backward compatibility. Sets the foundation for future <code>/v2</code> breaking changes without disrupting existing dashboard integrations.
-    </p>
-  </div>
-</div>
+function resize() {
+  const w = canvas.parentElement.clientWidth;
+  const h = 420;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resize();
+window.addEventListener('resize', resize);
 
-<!-- ======================== NEXT STEPS ======================== -->
-<div class="next-steps">
-  <h3>Priority Next Steps</h3>
-  <ol>
-    <li><strong>CRITICAL — Revoke exposed API keys</strong> (Anthropic, Polygon, Twilio, Google OAuth) on their respective dashboards immediately. Then run BFG Repo-Cleaner to scrub git history.</li>
-    <li><strong>Verify main.py endpoint wiring</strong> — Due to multi-agent concurrent edits, confirm that <code>/llm/stats</code>, <code>/safety/loss-tracker</code>, <code>/backtest/monte-carlo</code>, and <code>/ws/events</code> are all properly routed in the current <code>main.py</code> (3,413 lines).</li>
-    <li><strong>Complete Item 19</strong> — Add <code>RotatingFileHandler</code> (10MB, 5 backups) to the logging setup in <code>main.py</code> lifespan.</li>
-    <li><strong>Run the test suite</strong> — Execute <code>pytest engine/tests/</code> end-to-end to verify all 89 tests pass with current codebase state.</li>
-    <li><strong>Paper trading phase</strong> — Set up IB Gateway, begin 30-day forward test targeting April–May 2026.</li>
-  </ol>
-</div>
+// Particle system
+const N = 280;
+const positions = new Float32Array(N * 3);
+const velocities = [];
+const colors = new Float32Array(N * 3);
+const c1 = new THREE.Color(0x06b6d4);
+const c2 = new THREE.Color(0x10b981);
+const c3 = new THREE.Color(0x0ea5e9);
+const palette = [c1, c2, c3];
 
-<div class="footer">
-  JARVIS TRADER v2 — Built for MES/MNQ futures — 10 Claude-powered agents — 5-stage pipeline<br>
-  Audit generated March 29, 2026
-</div>
+for (let i = 0; i < N; i++) {
+  const r = 22 + Math.random() * 6;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = (Math.random() - 0.5) * Math.PI * 0.7;
+  positions[i*3]   = r * Math.cos(phi) * Math.cos(theta);
+  positions[i*3+1] = r * Math.sin(phi);
+  positions[i*3+2] = r * Math.cos(phi) * Math.sin(theta);
+  velocities.push({
+    x: (Math.random() - 0.5) * 0.006,
+    y: (Math.random() - 0.5) * 0.006,
+    z: (Math.random() - 0.5) * 0.006,
+  });
+  const col = palette[Math.floor(Math.random() * palette.length)];
+  colors[i*3]   = col.r;
+  colors[i*3+1] = col.g;
+  colors[i*3+2] = col.b;
+}
 
-</div>
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const mat = new THREE.PointsMaterial({
+  size: 0.35,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.7,
+  sizeAttenuation: true,
+});
+const particles = new THREE.Points(geo, mat);
+scene.add(particles);
+
+// Grid lines
+const gridGeo = new THREE.BufferGeometry();
+const gridVerts = [];
+for (let i = -20; i <= 20; i += 4) {
+  gridVerts.push(i, -14, -30, i, -14, 10);
+  gridVerts.push(-20, -14, i*1.5, 20, -14, i*1.5);
+}
+gridGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(gridVerts), 3));
+const gridMat = new THREE.LineBasicMaterial({ color: 0x0c2438, transparent: true, opacity: 0.5 });
+scene.add(new THREE.LineSegments(gridGeo, gridMat));
+
+// Central ring
+const ringGeo = new THREE.RingGeometry(5, 5.05, 64);
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, side: THREE.DoubleSide, transparent: true, opacity: 0.15 });
+const ring = new THREE.Mesh(ringGeo, ringMat);
+scene.add(ring);
+
+const ring2Geo = new THREE.RingGeometry(8, 8.04, 64);
+const ring2Mat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide, transparent: true, opacity: 0.08 });
+const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+scene.add(ring2);
+
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.008;
+
+  // Drift particles
+  const pos = geo.attributes.position.array;
+  for (let i = 0; i < N; i++) {
+    pos[i*3]   += velocities[i].x;
+    pos[i*3+1] += velocities[i].y;
+    pos[i*3+2] += velocities[i].z;
+    const dist = Math.sqrt(pos[i*3]**2 + pos[i*3+1]**2 + pos[i*3+2]**2);
+    if (dist > 30 || dist < 18) {
+      velocities[i].x *= -1;
+      velocities[i].y *= -1;
+      velocities[i].z *= -1;
+    }
+  }
+  geo.attributes.position.needsUpdate = true;
+
+  particles.rotation.y = t * 0.05;
+  ring.rotation.z = t * 0.3;
+  ring2.rotation.z = -t * 0.15;
+  ring.rotation.x = Math.sin(t * 0.2) * 0.3;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── Score Ring Canvas 2D ─────────────────────
+const ringCanvas = document.getElementById('score-ring');
+const rctx = ringCanvas.getContext('2d');
+const cards = document.querySelectorAll('.audit-card');
+const total = cards.length;
+let pass = 0, warn = 0, fail = 0, pending = 0;
+cards.forEach(c => {
+  const s = c.dataset.status;
+  if (s === 'pass') pass++;
+  else if (s === 'warn') warn++;
+  else if (s === 'fail') fail++;
+  else pending++;
+});
+
+// Animate counters
+function animateCount(id, target, duration=1200) {
+  let start = null;
+  const el = document.getElementById(id);
+  function step(ts) {
+    if (!start) start = ts;
+    const p = Math.min((ts - start) / duration, 1);
+    el.textContent = Math.round(p * target);
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+setTimeout(() => {
+  animateCount('count-pass', pass);
+  animateCount('count-warn', warn);
+  animateCount('count-fail', fail);
+  animateCount('count-pending', pending);
+  const score = Math.round((pass / total) * 100);
+  setTimeout(() => {
+    document.getElementById('score-pct').textContent = score + '%';
+  }, 1200);
+  // Bars
+  setTimeout(() => {
+    document.getElementById('bar-pass').style.width = (pass/total*100) + '%';
+    document.getElementById('bar-warn').style.width = (warn/total*100) + '%';
+    document.getElementById('bar-fail').style.width = (fail/total*100) + '%';
+    document.getElementById('bar-pending').style.width = (pending/total*100) + '%';
+    document.getElementById('bar-score').style.width = score + '%';
+  }, 300);
+}, 400);
+
+function drawScoreRing(progress) {
+  const cx = 130, cy = 130, r = 100, lw = 14;
+  rctx.clearRect(0, 0, 260, 260);
+
+  // Background track
+  rctx.beginPath();
+  rctx.arc(cx, cy, r, 0, Math.PI * 2);
+  rctx.strokeStyle = '#1e293b';
+  rctx.lineWidth = lw;
+  rctx.stroke();
+
+  // Arc segments
+  const start = -Math.PI/2;
+  const pAngle = (pass/total) * Math.PI * 2 * progress;
+  const wAngle = (warn/total) * Math.PI * 2 * progress;
+  const fAngle = (fail/total) * Math.PI * 2 * progress;
+  const pendAngle = (pending/total) * Math.PI * 2 * progress;
+
+  let cur = start;
+  const segs = [
+    { angle: pAngle, color: '#10b981' },
+    { angle: wAngle, color: '#f59e0b' },
+    { angle: fAngle, color: '#ef4444' },
+    { angle: pendAngle, color: '#475569' },
+  ];
+  segs.forEach(seg => {
+    if (seg.angle <= 0) return;
+    rctx.beginPath();
+    rctx.arc(cx, cy, r, cur, cur + seg.angle);
+    rctx.strokeStyle = seg.color;
+    rctx.lineWidth = lw;
+    rctx.lineCap = 'round';
+    rctx.stroke();
+    cur += seg.angle;
+  });
+
+  // Center text
+  const score = Math.round((pass / total) * 100);
+  rctx.fillStyle = '#e2e8f0';
+  rctx.font = "bold 44px 'Share Tech Mono', monospace";
+  rctx.textAlign = 'center';
+  rctx.textBaseline = 'middle';
+  rctx.fillText(score + '%', cx, cy - 8);
+  rctx.fillStyle = '#64748b';
+  rctx.font = "11px 'JetBrains Mono', monospace";
+  rctx.fillText('AUDIT SCORE', cx, cy + 24);
+  rctx.fillText(`${pass}/${total} PASS`, cx, cy + 40);
+}
+
+// Animate ring
+let ringProg = 0;
+function animRing() {
+  ringProg = Math.min(ringProg + 0.025, 1);
+  drawScoreRing(ringProg);
+  if (ringProg < 1) requestAnimationFrame(animRing);
+}
+setTimeout(animRing, 500);
+
+// ── Radar Chart ─────────────────────────────
+const radarCanvas = document.getElementById('radar-canvas');
+const rdr = radarCanvas.getContext('2d');
+const categories = {
+  'Validation': { pass: 0, total: 0 },
+  'Options':    { pass: 0, total: 0 },
+  'API':        { pass: 0, total: 0 },
+  'Paper':      { pass: 0, total: 0 },
+  'Dashboard':  { pass: 0, total: 0 },
+  'Docs':       { pass: 0, total: 0 },
+  'Infra':      { pass: 0, total: 0 },
+};
+const catMap = {
+  'validation': 'Validation',
+  'options':    'Options',
+  'api':        'API',
+  'paper':      'Paper',
+  'dashboard':  'Dashboard',
+  'docs':       'Docs',
+  'infrastructure': 'Infra',
+};
+cards.forEach(c => {
+  const cat = catMap[c.dataset.cat] || 'Infra';
+  categories[cat].total++;
+  if (c.dataset.status === 'pass') categories[cat].pass++;
+});
+
+const cats = Object.keys(categories);
+const scores = cats.map(k => {
+  const d = categories[k];
+  return d.total > 0 ? d.pass / d.total : 0;
+});
+
+function drawRadar(progress) {
+  rdr.clearRect(0, 0, 260, 260);
+  const cx = 130, cy = 130, maxR = 95;
+  const n = cats.length;
+  const step = (Math.PI * 2) / n;
+
+  // Grid rings
+  for (let g = 1; g <= 4; g++) {
+    const gr = maxR * g/4;
+    rdr.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = i * step - Math.PI/2;
+      const x = cx + Math.cos(a) * gr;
+      const y = cy + Math.sin(a) * gr;
+      if (i === 0) rdr.moveTo(x, y); else rdr.lineTo(x, y);
+    }
+    rdr.closePath();
+    rdr.strokeStyle = 'rgba(30,41,59,0.9)';
+    rdr.lineWidth = 1;
+    rdr.stroke();
+  }
+
+  // Spokes
+  for (let i = 0; i < n; i++) {
+    const a = i * step - Math.PI/2;
+    rdr.beginPath();
+    rdr.moveTo(cx, cy);
+    rdr.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
+    rdr.strokeStyle = '#1e293b';
+    rdr.lineWidth = 1;
+    rdr.stroke();
+  }
+
+  // Data polygon
+  rdr.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = i * step - Math.PI/2;
+    const r = maxR * scores[i] * progress;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    if (i === 0) rdr.moveTo(x, y); else rdr.lineTo(x, y);
+  }
+  rdr.closePath();
+  rdr.fillStyle = 'rgba(6,182,212,0.12)';
+  rdr.fill();
+  rdr.strokeStyle = '#06b6d4';
+  rdr.lineWidth = 1.5;
+  rdr.stroke();
+
+  // Data dots
+  for (let i = 0; i < n; i++) {
+    const a = i * step - Math.PI/2;
+    const r = maxR * scores[i] * progress;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    rdr.beginPath();
+    rdr.arc(x, y, 3, 0, Math.PI*2);
+    rdr.fillStyle = '#06b6d4';
+    rdr.fill();
+  }
+
+  // Labels
+  rdr.font = "10px 'JetBrains Mono', monospace";
+  rdr.textAlign = 'center';
+  rdr.textBaseline = 'middle';
+  for (let i = 0; i < n; i++) {
+    const a = i * step - Math.PI/2;
+    const lx = cx + Math.cos(a) * (maxR + 18);
+    const ly = cy + Math.sin(a) * (maxR + 18);
+    const score100 = Math.round(scores[i] * 100);
+    rdr.fillStyle = score100 === 100 ? '#10b981' : score100 >= 50 ? '#06b6d4' : '#f59e0b';
+    rdr.fillText(cats[i], lx, ly - 5);
+    rdr.fillStyle = '#475569';
+    rdr.fillText(score100 + '%', lx, ly + 7);
+  }
+}
+
+let rdrProg = 0;
+function animRadar() {
+  rdrProg = Math.min(rdrProg + 0.03, 1);
+  drawRadar(rdrProg);
+  if (rdrProg < 1) requestAnimationFrame(animRadar);
+}
+setTimeout(animRadar, 700);
+
+// ── Category grid ────────────────────────────
+const catGrid = document.getElementById('category-grid');
+Object.entries(categories).forEach(([name, d]) => {
+  if (d.total === 0) return;
+  const pct = Math.round(d.pass/d.total*100);
+  const color = pct===100 ? 'var(--green)' : pct>=50 ? 'var(--cyan)' : 'var(--amber)';
+  const tile = document.createElement('div');
+  tile.style.cssText = `background:var(--navy2); border:1px solid var(--border); border-radius:4px; padding:14px; text-align:center;`;
+  tile.innerHTML = `
+    <div style="font-family:'Share Tech Mono',monospace; font-size:1.6rem; color:${color}; line-height:1;">${pct}%</div>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#475569; text-transform:uppercase; letter-spacing:0.12em; margin-top:4px;">${name}</div>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#334155; margin-top:2px;">${d.pass}/${d.total}</div>
+  `;
+  catGrid.appendChild(tile);
+});
+
+// ── Filter ───────────────────────────────────
+const filterBtns = document.querySelectorAll('.filter-btn');
+filterBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    filterBtns.forEach(b => { b.className = 'filter-btn'; });
+    const f = btn.dataset.filter;
+    const classMap = { all:'filter-btn active', pass:'filter-btn active-pass', warn:'filter-btn active-warn', fail:'filter-btn active-fail', pending:'filter-btn active-pending' };
+    btn.className = classMap[f] || 'filter-btn active';
+
+    cards.forEach(card => {
+      if (f === 'all' || card.dataset.status === f) {
+        card.classList.remove('hidden');
+      } else {
+        card.classList.add('hidden');
+      }
+    });
+  });
+});
+
+// Update filter button labels
+document.getElementById('btn-pass').textContent = `PASS (${pass})`;
+document.getElementById('btn-warn').textContent = `WARN (${warn})`;
+document.getElementById('btn-fail').textContent = `FAIL (${fail})`;
+document.getElementById('btn-pending').textContent = `PENDING (${pending})`;
+
+// ── Fade-in on scroll ────────────────────────
+const fadeEls = document.querySelectorAll('.fade-in');
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.05 });
+fadeEls.forEach(el => obs.observe(el));
+setTimeout(() => fadeEls.forEach(el => el.classList.add('visible')), 100);
+
+</script>
 </body>
 </html>

@@ -1,334 +1,351 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import { RefreshCw, Calendar } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import React, { useState, useEffect } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-interface DailyPnLEntry {
-  date: string;           // "YYYY-MM-DD"
-  pnl: number;
-  cumulative_pnl: number;
-  trade_count: number;
+interface TradeRecord {
+  id: number;
+  symbol: string;
+  side: "BUY" | "SELL";
+  realized_pnl: number | null;
+  status: "OPEN" | "CLOSED" | "CANCELLED";
+  entry_time: string;
+  exit_time: string | null;
 }
 
-interface CalendarDay {
-  dateStr: string;        // "YYYY-MM-DD"
-  dayNum: number;         // 1–31
-  pnl: number | null;
-  tradeCount: number;
+interface DailyPnLMap {
+  [date: string]: number; // YYYY-MM-DD -> sum of realized_pnl
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-/** Return true if day-of-week is Mon–Fri (0=Sun, 6=Sat). */
-function isWeekday(d: Date): boolean {
-  const dow = d.getDay();
-  return dow >= 1 && dow <= 5;
+function formatPnl(value: number): string {
+  const abs = Math.abs(value).toFixed(2);
+  return value >= 0 ? `+$${abs}` : `-$${abs}`;
 }
 
-/** Format date to "YYYY-MM-DD" in local time. */
-function toDateStr(d: Date): string {
+function toYMD(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function formatDateLabel(d: Date): string {
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 /**
- * Generate the last 30 calendar days that are Mon–Fri, ending today,
- * padded at the front so the first week starts on Monday.
- *
- * Returns an array of CalendarDay entries in chronological order.
- * Cells for days before our window (padding) are represented with dateStr = "".
+ * Returns list of Mon–Fri dates spanning the past 30 calendar days
+ * (from 29 days ago through today, inclusive).
  */
-function buildCalendarDays(
-  pnlMap: Map<string, { pnl: number; trade_count: number }>
-): (CalendarDay | null)[] {
-  // Collect the last 30 weekdays
-  const weekdays: Date[] = [];
+function buildCalendarDays(): Date[] {
+  const days: Date[] = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  const cursor = new Date(today);
-  while (weekdays.length < 30) {
-    if (isWeekday(cursor)) {
-      weekdays.unshift(new Date(cursor));
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dow = d.getDay(); // 0=Sun, 6=Sat
+    if (dow >= 1 && dow <= 5) {
+      days.push(d);
     }
-    cursor.setDate(cursor.getDate() - 1);
   }
-
-  // Pad front so first day falls on its correct Mon–Fri column (0=Mon … 4=Fri)
-  const firstDay = weekdays[0];
-  const firstDow = firstDay.getDay(); // 1=Mon … 5=Fri
-  const colIndex = firstDow - 1;     // 0=Mon … 4=Fri
-  const result: (CalendarDay | null)[] = Array(colIndex).fill(null);
-
-  for (const d of weekdays) {
-    const dateStr = toDateStr(d);
-    const entry = pnlMap.get(dateStr) ?? null;
-    result.push({
-      dateStr,
-      dayNum: d.getDate(),
-      pnl: entry ? entry.pnl : null,
-      tradeCount: entry ? entry.trade_count : 0,
-    });
-  }
-
-  // Pad end to fill last row
-  const remainder = result.length % 5;
-  if (remainder !== 0) {
-    const pad = 5 - remainder;
-    for (let i = 0; i < pad; i++) result.push(null);
-  }
-
-  return result;
+  return days;
 }
 
-function cellBg(pnl: number | null): string {
-  if (pnl === null) return "bg-muted/30 border-border/30";
-  if (pnl > 100)  return "bg-green-600/80 border-green-500/50";
-  if (pnl > 0)    return "bg-green-500/40 border-green-400/40";
-  if (pnl < -100) return "bg-red-600/80 border-red-500/50";
-  if (pnl < 0)    return "bg-red-500/40 border-red-400/40";
-  // pnl === 0 with data
-  return "bg-muted/50 border-border/50";
-}
-
-function fmtPnl(pnl: number): string {
-  const sign = pnl >= 0 ? "+" : "";
-  if (Math.abs(pnl) >= 1000) {
-    return `${sign}${(pnl / 1000).toFixed(1)}k`;
+/**
+ * Cell background classes based on P&L magnitude.
+ * @param pnl  undefined = no data for that day
+ * @param isToday  whether to add ring highlight
+ */
+function cellClasses(pnl: number | undefined, isToday: boolean): string {
+  let bg: string;
+  if (pnl === undefined) {
+    bg = "bg-muted/30";
+  } else if (pnl > 200) {
+    bg = "bg-emerald-600";
+  } else if (pnl > 100) {
+    bg = "bg-emerald-500";
+  } else if (pnl > 0) {
+    bg = "bg-emerald-400/70";
+  } else if (pnl < -200) {
+    bg = "bg-red-600";
+  } else if (pnl < -100) {
+    bg = "bg-red-500";
+  } else if (pnl < 0) {
+    bg = "bg-red-400/70";
+  } else {
+    // pnl === 0 with data
+    bg = "bg-muted/30";
   }
-  return `${sign}${Math.round(pnl)}`;
+  const ring = isToday
+    ? " ring-2 ring-offset-1 ring-offset-card ring-white/60"
+    : "";
+  return `${bg}${ring}`;
 }
 
-function pnlTextColor(pnl: number | null): string {
-  if (pnl === null) return "text-muted-foreground/40";
-  if (pnl > 0) return "text-green-100";
-  if (pnl < 0) return "text-red-100";
-  return "text-muted-foreground";
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export function DailyPnLCalendarWidget() {
-  const [entries, setEntries] = useState<DailyPnLEntry[]>([]);
+  const [dailyPnl, setDailyPnl] = useState<DailyPnLMap | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastFetched, setLastFetched] = useState<Date | null>(null);
+  const [error, setError] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  async function fetchData() {
+    // 1. Try primary endpoint
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/daily-pnl?limit=30`
+      const primaryRes = await fetch(`${ENGINE_URL}/analytics/daily-pnl`);
+      if (primaryRes.ok) {
+        const data: unknown = await primaryRes.json();
+        if (
+          data !== null &&
+          typeof data === "object" &&
+          !Array.isArray(data)
+        ) {
+          setDailyPnl(data as DailyPnLMap);
+          setLoading(false);
+          setError(false);
+          return;
+        }
+      }
+    } catch {
+      // fall through to fallback
+    }
+
+    // 2. Fallback: compute from closed trades
+    try {
+      const tradesRes = await fetch(
+        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: DailyPnLEntry[] = await res.json();
-      setEntries(Array.isArray(data) ? data : []);
-      setLastFetched(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch");
-    } finally {
+      if (!tradesRes.ok) throw new Error("trades fetch failed");
+
+      const raw: unknown = await tradesRes.json();
+      let trades: TradeRecord[];
+      if (Array.isArray(raw)) {
+        trades = raw as TradeRecord[];
+      } else if (
+        raw !== null &&
+        typeof raw === "object" &&
+        Array.isArray((raw as { trades?: unknown }).trades)
+      ) {
+        trades = (raw as { trades: TradeRecord[] }).trades;
+      } else {
+        trades = [];
+      }
+
+      const map: DailyPnLMap = {};
+      for (const t of trades) {
+        if (
+          t.status !== "CLOSED" ||
+          t.realized_pnl == null ||
+          !t.exit_time
+        ) {
+          continue;
+        }
+        const date = t.exit_time.slice(0, 10); // YYYY-MM-DD
+        map[date] = (map[date] ?? 0) + t.realized_pnl;
+      }
+
+      setDailyPnl(map);
+      setLoading(false);
+      setError(false);
+    } catch {
+      setError(true);
       setLoading(false);
     }
-  }, []);
+  }
 
-  // Single fetch on mount — no auto-refresh
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    const interval = setInterval(fetchData, 120_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Build lookup map
-  const pnlMap = new Map<string, { pnl: number; trade_count: number }>();
-  for (const e of entries) {
-    pnlMap.set(e.date, { pnl: e.pnl, trade_count: e.trade_count });
+  // ── Derived values ──────────────────────────────────────────────────────────
+
+  const calDays = buildCalendarDays();
+  const todayStr = toYMD(new Date());
+
+  // Compute summary stats from days that have data
+  const pnlValues: number[] = [];
+  for (const d of calDays) {
+    const v = dailyPnl?.[toYMD(d)];
+    if (v !== undefined) pnlValues.push(v);
   }
 
-  const cells = buildCalendarDays(pnlMap);
-  const rows: (CalendarDay | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 5) {
-    rows.push(cells.slice(i, i + 5));
-  }
+  const bestDay = pnlValues.length > 0 ? Math.max(...pnlValues) : null;
+  const worstDay = pnlValues.length > 0 ? Math.min(...pnlValues) : null;
+  const avgDay =
+    pnlValues.length > 0
+      ? pnlValues.reduce((a, b) => a + b, 0) / pnlValues.length
+      : null;
 
-  // Summary counts
-  let greenDays = 0;
-  let redDays = 0;
-  let noTradeDays = 0;
-  for (const c of cells) {
-    if (!c || c.dateStr === "") continue;
-    if (c.pnl === null) noTradeDays++;
-    else if (c.pnl > 0) greenDays++;
-    else redDays++;
-  }
+  const now = new Date();
+  const monthLabel = now.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 
-  const DOW_HEADERS = ["M", "T", "W", "T", "F"];
+  // Leading empty cells so first weekday lands in correct Mon–Fri column
+  const firstDay = calDays[0];
+  // Mon=0 … Fri=4 (JS getDay: Mon=1 … Fri=5)
+  const firstDow = firstDay ? firstDay.getDay() - 1 : 0;
+  const leadingCount = Math.max(0, firstDow);
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-3">
+    <Card>
+      <CardHeader>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm font-semibold">
-              30-Day Trading Calendar
-            </CardTitle>
-          </div>
-          <div className="flex items-center gap-2">
-            {lastFetched && !loading && (
-              <span className="text-[10px] text-muted-foreground hidden sm:block">
-                {lastFetched.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-            )}
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-            >
-              <RefreshCw
-                className={`h-3 w-3 ${loading ? "animate-spin" : ""}`}
-              />
-              Refresh
-            </button>
-          </div>
+          <CardTitle>Daily P&amp;L Calendar</CardTitle>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {monthLabel}
+          </span>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        {error && (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-            Error: {error}
-          </div>
-        )}
-
-        {/* Calendar grid */}
-        <div className="space-y-1">
-          {/* Day-of-week headers */}
-          <div className="grid grid-cols-5 gap-1">
-            {DOW_HEADERS.map((d, i) => (
-              <div
-                key={i}
-                className="text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground py-1"
-              >
-                {d}
-              </div>
-            ))}
-          </div>
-
-          {/* Calendar rows */}
-          {loading ? (
-            // Skeleton
+      <CardContent>
+        {/* ── Loading skeleton ── */}
+        {loading && (
+          <>
+            <div className="grid grid-cols-5 gap-1 mb-1">
+              {["Mo", "Tu", "We", "Th", "Fr"].map((d) => (
+                <div
+                  key={d}
+                  className="text-center font-mono text-[10px] text-muted-foreground"
+                >
+                  {d}
+                </div>
+              ))}
+            </div>
             <div className="grid grid-cols-5 gap-1">
               {Array.from({ length: 30 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-14 rounded-md bg-muted/30 animate-pulse border border-border/20"
+                  className="h-8 w-full rounded bg-muted/30 animate-pulse"
                 />
               ))}
             </div>
-          ) : (
-            rows.map((row, ri) => (
-              <div key={ri} className="grid grid-cols-5 gap-1">
-                {row.map((cell, ci) => {
-                  if (!cell) {
-                    // Empty padding cell
-                    return (
-                      <div
-                        key={ci}
-                        className="h-14 rounded-md border border-transparent"
-                      />
-                    );
-                  }
-                  return (
-                    <div
-                      key={ci}
-                      className={`h-14 rounded-md border flex flex-col items-center justify-center gap-0.5 transition-opacity ${cellBg(
-                        cell.pnl
-                      )}`}
-                      title={
-                        cell.pnl !== null
-                          ? `${cell.dateStr}: $${cell.pnl.toFixed(2)} (${cell.tradeCount} trade${cell.tradeCount !== 1 ? "s" : ""})`
-                          : `${cell.dateStr}: No trades`
-                      }
-                    >
-                      <span
-                        className={`text-[10px] font-medium leading-none ${
-                          cell.pnl !== null
-                            ? "text-white/70"
-                            : "text-muted-foreground/50"
-                        }`}
-                      >
-                        {cell.dayNum}
-                      </span>
-                      {cell.pnl !== null && (
-                        <span
-                          className={`text-[9px] font-mono font-bold leading-none ${pnlTextColor(
-                            cell.pnl
-                          )}`}
-                        >
-                          {fmtPnl(cell.pnl)}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))
-          )}
-        </div>
+          </>
+        )}
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-border/50">
-          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
-            Legend:
-          </span>
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-green-600/80 border border-green-500/50" />
-            <span className="text-[10px] text-muted-foreground">Strong profit (&gt;$100)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-green-500/40 border border-green-400/40" />
-            <span className="text-[10px] text-muted-foreground">Profit</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-red-500/40 border border-red-400/40" />
-            <span className="text-[10px] text-muted-foreground">Loss</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-red-600/80 border border-red-500/50" />
-            <span className="text-[10px] text-muted-foreground">Strong loss (&gt;$100)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-muted/30 border border-border/30" />
-            <span className="text-[10px] text-muted-foreground">No trades</span>
-          </div>
-        </div>
-
-        {/* Summary row */}
-        {!loading && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
-              Summary:
+        {/* ── Error state ── */}
+        {!loading && error && (
+          <div className="flex items-center justify-center h-32">
+            <span className="font-mono text-xs text-muted-foreground">
+              Calendar data unavailable
             </span>
-            <Badge variant="bull">
-              {greenDays} Green {greenDays === 1 ? "day" : "days"}
-            </Badge>
-            <Badge variant="bear">
-              {redDays} Red {redDays === 1 ? "day" : "days"}
-            </Badge>
-            <Badge variant="neutral">
-              {noTradeDays} No-trade {noTradeDays === 1 ? "day" : "days"}
-            </Badge>
           </div>
+        )}
+
+        {/* ── Empty state ── */}
+        {!loading && !error && dailyPnl !== null && calDays.length === 0 && (
+          <div className="flex items-center justify-center h-32">
+            <span className="font-mono text-xs text-muted-foreground">
+              No trade data yet
+            </span>
+          </div>
+        )}
+
+        {/* ── Calendar ── */}
+        {!loading && !error && dailyPnl !== null && calDays.length > 0 && (
+          <>
+            {/* Day-of-week header */}
+            <div className="grid grid-cols-5 gap-1 mb-1">
+              {["Mo", "Tu", "We", "Th", "Fr"].map((d) => (
+                <div
+                  key={d}
+                  className="text-center font-mono text-[10px] text-muted-foreground"
+                >
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            {/* Grid cells */}
+            <div className="grid grid-cols-5 gap-1">
+              {/* Leading padding cells */}
+              {Array.from({ length: leadingCount }).map((_, i) => (
+                <div
+                  key={`pad-${i}`}
+                  className="h-8 w-full rounded bg-muted/10"
+                />
+              ))}
+
+              {/* Day cells */}
+              {calDays.map((d) => {
+                const ymd = toYMD(d);
+                const pnl = dailyPnl[ymd];
+                const isToday = ymd === todayStr;
+                const cls = cellClasses(pnl, isToday);
+                const tooltip =
+                  pnl !== undefined
+                    ? `${formatDateLabel(d)}: ${formatPnl(pnl)}`
+                    : formatDateLabel(d);
+
+                return (
+                  <div
+                    key={ymd}
+                    title={tooltip}
+                    className={`h-8 w-full rounded cursor-default transition-opacity hover:opacity-80 ${cls}`}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Summary stats */}
+            {pnlValues.length > 0 ? (
+              <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-border">
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Best Day
+                  </span>
+                  <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums">
+                    {bestDay !== null ? formatPnl(bestDay) : "\u2014"}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Worst Day
+                  </span>
+                  <span className="font-mono text-sm font-bold text-red-400 tabular-nums">
+                    {worstDay !== null ? formatPnl(worstDay) : "\u2014"}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Avg Day
+                  </span>
+                  <span
+                    className={`font-mono text-sm font-bold tabular-nums ${
+                      avgDay !== null && avgDay >= 0
+                        ? "text-emerald-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {avgDay !== null ? formatPnl(avgDay) : "\u2014"}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 pt-3 border-t border-border">
+                <span className="font-mono text-xs text-muted-foreground block text-center">
+                  No trade data yet
+                </span>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

@@ -30,6 +30,9 @@ import { PerformanceTrendWidget } from "@/components/PerformanceTrendWidget";
 import { VIXRegimeCard } from "@/components/VIXRegimeCard";
 import { CurrentSignalWidget } from "@/components/CurrentSignalWidget";
 import { MesContractSpecCard } from "@/components/MesContractSpecCard";
+import { MarketSessionWidget } from "@/components/MarketSessionWidget";
+import { SymbolSignalWidget } from "@/components/SymbolSignalWidget";
+import { RegimeHistoryWidget } from "@/components/RegimeHistoryWidget";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -799,6 +802,12 @@ export default function WatchlistPage() {
 
       {/* Main content */}
       <main className="mx-auto max-w-[1600px] px-6 py-8 space-y-6">
+
+        {/* Market Session Widget */}
+        <MarketSessionWidget />
+
+        {/* Symbol Signal Monitor */}
+        <SymbolSignalWidget />
 
         {/* Current STC Signal Widget */}
         <CurrentSignalWidget symbol="MES" />

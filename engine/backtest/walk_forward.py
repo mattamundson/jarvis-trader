@@ -526,7 +526,7 @@ def main():
     )
     args = parser.parse_args()
 
-    # ── Load data ─────────────────────────────────────────────────────────
+    # ── Load primary (1h) data ─────────────────────────────────────────────
     loader = BacktestDataLoader()
     print(f"Loading {args.symbol} ({args.interval}) from {args.start} to {args.end}...")
 
@@ -535,25 +535,43 @@ def main():
         print(f"ERROR: No data loaded for {args.symbol}")
         return
 
-    # ── Run walk-forward engine ────────────────────────────────────────────
-    print("\nRunning walk-forward engine...")
-    engine = WalkForwardValidator(
-        df=df,
-        symbol=args.symbol,
-        interval=args.interval,
+    multiplier = loader.get_multiplier(args.symbol)
+
+    # ── Load daily data for MTF filter ────────────────────────────────────
+    df_daily: Optional[pd.DataFrame] = None
+    if args.mtf_filter:
+        print(f"Loading {args.symbol} daily data for MTF filter...")
+        df_daily = loader.load(args.symbol, args.start, args.end, "1d")
+        if df_daily is None or df_daily.empty:
+            print("[MTF] WARNING: daily data unavailable, MTF filter will be disabled.")
+            df_daily = None
+
+    # ── Run walk-forward validation ────────────────────────────────────────
+    validator = WalkForwardValidator(
         train_months=args.train_months,
         test_months=args.test_months,
         step_months=args.step_months,
-        initial_capital=args.capital,
-        use_full_grid=args.full_grid,
+    )
+
+    result = validator.run(
+        df=df,
+        symbol=args.symbol,
+        multiplier=multiplier,
+        capital=args.capital,
+        fast=not args.full_grid,
+        adaptive_regime=args.adaptive_regime,
+        volume_filter=args.volume_filter,
+        mtf_filter=args.mtf_filter,
+        df_daily=df_daily,
+    )
+
+    # ── Save results ───────────────────────────────────────────────────────
+    out_path = save_results(
+        result,
+        args.symbol,
+        args.interval,
         adaptive_regime=args.adaptive_regime,
         volume_filter=args.volume_filter,
         mtf_filter=args.mtf_filter,
     )
-
-    result = engine.run()
-    print("\nWalk-forward engine complete:")
-    print(f"  Total windows: {result['windows_completed']}")
-    print(f"  Avg Sharpe: {result['avg_sharpe']:.2f}")
-    print(f"  Best window Sharpe: {result['best_window_sharpe']:.2f}")
-    print(f"  Worst window Sharpe: {result['worst_window_sharpe']:.2f}")
+    print(f"\nResults saved to: {out_path}")

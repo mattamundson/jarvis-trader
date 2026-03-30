@@ -8,22 +8,33 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 
 const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
-interface DailyPnlRecord {
-  date: string;
-  realized_pnl: number;
-  num_trades: number;
-  cumulative_pnl: number;
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface TradeRecord {
+  id: number;
+  symbol: string;
+  side: "BUY" | "SELL";
+  realized_pnl: number | null;
+  status: string;
+  entry_time: string;
+  exit_time: string | null;
 }
 
-interface DailyPnlResponse {
-  records: DailyPnlRecord[];
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmtCurrency(value: number): string {
+  const abs = Math.abs(value);
+  const formatted = abs.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+  return `${value < 0 ? "-" : ""}$${formatted}`;
 }
 
-function formatCurrencyLocal(value: number): string {
+function fmtCurrencyFull(value: number): string {
   const abs = Math.abs(value);
   const formatted = abs.toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -32,97 +43,155 @@ function formatCurrencyLocal(value: number): string {
   return `${value < 0 ? "-" : ""}$${formatted}`;
 }
 
+// ── Chart constants ───────────────────────────────────────────────────────────
+
+const VB_W = 600;
+const VB_H = 200;
+const PAD_LEFT = 50;
+const PAD_RIGHT = 20;
+const PAD_TOP = 20;
+const PAD_BOTTOM = 30;
+
+const PLOT_W = VB_W - PAD_LEFT - PAD_RIGHT;
+const PLOT_H = VB_H - PAD_TOP - PAD_BOTTOM;
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function EquityCurveWidget() {
-  const [records, setRecords] = useState<DailyPnlRecord[]>([]);
+  const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchHistory() {
-      try {
-        const res = await fetch(
-          `${ENGINE_URL}/portfolio/history/daily-pnl?limit=90`
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: DailyPnlResponse = await res.json();
-        setRecords(data.records ?? []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load");
-      } finally {
-        setLoading(false);
+  async function fetchTrades() {
+    try {
+      setError(null);
+      const res = await fetch(
+        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const raw: unknown = await res.json();
+
+      let list: TradeRecord[];
+      if (Array.isArray(raw)) {
+        list = raw as TradeRecord[];
+      } else if (
+        raw !== null &&
+        typeof raw === "object" &&
+        "trades" in raw &&
+        Array.isArray((raw as { trades: unknown }).trades)
+      ) {
+        list = (raw as { trades: TradeRecord[] }).trades;
+      } else {
+        list = [];
       }
+
+      // Sort by exit_time ascending, keep only trades with an exit_time
+      const closed = list
+        .filter((t) => t.exit_time !== null && t.exit_time !== undefined)
+        .sort((a, b) => {
+          const ta = new Date(a.exit_time as string).getTime();
+          const tb = new Date(b.exit_time as string).getTime();
+          return ta - tb;
+        });
+
+      setTrades(closed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
     }
-    fetchHistory();
+  }
+
+  useEffect(() => {
+    fetchTrades();
+    const id = setInterval(fetchTrades, 120_000);
+    return () => clearInterval(id);
   }, []);
 
-  const totalPnL = records.length > 0
-    ? records[records.length - 1].cumulative_pnl
-    : 0;
+  // ── Derived data ──────────────────────────────────────────────────────────
 
-  const badgeVariant =
-    totalPnL > 0 ? "bull" : totalPnL < 0 ? "bear" : "neutral";
-  const badgeLabel =
-    totalPnL > 0 ? "PROFIT" : totalPnL < 0 ? "LOSS" : "FLAT";
-  const pnlColor =
-    totalPnL > 0
-      ? "text-bull"
-      : totalPnL < 0
-      ? "text-bear"
-      : "text-muted-foreground";
+  // Running cumulative P&L starting at $0
+  const cumulative: number[] = [];
+  let running = 0;
+  for (const t of trades) {
+    running += t.realized_pnl ?? 0;
+    cumulative.push(running);
+  }
 
-  const firstDate = records.length > 0 ? records[0].date : "";
-  const lastDate = records.length > 0 ? records[records.length - 1].date : "";
+  const totalPnl = cumulative.length > 0 ? cumulative[cumulative.length - 1] : 0;
+  const peakPnl = cumulative.length > 0 ? Math.max(...cumulative) : 0;
+  const fromPeak = totalPnl - peakPnl;
 
-  // Build SVG chart
-  const svgWidth = 400;
-  const svgHeight = 140;
-  const yPadTop = 10;
-  const yPadBot = 10;
-  const yRange = svgHeight - yPadTop - yPadBot; // 120
+  const minCum = cumulative.length > 0 ? Math.min(0, ...cumulative) : 0;
+  const maxCum = cumulative.length > 0 ? Math.max(0, ...cumulative) : 0;
 
-  function buildChart(recs: DailyPnlRecord[]): React.ReactNode {
-    if (recs.length === 0) return null;
+  // Badge
+  let badgeVariant: "bull" | "bear" | "neutral";
+  let badgeLabel: string;
+  if (totalPnl > 0) {
+    badgeVariant = "bull";
+    badgeLabel = "PROFITABLE";
+  } else if (totalPnl < 0) {
+    badgeVariant = "bear";
+    badgeLabel = "IN DRAWDOWN";
+  } else {
+    badgeVariant = "neutral";
+    badgeLabel = "FLAT";
+  }
 
-    const values = recs.map((r) => r.cumulative_pnl);
-    const minVal = Math.min(...values);
-    const maxVal = Math.max(...values);
-    const allZero = minVal === 0 && maxVal === 0;
+  // Colors
+  const isPositive = totalPnl >= 0;
+  const strokeColor = isPositive ? "#22c55e" : "#ef4444";
+  const fillColor = isPositive
+    ? "rgba(34,197,94,0.15)"
+    : "rgba(239,68,68,0.15)";
+  const endDotColor = isPositive ? "#22c55e" : "#ef4444";
 
-    // Map value to y coordinate (inverted — top = high)
-    function toY(val: number): number {
-      if (allZero) return svgHeight / 2;
-      const span = maxVal - minVal || 1;
-      return yPadTop + yRange - ((val - minVal) / span) * yRange;
+  // ── SVG coordinate helpers ────────────────────────────────────────────────
+
+  function toX(index: number, total: number): number {
+    if (total <= 1) return PAD_LEFT + PLOT_W / 2;
+    return PAD_LEFT + (index / (total - 1)) * PLOT_W;
+  }
+
+  function toY(val: number): number {
+    const range = maxCum - minCum || 1;
+    return PAD_TOP + PLOT_H - ((val - minCum) / range) * PLOT_H;
+  }
+
+  // Zero-line Y
+  const zeroY = toY(0);
+
+  // Build chart SVG contents
+  function buildChart(): React.ReactNode {
+    const n = cumulative.length;
+    if (n === 0) return null;
+
+    // For single trade, just draw a dot
+    if (n === 1) {
+      const cx = toX(0, 1);
+      const cy = toY(cumulative[0]);
+      return (
+        <>
+          {/* Zero baseline */}
+          <line
+            x1={PAD_LEFT}
+            y1={zeroY}
+            x2={VB_W - PAD_RIGHT}
+            y2={zeroY}
+            stroke="#666"
+            strokeDasharray="4,4"
+            strokeWidth="1"
+          />
+          <circle cx={cx} cy={cy} r={5} fill={endDotColor} />
+        </>
+      );
     }
 
-    // Map index to x coordinate
-    function toX(i: number): number {
-      if (recs.length === 1) return svgWidth / 2;
-      return (i / (recs.length - 1)) * svgWidth;
-    }
-
-    // Zero line y position
-    const zeroY = toY(0);
-
-    // Line/fill color
-    const endVal = values[values.length - 1];
-    let stroke: string;
-    let fill: string;
-    if (allZero || endVal === 0) {
-      stroke = "currentColor";
-      fill = "rgba(100,100,100,0.1)";
-    } else if (endVal > 0) {
-      stroke = "#22c55e";
-      fill = "rgba(34,197,94,0.1)";
-    } else {
-      stroke = "#ef4444";
-      fill = "rgba(239,68,68,0.1)";
-    }
-
-    // Build path points
-    const points = recs.map((r, i) => ({
-      x: toX(i),
-      y: toY(r.cumulative_pnl),
+    // Build point array
+    const points = cumulative.map((v, i) => ({
+      x: toX(i, n),
+      y: toY(v),
     }));
 
     // Line path
@@ -130,98 +199,199 @@ export function EquityCurveWidget() {
       .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
       .join(" ");
 
-    // Area fill path: line + close to bottom
+    // Area path: line + close bottom
     const areaPath =
       linePath +
-      ` L ${points[points.length - 1].x.toFixed(2)} ${svgHeight}` +
-      ` L ${points[0].x.toFixed(2)} ${svgHeight}` +
+      ` L ${points[n - 1].x.toFixed(2)} ${(PAD_TOP + PLOT_H).toFixed(2)}` +
+      ` L ${points[0].x.toFixed(2)} ${(PAD_TOP + PLOT_H).toFixed(2)}` +
       " Z";
+
+    // Local maxima (highest point)
+    const maxVal = Math.max(...cumulative);
+    const maxIdx = cumulative.indexOf(maxVal);
+    const maxPt = points[maxIdx];
+
+    // Endpoint
+    const endPt = points[n - 1];
 
     return (
       <>
         {/* Zero baseline */}
         <line
-          x1="0"
+          x1={PAD_LEFT}
           y1={zeroY}
-          x2={svgWidth}
+          x2={VB_W - PAD_RIGHT}
           y2={zeroY}
-          stroke="currentColor"
-          strokeOpacity="0.3"
-          strokeDasharray="4,2"
+          stroke="#666"
+          strokeDasharray="4,4"
           strokeWidth="1"
         />
         {/* Area fill */}
-        <path d={areaPath} fill={fill} stroke="none" />
+        <path d={areaPath} fill={fillColor} stroke="none" />
         {/* Line */}
         <path
           d={linePath}
           fill="none"
-          stroke={stroke}
-          strokeWidth="1.5"
+          stroke={strokeColor}
+          strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
+        {/* Local maxima dot */}
+        {maxIdx !== n - 1 && (
+          <circle cx={maxPt.x} cy={maxPt.y} r={3} fill="#22c55e" />
+        )}
+        {/* Endpoint dot */}
+        <circle cx={endPt.x} cy={endPt.y} r={4} fill={endDotColor} />
       </>
     );
   }
 
+  // ── Y-axis labels ─────────────────────────────────────────────────────────
+
+  function buildYAxis(): React.ReactNode {
+    if (cumulative.length === 0) return null;
+    const labelX = PAD_LEFT - 4;
+    const labels: { val: number; y: number }[] = [];
+
+    labels.push({ val: maxCum, y: toY(maxCum) });
+    if (minCum !== 0 && maxCum !== 0) {
+      labels.push({ val: 0, y: toY(0) });
+    }
+    if (minCum !== maxCum) {
+      labels.push({ val: minCum, y: toY(minCum) });
+    }
+
+    return labels.map(({ val, y }, i) => (
+      <text
+        key={i}
+        x={labelX}
+        y={y}
+        textAnchor="end"
+        dominantBaseline="middle"
+        fontSize="9"
+        fill="#888"
+      >
+        {fmtCurrency(val)}
+      </text>
+    ));
+  }
+
+  // ── X-axis labels ─────────────────────────────────────────────────────────
+
+  function buildXAxis(): React.ReactNode {
+    if (cumulative.length === 0) return null;
+    const n = cumulative.length;
+    const yPos = PAD_TOP + PLOT_H + 18;
+    return (
+      <>
+        <text
+          x={toX(0, n)}
+          y={yPos}
+          textAnchor="middle"
+          fontSize="9"
+          fill="#888"
+        >
+          Trade 1
+        </text>
+        <text
+          x={toX(n - 1, n)}
+          y={yPos}
+          textAnchor="middle"
+          fontSize="9"
+          fill="#888"
+        >
+          Trade {n}
+        </text>
+      </>
+    );
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <Card>
-      <CardHeader
-        className={cn(
-          "flex flex-row items-center justify-between space-y-0 pb-2"
-        )}
-      >
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle>Equity Curve</CardTitle>
-        <div className="flex items-center gap-2">
-          {!loading && (
-            <>
-              <span
-                className={cn(
-                  "text-lg font-mono font-bold",
-                  pnlColor
-                )}
-              >
-                {formatCurrencyLocal(totalPnL)}
-              </span>
-              <Badge variant={badgeVariant}>{badgeLabel}</Badge>
-            </>
-          )}
-          {loading && (
-            <span className="text-sm text-muted-foreground">Loading…</span>
-          )}
-        </div>
+        <Badge variant={badgeVariant}>{badgeLabel}</Badge>
       </CardHeader>
 
       <CardContent>
         {loading ? (
-          <div className="h-[140px] flex items-center justify-center">
-            <div className="h-[140px] w-full bg-muted rounded animate-pulse" />
-          </div>
+          <div className="w-full h-[200px] bg-muted rounded animate-pulse" />
         ) : error ? (
-          <div className="h-[140px] flex items-center justify-center text-xs text-muted-foreground">
-            Failed to load history: {error}
+          <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">
+            Equity curve unavailable
           </div>
-        ) : records.length === 0 ? (
-          <div className="h-[140px] flex items-center justify-center text-sm text-muted-foreground">
-            No trade history yet
+        ) : trades.length === 0 ? (
+          <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+            No closed trades yet — equity curve will appear here
           </div>
         ) : (
           <svg
-            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            viewBox={`0 0 ${VB_W} ${VB_H}`}
+            width="100%"
             preserveAspectRatio="none"
-            className="w-full"
-            style={{ height: "140px" }}
+            style={{ display: "block" }}
           >
-            {buildChart(records)}
+            {buildYAxis()}
+            {buildXAxis()}
+            {buildChart()}
           </svg>
         )}
 
-        <div className="flex justify-between text-xs text-muted-foreground mt-1">
-          <span>{firstDate}</span>
-          <span>Last 90 days</span>
-          <span>{lastDate}</span>
-        </div>
+        {/* Stats row */}
+        {!loading && !error && (
+          <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-border">
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                Starting Capital
+              </p>
+              <p className="text-sm font-bold font-mono text-foreground">
+                $25,000
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                Current P&amp;L
+              </p>
+              <p
+                className={`text-sm font-bold font-mono ${
+                  totalPnl > 0
+                    ? "text-green-500"
+                    : totalPnl < 0
+                    ? "text-red-500"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {totalPnl >= 0 ? "+" : ""}
+                {fmtCurrencyFull(totalPnl)}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                Peak P&amp;L
+              </p>
+              <p className="text-sm font-bold font-mono text-foreground">
+                {peakPnl >= 0 ? "+" : ""}
+                {fmtCurrencyFull(peakPnl)}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                From Peak
+              </p>
+              <p
+                className={`text-sm font-bold font-mono ${
+                  fromPeak < 0 ? "text-red-500" : "text-muted-foreground"
+                }`}
+              >
+                {fromPeak > 0 ? "+" : ""}
+                {fmtCurrencyFull(fromPeak)}
+              </p>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

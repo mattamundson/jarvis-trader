@@ -31,6 +31,8 @@ import { NotificationTestPanel } from "@/components/NotificationTestPanel";
 import { TradingScheduleCard } from "@/components/TradingScheduleCard";
 import { RiskSettingsWidget } from "@/components/RiskSettingsWidget";
 import { WhatsAppStatusCard } from "@/components/WhatsAppStatusCard";
+import { PositionSizerWidget } from "@/components/PositionSizerWidget";
+import { RiskConfigDisplayWidget } from "@/components/RiskConfigDisplayWidget";
 
 // ── SWR fetchers ──────────────────────────────────────────────────────────
 
@@ -888,6 +890,12 @@ export default function SettingsPage() {
       <main className="mx-auto max-w-[1200px] px-6 py-6 space-y-6">
         {/* Risk Settings Widget — live read-only config overview */}
         <RiskSettingsWidget />
+
+        {/* Risk Config Display — full engine config read-only overview */}
+        <RiskConfigDisplayWidget />
+
+        {/* Position Sizer — fixed-fractional sizing calculator */}
+        <PositionSizerWidget />
 
         {/* Page title */}
         <div className="flex items-center gap-3">
