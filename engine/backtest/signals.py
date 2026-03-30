@@ -14,13 +14,15 @@ import numpy as np
 from typing import Dict, Optional
 
 # Per-instrument optimized parameters (research-validated)
-# Format: (STC_OS, STC_OB, STOP_ATR, T1_ATR, T2_ATR, T3_ATR)
+# Format: (STC_OS, STC_OB, STOP_ATR, T1_ATR, T2_ATR, T3_ATR, REGIME_FILTER)
+# 7th element (REGIME_FILTER): True = block EXHAUSTED/COMPRESSION entries, False = allow them
 INSTRUMENT_PARAMS: Dict[str, tuple] = {
-    "MNQ": (15, 92, 0.70, 1.00, 1.80, 2.618),   # STC_OB=92 filters Nasdaq noise; 86 trades, PF 1.51
-    "MCL": (15, 83, 0.90, 1.50, 2.618, 4.00),   # Stop=0.90, T1=1.50 → R:R=1.67 (>1.2 gate); 65 trades, PF 1.81, +19.8%
-    "MGC": (17, 88, 0.30, 1.50, 2.618, 4.00),   # Gold: tight stop + wide T1 matches trend length
-    "SPY": (15, 88, 0.30, 1.00, 1.80, 2.618),   # SPY consensus
-    # Defaults used for all other symbols: STC_OS=15, STC_OB=83, Stop=0.70, T1=1.00
+    "MNQ": (15, 92, 0.70, 1.00, 1.80, 2.618, True),    # STC_OB=92 filters Nasdaq noise; 86 trades, PF 1.51
+    "MCL": (15, 83, 0.90, 1.50, 2.618, 4.00, True),    # Stop=0.90, T1=1.50 → R:R=1.67; 65 trades, PF 1.81
+    "MGC": (17, 88, 0.30, 1.50, 2.618, 4.00, True),    # Gold: tight stop + wide T1 matches trend length
+    "SPY": (15, 88, 0.30, 1.00, 1.618, 2.618, True),   # SPY 1h optimizer consensus (2024-06→2026-03): PF 3.79, 23 trades
+    "MES": (15, 83, 0.50, 2.00, 3.236, 4.00, False),   # MES 1h optimizer consensus (2024-06→2026-03): PF 1.69, 23 trades
+    # Defaults used for all other symbols: STC_OS=15, STC_OB=83, Stop=0.70, T1=1.00, regime ON
 }
 
 from .indicators import (
@@ -435,7 +437,12 @@ def generate_signals(
     if symbol is not None:
         inst_params = INSTRUMENT_PARAMS.get(symbol.upper())
         if inst_params:
-            os_val, ob_val, stop_atr, t1_atr, t2_atr, t3_atr = inst_params
+            if len(inst_params) >= 7:
+                os_val, ob_val, stop_atr, t1_atr, t2_atr, t3_atr, inst_regime = inst_params
+                # Apply per-instrument regime_filter unless caller explicitly set it
+                regime_filter = inst_regime
+            else:
+                os_val, ob_val, stop_atr, t1_atr, t2_atr, t3_atr = inst_params
             # Override STC thresholds only if not explicitly passed
             if stc_oversold is None:
                 stc_oversold = os_val

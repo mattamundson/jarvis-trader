@@ -11,7 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Activity, TrendingUp, Award, BarChart2, Percent } from "lucide-react";
+import { Activity, TrendingUp, Award, BarChart2, Percent, FlaskConical } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 
@@ -439,6 +439,137 @@ function Metric({ label, value, color }: { label: string; value: string; color: 
   );
 }
 
+// ── Walk-Forward Types & Panel ─────────────────────────────────────────────────
+
+interface WalkForwardEntry {
+  filename: string;
+  symbol: string;
+  interval: string;
+  generated: string;
+  wfe: number;
+  avg_oos_return: number;
+  avg_oos_sharpe: number;
+  avg_oos_pf: number;
+  windows_profitable: number;
+  total_windows: number;
+  mode: string;
+}
+
+function wfeColor(wfe: number): string {
+  if (wfe >= 0.5) return "text-green-400";
+  if (wfe >= 0.3) return "text-yellow-400";
+  return "text-red-400";
+}
+
+function wfeBadge(wfe: number): { label: string; variant: "bull" | "warn" | "bear" } {
+  if (wfe >= 0.5) return { label: "ROBUST", variant: "bull" };
+  if (wfe >= 0.3) return { label: "MARGINAL", variant: "warn" };
+  return { label: "OVERFIT", variant: "bear" };
+}
+
+function WalkForwardPanel() {
+  const { data, isLoading } = useSWR<{ results: WalkForwardEntry[] }>(
+    "/backtest/walk-forward-results",
+    fetcher,
+    { refreshInterval: 60_000 }
+  );
+
+  const sorted = useMemo(() => {
+    if (!data?.results) return [];
+    return [...data.results].sort((a, b) => b.wfe - a.wfe);
+  }, [data]);
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-5">
+        <p className="text-xs text-muted-foreground animate-pulse">Loading walk-forward results...</p>
+      </div>
+    );
+  }
+
+  if (!sorted.length) return null;
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FlaskConical className="h-4 w-4 text-accent" />
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Walk-Forward Validation
+          </p>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {sorted.length} result{sorted.length !== 1 ? "s" : ""} · sorted by WFE
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-border bg-black/20">
+              {["Symbol", "TF", "Mode", "Windows", "WFE", "OOS Return", "OOS Sharpe", "OOS PF", "Verdict"].map(
+                (h) => (
+                  <th
+                    key={h}
+                    className="px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-muted-foreground text-left"
+                  >
+                    {h}
+                  </th>
+                )
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row) => {
+              const badge = wfeBadge(row.wfe);
+              const oosReturnPct = (row.avg_oos_return * 100).toFixed(2);
+              const oosReturnClass = row.avg_oos_return >= 0 ? "text-green-400" : "text-red-400";
+
+              return (
+                <tr
+                  key={row.filename}
+                  className="border-b border-border transition-colors hover:bg-white/[0.03]"
+                >
+                  <td className="px-4 py-3 font-mono font-bold text-sm text-foreground">
+                    {row.symbol}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                    {row.interval}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    <span className={row.mode === "adaptive" ? "text-accent" : "text-muted-foreground"}>
+                      {row.mode}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-center text-muted-foreground">
+                    {row.windows_profitable}/{row.total_windows}
+                  </td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-center">
+                    <span className={`font-bold ${wfeColor(row.wfe)}`}>
+                      {row.wfe.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-center">
+                    <span className={oosReturnClass}>{oosReturnPct}%</span>
+                  </td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-center text-muted-foreground">
+                    {row.avg_oos_sharpe.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-center text-muted-foreground">
+                    {row.avg_oos_pf.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BacktestPage() {
@@ -498,6 +629,15 @@ export default function BacktestPage() {
             </a>
             <a href="/backtest" className="text-xs text-accent transition-colors font-medium">
               Backtest
+            </a>
+            <a href="/stats" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Statistics
+            </a>
+            <a href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Performance
+            </a>
+            <a href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Validation
             </a>
           </nav>
         </div>
@@ -601,14 +741,15 @@ export default function BacktestPage() {
         {/* Optimizer / Parameters section */}
         {results && <OptimizerPanel results={results} />}
 
+        {/* Walk-Forward Validation section */}
+        <WalkForwardPanel />
+
         {/* Empty state */}
         {!isLoading && !error && backtestResults.length === 0 && (
           <div className="rounded-xl border border-border bg-card p-10 text-center">
             <BarChart2 className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm font-medium text-muted-foreground">No backtest results yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Run a backtest from the engine CLI to populate results here.
-            </p>
+            <p className="text-sm text-muted-foreground">No backtest results found.</p>
+            <p className="text-xs text-muted-foreground mt-1">Run a backtest via the engine to see results here.</p>
           </div>
         )}
       </main>
