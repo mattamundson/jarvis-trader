@@ -18,65 +18,59 @@ from typing import Dict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from agents.bear_researcher import BearResearcherAgent
+from agents.bull_researcher import BullResearcherAgent
+from agents.debate import DebateOrchestrator
+from agents.fund_manager import FundManagerAgent
+from agents.fundamental_analyst import FundamentalistAgent
+from agents.news_analyst import NewsAnalystAgent
+from agents.pipeline import TradingPipeline
+from agents.risk_manager import RiskManagerAgent
+from agents.social_analyst import SocialAnalystAgent
+from agents.technical_analyst import TechnicalAnalystAgent
+from agents.trader import TraderAgent
 from api.models import (
-    HealthResponse,
-    FullHealthResponse,
-    IBConnectionTestResponse,
-    IBConnectResponse,
-    SafetyStatusResponse,
-    CircuitBreakerStatus,
-    SafetyConfigResponse,
-    KillSwitchToggleResponse,
-    TechnicalAnalysisResponse,
     BarsResponse,
-    RedditSentimentResponse,
-    NewsSentimentResponse,
-    PortfolioResponse,
-    PaperPositionsResponse,
-    PaperTradeResponse,
-    PaperPerformanceResponse,
-    PendingSignalsResponse,
-    PaperKillSwitchStatus,
-    PaperKillSwitchToggleResponse,
-    ResetSignalsResponse,
-    TradeHistoryResponse,
+    CircuitBreakerStatus,
     DailyPnLResponse,
     DecisionHistoryResponse,
-    StatsSummaryResponse,
     DrawdownResponse,
-    WebSocketStatusResponse,
+    FullHealthResponse,
+    HealthResponse,
+    KillSwitchToggleResponse,
+    NewsSentimentResponse,
+    PaperPerformanceResponse,
+    PaperPositionsResponse,
+    PaperTradeResponse,
+    PendingSignalsResponse,
+    PortfolioResponse,
+    RedditSentimentResponse,
+    SafetyConfigResponse,
+    SafetyStatusResponse,
+    StatsSummaryResponse,
+    TechnicalAnalysisResponse,
+    TradeHistoryResponse,
 )
-
 from config import settings
 from data.market_data import MarketDataManager
-from risk.safety_layer import SafetyLayer, OrderRequest
-from risk.pnl_monitor import PnLMonitor
-from agents.technical_analyst import TechnicalAnalystAgent
-from agents.news_analyst import NewsAnalystAgent
-from agents.social_analyst import SocialAnalystAgent
-from agents.fundamental_analyst import FundamentalistAgent
-from agents.bull_researcher import BullResearcherAgent
-from agents.bear_researcher import BearResearcherAgent
-from agents.debate import DebateOrchestrator
-from agents.trader import TraderAgent
-from agents.risk_manager import RiskManagerAgent
-from agents.fund_manager import FundManagerAgent
-from agents.pipeline import TradingPipeline
-from portfolio.tracker import get_tracker, PortfolioTracker
-from database.schema import init_db, DatabaseManager
-from schedulers.eod_scheduler import EODScheduler
-from routers.journal_router import router as journal_router, set_db_manager as set_journal_db
+from database.schema import DatabaseManager, init_db
 from execution.ib_order_manager import IBOrderManager
-from routers.webhook_router import router as webhook_router, set_pipeline_callback, get_recent_webhooks
-from websocket.manager import WebSocketManager
-from websocket.events import set_ws_manager
 from llm.cost_tracker import CostTracker
+from portfolio.tracker import PortfolioTracker
 from risk.loss_tracker import ConsecutiveLossTracker
+from risk.pnl_monitor import PnLMonitor
+from risk.safety_layer import SafetyLayer
+from routers.journal_router import router as journal_router
+from routers.journal_router import set_db_manager as set_journal_db
+from routers.webhook_router import get_recent_webhooks
+from routers.webhook_router import router as webhook_router
+from schedulers.eod_scheduler import EODScheduler
+from websocket.events import set_ws_manager
+from websocket.manager import WebSocketManager
 
 # ── Logging (initialized in lifespan) ────────────────────────────────────
 logger = logging.getLogger("jarvis_trader")
@@ -368,6 +362,7 @@ async def lifespan(app: FastAPI):
         from pathlib import Path
         try:
             import yfinance as yf
+
             from backtest.signals import generate_signals as _gen_signals
 
             logger.info("[MGC-daily] Fetching GC=F daily bar...")
@@ -745,8 +740,9 @@ async def system_preflight():
 
     # 6. Market session
     try:
-        import pytz
         from datetime import datetime as _dt
+
+        import pytz
         ct_tz = pytz.timezone("America/Chicago")
         now_ct = _dt.now(ct_tz)
         weekday = now_ct.weekday()
@@ -1871,7 +1867,7 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
     try:
         tickers = yf.Tickers(" ".join(yf_tickers))
         result = {}
-        for original, yf_ticker in zip(symbol_list, yf_tickers):
+        for original, yf_ticker in zip(symbol_list, yf_tickers, strict=False):
             try:
                 info = tickers.tickers[yf_ticker].fast_info
                 current = float(info.last_price) if hasattr(info, "last_price") and info.last_price else None
@@ -2407,7 +2403,7 @@ async def run_backtest(request: BacktestRequest):
     from concurrent.futures import ThreadPoolExecutor
 
     def _run():
-        from backtest import Backtester, BacktestDataLoader, generate_signals
+        from backtest import BacktestDataLoader, Backtester, generate_signals
 
         loader = BacktestDataLoader()
         df = loader.load(request.symbol, request.start, request.end, request.interval)
@@ -2473,9 +2469,10 @@ async def run_walk_forward(request: WalkForwardRequest):
     """
     try:
         from concurrent.futures import ThreadPoolExecutor
-        from backtest.walk_forward import WalkForwardValidator
+
         from backtest.data_loader import BacktestDataLoader
         from backtest.signals import generate_signals
+        from backtest.walk_forward import WalkForwardValidator
 
         def _run_walk_forward():
             loader = BacktestDataLoader()
@@ -2560,8 +2557,9 @@ async def analyze_regime(request: RegimeAnalysisRequest):
     """
     try:
         from pathlib import Path
-        from backtest.regime_analysis import RegimeAnalyzer
+
         from backtest.monte_carlo import _load_result_from_json
+        from backtest.regime_analysis import RegimeAnalyzer
 
         # Resolve file path
         results_path = Path(request.results_file)
@@ -2592,7 +2590,7 @@ async def analyze_regime(request: RegimeAnalysisRequest):
 
         # Run regime analysis
         logger.info(f"[REGIME-ANALYSIS] Analyzing {len(bt_result.trades)} trades for {symbol}")
-        analyzer = RegimeAnalyzer()
+        RegimeAnalyzer()
         regime_stats = {}
 
         # Classify each trade by regime and accumulate stats
@@ -2676,9 +2674,10 @@ async def get_regime_status():
     Falls back to static data if market data is unavailable.
     """
     try:
-        from backtest.regime import RegimeClassifier
-        import yfinance as yf
         import pandas as pd
+        import yfinance as yf
+
+        from backtest.regime import RegimeClassifier
 
         results = {}
 
@@ -2801,9 +2800,9 @@ async def get_mgc_signal():
 
     def _generate_signal():
         import yfinance as yf
-        from backtest.signals import compute_all_indicators, generate_signals
-        from backtest.regime import RegimeClassifier
+
         from backtest.paper_config import MGC_PAPER_CONFIG
+        from backtest.signals import generate_signals
 
         # Fetch data
         gc = yf.download("GC=F", period="200d", interval="1d", progress=False)
@@ -2901,8 +2900,8 @@ async def log_mgc_paper_trade(req: MGCTradeLogRequest):
     including commission and slippage.
     """
     try:
-        from backtest.paper_tracker import PaperTradeTracker
         from backtest.paper_config import MGC_PAPER_CONFIG
+        from backtest.paper_tracker import PaperTradeTracker
 
         tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
 
@@ -2932,7 +2931,7 @@ async def log_mgc_paper_trade(req: MGCTradeLogRequest):
             from notifications.whatsapp import get_notifier
             notifier = get_notifier()
             if notifier.enabled:
-                pnl = trade_dict.get("pnl", 0)
+                trade_dict.get("pnl", 0)
                 msg = (
                     f"JARVIS PAPER-MGC: {req.direction} trade closed\n"
                     f"Entry: {req.entry_price:.2f} -> Exit: {req.exit_price:.2f}\n"
@@ -2963,8 +2962,8 @@ async def get_mgc_paper_performance():
     regime breakdown, exit reason breakdown, and kill condition status.
     """
     try:
-        from backtest.paper_tracker import PaperTradeTracker
         from backtest.paper_config import MGC_PAPER_CONFIG
+        from backtest.paper_tracker import PaperTradeTracker
 
         tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
         metrics = tracker.get_metrics()
@@ -3025,7 +3024,8 @@ async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
     """
     try:
         from pathlib import Path
-        from backtest.monte_carlo import run_monte_carlo, _load_result_from_json
+
+        from backtest.monte_carlo import _load_result_from_json, run_monte_carlo
 
         # Resolve file path
         results_path = Path(req.results_file)
@@ -3090,6 +3090,7 @@ async def generate_monte_carlo_chart(req: MonteCarloRequest) -> dict:
     """
     try:
         from pathlib import Path
+
         from backtest.monte_carlo_viz import save_fan_chart
 
         # Resolve file path (same as monte-carlo endpoint)
@@ -3209,8 +3210,9 @@ async def generate_performance_report(format: str = "html"):
         raise HTTPException(status_code=503, detail="Database not initialized")
 
     try:
-        from analytics.performance import PerformanceCalculator
         from datetime import datetime, timezone
+
+        from analytics.performance import PerformanceCalculator
 
         calc = PerformanceCalculator(db_manager)
         summary = calc.calculate_summary()
@@ -3445,8 +3447,9 @@ async def get_todays_session():
 
     try:
         import sqlite3
-        import pytz
         from datetime import datetime, timezone
+
+        import pytz
 
         ct = pytz.timezone("America/Chicago")
         now_ct = datetime.now(ct)
@@ -3464,7 +3467,7 @@ async def get_todays_session():
                     (today_ct,)
                 )
                 cols = [d[0] for d in cursor.description]
-                trades = [dict(zip(cols, row)) for row in cursor.fetchall()]
+                trades = [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
 
                 # Open positions opened today
                 cursor2 = conn.execute(
@@ -3475,7 +3478,7 @@ async def get_todays_session():
                     (today_ct,)
                 )
                 cols2 = [d[0] for d in cursor2.description]
-                open_today = [dict(zip(cols2, row)) for row in cursor2.fetchall()]
+                open_today = [dict(zip(cols2, row, strict=False)) for row in cursor2.fetchall()]
             finally:
                 conn.close()
 

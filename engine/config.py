@@ -3,11 +3,12 @@ JARVIS TRADER — Configuration
 All settings via environment variables (.env file).
 Never hardcode secrets.
 """
-from pydantic_settings import BaseSettings
-from pydantic import Field
-from typing import Optional
-import sys
 import os
+import sys
+from typing import Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 def _validate_required_env_vars():
