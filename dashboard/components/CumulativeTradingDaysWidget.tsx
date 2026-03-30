@@ -258,4 +258,30 @@ export function CumulativeTradingDaysWidget() {
                   <div className="w-2 h-2 rounded-full bg-bull" />
                   <span className="text-[10px] text-muted-foreground">Traded</span>
                 </div>
-                <div cl
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-muted" />
+                  <span className="text-[10px] text-muted-foreground">No trade</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Error state */}
+        {error && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/25 p-4 flex flex-col gap-1">
+            <p className="text-xs font-medium text-destructive">Error</p>
+            <p className="text-xs text-destructive/80">{error}</p>
+          </div>
+        )}
+
+        {/* Last refresh */}
+        {lastRefresh && (
+          <div className="text-xs text-muted-foreground text-center pt-1">
+            Refreshed {lastRefresh.toLocaleTimeString()}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

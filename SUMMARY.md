@@ -184,8 +184,4 @@ Options under evaluation:
 3. Additional signal confirmations to reduce parameter instability
 4. Extend history back to 2022 to include bear market conditions
 
-**MGC 1d paper trading monitoring:** recalculate WFE monthly with latest 3 windows. Kill if 3 consecutive months fall below 3.8% return (50% of 7.6% IS baseline).
-
----
-
-*Source: 55+ result files in `engine/backtest/results/`. Includes optimizer JSONs, corrected backtests, sensitivity analysis (3 instruments), Monte Carlo (4 instruments, 10k sims each), walk-forward validation (5 instruments static + 5 adaptive runs), and the 1,245-line research report.*
+**MGC 1d paper tradin
