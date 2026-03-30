@@ -75,6 +75,8 @@ from execution.ib_order_manager import IBOrderManager
 from routers.webhook_router import router as webhook_router, set_pipeline_callback, get_recent_webhooks
 from websocket.manager import WebSocketManager
 from websocket.events import set_ws_manager
+from llm.cost_tracker import CostTracker
+from risk.loss_tracker import ConsecutiveLossTracker
 
 # ── Logging (initialized in lifespan) ────────────────────────────────────
 logger = logging.getLogger("jarvis_trader")
@@ -160,7 +162,7 @@ _macro_cache: Dict[str, dict] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ws_manager
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ws_manager, cost_tracker, loss_tracker
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -467,6 +469,14 @@ async def lifespan(app: FastAPI):
     ws_manager = WebSocketManager()
     set_ws_manager(ws_manager)
     logger.info("✅ WebSocket manager initialized for real-time events")
+
+    # LLM Cost Tracker
+    cost_tracker = CostTracker(db_path="data/llm_costs.db")
+    logger.info("✅ LLM Cost Tracker initialized")
+
+    # Consecutive Loss Tracker
+    loss_tracker = ConsecutiveLossTracker(data_dir="data")
+    logger.info("✅ Consecutive Loss Tracker initialized")
 
     logger.info("✅ JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
@@ -889,6 +899,30 @@ async def reset_daily_pnl():
     return {"status": "daily_pnl_reset", "message": "Daily P&L counter cleared"}
 
 
+@app.get("/safety/loss-tracker")
+async def get_loss_tracker_status():
+    """
+    Return consecutive loss tracking state.
+
+    Returns:
+        global_consecutive_losses: Total consecutive losses (all symbols)
+        symbol_losses: Dict[symbol] -> consecutive loss count
+        position_size_multiplier: 1.0 / 0.5 / 0.25 / 0.0 based on loss streak
+        is_halted: True if trading is paused due to loss limit
+        halt_until: ISO timestamp when trading resumes (if halted)
+        last_trade_symbol: Which symbol was last traded
+        last_trade_timestamp: When the last trade executed
+        config: Loss threshold configuration
+    """
+    if not loss_tracker:
+        raise HTTPException(500, "Loss tracker not initialized")
+    try:
+        return loss_tracker.get_status()
+    except Exception as e:
+        logger.error(f"[LOSS-TRACKER] Status query failed: {e}")
+        raise HTTPException(500, f"Failed to get loss tracker status: {e}")
+
+
 # ── Risk Limits Settings ───────────────────────────────────────────────────
 
 @app.get("/settings/risk")
@@ -1033,6 +1067,32 @@ async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: b
         "bars": df.tail(200).to_dict(orient="records"),
         "count": len(df),
     }
+
+
+@app.get("/llm/stats")
+async def get_llm_stats(days_back: int = 0):
+    """
+    Get LLM API usage and cost statistics for a given day.
+
+    Query Parameters:
+        days_back: 0 for today, 1 for yesterday, etc. (default: 0)
+
+    Returns:
+        date: ISO date string
+        total_calls: Total LLM API calls made
+        total_cost_usd: Total cost in USD
+        success_rate: Percentage of successful calls (0-1)
+        avg_latency_ms: Average API latency in milliseconds
+        per_model: Dict[model_name] -> {calls, input_tokens, output_tokens, cost_usd}
+        per_agent: Dict[agent_name] -> {calls, cost_usd}
+    """
+    if not cost_tracker:
+        raise HTTPException(500, "Cost tracker not initialized")
+    try:
+        return await cost_tracker.get_daily_summary(days_back=days_back)
+    except Exception as e:
+        logger.error(f"[LLM-STATS] Daily summary failed: {e}")
+        raise HTTPException(500, f"Failed to get LLM stats: {e}")
 
 
 @app.get("/sentiment/reddit", response_model=RedditSentimentResponse)
@@ -2271,6 +2331,242 @@ async def run_backtest(request: BacktestRequest):
     with ThreadPoolExecutor() as pool:
         result = await loop.run_in_executor(pool, _run)
     return result
+
+
+class WalkForwardRequest(BaseModel):
+    """Request for walk-forward validation."""
+    symbol: str
+    start: str  # ISO date
+    end: str    # ISO date
+    interval: str = "1h"
+    capital: float = 100_000.0
+    adaptive_regime: bool = True
+    volume_filter: bool = False
+    mtf_filter: bool = False
+
+
+@app.post("/backtest/walk-forward")
+async def run_walk_forward(request: WalkForwardRequest):
+    """
+    Execute walk-forward validation on a symbol over a date range.
+
+    Walk-Forward Analysis:
+    1. Split data into overlapping train/test windows (6m train, 3m test, 3m step)
+    2. For each window: optimize parameters on train data
+    3. Validate optimized parameters on out-of-sample test data
+    4. Compute Walk-Forward Efficiency (WFE = avg_oos_return / avg_is_return)
+
+    WFE Interpretation:
+        > 0.50: Strategy generalizes well
+        0.30-0.50: Acceptable, some degradation
+        < 0.30: Likely overfit
+
+    Request:
+        symbol: Instrument (e.g., "MES", "NQ", "SPY")
+        start: Start date (ISO format, e.g., "2024-06-01")
+        end: End date (ISO format, e.g., "2026-03-27")
+        interval: Timeframe ("1h", "1d", "5m", etc.) — default "1h"
+        capital: Initial capital (default 100000)
+        adaptive_regime: Include regime filters (default True)
+        volume_filter: Apply volume filters (default False)
+        mtf_filter: Apply multi-timeframe filters (default False)
+
+    Returns:
+        windows: List of walk-forward windows with IS/OOS results
+        summary: Aggregate metrics (avg_wfe, total_is_pnl, total_oos_pnl, etc.)
+        verdict: PASS/CAUTION/FAIL based on WFE threshold
+    """
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+        from backtest.walk_forward import WalkForwardValidator
+        from backtest.data_loader import BacktestDataLoader
+        from backtest.signals import generate_signals
+
+        def _run_walk_forward():
+            loader = BacktestDataLoader()
+
+            # Load 1h data
+            df_1h = loader.load(request.symbol, request.start, request.end, request.interval)
+            if df_1h is None or df_1h.empty:
+                raise ValueError(f"No data for {request.symbol}")
+
+            df_1h = generate_signals(df_1h, symbol=request.symbol, adaptive_regime=request.adaptive_regime)
+
+            # Load daily data if MTF filter requested
+            df_daily = None
+            if request.mtf_filter:
+                df_daily = loader.load(request.symbol, request.start, request.end, "1d")
+                if df_daily is not None:
+                    df_daily = generate_signals(df_daily, symbol=request.symbol, adaptive_regime=request.adaptive_regime)
+
+            multiplier = loader.get_multiplier(request.symbol)
+
+            # Run walk-forward
+            validator = WalkForwardValidator(train_months=6, test_months=3, step_months=3)
+            result = validator.run(
+                df_1h,
+                symbol=request.symbol,
+                multiplier=multiplier,
+                capital=request.capital,
+                top_n_params=1,
+                fast=True,
+                adaptive_regime=request.adaptive_regime,
+                volume_filter=request.volume_filter,
+                mtf_filter=request.mtf_filter,
+                df_daily=df_daily,
+            )
+            return result
+
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            result = await loop.run_in_executor(pool, _run_walk_forward)
+
+        return result
+
+    except ValueError as e:
+        logger.error(f"[WALK-FORWARD] Data error: {e}")
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        logger.error(f"[WALK-FORWARD] Validation failed: {e}")
+        raise HTTPException(500, f"Walk-forward validation failed: {e}")
+
+
+class RegimeAnalysisRequest(BaseModel):
+    """Request for regime analysis on backtest results."""
+    results_file: str  # Path to JSON results file (relative to backtest/results/)
+    symbol: str = None  # Auto-detected if None
+
+
+@app.post("/backtest/regime-analysis")
+async def analyze_regime(request: RegimeAnalysisRequest):
+    """
+    Analyze backtest results broken down by market regime.
+
+    Classifies each trade into a regime category and computes performance
+    metrics per regime. Identifies which regimes are profitable and which
+    should be avoided.
+
+    Regime Categories:
+        TRENDING_UP: EMA ribbon bullish + positive phase
+        TRENDING_DOWN: EMA ribbon bearish + negative phase
+        RANGE_BOUND: Compressed EMAs + low volatility
+        HIGH_VOLATILITY: ATR consumed > 80% or extreme phase
+        TRANSITION: Regime changed within last 5 bars
+
+    Request:
+        results_file: Path to backtest JSON (e.g., "MES_1h_results.json")
+        symbol: Instrument symbol for regime classification (auto if None)
+
+    Returns:
+        regime_metrics: Dict[regime] -> {trade_count, win_rate, profit_factor, total_pnl, sharpe_ratio, etc.}
+        overall_verdict: EXCELLENT/GOOD/ACCEPTABLE/POOR based on regime consistency
+        best_regime: Most profitable regime
+        worst_regime: Least profitable regime
+    """
+    try:
+        from pathlib import Path
+        from backtest.regime_analysis import RegimeAnalyzer
+        from backtest.monte_carlo import _load_result_from_json
+
+        # Resolve file path
+        results_path = Path(request.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = Path(__file__).parent / "backtest" / "results" / request.results_file
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        # Load backtest result
+        logger.info(f"[REGIME-ANALYSIS] Loading {results_path.name}")
+        bt_result = _load_result_from_json(str(results_path))
+
+        # Auto-detect symbol from filename if not provided
+        symbol = request.symbol
+        if not symbol:
+            stem = results_path.stem
+            for part in stem.split("_"):
+                if part.isupper() and len(part) <= 4:
+                    symbol = part
+                    break
+        if not symbol:
+            symbol = "MES"
+
+        # Run regime analysis
+        logger.info(f"[REGIME-ANALYSIS] Analyzing {len(bt_result.trades)} trades for {symbol}")
+        analyzer = RegimeAnalyzer()
+        regime_stats = {}
+
+        # Classify each trade by regime and accumulate stats
+        for trade in bt_result.trades:
+            regime = trade.get("regime", "UNKNOWN")
+            if regime not in regime_stats:
+                regime_stats[regime] = {
+                    "trade_count": 0,
+                    "winning_trades": 0,
+                    "losing_trades": 0,
+                    "total_pnl": 0.0,
+                    "trades": [],
+                }
+
+            pnl = trade.get("pnl", 0.0)
+            is_win = pnl >= 0
+
+            regime_stats[regime]["trade_count"] += 1
+            if is_win:
+                regime_stats[regime]["winning_trades"] += 1
+            else:
+                regime_stats[regime]["losing_trades"] += 1
+            regime_stats[regime]["total_pnl"] += pnl
+            regime_stats[regime]["trades"].append(trade)
+
+        # Compute derived metrics
+        for regime, stats in regime_stats.items():
+            count = stats["trade_count"]
+            stats["win_rate"] = stats["winning_trades"] / count if count > 0 else 0.0
+            pnls = [t.get("pnl", 0.0) for t in stats["trades"]]
+            gross_profit = sum(p for p in pnls if p > 0)
+            gross_loss = abs(sum(p for p in pnls if p < 0))
+            stats["profit_factor"] = gross_profit / gross_loss if gross_loss > 0 else 0.0
+            stats["avg_win"] = stats["total_pnl"] / stats["winning_trades"] if stats["winning_trades"] > 0 else 0.0
+            stats["avg_loss"] = stats["total_pnl"] / stats["losing_trades"] if stats["losing_trades"] > 0 else 0.0
+            # Clean up trades from output
+            del stats["trades"]
+
+        # Determine verdict
+        if not regime_stats:
+            verdict = "NO_DATA"
+        else:
+            avg_wrate = sum(s.get("win_rate", 0) for s in regime_stats.values()) / len(regime_stats)
+            if avg_wrate >= 0.60:
+                verdict = "EXCELLENT"
+            elif avg_wrate >= 0.55:
+                verdict = "GOOD"
+            elif avg_wrate >= 0.50:
+                verdict = "ACCEPTABLE"
+            else:
+                verdict = "POOR"
+
+        best_regime = max(regime_stats.items(), key=lambda x: x[1].get("total_pnl", 0))[0] if regime_stats else None
+        worst_regime = min(regime_stats.items(), key=lambda x: x[1].get("total_pnl", 0))[0] if regime_stats else None
+
+        return {
+            "regime_metrics": regime_stats,
+            "overall_verdict": verdict,
+            "best_regime": best_regime,
+            "worst_regime": worst_regime,
+            "regime_count": len(regime_stats),
+        }
+
+    except FileNotFoundError as e:
+        logger.error(f"[REGIME-ANALYSIS] File error: {e}")
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        logger.error(f"[REGIME-ANALYSIS] Analysis failed: {e}")
+        raise HTTPException(500, f"Regime analysis failed: {e}")
 
 
 # ── Regime & Paper-Trading Status ─────────────────────────────────────────

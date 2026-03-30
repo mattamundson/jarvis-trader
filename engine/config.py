@@ -6,6 +6,91 @@ Never hardcode secrets.
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
+import sys
+import os
+
+
+def _validate_required_env_vars():
+    """
+    Startup validation: ensure all required environment variables are set and non-empty.
+    Called after TradingConfig initialization to catch missing critical secrets early.
+    Fails fast with clear error messages pointing to missing variables.
+    """
+    required_vars = {
+        # API Security
+        "API_KEY": "FastAPI X-API-Key header authentication (use strong random value)",
+
+        # Database URLs (critical for operation)
+        "POSTGRES_URL": "PostgreSQL connection string (postgresql://user:pass@host:port/db)",
+        "REDIS_URL": "Redis connection string (redis://host:port)",
+
+        # Market Data (at least one required)
+        "POLYGON_API_KEY": "Polygon.io API key for market data",
+
+        # LLM (Anthropic)
+        "ANTHROPIC_API_KEY": "Anthropic API key (sk-ant-api03-...)",
+    }
+
+    optional_vars = {
+        "FINNHUB_API_KEY": "Alternative market data source",
+        "ALPACA_API_KEY": "Alpaca Markets integration",
+        "SCHWAB_APP_KEY": "Charles Schwab OAuth (for live trading)",
+        "TWILIO_ACCOUNT_SID": "Twilio WhatsApp alerts",
+        "TWILIO_AUTH_TOKEN": "Twilio authentication",
+        "TWILIO_WHATSAPP_FROM": "Twilio sender number",
+        "WHATSAPP_TO": "WhatsApp alert recipient",
+    }
+
+    missing_critical = []
+    missing_warnings = []
+
+    # Check critical variables
+    for var_name, description in required_vars.items():
+        value = os.environ.get(var_name, "").strip()
+        if not value:
+            missing_critical.append((var_name, description))
+
+    # Check optional variables (warn but don't fail)
+    for var_name, description in optional_vars.items():
+        value = os.environ.get(var_name, "").strip()
+        if not value:
+            missing_warnings.append((var_name, description))
+
+    # If critical variables missing, fail with detailed error
+    if missing_critical:
+        error_message = "\n" + "=" * 80 + "\n"
+        error_message += "STARTUP ERROR: Missing Required Environment Variables\n"
+        error_message += "=" * 80 + "\n\n"
+
+        for var_name, description in missing_critical:
+            error_message += f"  {var_name}\n"
+            error_message += f"    └─ {description}\n\n"
+
+        error_message += "How to fix:\n"
+        error_message += "  1. Copy .env.example to .env:\n"
+        error_message += "     cp .env.example .env\n\n"
+        error_message += "  2. Edit .env and populate all required variables with real values:\n"
+        error_message += "     nano .env\n\n"
+        error_message += "  3. NEVER commit .env — it's in .gitignore for your protection\n\n"
+        error_message += "  4. Verify .env is loaded:\n"
+        error_message += "     source .env && python -c \"import os; print(os.getenv('API_KEY'))\"\n\n"
+        error_message += "=" * 80 + "\n"
+
+        print(error_message, file=sys.stderr)
+        sys.exit(1)
+
+    # Warn about optional variables
+    if missing_warnings:
+        print("\n" + "=" * 80, file=sys.stderr)
+        print("WARNING: Some optional features will not work without these variables:", file=sys.stderr)
+        print("=" * 80 + "\n", file=sys.stderr)
+
+        for var_name, description in missing_warnings:
+            print(f"  {var_name}", file=sys.stderr)
+            print(f"    └─ {description}\n", file=sys.stderr)
+
+        print("These features are optional. If you don't need them, you can ignore this warning.\n", file=sys.stderr)
+        print("=" * 80 + "\n", file=sys.stderr)
 
 
 class TradingConfig(BaseSettings):
@@ -126,6 +211,9 @@ class TradingConfig(BaseSettings):
 
 # Singleton
 settings = TradingConfig()
+
+# Validate all required environment variables on startup
+_validate_required_env_vars()
 
 # Validate paper trading config on startup
 settings.validate_paper_trading_config()

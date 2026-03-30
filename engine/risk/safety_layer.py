@@ -128,11 +128,15 @@ class SafetyLayer:
         self._kill_switch_reason = reason
         logger.critical(f"🔴 KILL SWITCH ACTIVATED: {reason.value}. {message}")
         # Log to PostgreSQL asynchronously (never block)
-        asyncio.create_task(self._log_safety_event(
-            "kill_switch_activate",
-            reason.value,
-            {"reason": reason.value, "message": message}
-        ))
+        try:
+            asyncio.create_task(self._log_safety_event(
+                "kill_switch_activate",
+                reason.value,
+                {"reason": reason.value, "message": message}
+            ))
+        except RuntimeError:
+            # No running event loop (e.g., in tests or sync context)
+            logger.debug("No running event loop for async logging")
 
     def deactivate_kill_switch(self, authorized_by: str = "human") -> None:
         """Resume trading. Only callable by human action (not by agents)."""
@@ -140,11 +144,15 @@ class SafetyLayer:
         self._kill_switch_reason = None
         logger.info(f"✅ Kill switch deactivated by: {authorized_by}")
         # Log to PostgreSQL asynchronously
-        asyncio.create_task(self._log_safety_event(
-            "kill_switch_deactivate",
-            f"Deactivated by {authorized_by}",
-            {"authorized_by": authorized_by, "resolved": True}
-        ))
+        try:
+            asyncio.create_task(self._log_safety_event(
+                "kill_switch_deactivate",
+                f"Deactivated by {authorized_by}",
+                {"authorized_by": authorized_by, "resolved": True}
+            ))
+        except RuntimeError:
+            # No running event loop (e.g., in tests or sync context)
+            logger.debug("No running event loop for async logging")
 
     @property
     def is_killed(self) -> bool:
