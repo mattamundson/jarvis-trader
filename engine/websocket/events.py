@@ -6,6 +6,7 @@ Helper functions to broadcast trading events to connected clients.
 
 import logging
 from typing import Optional
+
 from .manager import WebSocketManager
 
 logger = logging.getLogger(__name__)

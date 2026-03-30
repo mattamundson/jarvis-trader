@@ -5,8 +5,10 @@ FastAPI dependency for X-API-Key header validation.
 Health, docs, and OpenAPI endpoints are exempt from authentication.
 """
 import logging
-from fastapi import Header, HTTPException, status, Request
 from typing import Annotated, Optional
+
+from fastapi import Header, HTTPException, Request, status
+
 from config import settings
 
 logger = logging.getLogger("jarvis_trader.auth")

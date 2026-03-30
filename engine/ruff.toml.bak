@@ -1,7 +1,7 @@
 # Ruff configuration for JARVIS TRADER
 # High-quality linting and formatting rules for production code
 
-[tool.ruff]
+[ruff]
 target-version = "py312"
 line-length = 120
 
@@ -25,7 +25,7 @@ ignore = [
 ]
 
 # Rules specific to certain paths
-[tool.ruff.per-file-ignores]
+[ruff.per-file-ignores]
 "**/tests/**" = [
     "F401",  # unused imports in tests
     "F841",  # unused variables in tests
@@ -35,7 +35,7 @@ ignore = [
 ]
 
 # Import sorting rules (isort)
-[tool.ruff.isort]
+[ruff.isort]
 known-first-party = [
     "engine",
     "agents",
@@ -59,12 +59,12 @@ force-single-line = false
 lines-between-types = 1
 
 # Naming conventions
-[tool.ruff.pep8-naming]
+[ruff.pep8-naming]
 classmethod-decorators = ["classmethod", "pydantic.field_serializer"]
 staticmethod-decorators = ["staticmethod"]
 
 # Format configuration (for ruff format)
-[tool.ruff.format]
+[ruff.format]
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"

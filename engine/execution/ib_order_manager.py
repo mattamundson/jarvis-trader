@@ -23,9 +23,9 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from engine.risk.safety_layer import SafetyLayer
     from engine.execution.ib_gateway import IBGatewayManager
     from engine.portfolio.tracker import PortfolioTracker
+    from engine.risk.safety_layer import SafetyLayer
 
 logger = logging.getLogger(__name__)
 

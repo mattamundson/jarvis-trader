@@ -3,11 +3,13 @@ JARVIS TRADER — Event-Driven Backtester
 Walk-forward simulation of the 5-layer trading strategy.
 """
 from __future__ import annotations
-import pandas as pd
-import numpy as np
+
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
-from datetime import datetime, date
+from datetime import datetime
+from typing import Dict, List, Optional
+
+import numpy as np
+import pandas as pd
 
 
 @dataclass
@@ -119,13 +121,13 @@ class BacktestResult:
             f"Period: {self.start_date} -> {self.end_date}",
             f"Capital: ${self.initial_capital:,.0f} -> ${self.final_capital:,.0f}",
             f"Return: {self.total_return_pct:+.1f}%  |  Max DD: {self.max_drawdown_pct:.1f}%",
-            f"",
+            "",
             f"Trades: {self.total_trades} total  |  Win Rate: {self.win_rate:.1%}",
             f"Avg Win: ${self.avg_win:,.0f}  |  Avg Loss: ${self.avg_loss:,.0f}",
             f"Profit Factor: {self.profit_factor:.2f}",
             f"Sharpe: {self.sharpe_ratio:.2f}  |  Sortino: {self.sortino_ratio:.2f}",
             f"Max Consec. Losses: {self.max_consecutive_losses}  |  Wins: {self.max_consecutive_wins}",
-            f"",
+            "",
             f"Calmar: {self.calmar_ratio:.2f}  |  Expectancy: ${self.expectancy:,.0f}  |  Recovery Factor: {self.recovery_factor:.2f}",
             f"Long Trades: {self.long_trades} (WR {self.long_win_rate:.0%})  |  Short Trades: {self.short_trades} (WR {self.short_win_rate:.0%})",
             f"Avg Holding: {self.avg_holding_bars:.1f} bars  |  Max DD Duration: {self.max_drawdown_duration_bars} bars",
@@ -784,4 +786,4 @@ class Backtester:
                     cur_dd_dur = 0
             result.max_drawdown_duration_bars = max_dd_dur
 
-        return result 
+        return result

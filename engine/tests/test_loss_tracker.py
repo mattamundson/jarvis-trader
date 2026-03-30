@@ -1,13 +1,13 @@
 """
 Tests for ConsecutiveLossTracker and SafetyLayer integration
 """
-import json
 import tempfile
-from pathlib import Path
+
 import pytest
-from risk.loss_tracker import ConsecutiveLossTracker, LossTrackerState
-from risk.safety_layer import SafetyLayer, OrderRequest, RiskCheckResult
+
 from config import settings
+from risk.loss_tracker import ConsecutiveLossTracker
+from risk.safety_layer import OrderRequest, SafetyLayer
 
 
 class TestConsecutiveLossTracker:
@@ -50,21 +50,21 @@ class TestConsecutiveLossTracker:
 
     def test_position_size_half(self, tracker):
         """Test position size reduction to 0.5x at 3 losses"""
-        for i in range(3):
+        for _i in range(3):
             tracker.record_trade("MES", -100.0)
         assert tracker.get_consecutive_losses() == 3
         assert tracker.get_position_size_multiplier() == 0.5
 
     def test_position_size_quarter(self, tracker):
         """Test position size reduction to 0.25x at 5 losses"""
-        for i in range(5):
+        for _i in range(5):
             tracker.record_trade("MES", -100.0)
         assert tracker.get_consecutive_losses() == 5
         assert tracker.get_position_size_multiplier() == 0.25
 
     def test_trading_halt_at_threshold(self, tracker):
         """Test trading halt triggered at 7+ losses"""
-        for i in range(7):
+        for _i in range(7):
             tracker.record_trade("MES", -100.0)
         assert tracker.get_consecutive_losses() == 7
         assert tracker.is_halted()
@@ -72,7 +72,7 @@ class TestConsecutiveLossTracker:
 
     def test_halt_reason(self, tracker):
         """Test halt reason message"""
-        for i in range(7):
+        for _i in range(7):
             tracker.record_trade("MES", -100.0)
         reason = tracker.get_halt_reason()
         assert "7 losses" in reason
@@ -80,7 +80,7 @@ class TestConsecutiveLossTracker:
 
     def test_winner_resets_counter(self, tracker):
         """Test that a winning trade resets the global counter"""
-        for i in range(3):
+        for _i in range(3):
             tracker.record_trade("MES", -100.0)
         assert tracker.get_consecutive_losses() == 3
 
@@ -104,7 +104,7 @@ class TestConsecutiveLossTracker:
 
     def test_manual_reset_global(self, tracker):
         """Test manual reset of global counter"""
-        for i in range(5):
+        for _i in range(5):
             tracker.record_trade("MES", -100.0)
         assert tracker.get_consecutive_losses() == 5
 
@@ -187,7 +187,7 @@ class TestSafetyLayerWithLossTracker:
         layer, tracker = components
 
         # Record 3 losses to trigger 0.5x position size
-        for i in range(3):
+        for _i in range(3):
             tracker.record_trade("MES", -100.0)
 
         order = OrderRequest(
@@ -207,7 +207,7 @@ class TestSafetyLayerWithLossTracker:
         layer, tracker = components
 
         # Record 7 losses to trigger halt
-        for i in range(7):
+        for _i in range(7):
             tracker.record_trade("MES", -100.0)
 
         order = OrderRequest(
@@ -279,7 +279,7 @@ class TestPositionSizingReduction:
         layer, tracker = components
 
         # Trigger 0.5x reduction
-        for i in range(3):
+        for _i in range(3):
             tracker.record_trade("MES", -100.0)
 
         # Original order: 4 contracts
@@ -303,7 +303,7 @@ class TestPositionSizingReduction:
         layer, tracker = components
 
         # Trigger 0.25x reduction
-        for i in range(5):
+        for _i in range(5):
             tracker.record_trade("MES", -100.0)
 
         order = OrderRequest(

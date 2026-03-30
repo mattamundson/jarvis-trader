@@ -12,7 +12,7 @@ To register in main.py, add:
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -196,7 +196,7 @@ def update_journal_entry(
         raise HTTPException(status_code=404, detail=f"Journal entry {entry_id} not found.")
 
     # Fetch the freshly updated row to return it.
-    rows = db.get_journal_entries(limit=1)  # fallback; prefer direct lookup
+    db.get_journal_entries(limit=1)  # fallback; prefer direct lookup
     # Direct lookup via a small helper query using the existing get_journal_entries:
     # We re-query with no filters and scan, but that is inefficient for large tables.
     # Instead use a raw approach through the public API with a known-unique filter.

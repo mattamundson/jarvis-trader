@@ -1,4 +1,4 @@
-"""
+r"""
 JARVIS TRADER — Health Monitor
 ================================
 Polls the engine health endpoint every 60 seconds.
@@ -11,11 +11,10 @@ Usage (run alongside the engine):
 """
 
 import logging
-import os
 import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -145,7 +144,7 @@ def _check_health() -> tuple[bool, str]:
         req = urllib.request.Request(HEALTH_URL, method="GET")
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             if resp.status == 200:
-                return True, f"HTTP 200"
+                return True, "HTTP 200"
             return False, f"HTTP {resp.status}"
     except urllib.error.URLError as exc:
         return False, f"URLError: {exc.reason}"

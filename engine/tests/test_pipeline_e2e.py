@@ -2,13 +2,12 @@
 JARVIS TRADER — Pipeline E2E Tests
 End-to-end testing of the multi-agent trading pipeline.
 """
-import pytest
-import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import datetime
+from unittest.mock import MagicMock
+
+import pytest
 
 from agents.pipeline import TradingPipeline
-from agents.schemas import Action, TradeDecision, RiskDecision, FundDecision
 
 
 class MockAgent:
@@ -195,7 +194,7 @@ class TestAnalystStages:
     async def test_all_analysts_called(self, trading_pipeline, mock_agents_dict):
         """All four analysts invoked concurrently."""
         # Act
-        result = await trading_pipeline.analyze_and_decide("MES", is_futures=True)
+        await trading_pipeline.analyze_and_decide("MES", is_futures=True)
 
         # Assert
         assert mock_agents_dict["technical"].call_count == 1
@@ -423,7 +422,7 @@ class TestPipelineKillSwitch:
         )
 
         # Act
-        result = await trading_pipeline.analyze_and_decide("MES", is_futures=True)
+        await trading_pipeline.analyze_and_decide("MES", is_futures=True)
 
         # Assert
         # Pipeline itself should still run, but traders should see killed status
@@ -451,7 +450,7 @@ class TestPipelineKillSwitch:
         trading_pipeline._agents["trader"].decide = capturing_decide
 
         # Act
-        result = await trading_pipeline.analyze_and_decide("MES", is_futures=True)
+        await trading_pipeline.analyze_and_decide("MES", is_futures=True)
 
         # Assert
         assert isinstance(captured_status, dict)
@@ -552,7 +551,7 @@ class TestPipelinePortfolio:
         mock_agents_dict["portfolio"].get_portfolio = MagicMock(return_value=mock_portfolio)
 
         # Act
-        result = await trading_pipeline.analyze_and_decide("MES", is_futures=True)
+        await trading_pipeline.analyze_and_decide("MES", is_futures=True)
 
         # Assert
         assert isinstance(captured_portfolio, dict)
@@ -565,7 +564,7 @@ class TestPipelineAllStagesPresent:
     async def test_pipeline_all_stages_present(self, trading_pipeline, mock_agents_dict):
         """Complete pipeline execution invokes all 5+ stages."""
         # Act
-        result = await trading_pipeline.analyze_and_decide("MES", is_futures=True)
+        await trading_pipeline.analyze_and_decide("MES", is_futures=True)
 
         # Assert - all stages executed
         assert mock_agents_dict["technical"].call_count == 1

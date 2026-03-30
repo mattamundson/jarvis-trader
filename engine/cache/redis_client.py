@@ -13,7 +13,6 @@ from typing import Any, Optional
 
 try:
     import redis.asyncio as redis
-    from redis.asyncio.connection import ConnectionPool
     from redis.exceptions import ConnectionError, RedisError, ResponseError
     REDIS_AVAILABLE = True
 except ImportError:

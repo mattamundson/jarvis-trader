@@ -7,6 +7,7 @@ Usage:
     .venv/Scripts/python -m backtest.run_backtest --symbol MES --start 2024-01-01 --capital 50000
 """
 from __future__ import annotations
+
 import argparse
 import json
 import sys
@@ -27,15 +28,15 @@ def main():
     parser.add_argument("--output", default=None, help="Save JSON results to file")
     args = parser.parse_args()
 
-    print(f"JARVIS TRADER Backtester")
+    print("JARVIS TRADER Backtester")
     print(f"Symbol: {args.symbol} | Period: {args.start} -> {args.end}")
     print(f"Capital: ${args.capital:,.0f} | Risk/trade: {args.risk:.1%}")
     print("-" * 50)
 
     try:
+        from backtest.backtester import Backtester
         from backtest.data_loader import BacktestDataLoader
         from backtest.signals import generate_signals
-        from backtest.backtester import Backtester
     except ImportError as e:
         print(f"[ERROR] Import failed: {e}")
         print("Make sure you're running from the engine/ directory.")

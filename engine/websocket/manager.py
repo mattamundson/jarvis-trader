@@ -5,10 +5,10 @@ Tracks connected clients and broadcasts real-time events.
 """
 
 import asyncio
-import json
 import logging
 from datetime import datetime
 from typing import Set
+
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)

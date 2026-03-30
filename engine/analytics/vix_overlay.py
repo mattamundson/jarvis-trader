@@ -11,11 +11,11 @@ VIX Regime Map:
   VIX >= 40  -> EXTREME  -- Trading paused (kill signals)
 """
 
+import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
-import logging
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,6 @@ Telegram Notifications
 Sends trading alerts to Telegram when JARVIS produces actionable signals.
 Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env to enable.
 """
-import asyncio
 import logging
 from datetime import datetime
 from typing import Optional
@@ -71,16 +70,16 @@ class TelegramNotifier:
 
         # Build the message
         if action == "buy":
-            emoji = "BUY"
+            pass
         elif action == "sell":
-            emoji = "SELL"
+            pass
         else:
-            emoji = "ALERT"
+            pass
         action_text = action.upper().replace("_", " ")
 
         lines = [
             f"<b>JARVIS TRADER — {action_text}</b>",
-            f"",
+            "",
             f"<b>Symbol:</b> {symbol}",
             f"<b>Action:</b> {action_text}",
             f"<b>Confidence:</b> {confidence:.0%}",
@@ -106,7 +105,7 @@ class TelegramNotifier:
         lines.extend([
             "",
             f"<code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>",
-            f"<a href='http://localhost:3010'>Open Dashboard</a>",
+            "<a href='http://localhost:3010'>Open Dashboard</a>",
         ])
 
         message = "\n".join(lines)

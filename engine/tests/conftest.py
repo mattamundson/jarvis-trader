@@ -2,12 +2,10 @@
 JARVIS TRADER — Pytest Fixtures
 Shared test fixtures for all test modules.
 """
-import pytest
-from datetime import datetime
-from unittest.mock import MagicMock
 import os
-import sys
-from pathlib import Path
+from datetime import datetime
+
+import pytest
 
 # Set test environment variables BEFORE any imports
 test_env_vars = {
@@ -30,20 +28,17 @@ test_env_vars = {
 for key, value in test_env_vars.items():
     os.environ.setdefault(key, value)
 
-from config import TradingConfig
-from risk.safety_layer import SafetyLayer
 from agents.schemas import (
-    TechnicalReport,
+    EntrySignal,
+    FundamentalReport,
+    MarketRegime,
     NewsReport,
     SocialReport,
-    FundamentalReport,
-    TradeDecision,
-    Action,
-    OrderType,
-    MarketRegime,
+    TechnicalReport,
     TrendDirection,
-    EntrySignal,
 )
+from config import TradingConfig
+from risk.safety_layer import SafetyLayer
 
 
 @pytest.fixture

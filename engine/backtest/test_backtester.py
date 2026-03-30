@@ -5,15 +5,16 @@ Verifies 5 critical bug fixes with synthetic data and known outcomes.
 Run:  cd engine && .venv/Scripts/python backtest/test_backtester.py
 """
 from __future__ import annotations
+
 import sys
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
 
 # Ensure engine/ is on the path so we can import the backtester
 sys.path.insert(0, ".")
-from backtest.backtester import Backtester, Trade, BacktestResult
-
+from backtest.backtester import Backtester
 
 # ── Helper ──────────────────────────────────────────────────────────────────
 
@@ -187,8 +188,8 @@ def test_eod_exit_at_day_boundary():
         exit_date = trade.exit_date
 
         # Should exit on day 1's LAST bar (index 5 → 15:00 on Jan 6)
-        day1_last = dates[5]  # 2025-01-06 15:00
-        day2_last = dates[11]  # 2025-01-07 15:00
+        dates[5]  # 2025-01-06 15:00
+        dates[11]  # 2025-01-07 15:00
 
         if trade.exit_reason != "eod":
             passed = False
@@ -297,8 +298,6 @@ def test_commission_slippage_deducted():
     slippage = 1
     tick_size = 0.01  # SPY is an ETF -> tick_size = 0.01
 
-    entry_close = 100.0
-    entry_open = 100.0
 
     # Signal bar: close=100, stop_level=98 (100-2), T1=103 (100+1.5*2)
     # stop_atr_mult = 2/2 = 1.0

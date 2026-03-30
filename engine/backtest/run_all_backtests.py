@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -52,9 +51,9 @@ def run_single_backtest(
     Run one backtest and return a result dict.
     On failure returns a dict with status='ERROR' and an error message.
     """
+    from backtest.backtester import Backtester
     from backtest.data_loader import BacktestDataLoader
     from backtest.signals import generate_signals
-    from backtest.backtester import Backtester
 
     t0 = time.time()
     result_row: Dict[str, Any] = {
@@ -123,7 +122,7 @@ def print_matrix_table(results: List[Dict[str, Any]], capital: float) -> None:
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     print()
     print("=" * 90)
-    print(f"  JARVIS TRADER -- BACKTEST MATRIX")
+    print("  JARVIS TRADER -- BACKTEST MATRIX")
     print(f"  Date: {now_str}  |  Capital: ${capital:,.0f}")
     print("=" * 90)
 
@@ -382,7 +381,7 @@ def main() -> None:
 
     total = len(matrix)
     print()
-    print(f"JARVIS TRADER -- Backtest Matrix Runner")
+    print("JARVIS TRADER -- Backtest Matrix Runner")
     print(f"  Symbols:   {', '.join(symbols)}")
     print(f"  Intervals: {', '.join(intervals)}")
     print(f"  Capital:   ${args.capital:,.0f}")

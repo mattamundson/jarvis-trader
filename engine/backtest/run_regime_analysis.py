@@ -11,14 +11,14 @@ Usage:
       - regime_analysis.html (visualization)
 """
 from __future__ import annotations
+
 import argparse
 import json
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
-import numpy as np
 
 
 def main():
@@ -54,10 +54,8 @@ def main():
     # Prefer full_metrics trades which have regime data; fall back to trades_list
     if 'full_metrics' in results and 'trades' in results['full_metrics']:
         trades = results['full_metrics']['trades']
-        use_embedded_regime = True
     else:
         trades = results.get('trades_list', [])
-        use_embedded_regime = False
 
     symbol = results.get('symbol', 'UNKNOWN')
     interval = results.get('interval', '1h')
@@ -104,7 +102,7 @@ def main():
     print("Analyzing regimes...")
     analyzer = RegimeAnalyzer(df)
     # Use embedded regime data if available (from full_metrics.trades)
-    regime_stats = analyzer.analyze_trades(trades, regime_column='regime')
+    analyzer.analyze_trades(trades, regime_column='regime')
 
     print(analyzer.summary())
 

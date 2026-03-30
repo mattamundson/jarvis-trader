@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Callable, Awaitable, Optional
+from typing import Awaitable, Callable, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel

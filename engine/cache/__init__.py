@@ -10,13 +10,16 @@ Provides:
 If Redis is unavailable, falls back to in-memory dict cache (non-persistent).
 """
 
+from .alert_cooldown import clear_cooldown, is_on_cooldown, set_cooldown
+from .feature_store import get_indicators, store_indicators
 from .redis_client import (
-    init_redis, close_redis, get_redis_client,
-    get_cache_stats, reset_cache_stats
+    close_redis,
+    get_cache_stats,
+    get_redis_client,
+    init_redis,
+    reset_cache_stats,
 )
 from .signal_cache import cache_signal, get_cached_signal, invalidate_signal, should_use_cache
-from .alert_cooldown import set_cooldown, is_on_cooldown, clear_cooldown
-from .feature_store import store_indicators, get_indicators
 
 __all__ = [
     # Lifecycle

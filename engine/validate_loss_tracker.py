@@ -10,9 +10,9 @@ from pathlib import Path
 # Add engine to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from risk.loss_tracker import ConsecutiveLossTracker
-from risk.safety_layer import SafetyLayer, OrderRequest
 from config import settings
+from risk.loss_tracker import ConsecutiveLossTracker
+from risk.safety_layer import OrderRequest, SafetyLayer
 
 
 def test_basic_functionality():
@@ -54,7 +54,7 @@ def test_halt_logic():
         tracker = ConsecutiveLossTracker(data_dir=tmpdir)
 
         # Record 7 losses
-        for i in range(7):
+        for _i in range(7):
             tracker.record_trade("MES", -50.0)
 
         assert tracker.get_consecutive_losses() == 7, "Should have 7 losses"
@@ -127,7 +127,7 @@ def test_safety_layer_integration():
         print("✅ Order approved with no losses")
 
         # Record losses
-        for i in range(3):
+        for _i in range(3):
             tracker.record_trade("MES", -100.0)
 
         # Order should be approved but with warning
@@ -162,7 +162,7 @@ def test_order_rejection_on_halt():
         layer = SafetyLayer(settings, loss_tracker=tracker)
 
         # Trigger halt (7+ losses)
-        for i in range(7):
+        for _i in range(7):
             tracker.record_trade("MES", -50.0)
 
         order = OrderRequest(
@@ -198,7 +198,7 @@ def main():
     passed = 0
     failed = 0
 
-    for name, test_func in tests:
+    for _name, test_func in tests:
         try:
             test_func()
             passed += 1

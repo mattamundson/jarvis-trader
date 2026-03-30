@@ -85,7 +85,7 @@ class WhatsAppNotifier:
 
         lines = [
             f"*JARVIS TRADER — {action_text}*",
-            f"",
+            "",
             f"Symbol: {symbol}",
             f"Action: {action_text}",
             f"Confidence: {confidence:.0%}",
@@ -219,7 +219,7 @@ def format_trade_closed_alert(
 
     lines = [
         f"{emoji} *Trade Closed \u2014 {direction}*",
-        f"",
+        "",
         f"\U0001f4ca {symbol} {side.upper()} {quantity}ct",
         f"\U0001f4c8 Entry: ${entry_price:.2f} \u2192 Exit: ${exit_price:.2f} ({pts_str} pts)",
         f"\U0001f4b0 P&L: *{pnl_str}*",

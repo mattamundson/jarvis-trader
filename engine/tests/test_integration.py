@@ -582,7 +582,6 @@ class TestPortfolioEndpoints(unittest.TestCase):
 
     def _get(self, path: str) -> tuple[int, dict]:
         """GET the given path and return (status_code, parsed_json)."""
-        import json
         url = f"{self.BASE}{path}"
         try:
             with urllib.request.urlopen(url, timeout=5) as resp:
@@ -695,7 +694,6 @@ class TestPortfolioEndpoints(unittest.TestCase):
 # ===========================================================================
 
 import json
-import pytest
 
 # ---------------------------------------------------------------------------
 # Build a minimal FastAPI TestClient that includes only the webhook router.
@@ -704,9 +702,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 try:
+    from engine.routers.webhook_router import router as _webhook_router
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from engine.routers.webhook_router import router as _webhook_router
 
     _webhook_app = FastAPI()
     _webhook_app.include_router(_webhook_router)
@@ -726,7 +724,6 @@ class TestWebhookRouter(unittest.TestCase):
         """Ensure TRADINGVIEW_WEBHOOK_SECRET is unset so auth tests are deterministic."""
         os.environ.pop("TRADINGVIEW_WEBHOOK_SECRET", None)
         # Re-import the module so the module-level WEBHOOK_SECRET re-reads the env.
-        import importlib
         import engine.routers.webhook_router as _wh_mod
         _wh_mod.WEBHOOK_SECRET = os.getenv("TRADINGVIEW_WEBHOOK_SECRET", "")
 
@@ -871,10 +868,11 @@ class TestWebhookRouter(unittest.TestCase):
 
 try:
     import importlib.util as _importlib_util
-    import types as _types_mod
     import tempfile as _tmpfile_mod
-    import shutil as _shutil_mod
-    from fastapi import FastAPI as _FastAPI, HTTPException as _HTTPException
+    import types as _types_mod
+
+    from fastapi import FastAPI as _FastAPI
+    from fastapi import HTTPException as _HTTPException
     from fastapi.testclient import TestClient as _TestClient
     from pydantic import BaseModel as _BaseModel
 
@@ -1205,7 +1203,6 @@ class TestSession4Endpoints(unittest.TestCase):
 
     def _get(self, path: str, params: dict | None = None) -> tuple[int, dict]:
         """GET the given path (with optional query params) and return (status_code, body)."""
-        import json
         from urllib.parse import urlencode
 
         url = f"{self.BASE}{path}"
@@ -1225,7 +1222,6 @@ class TestSession4Endpoints(unittest.TestCase):
 
     def _post(self, path: str, payload: dict) -> tuple[int, dict]:
         """POST JSON payload and return (status_code, body)."""
-        import json
         import urllib.request
 
         url = f"{self.BASE}{path}"
@@ -1375,7 +1371,6 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
 
     def _get(self, path: str, params: dict | None = None) -> tuple[int, dict]:
         """GET the given path (with optional query params) and return (status_code, body)."""
-        import json
         from urllib.parse import urlencode
 
         url = f"{self.BASE}{path}"
@@ -1395,7 +1390,6 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
 
     def _post(self, path: str, payload: dict) -> tuple[int, dict]:
         """POST JSON payload and return (status_code, body)."""
-        import json
         import urllib.request
 
         url = f"{self.BASE}{path}"

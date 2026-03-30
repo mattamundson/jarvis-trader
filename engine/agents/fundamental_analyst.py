@@ -9,13 +9,11 @@ basic financials before the same LLM regime assessment.
 Refresh interval: daily (macro data does not change intraday).
 Model: Claude Sonnet 4.6
 """
-import io
 import json
 import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 import httpx
 

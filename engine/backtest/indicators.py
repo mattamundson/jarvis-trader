@@ -4,9 +4,11 @@ Pure-Python implementations of all ThinkorSwim-derived indicators.
 No TA-Lib dependency. Uses numpy and pandas only.
 """
 from __future__ import annotations
+
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Tuple, Dict, List, Optional
 
 
 def wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:

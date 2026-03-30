@@ -195,7 +195,7 @@ async def execute_insert(
     """
     pool = get_pool()
     if pool is None:
-        logger.debug(f"[DB] INSERT skipped (no pool)")
+        logger.debug("[DB] INSERT skipped (no pool)")
         return None
 
     try:

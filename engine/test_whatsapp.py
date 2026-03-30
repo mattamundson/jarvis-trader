@@ -1,11 +1,12 @@
 """Test WhatsApp notification — sends a test message to verify Twilio setup."""
-import sys
-import os
 import asyncio
+import os
+import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 from dotenv import load_dotenv
+
 load_dotenv('.env')
 
 from notifications.whatsapp import WhatsAppNotifier
@@ -19,7 +20,7 @@ async def main():
         print("Check that TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, WHATSAPP_TO are set in .env")
         return False
 
-    print(f"WhatsApp notifier enabled. Sending test message...")
+    print("WhatsApp notifier enabled. Sending test message...")
     result = await notifier.test()
     print(f"Result: {result}")
 

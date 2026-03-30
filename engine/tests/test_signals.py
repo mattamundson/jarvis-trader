@@ -2,16 +2,13 @@
 JARVIS TRADER — Signal Generation Tests
 Testing of the 5-layer Tony Stark trading framework signals.
 """
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
+
 from backtest.signals import (
-    generate_signals,
     compute_all_indicators,
-    layer1_regime,
-    layer2_structure,
-    layer3_bias,
-    layer4_entry,
+    generate_signals,
 )
 
 
@@ -186,7 +183,7 @@ class TestSTCCrossover:
         signals = generate_signals(df, symbol="MES", stc_oversold=20)
 
         # Assert
-        oversold_rows = signals[signals["stc_signal"] == "oversold"]
+        signals[signals["stc_signal"] == "oversold"]
         # May or may not have oversold in this data, but signal should work
         assert "stc_signal" in signals.columns
 
@@ -481,7 +478,7 @@ class TestLayer4Entry:
         signals = generate_signals(df, symbol="MES")
 
         # Assert
-        wait_count = (signals["entry_signal"] == "WAIT_FOR_PULLBACK").sum()
+        (signals["entry_signal"] == "WAIT_FOR_PULLBACK").sum()
         # May have some depending on STC
 
 

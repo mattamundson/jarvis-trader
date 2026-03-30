@@ -20,10 +20,11 @@ Usage:
     df = clf.classify(df)   # adds 'regime_type', 'adaptive_stc_os', 'adaptive_stc_ob' columns
 """
 from __future__ import annotations
-import numpy as np
-import pandas as pd
+
 from typing import Dict, Tuple
 
+import numpy as np
+import pandas as pd
 
 # ── Regime-specific STC parameter sets ────────────────────────────────────────
 # Validated against walk-forward data: TRENDING needs STC_OB=92 (MNQ finding),

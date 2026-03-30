@@ -506,4 +506,29 @@ def main():
     print(f"Loading {args.symbol} ({args.interval}) from {args.start} to {args.end}...")
 
     df = loader.load(args.symbol, args.start, args.end, args.interval)
-    if df
+    if df is None or df.empty:
+        print(f"ERROR: No data loaded for {args.symbol}")
+        return
+
+    # ── Run walk-forward engine ────────────────────────────────────────────
+    print("\nRunning walk-forward engine...")
+    engine = WalkForwardEngine(
+        df=df,
+        symbol=args.symbol,
+        interval=args.interval,
+        train_months=args.train_months,
+        test_months=args.test_months,
+        step_months=args.step_months,
+        initial_capital=args.capital,
+        use_full_grid=args.full_grid,
+        adaptive_regime=args.adaptive_regime,
+        volume_filter=args.volume_filter,
+        mtf_filter=args.mtf_filter,
+    )
+
+    result = engine.run()
+    print(f"\nWalk-forward engine complete:")
+    print(f"  Total windows: {result['windows_completed']}")
+    print(f"  Avg Sharpe: {result['avg_sharpe']:.2f}")
+    print(f"  Best window Sharpe: {result['best_window_sharpe']:.2f}")
+    print(f"  Worst window Sharpe: {result['worst_window_sharpe']:.2f}")

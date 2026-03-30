@@ -161,12 +161,4 @@ Kill trigger: any 3-month window below 3.8% return (50% of 7.6% baseline).
 
 1. **MNQ 1h needs WFE > 0.40 for paper trading approval** — currently 0.34. Close but not yet over the threshold.
 
-2. **MTF filter walk-forward in progress** — multi-timeframe confirmation may push MNQ above the 0.40 threshold. This is the most promising remaining lever.
-
-3. **Monitor MGC 1d paper trading performance monthly** — WFE=0.88 is excellent but real-world slippage/execution effects need validation.
-
-4. **Consider extending history to 2022** — bear market data would provide more robust validation. Current 2024-2026 window is predominantly bull market, biasing parameters toward trend-following STC thresholds.
-
----
-
-*Source data: 55+ result files in `engine/backtest/results/`. Includes optimizer JSONs, corrected backtests, sensitivity analysis (3 instruments), Monte Carlo (4 instruments, 10k sims each), and walk-forward validation (5 instruments, 6-7 windows each).*
+2. **MTF filter walk-forward in progress** — multi-timeframe confirmation may

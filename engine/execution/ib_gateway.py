@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
@@ -44,12 +44,14 @@ try:
     from ib_async import (  # type: ignore[import]
         IB,
         Contract,
-        Stock,
         Future,
-        MarketOrder,
         LimitOrder,
-        StopOrder,
+        MarketOrder,
+        Stock,
         StopLimitOrder,
+        StopOrder,
+    )
+    from ib_async import (
         util as ib_util,
     )
     IB_INSYNC_AVAILABLE = True
@@ -60,12 +62,14 @@ except ImportError:
         from ib_insync import (  # type: ignore[import]
             IB,
             Contract,
-            Stock,
             Future,
-            MarketOrder,
             LimitOrder,
-            StopOrder,
+            MarketOrder,
+            Stock,
             StopLimitOrder,
+            StopOrder,
+        )
+        from ib_insync import (
             util as ib_util,
         )
         IB_INSYNC_AVAILABLE = True
@@ -609,7 +613,7 @@ class IBGatewayManager:
                 "BuyingPower",
             }
 
-            summary: dict = {k: 0.0 for k in KEYS_OF_INTEREST}
+            summary: dict = dict.fromkeys(KEYS_OF_INTEREST, 0.0)
             for av in account_values:
                 if av.tag in KEYS_OF_INTEREST:
                     try:

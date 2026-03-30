@@ -7,6 +7,7 @@ Usage:
     .venv/Scripts/python -m backtest.test_news_blackout
 """
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 
@@ -15,10 +16,10 @@ engine_dir = Path(__file__).parent.parent
 if str(engine_dir) not in sys.path:
     sys.path.insert(0, str(engine_dir))
 
-from backtest.data_loader import BacktestDataLoader
-from backtest.signals import generate_signals
 from backtest.backtester import Backtester
+from backtest.data_loader import BacktestDataLoader
 from backtest.news_blackout import EconomicCalendar
+from backtest.signals import generate_signals
 
 
 def main():
@@ -170,7 +171,7 @@ def main():
     # To answer this, we run the baseline backtest and check which trades
     # corresponded to entry bars that would have been blocked.
     if blocked_entries > 0 and result_baseline.total_trades > 0:
-        blocked_timestamps = set(blocked_rows.index)
+        set(blocked_rows.index)
 
         # In the baseline, trades that entered on a blocked bar:
         # (entry_date is the execution bar = signal bar + 1 for pending entries,
@@ -209,12 +210,12 @@ def main():
             print(f"  Win Rate: {blocked_wr:.1%}")
             print(f"  Total P&L of blocked trades: ${blocked_total_pnl:,.0f}")
             if blocked_total_pnl < 0:
-                print(f"  --> GOOD: Blocked trades were NET LOSERS (filter is beneficial)")
+                print("  --> GOOD: Blocked trades were NET LOSERS (filter is beneficial)")
             elif blocked_total_pnl == 0:
-                print(f"  --> NEUTRAL: Blocked trades broke even")
+                print("  --> NEUTRAL: Blocked trades broke even")
             else:
-                print(f"  --> CAUTION: Blocked trades were NET WINNERS "
-                      f"(filter may be removing good trades)")
+                print("  --> CAUTION: Blocked trades were NET WINNERS "
+                      "(filter may be removing good trades)")
 
             if non_blocked_trades:
                 non_blocked_wr = sum(1 for t in non_blocked_trades if t.pnl > 0) / len(non_blocked_trades)
@@ -233,20 +234,20 @@ def main():
     ret_delta = (result_filtered.total_return_pct - result_baseline.total_return_pct) * 100
 
     if pf_delta > 0 and wr_delta >= 0:
-        print(f"  NEWS BLACKOUT IMPROVES performance:")
+        print("  NEWS BLACKOUT IMPROVES performance:")
         print(f"  PF: {result_baseline.profit_factor:.2f} -> {result_filtered.profit_factor:.2f} ({pf_delta:+.2f})")
         print(f"  WR: {result_baseline.win_rate:.1%} -> {result_filtered.win_rate:.1%} ({wr_delta:+.1f}pp)")
         print(f"  Return: {result_baseline.total_return_pct*100:.1f}% -> {result_filtered.total_return_pct*100:.1f}% ({ret_delta:+.1f}pp)")
-        print(f"  RECOMMENDATION: Enable news_blackout=True in production.")
+        print("  RECOMMENDATION: Enable news_blackout=True in production.")
     elif pf_delta < -0.05:
-        print(f"  NEWS BLACKOUT HURTS performance:")
+        print("  NEWS BLACKOUT HURTS performance:")
         print(f"  PF: {result_baseline.profit_factor:.2f} -> {result_filtered.profit_factor:.2f} ({pf_delta:+.2f})")
-        print(f"  RECOMMENDATION: Keep news_blackout=False (or widen window).")
+        print("  RECOMMENDATION: Keep news_blackout=False (or widen window).")
     else:
-        print(f"  NEWS BLACKOUT has MARGINAL effect:")
+        print("  NEWS BLACKOUT has MARGINAL effect:")
         print(f"  PF: {result_baseline.profit_factor:.2f} -> {result_filtered.profit_factor:.2f} ({pf_delta:+.2f})")
         print(f"  WR: {result_baseline.win_rate:.1%} -> {result_filtered.win_rate:.1%} ({wr_delta:+.1f}pp)")
-        print(f"  RECOMMENDATION: Use if risk-averse; marginal impact on returns.")
+        print("  RECOMMENDATION: Use if risk-averse; marginal impact on returns.")
     print("=" * 70)
 
 

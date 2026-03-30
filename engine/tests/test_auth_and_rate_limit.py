@@ -5,10 +5,11 @@ Test suite for X-API-Key authentication and slowapi rate limiting.
 
 Run with: pytest tests/test_auth_and_rate_limit.py -v
 """
-import pytest
-from fastapi.testclient import TestClient
 import sys
 from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
 
 # Add parent directory to path so we can import main
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -125,7 +126,7 @@ class TestRateLimiting:
         headers = {"X-API-Key": "jarvis-dev-key-change-me"}
         # Make requests up to the limit (10/minute for /safety/status)
         # In memory storage might be reset between tests, so we do aggressive test
-        for i in range(15):
+        for _i in range(15):
             response = client.get("/safety/status", headers=headers)
             if response.status_code == 429:
                 assert response.json()["detail"] == "Rate limit exceeded. Please try again later."

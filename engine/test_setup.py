@@ -14,9 +14,9 @@ Checks:
   ✅ Anthropic LLM API
   ✅ Infrastructure (PostgreSQL, Redis, QuestDB)
 """
-import sys
-import os
 import asyncio
+import os
+import sys
 from pathlib import Path
 
 
@@ -143,8 +143,8 @@ async def check_connections():
         await r.ping()
         await r.aclose()
         check_warn("Redis", True, "connected on localhost:6379")
-    except Exception as e:
-        check_warn("Redis", False, f"not running — start with: docker compose up -d redis")
+    except Exception:
+        check_warn("Redis", False, "not running — start with: docker compose up -d redis")
 
     # PostgreSQL
     try:

@@ -4,10 +4,12 @@ Fetches historical OHLCV data via yfinance with futures symbol mapping.
 Results are cached to disk to avoid Yahoo Finance rate limits on repeated runs.
 """
 from __future__ import annotations
-import yfinance as yf
-import pandas as pd
+
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
+
+import pandas as pd
+import yfinance as yf
 
 CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
@@ -105,8 +107,9 @@ class BacktestDataLoader:
         Uses browser User-Agent to avoid detection.
         Fetches in 60-day chunks for 1h data (Yahoo limit), concatenates.
         """
-        import requests
         from datetime import datetime, timedelta
+
+        import requests
 
         headers = {
             "User-Agent": (

@@ -5,8 +5,6 @@ Run with: python test_redis_cache.py
 """
 
 import asyncio
-import json
-from datetime import datetime
 
 
 async def test_redis_init():
@@ -15,7 +13,7 @@ async def test_redis_init():
     print("TEST 1: Redis Initialization")
     print("="*60)
 
-    from cache import init_redis, close_redis, get_redis_client
+    from cache import close_redis, get_redis_client, init_redis
 
     redis_url = "redis://localhost:6379"
     print(f"Initializing Redis: {redis_url}")
@@ -41,9 +39,12 @@ async def test_signal_cache():
     print("="*60)
 
     from cache import (
-        init_redis, close_redis,
-        cache_signal, get_cached_signal, should_use_cache,
-        get_cache_stats
+        cache_signal,
+        close_redis,
+        get_cache_stats,
+        get_cached_signal,
+        init_redis,
+        should_use_cache,
     )
 
     await init_redis("redis://localhost:6379")
@@ -60,23 +61,23 @@ async def test_signal_cache():
         "summary": "Test signal"
     }
 
-    print(f"\nCaching signal for MES...")
+    print("\nCaching signal for MES...")
     success = await cache_signal("MES", pipeline_result)
     print(f"✅ Signal cached: {success}")
 
-    print(f"\nRetrieving cached signal...")
+    print("\nRetrieving cached signal...")
     should_use = await should_use_cache("MES")
     print(f"✅ Should use cache: {should_use}")
 
     cached = await get_cached_signal("MES")
     if cached:
-        print(f"✅ Retrieved cached signal:")
+        print("✅ Retrieved cached signal:")
         print(f"   Symbol: {cached['symbol']}")
         print(f"   Action: {cached['final_action']}")
         print(f"   Quantity: {cached['final_quantity']}")
 
     stats = get_cache_stats()
-    print(f"\n✅ Cache Statistics:")
+    print("\n✅ Cache Statistics:")
     print(f"   Hits: {stats['cache_hits']}")
     print(f"   Misses: {stats['cache_misses']}")
     print(f"   Total: {stats['total_accesses']}")
@@ -91,10 +92,7 @@ async def test_alert_cooldown():
     print("TEST 3: Alert Cooldown (WhatsApp Rate Limiting)")
     print("="*60)
 
-    from cache import (
-        init_redis, close_redis,
-        set_cooldown, is_on_cooldown, clear_cooldown
-    )
+    from cache import clear_cooldown, close_redis, init_redis, is_on_cooldown, set_cooldown
 
     await init_redis("redis://localhost:6379")
 
@@ -105,19 +103,19 @@ async def test_alert_cooldown():
     active = await is_on_cooldown(symbol, channel)
     print(f"✅ Cooldown active (before set): {active}")
 
-    print(f"\nSetting 2-hour cooldown...")
+    print("\nSetting 2-hour cooldown...")
     success = await set_cooldown(symbol, channel, seconds=7200)
     print(f"✅ Cooldown set: {success}")
 
-    print(f"\nChecking cooldown again...")
+    print("\nChecking cooldown again...")
     active = await is_on_cooldown(symbol, channel)
     print(f"✅ Cooldown active (after set): {active}")
 
-    print(f"\nClearing cooldown...")
+    print("\nClearing cooldown...")
     success = await clear_cooldown(symbol, channel)
     print(f"✅ Cooldown cleared: {success}")
 
-    print(f"\nChecking cooldown after clear...")
+    print("\nChecking cooldown after clear...")
     active = await is_on_cooldown(symbol, channel)
     print(f"✅ Cooldown active (after clear): {active}\n")
 
@@ -130,10 +128,7 @@ async def test_indicator_cache():
     print("TEST 4: Indicator Cache (Technical Analysis)")
     print("="*60)
 
-    from cache import (
-        init_redis, close_redis,
-        store_indicators, get_indicators
-    )
+    from cache import close_redis, get_indicators, init_redis, store_indicators
 
     await init_redis("redis://localhost:6379")
 
@@ -151,10 +146,10 @@ async def test_indicator_cache():
     success = await store_indicators(symbol, timeframe, indicators)
     print(f"✅ Indicators stored: {success}")
 
-    print(f"\nRetrieving indicators...")
+    print("\nRetrieving indicators...")
     cached_indicators = await get_indicators(symbol, timeframe)
     if cached_indicators:
-        print(f"✅ Retrieved indicators:")
+        print("✅ Retrieved indicators:")
         for key, val in cached_indicators.items():
             print(f"   {key}: {val}")
 
@@ -168,20 +163,17 @@ async def test_graceful_fallback():
     print("TEST 5: Graceful Fallback (Invalid Redis URL)")
     print("="*60)
 
-    from cache import (
-        init_redis, close_redis, get_redis_client,
-        cache_signal, get_cached_signal
-    )
+    from cache import cache_signal, close_redis, get_cached_signal, init_redis
 
     # Try to connect to invalid Redis URL
-    print(f"\nTrying to connect to invalid URL...")
+    print("\nTrying to connect to invalid URL...")
     success = await init_redis("redis://localhost:9999")  # Invalid port
 
     if not success:
         print("✅ Gracefully fell back to in-memory cache")
 
         # Verify fallback works
-        print(f"\nTesting cache operations on fallback...")
+        print("\nTesting cache operations on fallback...")
 
         result = {"symbol": "MES", "action": "hold"}
         await cache_signal("MES", result)

@@ -22,13 +22,12 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import anthropic
-from anthropic import RateLimitError, APIConnectionError, APIStatusError
+from anthropic import APIConnectionError, APIStatusError, RateLimitError
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
-    RetryError,
 )
 
 from .cost_tracker import CostTracker

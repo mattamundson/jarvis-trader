@@ -2,10 +2,10 @@
 JARVIS TRADER — Safety Layer Tests
 Comprehensive testing of all 14 hard rules.
 """
+
 import pytest
-import math
-from datetime import date
-from risk.safety_layer import SafetyLayer, OrderRequest, RiskCheckResult, KillSwitchReason
+
+from risk.safety_layer import KillSwitchReason, OrderRequest, RiskCheckResult, SafetyLayer
 
 
 class TestKillSwitch:
@@ -52,7 +52,7 @@ class TestKillSwitch:
         safety.activate_kill_switch(KillSwitchReason.DAILY_LOSS_LIMIT)
 
         # Act & Assert - multiple orders all rejected
-        for i in range(3):
+        for _i in range(3):
             order = OrderRequest(
                 symbol="MES",
                 quantity=1,
@@ -425,7 +425,7 @@ class TestOrderRateThrottle:
         )
 
         # Act & Assert
-        for i in range(5):
+        for _i in range(5):
             result = safety.check_order(order, 100_000.0)
             assert result.approved is True
 

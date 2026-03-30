@@ -1233,7 +1233,7 @@ class DatabaseManager:
                 col_names = [d[0] for d in cursor.description]
                 notes = []
                 for row in cursor.fetchall():
-                    note = dict(zip(col_names, row))
+                    note = dict(zip(col_names, row, strict=False))
                     try:
                         note["tags"] = json.loads(note.get("tags") or "[]")
                     except Exception:
@@ -1352,7 +1352,7 @@ class DatabaseManager:
             try:
                 cursor = conn.execute(sql, params)
                 col_names = [d[0] for d in cursor.description]
-                return [dict(zip(col_names, row)) for row in cursor.fetchall()]
+                return [dict(zip(col_names, row, strict=False)) for row in cursor.fetchall()]
             finally:
                 conn.close()
 

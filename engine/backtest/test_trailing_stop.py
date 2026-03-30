@@ -8,16 +8,17 @@ Compares baseline (fixed stop) vs trailing ATR stop on:
 Reports: trade count, win rate, PF, return, MaxDD, exit type breakdown.
 """
 from __future__ import annotations
+
 import sys
-from pathlib import Path
 from collections import Counter
+from pathlib import Path
 
 # Ensure engine/ is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backtest.backtester import Backtester
 from backtest.data_loader import BacktestDataLoader
 from backtest.signals import generate_signals
-from backtest.backtester import Backtester
 
 
 def run_comparison(
@@ -98,7 +99,7 @@ def run_comparison(
         print(f"{label:<28} {str(base_val):<22} {str(trail_val):<22} {delta:<15}")
 
     # Exit type breakdown
-    print(f"\n--- Exit Type Breakdown ---")
+    print("\n--- Exit Type Breakdown ---")
     all_reasons = sorted(set(list(baseline_exits.keys()) + list(trailing_exits.keys())))
     print(f"{'Exit Reason':<20} {'Baseline':<22} {'Trailing':<22}")
     print("-" * 64)

@@ -8,16 +8,16 @@ Usage:
     python -m backtest.fetch_intraday --symbol MES --interval 1h --days 730
 """
 from __future__ import annotations
+
 import argparse
+import os
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
 
-import os
-from backtest.data_loader import FUTURES_MAP, CACHE_DIR
+from backtest.data_loader import CACHE_DIR, FUTURES_MAP
 
 # yfinance max days per chunk per interval
 CHUNK_DAYS = {"1m": 7, "5m": 55, "15m": 55, "30m": 55, "1h": 60, "1d": 365}

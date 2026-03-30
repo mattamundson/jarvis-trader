@@ -15,11 +15,13 @@ Regime Classification:
   - TRANSITION:     Regime just changed (within last 5 bars)
 """
 from __future__ import annotations
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Optional, Tuple
+
+from dataclasses import dataclass
 from datetime import datetime
-from dataclasses import dataclass, field
+from typing import Dict, List
+
+import numpy as np
+import pandas as pd
 
 
 @dataclass

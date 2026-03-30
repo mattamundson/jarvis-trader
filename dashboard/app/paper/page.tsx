@@ -822,35 +822,4 @@ function TradeLoggerPanel() {
               className="w-full rounded-lg border px-3 py-2 font-mono text-xs focus:outline-none focus:ring-1"
               style={{ backgroundColor: "#0d0d1a", borderColor: "#1a1a2e", color: "#e0e0e0" }}
             />
-          </div>
-
-          {/* Contracts */}
-          <div>
-            <label className="block font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>
-              Contracts
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={form.contracts}
-              onChange={(e) => updateField("contracts", parseInt(e.target.value) || 1)}
-              className="w-full rounded-lg border px-3 py-2 font-mono text-xs focus:outline-none focus:ring-1"
-              style={{ backgroundColor: "#0d0d1a", borderColor: "#1a1a2e", color: "#e0e0e0" }}
-              required
-            />
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={submitting || form.entry_price <= 0}
-          className="flex items-center gap-2 rounded-lg px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ backgroundColor: "#00ff8820", color: "#00ff88", border: "1px solid #00ff8840" }}
-        >
-          <Send className="h-3.5 w-3.5" />
-          {submitting ? "Submitting..." : "Log Trade"}
-        </button>
-      </form>
-    </div>
-  );
-}
+   

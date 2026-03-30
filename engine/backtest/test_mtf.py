@@ -5,15 +5,15 @@ Loads MNQ 1h and 4h data, runs generate_signals() with and without the
 MTF filter, and reports how many entries were blocked.
 """
 from __future__ import annotations
-import sys
+
 import os
+import sys
 
 # Ensure engine/ is on the path for backtest.* imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pandas as pd
 from backtest.data_loader import BacktestDataLoader
-from backtest.signals import generate_signals, compute_all_indicators
+from backtest.signals import compute_all_indicators, generate_signals
 
 
 def main():
@@ -53,7 +53,7 @@ def main():
     # ── Compute 4h indicators ────────────────────────────────────────────
     print("\nComputing 4h indicators...")
     df_4h = compute_all_indicators(df_4h)
-    print(f"  4h STC signal distribution:")
+    print("  4h STC signal distribution:")
     print(f"    {df_4h['stc_signal'].value_counts().to_dict()}")
 
     # ── Baseline: generate signals without MTF filter ────────────────────
@@ -63,7 +63,7 @@ def main():
     df_baseline = generate_signals(df_1h.copy(), symbol=symbol)
     baseline_entries = df_baseline[df_baseline["entry_signal"] == "ENTRY_NOW"]
     print(f"  Total ENTRY_NOW signals: {len(baseline_entries)}")
-    print(f"  Bias breakdown:")
+    print("  Bias breakdown:")
     print(f"    {baseline_entries['bias'].value_counts().to_dict()}")
 
     # ── MTF-filtered: generate signals with 4h confirmation ──────────────
@@ -78,9 +78,9 @@ def main():
     if len(baseline_entries) > 0:
         pct_blocked = len(mtf_blocked) / len(baseline_entries) * 100
         print(f"  Percentage blocked: {pct_blocked:.1f}%")
-    print(f"  Passed bias breakdown:")
+    print("  Passed bias breakdown:")
     print(f"    {mtf_entries['bias'].value_counts().to_dict()}")
-    print(f"  Blocked bias breakdown:")
+    print("  Blocked bias breakdown:")
     print(f"    {mtf_blocked['bias'].value_counts().to_dict()}")
 
     # ── Spot-check: show a few blocked entries ───────────────────────────
@@ -125,8 +125,8 @@ def main():
     print(f"  MTF-blocked entries: {len(mtf_blocked)}")
     if len(baseline_entries) > 0:
         print(f"  Block rate:          {len(mtf_blocked)/len(baseline_entries)*100:.1f}%")
-    print(f"\n  Suggested walk-forward flag: --mtf-filter")
-    print(f"  (Integration with walk-forward engine is separate work)")
+    print("\n  Suggested walk-forward flag: --mtf-filter")
+    print("  (Integration with walk-forward engine is separate work)")
 
 
 if __name__ == "__main__":

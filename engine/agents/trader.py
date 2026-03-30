@@ -17,7 +17,7 @@ from typing import Optional
 
 import httpx
 
-from utils.position_sizing import calculate_position_size, PositionSizeResult
+from utils.position_sizing import PositionSizeResult, calculate_position_size
 
 logger = logging.getLogger(__name__)
 

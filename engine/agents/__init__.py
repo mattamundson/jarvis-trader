@@ -4,23 +4,32 @@ JARVIS TRADER — Agents package
 Exports all trading analysis agents, debate infrastructure,
 and the three senior decision-making agents plus the pipeline orchestrator.
 """
-from .technical_analyst import TechnicalAnalystAgent, TechnicalReport
-from .bull_researcher import BullResearcherAgent, BullReport
-from .bear_researcher import BearResearcherAgent, BearReport
+from .bear_researcher import BearReport, BearResearcherAgent
+from .bull_researcher import BullReport, BullResearcherAgent
 from .debate import DebateOrchestrator, DebateResult
-from .news_analyst import NewsAnalystAgent, NewsReport
-from .social_analyst import SocialAnalystAgent, SocialReport
+from .fund_manager import FundDecision, FundManagerAgent
 from .fundamental_analyst import FundamentalistAgent, FundamentalReport
-from .trader import TraderAgent, TradeDecision
-from .risk_manager import RiskManagerAgent, RiskDecision
-from .fund_manager import FundManagerAgent, FundDecision
+from .news_analyst import NewsAnalystAgent, NewsReport
 from .pipeline import TradingPipeline
-from .thinkscript_generator import ThinkScriptGeneratorAgent, ThinkScriptResult
+from .risk_manager import RiskDecision, RiskManagerAgent
 from .schemas import (
-    Action, OrderType, MarketRegime, TrendDirection, EntrySignal,
-    ATRLevels, IBLevels, TPOData, KeltnerBands, MomentumSignals,
-    ResearchCase, pipeline_summary,
+    Action,
+    ATRLevels,
+    EntrySignal,
+    IBLevels,
+    KeltnerBands,
+    MarketRegime,
+    MomentumSignals,
+    OrderType,
+    ResearchCase,
+    TPOData,
+    TrendDirection,
+    pipeline_summary,
 )
+from .social_analyst import SocialAnalystAgent, SocialReport
+from .technical_analyst import TechnicalAnalystAgent, TechnicalReport
+from .thinkscript_generator import ThinkScriptGeneratorAgent, ThinkScriptResult
+from .trader import TradeDecision, TraderAgent
 
 __all__ = [
     # Technical analysis

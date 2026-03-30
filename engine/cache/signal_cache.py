@@ -9,7 +9,7 @@ Key format: "jarvis:signal:{symbol}"
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from . import redis_client
 

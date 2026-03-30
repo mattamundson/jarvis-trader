@@ -9,9 +9,11 @@ Layers wired:
   4 — Entry Timing  (layer4_entry)
 """
 from __future__ import annotations
-import pandas as pd
-import numpy as np
+
 from typing import Dict, Optional
+
+import numpy as np
+import pandas as pd
 
 # Per-instrument optimized parameters (research-validated)
 # Format: (STC_OS, STC_OB, STOP_ATR, T1_ATR, T2_ATR, T3_ATR, REGIME_FILTER)
@@ -26,15 +28,15 @@ INSTRUMENT_PARAMS: Dict[str, tuple] = {
 }
 
 from .indicators import (
-    wilder_atr,
-    kama,
-    stc,
-    phase_oscillator,
-    volume_stack,
-    keltner_channels,
     cci,
     ema_ribbon,
+    kama,
+    keltner_channels,
+    phase_oscillator,
     range_consumed_pct,
+    stc,
+    volume_stack,
+    wilder_atr,
 )
 
 
@@ -344,7 +346,7 @@ def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str
         return 'ENTRY_NOW'
 
     # 3. IB Low breakdown: price just crossed below prior bar's low this bar
-    prev_ib_high_prev = bool(row.get('prev_above_ib_high', False))
+    bool(row.get('prev_above_ib_high', False))
     # For the downside breakout we re-use the same prev flag directionally:
     # below_ib_low=True this bar means price broke below — no prior-cross flag
     # stored for lows, so accept the signal if we're below IB Low fresh (i.e.
@@ -506,7 +508,7 @@ def generate_signals(
     biases = []
     entries = []
 
-    for idx, row in df.iterrows():
+    for _idx, row in df.iterrows():
         regime = layer1_regime(row)
         # Regime filter bypass: match optimizer._compute_signals() behaviour.
         # When regime_filter=False, downgrade blocking regimes to RANGE_BOUND
