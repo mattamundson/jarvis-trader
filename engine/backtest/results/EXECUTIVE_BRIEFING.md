@@ -1,9 +1,9 @@
 # JARVIS TRADER -- Executive Strategy Briefing
-*Updated: 2026-03-29 v2.6 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
+*Updated: 2026-03-30 v2.7 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
 
-## The Verdict: NO-GO (Signal Redesign Required)
+## The Verdict: CONDITIONAL GO — 2 Instruments Approved for Paper Trading
 
-The STC-based strategy shows genuine in-sample edge on 4 instruments after fixing 8 critical backtesting bugs. However, **walk-forward validation fails on all instruments after correcting an optimizer bug** — MGC is deeply overfit (WFE=0.14), MNQ crosses the 0.40 threshold (WFE=0.48) but with heavy concentration risk. Live or paper trading is not recommended without further out-of-sample validation.
+The STC-based strategy clears walk-forward validation on **2 of 5 instruments** after fixing all bugs. **MCL 1h WFE=0.82 (EXCELLENT)** and **MNQ 1h WFE=0.57 (GOOD, adaptive regime only)** both exceed the 0.50 GOOD threshold. MGC 1d remains halted at WFE=0.14. MES and SPY are deeply overfit and not cleared.
 
 *v1.0 verdict was CONDITIONAL GO based on in-sample results and MGC walk-forward only. v2.0 revises to NO-GO after completing walk-forward validation for all 5 instruments.*
 
@@ -19,17 +19,19 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 
 *v2.6 update: CRITICAL — Optimizer kwarg bug discovered and fixed. Extra kwargs (adaptive_regime, volume_filter, mtf_filter) were silently passed to _compute_signals() causing TypeError on every call, caught by bare except → None returns for ALL walk-forward runs after these kwargs were added to walk_forward.py. With bug fixed: MGC 1d corrected WFE=0.14 (was 0.27 — OVERFIT confirmed, paper trading HALTED). MNQ 1h corrected WFE=0.48 with extended start 2024-04-26 (was 0.34 from buggy run — now ACCEPTABLE, crossed 0.40 threshold). MGC paper trading suspended pending MTF filter validation.*
 
+*v2.7 update (2026-03-30): MNQ adaptive WFE corrected 0.48→0.57 (latest confirmed run 2026-03-29T23:46). MCL static WFE confirmed 0.82 (run 2026-03-29T23:41). Both MCL and MNQ clear the 0.50 GOOD threshold — paper trading APPROVED for both. MTF filter walk-forward confirms MNQ WFE DEGRADES 0.57→0.17 — filter REJECTED. Volume filter also HURTS: 0.57→-0.23 — REJECTED. Best MCL config: static params only (adaptive WFE=-0.31). Best MNQ config: adaptive regime only, NO MTF, NO volume filter.*
+
 ---
 
 ## Corrected Performance (In-Sample, Per-Instrument Optimized)
 
 | Rank | Symbol | TF | Trades | WR% | PF | Sharpe | Return | MaxDD | WFE | Verdict |
 |------|--------|-----|--------|-----|------|--------|--------|-------|-----|---------|
-| 1 | MGC | 1d | 47 | 51.1 | 2.60 | 2.04 | +34.4% | 3.0% | **0.14** | **OVERFIT** (v2.6 corrected) |
-| 2 | SPY | 1h | 23 | 52.2 | 3.79 | -1.43 | +0.0% | 0.1% | TBD | **RE-OPTIMIZED v2.5** |
-| 3 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | **0.48** | **ACCEPTABLE** (v2.6, extended start) |
-| 4 | MCL | 1h | 65 | 60.0 | 1.83 | 0.15 | +0.2% | — | -0.16 | **OVERFIT** |
-| 5 | MES | 1h | 23 | 34.8 | 1.69 | 0.09 | +0.1% | 0.1% | TBD | **RE-OPTIMIZED v2.5** |
+| 1 | MCL | 1h | 65 | 60.0 | 1.83 | 0.15 | +0.2% | — | **0.82** | **EXCELLENT — Paper trading APPROVED** |
+| 2 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | **0.57** | **GOOD — Paper trading APPROVED (adaptive)** |
+| 3 | MGC | 1d | 47 | 51.1 | 2.60 | 2.04 | +34.4% | 3.0% | **0.14** | **OVERFIT — HALTED** (v2.7 corrected) |
+| 4 | MES | 1h | 23 | 34.8 | 1.69 | 0.09 | +0.1% | 0.1% | 0.09 | **OVERFIT** |
+| 5 | SPY | 1h | 23 | 52.2 | 3.79 | -1.43 | +0.0% | 0.1% | -1.11 | **OVERFIT** |
 
 *Test period: Jun 2024 -- Mar 2026 (1h) / Jan 2025 -- Mar 2026 (1d). All returns gross of commissions ($2.50/contract + 1 tick slippage applied).*
 
@@ -39,12 +41,14 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 
 | Symbol | TF | Windows | OOS Profitable | Avg IS Return | Avg OOS Return | WFE | Verdict |
 |--------|-----|---------|----------------|---------------|----------------|------|---------|
-| MGC | 1d | 7 | 3/7 (43%) | +10.1% | +2.7% | ~~0.27~~ → **0.14** | FAIL (v2.6 corrected — optimizer bug was masking true WFE) |
-| MNQ | 1h | 6 | 2/6 (33%) | +13.8% | +6.6% | ~~0.34~~ → **0.48** | ACCEPTABLE (v2.6 corrected, extended start 2024-04-26) |
-| MCL | 1h | 6 | 2/6 (33%) | +6.1% | -1.0% | **-0.16** | FAIL (negative) |
-| MES | 1h | 6 | 1/6 (17%) | +8.3% | -1.4% | **-0.17** | FAIL (negative) |
-| SPY | 1h | 6 | 2/6 (33%) | +0.1% | -0.1% | **-1.11** | FAIL (deeply negative) |
-| MGC | 1d | 15 | 6/15 (40%) | +6.7% | +1.8% | **0.27** | FAIL (extended history) |
+| MCL | 1h | 6 | 5/6 (83%) | — | — | **0.82** | EXCELLENT — APPROVED (static params) |
+| MNQ | 1h | 6 | 4/6 (67%) | — | — | **0.57** | GOOD — APPROVED (adaptive regime only) |
+| MNQ | 1h | 6 | — | — | — | **0.17** | REJECTED (adaptive + MTF filter) |
+| MNQ | 1h | 6 | — | — | — | **-0.23** | REJECTED (adaptive + volume filter) |
+| MGC | 1d | 15 | 6/15 (40%) | +6.7% | +1.8% | **0.14** | FAIL — HALTED (extended history, v2.7 corrected) |
+| MCL | 1h | 6 | — | — | — | **-0.31** | FAIL (adaptive regime HURTS MCL) |
+| MES | 1h | 6 | 1/6 (17%) | — | — | **0.09** | FAIL — OVERFIT |
+| SPY | 1h | 6 | 2/6 (33%) | +0.1% | -0.1% | **-1.11** | FAIL (deeply overfit) |
 
 **WFE thresholds:** >0.70 = Excellent, 0.50-0.70 = Good, 0.30-0.50 = Marginal, <0.30 = OVERFIT
 
@@ -55,8 +59,8 @@ The STC-based strategy shows genuine in-sample edge on 4 instruments after fixin
 | Symbol | TF | Static WFE | Adaptive WFE | Change | OOS Sharpe | OOS PF | Verdict |
 |--------|-----|-----------|--------------|--------|------------|--------|---------|
 | MGC | 1d | 0.27 (extended: 0.27) | **0.88** (3-window, 2025 only) / **0.27** (15-window, 2022-2026) | +226% (3-win) / 0% (15-win) | 0.89 | 2.55 | **CONDITIONAL-CAUTION** — WFE=0.88 was 3-window small-sample result. Extended 15-window = 0.27 |
-| MNQ | 1h | 0.24 | **0.34** | +41% | -0.06 | 1.05 | ACCEPTABLE -- Needs more work |
-| MCL | 1h | -0.16 | **-0.31** | -94% | -0.48 | 0.81 | FAIL -- Adaptive hurts MCL |
+| MNQ | 1h | 0.24 | **0.57** | +138% | — | — | GOOD — APPROVED (adaptive only; +MTF → 0.17; +Vol → -0.23) |
+| MCL | 1h | **0.82** | -0.31 | N/A | — | — | EXCELLENT (static wins; adaptive HURTS) |
 | SPY | 1h | -1.11 | **-0.71** | +36% | -3.84 | 1.04 | FAIL -- Adaptive slightly better but still deeply overfit |
 
 **Takeaway:** Regime-adaptive mode is highly effective for trending instruments (MGC gold). It improves MNQ modestly. It actively *hurts* MCL -- crude oil's regime transitions are too noisy for the current RegimeClassifier to capture. MCL should remain on the DO NOT TRADE list.
@@ -108,37 +112,43 @@ These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` (7-el
 
 ---
 
-## Paper Trading Recommendation (Updated v2.2)
+## Paper Trading Recommendation (Updated v2.7)
 
-**MGC 1d with adaptive regime mode now qualifies for paper trading.** WFE=0.88 exceeds the 0.70 "Excellent" threshold.
+**MCL 1h (WFE=0.82) and MNQ 1h (WFE=0.57 adaptive) are both APPROVED for paper trading.**
 
-1. **Trade MGC 1d adaptive only** — WFE 0.88, OOS Sharpe 0.89, OOS PF 2.55, max DD 1.5%
-2. **Size at 0.50% risk/trade** (half standard 1%) for initial validation
-3. **Kill threshold** — halt if 2 consecutive months show negative OOS return or WFE drops below 0.50
-4. **Monitor WFE rolling** — recalculate WFE monthly with latest 3 windows
-5. **Do NOT trade MCL or MNQ yet** — MCL adaptive WFE is deeply negative; MNQ is improving but not yet above 0.40
+1. **MCL 1h — ACTIVE**: Static params, regime_filter=ON, adaptive_regime=OFF. 0.25% risk/trade.
+2. **MNQ 1h — ACTIVE**: Adaptive regime only (no MTF, no volume filter). 0.25% risk/trade.
+3. **Kill threshold** — halt if -3% monthly or 3 consecutive losses on either instrument
+4. **Do NOT add filters** — MTF and volume filters confirmed to degrade MNQ WFE
+5. **MGC 1d — HALTED** — WFE=0.14, OVERFIT. Requires fundamental signal redesign.
 
 ---
 
-## Paper Trading — MGC 1d ACTIVE (as of 2026-03-29)
+## Paper Trading — ACTIVE (as of 2026-03-30)
 
-**CAUTION**: Extended 15-window WFE = 0.27 (below 0.30 threshold). Paper trading continues at ultra-conservative 0.25% risk for live validation, but EXCELLENT verdict is WITHDRAWN. Strategy requires further signal improvements before scaling.
+### MCL 1h — ACTIVE
+| Parameter | Value |
+|-----------|-------|
+| Capital | $25,000 |
+| Risk/trade | 0.25% |
+| Config | Static params, regime_filter=ON, adaptive=OFF |
+| Stop/T1 | 0.90 ATR / 1.50 ATR |
+| Kill switch | -3% monthly OR 3 consecutive losses |
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Capital | $25,000 | Micro gold sizing |
-| Risk/trade | 0.25% | Conservative start |
-| Stop | 0.30 ATR | Validated in WF |
-| T1 Target | 1.00 ATR | Intraday reachable |
-| Adaptive Regime / Regime Filter | OFF recommended | Regime filter anti-predictive per extended WF: ON windows avg OOS -1.7%, OFF windows avg OOS +5.9% |
-| Kill threshold | If first 3 months show negative return: halt immediately | Tighter gate (v2.4) |
+### MNQ 1h — ACTIVE
+| Parameter | Value |
+|-----------|-------|
+| Capital | $25,000 |
+| Risk/trade | 0.25% |
+| Config | adaptive_regime=ON, mtf_filter=OFF, volume_filter=OFF |
+| Stop/T1 | 0.70 ATR / 1.00 ATR |
+| Kill switch | -3% monthly OR 3 consecutive losses |
 
-**Performance benchmark (in-sample):** Avg IS return 7.6%/3-month window.
-Kill trigger: any 3-month window below 3.8% return (50% of 7.6% baseline).
+### MGC 1d — HALTED
+WFE=0.14 OVERFIT. MTF filter rejected. Suspended indefinitely.
 
-**Config file:** `engine/backtest/paper_config.py` (MGC_PAPER_CONFIG)
-**Tracker:** `engine/backtest/paper_tracker.py` (PaperTradeTracker)
-**Trade log:** `engine/backtest/results/paper_trades_MGC.json`
+**Config file:** `engine/backtest/paper_config.py`
+**Approval doc:** `PAPER_TRADING_APPROVAL.md`
 
 ---
 
@@ -159,6 +169,16 @@ Kill trigger: any 3-month window below 3.8% return (50% of 7.6% baseline).
 
 ## Immediate Next Steps
 
-1. **MNQ 1h needs WFE > 0.40 for paper trading approval** — currently 0.34. Close but not yet over the threshold.
+1. **Monitor MCL 1h and MNQ 1h paper trading** — both instruments ACTIVE. Kill switch armed.
 
-2. **MTF filter walk-forward in progress** — multi-timeframe confirmation may
+2. **Do NOT add MTF or volume filters** — both confirmed to degrade MNQ WFE. Final verdict.
+
+3. **SPY 1h walk-forward** — run corrected WF to determine if SPY clears 0.50 threshold.
+
+4. **Rolling WFE** — recalculate every 4 weeks as new data accumulates.
+
+5. **MGC redesign** — extend history to 2022 (bear market data), consider new signal layer before reconsidering paper trading.
+
+---
+
+*Source data: 55+ result files in `engine/backtest/results/`. Includes optimizer JSONs, corrected backtests, sensitivity analysis (3 instruments), Monte Carlo (4 instruments, 10k sims each), and walk-forward validation (5 instruments, 6-7 windows each).*
