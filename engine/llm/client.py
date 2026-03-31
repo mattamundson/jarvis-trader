@@ -93,6 +93,100 @@ class JarvisLLMClient:
         self.cost_tracker = CostTracker(db_path=db_path)
         logger.info(f"✅ JarvisLLMClient initialized with cost tracking at {db_path}")
 
+    async def _handle_success(
+        self,
+        result,
+        current_model: str,
+        start_time: float,
+        retries: int,
+        agent_name: str,
+    ) -> LLMCallResult:
+        """Handle successful API call."""
+        latency_ms = int((time.time() - start_time) * 1000)
+        input_tokens = result.usage.input_tokens
+        output_tokens = result.usage.output_tokens
+        cost = self._calculate_cost(current_model, input_tokens, output_tokens)
+
+        # Log to database
+        await self.cost_tracker.log_call(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            model=current_model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            latency_ms=latency_ms,
+            agent_name=agent_name,
+            success=True,
+        )
+
+        # Log to console
+        logger.info(
+            f"[{current_model}] {agent_name} | "
+            f"in:{input_tokens} out:{output_tokens} | "
+            f"cost:${cost:.4f} | latency:{latency_ms}ms | retries:{retries}"
+        )
+
+        return LLMCallResult(
+            success=True,
+            model=current_model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            latency_ms=latency_ms,
+            retries=retries,
+            content=result.content[0].text,
+        )
+
+    async def _handle_failure(
+        self,
+        last_error: Exception,
+        current_model: str,
+        start_time: float,
+        retries: int,
+        agent_name: str,
+    ) -> LLMCallResult:
+        """Handle failed API call after retries exhausted."""
+        latency_ms = int((time.time() - start_time) * 1000)
+        error_msg = str(last_error) if last_error else "Unknown error"
+
+        # Log failure to database
+        await self.cost_tracker.log_call(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            model=current_model,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            latency_ms=latency_ms,
+            agent_name=agent_name,
+            success=False,
+        )
+
+        logger.error(
+            f"[{current_model}] ❌ {agent_name} failed after {retries} retries | "
+            f"latency:{latency_ms}ms | error:{error_msg}"
+        )
+
+        return LLMCallResult(
+            success=False,
+            model=current_model,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            latency_ms=latency_ms,
+            retries=retries,
+            error=error_msg,
+        )
+
+    async def _try_fallback(
+        self,
+        current_model: str,
+        allow_fallback: bool,
+    ) -> Optional[str]:
+        """Try fallback model if available."""
+        if not allow_fallback or current_model not in self.FALLBACK_CHAIN:
+            return None
+        return self.FALLBACK_CHAIN[current_model]
+
     async def call(
         self,
         model: str,
@@ -133,40 +227,8 @@ class JarvisLLMClient:
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )
-
-                latency_ms = int((time.time() - start_time) * 1000)
-                input_tokens = result.usage.input_tokens
-                output_tokens = result.usage.output_tokens
-                cost = self._calculate_cost(current_model, input_tokens, output_tokens)
-
-                # Log to database
-                await self.cost_tracker.log_call(
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    model=current_model,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cost_usd=cost,
-                    latency_ms=latency_ms,
-                    agent_name=agent_name,
-                    success=True,
-                )
-
-                # Log to console
-                logger.info(
-                    f"[{current_model}] {agent_name} | "
-                    f"in:{input_tokens} out:{output_tokens} | "
-                    f"cost:${cost:.4f} | latency:{latency_ms}ms | retries:{retries}"
-                )
-
-                return LLMCallResult(
-                    success=True,
-                    model=current_model,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cost_usd=cost,
-                    latency_ms=latency_ms,
-                    retries=retries,
-                    content=result.content[0].text,
+                return await self._handle_success(
+                    result, current_model, start_time, retries, agent_name
                 )
 
             except RateLimitError as e:
@@ -177,20 +239,18 @@ class JarvisLLMClient:
                 retries += 1
 
                 if retries >= 3:
-                    if allow_fallback and current_model in self.FALLBACK_CHAIN:
-                        fallback = self.FALLBACK_CHAIN[current_model]
-                        if fallback:
-                            logger.warning(
-                                f"[{current_model}] Max retries exhausted. "
-                                f"Falling back to {fallback} for {agent_name}"
-                            )
-                            current_model = fallback
-                            retries = 0
-                            start_time = time.time()
-                            continue
+                    fallback = await self._try_fallback(current_model, allow_fallback)
+                    if fallback:
+                        logger.warning(
+                            f"[{current_model}] Max retries exhausted. "
+                            f"Falling back to {fallback} for {agent_name}"
+                        )
+                        current_model = fallback
+                        retries = 0
+                        start_time = time.time()
+                        continue
                     break
 
-                # Exponential backoff: 1s, 2s, 4s
                 delay = 2 ** (retries - 1)
                 await asyncio.sleep(delay)
 
@@ -203,17 +263,16 @@ class JarvisLLMClient:
                 retries += 1
 
                 if retries >= 3:
-                    if allow_fallback and current_model in self.FALLBACK_CHAIN:
-                        fallback = self.FALLBACK_CHAIN[current_model]
-                        if fallback:
-                            logger.warning(
-                                f"[{current_model}] Max retries exhausted. "
-                                f"Falling back to {fallback} for {agent_name}"
-                            )
-                            current_model = fallback
-                            retries = 0
-                            start_time = time.time()
-                            continue
+                    fallback = await self._try_fallback(current_model, allow_fallback)
+                    if fallback:
+                        logger.warning(
+                            f"[{current_model}] Max retries exhausted. "
+                            f"Falling back to {fallback} for {agent_name}"
+                        )
+                        current_model = fallback
+                        retries = 0
+                        start_time = time.time()
+                        continue
                     break
 
                 delay = 2 ** (retries - 1)
@@ -224,36 +283,8 @@ class JarvisLLMClient:
                 logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
                 break
 
-        # All retries exhausted or unexpected error
-        latency_ms = int((time.time() - start_time) * 1000)
-        error_msg = str(last_error) if last_error else "Unknown error"
-
-        # Log failure to database
-        await self.cost_tracker.log_call(
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            model=current_model,
-            input_tokens=0,
-            output_tokens=0,
-            cost_usd=0.0,
-            latency_ms=latency_ms,
-            agent_name=agent_name,
-            success=False,
-        )
-
-        logger.error(
-            f"[{current_model}] ❌ {agent_name} failed after {retries} retries | "
-            f"latency:{latency_ms}ms | error:{error_msg}"
-        )
-
-        return LLMCallResult(
-            success=False,
-            model=current_model,
-            input_tokens=0,
-            output_tokens=0,
-            cost_usd=0.0,
-            latency_ms=latency_ms,
-            retries=retries,
-            error=error_msg,
+        return await self._handle_failure(
+            last_error, current_model, start_time, retries, agent_name
         )
 
     @retry(

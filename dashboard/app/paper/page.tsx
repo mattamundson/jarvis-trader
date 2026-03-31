@@ -843,11 +843,4 @@ function TradeLoggerPanel() {
             className="flex-1 rounded-lg border px-4 py-2 font-mono text-xs font-semibold transition-colors"
             style={{ borderColor: "#555", color: "#aaa", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}
           >
-            Reset
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-   
+        

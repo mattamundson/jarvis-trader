@@ -256,36 +256,31 @@ class SafetyLayer:
             return adjusted_order, warnings
         return order, warnings
 
-    def check_order(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
-        """
-        Run all pre-trade safety checks.
-        Returns approved=False if ANY check fails.
-        Hard limits are non-negotiable.
-        """
-        warnings = []
-
-        # 0. Kill switch
+    def _check_kill_switch(self) -> RiskCheckResult:
+        """Check kill switch status."""
         if self._kill_switch_active:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason=f"Kill switch active: {self._kill_switch_reason.value if self._kill_switch_reason else 'unknown'}",
             )
+        return RiskCheckResult(approved=True)
 
-        # 1. Live trading gate
+    def _check_gating_conditions(self) -> RiskCheckResult:
+        """Check live trading enabled and human approval conditions."""
         if not self._config.LIVE_TRADING_ENABLED:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason="Live trading is disabled (LIVE_TRADING_ENABLED=False)",
             )
-
-        # 2. Human approval gate
         if self._config.REQUIRE_HUMAN_APPROVAL:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason="Human approval required (REQUIRE_HUMAN_APPROVAL=True) — this is normal in initial deployment",
             )
+        return RiskCheckResult(approved=True)
 
-        # 3. Daily loss limit
+    def _check_daily_loss_limit(self, portfolio_equity: float) -> RiskCheckResult:
+        """Check daily loss limit."""
         daily_pnl = self._pnl_monitor.get_daily_pnl() if self._pnl_monitor else self._daily_realized_pnl
         if daily_pnl < -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT):
             self.activate_kill_switch(
@@ -295,28 +290,25 @@ class SafetyLayer:
             return RiskCheckResult(
                 approved=False, rejection_reason="Daily loss limit breached — kill switch activated"
             )
+        return RiskCheckResult(approved=True)
 
-        # 4. Max drawdown
-        drawdown_result = self._check_drawdown(portfolio_equity, warnings)
-        if drawdown_result is not None:
-            return drawdown_result
-
-        # 5. Order size limit
+    def _check_order_value_limits(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
+        """Check order size and position size limits."""
         if order.estimated_value > self._config.MAX_SINGLE_ORDER_VALUE:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason=f"Order value ${order.estimated_value:,.0f} exceeds max ${self._config.MAX_SINGLE_ORDER_VALUE:,.0f}",
             )
-
-        # 6. Position size limit
         position_pct = order.estimated_value / portfolio_equity if portfolio_equity > 0 else 1.0
         if position_pct > self._config.MAX_POSITION_SIZE_PCT:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason=f"Position size {position_pct:.1%} exceeds max {self._config.MAX_POSITION_SIZE_PCT:.1%}",
             )
+        return RiskCheckResult(approved=True)
 
-        # 7. Order rate throttle (anti-runaway)
+    def _check_order_rate(self) -> RiskCheckResult:
+        """Check order rate throttle."""
         import time
         now = time.time()
         self._recent_order_timestamps = [t for t in self._recent_order_timestamps if now - t < 60]
@@ -328,15 +320,51 @@ class SafetyLayer:
             return RiskCheckResult(
                 approved=False, rejection_reason="Anomalous order rate — kill switch activated"
             )
+        return RiskCheckResult(approved=True), now
 
-        # 8. Futures-specific: contract limits
+    def _check_contract_limits(self, order: OrderRequest) -> RiskCheckResult:
+        """Check futures contract limits."""
         if order.is_futures and abs(order.quantity) > self._config.MAX_CONTRACTS_PER_INSTRUMENT:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason=f"Requested {abs(order.quantity)} contracts exceeds max {self._config.MAX_CONTRACTS_PER_INSTRUMENT}",
             )
+        return RiskCheckResult(approved=True)
 
-        # 9. Consecutive loss tracking & position size modulation
+    def check_order(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
+        """
+        Run all pre-trade safety checks.
+        Returns approved=False if ANY check fails.
+        Hard limits are non-negotiable.
+        """
+        warnings = []
+
+        # Run sequential checks, return early on failure
+        for check_fn in [
+            lambda: self._check_kill_switch(),
+            lambda: self._check_gating_conditions(),
+            lambda: self._check_daily_loss_limit(portfolio_equity),
+            lambda: self._check_drawdown(portfolio_equity, warnings),
+            lambda: self._check_order_value_limits(order, portfolio_equity),
+            lambda: self._check_contract_limits(order),
+        ]:
+            result = check_fn()
+            if isinstance(result, tuple):
+                result, _ = result
+            if not result.approved:
+                return result
+
+        # Order rate check returns timestamp
+        rate_result, now = self._check_order_rate()
+        if not rate_result.approved:
+            return rate_result
+
+        # Drawdown check
+        drawdown_result = self._check_drawdown(portfolio_equity, warnings)
+        if drawdown_result is not None and not drawdown_result.approved:
+            return drawdown_result
+
+        # Loss tracker adjustment
         loss_result = self._apply_loss_tracker_adjustment(order, warnings)
         if isinstance(loss_result, RiskCheckResult):
             return loss_result

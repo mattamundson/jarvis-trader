@@ -557,21 +557,3 @@ def main():
         df=df,
         symbol=args.symbol,
         multiplier=multiplier,
-        capital=args.capital,
-        fast=not args.full_grid,
-        adaptive_regime=args.adaptive_regime,
-        volume_filter=args.volume_filter,
-        mtf_filter=args.mtf_filter,
-        df_daily=df_daily,
-    )
-
-    # ── Save results ───────────────────────────────────────────────────────
-    out_path = save_results(
-        result,
-        args.symbol,
-        args.interval,
-        adaptive_regime=args.adaptive_regime,
-        volume_filter=args.volume_filter,
-        mtf_filter=args.mtf_filter,
-    )
-    print(f"\nResults saved to: {out_path}")

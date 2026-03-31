@@ -481,40 +481,4 @@ export default function JournalPage() {
           icon={<ListChecks className="h-4 w-4 text-emerald-400" />}
           accentColor="#00ff88"
         >
-          <div className="space-y-3">
-            {NEXT_EXPERIMENTS.map((exp) => (
-              <div
-                key={exp.id}
-                className="flex items-start gap-4 rounded-lg border border-[#1a1a2e] bg-[#0d0d0d] px-4 py-3"
-              >
-                <span
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-bold tabular-nums"
-                  style={{
-                    backgroundColor: "#00ff8815",
-                    color: "#00ff88",
-                    border: "1px solid #00ff8830",
-                  }}
-                >
-                  {exp.id}
-                </span>
-                <div>
-                  <p className="font-mono text-xs font-semibold text-neutral-200">
-                    {exp.title}
-                  </p>
-                  <p className="font-mono text-[11px] text-neutral-500 mt-0.5 leading-relaxed">
-                    {exp.description}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-
-        {/* Footer timestamp */}
-        <div className="text-center font-mono text-[10px] text-neutral-700 py-4">
-          JARVIS TRADER RESEARCH JOURNAL &middot; Last updated 2026-03-30 (v2.7)
-        </div>
-      </main>
-    </div>
-  );
-}
+        

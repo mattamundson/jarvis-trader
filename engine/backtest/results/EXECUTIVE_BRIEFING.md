@@ -161,28 +161,4 @@ WFE=0.14 OVERFIT. MTF filter rejected. Suspended indefinitely.
 | M2K | 1h | 0.64 | N/A | Consistently losing; Russell unsuitable for STC |
 | M2K | 1d | 0.60 | N/A | Negative both timeframes |
 | MCL | 1d | 0.21 | N/A | Catastrophic PF; zero targets hit on daily crude |
-| MES | 1d | 0.75 | N/A | 36/51 trades exit at EOD — targets unreachable |
-| MNQ | 1d | 0.79 | N/A | 43/57 EOD exits; daily NQ too volatile for intraday targets |
-| MGC | 1h | 0.77 | N/A | Gold works daily only; hourly loses money |
-| MES | 1h | 1.69 | -0.17 | Re-optimized v2.5: PF 0.96->1.69 (+76%, regime OFF), +0.1% return. PF improved with new params but WFE not yet validated |
-| SPY | 1h | 3.79 | -0.71 | Re-optimized v2.5: PF 3.00->3.79, near-zero returns, still deeply overfit |
-
----
-
-## Immediate Next Steps
-
-1. **Monitor MCL 1h and MNQ 1h paper trading** — both instruments ACTIVE. Kill switch armed.
-
-2. **Do NOT add MTF or volume filters** — both confirmed to degrade MNQ WFE. Final verdict.
-
-3. ~~**SPY 1h walk-forward**~~ **CLOSED** — v2.8 corrected run (2026-03-30): 0/6 valid windows, WFE=0.00. STC+ATR strategy is fundamentally incompatible with SPY hourly data. No further testing.
-
-4. **Rolling WFE scheduler** — `engine/backtest/rolling_wfe_scheduler.py` — run every 4 weeks via PM2 cron. Alerts on HALT/OVERFIT. Add to `ecosystem.config.js`.
-
-5. **MGC redesign** — extend history to 2022 (bear market data), consider new signal layer before reconsidering paper trading.
-
-6. **FRED_API_KEY** — configure in `.env` to enable VIX regime via macro/snapshot endpoint. See `FRED_API_SETUP.md`.
-
----
-
-*Source data: 55+ result files in `engine/backtest/results/`. Includes optimizer JSONs, corrected backtests, sensitivity analysis (3 instruments), Monte Carlo (4 instruments, 10k sims each), and walk-forward validation (5 instruments, 6-7 windows each).*
+| MES | 1d | 0.75 | N/A | 

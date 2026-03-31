@@ -84,6 +84,68 @@ async def get_indicators(
         return None
 
 
+async def _clear_all_indicators() -> bool:
+    """Clear all indicator cache entries."""
+    logger.info("Clearing all indicator cache")
+    try:
+        redis_client_obj = redis_client.get_redis_client()
+        if redis_client_obj is None:
+            logger.warning("Redis not available — cannot clear indicator cache")
+            return False
+
+        cursor = 0
+        deleted = 0
+        while True:
+            cursor, keys = await redis_client_obj.scan(cursor, match="jarvis:indicators:*")
+            if keys:
+                await redis_client_obj.delete(*keys)
+                deleted += len(keys)
+            if cursor == 0:
+                break
+
+        logger.info(f"Deleted {deleted} indicator entries")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to clear indicator cache: {e}")
+        return False
+
+
+async def _build_indicator_key(
+    symbol: Optional[str],
+    timeframe: Optional[str],
+) -> str:
+    """Build cache key from symbol/timeframe."""
+    if symbol and timeframe:
+        return f"jarvis:indicators:{symbol}:{timeframe}"
+    if symbol:
+        return f"jarvis:indicators:{symbol}:*"
+    return f"jarvis:indicators:*:{timeframe}"
+
+
+async def _clear_wildcard_indicators(key: str) -> bool:
+    """Clear indicators matching a wildcard pattern."""
+    try:
+        redis_client_obj = redis_client.get_redis_client()
+        if redis_client_obj is None:
+            return False
+
+        cursor = 0
+        deleted = 0
+        while True:
+            cursor, keys = await redis_client_obj.scan(cursor, match=key)
+            if keys:
+                await redis_client_obj.delete(*keys)
+                deleted += len(keys)
+            if cursor == 0:
+                break
+
+        logger.debug(f"Cleared {deleted} indicator entries for {key}")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to clear wildcard indicators: {e}")
+        return False
+
+
 async def invalidate_indicators(
     symbol: Optional[str] = None,
     timeframe: Optional[str] = None,
@@ -99,61 +161,18 @@ async def invalidate_indicators(
         bool: True if successful
     """
     if symbol is None and timeframe is None:
-        # Clear all indicator cache
-        logger.info("Clearing all indicator cache")
-        try:
-            redis_client_obj = redis_client.get_redis_client()
-            if redis_client_obj is not None:
-                cursor = 0
-                deleted = 0
-                while True:
-                    cursor, keys = await redis_client_obj.scan(cursor, match="jarvis:indicators:*")
-                    if keys:
-                        await redis_client_obj.delete(*keys)
-                        deleted += len(keys)
-                    if cursor == 0:
-                        break
-                logger.info(f"Deleted {deleted} indicator entries")
-                return True
-            else:
-                logger.warning("Redis not available — cannot clear indicator cache")
-                return False
-        except Exception as e:
-            logger.warning(f"Failed to clear indicator cache: {e}")
-            return False
+        return await _clear_all_indicators()
 
-    else:
-        # Clear specific symbol/timeframe
-        if symbol and timeframe:
-            key = f"jarvis:indicators:{symbol}:{timeframe}"
-        elif symbol:
-            key = f"jarvis:indicators:{symbol}:*"
-        else:
-            key = f"jarvis:indicators:*:{timeframe}"
+    key = await _build_indicator_key(symbol, timeframe)
 
-        try:
-            if "*" in key:
-                redis_client_obj = redis_client.get_redis_client()
-                if redis_client_obj is not None:
-                    cursor = 0
-                    deleted = 0
-                    while True:
-                        cursor, keys = await redis_client_obj.scan(cursor, match=key)
-                        if keys:
-                            await redis_client_obj.delete(*keys)
-                            deleted += len(keys)
-                        if cursor == 0:
-                            break
-                    logger.debug(f"Cleared {deleted} indicator entries for {key}")
-                    return True
-                else:
-                    return False
-            else:
-                result = await redis_client.delete(key)
-                if result:
-                    logger.debug(f"Cleared indicators for {symbol}/{timeframe}")
-                return result
+    try:
+        if "*" in key:
+            return await _clear_wildcard_indicators(key)
 
-        except Exception as e:
-            logger.warning(f"Failed to clear indicators: {e}")
-            return False
+        result = await redis_client.delete(key)
+        if result:
+            logger.debug(f"Cleared indicators for {symbol}/{timeframe}")
+        return result
+    except Exception as e:
+        logger.warning(f"Failed to clear indicators: {e}")
+        return False

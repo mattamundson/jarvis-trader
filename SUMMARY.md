@@ -190,12 +190,4 @@ WFE=0.14 below 0.30 threshold. MTF filter tested and REJECTED (no improvement). 
 **Paper trading is LIVE** for MCL 1h (WFE=0.82) and MNQ 1h (WFE=0.57 adaptive).
 
 Active monitoring priorities:
-1. **MCL 1h**: monitor daily signal generation, track vs WFE=0.82 expectation
-2. **MNQ 1h**: adaptive regime must be ON; kill switch armed at -3% monthly
-3. **Rolling WFE**: recalculate every 4 weeks with new data appended
-4. **SPY 1h**: run corrected walk-forward to determine if it clears 0.50 threshold
-5. **MGC redesign**: extended history (2022+) + new signal layer before reconsidering
-
----
-
-*Source: 55+ result files in `engine/backtest/results/`. Includes optimizer JSONs, corrected backtests, sensitivity analysis (3 instruments), Monte Carlo (4 instruments, 10k sims each), walk-forward validation (5 instruments static + 5 adaptive runs), and the 1,245-line research report.*
+1. **MCL 1h**: monitor da

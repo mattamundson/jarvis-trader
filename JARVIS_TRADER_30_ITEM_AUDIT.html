@@ -1175,48 +1175,4 @@ Object.entries(categories).forEach(([name, d]) => {
   const pct = Math.round(d.pass/d.total*100);
   const color = pct===100 ? 'var(--green)' : pct>=50 ? 'var(--cyan)' : 'var(--amber)';
   const tile = document.createElement('div');
-  tile.style.cssText = `background:var(--navy2); border:1px solid var(--border); border-radius:4px; padding:14px; text-align:center;`;
-  tile.innerHTML = `
-    <div style="font-family:'Share Tech Mono',monospace; font-size:1.6rem; color:${color}; line-height:1;">${pct}%</div>
-    <div style="font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#475569; text-transform:uppercase; letter-spacing:0.12em; margin-top:4px;">${name}</div>
-    <div style="font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#334155; margin-top:2px;">${d.pass}/${d.total}</div>
-  `;
-  catGrid.appendChild(tile);
-});
-
-// ── Filter ───────────────────────────────────
-const filterBtns = document.querySelectorAll('.filter-btn');
-filterBtns.forEach(btn => {
-  btn.addEventListener('click', () => {
-    filterBtns.forEach(b => { b.className = 'filter-btn'; });
-    const f = btn.dataset.filter;
-    const classMap = { all:'filter-btn active', pass:'filter-btn active-pass', warn:'filter-btn active-warn', fail:'filter-btn active-fail', pending:'filter-btn active-pending' };
-    btn.className = classMap[f] || 'filter-btn active';
-
-    cards.forEach(card => {
-      if (f === 'all' || card.dataset.status === f) {
-        card.classList.remove('hidden');
-      } else {
-        card.classList.add('hidden');
-      }
-    });
-  });
-});
-
-// Update filter button labels
-document.getElementById('btn-pass').textContent = `PASS (${pass})`;
-document.getElementById('btn-warn').textContent = `WARN (${warn})`;
-document.getElementById('btn-fail').textContent = `FAIL (${fail})`;
-document.getElementById('btn-pending').textContent = `PENDING (${pending})`;
-
-// ── Fade-in on scroll ────────────────────────
-const fadeEls = document.querySelectorAll('.fade-in');
-const obs = new IntersectionObserver(entries => {
-  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-}, { threshold: 0.05 });
-fadeEls.forEach(el => obs.observe(el));
-setTimeout(() => fadeEls.forEach(el => el.classList.add('visible')), 100);
-
-</script>
-</body>
-</html>
+  tile.style.cssText = `background:var(--navy2); border:1px solid var(--border); border-radius

@@ -546,17 +546,4 @@ export default function HealthPage() {
         {/* Alert Summary Widget — recent alert log + stats */}
         <AlertSummaryWidget />
 
-        {/* Database Statistics — record counts across trades, decisions, alerts */}
-        <DatabaseStatsCard />
-
-        {/* Database Status Widget — connection, file size, table record counts */}
-        <DatabaseStatusWidget />
-
-        {/* Auto-refresh notice */}
-        <p className="text-xs text-muted-foreground text-center pb-2">
-          Auto-refreshes every 15 seconds. Use the Refresh button for an immediate update.
-        </p>
-      </main>
-    </div>
-  );
-}
+        {/* Database Statistics — record counts across trades, decisions, alerts */}
