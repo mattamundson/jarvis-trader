@@ -98,119 +98,121 @@ def test_signal_generation(df):
     return df_sig
 
 
-async def test_pipeline(df_sig):
-    """Test 4: Full pipeline smoke test with stub agents."""
-    print("\n" + "=" * 60)
-    print("TEST 4: Pipeline E2E (stub agents — no LLM calls)")
-    print("=" * 60)
+# ── Stub agent classes for pipeline testing ──
 
-    from agents.pipeline import TradingPipeline
+class StubAnalyst:
+    """Returns a neutral technical report."""
 
-    # ── Stub agents that return valid structured data without LLM calls ──
+    async def analyze(self, symbol, **kwargs):
+        return {
+            "signal": 0.3,
+            "confidence": 0.6,
+            "trend": "uptrend",
+            "regime": "trending",
+            "trend_score": 0.4,
+            "momentum_score": 0.3,
+            "volatility_score": -0.1,
+            "volume_score": 0.2,
+            "summary": f"Stub technical analysis for {symbol}",
+            "reasoning": "Stub agent — no live LLM call made",
+        }
 
-    class StubAnalyst:
-        """Returns a neutral technical report."""
 
-        async def analyze(self, symbol, **kwargs):
-            return {
-                "signal": 0.3,
-                "confidence": 0.6,
-                "trend": "uptrend",
-                "regime": "trending",
-                "trend_score": 0.4,
-                "momentum_score": 0.3,
-                "volatility_score": -0.1,
-                "volume_score": 0.2,
-                "summary": f"Stub technical analysis for {symbol}",
-                "reasoning": "Stub agent — no live LLM call made",
-            }
+class StubDebate:
+    """Returns a mildly bullish debate result."""
 
-    class StubDebate:
-        """Returns a mildly bullish debate result."""
+    async def run_debate(self, symbol, analyst_reports, bull, bear):
+        return {
+            "verdict": "lean_bullish",
+            "bull_score": 0.65,
+            "bear_score": 0.35,
+            "summary": "Stub debate: mild bullish lean",
+            "bull_arguments": ["Trend is up", "Volume confirms"],
+            "bear_arguments": ["Overbought risk", "Late in cycle"],
+        }
 
-        async def run_debate(self, symbol, analyst_reports, bull, bear):
-            return {
-                "verdict": "lean_bullish",
-                "bull_score": 0.65,
-                "bear_score": 0.35,
-                "summary": "Stub debate: mild bullish lean",
-                "bull_arguments": ["Trend is up", "Volume confirms"],
-                "bear_arguments": ["Overbought risk", "Late in cycle"],
-            }
 
-    class StubBull:
-        async def argue(self, symbol, reports):
-            return {"score": 0.65, "arguments": ["Trend up"]}
+class StubBull:
+    async def argue(self, symbol, reports):
+        return {"score": 0.65, "arguments": ["Trend up"]}
 
-    class StubBear:
-        async def argue(self, symbol, reports):
-            return {"score": 0.35, "arguments": ["Overbought"]}
 
-    class StubTrader:
-        """Returns a BUY decision."""
+class StubBear:
+    async def argue(self, symbol, reports):
+        return {"score": 0.35, "arguments": ["Overbought"]}
 
-        async def decide(self, symbol, debate_result, analyst_reports, safety_status):
-            return {
-                "symbol": symbol,
-                "action": "buy",
-                "quantity": 1,
-                "order_type": "market",
-                "limit_price": None,
-                "stop_price": 21500.0,
-                "time_in_force": "day",
-                "signal_score": 0.65,
-                "confidence": 0.6,
-                "reasoning": "Stub trader: bullish consensus from debate",
-                "risk_notes": "Paper mode — stub test",
-                "timestamp": datetime.now().isoformat(),
-            }
 
-    class StubRiskManager:
-        """Approves the trade."""
+class StubTrader:
+    """Returns a BUY decision."""
 
-        async def review(self, trade_decision, safety_status, portfolio):
-            return {
-                "approved": True,
-                "veto_reason": None,
-                "modified_quantity": 1,
-                "modified_limit_price": None,
-                "risk_score": 0.3,
-                "reasoning": "Stub risk manager: approved for paper trading",
-                "timestamp": datetime.now().isoformat(),
-            }
+    async def decide(self, symbol, debate_result, analyst_reports, safety_status):
+        return {
+            "symbol": symbol,
+            "action": "buy",
+            "quantity": 1,
+            "order_type": "market",
+            "limit_price": None,
+            "stop_price": 21500.0,
+            "time_in_force": "day",
+            "signal_score": 0.65,
+            "confidence": 0.6,
+            "reasoning": "Stub trader: bullish consensus from debate",
+            "risk_notes": "Paper mode — stub test",
+            "timestamp": datetime.now().isoformat(),
+        }
 
-    class StubFundManager:
-        """Final approval with human review required."""
 
-        async def approve(self, trade_decision, risk_decision, portfolio, open_positions):
-            return {
-                "approved": True,
-                "final_quantity": 1,
-                "priority": "immediate",
-                "portfolio_impact": "Stub: minimal impact on paper portfolio",
-                "reasoning": "Stub fund manager: approved with human review",
-                "requires_human_approval": True,
-                "final_conviction": 0.62,
-                "timestamp": datetime.now().isoformat(),
-            }
+class StubRiskManager:
+    """Approves the trade."""
 
-    class StubSafetyLayer:
-        """Mimics the SafetyLayer interface."""
+    async def review(self, trade_decision, safety_status, portfolio):
+        return {
+            "approved": True,
+            "veto_reason": None,
+            "modified_quantity": 1,
+            "modified_limit_price": None,
+            "risk_score": 0.3,
+            "reasoning": "Stub risk manager: approved for paper trading",
+            "timestamp": datetime.now().isoformat(),
+        }
 
-        _current_equity = 10_000.0
-        _daily_realized_pnl = 0.0
 
-        def get_status(self):
-            return {
-                "kill_switch_active": False,
-                "daily_pnl": 0.0,
-                "daily_loss_remaining": 200.0,
-                "max_drawdown_pct": 0.0,
-                "orders_this_minute": 0,
-                "paper_mode": True,
-            }
+class StubFundManager:
+    """Final approval with human review required."""
 
-    agents = {
+    async def approve(self, trade_decision, risk_decision, portfolio, open_positions):
+        return {
+            "approved": True,
+            "final_quantity": 1,
+            "priority": "immediate",
+            "portfolio_impact": "Stub: minimal impact on paper portfolio",
+            "reasoning": "Stub fund manager: approved with human review",
+            "requires_human_approval": True,
+            "final_conviction": 0.62,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+
+class StubSafetyLayer:
+    """Mimics the SafetyLayer interface."""
+
+    _current_equity = 10_000.0
+    _daily_realized_pnl = 0.0
+
+    def get_status(self):
+        return {
+            "kill_switch_active": False,
+            "daily_pnl": 0.0,
+            "daily_loss_remaining": 200.0,
+            "max_drawdown_pct": 0.0,
+            "orders_this_minute": 0,
+            "paper_mode": True,
+        }
+
+
+def _create_stub_agents():
+    """Create and wire up all stub agents."""
+    return {
         "technical": StubAnalyst(),
         "news": StubAnalyst(),
         "social": StubAnalyst(),
@@ -223,13 +225,9 @@ async def test_pipeline(df_sig):
         "fund_manager": StubFundManager(),
     }
 
-    safety = StubSafetyLayer()
-    pipeline = TradingPipeline(agents=agents, safety_layer=safety)
 
-    print("  Running pipeline for MNQ...")
-    result = await pipeline.analyze_and_decide("MNQ", is_futures=True)
-
-    # Verify all expected keys exist
+def _verify_result_keys(result):
+    """Verify all expected keys exist in pipeline result."""
     expected_keys = [
         "symbol",
         "is_futures",
@@ -246,11 +244,11 @@ async def test_pipeline(df_sig):
         "errors",
         "summary",
     ]
-    missing = [k for k in expected_keys if k not in result]
-    if missing:
-        print(f"  FAIL: Missing keys in pipeline_result: {missing}")
-        return None
+    return [k for k in expected_keys if k not in result]
 
+
+def _print_result_summary(result):
+    """Print pipeline result summary."""
     print("\n  Pipeline Result:")
     print(f"    Symbol:         {result['symbol']}")
     print(f"    Final Action:   {result['final_action']}")
@@ -259,7 +257,6 @@ async def test_pipeline(df_sig):
     print(f"    Errors:         {result['errors']}")
     print(f"    Summary:        {result['summary']}")
 
-    # Verify stages populated
     for stage in [
         "analyst_reports",
         "debate_result",
@@ -271,6 +268,28 @@ async def test_pipeline(df_sig):
         status = "OK" if val is not None else "MISSING"
         print(f"    {stage}: {status}")
 
+
+async def test_pipeline(df_sig):
+    """Test 4: Full pipeline smoke test with stub agents."""
+    print("\n" + "=" * 60)
+    print("TEST 4: Pipeline E2E (stub agents — no LLM calls)")
+    print("=" * 60)
+
+    from agents.pipeline import TradingPipeline
+
+    agents = _create_stub_agents()
+    safety = StubSafetyLayer()
+    pipeline = TradingPipeline(agents=agents, safety_layer=safety)
+
+    print("  Running pipeline for MNQ...")
+    result = await pipeline.analyze_and_decide("MNQ", is_futures=True)
+
+    missing = _verify_result_keys(result)
+    if missing:
+        print(f"  FAIL: Missing keys in pipeline_result: {missing}")
+        return None
+
+    _print_result_summary(result)
     return result
 
 
