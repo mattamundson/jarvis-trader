@@ -624,10 +624,4 @@ function RiskRow({
       </div>
       <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${barColor}`}
-          style={{ width: `${clampedPct * 100}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+          c

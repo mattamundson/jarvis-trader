@@ -227,6 +227,63 @@ class IBOrderManager:
 
     # ── Reconciliation ────────────────────────────────────────────────────────
 
+    def _build_tracker_map(self, tracker: "PortfolioTracker") -> dict[str, float]:
+        """Build symbol → signed quantity map from tracker."""
+        tracker_map: dict[str, float] = {}
+        for trade in tracker._open.values():
+            sym = trade.symbol
+            signed = (
+                trade.quantity
+                if trade.action.lower() in ("buy", "buy_to_open")
+                else -trade.quantity
+            )
+            tracker_map[sym] = tracker_map.get(sym, 0.0) + signed
+        return tracker_map
+
+    def _compare_positions(
+        self,
+        result: dict,
+        ib_map: dict[str, float],
+        tracker_map: dict[str, float],
+    ) -> None:
+        """Compare IB vs tracker positions and populate result lists."""
+        all_symbols = set(ib_map) | set(tracker_map)
+
+        for sym in sorted(all_symbols):
+            ib_qty = ib_map.get(sym, 0.0)
+            tr_qty = tracker_map.get(sym, 0.0)
+
+            if sym in ib_map and sym not in tracker_map:
+                result["missing_in_tracker"].append(sym)
+                logger.warning(
+                    "reconcile DISCREPANCY: %s is in IB (qty=%.0f) but NOT in PortfolioTracker",
+                    sym,
+                    ib_qty,
+                )
+            elif sym in tracker_map and sym not in ib_map:
+                result["missing_in_ib"].append(sym)
+                logger.warning(
+                    "reconcile DISCREPANCY: %s is in PortfolioTracker (qty=%.0f) but NOT in IB",
+                    sym,
+                    tr_qty,
+                )
+            elif abs(ib_qty - tr_qty) > 0.01:
+                result["qty_mismatches"].append({
+                    "symbol": sym,
+                    "ib_qty": ib_qty,
+                    "tracker_qty": tr_qty,
+                    "delta": ib_qty - tr_qty,
+                })
+                logger.warning(
+                    "reconcile QTY MISMATCH: %s — IB=%.0f tracker=%.0f delta=%+.0f",
+                    sym,
+                    ib_qty,
+                    tr_qty,
+                    ib_qty - tr_qty,
+                )
+            else:
+                logger.debug("reconcile: %s in sync (qty=%.0f)", sym, ib_qty)
+
     async def reconcile(
         self,
         portfolio_tracker: Optional["PortfolioTracker"] = None,
@@ -252,9 +309,9 @@ class IBOrderManager:
             {
                 "ib_positions":       list[dict],
                 "tracker_positions":  list[dict],
-                "missing_in_tracker": list[str],   # symbols in IB but not tracker
-                "missing_in_ib":      list[str],   # symbols in tracker but not IB
-                "qty_mismatches":     list[dict],   # {symbol, ib_qty, tracker_qty, delta}
+                "missing_in_tracker": list[str],
+                "missing_in_ib":      list[str],
+                "qty_mismatches":     list[dict],
                 "in_sync":            bool,
             }
         """
@@ -274,7 +331,6 @@ class IBOrderManager:
             logger.warning("reconcile: IB Gateway not connected — cannot reconcile")
             return result
 
-        # ── Fetch IB positions ────────────────────────────────────────────
         try:
             ib_positions: list[dict] = await gateway.get_positions()
         except Exception as exc:
@@ -283,7 +339,7 @@ class IBOrderManager:
 
         result["ib_positions"] = ib_positions
 
-        # Build IB symbol → signed quantity map (skip zero-qty flat positions)
+        # Build IB symbol → signed quantity map
         ib_map: dict[str, float] = {}
         for pos in ib_positions:
             sym = pos.get("symbol", "")
@@ -291,19 +347,10 @@ class IBOrderManager:
             if sym and qty != 0:
                 ib_map[sym] = qty
 
-        # ── Fetch tracker positions ───────────────────────────────────────
+        # Build tracker positions
         tracker_map: dict[str, float] = {}
         if tracker is not None:
-            for trade in tracker._open.values():
-                sym = trade.symbol
-                # Signed quantity: positive for longs, negative for shorts
-                signed = (
-                    trade.quantity
-                    if trade.action.lower() in ("buy", "buy_to_open")
-                    else -trade.quantity
-                )
-                tracker_map[sym] = tracker_map.get(sym, 0.0) + signed
-
+            tracker_map = self._build_tracker_map(tracker)
             result["tracker_positions"] = [
                 {"symbol": s, "quantity": q} for s, q in tracker_map.items()
             ]
@@ -313,44 +360,8 @@ class IBOrderManager:
                 "be compared to tracker state"
             )
 
-        # ── Compare ───────────────────────────────────────────────────────
-        all_symbols = set(ib_map) | set(tracker_map)
-
-        for sym in sorted(all_symbols):
-            ib_qty = ib_map.get(sym, 0.0)
-            tr_qty = tracker_map.get(sym, 0.0)
-
-            if sym in ib_map and sym not in tracker_map:
-                result["missing_in_tracker"].append(sym)
-                logger.warning(
-                    "reconcile DISCREPANCY: %s is in IB (qty=%.0f) but NOT in PortfolioTracker",
-                    sym,
-                    ib_qty,
-                )
-            elif sym in tracker_map and sym not in ib_map:
-                result["missing_in_ib"].append(sym)
-                logger.warning(
-                    "reconcile DISCREPANCY: %s is in PortfolioTracker (qty=%.0f) but NOT in IB",
-                    sym,
-                    tr_qty,
-                )
-            elif abs(ib_qty - tr_qty) > 0.01:
-                mismatch = {
-                    "symbol": sym,
-                    "ib_qty": ib_qty,
-                    "tracker_qty": tr_qty,
-                    "delta": ib_qty - tr_qty,
-                }
-                result["qty_mismatches"].append(mismatch)
-                logger.warning(
-                    "reconcile QTY MISMATCH: %s — IB=%.0f tracker=%.0f delta=%+.0f",
-                    sym,
-                    ib_qty,
-                    tr_qty,
-                    ib_qty - tr_qty,
-                )
-            else:
-                logger.debug("reconcile: %s in sync (qty=%.0f)", sym, ib_qty)
+        # Compare positions
+        self._compare_positions(result, ib_map, tracker_map)
 
         discrepancies = (
             len(result["missing_in_tracker"])
@@ -362,7 +373,7 @@ class IBOrderManager:
         if result["in_sync"]:
             logger.info(
                 "reconcile: ALL %d symbols in sync between IB and PortfolioTracker",
-                len(all_symbols),
+                len(set(ib_map) | set(tracker_map)),
             )
         else:
             logger.warning(

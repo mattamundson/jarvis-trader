@@ -4,7 +4,7 @@ End-to-end testing of the multi-agent trading pipeline.
 """
 
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
@@ -135,7 +135,26 @@ def mock_agents_dict():
 
 
 @pytest.fixture
-def trading_pipeline(mock_agents_dict, mock_safety_layer):
+def disable_cache(monkeypatch):
+    """Disable caching for all tests by mocking cache functions to return False."""
+    async def mock_should_use_cache(symbol):
+        return False
+
+    async def mock_get_cached_signal(symbol):
+        return None
+
+    async def mock_cache_signal(symbol, result):
+        pass
+
+    # Patch the cache functions in the pipeline module
+    monkeypatch.setattr("agents.pipeline.should_use_cache", AsyncMock(side_effect=mock_should_use_cache))
+    monkeypatch.setattr("agents.pipeline.get_cached_signal", AsyncMock(side_effect=mock_get_cached_signal))
+    monkeypatch.setattr("agents.pipeline.cache_signal", AsyncMock(side_effect=mock_cache_signal))
+    return None
+
+
+@pytest.fixture
+def trading_pipeline(mock_agents_dict, mock_safety_layer, disable_cache):
     """Instantiated TradingPipeline with mock agents."""
     return TradingPipeline(mock_agents_dict, mock_safety_layer)
 

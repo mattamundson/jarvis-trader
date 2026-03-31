@@ -391,6 +391,70 @@ class IBGatewayManager:
 
     # ── Order placement ───────────────────────────────────────────────────
 
+    def _validate_order_preconditions(self, action: str, quantity: int) -> Optional[tuple[str, str]]:
+        """Validate safety and input preconditions. Returns (action_upper, order_type_upper) or None."""
+        if self._config.port == LIVE_TRADING_PORT:
+            logger.critical("place_paper_order: port 4001 rejected — live trading disabled")
+            return None
+        if not IB_INSYNC_AVAILABLE:
+            logger.error("place_paper_order: ib_async not installed")
+            return None
+        if not self.is_connected():
+            logger.error("place_paper_order: not connected to IB Gateway. Call connect() first.")
+            return None
+        action_upper = action.upper()
+        if action_upper not in ("BUY", "SELL"):
+            logger.error("place_paper_order: invalid action '%s' — must be BUY or SELL", action)
+            return None
+        if quantity <= 0:
+            logger.error("place_paper_order: quantity must be positive, got %d", quantity)
+            return None
+        return action_upper
+
+    def _build_order_object(
+        self,
+        order_type_upper: str,
+        action_upper: str,
+        quantity: int,
+        limit_price: Optional[float],
+        aux_price: Optional[float],
+    ) -> Optional[object]:
+        """Build appropriate IB order object. Returns order or None."""
+        if order_type_upper == "MKT":
+            return MarketOrder(action=action_upper, totalQuantity=quantity)
+        if order_type_upper == "LMT":
+            if limit_price is None:
+                logger.error("place_paper_order: limit_price required for LMT order")
+                return None
+            return LimitOrder(
+                action=action_upper,
+                totalQuantity=quantity,
+                lmtPrice=limit_price,
+            )
+        if order_type_upper == "STP":
+            if aux_price is None:
+                logger.error("place_paper_order: aux_price (stop price) required for STP order")
+                return None
+            return StopOrder(
+                action=action_upper,
+                totalQuantity=quantity,
+                stopPrice=aux_price,
+            )
+        if order_type_upper in ("STP_LMT", "STPLMT"):
+            if aux_price is None or limit_price is None:
+                logger.error(
+                    "place_paper_order: both aux_price and limit_price required for STP_LMT"
+                )
+                return None
+            return StopLimitOrder(
+                action=action_upper,
+                totalQuantity=quantity,
+                lmtPrice=limit_price,
+                stopPrice=aux_price,
+            )
+        logger.error("place_paper_order: unsupported order_type '%s'", order_type_upper)
+        return None
+
     async def place_paper_order(
         self,
         symbol: str,
@@ -414,26 +478,8 @@ class IBGatewayManager:
         Returns:
             IB order ID (int) on success, None on failure.
         """
-        # SAFETY: Live trading (port 4001) is permanently disabled in this module.
-        if self._config.port == LIVE_TRADING_PORT:
-            logger.critical("place_paper_order: port 4001 rejected — live trading disabled")
-            return None
-
-        if not IB_INSYNC_AVAILABLE:
-            logger.error("place_paper_order: ib_async not installed")
-            return None
-
-        if not self.is_connected():
-            logger.error("place_paper_order: not connected to IB Gateway. Call connect() first.")
-            return None
-
-        action_upper = action.upper()
-        if action_upper not in ("BUY", "SELL"):
-            logger.error("place_paper_order: invalid action '%s' — must be BUY or SELL", action)
-            return None
-
-        if quantity <= 0:
-            logger.error("place_paper_order: quantity must be positive, got %d", quantity)
+        action_upper = self._validate_order_preconditions(action, quantity)
+        if action_upper is None:
             return None
 
         order_type_upper = order_type.upper()
@@ -459,44 +505,12 @@ class IBGatewayManager:
                 logger.error("place_paper_order: could not qualify contract for %s", symbol)
                 return None
 
-            # Build the order object
-            if order_type_upper == "MKT":
-                ib_order = MarketOrder(action=action_upper, totalQuantity=quantity)
-            elif order_type_upper == "LMT":
-                if limit_price is None:
-                    logger.error("place_paper_order: limit_price required for LMT order")
-                    return None
-                ib_order = LimitOrder(
-                    action=action_upper,
-                    totalQuantity=quantity,
-                    lmtPrice=limit_price,
-                )
-            elif order_type_upper == "STP":
-                if aux_price is None:
-                    logger.error("place_paper_order: aux_price (stop price) required for STP order")
-                    return None
-                ib_order = StopOrder(
-                    action=action_upper,
-                    totalQuantity=quantity,
-                    stopPrice=aux_price,
-                )
-            elif order_type_upper in ("STP_LMT", "STPLMT"):
-                if aux_price is None or limit_price is None:
-                    logger.error(
-                        "place_paper_order: both aux_price and limit_price required for STP_LMT"
-                    )
-                    return None
-                ib_order = StopLimitOrder(
-                    action=action_upper,
-                    totalQuantity=quantity,
-                    lmtPrice=limit_price,
-                    stopPrice=aux_price,
-                )
-            else:
-                logger.error("place_paper_order: unsupported order_type '%s'", order_type)
+            ib_order = self._build_order_object(
+                order_type_upper, action_upper, quantity, limit_price, aux_price
+            )
+            if ib_order is None:
                 return None
 
-            # Attach account if configured
             if self._config.account:
                 ib_order.account = self._config.account
 

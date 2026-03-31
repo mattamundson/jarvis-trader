@@ -407,29 +407,4 @@ All components located in `dashboard/components/`. All verified at 0 TypeScript 
 | 27 | `MesContractSpecCard.tsx` | watchlist/page.tsx | Static MES contract reference (tick size $1.25, multiplier $5, margin ~$1,320) |
 | 28 | `PositionSizingWidget.tsx` | paper/page.tsx | `/paper/mgc-signal` + `/settings/risk` combined, effectiveContracts calculation display |
 | 29 | `RecentTradesTableWidget.tsx` | journal/page.tsx | `/portfolio/history/trades?limit=10`, tfoot totals row (total P&L, avg win, avg loss) |
-| 30 | `PnLStreakWidget.tsx` | scorecard/page.tsx | Consecutive profitable day streak computed from daily-pnl endpoint |
-| 31 | `EngineConfigCard.tsx` | settings/page.tsx | `/health` + `/settings/risk` parallel fetch, STC thresholds displayed as static reference |
-| 32 | `StcStrategyExplainerCard.tsx` | backtest/page.tsx | Static STC signal reference card (OS=15, OB=83, ATR=0.70x/1.50x, regime filter) |
-| 33 | `SignalQueueWidget.tsx` | paper/page.tsx | `GET /paper/mgc-signal`, full signal details: action, price, STC value, ATR, regime, confidence |
-
-### Key Endpoints Discovered This Session
-
-| Endpoint | Response Shape |
-|----------|----------------|
-| `POST /notifications/vix-alert-check` | `{vix, regime: CALM/NORMAL/CAUTION/ELEVATED/EXTREME, sent, reason}` |
-| `GET /safety/circuit-breakers` | `{daily_pnl, daily_limit, drawdown_pct, kill_switch_active, all_clear, pnl_source}` |
-| `GET /settings/risk` | `{config: {daily_loss_limit, max_drawdown_pct, max_contracts, risk_per_trade_pct, atr_stop_multiplier, atr_target_multiplier}, circuit_breakers, editable_keys}` |
-| `GET /health` | `{status, version, uptime_seconds, live_trading, kill_switch_active, paper_mode, database, ibkr_connected}` |
-| `GET /ib/connection-test` | `{connected, latency_ms, host, port, client_id, error?}` |
-| `GET /portfolio/stats/session-today` | `{trades, pnl, win_rate, open_position, session}` |
-| `GET /paper/mgc-signal` | `{action, price, stc_value, atr, regime, confidence, timestamp}` |
-
-### Session 5 Totals
-
-- Components completed this session: **33** (and counting)
-- All TypeScript checks: **0 errors** throughout
-- Key endpoints discovered: `/safety/circuit-breakers`, `/ib/connection-test`, `/portfolio/stats/session-today`, `/paper/mgc-signal`, `/settings/risk`, `/notifications/vix-alert-check`
-- Currently in progress: `PaperPhaseSummaryWidget` + `app/page.tsx` (main dashboard)
-- Target version: v1.6.0
-- Paper trading validation phase continues: April-May 2026
-- Next milestone: 30 trading days achieving PF > 2.0 and Sharpe > 1.5
+| 30 | `PnLStreakWidget.tsx` 

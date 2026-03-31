@@ -939,19 +939,3 @@ export default function SettingsPage() {
             <NotificationTestPanel />
 
             {/* Circuit breaker status (always shown) */}
-            <CircuitBreakerSummary data={cbData} />
-          </div>
-        </div>
-
-        {/* Risk Limits — full width, collapsible */}
-        <RiskSettingsPanel />
-
-        {/* WhatsApp alert status */}
-        <WhatsAppStatusCard />
-
-        {/* Trading Schedule — static reference */}
-        <TradingScheduleCard />
-      </main>
-    </div>
-  );
-}

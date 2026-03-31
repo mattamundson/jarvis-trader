@@ -1144,14 +1144,4 @@ export default function WatchlistPage() {
         <SymbolPerformanceWidget />
 
         {/* MES Contract Spec Card */}
-        <MesContractSpecCard />
-
-        {/* Info footer */}
-        <p className="text-[11px] text-muted-foreground text-center pb-4">
-          Prices sourced from Yahoo Finance via the JARVIS engine. Watchlist changes
-          are held in memory and reset when the engine restarts. MGC signal polled every 60s from /paper/mgc-signal.
-        </p>
-      </main>
-    </div>
-  );
-}
+        <MesContractSpecCard /

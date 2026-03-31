@@ -1544,21 +1544,4 @@ export default function ValidationPage() {
         {/* Section H: Export Data */}
         <section>
           <SectionLabel>H — Export Data</SectionLabel>
-          <ExportDataWidget />
-        </section>
-
-        {/* Section I: Position Reconciliation */}
-        <section>
-          <SectionLabel>I — Position Reconciliation</SectionLabel>
-          <ReconciliationWidget />
-        </section>
-
-        {/* Section J: Go-Live Roadmap */}
-        <section>
-          <SectionLabel>J — Go-Live Roadmap</SectionLabel>
-          <GoLivePlanCard />
-        </section>
-      </main>
-    </div>
-  );
-}
+          <Exp

@@ -321,6 +321,31 @@ class IBKRExecutor:
 
     # ── Order submission ──────────────────────────────────────────────────────
 
+    def _build_ib_order(self, order_type: str, action: str, qty: int, order: OrderRequest) -> Optional[Order]:
+        """Build IB order object. Returns Order or None."""
+        ot = order_type.lower()
+
+        if ot == "market":
+            return MarketOrder(action, qty)
+        if ot == "limit":
+            if order.limit_price is None:
+                logger.error("submit_order: limit_price required for limit orders")
+                return None
+            return LimitOrder(action, qty, order.limit_price)
+        if ot == "stop":
+            if order.stop_price is None:
+                logger.error("submit_order: stop_price required for stop orders")
+                return None
+            return StopOrder(action, qty, order.stop_price)
+        if ot == "stop_limit":
+            if order.limit_price is None or order.stop_price is None:
+                logger.error("submit_order: Both limit_price and stop_price required for stop_limit")
+                return None
+            return StopLimitOrder(action, qty, order.limit_price, order.stop_price)
+
+        logger.error(f"submit_order: Unknown order_type '{order_type}'")
+        return None
+
     async def submit_order(self, order: OrderRequest, portfolio_equity: float) -> dict:
         """
         CRITICAL PATH — submit a trade to IBKR.
@@ -384,39 +409,11 @@ class IBKRExecutor:
         action = "BUY" if order.quantity > 0 else "SELL"
         qty = abs(order.quantity)
 
-        ib_order: Order
-        ot = order.order_type.lower()
-
-        if ot == "market":
-            ib_order = MarketOrder(action, qty)
-        elif ot == "limit":
-            if order.limit_price is None:
-                return {
-                    "submitted": False,
-                    "reason": "limit_price required for limit orders",
-                    "symbol": order.symbol,
-                }
-            ib_order = LimitOrder(action, qty, order.limit_price)
-        elif ot == "stop":
-            if order.stop_price is None:
-                return {
-                    "submitted": False,
-                    "reason": "stop_price required for stop orders",
-                    "symbol": order.symbol,
-                }
-            ib_order = StopOrder(action, qty, order.stop_price)
-        elif ot == "stop_limit":
-            if order.limit_price is None or order.stop_price is None:
-                return {
-                    "submitted": False,
-                    "reason": "Both limit_price and stop_price required for stop_limit orders",
-                    "symbol": order.symbol,
-                }
-            ib_order = StopLimitOrder(action, qty, order.limit_price, order.stop_price)
-        else:
+        ib_order = self._build_ib_order(order.order_type, action, qty, order)
+        if ib_order is None:
             return {
                 "submitted": False,
-                "reason": f"Unknown order_type '{order.order_type}'",
+                "reason": f"Invalid order_type '{order.order_type}'",
                 "symbol": order.symbol,
             }
 
@@ -442,7 +439,7 @@ class IBKRExecutor:
                 "limit_price": order.limit_price,
                 "stop_price": order.stop_price,
                 "warnings": result.warnings,
-                "trade": trade,  # ib_async Trade object for callers that want to track fill
+                "trade": trade,
             }
 
         except Exception as exc:
