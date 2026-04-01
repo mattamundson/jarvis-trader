@@ -30,9 +30,6 @@ import { PerformanceTrendWidget } from "@/components/PerformanceTrendWidget";
 import { VIXRegimeCard } from "@/components/VIXRegimeCard";
 import { CurrentSignalWidget } from "@/components/CurrentSignalWidget";
 import { MesContractSpecCard } from "@/components/MesContractSpecCard";
-import { MarketSessionWidget } from "@/components/MarketSessionWidget";
-import { SymbolSignalWidget } from "@/components/SymbolSignalWidget";
-import { RegimeHistoryWidget } from "@/components/RegimeHistoryWidget";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -803,12 +800,6 @@ export default function WatchlistPage() {
       {/* Main content */}
       <main className="mx-auto max-w-[1600px] px-6 py-8 space-y-6">
 
-        {/* Market Session Widget */}
-        <MarketSessionWidget />
-
-        {/* Symbol Signal Monitor */}
-        <SymbolSignalWidget />
-
         {/* Current STC Signal Widget */}
         <CurrentSignalWidget symbol="MES" />
 
@@ -1144,4 +1135,14 @@ export default function WatchlistPage() {
         <SymbolPerformanceWidget />
 
         {/* MES Contract Spec Card */}
-        <MesContractSpecCard /
+        <MesContractSpecCard />
+
+        {/* Info footer */}
+        <p className="text-[11px] text-muted-foreground text-center pb-4">
+          Prices sourced from Yahoo Finance via the JARVIS engine. Watchlist changes
+          are held in memory and reset when the engine restarts. MGC signal polled every 60s from /paper/mgc-signal.
+        </p>
+      </main>
+    </div>
+  );
+}

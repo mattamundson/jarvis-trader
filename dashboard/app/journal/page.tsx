@@ -12,15 +12,12 @@ import {
 } from "lucide-react";
 import { MarketSessionStatusCard } from "@/components/MarketSessionStatusCard";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
-import { JournalStatsWidget } from "@/components/JournalStatsWidget";
-import { TodaySessionWidget } from "@/components/TodaySessionWidget";
-import { PipelineDecisionsWidget } from "@/components/PipelineDecisionsWidget";
 
 // ── Category badge colors ────────────────────────────────────────────────────
 
 type Category = "CRITICAL" | "FINDING" | "IMPROVEMENT" | "VERDICT" | "BREAKTHROUGH" | "BUG FIX";
 type Status = "Resolved" | "Active" | "Superseded";
-type HypothesisResult = "Pending" | "In Progress" | "FAILED" | "No improvement" | "Partial (0.34)" | "Partial (0.57)" | "No (WFE same 0.27)";
+type HypothesisResult = "Pending" | "In Progress" | "FAILED" | "No improvement" | "Partial (0.34)" | "No (WFE same 0.27)";
 
 const CATEGORY_STYLES: Record<Category, string> = {
   CRITICAL: "bg-red-500/15 text-red-400 border-red-500/30",
@@ -47,18 +44,6 @@ interface ResearchEntry {
 }
 
 const RESEARCH_LOG: ResearchEntry[] = [
-  {
-    date: "2026-03-30",
-    entry: "v2.7: MCL 1h static WFE=0.82 APPROVED, MNQ 1h adaptive WFE=0.57 APPROVED. 2 instruments cleared for paper trading.",
-    category: "BREAKTHROUGH",
-    status: "Active",
-  },
-  {
-    date: "2026-03-30",
-    entry: "MTF filter REJECTED: MNQ 1h WFE dropped 0.57\u21920.17. Volume filter REJECTED: WFE 0.57\u2192-0.23. Both confirmed harmful.",
-    category: "FINDING",
-    status: "Active",
-  },
   {
     date: "2026-03-29",
     entry: "MGC 1d adaptive WFE=0.88 (3-window) \u2014 small-sample bias exposed by 15-window",
@@ -138,8 +123,8 @@ const HYPOTHESES: Hypothesis[] = [
   {
     hypothesis: "MTF filter improves MNQ 1h",
     prediction: "WFE >0.40",
-    tested: "Yes",
-    result: "FAILED",
+    tested: "No",
+    result: "Pending",
   },
   {
     hypothesis: "Adaptive regime improves MGC 1d",
@@ -151,7 +136,7 @@ const HYPOTHESES: Hypothesis[] = [
     hypothesis: "Adaptive regime improves MNQ 1h",
     prediction: "WFE >0.40",
     tested: "Yes",
-    result: "Partial (0.57)",
+    result: "Partial (0.34)",
   },
 ];
 
@@ -346,17 +331,8 @@ export default function JournalPage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
-        {/* ── Today's Session ────────────────────────────────────────────────── */}
-        <TodaySessionWidget />
-
         {/* ── Market Session Status ──────────────────────────────────────────── */}
         <MarketSessionStatusCard />
-
-        {/* ── Journal Statistics ─────────────────────────────────────────────── */}
-        <JournalStatsWidget />
-
-        {/* ── Pipeline Decision Log ──────────────────────────────────────────── */}
-        <PipelineDecisionsWidget />
 
         {/* ── Recent Trades ──────────────────────────────────────────────────── */}
         <RecentTradesTableWidget />
@@ -481,4 +457,40 @@ export default function JournalPage() {
           icon={<ListChecks className="h-4 w-4 text-emerald-400" />}
           accentColor="#00ff88"
         >
-        
+          <div className="space-y-3">
+            {NEXT_EXPERIMENTS.map((exp) => (
+              <div
+                key={exp.id}
+                className="flex items-start gap-4 rounded-lg border border-[#1a1a2e] bg-[#0d0d0d] px-4 py-3"
+              >
+                <span
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-bold tabular-nums"
+                  style={{
+                    backgroundColor: "#00ff8815",
+                    color: "#00ff88",
+                    border: "1px solid #00ff8830",
+                  }}
+                >
+                  {exp.id}
+                </span>
+                <div>
+                  <p className="font-mono text-xs font-semibold text-neutral-200">
+                    {exp.title}
+                  </p>
+                  <p className="font-mono text-[11px] text-neutral-500 mt-0.5 leading-relaxed">
+                    {exp.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* Footer timestamp */}
+        <div className="text-center font-mono text-[10px] text-neutral-700 py-4">
+          JARVIS TRADER RESEARCH JOURNAL &middot; Last updated 2026-03-29
+        </div>
+      </main>
+    </div>
+  );
+}

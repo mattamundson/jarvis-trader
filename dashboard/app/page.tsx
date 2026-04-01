@@ -442,33 +442,32 @@ interface RegimeStatusEntry {
 }
 
 const FALLBACK_PAPER: Record<string, PaperStatusEntry> = {
-  "MCL_1h": {
+  "MGC_1d": {
     status: "ACTIVE",
-    wfe: 0.82,
+    wfe: 0.88,
     wfe_label: "EXCELLENT",
-    cleared_date: "2026-03-30",
-    risk_per_trade: "0.25%",
-    config: "static params, regime_filter=ON",
-  },
-  "MNQ_1h": {
-    status: "ACTIVE",
-    wfe: 0.57,
-    wfe_label: "GOOD",
-    cleared_date: "2026-03-30",
+    cleared_date: "2026-03-29",
     risk_per_trade: "0.25%",
     config: "adaptive_regime=ON",
   },
-  "MGC_1d": {
-    status: "HALTED",
-    wfe: 0.14,
-    wfe_label: "OVERFIT",
+  "MNQ_1h": {
+    status: "RESEARCH",
+    wfe: 0.34,
+    wfe_label: "ACCEPTABLE",
+    target_wfe: 0.40,
+  },
+  "MCL_1h": {
+    status: "NO-TRADE",
+    wfe: -0.31,
+    wfe_label: "FAILED",
+    target_wfe: 0.40,
   },
 };
 
 const FALLBACK_REGIME: Record<string, RegimeStatusEntry> = {
-  "MCL_1h": { current_regime: "TRENDING" },
+  "MGC_1d": { current_regime: "TRENDING" },
   "MNQ_1h": { current_regime: "RANGING" },
-  "MGC_1d": { current_regime: "\u2014" },
+  "MCL_1h": { current_regime: "\u2014" },
 };
 
 function WFEStatusCard() {
@@ -491,14 +490,12 @@ function WFEStatusCard() {
   function statusColor(status: string): string {
     if (status === "ACTIVE") return "#00ff88";
     if (status === "RESEARCH") return "#ffcc00";
-    if (status === "HALTED") return "#ff8800";
     return "#ff4444";
   }
 
   function statusDot(status: string): string {
     if (status === "ACTIVE") return "\uD83D\uDFE2";
     if (status === "RESEARCH") return "\uD83D\uDFE1";
-    if (status === "HALTED") return "\uD83D\uDFE0";
     return "\uD83D\uDD34";
   }
 
@@ -624,4 +621,10 @@ function RiskRow({
       </div>
       <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
         <div
-          c
+          className={`h-full rounded-full transition-all ${barColor}`}
+          style={{ width: `${clampedPct * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}

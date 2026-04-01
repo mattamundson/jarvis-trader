@@ -197,4 +197,202 @@ export function EquityCurveWidget() {
     // Line path
     const linePath = points
       .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
-      .join(" ");
+      .join(" ");
+
+    // Area path: line + close bottom
+    const areaPath =
+      linePath +
+      ` L ${points[n - 1].x.toFixed(2)} ${(PAD_TOP + PLOT_H).toFixed(2)}` +
+      ` L ${points[0].x.toFixed(2)} ${(PAD_TOP + PLOT_H).toFixed(2)}` +
+      " Z";
+
+    // Local maxima (highest point)
+    const maxVal = Math.max(...cumulative);
+    const maxIdx = cumulative.indexOf(maxVal);
+    const maxPt = points[maxIdx];
+
+    // Endpoint
+    const endPt = points[n - 1];
+
+    return (
+      <>
+        {/* Zero baseline */}
+        <line
+          x1={PAD_LEFT}
+          y1={zeroY}
+          x2={VB_W - PAD_RIGHT}
+          y2={zeroY}
+          stroke="#666"
+          strokeDasharray="4,4"
+          strokeWidth="1"
+        />
+        {/* Area fill */}
+        <path d={areaPath} fill={fillColor} stroke="none" />
+        {/* Line */}
+        <path
+          d={linePath}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Local maxima dot */}
+        {maxIdx !== n - 1 && (
+          <circle cx={maxPt.x} cy={maxPt.y} r={3} fill="#22c55e" />
+        )}
+        {/* Endpoint dot */}
+        <circle cx={endPt.x} cy={endPt.y} r={4} fill={endDotColor} />
+      </>
+    );
+  }
+
+  // ── Y-axis labels ─────────────────────────────────────────────────────────
+
+  function buildYAxis(): React.ReactNode {
+    if (cumulative.length === 0) return null;
+    const labelX = PAD_LEFT - 4;
+    const labels: { val: number; y: number }[] = [];
+
+    labels.push({ val: maxCum, y: toY(maxCum) });
+    if (minCum !== 0 && maxCum !== 0) {
+      labels.push({ val: 0, y: toY(0) });
+    }
+    if (minCum !== maxCum) {
+      labels.push({ val: minCum, y: toY(minCum) });
+    }
+
+    return labels.map(({ val, y }, i) => (
+      <text
+        key={i}
+        x={labelX}
+        y={y}
+        textAnchor="end"
+        dominantBaseline="middle"
+        fontSize="9"
+        fill="#888"
+      >
+        {fmtCurrency(val)}
+      </text>
+    ));
+  }
+
+  // ── X-axis labels ─────────────────────────────────────────────────────────
+
+  function buildXAxis(): React.ReactNode {
+    if (cumulative.length === 0) return null;
+    const n = cumulative.length;
+    const yPos = PAD_TOP + PLOT_H + 18;
+    return (
+      <>
+        <text
+          x={toX(0, n)}
+          y={yPos}
+          textAnchor="middle"
+          fontSize="9"
+          fill="#888"
+        >
+          Trade 1
+        </text>
+        <text
+          x={toX(n - 1, n)}
+          y={yPos}
+          textAnchor="middle"
+          fontSize="9"
+          fill="#888"
+        >
+          Trade {n}
+        </text>
+      </>
+    );
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle>Equity Curve</CardTitle>
+        <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+      </CardHeader>
+
+      <CardContent>
+        {loading ? (
+          <div className="w-full h-[200px] bg-muted rounded animate-pulse" />
+        ) : error ? (
+          <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">
+            Equity curve unavailable
+          </div>
+        ) : trades.length === 0 ? (
+          <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+            No closed trades yet — equity curve will appear here
+          </div>
+        ) : (
+          <svg
+            viewBox={`0 0 ${VB_W} ${VB_H}`}
+            width="100%"
+            preserveAspectRatio="none"
+            style={{ display: "block" }}
+          >
+            {buildYAxis()}
+            {buildXAxis()}
+            {buildChart()}
+          </svg>
+        )}
+
+        {/* Stats row */}
+        {!loading && !error && (
+          <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-border">
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                Starting Capital
+              </p>
+              <p className="text-sm font-bold font-mono text-foreground">
+                $25,000
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                Current P&amp;L
+              </p>
+              <p
+                className={`text-sm font-bold font-mono ${
+                  totalPnl > 0
+                    ? "text-green-500"
+                    : totalPnl < 0
+                    ? "text-red-500"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {totalPnl >= 0 ? "+" : ""}
+                {fmtCurrencyFull(totalPnl)}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                Peak P&amp;L
+              </p>
+              <p className="text-sm font-bold font-mono text-foreground">
+                {peakPnl >= 0 ? "+" : ""}
+                {fmtCurrencyFull(peakPnl)}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                From Peak
+              </p>
+              <p
+                className={`text-sm font-bold font-mono ${
+                  fromPeak < 0 ? "text-red-500" : "text-muted-foreground"
+                }`}
+              >
+                {fromPeak > 0 ? "+" : ""}
+                {fmtCurrencyFull(fromPeak)}
+              </p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
