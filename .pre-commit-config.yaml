@@ -1,0 +1,75 @@
+# JARVIS TRADER — Pre-Commit Security & Quality Hooks
+# ====================================================
+# Prevents API keys, credentials, and .env files from being committed.
+# Enforces Python code quality (ruff lint + format) before every commit.
+#
+# Setup (run once):
+#   pip install pre-commit
+#   pre-commit install           # Register hooks in .git/hooks/
+#   pre-commit run --all-files   # Run on entire repo to verify
+#
+# After setup, hooks run automatically on `git commit`.
+# To skip once (emergency only): git commit --no-verify
+#
+# To update hook versions: pre-commit autoupdate
+
+repos:
+  # ── Secret Detection ────────────────────────────────────────────────────────
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: Detect secrets (Yelp detect-secrets)
+        args: ["--baseline", ".secrets.baseline"]
+        # Excludes: test fixtures, .env.example, known-safe reference strings
+        exclude: |
+          (?x)^(
+            .*\.env\.example|
+            engine/tests/conftest\.py|
+            engine/tests/test_.*\.py|
+            .*\.secrets\.baseline
+          )$
+
+  # ── Common Security Checks ───────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: detect-private-key
+        name: Detect private keys (PEM/RSA/EC)
+      - id: check-added-large-files
+        name: Check for large files (>500KB)
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+        name: Check for merge conflict markers
+      - id: no-commit-to-branch
+        name: Prevent direct commits to main/master
+        args: ["--branch", "main", "--branch", "master"]
+      - id: end-of-file-fixer
+        name: Fix missing newline at end of file
+        exclude: ".*\\.json$"
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+        args: ["--markdown-linebreak-ext=md"]
+
+  # ── Python Code Quality ──────────────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff
+        name: Ruff linter (Python)
+        args: ["--config", "engine/ruff.toml", "--fix"]
+        files: ^engine/.*\.py$
+      - id: ruff-format
+        name: Ruff formatter (Python)
+        args: ["--config", "engine/ruff.toml"]
+        files: ^engine/.*\.py$
+
+  # ── TypeScript / Next.js ─────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        name: Prettier formatter (TypeScript/JSON/YAML)
+        files: ^dashboard/.*\.(ts|tsx|json|yaml|yml)$
+        additional_dependencies:
+          - prettier@3.3.3

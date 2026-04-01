@@ -1,5 +1,5 @@
 # JARVIS TRADER -- Executive Strategy Briefing
-*Updated: 2026-03-30 v2.8 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
+*Updated: 2026-04-01 v2.9 | Strategy: STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter*
 
 ## The Verdict: CONDITIONAL GO — 2 Instruments Approved for Paper Trading
 
@@ -20,6 +20,8 @@ The STC-based strategy clears walk-forward validation on **2 of 5 instruments** 
 *v2.6 update: CRITICAL — Optimizer kwarg bug discovered and fixed. Extra kwargs (adaptive_regime, volume_filter, mtf_filter) were silently passed to _compute_signals() causing TypeError on every call, caught by bare except → None returns for ALL walk-forward runs after these kwargs were added to walk_forward.py. With bug fixed: MGC 1d corrected WFE=0.14 (was 0.27 — OVERFIT confirmed, paper trading HALTED). MNQ 1h corrected WFE=0.48 with extended start 2024-04-26 (was 0.34 from buggy run — now ACCEPTABLE, crossed 0.40 threshold). MGC paper trading suspended pending MTF filter validation.*
 
 *v2.8 update (2026-03-30): SPY 1h re-run with corrected optimizer (post kwarg-bug fix). All 6 optimization windows returned SKIP (no valid parameter combinations for SPY on hourly data). WFE corrected from -1.11 → 0.00. Finding: the prior -1.11 result was partially optimizer noise. True result is zero viable windows. SPY 1h strategy is fundamentally incompatible with STC+ATR on hourly equity data. CLOSED — no further testing.*
+
+*v2.9 update (2026-04-01): MGC 1d extended walk-forward (2022-01-01 to 2026-03-27, 14 windows, 9-month IS / 3-month OOS). Result: WFE=0.00, 0/14 valid windows. All 14 optimization windows returned SKIP — no valid parameter combinations found in the FAST_GRID. This is stronger evidence than the prior WFE=0.14 (which had 15 windows with a few valid): the STC+ATR strategy produces zero viable signals on MGC daily data across any market regime from 2022 through 2026 (bear market, recovery, bull run). MGC 1d strategy redesign required before any reconsideration. See: `engine/backtest/fetch_mgc_history_2022.py` and `WF_MGC_1d_walk_forward.json`.*
 
 *v2.7 update (2026-03-30): MNQ adaptive WFE corrected 0.48→0.57 (latest confirmed run 2026-03-29T23:46). MCL static WFE confirmed 0.82 (run 2026-03-29T23:41). Both MCL and MNQ clear the 0.50 GOOD threshold — paper trading APPROVED for both. MTF filter walk-forward confirms MNQ WFE DEGRADES 0.57→0.17 — filter REJECTED. Volume filter also HURTS: 0.57→-0.23 — REJECTED. Best MCL config: static params only (adaptive WFE=-0.31). Best MNQ config: adaptive regime only, NO MTF, NO volume filter.*
 
@@ -48,6 +50,7 @@ The STC-based strategy clears walk-forward validation on **2 of 5 instruments** 
 | MNQ | 1h | 6 | — | — | — | **0.17** | REJECTED (adaptive + MTF filter) |
 | MNQ | 1h | 6 | — | — | — | **-0.23** | REJECTED (adaptive + volume filter) |
 | MGC | 1d | 15 | 6/15 (40%) | +6.7% | +1.8% | **0.14** | FAIL — HALTED (extended history, v2.7 corrected) |
+| MGC | 1d | 14 | 0/14 (0%) | 0.0% | 0.0% | **0.00** | FAIL — **CLOSED** (2022–2026 full range, 0 valid windows, v2.9) |
 | MCL | 1h | 6 | — | — | — | **-0.31** | FAIL (adaptive regime HURTS MCL) |
 | MES | 1h | 6 | 1/6 (17%) | — | — | **0.09** | FAIL — OVERFIT |
 | SPY | 1h | 6 | 0/6 (0%) | 0.0% | 0.0% | **0.00** | FAIL — CLOSED (0 valid windows, v2.8 corrected) |
@@ -146,8 +149,8 @@ These profiles are live in `engine/backtest/signals.py::INSTRUMENT_PARAMS` (7-el
 | Stop/T1 | 0.70 ATR / 1.00 ATR |
 | Kill switch | -3% monthly OR 3 consecutive losses |
 
-### MGC 1d — HALTED
-WFE=0.14 OVERFIT. MTF filter rejected. Suspended indefinitely.
+### MGC 1d — CLOSED (v2.9)
+WFE=0.00 (2022–2026 extended, 0/14 valid windows). Strategy fundamentally incompatible with MGC daily data. Signal redesign required — STC+ATR does not produce viable parameter sets on gold daily across any market regime. Do not attempt paper trading until redesign validated.
 
 **Config file:** `engine/backtest/paper_config.py`
 **Approval doc:** `PAPER_TRADING_APPROVAL.md`
