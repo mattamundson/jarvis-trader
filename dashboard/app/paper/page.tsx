@@ -36,7 +36,7 @@ export default function PaperTradingPage() {
                 JARVIS TRADER
               </h1>
               <p className="text-xs text-muted-foreground">
-                Paper Trading — MCL 1h + MNQ 1h ACTIVE | MGC 1d HALTED
+                MGC Daily Paper Trading — SUSPENDED
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
@@ -65,17 +65,16 @@ export default function PaperTradingPage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-4 space-y-4">
-        {/* WFE Status Banner */}
+        {/* WFE Halt Banner */}
         <div className="rounded-xl p-4 font-mono"
-          style={{ backgroundColor: "#00ff8810", border: "1px solid #00ff8840" }}>
+          style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
           <div className="flex items-start gap-3">
-            <span className="text-[11px] font-bold tracking-wider" style={{ color: "#00ff88" }}>
-              2 INSTRUMENTS APPROVED
+            <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
+              PAPER TRADING SUSPENDED
             </span>
-            <span className="text-[10px]" style={{ color: "#88ffbb" }}>
-              MCL 1h WFE=0.82 EXCELLENT (static params, regime_filter=ON) — ACTIVE |
-              MNQ 1h WFE=0.57 GOOD (adaptive_regime=ON) — ACTIVE |
-              MGC 1d WFE=0.14 OVERFIT — HALTED. Risk: 0.25%/trade, max daily loss: -2%.
+            <span className="text-[10px]" style={{ color: "#ff8888" }}>
+              MGC 1d WFE corrected to 0.14 (was 0.27) — below 0.30 threshold. Status: OVERFIT.
+              Paper trading suspended pending MTF filter validation.
             </span>
           </div>
         </div>
@@ -843,4 +842,11 @@ function TradeLoggerPanel() {
             className="flex-1 rounded-lg border px-4 py-2 font-mono text-xs font-semibold transition-colors"
             style={{ borderColor: "#555", color: "#aaa", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}
           >
-        
+            Reset
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+   

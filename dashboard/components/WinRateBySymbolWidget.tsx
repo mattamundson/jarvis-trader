@@ -276,4 +276,166 @@ export function WinRateBySymbolWidget() {
         {!loading && !error && stats.length > 0 && (
           <div className="grid grid-cols-12 gap-3 mb-1">
             <div
-              className="col-span-2 font-mono te
+              className="col-span-2 font-mono text-[10px] uppercase tracking-wider"
+              style={{ color: "#555" }}
+            >
+              Symbol
+            </div>
+            <div
+              className="col-span-4 font-mono text-[10px] uppercase tracking-wider"
+              style={{ color: "#555" }}
+            >
+              Win Rate
+            </div>
+            <div
+              className="col-span-2 font-mono text-[10px] uppercase tracking-wider"
+              style={{ color: "#555" }}
+            >
+              W / L
+            </div>
+            <div
+              className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-right"
+              style={{ color: "#555" }}
+            >
+              Total P&amp;L
+            </div>
+            <div
+              className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-right"
+              style={{ color: "#555" }}
+            >
+              Signal
+            </div>
+          </div>
+        )}
+
+        {/* Loading skeleton — first load only */}
+        {loading && (
+          <div>
+            {[1, 2, 3, 4].map((i) => (
+              <SkeletonRow key={i} />
+            ))}
+          </div>
+        )}
+
+        {/* Error state */}
+        {!loading && error && (
+          <div
+            className="rounded-lg p-4 font-mono text-sm"
+            style={{
+              backgroundColor: "#ff444412",
+              border: "1px solid #ff444430",
+              color: "#ff4444",
+            }}
+          >
+            Symbol data unavailable
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading && !error && stats.length === 0 && (
+          <div className="py-10 text-center">
+            <p className="font-mono text-sm" style={{ color: "#555" }}>
+              No closed trades yet
+            </p>
+          </div>
+        )}
+
+        {/* Symbol rows + summary */}
+        {!loading && !error && stats.length > 0 && (
+          <>
+            {stats.map((row) => (
+              <SymbolRow key={row.symbol} row={row} />
+            ))}
+
+            {/* Overall summary row — separator + bold combined stats */}
+            <div
+              className="grid grid-cols-12 gap-3 items-center py-3 mt-1"
+              style={{ borderTop: "2px solid #1a1a2e" }}
+            >
+              <div className="col-span-2">
+                <span
+                  className="font-mono text-xs font-bold uppercase tracking-wider"
+                  style={{ color: "#e0e0e0" }}
+                >
+                  TOTAL
+                </span>
+              </div>
+
+              {/* Overall win rate bar */}
+              <div className="col-span-4 flex items-center gap-2">
+                <div className="h-2 bg-muted rounded-full flex-1 min-w-0">
+                  <div
+                    className="h-2 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.min(overallWinRate, 100)}%`,
+                      backgroundColor: barColor(overallWinRate),
+                    }}
+                  />
+                </div>
+                <span
+                  className="font-mono text-[11px] tabular-nums font-bold whitespace-nowrap"
+                  style={{
+                    color: barColor(overallWinRate),
+                    minWidth: "38px",
+                    textAlign: "right",
+                  }}
+                >
+                  {overallWinRate.toFixed(1)}%
+                </span>
+              </div>
+
+              {/* Overall W/L */}
+              <div className="col-span-2">
+                <span
+                  className="font-mono text-[11px] tabular-nums font-bold"
+                  style={{ color: "#888" }}
+                >
+                  W/L:{" "}
+                  <span style={{ color: "#00ff88" }}>{overallWins}</span>
+                  <span style={{ color: "#555" }}>/</span>
+                  <span style={{ color: "#ff4444" }}>{overallLosses}</span>
+                </span>
+              </div>
+
+              {/* Overall total P&L */}
+              <div className="col-span-2 text-right">
+                <span
+                  className="font-mono text-[11px] tabular-nums font-bold"
+                  style={{ color: pnlColor(overallPnl) }}
+                >
+                  {fmt$(overallPnl)}
+                </span>
+              </div>
+
+              {/* Overall badge */}
+              <div className="col-span-2 flex justify-end">
+                <Badge variant={winRateBadgeVariant(overallWinRate)}>
+                  {overallWinRate.toFixed(1)}%
+                </Badge>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div
+              className="pt-2 pb-1 flex items-center justify-between"
+              style={{ borderTop: "1px solid #1a1a2e" }}
+            >
+              <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+                {stats.length} symbol{stats.length !== 1 ? "s" : ""} &bull;{" "}
+                {overallTrades} closed trade{overallTrades !== 1 ? "s" : ""} &bull; refreshes every 2 min
+              </span>
+              <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+                avg/trade:{" "}
+                <span
+                  style={{ color: pnlColor(overallAvgPnl), fontWeight: 700 }}
+                >
+                  {fmt$(overallAvgPnl)}
+                </span>
+              </span>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

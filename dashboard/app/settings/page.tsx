@@ -31,8 +31,6 @@ import { NotificationTestPanel } from "@/components/NotificationTestPanel";
 import { TradingScheduleCard } from "@/components/TradingScheduleCard";
 import { RiskSettingsWidget } from "@/components/RiskSettingsWidget";
 import { WhatsAppStatusCard } from "@/components/WhatsAppStatusCard";
-import { PositionSizerWidget } from "@/components/PositionSizerWidget";
-import { RiskConfigDisplayWidget } from "@/components/RiskConfigDisplayWidget";
 
 // ── SWR fetchers ──────────────────────────────────────────────────────────
 
@@ -891,12 +889,6 @@ export default function SettingsPage() {
         {/* Risk Settings Widget — live read-only config overview */}
         <RiskSettingsWidget />
 
-        {/* Risk Config Display — full engine config read-only overview */}
-        <RiskConfigDisplayWidget />
-
-        {/* Position Sizer — fixed-fractional sizing calculator */}
-        <PositionSizerWidget />
-
         {/* Page title */}
         <div className="flex items-center gap-3">
           <Settings className="h-5 w-5 text-muted-foreground" />
@@ -939,3 +931,19 @@ export default function SettingsPage() {
             <NotificationTestPanel />
 
             {/* Circuit breaker status (always shown) */}
+            <CircuitBreakerSummary data={cbData} />
+          </div>
+        </div>
+
+        {/* Risk Limits — full width, collapsible */}
+        <RiskSettingsPanel />
+
+        {/* WhatsApp alert status */}
+        <WhatsAppStatusCard />
+
+        {/* Trading Schedule — static reference */}
+        <TradingScheduleCard />
+      </main>
+    </div>
+  );
+}

@@ -115,44 +115,32 @@ interface ScorecardRow {
 const SCORECARD_DATA: ScorecardRow[] = [
   {
     check: "Walk-Forward Efficiency",
-    criterion: "WFE > 0.50 (GOOD) / > 0.70 (EXCELLENT)",
-    result: "MCL 1h static: 0.82 EXCELLENT / MNQ 1h adaptive: 0.57 GOOD",
+    criterion: "WFE > 0.30",
+    result: "MGC: 0.88 / MNQ: 0.34",
     status: "PASS",
   },
   {
-    check: "MCL 1h adaptive",
-    criterion: "WFE > 0.30",
-    result: "WFE = -0.31 REJECTED (adaptive hurts MCL)",
-    status: "FAIL",
+    check: "OOS Profitable Windows",
+    criterion: "> 50% windows profitable",
+    result: "MGC: 2/3 (67%) / MNQ: 3/6 (50%)",
+    status: "PASS",
   },
   {
-    check: "MNQ 1h + MTF filter",
-    criterion: "WFE > 0.50",
-    result: "WFE = 0.17 REJECTED (MTF degrades WFE 0.57 to 0.17)",
-    status: "FAIL",
+    check: "Profit Factor",
+    criterion: "OOS PF > 1.0",
+    result: "MGC: 2.55 / MNQ: 1.05",
+    status: "PASS",
   },
   {
-    check: "MNQ 1h + Volume filter",
-    criterion: "WFE > 0.50",
-    result: "WFE = -0.23 REJECTED (volume filter destroys edge)",
-    status: "FAIL",
-  },
-  {
-    check: "MGC 1d static",
-    criterion: "WFE > 0.30",
-    result: "WFE = 0.14 HALTED (overfit, was 0.88 small-sample bias)",
-    status: "FAIL",
-  },
-  {
-    check: "MES 1h static",
-    criterion: "WFE > 0.30",
-    result: "WFE = 0.09 OVERFIT (1/6 OOS windows profitable)",
-    status: "FAIL",
-  },
-  {
-    check: "Trade Count (approved)",
+    check: "Trade Count",
     criterion: "> 30 OOS trades",
-    result: "MCL: 65 / MNQ: 86",
+    result: "MGC: 25 total / MNQ: 128 total",
+    status: "MARGINAL",
+  },
+  {
+    check: "Max Drawdown",
+    criterion: "OOS DD < 5%",
+    result: "MGC: 1.5%",
     status: "PASS",
   },
 ];
@@ -1544,4 +1532,21 @@ export default function ValidationPage() {
         {/* Section H: Export Data */}
         <section>
           <SectionLabel>H — Export Data</SectionLabel>
-          <Exp
+          <ExportDataWidget />
+        </section>
+
+        {/* Section I: Position Reconciliation */}
+        <section>
+          <SectionLabel>I — Position Reconciliation</SectionLabel>
+          <ReconciliationWidget />
+        </section>
+
+        {/* Section J: Go-Live Roadmap */}
+        <section>
+          <SectionLabel>J — Go-Live Roadmap</SectionLabel>
+          <GoLivePlanCard />
+        </section>
+      </main>
+    </div>
+  );
+}

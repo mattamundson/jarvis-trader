@@ -27,8 +27,6 @@ import { ConnectionHealthCard } from "@/components/ConnectionHealthCard";
 import { DatabaseStatsCard } from "@/components/DatabaseStatsCard";
 import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
-import { AgentPipelineStatusWidget } from "@/components/AgentPipelineStatusWidget";
-import { DatabaseStatusWidget } from "@/components/DatabaseStatusWidget";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -524,9 +522,6 @@ export default function HealthPage() {
         {/* Pre-Flight Widget */}
         <PreFlightWidget />
 
-        {/* Agent Pipeline Status — 10-agent flow diagram + per-agent status */}
-        <AgentPipelineStatusWidget />
-
         {/* Subsystem grid */}
         {data && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -546,4 +541,14 @@ export default function HealthPage() {
         {/* Alert Summary Widget — recent alert log + stats */}
         <AlertSummaryWidget />
 
-        {/* Database Statistics — record counts across trades, decisions, alerts */}
+        {/* Database Statistics — record counts across trades, decisions, alerts */}
+        <DatabaseStatsCard />
+
+        {/* Auto-refresh notice */}
+        <p className="text-xs text-muted-foreground text-center pb-2">
+          Auto-refreshes every 15 seconds. Use the Refresh button for an immediate update.
+        </p>
+      </main>
+    </div>
+  );
+}
