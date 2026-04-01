@@ -1,0 +1,2427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — ThinkScript Deep Dive</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#c9d1d9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.6}
+a{color:#58a6ff;text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* LAYOUT */
+.layout{display:flex;min-height:100vh}
+.sidebar{width:240px;min-width:240px;background:#0d1117;border-right:1px solid #30363d;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;padding:16px 0;z-index:100}
+.main{margin-left:240px;padding:40px 48px;max-width:1400px}
+
+/* SIDEBAR */
+.sidebar-title{padding:8px 16px 16px;font-size:12px;font-weight:700;color:#58a6ff;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #30363d;margin-bottom:8px}
+.sidebar-group{margin-bottom:4px}
+.sidebar-group-label{padding:8px 16px 4px;font-size:11px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:0.8px}
+.sidebar-link{display:block;padding:5px 16px 5px 24px;font-size:12px;color:#8b949e;cursor:pointer;border-left:2px solid transparent;transition:all 0.15s}
+.sidebar-link:hover{color:#c9d1d9;background:rgba(88,166,255,0.05)}
+.sidebar-link.active{color:#58a6ff;border-left-color:#58a6ff;background:rgba(88,166,255,0.08)}
+.sidebar-divider{border:none;border-top:1px solid #30363d;margin:8px 0}
+
+/* PAGE HEADER */
+.page-header{background:linear-gradient(135deg,#161b22 0%,#0d1117 100%);border:1px solid #30363d;border-radius:8px;padding:32px 40px;margin-bottom:40px}
+.page-header h1{font-size:28px;font-weight:700;color:#e6edf3;margin-bottom:6px;letter-spacing:-0.5px}
+.page-header .subtitle{font-size:15px;color:#8b949e;margin-bottom:24px}
+.stats-row{display:flex;gap:24px;flex-wrap:wrap}
+.stat-box{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px 20px;text-align:center}
+.stat-box .num{font-size:22px;font-weight:700;color:#58a6ff}
+.stat-box .lbl{font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px}
+
+/* SECTION HEADERS */
+.section-header{border-bottom:1px solid #30363d;padding-bottom:16px;margin-bottom:32px;margin-top:48px}
+.section-header:first-of-type{margin-top:0}
+.section-header h2{font-size:20px;font-weight:700;color:#e6edf3;display:flex;align-items:center;gap:10px}
+.section-group-label{font-size:12px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;margin-top:36px;padding-top:8px;border-top:1px solid #21262d}
+
+/* CARDS */
+.script-card{background:#161b22;border:1px solid #30363d;border-radius:8px;margin-bottom:48px;overflow:hidden}
+.card-header{padding:20px 24px 16px;border-bottom:1px solid #30363d;display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.card-header-info{flex:1}
+.card-title{font-size:18px;font-weight:700;color:#e6edf3;font-family:'JetBrains Mono',monospace,sans-serif}
+.card-meta{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center}
+.card-body{padding:24px}
+.card-desc{color:#c9d1d9;margin-bottom:20px;font-size:14px;line-height:1.7}
+
+/* CHIPS & BADGES */
+.chip{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;letter-spacing:0.3px}
+.chip-l1{background:rgba(88,166,255,0.15);color:#58a6ff;border:1px solid rgba(88,166,255,0.3)}
+.chip-l2{background:rgba(188,140,255,0.15);color:#bc8cff;border:1px solid rgba(188,140,255,0.3)}
+.chip-l3{background:rgba(63,185,80,0.15);color:#3fb950;border:1px solid rgba(63,185,80,0.3)}
+.chip-l4{background:rgba(240,136,62,0.15);color:#f0883e;border:1px solid rgba(240,136,62,0.3)}
+.chip-l5{background:rgba(248,81,73,0.15);color:#f85149;border:1px solid rgba(248,81,73,0.3)}
+.chip-support{background:rgba(139,148,158,0.15);color:#8b949e;border:1px solid rgba(139,148,158,0.3)}
+.chip-legacy{background:rgba(139,148,158,0.1);color:#6e7681;border:1px solid rgba(139,148,158,0.2)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge-upper{background:rgba(88,166,255,0.12);color:#58a6ff}
+.badge-lower{background:rgba(188,140,255,0.12);color:#bc8cff}
+.badge-author{background:rgba(63,185,80,0.1);color:#3fb950}
+.badge-warn{background:rgba(248,81,73,0.15);color:#f85149;border:1px solid rgba(248,81,73,0.3)}
+.badge-caution{background:rgba(240,136,62,0.15);color:#f0883e;border:1px solid rgba(240,136,62,0.3)}
+.badge-ok{background:rgba(63,185,80,0.15);color:#3fb950;border:1px solid rgba(63,185,80,0.3)}
+
+/* 4-COLUMN GRID */
+.card-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+@media(max-width:1100px){.card-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.card-grid{grid-template-columns:1fr}}
+.grid-col h4{font-size:12px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #21262d}
+
+/* MINI TABLES */
+.mini-table{width:100%;border-collapse:collapse;font-size:12px}
+.mini-table th{text-align:left;padding:4px 6px;color:#8b949e;font-weight:600;border-bottom:1px solid #21262d;font-size:11px}
+.mini-table td{padding:4px 6px;border-bottom:1px solid #161b22;vertical-align:top;line-height:1.4}
+.mini-table tr:last-child td{border-bottom:none}
+.mini-table tr:hover td{background:rgba(255,255,255,0.02)}
+.mini-table td:first-child{color:#e6edf3;font-family:monospace;font-size:11px}
+
+/* OVERLAP CHIPS */
+.overlap-chips{display:flex;flex-direction:column;gap:4px}
+.overlap-chip{display:inline-block;background:#21262d;border:1px solid #30363d;border-radius:4px;padding:3px 7px;font-size:11px;color:#8b949e;line-height:1.3}
+
+/* BULLET LIST */
+.bullet-list{list-style:none;font-size:12px}
+.bullet-list li{padding:3px 0;border-bottom:1px solid #21262d;color:#c9d1d9;line-height:1.4}
+.bullet-list li:last-child{border-bottom:none}
+.bullet-list li::before{content:"›";color:#58a6ff;margin-right:6px}
+
+/* CODE BLOCKS */
+.code-block{background:#1c2128;border:1px solid #30363d;border-radius:6px;padding:16px 20px;margin:16px 0;font-family:'JetBrains Mono',monospace,sans-serif;font-size:12px;color:#e6edf3;line-height:1.8;overflow-x:auto;white-space:pre}
+.code-label{font-size:11px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px}
+
+/* CALLOUTS */
+.callout{border-radius:6px;padding:14px 18px;margin:16px 0;font-size:13px;line-height:1.6}
+.callout-blue{background:rgba(88,166,255,0.08);border-left:3px solid #58a6ff;color:#c9d1d9}
+.callout-green{background:rgba(63,185,80,0.08);border-left:3px solid #3fb950;color:#c9d1d9}
+.callout-orange{background:rgba(240,136,62,0.08);border-left:3px solid #f0883e;color:#c9d1d9}
+.callout-red{background:rgba(248,81,73,0.08);border-left:3px solid #f85149;color:#c9d1d9}
+.callout-title{font-weight:700;color:#e6edf3;margin-bottom:4px}
+
+/* REDUNDANCY CARDS */
+.redundancy-card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px 24px;margin-bottom:16px}
+.redundancy-card h3{font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+
+/* OVERLAP MATRIX */
+.matrix-wrap{overflow-x:auto;margin:16px 0}
+.matrix-table{border-collapse:collapse;font-size:11px;min-width:900px}
+.matrix-table th{padding:6px 8px;background:#21262d;color:#8b949e;font-weight:600;border:1px solid #30363d;text-align:center;white-space:nowrap}
+.matrix-table th.row-header{text-align:left;min-width:220px}
+.matrix-table td{padding:5px 8px;border:1px solid #21262d;text-align:center}
+.matrix-table tr:nth-child(even) td{background:rgba(255,255,255,0.015)}
+.matrix-table td.dot{color:#58a6ff;font-size:16px}
+.matrix-table td.row-label{text-align:left;color:#c9d1d9;font-size:12px;white-space:nowrap;background:#161b22}
+
+/* PANEL LAYOUT */
+.panel-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:20px 0}
+@media(max-width:800px){.panel-layout{grid-template-columns:1fr}}
+.panel-box{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px}
+.panel-box h3{font-size:14px;font-weight:700;color:#e6edf3;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #30363d}
+.panel-layer{margin-bottom:12px}
+.panel-layer-label{font-size:11px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px}
+.panel-scripts{display:flex;flex-wrap:wrap;gap:6px}
+.panel-script{padding:3px 10px;border-radius:4px;font-size:11px;font-weight:500;background:#21262d;border:1px solid #30363d;color:#c9d1d9}
+
+/* FOOTER */
+.footer{border-top:1px solid #30363d;padding:32px 0;margin-top:60px;text-align:center;color:#6e7681;font-size:13px}
+.footer a{color:#58a6ff}
+
+/* UTILITY */
+.mt8{margin-top:8px}
+.mt12{margin-top:12px}
+.mt16{margin-top:16px}
+.mb8{margin-bottom:8px}
+.text-muted{color:#8b949e}
+.text-warn{color:#f85149}
+.mono{font-family:'JetBrains Mono',monospace,sans-serif;font-size:12px}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-title">ThinkScript Deep Dive</div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Market Structure (Corey)</div>
+    <a class="sidebar-link" onclick="scrollTo('s-gapfinder')">GapFinder</a>
+    <a class="sidebar-link" onclick="scrollTo('s-ib')">InitialBalance</a>
+    <a class="sidebar-link" onclick="scrollTo('s-rfv2')">RangeFinder v2</a>
+    <a class="sidebar-link" onclick="scrollTo('s-rfv1')">RangeFinder v1 Mobile</a>
+    <a class="sidebar-link" onclick="scrollTo('s-single')">SingleFinder</a>
+    <a class="sidebar-link" onclick="scrollTo('s-tpo')">TPO_Profile</a>
+    <a class="sidebar-link" onclick="scrollTo('s-tscore')">TPO_Score</a>
+  </div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Volatility &amp; ATR (Saty)</div>
+    <a class="sidebar-link" onclick="scrollTo('s-atr')">ATR_Levels</a>
+    <a class="sidebar-link" onclick="scrollTo('s-phase')">Phase_Oscillator</a>
+    <a class="sidebar-link" onclick="scrollTo('s-volstack')">Volume_Stack</a>
+  </div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Momentum</div>
+    <a class="sidebar-link" onclick="scrollTo('s-kama')">KAMA_NextSignal</a>
+    <a class="sidebar-link" onclick="scrollTo('s-stc')">STC_Cycle</a>
+  </div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Market Breadth (Chetan)</div>
+    <a class="sidebar-link" onclick="scrollTo('s-trin')">TRIN</a>
+    <a class="sidebar-link" onclick="scrollTo('s-gapbars')">Gap_Bars</a>
+  </div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Levels &amp; S/R</div>
+    <a class="sidebar-link" onclick="scrollTo('s-avwap')">Anchored_VWAP</a>
+    <a class="sidebar-link" onclick="scrollTo('s-pivots')">Pivot_Points</a>
+    <a class="sidebar-link" onclick="scrollTo('s-virgin')">Virgin_Profile</a>
+  </div>
+
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">Trend &amp; Channels</div>
+    <a class="sidebar-link" onclick="scrollTo('s-cci')">CCI_TrendBar</a>
+    <a class="sidebar-link" onclick="scrollTo('s-ob5')">OB_Omega_5m</a>
+    <a class="sidebar-link" onclick="scrollTo('s-ob15')">OB_Omega_15m</a>
+    <a class="sidebar-link" onclick="scrollTo('s-ob30')">OB_Omega_30m</a>
+    <a class="sidebar-link" onclick="scrollTo('s-kelt3')">Keltner_3x</a>
+  </div>
+
+  <hr class="sidebar-divider">
+
+  <div class="sidebar-group">
+    <a class="sidebar-link" onclick="scrollTo('s-overlap')">Overlap Analysis</a>
+    <a class="sidebar-link" onclick="scrollTo('s-redundancy')">Redundancy Findings</a>
+    <a class="sidebar-link" onclick="scrollTo('s-panellayout')">Panel Layout Guide</a>
+  </div>
+</nav>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <h1>JARVIS TRADER — ThinkScript Deep Dive</h1>
+  <p class="subtitle">22 Scripts | Full Inputs, Plots &amp; Formulas | Overlap Analysis</p>
+  <div class="stats-row">
+    <div class="stat-box"><div class="num">22</div><div class="lbl">Unique Scripts</div></div>
+    <div class="stat-box"><div class="num">41</div><div class="lbl">Total Plots (max)</div></div>
+    <div class="stat-box"><div class="num">5</div><div class="lbl">Scripts with ATR</div></div>
+    <div class="stat-box"><div class="num">4</div><div class="lbl">Scripts with Vol Profile</div></div>
+    <div class="stat-box"><div class="num">2</div><div class="lbl">Redundant Script Pairs</div></div>
+  </div>
+</div>
+
+<!-- LAYER LEGEND -->
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:32px;padding:16px 20px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+  <span style="font-size:12px;color:#8b949e;font-weight:600;margin-right:4px;align-self:center">LAYERS:</span>
+  <span class="chip chip-l1">L1 — Regime</span>
+  <span class="chip chip-l2">L2 — Structure</span>
+  <span class="chip chip-l3">L3 — Bias</span>
+  <span class="chip chip-l4">L4 — Entry</span>
+  <span class="chip chip-l5">L5 — Risk/Size</span>
+  <span class="chip chip-support">Supporting</span>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: MARKET STRUCTURE (COREY SUITE) -->
+<!-- ============================================================ -->
+<div class="section-header">
+  <h2><span class="chip chip-l2">L2 Structure</span> Market Structure — Corey Suite</h2>
+</div>
+
+<!-- CARD 1: GapFinder -->
+<div class="script-card" id="s-gapfinder">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">AA_CoreyGapfinderv1STUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l2">L2 Structure</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+        <span class="badge badge-author">Corey Surles</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Identifies unfilled open-to-close price gaps and marks them as support/resistance zones extending rightward until filled. One of the most reliable S/R tools in the suite — gaps have a statistical tendency to fully fill once they begin filling.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>showArrows</td><td>No</td><td>Arrow markers on gap bars</td></tr>
+          <tr><td>showClouds</td><td>No</td><td>Cloud fill between gap levels</td></tr>
+          <tr><td>GapDownStart</td><td>close</td><td>Gap down detection — prior bar source</td></tr>
+          <tr><td>GapDownEnd</td><td>open</td><td>Gap down detection — current bar source</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (10)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Represents</th></tr>
+          <tr><td>GDS</td><td style="color:#f85149">RED</td><td>Gap Down Start level</td></tr>
+          <tr><td>GDE</td><td style="color:#f85149">RED</td><td>Gap Down End level</td></tr>
+          <tr><td>GUS</td><td style="color:#3fb950">GREEN</td><td>Gap Up Start level</td></tr>
+          <tr><td>GUE</td><td style="color:#3fb950">GREEN</td><td>Gap Up End level</td></tr>
+          <tr><td>GDSext/2</td><td style="color:#f85149">RED</td><td>Gap down zone right extensions</td></tr>
+          <tr><td>GUSext/2</td><td style="color:#3fb950">GREEN</td><td>Gap up zone right extensions</td></tr>
+          <tr><td>GDArrow</td><td style="color:#f85149">RED</td><td>Arrow down (weight 5) on gap bar</td></tr>
+          <tr><td>GUArrow</td><td style="color:#3fb950">GREEN</td><td>Arrow up (weight 5) on gap bar</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Labels &amp; Clouds</h4>
+        <ul class="bullet-list">
+          <li>No labels</li>
+          <li>RED cloud (showClouds=yes) between GDSext/GDSext2</li>
+          <li>GREEN cloud between GUSext/GUSext2</li>
+          <li>No alerts</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">GAPS_Chetan1 — both detect gaps, different methods/visuals</span>
+          <span class="overlap-chip">SingleFinder — both mark areas price "skipped"</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">Gap Down = previous_close &gt; current_open   → RED zone drawn
+Gap Up   = previous_close &lt; current_open   → GREEN zone drawn
+
+Lines extend rightward until price fills the gap
+(instrument-agnostic — uses close/open comparison, not fixed threshold)</div>
+
+    <div class="callout callout-blue">
+      <div class="callout-title">Trading Significance</div>
+      Unfilled gap ABOVE = resistance. Unfilled gap BELOW = support. Once gap starts filling it almost always completes → high-probability target. Use with Singlefinder for additional confirmation that a price area was "skipped." Red zone overhead = treat as resistance until broken; green zone below = treat as support until broken.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">layer2_structure()</span> in signals.py — gap levels used as S/R reference points</div>
+  </div>
+</div>
+
+<!-- CARD 2: InitialBalance -->
+<div class="script-card" id="s-ib">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">AA_CoreyIBv1STUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l2">L2 Structure</span>
+        <span class="chip chip-l4">L4 Entry</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+        <span class="badge badge-author">Corey Surles</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Initial Balance — marks the first 60-minute range of Regular Trading Hours as the day's primary reference framework for bias, support/resistance, and extension targets. The single most important daily structure tool in the suite.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (11)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>OpenRangeMinutes</td><td>60</td><td>IB duration in minutes</td></tr>
+          <tr><td>MarketOpenTime</td><td>0930 CT</td><td>RTH open time</td></tr>
+          <tr><td>ema1_len</td><td>8</td><td>Fast EMA for cross signal</td></tr>
+          <tr><td>ema2_len</td><td>13</td><td>Slow EMA for cross signal</td></tr>
+          <tr><td>ExtensionVariable</td><td>3.00</td><td>IB extension multiplier (3×)</td></tr>
+          <tr><td>ShowQuads</td><td>yes</td><td>Show IB quartile lines</td></tr>
+          <tr><td>ShowExtensions</td><td>yes</td><td>50%/100%/3× extension targets</td></tr>
+          <tr><td>ShowLabels</td><td>yes</td><td>IB High/Low/Range labels</td></tr>
+          <tr><td>ShowCloudsIB</td><td>yes</td><td>Cloud shading inside IB range</td></tr>
+          <tr><td>ShowCloudExt</td><td>yes</td><td>Cloud shading on extensions</td></tr>
+          <tr><td>showTodayOnly</td><td>no</td><td>Limit display to current session</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (28+)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Represents</th></tr>
+          <tr><td>ema1</td><td style="color:#58a6ff">Blue</td><td>EMA(8) — momentum reference</td></tr>
+          <tr><td>ema2</td><td style="color:#f0883e">Orange</td><td>EMA(13) — momentum reference</td></tr>
+          <tr><td>OpenRangeHigh</td><td style="color:#f85149">Red dashed</td><td>Active IB formation high</td></tr>
+          <tr><td>OpenRangeLow</td><td style="color:#3fb950">Green dashed</td><td>Active IB formation low</td></tr>
+          <tr><td>IBHigh/ext</td><td style="color:#f85149">Red solid</td><td>Final IB High (confirmed at 10:30)</td></tr>
+          <tr><td>IBLow/ext</td><td style="color:#3fb950">Green solid</td><td>Final IB Low</td></tr>
+          <tr><td>IB25/50/75</td><td style="color:#ffd700">Yellow</td><td>Quartile S/R levels forward</td></tr>
+          <tr><td>ibUp50/100</td><td style="color:#ff00ff">Magenta</td><td>50%/100% extension above IB High</td></tr>
+          <tr><td>ibUpVar</td><td style="color:#00ffff">Cyan</td><td>3× (variable) extension above IB High</td></tr>
+          <tr><td>ibDown50/100</td><td style="color:#ffb6c1">Pink</td><td>50%/100% extension below IB Low</td></tr>
+          <tr><td>ibDownVar</td><td style="color:#00ffff">Cyan</td><td>3× extension below IB Low</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Labels &amp; Clouds</h4>
+        <ul class="bullet-list">
+          <li>Label: IB High value</li>
+          <li>Label: IB Low value</li>
+          <li>Label: IB Range (in points)</li>
+          <li>Label: IB High Ext50 / Ext100</li>
+          <li>Label: IB Low Ext50 / Ext100</li>
+          <li>RED cloud below IB25 — bearish zone</li>
+          <li>YELLOW cloud IB25–IB75 — neutral zone</li>
+          <li>GREEN cloud above IB75 — bullish zone</li>
+          <li>Magenta/pink clouds on extensions</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">ATR_Levels — EMA 8 shared calculation</span>
+          <span class="overlap-chip">Tscorev2 — EMA 8 &amp; 13 shared</span>
+          <span class="overlap-chip">TPOProfilev1 — VAH/VAL complement (different calc)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">ORHigh = Highest(high, first 60 min from 9:30 CT)
+ORLow  = Lowest(low,  first 60 min from 9:30 CT)
+IBRange = ORHigh - ORLow
+
+Quartile Levels:
+  IB25 = ORLow + IBRange × 0.25
+  IB50 = ORLow + IBRange × 0.50  ← midpoint / balance point
+  IB75 = ORLow + IBRange × 0.75
+
+Extension Targets:
+  Up   +50%  = IBHigh + IBRange × 0.50
+  Up  +100%  = IBHigh + IBRange × 1.00
+  Up  +300%  = IBHigh + IBRange × 3.00   ← "variable" (ExtensionVariable=3.0)
+  Down  -50% = IBLow  - IBRange × 0.50
+  Down -100% = IBLow  - IBRange × 1.00
+  Down -300% = IBLow  - IBRange × 3.00</div>
+
+    <div class="callout callout-green">
+      <div class="callout-title">Trading Significance</div>
+      Price ABOVE IB High → BULLISH day type, target extensions above. Price BELOW IB Low → BEARISH day type, target extensions below. Price INSIDE IB range → Balanced day, trade mean reversion to IB50. IB High breakout with STC buy signal → ENTRY_NOW trigger in JARVIS Layer 4. IB quartiles (25/50/75) serve as micro S/R within balanced sessions.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">layer2_structure()</span> uses <span class="mono">ib_high</span>/<span class="mono">ib_low</span>. <span class="mono">layer4_entry()</span> checks <span class="mono">above_ib_high</span> for unconditional ENTRY_NOW.</div>
+  </div>
+</div>
+
+<!-- CARD 3: RangeFinder v2 -->
+<div class="script-card" id="s-rfv2">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">AA_CoreyRFv2STUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l2">L2 Structure</span>
+        <span class="chip chip-l4">L4 Entry</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+        <span class="badge badge-author">Corey Surles</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Rangefinder v2 — the most complex script in the suite. Combines outside-bar range detection with a full embedded Volume Profile and Fibonacci extension targets. Resets on every new range expansion. Contains the same TPO formula found in TPOProfilev1 and Tscorev2.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (20)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>valueAreaPercent</td><td>70</td><td>% volume in value area</td></tr>
+          <tr><td>multiplier</td><td>1</td><td>Profile multiplier</td></tr>
+          <tr><td>profiles</td><td>1000</td><td>Max profiles to maintain</td></tr>
+          <tr><td>showVP</td><td>no</td><td>Show volume profile bars</td></tr>
+          <tr><td>showExtensions</td><td>yes</td><td>Fibonacci extension levels</td></tr>
+          <tr><td>showRfClouds</td><td>yes</td><td>RF zone clouds</td></tr>
+          <tr><td>showControlZone</td><td>yes</td><td>38.2–61.8% control zone cloud</td></tr>
+          <tr><td>showArrows</td><td>yes</td><td>Expansion direction arrows</td></tr>
+          <tr><td>showLabels</td><td>yes</td><td>Hi/Lo value labels</td></tr>
+          <tr><td>alerts</td><td>no</td><td>Audio alerts on expansion</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (50+)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Represents</th></tr>
+          <tr><td>POC</td><td>Price with highest volume</td></tr>
+          <tr><td>ProfileHigh/Low</td><td>Volume profile bounds</td></tr>
+          <tr><td>VAHigh/VALow</td><td>70% value area bounds</td></tr>
+          <tr><td>VA Balance</td><td>(VAH+VAL)/2 midpoint</td></tr>
+          <tr><td>T1=0.382, T2=0.5</td><td>Fib extension targets</td></tr>
+          <tr><td>T3=0.618, T4=0.786</td><td>Fib extension targets</td></tr>
+          <tr><td>T5=1.0, T6=2.0</td><td>Full/double range targets</td></tr>
+          <tr><td>R1=-0.5, R2=-1.0</td><td>Rejection levels below</td></tr>
+          <tr><td>R3=-3.0</td><td>Extreme rejection level</td></tr>
+          <tr><td>ExpandArrow Up/Dn</td><td>Outside bar direction signal</td></tr>
+          <tr><td>3-bar SMA (sbar)</td><td>Short-term smoothing</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Labels &amp; Alerts</h4>
+        <ul class="bullet-list">
+          <li>Label: RF Hi value</li>
+          <li>Label: RF Lo value</li>
+          <li>Label: Bull/Bear imbalance direction</li>
+          <li>10× cloud variants (RF zones, bias, TPO control zone)</li>
+          <li>Alert: Ding on new RF bias</li>
+          <li>Alert: Ring on midpoint bias</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">TPOProfilev1 — identical TPO formula inside</span>
+          <span class="overlap-chip">Tscorev2 — same POC/VAH/VAL logic</span>
+          <span class="overlap-chip">VirginProfile — Volume Profile base calculation</span>
+          <span class="overlap-chip">RFv1Mobile — complete superset (100% overlap)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">Outside Bar Detection:
+  high &gt; high[1] AND low &lt; low[1]  → triggers new Volume Profile
+
+Volume Profile:
+  POC     = price level with highest cumulative volume
+  VAH     = upper edge of 70% value area (above POC)
+  VAL     = lower edge of 70% value area (below POC)
+  Balance = (VAH + VAL) / 2
+
+Imbalance direction:
+  Balance &gt; POC → BEAR IMBALANCE (price likely moving down)
+  Balance &lt; POC → BULL IMBALANCE (price likely moving up)
+
+Fibonacci extensions from imbalance extreme:
+  T1 = ±0.382 × range    T4 = ±0.786 × range
+  T2 = ±0.500 × range    T5 = ±1.000 × range
+  T3 = ±0.618 × range    T6 = ±2.000 × range
+
+Rejection levels (opposite direction):
+  R1 = ∓0.50 × range
+  R2 = ∓1.00 × range
+  R3 = ∓3.00 × range</div>
+
+    <div class="callout callout-blue">
+      <div class="callout-title">Trading Significance</div>
+      Outside bar arrow in same direction as STC = high-conviction entry. Control zone (38.2–61.8% cloud) = fair value zone for pullback entries. T1 (0.382) = first profit target, T3 (0.618) = standard target, T6 (2.0) = runner target. Range expansion without confirmed bias = wait for Volume Profile to develop before entry.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">layer2_structure()</span> — VPOC approximated via 20-bar VWAP proxy</div>
+  </div>
+</div>
+
+<!-- CARD 4: RangeFinder v1 Mobile -->
+<div class="script-card" id="s-rfv1">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">AA_CoreyRFv1MobileSTUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-legacy">Legacy / Superseded</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+        <span class="badge badge-author">Corey Surles</span>
+        <span class="badge badge-warn">REDUNDANT</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Simplified mobile version of Rangefinder v2. Same outside-bar detection and Fibonacci projection, but WITHOUT Volume Profile, TPO, control zones, or clouds. Preserved for historical reference and mobile TOS app use only.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (3)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>excessThresh</td><td>0</td><td>Excess detection threshold</td></tr>
+          <tr><td>showArrows</td><td>yes</td><td>Expansion direction arrows</td></tr>
+          <tr><td>(period)</td><td>3</td><td>3-bar SMA smoothing</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (25+)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Represents</th></tr>
+          <tr><td>expext1, exp38</td><td>Fib 0.382 extension</td></tr>
+          <tr><td>exp50</td><td>Fib 0.500 extension</td></tr>
+          <tr><td>exp61</td><td>Fib 0.618 extension</td></tr>
+          <tr><td>exp78</td><td>Fib 0.786 extension</td></tr>
+          <tr><td>exp2</td><td>Fib 2.0 extension</td></tr>
+          <tr><td>exprej1–3</td><td>Rejection levels</td></tr>
+          <tr><td>sbar (SMA-3)</td><td>3-bar SMA line</td></tr>
+          <tr><td>ExpandArrow Up/Dn</td><td>Direction arrows</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Notes</h4>
+        <ul class="bullet-list">
+          <li>Identical outside-bar detection as RFv2</li>
+          <li>Identical Fibonacci math as RFv2</li>
+          <li>Same arrow colors (GREEN=bull, YELLOW=caution, RED=bear)</li>
+          <li>NO Volume Profile</li>
+          <li>NO TPO / control zones</li>
+          <li>NO cloud shading</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">RFv2 — complete superset, 100% functionality overlap</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-orange">
+      <div class="callout-title">REDUNDANT — Action Required</div>
+      RFv2 contains all of RFv1Mobile's functionality plus Volume Profile, TPO, and control zone features. Keep RFv1Mobile ONLY for mobile TOS app where RFv2 may be too heavy on rendering. Remove from all desktop chart setups.
+    </div>
+  </div>
+</div>
+
+<!-- CARD 5: SingleFinder -->
+<div class="script-card" id="s-single">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">AA_CoreySFv2STUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l2">L2 Structure</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+        <span class="badge badge-author">Corey Surles</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Singlefinder v2 — identifies single-print TPO gaps (price areas visited only once, creating unfilled profile areas). These thin gaps act as magnets. Also detects when singles "fail" (price reverses through them), generating a trend confirmation signal.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (6)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>ShowExtensions</td><td>yes</td><td>Extend single lines forward</td></tr>
+          <tr><td>ShowArrows</td><td>yes</td><td>Arrow on single bar</td></tr>
+          <tr><td>ShowLabels</td><td>yes</td><td>"Filled/Unfilled" labels</td></tr>
+          <tr><td>showGaps</td><td>yes</td><td>Show gap zones</td></tr>
+          <tr><td>ShowFailDots</td><td>yes</td><td>Dots when single fails</td></tr>
+          <tr><td>ShowClouds</td><td>no</td><td>Cloud fill between singles</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (14)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Represents</th></tr>
+          <tr><td>bearSingle/2</td><td style="color:#f0883e">Orange</td><td>Bear single print zone</td></tr>
+          <tr><td>bullSingle/2</td><td style="color:#ffb6c1">Pink</td><td>Bull single print zone</td></tr>
+          <tr><td>bearExt/2</td><td style="color:#f0883e">Orange</td><td>Bear single extension</td></tr>
+          <tr><td>bullExt/2</td><td style="color:#ffb6c1">Pink</td><td>Bull single extension</td></tr>
+          <tr><td>bearSingleArrow</td><td style="color:#f0883e">Orange</td><td>Bear single detected</td></tr>
+          <tr><td>bullSingleArrow</td><td style="color:#ffb6c1">Pink</td><td>Bull single detected</td></tr>
+          <tr><td>bearfailArrow</td><td style="color:#f0883e">Orange ×</td><td>Bear single failed (broken)</td></tr>
+          <tr><td>bullfailArrow</td><td style="color:#ffb6c1">Pink ×</td><td>Bull single failed (broken)</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Pattern Logic</h4>
+        <ul class="bullet-list">
+          <li>Bearish Single: gap UP (resistance overhead)</li>
+          <li>Bullish Single: gap DOWN (support below)</li>
+          <li>Bull Fail → trend confirms UP</li>
+          <li>Bear Fail → trend confirms DOWN</li>
+          <li>"Filled" label when price revisits</li>
+          <li>"Unfilled" label until then</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">GapfinderSTUDY — both detect price gaps, different detection method</span>
+          <span class="overlap-chip">TPOProfilev1 — both identify areas price "skipped"</span>
+          <span class="overlap-chip">VirginProfile — Virgin POCs serve same gravitational role</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula — 3-Bar Single Print Patterns</div>
+    <div class="code-block">Bearish Single (gap up = resistance zone overhead):
+  high[-1] &lt; low[1]  AND  high &gt; low[1]
+  → Price "skipped" a zone on the way UP → overhead RESISTANCE
+
+Bullish Single (gap down = support zone below):
+  high[1]  &lt; low[-1] AND  high &gt; low[-1]
+  → Price "skipped" a zone on the way DOWN → SUPPORT below
+
+Fail patterns (trend confirmation):
+  Bull Fail = price was below → breaks THROUGH bullish single upward → STRONG UP signal
+  Bear Fail = price was above → breaks THROUGH bearish single downward → STRONG DOWN signal</div>
+
+    <div class="callout callout-green">
+      <div class="callout-title">Trading Significance</div>
+      Unfilled Bull Single (pink) below current price = BUY on test. Unfilled Bear Single (orange) above price = SELL on test. Failed single = strong trend signal in direction of the break. Singles that have been "filled" no longer act as S/R and can be ignored.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> S/R level detection via gap arrays in <span class="mono">layer2_structure()</span></div>
+  </div>
+</div>
+
+<!-- CARD 6: TPO Profile -->
+<div class="script-card" id="s-tpo">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">AA_CoreyTPOProfilev1STUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l2">L2 Structure</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+        <span class="badge badge-author">Corey Surles</span>
+        <span class="badge badge-caution">PARTIAL REDUNDANCY</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Time Profile — standard daily TPO (Time Price Opportunity) profile showing Point of Control, Value Area High/Low, and Fibonacci extension targets from the imbalance direction. The standalone version of the TPO logic that is also embedded inside RFv2 and Tscorev2.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (10)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>timePerProfile</td><td>day</td><td>Profile reset period</td></tr>
+          <tr><td>valueAreaPercent</td><td>70</td><td>% TPO letters in value area</td></tr>
+          <tr><td>profiles</td><td>1000</td><td>Profile history depth</td></tr>
+          <tr><td>showExtensions</td><td>yes</td><td>Fibonacci extension lines</td></tr>
+          <tr><td>ShowLabels</td><td>no</td><td>BullImbal/BearImbal label</td></tr>
+          <tr><td>showclouds</td><td>yes</td><td>Control zone cloud</td></tr>
+          <tr><td>smaLength</td><td>10</td><td>SMA overlay on price</td></tr>
+          <tr><td>opacity</td><td>50</td><td>Cloud transparency %</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (15)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Represents</th></tr>
+          <tr><td>POC</td><td style="color:#fff">White</td><td>Point of Control</td></tr>
+          <tr><td>VAHigh</td><td style="color:#00ffff">Cyan</td><td>Value Area High (upper 15%)</td></tr>
+          <tr><td>VALow</td><td style="color:#00ffff">Cyan</td><td>Value Area Low (lower 15%)</td></tr>
+          <tr><td>TPOVAbal</td><td style="color:#ff00ff">Magenta dashed</td><td>VA balance midpoint</td></tr>
+          <tr><td>TPOext_25</td><td style="color:#ffb6c1">Pink</td><td>0.25× extension</td></tr>
+          <tr><td>TPOext_38</td><td style="color:#ff00ff">Magenta</td><td>0.382× extension</td></tr>
+          <tr><td>TPOext_5</td><td style="color:#00ffff">Cyan</td><td>0.50× extension</td></tr>
+          <tr><td>TPOext_61</td><td style="color:#ff00ff">Magenta</td><td>0.618× extension</td></tr>
+          <tr><td>TPOext_78</td><td style="color:#00ffff">Cyan</td><td>0.786× extension</td></tr>
+          <tr><td>TPOext1</td><td style="color:#ffd700">Yellow</td><td>1.0× full profile height</td></tr>
+          <tr><td>TPOext2</td><td style="color:#f85149">Red</td><td>2.0× double extension</td></tr>
+          <tr><td>TPOrej1/2/3</td><td>—</td><td>0.5×/1.0×/2.0× rejection</td></tr>
+          <tr><td>sma</td><td style="color:#8b949e">Gray</td><td>10-period SMA</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Clouds &amp; Labels</h4>
+        <ul class="bullet-list">
+          <li>GREEN cloud between TPOext_38 and TPOext_61 = control zone (fair value)</li>
+          <li>Label: BullImbal or BearImbal (ShowLabels=yes)</li>
+          <li>No alerts</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">Tscorev2 — 100% duplicate TPO formula, different presentation</span>
+          <span class="overlap-chip">RFv2 — embedded TPO section identical code</span>
+          <span class="overlap-chip">VirginProfile — adds Virgin tracking on same base</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">POC = price level with the most TPO letters (most time spent there)
+VAH = upper boundary containing 70% of TPO letters (above POC)
+VAL = lower boundary containing 70% of TPO letters (below POC)
+Balance = (VAH + VAL) / 2
+
+Imbalance direction:
+  Balance &gt; POC → BEAR imbalance → extensions drawn downward
+  Balance &lt; POC → BULL imbalance → extensions drawn upward
+
+Extension = POC ± (ratio × (VAH - VAL))
+  Ratios: 0.25, 0.382, 0.50, 0.618, 0.786, 1.0, 2.0
+
+Note: The switch(timePerProfile) block in this script is
+COPY-PASTED identically into RFv2 and Tscorev2.</div>
+
+    <div class="callout callout-blue">
+      <div class="callout-title">Trading Significance</div>
+      POC = fair value magnet — price tends to revisit it. Price above VAH = BUYER_CONTROL. Price below VAL = SELLER_CONTROL. Inside VA = balanced session, avoid directional trades. BULL imbalance + STC cross up = high-conviction long. Can remove this from charts that already have RFv2 running — functionality is included there.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">layer2_structure()</span> — VPOC, <span class="mono">va_high</span>, <span class="mono">va_low</span> derived here</div>
+  </div>
+</div>
+
+<!-- CARD 7: TPO Score -->
+<div class="script-card" id="s-tscore">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">AA_CoreyTscorev2STUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l2">L2 Structure</span>
+        <span class="badge badge-lower">LOWER PANEL</span>
+        <span class="badge badge-author">Corey Surles</span>
+        <span class="badge badge-caution">PARTIAL REDUNDANCY</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">TPO Score — a composite 5-component oscillator that quantifies where price stands relative to the day's TPO structure. Outputs a numeric score (−5 to +5) and 7 descriptive labels. The direct dashboard readout of JARVIS Layer 2 structure state.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (10)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>timePerProfile</td><td>day</td><td>Same as TPOProfilev1</td></tr>
+          <tr><td>valueAreaPercent</td><td>70</td><td>Value area %</td></tr>
+          <tr><td>showLabels/1/2</td><td>yes</td><td>Three label groups</td></tr>
+          <tr><td>showMovingAvgs</td><td>no</td><td>Show EMA 8/13 on oscillator</td></tr>
+          <tr><td>ema1_len</td><td>8</td><td>Oscillator EMA short</td></tr>
+          <tr><td>ema2_len</td><td>13</td><td>Oscillator EMA long</td></tr>
+          <tr><td>sBarPeriod</td><td>3</td><td>SMA smoothing on score</td></tr>
+          <tr><td>showTargets</td><td>no</td><td>Show target extensions</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (11)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Represents</th></tr>
+          <tr><td>Price (close)</td><td>Close price reference, dashed</td></tr>
+          <tr><td>POC</td><td>Point of Control</td></tr>
+          <tr><td>ProfileHigh/Low</td><td>Profile bounds</td></tr>
+          <tr><td>VAHigh/VALow</td><td>70% value area</td></tr>
+          <tr><td>VAbal</td><td>Balance midpoint (VAH+VAL)/2</td></tr>
+          <tr><td>ScoreTotal</td><td>Composite 5-component score line</td></tr>
+          <tr><td>sma1</td><td>3-period SMA of score</td></tr>
+          <tr><td>ema1/ema2</td><td>EMA 8 &amp; 13 of oscillator</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Labels (7)</h4>
+        <ul class="bullet-list">
+          <li>BearImbal / BullImbal</li>
+          <li>"TPO Score Positive" / "Neutral" / "Negative"</li>
+          <li>"Sellers Offsides" / "Buyers Offsides"</li>
+          <li>"Buyers in Control" / "Sellers in Control"</li>
+          <li>"Price above/below/inside Value"</li>
+          <li>Profile target pass/fail assessment</li>
+          <li>Score value numeric readout</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">TPOProfilev1 — 100% duplicate TPO formula</span>
+          <span class="overlap-chip">RFv2 — same POC/VAH/VAL base calculation</span>
+          <span class="overlap-chip">CoreyIB — EMA 8/13 shared</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">5-Component Score System</div>
+    <div class="code-block">scorevah:   close &gt; VAH  → +1  |  close &lt; VAL  → -1  |  else  0
+scoreval:   close &lt; VAL  → -1  |  close &gt; VAH  → +1  |  else  0
+scorepoc:   close &gt; POC  → +1  |  close &lt; POC  → -1  |  else  0
+scorevabal: close &gt; bal  → +1  |  close &lt; bal  → -1  |  else  0
+scoreimbal: (VAH+VAL)/2 &gt; POC  → +1 (BullImbal)  |  else  -1 (BearImbal)
+
+ScoreTotal = sum of all 5 components   Range: -5 to +5
+
+JARVIS Layer 2 Translation:
+  ScoreTotal +5        → STRONG_BULL
+  ScoreTotal +3 to +4  → LEAN_BULL
+  ScoreTotal -1 to +2  → NEUTRAL
+  ScoreTotal -3 to -4  → LEAN_BEAR
+  ScoreTotal -5        → STRONG_BEAR</div>
+
+    <div class="callout callout-green">
+      <div class="callout-title">Trading Significance</div>
+      This is the most readable Layer 2 output. A score of +5 means EVERY component agrees price is bullish. A score of −5 means every component is bearish. The 7 labels tell you exactly WHY (buyers offsides, imbalance direction, value area position). Minimum threshold for JARVIS long entry: ScoreTotal ≥ +3 (LEAN_BULL).
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">layer2_structure()</span> — maps directly to BUYER_CONTROL / NEUTRAL_STRUCTURE / SELLER_CONTROL</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: VOLATILITY & ATR (SATY SUITE) -->
+<!-- ============================================================ -->
+<div class="section-header">
+  <h2><span class="chip chip-l1">L1 Regime</span> Volatility &amp; ATR — Saty Suite</h2>
+</div>
+
+<!-- CARD 8: ATR Levels -->
+<div class="script-card" id="s-atr">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">Saty_ATR_LevelsSTUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l1">L1 Regime</span>
+        <span class="chip chip-l5">L5 Sizing</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+        <span class="badge badge-author">Saty Mahajan</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">The cornerstone of the entire system. Projects ATR-based Fibonacci price levels from previous close — the day's complete price roadmap: 10 levels up, 10 levels down. Also embeds the EMA 8/21/34 trend ribbon and real-time range consumption tracking. Every other script in the suite is calibrated relative to these levels.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (9)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>JARVIS</th><th>Purpose</th></tr>
+          <tr><td>trading_type</td><td>Day</td><td>Day</td><td>Maps to aggregation period</td></tr>
+          <tr><td>atr_length</td><td>14</td><td>14</td><td>Wilder's ATR period</td></tr>
+          <tr><td>fast_ema</td><td>8</td><td>8</td><td>EMA ribbon — fast</td></tr>
+          <tr><td>pivot_ema</td><td>21</td><td>21</td><td>EMA ribbon — pivot</td></tr>
+          <tr><td>slow_ema</td><td>34</td><td>34</td><td>EMA ribbon — slow</td></tr>
+          <tr><td>show_all_fib</td><td>yes</td><td>yes</td><td>All intermediate Fib levels</td></tr>
+          <tr><td>show_extensions</td><td>no</td><td>yes</td><td>1.236×–3.0× extensions</td></tr>
+          <tr><td>trigger_pct</td><td>0.236</td><td>0.236</td><td>Entry trigger ATR ratio</td></tr>
+          <tr><td>use_current_close</td><td>no</td><td>no</td><td>Use prior close (not intrabar)</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Key Plots (41 total)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Level</th><th>Represents</th></tr>
+          <tr><td>close_level</td><td>0.000</td><td>Prior close — day anchor (WHITE)</td></tr>
+          <tr><td>upper_trigger</td><td>+0.236</td><td>Calls entry trigger (CYAN)</td></tr>
+          <tr><td>lower_trigger</td><td>−0.236</td><td>Puts entry trigger (ORANGE)</td></tr>
+          <tr><td>upper_0382</td><td>+0.382</td><td>First Fib target up</td></tr>
+          <tr><td>upper_0500</td><td>+0.500</td><td>Half ATR level</td></tr>
+          <tr><td>upper_0618</td><td>+0.618</td><td>Golden ratio level</td></tr>
+          <tr><td>upper_0786</td><td>+0.786</td><td>Last chance entry zone</td></tr>
+          <tr><td>upper_1000</td><td>+1.000</td><td>Full daily range (T1 on daily)</td></tr>
+          <tr><td>upper_1500</td><td>+1.500</td><td>T1 on 1H timeframe (JARVIS)</td></tr>
+          <tr><td>upper_2000</td><td>+2.000</td><td>T1 on daily / T2 (WHITE)</td></tr>
+          <tr><td>upper_2618</td><td>+2.618</td><td>Golden ratio extension (T2)</td></tr>
+          <tr><td>upper_3000</td><td>+3.000</td><td>Extreme — counter-trend fade</td></tr>
+          <tr><td>(mirror levels)</td><td>negative</td><td>Same 10 levels downward</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Labels &amp; Color</h4>
+        <ul class="bullet-list">
+          <li>Label: "Saty ATR Levels" (color = trend state)</li>
+          <li>Label: ATR range consumed % (GREEN/ORANGE/RED)</li>
+          <li>Label: "Calls" at upper_trigger (+0.236)</li>
+          <li>Label: "Puts" at lower_trigger (−0.236)</li>
+          <li>Bar color: BLUE=bull, RED=bear, GRAY=neutral</li>
+          <li>No clouds</li>
+          <li>No alerts</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">Phase_Oscillator — ATR-14 Wilder shared calculation</span>
+          <span class="overlap-chip">OB_Omega suite — Keltner uses SMA ATR (not Wilder)</span>
+          <span class="overlap-chip">Tscorev2 — EMA 8 shared</span>
+          <span class="overlap-chip">CoreyIB — EMA 8 shared</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">ATR = WildersAverage(TrueRange(high, low, close), 14)
+prior_close = close of previous [trading_period] bar
+
+All 20 levels = prior_close ± (ratio × ATR)
+  Upper ratios: 0.236, 0.382, 0.500, 0.618, 0.786,
+                1.000, 1.236, 1.500, 2.000, 2.618, 3.000
+  Lower ratios: mirror of above (negative)
+
+EMA Trend Ribbon:
+  ema_fast  = EMA(close, 8)
+  ema_pivot = EMA(close, 21)
+  ema_slow  = EMA(close, 34)
+
+  BULLISH = close ≥ ema_fast ≥ ema_pivot ≥ ema_slow   → all stacked up
+  BEARISH = close ≤ ema_fast ≤ ema_pivot ≤ ema_slow   → all stacked down
+  NEUTRAL = any other arrangement
+
+Range Consumed:
+  consumed_pct = (TrueRange_today / ATR) × 100
+  &lt; 70%  = GREEN   label  (room to continue)
+  70–90% = ORANGE  label  (caution, getting extended)
+  &gt; 90%  = RED     label  → EXHAUSTED regime in JARVIS
+
+JARVIS stop loss placement:
+  stop_distance = 0.70 × ATR   (between 0.618 and 0.786 lines)</div>
+
+    <div class="callout callout-blue">
+      <div class="callout-title">Trading Significance</div>
+      Prior close = anchor for the entire day's price roadmap. +0.236 ATR = entry trigger zone (first level to "confirm" direction). +0.786 ATR = last-chance entry zone before full range consumed. +1.000 ATR = full daily ATR range. 3.0 ATR = extreme extension, counter-trend fades only. When range consumed exceeds 90% (RED label) → EXHAUSTED regime in JARVIS → no new entries, tighten stops on existing positions.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">wilder_atr()</span>, <span class="mono">ema_ribbon()</span>, <span class="mono">range_consumed_pct()</span> in <span class="mono">engine/backtest/indicators.py</span></div>
+  </div>
+</div>
+
+<!-- CARD 9: Phase Oscillator -->
+<div class="script-card" id="s-phase">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">Saty_Phase_OscillatorSTUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l1">L1 Regime</span>
+        <span class="badge badge-lower">LOWER PANEL</span>
+        <span class="badge badge-author">Saty Mahajan</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Range-normalized oscillator measuring price deviation from the 21-EMA as a percentage of 3× ATR. Detects both overextension (&gt;61.8) and compression (Bollinger squeeze), which map directly to JARVIS regime states: TRENDING, EXHAUSTED, and COMPRESSION.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (1)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>show_labels</td><td>yes</td><td>Display regime labels on chart</td></tr>
+        </table>
+        <div style="margin-top:12px">
+          <h4>Bar Colors</h4>
+          <ul class="bullet-list">
+            <li>MAGENTA = compressed (squeeze active)</li>
+            <li>GREEN = oscillator ≥ 0 (above equilibrium)</li>
+            <li>RED = oscillator &lt; 0 (below equilibrium)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (8)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Level</th><th>Color</th><th>Represents</th></tr>
+          <tr><td>phase_oscillator</td><td>Variable</td><td style="color:#3fb950">Green/Red/Magenta</td><td>Main signal line</td></tr>
+          <tr><td>extended_up_zone</td><td>+100</td><td style="color:#f85149">Red dashed</td><td>Extreme overextension up</td></tr>
+          <tr><td>distribution_zone</td><td>+61.8</td><td style="color:#f0883e">Orange</td><td>EXHAUSTED threshold (short)</td></tr>
+          <tr><td>neutral_up_zone</td><td>+23.6</td><td style="color:#8b949e">Gray</td><td>Mild bullish zone</td></tr>
+          <tr><td>neutral_down_zone</td><td>−23.6</td><td style="color:#8b949e">Gray</td><td>Mild bearish zone</td></tr>
+          <tr><td>accumulation_zone</td><td>−61.8</td><td style="color:#3fb950">Green</td><td>EXHAUSTED threshold (long)</td></tr>
+          <tr><td>extended_down_zone</td><td>−100</td><td style="color:#3fb950">Green dashed</td><td>Extreme overextension down</td></tr>
+          <tr><td>compression_level</td><td>0</td><td style="color:#ff00ff">Magenta</td><td>Compression baseline</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Labels</h4>
+        <ul class="bullet-list">
+          <li>"Compression" label (magenta) when squeeze detected</li>
+          <li>Regime changes visible via bar color shifts</li>
+          <li>No separate label overlays beyond compression</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">ATR_Levels — shares ATR-14 Wilder calculation</span>
+          <span class="overlap-chip">TRIN_Chetan — both detect extreme/exhaustion conditions</span>
+          <span class="overlap-chip">kelt_3.01 — both identify extreme extension zones</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">pivot    = EMA(close, 21)
+deviation = close - pivot
+ATR_14   = WildersATR(14)
+
+normalized = deviation / (3 × ATR_14)       ← range: approx -1.0 to +1.0
+oscillator = EMA(normalized × 100, 3)        ← smoothed to percentage scale
+
+Bollinger Compression (SQUEEZE) Detection:
+  BB_upper = pivot + 2.0 × StdDev(close, 21)
+  BB_lower = pivot - 2.0 × StdDev(close, 21)
+  ATR_upper = pivot + 2.0 × ATR_14
+  ATR_lower = pivot - 2.0 × ATR_14
+  is_compressed = (BB_upper &lt; ATR_upper)   ← Bollinger width &lt; ATR band
+
+Key threshold mapping to JARVIS regimes:
+  Phase ≥ +61.8  → EXHAUSTED_UP   (do NOT chase longs, fade possible)
+  Phase ≥ +23.6  → TRENDING_UP    (hold longs, trail stop)
+  −23.6 to +23.6 → NEUTRAL        (reduce size, avoid directional)
+  Phase ≤ −23.6  → TRENDING_DOWN  (hold shorts, trail stop)
+  Phase ≤ −61.8  → EXHAUSTED_DOWN (do NOT chase shorts, fade possible)
+  MAGENTA bars   → COMPRESSION    (breakout imminent, wait for direction)</div>
+
+    <div class="callout callout-orange">
+      <div class="callout-title">Trading Significance</div>
+      Compression (MAGENTA bars) + EMA ribbon aligned = highest-conviction setups in the entire system. Phase at ±61.8 = DO NOT CHASE — price is overextended, reversal risk high. Phase crossing ±23.6 from inside = trend confirmation. After compression breaks, phase moves quickly toward ±61.8 = hold position and trail stop.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">phase_oscillator(close, ema=21, atr=14, bb=21)</span> in <span class="mono">engine/backtest/indicators.py</span></div>
+  </div>
+</div>
+
+<!-- CARD 10: Volume Stack -->
+<div class="script-card" id="s-volstack">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">Saty_Volume_StackSTUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l3">L3 Bias</span>
+        <span class="badge badge-lower">LOWER PANEL</span>
+        <span class="badge badge-author">Saty Mahajan</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Volume separated into buyer (aggressive buy) and seller (aggressive sell) portions using each bar's OHLC position as a proxy for aggressor direction. Winner displayed on top. Provides the volume dominance vote for JARVIS Layer 3 bias scoring.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs</h4>
+        <div style="padding:10px;background:#21262d;border-radius:4px;font-size:12px;color:#8b949e;text-align:center">
+          None — fully self-contained.<br>No user inputs required.
+        </div>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (2)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Style</th><th>Represents</th></tr>
+          <tr><td>BiggerVolume</td><td style="color:#3fb950">Green</td><td>Histogram (top)</td><td>Winning side (more aggressive)</td></tr>
+          <tr><td>SmallerVolume</td><td style="color:#f85149">Red</td><td>Histogram (bottom)</td><td>Losing side (less aggressive)</td></tr>
+        </table>
+        <div style="margin-top:8px;font-size:11px;color:#8b949e">Colors flip: GREEN=buyers winning, RED=sellers winning on both plots</div>
+      </div>
+      <div class="grid-col">
+        <h4>Labels (2)</h4>
+        <ul class="bullet-list">
+          <li>Winner % in winner color (e.g., "62%")</li>
+          <li>Loser % in loser color (e.g., "38%")</li>
+          <li>Together reads "62% / 38%" = buyer dominant</li>
+        </ul>
+        <div style="margin-top:12px">
+          <h4>JARVIS Thresholds</h4>
+          <ul class="bullet-list">
+            <li>buy_pct &gt; 60% → +1 BULL vote (L3)</li>
+            <li>buy_pct &lt; 40% → +1 BEAR vote (L3)</li>
+            <li>40–60% → balanced, 0 votes</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip" style="border-color:#3fb950;color:#3fb950">UNIQUE — no other script uses volume dominance</span>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#8b949e">No calculation overlap with any other script in the suite. This is the only volume-based analysis tool.</div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">buy_volume  = volume × (close - low)  / (high - low)
+sell_volume = volume × (high - close) / (high - low)
+
+buy_percent  = buy_volume  / (buy_volume + sell_volume) × 100
+sell_percent = sell_volume / (buy_volume + sell_volume) × 100
+
+buyers_winning = buy_volume &gt; sell_volume
+
+If buyers winning:
+  BiggerVolume  = buy_volume   (GREEN histogram on top)
+  SmallerVolume = sell_volume  (RED histogram, smaller)
+Else:
+  BiggerVolume  = sell_volume  (RED histogram on top)
+  SmallerVolume = buy_volume   (GREEN histogram, smaller)
+
+Note: Edge case when high == low (doji) → both volumes = 0, no signal</div>
+
+    <div class="callout callout-green">
+      <div class="callout-title">Trading Significance</div>
+      Volume Stack must AGREE with KAMA direction to get a STRONG_BULL or STRONG_BEAR Layer 3 rating. Divergence (price above KAMA but sellers dominant, or red bars with green histogram) = LEAN_BULL not STRONG_BULL → smaller position size assigned by Layer 5. Watch for volume dominance to SHIFT before price confirms a reversal.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">volume_stack(open, high, low, close, volume)</span> in <span class="mono">engine/backtest/indicators.py</span></div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: MOMENTUM -->
+<!-- ============================================================ -->
+<div class="section-header">
+  <h2><span class="chip chip-l3">L3 Bias</span><span class="chip chip-l4" style="margin-left:8px">L4 Entry</span> Momentum</h2>
+</div>
+
+<!-- CARD 11: KAMA -->
+<div class="script-card" id="s-kama">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">NextSignalMomentumSTUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l3">L3 Bias</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Kaufman Adaptive Moving Average (KAMA) with dual linear regression slopes. Provides overall trend direction and momentum alignment for Layer 3 bias voting. The KAMA adapts its speed based on how "efficient" recent price movement is — slow in noise, fast in trends.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (3)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>mode</td><td>KAMA</td><td>KAMA or AMA (two variants)</td></tr>
+          <tr><td>fr</td><td>No</td><td>Full 7-bar regression toggle</td></tr>
+          <tr><td>fr2</td><td>No</td><td>Full 20-bar regression toggle</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (3)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Style</th><th>Represents</th></tr>
+          <tr><td>MAA</td><td style="color:#58a6ff">Blue/Red</td><td>Line</td><td>KAMA — blue when close &gt; AMA, red when below</td></tr>
+          <tr><td>mlrPlot</td><td style="color:#00ffff">Cyan/Orange</td><td>Line</td><td>7-bar InertiaAll (linear regression)</td></tr>
+          <tr><td>mlr2Plot</td><td style="color:#00ffff">Cyan dashed</td><td>Dashed</td><td>20-bar InertiaAll (linear regression)</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Labels &amp; Bar Color</h4>
+        <ul class="bullet-list">
+          <li>Label: "Long" (blue background) — close &gt; AMA</li>
+          <li>Label: "Short" (red background) — close &lt; AMA</li>
+          <li>AssignPriceColor: Blue when close &gt; AMA</li>
+          <li>AssignPriceColor: Red when close &lt; AMA</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">STC Cycle — both provide L3 directional bias votes</span>
+          <span class="overlap-chip">ATR_Levels — EMA-based direction partially overlaps KAMA direction</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula — Kaufman Adaptive Moving Average</div>
+    <div class="code-block">Efficiency Ratio (ER) measures trend quality:
+  direction  = |close - close[10]|          ← net 10-bar price change
+  volatility = Sum(|close - close[1]|, 10)  ← total 10-bar path length
+  ER         = direction / volatility        ← 0 = choppy, 1.0 = pure trend
+
+Smoothing constants:
+  fast_SC = 2/(2+1)  = 0.6667   ← when trending (ER→1)
+  slow_SC = 2/(30+1) = 0.0645   ← when choppy  (ER→0)
+  ScaledSF = ER × (fast_SC - slow_SC) + slow_SC
+
+KAMA update:
+  AMA = AMA[1] + ScaledSF² × (close - AMA[1])
+
+Interpretation:
+  In choppy market → ScaledSF ≈ slow_SC → AMA barely moves
+  In trending market → ScaledSF ≈ fast_SC → AMA tracks closely
+
+Linear Regression Momentum:
+  mlrPlot  = InertiaAll(close, 7)   ← 7-bar slope (short-term)
+  mlr2Plot = InertiaAll(close, 20)  ← 20-bar slope (medium-term)
+
+High conviction signal:
+  close &gt; AMA  AND  7-bar slope &gt; 0  AND  20-bar slope &gt; 0
+  → All three bullish → STRONG_BULL L3 vote</div>
+
+    <div class="callout callout-green">
+      <div class="callout-title">Trading Significance</div>
+      AMA acts as adaptive support/resistance — it tightens in choppy markets and widens in trends. "Long" label = bias vote for LEAN_BULL in Layer 3. Agreement of both LinReg slopes with AMA signal = HIGH_CONVICTION. Divergence between 7-bar and 20-bar slope = trend losing momentum, reduce position or tighten stops.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">kama(close, period=10)</span> in <span class="mono">engine/backtest/indicators.py</span></div>
+  </div>
+</div>
+
+<!-- CARD 12: STC Cycle -->
+<div class="script-card" id="s-stc">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">shared_OB_STYLE_CYCLE_TIMESHIFT_PAINT_BARSSTUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-l3">L3 Bias</span>
+        <span class="chip chip-l4">L4 Entry</span>
+        <span class="badge badge-lower">LOWER PANEL</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Schaff Trend Cycle — a double-smoothed MACD oscillator that cycles between 0 and 100. The PRIMARY entry signal generator for JARVIS. CrossUp at oversold = LONG ENTRY_NOW. CrossDown at overbought = SHORT ENTRY_NOW. Parameters tuned by grid search over 162 combinations on SPY/MES 2024–2026.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (10)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>JARVIS 1H</th><th>JARVIS D</th></tr>
+          <tr><td>fastLength</td><td>23</td><td>23</td><td>23</td></tr>
+          <tr><td>slowLength</td><td>50</td><td>50</td><td>50</td></tr>
+          <tr><td>KPeriod</td><td>10</td><td>10</td><td>10</td></tr>
+          <tr><td>DPeriod</td><td>3</td><td>3</td><td>3</td></tr>
+          <tr><td>over_bought</td><td>88</td><td style="color:#f0883e">83</td><td style="color:#f0883e">83</td></tr>
+          <tr><td>over_sold</td><td>19</td><td style="color:#f0883e">15</td><td style="color:#f0883e">23</td></tr>
+          <tr><td>TimeShift</td><td>5 min</td><td style="color:#58a6ff">1H</td><td style="color:#58a6ff">Daily</td></tr>
+          <tr><td>averageType</td><td>EXP</td><td>EXP</td><td>EXP</td></tr>
+          <tr><td>paintBars</td><td>yes</td><td>yes</td><td>yes</td></tr>
+          <tr><td>STC_Breakout</td><td>No</td><td>No</td><td>No</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (10+)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Represents</th></tr>
+          <tr><td>STC</td><td style="color:#3fb950">Green/Red</td><td>Main Schaff oscillator (0–100)</td></tr>
+          <tr><td>OverBought</td><td style="color:#f85149">Red dashed</td><td>83 threshold (JARVIS)</td></tr>
+          <tr><td>OverSold</td><td style="color:#3fb950">Green dashed</td><td>15 threshold (1H) / 23 (Daily)</td></tr>
+          <tr><td>RegularBuy</td><td style="color:#3fb950">Green arrow ↑</td><td>STC crosses ABOVE oversold → ENTRY_NOW LONG</td></tr>
+          <tr><td>RegularSell</td><td style="color:#f85149">Red arrow ↓</td><td>STC crosses BELOW overbought → ENTRY_NOW SHORT</td></tr>
+          <tr><td>BULLTRIGGER</td><td style="color:#3fb950">Green</td><td>82 level — secondary bull confirmation</td></tr>
+          <tr><td>Beartrigger</td><td style="color:#f85149">Red</td><td>20 level — secondary bear confirmation</td></tr>
+          <tr><td>Midline</td><td style="color:#8b949e">Gray dashed</td><td>50 — neutral zone</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Bar Colors</h4>
+        <ul class="bullet-list">
+          <li>GRAY = STC declining (momentum fading)</li>
+          <li>MAGENTA = STC advancing (momentum building)</li>
+          <li>GREEN = exits overbought zone (&gt;83 then drops)</li>
+          <li>RED = exits oversold zone (&lt;15 then rises)</li>
+        </ul>
+        <div style="margin-top:12px">
+          <h4>Clouds (4)</h4>
+          <ul class="bullet-list">
+            <li>Gray zone clouds at OB/OS boundaries</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">KAMA — both provide L3 directional bias votes</span>
+          <span class="overlap-chip">CCI_TrendBar — both provide L4 entry timing arrows</span>
+          <span class="overlap-chip">OB_Omega suite — both use MACD internally</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula — Double-Smoothed Stochastic of MACD</div>
+    <div class="code-block">Step 1: MACD = EMA(close[TimeShift], 23) - EMA(close[TimeShift], 50)
+Step 2: FastK1 = Stochastic(%K) of MACD over 10 bars
+Step 3: FastD1 = EMA(FastK1, 3)       ← first smoothing pass
+Step 4: FastK2 = Stochastic(%K) of FastD1 over 10 bars
+Step 5: STC    = EMA(FastK2, 3)       ← second smoothing pass
+        Range: 0 to 100
+
+Entry Signals:
+  RegularBuy  = STC crosses ABOVE over_sold threshold
+    1H: STC crosses above 15
+    Daily: STC crosses above 23
+  RegularSell = STC crosses BELOW over_bought threshold
+    Both: STC crosses below 83
+
+Optimization (JARVIS grid search):
+  162 combinations tested on SPY/MES 2024–2026 data
+  1H optimal  (OS=15, OB=83) → reduced false entries ~15%
+  Daily optimal (OS=23, OB=83) → scored 493/500 in backtests
+  TOS defaults (OS=19, OB=88) → suboptimal for futures instruments</div>
+
+    <div class="callout callout-green">
+      <div class="callout-title">Trading Significance</div>
+      RegularBuy arrow = primary ENTRY_NOW trigger for Layer 4. Must be confirmed by: Layer 1 not EXHAUSTED (Phase &lt; 61.8), Layer 2 BUYER_CONTROL (Tscore ≥ +3), Layer 3 LEAN_BULL or STRONG_BULL (KAMA Long + Volume buyers dominant). TimeShift=1H on a 5-minute chart shows the hourly cycle on a detail view. STC crossing 50 from below = trend gaining strength, consider adding to position.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">stc(close, fast=23, slow=50, k=10, d=3)</span> in <span class="mono">engine/backtest/indicators.py</span></div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: MARKET BREADTH (CHETAN) -->
+<!-- ============================================================ -->
+<div class="section-header">
+  <h2><span class="chip chip-support">Supporting</span> Market Breadth — Chetan Suite</h2>
+</div>
+
+<!-- CARD 13: TRIN -->
+<div class="script-card" id="s-trin">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">TRIN_ChetanSTUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-support">Supporting</span>
+        <span class="badge badge-upper">UPPER PANEL (bar color)</span>
+        <span class="badge badge-author">Chetan</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Extreme breadth signal using TRIN (Arms Index) + VVIX to color price bars at market-wide capitulation and blow-off tops. A remarkably compact 5-line script that delivers a powerful macro filter — preventing entries at market extremes.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs &amp; Data Sources</h4>
+        <div style="padding:10px;background:#21262d;border-radius:4px;font-size:12px;color:#8b949e">
+          No inputs. All hardcoded.<br><br>
+          <strong style="color:#c9d1d9">Data:</strong> $TRIN (Arms Index), VVIX (VIX-of-VIX), VIX
+        </div>
+      </div>
+      <div class="grid-col">
+        <h4>Plots</h4>
+        <div style="padding:10px;background:#21262d;border-radius:4px;font-size:12px;color:#8b949e">
+          No visible plots.<br>Only <strong style="color:#c9d1d9">AssignPriceColor</strong> calls.<br><br>
+          CYAN = capitulation (buy signal)<br>
+          MAGENTA = blow-off top (sell signal)
+        </div>
+      </div>
+      <div class="grid-col">
+        <h4>Signal Logic</h4>
+        <ul class="bullet-list">
+          <li>MAGENTA = blow-off top (euphoria)</li>
+          <li>CYAN = capitulation (panic selling)</li>
+          <li>No color = normal market breadth</li>
+          <li>Commented out: HYG/SPX divergence logic (inactive)</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">Phase_Oscillator — both detect exhaustion extremes (different data sources)</span>
+          <span class="overlap-chip">OB_Omega suite — Closed Door MACD is a related "pause" signal</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">TRIN (Arms Index):
+  &lt; 0.60  = blow-off / euphoria (buyers dominate, unsustainable)
+  0.6–1.0 = normal bullish breadth
+  1.0–2.0 = normal bearish breadth
+  &gt; 2.0   = capitulation / panic (sellers dominate)
+
+BLOW-OFF TOP (SELL SIGNAL) → paint MAGENTA:
+  TRIN.close &lt; 0.60    AND
+  TRIN.high  &lt; 1.00    AND
+  VVIX.close &lt; 120     (low volatility-of-volatility = complacency)
+
+CAPITULATION (BUY SIGNAL) → paint CYAN:
+  TRIN.close &gt; 2.00    AND
+  TRIN.low   &gt; 1.00    AND
+  VIX.close  &gt; 30      (high fear = sellers exhausted)
+
+Commented out (inactive):
+  hyg_diff = close("HYG") - close("HYG")[2]   ← credit spread signal
+  spx_diff = close("SPX") - close("SPX")[2]    ← index confirmation</div>
+
+    <div class="callout callout-orange">
+      <div class="callout-title">Trading Significance</div>
+      CYAN bars = macro entry allowed for longs (capitulation = sellers exhausted). MAGENTA bars = macro entry allowed for shorts (blow-off = buyers exhausted). Use as a FINAL CONFIRMATION GATE — do NOT trade against a TRIN extreme unless all other layers agree. Note: hardcoded threshold of VVIX &lt; 120 may not trigger during extreme market regimes — consider reviewing for 2025 market conditions.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> External market data feed required — not currently implemented in <span class="mono">engine/backtest/indicators.py</span></div>
+  </div>
+</div>
+
+<!-- CARD 14: Gap Bars (Chetan) -->
+<div class="script-card" id="s-gapbars">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">GAPS_Chetan1STUDY.ts</div>
+      <div class="card-meta">
+        <span class="chip chip-support">Supporting</span>
+        <span class="badge badge-upper">UPPER PANEL (bar color)</span>
+        <span class="badge badge-author">Chetan</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Minimal bar-coloring script. Colors chart bars CYAN on gap-down opens and ORANGE on gap-up opens. Serves as a rapid visual scan tool for overnight gaps. Companion intermarket analysis (HYG/SPX divergence) is present but commented out.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs</h4>
+        <div style="padding:10px;background:#21262d;border-radius:4px;font-size:12px;color:#8b949e">
+          None. All hardcoded.<br><br>
+          Gap threshold: <strong style="color:#f85149">0.10 points</strong><br>
+          (may be too tight for NQ/ES high-priced contracts)
+        </div>
+      </div>
+      <div class="grid-col">
+        <h4>Plots</h4>
+        <div style="padding:10px;background:#21262d;border-radius:4px;font-size:12px;color:#8b949e">
+          No visible plots.<br>Only <strong style="color:#c9d1d9">AssignPriceColor</strong>.<br><br>
+          <span style="color:#00ffff">CYAN</span> = gap-down open bar<br>
+          <span style="color:#f0883e">ORANGE</span> = gap-up open bar
+        </div>
+      </div>
+      <div class="grid-col">
+        <h4>Notes</h4>
+        <ul class="bullet-list">
+          <li>CYAN = bearish gap-down open (watch IB below prior low)</li>
+          <li>ORANGE = bullish gap-up open (watch IB hold above prior high)</li>
+          <li>Threshold = 0.10 — may miss small gaps on high-priced futures</li>
+          <li>CoreyGapfinder uses close/open comparison (instrument-agnostic)</li>
+          <li>Complementary to, not duplicate of, CoreyGapfinder</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">GapfinderSTUDY — both detect overnight gaps, completely different methods</span>
+          <span class="overlap-chip">Corey draws S/R zones; Chetan only colors bars — complementary</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">Gap Down open (bearish): (low[1] - high)   &gt; 0.10  → paint CYAN
+Gap Up   open (bullish): (high[1] - low)   &lt; 0.10  → paint ORANGE
+  (Note: logic inverted from typical — verify against actual TOS output)
+
+Commented out (inactive):
+  hyg_diff = close("HYG") - close("HYG")[2]
+  spx_diff = close("SPX") - close("SPX")[2]
+  (Credit spread vs equity divergence signal)</div>
+
+    <div class="callout callout-blue">
+      <div class="callout-title">Trading Significance</div>
+      Use as a quick visual scan to identify gap-open sessions. CYAN bar at open = watch for bearish IB development (IB forming below prior day low). ORANGE bar at open = watch for bullish IB development (IB holding above prior day high). Always cross-reference with CoreyGapfinder which draws the actual S/R zone levels with extensions.
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: LEVELS & S/R -->
+<!-- ============================================================ -->
+<div class="section-header">
+  <h2><span class="chip chip-support">Supporting</span> Levels &amp; Support/Resistance</h2>
+</div>
+
+<!-- CARD 15: Anchored VWAP -->
+<div class="script-card" id="s-avwap">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">ThinkScript_study_20221014STUDY.ts — Anchored VWAP</div>
+      <div class="card-meta">
+        <span class="chip chip-support">Supporting S/R</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Volume-Weighted Average Price anchored from a user-specified date and time. Price relative to AVWAP shows institutional cost basis and commitment level since a key market event. One of the most powerful S/R tools for swing-level context.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (2)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>anchorDate</td><td>20200422</td><td>Start date (YYYYMMDD format)</td></tr>
+          <tr><td>anchorTime</td><td>2030</td><td>Start time (HHMM format)</td></tr>
+        </table>
+        <div style="margin-top:10px;font-size:11px;color:#8b949e">Best anchor dates: major lows/highs, Fed meetings, earnings dates, index rebalancing</div>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (1)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Style</th><th>Represents</th></tr>
+          <tr><td>anchoredVWAP</td><td style="color:#00ffff">Cyan</td><td>Line (weight 3)</td><td>VWAP since anchor date forward</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Notes</h4>
+        <ul class="bullet-list">
+          <li>No labels</li>
+          <li>No alerts</li>
+          <li>No clouds</li>
+          <li>Single plot only — clean</li>
+          <li>Must re-anchor to new events manually</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">Pivot_Points — both provide S/R reference levels (different calcs)</span>
+          <span class="overlap-chip">No calculation overlap with any other script</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">anchoredVWAP = Σ(HLC3 × volume, from anchorDate to now)
+             / Σ(volume, from anchorDate to now)
+
+where HLC3 = (high + low + close) / 3   ← "typical price"
+
+Resets at anchorDate — accumulates forward from that point
+Unlike regular VWAP (resets daily), AVWAP carries institutional
+cost basis across days/weeks/months</div>
+
+    <div class="callout callout-blue">
+      <div class="callout-title">Trading Significance</div>
+      Price ABOVE AVWAP = buyers in control since anchor date (profitable longs). Price BELOW AVWAP = sellers in control. AVWAP acting as support on a retest = higher-probability long entry with institutional backing. Anchor to the COVID low (2020-03-23), the 2022 bear market low (2022-10-13), or each quarterly major pivot for maximum relevance.
+    </div>
+  </div>
+</div>
+
+<!-- CARD 16: Pivot Points -->
+<div class="script-card" id="s-pivots">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">ThinkScript_study_20221016STUDY.ts — Floor Trader Pivots</div>
+      <div class="card-meta">
+        <span class="chip chip-support">Supporting S/R</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Classic Floor Trader Pivot Points calculated from prior day's OHLC. 9 key support/resistance levels (PP, R1–R4, S1–S4) that institutional floor traders have referenced for decades. These are self-fulfilling because everyone watches them.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (2)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>aggregationPeriod</td><td>DAY</td><td>Source data period for H/L/C</td></tr>
+          <tr><td>showOnlyToday</td><td>yes</td><td>Limit to current session only</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (9)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Direction</th><th>Color</th></tr>
+          <tr><td>R4</td><td>Resistance 4 (extreme)</td><td style="color:#f85149">Red dashed</td></tr>
+          <tr><td>R3</td><td>Resistance 3</td><td style="color:#f85149">Red dashed</td></tr>
+          <tr><td>R2</td><td>Resistance 2</td><td style="color:#f0883e">Orange dashed</td></tr>
+          <tr><td>R1</td><td>Resistance 1 (key)</td><td style="color:#ffd700">Yellow dashed</td></tr>
+          <tr><td>PP</td><td>Pivot Point (daily mean)</td><td style="color:#fff">White dashed</td></tr>
+          <tr><td>S1</td><td>Support 1 (key)</td><td style="color:#ffd700">Yellow dashed</td></tr>
+          <tr><td>S2</td><td>Support 2</td><td style="color:#3fb950">Green dashed</td></tr>
+          <tr><td>S3</td><td>Support 3</td><td style="color:#3fb950">Green dashed</td></tr>
+          <tr><td>S4</td><td>Support 4 (extreme)</td><td style="color:#58a6ff">Blue dashed</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Notes</h4>
+        <ul class="bullet-list">
+          <li>All lines horizontal (dashed)</li>
+          <li>No labels, no clouds, no alerts</li>
+          <li>PP = most important single level</li>
+          <li>R1/S1 = high-probability reversal zones</li>
+          <li>R3/R4 and S3/S4 = extreme range only</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">ATR_Levels — both provide intraday S/R from different calcs</span>
+          <span class="overlap-chip">Keltner suite — band levels often coincide with R1/S1</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula — Classic Floor Pivot Math</div>
+    <div class="code-block">Prior Day: H = high[day-1], L = low[day-1], C = close[day-1]
+
+PP = (H + L + C) / 3                    ← Pivot Point (daily mean)
+
+R1 = 2×PP − L          S1 = 2×PP − H
+R2 = PP + (H − L)      S2 = PP − (H − L)
+R3 = 2×PP + (H − 2L)  S3 = 2×PP − (2H − L)
+R4 = H + 3×(PP − L)   S4 = L − 3×(H − PP)</div>
+
+    <div class="callout callout-blue">
+      <div class="callout-title">Trading Significance</div>
+      Confluence rule: a single pivot alone is weak — look for it to align with an ATR Fib level + Keltner band + VPOC for a HIGH-PROBABILITY ZONE. PP = daily mean, acts as magnetic center. R1/S1 = highest-probability reversal zones on first daily test. When IB High coincides with R1 → VERY STRONG resistance. Gaps opening above R1 → target R2 as first extension.
+    </div>
+  </div>
+</div>
+
+<!-- CARD 17: Virgin Profile -->
+<div class="script-card" id="s-virgin">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">ThinkScript_study_20230523STUDY.ts — Virgin Volume Profile</div>
+      <div class="card-meta">
+        <span class="chip chip-support">Supporting S/R</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">The most sophisticated S/R script in the suite. Auto-detects timeframe, supports both Volume and Time profiles, and tracks up to 10 "virgin" (never-revisited) POC/VAH/VAL levels from prior periods. Virgin VPOCs are the system's highest-probability price magnets.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (8)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>show_vol_time</td><td>Volume</td><td>Volume or Time profile mode</td></tr>
+          <tr><td>poc_calculation</td><td>Volume</td><td>POC by Volume or Time</td></tr>
+          <tr><td>rthbegin</td><td>0930</td><td>Regular Trading Hours start</td></tr>
+          <tr><td>rthend</td><td>1600</td><td>RTH end</td></tr>
+          <tr><td>valueAreaPercent</td><td>70</td><td>Value area coverage %</td></tr>
+          <tr><td>SplitVolumeProfile</td><td>No</td><td>Split RTH/after-hours</td></tr>
+          <tr><td>show_vpocs/vvah/vval</td><td>Yes</td><td>Toggle each virgin type</td></tr>
+          <tr><td>show_labels</td><td>Yes</td><td>Count labels for each type</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (36+)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Represents</th></tr>
+          <tr><td>POC</td><td style="color:#8b5cf6">Purple/Teal</td><td>Current period Point of Control</td></tr>
+          <tr><td>VAH</td><td style="color:#ff69b4">Hot pink</td><td>Value Area High</td></tr>
+          <tr><td>VAL</td><td style="color:#3fb950">Green</td><td>Value Area Low</td></tr>
+          <tr><td>VAH–VAL cloud</td><td style="color:#8b949e">Gray</td><td>Value area shaded zone</td></tr>
+          <tr><td>vpoc1–vpoc10</td><td style="color:#8b5cf6">Purple</td><td>10 Virgin POC levels (prior)</td></tr>
+          <tr><td>vvah1–vvah10</td><td style="color:#ff69b4">Pink</td><td>10 Virgin VAH levels</td></tr>
+          <tr><td>vval1–vval10</td><td style="color:#3fb950">Green</td><td>10 Virgin VAL levels</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Auto-Timeframe</h4>
+        <ul class="bullet-list">
+          <li>&lt;15min chart → daily profile</li>
+          <li>15min–1H chart → daily profile</li>
+          <li>1H–1D chart → weekly profile</li>
+          <li>1D–1W chart → monthly profile</li>
+          <li>&gt;1W chart → yearly profile</li>
+        </ul>
+        <div style="margin-top:8px">
+          <h4>Labels (4)</h4>
+          <ul class="bullet-list">
+            <li>Profile type label</li>
+            <li>"# Virgin POCs in use"</li>
+            <li>"# Virgin VAHs in use"</li>
+            <li>"# Virgin VALs in use"</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">TPOProfilev1 — same base Volume Profile logic</span>
+          <span class="overlap-chip">Tscorev2 — same POC calculation base</span>
+          <span class="overlap-chip">RFv2 — same Volume Profile methodology, adds Virgin tracking</span>
+          <span class="overlap-chip">SingleFinder — both track "unfilled" price areas as magnets</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula — Virgin Level Tracking</div>
+    <div class="code-block">Auto-timeframe detection → chooses correct profile period
+
+Volume Profile calculation:
+  POC = price level with highest cumulative volume in period
+  VAH = upper edge of valueAreaPercent% volume above POC
+  VAL = lower edge of valueAreaPercent% volume below POC
+
+Virgin level = POC/VAH/VAL from prior period that price has
+               NEVER crossed or touched since the period ended
+
+Crossing detection (removes level from virgin list):
+  Bull cross: price[t-1] &gt; VPOC AND price[t] &lt; VPOC (crossed down)
+  Bear cross: price[t-1] &lt; VPOC AND price[t] &gt; VPOC (crossed up)
+  Once crossed: counter++ → that level is no longer "virgin"
+
+Up to 10 levels tracked per type:
+  vpoc1...vpoc10, vvah1...vvah10, vval1...vval10
+  = 30 total virgin lines potentially visible simultaneously</div>
+
+    <div class="callout callout-green">
+      <div class="callout-title">Trading Significance</div>
+      Virgin VPOCs are the most powerful price magnets in the entire script suite. Price will often travel directly to an untested VPOC before reversing. SETUP: when price approaches a Virgin VPOC that also aligns with ATR Fib levels AND Keltner band → highest-probability trade in the system. Virgin VAH = overhead resistance, Virgin VAL = support below. The "virgin" property disappears once price touches — watch for the touch and then evaluate direction.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> Virgin VPOC tracking not yet implemented — uses current VPOC approximation only in <span class="mono">layer2_structure()</span></div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: TREND & CHANNELS -->
+<!-- ============================================================ -->
+<div class="section-header">
+  <h2><span class="chip chip-l1">L1 Regime</span><span class="chip chip-l4" style="margin-left:8px">L4 Entry</span> Trend &amp; Channels</h2>
+</div>
+
+<!-- CARD 18: CCI TrendBar -->
+<div class="script-card" id="s-cci">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">shared_mtftrendbarSTUDY.ts — CCI TrendBar</div>
+      <div class="card-meta">
+        <span class="chip chip-l1">L1 Regime</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">CCI(50) zero-line crossover driving a supertrend-style trailing stop line. Changes trend state (long/short) when CCI crosses zero, with ATR-based trailing stop drawn accordingly. The CCI period of 50 gives a medium-term regime signal.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (1)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>timeframe</td><td>5 min</td><td>Aggregation period for CCI. Set to HOUR for JARVIS 1H strategy.</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (4)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Color</th><th>Style</th><th>Represents</th></tr>
+          <tr><td>s</td><td style="color:#3fb950">Green/Red</td><td>Line</td><td>Supertrend trailing stop line</td></tr>
+          <tr><td>s1</td><td style="color:#3fb950">Green/Red</td><td>Line</td><td>CCI-based secondary trailing stop</td></tr>
+          <tr><td>uparrow</td><td style="color:#3fb950">Green</td><td>Arrow ↑</td><td>CCI crosses 0 positive → go long</td></tr>
+          <tr><td>dnarrow</td><td style="color:#f85149">Red</td><td>Arrow ↓</td><td>CCI crosses 0 negative → go short</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>State Machine</h4>
+        <ul class="bullet-list">
+          <li>LONG: CCI ≥ 0 → stop = Lowest(low, n) − ATR</li>
+          <li>SHORT: CCI &lt; 0 → stop = Highest(high, n) + ATR</li>
+          <li>Green stop line below price = keep long</li>
+          <li>Red stop line above price = keep short</li>
+          <li>Arrow = state flip = entry/exit signal</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">ATR_Levels — general ATR concept (different: SMA-5 vs Wilder-14)</span>
+          <span class="overlap-chip">STC Cycle — both provide L4 entry timing arrows</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">CCI(50):
+  Typical Price  = (close + high + low) / 3
+  SMA_TP         = SMA(Typical Price, 50)
+  LinDev_TP      = LinDev(Typical Price, 14)   ← mean absolute deviation
+  CCI            = (Typical Price - SMA_TP) / (0.015 × LinDev_TP)
+
+  CCI &gt; 0 = bullish regime
+  CCI &lt; 0 = bearish regime
+
+ATR = SMA(TrueRange, 5)   ← 5-period simple ATR (NOT Wilder)
+
+State machine:
+  LONG  = CCI ≥ 0 → trailing_stop = Lowest(low, period) - ATR
+  SHORT = CCI &lt; 0 → trailing_stop = Highest(high, period) + ATR
+
+Arrows (entry signals):
+  uparrow  = CCI crosses above 0   (state flip to LONG)
+  dnarrow  = CCI crosses below 0   (state flip to SHORT)</div>
+
+    <div class="callout callout-blue">
+      <div class="callout-title">Trading Significance</div>
+      CCI arrow in SAME direction as STC crossing = double confirmation entry — one of the strongest setups. Green stop line below price = maintain long position, do not exit prematurely. Flip to red stop line = exit long AND consider short. For JARVIS 1H strategy: set timeframe=HOUR to see 1H CCI state on any chart.
+    </div>
+
+    <div style="margin-top:12px;font-size:12px;color:#8b949e"><span style="color:#3fb950;font-weight:600">JARVIS Python:</span> <span class="mono">cci(high, low, close, period=50)</span> in <span class="mono">engine/backtest/indicators.py</span></div>
+  </div>
+</div>
+
+<!-- CARD 19: OB Omega 5m -->
+<div class="script-card" id="s-ob5">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">shared_shared_OB_OMEGA_5mSTUDY.ts — OB Omega 5m</div>
+      <div class="card-meta">
+        <span class="chip chip-l4">L4 Entry</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+        <span class="badge badge-warn">BUG: Defaults to 15m</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Multi-timeframe Keltner Channels rendered as horizontal reference lines with 1.5× (inner) and 2.0× (outer) bands. Cloud "closed door" feature shades bands when MACD momentum opposes the direction. Despite the "5m" filename, defaults to 15-minute aggregation.</p>
+
+    <div class="callout callout-red" style="margin-bottom:16px">
+      <div class="callout-title">BUG — Misleading Filename</div>
+      Despite the "5m" filename, this script defaults to <span class="mono">AggregationPeriod.FIFTEEN_MIN</span> — identical to OB_Omega_15m. The "5m" label is misleading. Action: change default period to FIVE_MIN, or differentiate explicitly when adding to chart.
+    </div>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (7)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>period</td><td>FIFTEEN_MIN</td><td>Aggregation (NOT 5m as name implies)</td></tr>
+          <tr><td>factor</td><td>1.5</td><td>Inner Keltner band multiplier</td></tr>
+          <tr><td>factor2</td><td>2.0</td><td>Outer Keltner band multiplier</td></tr>
+          <tr><td>length</td><td>20</td><td>SMA period for center line</td></tr>
+          <tr><td>lineLength</td><td>50</td><td>Horizontal line extension (bars)</td></tr>
+          <tr><td>ShowLabel</td><td>YES</td><td>Chart bubble labels</td></tr>
+          <tr><td>ShowCloud</td><td>YES</td><td>Cloud fill between bands</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (5)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Represents</th></tr>
+          <tr><td>Avg</td><td>SMA-20 center line (dashed)</td></tr>
+          <tr><td>Upper_Band1</td><td>+1.5× ATR — inner resistance</td></tr>
+          <tr><td>Lower_Band1</td><td>−1.5× ATR — inner support</td></tr>
+          <tr><td>Upper_Band2</td><td>+2.0× ATR — outer resistance</td></tr>
+          <tr><td>Lower_Band2</td><td>−2.0× ATR — outer support</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Clouds (4)</h4>
+        <ul class="bullet-list">
+          <li>Inner cloud: Band1 to Band2 zone (upper)</li>
+          <li>Inner cloud: Band1 to Band2 zone (lower)</li>
+          <li>"Closed Door" MACD cloud on upper bands (if MACD bearish)</li>
+          <li>"Closed Door" MACD cloud on lower bands (if MACD bullish)</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">OB_Omega_15m — 100% IDENTICAL code + same default period</span>
+          <span class="overlap-chip">OB_Omega_30m — identical code, different default period</span>
+          <span class="overlap-chip">kelt_3.01 — same Keltner formula, factor=3.0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula — Keltner Channel with MACD Closed Door</div>
+    <div class="code-block">Center:    Avg   = SMA(close[period], length=20)
+ATR proxy: shift = SMA(TrueRange[period], 20)  ← SMA not Wilder
+
+Inner bands:  Upper_Band1 = Avg + 1.5 × shift
+              Lower_Band1 = Avg - 1.5 × shift
+Outer bands:  Upper_Band2 = Avg + 2.0 × shift
+              Lower_Band2 = Avg - 2.0 × shift
+
+MACD Closed Door (momentum gate):
+  MACD     = EMA(close[period], 12) - EMA(close[period], 26)
+  Signal   = EMA(MACD, 9)
+  Diff     = MACD - Signal
+  If Diff &lt; 0: shade upper bands dark (momentum opposing continuation up)
+  If Diff &gt; 0: shade lower bands dark (momentum opposing continuation down)
+
+Band interpretation for entries:
+  ±1.5× = pullback entry zone (first touch, best entry)
+  ±2.0× = extended entry (acceptable but later)
+  ±3.0× = counter-trend FADE only (use kelt_3.01 for this level)</div>
+
+    <div class="callout callout-orange">
+      <div class="callout-title">Trading Significance</div>
+      Price touching the 1.5× band = look for entry in direction of trend. Price at 2.0× band = valid entry but position is extended. Closed Door cloud = FADE signals on that side only — if price is at upper band with bearish MACD cloud → short setup, not long. Without closed door cloud → continuation possible.
+    </div>
+  </div>
+</div>
+
+<!-- CARD 20: OB Omega 15m -->
+<div class="script-card" id="s-ob15">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">shared_shared_OB_OMEGA_15m7STUDY.ts — OB Omega 15m</div>
+      <div class="card-meta">
+        <span class="chip chip-l4">L4 Entry</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+        <span class="badge badge-warn">100% IDENTICAL to 5m version</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Keltner Channels — 15-minute default. Contains the exact same ThinkScript code as OB_Omega_5m, and both currently default to FIFTEEN_MIN aggregation. This is a complete code duplicate of the 5m version.</p>
+
+    <div class="callout callout-red" style="margin-bottom:16px">
+      <div class="callout-title">100% IDENTICAL TO OB_OMEGA_5m</div>
+      Both files contain the same ThinkScript code AND both default to <span class="mono">AggregationPeriod.FIFTEEN_MIN</span>. The only differentiation is the filename. Action: keep this as the "15m default" version and change OB_Omega_5m's default to FIVE_MIN.
+    </div>
+
+    <p style="color:#8b949e;font-size:13px">All inputs, plots, formulas, and clouds are identical to Card 19 (OB Omega 5m). See that card for full documentation. The only meaningful difference is the intended default period (15 minutes).</p>
+
+    <div class="card-grid" style="margin-top:16px">
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">OB_Omega_5m — IDENTICAL code, same default period</span>
+          <span class="overlap-chip">OB_Omega_30m — identical code, period=30m</span>
+          <span class="overlap-chip">kelt_3.01 — same formula, factor=3.0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CARD 21: OB Omega 30m -->
+<div class="script-card" id="s-ob30">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">shared_shared_OB_OMEGA_30m7STUDY.ts — OB Omega 30m</div>
+      <div class="card-meta">
+        <span class="chip chip-l4">L4 Entry</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Keltner Channels — 30-minute default. Same code as OB_Omega_5m and OB_Omega_15m, but defaults to <span class="mono">AggregationPeriod.thirty_MIN</span>. This is the one meaningful differentiator in the Omega trio.</p>
+
+    <div class="callout callout-orange" style="margin-bottom:16px">
+      <div class="callout-title">One difference from 5m/15m versions</div>
+      Default <span class="mono">period = AggregationPeriod.thirty_MIN</span>. All other code is identical. This is the only Omega script with a distinct default period — the 30-minute Keltner context is useful for identifying higher-timeframe S/R during intraday sessions.
+    </div>
+
+    <p style="color:#8b949e;font-size:13px">All inputs, plots, formulas, and clouds are identical to Card 19 (OB Omega 5m). See that card for full documentation.</p>
+
+    <div class="card-grid" style="margin-top:16px">
+      <div class="grid-col">
+        <h4>Why Keep It</h4>
+        <ul class="bullet-list">
+          <li>30m Keltner bands show higher-timeframe S/R zones</li>
+          <li>Useful alongside a 5m detail chart</li>
+          <li>30m closed door = stronger momentum gate than 5m/15m</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">OB_Omega_5m — identical code, different default period</span>
+          <span class="overlap-chip">OB_Omega_15m — identical code, different default period</span>
+          <span class="overlap-chip">kelt_3.01 — same Keltner formula, factor=3.0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CARD 22: Keltner 3x -->
+<div class="script-card" id="s-kelt3">
+  <div class="card-header">
+    <div class="card-header-info">
+      <div class="card-title">shared_shared_shared_shared_kelt_3.01STUDY.ts — Keltner 3× Extreme</div>
+      <div class="card-meta">
+        <span class="chip chip-l4">L4 Entry — Fade Extreme</span>
+        <span class="badge badge-upper">UPPER PANEL</span>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <p class="card-desc">Single Keltner Channel with 3.0× factor. Marks the extreme extension zone for counter-trend fades. When price touches the 3.0× band with Phase Oscillator at ±61.8+ and ATR consumed &gt;90%, the FADE_EXTREME regime activates in JARVIS.</p>
+
+    <div class="card-grid">
+      <div class="grid-col">
+        <h4>Inputs (8)</h4>
+        <table class="mini-table">
+          <tr><th>Param</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>iAggregationPeriod</td><td>FIVE_MIN</td><td>Aggregation period</td></tr>
+          <tr><td>iFactor</td><td>3.0</td><td>Band width (extreme)</td></tr>
+          <tr><td>iLength</td><td>20</td><td>SMA period</td></tr>
+          <tr><td>iPrice</td><td>CLOSE</td><td>Price source for center</td></tr>
+          <tr><td>iAvgType</td><td>SIMPLE</td><td>Center line MA type</td></tr>
+          <tr><td>iTrueRangeAvgType</td><td>SIMPLE</td><td>ATR average type</td></tr>
+          <tr><td>iHideMidLine</td><td>YES</td><td>Hide center line (clean chart)</td></tr>
+          <tr><td>iDisplace</td><td>0</td><td>Bar displacement offset</td></tr>
+        </table>
+      </div>
+      <div class="grid-col">
+        <h4>Plots (3)</h4>
+        <table class="mini-table">
+          <tr><th>Plot</th><th>Represents</th></tr>
+          <tr><td>Avg</td><td>SMA-20 center (hideable by iHideMidLine)</td></tr>
+          <tr><td>Upper_Band</td><td>+3.0× ATR — extreme extension up</td></tr>
+          <tr><td>Lower_Band</td><td>−3.0× ATR — extreme extension down</td></tr>
+        </table>
+        <div style="margin-top:10px;font-size:11px;color:#8b949e">No clouds, no labels, no alerts. Minimal, clean design.</div>
+      </div>
+      <div class="grid-col">
+        <h4>FADE_EXTREME Setup</h4>
+        <ul class="bullet-list">
+          <li>Price at Upper_Band (+3.0×)</li>
+          <li>AND Phase &gt; +61.8 (EXHAUSTED)</li>
+          <li>AND ATR consumed &gt; 90% (RED label)</li>
+          <li>AND TRIN not CYAN (not capitulation)</li>
+          <li>→ COUNTER-TREND SHORT setup</li>
+          <li>(reverse logic for lower band)</li>
+        </ul>
+      </div>
+      <div class="grid-col">
+        <h4>Overlaps With</h4>
+        <div class="overlap-chips">
+          <span class="overlap-chip">OB_Omega suite — same SMA(TrueRange,20) formula, factor=3.0 vs 1.5/2.0</span>
+          <span class="overlap-chip">Phase_Oscillator — both identify extreme extension conditions</span>
+          <span class="overlap-chip">ATR_Levels — ATR_3.0 line on ATR_Levels is same concept</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-label">Core Formula</div>
+    <div class="code-block">Avg         = SMA(close[iAggregationPeriod], iLength=20)
+ATR_simple  = SMA(TrueRange[iAggregationPeriod], iLength=20)
+
+Upper_Band = Avg + iFactor × ATR_simple   = Avg + 3.0 × ATR
+Lower_Band = Avg - iFactor × ATR_simple   = Avg - 3.0 × ATR
+
+Note: Uses SIMPLE moving average for both center and ATR
+(OB_Omega suite uses same formula — only iFactor differs: 1.5/2.0 vs 3.0)
+
+ATR_Levels uses WildersAverage (different method — exponential decay weighting)
+This script uses SMA (equal weighting) → produces wider bands in volatile markets</div>
+
+    <div class="callout callout-red">
+      <div class="callout-title">Trading Significance — Counter-Trend ONLY</div>
+      Touching the 3.0× band is the ONLY time JARVIS considers a counter-trend entry. Normal trend following does NOT use this band. The 3.0× band marks a statistical extreme — 3 standard deviations beyond the 20-bar mean of intraday range. Combined with Phase exhaustion + ATR consumption &gt;90% + TRIN confirmation = one of the highest-probability fade setups available.
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- OVERLAP ANALYSIS SECTION -->
+<!-- ============================================================ -->
+<div class="section-header" id="s-overlap">
+  <h2>Overlap Analysis — Shared Calculation Matrix</h2>
+</div>
+
+<p style="color:#8b949e;margin-bottom:20px;font-size:13px">The matrix below shows which scripts share identical or near-identical mathematical calculations. A filled dot (●) indicates the script uses that concept. Scripts sharing the same row are computing the same number — redundant CPU cost and potential for parameter inconsistency.</p>
+
+<div class="matrix-wrap">
+<table class="matrix-table">
+<thead>
+<tr>
+  <th class="row-header">Shared Concept / Calculation</th>
+  <th>ATR_Lvl</th><th>Phase</th><th>OB×3</th><th>Kelt3</th><th>CCI</th>
+  <th>RFv2</th><th>TPO</th><th>Tscore</th><th>Virgin</th>
+  <th>GapFind</th><th>Chetan</th><th>IB</th><th>KAMA</th><th>STC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="row-label">ATR — Wilder-14 (exponential)</td>
+  <td class="dot">●</td><td class="dot">●</td><td></td><td></td><td></td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">ATR — SMA-20 (simple, Keltner)</td>
+  <td></td><td></td><td class="dot">●</td><td class="dot">●</td><td></td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">ATR — SMA-5 (simple, short)</td>
+  <td></td><td></td><td></td><td></td><td class="dot">●</td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">EMA 8 (fast momentum)</td>
+  <td class="dot">●</td><td></td><td></td><td></td><td></td>
+  <td></td><td></td><td class="dot">●</td><td></td><td></td><td></td><td class="dot">●</td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">EMA 13 (slow momentum)</td>
+  <td></td><td></td><td></td><td></td><td></td>
+  <td></td><td></td><td class="dot">●</td><td></td><td></td><td></td><td class="dot">●</td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">EMA 21 (pivot / baseline)</td>
+  <td class="dot">●</td><td class="dot">●</td><td></td><td></td><td></td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">EMA 34 (slow trend ribbon)</td>
+  <td class="dot">●</td><td></td><td></td><td></td><td></td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">Volume Profile (POC/VAH/VAL)</td>
+  <td></td><td></td><td></td><td></td><td></td>
+  <td class="dot">●</td><td class="dot">●</td><td class="dot">●</td><td class="dot">●</td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">Fibonacci Extensions (0.382–2.0)</td>
+  <td class="dot">●</td><td></td><td></td><td></td><td></td>
+  <td class="dot">●</td><td class="dot">●</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">Keltner Channels (SMA center)</td>
+  <td></td><td></td><td class="dot">●</td><td class="dot">●</td><td></td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">MACD (12/26/9 EMA)</td>
+  <td></td><td></td><td class="dot">●</td><td></td><td></td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="dot">●</td>
+</tr>
+<tr>
+  <td class="row-label">Gap Detection (overnight)</td>
+  <td></td><td></td><td></td><td></td><td></td>
+  <td></td><td></td><td></td><td></td><td class="dot">●</td><td class="dot">●</td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">Outside Bar Detection</td>
+  <td></td><td></td><td></td><td></td><td></td>
+  <td class="dot">●</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">Bollinger Bands (StdDev)</td>
+  <td></td><td class="dot">●</td><td></td><td></td><td></td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<tr>
+  <td class="row-label">Stochastic (%K/%D)</td>
+  <td></td><td></td><td></td><td></td><td></td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="dot">●</td>
+</tr>
+<tr>
+  <td class="row-label">Linear Regression (InertiaAll)</td>
+  <td></td><td></td><td></td><td></td><td></td>
+  <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="dot">●</td><td></td>
+</tr>
+<tr>
+  <td class="row-label">TPO switch(timePerProfile) block</td>
+  <td></td><td></td><td></td><td></td><td></td>
+  <td class="dot">●</td><td class="dot">●</td><td class="dot">●</td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- REDUNDANCY FINDINGS SECTION -->
+<!-- ============================================================ -->
+<div class="section-header" id="s-redundancy">
+  <h2>Redundancy Findings</h2>
+</div>
+
+<div class="redundancy-card">
+  <h3><span class="badge badge-warn">CRITICAL</span> Finding 1 — OB_Omega_5m = OB_Omega_15m (100% Identical)</h3>
+  <p style="margin-bottom:12px;color:#c9d1d9">Both <span class="mono">shared_shared_OB_OMEGA_5mSTUDY.ts</span> and <span class="mono">shared_shared_OB_OMEGA_15m7STUDY.ts</span> contain the exact same ThinkScript code AND both default to <span class="mono">AggregationPeriod.FIFTEEN_MIN</span>. The "5m" filename is actively misleading — any trader who adds it expecting 5-minute Keltner bands is getting 15-minute bands instead.</p>
+  <div style="background:#21262d;border-radius:4px;padding:12px;font-size:12px;color:#8b949e">
+    <strong style="color:#f85149">Action:</strong> Change <span class="mono">OB_Omega_5m</span> default period to <span class="mono">AggregationPeriod.FIVE_MIN</span>. Then both scripts are differentiated by their default period and both are useful. Alternatively, delete one and document the remaining script as "change period input for desired timeframe."
+  </div>
+</div>
+
+<div class="redundancy-card">
+  <h3><span class="badge badge-caution">REDUNDANT</span> Finding 2 — RFv1Mobile ⊂ RFv2 (Strict Subset)</h3>
+  <p style="margin-bottom:12px;color:#c9d1d9"><span class="mono">AA_CoreyRFv1MobileSTUDY.ts</span> is a strict subset of <span class="mono">AA_CoreyRFv2STUDY.ts</span>. Every feature in the mobile version is present in v2, plus v2 adds Volume Profile, TPO, control zones, clouds, alerts, and bull/bear imbalance logic. Running both on the same chart adds Fibonacci lines twice (slightly different positions) which creates visual confusion.</p>
+  <div style="background:#21262d;border-radius:4px;padding:12px;font-size:12px;color:#8b949e">
+    <strong style="color:#f0883e">Action:</strong> Remove RFv1Mobile from all desktop TOS chart setups. Keep only for mobile TOS app where RFv2 may be too heavy on rendering. If RFv2 is on the chart, RFv1Mobile is 100% redundant.
+  </div>
+</div>
+
+<div class="redundancy-card">
+  <h3><span class="badge badge-caution">PARTIAL</span> Finding 3 — TPO Formula Duplicated in RFv2 + Tscorev2 + TPOProfilev1</h3>
+  <p style="margin-bottom:12px;color:#c9d1d9">The TPO period-switching boilerplate (the <span class="mono">switch(timePerProfile)</span> block computing POC, VAH, VAL, and balance midpoint) is copy-pasted identically across <span class="mono">CoreyRFv2</span>, <span class="mono">CoreyTPOv1</span>, and <span class="mono">CoreyTscorev2</span>. Any parameter change to one requires manual updating in all three. This is a maintenance risk — three sources of truth for one formula.</p>
+  <div style="background:#21262d;border-radius:4px;padding:12px;font-size:12px;color:#8b949e">
+    <strong style="color:#f0883e">Action:</strong> Can remove TPOProfilev1 from charts that already have RFv2 running — RFv2 includes all of its structure visuals. Keep TPOProfilev1 on standalone TPO-only charts (cleaner display). Keep Tscorev2 regardless — it's the only one with the score oscillator output. They all rely on the same underlying formula though; any parameter tuning must be applied to all three.
+  </div>
+</div>
+
+<div class="redundancy-card">
+  <h3><span class="badge badge-caution">PARTIAL</span> Finding 4 — All 4 Keltner Scripts Share Identical SMA(TrueRange, 20) Formula</h3>
+  <p style="margin-bottom:12px;color:#c9d1d9"><span class="mono">OB_Omega_5m</span>, <span class="mono">OB_Omega_15m</span>, <span class="mono">OB_Omega_30m</span>, and <span class="mono">kelt_3.01</span> all compute Keltner bands identically: <span class="mono">SMA(close, 20) ± factor × SMA(TrueRange, 20)</span>. The three OMEGA scripts could theoretically be a single script with a period input (they already have <span class="mono">period</span> as a user input).</p>
+  <div style="background:#21262d;border-radius:4px;padding:12px;font-size:12px;color:#8b949e">
+    <strong style="color:#f0883e">Action:</strong> These serve different default timeframes for quick chart setup — functionally acceptable for workflow. However, maintaining 3 nearly-identical scripts is overhead. Consider consolidating to: kelt_3.01 (extreme fade, 3.0×) + one OMEGA script (user changes period input). The MACD "Closed Door" feature in the OMEGA scripts is valuable and should be preserved.
+  </div>
+</div>
+
+<div class="redundancy-card">
+  <h3><span class="badge badge-ok">INTENTIONAL</span> Finding 5 — Two Gap Detection Methods Are NOT Redundant</h3>
+  <p style="margin-bottom:12px;color:#c9d1d9"><span class="mono">AA_CoreyGapfinderv1STUDY.ts</span> (Corey) draws horizontal S/R zone lines with rightward extensions that persist until filled. <span class="mono">GAPS_Chetan1STUDY.ts</span> simply colors bars cyan/orange on gap opens. Different visual output serving completely different purposes — one is a structural S/R tool, the other is a quick visual scan aid.</p>
+  <div style="background:#21262d;border-radius:4px;padding:12px;font-size:12px;color:#8b949e">
+    <strong style="color:#3fb950">Action:</strong> Keep both. They are complementary. Use Corey GapFinder for the S/R levels and zone targets. Use Chetan Gap Bars for the at-a-glance open type identification. Note the 0.10-point threshold in Chetan may need adjustment for high-priced instruments like NQ.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PANEL LAYOUT GUIDE -->
+<!-- ============================================================ -->
+<div class="section-header" id="s-panellayout">
+  <h2>Panel Layout Guide</h2>
+</div>
+
+<p style="color:#8b949e;margin-bottom:20px;font-size:13px">Recommended script placement by panel and layer. Scripts in the LOWER panel must use <span class="mono">declare lower;</span> in ThinkScript. Assign each lower script to its own subgraph to avoid scale conflicts.</p>
+
+<div class="panel-layout">
+  <div class="panel-box">
+    <h3>UPPER PANEL — Price Chart (17 scripts)</h3>
+
+    <div class="panel-layer">
+      <div class="panel-layer-label"><span class="chip chip-l1">L1 Regime</span></div>
+      <div class="panel-scripts">
+        <span class="panel-script">Saty_ATR_Levels (EMA 8/21/34 ribbon + ATR Fib levels)</span>
+        <span class="panel-script">shared_mtftrendbar (CCI-50 trailing stop)</span>
+      </div>
+    </div>
+
+    <div class="panel-layer">
+      <div class="panel-layer-label"><span class="chip chip-l2">L2 Structure</span></div>
+      <div class="panel-scripts">
+        <span class="panel-script">CoreyIB (IB High/Low/Quartiles/Extensions)</span>
+        <span class="panel-script">CoreyTPOv1 (TPO profile POC/VAH/VAL)</span>
+        <span class="panel-script">VirginProfile (Virgin POCs/VAHs/VALs × 10 each)</span>
+        <span class="panel-script">CoreyRFv2 (Rangefinder + Vol Profile + Fib)</span>
+        <span class="panel-script">CoreySFv2 (Single prints / unfilled gaps)</span>
+        <span class="panel-script">CoreyGapFinder (Gap S/R zones with extensions)</span>
+        <span class="panel-script">GAPS_Chetan (Gap open bar coloring)</span>
+      </div>
+    </div>
+
+    <div class="panel-layer">
+      <div class="panel-layer-label"><span class="chip chip-l3">L3 Bias</span></div>
+      <div class="panel-scripts">
+        <span class="panel-script">NextSignalMomentum (KAMA line on price)</span>
+      </div>
+    </div>
+
+    <div class="panel-layer">
+      <div class="panel-layer-label"><span class="chip chip-l4">L4 Entry</span></div>
+      <div class="panel-scripts">
+        <span class="panel-script">OB_Omega_5m (1.5×/2.0× Keltner, 5m default)</span>
+        <span class="panel-script">OB_Omega_30m (1.5×/2.0× Keltner, 30m default)</span>
+        <span class="panel-script">kelt_3.01 (3.0× Keltner — extreme fade zone)</span>
+      </div>
+    </div>
+
+    <div class="panel-layer">
+      <div class="panel-layer-label"><span class="chip chip-support">Supporting</span></div>
+      <div class="panel-scripts">
+        <span class="panel-script">Anchored_VWAP (anchored from key date)</span>
+        <span class="panel-script">Pivot_Points (floor pivots PP/R1-R4/S1-S4)</span>
+        <span class="panel-script">TRIN_Chetan (breadth extreme bar coloring)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-box">
+    <h3>LOWER PANELS — Subgraphs (5 scripts)</h3>
+
+    <div class="panel-layer">
+      <div class="panel-layer-label"><span class="chip chip-l1">L1 Regime</span> — Subgraph 1</div>
+      <div class="panel-scripts">
+        <span class="panel-script">Saty_Phase_Oscillator (−100 to +100, compression/exhaustion)</span>
+      </div>
+    </div>
+
+    <div class="panel-layer" style="margin-top:12px">
+      <div class="panel-layer-label"><span class="chip chip-l2">L2 Structure</span> — Subgraph 2</div>
+      <div class="panel-scripts">
+        <span class="panel-script">Tscorev2 (TPO score line −5 to +5 with 7 labels)</span>
+      </div>
+    </div>
+
+    <div class="panel-layer" style="margin-top:12px">
+      <div class="panel-layer-label"><span class="chip chip-l3">L3 Bias</span> — Subgraph 3</div>
+      <div class="panel-scripts">
+        <span class="panel-script">Saty_Volume_Stack (buy/sell volume histogram)</span>
+      </div>
+    </div>
+
+    <div class="panel-layer" style="margin-top:12px">
+      <div class="panel-layer-label"><span class="chip chip-l4">L4 Entry</span> — Subgraph 4</div>
+      <div class="panel-scripts">
+        <span class="panel-script">STC Cycle (0–100 oscillator with entry arrows)</span>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding:12px;background:#0d1117;border-radius:6px;border:1px solid #30363d">
+      <div style="font-size:12px;font-weight:700;color:#8b949e;margin-bottom:8px">NOT ON CHART (Desktop)</div>
+      <div class="panel-scripts">
+        <span class="panel-script" style="opacity:0.5;text-decoration:line-through">RFv1Mobile (use RFv2 instead)</span>
+        <span class="panel-script" style="opacity:0.5;text-decoration:line-through">OB_Omega_15m (same as 5m unless period changed)</span>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:12px;background:#0d1117;border-radius:6px;border:1px solid #30363d">
+      <div style="font-size:12px;font-weight:700;color:#8b949e;margin-bottom:8px">READING ORDER (per bar)</div>
+      <ol style="list-style:decimal;padding-left:20px;font-size:12px;color:#c9d1d9;line-height:2">
+        <li>Phase color (bars) → regime state</li>
+        <li>TRIN color (bars) → macro gate</li>
+        <li>ATR label → range consumed %</li>
+        <li>Tscore label → "Buyers/Sellers in Control"</li>
+        <li>KAMA label → "Long" or "Short"</li>
+        <li>Volume Stack % → buyer/seller dominance</li>
+        <li>STC arrow → entry/exit trigger</li>
+        <li>Keltner band → precise entry price</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- FOOTER -->
+<!-- ============================================================ -->
+<div class="footer">
+  <p>JARVIS TRADER — ThinkScript Deep Dive | 22 Scripts Documented</p>
+  <p style="margin-top:6px">
+    Companion report: <a href="TOS_SCRIPTS_COMPREHENSIVE_ANALYSIS.html">TOS_SCRIPTS_COMPREHENSIVE_ANALYSIS.html</a> &nbsp;|&nbsp;
+    Source of truth for all JARVIS parameters: <span class="mono">engine/backtest/signals.py</span>
+  </p>
+  <p style="margin-top:8px;color:#6e7681;font-size:12px">
+    All formulas represent ThinkScript implementations. Python equivalents in <span class="mono">engine/backtest/indicators.py</span>.
+    Parameter optimization via grid search on SPY/MES data 2024–2026.
+  </p>
+</div>
+
+</main>
+</div>
+
+<script>
+function scrollTo(id){
+  var el=document.getElementById(id);
+  if(el){el.scrollIntoView({behavior:'smooth',block:'start'})}
+  document.querySelectorAll('.sidebar-link').forEach(function(l){l.classList.remove('active')});
+  event.target.classList.add('active');
+}
+
+var sections=document.querySelectorAll('[id^="s-"]');
+var links=document.querySelectorAll('.sidebar-link');
+var observer=new IntersectionObserver(function(entries){
+  entries.forEach(function(e){
+    if(e.isIntersecting){
+      var id=e.target.id;
+      links.forEach(function(l){
+        l.classList.remove('active');
+        if(l.getAttribute('onclick')&&l.getAttribute('onclick').indexOf(id)>-1){
+          l.classList.add('active');
+        }
+      });
+    }
+  });
+},{rootMargin:'-20% 0px -70% 0px'});
+sections.forEach(function(s){observer.observe(s)});
+</script>
+</body>
+</html>
+
+<script>
+function scrollTo(id){
+  var el=document.getElementById(id);
+  if(el){el.scrollIntoView({behavior:'smooth',block:'start'})}
+  document.querySelectorAll('.sidebar-link').forEach(function(l){l.classList.remove('active')});
+  event.target.classList.add('active');
+}
+
+// IntersectionObserver for active sidebar highlighting
+var sections=document.querySelectorAll('.script-card,[id^="s-"]');
+var links=document.querySelectorAll('.sidebar-link');
+var observer=new IntersectionObserver(function(entries){
+  entries.forEach(function(e){
+    if(e.isIntersecting){
+      var id=e.target.id;
+      links.forEach(function(l){
+        l.classList.remove('active');
+        if(l.getAttribute('onclick')&&l.getAttribute('onclick').indexOf(id)>-1){
+          l.classList.add('active');
+        }
+      });
+    }
+  });
+},{rootMargin:'-20% 0px -70% 0px'});
+sections.forEach(function(s){observer.observe(s)});
+</script>
+</body>
+</html>

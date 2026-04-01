@@ -3,7 +3,7 @@
 
 ## The Verdict: CONDITIONAL GO — 2 Instruments Approved for Paper Trading
 
-The STC-based strategy clears walk-forward validation on **2 of 5 instruments** after fixing all bugs. **MCL 1h WFE=0.82 (EXCELLENT)** and **MNQ 1h WFE=0.57 (GOOD, adaptive regime only)** both exceed the 0.50 GOOD threshold. MGC 1d remains halted at WFE=0.14. MES and SPY are deeply overfit and not cleared.
+The STC-based strategy clears walk-forward validation on **2 of 5 instruments** after fixing all bugs. **MCL 1h WFE=0.82 (EXCELLENT)** and **MNQ 1h WFE=0.57 (GOOD, adaptive regime only)** both exceed the 0.50 GOOD threshold. MGC 1d, MES 1h, and SPY 1h are all **CLOSED** — strategy redesign required for each. MES 1h specifically confirmed definitively incompatible with STC+ATR in both static (WFE=0.09) and adaptive (WFE=0.00) modes.
 
 *v1.0 verdict was CONDITIONAL GO based on in-sample results and MGC walk-forward only. v2.0 revises to NO-GO after completing walk-forward validation for all 5 instruments.*
 
@@ -23,6 +23,8 @@ The STC-based strategy clears walk-forward validation on **2 of 5 instruments** 
 
 *v2.9 update (2026-04-01): MGC 1d extended walk-forward (2022-01-01 to 2026-03-27, 14 windows, 9-month IS / 3-month OOS). Result: WFE=0.00, 0/14 valid windows. All 14 optimization windows returned SKIP — no valid parameter combinations found in the FAST_GRID. This is stronger evidence than the prior WFE=0.14 (which had 15 windows with a few valid): the STC+ATR strategy produces zero viable signals on MGC daily data across any market regime from 2022 through 2026 (bear market, recovery, bull run). MGC 1d strategy redesign required before any reconsideration. See: `engine/backtest/fetch_mgc_history_2022.py` and `WF_MGC_1d_walk_forward.json`.*
 
+*v2.10 update (2026-04-01): MES 1h adaptive regime walk-forward completed (2024-04-01 to 2026-03-27, 6 windows). Result: WFE=0.00, 0/6 valid windows. All 6 training windows returned SKIP — the RegimeClassifier over-filters MES to below 3 trades per window on every parameter combination, producing -999 score across all 162 FAST_GRID combos. Root cause: the adaptive mode is anti-predictive for S&P 500 intraday because MES STC signals predominantly occur in EXHAUSTED/COMPRESSION regimes (the very regimes the adaptive classifier blocks most aggressively). This is now the second independent confirmation of framework incompatibility: static WFE=0.09 (overfit, 4/6 profitable), adaptive WFE=0.00 (0/6 valid). Combined with SPY 1h WFE=0.00, the STC+ATR strategy is definitively unsuitable for S&P 500 hourly data in any configuration. MES strategy redesign required — ORB or VWAP-based approaches recommended. See: `engine/backtest/results/WF_MES_1h_adaptive_walk_forward.json`.*
+
 *v2.7 update (2026-03-30): MNQ adaptive WFE corrected 0.48→0.57 (latest confirmed run 2026-03-29T23:46). MCL static WFE confirmed 0.82 (run 2026-03-29T23:41). Both MCL and MNQ clear the 0.50 GOOD threshold — paper trading APPROVED for both. MTF filter walk-forward confirms MNQ WFE DEGRADES 0.57→0.17 — filter REJECTED. Volume filter also HURTS: 0.57→-0.23 — REJECTED. Best MCL config: static params only (adaptive WFE=-0.31). Best MNQ config: adaptive regime only, NO MTF, NO volume filter.*
 
 ---
@@ -34,7 +36,7 @@ The STC-based strategy clears walk-forward validation on **2 of 5 instruments** 
 | 1 | MCL | 1h | 65 | 60.0 | 1.83 | 0.15 | +0.2% | — | **0.82** | **EXCELLENT — Paper trading APPROVED** |
 | 2 | MNQ | 1h | 86 | 47.7 | 1.46 | 0.19 | +13.6% | 0.1% | **0.57** | **GOOD — Paper trading APPROVED (adaptive)** |
 | 3 | MGC | 1d | 47 | 51.1 | 2.60 | 2.04 | +34.4% | 3.0% | **0.14** | **OVERFIT — HALTED** (v2.7 corrected) |
-| 4 | MES | 1h | 23 | 34.8 | 1.69 | 0.09 | +0.1% | 0.1% | 0.09 | **OVERFIT** |
+| 4 | MES | 1h | 23 | 34.8 | 1.69 | 0.09 | +0.1% | 0.1% | 0.09 | **CLOSED** — static 0.09, adaptive 0.00, 0/6 valid (v2.10) |
 | 5 | SPY | 1h | — | — | — | — | — | — | **0.00** | **CLOSED** — 0 valid windows (v2.8) |
 
 *Test period: Jun 2024 -- Mar 2026 (1h) / Jan 2025 -- Mar 2026 (1d). All returns gross of commissions ($2.50/contract + 1 tick slippage applied).*
@@ -52,7 +54,8 @@ The STC-based strategy clears walk-forward validation on **2 of 5 instruments** 
 | MGC | 1d | 15 | 6/15 (40%) | +6.7% | +1.8% | **0.14** | FAIL — HALTED (extended history, v2.7 corrected) |
 | MGC | 1d | 14 | 0/14 (0%) | 0.0% | 0.0% | **0.00** | FAIL — **CLOSED** (2022–2026 full range, 0 valid windows, v2.9) |
 | MCL | 1h | 6 | — | — | — | **-0.31** | FAIL (adaptive regime HURTS MCL) |
-| MES | 1h | 6 | 1/6 (17%) | — | — | **0.09** | FAIL — OVERFIT |
+| MES | 1h | 6 | 1/6 (17%) | — | — | **0.09** | FAIL — OVERFIT (static) |
+| MES | 1h | 0 | 0/0 (0%) | 0.0% | 0.0% | **0.00** | FAIL — **CLOSED** (adaptive, all 6 windows SKIP, v2.10) |
 | SPY | 1h | 6 | 0/6 (0%) | 0.0% | 0.0% | **0.00** | FAIL — CLOSED (0 valid windows, v2.8 corrected) |
 
 **WFE thresholds:** >0.70 = Excellent, 0.50-0.70 = Good, 0.30-0.50 = Marginal, <0.30 = OVERFIT
@@ -67,6 +70,7 @@ The STC-based strategy clears walk-forward validation on **2 of 5 instruments** 
 | MNQ | 1h | 0.24 | **0.57** | +138% | — | — | GOOD — APPROVED (adaptive only; +MTF → 0.17; +Vol → -0.23) |
 | MCL | 1h | **0.82** | -0.31 | N/A | — | — | EXCELLENT (static wins; adaptive HURTS) |
 | SPY | 1h | -1.11 | **-0.71** | +36% | -3.84 | 1.04 | FAIL -- Adaptive slightly better but still deeply overfit |
+| MES | 1h | 0.09 | **0.00** | -100% | 0.00 | 0.00 | FAIL — Adaptive kills all signals (0/6 windows valid, over-filters to <3 trades/window) |
 
 **Takeaway:** Regime-adaptive mode is highly effective for trending instruments (MGC gold). It improves MNQ modestly. It actively *hurts* MCL -- crude oil's regime transitions are too noisy for the current RegimeClassifier to capture. MCL should remain on the DO NOT TRADE list.
 
@@ -164,4 +168,5 @@ WFE=0.00 (2022–2026 extended, 0/14 valid windows). Strategy fundamentally inco
 | M2K | 1h | 0.64 | N/A | Consistently losing; Russell unsuitable for STC |
 | M2K | 1d | 0.60 | N/A | Negative both timeframes |
 | MCL | 1d | 0.21 | N/A | Catastrophic PF; zero targets hit on daily crude |
-| MES | 1d | 0.75 | N/A | 
+| MES | 1d | 0.75 | N/A | PF<1.0 on daily; S&P daily trend-following incompatible with STC |
+| MES | 1h | 1.69 | **0.00** | Static WFE=0.09 (overfit), adaptive WFE=0.00 (0/6 windows). **CLOSED** — STC+ATR definitively incompatible with S&P 500 1h. Redesign required: ORB or VWAP strategy recommended (v2.10) |
