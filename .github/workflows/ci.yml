@@ -1,9 +1,9 @@
 name: JARVIS TRADER CI
 on:
   push:
-    branches: [main, develop]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
   engine-lint:
@@ -72,7 +72,6 @@ jobs:
 
       - name: Run pytest
         run: pytest engine/tests/ -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
-        continue-on-error: true
 
       - name: Upload coverage artifact
         if: always()
@@ -93,14 +92,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'dashboard/package-lock.json'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
 
       - name: Install dependencies
-        run: npm ci --prefix dashboard --silent
+        run: pnpm install --frozen-lockfile
+        working-directory: dashboard
 
       - name: Build Next.js
-        run: npm run build --prefix dashboard
+        run: pnpm run build
+        working-directory: dashboard
         env:
           NODE_ENV: production
 
@@ -141,6 +145,7 @@ jobs:
         run: |
           if [[ "${{ needs.engine-lint.result }}" != "success" || \
                 "${{ needs.engine-typecheck.result }}" != "success" || \
+                "${{ needs.engine-test.result }}" != "success" || \
                 "${{ needs.dashboard-build.result }}" != "success" || \
                 "${{ needs.security-scan.result }}" != "success" ]]; then
             echo "⚠️  Some CI checks failed. Please review the logs above."
