@@ -836,7 +836,7 @@ class TestWalkForward:
     def test_walkforward_cache_used(self, tmp_path):
         """When a parquet cache file exists, the trainer loads data from cache
         (prepare_dataframe reads it via pd.read_parquet) rather than falling
-        through to yfinance."""
+        through to BacktestDataLoader."""
         import asyncio
         from unittest.mock import call, patch
 

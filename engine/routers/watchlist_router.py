@@ -16,12 +16,14 @@ router = APIRouter(prefix="", tags=["watchlist"])
 
 # Global references (injected from main.py)
 db_manager = None
+_data_manager = None
 
 
-def inject_dependencies(dbm):
+def inject_dependencies(dbm, data_manager=None):
     """Inject global dependencies from main.py"""
-    global db_manager
+    global db_manager, _data_manager
     db_manager = dbm
+    _data_manager = data_manager
 
 
 class WatchlistAddRequest(BaseModel):
@@ -33,41 +35,23 @@ class WatchlistAddRequest(BaseModel):
 @router.get("/watchlist")
 async def get_watchlist():
     """Return configured watchlists as ticker items with live prices"""
-    import yfinance as yf
-
-    futures_map = {
-        "MES": "ES=F",
-        "MNQ": "NQ=F",
-        "MCL": "CL=F",
-        "MGC": "GC=F",
-        "MHG": "HG=F",
-        "MYM": "YM=F",
-        "M2K": "RTY=F",
-    }
     all_symbols = list(settings.FUTURES_WATCHLIST) + list(settings.OPTIONS_WATCHLIST)
     prices: dict = {}
     try:
-        yf_tickers_map = {s: futures_map.get(s, s) for s in all_symbols}
-        tickers_obj = yf.Tickers(" ".join(set(yf_tickers_map.values())))
-        for sym, yf_sym in yf_tickers_map.items():
-            try:
-                info = tickers_obj.tickers[yf_sym].fast_info
-                current = (
-                    float(info.last_price)
-                    if hasattr(info, "last_price") and info.last_price
-                    else None
-                )
-                prev = (
-                    float(info.previous_close)
-                    if hasattr(info, "previous_close") and info.previous_close
-                    else None
-                )
-                chg = ((current - prev) / prev) if current and prev and prev > 0 else None
-                prices[sym] = {"last_price": current, "change_pct": chg}
-            except Exception:
+        if _data_manager is not None:
+            batch = await _data_manager.get_batch_prices(all_symbols)
+            for sym, price_data in batch.items():
+                prices[sym] = {
+                    "last_price": price_data.get("last_price"),
+                    "change_pct": price_data.get("change_pct"),
+                }
+        else:
+            for sym in all_symbols:
                 prices[sym] = {"last_price": None, "change_pct": None}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Batch price fetch failed: {e}")
+        for sym in all_symbols:
+            prices.setdefault(sym, {"last_price": None, "change_pct": None})
 
     items = []
     names = {

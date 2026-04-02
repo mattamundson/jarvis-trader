@@ -184,13 +184,13 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
     except ImportError as exc:
         steps_ok.append(("gymnasium", False, str(exc)))
 
-    # 7. Check yfinance (data fallback)
+    # 7. Check BacktestDataLoader (data fallback via Polygon → CSV cache)
     try:
-        import yfinance as yf  # noqa: F401
+        from backtest.data_loader import BacktestDataLoader  # noqa: F401
 
-        steps_ok.append(("yfinance", True, ""))
+        steps_ok.append(("BacktestDataLoader", True, ""))
     except ImportError as exc:
-        steps_ok.append(("yfinance", False, str(exc)))
+        steps_ok.append(("BacktestDataLoader", False, str(exc)))
 
     # 8. Check memory usage reporting (psutil optional — not a hard requirement)
     try:
@@ -439,7 +439,7 @@ async def run_training(symbol: str, bars: int, timesteps: int) -> int:
 
     t0 = time.time()
 
-    # 1. Fetch data via yfinance fallback (standalone — no IBKR required)
+    # 1. Fetch data via BacktestDataLoader (Polygon → CSV cache, standalone — no IBKR required)
     trainer = RLTrainer(data_manager=None)
 
     print("Fetching data...")

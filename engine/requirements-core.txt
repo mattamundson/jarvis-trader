@@ -27,7 +27,6 @@ slowapi==0.1.9            # Rate limiting for FastAPI
 anthropic==0.50.0
 
 # ── Market Data ────────────────────────────────────────────────────────────
-yfinance==0.2.54          # Yahoo Finance — free historical OHLCV, no key needed
 polygon-api-client==1.14.4 # Polygon.io — optional, needs API key
 alpaca-py==0.35.0         # Alpaca — paper trading data, free with API key
 

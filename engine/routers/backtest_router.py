@@ -97,7 +97,10 @@ def _sanitize_floats(obj):
     return obj
 
 
-@router.get("/backtest/results")
+@router.get(
+    "/backtest/results",
+    description="Return all saved backtest result JSON files from backtest/results directory with filename metadata.",
+)
 async def get_backtest_results():
     """Return all saved backtest result JSON files from backtest/results/."""
     try:
@@ -124,7 +127,10 @@ async def get_backtest_results():
         raise HTTPException(500, f"Failed to get backtest results: {e}") from e
 
 
-@router.post("/backtest/run")
+@router.post(
+    "/backtest/run",
+    description="Run a single backtest for a symbol over a date range with specified capital and risk per trade.",
+)
 async def run_backtest(request: BacktestRequest):
     """Run a backtest for a symbol over the specified date range."""
     try:
@@ -157,7 +163,10 @@ async def run_backtest(request: BacktestRequest):
         raise HTTPException(500, f"Backtest execution failed: {e}") from e
 
 
-@router.post("/backtest/walk-forward")
+@router.post(
+    "/backtest/walk-forward",
+    description="Execute walk-forward validation on a symbol with optional adaptive regime, volume filter, and multi-timeframe filter.",
+)
 async def run_walk_forward(request: WalkForwardRequest):
     """Execute walk-forward validation on a symbol over a date range."""
     try:
@@ -219,7 +228,10 @@ async def run_walk_forward(request: WalkForwardRequest):
         raise HTTPException(500, f"Walk-forward validation failed: {e}") from e
 
 
-@router.post("/backtest/regime-analysis")
+@router.post(
+    "/backtest/regime-analysis",
+    description="Analyze backtest results broken down by market regime with win rates, profit factors, and regime verdicts.",
+)
 async def analyze_regime(request: RegimeAnalysisRequest):
     """Analyze backtest results broken down by market regime."""
     try:
@@ -340,19 +352,23 @@ async def analyze_regime(request: RegimeAnalysisRequest):
         raise HTTPException(500, f"Regime analysis failed: {e}") from e
 
 
-@router.get("/backtest/regime-status")
+@router.get(
+    "/backtest/regime-status",
+    description="Get current regime classification for MNQ and MGC with regime breakdown and adaptive STC settings.",
+)
 async def get_regime_status():
     """Current regime classification for tracked symbols."""
     try:
-        import yfinance as yf
-
         from backtest.regime import RegimeClassifier
 
         results = {}
 
-        # --- MNQ 1h (via NQ=F) ---
+        # --- MNQ 1h ---
         try:
-            nq = yf.download("NQ=F", period="10d", interval="1h", progress=False)
+            if data_manager is not None:
+                nq = await data_manager.get_bars("MNQ", lookback_days=10, timeframe="1h")
+            else:
+                nq = None
             if nq is not None and len(nq) >= 20:
                 rc = RegimeClassifier()
                 nq_classified = rc.classify(nq)
@@ -365,16 +381,19 @@ async def get_regime_status():
                     "regime_breakdown_30d": {str(k): round(v, 1) for k, v in regime_counts.items()},
                 }
             else:
-                raise ValueError("Insufficient NQ data")
+                raise ValueError("Insufficient MNQ data")
         except Exception:
             results["MNQ_1h"] = {
                 "current_regime": "RANGING",
                 "regime_breakdown_30d": {"TRENDING": 15.3, "RANGING": 80.5, "VOLATILE": 4.2},
             }
 
-        # --- MGC 1d (via GC=F) ---
+        # --- MGC 1d ---
         try:
-            gc = yf.download("GC=F", period="60d", interval="1d", progress=False)
+            if data_manager is not None:
+                gc = await data_manager.get_bars("MGC", lookback_days=90, timeframe="1d")
+            else:
+                gc = None
             if gc is not None and len(gc) >= 20:
                 rc = RegimeClassifier()
                 gc_classified = rc.classify(gc)
@@ -388,7 +407,7 @@ async def get_regime_status():
                     "adaptive_stc_ob": int(last_row.get("adaptive_stc_ob", 92)),
                 }
             else:
-                raise ValueError("Insufficient GC data")
+                raise ValueError("Insufficient MGC data")
         except Exception:
             results["MGC_1d"] = {
                 "current_regime": "TRENDING",
@@ -413,7 +432,10 @@ async def get_regime_status():
         }
 
 
-@router.get("/backtest/paper-status")
+@router.get(
+    "/backtest/paper-status",
+    description="Get Walk-Forward Efficiency (WFE) and paper-trading readiness status for MCL, MNQ, MGC, and MES symbols.",
+)
 async def get_paper_status():
     """Walk-Forward Efficiency (WFE) and paper-trading readiness for each symbol."""
     try:
@@ -461,48 +483,46 @@ async def get_paper_status():
         raise HTTPException(500, f"Failed to get paper status: {e}") from e
 
 
-@router.get("/paper/mgc-signal")
+@router.get(
+    "/paper/mgc-signal",
+    description="Generate today's MGC (Gold Micro) signal using the validated daily strategy with adaptive regime filtering.",
+)
 async def get_mgc_signal():
     """Generate today's MGC (Gold Micro) signal using the validated strategy."""
     try:
+        # Fetch data async before running CPU-bound signal generation
+        if data_manager is None:
+            raise HTTPException(503, "Data manager not initialized")
 
-        def _generate_signal():
-            import yfinance as yf
+        gc = await data_manager.get_bars("MGC", lookback_days=200, timeframe="1d")
+        if gc is None or len(gc) < 50:
+            raise HTTPException(
+                503,
+                f"Insufficient MGC data ({len(gc) if gc is not None else 0} bars)",
+            )
 
+        # Normalize column names to lowercase
+        gc = gc.copy()
+        gc.columns = [c.lower() for c in gc.columns]
+
+        def _generate_signal(df):
             from backtest.paper_config import MGC_PAPER_CONFIG
             from backtest.signals import generate_signals
 
-            # Fetch data
-            gc = yf.download("GC=F", period="200d", interval="1d", progress=False)
-            if gc is None or len(gc) < 50:
-                return {
-                    "error": "Insufficient GC=F data from yfinance",
-                    "bars_received": len(gc) if gc is not None else 0,
-                }
-
-            # Flatten MultiIndex columns if present
-            if hasattr(gc.columns, "nlevels") and gc.columns.nlevels > 1:
-                gc.columns = gc.columns.get_level_values(0)
-
-            # Normalize column names to lowercase
-            gc.columns = [c.lower() for c in gc.columns]
-
             # Run full signal pipeline with adaptive regime
-            df = generate_signals(
-                gc,
+            df_signals = generate_signals(
+                df,
                 symbol="MGC",
                 adaptive_regime=True,
                 regime_filter=True,
             )
 
-            if df.empty:
+            if df_signals.empty:
                 return {"error": "Signal generation returned empty DataFrame"}
 
-            # Extract last bar
-            last = df.iloc[-1]
+            last = df_signals.iloc[-1]
             config = MGC_PAPER_CONFIG
 
-            # Determine direction from bias
             bias = str(last.get("bias", "NEUTRAL"))
             if bias in ("STRONG_BULL", "LEAN_BULL"):
                 direction = "LONG"
@@ -514,7 +534,6 @@ async def get_mgc_signal():
             entry_signal = str(last.get("entry_signal", "NO_TRADE"))
             regime_type = str(last.get("regime_type", "UNKNOWN"))
 
-            # Map signal to simplified output
             if entry_signal == "ENTRY_NOW":
                 signal = "ENTRY_NOW"
             elif entry_signal == "WAIT_FOR_PULLBACK":
@@ -524,11 +543,10 @@ async def get_mgc_signal():
             else:
                 signal = "NO_ENTRY"
 
-            # Get date from index
             signal_date = (
-                str(df.index[-1].date())
-                if hasattr(df.index[-1], "date")
-                else str(df.index[-1])[:10]
+                str(df_signals.index[-1].date())
+                if hasattr(df_signals.index[-1], "date")
+                else str(df_signals.index[-1])[:10]
             )
 
             return {
@@ -553,7 +571,7 @@ async def get_mgc_signal():
 
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as pool:
-            result = await loop.run_in_executor(pool, _generate_signal)
+            result = await loop.run_in_executor(pool, _generate_signal, gc)
         if "error" in result:
             raise HTTPException(503, result["error"])
         return result
@@ -564,7 +582,10 @@ async def get_mgc_signal():
         raise HTTPException(500, f"MGC signal generation failed: {e}") from e
 
 
-@router.post("/paper/mgc-log-trade")
+@router.post(
+    "/paper/mgc-log-trade",
+    description="Log a completed MGC paper trade with entry/exit prices and check if kill conditions are breached.",
+)
 async def log_mgc_paper_trade(req: MGCTradeLogRequest):
     """Log a completed MGC paper trade and return updated performance metrics."""
     try:
@@ -620,7 +641,10 @@ async def log_mgc_paper_trade(req: MGCTradeLogRequest):
         raise HTTPException(500, f"Failed to log MGC paper trade: {e}") from e
 
 
-@router.get("/paper/runner-status")
+@router.get(
+    "/paper/runner-status",
+    description="Return live status from paper_runner.py with active instruments, open positions, and most recent closed trade.",
+)
 async def get_paper_runner_status():
     """
     Return live status from paper_runner.py for all active instruments.
@@ -639,7 +663,10 @@ async def get_paper_runner_status():
 # ── TOS Signal Comparison endpoints ──────────────────────────────────────────
 
 
-@router.post("/backtest/compare-tos")
+@router.post(
+    "/backtest/compare-tos",
+    description="Compare a TOS strategy report CSV against JARVIS backtest signals to validate STC math and identify divergences.",
+)
 async def compare_tos_signals(
     file: Annotated[UploadFile, File()],
     symbol: str = Form("MNQ"),
@@ -720,7 +747,10 @@ async def compare_tos_signals(
         raise HTTPException(500, f"TOS comparison failed: {e}") from e
 
 
-@router.get("/backtest/comparison-results")
+@router.get(
+    "/backtest/comparison-results",
+    description="List all saved TOS comparison results from previous compare-tos runs with match rates and summaries.",
+)
 async def get_comparison_results():
     """
     List all saved TOS comparison results from previous compare-tos runs.
@@ -758,7 +788,10 @@ async def get_comparison_results():
         raise HTTPException(500, f"Failed to list comparison results: {e}") from e
 
 
-@router.post("/backtest/validate-stc-math")
+@router.post(
+    "/backtest/validate-stc-math",
+    description="Compute STC values for a date range to manually validate against TOS charts for mathematical correctness.",
+)
 async def validate_stc_math(
     symbol: str = "MNQ",
     timeframe: str = "1h",

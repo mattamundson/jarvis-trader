@@ -142,11 +142,11 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 f"Falling back to daily bars."
             )
             # --- Daily fallback: fetch ~1 year of daily bars for indicator depth ---
-            df = self._fetch_daily_fallback(symbol)
+            df = await self._fetch_daily_fallback(symbol)
             if df.empty or len(df) < _MIN_DAILY_BARS:
                 logger.error(f"Daily fallback also empty for {symbol} — returning empty report")
-                # Last-ditch: still try to populate current_price from yfinance .info
-                price = self._fetch_current_price(symbol)
+                # Last-ditch: still try to populate current_price via data_manager
+                price = await self._fetch_current_price(symbol)
                 report = self._empty_report(symbol, timeframe)
                 report.current_price = price
                 return report
@@ -195,9 +195,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # 3. Always ensure current_price is populated.
         #    _compute_indicators sets it from the last close, but if that's still
         #    zero (e.g. pandas_ta not available and column missing), fall back to
-        #    yfinance .info.
+        #    data_manager.get_current_price.
         if not indicators.get("current_price"):
-            indicators["current_price"] = self._fetch_current_price(symbol)
+            indicators["current_price"] = await self._fetch_current_price(symbol)
 
         # 4. LLM synthesis
         report = await self._llm_synthesize(symbol, effective_timeframe, df, indicators)
@@ -212,78 +212,45 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         return report
 
     # ------------------------------------------------------------------
-    # Helper: fetch daily OHLCV bars directly via yfinance (no data_manager)
+    # Helper: fetch daily OHLCV bars via data_manager (daily fallback)
     # ------------------------------------------------------------------
-    def _fetch_daily_fallback(self, symbol: str) -> pd.DataFrame:
+    async def _fetch_daily_fallback(self, symbol: str) -> pd.DataFrame:
         """
-        Fetch up to 1 year of daily bars via yfinance.
+        Fetch up to 1 year of daily bars via data_manager.get_bars().
         Returns a normalized DataFrame with lowercase OHLCV columns.
         """
-        _YF_MAP = {"MCL": "CL=F", "MNQ": "NQ=F", "MES": "ES=F", "MGC": "GC=F"}
-        yf_symbol = _YF_MAP.get(symbol, symbol)
         try:
-            import requests as _req
-            import yfinance as yf
-
-            _sess = _req.Session()
-            _sess.headers.update(
-                {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
+            df = await self._data.get_bars(
+                symbol, lookback_days=365, timeframe="1d", is_futures=True
             )
-            ticker = yf.Ticker(yf_symbol, session=_sess)
-            df = ticker.history(period="1y", interval="1d")
-            if df.empty:
-                logger.warning(f"yfinance daily fetch returned empty for {symbol}")
+            if df is None or df.empty:
+                logger.warning(f"data_manager daily fetch returned empty for {symbol}")
                 return pd.DataFrame()
-            df = df.reset_index().rename(
-                columns={
-                    "Datetime": "timestamp",
-                    "Date": "timestamp",
-                    "Open": "open",
-                    "High": "high",
-                    "Low": "low",
-                    "Close": "close",
-                    "Volume": "volume",
-                }
-            )
-            cols = [
-                c
-                for c in ["timestamp", "open", "high", "low", "close", "volume"]
-                if c in df.columns
-            ]
+            df = df.copy()
+            df.columns = [c.lower() for c in df.columns]
             logger.info(f"Daily fallback: fetched {len(df)} daily bars for {symbol}")
-            return df[cols]
+            return df
         except Exception as e:
             logger.error(f"_fetch_daily_fallback failed for {symbol}: {e}")
             return pd.DataFrame()
 
     # ------------------------------------------------------------------
-    # Helper: fetch current price from yfinance .info with layered fallbacks
+    # Helper: fetch current price via data_manager with layered fallbacks
     # ------------------------------------------------------------------
-    def _fetch_current_price(self, symbol: str) -> float:
+    async def _fetch_current_price(self, symbol: str) -> float:
         """
-        Returns the best available price for symbol via yfinance.info.
-        Priority: regularMarketPrice > currentPrice > previousClose > 0.0
+        Returns the best available price for symbol via data_manager.get_current_price().
+        Falls back to 0.0 on any error.
         """
-        _YF_MAP = {"MCL": "CL=F", "MNQ": "NQ=F", "MES": "ES=F", "MGC": "GC=F"}
-        yf_symbol = _YF_MAP.get(symbol, symbol)
         try:
-            import requests as _req
-            import yfinance as yf
-
-            _sess = _req.Session()
-            _sess.headers.update(
-                {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
-            )
-            info = yf.Ticker(yf_symbol, session=_sess).info
-            for key in ("regularMarketPrice", "currentPrice", "previousClose"):
-                val = info.get(key)
-                if val and float(val) > 0:
-                    logger.info(f"Current price for {symbol} from yfinance.info[{key}]: {val}")
-                    return float(val)
+            result = await self._data.get_current_price(symbol)
+            price = result.get("last_price") or 0.0
+            if price > 0:
+                logger.info(
+                    f"Current price for {symbol} from data_manager: {price} "
+                    f"(source={result.get('source', 'unknown')})"
+                )
+                return float(price)
         except Exception as e:
             logger.warning(f"_fetch_current_price failed for {symbol}: {e}")
         return 0.0

@@ -12,7 +12,7 @@ without requiring the full FastAPI server or Anthropic API key.
 
 Flow per cycle (every hour at :05 past the bar close):
   1. Load open positions from disk
-  2. Fetch last 150 1h bars via yfinance (CL=F for MCL, NQ=F for MNQ)
+  2. Fetch last 150 1h bars via Polygon.io (MCL for MCL, MNQ for MNQ)
   3. Run generate_signals() with paper_config validated parameters
   4. Manage open positions: check stop/target hits on current bar
   5. Check for new ENTRY_NOW signal (only if no open position)
@@ -234,126 +234,44 @@ def _notify(message: str) -> None:
 # ── Bar Fetching ──────────────────────────────────────────────────────────────
 
 
-def _fetch_bars_v8(yf_ticker: str, days: int = 60) -> Optional[pd.DataFrame]:
-    """
-    Direct Yahoo Finance v8 API fallback for when yfinance is rate-limited.
-
-    Fetches the last `days` days of 1h data in one request. Uses a browser
-    User-Agent to avoid bot detection.
-    """
-    import requests
-
-    end_dt = datetime.now(timezone.utc).replace(tzinfo=None)
-    start_dt = end_dt - timedelta(days=days)
-    period1 = int(start_dt.timestamp())
-    period2 = int(end_dt.timestamp())
-
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_ticker}"
-    params = {
-        "interval": "1h",
-        "period1": period1,
-        "period2": period2,
-        "includePrePost": "false",
-    }
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json",
-    }
-
-    try:
-        time.sleep(1.5)  # polite delay before direct API hit
-        resp = requests.get(url, params=params, headers=headers, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-
-        result = data.get("chart", {}).get("result")
-        if not result:
-            return None
-
-        meta = result[0]
-        timestamps = meta.get("timestamp", [])
-        quotes = meta.get("indicators", {}).get("quote", [{}])[0]
-
-        if not timestamps:
-            return None
-
-        df = pd.DataFrame(
-            {
-                "open": quotes.get("open", []),
-                "high": quotes.get("high", []),
-                "low": quotes.get("low", []),
-                "close": quotes.get("close", []),
-                "volume": quotes.get("volume", []),
-            },
-            index=pd.to_datetime(timestamps, unit="s", utc=True),
-        )
-        df.index.name = "datetime"
-        df = df.dropna(subset=["open", "high", "low", "close"])
-        return df if len(df) > 0 else None
-
-    except Exception:
-        return None
-
-
 def fetch_bars(symbol: str, futures_map: Dict[str, str], bars: int = 150) -> Optional[pd.DataFrame]:
     """
-    Fetch recent 1h OHLCV bars for a futures symbol.
+    Fetch recent 1h OHLCV bars for a futures symbol via Polygon.io.
 
-    Primary: yfinance Ticker.history (60d, 1h).
-    Fallback: direct Yahoo v8 API (used when yfinance is rate-limited).
-
+    Uses BacktestDataLoader which handles Polygon API calls and disk caching.
     Returns None if data is unavailable or too thin for indicator warmup.
     """
-    import yfinance as yf
+    from backtest.data_loader import BacktestDataLoader
 
     log = logging.getLogger(f"paper_runner.{symbol}")
-    yf_ticker = futures_map.get(symbol, symbol)
 
-    def _normalise(df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        df = df.rename(
-            columns={
-                "Open": "open",
-                "High": "high",
-                "Low": "low",
-                "Close": "close",
-                "Volume": "volume",
-            }
-        )
-        cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
-        df = df[cols].dropna(subset=["open", "high", "low", "close"])
-        if len(df) < 60:
-            log.warning(f"Only {len(df)} bars for {symbol} — need ≥60 for indicator warmup")
-            return None
-        log.debug(f"Fetched {len(df)} 1h bars for {symbol} ({yf_ticker})")
-        return df
+    end_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    start_dt = end_dt - timedelta(days=90)
+    start_str = start_dt.strftime("%Y-%m-%d")
+    end_str = end_dt.strftime("%Y-%m-%d")
 
-    # ── Primary: yfinance ────────────────────────────────────────────────────
     try:
-        ticker = yf.Ticker(yf_ticker)
-        df = ticker.history(period="60d", interval="1h", auto_adjust=True)
-        if df is not None and not df.empty:
-            result = _normalise(df)
-            if result is not None:
-                return result
+        loader = BacktestDataLoader()
+        df = loader.load(symbol, start_str, end_str, interval="1h")
     except Exception as exc:
-        rate_limited = "rate limit" in str(exc).lower() or "too many" in str(exc).lower()
-        if not rate_limited:
-            log.error(f"Bar fetch failed for {symbol}: {exc}")
-            return None
-        log.warning(f"{symbol}: yfinance rate-limited — trying v8 API fallback")
+        log.error(f"Bar fetch failed for {symbol}: {exc}")
+        return None
 
-    # ── Fallback: direct Yahoo v8 ────────────────────────────────────────────
-    log.info(f"{symbol}: fetching via Yahoo v8 direct API")
-    df2 = _fetch_bars_v8(yf_ticker, days=60)
-    if df2 is not None and not df2.empty:
-        return _normalise(df2)
+    if df is None or df.empty:
+        log.error(f"Bar fetch returned no data for {symbol}")
+        return None
 
-    log.error(f"Bar fetch failed for {symbol} — both yfinance and v8 fallback failed")
-    return None
+    # Ensure standard lowercase columns are present
+    df.columns = [c.lower() for c in df.columns]
+    cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
+    df = df[cols].dropna(subset=["open", "high", "low", "close"])
+
+    if len(df) < 60:
+        log.warning(f"Only {len(df)} bars for {symbol} — need >=60 for indicator warmup")
+        return None
+
+    log.debug(f"Fetched {len(df)} 1h bars for {symbol}")
+    return df
 
 
 # ── Position Management ───────────────────────────────────────────────────────

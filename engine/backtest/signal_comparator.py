@@ -507,29 +507,13 @@ def validate_stc_math(
     -------
     dict with STC values, correlation (if TOS values provided), and assessment.
     """
-    import yfinance as yf
-
+    from .data_loader import BacktestDataLoader
     from .signals import compute_all_indicators
 
-    # Map symbol to Yahoo ticker
-    ticker_map = {
-        "MES": "ES=F",
-        "MNQ": "NQ=F",
-        "MCL": "CL=F",
-        "MGC": "GC=F",
-        "M2K": "RTY=F",
-        "SPY": "SPY",
-    }
-    ticker = ticker_map.get(symbol.upper(), symbol)
-
-    df = yf.download(ticker, start=start, end=end, interval=timeframe, progress=False)
+    loader = BacktestDataLoader()
+    df = loader.load(symbol, start, end, interval=timeframe)
     if df is None or df.empty:
-        return {"error": f"No data from Yahoo for {ticker}"}
-
-    # Flatten MultiIndex
-    if hasattr(df.columns, "nlevels") and df.columns.nlevels > 1:
-        df.columns = df.columns.get_level_values(0)
-    df.columns = [c.lower() for c in df.columns]
+        return {"error": f"No data from Polygon for {symbol}"}
 
     df = compute_all_indicators(df)
 
