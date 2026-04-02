@@ -12,10 +12,14 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 
 from api.models import FullHealthResponse, HealthResponse
+from middleware.rate_limit import get_limiter
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["health", "system"])
+
+# Get limiter instance for rate limiting
+limiter = get_limiter()
 
 # Global references (injected from main.py)
 _start_time = None
@@ -25,12 +29,13 @@ db_manager = None
 paper_tracker = None
 pnl_monitor = None
 trading_pipeline = None
+schwab_connector = None
 
 
-def inject_dependencies(start_time, dm, sl, dbm, pt, pm, tp):
+def inject_dependencies(start_time, dm, sl, dbm, pt, pm, tp, schwab=None):
     """Inject global dependencies from main.py"""
     global _start_time, data_manager, safety_layer, db_manager
-    global paper_tracker, pnl_monitor, trading_pipeline
+    global paper_tracker, pnl_monitor, trading_pipeline, schwab_connector
     _start_time = start_time
     data_manager = dm
     safety_layer = sl
@@ -38,9 +43,14 @@ def inject_dependencies(start_time, dm, sl, dbm, pt, pm, tp):
     paper_tracker = pt
     pnl_monitor = pm
     trading_pipeline = tp
+    schwab_connector = schwab
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    description="Quick health check endpoint returning system status, database connectivity, and kill switch state.",
+)
 async def health():
     """Quick health check endpoint"""
     try:
@@ -82,12 +92,16 @@ async def _health_inner() -> dict:
         "paper_mode": True,
         "database": "connected" if db_ok else "error",
         "ibkr_connected": ibkr_conn,
-        "schwab_connected": False,
+        "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
         "uptime_seconds": float((now - _start_time).total_seconds()) if _start_time else 0.0,
     }
 
 
-@router.get("/health/full", response_model=FullHealthResponse)
+@router.get(
+    "/health/full",
+    response_model=FullHealthResponse,
+    description="Comprehensive health check of all JARVIS TRADER subsystems including database, safety layer, circuit breakers, and portfolio status.",
+)
 async def full_health_check():
     """Comprehensive health check of all JARVIS TRADER subsystems"""
     try:
@@ -206,8 +220,12 @@ async def _full_health_inner() -> dict:
     }
 
 
-@router.get("/system/preflight")
-async def system_preflight():
+@router.get(
+    "/system/preflight",
+    description="Run all critical pre-flight checks (database, kill switch, circuit breakers, pipeline, VIX, market session, IB Gateway, portfolio).",
+)
+@limiter.limit("60/minute")
+async def system_preflight(request=None):
     """
     Run all critical pre-flight checks before accepting trading signals.
     Returns a list of checks with pass/fail/warn status.
@@ -363,4 +381,34 @@ async def system_preflight():
     except Exception as e:
         add_check("Portfolio Tracker", "fail", str(e))
 
-    return {"all_pass": all_pass, "checks": checks}
+    return {
+        "overall": "pass" if all_pass else "fail",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "checks": checks,
+    }
+
+
+@router.get(
+    "/system/backup-status",
+    description="Get database backup status including retention policy, available backup files, and backup statistics.",
+)
+async def get_backup_status():
+    """
+    Get database backup status and available backups.
+
+    Returns backup statistics, retention policy, and list of available backup files.
+    """
+    try:
+        from backup.db_backup import get_backup_manager
+
+        backup_manager = get_backup_manager()
+        status = backup_manager.get_status()
+
+        return {
+            "success": True,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "backup_status": status,
+        }
+    except Exception as e:
+        logger.error(f"Backup status check failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Backup status check failed: {str(e)}")

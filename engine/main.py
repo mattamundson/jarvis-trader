@@ -64,6 +64,8 @@ from data.market_data import MarketDataManager
 from database.schema import DatabaseManager, init_db
 from execution.ib_gateway_connector import IBGatewayConnector
 from execution.ib_order_manager import IBOrderManager
+from execution.order_router import OrderRouter
+from execution.schwab_connector import SchwabConnector
 from llm.client import JarvisLLMClient
 from llm.cost_tracker import CostTracker
 from middleware.api_key_middleware import APIKeyMiddleware
@@ -89,6 +91,8 @@ from routers.profiling_router import router as profiling_router
 from routers.profiling_router import set_profiler_instance
 from routers.safety_router import inject_dependencies as inject_safety_router_deps
 from routers.safety_router import router as safety_router
+from routers.schwab_router import router as schwab_router
+from routers.schwab_router import set_schwab_connector
 from routers.strategies_router import router as strategies_router
 from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
@@ -171,6 +175,8 @@ pnl_monitor: PnLMonitor | None = None
 eod_scheduler: EODScheduler | None = None
 order_manager: IBOrderManager | None = None
 ib_paper_connector: IBGatewayConnector | None = None
+schwab_connector: SchwabConnector | None = None
+order_router: OrderRouter = OrderRouter()
 ws_manager: WebSocketManager | None = None
 cost_tracker: "CostTracker | None" = None
 loss_tracker: "ConsecutiveLossTracker | None" = None
@@ -199,6 +205,8 @@ async def lifespan(app: FastAPI):
         eod_scheduler, \
         order_manager, \
         ib_paper_connector, \
+        schwab_connector, \
+        order_router, \
         ws_manager, \
         cost_tracker, \
         loss_tracker, \
@@ -288,6 +296,40 @@ async def lifespan(app: FastAPI):
         portfolio_tracker=paper_tracker,
     )
     logger.info("✅ IBOrderManager initialized")
+
+    # Wire IBKR into the order router now that it is available
+    order_router.attach_ibkr(ib_paper_connector)
+
+    # Schwab connector — initialized only when credentials are present.
+    # SCHWAB_READY=False guard inside SchwabConnector prevents accidental activation.
+    schwab_connector = None
+    if settings.SCHWAB_APP_KEY and settings.SCHWAB_APP_SECRET:
+        try:
+            schwab_connector = SchwabConnector(settings, safety_layer)
+            _schwab_ok = await schwab_connector.initialize()
+            if _schwab_ok:
+                order_router.attach_schwab(schwab_connector)
+                logger.info("✅ SchwabConnector initialized and wired into OrderRouter")
+            else:
+                logger.warning(
+                    "SchwabConnector.initialize() returned False — "
+                    "equity/options orders via Schwab unavailable"
+                )
+        except Exception as _schwab_err:
+            logger.warning(
+                "SchwabConnector init failed (non-fatal, equities unavailable): %s",
+                _schwab_err,
+            )
+            schwab_connector = None
+    else:
+        logger.info("Schwab credentials not set — SchwabConnector skipped (Phase 3 feature)")
+
+    set_schwab_connector(schwab_connector)
+    logger.info(
+        "✅ OrderRouter ready — IBKR: %s | Schwab: %s",
+        "connected" if order_router.ibkr else "not wired",
+        "connected" if (schwab_connector and schwab_connector.is_connected) else "not connected",
+    )
 
     # Market data connections
     data_manager = MarketDataManager(settings)
@@ -823,6 +865,7 @@ app.include_router(discord_router)
 app.include_router(learning_router)
 app.include_router(kairos_router)
 app.include_router(profiling_router)
+app.include_router(schwab_router)
 app.include_router(v1_router)
 
 
@@ -876,7 +919,9 @@ async def health():
         "ibkr_connected": bool(getattr(data_manager.ibkr, "is_connected", False))
         if data_manager and data_manager.ibkr
         else False,
-        "schwab_connected": False,  # Schwab connector — Phase 3 (OAuth2 + token refresh pending)
+        "schwab_connected": bool(
+            schwab_connector and schwab_connector.is_connected
+        ),
         "uptime_seconds": (now - _start_time).total_seconds(),
         "llm_available": True,
     }

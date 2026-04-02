@@ -29,6 +29,7 @@ anthropic==0.50.0
 # ── Market Data ────────────────────────────────────────────────────────────
 polygon-api-client==1.14.4 # Polygon.io — optional, needs API key
 alpaca-py==0.35.0         # Alpaca — paper trading data, free with API key
+schwab-py==1.4.2          # Charles Schwab Trader API
 
 # ── Technical Analysis ─────────────────────────────────────────────────────
 pandas-ta==0.4.67b0       # 150+ indicators, pure Python (no C binary needed)
