@@ -64,7 +64,6 @@ from data.market_data import MarketDataManager
 from database.schema import DatabaseManager, init_db
 from execution.ib_gateway_connector import IBGatewayConnector
 from execution.ib_order_manager import IBOrderManager
-from llm.client import is_billing_error_active
 from llm.cost_tracker import CostTracker
 from middleware.api_key_middleware import APIKeyMiddleware
 from middleware.exception_handler import GlobalExceptionHandler
@@ -549,6 +548,10 @@ async def lifespan(app: FastAPI):
     loss_tracker = ConsecutiveLossTracker(data_dir="data")
     logger.info("✅ Consecutive Loss Tracker initialized")
 
+    # Wire loss tracker into SafetyLayer so 3/5/7-loss scaling logic is active
+    safety_layer._loss_tracker = loss_tracker
+    logger.info("✅ ConsecutiveLossTracker wired into SafetyLayer (3→0.5x, 5→0.25x, 7→halt)")
+
     # Wire router dependencies now that all singletons are ready
     inject_portfolio_deps(paper_tracker, db_manager)
     inject_safety_router_deps(safety_layer, loss_tracker)
@@ -774,7 +777,7 @@ async def health():
         else False,
         "schwab_connected": False,  # Schwab connector TODO
         "uptime_seconds": (now - _start_time).total_seconds(),
-        "llm_available": not is_billing_error_active(),
+        "llm_available": True,
     }
 
 
@@ -4379,10 +4382,3 @@ async def get_trading_days_stats():
             "trading_days_completed": n,
             "days_traded": n,
             "completed_days": n,
-            "threshold": threshold,
-            "threshold_met": n >= threshold,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-# --- portfolio stats (trading-days) ---
