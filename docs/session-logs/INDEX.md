@@ -35,6 +35,8 @@ All conversation history and work logs from every development session, in chrono
 | 15 | [Cursor handoff — CI merge + master hotfix](SESSION_HANDOFF_CURSOR_2026-04-02_CI_MERGE.md) | Apr 2, 2026 | — | PR #1 / `be8dcab` + `01b8ac3` discord_router; workflow + pytest fixes; bootstrap blurb; [file manifest f4d38c3→01b8ac3](SESSION_FILE_MANIFEST_f4d38c3_to_01b8ac3.md) |
 | 16 | [Wave 2 Sprint — Pipeline gap fixes](SESSION_LOG_2026-04-02_SPRINT2.md) | Apr 2, 2026 | — | 6 bugs fixed (health 500, phantom drawdown, empty decisions, LLM 400, FRED silent failures, MCL IB 321), 5 pipeline gaps closed, schema.py split 1528→11 files, backtester.py split 955→3 files, 8 more components migrated to fetchEngine, 468 passed / 27 skipped / 0 failures |
 | 17 | [Sprint Closeout — RL docs + engine hardening](SESSION_LOG_2026-04-02_SPRINT_CLOSEOUT.md) | Apr 2, 2026 | — | RL Run history (Runs 3-8), SPY WFE=0.00 REJECTED, 13 test failures fixed (20→7), backtester completed.append(True) bug fixed, APIKeyMiddleware registered, phantom drawdown resolved, portfolio/market/safety routers wired |
+| 18 | [Dashboard + engine hardening — eight follow-ups + nine streams](SESSION_LOG_2026-04-02_DASHBOARD_ENGINE_HARDENING.md) | Apr 2, 2026 | — | Scorecard/validation dynamic baseline; all `dashboard/components` → fetchEngine; CI grep + contract tests; delete `notifications_router`; pytest-timeout; P0 runbook VIX + paper_runner alignment; VIX on `/watchlist` :3010 |
+| 19 | [**→ New session: read this first**](START_NEW_SESSION_HANDOFF_2026-04-02.md) | Apr 2, 2026 | — | Handoff from Cursor chat: copy-paste prompt, topic list, assumed repo state, manual follow-ups; links to #18 for full manifest/commands |
 
 ## Compacted Summary (from session continuation)
 
