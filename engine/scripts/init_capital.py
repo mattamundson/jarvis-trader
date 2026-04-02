@@ -13,7 +13,6 @@ Usage
 
 from __future__ import annotations
 
-import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -100,9 +99,7 @@ CREATE TABLE IF NOT EXISTS capital_allocation (
 )
 """
 
-_CREATE_INDEX_SQL = (
-    "CREATE INDEX IF NOT EXISTS idx_ca_market ON capital_allocation(market)"
-)
+_CREATE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS idx_ca_market ON capital_allocation(market)"
 
 
 def _ensure_table(conn: sqlite3.Connection) -> None:
@@ -204,9 +201,7 @@ def main() -> None:
         # Verify
         rows = _verify(conn)
         print()
-        print(
-            f"{'Symbol':<8} {'Market':<10} {'Allocation':>12} {'Pct':>6}  Notes"
-        )
+        print(f"{'Symbol':<8} {'Market':<10} {'Allocation':>12} {'Pct':>6}  Notes")
         print("-" * 70)
         for r in rows:
             print(
@@ -216,9 +211,7 @@ def main() -> None:
         print("-" * 70)
         total_alloc = sum(r["allocation"] for r in rows)
         total_pct = sum(r["allocation_pct"] for r in rows)
-        print(
-            f"{'TOTAL':<8} {'':<10} ${total_alloc:>10,.2f} {total_pct:>5.0%}"
-        )
+        print(f"{'TOTAL':<8} {'':<10} ${total_alloc:>10,.2f} {total_pct:>5.0%}")
         print()
         print(f"Total capital : ${TOTAL_CAPITAL:,.2f}")
         print(f"Rows in table : {len(rows)}")

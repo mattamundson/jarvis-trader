@@ -13,6 +13,7 @@ from .events import (
     emit_safety_event,
 )
 from .manager import WebSocketManager
+from .price_feed import PriceFeedManager, get_price_feed_manager, price_feed_endpoint
 
 __all__ = [
     "WebSocketManager",
@@ -22,4 +23,7 @@ __all__ = [
     "emit_pipeline_complete",
     "emit_safety_event",
     "emit_price_update",
+    "PriceFeedManager",
+    "get_price_feed_manager",
+    "price_feed_endpoint",
 ]

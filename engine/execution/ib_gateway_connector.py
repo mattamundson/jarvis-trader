@@ -19,21 +19,43 @@ When PAPER_TRADING=False:
 INTERFACE:
   This connector matches the pattern of SchwabConnector and must implement:
   - connect() / disconnect()
-  - is_connected property
+  - is_connected() — method, same as IBGatewayManager / SafetyLayer.submit_paper_order
   - submit_order(), cancel_order(), get_order_status()
+  - place_paper_order() — post-safety path for SafetyLayer routing
   - get_positions(), get_account_balance()
   - get_quote() (mock in paper mode)
-  All methods are async.
+  All methods are async except is_connected.
 """
+
+from __future__ import annotations
 
 import logging
 import random
 import uuid
 from datetime import datetime
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["IBGatewayConnector"]
+
+_FUTURES_ROOTS = frozenset(
+    {
+        "MES",
+        "MNQ",
+        "M2K",
+        "MCL",
+        "MGC",
+        "MHG",
+        "MSI",
+        "ES",
+        "NQ",
+        "RTY",
+        "CL",
+        "GC",
+        "HG",
+    }
+)
 
 
 class IBGatewayConnector:
@@ -134,9 +156,8 @@ class IBGatewayConnector:
         logger.info("IBGatewayConnector: Disconnected")
         return True
 
-    @property
     def is_connected(self) -> bool:
-        """Return True if connected to IB Gateway (or in paper trading mode)."""
+        """Return True if connected to IB Gateway (or in paper trading simulation)."""
         return self._connected
 
     # ── Order Execution ───────────────────────────────────────────────────────
@@ -170,7 +191,7 @@ class IBGatewayConnector:
                 "fill_time": str,  # ISO 8601 timestamp
             }
         """
-        if not self.is_connected:
+        if not self.is_connected():
             logger.error("IBGatewayConnector: Not connected")
             return {"status": "error", "reason": "Not connected to IB Gateway"}
 
@@ -333,6 +354,61 @@ class IBGatewayConnector:
 
         return result
 
+    async def place_paper_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        order_type: str = "MKT",
+        limit_price: Optional[float] = None,
+        aux_price: Optional[float] = None,
+    ) -> Optional[str]:
+        """
+        Record a paper fill after ``SafetyLayer`` has already validated the order.
+
+        Same contract as ``IBGatewayManager.place_paper_order`` for
+        ``SafetyLayer.submit_paper_order`` (returns fill id token; no duplicate safety).
+        """
+        del aux_price  # paper simulation does not model stop triggers yet
+        if not self._settings.PAPER_TRADING:
+            raise NotImplementedError(
+                "IB Gateway live connection not yet implemented. "
+                "Set PAPER_TRADING=True for paper trading mode."
+            )
+        if not self.is_connected():
+            logger.error("place_paper_order: not connected")
+            return None
+
+        action_upper = action.upper()
+        if action_upper not in ("BUY", "SELL") or quantity <= 0:
+            return None
+
+        signed_qty = quantity if action_upper == "BUY" else -quantity
+        ot_upper = order_type.upper()
+        if ot_upper in ("MKT", "MARKET"):
+            internal_ot = "market"
+        elif ot_upper in ("LMT", "LIMIT"):
+            internal_ot = "limit"
+        else:
+            internal_ot = order_type.lower()
+
+        sym_upper = symbol.upper()
+        is_futures = sym_upper in _FUTURES_ROOTS
+
+        order = {
+            "symbol": symbol,
+            "quantity": signed_qty,
+            "order_type": internal_ot,
+            "limit_price": limit_price,
+            "is_futures": is_futures,
+        }
+
+        res = await self._submit_paper_order(order, [])
+        if res.get("status") == "placed":
+            oid = res.get("order_id")
+            return str(oid) if oid is not None else None
+        return None
+
     async def cancel_order(self, order_id: str) -> dict:
         """
         Cancel an open order.
@@ -346,7 +422,7 @@ class IBGatewayConnector:
         Returns:
             {"status": "cancelled" | "not_found" | "error"}
         """
-        if not self.is_connected:
+        if not self.is_connected():
             return {"status": "error", "reason": "Not connected"}
 
         if self._settings.PAPER_TRADING:
@@ -381,7 +457,7 @@ class IBGatewayConnector:
                 ...
             }
         """
-        if not self.is_connected:
+        if not self.is_connected():
             return {"status": "error", "reason": "Not connected"}
 
         if self._settings.PAPER_TRADING:
@@ -397,41 +473,42 @@ class IBGatewayConnector:
 
     # ── Account Methods ───────────────────────────────────────────────────────
 
-    async def get_positions(self) -> dict[str, dict]:
+    async def get_positions(self) -> list[dict]:
         """
-        Get current positions across all symbols.
-
-        In paper trading mode: returns simulated positions from _positions dict
-        In live mode: Would fetch from IB Gateway
-
-        Returns:
-            {
-                "symbol": {
-                    "quantity": int,
-                    "avg_price": float,
-                    "market_value": float,
-                    "unrealized_pnl": float,
-                },
-                ...
-            }
+        Return positions in the same list shape as ``IBGatewayManager.get_positions``
+        (for ``IBOrderManager.sync_positions_from_ib`` / ``reconcile``).
         """
-        if not self.is_connected:
-            return {}
+        if not self.is_connected():
+            return []
 
         if self._settings.PAPER_TRADING:
-            positions = {}
+            out: list[dict] = []
             for symbol, quantity in self._positions.items():
                 if quantity == 0:
                     continue
                 quote = await self.get_quote(symbol)
-                current_price = quote.get("last", 100.0) if quote else 100.0
-                positions[symbol] = {
-                    "symbol": symbol,
-                    "quantity": quantity,
-                    "current_price": current_price,
-                    "market_value": quantity * current_price,
-                }
-            return positions
+                if quote and "error" not in quote:
+                    current_price = float(quote.get("last", 100.0))
+                else:
+                    current_price = 100.0
+                sym_upper = symbol.upper()
+                sec_type = "FUT" if sym_upper in _FUTURES_ROOTS else "STK"
+                pos_int = int(quantity)
+                out.append(
+                    {
+                        "symbol": symbol,
+                        "sec_type": sec_type,
+                        "exchange": "PAPER",
+                        "currency": "USD",
+                        "position": pos_int,
+                        "avg_cost": current_price,
+                        "market_price": current_price,
+                        "market_value": pos_int * current_price,
+                        "unrealized_pnl": None,
+                        "is_futures": sym_upper in _FUTURES_ROOTS,
+                    }
+                )
+            return out
 
         raise NotImplementedError(
             "IB Gateway live connection not yet implemented. "
@@ -454,7 +531,7 @@ class IBGatewayConnector:
                 ...
             }
         """
-        if not self.is_connected:
+        if not self.is_connected():
             return {}
 
         if self._settings.PAPER_TRADING:
@@ -479,11 +556,12 @@ class IBGatewayConnector:
             Account balances and positions merged
         """
         balance = await self.get_account_balance()
-        positions = await self.get_positions()
+        positions_list = await self.get_positions()
+        positions_map = {p["symbol"]: p for p in positions_list}
         return {
             **balance,
-            "positions": positions,
-            "position_count": len(positions),
+            "positions": positions_map,
+            "position_count": len(positions_list),
         }
 
     # ── Market Data ───────────────────────────────────────────────────────────
@@ -509,7 +587,7 @@ class IBGatewayConnector:
                 "timestamp": str,  # ISO 8601
             }
         """
-        if not self.is_connected:
+        if not self.is_connected():
             return {"error": "Not connected"}
 
         if self._settings.PAPER_TRADING:
@@ -557,7 +635,7 @@ class IBGatewayConnector:
         Returns:
             Number of orders cancelled
         """
-        if not self.is_connected:
+        if not self.is_connected():
             logger.warning("cancel_all_orders: IBGatewayConnector not connected")
             return 0
 

@@ -159,19 +159,33 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # 2b. Composite signal enrichment for MES (and future composite instruments)
         try:
             from backtest.signals import COMPOSITE_INSTRUMENTS
+
             if symbol.upper() in COMPOSITE_INSTRUMENTS:
                 from backtest.composite_signals import generate_composite_signals
+
                 df_comp = generate_composite_signals(df.copy(), symbol=symbol.upper())
                 last = df_comp.iloc[-1]
                 composite_meta = {}
-                for col in ("composite_regime", "composite_score", "stc_contrib",
-                            "orb_contrib", "vwap_contrib", "composite_rr",
-                            "entry_signal", "bias"):
+                for col in (
+                    "composite_regime",
+                    "composite_score",
+                    "stc_contrib",
+                    "orb_contrib",
+                    "vwap_contrib",
+                    "composite_rr",
+                    "entry_signal",
+                    "bias",
+                ):
                     if col in df_comp.columns:
                         val = last[col]
                         # Convert numpy types to native Python
                         if hasattr(val, "item"):
                             val = val.item()
+                        # Replace nan/inf with None to keep JSON-serializable
+                        import math
+
+                        if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+                            val = None
                         composite_meta[col] = val
                 indicators["composite"] = composite_meta
                 logger.info(f"Composite metadata added for {symbol}: {composite_meta}")
@@ -208,9 +222,16 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         _YF_MAP = {"MCL": "CL=F", "MNQ": "NQ=F", "MES": "ES=F", "MGC": "GC=F"}
         yf_symbol = _YF_MAP.get(symbol, symbol)
         try:
+            import requests as _req
             import yfinance as yf
 
-            ticker = yf.Ticker(yf_symbol)
+            _sess = _req.Session()
+            _sess.headers.update(
+                {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+            )
+            ticker = yf.Ticker(yf_symbol, session=_sess)
             df = ticker.history(period="1y", interval="1d")
             if df.empty:
                 logger.warning(f"yfinance daily fetch returned empty for {symbol}")
@@ -248,9 +269,16 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         _YF_MAP = {"MCL": "CL=F", "MNQ": "NQ=F", "MES": "ES=F", "MGC": "GC=F"}
         yf_symbol = _YF_MAP.get(symbol, symbol)
         try:
+            import requests as _req
             import yfinance as yf
 
-            info = yf.Ticker(yf_symbol).info
+            _sess = _req.Session()
+            _sess.headers.update(
+                {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+            )
+            info = yf.Ticker(yf_symbol, session=_sess).info
             for key in ("regularMarketPrice", "currentPrice", "previousClose"):
                 val = info.get(key)
                 if val and float(val) > 0:

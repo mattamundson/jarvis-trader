@@ -23,6 +23,7 @@ def _paper_order_settings():
     )
 
 
+@pytest.mark.integration_ib
 @pytest.mark.asyncio
 async def test_place_paper_order_after_safety_no_double_reject(tmp_path) -> None:
     """IBGatewayManager routes orders through SafetyLayer.submit_paper_order()."""
@@ -58,6 +59,7 @@ async def test_place_paper_order_after_safety_no_double_reject(tmp_path) -> None
         assert out.get("order_id")
 
 
+@pytest.mark.integration_ib
 @pytest.mark.asyncio
 async def test_get_positions_list_shape_for_order_manager(tmp_path) -> None:
     store = tmp_path / "book.jsonl"
@@ -83,6 +85,7 @@ async def test_get_positions_list_shape_for_order_manager(tmp_path) -> None:
         assert "position" in row
 
 
+@pytest.mark.integration_ib
 @pytest.mark.asyncio
 async def test_ib_order_manager_uses_gateway(tmp_path) -> None:
     cfg = _paper_order_settings()

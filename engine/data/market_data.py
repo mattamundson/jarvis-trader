@@ -7,6 +7,7 @@ All streaming goes through Redis for agent consumption.
 
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Callable, Optional
 
 import pandas as pd
@@ -368,6 +369,11 @@ class MarketDataManager:
             if not df.empty:
                 return df
 
+        # Futures symbol mapping for Polygon (micro futures use same base symbol on Polygon)
+        # Polygon uses the front-month contract ticker, e.g. "MES" maps to "MES" on futures
+        # but we also try the full chain notation if the plain symbol returns empty.
+        _POLYGON_MAP = {"MCL": "MCL", "MNQ": "MNQ", "MES": "MES", "MGC": "MGC"}
+
         # Fall back to Polygon
         if self.polygon:
             from_date = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
@@ -380,47 +386,124 @@ class MarketDataManager:
                 "1d": ("day", 1),
             }
             timespan, multiplier = tf_map.get(timeframe, ("minute", 5))
-            df = self.polygon.get_historical_bars(symbol, from_date, to_date, timespan, multiplier)
+            polygon_symbol = _POLYGON_MAP.get(symbol.upper(), symbol)
+            df = self.polygon.get_historical_bars(
+                polygon_symbol, from_date, to_date, timespan, multiplier
+            )
             if not df.empty:
+                logger.info(f"Polygon returned {len(df)} bars for {symbol} ({polygon_symbol})")
                 return df
+            else:
+                logger.warning(
+                    f"Polygon returned no data for {symbol} ({polygon_symbol}) "
+                    f"({timespan}/{multiplier}) — falling through to yfinance"
+                )
 
         # Last resort: yfinance (free, delayed)
-        logger.warning(f"Using yfinance for {symbol} (delayed data)")
+        # Maps micro futures symbols to Yahoo Finance continuous contract tickers.
+        _YF_MAP = {"MCL": "CL=F", "MNQ": "NQ=F", "MES": "ES=F", "MGC": "GC=F"}
+        yf_symbol = _YF_MAP.get(symbol.upper(), symbol)
+        logger.warning(f"Using yfinance for {symbol} → {yf_symbol} (delayed data)")
         try:
+            import requests
             import yfinance as yf
+
+            # Use a browser User-Agent to avoid Yahoo Finance rate limiting
+            _yf_session = requests.Session()
+            _yf_session.headers.update(
+                {
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    )
+                }
+            )
 
             period_map = {7: "7d", 30: "1mo", 90: "3mo", 365: "1y"}
             period = next((v for k, v in period_map.items() if lookback_days <= k), "1mo")
             interval_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "1d": "1d"}
             yf_interval = interval_map.get(timeframe, "5m")
-            ticker = yf.Ticker(symbol)
+            ticker = yf.Ticker(yf_symbol, session=_yf_session)
 
-            # Try requested interval first; fall back to daily if rate-limited
-            df = ticker.history(period=period, interval=yf_interval)
+            # Try requested interval first; if rate-limited or empty, fall back to daily
+            df = pd.DataFrame()
+            try:
+                df = ticker.history(period=period, interval=yf_interval)
+            except Exception as yf_err:
+                logger.warning(
+                    f"yfinance {yf_interval} fetch raised for {symbol} ({yf_symbol}): {yf_err} "
+                    f"— falling back to 1d"
+                )
+
             if df.empty and yf_interval != "1d":
-                logger.warning(f"yfinance rate-limited for {yf_interval} — falling back to 1d")
-                df = ticker.history(period="1y", interval="1d")
+                logger.warning(
+                    f"yfinance returned empty for {symbol} ({yf_symbol}) on {yf_interval} "
+                    f"— falling back to 1d"
+                )
+                try:
+                    df = ticker.history(period="1y", interval="1d")
+                except Exception as yf_err2:
+                    logger.error(
+                        f"yfinance 1d fallback also raised for {symbol} ({yf_symbol}): {yf_err2}"
+                    )
 
             if df.empty:
-                return pd.DataFrame()
-
-            df = df.reset_index().rename(
-                columns={
-                    "Datetime": "timestamp",
-                    "Date": "timestamp",
-                    "Open": "open",
-                    "High": "high",
-                    "Low": "low",
-                    "Close": "close",
-                    "Volume": "volume",
-                }
-            )
-            cols = [
-                c
-                for c in ["timestamp", "open", "high", "low", "close", "volume"]
-                if c in df.columns
-            ]
-            return df[cols]
+                logger.error(f"yfinance returned empty for {symbol} ({yf_symbol}) on all intervals")
+            else:
+                logger.info(
+                    f"yfinance returned {len(df)} bars for {symbol} ({yf_symbol}) interval={yf_interval}"
+                )
+                df = df.reset_index().rename(
+                    columns={
+                        "Datetime": "timestamp",
+                        "Date": "timestamp",
+                        "Open": "open",
+                        "High": "high",
+                        "Low": "low",
+                        "Close": "close",
+                        "Volume": "volume",
+                    }
+                )
+                cols = [
+                    c
+                    for c in ["timestamp", "open", "high", "low", "close", "volume"]
+                    if c in df.columns
+                ]
+                return df[cols]
         except Exception as e:
-            logger.error(f"yfinance fallback failed for {symbol}: {e}")
-            return pd.DataFrame()
+            logger.error(f"yfinance fallback failed for {symbol} ({yf_symbol}): {e}")
+
+        # Tier 4: CSV backtest cache fallback (for when all live feeds are unavailable)
+        try:
+            cache_dir = Path(__file__).parent.parent / "backtest" / "cache"
+            # Find the most recent matching CSV file for this symbol + interval
+            pattern = f"{symbol}_*_{timeframe}.csv"
+            matches = sorted(cache_dir.glob(pattern))
+            if matches:
+                csv_path = matches[-1]  # most recent by filename sort
+                df_csv = pd.read_csv(csv_path)
+                # Ensure timestamp column is datetime
+                if "timestamp" in df_csv.columns:
+                    df_csv["timestamp"] = pd.to_datetime(df_csv["timestamp"])
+                    df_csv = df_csv.sort_values("timestamp")
+                # Return the last N rows (lookback_days * bars_per_day)
+                bars_per_day = {"1m": 390, "5m": 78, "15m": 26, "1h": 24, "1d": 1}.get(
+                    timeframe, 24
+                )
+                bars_needed = lookback_days * bars_per_day
+                df_result = df_csv.tail(bars_needed).copy()
+                if not df_result.empty:
+                    logger.warning(
+                        f"[{symbol}] Using CSV cache fallback: {csv_path.name} ({len(df_result)} bars)"
+                    )
+                    cols = [
+                        c
+                        for c in ["timestamp", "open", "high", "low", "close", "volume"]
+                        if c in df_result.columns
+                    ]
+                    return df_result[cols]
+        except Exception as e:
+            logger.debug(f"[{symbol}] CSV cache fallback failed: {e}")
+
+        return pd.DataFrame()

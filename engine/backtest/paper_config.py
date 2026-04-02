@@ -1,6 +1,9 @@
 """
 JARVIS TRADER  Paper Trading Configuration (v2.9)
 ===================================================
+Consolidation note (US-303): This module is CONFIGURATION ONLY. No state is
+written here. All state management is delegated to PaperTradeTracker.
+
 Approved instruments (as of 2026-04-01):
   MCL 1h: WFE=0.82 EXCELLENT  static params, regime_filter=ON, adaptive=OFF
   MNQ 1h: WFE=0.57 GOOD  adaptive_regime=ON only (MTF and volume filters REJECTED)

@@ -4,11 +4,11 @@ Finds optimal trading windows per symbol from discord_bot_signals data.
 Usage: cd engine && python -m analysis.discord_time_patterns
 """
 
-import sqlite3
 import json
-from pathlib import Path
-from datetime import datetime
+import sqlite3
 from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 
@@ -113,8 +113,8 @@ def compute_time_patterns(symbol: str, db_path: str = None) -> dict:
         gain = row["gain"] if row["gain"] is not None else 0.0
 
         hour = dt.hour
-        dow = dt.weekday()   # 0=Monday … 6=Sunday
-        month = dt.month     # 1-12
+        dow = dt.weekday()  # 0=Monday … 6=Sunday
+        month = dt.month  # 1-12
 
         for bucket, key in [(hour_buckets, hour), (dow_buckets, dow), (month_buckets, month)]:
             bucket[key]["win_rate_sum"] += wr
@@ -179,9 +179,7 @@ def compute_all_patterns(output_path: str = None) -> dict:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
-        cursor = conn.execute(
-            "SELECT DISTINCT symbol FROM discord_bot_signals ORDER BY symbol"
-        )
+        cursor = conn.execute("SELECT DISTINCT symbol FROM discord_bot_signals ORDER BY symbol")
         symbols = [row["symbol"] for row in cursor.fetchall()]
     finally:
         conn.close()
@@ -207,8 +205,6 @@ def compute_all_patterns(output_path: str = None) -> dict:
 
 
 if __name__ == "__main__":
-    import json as _json
-
     print("Computing Discord signal time patterns for all symbols...")
     patterns = compute_all_patterns()
 

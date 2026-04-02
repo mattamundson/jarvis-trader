@@ -59,7 +59,14 @@ async def get_macro_snapshot():
                     vix_df.columns = vix_df.columns.get_level_values(0)
                 vix_df.columns = [c.lower() for c in vix_df.columns]
                 vix_live = float(vix_df["close"].iloc[-1])
-                raw.setdefault("vix", {"value": vix_live, "unit": "index", "description": "CBOE Volatility Index (yfinance)"})
+                raw.setdefault(
+                    "vix",
+                    {
+                        "value": vix_live,
+                        "unit": "index",
+                        "description": "CBOE Volatility Index (yfinance)",
+                    },
+                )
                 logger.info("VIX fallback via yfinance: %.2f", vix_live)
         except Exception as yf_err:
             logger.warning("yfinance VIX fallback also failed: %s", yf_err)

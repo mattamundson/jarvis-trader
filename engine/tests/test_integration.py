@@ -742,12 +742,14 @@ class TestWebhookRouter(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        """Ensure TRADINGVIEW_WEBHOOK_SECRET is unset so auth tests are deterministic."""
+        """Save webhook secret then unset it so most auth tests are deterministic."""
+        # Preserve the secret so test_webhook_secret_validation can use it
+        cls._original_secret = os.environ.get("TRADINGVIEW_WEBHOOK_SECRET", "")
         os.environ.pop("TRADINGVIEW_WEBHOOK_SECRET", None)
         # Re-import the module so the module-level WEBHOOK_SECRET re-reads the env.
         import engine.routers.webhook_router as _wh_mod
 
-        _wh_mod.WEBHOOK_SECRET = os.getenv("TRADINGVIEW_WEBHOOK_SECRET", "")
+        _wh_mod.WEBHOOK_SECRET = ""
 
     # ── 1. GET /webhook/tradingview/test ────────────────────────────────────
 
@@ -860,28 +862,34 @@ class TestWebhookRouter(unittest.TestCase):
         """
         import engine.routers.webhook_router as _wh_mod
 
-        if not _wh_mod.WEBHOOK_SECRET:
+        if not self._original_secret:
             raise unittest.SkipTest(
                 "TRADINGVIEW_WEBHOOK_SECRET is not set — secret validation is disabled"
             )
 
-        # Wrong secret in body
-        payload_wrong = {"symbol": "MES", "action": "LONG", "secret": "WRONG_SECRET"}
-        resp_wrong = _webhook_client.post("/webhook/tradingview", json=payload_wrong)
-        self.assertIn(
-            resp_wrong.status_code,
-            (401, 403),
-            f"Expected 401/403 for wrong secret, got {resp_wrong.status_code}",
-        )
+        # Temporarily restore the secret so the router enforces validation
+        _wh_mod.WEBHOOK_SECRET = self._original_secret
+        try:
+            # Wrong secret in body
+            payload_wrong = {"symbol": "MES", "action": "LONG", "secret": "WRONG_SECRET"}
+            resp_wrong = _webhook_client.post("/webhook/tradingview", json=payload_wrong)
+            self.assertIn(
+                resp_wrong.status_code,
+                (401, 403),
+                f"Expected 401/403 for wrong secret, got {resp_wrong.status_code}",
+            )
 
-        # Missing secret in body
-        payload_missing = {"symbol": "MES", "action": "LONG"}
-        resp_missing = _webhook_client.post("/webhook/tradingview", json=payload_missing)
-        self.assertIn(
-            resp_missing.status_code,
-            (401, 403),
-            f"Expected 401/403 for missing secret, got {resp_missing.status_code}",
-        )
+            # Missing secret in body
+            payload_missing = {"symbol": "MES", "action": "LONG"}
+            resp_missing = _webhook_client.post("/webhook/tradingview", json=payload_missing)
+            self.assertIn(
+                resp_missing.status_code,
+                (401, 403),
+                f"Expected 401/403 for missing secret, got {resp_missing.status_code}",
+            )
+        finally:
+            # Restore to no-secret state so subsequent tests remain deterministic
+            _wh_mod.WEBHOOK_SECRET = ""
 
 
 # ===========================================================================

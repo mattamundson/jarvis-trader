@@ -1,6 +1,10 @@
 """
 JARVIS TRADER — Paper Trading Runner
 =====================================
+Consolidation note (US-303): This module delegates ALL state writes to
+PaperTradeTracker (engine/backtest/paper_tracker.py), making it the single
+source of truth. Do not write directly to JSON files or other trackers.
+
 Standalone hourly loop for MCL and MNQ paper trading.
 
 Runs signal generation, open-position management, and trade logging

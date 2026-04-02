@@ -68,7 +68,7 @@ async def _health_inner() -> dict:
     _dm_settings = getattr(data_manager, "settings", None) if data_manager else None
     live_trading_val: bool = bool(getattr(_dm_settings, "LIVE_TRADING_ENABLED", False))
     ibkr_conn: bool = (
-        bool(data_manager.ibkr.is_connected)
+        data_manager.ibkr.is_connected()
         if (data_manager and getattr(data_manager, "ibkr", None))
         else False
     )
@@ -333,7 +333,10 @@ async def system_preflight():
         if ib_gw is None:
             add_check("IB Gateway", "warn", "Not initialized (paper only)")
         else:
-            connected = bool(getattr(ib_gw, "is_connected", False))
+            is_connected_attr = getattr(ib_gw, "is_connected", None)
+            connected = (
+                is_connected_attr() if callable(is_connected_attr) else bool(is_connected_attr)
+            )
             if connected:
                 add_check("IB Gateway", "pass", "Paper port 4002 connected")
             else:

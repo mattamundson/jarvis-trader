@@ -1,11 +1,17 @@
 """
-JARVIS TRADER — MGC Paper Trading Performance Tracker
-======================================================
+JARVIS TRADER — Paper Trading Tracker (SINGLE SOURCE OF TRUTH)
+==============================================================
+Consolidation note (US-303): This module is THE SINGLE STATE MANAGER for all paper trading.
+- paper_runner.py writes all completed trades here via add_trade()
+- paper_config.py is configuration only (no state)
+- validation_tracker.py is read-only (reads from our JSON files)
+- paper_trade_logger.py is an alternative logger for PortfolioTracker mirroring
+
 Tracks paper trades for walk-forward validated strategies, computes rolling
 performance metrics, and enforces kill thresholds to halt trading when the
 strategy degrades below acceptable levels.
 
-Storage: JSON file at engine/backtest/results/paper_trades_MGC.json
+Storage: JSON file per symbol at engine/backtest/results/paper_trades_{SYMBOL}.json
 Kill conditions checked after every trade close.
 
 Usage:

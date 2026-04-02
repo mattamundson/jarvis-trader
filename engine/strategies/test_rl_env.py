@@ -1428,18 +1428,18 @@ class TestRLConfig:
         """
         from strategies.rl_config import REWARD_CONFIG
 
-        assert REWARD_CONFIG["entry_cost"] == -0.01, (
-            f"entry_cost should be -0.01, got {REWARD_CONFIG['entry_cost']}"
-        )
-        assert REWARD_CONFIG["hold_cost_per_bar"] == -0.010, (
-            f"hold_cost_per_bar should be -0.010, got {REWARD_CONFIG['hold_cost_per_bar']}"
-        )
-        assert REWARD_CONFIG["flat_hold_reward"] == 0.000, (
-            f"flat_hold_reward should be 0.000, got {REWARD_CONFIG['flat_hold_reward']}"
-        )
-        assert REWARD_CONFIG.get("hold_cost_only_when_losing") is True, (
-            "hold_cost_only_when_losing must be True for Run 11 (let winners run)"
-        )
+        assert (
+            REWARD_CONFIG["entry_cost"] == -0.01
+        ), f"entry_cost should be -0.01, got {REWARD_CONFIG['entry_cost']}"
+        assert (
+            REWARD_CONFIG["hold_cost_per_bar"] == -0.010
+        ), f"hold_cost_per_bar should be -0.010, got {REWARD_CONFIG['hold_cost_per_bar']}"
+        assert (
+            REWARD_CONFIG["flat_hold_reward"] == 0.000
+        ), f"flat_hold_reward should be 0.000, got {REWARD_CONFIG['flat_hold_reward']}"
+        assert (
+            REWARD_CONFIG.get("hold_cost_only_when_losing") is True
+        ), "hold_cost_only_when_losing must be True for Run 11 (let winners run)"
 
     def test_t1_bonus_to_entry_cost_ratio(self):
         """T1 bonus (0.50) is 50x entry cost (0.01) — strong T1 incentive."""
@@ -1462,9 +1462,9 @@ class TestRLConfig:
 
         _, reward_winning, _, _, _ = env.step(Action.HOLD)
         # Hold cost = 0, only pnl_reward applies (0 for HOLD). Reward should be near 0.
-        assert reward_winning >= -0.05, (
-            f"Hold cost should be 0 when in profit, reward={reward_winning:.5f}"
-        )
+        assert (
+            reward_winning >= -0.05
+        ), f"Hold cost should be 0 when in profit, reward={reward_winning:.5f}"
 
     def test_hold_cost_applied_when_losing(self, df_mes):
         """Run 11: hold cost must be applied when position is underwater."""

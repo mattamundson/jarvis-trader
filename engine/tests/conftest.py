@@ -30,6 +30,7 @@ test_env_vars = {
     "TWILIO_AUTH_TOKEN": "test",
     "TWILIO_WHATSAPP_FROM": "+1234567890",
     "WHATSAPP_TO": "+0987654321",
+    "TRADINGVIEW_WEBHOOK_SECRET": "jarvis_test_secret_12345",
 }
 
 for key, value in test_env_vars.items():
@@ -266,5 +267,5 @@ def mock_debate_result():
         "conviction": 0.75,
         "rationale": "All layers align on bullish setup",
         "bull_arguments": ["Momentum turning positive", "Technical alignment"],
-        "bear_arguments": ["Minor pullback risk"],
+        "bear_arguments": [],
     }

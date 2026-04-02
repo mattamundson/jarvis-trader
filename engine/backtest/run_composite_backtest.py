@@ -77,7 +77,9 @@ def main():
         from backtest.data_loader import BacktestDataLoader
     except ImportError as e:
         print(f"[ERROR] Import failed: {e}")
-        print("Run from the engine/ directory: cd engine && .venv/Scripts/python -m backtest.run_composite_backtest")
+        print(
+            "Run from the engine/ directory: cd engine && .venv/Scripts/python -m backtest.run_composite_backtest"
+        )
         sys.exit(1)
 
     # ── Load Data ─────────────────────────────────────────────────────────
@@ -107,7 +109,9 @@ def main():
     n_volatile = (df["entry_signal"] == "COMPOSITE_VOLATILE_BLOCK").sum()
     regime_dist = df.get("composite_regime", df.get("regime_type", None))
 
-    print(f"Signals: {n_entry} entries ({n_long} LONG, {n_short} SHORT), {n_volatile} volatile-blocked")
+    print(
+        f"Signals: {n_entry} entries ({n_long} LONG, {n_short} SHORT), {n_volatile} volatile-blocked"
+    )
     if regime_dist is not None:
         print(f"Regime distribution: {regime_dist.value_counts().to_dict()}")
 
@@ -153,8 +157,10 @@ def main():
     max_dd = r.get("max_drawdown", 0.0)
     n_trades = r.get("total_trades", 0)
 
-    print(f"\nKEY METRICS (COHEN-MES Composite):")
-    print(f"  Sharpe Ratio  : {sharpe:.2f}  {'✓ TARGET MET' if sharpe >= 2.0 else '✗ Target: ≥2.0'}")
+    print("\nKEY METRICS (COHEN-MES Composite):")
+    print(
+        f"  Sharpe Ratio  : {sharpe:.2f}  {'✓ TARGET MET' if sharpe >= 2.0 else '✗ Target: ≥2.0'}"
+    )
     print(f"  Profit Factor : {pf:.2f}  {'✓' if pf >= 2.0 else '✗ Target: ≥2.0'}")
     print(f"  Win Rate      : {wr:.1%}")
     print(f"  Total Return  : {ret:+.1f}%")
@@ -212,9 +218,13 @@ def main():
         "signal_contributions": {
             "stc": int(df.get("stc_contrib", pd.Series(False)).sum()) if hasattr(df, "get") else 0,
             "orb": int(df.get("orb_contrib", pd.Series(False)).sum()) if hasattr(df, "get") else 0,
-            "vwap": int(df.get("vwap_contrib", pd.Series(False)).sum()) if hasattr(df, "get") else 0,
+            "vwap": int(df.get("vwap_contrib", pd.Series(False)).sum())
+            if hasattr(df, "get")
+            else 0,
         },
-        "regime_distribution": regime_dist.value_counts().to_dict() if regime_dist is not None else {},
+        "regime_distribution": regime_dist.value_counts().to_dict()
+        if regime_dist is not None
+        else {},
         "trades": [
             {
                 "entry_date": str(t.get("entry_date", "")),
@@ -248,7 +258,6 @@ def _estimate_wfe(df, symbol, multiplier, backtester_template, risk):
     Split the data 75%/25% and compare.
     """
     try:
-        import pandas as pd
         split = int(len(df) * 0.75)
         if split < 50:
             return None
@@ -278,7 +287,6 @@ def _estimate_wfe(df, symbol, multiplier, backtester_template, risk):
 
 def _update_summary(results_dir, args, payload, sharpe, pf, wr, n_trades, max_dd, wfe):
     """Append result to SUMMARY.md."""
-    import pandas as pd
     summary_path = results_dir / "SUMMARY.md"
     status = "APPROVED" if payload.get("approved") else "NEEDS TUNING"
     wfe_str = f"{wfe:.2f}" if wfe is not None else "N/A"
@@ -300,4 +308,5 @@ File: composite_{args.symbol}_{args.interval}_{args.start}_{args.end}.json
 
 if __name__ == "__main__":
     import pandas as pd
+
     main()

@@ -384,7 +384,9 @@ class TradingEnvironment(_GymBase):
 
         # Forced close: hard cap on bars in trade (Run 10 — prevents 100+ bar holds)
         if self._position != 0 and self._bars_in_trade >= MAX_BARS_IN_TRADE:
-            force_close = float(self.df.iloc[self._idx]["close"]) if self._idx < len(self.df) else close
+            force_close = (
+                float(self.df.iloc[self._idx]["close"]) if self._idx < len(self.df) else close
+            )
             if self._position == 1:
                 forced_pnl = force_close - self._entry_price
             else:
@@ -396,7 +398,10 @@ class TradingEnvironment(_GymBase):
             self._bars_in_trade = 0
             logger.debug(
                 "Forced close at bar %d — held %d bars (cap=%d), pnl=%.4f",
-                self._idx, MAX_BARS_IN_TRADE, MAX_BARS_IN_TRADE, forced_pnl,
+                self._idx,
+                MAX_BARS_IN_TRADE,
+                MAX_BARS_IN_TRADE,
+                forced_pnl,
             )
 
         # Track flat-HOLD rate (more meaningful than blended hold_rate)
@@ -469,7 +474,7 @@ class TradingEnvironment(_GymBase):
             try:
                 row = self.df.iloc[idx]
                 # Resolve timestamp: use DataFrame index if it is datetime-typed
-                if hasattr(self.df.index, 'dtype') and hasattr(self.df.index[idx], 'to_pydatetime'):
+                if hasattr(self.df.index, "dtype") and hasattr(self.df.index[idx], "to_pydatetime"):
                     timestamp = self.df.index[idx].to_pydatetime()
                 elif isinstance(self.df.index[idx], datetime):
                     timestamp = self.df.index[idx]
@@ -482,7 +487,7 @@ class TradingEnvironment(_GymBase):
                     timestamp=timestamp,
                     price=price,
                     atr=atr,
-                    jarvis_bias='NEUTRAL',  # can be enhanced later to use regime_score
+                    jarvis_bias="NEUTRAL",  # can be enhanced later to use regime_score
                 )
                 discord_arr = np.array(discord_feats, dtype=np.float32)
             except Exception:

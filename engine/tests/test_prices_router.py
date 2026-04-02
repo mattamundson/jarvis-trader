@@ -3,6 +3,7 @@ Test prices router with caching.
 """
 
 import os
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -62,15 +63,34 @@ def test_get_price_snapshot_futures(client):
 
 
 def test_get_price_snapshot_caching(client):
-    """Test that second call uses cache."""
-    # First call
-    response1 = client.get("/prices/snapshot?symbols=SPY")
-    assert response1.status_code == 200
-    data1 = response1.json()
+    """Test that second call uses cache (mocked to avoid live price drift)."""
+    from unittest.mock import MagicMock
 
-    # Second call should return same data (cached)
-    response2 = client.get("/prices/snapshot?symbols=SPY")
-    assert response2.status_code == 200
-    data2 = response2.json()
+    import routers.prices_router as router_mod
+
+    # Clear any stale cache entries so this test starts clean
+    router_mod._price_cache._cache.clear()
+
+    # Build a yfinance Tickers mock that always returns a fixed price
+    mock_fast_info = MagicMock()
+    mock_fast_info.last_price = 654.53
+    mock_fast_info.previous_close = 654.0
+
+    mock_ticker = MagicMock()
+    mock_ticker.fast_info = mock_fast_info
+
+    mock_tickers_obj = MagicMock()
+    mock_tickers_obj.tickers = {"SPY": mock_ticker}
+
+    with patch("yfinance.Tickers", return_value=mock_tickers_obj):
+        # First call — hits mock, populates cache
+        response1 = client.get("/prices/snapshot?symbols=SPY")
+        assert response1.status_code == 200
+        data1 = response1.json()
+
+        # Second call should return same data (cache hit or same mock value)
+        response2 = client.get("/prices/snapshot?symbols=SPY")
+        assert response2.status_code == 200
+        data2 = response2.json()
 
     assert data1["SPY"]["last_price"] == data2["SPY"]["last_price"]

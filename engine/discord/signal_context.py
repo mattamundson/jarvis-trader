@@ -10,8 +10,8 @@
 # not a ratio (0.0–1.0). This module divides by 100 when returning win_rate.
 # Real column names: entry_price, target1, target2, stop1 (not entry, t1, t2, stop)
 
-import sqlite3
 import os
+import sqlite3
 import time
 from datetime import datetime, timedelta
 from typing import Optional
@@ -40,17 +40,19 @@ class DiscordSignalContext:
     STATS_TTL_SECONDS = 300  # 5-minute TTL on rolling stats cache
 
     SYMBOL_MAP = {
-        'MES': 'ES', 'MNQ': 'NQ', 'MGC': 'GC',
-        'MCL': 'CL', 'MYM': 'YM', 'M2K': 'RTY',
+        "MES": "ES",
+        "MNQ": "NQ",
+        "MGC": "GC",
+        "MCL": "CL",
+        "MYM": "YM",
+        "M2K": "RTY",
     }
 
     def __init__(self, db_path: str = None, bar_minutes: int = 15):
         if db_path is None:
             # Resolve relative to project root: engine/discord/ → engine/ → project root
-            base = os.path.dirname(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            )
-            db_path = os.path.join(base, 'data', 'jarvis_trader.db')
+            base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            db_path = os.path.join(base, "data", "jarvis_trader.db")
         self.db_path = db_path
         self.bar_minutes = bar_minutes
         # Rolling stats cache: key = (discord_symbol, date_str) → (stats_dict, fetch_time)
@@ -66,7 +68,7 @@ class DiscordSignalContext:
         timestamp: datetime,
         price: float,
         atr: float,
-        jarvis_bias: str = 'NEUTRAL',  # 'LONG', 'SHORT', or 'NEUTRAL'
+        jarvis_bias: str = "NEUTRAL",  # 'LONG', 'SHORT', or 'NEUTRAL'
     ) -> dict:
         """
         Return dict with 5 discord feature values.
@@ -105,15 +107,15 @@ class DiscordSignalContext:
         win_rate = self._get_rolling_win_rate(discord_symbol, timestamp)
 
         # Feature 20: proximity to entry_price
-        if recent_signal and recent_signal.get('entry_price') and recent_signal['entry_price'] > 0:
-            proximity_entry = (price - recent_signal['entry_price']) / atr
+        if recent_signal and recent_signal.get("entry_price") and recent_signal["entry_price"] > 0:
+            proximity_entry = (price - recent_signal["entry_price"]) / atr
             proximity_entry = max(-1.0, min(1.0, proximity_entry))
         else:
             proximity_entry = 0.0
 
         # Feature 21: proximity to target1
-        if recent_signal and recent_signal.get('target1') and recent_signal['target1'] > 0:
-            proximity_target = abs(price - recent_signal['target1']) / atr
+        if recent_signal and recent_signal.get("target1") and recent_signal["target1"] > 0:
+            proximity_target = abs(price - recent_signal["target1"]) / atr
             proximity_target = max(0.0, min(2.0, proximity_target))
         else:
             proximity_target = 0.0
@@ -123,33 +125,34 @@ class DiscordSignalContext:
             alignment = 0.0
         else:
             # direction may be None in DB even when a row exists — guard with `or ''`
-            sig_dir = (recent_signal.get('direction') or '').upper()
+            sig_dir = (recent_signal.get("direction") or "").upper()
             jarvis_upper = jarvis_bias.upper()
             if sig_dir == jarvis_upper:
                 alignment = 1.0
-            elif (sig_dir == 'LONG' and jarvis_upper == 'SHORT') or \
-                 (sig_dir == 'SHORT' and jarvis_upper == 'LONG'):
+            elif (sig_dir == "LONG" and jarvis_upper == "SHORT") or (
+                sig_dir == "SHORT" and jarvis_upper == "LONG"
+            ):
                 alignment = -1.0
             else:
                 alignment = 0.0
 
         return {
-            'discord_signal_active': signal_active,
-            'discord_win_rate_context': win_rate,
-            'discord_proximity_entry': proximity_entry,
-            'discord_proximity_target': proximity_target,
-            'discord_alignment': alignment,
+            "discord_signal_active": signal_active,
+            "discord_win_rate_context": win_rate,
+            "discord_proximity_entry": proximity_entry,
+            "discord_proximity_target": proximity_target,
+            "discord_alignment": alignment,
         }
 
     def get_feature_list(self, *args, **kwargs) -> list:
         """Return features as ordered list [f18, f19, f20, f21, f22]."""
         d = self.get_features(*args, **kwargs)
         return [
-            d['discord_signal_active'],
-            d['discord_win_rate_context'],
-            d['discord_proximity_entry'],
-            d['discord_proximity_target'],
-            d['discord_alignment'],
+            d["discord_signal_active"],
+            d["discord_win_rate_context"],
+            d["discord_proximity_entry"],
+            d["discord_proximity_target"],
+            d["discord_alignment"],
         ]
 
     def _get_recent_signal(
@@ -166,11 +169,11 @@ class DiscordSignalContext:
           - since: use bare YYYY-MM-DDTHH:MM:SS (no subseconds) — safe as lower bound
           - until: add 1 second so that '2024-01-15T10:00:01' >= any .NNN-05:00 at :00
         """
-        since_str = since.strftime('%Y-%m-%dT%H:%M:%S')
+        since_str = since.strftime("%Y-%m-%dT%H:%M:%S")
         # Extend upper bound by 1 second to include DB timestamps with millisecond
         # or tz-offset suffixes that sort after the bare timestamp string
         until_extended = until + timedelta(seconds=1)
-        until_str = until_extended.strftime('%Y-%m-%dT%H:%M:%S')
+        until_str = until_extended.strftime("%Y-%m-%dT%H:%M:%S")
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
@@ -210,14 +213,14 @@ class DiscordSignalContext:
         if cached is not None:
             stats, fetch_time = cached
             if time.time() - fetch_time < self.STATS_TTL_SECONDS:
-                return stats.get('win_rate', 0.5)
+                return stats.get("win_rate", 0.5)
 
         # Query DB for average win_rate over last 30 days
         # Use strftime('%Y-%m-%dT%H:%M:%S') to avoid tz-offset string comparison issues
         since = timestamp - timedelta(days=self.WIN_RATE_LOOKBACK_DAYS)
-        since_str = since.strftime('%Y-%m-%dT%H:%M:%S')
+        since_str = since.strftime("%Y-%m-%dT%H:%M:%S")
         until_extended = timestamp + timedelta(seconds=1)
-        until_str = until_extended.strftime('%Y-%m-%dT%H:%M:%S')
+        until_str = until_extended.strftime("%Y-%m-%dT%H:%M:%S")
         try:
             conn = sqlite3.connect(self.db_path)
             cur = conn.cursor()
@@ -244,7 +247,7 @@ class DiscordSignalContext:
         except Exception:
             win_rate = 0.5
 
-        self._stats_cache[cache_key] = ({'win_rate': win_rate}, time.time())
+        self._stats_cache[cache_key] = ({"win_rate": win_rate}, time.time())
         return win_rate
 
     def clear_cache(self):
