@@ -70,6 +70,7 @@ from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
 from routers.discord_router import router as discord_router
+from routers.learning_router import router as learning_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
 from routers.market_router import router as market_router
@@ -596,6 +597,7 @@ app.include_router(strategies_router)
 app.include_router(validation_router)
 app.include_router(webhook_router)
 app.include_router(discord_router)
+app.include_router(learning_router)
 app.include_router(v1_router)
 
 
@@ -1003,16 +1005,19 @@ async def calculate_position_size_alias():
     result = calculate_position_size(
         symbol="MES",
         account_value=settings.INITIAL_CAPITAL,
-        entry_price=5000.0,
-        stop_price=4990.0,
+        atr=15.0,
         risk_pct=0.01,
+        atr_stop_multiplier=0.70,
+        max_contracts=2,
     )
     return {
         "symbol": result.symbol,
         "contracts": result.contracts,
-        "risk_amount": result.risk_amount,
+        "risk_per_trade": result.risk_per_trade,
+        "stop_distance": result.stop_distance,
+        "dollar_risk_per_contract": result.dollar_risk_per_contract,
         "account_value": result.account_value,
-        "risk_pct": result.risk_pct,
+        "reasoning": result.reasoning,
     }
 
 
