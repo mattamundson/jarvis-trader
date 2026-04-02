@@ -118,7 +118,9 @@ class HealthResponse(BaseModel):
 
 
 class SubsystemStatus(BaseModel):
-    """Individual subsystem status."""
+    """Individual subsystem status — accepts any extra fields from subsystem dicts."""
+
+    model_config = ConfigDict(extra="ignore")
 
     status: str = Field(..., description="Subsystem status")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional details")

@@ -37,7 +37,8 @@
       "Bash(pnpm run:*)",
       "Bash(powershell.exe:*)",
       "Bash(tasklist:*)",
-      "Bash(ps aux:*)"
+      "Bash(ps aux:*)",
+      "Bash(/c/Users/mattm/ThinkorSwim/jarvis-trader/scripts/run9_standalone.py:*)"
     ],
     "deny": []
   }
