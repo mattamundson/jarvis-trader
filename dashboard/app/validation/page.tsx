@@ -35,20 +35,18 @@ import { TradingDaysCountdownCard } from "@/components/TradingDaysCountdownCard"
 import { BacktestVsPaperWidget } from "@/components/BacktestVsPaperWidget";
 import { ValidationChecklist } from "@/components/ValidationChecklist";
 import { GoLivePlanCard } from "@/components/GoLivePlanCard";
+import {
+  type BacktestBaselineRow,
+  fmtBaselineNum,
+  pickApprovedBacktestBaseline,
+  type ScorecardBacktestBaseline,
+} from "@/lib/scorecardBaseline";
 
-// ── Constants — Backtest reference (MES 1h, best run) ────────────────────────
+// ── Constants — strategy params (canonical STC; not symbol-specific) ─────────
 
-const BACKTEST = {
-  instrument: "MES — Micro E-mini S&P 500",
-  timeframe: "1-hour bars",
-  strategy: "STC (OS=15, OB=83) + ATR Stop (0.70x) + Regime Filter",
-  profitFactor: 5.27,
-  sharpeRatio: 4.16,
-  winRate: "~60%",
-  totalReturn: "+47.2%",
-  t1Multiple: "1.50x",
-  stopMultiple: "0.70x",
-};
+const STRATEGY_COPY = "STC (OS=15, OB=83) + ATR Stop (0.70x) + Regime Filter";
+const ATR_STOP_LABEL = "0.70x";
+const T1_TARGET_LABEL = "1.50x";
 
 const THRESHOLDS = {
   profitFactor: 2.0,
@@ -611,7 +609,14 @@ function StatisticalSignificanceCard() {
 
 // ── Backtest Reference Card ───────────────────────────────────────────────────
 
-function BacktestReferenceCard() {
+function baselineInstrumentLine(baseline: ScorecardBacktestBaseline | null): string {
+  if (!baseline) return "No MCL/MNQ baseline JSON";
+  const head = baseline.label.split(" — ")[0]?.trim();
+  return head || baseline.label;
+}
+
+function BacktestReferenceCard({ baseline }: { baseline: ScorecardBacktestBaseline | null }) {
+  const hasBaseline = baseline != null;
   return (
     <Card className="border-accent/20 bg-accent/5">
       <CardContent className="pt-5 pb-5">
@@ -621,9 +626,13 @@ function BacktestReferenceCard() {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-accent">
-              Backtest Reference — Best Run
+              Backtest Reference — Saved engine run
             </p>
-            <p className="text-[10px] text-muted-foreground">Static targets — Phase 1 complete</p>
+            <p className="text-[10px] text-muted-foreground">
+              {hasBaseline
+                ? "Baseline from saved backtest (MCL/MNQ preferred)"
+                : "Baseline from saved backtest (MCL/MNQ preferred) — none loaded"}
+            </p>
           </div>
           <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-bull bg-bull/10 border border-bull/20 rounded-full px-2 py-0.5">
             <CheckCircle2 className="h-3 w-3" />
@@ -634,28 +643,46 @@ function BacktestReferenceCard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <div className="space-y-1">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Instrument</p>
-            <p className="text-sm font-semibold text-foreground">{BACKTEST.instrument}</p>
+            <p className="text-sm font-semibold text-foreground">{baselineInstrumentLine(baseline)}</p>
           </div>
           <div className="space-y-1">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Timeframe</p>
-            <p className="text-sm font-semibold text-foreground">{BACKTEST.timeframe}</p>
+            <p className="text-sm font-semibold text-foreground">{baseline?.timeframe ?? "—"}</p>
           </div>
           <div className="sm:col-span-2 space-y-1">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Strategy</p>
-            <p className="text-sm font-mono font-medium text-accent">{BACKTEST.strategy}</p>
+            <p className="text-sm font-mono font-medium text-accent">{STRATEGY_COPY}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <MetricPill label="Profit Factor" value={String(BACKTEST.profitFactor)} color="text-bull" />
-          <MetricPill label="Sharpe Ratio" value={String(BACKTEST.sharpeRatio)} color="text-accent" />
-          <MetricPill label="Win Rate" value={BACKTEST.winRate} color="text-foreground" />
-          <MetricPill label="Total Return" value={BACKTEST.totalReturn} color="text-bull" />
+          <MetricPill
+            label="Profit Factor"
+            value={fmtBaselineNum(baseline?.profitFactor ?? null)}
+            color="text-bull"
+          />
+          <MetricPill
+            label="Sharpe Ratio"
+            value={fmtBaselineNum(baseline?.sharpeRatio ?? null)}
+            color="text-accent"
+          />
+          <MetricPill
+            label="Win Rate"
+            value={
+              baseline?.winRatePct != null ? `${baseline.winRatePct.toFixed(1)}%` : "—"
+            }
+            color="text-foreground"
+          />
+          <MetricPill
+            label="Total Return"
+            value={baseline?.totalReturnLabel ?? "—"}
+            color="text-bull"
+          />
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <MetricPill label="ATR Stop" value={BACKTEST.stopMultiple} color="text-warn" />
-          <MetricPill label="T1 Target" value={BACKTEST.t1Multiple} color="text-warn" />
+          <MetricPill label="ATR Stop" value={ATR_STOP_LABEL} color="text-warn" />
+          <MetricPill label="T1 Target" value={T1_TARGET_LABEL} color="text-warn" />
         </div>
       </CardContent>
     </Card>
@@ -864,12 +891,21 @@ function LivePerformanceCard({ report }: { report: ValidationReport }) {
 function ComparisonTable({
   report,
   compare,
+  baseline,
 }: {
   report: ValidationReport;
   compare: CompareToBacktestResponse | null;
+  baseline: ScorecardBacktestBaseline | null;
 }) {
   const m = report.metrics;
   const isInsufficient = report.status === "INSUFFICIENT_DATA";
+
+  const btWin =
+    baseline?.winRatePct != null ? `${baseline.winRatePct.toFixed(1)}%` : "—";
+  const btMdd =
+    baseline?.maxDrawdownPct != null
+      ? `${Math.abs(baseline.maxDrawdownPct).toFixed(2)}%`
+      : "—";
 
   const rows: Array<{
     metric: string;
@@ -880,7 +916,7 @@ function ComparisonTable({
   }> = [
     {
       metric: "Profit Factor",
-      backtest: BACKTEST.profitFactor.toFixed(2),
+      backtest: fmtBaselineNum(baseline?.profitFactor ?? null),
       live: m.profit_factor !== null ? m.profit_factor.toFixed(2) : "—",
       threshold: `> ${THRESHOLDS.profitFactor}`,
       pass: isInsufficient
@@ -891,7 +927,7 @@ function ComparisonTable({
     },
     {
       metric: "Sharpe Ratio",
-      backtest: BACKTEST.sharpeRatio.toFixed(2),
+      backtest: fmtBaselineNum(baseline?.sharpeRatio ?? null),
       live: m.sharpe_ratio !== null ? m.sharpe_ratio.toFixed(2) : "—",
       threshold: `> ${THRESHOLDS.sharpeRatio}`,
       pass: isInsufficient
@@ -902,14 +938,14 @@ function ComparisonTable({
     },
     {
       metric: "Win Rate",
-      backtest: BACKTEST.winRate,
+      backtest: btWin,
       live: m.win_rate !== null ? `${(m.win_rate * 100).toFixed(1)}%` : "—",
       threshold: "~60% target",
       pass: null,
     },
     {
       metric: "Max Drawdown",
-      backtest: "—",
+      backtest: btMdd,
       live: `${(Math.abs(m.max_drawdown) * 100).toFixed(2)}%`,
       threshold: "< 10%",
       pass: isInsufficient ? null : Math.abs(m.max_drawdown) < THRESHOLDS.maxDrawdown,
@@ -993,7 +1029,13 @@ function ComparisonTable({
 
 // ── Phase Status Card ─────────────────────────────────────────────────────────
 
-function PhaseStatusCard({ report }: { report: ValidationReport | null }) {
+function PhaseStatusCard({
+  report,
+  baseline,
+}: {
+  report: ValidationReport | null;
+  baseline: ScorecardBacktestBaseline | null;
+}) {
   const phase2Status = !report
     ? "loading"
     : report.status === "PASS"
@@ -1001,6 +1043,10 @@ function PhaseStatusCard({ report }: { report: ValidationReport | null }) {
     : report.status === "FAIL"
     ? "fail"
     : "in-progress";
+
+  const pfChip = fmtBaselineNum(baseline?.profitFactor ?? null);
+  const srChip = fmtBaselineNum(baseline?.sharpeRatio ?? null);
+  const retChip = baseline?.totalReturnLabel ?? "—";
 
   return (
     <Card>
@@ -1015,17 +1061,17 @@ function PhaseStatusCard({ report }: { report: ValidationReport | null }) {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-bull">Phase 1 — Backtest</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Complete — MES 1h strategy validated
+                Complete — saved baseline (MCL/MNQ preferred); metrics from engine JSON when loaded
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <span className="rounded-md bg-bull/10 border border-bull/20 px-2 py-0.5 text-[10px] font-mono text-bull">
-                  PF {BACKTEST.profitFactor}
+                  PF {pfChip}
                 </span>
                 <span className="rounded-md bg-accent/10 border border-accent/20 px-2 py-0.5 text-[10px] font-mono text-accent">
-                  Sharpe {BACKTEST.sharpeRatio}
+                  Sharpe {srChip}
                 </span>
                 <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
-                  {BACKTEST.totalReturn}
+                  {retChip}
                 </span>
               </div>
             </div>
@@ -1100,14 +1146,14 @@ function PhaseStatusCard({ report }: { report: ValidationReport | null }) {
 
 // ── Simulate Trade Panel ──────────────────────────────────────────────────────
 
-const SYMBOLS = ["MES", "MNQ", "MCL"] as const;
+const SYMBOLS = ["MCL", "MNQ", "MES"] as const;
 type Symbol = (typeof SYMBOLS)[number];
 
 const ACTIONS = ["LONG", "SHORT"] as const;
 type Action = (typeof ACTIONS)[number];
 
 function SimulateTradePanel() {
-  const [symbol, setSymbol] = useState<Symbol>("MES");
+  const [symbol, setSymbol] = useState<Symbol>("MCL");
   const [action, setAction] = useState<Action>("LONG");
   const [entryPrice, setEntryPrice] = useState<string>("5000");
   const [stopLoss, setStopLoss] = useState<string>("4990");
@@ -1314,6 +1360,11 @@ export default function ValidationPage() {
       refreshInterval: REFRESH_MS,
     });
 
+  const { data: backtestRows } = useSWR<BacktestBaselineRow[]>("/backtest/results", fetcher, {
+    refreshInterval: REFRESH_MS,
+  });
+  const scorecardBaseline = pickApprovedBacktestBaseline(backtestRows);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -1447,7 +1498,7 @@ export default function ValidationPage() {
               <p className="text-xs text-muted-foreground mt-0.5">
                 Ensure the JARVIS engine is running on port 8010 and{" "}
                 <code className="font-mono">/analytics/performance</code> is responding.
-                Static validation data is shown below.
+                Backtest baseline pills need <code className="font-mono">/backtest/results</code> when the engine is up.
               </p>
             </div>
           </div>
@@ -1480,7 +1531,7 @@ export default function ValidationPage() {
         {/* Section A: Backtest Reference */}
         <section>
           <SectionLabel>A — Backtest Reference Targets</SectionLabel>
-          <BacktestReferenceCard />
+          <BacktestReferenceCard baseline={scorecardBaseline} />
         </section>
 
         {/* Section B: Live Paper Performance (only when data available) */}
@@ -1501,14 +1552,14 @@ export default function ValidationPage() {
                 /analytics/performance/compare unavailable — using local metrics for comparison.
               </p>
             )}
-            <ComparisonTable report={report} compare={compare ?? null} />
+            <ComparisonTable report={report} compare={compare ?? null} baseline={scorecardBaseline} />
           </section>
         )}
 
         {/* Section D: Phase Status */}
         <section>
           <SectionLabel>D — Trading Phase Status</SectionLabel>
-          <PhaseStatusCard report={report ?? null} />
+          <PhaseStatusCard report={report ?? null} baseline={scorecardBaseline} />
         </section>
 
         {/* Section E: Simulate Trade */}
