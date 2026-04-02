@@ -63,6 +63,8 @@ from database.schema import DatabaseManager, init_db
 from execution.ib_order_manager import IBOrderManager
 from llm.cost_tracker import CostTracker
 from middleware.api_key_middleware import APIKeyMiddleware
+from middleware.rate_limit import get_limiter, rate_limit_exception_handler
+from slowapi.errors import RateLimitExceeded
 from portfolio.tracker import PortfolioTracker
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
@@ -554,6 +556,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(APIKeyMiddleware)
+app.state.limiter = get_limiter()
+app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
@@ -959,6 +963,27 @@ async def get_safety_config():
         "ibkr_port": settings.IBKR_PORT,
         "ibkr_client_id": settings.IBKR_CLIENT_ID,
         "ibkr_paper_mode": settings.IBKR_PAPER_MODE,
+    }
+
+
+@app.get("/position-sizing/calculate")
+async def calculate_position_size_alias():
+    """Top-level alias for position sizing calculation."""
+    from utils.position_sizing import calculate_position_size
+
+    result = calculate_position_size(
+        symbol="MES",
+        account_value=settings.INITIAL_CAPITAL,
+        entry_price=5000.0,
+        stop_price=4990.0,
+        risk_pct=0.01,
+    )
+    return {
+        "symbol": result.symbol,
+        "contracts": result.contracts,
+        "risk_amount": result.risk_amount,
+        "account_value": result.account_value,
+        "risk_pct": result.risk_pct,
     }
 
 
@@ -2429,13 +2454,16 @@ async def test_whatsapp():
     from notifications.whatsapp import get_notifier
 
     notifier = get_notifier()
+    ts = datetime.now(timezone.utc).isoformat()
     if not notifier.enabled:
         return {
             "status": "not_configured",
+            "sent": False,
+            "timestamp": ts,
             "message": "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, WHATSAPP_TO to .env",
         }
     ok = await notifier.test()
-    return {"status": "sent" if ok else "failed"}
+    return {"status": "sent" if ok else "failed", "sent": bool(ok), "timestamp": ts}
 
 
 # ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────

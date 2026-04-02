@@ -25,7 +25,7 @@ export function useWebSocket(onEvent?: WsEventHandler) {
     try {
       const engineHttp = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8010";
       const engineWs = engineHttp.replace(/^http/, "ws");
-      const ws = new WebSocket(`${engineWs}/ws`);
+      const ws = new WebSocket(`${engineWs}/ws/events`);
 
       ws.onopen = () => setConnected(true);
 

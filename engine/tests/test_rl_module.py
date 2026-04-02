@@ -92,7 +92,7 @@ class TestRLConfig:
         assert VALIDATION_GATES["max_drawdown"] < 1.0
         assert VALIDATION_GATES["min_hold_rate"] >= 0.0
 
-        assert N_FEATURES == 18, f"Expected 18 features, got {N_FEATURES}"
+        assert N_FEATURES == 23, f"Expected 23 features, got {N_FEATURES}"
         assert N_ACTIONS == 4, f"Expected 4 actions, got {N_ACTIONS}"
 
     def test_action_enum_values(self):
