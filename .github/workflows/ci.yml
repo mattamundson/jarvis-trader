@@ -89,7 +89,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -q -r engine/requirements-core.txt
-          pip install -q pytest-cov==5.0.0
 
       - name: Run pytest
         run: |

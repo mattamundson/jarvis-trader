@@ -37,6 +37,7 @@ All conversation history and work logs from every development session, in chrono
 | 17 | [Sprint Closeout — RL docs + engine hardening](SESSION_LOG_2026-04-02_SPRINT_CLOSEOUT.md) | Apr 2, 2026 | — | RL Run history (Runs 3-8), SPY WFE=0.00 REJECTED, 13 test failures fixed (20→7), backtester completed.append(True) bug fixed, APIKeyMiddleware registered, phantom drawdown resolved, portfolio/market/safety routers wired |
 | 18 | [Dashboard + engine hardening — eight follow-ups + nine streams](SESSION_LOG_2026-04-02_DASHBOARD_ENGINE_HARDENING.md) | Apr 2, 2026 | — | Scorecard/validation dynamic baseline; all `dashboard/components` → fetchEngine; CI grep + contract tests; delete `notifications_router`; pytest-timeout; P0 runbook VIX + paper_runner alignment; VIX on `/watchlist` :3010 |
 | 19 | [**→ New session: read this first**](START_NEW_SESSION_HANDOFF_2026-04-02.md) | Apr 2, 2026 | — | Handoff from Cursor chat: copy-paste prompt, topic list, assumed repo state, manual follow-ups; links to #18 for full manifest/commands |
+| 20 | [Six-item sprint handoff (smoke / CI / IB markers / paper health)](SESSION_LOG_2026-04-02_SIX_ITEM_SPRINT_HANDOFF.md) | Apr 2, 2026 | — | Working TODAY verification, tier-1 pytest + cov, `pnpm build`, `integration_ib` on all IB wiring tests, `/health` chip on `/paper`, safety PR checklist; Cursor export note |
 
 ## Compacted Summary (from session continuation)
 
