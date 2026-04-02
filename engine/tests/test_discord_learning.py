@@ -145,6 +145,7 @@ def _make_temp_db(tmp_path: Optional[Path] = None, extra_sql: list[str] = None) 
     if tmp_path is not None:
         # Use a uniquely-named file inside pytest's tmp_path
         import uuid
+
         path = str(tmp_path / f"test_{uuid.uuid4().hex[:8]}.db")
     else:
         fd, path = tempfile.mkstemp(suffix=".db", prefix="jarvis_test_")
@@ -172,10 +173,16 @@ def _safe_unlink(path: str) -> None:
         pass  # SQLite WAL/journal still held — Windows will clean it up later
 
 
-def _insert_signal(db_path: str, symbol: str, timestamp: str,
-                   direction: str = "LONG", entry_price: float = 5000.0,
-                   target1: float = 5010.0, stop1: float = 4990.0,
-                   win_rate: float = 76.8) -> None:
+def _insert_signal(
+    db_path: str,
+    symbol: str,
+    timestamp: str,
+    direction: str = "LONG",
+    entry_price: float = 5000.0,
+    target1: float = 5010.0,
+    stop1: float = 4990.0,
+    win_rate: float = 76.8,
+) -> None:
     """Insert a single row into discord_bot_signals."""
     conn = sqlite3.connect(db_path)
     try:
@@ -203,12 +210,19 @@ def _insert_commentary(db_path: str, timestamp: str, content: str) -> None:
         conn.close()
 
 
-def _insert_ib_report(db_path: str, symbol: str, timestamp: str,
-                      ib_high: float = 5020.0, ib_low: float = 4980.0,
-                      ib_range: float = 40.0,
-                      ibu50: float = 5040.0, ibu100: float = 5060.0,
-                      ibd50: float = 4960.0, ibd100: float = 4940.0,
-                      auction_context: str = "IBH") -> None:
+def _insert_ib_report(
+    db_path: str,
+    symbol: str,
+    timestamp: str,
+    ib_high: float = 5020.0,
+    ib_low: float = 4980.0,
+    ib_range: float = 40.0,
+    ibu50: float = 5040.0,
+    ibu100: float = 5060.0,
+    ibd50: float = 4960.0,
+    ibd100: float = 4940.0,
+    auction_context: str = "IBH",
+) -> None:
     """Insert a single row into discord_ib_reports."""
     conn = sqlite3.connect(db_path)
     try:
@@ -217,8 +231,18 @@ def _insert_ib_report(db_path: str, symbol: str, timestamp: str,
                (symbol, timestamp, ib_high, ib_low, ib_range,
                 ibu50, ibu100, ibd50, ibd100, auction_context)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (symbol, timestamp, ib_high, ib_low, ib_range,
-             ibu50, ibu100, ibd50, ibd100, auction_context),
+            (
+                symbol,
+                timestamp,
+                ib_high,
+                ib_low,
+                ib_range,
+                ibu50,
+                ibu100,
+                ibd50,
+                ibd100,
+                auction_context,
+            ),
         )
         conn.commit()
     finally:
@@ -228,6 +252,7 @@ def _insert_ib_report(db_path: str, symbol: str, timestamp: str,
 # ===========================================================================
 # 1. DiscordSignalContext Tests
 # ===========================================================================
+
 
 class TestDiscordSignalContext:
     """Tests for DiscordSignalContext (discord/signal_context.py)."""
@@ -239,6 +264,7 @@ class TestDiscordSignalContext:
 
     def _make_context(self, db_path: str):
         from discord.signal_context import DiscordSignalContext
+
         return DiscordSignalContext(db_path=db_path)
 
     def test_get_features_returns_dict_with_required_keys(self, db_path):
@@ -373,6 +399,7 @@ class TestDiscordSignalContext:
 # 2. SentimentProvider Tests
 # ===========================================================================
 
+
 class TestSentimentProvider:
     """Tests for SentimentProvider (discord/sentiment_provider.py)."""
 
@@ -383,6 +410,7 @@ class TestSentimentProvider:
 
     def _make_provider(self, db_path: str):
         from discord.sentiment_provider import SentimentProvider
+
         return SentimentProvider(db_path=db_path)
 
     def test_instantiation_with_temp_db(self, db_path):
@@ -460,6 +488,7 @@ class TestSentimentProvider:
     def test_score_message_helper(self):
         """Module-level score_message() function works correctly."""
         from discord.sentiment_provider import score_message
+
         bullish_score = score_message("buyers long breakout support upside bid")
         bearish_score = score_message("sellers short breakdown resistance downside offer")
         neutral_score = score_message("no keywords at all here")
@@ -488,6 +517,7 @@ class TestSentimentProvider:
 # 3. IBLevelProvider Tests
 # ===========================================================================
 
+
 class TestIBLevelProvider:
     """Tests for IBLevelProvider (discord/ib_levels.py)."""
 
@@ -498,6 +528,7 @@ class TestIBLevelProvider:
 
     def _make_provider(self, db_path: str):
         from discord.ib_levels import IBLevelProvider
+
         return IBLevelProvider(db_path=db_path)
 
     def test_instantiation(self, db_path):
@@ -524,7 +555,16 @@ class TestIBLevelProvider:
         _insert_ib_report(db_path, "ES", "2025-01-15T08:00:00")
         provider = self._make_provider(db_path)
         result = provider.get_levels(symbol="ES", trading_date=date(2025, 1, 15))
-        expected_keys = {"ib_high", "ib_low", "ib_range", "ibu50", "ibu100", "ibd50", "ibd100", "auction_context"}
+        expected_keys = {
+            "ib_high",
+            "ib_low",
+            "ib_range",
+            "ibu50",
+            "ibu100",
+            "ibd50",
+            "ibd100",
+            "auction_context",
+        }
         assert expected_keys == set(result.keys())
 
     def test_get_levels_with_string_date(self, db_path):
@@ -581,15 +621,18 @@ class TestIBLevelProvider:
 # 4. PatternExtractor Tests
 # ===========================================================================
 
+
 class TestPatternExtractor:
     """Tests for PatternExtractor (learning/_experimental/pattern_extractor.py)."""
 
     def _make_extractor(self):
         from learning._experimental.pattern_extractor import PatternExtractor
+
         return PatternExtractor()
 
-    def _make_trades(self, count: int, regime: str = "TRENDING",
-                     won: bool = True, hour: int = 9) -> list[dict]:
+    def _make_trades(
+        self, count: int, regime: str = "TRENDING", won: bool = True, hour: int = 9
+    ) -> list[dict]:
         return [
             {
                 "id": f"t{i}",
@@ -633,6 +676,7 @@ class TestPatternExtractor:
     def test_extracted_pattern_has_required_fields(self):
         """Each extracted Pattern has name, frequency, win_rate, avg_return, conditions."""
         from learning._experimental.pattern_extractor import Pattern
+
         extractor = self._make_extractor()
         trades = self._make_trades(5)
         result = extractor.extract(trades)
@@ -714,18 +758,27 @@ class TestPatternExtractor:
 # 5. TradeClassifier Tests
 # ===========================================================================
 
+
 class TestTradeClassifier:
     """Tests for TradeClassifier (learning/_experimental/trade_classifier.py)."""
 
     def _make_classifier(self):
         from learning._experimental.trade_classifier import TradeClassifier
+
         return TradeClassifier()
 
-    def _make_trade(self, pnl: float = 300.0, risk: float = 100.0,
-                    entry_price: float = 100.0, exit_price: float = 103.0,
-                    time_in_trade: float = 1.0, regime_aligned: bool = True,
-                    slippage: float = 0.5, won: bool = True,
-                    trade_id: str = "test-trade-1") -> dict:
+    def _make_trade(
+        self,
+        pnl: float = 300.0,
+        risk: float = 100.0,
+        entry_price: float = 100.0,
+        exit_price: float = 103.0,
+        time_in_trade: float = 1.0,
+        regime_aligned: bool = True,
+        slippage: float = 0.5,
+        won: bool = True,
+        trade_id: str = "test-trade-1",
+    ) -> dict:
         return {
             "id": trade_id,
             "pnl": pnl,
@@ -749,6 +802,7 @@ class TestTradeClassifier:
     def test_classify_returns_trade_classification(self):
         """classify() returns a TradeClassification object."""
         from learning._experimental.trade_classifier import TradeClassification
+
         classifier = self._make_classifier()
         result = classifier.classify(self._make_trade())
         assert isinstance(result, TradeClassification)
@@ -762,8 +816,9 @@ class TestTradeClassifier:
     def test_excellent_trade_gets_high_grade(self):
         """A 3R+ aligned quick trade should grade A or B."""
         classifier = self._make_classifier()
-        trade = self._make_trade(pnl=300.0, risk=100.0, time_in_trade=1.0,
-                                  regime_aligned=True, slippage=0.5, won=True)
+        trade = self._make_trade(
+            pnl=300.0, risk=100.0, time_in_trade=1.0, regime_aligned=True, slippage=0.5, won=True
+        )
         result = classifier.classify(trade)
         assert result.grade in ("A", "B")
 
@@ -826,11 +881,13 @@ class TestTradeClassifier:
 # 6. StrategyTuner Tests
 # ===========================================================================
 
+
 class TestStrategyTuner:
     """Tests for StrategyTuner (learning/_experimental/strategy_tuner.py)."""
 
     def _make_tuner(self):
         from learning._experimental.strategy_tuner import StrategyTuner
+
         return StrategyTuner()
 
     def _default_params(self) -> dict:
@@ -865,8 +922,7 @@ class TestStrategyTuner:
         """Fewer than 5 trades returns empty suggestions."""
         tuner = self._make_tuner()
         result = tuner.suggest_adjustments(
-            [{"id": "t1", "pnl": 100.0, "risk": 100.0, "won": True}],
-            self._default_params()
+            [{"id": "t1", "pnl": 100.0, "risk": 100.0, "won": True}], self._default_params()
         )
         assert result == []
 
@@ -879,6 +935,7 @@ class TestStrategyTuner:
     def test_low_win_rate_generates_suggestions(self):
         """Low win rate (all losses) triggers parameter suggestions."""
         from learning._experimental.strategy_tuner import Suggestion
+
         tuner = self._make_tuner()
         result = tuner.suggest_adjustments(self._make_bad_trades(), self._default_params())
         assert len(result) > 0
@@ -899,11 +956,16 @@ class TestStrategyTuner:
     def test_never_suggests_safety_params(self):
         """Safety parameters (MAX_DAILY_LOSS_PCT etc.) must never be suggested."""
         tuner = self._make_tuner()
-        params = {**self._default_params(), "MAX_DAILY_LOSS_PCT": 0.02, "MAX_POSITION_SIZE_PCT": 0.05}
+        params = {
+            **self._default_params(),
+            "MAX_DAILY_LOSS_PCT": 0.02,
+            "MAX_POSITION_SIZE_PCT": 0.05,
+        }
         result = tuner.suggest_adjustments(self._make_bad_trades(), params)
         for s in result:
-            assert not tuner.is_safety_param(s.param_name), \
-                f"Safety param '{s.param_name}' was suggested for change"
+            assert not tuner.is_safety_param(
+                s.param_name
+            ), f"Safety param '{s.param_name}' was suggested for change"
 
     def test_is_safety_param(self):
         """is_safety_param() correctly identifies safety vs tunable params."""
@@ -925,9 +987,9 @@ class TestStrategyTuner:
         """clamp_suggestion() keeps value within [min, max] for a tunable param."""
         tuner = self._make_tuner()
         # STC_OS range is (10, 20)
-        assert tuner.clamp_suggestion("STC_OS", 5) == 10    # below min → clamped to 10
+        assert tuner.clamp_suggestion("STC_OS", 5) == 10  # below min → clamped to 10
         assert tuner.clamp_suggestion("STC_OS", 100) == 20  # above max → clamped to 20
-        assert tuner.clamp_suggestion("STC_OS", 15) == 15   # within range → unchanged
+        assert tuner.clamp_suggestion("STC_OS", 15) == 15  # within range → unchanged
 
     def test_clamp_suggestion_unknown_param_passthrough(self):
         """clamp_suggestion() returns the value unchanged for an unknown param."""
@@ -958,6 +1020,7 @@ class TestStrategyTuner:
 # 7. SessionMemory Tests
 # ===========================================================================
 
+
 class TestSessionMemory:
     """Tests for SessionMemory (learning/_experimental/session_memory.py)."""
 
@@ -968,6 +1031,7 @@ class TestSessionMemory:
         directory so tests never touch the real session_memory.json file.
         """
         import learning._experimental.session_memory as sm_module
+
         fake_data_dir = tmp_path / "data"
         fake_data_dir.mkdir()
         fake_memory_file = fake_data_dir / "session_memory.json"
@@ -976,6 +1040,7 @@ class TestSessionMemory:
 
     def _make_memory(self):
         from learning._experimental.session_memory import SessionMemory
+
         return SessionMemory()
 
     def test_instantiation(self):
@@ -1060,6 +1125,7 @@ class TestSessionMemory:
     def test_lesson_has_correct_fields(self):
         """Each Lesson has date, condition, lesson_text, trades_affected, outcome."""
         from learning._experimental.session_memory import Lesson
+
         mem = self._make_memory()
         mem.record_session(
             date="2025-01-15",
@@ -1121,6 +1187,7 @@ class TestSessionMemory:
     def test_persistence_to_json(self, tmp_path):
         """Lessons are persisted to JSON and reloaded by a new instance."""
         import learning._experimental.session_memory as sm_module
+
         # The fixture already redirects DATA_DIR and SESSION_MEMORY_FILE
         mem1 = self._make_memory()
         mem1.record_session(
@@ -1131,7 +1198,7 @@ class TestSessionMemory:
         )
         # A fresh instance should load the same file
         mem2 = self._make_memory()
-        assert any("Persisted lesson check" in l.lesson_text for l in mem2.lessons)
+        assert any("Persisted lesson check" in lesson.lesson_text for lesson in mem2.lessons)
 
     def test_add_lesson_via_record_session(self):
         """Multiple calls to record_session accumulate lessons."""
@@ -1155,12 +1222,14 @@ class TestSessionMemory:
 # 8. Learning Router Tests (via FastAPI TestClient)
 # ===========================================================================
 
+
 def _build_learning_app():
     """
     Build a minimal FastAPI app with only the learning_router.
     Patches DB_PATH to a temp in-memory SQLite so no real DB is needed.
     """
     from fastapi import FastAPI
+
     from routers.learning_router import router as learning_router
 
     app = FastAPI()
@@ -1183,6 +1252,7 @@ class TestLearningRouter:
 
         # Redirect SessionMemory file storage
         import learning._experimental.session_memory as sm_module
+
         fake_data_dir = tmp_path / "data"
         fake_data_dir.mkdir(exist_ok=True)
         monkeypatch.setattr(sm_module, "DATA_DIR", fake_data_dir)
@@ -1193,6 +1263,7 @@ class TestLearningRouter:
         """Create a TestClient for the learning router app."""
         try:
             from fastapi.testclient import TestClient
+
             app = _build_learning_app()
             return TestClient(app)
         except Exception as exc:
@@ -1306,7 +1377,7 @@ class TestLearningRouter:
         response = client.get("/learning/memory")
         data = response.json()
         lessons = data["data"]["lessons"]
-        assert any(lesson_text in l.get("lesson_text", "") for l in lessons)
+        assert any(lesson_text in row.get("lesson_text", "") for row in lessons)
 
     def test_classify_endpoint_missing_trade_id_returns_422(self, client):
         """GET /learning/classify without trade_id param returns 422."""
@@ -1323,12 +1394,14 @@ class TestLearningRouter:
 # 9. Additional edge-case / cross-module Tests
 # ===========================================================================
 
+
 class TestEdgeCases:
     """Miscellaneous edge-case tests not covered above."""
 
     def test_sentiment_score_message_caution_keywords(self):
         """Caution keywords reduce denominator but don't contribute to numerator."""
         from discord.sentiment_provider import score_message
+
         # Pure caution → neutral score
         score = score_message("choppy sideways balanced wait avoid fomc holiday")
         # Score can be 0 or lean slightly positive/negative depending on mix
@@ -1337,6 +1410,7 @@ class TestEdgeCases:
     def test_sentiment_score_message_mixed(self):
         """Mixed bullish + bearish message scores near 0."""
         from discord.sentiment_provider import score_message
+
         # Equal bullish and bearish → near 0
         score = score_message("buyers long breakout sellers short breakdown")
         assert -0.5 <= score <= 0.5
@@ -1344,6 +1418,7 @@ class TestEdgeCases:
     def test_discord_signal_context_nonexistent_db_returns_defaults(self):
         """When DB file doesn't exist, get_features returns safe defaults."""
         from discord.signal_context import DiscordSignalContext
+
         ctx = DiscordSignalContext(db_path="/tmp/nonexistent_db_xyz_9999.db")
         ts = datetime(2025, 1, 15, 10, 0, 0)
         result = ctx.get_features(symbol="MES", timestamp=ts, price=5000.0, atr=10.0)
@@ -1354,6 +1429,7 @@ class TestEdgeCases:
     def test_ib_level_provider_nonexistent_db_returns_none(self):
         """When DB file doesn't exist, get_levels returns None."""
         from discord.ib_levels import IBLevelProvider
+
         provider = IBLevelProvider(db_path="/tmp/nonexistent_db_xyz_9999.db")
         result = provider.get_levels(symbol="ES", trading_date=date(2025, 1, 15))
         assert result is None
@@ -1361,6 +1437,7 @@ class TestEdgeCases:
     def test_pattern_extractor_with_invalid_datetime_strings(self):
         """PatternExtractor handles unparseable datetime strings gracefully."""
         from learning._experimental.pattern_extractor import PatternExtractor
+
         extractor = PatternExtractor()
         trades = [
             {
@@ -1377,15 +1454,19 @@ class TestEdgeCases:
     def test_trade_classifier_handles_loss_trade(self):
         """TradeClassifier returns grade F for a trade with negative P&L."""
         from learning._experimental.trade_classifier import TradeClassifier
+
         classifier = TradeClassifier()
         # A losing trade should always grade F
-        result = classifier.classify({"id": "loss-edge", "pnl": -500.0, "risk": 100.0, "won": False})
+        result = classifier.classify(
+            {"id": "loss-edge", "pnl": -500.0, "risk": 100.0, "won": False}
+        )
         assert result.grade == "F"
         assert len(result.factors) > 0
 
     def test_strategy_tuner_empty_trades(self):
         """StrategyTuner returns empty list for empty trades."""
         from learning._experimental.strategy_tuner import StrategyTuner
+
         tuner = StrategyTuner()
         result = tuner.suggest_adjustments([], {"STC_OS": 15})
         assert result == []
@@ -1393,6 +1474,7 @@ class TestEdgeCases:
     def test_ib_levels_mnq_to_nq_map(self, tmp_path):
         """MNQ is correctly mapped to NQ for IB lookups."""
         from discord.ib_levels import IBLevelProvider
+
         db_path = _make_temp_db(tmp_path)
         _insert_ib_report(db_path, "NQ", "2025-01-15T08:00:00")
         provider = IBLevelProvider(db_path=db_path)

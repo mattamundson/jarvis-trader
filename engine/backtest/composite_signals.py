@@ -38,7 +38,6 @@ Output columns added (backtester-compatible):
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -105,11 +104,12 @@ def generate_composite_signals(
     # ── Step 1: STC signals (adaptive regime) ─────────────────────────────
     try:
         from backtest.signals import generate_signals as _gen_stc
+
         df_stc = _gen_stc(
             df_orig.copy(),
             symbol=symbol,
             adaptive_regime=True,  # uses RegimeClassifier → adds regime_type
-            regime_filter=False,   # let composite layer handle filtering
+            regime_filter=False,  # let composite layer handle filtering
         )
     except Exception as e:
         logger.warning(f"{symbol}: STC signal generation failed: {e}")
@@ -128,6 +128,7 @@ def generate_composite_signals(
     # ── Step 2: ORB signals ────────────────────────────────────────────────
     try:
         from backtest.orb_signals import generate_orb_signals as _gen_orb
+
         df_orb = _gen_orb(df_orig.copy(), symbol=symbol, volume_filter=True, regime_filter=False)
     except Exception as e:
         logger.warning(f"{symbol}: ORB signal generation failed: {e}")
@@ -141,6 +142,7 @@ def generate_composite_signals(
     # ── Step 3: VWAP signals ───────────────────────────────────────────────
     try:
         from backtest.vwap_signals import generate_vwap_signals as _gen_vwap
+
         df_vwap = _gen_vwap(
             df_orig.copy(),
             symbol=symbol,
@@ -181,6 +183,7 @@ def generate_composite_signals(
         # Fallback: run classifier manually
         try:
             from backtest.regime import RegimeClassifier
+
             clf = RegimeClassifier()
             classified = clf.classify(result)
             regime_series = classified["regime_type"].fillna("RANGING")
@@ -194,11 +197,19 @@ def generate_composite_signals(
     stc_long = result.get("stc_cross_up", pd.Series(False, index=result.index)).astype(float)
     stc_short = result.get("stc_cross_down", pd.Series(False, index=result.index)).astype(float)
 
-    orb_long = (result.get("ORB_signal", pd.Series("", index=result.index)) == "LONG_ENTRY").astype(float)
-    orb_short = (result.get("ORB_signal", pd.Series("", index=result.index)) == "SHORT_ENTRY").astype(float)
+    orb_long = (result.get("ORB_signal", pd.Series("", index=result.index)) == "LONG_ENTRY").astype(
+        float
+    )
+    orb_short = (
+        result.get("ORB_signal", pd.Series("", index=result.index)) == "SHORT_ENTRY"
+    ).astype(float)
 
-    vwap_long = (result.get("vwap_signal", pd.Series("", index=result.index)) == "LONG_ENTRY").astype(float)
-    vwap_short = (result.get("vwap_signal", pd.Series("", index=result.index)) == "SHORT_ENTRY").astype(float)
+    vwap_long = (
+        result.get("vwap_signal", pd.Series("", index=result.index)) == "LONG_ENTRY"
+    ).astype(float)
+    vwap_short = (
+        result.get("vwap_signal", pd.Series("", index=result.index)) == "SHORT_ENTRY"
+    ).astype(float)
 
     # Weights by regime
     w_stc = regime_series.map(lambda r: REGIME_WEIGHTS.get(r, DEFAULT_WEIGHTS)["stc"])
@@ -235,7 +246,9 @@ def generate_composite_signals(
 
     # ── Step 8: Override backtester-compatible columns ─────────────────────
     close = result["close"]
-    atr = result.get("atr", pd.Series(result["close"] * 0.001, index=result.index)).fillna(result["close"] * 0.001)
+    atr = result.get("atr", pd.Series(result["close"] * 0.001, index=result.index)).fillna(
+        result["close"] * 0.001
+    )
 
     # Default: no composite signal
     result["entry_signal"] = "NO_TRADE"
@@ -256,7 +269,6 @@ def generate_composite_signals(
         result.loc[long_idx, "bias"] = "STRONG_BULL"
 
         for idx_val in long_idx:
-            i = result.index.get_loc(idx_val)
             entry_p = float(close.loc[idx_val])
             atr_val = float(atr.loc[idx_val])
 
@@ -311,9 +323,8 @@ def generate_composite_signals(
 
     # ── Step 8b: R:R filter — reject entries with composite_rr < MIN_RR ────
     if "composite_rr" in result.columns:
-        low_rr_mask = (
-            (result["entry_signal"] == "ENTRY_NOW") &
-            (result["composite_rr"].fillna(0) < MIN_RR)
+        low_rr_mask = (result["entry_signal"] == "ENTRY_NOW") & (
+            result["composite_rr"].fillna(0) < MIN_RR
         )
         n_rr_filtered = low_rr_mask.sum()
         if n_rr_filtered > 0:
@@ -323,9 +334,12 @@ def generate_composite_signals(
 
     # Volatile blocks
     volatile_with_signal = is_volatile & (
-        stc_long.astype(bool) | stc_short.astype(bool) |
-        orb_long.astype(bool) | orb_short.astype(bool) |
-        vwap_long.astype(bool) | vwap_short.astype(bool)
+        stc_long.astype(bool)
+        | stc_short.astype(bool)
+        | orb_long.astype(bool)
+        | orb_short.astype(bool)
+        | vwap_long.astype(bool)
+        | vwap_short.astype(bool)
     )
     result.loc[volatile_with_signal, "entry_signal"] = "COMPOSITE_VOLATILE_BLOCK"
 
@@ -334,9 +348,10 @@ def generate_composite_signals(
         result["composite_rr"] = np.nan
 
     # ── Step 9: Logging ───────────────────────────────────────────────────
-    n_long = (result["entry_signal"] == "ENTRY_NOW").sum() if "entry_signal" in result.columns else 0
     n_long_dir = ((result["entry_signal"] == "ENTRY_NOW") & (result["bias"] == "STRONG_BULL")).sum()
-    n_short_dir = ((result["entry_signal"] == "ENTRY_NOW") & (result["bias"] == "STRONG_BEAR")).sum()
+    n_short_dir = (
+        (result["entry_signal"] == "ENTRY_NOW") & (result["bias"] == "STRONG_BEAR")
+    ).sum()
     n_volatile = (result["entry_signal"] == "COMPOSITE_VOLATILE_BLOCK").sum()
     n_stc = result["stc_contrib"].sum()
     n_orb = result["orb_contrib"].sum()
@@ -356,10 +371,20 @@ def generate_composite_signals(
 def _add_empty_composite_cols(df: pd.DataFrame) -> pd.DataFrame:
     """Add empty composite columns for insufficient data case."""
     for col in [
-        "composite_score", "composite_rr", "composite_regime",
-        "stc_contrib", "orb_contrib", "vwap_contrib",
-        "ORB_signal", "orb_stop", "orb_target_1", "orb_target_2",
-        "vwap_signal", "vwap_stop", "vwap_target_1", "vwap_target_2",
+        "composite_score",
+        "composite_rr",
+        "composite_regime",
+        "stc_contrib",
+        "orb_contrib",
+        "vwap_contrib",
+        "ORB_signal",
+        "orb_stop",
+        "orb_target_1",
+        "orb_target_2",
+        "vwap_signal",
+        "vwap_stop",
+        "vwap_target_1",
+        "vwap_target_2",
     ]:
         if col not in df.columns:
             if col in ("stc_contrib", "orb_contrib", "vwap_contrib"):
@@ -375,8 +400,8 @@ def _add_empty_composite_cols(df: pd.DataFrame) -> pd.DataFrame:
 
 if __name__ == "__main__":
     """Quick smoke test — run from engine/ directory."""
-    import sys
     import os
+    import sys
 
     # Add engine/ to path so package imports work
     _engine_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -417,6 +442,8 @@ if __name__ == "__main__":
 
     print(f"Entries: {n_entry} total ({n_long} LONG, {n_short} SHORT)")
     print(f"Regime distribution: {result['composite_regime'].value_counts().to_dict()}")
-    print(f"Composite score range: [{result['composite_score'].min():.3f}, {result['composite_score'].max():.3f}]")
+    print(
+        f"Composite score range: [{result['composite_score'].min():.3f}, {result['composite_score'].max():.3f}]"
+    )
     print(f"Columns added: {[c for c in result.columns if c not in df_test.columns][:10]}...")
     print("SMOKE TEST PASSED")

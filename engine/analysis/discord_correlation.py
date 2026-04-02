@@ -27,15 +27,14 @@ Prints:  summary table to stdout
 
 from __future__ import annotations
 
-import os
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
 # ── Path resolution ──────────────────────────────────────────────────────────
+
 
 def _find_db() -> Path:
     """
@@ -72,10 +71,10 @@ DB_PATH = _find_db()
 DEFAULT_OUTPUT = DB_PATH.parent / "discord_correlation_study.csv"
 
 # ── Confidence thresholds (calibrated to this dataset's win-rate scale) ──────
-CONF_HIGH_THRESHOLD = 80.0   # win_rate >= 80 → HIGH_CONFIDENCE
-CONF_MED_THRESHOLD = 70.0    # win_rate 70-80 → MED_CONFIDENCE
-CONF_LOW_THRESHOLD = 60.0    # win_rate 60-70 → LOW_CONFIDENCE
-                              # win_rate <  60 → WEAK
+CONF_HIGH_THRESHOLD = 80.0  # win_rate >= 80 → HIGH_CONFIDENCE
+CONF_MED_THRESHOLD = 70.0  # win_rate 70-80 → MED_CONFIDENCE
+CONF_LOW_THRESHOLD = 60.0  # win_rate 60-70 → LOW_CONFIDENCE
+# win_rate <  60 → WEAK
 
 # Market proxy symbol — used to derive "market direction" for alignment calc
 MARKET_PROXY_SYMBOL = "NQ"
@@ -85,6 +84,7 @@ MIN_SIGNALS_FOR_REPORT = 10
 
 
 # ── Confidence tier helpers ───────────────────────────────────────────────────
+
 
 def _confidence_tier(win_rate: float) -> str:
     """Map a win_rate (0–100 scale) to a confidence tier label."""
@@ -117,6 +117,7 @@ def _jarvis_bias_from_confidence(win_rate: float) -> str:
 
 
 # ── Database query helpers ────────────────────────────────────────────────────
+
 
 def _fetch_signals(
     conn: sqlite3.Connection,
@@ -185,7 +186,7 @@ def _fetch_signals(
     # Convert to UTC-naive before period conversion to avoid tz-drop warning
     df["year_month"] = df["timestamp"].dt.tz_localize(None).dt.to_period("M").astype(str)
 
-    df["win_rate_norm"] = df["win_rate"] / 100.0   # 0.0–1.0 scale
+    df["win_rate_norm"] = df["win_rate"] / 100.0  # 0.0–1.0 scale
     df["confidence_tier"] = df["win_rate"].apply(_confidence_tier)
     df["jarvis_bias"] = df["win_rate"].apply(_jarvis_bias_from_confidence)
 
@@ -219,14 +220,17 @@ def _build_nq_hourly_direction(conn: sqlite3.Connection) -> pd.DataFrame:
     # Keep only the dominant direction per hour bucket
     raw["hour_bucket"] = pd.to_datetime(raw["hour_bucket_str"], utc=True)
     dominant = raw.sort_values("cnt", ascending=False).groupby("hour_bucket").first().reset_index()
-    dominant = dominant.rename(columns={
-        "direction": "market_direction",
-        "avg_win_rate": "market_avg_wr",
-    })
+    dominant = dominant.rename(
+        columns={
+            "direction": "market_direction",
+            "avg_win_rate": "market_avg_wr",
+        }
+    )
     return dominant[["hour_bucket", "market_direction", "market_avg_wr"]]
 
 
 # ── Core analysis functions ───────────────────────────────────────────────────
+
 
 def analyze_signal_alignment(
     symbol: str,
@@ -320,8 +324,18 @@ def compute_statistics(df: pd.DataFrame) -> Dict:
             "avg_win_rate": round(group["win_rate_norm"].mean(), 4),
             "avg_gain": round(group["gain"].mean(), 4),
             "avg_draw": round(group["draw"].mean(), 4),
-            "avg_net": round(group["net"].mean() if "net" in group.columns and group["net"].notna().any() else float("nan"), 4),
-            "avg_rr": round(group["rr"].mean() if "rr" in group.columns and group["rr"].notna().any() else float("nan"), 4),
+            "avg_net": round(
+                group["net"].mean()
+                if "net" in group.columns and group["net"].notna().any()
+                else float("nan"),
+                4,
+            ),
+            "avg_rr": round(
+                group["rr"].mean()
+                if "rr" in group.columns and group["rr"].notna().any()
+                else float("nan"),
+                4,
+            ),
             "best_hour": int(group.groupby("hour_of_day")["win_rate_norm"].mean().idxmax()),
             "worst_hour": int(group.groupby("hour_of_day")["win_rate_norm"].mean().idxmin()),
         }
@@ -367,22 +381,34 @@ def _compute_streak_stats(df: pd.DataFrame) -> pd.DataFrame:
         streak = sym_df[sym_df["is_streak"]]
         no_streak = sym_df[~sym_df["is_streak"]]
 
-        records.append({
-            "symbol": symbol,
-            "group": "streak_3plus",
-            "signal_count": len(streak),
-            "avg_win_rate": round(streak["win_rate_norm"].mean(), 4) if not streak.empty else float("nan"),
-            "avg_gain": round(streak["gain"].mean(), 4) if not streak.empty else float("nan"),
-            "avg_draw": round(streak["draw"].mean(), 4) if not streak.empty else float("nan"),
-        })
-        records.append({
-            "symbol": symbol,
-            "group": "non_streak",
-            "signal_count": len(no_streak),
-            "avg_win_rate": round(no_streak["win_rate_norm"].mean(), 4) if not no_streak.empty else float("nan"),
-            "avg_gain": round(no_streak["gain"].mean(), 4) if not no_streak.empty else float("nan"),
-            "avg_draw": round(no_streak["draw"].mean(), 4) if not no_streak.empty else float("nan"),
-        })
+        records.append(
+            {
+                "symbol": symbol,
+                "group": "streak_3plus",
+                "signal_count": len(streak),
+                "avg_win_rate": round(streak["win_rate_norm"].mean(), 4)
+                if not streak.empty
+                else float("nan"),
+                "avg_gain": round(streak["gain"].mean(), 4) if not streak.empty else float("nan"),
+                "avg_draw": round(streak["draw"].mean(), 4) if not streak.empty else float("nan"),
+            }
+        )
+        records.append(
+            {
+                "symbol": symbol,
+                "group": "non_streak",
+                "signal_count": len(no_streak),
+                "avg_win_rate": round(no_streak["win_rate_norm"].mean(), 4)
+                if not no_streak.empty
+                else float("nan"),
+                "avg_gain": round(no_streak["gain"].mean(), 4)
+                if not no_streak.empty
+                else float("nan"),
+                "avg_draw": round(no_streak["draw"].mean(), 4)
+                if not no_streak.empty
+                else float("nan"),
+            }
+        )
 
     return pd.DataFrame(records)
 
@@ -415,19 +441,22 @@ def _compute_cross_market_alignment(conn: sqlite3.Connection) -> pd.DataFrame:
         ]:
             if len(group_df) < MIN_SIGNALS_FOR_REPORT:
                 continue
-            results.append({
-                "symbol": symbol,
-                "alignment_group": group_label,
-                "signal_count": len(group_df),
-                "avg_win_rate": round(group_df["win_rate_norm"].mean(), 4),
-                "avg_gain": round(group_df["gain"].mean(), 4),
-                "avg_draw": round(group_df["draw"].mean(), 4),
-            })
+            results.append(
+                {
+                    "symbol": symbol,
+                    "alignment_group": group_label,
+                    "signal_count": len(group_df),
+                    "avg_win_rate": round(group_df["win_rate_norm"].mean(), 4),
+                    "avg_gain": round(group_df["gain"].mean(), 4),
+                    "avg_draw": round(group_df["draw"].mean(), 4),
+                }
+            )
 
     return pd.DataFrame(results)
 
 
 # ── Main study runner ─────────────────────────────────────────────────────────
+
 
 def run_correlation_study(
     symbols: Optional[List[str]] = None,
@@ -526,6 +555,7 @@ def run_correlation_study(
 
 # ── Pretty-print helpers ─────────────────────────────────────────────────────
 
+
 def _print_section(title: str, df: pd.DataFrame) -> None:
     if df.empty:
         print(f"\n[{title}] — no data\n")
@@ -607,13 +637,10 @@ def _print_best_hours(df: pd.DataFrame) -> None:
     print(f"\n{'─'*70}")
     print("  4. TOP 3 BEST HOURS BY WIN RATE (per symbol)")
     print(f"{'─'*70}")
-    print(
-        f"  {'Symbol':<8} {'Hour (UTC)':<12} {'Count':>7} "
-        f"{'WinRate':>8} {'AvgGain':>10}"
-    )
+    print(f"  {'Symbol':<8} {'Hour (UTC)':<12} {'Count':>7} " f"{'WinRate':>8} {'AvgGain':>10}")
     print(f"  {'─'*8} {'─'*12} {'─'*7} {'─'*8} {'─'*10}")
 
-    for symbol, sym_df in df.groupby("symbol"):
+    for _symbol, sym_df in df.groupby("symbol"):
         top3 = sym_df.nlargest(3, "avg_win_rate")
         for _, row in top3.iterrows():
             wr = f"{row['avg_win_rate']*100:.1f}%"
