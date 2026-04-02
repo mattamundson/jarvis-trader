@@ -4,7 +4,8 @@ JARVIS TRADER — Main Server
 FastAPI backend for the trading engine.
 Runs on port 8010 (separate from GMS JARVIS on 8009).
 
-Start with: uvicorn main:app --reload --port 8010
+Start with: .venv\\Scripts\\python -m uvicorn main:app --port 8010
+(No --reload — IB Gateway / duplicate client-id issues; use restart_engine.ps1 after code changes.)
 """
 
 import asyncio

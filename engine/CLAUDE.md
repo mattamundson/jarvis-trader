@@ -26,7 +26,7 @@
 ## Python Conventions
 
 - Runtime: `.venv/Scripts/python` — never system Python
-- Start: `.venv/Scripts/python -m uvicorn main:app --reload --port 8010`
+- Start: `.venv/Scripts/python -m uvicorn main:app --port 8010` (no `--reload` — use `restart_engine.ps1` after changes; reload duplicates IB connections)
 - Tests: `.venv/Scripts/python -m pytest tests/ -v` (467+ tests passing)
 - Async throughout with graceful sync fallback
 - Pydantic v2 for all models

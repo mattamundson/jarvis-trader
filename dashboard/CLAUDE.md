@@ -22,7 +22,7 @@ Never write `fetch('http://localhost:8010/...')` directly.
 - Push `'use client'` as far down the tree as possible
 - `pnpm` only — system npm is broken
 - Build check: `./node_modules/.bin/tsc --noEmit` (NOT `npx tsc`)
-- Dev: `pnpm dev` | Build: `pnpm run build`
+- Dev: `pnpm dev` | Build: `pnpm run build` | If Windows fails with missing `.next/**/page.js.nft.json`, run `pnpm run build:clean` (wipes `.next` then builds)
 
 ## Dashboard Pages (14 total)
 

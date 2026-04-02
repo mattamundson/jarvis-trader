@@ -1,5 +1,7 @@
 # Paper data — source of truth (P0.4–P0.6)
 
+**Ledger boundaries (who writes B vs A):** [PAPER_LEDGER_BOUNDARIES.md](PAPER_LEDGER_BOUNDARIES.md)
+
 **Decision (default ops): A+B with optional sync**
 
 | Mode | Source | Use when |

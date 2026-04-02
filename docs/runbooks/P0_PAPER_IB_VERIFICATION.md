@@ -77,6 +77,8 @@ Global API key middleware is on the engine: unauthenticated browser calls to the
 
 ## 4.5 Automated checks (script)
 
+**GitHub:** optional workflow [`.github/workflows/p0-verify.yml`](../../.github/workflows/p0-verify.yml) (`workflow_dispatch`) runs the same script against `JARVIS_VERIFY_BASE` with secret `JARVIS_API_KEY` when you have a reachable engine.
+
 With the engine listening on `8010` and `JARVIS_API_KEY` matching engine `API_KEY`:
 
 ```powershell
