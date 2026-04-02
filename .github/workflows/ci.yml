@@ -23,11 +23,17 @@ jobs:
       - name: Install ruff
         run: pip install ruff==0.8.0
 
+      # Run from engine/ so isort treats agents, config, database, … as first-party
+      # (ruff check engine/ from repo root mis-classifies them and fails I001).
       - name: Run ruff check
-        run: ruff check engine/ --config engine/ruff.toml
+        run: |
+          cd engine
+          ruff check . --config ruff.toml
 
       - name: Run ruff format check
-        run: ruff format --check engine/ --config engine/ruff.toml
+        run: |
+          cd engine
+          ruff format --check . --config ruff.toml
 
   engine-typecheck:
     name: Engine Type Check (mypy)
