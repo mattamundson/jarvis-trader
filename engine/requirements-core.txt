@@ -17,6 +17,7 @@ prometheus-fastapi-instrumentator==6.1.0  # Prometheus metrics export for FastAP
 
 # ── Core Framework ─────────────────────────────────────────────────────────
 fastapi==0.115.12
+python-multipart==0.0.20  # File/Form routes (FastAPI)
 uvicorn[standard]==0.34.0
 pydantic==2.11.2
 pydantic-settings==2.8.1
