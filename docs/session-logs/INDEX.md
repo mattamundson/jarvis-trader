@@ -32,6 +32,9 @@ All conversation history and work logs from every development session, in chrono
 | 12 | [Sprint 10-Agent Parallel Deployment](SESSION_LOG_2026-04-02_SPRINT_10AGENTS.md) | Apr 2, 2026 | — | Documentation sprint: README rewrite (ports/Python/tests), MEMORY.md update, session index update, engine/CLAUDE.md verification, LAUNCH_QUICK_START.md verification |
 | 13 | [Dashboard fetchEngine backlog](DASHBOARD_FETCHENGINE_BACKLOG.md) | Apr 2, 2026 | — | Inventory of widgets on bare `fetch`; `EngineAvailabilityHint` uses `fetchEngine` |
 | 14 | [Transcript refresh log (bundle)](transcripts/REFRESH_LOG_2026-04-02.md) | Apr 2, 2026 | — | Secrets hook re-run; no new JSONL copied — see [transcripts/README.md](transcripts/README.md) |
+| 15 | [Cursor handoff — CI merge + master hotfix](SESSION_HANDOFF_CURSOR_2026-04-02_CI_MERGE.md) | Apr 2, 2026 | — | PR #1 / `be8dcab` + `01b8ac3` discord_router; workflow + pytest fixes; bootstrap blurb; [file manifest f4d38c3→01b8ac3](SESSION_FILE_MANIFEST_f4d38c3_to_01b8ac3.md) |
+| 16 | [Wave 2 Sprint — Pipeline gap fixes](SESSION_LOG_2026-04-02_SPRINT2.md) | Apr 2, 2026 | — | 6 bugs fixed (health 500, phantom drawdown, empty decisions, LLM 400, FRED silent failures, MCL IB 321), 5 pipeline gaps closed, schema.py split 1528→11 files, backtester.py split 955→3 files, 8 more components migrated to fetchEngine, 468 passed / 27 skipped / 0 failures |
+| 17 | [Sprint Closeout — RL docs + engine hardening](SESSION_LOG_2026-04-02_SPRINT_CLOSEOUT.md) | Apr 2, 2026 | — | RL Run history (Runs 3-8), SPY WFE=0.00 REJECTED, 13 test failures fixed (20→7), backtester completed.append(True) bug fixed, APIKeyMiddleware registered, phantom drawdown resolved, portfolio/market/safety routers wired |
 
 ## Compacted Summary (from session continuation)
 
