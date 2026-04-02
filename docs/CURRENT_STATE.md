@@ -100,6 +100,9 @@ FUTURES_WATCHLIST=MCL,MNQ
 | `engine/backtest/signals.py` | STC signal logic (CANONICAL parameter source) |
 | `engine/markets/orchestrator.py` | Multi-market orchestrator |
 | `dashboard/lib/api.ts` | All engine API calls via fetchEngine/postEngine |
+| `docs/architecture/API_CANONICAL_ENDPOINTS.md` | Canonical routes (validation, RL, Greeks) — avoids FastAPI shadowing |
+| `docs/runbooks/PAPER_LEDGER_BOUNDARIES.md` | Paper mode A vs B writers/readers |
+| `engine/execution/README.md` | IB: single front door (`ib_gateway.py`) |
 
 ---
 
@@ -123,8 +126,9 @@ FUTURES_WATCHLIST=MCL,MNQ
 ## Running the System
 
 ```bash
-# Start Engine (Python 3.12 venv)
-cd engine && .venv/Scripts/python -m uvicorn main:app --reload --port 8010
+# Start Engine (Python 3.12 venv) — do NOT use --reload with IB Gateway connected
+cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010
+# Windows: ..\\restart_engine.ps1 from repo root after config changes
 
 # Start Dashboard
 cd dashboard && pnpm dev

@@ -77,8 +77,9 @@ def test_routes_wired():
         ("GET", "/options/module/status"): "options module status or similar",
         # Portfolio
         ("GET", "/portfolio/summary"): "portfolio summary",
-        # Validation
-        ("GET", "/validation/progress"): "validation progress",
+        # Validation (legacy path redirects; canonical is /paper/validation/progress)
+        ("GET", "/validation/progress"): "validation progress (redirects)",
+        ("GET", "/paper/validation/progress"): "paper validation progress (canonical)",
         # Safety
         ("GET", "/safety/status"): "safety status",
     }

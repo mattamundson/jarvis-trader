@@ -58,7 +58,7 @@ task classification, playbook routing, and the acceptance checklist.
 | `engine/risk/safety_layer.py` | Kill switch, hard limits, order validation |
 | `engine/backtest/signals.py` | STC signal logic — CANONICAL parameter source |
 | `engine/markets/orchestrator.py` | Multi-market orchestrator (futures, options, crypto) |
-| `engine/learning/` | Learning system (events, feedback, patterns, recommendations) |
+| `engine/learning/` | Learning — pipeline integration via `learning_router`; experimental modules live in `engine/learning/_experimental/` (see `_experimental/README.md`) |
 | `engine/hooks/` | React hooks module (state + market data) |
 | `engine/strategies/rl_agent.py` | RL trading agent (PPO, MES only, experimental) |
 | `engine/strategies/rl_environment.py` | Gym trading environment (19 features from signals.py) |
