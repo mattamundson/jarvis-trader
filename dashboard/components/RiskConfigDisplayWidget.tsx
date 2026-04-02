@@ -47,9 +47,7 @@ async function fetchConfig(): Promise<{ config: RiskConfig; source: string } | n
 
   for (const endpoint of endpoints) {
     try {
-      const res = await fetch(`/api/engine${endpoint}`, { cache: "no-store" });
-      if (!res.ok) continue;
-      const data = await res.json() as Record<string, unknown>;
+      const data = await fetchEngine<Record<string, unknown>>(endpoint, { cache: "no-store" });
 
       // /health may nest config; check for direct fields or nested
       if (

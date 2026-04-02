@@ -80,6 +80,26 @@ export async function postEngine<T = any>(path: string, body?: unknown): Promise
   });
 }
 
+/**
+ * Fetch a binary/non-JSON response from the engine (e.g. CSV downloads).
+ * Returns the raw Response so the caller can call .blob(), .text(), etc.
+ */
+export async function fetchEngineRaw(path: string, options?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${ENGINE}${path}`, {
+      cache: "no-store",
+      ...options,
+      signal: controller.signal,
+      headers: engineHeaders(options?.headers),
+    });
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // API types (mirror engine Pydantic models)
 export interface HealthResponse {
   status: string;

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Download } from "lucide-react";
-const API_KEY = process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "jarvis-dev-key-change-me";
+import { fetchEngineRaw } from "@/lib/api";
 
 interface ExportItem {
   label: string;
@@ -34,9 +34,7 @@ export function ExportDataWidget() {
   const handleDownload = async (item: ExportItem) => {
     setDownloading(item.endpoint);
     try {
-      const res = await fetch(`/api/engine${item.endpoint}`, {
-        headers: { "X-API-Key": API_KEY },
-      });
+      const res = await fetchEngineRaw(item.endpoint);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
