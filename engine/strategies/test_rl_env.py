@@ -575,11 +575,12 @@ class TestRewardFunctionFixes:
         # BUY from flat — is_new_entry=True, redundant_cost=0 (position was 0 before step)
         _, reward_entry, _, _, _ = env.step(Action.BUY)
 
-        # Should include entry_cost but NOT redundant_cost on top.
-        # entry_cost = -0.20; if doubled it would be -0.40.
-        # Allow ±0.3 ATR units for price movement noise.
-        double_entry_cost = REWARD_CONFIG["entry_cost"] * 2  # -0.40
-        assert reward_entry > double_entry_cost, (
+        # Should include entry_cost + hold_cost (1 bar) but NOT redundant_cost on top.
+        # entry_cost=-0.01, hold_cost=-0.010: normal 1-bar reward = -0.020.
+        # If double-penalized (entry_cost applied twice + hold_cost) it would be -0.030.
+        # Use >= so the coincidence of hold_cost==entry_cost doesn't false-fail.
+        double_entry_cost = REWARD_CONFIG["entry_cost"] * 2
+        assert reward_entry >= double_entry_cost, (
             f"Normal entry appears to double-penalize: reward={reward_entry:.4f}, "
             f"double_entry_cost={double_entry_cost:.4f}"
         )
@@ -1418,42 +1419,42 @@ class TestRLConfig:
     If a value intentionally changes, update both rl_config.py and this test class.
     """
 
-    def test_run8_two_lever_config_values(self):
+    def test_run10_strong_exit_config_values(self):
         """
-        Regression guard: Two-Lever (Run 8) reward config values.
-        break-even hold bars = abs(entry_cost) / hold_cost_per_bar = 0.02 / 0.002 = 10 bars.
+        Regression guard: Strong-Exit (Run 10) reward config values.
+        break-even hold bars = abs(entry_cost) / hold_cost_per_bar = 0.02 / 0.010 = 2 bars.
         If these change, the tuning rationale needs to be updated in rl_config.py.
         """
         from strategies.rl_config import REWARD_CONFIG
 
-        # Two-Lever values applied for Run 8
+        # Strong-Exit values applied for Run 10
         assert (
-            REWARD_CONFIG["entry_cost"] == -0.02
-        ), f"entry_cost should be -0.02 (Two-Lever Run 8), got {REWARD_CONFIG['entry_cost']}"
+            REWARD_CONFIG["entry_cost"] == -0.01
+        ), f"entry_cost should be -0.01 (Strong-Exit Run 10), got {REWARD_CONFIG['entry_cost']}"
         assert (
-            REWARD_CONFIG["hold_cost_per_bar"] == -0.002
-        ), f"hold_cost_per_bar should be -0.002 (Two-Lever Run 8), got {REWARD_CONFIG['hold_cost_per_bar']}"
+            REWARD_CONFIG["hold_cost_per_bar"] == -0.010
+        ), f"hold_cost_per_bar should be -0.010 (Strong-Exit Run 10), got {REWARD_CONFIG['hold_cost_per_bar']}"
         assert (
             REWARD_CONFIG["flat_hold_reward"] == 0.000
         ), f"flat_hold_reward should be 0.000 (pure P&L signal), got {REWARD_CONFIG['flat_hold_reward']}"
 
-        # Verify break-even calculation
+        # Verify break-even calculation — Run 10: 1 bar (0.01/0.010)
         break_even_bars = abs(REWARD_CONFIG["entry_cost"]) / abs(REWARD_CONFIG["hold_cost_per_bar"])
         assert (
-            break_even_bars == 10.0
-        ), f"Break-even hold bars should be 10 (0.02/0.002), got {break_even_bars}"
+            break_even_bars == 1.0
+        ), f"Break-even hold bars should be 1 (0.01/0.010), got {break_even_bars}"
 
     def test_t1_bonus_to_entry_cost_ratio(self):
-        """T1 bonus (0.10) is 5x entry cost (0.02) in Run 8 — document the risk."""
+        """T1 bonus (0.50) is 50x entry cost (0.01) in Run 10 — strong T1 incentive."""
         from strategies.rl_config import REWARD_CONFIG
 
         t1_bonus = REWARD_CONFIG["t1_bonus"]
         entry_cost = abs(REWARD_CONFIG["entry_cost"])
         ratio = t1_bonus / entry_cost
-        # In Run 8 this ratio is 5.0 — document it (not a failure condition, just awareness)
+        # In Run 10 this ratio is 50.0 — very strong incentive to reach T1
         assert (
-            ratio == 5.0
-        ), f"T1 bonus / |entry_cost| = {ratio:.2f}, expected 5.0 for Two-Lever Run 8"
+            ratio == 50.0
+        ), f"T1 bonus / |entry_cost| = {ratio:.2f}, expected 50.0 for Strong-Exit Run 10"
 
 
 # ── RL Trainer Stop Mechanism Tests ───────────────────────────────────────────
