@@ -16,6 +16,13 @@ Treat **B** as the **canonical book** for anything the Next.js dashboard shows t
 
 **A** is not merged into **B** unless **A→B sync** is enabled (`JARVIS_ENGINE_URL` + `JARVIS_API_KEY` on the runner host).
 
+## `PaperTradeLogger` (`data/paper_trades.json`)
+
+- **Always** appends fills to `data/paper_trades.json` (audit / IB connector paper simulation).
+- When constructed with a **`PortfolioTracker`** and **`mirror_to_tracker=True`** (default), it also mirrors **full** net-position cycles per symbol: flat → non-zero → flat. **Partial** adds/reduces (net stays non-zero) are logged to JSON only until richer mapping exists.
+
+`IBGatewayConnector` accepts optional **`portfolio_tracker`** and passes it through to `PaperTradeLogger` when you wire the engine book into the connector.
+
 ## Consolidation direction (engineering)
 
-Longer term, collapse duplicate logging paths (`paper_trade_logger` vs `paper_tracker`) so one module owns durable paper state and others delegate. Until then, ops should assume **B** for dashboard truth and **A** for runner-only truth unless sync is on.
+**B** remains canonical for the dashboard. JSON is a secondary audit; mirroring keeps connector fills aligned with **`PortfolioTracker`** for full round-trips. **A** (runner files) is unchanged — use **A→B sync** per [PAPER_DATA_SOURCES.md](PAPER_DATA_SOURCES.md) when ops needs one view.

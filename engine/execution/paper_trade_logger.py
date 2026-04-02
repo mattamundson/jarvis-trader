@@ -45,7 +45,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Optional
+from typing import Any, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -57,21 +57,37 @@ class PaperTradeLogger:
     Thread-safe paper trade logger.
 
     Logs all simulated trades to a JSON file for later analysis.
-    Provides query methods for trade history, daily summaries, and P&L tracking.
+    Optionally mirrors full flat→open→flat cycles onto ``PortfolioTracker`` (mode B).
     """
 
-    def __init__(self, settings):
+    def __init__(
+        self,
+        settings: Any,
+        portfolio_tracker: Optional[Any] = None,
+        *,
+        mirror_to_tracker: bool = True,
+        trades_file: Optional[Path] = None,
+    ):
         """
-        Initialize the paper trade logger.
-
         Args:
-            settings: TradingConfig with data directory path
+            settings: TradingConfig (retained for callers; paths are repo-relative).
+            portfolio_tracker: Optional ``PortfolioTracker`` for API-aligned book (B).
+            mirror_to_tracker: If False, only writes ``data/paper_trades.json``.
+            trades_file: Override JSON path (tests); default ``data/paper_trades.json`` under repo.
         """
         self._settings = settings
-        self._data_dir = Path(__file__).parent.parent.parent / "data"
+        self._portfolio_tracker = portfolio_tracker
+        self._mirror_to_tracker = bool(portfolio_tracker is not None and mirror_to_tracker)
+        if trades_file is not None:
+            self._trades_file = trades_file
+            self._data_dir = trades_file.parent
+        else:
+            self._data_dir = Path(__file__).parent.parent.parent / "data"
+            self._trades_file = self._data_dir / "paper_trades.json"
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._trades_file = self._data_dir / "paper_trades.json"
         self._lock = Lock()  # Ensure atomic writes
+        self._net_by_symbol: dict[str, float] = {}
+        self._open_trade_id_by_symbol: dict[str, Optional[str]] = {}
 
         # Initialize file if it doesn't exist
         if not self._trades_file.exists():
@@ -171,8 +187,63 @@ class PaperTradeLogger:
                 trade_record["order_id"],
             )
 
+            await self._maybe_mirror_to_tracker(
+                symbol=str(trade_record["symbol"]),
+                signed_qty=float(trade_data.get("quantity", 0)),
+                filled_price=float(filled_price),
+                order_id=str(trade_record["order_id"] or ""),
+            )
+
         except Exception as exc:
             logger.error("Failed to log trade: %s", exc, exc_info=True)
+
+    async def _maybe_mirror_to_tracker(
+        self,
+        symbol: str,
+        signed_qty: float,
+        filled_price: float,
+        order_id: str,
+    ) -> None:
+        """Mirror full 0→position→0 nets onto PortfolioTracker; partials stay JSON-only."""
+        if not self._mirror_to_tracker or self._portfolio_tracker is None:
+            return
+
+        sym = symbol.upper()
+        prev = float(self._net_by_symbol.get(sym, 0.0))
+        new = prev + signed_qty
+        self._net_by_symbol[sym] = new
+        notes = f"paper_trade_logger:{order_id}"
+
+        try:
+            if prev == 0.0 and new != 0.0:
+                action = "buy" if signed_qty > 0 else "sell"
+                tid = self._portfolio_tracker.open_trade(
+                    sym,
+                    action,
+                    abs(signed_qty),
+                    filled_price,
+                    notes=notes,
+                )
+                self._open_trade_id_by_symbol[sym] = tid
+            elif prev != 0.0 and new == 0.0:
+                tid = self._open_trade_id_by_symbol.get(sym)
+                if tid:
+                    self._portfolio_tracker.close_trade(tid, filled_price)
+                self._open_trade_id_by_symbol[sym] = None
+            elif prev != 0.0 and new != 0.0:
+                logger.debug(
+                    "PaperTradeLogger: tracker mirror skipped for %s (partial net prev=%s new=%s)",
+                    sym,
+                    prev,
+                    new,
+                )
+        except Exception as exc:
+            logger.error(
+                "PaperTradeLogger: tracker mirror failed for %s: %s",
+                sym,
+                exc,
+                exc_info=True,
+            )
 
     def _update_summary(self, data: dict) -> None:
         """
@@ -257,7 +328,7 @@ class PaperTradeLogger:
 
     # ── Query Methods ──────────────────────────────────────────────────────────
 
-    async def get_all_trades(self) -> list[dict]:
+    async def get_all_trades(self) -> list[dict[str, Any]]:
         """
         Get all trades ever logged.
 
@@ -268,7 +339,7 @@ class PaperTradeLogger:
             try:
                 if self._trades_file.exists():
                     data = json.loads(self._trades_file.read_text())
-                    return data.get("trades", [])
+                    return cast(list[dict[str, Any]], data.get("trades", []))
             except Exception as exc:
                 logger.error("Failed to read trades file: %s", exc, exc_info=True)
         return []

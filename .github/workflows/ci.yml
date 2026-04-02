@@ -54,13 +54,16 @@ jobs:
           pip install -q -r engine/requirements-core.txt
           pip install -q mypy==1.8.0 types-requests
 
-      # Allowlist only: adding routers pulls most of `engine/` via imports. Prefer new test modules or `--follow-imports=skip` targets when expanding.
+      # Allowlist + --follow-imports=skip for small modules that would otherwise pull the whole app graph.
       - name: Mypy gate (allowlisted clean files)
         run: |
           mypy engine/tests/test_paper_runner_engine_sync.py \
             engine/tests/test_portfolio_paper_trade_post.py \
+            engine/routers/validation_router.py \
+            engine/execution/paper_trade_logger.py \
             --ignore-missing-imports --config-file engine/pyproject.toml \
-            --explicit-package-bases --namespace-packages
+            --explicit-package-bases --namespace-packages \
+            --follow-imports=skip
 
       - name: Run mypy type checking
         continue-on-error: true
@@ -99,6 +102,7 @@ jobs:
             engine/tests/test_p0_verify_mirror.py \
             engine/tests/test_paper_runner_engine_sync.py \
             engine/tests/test_exception_handler.py \
+            engine/tests/test_paper_trade_logger_tracker_mirror.py \
             engine/tests/test_routes_wired.py \
             -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
 
