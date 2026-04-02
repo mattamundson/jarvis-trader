@@ -268,12 +268,14 @@ class IBOrderManager:
                     tr_qty,
                 )
             elif abs(ib_qty - tr_qty) > 0.01:
-                result["qty_mismatches"].append({
-                    "symbol": sym,
-                    "ib_qty": ib_qty,
-                    "tracker_qty": tr_qty,
-                    "delta": ib_qty - tr_qty,
-                })
+                result["qty_mismatches"].append(
+                    {
+                        "symbol": sym,
+                        "ib_qty": ib_qty,
+                        "tracker_qty": tr_qty,
+                        "delta": ib_qty - tr_qty,
+                    }
+                )
                 logger.warning(
                     "reconcile QTY MISMATCH: %s — IB=%.0f tracker=%.0f delta=%+.0f",
                     sym,

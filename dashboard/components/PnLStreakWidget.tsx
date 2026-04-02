@@ -106,10 +106,9 @@ export function PnLStreakWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
+      const payload: unknown = await fetchEngine(
         `/portfolio/history/daily-pnl?limit=60`
       );
-      const payload: unknown = await res.json();
       setEntries(Array.isArray(payload) ? (payload as DailyPnLEntry[]) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch");

@@ -77,7 +77,12 @@ def main() -> int:
 
     if key:
         headers = {"X-API-Key": key}
-        for path in ("/health/full", "/safety/status", "/safety/circuit-breakers", "/portfolio/paper/positions"):
+        for path in (
+            "/health/full",
+            "/safety/status",
+            "/safety/circuit-breakers",
+            "/portfolio/paper/positions",
+        ):
             try:
                 r = httpx.get(f"{base}{path}", headers=headers, timeout=15.0)
                 results["checks"].append(

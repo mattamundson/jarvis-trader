@@ -35,9 +35,27 @@ from .vwap_signals import RTH_FINAL_HOUR, generate_vwap_signals
 logger = logging.getLogger("vwap_backtester")
 
 CONTRACT_SPECS: Dict[str, Dict[str, float]] = {
-    "MES": {"multiplier": 5.0,   "tick_size": 0.25, "tick_value": 1.25, "commission": 0.62, "slippage_ticks": 1},
-    "MCL": {"multiplier": 100.0, "tick_size": 0.01, "tick_value": 1.00, "commission": 0.85, "slippage_ticks": 1},
-    "MNQ": {"multiplier": 2.0,   "tick_size": 0.25, "tick_value": 0.50, "commission": 0.62, "slippage_ticks": 2},
+    "MES": {
+        "multiplier": 5.0,
+        "tick_size": 0.25,
+        "tick_value": 1.25,
+        "commission": 0.62,
+        "slippage_ticks": 1,
+    },
+    "MCL": {
+        "multiplier": 100.0,
+        "tick_size": 0.01,
+        "tick_value": 1.00,
+        "commission": 0.85,
+        "slippage_ticks": 1,
+    },
+    "MNQ": {
+        "multiplier": 2.0,
+        "tick_size": 0.25,
+        "tick_value": 0.50,
+        "commission": 0.62,
+        "slippage_ticks": 2,
+    },
 }
 DEFAULT_SPEC = CONTRACT_SPECS["MES"]
 
@@ -51,7 +69,7 @@ class VWAPTrade:
     entry_price: float
     exit_price: float
     contracts: int
-    exit_reason: str    # "target_1" | "target_2" | "stop" | "eod"
+    exit_reason: str  # "target_1" | "target_2" | "stop" | "eod"
     vwap_at_entry: float
     atr_at_entry: float
     pnl: float
@@ -74,9 +92,16 @@ class VWAPBacktestResult:
         if self._summary is not None:
             return self._summary
         if not self.trades:
-            return {"total_trades": 0, "win_rate": 0.0, "profit_factor": 0.0,
-                    "net_pnl": 0.0, "avg_win": 0.0, "avg_loss": 0.0,
-                    "max_drawdown": 0.0, "sharpe": 0.0}
+            return {
+                "total_trades": 0,
+                "win_rate": 0.0,
+                "profit_factor": 0.0,
+                "net_pnl": 0.0,
+                "avg_win": 0.0,
+                "avg_loss": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": 0.0,
+            }
 
         pnls = [t.pnl for t in self.trades]
         wins = [p for p in pnls if p > 0]
@@ -115,8 +140,8 @@ class VWAPBacktestResult:
             "sharpe": sharpe,
             "long_trades": sum(1 for t in self.trades if t.side == "long"),
             "short_trades": sum(1 for t in self.trades if t.side == "short"),
-            "t1_pct":  round(exit_counts.get("target_1", 0) / n, 4),
-            "t2_pct":  round(exit_counts.get("target_2", 0) / n, 4),
+            "t1_pct": round(exit_counts.get("target_1", 0) / n, 4),
+            "t2_pct": round(exit_counts.get("target_2", 0) / n, 4),
             "stop_pct": round(exit_counts.get("stop", 0) / n, 4),
             "eod_pct": round(exit_counts.get("eod", 0) / n, 4),
         }
@@ -124,9 +149,12 @@ class VWAPBacktestResult:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "symbol": self.symbol, "interval": self.interval,
-            "start_date": self.start_date, "end_date": self.end_date,
-            "params": self.params, "summary": self.summary(),
+            "symbol": self.symbol,
+            "interval": self.interval,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "params": self.params,
+            "summary": self.summary(),
             "trades": [t.to_dict() for t in self.trades],
         }
 
@@ -202,13 +230,21 @@ def run_vwap_backtest(
         if open_pos is not None and bar_hour >= RTH_FINAL_HOUR:
             exit_p = _slip(bar_close, open_pos["side"], False, spec)
             pnl = _pnl(open_pos["entry"], exit_p, open_pos["side"], contracts, spec)
-            trades.append(VWAPTrade(
-                symbol=symbol, entry_date=open_pos["entry_date"], exit_date=bar_time,
-                side=open_pos["side"], entry_price=open_pos["entry"], exit_price=round(exit_p, 4),
-                contracts=contracts, exit_reason="eod",
-                vwap_at_entry=open_pos["vwap"], atr_at_entry=open_pos["atr"],
-                pnl=round(pnl, 2),
-            ))
+            trades.append(
+                VWAPTrade(
+                    symbol=symbol,
+                    entry_date=open_pos["entry_date"],
+                    exit_date=bar_time,
+                    side=open_pos["side"],
+                    entry_price=open_pos["entry"],
+                    exit_price=round(exit_p, 4),
+                    contracts=contracts,
+                    exit_reason="eod",
+                    vwap_at_entry=open_pos["vwap"],
+                    atr_at_entry=open_pos["atr"],
+                    pnl=round(pnl, 2),
+                )
+            )
             open_pos = None
             continue
 
@@ -220,17 +256,27 @@ def run_vwap_backtest(
             t2 = open_pos["t2"]
 
             # Check stop
-            stop_hit = (side == "long" and bar_low <= stop) or (side == "short" and bar_high >= stop)
+            stop_hit = (side == "long" and bar_low <= stop) or (
+                side == "short" and bar_high >= stop
+            )
             if stop_hit:
                 exit_p = _slip(stop, side, False, spec)
                 pnl = _pnl(entry, exit_p, side, contracts, spec)
-                trades.append(VWAPTrade(
-                    symbol=symbol, entry_date=open_pos["entry_date"], exit_date=bar_time,
-                    side=side, entry_price=entry, exit_price=round(exit_p, 4),
-                    contracts=contracts, exit_reason="stop",
-                    vwap_at_entry=open_pos["vwap"], atr_at_entry=open_pos["atr"],
-                    pnl=round(pnl, 2),
-                ))
+                trades.append(
+                    VWAPTrade(
+                        symbol=symbol,
+                        entry_date=open_pos["entry_date"],
+                        exit_date=bar_time,
+                        side=side,
+                        entry_price=entry,
+                        exit_price=round(exit_p, 4),
+                        contracts=contracts,
+                        exit_reason="stop",
+                        vwap_at_entry=open_pos["vwap"],
+                        atr_at_entry=open_pos["atr"],
+                        pnl=round(pnl, 2),
+                    )
+                )
                 open_pos = None
                 continue
 
@@ -239,13 +285,21 @@ def run_vwap_backtest(
             if t1_hit:
                 exit_p = _slip(t1, side, False, spec)
                 pnl = _pnl(entry, exit_p, side, contracts, spec)
-                trades.append(VWAPTrade(
-                    symbol=symbol, entry_date=open_pos["entry_date"], exit_date=bar_time,
-                    side=side, entry_price=entry, exit_price=round(exit_p, 4),
-                    contracts=contracts, exit_reason="target_1",
-                    vwap_at_entry=open_pos["vwap"], atr_at_entry=open_pos["atr"],
-                    pnl=round(pnl, 2),
-                ))
+                trades.append(
+                    VWAPTrade(
+                        symbol=symbol,
+                        entry_date=open_pos["entry_date"],
+                        exit_date=bar_time,
+                        side=side,
+                        entry_price=entry,
+                        exit_price=round(exit_p, 4),
+                        contracts=contracts,
+                        exit_reason="target_1",
+                        vwap_at_entry=open_pos["vwap"],
+                        atr_at_entry=open_pos["atr"],
+                        pnl=round(pnl, 2),
+                    )
+                )
                 open_pos = None
                 continue
 
@@ -254,13 +308,21 @@ def run_vwap_backtest(
             if t2_hit:
                 exit_p = _slip(t2, side, False, spec)
                 pnl = _pnl(entry, exit_p, side, contracts, spec)
-                trades.append(VWAPTrade(
-                    symbol=symbol, entry_date=open_pos["entry_date"], exit_date=bar_time,
-                    side=side, entry_price=entry, exit_price=round(exit_p, 4),
-                    contracts=contracts, exit_reason="target_2",
-                    vwap_at_entry=open_pos["vwap"], atr_at_entry=open_pos["atr"],
-                    pnl=round(pnl, 2),
-                ))
+                trades.append(
+                    VWAPTrade(
+                        symbol=symbol,
+                        entry_date=open_pos["entry_date"],
+                        exit_date=bar_time,
+                        side=side,
+                        entry_price=entry,
+                        exit_price=round(exit_p, 4),
+                        contracts=contracts,
+                        exit_reason="target_2",
+                        vwap_at_entry=open_pos["vwap"],
+                        atr_at_entry=open_pos["atr"],
+                        pnl=round(pnl, 2),
+                    )
+                )
                 open_pos = None
                 continue
 
@@ -277,9 +339,14 @@ def run_vwap_backtest(
                 atr_p = float(df["atr"].iloc[i])
 
                 open_pos = {
-                    "side": side, "entry": entry_p, "entry_date": bar_time,
-                    "stop": stop_p, "t1": t1_p, "t2": t2_p,
-                    "vwap": vwap_p, "atr": atr_p,
+                    "side": side,
+                    "entry": entry_p,
+                    "entry_date": bar_time,
+                    "stop": stop_p,
+                    "t1": t1_p,
+                    "t2": t2_p,
+                    "vwap": vwap_p,
+                    "atr": atr_p,
                 }
 
     # Force-close any remaining open position
@@ -287,18 +354,29 @@ def run_vwap_backtest(
         last_close = float(df["close"].iloc[-1])
         exit_p = _slip(last_close, open_pos["side"], False, spec)
         pnl = _pnl(open_pos["entry"], exit_p, open_pos["side"], contracts, spec)
-        trades.append(VWAPTrade(
-            symbol=symbol, entry_date=open_pos["entry_date"], exit_date=str(df.index[-1]),
-            side=open_pos["side"], entry_price=open_pos["entry"], exit_price=round(exit_p, 4),
-            contracts=contracts, exit_reason="eod",
-            vwap_at_entry=open_pos["vwap"], atr_at_entry=open_pos["atr"],
-            pnl=round(pnl, 2),
-        ))
+        trades.append(
+            VWAPTrade(
+                symbol=symbol,
+                entry_date=open_pos["entry_date"],
+                exit_date=str(df.index[-1]),
+                side=open_pos["side"],
+                entry_price=open_pos["entry"],
+                exit_price=round(exit_p, 4),
+                contracts=contracts,
+                exit_reason="eod",
+                vwap_at_entry=open_pos["vwap"],
+                atr_at_entry=open_pos["atr"],
+                pnl=round(pnl, 2),
+            )
+        )
 
     result = VWAPBacktestResult(
-        symbol=symbol, interval="1h",
-        start_date=str(df.index[0]), end_date=str(df.index[-1]),
-        params=params, trades=trades,
+        symbol=symbol,
+        interval="1h",
+        start_date=str(df.index[0]),
+        end_date=str(df.index[-1]),
+        params=params,
+        trades=trades,
     )
     s = result.summary()
     logger.info(

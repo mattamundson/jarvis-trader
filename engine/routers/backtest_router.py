@@ -9,6 +9,7 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -206,7 +207,9 @@ async def analyze_regime(request: RegimeAnalysisRequest):
             if alt_path.exists():
                 results_path = alt_path
             elif not results_path.exists():
-                results_path = Path(__file__).parent.parent / "backtest" / "results" / request.results_file
+                results_path = (
+                    Path(__file__).parent.parent / "backtest" / "results" / request.results_file
+                )
 
         if not results_path.exists():
             raise FileNotFoundError(f"Results file not found: {results_path}")
@@ -274,9 +277,7 @@ async def analyze_regime(request: RegimeAnalysisRequest):
         if not regime_stats:
             verdict = "NO_DATA"
         else:
-            avg_wrate = (
-                sum(s.get("win_rate", 0) for s in regime_stats.values()) / len(regime_stats)
-            )
+            avg_wrate = sum(s.get("win_rate", 0) for s in regime_stats.values()) / len(regime_stats)
             if avg_wrate >= 0.60:
                 verdict = "EXCELLENT"
             elif avg_wrate >= 0.55:
@@ -499,7 +500,9 @@ async def get_mgc_signal():
 
             # Get date from index
             signal_date = (
-                str(df.index[-1].date()) if hasattr(df.index[-1], "date") else str(df.index[-1])[:10]
+                str(df.index[-1].date())
+                if hasattr(df.index[-1], "date")
+                else str(df.index[-1])[:10]
             )
 
             return {
@@ -609,9 +612,10 @@ async def get_paper_runner_status():
 
 # ── TOS Signal Comparison endpoints ──────────────────────────────────────────
 
+
 @router.post("/backtest/compare-tos")
 async def compare_tos_signals(
-    file: UploadFile = File(...),
+    file: Annotated[UploadFile, File()],
     symbol: str = Form("MNQ"),
     timeframe: str = Form("1h"),
     match_window_bars: int = Form(2),
@@ -639,8 +643,8 @@ async def compare_tos_signals(
             csv_text = content.decode("latin-1")
 
         def _run():
-            from backtest.tos_importer import parse_tos_csv
             from backtest.signal_comparator import compare_signals
+            from backtest.tos_importer import parse_tos_csv
 
             # Parse TOS CSV
             import_result = parse_tos_csv(csv_text, symbol=symbol)
@@ -673,6 +677,7 @@ async def compare_tos_signals(
             results_dir = Path(__file__).parent.parent / "backtest" / "results"
             results_dir.mkdir(parents=True, exist_ok=True)
             from datetime import datetime
+
             ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             out_path = results_dir / f"TOS_COMPARISON_{symbol}_{timeframe}_{ts}.json"
             with open(out_path, "w", encoding="utf-8") as f:
@@ -705,16 +710,18 @@ async def get_comparison_results():
             try:
                 data = json.loads(json_file.read_text(encoding="utf-8"))
                 cmp = data.get("comparison", {})
-                comparisons.append({
-                    "filename": json_file.name,
-                    "symbol": cmp.get("symbol"),
-                    "timeframe": cmp.get("timeframe"),
-                    "tos_signal_count": cmp.get("tos_signal_count"),
-                    "jarvis_trade_count": cmp.get("jarvis_trade_count"),
-                    "match_rate_pct": cmp.get("match_rate_pct"),
-                    "verdict": cmp.get("verdict"),
-                    "verdict_detail": cmp.get("verdict_detail"),
-                })
+                comparisons.append(
+                    {
+                        "filename": json_file.name,
+                        "symbol": cmp.get("symbol"),
+                        "timeframe": cmp.get("timeframe"),
+                        "tos_signal_count": cmp.get("tos_signal_count"),
+                        "jarvis_trade_count": cmp.get("jarvis_trade_count"),
+                        "match_rate_pct": cmp.get("match_rate_pct"),
+                        "verdict": cmp.get("verdict"),
+                        "verdict_detail": cmp.get("verdict_detail"),
+                    }
+                )
             except Exception as e:
                 logger.warning(f"Could not read {json_file.name}: {e}")
 
@@ -747,8 +754,10 @@ async def validate_stc_math(
         Smooth (D): 3
     """
     try:
+
         def _run():
             from backtest.signal_comparator import validate_stc_math as _validate
+
             return _validate(symbol=symbol, timeframe=timeframe, start=start, end=end)
 
         loop = asyncio.get_event_loop()

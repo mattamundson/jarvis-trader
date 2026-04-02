@@ -282,7 +282,9 @@ class SafetyLayer:
 
     def _check_daily_loss_limit(self, portfolio_equity: float) -> RiskCheckResult:
         """Check daily loss limit."""
-        daily_pnl = self._pnl_monitor.get_daily_pnl() if self._pnl_monitor else self._daily_realized_pnl
+        daily_pnl = (
+            self._pnl_monitor.get_daily_pnl() if self._pnl_monitor else self._daily_realized_pnl
+        )
         if daily_pnl < -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT):
             self.activate_kill_switch(
                 KillSwitchReason.DAILY_LOSS_LIMIT,
@@ -293,7 +295,9 @@ class SafetyLayer:
             )
         return RiskCheckResult(approved=True)
 
-    def _check_order_value_limits(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
+    def _check_order_value_limits(
+        self, order: OrderRequest, portfolio_equity: float
+    ) -> RiskCheckResult:
         """Check order size and position size limits."""
         if order.estimated_value > self._config.MAX_SINGLE_ORDER_VALUE:
             return RiskCheckResult(
@@ -311,6 +315,7 @@ class SafetyLayer:
     def _check_order_rate(self) -> tuple[RiskCheckResult, float]:
         """Check order rate throttle. Returns (RiskCheckResult, timestamp)."""
         import time
+
         now = time.time()
         self._recent_order_timestamps = [t for t in self._recent_order_timestamps if now - t < 60]
         if len(self._recent_order_timestamps) >= self._config.MAX_ORDERS_PER_MINUTE:

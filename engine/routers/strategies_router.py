@@ -11,6 +11,7 @@ Endpoints:
     GET  /strategies/rl/results/{run_id} — walk-forward results for a run
     POST /strategies/rl/evaluate      — run OOS evaluation on saved model
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,7 +30,7 @@ from strategies.rl_config import (
     TIMESTEPS_DEFAULT,
     TIMESTEPS_QUICK,
 )
-from strategies.rl_trainer import RLTrainer, get_training_status, request_stop, _training_status
+from strategies.rl_trainer import RLTrainer, _training_status, get_training_status, request_stop
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ _run_registry: dict[str, dict] = {}
 
 # ── Request / Response Models ─────────────────────────────────────────────────
 
+
 class TrainRequest(BaseModel):
     symbol: str = Field("MES", description="Futures symbol: MES, MNQ, MCL, MGC")
     interval: str = Field(DEFAULT_INTERVAL, description="Bar interval: 1h, 4h, 1d")
@@ -81,7 +83,7 @@ class TrainRequest(BaseModel):
     reward_scenario: Optional[str] = Field(
         None,
         description='RUN7 reward scenario override: "A", "B", or "C". '
-                    "Merges the chosen scenario's keys into REWARD_CONFIG for this run only.",
+        "Merges the chosen scenario's keys into REWARD_CONFIG for this run only.",
     )
 
 
@@ -116,11 +118,12 @@ class WalkForwardRequest(BaseModel):
     reward_scenario: Optional[str] = Field(
         None,
         description='RUN7 reward scenario override: "A", "B", or "C". '
-                    "Merges the chosen scenario's keys into REWARD_CONFIG for each window.",
+        "Merges the chosen scenario's keys into REWARD_CONFIG for each window.",
     )
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
+
 
 async def _run_training(run_id: str, req: TrainRequest) -> None:
     """Background task that calls RLTrainer.train_symbol and updates the registry."""
@@ -190,6 +193,7 @@ async def _run_walkforward(run_id: str, req: WalkForwardRequest) -> None:
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.post("/rl/train")
 async def start_rl_training(
@@ -515,6 +519,7 @@ async def run_rl_evaluation(req: EvaluateRequest) -> dict:
 
 # ── Executor endpoints ────────────────────────────────────────────────────────
 
+
 class DeployRequest(BaseModel):
     symbol: str = Field("MES", description="Futures symbol: MES, MNQ, MCL, MGC")
     model_path: str = Field(
@@ -588,12 +593,16 @@ async def deploy_model(
 
         if existing is not None:
             existing.stop()
-            logger.info("[StrategiesRouter] Stopped existing executor for %s before redeployment", symbol)
+            logger.info(
+                "[StrategiesRouter] Stopped existing executor for %s before redeployment", symbol
+            )
 
         # Start scheduler in background so the API call returns immediately
         background_tasks.add_task(executor.start)
 
-        logger.info("[StrategiesRouter] Deployed RL executor for %s | model=%s", symbol, request.model_path)
+        logger.info(
+            "[StrategiesRouter] Deployed RL executor for %s | model=%s", symbol, request.model_path
+        )
         return {
             "status": "deployed",
             "symbol": symbol,
@@ -681,12 +690,14 @@ async def rl_strategy_health() -> dict:
     """Health check for the RL strategy module dependencies."""
     try:
         import gymnasium  # noqa
+
         gym_ok = True
     except ImportError:
         gym_ok = False
 
     try:
         import stable_baselines3  # noqa
+
         sb3_ok = True
     except ImportError:
         sb3_ok = False

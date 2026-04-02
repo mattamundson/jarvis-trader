@@ -107,13 +107,9 @@ export function RegimePnLBreakdownWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
+      const json = await fetchEngine<{ trades?: TradeRecord[]; count?: number }>(
         `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      const json = (await res.json()) as { trades?: TradeRecord[]; count?: number };
       setTrades(json.trades ?? []);
       setLastRefreshed(new Date());
     } catch (err) {

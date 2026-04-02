@@ -301,7 +301,6 @@ def run_optimization(
     capital: float = 10_000.0,
     output: Optional[str] = None,
 ) -> list[OptResult]:
-
     loader = BacktestDataLoader()
     df = loader.load(symbol, start, end, interval)
     if df is None or df.empty:

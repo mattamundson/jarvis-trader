@@ -16,11 +16,7 @@ DEFAULT_BASE = "http://localhost:8010"
 
 
 def _api_key_for_probe() -> str:
-    return (
-        os.environ.get("JARVIS_API_KEY")
-        or os.environ.get("API_KEY")
-        or "test-key"
-    )
+    return os.environ.get("JARVIS_API_KEY") or os.environ.get("API_KEY") or "test-key"
 
 
 def jarvis_engine_ready(base: str = DEFAULT_BASE) -> bool:

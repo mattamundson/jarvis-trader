@@ -5,6 +5,7 @@ Checks daily if validation targets are met before allowing live trading.
 Targets (must all pass for 30 consecutive days):
   PF ≥ 2.0 | Sharpe ≥ 1.5 | WR ≥ 55% | Trades ≥ 60 | Days ≥ 30 | DD ≤ 15%
 """
+
 from __future__ import annotations
 
 import logging
@@ -134,7 +135,11 @@ class ValidationChecker:
 
         gross_profit = sum(wins_pnl)
         gross_loss = sum(losses_pnl)
-        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (gross_profit if gross_profit > 0 else 0.0)
+        profit_factor = (
+            (gross_profit / gross_loss)
+            if gross_loss > 0
+            else (gross_profit if gross_profit > 0 else 0.0)
+        )
 
         # Daily P&L for Sharpe + drawdown
         daily_pnl = [r[1] for r in daily_rows if r[1] is not None]
@@ -160,11 +165,12 @@ class ValidationChecker:
             return 0.0
         try:
             import statistics
+
             mean = statistics.mean(daily_pnl) - risk_free_rate / 252
             std = statistics.stdev(daily_pnl)
             if std == 0:
                 return 0.0
-            return (mean / std) * (252 ** 0.5)
+            return (mean / std) * (252**0.5)
         except Exception:
             return 0.0
 

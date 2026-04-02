@@ -659,12 +659,43 @@ class TradingPipeline:
         Returns:
             dict with pipeline result or skip reason
         """
-        signal.get("symbol", "MES")
+        symbol = signal.get("symbol", "MES")
         action = signal.get("action", "HOLD")
-        signal.get("source", "tradingview")
+        source = signal.get("source", "tradingview")
+        req_id = str(uuid.uuid4())[:8]
 
-        str(uuid.uuid4())[:8]
+        logger.info(f"[Webhook:{req_id}] Signal received: {symbol} {action} from {source}")
 
         # Only run pipeline for actionable signals
         if action not in ("LONG", "SHORT", "CLOSE"):
-            pass
+            logger.debug(f"[Webhook:{req_id}] Skipping non-actionable action: {action}")
+            return {
+                "status": "skipped",
+                "symbol": symbol,
+                "action": action,
+                "reason": f"Action '{action}' is not actionable — pipeline not triggered",
+                "req_id": req_id,
+            }
+
+        # Determine is_futures from symbol name (micro futures naming convention)
+        is_futures = not symbol.upper().startswith(("SPY", "QQQ", "IWM"))
+
+        try:
+            result = await self.analyze_and_decide(symbol, is_futures=is_futures)
+            result["req_id"] = req_id
+            result["webhook_action"] = action
+            result["webhook_source"] = source
+            logger.info(
+                f"[Webhook:{req_id}] Pipeline complete: {symbol} "
+                f"final_action={result.get('final_action', 'unknown')}"
+            )
+            return result
+        except Exception as exc:
+            logger.error(f"[Webhook:{req_id}] Pipeline raised for {symbol}: {exc}", exc_info=True)
+            return {
+                "status": "error",
+                "symbol": symbol,
+                "action": action,
+                "req_id": req_id,
+                "error": str(exc),
+            }

@@ -5,6 +5,7 @@ Wraps the existing jarvis-trader futures infrastructure (TradingPipeline,
 IBGatewayManager, PortfolioTracker, SafetyLayer) into the MarketModule ABC.
 Does NOT rebuild any existing logic — just adapts the interface.
 """
+
 from __future__ import annotations
 
 import logging
@@ -84,15 +85,19 @@ class FuturesMarketModule(MarketModule):
             raw_positions = self._tracker.get_open_positions()
             positions = []
             for p in raw_positions:
-                positions.append(Position(
-                    symbol=p.get("symbol", ""),
-                    quantity=float(p.get("quantity", p.get("contracts", 0))),
-                    avg_cost=float(p.get("avg_cost", p.get("entry_price", 0))),
-                    market_value=float(p.get("market_value", 0)),
-                    unrealized_pnl=float(p.get("unrealized_pnl", 0)),
-                    side="long" if float(p.get("quantity", p.get("contracts", 0))) > 0 else "short",
-                    market=self.market_name,
-                ))
+                positions.append(
+                    Position(
+                        symbol=p.get("symbol", ""),
+                        quantity=float(p.get("quantity", p.get("contracts", 0))),
+                        avg_cost=float(p.get("avg_cost", p.get("entry_price", 0))),
+                        market_value=float(p.get("market_value", 0)),
+                        unrealized_pnl=float(p.get("unrealized_pnl", 0)),
+                        side="long"
+                        if float(p.get("quantity", p.get("contracts", 0))) > 0
+                        else "short",
+                        market=self.market_name,
+                    )
+                )
             return positions
         except Exception as exc:
             logger.error(f"Futures get_positions error: {exc}")

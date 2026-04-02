@@ -2,6 +2,7 @@
 Built-in trading hooks — register these at startup.
 Handlers for logging, DB persistence, and notifications.
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,12 +30,15 @@ def log_signal(signal: Any = None, market: str = "", **kwargs) -> None:
         )
 
 
-def log_signal_to_db(db_conn: Optional[sqlite3.Connection] = None, signal: Any = None, market: str = "", **kwargs) -> None:
+def log_signal_to_db(
+    db_conn: Optional[sqlite3.Connection] = None, signal: Any = None, market: str = "", **kwargs
+) -> None:
     """Persist signal to hook_events table."""
     if not db_conn or not signal:
         return
     try:
         import json
+
         payload = {
             "symbol": signal.symbol,
             "action": signal.action,
@@ -75,7 +79,9 @@ def notify_kill_switch(market: str = "", reason: str = "", **kwargs) -> None:
     logger.critical(f"[KILL SWITCH] {market}: {reason}")
 
 
-def notify_target_reached(market: str = "", pnl: float = 0.0, target: float = 0.0, **kwargs) -> None:
+def notify_target_reached(
+    market: str = "", pnl: float = 0.0, target: float = 0.0, **kwargs
+) -> None:
     """Log when daily target is reached."""
     logger.info(f"[TARGET REACHED] {market}: ${pnl:,.2f} ≥ ${target:,.2f} 🎯")
 

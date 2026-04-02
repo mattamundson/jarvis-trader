@@ -26,7 +26,9 @@ except ImportError:
 
 def main() -> int:
     base = os.environ.get("JARVIS_VERIFY_BASE", "http://127.0.0.1:8010").rstrip("/")
-    key = os.environ.get("JARVIS_API_KEY") or os.environ.get("X_API_KEY") or os.environ.get("API_KEY")
+    key = (
+        os.environ.get("JARVIS_API_KEY") or os.environ.get("X_API_KEY") or os.environ.get("API_KEY")
+    )
     if not key:
         print("Set JARVIS_API_KEY (or X_API_KEY / API_KEY)", file=sys.stderr)
         return 2

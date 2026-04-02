@@ -20,10 +20,10 @@ MCL_PAPER_CONFIG = {
     "initial_capital": 25_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk (conservative)
     #  Strategy Mode
-    "regime_filter": True,    # ON: oil is regime-sensitive
+    "regime_filter": True,  # ON: oil is regime-sensitive
     "adaptive_regime": False,  # OFF: adaptive WFE=-0.31  WORSE than static 0.82
-    "volume_filter": False,   # OFF: not tested for MCL
-    "mtf_filter": False,      # OFF: not tested for MCL
+    "volume_filter": False,  # OFF: not tested for MCL
+    "mtf_filter": False,  # OFF: not tested for MCL
     #  STC Signal Parameters (Walk-Forward Validated)
     "stc_params": {
         "stc_os": 15,
@@ -37,12 +37,12 @@ MCL_PAPER_CONFIG = {
     "kill_threshold": {
         "consecutive_losses": 3,
         "consecutive_months_underperform": 3,
-        "monthly_loss_pct": -0.03,   # -3% monthly triggers halt
+        "monthly_loss_pct": -0.03,  # -3% monthly triggers halt
         "max_daily_loss": -0.02,
         "rolling_wfe_minimum": 0.40,
     },
     #  Contract Specifications
-    "multiplier": 100.0,    # $100/point for MCL (1000 barrels � $0.10 tick)
+    "multiplier": 100.0,  # $100/point for MCL (1000 barrels � $0.10 tick)
     "tick_size": 0.01,
     "commission_per_contract": 2.50,
     "slippage_ticks": 1,
@@ -58,10 +58,10 @@ MNQ_PAPER_CONFIG = {
     "initial_capital": 25_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk
     #  Strategy Mode
-    "regime_filter": True,    # ON: required for adaptive_regime to work
-    "adaptive_regime": True,   # ON: lifts WFE 0.240.57  CRITICAL
-    "volume_filter": False,   # OFF: HURTS WFE (0.57-0.23)  NEVER ENABLE
-    "mtf_filter": False,      # OFF: HURTS WFE (0.570.17)  NEVER ENABLE
+    "regime_filter": True,  # ON: required for adaptive_regime to work
+    "adaptive_regime": True,  # ON: lifts WFE 0.240.57  CRITICAL
+    "volume_filter": False,  # OFF: HURTS WFE (0.57-0.23)  NEVER ENABLE
+    "mtf_filter": False,  # OFF: HURTS WFE (0.570.17)  NEVER ENABLE
     #  STC Signal Parameters (Walk-Forward Validated)
     "stc_params": {
         "stc_os": 15,
@@ -75,12 +75,12 @@ MNQ_PAPER_CONFIG = {
     "kill_threshold": {
         "consecutive_losses": 3,
         "consecutive_months_underperform": 3,
-        "monthly_loss_pct": -0.03,   # -3% monthly triggers halt
+        "monthly_loss_pct": -0.03,  # -3% monthly triggers halt
         "max_daily_loss": -0.02,
         "rolling_wfe_minimum": 0.30,
     },
     #  Contract Specifications
-    "multiplier": 2.0,    # $2/point for MNQ (Micro Nasdaq)
+    "multiplier": 2.0,  # $2/point for MNQ (Micro Nasdaq)
     "tick_size": 0.25,
     "commission_per_contract": 2.50,
     "slippage_ticks": 1,
@@ -96,7 +96,7 @@ MGC_PAPER_CONFIG = {
     "initial_capital": 25_000.0,
     "risk_per_trade": 0.0025,
     #  Strategy Mode
-    "regime_filter": False,   # OFF: anti-predictive for gold daily
+    "regime_filter": False,  # OFF: anti-predictive for gold daily
     "adaptive_regime": False,  # OFF: no valid windows even with adaptive
     "volume_filter": False,
     "mtf_filter": False,
@@ -118,7 +118,7 @@ MGC_PAPER_CONFIG = {
         "rolling_wfe_minimum": 0.50,  # Threshold deliberately high since strategy is closed
     },
     #  Contract Specifications
-    "multiplier": 10.0,    # $10/troy oz for MGC (Micro Gold, 10 oz)
+    "multiplier": 10.0,  # $10/troy oz for MGC (Micro Gold, 10 oz)
     "tick_size": 0.10,
     "commission_per_contract": 2.50,
     "slippage_ticks": 1,

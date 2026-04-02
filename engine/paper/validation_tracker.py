@@ -91,7 +91,7 @@ class InstrumentMetrics(BaseModel):
             std = statistics.stdev(self.daily_pnl_values)
             if std == 0:
                 return 0.0
-            return (mean / std) * (252 ** 0.5)
+            return (mean / std) * (252**0.5)
         except Exception:
             return 0.0
 
@@ -146,16 +146,16 @@ class ValidationTracker:
             try:
                 data = json.loads(self.validation_file.read_text())
                 for instrument, metrics_dict in data.items():
-                    self.metrics[instrument] = InstrumentMetrics.model_validate(
-                        metrics_dict
-                    )
+                    self.metrics[instrument] = InstrumentMetrics.model_validate(metrics_dict)
                 logger.info(f"Loaded validation data for {len(self.metrics)} instruments")
             except Exception as e:
                 logger.warning(f"Failed to load validation file: {e}")
                 self.metrics = {}
         else:
-            self.metrics = {"MCL": InstrumentMetrics(instrument="MCL"),
-                            "MNQ": InstrumentMetrics(instrument="MNQ")}
+            self.metrics = {
+                "MCL": InstrumentMetrics(instrument="MCL"),
+                "MNQ": InstrumentMetrics(instrument="MNQ"),
+            }
 
     def _save(self) -> None:
         """Save validation data to JSON."""
@@ -253,9 +253,7 @@ class ValidationTracker:
         return {
             "timestamp": datetime.utcnow().isoformat(),
             "instruments": instruments,
-            "overall_pass": all(
-                self.is_validated(inst) for inst in ["MCL", "MNQ"]
-            ),
+            "overall_pass": all(self.is_validated(inst) for inst in ["MCL", "MNQ"]),
         }
 
     def get_all_trades(self, instrument: str = "MCL") -> list[dict]:

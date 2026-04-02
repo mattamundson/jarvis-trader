@@ -4,6 +4,7 @@ Gracefully handles missing dependencies (module disabled by default).
 
 Install: pip install py-clob-client>=0.17.0 web3>=7.0.0 eth-account>=0.13.0
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +16,7 @@ logger = logging.getLogger("jarvis_trader.markets.polymarket.client")
 try:
     from py_clob_client.client import ClobClient
     from py_clob_client.clob_types import ApiCreds
+
     CLOB_AVAILABLE = True
 except ImportError:
     CLOB_AVAILABLE = False
@@ -49,7 +51,9 @@ class PolymarketClient:
             return False
 
         if not self._api_key or not self._private_key:
-            logger.warning("Polymarket credentials not configured (POLYMARKET_API_KEY, POLYMARKET_PRIVATE_KEY)")
+            logger.warning(
+                "Polymarket credentials not configured (POLYMARKET_API_KEY, POLYMARKET_PRIVATE_KEY)"
+            )
             return False
 
         try:
@@ -109,6 +113,7 @@ class PolymarketClient:
             return None
         try:
             from py_clob_client.clob_types import OrderArgs, OrderType
+
             order_args = OrderArgs(
                 token_id=token_id,
                 price=price,

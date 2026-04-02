@@ -3,6 +3,7 @@ OptionsMarketModule — automated premium selling via IB Gateway.
 Reuses existing engine/options/ code for chain data and execution.
 Uses IB Gateway (same account as futures, paper port 4002).
 """
+
 from __future__ import annotations
 
 import logging
@@ -107,7 +108,7 @@ class OptionsMarketModule(MarketModule):
                     reason=spec.reason,
                     params={
                         "expiry": spec.expiry,
-                        "legs": [(s, r, a, q) for s, r, a, q in spec.legs],
+                        "legs": list(spec.legs),
                         "credit_target": spec.credit_target,
                         "max_loss": spec.max_loss,
                     },
@@ -122,7 +123,9 @@ class OptionsMarketModule(MarketModule):
 
     async def execute_signal(self, signal: TradeSignal) -> TradeResult:
         """Execute an options trade via IB Gateway (paper mode)."""
-        logger.info(f"Options: paper trade signal — {signal.symbol} {signal.strategy} (not executed in paper mode)")
+        logger.info(
+            f"Options: paper trade signal — {signal.symbol} {signal.strategy} (not executed in paper mode)"
+        )
         return TradeResult(
             signal=signal,
             executed=False,
@@ -156,6 +159,7 @@ class OptionsMarketModule(MarketModule):
     def is_enabled(self) -> bool:
         try:
             from config import settings
+
             return "options" in settings.get_enabled_markets()
         except Exception:
             return False

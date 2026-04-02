@@ -6,6 +6,7 @@ Regime → Strategy mapping:
   normal (15-25)        → Credit Spreads (bull put / bear call)
   high_vix (VIX > 25)  → Reduced size or cash (skip high-IV uncertainty)
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,6 +21,7 @@ logger = logging.getLogger("jarvis_trader.markets.options.strategy")
 @dataclass
 class OptionsTradeSpec:
     """Specification for an options trade to be executed."""
+
     strategy: str  # "iron_condor" | "bull_put_spread" | "bear_call_spread"
     symbol: str
     expiry: str
@@ -63,10 +65,10 @@ class OptionsStrategyPipeline:
         if result.regime == "low_vix":
             # Iron Condor: sell OTM put + call, buy further OTM for protection
             legs = [
-                (result.put_strikes[0], "P", "sell", qty),   # short put
-                (result.put_strikes[1], "P", "buy", qty),    # long put (wing)
+                (result.put_strikes[0], "P", "sell", qty),  # short put
+                (result.put_strikes[1], "P", "buy", qty),  # long put (wing)
                 (result.call_strikes[0], "C", "sell", qty),  # short call
-                (result.call_strikes[1], "C", "buy", qty),   # long call (wing)
+                (result.call_strikes[1], "C", "buy", qty),  # long call (wing)
             ]
             spread_width = result.put_strikes[0] - result.put_strikes[1]
             max_loss = spread_width * qty * 100
@@ -86,7 +88,7 @@ class OptionsStrategyPipeline:
             # Bull Put Spread (most common in neutral/mildly bullish)
             legs = [
                 (result.put_strikes[0], "P", "sell", qty),  # short put
-                (result.put_strikes[1], "P", "buy", qty),   # long put (protection)
+                (result.put_strikes[1], "P", "buy", qty),  # long put (protection)
             ]
             spread_width = result.put_strikes[0] - result.put_strikes[1]
             max_loss = spread_width * qty * 100

@@ -138,8 +138,9 @@ class TestValidationThresholds:
 
         # Add 60+ trades
         for i in range(65):
-            tracker.record_trade("MCL", 100.0, 105.0 if i % 2 == 0 else 98.0,
-                               500.0 if i % 2 == 0 else -400.0)
+            tracker.record_trade(
+                "MCL", 100.0, 105.0 if i % 2 == 0 else 98.0, 500.0 if i % 2 == 0 else -400.0
+            )
 
         # Add 30+ days of P&L
         for _ in range(35):
@@ -147,10 +148,12 @@ class TestValidationThresholds:
 
         progress = tracker.get_progress("MCL")
         # Check that validation should pass with sufficient metrics
-        if (progress["win_rate_pct"] >= 55 and
-            progress["profit_factor"] >= 2.0 and
-            progress["sharpe_ratio"] >= 1.5 and
-            progress["days_active"] >= 30):
+        if (
+            progress["win_rate_pct"] >= 55
+            and progress["profit_factor"] >= 2.0
+            and progress["sharpe_ratio"] >= 1.5
+            and progress["days_active"] >= 30
+        ):
             assert progress["is_validated"] is True
 
     def test_validation_status_structure(self, tracker):

@@ -79,9 +79,7 @@ class IBGatewayConnectivityTester:
         self._print_summary()
 
         # Return True if critical tests passed
-        critical_passed = all(
-            r.passed for r in self.results if "4001" in r.test_name
-        )
+        critical_passed = all(r.passed for r in self.results if "4001" in r.test_name)
         return critical_passed
 
     def _test_port_4001_blocked(self) -> None:
@@ -104,15 +102,11 @@ class IBGatewayConnectivityTester:
 
                 # Port 4001 should be UNREACHABLE (result != 0)
                 if result != 0:
-                    message = (
-                        "PASS: Port 4001 is blocked (cannot connect to live trading)"
-                    )
+                    message = "PASS: Port 4001 is blocked (cannot connect to live trading)"
                     self.results.append(TestResult(test_name, True, message))
                     logger.info(f"  PASS: {message}")
                 else:
-                    message = (
-                        "FAIL: Port 4001 is accessible (live trading port should be blocked!)"
-                    )
+                    message = "FAIL: Port 4001 is accessible (live trading port should be blocked!)"
                     self.results.append(TestResult(test_name, False, message))
                     logger.warning(f"  FAIL: {message}")
 
@@ -144,8 +138,7 @@ class IBGatewayConnectivityTester:
 
                 if result == 0:
                     message = (
-                        f"PASS: Port {self.PAPER_PORT} is accessible "
-                        "(IB Gateway is running)"
+                        f"PASS: Port {self.PAPER_PORT} is accessible " "(IB Gateway is running)"
                     )
                     self.results.append(TestResult(test_name, True, message))
                     logger.info(f"  PASS: {message}")
@@ -259,8 +252,7 @@ class IBGatewayConnectivityTester:
 
         if self.LIVE_PORT != self.PAPER_GATEWAY_PORT:
             message = (
-                f"PASS: Live port ({self.LIVE_PORT}) != Paper port "
-                f"({self.PAPER_GATEWAY_PORT})"
+                f"PASS: Live port ({self.LIVE_PORT}) != Paper port " f"({self.PAPER_GATEWAY_PORT})"
             )
             self.results.append(TestResult(test_name, True, message))
             logger.info(f"  PASS: {message}")

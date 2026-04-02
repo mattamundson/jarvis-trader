@@ -67,7 +67,11 @@ async def _health_inner() -> dict:
 
     _dm_settings = getattr(data_manager, "settings", None) if data_manager else None
     live_trading_val: bool = bool(getattr(_dm_settings, "LIVE_TRADING_ENABLED", False))
-    ibkr_conn: bool = bool(data_manager.ibkr.is_connected) if (data_manager and getattr(data_manager, "ibkr", None)) else False
+    ibkr_conn: bool = (
+        bool(data_manager.ibkr.is_connected)
+        if (data_manager and getattr(data_manager, "ibkr", None))
+        else False
+    )
 
     return {
         "status": status,
@@ -143,7 +147,9 @@ async def _full_health_inner() -> dict:
     try:
         if safety_layer and hasattr(safety_layer, "check_circuit_breakers"):
             breakers = safety_layer.check_circuit_breakers()
-            all_clear = not breakers.get("daily_limit_breached", False) and not breakers.get("drawdown_breached", False)
+            all_clear = not breakers.get("daily_limit_breached", False) and not breakers.get(
+                "drawdown_breached", False
+            )
             status["circuit_breakers"] = {
                 "status": "ok" if all_clear else "tripped",
                 "all_clear": all_clear,
@@ -191,7 +197,9 @@ async def _full_health_inner() -> dict:
     return {
         "overall": overall,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "uptime_seconds": (datetime.now(timezone.utc) - _start_time).total_seconds() if _start_time else 0,
+        "uptime_seconds": (datetime.now(timezone.utc) - _start_time).total_seconds()
+        if _start_time
+        else 0,
         "subsystems": status,
         "version": "1.1.0",
         "phase": "paper_trading",

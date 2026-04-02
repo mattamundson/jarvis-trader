@@ -1,4 +1,5 @@
 """Reports and analytics router."""
+
 import logging
 from datetime import datetime, timedelta
 from datetime import timezone as _tz
@@ -24,6 +25,7 @@ async def get_7d_performance() -> dict[str, Any]:
     """Get 7-day performance summary."""
     try:
         from database.schema import get_db
+
         db = get_db()
 
         # Get all closed trades and filter to 7-day window

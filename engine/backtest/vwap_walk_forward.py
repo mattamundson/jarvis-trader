@@ -13,6 +13,7 @@ Scoring: composite of profit_factor × win_rate × sign(net_pnl)
 Usage:
   python -m backtest.vwap_walk_forward --symbol MES --start 2024-01-01 --end 2026-03-27
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,12 +34,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("vwap_walk_forward")
 
-PARAM_GRID = list(product(
-    [1.5, 2.0, 2.5],               # band_mult (dropped 1.0 — too noisy)
-    [0.25, 0.50, 0.75],            # stop_mult
-    [True, False],                 # require_reversal_bar
-    [True, False],                 # regime_filter (skip entries in TRENDING regime)
-))
+PARAM_GRID = list(
+    product(
+        [1.5, 2.0, 2.5],  # band_mult (dropped 1.0 — too noisy)
+        [0.25, 0.50, 0.75],  # stop_mult
+        [True, False],  # require_reversal_bar
+        [True, False],  # regime_filter (skip entries in TRENDING regime)
+    )
+)
 
 WFE_EXCELLENT = 0.70
 WFE_GOOD = 0.50
@@ -47,6 +50,7 @@ WFE_MARGINAL = 0.30
 
 def _load_data(symbol: str, start: str, end: str) -> pd.DataFrame:
     from backtest.data_loader import BacktestDataLoader
+
     loader = BacktestDataLoader()
     df = loader.load(symbol=symbol, start=start, end=end, interval="1h")
     if df is None or df.empty:
@@ -76,8 +80,10 @@ def _optimise(train_df: pd.DataFrame, symbol: str) -> Tuple[Optional[Dict], Opti
     for band_mult, stop_mult, reversal, regime_filter in PARAM_GRID:
         try:
             r = run_vwap_backtest(
-                train_df.copy(), symbol=symbol,
-                band_mult=band_mult, stop_mult=stop_mult,
+                train_df.copy(),
+                symbol=symbol,
+                band_mult=band_mult,
+                stop_mult=stop_mult,
                 require_reversal_bar=reversal,
                 regime_filter=regime_filter,
             )
@@ -178,23 +184,25 @@ def run_vwap_walk_forward(
         oos_pfs.append(oos_s["profit_factor"])
         oos_wrs.append(oos_s["win_rate"])
 
-        windows.append({
-            "window": window_num,
-            "train_start": str(window_start.date()),
-            "train_end": str(train_end.date()),
-            "test_start": str(train_end.date()),
-            "test_end": str(test_end.date()),
-            "best_params": best_params,
-            "is_score": best_score,
-            "is_trades": is_s["total_trades"],
-            "is_pnl": round(is_s["net_pnl"], 2),
-            "is_win_rate": is_s["win_rate"],
-            "oos_trades": oos_s["total_trades"],
-            "oos_pnl": round(oos_s["net_pnl"], 2),
-            "oos_win_rate": oos_s["win_rate"],
-            "oos_profit_factor": round(oos_s["profit_factor"], 3),
-            "oos_sharpe": oos_s["sharpe"],
-        })
+        windows.append(
+            {
+                "window": window_num,
+                "train_start": str(window_start.date()),
+                "train_end": str(train_end.date()),
+                "test_start": str(train_end.date()),
+                "test_end": str(test_end.date()),
+                "best_params": best_params,
+                "is_score": best_score,
+                "is_trades": is_s["total_trades"],
+                "is_pnl": round(is_s["net_pnl"], 2),
+                "is_win_rate": is_s["win_rate"],
+                "oos_trades": oos_s["total_trades"],
+                "oos_pnl": round(oos_s["net_pnl"], 2),
+                "oos_win_rate": oos_s["win_rate"],
+                "oos_profit_factor": round(oos_s["profit_factor"], 3),
+                "oos_sharpe": oos_s["sharpe"],
+            }
+        )
         window_start += pd.DateOffset(months=test_months)
 
     if not windows:
@@ -242,11 +250,17 @@ def run_vwap_walk_forward(
     logger.info("=" * 64)
 
     return {
-        "symbol": symbol, "strategy": "VWAP_REVERSION", "interval": "1h",
+        "symbol": symbol,
+        "strategy": "VWAP_REVERSION",
+        "interval": "1h",
         "generated": datetime.now().isoformat(),
-        "config": {"start": start, "end": end,
-                   "train_months": train_months, "test_months": test_months,
-                   "grid_size": len(PARAM_GRID)},
+        "config": {
+            "start": start,
+            "end": end,
+            "train_months": train_months,
+            "test_months": test_months,
+            "grid_size": len(PARAM_GRID),
+        },
         "summary": {
             "total_windows": len(windows),
             "windows_profitable": profitable,
@@ -272,8 +286,11 @@ def main() -> None:
     args = parser.parse_args()
 
     results = run_vwap_walk_forward(
-        symbol=args.symbol, start=args.start, end=args.end,
-        train_months=args.train_months, test_months=args.test_months,
+        symbol=args.symbol,
+        start=args.start,
+        end=args.end,
+        train_months=args.train_months,
+        test_months=args.test_months,
     )
 
     out_dir = Path(__file__).parent / "results"

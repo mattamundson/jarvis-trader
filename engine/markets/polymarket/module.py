@@ -7,6 +7,7 @@ Consider Kalshi (CFTC-regulated) as an alternative.
 
 Enable only after reviewing applicable regulations.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,7 +49,9 @@ class PolymarketModule(MarketModule):
         private_key: str = "",
         order_size_usdc: float = 50.0,
     ):
-        self._client = PolymarketClient(api_key=api_key, api_secret=api_secret, private_key=private_key)
+        self._client = PolymarketClient(
+            api_key=api_key, api_secret=api_secret, private_key=private_key
+        )
         self._scanner = PolymarketScanner(client=self._client)
         self._mm_strategy = MarketMakingStrategy(order_size_usdc=order_size_usdc)
         self._arb_strategy = ArbitrageStrategy(order_size_usdc=order_size_usdc * 2)
@@ -61,6 +64,7 @@ class PolymarketModule(MarketModule):
     def is_enabled(self) -> bool:
         try:
             from config import settings
+
             return settings.POLYMARKET_ENABLED and "polymarket" in settings.get_enabled_markets()
         except Exception:
             return False
@@ -83,15 +87,17 @@ class PolymarketModule(MarketModule):
         """Return open prediction market positions."""
         positions = []
         for p in self._open_positions:
-            positions.append(Position(
-                symbol=p.get("token_id", "")[:20],
-                quantity=float(p.get("size", 0)),
-                avg_cost=float(p.get("entry_price", 0)),
-                market_value=float(p.get("current_value", 0)),
-                unrealized_pnl=float(p.get("unrealized_pnl", 0)),
-                side="long",
-                market=self.market_name,
-            ))
+            positions.append(
+                Position(
+                    symbol=p.get("token_id", "")[:20],
+                    quantity=float(p.get("size", 0)),
+                    avg_cost=float(p.get("entry_price", 0)),
+                    market_value=float(p.get("current_value", 0)),
+                    unrealized_pnl=float(p.get("unrealized_pnl", 0)),
+                    side="long",
+                    market=self.market_name,
+                )
+            )
         return positions
 
     async def get_daily_pnl(self) -> float:
@@ -136,7 +142,9 @@ class PolymarketModule(MarketModule):
 
     async def execute_signal(self, signal: TradeSignal) -> TradeResult:
         """Execute a Polymarket signal (paper mode until validated)."""
-        logger.info(f"Polymarket: paper signal — {signal.action} ${signal.quantity:.0f} on {signal.symbol}")
+        logger.info(
+            f"Polymarket: paper signal — {signal.action} ${signal.quantity:.0f} on {signal.symbol}"
+        )
         return TradeResult(
             signal=signal,
             executed=False,
@@ -156,7 +164,7 @@ class PolymarketModule(MarketModule):
             market=self.market_name,
             status=self._status if self._client.is_connected() else MarketStatus.OFFLINE,
             message=f"CLOB {'connected' if self._client.is_connected() else 'disconnected'} | "
-                    f"{len(self._open_positions)} positions | Regulatory note: U.S. gray area",
+            f"{len(self._open_positions)} positions | Regulatory note: U.S. gray area",
             daily_pnl=self._daily_pnl,
             open_positions=len(self._open_positions),
             last_trade_at=self._last_cycle_at,

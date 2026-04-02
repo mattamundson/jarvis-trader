@@ -74,10 +74,9 @@ export function RecentDecisionsWidget() {
 
   const fetchDecisions = async () => {
     try {
-      const res = await fetch(
+      const payload: unknown = await fetchEngine(
         `/portfolio/history/decisions?limit=10`
       );
-      const payload: unknown = await res.json();
       const obj = payload as { decisions?: Decision[] };
       setDecisions(
         Array.isArray(obj?.decisions)

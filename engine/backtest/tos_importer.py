@@ -36,11 +36,11 @@ UTC = pytz.utc
 class TOSSignal:
     """Normalized representation of a single TOS strategy signal."""
 
-    timestamp: datetime          # timezone-aware (CT → UTC converted internally)
-    direction: str               # "LONG" or "SHORT"
-    price: float                 # entry price at signal bar
-    quantity: int                # contracts/shares
-    raw_type: str                # original TOS signal type string
+    timestamp: datetime  # timezone-aware (CT → UTC converted internally)
+    direction: str  # "LONG" or "SHORT"
+    price: float  # entry price at signal bar
+    quantity: int  # contracts/shares
+    raw_type: str  # original TOS signal type string
     pnl: Optional[float] = None  # P/L if available in the export
 
     @property
@@ -128,16 +128,16 @@ def _map_direction(raw: str) -> Optional[str]:
 # ── Timestamp parsing ─────────────────────────────────────────────────────────
 
 _DATE_FORMATS = [
-    "%m/%d/%y",          # TOS default: 06/03/24
-    "%m/%d/%Y",          # 06/03/2024
-    "%Y-%m-%d",          # ISO date
+    "%m/%d/%y",  # TOS default: 06/03/24
+    "%m/%d/%Y",  # 06/03/2024
+    "%Y-%m-%d",  # ISO date
     "%Y/%m/%d",
 ]
 
 _TIME_FORMATS = [
-    "%H:%M",             # 09:30
-    "%H:%M:%S",          # 09:30:00
-    "%I:%M %p",          # 9:30 AM
+    "%H:%M",  # 09:30
+    "%H:%M:%S",  # 09:30:00
+    "%I:%M %p",  # 9:30 AM
     "%I:%M:%S %p",
 ]
 
@@ -201,6 +201,7 @@ def _parse_qty(qty_str: str) -> int:
 
 # ── Format detectors ──────────────────────────────────────────────────────────
 
+
 def _detect_format(headers: List[str]) -> str:
     """Return the detected TOS export format name."""
     lower = [h.lower().strip() for h in headers]
@@ -226,9 +227,8 @@ def _detect_format(headers: List[str]) -> str:
 
 # ── Format-specific parsers ───────────────────────────────────────────────────
 
-def _parse_strategy_report_row(
-    row: dict, headers_lower: List[str]
-) -> Optional[TOSSignal]:
+
+def _parse_strategy_report_row(row: dict, headers_lower: List[str]) -> Optional[TOSSignal]:
     """
     Parse a single row from TOS Strategy Report format.
 
@@ -343,6 +343,7 @@ def _parse_simple_row(row: dict) -> Optional[TOSSignal]:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 def parse_tos_csv(
     csv_content: str,

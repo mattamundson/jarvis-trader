@@ -2,6 +2,7 @@
 HookRegistry — register and fire event hooks across the trading system.
 Inspired by ECC's hook system. Hooks run synchronously in registration order.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -23,9 +24,15 @@ MARKET_CONNECTED = "market_connected"
 MARKET_DISCONNECTED = "market_disconnected"
 
 ALL_EVENTS = [
-    SIGNAL_GENERATED, PRE_ORDER, POST_ORDER, TRADE_CLOSED,
-    DAILY_PNL_UPDATE, KILL_SWITCH_TRIGGERED, TARGET_REACHED,
-    MARKET_CONNECTED, MARKET_DISCONNECTED,
+    SIGNAL_GENERATED,
+    PRE_ORDER,
+    POST_ORDER,
+    TRADE_CLOSED,
+    DAILY_PNL_UPDATE,
+    KILL_SWITCH_TRIGGERED,
+    TARGET_REACHED,
+    MARKET_CONNECTED,
+    MARKET_DISCONNECTED,
 ]
 
 Handler = Callable[..., Any]

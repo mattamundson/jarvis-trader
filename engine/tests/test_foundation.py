@@ -2,6 +2,7 @@
 Integration tests for foundation layer components.
 Tests: HookRegistry, CapitalAllocator, CorrelationMonitor, CrossMarketRiskManager.
 """
+
 from datetime import date, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -51,6 +52,7 @@ class TestHookRegistry:
         registry.on(SIGNAL_GENERATED, handler2)
 
         import asyncio
+
         results = asyncio.run(registry.emit(SIGNAL_GENERATED, symbol="MES", price=5800.0))
 
         assert handler1.called
@@ -65,6 +67,7 @@ class TestHookRegistry:
         registry.on(SIGNAL_GENERATED, handler)
 
         import asyncio
+
         asyncio.run(registry.emit(SIGNAL_GENERATED, symbol="MES", price=5800.0, confidence=0.85))
 
         handler.assert_called_once_with(symbol="MES", price=5800.0, confidence=0.85)
@@ -81,6 +84,7 @@ class TestHookRegistry:
         registry.on(POST_ORDER, handler3)
 
         import asyncio
+
         asyncio.run(registry.emit(SIGNAL_GENERATED, symbol="MES"))
 
         assert handler1.called
@@ -99,6 +103,7 @@ class TestHookRegistry:
         registry.on(SIGNAL_GENERATED, sync_handler)
 
         import asyncio
+
         results = asyncio.run(registry.emit(SIGNAL_GENERATED, symbol="MES"))
 
         assert async_handler.called
@@ -141,6 +146,7 @@ class TestHookRegistry:
         registry = HookRegistry()
 
         import asyncio
+
         results = asyncio.run(registry.emit("unknown_event", data="test"))
 
         assert results == []
@@ -157,6 +163,7 @@ class TestHookRegistry:
         registry.on(SIGNAL_GENERATED, good_handler)
 
         import asyncio
+
         results = asyncio.run(registry.emit(SIGNAL_GENERATED, symbol="MES"))
 
         # Both should be called despite bad_handler raising
@@ -173,6 +180,7 @@ class TestHookRegistry:
         registry.off(SIGNAL_GENERATED, handler)
 
         import asyncio
+
         asyncio.run(registry.emit(SIGNAL_GENERATED, symbol="MES"))
 
         assert not handler.called
@@ -184,6 +192,7 @@ class TestHookRegistry:
         registry.on(SIGNAL_GENERATED, handler)
 
         import asyncio
+
         asyncio.run(registry.emit(SIGNAL_GENERATED, symbol="MES"))
         asyncio.run(registry.emit(SIGNAL_GENERATED, symbol="MNQ"))
 
@@ -324,7 +333,7 @@ class TestCorrelationMonitor:
         monitor = CorrelationMonitor(total_capital=100_000.0)
 
         monitor.update("futures", 15_000.0)  # 15% long
-        monitor.update("options", 5_000.0)   # 5% long
+        monitor.update("options", 5_000.0)  # 5% long
 
         status = monitor.get_status()
         assert status["by_market"]["futures"] == 15_000.0
@@ -344,7 +353,7 @@ class TestCorrelationMonitor:
         """Test that net exposure includes short positions."""
         monitor = CorrelationMonitor(total_capital=100_000.0)
 
-        monitor.update("futures", 20_000.0)   # 20% long
+        monitor.update("futures", 20_000.0)  # 20% long
         monitor.update("options", -10_000.0)  # 10% short
 
         net_exposure = monitor.total_net_exposure()
@@ -388,7 +397,7 @@ class TestCorrelationMonitor:
         """Test that short positions reduce net long exposure."""
         monitor = CorrelationMonitor(total_capital=100_000.0)
 
-        monitor.update("futures", 50_000.0)   # 50% long
+        monitor.update("futures", 50_000.0)  # 50% long
         monitor.update("options", -30_000.0)  # 30% short
 
         net = monitor.total_net_exposure()
@@ -479,9 +488,7 @@ class TestCrossMarketRiskManager:
 
     def test_reset_daily_clears_pnl(self):
         """Test that reset_daily clears daily P&L tracking."""
-        manager = CrossMarketRiskManager(
-            market_capitals={"futures": 10_000.0}
-        )
+        manager = CrossMarketRiskManager(market_capitals={"futures": 10_000.0})
 
         manager.update_pnl("futures", 500.0)
         manager.reset_daily()
@@ -505,9 +512,7 @@ class TestCrossMarketRiskManager:
 
     def test_get_status_returns_market_states(self):
         """Test get_status returns status for all markets."""
-        manager = CrossMarketRiskManager(
-            market_capitals={"futures": 10_000.0, "options": 5_000.0}
-        )
+        manager = CrossMarketRiskManager(market_capitals={"futures": 10_000.0, "options": 5_000.0})
 
         manager.update_pnl("futures", 150.0)
         manager.update_pnl("options", -100.0)
@@ -521,9 +526,7 @@ class TestCrossMarketRiskManager:
 
     def test_unknown_market_handled_gracefully(self):
         """Test that unknown market is handled gracefully."""
-        manager = CrossMarketRiskManager(
-            market_capitals={"futures": 10_000.0}
-        )
+        manager = CrossMarketRiskManager(market_capitals={"futures": 10_000.0})
 
         actions = manager.update_pnl("unknown_market", 100.0)
 
@@ -545,9 +548,7 @@ class TestCrossMarketRiskManager:
 
     def test_market_loss_percentage_calculated_correctly(self):
         """Test individual market loss percentage is correct."""
-        manager = CrossMarketRiskManager(
-            market_capitals={"futures": 10_000.0}
-        )
+        manager = CrossMarketRiskManager(market_capitals={"futures": 10_000.0})
 
         manager.update_pnl("futures", -150.0)
 
@@ -557,9 +558,7 @@ class TestCrossMarketRiskManager:
 
     def test_multiple_updates_same_market(self):
         """Test multiple P&L updates for same market."""
-        manager = CrossMarketRiskManager(
-            market_capitals={"futures": 10_000.0}
-        )
+        manager = CrossMarketRiskManager(market_capitals={"futures": 10_000.0})
 
         manager.update_pnl("futures", 100.0)
         manager.update_pnl("futures", 150.0)  # Update again

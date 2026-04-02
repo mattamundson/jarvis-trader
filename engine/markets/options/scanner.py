@@ -2,6 +2,7 @@
 OptionsScanner — find premium-selling opportunities in SPY/SPX/IWM/QQQ.
 Criteria: IV Rank > 30, OI > 100, 30-45 DTE, liquid strikes.
 """
+
 from __future__ import annotations
 
 import logging
@@ -74,6 +75,7 @@ class OptionsScanner:
                 return None
 
             import yfinance as yf
+
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period="1d")
             if hist.empty:
@@ -82,6 +84,7 @@ class OptionsScanner:
 
             expiry = expiries[0]
             from datetime import date
+
             dte = (datetime.strptime(expiry, "%Y-%m-%d").date() - date.today()).days
 
             # Get VIX for regime

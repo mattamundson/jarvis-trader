@@ -28,8 +28,6 @@ def inject_dependencies(s, dbm, sl):
     safety_layer = sl
 
 
-
-
 @router.get("/settings/risk")
 async def get_risk_settings():
     """Get current risk/circuit breaker settings."""

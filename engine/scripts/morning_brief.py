@@ -24,18 +24,15 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 try:
     import httpx
 except ImportError:
-    import urllib.request
-    import urllib.error
     httpx = None  # type: ignore
 
 logger = logging.getLogger("morning_brief")
@@ -199,10 +196,18 @@ def run_brief() -> int:
                 prev_close = price_info.get("prev_close", "N/A")
                 change_pct = price_info.get("change_pct", "N/A")
 
-                if isinstance(last_price, (int, float)) and isinstance(prev_close, (int, float)) and isinstance(change_pct, (int, float)):
-                    lines.append(f"{symbol:<8} {last_price:>12.2f} {prev_close:>12.2f} {change_pct:>9.2f}%")
+                if (
+                    isinstance(last_price, (int, float))
+                    and isinstance(prev_close, (int, float))
+                    and isinstance(change_pct, (int, float))
+                ):
+                    lines.append(
+                        f"{symbol:<8} {last_price:>12.2f} {prev_close:>12.2f} {change_pct:>9.2f}%"
+                    )
                 else:
-                    lines.append(f"{symbol:<8} {str(last_price):>12} {str(prev_close):>12} {str(change_pct):>10}")
+                    lines.append(
+                        f"{symbol:<8} {str(last_price):>12} {str(prev_close):>12} {str(change_pct):>10}"
+                    )
 
         lines.append("")
     else:
@@ -226,7 +231,9 @@ def run_brief() -> int:
                 sentiment = "NEUTRAL"
 
             if isinstance(score, (int, float)) and isinstance(post_count, int):
-                lines.append(f"  {symbol:>6}: {sentiment:>8} (score: {score:+.2f}, {post_count} posts)")
+                lines.append(
+                    f"  {symbol:>6}: {sentiment:>8} (score: {score:+.2f}, {post_count} posts)"
+                )
             else:
                 lines.append(f"  {symbol:>6}: {sentiment:>8}")
 

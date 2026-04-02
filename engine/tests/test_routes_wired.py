@@ -156,9 +156,7 @@ def test_route_methods_valid():
     for route in app.routes:
         if hasattr(route, "methods"):
             for method in route.methods:
-                assert (
-                    method in valid_methods
-                ), f"Route {route.path} has invalid method {method}"
+                assert method in valid_methods, f"Route {route.path} has invalid method {method}"
 
     print("✅ All routes use valid HTTP methods")
 
@@ -177,7 +175,9 @@ def test_router_imports_complete():
     router_dir = os.path.join(os.path.dirname(__file__), "..", "routers")
     router_files = glob.glob(os.path.join(router_dir, "*_router.py"))
     router_names = [
-        os.path.basename(f).replace(".py", "") for f in router_files if not f.endswith("__init__.py")
+        os.path.basename(f).replace(".py", "")
+        for f in router_files
+        if not f.endswith("__init__.py")
     ]
 
     # Get all routes from the app
@@ -199,7 +199,9 @@ def test_router_imports_complete():
                 print(f"  ⚠️  {router_name} (import error: {e})")
                 missing_routers.append(router_name)
 
-    print(f"\nRouters successfully imported: {len(router_names) - len(missing_routers)}/{len(router_names)}")
+    print(
+        f"\nRouters successfully imported: {len(router_names) - len(missing_routers)}/{len(router_names)}"
+    )
 
 
 if __name__ == "__main__":

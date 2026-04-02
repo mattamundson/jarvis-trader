@@ -2,6 +2,7 @@
 MultiMarketOrchestrator — coordinates all market modules.
 Manages lifecycle, scheduling, cross-market risk, and P&L aggregation.
 """
+
 from __future__ import annotations
 
 import logging
@@ -137,12 +138,16 @@ class MultiMarketOrchestrator:
         return {
             "total_daily_pnl": total_pnl,
             "daily_target": self.daily_target,
-            "target_progress_pct": (total_pnl / self.daily_target * 100) if self.daily_target else 0,
+            "target_progress_pct": (total_pnl / self.daily_target * 100)
+            if self.daily_target
+            else 0,
             "total_open_positions": total_positions,
             "markets": module_stats,
             "halted": self._halted,
             "halt_reason": self._halt_reason,
-            "uptime_seconds": (datetime.utcnow() - self._start_time).total_seconds() if self._start_time else 0,
+            "uptime_seconds": (datetime.utcnow() - self._start_time).total_seconds()
+            if self._start_time
+            else 0,
         }
 
     def get_all_health(self) -> list[HealthStatus]:
@@ -152,11 +157,13 @@ class MultiMarketOrchestrator:
             try:
                 statuses.append(module.health_check())
             except Exception as exc:
-                statuses.append(HealthStatus(
-                    market=module.market_name,
-                    status=MarketStatus.ERROR,
-                    message=str(exc),
-                ))
+                statuses.append(
+                    HealthStatus(
+                        market=module.market_name,
+                        status=MarketStatus.ERROR,
+                        message=str(exc),
+                    )
+                )
         return statuses
 
     def halt_all(self, reason: str) -> None:

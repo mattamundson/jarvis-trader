@@ -42,11 +42,7 @@ async def _fetch_price_from_yfinance(yf_ticker: str, original_symbol: str) -> di
 
     tickers = yf.Tickers(yf_ticker)
     info = tickers.tickers[yf_ticker].fast_info
-    current = (
-        float(info.last_price)
-        if hasattr(info, "last_price") and info.last_price
-        else None
-    )
+    current = float(info.last_price) if hasattr(info, "last_price") and info.last_price else None
     prev = (
         float(info.previous_close)
         if hasattr(info, "previous_close") and info.previous_close

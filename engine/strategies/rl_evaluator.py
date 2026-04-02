@@ -10,6 +10,7 @@ Usage:
     evaluator = OOSEvaluator(model_path="data/rl_models/MES_20260401_120000")
     metrics = evaluator.evaluate("MES", "2025-10-01", "2026-04-01")
 """
+
 from __future__ import annotations
 
 import logging
@@ -85,9 +86,7 @@ class OOSEvaluator:
             hold_rate, n_trades, total_pnl, avg_pnl,
             passes_validation, evaluated_at
         """
-        logger.info(
-            f"[OOSEvaluator] Evaluating {symbol} from {start_date} to {end_date}"
-        )
+        logger.info(f"[OOSEvaluator] Evaluating {symbol} from {start_date} to {end_date}")
         start_dt = datetime.now(timezone.utc)
 
         # ── 1. Resolve model path ────────────────────────────────────────
@@ -115,13 +114,9 @@ class OOSEvaluator:
         # ── 3. Filter to date range ──────────────────────────────────────
         df_range = self._filter_date_range(df, start_date, end_date)
         if len(df_range) < 60:
-            raise ValueError(
-                f"Too few bars in range {start_date}→{end_date}: {len(df_range)} bars"
-            )
+            raise ValueError(f"Too few bars in range {start_date}→{end_date}: {len(df_range)} bars")
 
-        logger.info(
-            f"[OOSEvaluator] {len(df_range)} bars in evaluation range for {symbol}"
-        )
+        logger.info(f"[OOSEvaluator] {len(df_range)} bars in evaluation range for {symbol}")
 
         # ── 4. Build environment ─────────────────────────────────────────
         env = build_env(symbol=symbol, df=df_range)
@@ -135,9 +130,7 @@ class OOSEvaluator:
         done = False
 
         while not done:
-            action, _ = ppo_model.predict(
-                np.array(obs, dtype=np.float32), deterministic=True
-            )
+            action, _ = ppo_model.predict(np.array(obs, dtype=np.float32), deterministic=True)
             action = int(action)
             action_counts[action] = action_counts.get(action, 0) + 1
             obs, _reward, terminated, truncated, _info = env.step(action)
@@ -158,14 +151,16 @@ class OOSEvaluator:
         max_dd = episode_metrics.get("max_drawdown", 1.0)
         n_trades = episode_metrics.get("n_trades", 0)
 
-        passes_validation = all([
-            pf >= gates["min_profit_factor"],
-            wr >= gates["min_win_rate"],
-            max_dd <= gates["max_drawdown"],
-            n_trades >= gates["min_trades"],
-            hold_rate >= gates["min_hold_rate"],
-            sharpe >= gates["min_sharpe"],
-        ])
+        passes_validation = all(
+            [
+                pf >= gates["min_profit_factor"],
+                wr >= gates["min_win_rate"],
+                max_dd <= gates["max_drawdown"],
+                n_trades >= gates["min_trades"],
+                hold_rate >= gates["min_hold_rate"],
+                sharpe >= gates["min_sharpe"],
+            ]
+        )
 
         elapsed = (datetime.now(timezone.utc) - start_dt).total_seconds()
 
@@ -186,7 +181,7 @@ class OOSEvaluator:
             "avg_pnl": episode_metrics.get("avg_pnl", 0.0),
             "action_distribution": {
                 "HOLD": round(action_counts[0] / total_actions, 4),
-                "BUY":  round(action_counts[1] / total_actions, 4),
+                "BUY": round(action_counts[1] / total_actions, 4),
                 "SELL": round(action_counts[2] / total_actions, 4),
                 "CLOSE": round(action_counts[3] / total_actions, 4),
             },
@@ -254,6 +249,7 @@ class OOSEvaluator:
         if data_manager is not None:
             try:
                 import asyncio
+
                 df = asyncio.run(
                     data_manager.get_bars(
                         symbol=symbol,
@@ -282,8 +278,11 @@ class OOSEvaluator:
             import yfinance as yf
 
             FUTURES_TO_YF = {
-                "MES": "ES=F", "MNQ": "NQ=F", "MCL": "CL=F",
-                "MGC": "GC=F", "MYM": "YM=F",
+                "MES": "ES=F",
+                "MNQ": "NQ=F",
+                "MCL": "CL=F",
+                "MGC": "GC=F",
+                "MYM": "YM=F",
             }
             ticker = FUTURES_TO_YF.get(symbol.upper(), symbol)
             yf_interval = {"1h": "1h", "4h": "1h", "1d": "1d"}.get(interval, "1h")
@@ -296,10 +295,15 @@ class OOSEvaluator:
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
-            df = df.rename(columns={
-                "Open": "open", "High": "high", "Low": "low",
-                "Close": "close", "Volume": "volume",
-            })
+            df = df.rename(
+                columns={
+                    "Open": "open",
+                    "High": "high",
+                    "Low": "low",
+                    "Close": "close",
+                    "Volume": "volume",
+                }
+            )
             df = df[["open", "high", "low", "close", "volume"]].copy().dropna()
             return df.reset_index(drop=True)
 

@@ -32,16 +32,12 @@ def compute_sharpe_sortino(result: BacktestResult) -> None:
     daily_returns = daily_returns[~np.isnan(daily_returns)]
     if len(daily_returns) <= 1 or daily_returns.std() <= 0:
         return
-    result.sharpe_ratio = float(
-        (daily_returns.mean() / daily_returns.std()) * np.sqrt(252)
-    )
+    result.sharpe_ratio = float((daily_returns.mean() / daily_returns.std()) * np.sqrt(252))
     downside = daily_returns[daily_returns < 0]
     if len(downside) > 1:
         downside_std = downside.std()
         if downside_std > 0:
-            result.sortino_ratio = float(
-                (daily_returns.mean() / downside_std) * np.sqrt(252)
-            )
+            result.sortino_ratio = float((daily_returns.mean() / downside_std) * np.sqrt(252))
 
 
 def compute_extended_metrics(result: BacktestResult) -> None:
@@ -171,9 +167,7 @@ def calculate_metrics(result: BacktestResult) -> BacktestResult:
         daily_returns = daily_returns[~np.isnan(daily_returns)]
 
         if len(daily_returns) > 1 and daily_returns.std() > 0:
-            result.sharpe_ratio = float(
-                (daily_returns.mean() / daily_returns.std()) * np.sqrt(252)
-            )
+            result.sharpe_ratio = float((daily_returns.mean() / daily_returns.std()) * np.sqrt(252))
             downside = daily_returns[daily_returns < 0]
             if len(downside) > 1:
                 downside_std = downside.std()

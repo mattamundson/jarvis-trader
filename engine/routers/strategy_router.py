@@ -8,6 +8,7 @@ Registered in main.py:
     app.include_router(strategy_router, prefix="/strategies", tags=["strategies"])
     set_strategy_dm(data_manager)   # call in lifespan after data_manager init
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,6 +47,7 @@ def _get_trainer() -> RLTrainer:
 
 # ── Request / Response Models ─────────────────────────────────────────────────
 
+
 class TrainRequest(BaseModel):
     symbol: str = Field("MES", description="Futures symbol: MES, MNQ, MCL")
     interval: str = Field("1h", description="Bar interval: 1h, 4h, 1d")
@@ -55,9 +57,7 @@ class TrainRequest(BaseModel):
         le=1_000_000,
         description="PPO training timesteps",
     )
-    force_recompute: bool = Field(
-        False, description="Force re-fetch + recompute indicators"
-    )
+    force_recompute: bool = Field(False, description="Force re-fetch + recompute indicators")
 
 
 class EvaluateRequest(BaseModel):
@@ -67,6 +67,7 @@ class EvaluateRequest(BaseModel):
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.post("/rl/train")
 async def train_rl_strategy(
@@ -181,7 +182,9 @@ async def evaluate_rl_model(req: EvaluateRequest) -> dict:
 
         # Use cached indicators if available, else compute fresh
         cache_path = RL_CACHE_DIR / f"{req.symbol}_{req.interval}_eval.parquet"
-        df = await asyncio.to_thread(prepare_dataframe, df_raw, cache_path=cache_path, force_recompute=True)
+        df = await asyncio.to_thread(
+            prepare_dataframe, df_raw, cache_path=cache_path, force_recompute=True
+        )
 
         test_env = build_env(symbol=req.symbol, df=df)
         agent = RLTradingAgent.load(
@@ -210,12 +213,14 @@ async def rl_strategy_health() -> dict:
     """Health check for RL strategy module."""
     try:
         import gymnasium  # noqa
+
         gym_ok = True
     except ImportError:
         gym_ok = False
 
     try:
         import stable_baselines3  # noqa
+
         sb3_ok = True
     except ImportError:
         sb3_ok = False

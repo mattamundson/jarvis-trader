@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Database path
 # ---------------------------------------------------------------------------
 
-_DB_DIR  = Path(__file__).resolve().parent.parent / "db"
+_DB_DIR = Path(__file__).resolve().parent.parent / "db"
 _DB_PATH = _DB_DIR / "options_positions.db"
 
 
@@ -30,16 +30,17 @@ _DB_PATH = _DB_DIR / "options_positions.db"
 # OptionsPosition dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class OptionsPosition:
     """Represents a live or closed options position."""
 
     id: str
     symbol: str
-    strategy: str                   # OptionsStrategy.value
-    legs: list[dict]                # serialised OptionsLeg dicts
-    entry_premium: float            # net credit (+) or debit (-) per share at fill
-    current_premium: float          # latest mark-to-market premium per share
+    strategy: str  # OptionsStrategy.value
+    legs: list[dict]  # serialised OptionsLeg dicts
+    entry_premium: float  # net credit (+) or debit (-) per share at fill
+    current_premium: float  # latest mark-to-market premium per share
     entry_date: datetime
     expiry: date
     status: Literal["OPEN", "CLOSED", "EXPIRED"]
@@ -71,6 +72,7 @@ class OptionsPosition:
 # ---------------------------------------------------------------------------
 # SQLite persistence helpers
 # ---------------------------------------------------------------------------
+
 
 def _init_db(db_path: Path) -> None:
     """Create the options_positions table if it does not exist."""
@@ -134,21 +136,24 @@ def _row_to_position(row: sqlite3.Row) -> OptionsPosition:
 
 
 def _legs_to_json(legs: list[OptionsLeg]) -> str:
-    return json.dumps([
-        {
-            "action": leg.action,
-            "option_type": leg.option_type,
-            "strike": leg.strike,
-            "expiry": str(leg.expiry),
-            "quantity": leg.quantity,
-        }
-        for leg in legs
-    ])
+    return json.dumps(
+        [
+            {
+                "action": leg.action,
+                "option_type": leg.option_type,
+                "strike": leg.strike,
+                "expiry": str(leg.expiry),
+                "quantity": leg.quantity,
+            }
+            for leg in legs
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
 # OptionsPositionManager
 # ---------------------------------------------------------------------------
+
 
 class OptionsPositionManager:
     """Manages open and closed options positions with SQLite persistence.
@@ -246,7 +251,11 @@ class OptionsPositionManager:
 
         logger.info(
             "[OptionsPositionManager] ADD %s | %s %s fill=%.4f expiry=%s",
-            pos_id, order.symbol, order.strategy.value, fill_premium, expiry,
+            pos_id,
+            order.symbol,
+            order.strategy.value,
+            fill_premium,
+            expiry,
         )
         return position
 
@@ -298,7 +307,8 @@ class OptionsPositionManager:
         expiring.sort(key=lambda p: p.dte)
         logger.debug(
             "[OptionsPositionManager] get_expiring_soon(days=%d) → %d positions",
-            days, len(expiring),
+            days,
+            len(expiring),
         )
         return expiring
 
@@ -320,14 +330,15 @@ class OptionsPositionManager:
             delta = greeks.get("delta", 0.0)
 
             # Heuristic: if the recorded delta is for a short leg, check breach
-            is_short_leg_dominant = any(
-                leg.get("action") == "SELL" for leg in pos.legs
-            )
+            is_short_leg_dominant = any(leg.get("action") == "SELL" for leg in pos.legs)
             if is_short_leg_dominant and abs(delta) >= threshold:
                 candidates.append(pos)
                 logger.warning(
                     "[OptionsPositionManager] ROLL CANDIDATE %s | %s | delta=%.4f threshold=%.2f",
-                    pos.id, pos.symbol, delta, threshold,
+                    pos.id,
+                    pos.symbol,
+                    delta,
+                    threshold,
                 )
 
         return candidates
@@ -377,7 +388,9 @@ class OptionsPositionManager:
                 symbol=pos.symbol,
                 strategy=pos.strategy,
                 greeks=greeks,
-                leg_type="short" if any(leg.get("action") == "SELL" for leg in pos.legs) else "long",
+                leg_type="short"
+                if any(leg.get("action") == "SELL" for leg in pos.legs)
+                else "long",
             )
             return True
         return False
@@ -441,7 +454,10 @@ class OptionsPositionManager:
 
         logger.info(
             "[OptionsPositionManager] CLOSE %s | %s %s | pnl=$%.2f",
-            position_id, pos.symbol, pos.strategy, realised_pnl,
+            position_id,
+            pos.symbol,
+            pos.strategy,
+            realised_pnl,
         )
 
         return {

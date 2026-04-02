@@ -57,10 +57,9 @@ export function RecentTradesTableWidget() {
 
   const fetchTrades = async () => {
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine(
         `/portfolio/history/trades?limit=10&status=CLOSED`
       );
-      const raw: unknown = await res.json();
       const list: Trade[] = Array.isArray(raw)
         ? raw
         : ((raw as { trades?: Trade[] }).trades ?? []);

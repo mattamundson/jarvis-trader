@@ -8,6 +8,7 @@ Architecture:
 
 Enable: CRYPTO_ENABLED=True in .env
 """
+
 from __future__ import annotations
 
 import logging
@@ -55,6 +56,7 @@ class CryptoMarketModule(MarketModule):
     def is_enabled(self) -> bool:
         try:
             from config import settings
+
             return settings.CRYPTO_ENABLED and "crypto" in settings.get_enabled_markets()
         except Exception:
             return False
@@ -91,16 +93,18 @@ class CryptoMarketModule(MarketModule):
             trades = await self._bridge.get_trades()
             positions = []
             for t in trades:
-                positions.append(Position(
-                    symbol=t.get("pair", "").replace("/", ""),
-                    quantity=float(t.get("amount", 0)),
-                    avg_cost=float(t.get("open_rate", 0)),
-                    market_value=float(t.get("current_value", 0)),
-                    unrealized_pnl=float(t.get("profit_abs", 0)),
-                    side="long",
-                    market=self.market_name,
-                    opened_at=None,
-                ))
+                positions.append(
+                    Position(
+                        symbol=t.get("pair", "").replace("/", ""),
+                        quantity=float(t.get("amount", 0)),
+                        avg_cost=float(t.get("open_rate", 0)),
+                        market_value=float(t.get("current_value", 0)),
+                        unrealized_pnl=float(t.get("profit_abs", 0)),
+                        side="long",
+                        market=self.market_name,
+                        opened_at=None,
+                    )
+                )
             self._cached_positions = positions
             return positions
         except Exception as exc:
@@ -131,7 +135,7 @@ class CryptoMarketModule(MarketModule):
         self._last_cycle_at = datetime.utcnow()
         try:
             await self.get_positions()  # Refresh position cache
-            await self.get_daily_pnl()   # Refresh P&L
+            await self.get_daily_pnl()  # Refresh P&L
         except Exception as exc:
             logger.error(f"Crypto cycle refresh error: {exc}")
 

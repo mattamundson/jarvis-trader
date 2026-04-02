@@ -12,9 +12,10 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from backtest.metrics import calculate_metrics
+
 # Re-export for backward compatibility — all existing imports continue to work
 from backtest.trade_manager import BacktestResult, Trade
-from backtest.metrics import calculate_metrics
 
 __all__ = ["Backtester", "BacktestResult", "Trade"]
 
@@ -201,7 +202,14 @@ class Backtester:
     ) -> tuple[Optional[Trade], int, int, int, float, list]:
         """Check and process stop loss exit."""
         if not stop_touched or (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) <= 0:
-            return open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, 0.0, targets_hit
+            return (
+                open_trade,
+                open_contracts_t1,
+                open_contracts_t2,
+                open_contracts_t3,
+                0.0,
+                targets_hit,
+            )
 
         remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
         exit_price = open_trade.stop_price
@@ -295,11 +303,25 @@ class Backtester:
     ) -> tuple[Optional[Trade], int, int, int, float, list]:
         """Check for end-of-day close."""
         if not is_eod:
-            return open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, 0.0, targets_hit
+            return (
+                open_trade,
+                open_contracts_t1,
+                open_contracts_t2,
+                open_contracts_t3,
+                0.0,
+                targets_hit,
+            )
 
         remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
         if remaining <= 0:
-            return open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, 0.0, targets_hit
+            return (
+                open_trade,
+                open_contracts_t1,
+                open_contracts_t2,
+                open_contracts_t3,
+                0.0,
+                targets_hit,
+            )
 
         if open_trade.direction == "long":
             pnl = remaining * (close - open_trade.entry_price) * multiplier
@@ -332,7 +354,15 @@ class Backtester:
         capital_change = 0.0
 
         if open_trade is None:
-            return None, open_contracts_t1, open_contracts_t2, open_contracts_t3, capital_change, targets_hit, completed
+            return (
+                None,
+                open_contracts_t1,
+                open_contracts_t2,
+                open_contracts_t3,
+                capital_change,
+                targets_hit,
+                completed,
+            )
 
         open_trade.holding_bars += 1
         bar_open = row["open"]
@@ -356,44 +386,73 @@ class Backtester:
         check_targets_first = both_stop_and_target and target_first
 
         if check_targets_first:
-            open_contracts_t1, open_contracts_t2, capital_from_targets, new_targets = \
+            open_contracts_t1, open_contracts_t2, capital_from_targets, new_targets = (
                 self._check_targets_exit(
-                    open_trade, open_contracts_t1, open_contracts_t2, multiplier,
-                    tick_size, t1_touched, t2_touched
+                    open_trade,
+                    open_contracts_t1,
+                    open_contracts_t2,
+                    multiplier,
+                    tick_size,
+                    t1_touched,
+                    t2_touched,
                 )
+            )
             capital_change += capital_from_targets
             targets_hit.extend(new_targets)
             if open_trade is not None:
-                open_trade, new_t1, new_t2, new_t3, capital_from_stop, targets_hit = \
+                open_trade, new_t1, new_t2, new_t3, capital_from_stop, targets_hit = (
                     self._check_stop_exit(
-                        open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3,
-                        multiplier, tick_size, stop_touched, targets_hit
+                        open_trade,
+                        open_contracts_t1,
+                        open_contracts_t2,
+                        open_contracts_t3,
+                        multiplier,
+                        tick_size,
+                        stop_touched,
+                        targets_hit,
                     )
+                )
                 if open_trade is None:
                     completed.append(True)
                 open_contracts_t1, open_contracts_t2, open_contracts_t3 = new_t1, new_t2, new_t3
                 capital_change += capital_from_stop
         else:
-            open_trade, new_t1, new_t2, new_t3, capital_from_stop, targets_hit = \
+            open_trade, new_t1, new_t2, new_t3, capital_from_stop, targets_hit = (
                 self._check_stop_exit(
-                    open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3,
-                    multiplier, tick_size, stop_touched, targets_hit
+                    open_trade,
+                    open_contracts_t1,
+                    open_contracts_t2,
+                    open_contracts_t3,
+                    multiplier,
+                    tick_size,
+                    stop_touched,
+                    targets_hit,
                 )
+            )
             if open_trade is None:
                 completed.append(True)
             else:
                 open_contracts_t1, open_contracts_t2, open_contracts_t3 = new_t1, new_t2, new_t3
                 capital_change += capital_from_stop
-                open_contracts_t1, open_contracts_t2, capital_from_targets, new_targets = \
+                open_contracts_t1, open_contracts_t2, capital_from_targets, new_targets = (
                     self._check_targets_exit(
-                        open_trade, open_contracts_t1, open_contracts_t2, multiplier,
-                        tick_size, t1_touched, t2_touched
+                        open_trade,
+                        open_contracts_t1,
+                        open_contracts_t2,
+                        multiplier,
+                        tick_size,
+                        t1_touched,
+                        t2_touched,
                     )
+                )
                 capital_change += capital_from_targets
                 targets_hit.extend(new_targets)
 
         # Check all contracts exited via targets
-        if open_trade is not None and (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) == 0:
+        if (
+            open_trade is not None
+            and (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) == 0
+        ):
             open_trade.exit_reason = targets_hit[-1] if targets_hit else "target_1"
             open_trade.exit_price = close
             open_trade.exit_date = idx
@@ -401,7 +460,15 @@ class Backtester:
             open_trade = None
             targets_hit = []
 
-        return open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, capital_change, targets_hit, completed
+        return (
+            open_trade,
+            open_contracts_t1,
+            open_contracts_t2,
+            open_contracts_t3,
+            capital_change,
+            targets_hit,
+            completed,
+        )
 
     def run(
         self,
@@ -479,11 +546,27 @@ class Backtester:
             close = row["close"]
             low = row.get("low", close)
             high = row.get("high", close)
-            open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, \
-                capital_from_exits, targets_hit, closed_trades = self._process_trade_on_bar(
-                    open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3,
-                    targets_hit, row, idx, df, multiplier, tick_size, close
-                )
+            (
+                open_trade,
+                open_contracts_t1,
+                open_contracts_t2,
+                open_contracts_t3,
+                capital_from_exits,
+                targets_hit,
+                closed_trades,
+            ) = self._process_trade_on_bar(
+                open_trade,
+                open_contracts_t1,
+                open_contracts_t2,
+                open_contracts_t3,
+                targets_hit,
+                row,
+                idx,
+                df,
+                multiplier,
+                tick_size,
+                close,
+            )
             capital += capital_from_exits
             completed_trades.extend([t for t in closed_trades if t])
 
@@ -495,22 +578,34 @@ class Backtester:
                     bar_atr = row.get("atr", 0)
                     if bar_atr > 0:
                         if open_trade.direction == "long":
-                            open_trade, open_contracts_t1, capital_ts, ts_exited = \
+                            open_trade, open_contracts_t1, capital_ts, ts_exited = (
                                 self._process_trailing_stop_long(
-                                    open_trade, remaining, multiplier, tick_size,
-                                    bar_atr, close, low
+                                    open_trade,
+                                    remaining,
+                                    multiplier,
+                                    tick_size,
+                                    bar_atr,
+                                    close,
+                                    low,
                                 )
+                            )
                             if ts_exited:
                                 open_contracts_t2 = 0
                                 open_contracts_t3 = 0
                                 targets_hit = []
                             capital += capital_ts
                         else:
-                            open_trade, open_contracts_t1, capital_ts, ts_exited = \
+                            open_trade, open_contracts_t1, capital_ts, ts_exited = (
                                 self._process_trailing_stop_short(
-                                    open_trade, remaining, multiplier, tick_size,
-                                    bar_atr, close, high
+                                    open_trade,
+                                    remaining,
+                                    multiplier,
+                                    tick_size,
+                                    bar_atr,
+                                    close,
+                                    high,
                                 )
+                            )
                             if ts_exited:
                                 open_contracts_t2 = 0
                                 open_contracts_t3 = 0
@@ -529,11 +624,25 @@ class Backtester:
                     next_bar_date = df.index[next_idx_pos + 1].date()
                     is_eod = next_bar_date != row_date
 
-                open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3, \
-                    capital_eod, targets_hit = self._check_eod_close(
-                        open_trade, open_contracts_t1, open_contracts_t2, open_contracts_t3,
-                        multiplier, tick_size, is_eod, close, idx, targets_hit
-                    )
+                (
+                    open_trade,
+                    open_contracts_t1,
+                    open_contracts_t2,
+                    open_contracts_t3,
+                    capital_eod,
+                    targets_hit,
+                ) = self._check_eod_close(
+                    open_trade,
+                    open_contracts_t1,
+                    open_contracts_t2,
+                    open_contracts_t3,
+                    multiplier,
+                    tick_size,
+                    is_eod,
+                    close,
+                    idx,
+                    targets_hit,
+                )
                 capital += capital_eod
                 if open_trade is None:
                     # Trade was closed at EOD

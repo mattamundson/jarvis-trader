@@ -1,15 +1,16 @@
 """Safety and loss tracking router."""
+
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
-from api.models import SafetyStatusResponse
 from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
 from starlette.requests import Request
 
+from api.models import SafetyStatusResponse
 from middleware.rate_limit import limiter
 
 router = APIRouter(prefix="/safety", tags=["safety"])
@@ -114,8 +115,12 @@ async def get_safety_status(request: Request) -> dict[str, Any]:
         try:
             st = pm.get_current_pnl_state()
             pnl_source = getattr(st, "source", pnl_source)
-            current_balance = float(getattr(st, "current_balance", current_balance) or current_balance)
-            starting_balance = float(getattr(st, "starting_balance", starting_balance) or starting_balance)
+            current_balance = float(
+                getattr(st, "current_balance", current_balance) or current_balance
+            )
+            starting_balance = float(
+                getattr(st, "starting_balance", starting_balance) or starting_balance
+            )
         except Exception:
             pass
 
@@ -163,8 +168,12 @@ async def get_circuit_breakers() -> dict[str, Any]:
         try:
             st = pm.get_current_pnl_state()
             pnl_source = getattr(st, "source", pnl_source)
-            current_balance = float(getattr(st, "current_balance", current_balance) or current_balance)
-            starting_balance = float(getattr(st, "starting_balance", starting_balance) or starting_balance)
+            current_balance = float(
+                getattr(st, "current_balance", current_balance) or current_balance
+            )
+            starting_balance = float(
+                getattr(st, "starting_balance", starting_balance) or starting_balance
+            )
         except Exception:
             pass
 
@@ -182,7 +191,7 @@ async def get_circuit_breakers() -> dict[str, Any]:
 @router.post("/kill-switch/activate")
 async def activate_kill_switch(
     reason: Optional[str] = Query(None, description="KillSwitchReason name (query override)"),
-    body: Optional[KillSwitchActivateBody] = Body(None),
+    body: Annotated[Optional[KillSwitchActivateBody], Body()] = None,
 ) -> dict[str, Any]:
     """Activate the global kill switch (requires API key)."""
     if _safety_layer is None:

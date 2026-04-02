@@ -2,6 +2,7 @@
 CrossMarketRiskManager — aggregate risk across all market modules.
 Halts individual markets at 2% loss; halts ALL at 5% portfolio loss.
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,7 +12,7 @@ from typing import Optional
 
 logger = logging.getLogger("jarvis_trader.risk.cross_market")
 
-DEFAULT_MAX_MARKET_LOSS_PCT = 2.0    # Halt individual market at -2% of its capital
+DEFAULT_MAX_MARKET_LOSS_PCT = 2.0  # Halt individual market at -2% of its capital
 DEFAULT_MAX_PORTFOLIO_LOSS_PCT = 5.0  # Halt all markets at -5% of total portfolio
 
 
@@ -71,10 +72,7 @@ class CrossMarketRiskManager:
         total = sum(market_capitals.values())
         self._state = PortfolioRiskState(
             total_capital=total,
-            markets={
-                m: MarketRiskState(market=m, capital=c)
-                for m, c in market_capitals.items()
-            },
+            markets={m: MarketRiskState(market=m, capital=c) for m, c in market_capitals.items()},
         )
         self._halt_callbacks: list = []
 
@@ -110,7 +108,10 @@ class CrossMarketRiskManager:
             actions["market_halted"] = {"market": market, "reason": reason}
 
         # Check portfolio-wide loss limit
-        if not self._state.portfolio_halted and self._state.portfolio_loss_pct < -self.max_portfolio_loss_pct:
+        if (
+            not self._state.portfolio_halted
+            and self._state.portfolio_loss_pct < -self.max_portfolio_loss_pct
+        ):
             reason = (
                 f"Portfolio loss {self._state.portfolio_loss_pct:.2f}% "
                 f"exceeds -{self.max_portfolio_loss_pct}% limit"

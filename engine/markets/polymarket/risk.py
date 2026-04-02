@@ -2,15 +2,16 @@
 PolymarketRiskManager — position limits and capital controls for prediction markets.
 Conservative limits given U.S. regulatory uncertainty.
 """
+
 from __future__ import annotations
 
 import logging
 
 logger = logging.getLogger("jarvis_trader.markets.polymarket.risk")
 
-MAX_POSITION_PCT = 5.0    # Max 5% of Polymarket capital per market
-MAX_DEPLOYED_PCT = 60.0   # Max 60% of capital deployed at once
-MAX_OPEN_MARKETS = 20     # Max 20 simultaneous open positions
+MAX_POSITION_PCT = 5.0  # Max 5% of Polymarket capital per market
+MAX_DEPLOYED_PCT = 60.0  # Max 60% of capital deployed at once
+MAX_OPEN_MARKETS = 20  # Max 20 simultaneous open positions
 
 
 class PolymarketRiskManager:

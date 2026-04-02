@@ -44,8 +44,8 @@ CONTRACT_SPECS: Dict[str, Dict[str, float]] = {
         "multiplier": 5.0,
         "tick_size": 0.25,
         "tick_value": 1.25,
-        "commission": 0.62,    # per contract per leg (IB Tiered micro)
-        "slippage_ticks": 1,   # 1 tick = 0.25 pts = $1.25 slippage per leg
+        "commission": 0.62,  # per contract per leg (IB Tiered micro)
+        "slippage_ticks": 1,  # 1 tick = 0.25 pts = $1.25 slippage per leg
     },
     "MCL": {
         "multiplier": 100.0,
@@ -74,22 +74,23 @@ DEFAULT_SPEC = {
 
 # ── Trade Record ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ORBTrade:
     symbol: str
     entry_date: str
     exit_date: str
-    side: str           # "long" | "short"
+    side: str  # "long" | "short"
     entry_price: float
     exit_price: float
     contracts: int
-    exit_reason: str    # "target_1" | "target_2" | "stop" | "eod" | "breakeven_stop"
+    exit_reason: str  # "target_1" | "target_2" | "stop" | "eod" | "breakeven_stop"
     or_high: float
     or_low: float
     or_range: float
-    pnl: float          # Net P&L after commissions and slippage
-    mae: float = 0.0    # Maximum Adverse Excursion
-    mfe: float = 0.0    # Maximum Favorable Excursion
+    pnl: float  # Net P&L after commissions and slippage
+    mae: float = 0.0  # Maximum Adverse Excursion
+    mfe: float = 0.0  # Maximum Favorable Excursion
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -111,6 +112,7 @@ class ORBTrade:
 
 
 # ── Backtest Result ───────────────────────────────────────────────────────────
+
 
 @dataclass
 class ORBBacktestResult:
@@ -191,7 +193,9 @@ class ORBBacktestResult:
             "long_trades": sum(1 for t in self.trades if t.side == "long"),
             "short_trades": sum(1 for t in self.trades if t.side == "short"),
             "stop_pct": round(exit_counts.get("stop", 0) / n, 4),
-            "t1_pct": round((exit_counts.get("target_1", 0) + exit_counts.get("partial_t1", 0)) / n, 4),
+            "t1_pct": round(
+                (exit_counts.get("target_1", 0) + exit_counts.get("partial_t1", 0)) / n, 4
+            ),
             "t2_pct": round(exit_counts.get("target_2", 0) / n, 4),
             "eod_pct": round(exit_counts.get("eod", 0) / n, 4),
             "breakeven_pct": round(exit_counts.get("breakeven_stop", 0) / n, 4),
@@ -210,6 +214,7 @@ class ORBBacktestResult:
 
 
 # ── Core Simulation ───────────────────────────────────────────────────────────
+
 
 def _slip(price: float, side: str, is_entry: bool, spec: Dict[str, float]) -> float:
     """Apply slippage to a fill price."""
@@ -297,20 +302,22 @@ def run_orb_backtest(
             remaining = open_pos.get("contracts_remaining", contracts)
             pnl = _pnl(open_pos["entry"], exit_p, open_pos["side"], remaining, spec)
 
-            trades.append(ORBTrade(
-                symbol=symbol,
-                entry_date=open_pos["entry_date"],
-                exit_date=bar_time,
-                side=open_pos["side"],
-                entry_price=open_pos["entry"],
-                exit_price=round(exit_p, 4),
-                contracts=remaining,
-                exit_reason="eod",
-                or_high=open_pos["or_high"],
-                or_low=open_pos["or_low"],
-                or_range=open_pos["or_range"],
-                pnl=round(pnl + open_pos.get("partial_pnl", 0.0), 2),
-            ))
+            trades.append(
+                ORBTrade(
+                    symbol=symbol,
+                    entry_date=open_pos["entry_date"],
+                    exit_date=bar_time,
+                    side=open_pos["side"],
+                    entry_price=open_pos["entry"],
+                    exit_price=round(exit_p, 4),
+                    contracts=remaining,
+                    exit_reason="eod",
+                    or_high=open_pos["or_high"],
+                    or_low=open_pos["or_low"],
+                    or_range=open_pos["or_range"],
+                    pnl=round(pnl + open_pos.get("partial_pnl", 0.0), 2),
+                )
+            )
             open_pos = None
             continue
 
@@ -332,29 +339,28 @@ def run_orb_backtest(
                 pnl = _pnl(entry, exit_p, side, remaining, spec)
                 reason = "breakeven_stop" if open_pos.get("at_breakeven") else "stop"
 
-                trades.append(ORBTrade(
-                    symbol=symbol,
-                    entry_date=open_pos["entry_date"],
-                    exit_date=bar_time,
-                    side=side,
-                    entry_price=entry,
-                    exit_price=round(exit_p, 4),
-                    contracts=remaining,
-                    exit_reason=reason,
-                    or_high=open_pos["or_high"],
-                    or_low=open_pos["or_low"],
-                    or_range=open_pos["or_range"],
-                    pnl=round(pnl + open_pos.get("partial_pnl", 0.0), 2),
-                ))
+                trades.append(
+                    ORBTrade(
+                        symbol=symbol,
+                        entry_date=open_pos["entry_date"],
+                        exit_date=bar_time,
+                        side=side,
+                        entry_price=entry,
+                        exit_price=round(exit_p, 4),
+                        contracts=remaining,
+                        exit_reason=reason,
+                        or_high=open_pos["or_high"],
+                        or_low=open_pos["or_low"],
+                        or_range=open_pos["or_range"],
+                        pnl=round(pnl + open_pos.get("partial_pnl", 0.0), 2),
+                    )
+                )
                 open_pos = None
                 continue
 
             # Check T1 (partial exit 50%)
             t1_contracts = max(1, remaining // 2)
-            t1_hit = (
-                (side == "long" and bar_high >= t1) or
-                (side == "short" and bar_low <= t1)
-            )
+            t1_hit = (side == "long" and bar_high >= t1) or (side == "short" and bar_low <= t1)
             if t1_hit and not open_pos.get("t1_done"):
                 exit_p = _slip(t1, side, False, spec)
                 partial_pnl = _pnl(entry, exit_p, side, t1_contracts, spec)
@@ -370,48 +376,49 @@ def run_orb_backtest(
 
                 # If remaining contracts == 0 after T1, close
                 if open_pos["contracts_remaining"] <= 0:
-                    trades.append(ORBTrade(
-                        symbol=symbol,
-                        entry_date=open_pos["entry_date"],
-                        exit_date=bar_time,
-                        side=side,
-                        entry_price=entry,
-                        exit_price=round(exit_p, 4),
-                        contracts=t1_contracts,
-                        exit_reason="target_1",
-                        or_high=open_pos["or_high"],
-                        or_low=open_pos["or_low"],
-                        or_range=open_pos["or_range"],
-                        pnl=round(open_pos["partial_pnl"], 2),
-                    ))
+                    trades.append(
+                        ORBTrade(
+                            symbol=symbol,
+                            entry_date=open_pos["entry_date"],
+                            exit_date=bar_time,
+                            side=side,
+                            entry_price=entry,
+                            exit_price=round(exit_p, 4),
+                            contracts=t1_contracts,
+                            exit_reason="target_1",
+                            or_high=open_pos["or_high"],
+                            or_low=open_pos["or_low"],
+                            or_range=open_pos["or_range"],
+                            pnl=round(open_pos["partial_pnl"], 2),
+                        )
+                    )
                     open_pos = None
                     continue
 
             # Check T2 (full remaining exit)
             if open_pos is not None:
                 remaining2 = open_pos.get("contracts_remaining", contracts)
-                t2_hit = (
-                    (side == "long" and bar_high >= t2) or
-                    (side == "short" and bar_low <= t2)
-                )
+                t2_hit = (side == "long" and bar_high >= t2) or (side == "short" and bar_low <= t2)
                 if t2_hit:
                     exit_p = _slip(t2, side, False, spec)
                     pnl = _pnl(entry, exit_p, side, remaining2, spec)
 
-                    trades.append(ORBTrade(
-                        symbol=symbol,
-                        entry_date=open_pos["entry_date"],
-                        exit_date=bar_time,
-                        side=side,
-                        entry_price=entry,
-                        exit_price=round(exit_p, 4),
-                        contracts=remaining2,
-                        exit_reason="target_2",
-                        or_high=open_pos["or_high"],
-                        or_low=open_pos["or_low"],
-                        or_range=open_pos["or_range"],
-                        pnl=round(pnl + open_pos.get("partial_pnl", 0.0), 2),
-                    ))
+                    trades.append(
+                        ORBTrade(
+                            symbol=symbol,
+                            entry_date=open_pos["entry_date"],
+                            exit_date=bar_time,
+                            side=side,
+                            entry_price=entry,
+                            exit_price=round(exit_p, 4),
+                            contracts=remaining2,
+                            exit_reason="target_2",
+                            or_high=open_pos["or_high"],
+                            or_low=open_pos["or_low"],
+                            or_range=open_pos["or_range"],
+                            pnl=round(pnl + open_pos.get("partial_pnl", 0.0), 2),
+                        )
+                    )
                     open_pos = None
                     continue
 
@@ -455,20 +462,22 @@ def run_orb_backtest(
         remaining = open_pos.get("contracts_remaining", contracts)
         pnl = _pnl(open_pos["entry"], exit_p, open_pos["side"], remaining, spec)
 
-        trades.append(ORBTrade(
-            symbol=symbol,
-            entry_date=open_pos["entry_date"],
-            exit_date=str(df.index[-1]),
-            side=open_pos["side"],
-            entry_price=open_pos["entry"],
-            exit_price=round(exit_p, 4),
-            contracts=remaining,
-            exit_reason="eod",
-            or_high=open_pos["or_high"],
-            or_low=open_pos["or_low"],
-            or_range=open_pos["or_range"],
-            pnl=round(pnl + open_pos.get("partial_pnl", 0.0), 2),
-        ))
+        trades.append(
+            ORBTrade(
+                symbol=symbol,
+                entry_date=open_pos["entry_date"],
+                exit_date=str(df.index[-1]),
+                side=open_pos["side"],
+                entry_price=open_pos["entry"],
+                exit_price=round(exit_p, 4),
+                contracts=remaining,
+                exit_reason="eod",
+                or_high=open_pos["or_high"],
+                or_low=open_pos["or_low"],
+                or_range=open_pos["or_range"],
+                pnl=round(pnl + open_pos.get("partial_pnl", 0.0), 2),
+            )
+        )
 
     start = str(df.index[0])
     end = str(df.index[-1])

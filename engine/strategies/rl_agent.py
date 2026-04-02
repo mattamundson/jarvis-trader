@@ -12,6 +12,7 @@ Usage:
     action = agent.predict(obs)
     agent.save("data/rl_models/MES_v1")
 """
+
 from __future__ import annotations
 
 import json
@@ -25,6 +26,7 @@ import numpy as np
 try:
     from stable_baselines3 import PPO
     from stable_baselines3.common.callbacks import BaseCallback
+
     SB3_AVAILABLE = True
 except ImportError:
     SB3_AVAILABLE = False
@@ -43,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── Training Callback ─────────────────────────────────────────────────────────
+
 
 class TrainingProgressCallback(BaseCallback):
     """
@@ -82,13 +85,12 @@ class TrainingProgressCallback(BaseCallback):
         return {
             "timesteps": self.num_timesteps,
             "episode_rewards": self.episode_rewards[-20:],  # last 20 checkpoints
-            "action_distribution": {
-                k: round(v / total, 4) for k, v in self.action_counts.items()
-            },
+            "action_distribution": {k: round(v / total, 4) for k, v in self.action_counts.items()},
         }
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
+
 
 class RLTradingAgent:
     """
@@ -111,9 +113,7 @@ class RLTradingAgent:
         model_path: Optional[str] = None,
     ):
         if not SB3_AVAILABLE:
-            raise ImportError(
-                "stable-baselines3 is required: pip install stable-baselines3[extra]"
-            )
+            raise ImportError("stable-baselines3 is required: pip install stable-baselines3[extra]")
 
         self.symbol = symbol.upper()
         self.env = env
@@ -159,9 +159,7 @@ class RLTradingAgent:
         if not SB3_AVAILABLE:
             raise ImportError("stable-baselines3 required")
 
-        logger.info(
-            f"[RL] Training {self.symbol} agent for {total_timesteps:,} timesteps..."
-        )
+        logger.info(f"[RL] Training {self.symbol} agent for {total_timesteps:,} timesteps...")
         start = datetime.now(timezone.utc)
 
         self._callback = TrainingProgressCallback(log_interval=max(1000, total_timesteps // 100))
@@ -183,10 +181,7 @@ class RLTradingAgent:
         self._training_metadata = summary
 
         hold_rate = summary["action_distribution"].get("HOLD", 0.0)
-        logger.info(
-            f"[RL] Training complete in {elapsed:.0f}s | "
-            f"HOLD rate: {hold_rate:.1%}"
-        )
+        logger.info(f"[RL] Training complete in {elapsed:.0f}s | " f"HOLD rate: {hold_rate:.1%}")
         return summary
 
     # ── Inference ─────────────────────────────────────────────────────────
@@ -250,10 +245,7 @@ class RLTradingAgent:
 
         # Average across episodes — use union of all keys for forward/backward compat
         keys = set().union(*[m.keys() for m in all_metrics])
-        averaged = {
-            k: round(float(np.mean([m.get(k, 0.0) for m in all_metrics])), 4)
-            for k in keys
-        }
+        averaged = {k: round(float(np.mean([m.get(k, 0.0) for m in all_metrics])), 4) for k in keys}
 
         # Explicitly surface flat_hold_rate (backward compat: default 0.0 if missing).
         # flat_hold_rate = HOLD actions when flat / total flat bars.
@@ -288,14 +280,16 @@ class RLTradingAgent:
         averaged["sharpe"] = sharpe
         averaged["passes_sharpe_gate"] = sharpe >= gates["min_sharpe"]
 
-        averaged["passes_validation"] = all([
-            averaged.get("profit_factor", 0) >= gates["min_profit_factor"],
-            averaged.get("win_rate", 0)      >= gates["min_win_rate"],
-            averaged.get("max_drawdown", 1)  <= gates["max_drawdown"],
-            averaged.get("n_trades", 0)      >= gates["min_trades"],
-            hold_rate                        >= gates["min_hold_rate"],
-            sharpe                           >= gates["min_sharpe"],
-        ])
+        averaged["passes_validation"] = all(
+            [
+                averaged.get("profit_factor", 0) >= gates["min_profit_factor"],
+                averaged.get("win_rate", 0) >= gates["min_win_rate"],
+                averaged.get("max_drawdown", 1) <= gates["max_drawdown"],
+                averaged.get("n_trades", 0) >= gates["min_trades"],
+                hold_rate >= gates["min_hold_rate"],
+                sharpe >= gates["min_sharpe"],
+            ]
+        )
 
         # TODO (recommendation): add flat_hold_rate validation gate once sufficient OOS data:
         #   averaged["passes_flat_hold_gate"] = averaged["flat_hold_rate"] >= 0.50

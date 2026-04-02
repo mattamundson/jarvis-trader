@@ -142,7 +142,7 @@ PAPER_TRADING=True                    # REQUIRED — must be True
 LIVE_TRADING_ENABLED=False            # REQUIRED — must be False
 ANTHROPIC_API_KEY=sk-ant-...          # API key (sk-ant- prefix)
 POSTGRES_URL=postgresql://...         # DB connection
-IBKR_PORT=7497                        # IB Gateway port (paper trading)
+IBKR_PORT=4002                        # IB Gateway port (paper trading)
 ```
 
 **Copy from example:**

@@ -214,10 +214,9 @@ export function LongShortBreakdownWidget() {
 
   const fetchTrades = useCallback(async () => {
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine(
         `/portfolio/history/trades?status=CLOSED&limit=200`
       );
-      const raw: unknown = await res.json();
       const trades: TradeRecord[] = Array.isArray(raw)
         ? raw
         : ((raw as { trades?: TradeRecord[] }).trades ?? []);

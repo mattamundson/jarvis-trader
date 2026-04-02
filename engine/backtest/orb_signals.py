@@ -221,8 +221,8 @@ def generate_orb_signals(
                     break
             if not already_signalled:
                 stop = or_low
-                t1 = or_high + or_range        # 1× extension
-                t2 = or_high + 2 * or_range    # 2× extension
+                t1 = or_high + or_range  # 1× extension
+                t2 = or_high + 2 * or_range  # 2× extension
                 risk = bar_close - stop
                 reward = t1 - bar_close
                 rr = reward / risk if risk > 0 else 0.0
@@ -244,8 +244,8 @@ def generate_orb_signals(
                     break
             if not already_signalled:
                 stop = or_high
-                t1 = or_low - or_range         # 1× extension down
-                t2 = or_low - 2 * or_range     # 2× extension down
+                t1 = or_low - or_range  # 1× extension down
+                t2 = or_low - 2 * or_range  # 2× extension down
                 risk = stop - bar_close
                 reward = bar_close - t1
                 rr = reward / risk if risk > 0 else 0.0

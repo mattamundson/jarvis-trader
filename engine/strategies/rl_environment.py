@@ -15,6 +15,7 @@ Usage:
     obs, info = env.reset()
     obs, reward, terminated, truncated, info = env.step(Action.BUY)
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,6 +28,7 @@ import pandas as pd
 try:
     import gymnasium as gym
     from gymnasium import spaces
+
     GYM_AVAILABLE = True
     _GymBase = gym.Env
 except ImportError:
@@ -51,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── Feature Extraction ────────────────────────────────────────────────────────
+
 
 def extract_features(
     df: pd.DataFrame,
@@ -90,7 +93,7 @@ def extract_features(
     close_normalized = float((close - mu) / sigma)
 
     high = float(row.get("high", close))
-    low  = float(row.get("low", close))
+    low = float(row.get("low", close))
     high_low_range = float((high - low) / atr) if atr > 0 else 0.0
 
     ema21 = float(row.get("ema_21", close) or close)
@@ -148,26 +151,29 @@ def extract_features(
 
     bars_in_trade_norm = float(bars_in_trade) / 100.0
 
-    obs = np.array([
-        close_normalized,
-        high_low_range,
-        close_vs_ema21,
-        stc_value,
-        stc_slope,
-        stc_above_os,
-        stc_below_ob,
-        atr_14,
-        atr_normalized,
-        atr_vs_20d_avg,
-        regime_score,
-        trend_direction,
-        phase_value,
-        volume_vs_avg,
-        volume_signal,
-        current_position,
-        unrealized_pnl_atr,
-        bars_in_trade_norm,
-    ], dtype=np.float32)
+    obs = np.array(
+        [
+            close_normalized,
+            high_low_range,
+            close_vs_ema21,
+            stc_value,
+            stc_slope,
+            stc_above_os,
+            stc_below_ob,
+            atr_14,
+            atr_normalized,
+            atr_vs_20d_avg,
+            regime_score,
+            trend_direction,
+            phase_value,
+            volume_vs_avg,
+            volume_signal,
+            current_position,
+            unrealized_pnl_atr,
+            bars_in_trade_norm,
+        ],
+        dtype=np.float32,
+    )
 
     # Replace any NaN/inf with 0.0
     obs = np.nan_to_num(obs, nan=0.0, posinf=2.0, neginf=-2.0)
@@ -175,6 +181,7 @@ def extract_features(
 
 
 # ── Environment ───────────────────────────────────────────────────────────────
+
 
 class TradingEnvironment(_GymBase):
     """
@@ -216,10 +223,10 @@ class TradingEnvironment(_GymBase):
         self._reward_cfg = {**REWARD_CONFIG, **(reward_config or {})}
 
         params = get_instrument_params(self.symbol)
-        self.stc_os    = params[0]
-        self.stc_ob    = params[1]
-        self.stop_atr  = params[2]
-        self.t1_atr    = params[3]
+        self.stc_os = params[0]
+        self.stc_ob = params[1]
+        self.stop_atr = params[2]
+        self.t1_atr = params[3]
 
         # Gymnasium spaces
         self.observation_space = spaces.Box(
@@ -229,16 +236,16 @@ class TradingEnvironment(_GymBase):
 
         # Internal state (reset on each episode)
         self._idx: int = 0
-        self._position: int = 0         # 1=long, 0=flat, -1=short
+        self._position: int = 0  # 1=long, 0=flat, -1=short
         self._entry_price: float = 0.0
         self._bars_in_trade: int = 0
         self._capital: float = initial_capital
         self._episode_pnl: float = 0.0
         self._episode_trades: list[dict] = []
         self._total_reward: float = 0.0
-        self._bars_flat: int = 0       # bars where position==0 (for flat_hold_rate)
+        self._bars_flat: int = 0  # bars where position==0 (for flat_hold_rate)
         self._hold_when_flat: int = 0  # HOLD actions taken while flat
-        self._t1_hits: int = 0         # trades that reached T1 target
+        self._t1_hits: int = 0  # trades that reached T1 target
 
     # ── Gymnasium interface ───────────────────────────────────────────────
 
@@ -300,7 +307,7 @@ class TradingEnvironment(_GymBase):
         action = int(action)
         row = self.df.iloc[self._idx]
         close = float(row.get("close", 0.0))
-        atr   = float(row.get("atr", 1.0) or 1.0)
+        atr = float(row.get("atr", 1.0) or 1.0)
 
         realized_pnl = 0.0
         is_new_entry = False
@@ -391,7 +398,7 @@ class TradingEnvironment(_GymBase):
             self._capital += realized_pnl
             self._position = 0
 
-        obs  = self._get_obs() if not terminated else np.zeros(N_FEATURES, dtype=np.float32)
+        obs = self._get_obs() if not terminated else np.zeros(N_FEATURES, dtype=np.float32)
         info = self._get_info(realized_pnl=realized_pnl)
 
         return obs, reward, terminated, False, info
@@ -450,7 +457,11 @@ class TradingEnvironment(_GymBase):
         hold_cost = cfg["hold_cost_per_bar"] if self._position != 0 else 0.0
 
         # Small reward for HOLDing when flat — teaches patience, pushes hold_rate up
-        flat_hold_reward = cfg.get("flat_hold_reward", 0.0) if (action == Action.HOLD and self._position == 0) else 0.0
+        flat_hold_reward = (
+            cfg.get("flat_hold_reward", 0.0)
+            if (action == Action.HOLD and self._position == 0)
+            else 0.0
+        )
 
         # Overtrading penalty per new entry
         entry_cost = cfg["entry_cost"] if is_new_entry else 0.0
@@ -459,12 +470,17 @@ class TradingEnvironment(_GymBase):
         # These are no-ops in the env but agent was discovering them as "free HOLD" — stop that.
         # Guard with `not is_new_entry` so a genuine entry from flat is not double-charged
         # (position is already updated to 1/-1 before this method is called).
-        redundant_cost = cfg["entry_cost"] if (
-            not is_new_entry and (
-                (action == Action.BUY and self._position == 1) or
-                (action == Action.SELL and self._position == -1)
+        redundant_cost = (
+            cfg["entry_cost"]
+            if (
+                not is_new_entry
+                and (
+                    (action == Action.BUY and self._position == 1)
+                    or (action == Action.SELL and self._position == -1)
+                )
             )
-        ) else 0.0
+            else 0.0
+        )
 
         # Bonus for reaching T1 target
         t1_bonus = 0.0
@@ -472,31 +488,37 @@ class TradingEnvironment(_GymBase):
             t1_bonus = cfg["t1_bonus"]
             self._t1_hits += 1
 
-        return float(pnl_reward + hold_cost + flat_hold_reward + entry_cost + redundant_cost + t1_bonus)
+        return float(
+            pnl_reward + hold_cost + flat_hold_reward + entry_cost + redundant_cost + t1_bonus
+        )
 
     def _record_trade(self, pnl: float) -> None:
-        self._episode_trades.append({
-            "bar": self._idx,
-            "pnl": pnl,
-            "bars": self._bars_in_trade,
-            "position": self._position,
-            "entry_price": self._entry_price,
-        })
+        self._episode_trades.append(
+            {
+                "bar": self._idx,
+                "pnl": pnl,
+                "bars": self._bars_in_trade,
+                "position": self._position,
+                "entry_price": self._entry_price,
+            }
+        )
 
     # ── Metrics ───────────────────────────────────────────────────────────
 
     def get_episode_metrics(self) -> dict:
         """Compute episode-level performance metrics."""
         trades = self._episode_trades
-        flat_hold_rate = (
-            self._hold_when_flat / self._bars_flat if self._bars_flat > 0 else 0.0
-        )
+        flat_hold_rate = self._hold_when_flat / self._bars_flat if self._bars_flat > 0 else 0.0
 
         if not trades:
             return {
-                "n_trades": 0, "win_rate": 0.0, "profit_factor": 0.0,
-                "total_pnl": 0.0, "avg_pnl": 0.0,
-                "max_drawdown": 0.0, "total_reward": self._total_reward,
+                "n_trades": 0,
+                "win_rate": 0.0,
+                "profit_factor": 0.0,
+                "total_pnl": 0.0,
+                "avg_pnl": 0.0,
+                "max_drawdown": 0.0,
+                "total_reward": self._total_reward,
                 "flat_hold_rate": round(flat_hold_rate, 4),
                 "t1_hits": self._t1_hits,
                 "t1_hit_rate": 0.0,
@@ -508,7 +530,7 @@ class TradingEnvironment(_GymBase):
         losses = [p for p in pnls if p <= 0]
 
         gross_profit = sum(wins) if wins else 0.0
-        gross_loss   = abs(sum(losses)) if losses else 0.0
+        gross_loss = abs(sum(losses)) if losses else 0.0
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
 
         win_rate = len(wins) / len(pnls) if pnls else 0.0
@@ -541,6 +563,7 @@ class TradingEnvironment(_GymBase):
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
+
 
 def prepare_dataframe(
     df: Optional[pd.DataFrame],

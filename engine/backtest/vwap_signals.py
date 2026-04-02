@@ -46,11 +46,11 @@ import pandas as pd
 logger = logging.getLogger("vwap_signals")
 
 # Default parameters (these are grid-searched in walk_forward)
-DEFAULT_BAND_MULT = 1.5    # ATR multiples for band width
-DEFAULT_STOP_MULT = 0.5    # ATR multiples for stop beyond deviation extreme
+DEFAULT_BAND_MULT = 1.5  # ATR multiples for band width
+DEFAULT_STOP_MULT = 0.5  # ATR multiples for stop beyond deviation extreme
 DEFAULT_ATR_PERIOD = 14
-RTH_OPEN_HOUR = 9          # First RTH bar (09:30-10:30 ET)
-RTH_FINAL_HOUR = 15        # Block entries at 15:xx bars
+RTH_OPEN_HOUR = 9  # First RTH bar (09:30-10:30 ET)
+RTH_FINAL_HOUR = 15  # Block entries at 15:xx bars
 
 
 def _compute_atr(df: pd.DataFrame, period: int = DEFAULT_ATR_PERIOD) -> pd.Series:
@@ -120,8 +120,17 @@ def generate_vwap_signals(
     df = df.copy()
 
     if df.empty or len(df) < atr_period + 5:
-        for col in ["vwap", "vwap_upper", "vwap_lower", "atr", "vwap_signal",
-                    "vwap_stop", "vwap_target_1", "vwap_target_2", "vwap_rr"]:
+        for col in [
+            "vwap",
+            "vwap_upper",
+            "vwap_lower",
+            "atr",
+            "vwap_signal",
+            "vwap_stop",
+            "vwap_target_1",
+            "vwap_target_2",
+            "vwap_rr",
+        ]:
             df[col] = np.nan
         df["vwap_signal"] = ""
         return df
@@ -134,9 +143,12 @@ def generate_vwap_signals(
     if regime_filter:
         try:
             from backtest.regime import RegimeClassifier
+
             rc = RegimeClassifier()
             classified = rc.classify(df)
-            regime_col = "regime_type" if "regime_type" in classified.columns else classified.columns[-1]
+            regime_col = (
+                "regime_type" if "regime_type" in classified.columns else classified.columns[-1]
+            )
             regime_series = classified[regime_col]
             # Block signals when regime is TRENDING — VWAP reversion fails in trends
             df["_regime_ok"] = ~regime_series.str.contains("TRENDING", na=False)
@@ -149,14 +161,16 @@ def generate_vwap_signals(
     eastern_hour = _get_eastern_hour(df)
 
     # Session VWAP (reset at first RTH bar each day)
-    cum_pv = 0.0   # cumulative price × volume
+    cum_pv = 0.0  # cumulative price × volume
     cum_vol = 0.0  # cumulative volume
     vwap_vals = []
 
     for i in range(len(df)):
         hour = int(eastern_hour.iloc[i])
         vol = float(df["volume"].iloc[i])
-        tp = (float(df["high"].iloc[i]) + float(df["low"].iloc[i]) + float(df["close"].iloc[i])) / 3.0
+        tp = (
+            float(df["high"].iloc[i]) + float(df["low"].iloc[i]) + float(df["close"].iloc[i])
+        ) / 3.0
 
         if hour == RTH_OPEN_HOUR:
             # New session — reset
@@ -201,7 +215,7 @@ def generate_vwap_signals(
         if bar_hour >= RTH_FINAL_HOUR:
             continue
 
-        reversal_long = bar_close > prev_close   # current bar closed up
+        reversal_long = bar_close > prev_close  # current bar closed up
         reversal_short = bar_close < prev_close  # current bar closed down
 
         # Skip if regime filter is active and bar is trending

@@ -22,6 +22,7 @@ Usage:
     status = executor.get_status()
     executor.stop()
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -38,14 +39,16 @@ import pandas as pd
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     from apscheduler.triggers.cron import CronTrigger
+
     APSCHEDULER_AVAILABLE = True
 except ImportError:
     APSCHEDULER_AVAILABLE = False
     BackgroundScheduler = None  # type: ignore[assignment,misc]
-    CronTrigger = None          # type: ignore[assignment,misc]
+    CronTrigger = None  # type: ignore[assignment,misc]
 
 try:
     import yfinance as yf
+
     YFINANCE_AVAILABLE = True
 except ImportError:
     YFINANCE_AVAILABLE = False
@@ -55,10 +58,8 @@ from backtest.signals import compute_all_indicators
 from strategies.rl_config import (
     ACTION_NAMES,
     Action,
-    DEFAULT_INTERVAL,
-    RL_INSTRUMENT_PARAMS,
 )
-from strategies.rl_environment import extract_features, prepare_dataframe
+from strategies.rl_environment import extract_features
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +70,10 @@ _YF_TICKER_MAP: dict[str, str] = {
     "MNQ": "MNQ=F",
     "MCL": "MCL=F",
     "MGC": "MGC=F",
-    "ES":  "ES=F",
-    "NQ":  "NQ=F",
-    "CL":  "CL=F",
-    "GC":  "GC=F",
+    "ES": "ES=F",
+    "NQ": "NQ=F",
+    "CL": "CL=F",
+    "GC": "GC=F",
 }
 
 # ── Module-level executor registry ───────────────────────────────────────────
@@ -94,6 +95,7 @@ def get_executor_status() -> dict[str, dict]:
 
 
 # ── RLExecutor ────────────────────────────────────────────────────────────────
+
 
 class RLExecutor:
     """
@@ -132,7 +134,7 @@ class RLExecutor:
         self._is_running: bool = False
 
         # Per-cycle state (persists across cycles for position tracking)
-        self._paper_position: int = 0       # 1=long, 0=flat, -1=short
+        self._paper_position: int = 0  # 1=long, 0=flat, -1=short
         self._entry_price: float = 0.0
         self._bars_in_trade: int = 0
 
@@ -147,9 +149,7 @@ class RLExecutor:
         self._agent = None  # RLTradingAgent instance
         self._model_loaded: bool = False
 
-        logger.info(
-            "[RLExecutor] Created executor for %s | model_path=%s", self.symbol, model_path
-        )
+        logger.info("[RLExecutor] Created executor for %s | model_path=%s", self.symbol, model_path)
 
     # ── Model loading (lazy) ──────────────────────────────────────────────
 
@@ -235,7 +235,8 @@ class RLExecutor:
             except Exception as exc:
                 logger.warning(
                     "[RLExecutor] IBKR fetch failed for %s (%s) — falling back to yfinance",
-                    self.symbol, exc,
+                    self.symbol,
+                    exc,
                 )
 
         # Fallback: yfinance
@@ -248,7 +249,8 @@ class RLExecutor:
             if raw is None or len(raw) < 60:
                 logger.warning(
                     "[RLExecutor] yfinance returned only %d bars for %s",
-                    len(raw) if raw is not None else 0, self.symbol,
+                    len(raw) if raw is not None else 0,
+                    self.symbol,
                 )
                 return None
 
@@ -260,9 +262,7 @@ class RLExecutor:
             df.columns = ["open", "high", "low", "close", "volume"]
             df = df.dropna().reset_index(drop=True)
             df = df.tail(n).reset_index(drop=True)
-            logger.debug(
-                "[RLExecutor] Fetched %d bars via yfinance for %s", len(df), self.symbol
-            )
+            logger.debug("[RLExecutor] Fetched %d bars via yfinance for %s", len(df), self.symbol)
             return df
 
         except Exception as exc:
@@ -271,9 +271,7 @@ class RLExecutor:
 
     # ── Observation builder ───────────────────────────────────────────────
 
-    def _compute_obs(
-        self, df: pd.DataFrame
-    ) -> tuple[Optional[np.ndarray], Optional[pd.DataFrame]]:
+    def _compute_obs(self, df: pd.DataFrame) -> tuple[Optional[np.ndarray], Optional[pd.DataFrame]]:
         """
         Run compute_all_indicators on *df* and build the 18-feature observation
         vector for the most recent bar (last row), using the executor's current
@@ -394,9 +392,7 @@ class RLExecutor:
                     is_futures=True,
                     estimated_value=current_price * qty,
                 )
-                portfolio_equity = (
-                    getattr(self._safety_layer, "_current_equity", 0.0) or 10_000.0
-                )
+                portfolio_equity = getattr(self._safety_layer, "_current_equity", 0.0) or 10_000.0
                 risk_result = self._safety_layer.check_order(order, portfolio_equity)
                 safety_approved = risk_result.approved
                 rejection_reason = risk_result.rejection_reason
@@ -410,13 +406,19 @@ class RLExecutor:
             result["reason"] = rejection_reason or "safety_rejected"
             logger.warning(
                 "[RLExecutor] Order REJECTED by SafetyLayer: %s | %s %s @ %.2f",
-                rejection_reason, ib_action, self.symbol, current_price,
+                rejection_reason,
+                ib_action,
+                self.symbol,
+                current_price,
             )
             return result
 
         # Attempt IBKR paper submission
         result["approved"] = True
-        if self._safety_layer is not None and getattr(self._safety_layer, "_ib_gateway", None) is not None:
+        if (
+            self._safety_layer is not None
+            and getattr(self._safety_layer, "_ib_gateway", None) is not None
+        ):
             try:
                 loop = _get_or_create_event_loop()
                 ib_result = loop.run_until_complete(
@@ -441,7 +443,9 @@ class RLExecutor:
             result["reason"] = "ib_not_connected (simulated)"
             logger.info(
                 "[RLExecutor] SIMULATED order: %s %s @ %.2f (no IB gateway)",
-                ib_action, self.symbol, current_price,
+                ib_action,
+                self.symbol,
+                current_price,
             )
 
         # Update paper position state
@@ -496,7 +500,9 @@ class RLExecutor:
         raw_df = self._fetch_latest_bars(n=150)
         if raw_df is None or len(raw_df) < 60:
             self._last_error = "insufficient_bars"
-            logger.error("[RLExecutor] Could not fetch enough bars for %s — skipping cycle", self.symbol)
+            logger.error(
+                "[RLExecutor] Could not fetch enough bars for %s — skipping cycle", self.symbol
+            )
             return {
                 "symbol": self.symbol,
                 "action": "HOLD",
@@ -512,7 +518,9 @@ class RLExecutor:
         obs, df_ind = self._compute_obs(raw_df)
         if obs is None:
             self._last_error = "obs_computation_failed"
-            logger.error("[RLExecutor] Observation computation failed for %s — skipping cycle", self.symbol)
+            logger.error(
+                "[RLExecutor] Observation computation failed for %s — skipping cycle", self.symbol
+            )
             return {
                 "symbol": self.symbol,
                 "action": "HOLD",
@@ -541,7 +549,10 @@ class RLExecutor:
         action_name = ACTION_NAMES.get(action, "UNKNOWN")
         logger.info(
             "[RLExecutor] %s predicted action=%s (pos=%d, bars_in_trade=%d)",
-            self.symbol, action_name, self._paper_position, self._bars_in_trade,
+            self.symbol,
+            action_name,
+            self._paper_position,
+            self._bars_in_trade,
         )
 
         # 6. Get current price from the already-processed DataFrame.
@@ -584,7 +595,10 @@ class RLExecutor:
 
         logger.info(
             "[RLExecutor] Cycle complete: %s | action=%s | pos=%d | price=%.2f | routed=%s",
-            self.symbol, action_name, self._paper_position, current_price,
+            self.symbol,
+            action_name,
+            self._paper_position,
+            current_price,
             route_result.get("routed_to_ib", False),
         )
 
@@ -593,24 +607,27 @@ class RLExecutor:
         #     the DB singleton was not initialised yet — executor can run standalone).
         try:
             from database.schema import get_db
+
             db = get_db()
-            db.insert_pipeline_run({
-                "run_id": uuid.uuid4().hex[:8],
-                "symbol": self.symbol,
-                "source": "rl_executor",
-                "webhook_action": action_name,
-                "final_action": action_name.lower(),
-                "final_quantity": 1,
-                "requires_human": False,
-                "status": "completed",
-                "summary": (
-                    f"RL {action_name} @ {current_price:.2f} | "
-                    f"pos={self._paper_position} | "
-                    f"routed_to_ib={route_result.get('routed_to_ib', False)}"
-                ),
-                "duration_ms": None,
-                "created_at": now_utc,
-            })
+            db.insert_pipeline_run(
+                {
+                    "run_id": uuid.uuid4().hex[:8],
+                    "symbol": self.symbol,
+                    "source": "rl_executor",
+                    "webhook_action": action_name,
+                    "final_action": action_name.lower(),
+                    "final_quantity": 1,
+                    "requires_human": False,
+                    "status": "completed",
+                    "summary": (
+                        f"RL {action_name} @ {current_price:.2f} | "
+                        f"pos={self._paper_position} | "
+                        f"routed_to_ib={route_result.get('routed_to_ib', False)}"
+                    ),
+                    "duration_ms": None,
+                    "created_at": now_utc,
+                }
+            )
         except RuntimeError:
             # DB not initialised (standalone / test usage) — skip silently
             logger.debug("[RLExecutor] DB not initialised — skipping pipeline_runs insert")
@@ -694,14 +711,10 @@ class RLExecutor:
         ``scheduler_running`` reflects the actual APScheduler internal state.
         If they diverge it indicates the scheduler crashed after start().
         """
-        scheduler_running = (
-            self._scheduler is not None and self._scheduler.running
-        )
+        scheduler_running = self._scheduler is not None and self._scheduler.running
         # Expose obs shape (not the full array) so callers can verify the
         # feature vector is the expected (N_FEATURES,) without JSON serialisation issues.
-        last_obs_shape = (
-            list(self._last_obs.shape) if self._last_obs is not None else None
-        )
+        last_obs_shape = list(self._last_obs.shape) if self._last_obs is not None else None
         return {
             "symbol": self.symbol,
             "model_path": self.model_path,
@@ -726,6 +739,7 @@ class RLExecutor:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _build_dummy_df(n_bars: int = 60) -> pd.DataFrame:
     """
     Build a minimal synthetic OHLCV DataFrame with plausible values.
@@ -733,14 +747,19 @@ def _build_dummy_df(n_bars: int = 60) -> pd.DataFrame:
     """
     rng = np.random.default_rng(42)
     closes = 5_000.0 + np.cumsum(rng.normal(0, 10, n_bars))
-    highs  = closes + rng.uniform(0, 20, n_bars)
-    lows   = closes - rng.uniform(0, 20, n_bars)
-    opens  = closes - rng.normal(0, 5, n_bars)
-    vols   = rng.integers(10_000, 100_000, n_bars).astype(float)
-    return pd.DataFrame({
-        "open": opens, "high": highs, "low": lows,
-        "close": closes, "volume": vols,
-    })
+    highs = closes + rng.uniform(0, 20, n_bars)
+    lows = closes - rng.uniform(0, 20, n_bars)
+    opens = closes - rng.normal(0, 5, n_bars)
+    vols = rng.integers(10_000, 100_000, n_bars).astype(float)
+    return pd.DataFrame(
+        {
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": vols,
+        }
+    )
 
 
 def _get_or_create_event_loop() -> asyncio.AbstractEventLoop:

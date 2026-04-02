@@ -10,6 +10,7 @@ Usage:
     trainer = RLTrainer()
     result = await trainer.train_symbol("MES", timesteps=100_000)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -119,14 +120,16 @@ class RLTrainer:
 
         _stop_event.clear()  # Clear any previous stop request at start of new run
 
-        _training_status.update({
-            "running": True,
-            "symbol": symbol,
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "progress_pct": 0,
-            "error": None,
-            "abort_requested": False,
-        })
+        _training_status.update(
+            {
+                "running": True,
+                "symbol": symbol,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "progress_pct": 0,
+                "error": None,
+                "abort_requested": False,
+            }
+        )
 
         try:
             # ── 1 & 2. Load from cache or fetch+compute ───────────────────────
@@ -182,26 +185,27 @@ class RLTrainer:
             split_idx = max(len(df) - test_bars, len(df) // 2)
 
             df_train = df.iloc[:split_idx].reset_index(drop=True)
-            df_test  = df.iloc[split_idx:].reset_index(drop=True)
+            df_test = df.iloc[split_idx:].reset_index(drop=True)
 
-            logger.info(
-                f"[RLTrainer] Train: {len(df_train)} bars | Test: {len(df_test)} bars"
-            )
+            logger.info(f"[RLTrainer] Train: {len(df_train)} bars | Test: {len(df_test)} bars")
             _training_status["progress_pct"] = 30
 
             # ── 4. Build environments ────────────────────────────────────────
             # Use MAX_EPISODE_BARS for training (random window sampling → ~1,000 episodes)
             # Evaluation uses full test set (max_episode_bars=len(df_test) = no windowing)
-            train_env = build_env(symbol=symbol, df=df_train, max_episode_bars=MAX_EPISODE_BARS, reward_config=reward_config)
-            test_env  = build_env(symbol=symbol, df=df_test,  max_episode_bars=len(df_test))
+            train_env = build_env(
+                symbol=symbol,
+                df=df_train,
+                max_episode_bars=MAX_EPISODE_BARS,
+                reward_config=reward_config,
+            )
+            test_env = build_env(symbol=symbol, df=df_test, max_episode_bars=len(df_test))
 
             # ── 5. Train agent ───────────────────────────────────────────────
             if _stop_event.is_set():
                 raise InterruptedError("Training aborted by stop request")
 
-            logger.info(
-                f"[RLTrainer] Training {symbol} for {timesteps:,} timesteps..."
-            )
+            logger.info(f"[RLTrainer] Training {symbol} for {timesteps:,} timesteps...")
             agent = RLTradingAgent(symbol=symbol, env=train_env)
 
             training_summary = await asyncio.to_thread(agent.train, timesteps)
@@ -230,11 +234,13 @@ class RLTrainer:
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            _training_status.update({
-                "running": False,
-                "progress_pct": 100,
-                "last_result": result,
-            })
+            _training_status.update(
+                {
+                    "running": False,
+                    "progress_pct": 100,
+                    "last_result": result,
+                }
+            )
 
             passes = metrics.get("passes_validation", False)
             logger.info(
@@ -247,11 +253,13 @@ class RLTrainer:
 
         except Exception as exc:
             logger.error(f"[RLTrainer] Training failed for {symbol}: {exc}", exc_info=True)
-            _training_status.update({
-                "running": False,
-                "error": str(exc),
-                "progress_pct": 0,
-            })
+            _training_status.update(
+                {
+                    "running": False,
+                    "error": str(exc),
+                    "progress_pct": 0,
+                }
+            )
             return {
                 "status": "error",
                 "symbol": symbol,
@@ -291,17 +299,19 @@ class RLTrainer:
 
         _stop_event.clear()  # Clear any previous stop request at start of new run
 
-        _training_status.update({
-            "running": True,
-            "symbol": symbol,
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "progress_pct": 0,
-            "error": None,
-            "abort_requested": False,
-            "walkforward_windows": [],
-            "walkforward_n_windows": n_windows,
-            "walkforward_complete": False,
-        })
+        _training_status.update(
+            {
+                "running": True,
+                "symbol": symbol,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "progress_pct": 0,
+                "error": None,
+                "abort_requested": False,
+                "walkforward_windows": [],
+                "walkforward_n_windows": n_windows,
+                "walkforward_complete": False,
+            }
+        )
 
         try:
             # ── 1 & 2. Load from cache or fetch+compute ───────────────────────
@@ -351,9 +361,7 @@ class RLTrainer:
                 )
 
             if len(df) < 100:
-                raise ValueError(
-                    f"Too few valid bars after indicator computation: {len(df)}"
-                )
+                raise ValueError(f"Too few valid bars after indicator computation: {len(df)}")
 
             logger.info(f"[RLTrainer.WF] {len(df)} bars ready (indicators computed)")
             _training_status["progress_pct"] = 12
@@ -388,15 +396,15 @@ class RLTrainer:
 
             # ── 4. Run each window ───────────────────────────────────────────
             window_results: list[dict] = []
-            best_pf: float = -float("inf")   # track best window by profit_factor
+            best_pf: float = -float("inf")  # track best window by profit_factor
             best_model_path: Optional[str] = None
 
             for w_idx in range(n_windows):
                 # Sliding window: train starts at w_idx * test_bars
                 train_start = w_idx * test_bars
-                train_end   = train_start + train_bars
-                test_start  = train_end
-                test_end    = test_start + test_bars
+                train_end = train_start + train_bars
+                test_start = train_end
+                test_end = test_start + test_bars
 
                 # Guard: don't exceed dataframe
                 if test_end > total_bars:
@@ -406,7 +414,7 @@ class RLTrainer:
                     break
 
                 df_train_w = df.iloc[train_start:train_end].reset_index(drop=True)
-                df_test_w  = df.iloc[test_start:test_end].reset_index(drop=True)
+                df_test_w = df.iloc[test_start:test_end].reset_index(drop=True)
 
                 logger.info(
                     f"[RLTrainer.WF] Window {w_idx}/{n_windows - 1} | "
@@ -432,7 +440,10 @@ class RLTrainer:
 
                 # Check stop after each completed window
                 if _stop_event.is_set():
-                    logger.info("[RL] Training abort requested — stopping walk-forward after window %d", w_idx)
+                    logger.info(
+                        "[RL] Training abort requested — stopping walk-forward after window %d",
+                        w_idx,
+                    )
                     window_results.append(w_result)
                     _training_status["walkforward_windows"] = list(window_results)
                     break
@@ -442,27 +453,29 @@ class RLTrainer:
                 # hold_rate (from training action distribution, available after agent.train()).
                 # Note: sharpe is NOT returned by get_episode_metrics() and cannot be
                 # checked per-window without a separate Sharpe computation step.
-                metrics   = w_result.get("metrics", {})
-                gates     = VALIDATION_GATES
-                pf        = metrics.get("profit_factor", 0.0)
-                wr        = metrics.get("win_rate", 0.0)
-                max_dd    = metrics.get("max_drawdown", 1.0)
-                n_trades  = metrics.get("n_trades", 0)
+                metrics = w_result.get("metrics", {})
+                gates = VALIDATION_GATES
+                pf = metrics.get("profit_factor", 0.0)
+                wr = metrics.get("win_rate", 0.0)
+                max_dd = metrics.get("max_drawdown", 1.0)
+                n_trades = metrics.get("n_trades", 0)
                 hold_rate = metrics.get("hold_rate", 0.0)
 
-                window_pass = all([
-                    pf        >= gates["min_profit_factor"],
-                    wr        >= gates["min_win_rate"],
-                    max_dd    <= gates["max_drawdown"],
-                    n_trades  >= gates["min_trades"],
-                    hold_rate >= gates["min_hold_rate"],
-                ])
+                window_pass = all(
+                    [
+                        pf >= gates["min_profit_factor"],
+                        wr >= gates["min_win_rate"],
+                        max_dd <= gates["max_drawdown"],
+                        n_trades >= gates["min_trades"],
+                        hold_rate >= gates["min_hold_rate"],
+                    ]
+                )
                 w_result["window_pass"] = window_pass
                 w_result["window_idx"] = w_idx
                 w_result["train_start"] = train_start
-                w_result["train_end"]   = train_end
-                w_result["test_start"]  = test_start
-                w_result["test_end"]    = test_end
+                w_result["train_end"] = train_end
+                w_result["test_start"] = test_start
+                w_result["test_end"] = test_end
 
                 window_results.append(w_result)
 
@@ -507,6 +520,7 @@ class RLTrainer:
             walkforward_best_path: Optional[str] = None
             if best_model_path is not None:
                 import shutil
+
                 RL_MODELS_DIR.mkdir(parents=True, exist_ok=True)
                 dest_stem = str(RL_MODELS_DIR / f"{symbol.upper()}_walkforward_best")
                 src_zip = f"{best_model_path}.zip"
@@ -515,13 +529,10 @@ class RLTrainer:
                     try:
                         shutil.copy2(src_zip, dest_zip)
                         logger.info(
-                            f"[RLTrainer.WF] Best model (PF={best_pf:.2f}) "
-                            f"saved to {dest_zip}"
+                            f"[RLTrainer.WF] Best model (PF={best_pf:.2f}) " f"saved to {dest_zip}"
                         )
                     except Exception as copy_err:
-                        logger.warning(
-                            f"[RLTrainer.WF] Could not copy best model: {copy_err}"
-                        )
+                        logger.warning(f"[RLTrainer.WF] Could not copy best model: {copy_err}")
                 walkforward_best_path = dest_zip
 
             # ── 7. Derive recommendation ─────────────────────────────────────
@@ -551,12 +562,14 @@ class RLTrainer:
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            _training_status.update({
-                "running": False,
-                "progress_pct": 100,
-                "last_result": result,
-                "walkforward_complete": True,
-            })
+            _training_status.update(
+                {
+                    "running": False,
+                    "progress_pct": 100,
+                    "last_result": result,
+                    "walkforward_complete": True,
+                }
+            )
 
             logger.info(
                 f"[RLTrainer.WF] Walk-forward complete for {symbol} | "
@@ -570,12 +583,14 @@ class RLTrainer:
                 f"[RLTrainer.WF] Walk-forward failed for {symbol}: {exc}",
                 exc_info=True,
             )
-            _training_status.update({
-                "running": False,
-                "error": str(exc),
-                "progress_pct": 0,
-                "walkforward_complete": False,
-            })
+            _training_status.update(
+                {
+                    "running": False,
+                    "error": str(exc),
+                    "progress_pct": 0,
+                    "walkforward_complete": False,
+                }
+            )
             return {
                 "status": "error",
                 "symbol": symbol,
@@ -600,8 +615,13 @@ class RLTrainer:
         """
         from strategies.rl_agent import RLTradingAgent
 
-        train_env = build_env(symbol=symbol, df=df_train, max_episode_bars=MAX_EPISODE_BARS, reward_config=reward_config)
-        test_env  = build_env(symbol=symbol, df=df_test,  max_episode_bars=len(df_test))
+        train_env = build_env(
+            symbol=symbol,
+            df=df_train,
+            max_episode_bars=MAX_EPISODE_BARS,
+            reward_config=reward_config,
+        )
+        test_env = build_env(symbol=symbol, df=df_test, max_episode_bars=len(df_test))
 
         agent = RLTradingAgent(symbol=symbol, env=train_env)
         training_summary = agent.train(timesteps)
@@ -611,9 +631,7 @@ class RLTrainer:
         # Save this window's model so best can be identified later
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         RL_MODELS_DIR.mkdir(parents=True, exist_ok=True)
-        model_path = str(
-            RL_MODELS_DIR / f"{symbol.upper()}_wf_w{window_idx:02d}_{timestamp}"
-        )
+        model_path = str(RL_MODELS_DIR / f"{symbol.upper()}_wf_w{window_idx:02d}_{timestamp}")
         try:
             agent.save(model_path)
         except Exception as save_err:
@@ -652,7 +670,9 @@ class RLTrainer:
                 if df is not None and len(df) >= 50:
                     return self._normalize_columns(df)
             except Exception as e:
-                logger.warning(f"[RLTrainer] MarketDataManager failed: {e}, falling back to yfinance")
+                logger.warning(
+                    f"[RLTrainer] MarketDataManager failed: {e}, falling back to yfinance"
+                )
 
         # yfinance fallback — uses equity symbols as proxy (ES=MES≈SPY, NQ=MNQ≈QQQ)
         return await asyncio.to_thread(self._fetch_yfinance, symbol, lookback_days, interval)
@@ -668,14 +688,19 @@ class RLTrainer:
             import yfinance as yf
 
             FUTURES_TO_YF = {
-                "MES": "MES=F", "MNQ": "MNQ=F", "MCL": "MCL=F",
-                "MGC": "MGC=F", "MYM": "YM=F",
+                "MES": "MES=F",
+                "MNQ": "MNQ=F",
+                "MCL": "MCL=F",
+                "MGC": "MGC=F",
+                "MYM": "YM=F",
             }
             ticker = FUTURES_TO_YF.get(symbol.upper(), symbol)
 
             # yfinance interval mapping
             yf_interval = {
-                "1h": "1h", "4h": "1h", "1d": "1d",
+                "1h": "1h",
+                "4h": "1h",
+                "1d": "1d",
             }.get(interval, "1h")
 
             period = f"{min(lookback_days, 730)}d"  # yfinance max ~2yr for intraday
@@ -689,10 +714,15 @@ class RLTrainer:
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
-            df = df.rename(columns={
-                "Open": "open", "High": "high", "Low": "low",
-                "Close": "close", "Volume": "volume",
-            })
+            df = df.rename(
+                columns={
+                    "Open": "open",
+                    "High": "high",
+                    "Low": "low",
+                    "Close": "close",
+                    "Volume": "volume",
+                }
+            )
             df = df[["open", "high", "low", "close", "volume"]].copy()
             df = df.dropna()
             return df.reset_index(drop=True)
@@ -740,10 +770,12 @@ class RLTrainer:
                 except Exception:
                     pass
 
-            results.append({
-                "run_id": stem,
-                "completed": True,
-                "metadata": meta,
-            })
+            results.append(
+                {
+                    "run_id": stem,
+                    "completed": True,
+                    "metadata": meta,
+                }
+            )
 
         return results

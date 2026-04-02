@@ -10,6 +10,7 @@ Freqtrade setup:
   freqtrade new-config --config infrastructure/freqtrade/config.json
   freqtrade trade --config infrastructure/freqtrade/config.json
 """
+
 from __future__ import annotations
 
 import logging

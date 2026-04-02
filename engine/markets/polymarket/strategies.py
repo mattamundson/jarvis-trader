@@ -5,6 +5,7 @@ Three strategies:
   2. EventDriven — LLM probability vs market odds
   3. Arbitrage — YES + NO sum ≠ $1.00
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,7 +38,9 @@ class MarketMakingStrategy:
     Only operates on markets with volume > threshold.
     """
 
-    def __init__(self, order_size_usdc: float = 50.0, spread_capture: float = MAKER_SPREAD_CAPTURE_PCT):
+    def __init__(
+        self, order_size_usdc: float = 50.0, spread_capture: float = MAKER_SPREAD_CAPTURE_PCT
+    ):
         self.order_size_usdc = order_size_usdc
         self.spread_capture = spread_capture
 
@@ -48,28 +51,32 @@ class MarketMakingStrategy:
             half_capture = opp.spread * self.spread_capture / 2
 
             # Bid slightly above best bid
-            signals.append(PolymarketSignal(
-                token_id=opp.token_id,
-                question=opp.question[:60],
-                side="make_bid",
-                price=round(mid - half_capture, 3),
-                size_usdc=self.order_size_usdc,
-                strategy="market_making",
-                confidence=opp.confidence,
-                reason=f"MM bid on spread {opp.spread:.3f}",
-            ))
+            signals.append(
+                PolymarketSignal(
+                    token_id=opp.token_id,
+                    question=opp.question[:60],
+                    side="make_bid",
+                    price=round(mid - half_capture, 3),
+                    size_usdc=self.order_size_usdc,
+                    strategy="market_making",
+                    confidence=opp.confidence,
+                    reason=f"MM bid on spread {opp.spread:.3f}",
+                )
+            )
 
             # Ask slightly below best ask
-            signals.append(PolymarketSignal(
-                token_id=opp.token_id,
-                question=opp.question[:60],
-                side="make_ask",
-                price=round(mid + half_capture, 3),
-                size_usdc=self.order_size_usdc,
-                strategy="market_making",
-                confidence=opp.confidence,
-                reason=f"MM ask on spread {opp.spread:.3f}",
-            ))
+            signals.append(
+                PolymarketSignal(
+                    token_id=opp.token_id,
+                    question=opp.question[:60],
+                    side="make_ask",
+                    price=round(mid + half_capture, 3),
+                    size_usdc=self.order_size_usdc,
+                    strategy="market_making",
+                    confidence=opp.confidence,
+                    reason=f"MM ask on spread {opp.spread:.3f}",
+                )
+            )
 
         return signals
 
@@ -84,7 +91,9 @@ class EventDrivenStrategy:
         self.min_edge_pct = min_edge_pct  # Minimum 10% edge to trade
         self.order_size_usdc = order_size_usdc
 
-    def generate(self, opportunities: list[PolymarketOpportunity], llm_predictions: Optional[dict] = None) -> list[PolymarketSignal]:
+    def generate(
+        self, opportunities: list[PolymarketOpportunity], llm_predictions: Optional[dict] = None
+    ) -> list[PolymarketSignal]:
         """
         Compare LLM predictions (token_id → probability) with market prices.
         If edge > min_edge_pct, generate a signal.
@@ -93,7 +102,9 @@ class EventDrivenStrategy:
             return []
 
         signals = []
-        for opp in [o for o in opportunities if o.opportunity_type in ("market_making", "event_driven")]:
+        for opp in [
+            o for o in opportunities if o.opportunity_type in ("market_making", "event_driven")
+        ]:
             pred = llm_predictions.get(opp.token_id)
             if pred is None:
                 continue
@@ -103,27 +114,31 @@ class EventDrivenStrategy:
                 continue
 
             if pred > opp.yes_price:
-                signals.append(PolymarketSignal(
-                    token_id=opp.token_id,
-                    question=opp.question[:60],
-                    side="buy_yes",
-                    price=opp.yes_price,
-                    size_usdc=self.order_size_usdc,
-                    strategy="event_driven",
-                    confidence=min(edge * 5, 0.85),
-                    reason=f"LLM p={pred:.2f} vs market {opp.yes_price:.2f} (edge {edge:.2f})",
-                ))
+                signals.append(
+                    PolymarketSignal(
+                        token_id=opp.token_id,
+                        question=opp.question[:60],
+                        side="buy_yes",
+                        price=opp.yes_price,
+                        size_usdc=self.order_size_usdc,
+                        strategy="event_driven",
+                        confidence=min(edge * 5, 0.85),
+                        reason=f"LLM p={pred:.2f} vs market {opp.yes_price:.2f} (edge {edge:.2f})",
+                    )
+                )
             else:
-                signals.append(PolymarketSignal(
-                    token_id=opp.token_id,
-                    question=opp.question[:60],
-                    side="buy_no",
-                    price=opp.no_price,
-                    size_usdc=self.order_size_usdc,
-                    strategy="event_driven",
-                    confidence=min(edge * 5, 0.85),
-                    reason=f"LLM p={pred:.2f} vs market {opp.yes_price:.2f} (edge {edge:.2f})",
-                ))
+                signals.append(
+                    PolymarketSignal(
+                        token_id=opp.token_id,
+                        question=opp.question[:60],
+                        side="buy_no",
+                        price=opp.no_price,
+                        size_usdc=self.order_size_usdc,
+                        strategy="event_driven",
+                        confidence=min(edge * 5, 0.85),
+                        reason=f"LLM p={pred:.2f} vs market {opp.yes_price:.2f} (edge {edge:.2f})",
+                    )
+                )
 
         return signals
 
@@ -151,25 +166,29 @@ class ArbitrageStrategy:
             if expected_profit < self.min_arb_profit_usdc:
                 continue
 
-            signals.append(PolymarketSignal(
-                token_id=opp.token_id,
-                question=opp.question[:60],
-                side="buy_yes",
-                price=opp.yes_price,
-                size_usdc=self.order_size_usdc / 2,
-                strategy="arbitrage",
-                confidence=0.95,
-                reason=f"ARB: YES+NO={opp.implied_sum:.3f} < 1.00, profit ~${expected_profit:.2f}",
-            ))
-            signals.append(PolymarketSignal(
-                token_id=opp.token_id,
-                question=opp.question[:60],
-                side="buy_no",
-                price=opp.no_price,
-                size_usdc=self.order_size_usdc / 2,
-                strategy="arbitrage",
-                confidence=0.95,
-                reason=f"ARB: YES+NO={opp.implied_sum:.3f} < 1.00, profit ~${expected_profit:.2f}",
-            ))
+            signals.append(
+                PolymarketSignal(
+                    token_id=opp.token_id,
+                    question=opp.question[:60],
+                    side="buy_yes",
+                    price=opp.yes_price,
+                    size_usdc=self.order_size_usdc / 2,
+                    strategy="arbitrage",
+                    confidence=0.95,
+                    reason=f"ARB: YES+NO={opp.implied_sum:.3f} < 1.00, profit ~${expected_profit:.2f}",
+                )
+            )
+            signals.append(
+                PolymarketSignal(
+                    token_id=opp.token_id,
+                    question=opp.question[:60],
+                    side="buy_no",
+                    price=opp.no_price,
+                    size_usdc=self.order_size_usdc / 2,
+                    strategy="arbitrage",
+                    confidence=0.95,
+                    reason=f"ARB: YES+NO={opp.implied_sum:.3f} < 1.00, profit ~${expected_profit:.2f}",
+                )
+            )
 
         return signals

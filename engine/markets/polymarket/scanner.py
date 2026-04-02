@@ -2,6 +2,7 @@
 PolymarketScanner — find liquid markets with mispriced odds.
 Identifies markets where YES + NO ≠ $1.00 (arbitrage) or spread is wide (market making).
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,9 +12,9 @@ from typing import Optional
 
 logger = logging.getLogger("jarvis_trader.markets.polymarket.scanner")
 
-MIN_VOLUME_24H = 1000.0    # Min $1K daily volume for liquidity
-MAX_SPREAD_PCT = 0.05      # Max 5% spread for market making
-ARB_THRESHOLD = 0.02       # Flag arb if YES+NO sum deviates > 2% from $1
+MIN_VOLUME_24H = 1000.0  # Min $1K daily volume for liquidity
+MAX_SPREAD_PCT = 0.05  # Max 5% spread for market making
+ARB_THRESHOLD = 0.02  # Flag arb if YES+NO sum deviates > 2% from $1
 
 
 @dataclass

@@ -2,6 +2,7 @@
 CorrelationMonitor — tracks directional exposure across markets.
 Blocks new positions when total directional exposure exceeds 30%.
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,7 +20,9 @@ class CorrelationMonitor:
     Flags when correlated exposure is too high.
     """
 
-    def __init__(self, total_capital: float, max_directional_pct: float = MAX_DIRECTIONAL_EXPOSURE_PCT):
+    def __init__(
+        self, total_capital: float, max_directional_pct: float = MAX_DIRECTIONAL_EXPOSURE_PCT
+    ):
         self.total_capital = total_capital
         self.max_directional_pct = max_directional_pct
         self._net_exposure: dict[str, float] = defaultdict(float)  # market → net $ exposure

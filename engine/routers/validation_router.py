@@ -3,6 +3,7 @@ Validation router — expose paper trading validation progress via API.
 GET /validation/progress — current metrics vs targets
 GET /validation/latest — last computed snapshot
 """
+
 from __future__ import annotations
 
 import logging
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/validation", tags=["validation"])
 
 def _get_checker():
     from schedulers.validation_checker import ValidationChecker
+
     db_path = os.environ.get("DB_PATH", "data/jarvis_trader.db")
     return ValidationChecker(db_path)
 
@@ -37,6 +39,7 @@ async def get_validation_progress():
 async def get_validation_targets():
     """Return the validation targets required to go live."""
     from schedulers.validation_checker import TARGETS
+
     return {
         "targets": TARGETS,
         "description": "All targets must be met for 30 consecutive days before live capital deployment.",

@@ -150,6 +150,7 @@ async def get_reddit_sentiment(filter: str = "all-stocks"):
 async def rolling_performance(days: int = 30):
     """Return rolling performance metrics over the given number of days."""
     from datetime import datetime, timedelta, timezone
+
     if days <= 0:
         days = 30
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)

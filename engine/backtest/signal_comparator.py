@@ -38,12 +38,14 @@ CT = pytz.timezone("America/Chicago")
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class JARVISTrade:
     """Minimal representation of a JARVIS backtest trade for comparison."""
+
     entry_date: datetime
     exit_date: datetime
-    direction: str   # "long" or "short"
+    direction: str  # "long" or "short"
     entry_price: float
     exit_price: float
     pnl: float
@@ -60,9 +62,10 @@ class JARVISTrade:
 @dataclass
 class MatchedSignal:
     """A TOS signal matched to a JARVIS trade."""
+
     tos: TOSSignal
     jarvis: Optional[JARVISTrade]
-    match_type: str      # "exact" | "close" | "tos_only"
+    match_type: str  # "exact" | "close" | "tos_only"
     bar_offset: int = 0  # bars between TOS and JARVIS entry (close matches)
     price_diff: float = 0.0
 
@@ -73,22 +76,22 @@ class ComparisonReport:
 
     symbol: str
     timeframe: str
-    mode: str                              # "trade_level" | "stc_math"
+    mode: str  # "trade_level" | "stc_math"
 
     # Signal counts
     tos_signal_count: int = 0
     jarvis_trade_count: int = 0
 
     # Match breakdown
-    exact_matches: int = 0                 # Same bar, same direction
-    close_matches: int = 0                 # Within window, same direction
-    tos_only: int = 0                      # TOS signal, no JARVIS trade
-    jarvis_only: int = 0                   # JARVIS trade, no TOS signal
+    exact_matches: int = 0  # Same bar, same direction
+    close_matches: int = 0  # Within window, same direction
+    tos_only: int = 0  # TOS signal, no JARVIS trade
+    jarvis_only: int = 0  # JARVIS trade, no TOS signal
 
     # Quality metrics
-    match_rate: float = 0.0               # (exact + close) / tos_signal_count
-    avg_price_diff: float = 0.0           # Average |TOS price - JARVIS price| on matches
-    avg_bar_offset: float = 0.0           # Average bar offset on close matches
+    match_rate: float = 0.0  # (exact + close) / tos_signal_count
+    avg_price_diff: float = 0.0  # Average |TOS price - JARVIS price| on matches
+    avg_bar_offset: float = 0.0  # Average bar offset on close matches
 
     # Interpretation
     verdict: str = ""
@@ -132,9 +135,7 @@ class ComparisonReport:
                     "tos_timestamp": m.tos.timestamp.isoformat(),
                     "tos_direction": m.tos.direction,
                     "tos_price": m.tos.price,
-                    "jarvis_timestamp": (
-                        m.jarvis.entry_date.isoformat() if m.jarvis else None
-                    ),
+                    "jarvis_timestamp": (m.jarvis.entry_date.isoformat() if m.jarvis else None),
                     "jarvis_direction": m.jarvis.direction if m.jarvis else None,
                     "jarvis_entry_price": m.jarvis.entry_price if m.jarvis else None,
                     "match_type": m.match_type,
@@ -164,11 +165,18 @@ class ComparisonReport:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _bar_duration_minutes(timeframe: str) -> int:
     """Convert timeframe string to bar duration in minutes."""
     mapping = {
-        "1m": 1, "5m": 5, "15m": 15, "30m": 30,
-        "1h": 60, "2h": 120, "4h": 240, "1d": 1440,
+        "1m": 1,
+        "5m": 5,
+        "15m": 15,
+        "30m": 30,
+        "1h": 60,
+        "2h": 120,
+        "4h": 240,
+        "1d": 1440,
     }
     return mapping.get(timeframe.lower(), 60)
 
@@ -252,6 +260,7 @@ def _normalize_direction(d: str) -> str:
 
 # ── Main comparator ───────────────────────────────────────────────────────────
 
+
 def compare_signals(
     tos_signals: List[TOSSignal],
     symbol: str,
@@ -301,7 +310,6 @@ def compare_signals(
         return report
 
     bar_minutes = _bar_duration_minutes(timeframe)
-    match_window = timedelta(minutes=bar_minutes * match_window_bars)
 
     # Build a lookup: JARVIS trades indexed by normalized timestamp (rounded to bar)
     jarvis_by_ts: dict = {}
@@ -370,9 +378,7 @@ def compare_signals(
 
         # 3. No match found — TOS only
         unmatched_tos.append(tos_sig)
-        matched_signals.append(
-            MatchedSignal(tos=tos_sig, jarvis=None, match_type="tos_only")
-        )
+        matched_signals.append(MatchedSignal(tos=tos_sig, jarvis=None, match_type="tos_only"))
 
     report.tos_only = len(unmatched_tos)
 
@@ -403,7 +409,9 @@ def compare_signals(
     tos_only_count = report.tos_only
     report.tos_signals_filtered_by_regime = int(tos_only_count * 0.6)
     report.tos_signals_filtered_by_structure = int(tos_only_count * 0.25)
-    report.tos_signals_filtered_by_bias = tos_only_count - int(tos_only_count * 0.6) - int(tos_only_count * 0.25)
+    report.tos_signals_filtered_by_bias = (
+        tos_only_count - int(tos_only_count * 0.6) - int(tos_only_count * 0.25)
+    )
 
     # Verdict
     report.verdict, report.verdict_detail = _compute_verdict(report)
@@ -423,7 +431,10 @@ def _compute_verdict(r: ComparisonReport) -> tuple:
         return "NO_DATA", "No TOS signals to compare."
 
     if r.jarvis_trade_count == 0:
-        return "NO_JARVIS", f"No JARVIS backtest found for {r.symbol}/{r.timeframe}. Run a backtest first."
+        return (
+            "NO_JARVIS",
+            f"No JARVIS backtest found for {r.symbol}/{r.timeframe}. Run a backtest first.",
+        )
 
     match_pct = r.match_rate * 100
 
@@ -464,6 +475,7 @@ def _compute_verdict(r: ComparisonReport) -> tuple:
 
 # ── STC Math Validator ────────────────────────────────────────────────────────
 
+
 def validate_stc_math(
     symbol: str,
     timeframe: str,
@@ -497,13 +509,16 @@ def validate_stc_math(
     """
     import yfinance as yf
 
-    from .indicators import stc as compute_stc
     from .signals import compute_all_indicators
 
     # Map symbol to Yahoo ticker
     ticker_map = {
-        "MES": "ES=F", "MNQ": "NQ=F", "MCL": "CL=F",
-        "MGC": "GC=F", "M2K": "RTY=F", "SPY": "SPY",
+        "MES": "ES=F",
+        "MNQ": "NQ=F",
+        "MCL": "CL=F",
+        "MGC": "GC=F",
+        "M2K": "RTY=F",
+        "SPY": "SPY",
     }
     ticker = ticker_map.get(symbol.upper(), symbol)
 
@@ -521,7 +536,9 @@ def validate_stc_math(
     our_values = [
         {
             "timestamp": str(idx),
-            "stc_value": round(float(row["stc_val"]), 4) if not __import__("math").isnan(row["stc_val"]) else None,
+            "stc_value": round(float(row["stc_val"]), 4)
+            if not __import__("math").isnan(row["stc_val"])
+            else None,
             "stc_signal": row["stc_signal"],
             "stc_cross_up": bool(row["stc_cross_up"]),
             "stc_cross_down": bool(row["stc_cross_down"]),
@@ -553,7 +570,9 @@ def validate_stc_math(
         for v in our_values:
             ts_key = str(v["timestamp"])[:16]
             if ts_key in tos_lookup:
-                diff = abs(v["stc_value"] - tos_lookup[ts_key]) if v["stc_value"] is not None else None
+                diff = (
+                    abs(v["stc_value"] - tos_lookup[ts_key]) if v["stc_value"] is not None else None
+                )
                 if diff is not None:
                     diffs.append(diff)
 
@@ -565,10 +584,13 @@ def validate_stc_math(
                 "mean_absolute_error": round(mae, 4),
                 "max_difference": round(max_diff, 4),
                 "assessment": (
-                    "IDENTICAL" if mae < 0.01 else
-                    "VERY_CLOSE" if mae < 0.5 else
-                    "MINOR_DIVERGENCE" if mae < 2.0 else
-                    "SIGNIFICANT_DIVERGENCE"
+                    "IDENTICAL"
+                    if mae < 0.01
+                    else "VERY_CLOSE"
+                    if mae < 0.5
+                    else "MINOR_DIVERGENCE"
+                    if mae < 2.0
+                    else "SIGNIFICANT_DIVERGENCE"
                 ),
             }
 

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # This prevents import errors in environments where yfinance is not installed.
 try:
     import yfinance as yf
+
     _YFINANCE_AVAILABLE = True
 except ImportError:
     _YFINANCE_AVAILABLE = False
@@ -26,13 +27,14 @@ except ImportError:
 # Dataclasses
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class OptionsContract:
     """Represents a single options contract from the chain."""
 
     strike: float
     expiry: date
-    option_type: str                # "call" or "put"
+    option_type: str  # "call" or "put"
     bid: float
     ask: float
     mid: float
@@ -40,9 +42,9 @@ class OptionsContract:
     gamma: float
     theta: float
     vega: float
-    iv: float                       # implied volatility as decimal (e.g. 0.25)
+    iv: float  # implied volatility as decimal (e.g. 0.25)
     volume: int
-    oi: int                         # open interest
+    oi: int  # open interest
     in_the_money: bool = False
     last_price: float = 0.0
 
@@ -66,7 +68,7 @@ class OptionsChain:
     symbol: str
     expiry: date
     underlying_price: float
-    iv_rank: float                          # 0–100
+    iv_rank: float  # 0–100
     calls: list[OptionsContract] = field(default_factory=list)
     puts: list[OptionsContract] = field(default_factory=list)
     fetched_at: datetime = field(default_factory=datetime.utcnow)
@@ -86,6 +88,7 @@ class OptionsChain:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _safe_float(value, default: float = 0.0) -> float:
     """Convert a value to float safely, returning default on failure."""
@@ -114,13 +117,17 @@ def _build_contract(
     """Build an :class:`OptionsContract` from a yfinance chain row."""
     from .greeks_monitor import calculate_greeks
 
-    bid     = _safe_float(getattr(row, "bid", 0))
-    ask     = _safe_float(getattr(row, "ask", 0))
-    mid     = round((bid + ask) / 2.0, 4) if (bid > 0 or ask > 0) else _safe_float(getattr(row, "lastPrice", 0))
-    iv      = _safe_float(getattr(row, "impliedVolatility", 0))
-    volume  = _safe_int(getattr(row, "volume", 0))
-    oi      = _safe_int(getattr(row, "openInterest", 0))
-    itm     = bool(getattr(row, "inTheMoney", False))
+    bid = _safe_float(getattr(row, "bid", 0))
+    ask = _safe_float(getattr(row, "ask", 0))
+    mid = (
+        round((bid + ask) / 2.0, 4)
+        if (bid > 0 or ask > 0)
+        else _safe_float(getattr(row, "lastPrice", 0))
+    )
+    iv = _safe_float(getattr(row, "impliedVolatility", 0))
+    volume = _safe_int(getattr(row, "volume", 0))
+    oi = _safe_int(getattr(row, "openInterest", 0))
+    itm = bool(getattr(row, "inTheMoney", False))
 
     # Time to expiry in years
     today = datetime.utcnow().date()
@@ -140,7 +147,9 @@ def _build_contract(
                 option_type=option_type,
             )
         except Exception as exc:
-            logger.debug("[chain_fetcher] Greeks calc failed for %s %.2f: %s", option_type, strike, exc)
+            logger.debug(
+                "[chain_fetcher] Greeks calc failed for %s %.2f: %s", option_type, strike, exc
+            )
 
     return OptionsContract(
         strike=strike,
@@ -165,6 +174,7 @@ def _build_contract(
 # Chain fetcher — yfinance
 # ---------------------------------------------------------------------------
 
+
 def fetch_chain_yfinance(
     symbol: str,
     expiry_dates: Optional[list[str]] = None,
@@ -187,7 +197,7 @@ def fetch_chain_yfinance(
         return None
 
     try:
-        ticker   = yf.Ticker(symbol)
+        ticker = yf.Ticker(symbol)
         spot_info = ticker.fast_info
 
         # Underlying price
@@ -214,7 +224,9 @@ def fetch_chain_yfinance(
         if target_expiry_str not in available_expiries:
             logger.warning(
                 "[chain_fetcher] Expiry %s not found for %s. Using %s.",
-                target_expiry_str, symbol, available_expiries[0],
+                target_expiry_str,
+                symbol,
+                available_expiries[0],
             )
             target_expiry_str = available_expiries[0]
 
@@ -268,7 +280,12 @@ def fetch_chain_yfinance(
 
         logger.info(
             "[chain_fetcher] %s | %d calls, %d puts | expiry=%s spot=%.2f IVR=%.1f",
-            symbol, len(calls), len(puts), expiry, underlying_price, ivr,
+            symbol,
+            len(calls),
+            len(puts),
+            expiry,
+            underlying_price,
+            ivr,
         )
         return options_chain
 
@@ -280,6 +297,7 @@ def fetch_chain_yfinance(
 # ---------------------------------------------------------------------------
 # Filter utilities
 # ---------------------------------------------------------------------------
+
 
 def filter_by_delta(
     chain: OptionsChain,
@@ -305,10 +323,7 @@ def filter_by_delta(
     if option_type in (None, "put"):
         contracts.extend(chain.puts)
 
-    return [
-        c for c in contracts
-        if min_delta <= abs(c.delta) <= max_delta
-    ]
+    return [c for c in contracts if min_delta <= abs(c.delta) <= max_delta]
 
 
 def find_strike_by_delta(
@@ -334,7 +349,9 @@ def find_strike_by_delta(
     best = min(source, key=lambda c: abs(abs(c.delta) - target_delta))
     logger.debug(
         "[chain_fetcher] find_strike_by_delta target=%.2f → strike=%.2f delta=%.4f",
-        target_delta, best.strike, best.delta,
+        target_delta,
+        best.strike,
+        best.delta,
     )
     return best
 
@@ -342,6 +359,7 @@ def find_strike_by_delta(
 # ---------------------------------------------------------------------------
 # IV Rank via yfinance historical options
 # ---------------------------------------------------------------------------
+
 
 def get_iv_rank(symbol: str, days: int = 252) -> float:
     """Calculate IV Rank for a symbol using historical options data.
@@ -365,7 +383,7 @@ def get_iv_rank(symbol: str, days: int = 252) -> float:
 
     try:
         ticker = yf.Ticker(symbol)
-        hist   = ticker.history(period="1y")
+        hist = ticker.history(period="1y")
 
         if len(hist) < 20:
             logger.warning("[chain_fetcher] Insufficient history for IVR calc on %s", symbol)
@@ -382,14 +400,19 @@ def get_iv_rank(symbol: str, days: int = 252) -> float:
             return 50.0
 
         current_iv = float(rolling_vol.iloc[-1])
-        high_52w   = float(rolling_vol.max())
-        low_52w    = float(rolling_vol.min())
+        high_52w = float(rolling_vol.max())
+        low_52w = float(rolling_vol.min())
 
         from .greeks_monitor import iv_rank
+
         ivr = iv_rank(current_iv, high_52w, low_52w)
         logger.debug(
             "[chain_fetcher] IVR %s: current=%.2%% high=%.2%% low=%.2%% → IVR=%.1f",
-            symbol, current_iv, high_52w, low_52w, ivr,
+            symbol,
+            current_iv,
+            high_52w,
+            low_52w,
+            ivr,
         )
         return ivr
 
@@ -401,6 +424,7 @@ def get_iv_rank(symbol: str, days: int = 252) -> float:
 # ---------------------------------------------------------------------------
 # Multi-expiry fetch
 # ---------------------------------------------------------------------------
+
 
 def fetch_nearest_expiries(
     symbol: str,

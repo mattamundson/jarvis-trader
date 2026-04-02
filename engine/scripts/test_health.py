@@ -1,4 +1,5 @@
 """Quick health endpoint test."""
+
 import httpx
 
 for path in ["/health", "/health/full"]:

@@ -1,6 +1,7 @@
 """
 Crypto router — expose Freqtrade/crypto module status via API.
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/crypto", tags=["crypto"])
 def _get_module():
     try:
         from orchestrator import get_orchestrator
+
         orch = get_orchestrator()
         if orch:
             return orch.get_module("crypto")
@@ -28,7 +30,10 @@ async def crypto_status():
     """Return Freqtrade / crypto module health."""
     module = _get_module()
     if not module:
-        return {"status": "disabled", "message": "Crypto module not registered. Set CRYPTO_ENABLED=True."}
+        return {
+            "status": "disabled",
+            "message": "Crypto module not registered. Set CRYPTO_ENABLED=True.",
+        }
     health = module.health_check()
     return {
         "status": health.status.value,
@@ -45,16 +50,18 @@ async def crypto_positions():
     if not module:
         return {"positions": []}
     positions = await module.get_positions()
-    return {"positions": [
-        {
-            "symbol": p.symbol,
-            "quantity": p.quantity,
-            "avg_cost": p.avg_cost,
-            "market_value": p.market_value,
-            "unrealized_pnl": p.unrealized_pnl,
-        }
-        for p in positions
-    ]}
+    return {
+        "positions": [
+            {
+                "symbol": p.symbol,
+                "quantity": p.quantity,
+                "avg_cost": p.avg_cost,
+                "market_value": p.market_value,
+                "unrealized_pnl": p.unrealized_pnl,
+            }
+            for p in positions
+        ]
+    }
 
 
 @router.get("/pnl")

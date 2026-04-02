@@ -30,9 +30,10 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
+
 import pytest
 import requests
-from pathlib import Path
 
 _tests_dir = Path(__file__).resolve().parent
 if str(_tests_dir) not in sys.path:
@@ -41,6 +42,7 @@ if str(_tests_dir) not in sys.path:
 from live_engine_probe import jarvis_rl_integration_ready
 
 BASE_URL = "http://localhost:8010"
+
 
 # Read API key from engine .env so this file never hard-codes a secret.
 def _read_env_api_key() -> str:
@@ -51,6 +53,7 @@ def _read_env_api_key() -> str:
                 return line.split("=", 1)[1].strip()
     return "test-key"
 
+
 _API_KEY = _read_env_api_key()
 _AUTH_HEADERS = {"X-API-Key": _API_KEY}
 
@@ -58,6 +61,7 @@ _AUTH_HEADERS = {"X-API-Key": _API_KEY}
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _get(path: str, **kwargs) -> requests.Response:
     """Issue an authenticated GET request with the engine API key header."""
@@ -109,6 +113,7 @@ def _skip_if_no_legacy_rl_status() -> None:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session", autouse=True)
 def require_engine():
     """Session-level guard: skip all tests if the engine is not up."""
@@ -118,6 +123,7 @@ def require_engine():
 # ---------------------------------------------------------------------------
 # Task 1 — Basic Health Endpoints
 # ---------------------------------------------------------------------------
+
 
 class TestHealthEndpoints:
     """Verify core health endpoints return the expected structure."""
@@ -175,6 +181,7 @@ class TestHealthEndpoints:
 # Task 2 — RL Status Endpoints
 # ---------------------------------------------------------------------------
 
+
 class TestRLStatusEndpoints:
     """Verify RL training status endpoints return expected structure."""
 
@@ -195,26 +202,24 @@ class TestRLStatusEndpoints:
             "walkforward_windows",
         ]
         for field in required_fields:
-            assert field in data, (
-                f"Missing field '{field}' in /strategies/rl/status. Body: {data}"
-            )
+            assert field in data, f"Missing field '{field}' in /strategies/rl/status. Body: {data}"
 
     def test_strategies_rl_status_field_types(self):
         """GET /strategies/rl/status field types must be correct."""
         resp = _get("/strategies/rl/status")
         data = resp.json()
-        assert isinstance(data["training_active"], bool), (
-            f"'training_active' must be bool, got {type(data['training_active'])}"
-        )
-        assert isinstance(data["progress_pct"], (int, float)), (
-            f"'progress_pct' must be numeric, got {type(data['progress_pct'])}"
-        )
-        assert isinstance(data["recent_runs"], list), (
-            f"'recent_runs' must be list, got {type(data['recent_runs'])}"
-        )
-        assert isinstance(data["walkforward_windows"], list), (
-            f"'walkforward_windows' must be list, got {type(data['walkforward_windows'])}"
-        )
+        assert isinstance(
+            data["training_active"], bool
+        ), f"'training_active' must be bool, got {type(data['training_active'])}"
+        assert isinstance(
+            data["progress_pct"], (int, float)
+        ), f"'progress_pct' must be numeric, got {type(data['progress_pct'])}"
+        assert isinstance(
+            data["recent_runs"], list
+        ), f"'recent_runs' must be list, got {type(data['recent_runs'])}"
+        assert isinstance(
+            data["walkforward_windows"], list
+        ), f"'walkforward_windows' must be list, got {type(data['walkforward_windows'])}"
 
     def test_strategies_rl_status_additional_fields(self):
         """GET /strategies/rl/status should include walkforward metadata fields."""
@@ -222,9 +227,7 @@ class TestRLStatusEndpoints:
         data = resp.json()
         additional = ["walkforward_n_windows", "walkforward_complete"]
         for field in additional:
-            assert field in data, (
-                f"Missing field '{field}' in /strategies/rl/status. Body: {data}"
-            )
+            assert field in data, f"Missing field '{field}' in /strategies/rl/status. Body: {data}"
 
     def test_rl_status_compact_returns_200(self):
         """GET /strategies/rl/status must return HTTP 200."""
@@ -238,17 +241,15 @@ class TestRLStatusEndpoints:
         assert isinstance(data, dict), f"Expected dict, got {type(data)}"
         required_fields = ["training_active", "progress_pct"]
         for field in required_fields:
-            assert field in data, (
-                f"Missing field '{field}' in /strategies/rl/status. Body: {data}"
-            )
+            assert field in data, f"Missing field '{field}' in /strategies/rl/status. Body: {data}"
 
     def test_rl_status_compact_running_is_bool(self):
         """GET /strategies/rl/status 'training_active' field must be boolean."""
         resp = _get("/strategies/rl/status")
         data = resp.json()
-        assert isinstance(data["training_active"], bool), (
-            f"'training_active' must be bool, got {type(data['training_active'])}"
-        )
+        assert isinstance(
+            data["training_active"], bool
+        ), f"'training_active' must be bool, got {type(data['training_active'])}"
 
     def test_strategies_rl_status_current_run_structure(self):
         """If training is active, recent_runs must have at least one entry with required fields."""
@@ -258,14 +259,13 @@ class TestRLStatusEndpoints:
             run = data["recent_runs"][0]
             run_fields = ["run_id", "symbol", "status", "started_at"]
             for field in run_fields:
-                assert field in run, (
-                    f"Recent run missing field '{field}'. Run: {run}"
-                )
+                assert field in run, f"Recent run missing field '{field}'. Run: {run}"
 
 
 # ---------------------------------------------------------------------------
 # Task 3 — RL Executor Status
 # ---------------------------------------------------------------------------
+
 
 class TestRLExecutorStatus:
     """Verify the RL executor status endpoint."""
@@ -281,17 +281,17 @@ class TestRLExecutorStatus:
         data = resp.json()
         assert isinstance(data, dict), f"Expected dict, got {type(data)}"
         assert "executors" in data, f"Missing 'executors' in executor status. Body: {data}"
-        assert "executor_count" in data, (
-            f"Missing 'executor_count' in executor status. Body: {data}"
-        )
+        assert (
+            "executor_count" in data
+        ), f"Missing 'executor_count' in executor status. Body: {data}"
 
     def test_executor_status_executors_is_dict(self):
         """GET /strategies/rl/executor/status 'executors' must be a dict."""
         resp = _get("/strategies/rl/executor/status")
         data = resp.json()
-        assert isinstance(data["executors"], dict), (
-            f"'executors' must be dict, got {type(data['executors'])}"
-        )
+        assert isinstance(
+            data["executors"], dict
+        ), f"'executors' must be dict, got {type(data['executors'])}"
 
     def test_executor_status_count_matches_dict(self):
         """executor_count must equal len(executors) dict."""
@@ -312,9 +312,9 @@ class TestRLExecutorStatus:
         negatives in a production environment.
         """
         resp = _get("/strategies/rl/executor/status")
-        assert resp.status_code == 200, (
-            f"Expected 200 from executor/status, got {resp.status_code}. Body: {resp.text}"
-        )
+        assert (
+            resp.status_code == 200
+        ), f"Expected 200 from executor/status, got {resp.status_code}. Body: {resp.text}"
         data = resp.json()
         count = data.get("executor_count", -1)
         executors = data.get("executors", {})
@@ -325,17 +325,17 @@ class TestRLExecutorStatus:
                 "Cannot assert zero-state while engine is live."
             )
         assert count == 0, (
-            f"Expected executor_count=0 when no executors deployed, "
-            f"got {count}. Body: {data}"
+            f"Expected executor_count=0 when no executors deployed, " f"got {count}. Body: {data}"
         )
-        assert executors == {}, (
-            f"Expected empty executors dict when none deployed, got: {executors}"
-        )
+        assert (
+            executors == {}
+        ), f"Expected empty executors dict when none deployed, got: {executors}"
 
 
 # ---------------------------------------------------------------------------
 # Task 4 — RL Models List (expects HTTP 200 after engine restart)
 # ---------------------------------------------------------------------------
+
 
 class TestRLModels:
     """
@@ -351,9 +351,10 @@ class TestRLModels:
         """RL models list route must respond (any status) — endpoint is wired."""
         resp = _get_rl_models()
         # We accept 200 (fixed engine) or 500 (unfixed engine) — either means the route exists.
-        assert resp.status_code in (200, 500), (
-            f"Unexpected status code {resp.status_code} from RL models endpoint"
-        )
+        assert resp.status_code in (
+            200,
+            500,
+        ), f"Unexpected status code {resp.status_code} from RL models endpoint"
 
     def test_rl_models_500_is_known_bug(self):
         """
@@ -392,9 +393,9 @@ class TestRLModels:
             pytest.skip("Skipping — /rl/models not returning 200 yet")
         data = resp.json()
         model_ids = [m.get("run_id", "") for m in data.get("models", [])]
-        assert "MES_20260402_025835" in model_ids, (
-            f"Expected MES_20260402_025835 in models list. Got: {model_ids}"
-        )
+        assert (
+            "MES_20260402_025835" in model_ids
+        ), f"Expected MES_20260402_025835 in models list. Got: {model_ids}"
 
     def test_rl_models_symbol_filter(self):
         """GET /rl/models?symbol=MES must return only MES models."""
@@ -404,9 +405,7 @@ class TestRLModels:
         data = resp.json()
         for model in data.get("models", []):
             run_id = model.get("run_id", "")
-            assert run_id.startswith("MES_"), (
-                f"Symbol filter returned non-MES model: {run_id}"
-            )
+            assert run_id.startswith("MES_"), f"Symbol filter returned non-MES model: {run_id}"
 
     def test_rl_models_symbol_filter_field_null_when_no_filter(self):
         """GET /rl/models (no query param) must include symbol_filter=null in response."""
@@ -414,12 +413,12 @@ class TestRLModels:
         if resp.status_code != 200:
             pytest.skip("Skipping — /rl/models not returning 200 yet")
         data = resp.json()
-        assert "symbol_filter" in data, (
-            f"Missing 'symbol_filter' key in /rl/models response. Body: {data}"
-        )
-        assert data["symbol_filter"] is None, (
-            f"Expected symbol_filter=null when no filter applied, got: {data['symbol_filter']}"
-        )
+        assert (
+            "symbol_filter" in data
+        ), f"Missing 'symbol_filter' key in /rl/models response. Body: {data}"
+        assert (
+            data["symbol_filter"] is None
+        ), f"Expected symbol_filter=null when no filter applied, got: {data['symbol_filter']}"
 
     def test_rl_models_symbol_filter_field_set_when_filtered(self):
         """GET /rl/models?symbol=MES must include symbol_filter='MES' (uppercased) in response."""
@@ -427,12 +426,12 @@ class TestRLModels:
         if resp.status_code != 200:
             pytest.skip("Skipping — /rl/models not returning 200 yet")
         data = resp.json()
-        assert "symbol_filter" in data, (
-            f"Missing 'symbol_filter' key in /rl/models?symbol=MES response. Body: {data}"
-        )
-        assert data["symbol_filter"] == "MES", (
-            f"Expected symbol_filter='MES', got: {data['symbol_filter']}"
-        )
+        assert (
+            "symbol_filter" in data
+        ), f"Missing 'symbol_filter' key in /rl/models?symbol=MES response. Body: {data}"
+        assert (
+            data["symbol_filter"] == "MES"
+        ), f"Expected symbol_filter='MES', got: {data['symbol_filter']}"
 
     def test_rl_models_model_entry_fields(self):
         """Each model entry must have 'run_id', 'completed', and 'metadata' fields."""
@@ -446,18 +445,16 @@ class TestRLModels:
         required_fields = ["run_id", "completed", "metadata"]
         for model in models:
             for field in required_fields:
-                assert field in model, (
-                    f"Model entry missing field '{field}'. Entry: {model}"
-                )
-            assert isinstance(model["run_id"], str), (
-                f"'run_id' must be str, got {type(model['run_id'])}"
-            )
-            assert isinstance(model["completed"], bool), (
-                f"'completed' must be bool, got {type(model['completed'])}"
-            )
-            assert isinstance(model["metadata"], dict), (
-                f"'metadata' must be dict, got {type(model['metadata'])}"
-            )
+                assert field in model, f"Model entry missing field '{field}'. Entry: {model}"
+            assert isinstance(
+                model["run_id"], str
+            ), f"'run_id' must be str, got {type(model['run_id'])}"
+            assert isinstance(
+                model["completed"], bool
+            ), f"'completed' must be bool, got {type(model['completed'])}"
+            assert isinstance(
+                model["metadata"], dict
+            ), f"'metadata' must be dict, got {type(model['metadata'])}"
 
     def test_rl_models_invalid_symbol_returns_empty_list_not_404(self):
         """GET /rl/models?symbol=INVALID must return 200 with empty models list, not 404."""
@@ -468,12 +465,11 @@ class TestRLModels:
         )
         data = resp.json()
         assert data.get("models") == [], (
-            f"Expected empty models list for unrecognised symbol, "
-            f"got: {data.get('models')}"
+            f"Expected empty models list for unrecognised symbol, " f"got: {data.get('models')}"
         )
-        assert data.get("count") == 0, (
-            f"Expected count=0 for unrecognised symbol, got: {data.get('count')}"
-        )
+        assert (
+            data.get("count") == 0
+        ), f"Expected count=0 for unrecognised symbol, got: {data.get('count')}"
         assert data.get("symbol_filter") == "INVALID_SYMBOL_ZZZNOTREAL", (
             f"Expected symbol_filter to be set to the query value (uppercased). "
             f"Got: {data.get('symbol_filter')}"
@@ -483,6 +479,7 @@ class TestRLModels:
 # ---------------------------------------------------------------------------
 # Task 5 — RL Health
 # ---------------------------------------------------------------------------
+
 
 class TestRLHealth:
     """Verify the RL subsystem health endpoint."""
@@ -503,33 +500,30 @@ class TestRLHealth:
             "ready",
         ]
         for field in required_fields:
-            assert field in data, (
-                f"Missing field '{field}' in /strategies/rl/health. Body: {data}"
-            )
+            assert field in data, f"Missing field '{field}' in /strategies/rl/health. Body: {data}"
 
     def test_rl_health_dependencies_available(self):
         """GET /strategies/rl/health must confirm gymnasium and stable_baselines3 are available."""
         resp = _get("/strategies/rl/health")
         data = resp.json()
-        assert data.get("gymnasium_available") is True, (
-            "gymnasium is not available — RL training will fail"
-        )
-        assert data.get("stable_baselines3_available") is True, (
-            "stable_baselines3 is not available — RL training will fail"
-        )
+        assert (
+            data.get("gymnasium_available") is True
+        ), "gymnasium is not available — RL training will fail"
+        assert (
+            data.get("stable_baselines3_available") is True
+        ), "stable_baselines3 is not available — RL training will fail"
 
     def test_rl_health_ready_is_bool(self):
         """GET /strategies/rl/health 'ready' field must be boolean."""
         resp = _get("/strategies/rl/health")
         data = resp.json()
-        assert isinstance(data["ready"], bool), (
-            f"'ready' must be bool, got {type(data['ready'])}"
-        )
+        assert isinstance(data["ready"], bool), f"'ready' must be bool, got {type(data['ready'])}"
 
 
 # ---------------------------------------------------------------------------
 # Task 6 — Run Results Endpoint
 # ---------------------------------------------------------------------------
+
 
 class TestRLRunResults:
     """Verify the run results endpoint."""
@@ -537,17 +531,15 @@ class TestRLRunResults:
     def test_results_404_for_unknown_run(self):
         """GET /strategies/rl/results/<unknown> must return HTTP 404."""
         resp = _get("/strategies/rl/results/nonexistent-run-id-00000000")
-        assert resp.status_code == 404, (
-            f"Expected 404 for unknown run_id, got {resp.status_code}. Body: {resp.text}"
-        )
+        assert (
+            resp.status_code == 404
+        ), f"Expected 404 for unknown run_id, got {resp.status_code}. Body: {resp.text}"
 
     def test_results_404_body_has_detail(self):
         """GET /strategies/rl/results/<unknown> 404 body must include 'detail'."""
         resp = _get("/strategies/rl/results/nonexistent-run-id-00000000")
         data = resp.json()
-        assert "detail" in data, (
-            f"404 response missing 'detail' field. Body: {data}"
-        )
+        assert "detail" in data, f"404 response missing 'detail' field. Body: {data}"
 
     def test_results_active_run_returns_200(self):
         """GET /strategies/rl/results/<active_run_id> must return HTTP 200 during training."""
@@ -558,9 +550,9 @@ class TestRLRunResults:
             pytest.skip("No recent runs available — skipping run-results test")
         run_id = recent_runs[0]["run_id"]
         resp = _get(f"/strategies/rl/results/{run_id}")
-        assert resp.status_code == 200, (
-            f"Expected 200 for active run_id={run_id}, got {resp.status_code}. Body: {resp.text}"
-        )
+        assert (
+            resp.status_code == 200
+        ), f"Expected 200 for active run_id={run_id}, got {resp.status_code}. Body: {resp.text}"
 
     def test_results_active_run_schema(self):
         """GET /strategies/rl/results/<active_run_id> must include run metadata fields."""
@@ -574,14 +566,15 @@ class TestRLRunResults:
         data = resp.json()
         required_fields = ["run_id", "symbol", "status", "started_at"]
         for field in required_fields:
-            assert field in data, (
-                f"Missing field '{field}' in run results for run_id={run_id}. Body: {data}"
-            )
+            assert (
+                field in data
+            ), f"Missing field '{field}' in run results for run_id={run_id}. Body: {data}"
 
 
 # ---------------------------------------------------------------------------
 # Task 7 — Preflight Checks (expects structured response after engine restart)
 # ---------------------------------------------------------------------------
+
 
 class TestPreflightChecks:
     """
@@ -596,9 +589,7 @@ class TestPreflightChecks:
     def test_preflight_returns_200(self):
         """GET /system/preflight must return HTTP 200."""
         resp = _get("/system/preflight")
-        assert resp.status_code == 200, (
-            f"Expected 200, got {resp.status_code}. Body: {resp.text}"
-        )
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}. Body: {resp.text}"
 
     def test_preflight_null_is_known_bug(self):
         """
@@ -613,7 +604,7 @@ class TestPreflightChecks:
         if body is None:
             pytest.xfail(
                 "KNOWN BUG: /system/preflight returns null — health_router.py::system_preflight() "
-                "has bare `return` instead of `return {\"all_pass\": ..., \"checks\": ...}`. "
+                'has bare `return` instead of `return {"all_pass": ..., "checks": ...}`. '
                 "Fix has been applied to source. Restart engine to activate."
             )
 
@@ -655,9 +646,9 @@ class TestPreflightChecks:
             "Portfolio Tracker",
         ]
         for name in expected_names:
-            assert name in check_names, (
-                f"Expected check '{name}' not found in preflight. Got: {check_names}"
-            )
+            assert (
+                name in check_names
+            ), f"Expected check '{name}' not found in preflight. Got: {check_names}"
 
     def test_preflight_check_structure_after_fix(self):
         """Each preflight check entry must have 'name', 'status', and 'detail' fields."""
@@ -667,17 +658,18 @@ class TestPreflightChecks:
             pytest.skip("Skipping — preflight returning null (bug not yet deployed)")
         for check in data.get("checks", []):
             for field in ["name", "status", "detail"]:
-                assert field in check, (
-                    f"Preflight check missing field '{field}'. Check: {check}"
-                )
-            assert check["status"] in ("pass", "warn", "fail"), (
-                f"Unexpected status value '{check['status']}'. Check: {check}"
-            )
+                assert field in check, f"Preflight check missing field '{field}'. Check: {check}"
+            assert check["status"] in (
+                "pass",
+                "warn",
+                "fail",
+            ), f"Unexpected status value '{check['status']}'. Check: {check}"
 
 
 # ---------------------------------------------------------------------------
 # Task 8 — POST evaluate (schema validation only, no actual inference)
 # ---------------------------------------------------------------------------
+
 
 class TestRLEvaluateEndpoint:
     """
@@ -693,9 +685,9 @@ class TestRLEvaluateEndpoint:
             headers=_AUTH_HEADERS,
             timeout=10,
         )
-        assert resp.status_code == 422, (
-            f"Expected 422 Unprocessable Entity for missing body, got {resp.status_code}"
-        )
+        assert (
+            resp.status_code == 422
+        ), f"Expected 422 Unprocessable Entity for missing body, got {resp.status_code}"
 
     def test_strategies_rl_evaluate_missing_required_fields(self):
         """POST /strategies/rl/evaluate with empty JSON must return 422."""
@@ -705,9 +697,9 @@ class TestRLEvaluateEndpoint:
             headers=_AUTH_HEADERS,
             timeout=10,
         )
-        assert resp.status_code == 422, (
-            f"Expected 422 for missing required fields, got {resp.status_code}. Body: {resp.text}"
-        )
+        assert (
+            resp.status_code == 422
+        ), f"Expected 422 for missing required fields, got {resp.status_code}. Body: {resp.text}"
 
     def test_strategies_rl_evaluate_422_has_detail(self):
         """POST /strategies/rl/evaluate 422 response must include validation 'detail'."""
@@ -718,9 +710,7 @@ class TestRLEvaluateEndpoint:
             timeout=10,
         )
         data = resp.json()
-        assert "detail" in data, (
-            f"422 response missing 'detail' field. Body: {data}"
-        )
+        assert "detail" in data, f"422 response missing 'detail' field. Body: {data}"
 
     def test_rl_evaluate_requires_model_path(self):
         """POST /strategies/rl/evaluate without model_path must return 422."""
@@ -730,14 +720,15 @@ class TestRLEvaluateEndpoint:
             headers=_AUTH_HEADERS,
             timeout=10,
         )
-        assert resp.status_code == 422, (
-            f"Expected 422 for missing model_path, got {resp.status_code}. Body: {resp.text}"
-        )
+        assert (
+            resp.status_code == 422
+        ), f"Expected 422 for missing model_path, got {resp.status_code}. Body: {resp.text}"
 
 
 # ---------------------------------------------------------------------------
 # Task 9 — Consistency Checks (cross-endpoint)
 # ---------------------------------------------------------------------------
+
 
 class TestCrossEndpointConsistency:
     """Verify data consistency across related endpoints."""
@@ -762,9 +753,9 @@ class TestCrossEndpointConsistency:
         full_pct = full_resp.json().get("progress_pct")
         compact_pct = compact_resp.json().get("progress_pct")
         # Allow 1% drift between sequential calls
-        assert abs((full_pct or 0) - (compact_pct or 0)) <= 1, (
-            f"progress_pct mismatch: first call={full_pct} vs second call={compact_pct}"
-        )
+        assert (
+            abs((full_pct or 0) - (compact_pct or 0)) <= 1
+        ), f"progress_pct mismatch: first call={full_pct} vs second call={compact_pct}"
 
     def test_full_health_version_matches_basic_health(self):
         """version field in /health/full must match /health."""
@@ -772,14 +763,15 @@ class TestCrossEndpointConsistency:
         full_resp = _get("/health/full")
         basic_version = basic_resp.json().get("version")
         full_version = full_resp.json().get("version")
-        assert basic_version == full_version, (
-            f"version mismatch: /health={basic_version} vs /health/full={full_version}"
-        )
+        assert (
+            basic_version == full_version
+        ), f"version mismatch: /health={basic_version} vs /health/full={full_version}"
 
 
 # ---------------------------------------------------------------------------
 # TestFixedBugs — verify all four bug fixes are active after engine restart
 # ---------------------------------------------------------------------------
+
 
 class TestFixedBugs:
     """
@@ -799,7 +791,9 @@ class TestFixedBugs:
         data = r.json()
         assert isinstance(data, dict), f"Expected dict, got {type(data)}"
         assert "models" in data, f"Expected 'models' key in response, got: {list(data.keys())}"
-        assert isinstance(data["models"], list), f"Expected 'models' to be a list, got {type(data['models'])}"
+        assert isinstance(
+            data["models"], list
+        ), f"Expected 'models' to be a list, got {type(data['models'])}"
 
     def test_preflight_returns_dict_not_null(self):
         """system_preflight() had bare return, now returns {all_pass, checks}."""
@@ -822,8 +816,14 @@ class TestFixedBugs:
         checks = data.get("checks", [])
         names = {c["name"] for c in checks}
         expected = {
-            "Database", "Kill Switch", "Circuit Breakers", "Pipeline",
-            "VIX Data", "Market Session", "IB Gateway", "Portfolio Tracker",
+            "Database",
+            "Kill Switch",
+            "Circuit Breakers",
+            "Pipeline",
+            "VIX Data",
+            "Market Session",
+            "IB Gateway",
+            "Portfolio Tracker",
         }
         assert expected.issubset(names), f"Missing checks: {expected - names}"
 
@@ -835,12 +835,12 @@ class TestFixedBugs:
         if not pnl or pnl.get("starting_balance") is None:
             pytest.skip("pnl_monitor not populated in this engine configuration")
         assert pnl.get("status") == "ok", f"pnl_monitor status: {pnl}"
-        assert pnl.get("starting_balance", 0) > 0, (
-            f"starting_balance should be > 0, got: {pnl.get('starting_balance')}"
-        )
-        assert pnl.get("current_balance", 0) > 0, (
-            f"current_balance should be > 0, got: {pnl.get('current_balance')}"
-        )
+        assert (
+            pnl.get("starting_balance", 0) > 0
+        ), f"starting_balance should be > 0, got: {pnl.get('starting_balance')}"
+        assert (
+            pnl.get("current_balance", 0) > 0
+        ), f"current_balance should be > 0, got: {pnl.get('current_balance')}"
 
     def test_ib_gateway_health_check_no_attribute_error(self):
         """IBKRDataConnector.health_check() was missing, causing AttributeError in /health/full."""
@@ -849,9 +849,9 @@ class TestFixedBugs:
         ib = r.json().get("subsystems", {}).get("ib_gateway", {})
         # Must NOT contain an AttributeError referencing health_check
         error_msg = ib.get("error") or ""
-        assert "health_check" not in error_msg, (
-            f"health_check AttributeError still present: {error_msg}"
-        )
+        assert (
+            "health_check" not in error_msg
+        ), f"health_check AttributeError still present: {error_msg}"
         assert "status" in ib, f"ib_gateway response missing status: {ib}"
 
     def test_circuit_breakers_not_falsely_tripped(self):
@@ -870,6 +870,7 @@ class TestFixedBugs:
 # ---------------------------------------------------------------------------
 # TestDeployFlow — deploy endpoint + executor integration
 # ---------------------------------------------------------------------------
+
 
 class TestDeployFlow:
     """
@@ -901,12 +902,10 @@ class TestDeployFlow:
             f"Body: {resp.text}"
         )
         data = resp.json()
-        assert "detail" in data, (
-            f"400 response must include 'detail'. Body: {data}"
-        )
-        assert "not found" in data["detail"].lower(), (
-            f"400 detail should mention 'not found'. Got: {data['detail']}"
-        )
+        assert "detail" in data, f"400 response must include 'detail'. Body: {data}"
+        assert (
+            "not found" in data["detail"].lower()
+        ), f"400 detail should mention 'not found'. Got: {data['detail']}"
 
     def test_deploy_status_not_deployed(self):
         """
@@ -918,22 +917,20 @@ class TestDeployFlow:
         structural validity, not a specific count of zero (the engine may be live).
         """
         resp = _get("/strategies/rl/executor/status", headers=_AUTH_HEADERS)
-        assert resp.status_code == 200, (
-            f"Expected 200 from executor/status, got {resp.status_code}. Body: {resp.text}"
-        )
+        assert (
+            resp.status_code == 200
+        ), f"Expected 200 from executor/status, got {resp.status_code}. Body: {resp.text}"
         data = resp.json()
-        assert isinstance(data, dict), (
-            f"executor/status response must be a dict. Got: {type(data)}"
-        )
-        assert "executors" in data, (
-            f"executor/status response must contain 'executors'. Body: {data}"
-        )
-        assert "executor_count" in data, (
-            f"executor/status response must contain 'executor_count'. Body: {data}"
-        )
-        assert isinstance(data["executors"], dict), (
-            f"'executors' must be a dict. Got: {type(data['executors'])}"
-        )
+        assert isinstance(data, dict), f"executor/status response must be a dict. Got: {type(data)}"
+        assert (
+            "executors" in data
+        ), f"executor/status response must contain 'executors'. Body: {data}"
+        assert (
+            "executor_count" in data
+        ), f"executor/status response must contain 'executor_count'. Body: {data}"
+        assert isinstance(
+            data["executors"], dict
+        ), f"'executors' must be a dict. Got: {type(data['executors'])}"
         assert data["executor_count"] == len(data["executors"]), (
             f"executor_count ({data['executor_count']}) must equal "
             f"len(executors) ({len(data['executors'])})"
@@ -954,9 +951,7 @@ class TestDeployFlow:
             f"got {resp.status_code}. Body: {resp.text}"
         )
         data = resp.json()
-        assert "detail" in data, (
-            f"422 response must include 'detail'. Body: {data}"
-        )
+        assert "detail" in data, f"422 response must include 'detail'. Body: {data}"
 
     def test_undeploy_not_deployed(self):
         """
@@ -981,9 +976,7 @@ class TestDeployFlow:
             f"got {resp.status_code}. Body: {resp.text}"
         )
         data = resp.json()
-        assert "detail" in data, (
-            f"404 response must include 'detail'. Body: {data}"
-        )
+        assert "detail" in data, f"404 response must include 'detail'. Body: {data}"
         detail_lower = data["detail"].lower()
         assert "no active executor" in detail_lower or "nothing to deactivate" in detail_lower, (
             f"404 detail should reference 'No active executor' or 'Nothing to deactivate'. "
@@ -1021,13 +1014,10 @@ class TestDeployFlow:
             "Deploy endpoint returned HTTP 500. This suggests the model-path "
             "validation guard did not fire before RLExecutor construction, "
             "possibly because inject_deps() was not called during startup or "
-            "an unexpected exception propagated past the guard. Body: "
-            + resp.text[:500]
+            "an unexpected exception propagated past the guard. Body: " + resp.text[:500]
         )
         data = resp.json()
-        assert "detail" in data, (
-            f"Error response must include a 'detail' field. Body: {data}"
-        )
+        assert "detail" in data, f"Error response must include a 'detail' field. Body: {data}"
 
     def test_deploy_bad_path_detail_mentions_model_file(self):
         """
@@ -1050,6 +1040,5 @@ class TestDeployFlow:
             )
         detail = resp.json().get("detail", "")
         assert bad_path in detail or "not found" in detail.lower(), (
-            f"400 detail should mention the bad path or 'not found'. "
-            f"Got: {detail}"
+            f"400 detail should mention the bad path or 'not found'. " f"Got: {detail}"
         )

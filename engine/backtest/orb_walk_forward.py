@@ -46,11 +46,13 @@ logger = logging.getLogger("orb_walk_forward")
 
 # ── Parameter Grid ────────────────────────────────────────────────────────────
 
-PARAM_GRID = list(product(
-    [True, False],              # volume_filter
-    [False, True],              # regime_filter
-    [0.0005, 0.0008, 0.0012],   # min_or_range_pct
-))
+PARAM_GRID = list(
+    product(
+        [True, False],  # volume_filter
+        [False, True],  # regime_filter
+        [0.0005, 0.0008, 0.0012],  # min_or_range_pct
+    )
+)
 
 # WFE decision thresholds (shared with STC framework)
 WFE_EXCELLENT = 0.70
@@ -59,6 +61,7 @@ WFE_MARGINAL = 0.30
 
 
 # ── Data Loading ──────────────────────────────────────────────────────────────
+
 
 def _load_data(symbol: str, start: str, end: str) -> pd.DataFrame:
     """Fetch 1h bars via the existing data_loader (uses cache)."""
@@ -75,6 +78,7 @@ def _load_data(symbol: str, start: str, end: str) -> pd.DataFrame:
 
 
 # ── Single Window Optimisation ────────────────────────────────────────────────
+
 
 def _score_result(result) -> float:
     """
@@ -144,6 +148,7 @@ def _optimise_window(
 
 # ── Walk-Forward Main ─────────────────────────────────────────────────────────
 
+
 def run_orb_walk_forward(
     symbol: str = "MES",
     start: str = "2024-01-01",
@@ -200,7 +205,9 @@ def run_orb_walk_forward(
         logger.info(f"  Bars: train={len(train_df)}, test={len(test_df)}")
 
         if len(train_df) < 200 or len(test_df) < 50:
-            logger.warning(f"  [SKIP] Insufficient data (train={len(train_df)}, test={len(test_df)})")
+            logger.warning(
+                f"  [SKIP] Insufficient data (train={len(train_df)}, test={len(test_df)})"
+            )
             window_start += pd.DateOffset(months=test_months)
             continue
 
@@ -232,8 +239,7 @@ def run_orb_walk_forward(
             f"WR={is_summary['win_rate']:.1%}, PF={is_summary['profit_factor']:.2f}"
         )
         logger.info(
-            f"  OOS: {oos_n} trades, PnL=${oos_pnl:+.2f}, "
-            f"WR={oos_wr:.1%}, PF={oos_pf:.2f}"
+            f"  OOS: {oos_n} trades, PnL=${oos_pnl:+.2f}, " f"WR={oos_wr:.1%}, PF={oos_pf:.2f}"
         )
 
         is_returns.append(is_pnl)
@@ -241,23 +247,25 @@ def run_orb_walk_forward(
         oos_pfs.append(oos_pf)
         oos_win_rates.append(oos_wr)
 
-        windows.append({
-            "window": window_num,
-            "train_start": str(window_start.date()),
-            "train_end": str(train_end.date()),
-            "test_start": str(train_end.date()),
-            "test_end": str(test_end.date()),
-            "best_params": best_params,
-            "is_score": best_score,
-            "is_trades": is_n,
-            "is_pnl": round(is_pnl, 2),
-            "is_win_rate": is_summary["win_rate"],
-            "oos_trades": oos_n,
-            "oos_pnl": round(oos_pnl, 2),
-            "oos_win_rate": oos_wr,
-            "oos_profit_factor": round(oos_pf, 3),
-            "oos_sharpe": oos_summary["sharpe"],
-        })
+        windows.append(
+            {
+                "window": window_num,
+                "train_start": str(window_start.date()),
+                "train_end": str(train_end.date()),
+                "test_start": str(train_end.date()),
+                "test_end": str(test_end.date()),
+                "best_params": best_params,
+                "is_score": best_score,
+                "is_trades": is_n,
+                "is_pnl": round(is_pnl, 2),
+                "is_win_rate": is_summary["win_rate"],
+                "oos_trades": oos_n,
+                "oos_pnl": round(oos_pnl, 2),
+                "oos_win_rate": oos_wr,
+                "oos_profit_factor": round(oos_pf, 3),
+                "oos_sharpe": oos_summary["sharpe"],
+            }
+        )
 
         window_start += pd.DateOffset(months=test_months)
 
@@ -346,6 +354,7 @@ def run_orb_walk_forward(
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(

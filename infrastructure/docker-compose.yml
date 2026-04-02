@@ -75,11 +75,11 @@ services:
       QDB_HTTP_BIND_TO: "0.0.0.0:9000"
       QDB_HTTP_KEEP_ALIVE_TIMEOUT: "30000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/status"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo ok >&3 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 30s
 
   # ── Prometheus 2 — Metrics Time-Series Database ────────────────────────────
   # Scrapes: Engine (/metrics), Redis (via exporter), PostgreSQL (via exporter)

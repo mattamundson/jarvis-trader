@@ -7,6 +7,7 @@ reinforcement learning trading agent.
 All instrument params are kept in sync with engine/backtest/signals.py
 INSTRUMENT_PARAMS. Do NOT edit here independently — update both.
 """
+
 from __future__ import annotations
 
 from enum import IntEnum
@@ -14,17 +15,18 @@ from pathlib import Path
 
 # ── Action Space ─────────────────────────────────────────────────────────────
 
+
 class Action(IntEnum):
-    HOLD  = 0   # Do nothing (agent must learn to prefer this)
-    BUY   = 1   # Open / add to long position
-    SELL  = 2   # Open / add to short position
-    CLOSE = 3   # Close current position at market
+    HOLD = 0  # Do nothing (agent must learn to prefer this)
+    BUY = 1  # Open / add to long position
+    SELL = 2  # Open / add to short position
+    CLOSE = 3  # Close current position at market
 
 
 ACTION_NAMES = {
-    Action.HOLD:  "HOLD",
-    Action.BUY:   "BUY",
-    Action.SELL:  "SELL",
+    Action.HOLD: "HOLD",
+    Action.BUY: "BUY",
+    Action.SELL: "SELL",
     Action.CLOSE: "CLOSE",
 }
 
@@ -34,34 +36,29 @@ N_ACTIONS = len(Action)
 
 STATE_FEATURES = [
     # Price features
-    "close_normalized",     # z-score of close over 50-bar window
-    "high_low_range",       # (high - low) / atr
-    "close_vs_ema21",       # (close - ema_21) / atr
-
+    "close_normalized",  # z-score of close over 50-bar window
+    "high_low_range",  # (high - low) / atr
+    "close_vs_ema21",  # (close - ema_21) / atr
     # STC (Schaff Trend Cycle)
-    "stc_value",            # stc_val / 100  →  [0, 1]
-    "stc_slope",            # diff(stc_val, 1) / 100
-    "stc_above_os",         # 1 if stc_val > STC_OS threshold else 0
-    "stc_below_ob",         # 1 if stc_val < STC_OB threshold else 0
-
+    "stc_value",  # stc_val / 100  →  [0, 1]
+    "stc_slope",  # diff(stc_val, 1) / 100
+    "stc_above_os",  # 1 if stc_val > STC_OS threshold else 0
+    "stc_below_ob",  # 1 if stc_val < STC_OB threshold else 0
     # ATR / volatility
-    "atr_14",               # raw ATR-14 value
-    "atr_normalized",       # atr / close
-    "atr_vs_20d_avg",       # atr / rolling(20).mean() of atr
-
+    "atr_14",  # raw ATR-14 value
+    "atr_normalized",  # atr / close
+    "atr_vs_20d_avg",  # atr / rolling(20).mean() of atr
     # Regime & trend
-    "regime_score",         # float: TRENDING_BULL=1, RANGE_BOUND=0, TRENDING_BEAR=-1, etc.
-    "trend_direction",      # float: ema_trend bullish=1, neutral=0, bearish=-1
-    "phase_value",          # phase_val / 100  →  [-1, 1] approx
-
+    "regime_score",  # float: TRENDING_BULL=1, RANGE_BOUND=0, TRENDING_BEAR=-1, etc.
+    "trend_direction",  # float: ema_trend bullish=1, neutral=0, bearish=-1
+    "phase_value",  # phase_val / 100  →  [-1, 1] approx
     # Volume
-    "volume_vs_avg",        # volume / rolling(10).mean()
-    "volume_signal",        # buy_pct: buyer_dominant=1, balanced=0, seller_dominant=-1
-
+    "volume_vs_avg",  # volume / rolling(10).mean()
+    "volume_signal",  # buy_pct: buyer_dominant=1, balanced=0, seller_dominant=-1
     # Position state (internal environment tracking)
-    "current_position",     # 1=long, 0=flat, -1=short
-    "unrealized_pnl_atr",   # unrealized_pnl / atr  (negative when underwater)
-    "bars_in_trade",        # number of bars since position opened (normalized /100)
+    "current_position",  # 1=long, 0=flat, -1=short
+    "unrealized_pnl_atr",  # unrealized_pnl / atr  (negative when underwater)
+    "bars_in_trade",  # number of bars since position opened (normalized /100)
 ]
 
 N_FEATURES = len(STATE_FEATURES)  # 18
@@ -70,9 +67,9 @@ N_FEATURES = len(STATE_FEATURES)  # 18
 
 REGIME_SCORES = {
     "TRENDING_BULL": 1.0,
-    "RANGE_BOUND":   0.0,
-    "COMPRESSION":  -0.3,
-    "EXHAUSTED":    -0.7,
+    "RANGE_BOUND": 0.0,
+    "COMPRESSION": -0.3,
+    "EXHAUSTED": -0.7,
     "TRENDING_BEAR": -1.0,
 }
 
@@ -83,8 +80,8 @@ EMA_TREND_SCORES = {
 }
 
 VOLUME_SIGNAL_SCORES = {
-    "buyer_dominant":  1.0,
-    "balanced":        0.0,
+    "buyer_dominant": 1.0,
+    "balanced": 0.0,
     "seller_dominant": -1.0,
 }
 
@@ -93,10 +90,10 @@ VOLUME_SIGNAL_SCORES = {
 # Format: (STC_OS, STC_OB, STOP_ATR, T1_ATR, T2_ATR, T3_ATR, REGIME_FILTER)
 
 RL_INSTRUMENT_PARAMS = {
-    "MES": (15, 83,  0.50, 2.00, 3.236, 4.00, False),
-    "MNQ": (15, 92,  0.70, 1.00, 1.80,  2.618, True),
-    "MCL": (15, 83,  0.90, 1.50, 2.618, 4.00,  True),
-    "MGC": (17, 88,  0.30, 1.50, 2.618, 4.00,  True),
+    "MES": (15, 83, 0.50, 2.00, 3.236, 4.00, False),
+    "MNQ": (15, 92, 0.70, 1.00, 1.80, 2.618, True),
+    "MCL": (15, 83, 0.90, 1.50, 2.618, 4.00, True),
+    "MGC": (17, 88, 0.30, 1.50, 2.618, 4.00, True),
 }
 
 DEFAULT_INSTRUMENT_PARAMS = (15, 83, 0.70, 1.00, 1.80, 2.618, True)
@@ -111,29 +108,32 @@ def get_instrument_params(symbol: str) -> tuple:
 REWARD_CONFIG = {
     # Primary: P&L normalized by ATR so reward is scale-invariant across instruments
     "pnl_atr_weight": 1.0,
-
     # Holding cost per bar when in a position (encourages closing losers quickly)
-    # Run 8 (Two-Lever): doubled from -0.001 → -0.002.
-    # Run 7 result: hold_rate=98.8%, n_trades=3. Agent learned to HOLD everything.
-    # Doubling hold_cost makes long in-position holds more expensive, forcing
-    # faster position cycling and more frequent close+reopen decisions.
-    "hold_cost_per_bar": -0.002,
-
+    # Run 9: reduced from -0.002 → -0.001.
+    # Run 8 result (MES, 500k steps): HOLD=66.1%, episode reward ~+7 (stagnant).
+    # The -0.002 hold_cost was over-penalising positions, causing the agent to
+    # close trades too early then default back to HOLD-when-flat. Halving hold_cost
+    # lets the agent carry winners longer while the reduced entry_cost (-0.01)
+    # simultaneously lowers the barrier to open new positions. Together these
+    # two levers should pull HOLD into the 40-60% target band.
+    "hold_cost_per_bar": -0.001,
     # Entry cost fired on each new BUY or SELL (discourages overtrading)
-    # Run 8 (Two-Lever): quartered from -0.05 → -0.02.
-    # At -0.05, break-even hold = 50 bars. At -0.02, break-even = 10 bars.
-    # Drastically lowers the per-trade barrier so the agent explores entries freely.
-    "entry_cost": -0.02,
-
+    # Run 9: halved from -0.02 → -0.01.
+    # At -0.02, break-even hold = 10 bars. At -0.01, break-even = 5 bars.
+    # Lower barrier per trade incentivises ~2 entries per day on a 390-step
+    # (6.5 hour) episode. MGC Run 8 (HOLD=44.5%, positive reward) used the same
+    # -0.002 / -0.02 pair and achieved the closest-to-target result — the MES
+    # agent needs the entry_cost halved further to match that behaviour.
+    "entry_cost": -0.01,
     # Bonus for reaching T1 ATR target (reinforces quality exits)
     "t1_bonus": 0.10,
-
-    # No flat reward — pure P&L signal (unchanged from Run 7 / Scenario C).
-    # Agent never earned flat_hold_reward in prior runs anyway.
+    # No flat reward — pure P&L signal (unchanged from Runs 7-8).
+    # Agent never earned flat_hold_reward in prior runs; keeping at zero to
+    # avoid re-introducing the passive-income trap from Runs 1-5.
     "flat_hold_reward": 0.000,
 }
 
-# ── Run 7 Pre-Analysis: Reward Function Tuning for n_trades ≥ 60 ─────────────
+# ── Run History Summary ───────────────────────────────────────────────────────
 #
 # CONTEXT
 # -------
@@ -144,6 +144,13 @@ REWARD_CONFIG = {
 #   Run 6    : entry_cost=-0.10, max_episode_bars=500, flat_hold_reward=0.005
 #              → ROOT CAUSE FIXED via windowed episodes; flat_hold_reward may
 #                still over-reward the agent for staying flat
+#   Run 7    : entry_cost=-0.05, flat_hold_reward=0.000, hold_cost=-0.001
+#              → MES BUY-spam: HOLD=16.5%, BUY=59.4%, reward +154 (inflated)
+#   Run 8    : entry_cost=-0.02, hold_cost=-0.002 (Two-Lever adjustment)
+#              → MES: HOLD=66.1%, reward ~+7 (stagnant, still above target)
+#              → MGC (same params): HOLD=44.5%, reward +9.95 (rising) — BEST
+#   Run 9    : entry_cost=-0.01, hold_cost=-0.001 (see REWARD_CONFIG above)
+#              → Goal: MES HOLD in 40-60% range, n_trades >= 60 per episode
 #
 # REWARD ARCHITECTURE REVIEW
 # ---------------------------
@@ -270,12 +277,10 @@ RUN7_SCENARIOS = {
     # Break-even: 100 flat bars (40% of episode). Expected hold_rate: 55-70%.
     # Over-trading risk: LOW. Use if Run 6 produces < 30 trades.
     "A": {"flat_hold_reward": 0.001, "entry_cost": -0.10},
-
     # Scenario B — moderate: halve entry_cost AND reduce flat_hold_reward
     # Break-even: 16.7 flat bars (6.7% of episode). Expected hold_rate: 50-65%.
     # Over-trading risk: MODERATE. Use if Run 6 produces 30-55 trades.
     "B": {"flat_hold_reward": 0.003, "entry_cost": -0.05},
-
     # Scenario C — aggressive: pure P&L signal, no flat reward, lower entry cost
     # No flat break-even (flat HOLD yields zero). Expected hold_rate: 40-55%.
     # Over-trading risk: MODERATE-HIGH. Use if Scenario B still < 60 trades.
@@ -293,29 +298,29 @@ PPO_CONFIG = {
     "gamma": 0.99,
     "gae_lambda": 0.95,
     "clip_range": 0.2,
-    "ent_coef": 0.05,       # Entropy bonus encourages HOLD exploration (raised from 0.01)
+    "ent_coef": 0.05,  # Entropy bonus encourages HOLD exploration (raised from 0.01)
     "vf_coef": 0.5,
     "max_grad_norm": 0.5,
     "verbose": 0,
 }
 
 # Default total timesteps for quick test vs full training
-TIMESTEPS_QUICK   = 10_000    # smoke test
-TIMESTEPS_DEFAULT = 100_000   # usable model
-TIMESTEPS_FULL    = 500_000   # production quality (~10k episodes of 50 bars)
+TIMESTEPS_QUICK = 10_000  # smoke test
+TIMESTEPS_DEFAULT = 100_000  # usable model
+TIMESTEPS_FULL = 500_000  # production quality (~10k episodes of 50 bars)
 
 # ── Training Data Configuration ───────────────────────────────────────────────
 
-TRAIN_LOOKBACK_DAYS = 365 * 4   # 4 years of hourly data for training
-TEST_LOOKBACK_DAYS  = 180       # 6 months for OOS evaluation
-DEFAULT_INTERVAL    = "1h"
+TRAIN_LOOKBACK_DAYS = 365 * 4  # 4 years of hourly data for training
+TEST_LOOKBACK_DAYS = 180  # 6 months for OOS evaluation
+DEFAULT_INTERVAL = "1h"
 # Episode window: random 500-bar slice per reset → ~1,000 diverse episodes at 500k steps
 # vs ~24 full-dataset episodes without windowing. Critical for learning to trade.
-MAX_EPISODE_BARS    = 500
+MAX_EPISODE_BARS = 500
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-RL_CACHE_DIR  = Path("data/rl_cache")    # Processed OHLCV + indicators parquet files
+RL_CACHE_DIR = Path("data/rl_cache")  # Processed OHLCV + indicators parquet files
 RL_MODELS_DIR = Path("data/rl_models")  # Saved PPO model checkpoints
 
 # ── Validation Thresholds ─────────────────────────────────────────────────────

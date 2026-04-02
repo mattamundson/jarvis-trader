@@ -17,7 +17,7 @@ def parse_router_file(filepath):
     """Extract all routes from a single router file"""
     routes = []
     try:
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             content = f.read()
 
         # Find router prefix
@@ -51,7 +51,7 @@ def parse_main_includes():
     main_py = Path(__file__).parent.parent / "main.py"
     included = {}  # router_name -> extra_prefix
     try:
-        with open(main_py, 'r') as f:
+        with open(main_py, "r") as f:
             content = f.read()
             # Find all include_router calls with optional prefix
             # Handles: app.include_router(name) or app.include_router(name, prefix="/path")
@@ -149,7 +149,7 @@ def main():
     print("CRITICAL ROUTES CHECK")
     print("=" * 80 + "\n")
 
-    found_routes_set = {(path, method) for path, method in all_routes}
+    found_routes_set = set(all_routes)
     critical_found = 0
 
     for path, method in critical_routes:
@@ -212,4 +212,5 @@ def main():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

@@ -2,6 +2,7 @@
 MarketModule ABC — Standard interface all market modules must implement.
 Each market (futures, options, polymarket, crypto) is a self-contained module.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

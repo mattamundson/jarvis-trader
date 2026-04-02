@@ -2,15 +2,16 @@
 CryptoRiskManager — position limits and capital controls for crypto trading.
 Conservative: 10% max per coin, 30% stablecoin reserve, funding rate awareness.
 """
+
 from __future__ import annotations
 
 import logging
 
 logger = logging.getLogger("jarvis_trader.markets.crypto.risk")
 
-MAX_COIN_PCT = 10.0          # Max 10% of crypto capital per coin
+MAX_COIN_PCT = 10.0  # Max 10% of crypto capital per coin
 STABLECOIN_RESERVE_PCT = 30.0  # Keep 30% in stablecoin reserve
-MAX_OPEN_TRADES = 5           # Max simultaneous open trades
+MAX_OPEN_TRADES = 5  # Max simultaneous open trades
 
 
 class CryptoRiskManager:

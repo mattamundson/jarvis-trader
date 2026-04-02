@@ -28,6 +28,7 @@ def inject_dependencies():
 # Serialization helpers
 # ---------------------------------------------------------------------------
 
+
 def _serialize(obj: Any) -> Any:
     """Recursively convert dataclass / date / datetime to JSON-safe types."""
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
@@ -40,7 +41,7 @@ def _serialize(obj: Any) -> Any:
         return obj.isoformat()
     if isinstance(obj, date):
         return obj.isoformat()
-    if hasattr(obj, "value"):          # Enum
+    if hasattr(obj, "value"):  # Enum
         return obj.value
     return obj
 
@@ -59,6 +60,7 @@ def _position_to_dict(pos) -> dict:
 # Request models
 # ---------------------------------------------------------------------------
 
+
 class StrategyRecommendRequest(BaseModel):
     symbol: str
     vix: float
@@ -69,6 +71,7 @@ class StrategyRecommendRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # GET /options/chain/{symbol}
 # ---------------------------------------------------------------------------
+
 
 @router.get("/chain/{symbol}", tags=["options"])
 async def get_options_chain(symbol: str, expiry_index: int = 0):
@@ -119,7 +122,7 @@ async def get_options_chain(symbol: str, expiry_index: int = 0):
         raise HTTPException(
             status_code=404,
             detail=f"Could not retrieve options chain for '{symbol}'. "
-                   "Symbol may not have options or market may be closed.",
+            "Symbol may not have options or market may be closed.",
         )
 
     if not chain.calls and not chain.puts:
@@ -135,6 +138,7 @@ async def get_options_chain(symbol: str, expiry_index: int = 0):
 # GET /options/greeks
 # ---------------------------------------------------------------------------
 
+
 @router.get("/greeks", tags=["options"])
 async def get_portfolio_greeks():
     """Return aggregated portfolio Greeks across all open options positions.
@@ -147,14 +151,18 @@ async def get_portfolio_greeks():
         from options.position_manager import OptionsPositionManager
     except ImportError as exc:
         logger.error("[options_router] position_manager import failed: %s", exc)
-        raise HTTPException(status_code=503, detail="Options position manager unavailable.") from exc
+        raise HTTPException(
+            status_code=503, detail="Options position manager unavailable."
+        ) from exc
 
     try:
         mgr = OptionsPositionManager()
         pg = mgr.get_portfolio_greeks()
     except Exception as exc:
         logger.exception("[options_router] get_portfolio_greeks error: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Error retrieving portfolio Greeks: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving portfolio Greeks: {exc}"
+        ) from exc
 
     return _serialize(pg)
 
@@ -162,6 +170,7 @@ async def get_portfolio_greeks():
 # ---------------------------------------------------------------------------
 # GET /options/iv-rank/{symbol}
 # ---------------------------------------------------------------------------
+
 
 @router.get("/iv-rank/{symbol}", tags=["options"])
 async def get_iv_rank(symbol: str):
@@ -202,6 +211,7 @@ async def get_iv_rank(symbol: str):
 # POST /options/strategy/recommend
 # ---------------------------------------------------------------------------
 
+
 @router.post("/strategy/recommend", tags=["options"])
 async def recommend_strategy(body: StrategyRecommendRequest):
     """Recommend an options strategy based on VIX regime and underlying price.
@@ -214,7 +224,10 @@ async def recommend_strategy(body: StrategyRecommendRequest):
     """
     logger.info(
         "[options_router] POST /options/strategy/recommend symbol=%s vix=%.2f price=%.2f dte=%d",
-        body.symbol, body.vix, body.underlying_price, body.dte,
+        body.symbol,
+        body.vix,
+        body.underlying_price,
+        body.dte,
     )
 
     try:
@@ -310,6 +323,7 @@ async def recommend_strategy(body: StrategyRecommendRequest):
 # GET /options/positions
 # ---------------------------------------------------------------------------
 
+
 @router.get("/positions", tags=["options"])
 async def get_options_positions(status: Optional[str] = "OPEN"):
     """Return open (or filtered) options positions from the SQLite position store.
@@ -332,7 +346,9 @@ async def get_options_positions(status: Optional[str] = "OPEN"):
         from options.position_manager import OptionsPositionManager
     except ImportError as exc:
         logger.error("[options_router] position_manager import failed: %s", exc)
-        raise HTTPException(status_code=503, detail="Options position manager unavailable.") from exc
+        raise HTTPException(
+            status_code=503, detail="Options position manager unavailable."
+        ) from exc
 
     try:
         mgr = OptionsPositionManager()
@@ -352,11 +368,13 @@ async def get_options_positions(status: Optional[str] = "OPEN"):
 # Multi-Market Module Endpoints (added 2026-04-01)
 # ---------------------------------------------------------------------------
 
+
 @router.get("/module/status", tags=["options", "multi-market"])
 async def options_module_status():
     """Return OptionsMarketModule health (from MultiMarketOrchestrator)."""
     try:
         from orchestrator import get_orchestrator
+
         orch = get_orchestrator()
         if not orch:
             return {
@@ -389,7 +407,9 @@ async def options_module_status():
         vix_regime = getattr(health, "vix_regime", "normal") or "normal"
         current_strategy = getattr(health, "current_strategy", "—") or "—"
         last_scan_time = getattr(health, "last_scan_time", None)
-        last_scan_iso = last_scan_time.isoformat() if isinstance(last_scan_time, datetime) else last_scan_time
+        last_scan_iso = (
+            last_scan_time.isoformat() if isinstance(last_scan_time, datetime) else last_scan_time
+        )
         return {
             "enabled": enabled,
             "connected": connected,
@@ -411,5 +431,5 @@ async def options_module_status():
             "vix_regime": "normal",
             "current_strategy": "—",
             "status": "error",
-                 "message": str(exc),
+            "message": str(exc),
         }

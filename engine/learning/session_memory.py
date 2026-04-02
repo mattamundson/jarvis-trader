@@ -112,12 +112,8 @@ class SessionMemory:
             List of Lesson objects matching the condition.
         """
         try:
-            relevant = [
-                lesson for lesson in self.lessons if lesson.condition == market_condition
-            ]
-            logger.debug(
-                f"Retrieved {len(relevant)} lessons for condition '{market_condition}'"
-            )
+            relevant = [lesson for lesson in self.lessons if lesson.condition == market_condition]
+            logger.debug(f"Retrieved {len(relevant)} lessons for condition '{market_condition}'")
             return relevant
         except Exception as e:
             logger.exception(f"Error retrieving lessons: {e}")

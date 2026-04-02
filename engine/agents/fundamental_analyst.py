@@ -13,10 +13,19 @@ Model: Claude Sonnet 4.6
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 
 import httpx
+
+try:
+    import anthropic as _anthropic_sdk
+
+    _ANTHROPIC_SDK_AVAILABLE = True
+except ImportError:
+    _anthropic_sdk = None  # type: ignore[assignment]
+    _ANTHROPIC_SDK_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +39,14 @@ FRED_SERIES = {
     "fed_funds_rate": "FEDFUNDS",
     "us_10y_yield": "DGS10",
     "vix": "VIXCLS",
+}
+
+# Fallback defaults used when FRED is unavailable (rate-limited, maintenance, no network).
+# Values reflect approximate current-cycle levels; update quarterly if needed.
+FRED_DEFAULTS: dict[str, float] = {
+    "fed_funds_rate": 4.33,  # Fed Funds rate as of Q1 2026
+    "us_10y_yield": 4.30,  # 10-Year Treasury yield as of Q1 2026
+    "vix": 20.0,  # Neutral VIX assumption when data unavailable
 }
 
 # Futures symbols prefix map (for classification)
@@ -156,6 +173,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         Fetch the most recent data point for each FRED series.
         Returns dict of metric_name -> float value.
         Uses FRED's CSV endpoint (no API key required).
+
+        If a series fetch fails (network error, rate-limit, maintenance), falls back
+        to the hardcoded FRED_DEFAULTS so downstream analysis is never blocked.
         """
         metrics: dict[str, float] = {}
 
@@ -167,7 +187,10 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                         params={"id": series_id},
                     )
                     if resp.status_code != 200:
-                        logger.warning(f"FRED {series_id} returned {resp.status_code}")
+                        logger.warning(
+                            f"FRED {series_id} returned HTTP {resp.status_code} — "
+                            f"will use default fallback for '{metric_name}'"
+                        )
                         continue
 
                     # Parse CSV: header row + data rows, find last non-empty value
@@ -187,9 +210,29 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                     if last_value is not None:
                         metrics[metric_name] = last_value
                         logger.debug(f"FRED {series_id}: {last_value}")
+                    else:
+                        logger.warning(
+                            f"FRED {series_id} CSV contained no parseable value — "
+                            f"will use default fallback for '{metric_name}'"
+                        )
 
                 except Exception as e:
-                    logger.warning(f"FRED fetch failed for {series_id}: {e}")
+                    logger.warning(
+                        f"FRED fetch failed for {series_id} ({metric_name}): {e} — "
+                        f"will use default fallback"
+                    )
+
+        # Apply defaults for any series that failed to fetch so analysis is never blocked.
+        missing = [k for k in FRED_SERIES if k not in metrics]
+        if missing:
+            for key in missing:
+                default_val = FRED_DEFAULTS.get(key)
+                if default_val is not None:
+                    metrics[key] = default_val
+                    logger.warning(
+                        f"FRED '{key}' unavailable — using hardcoded default {default_val} "
+                        f"(update FRED_DEFAULTS quarterly)"
+                    )
 
         return metrics
 
@@ -334,26 +377,60 @@ Respond with JSON in exactly this format:
             anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
                 "ANTHROPIC_API_KEY", ""
             )
+            _t0 = time.time()
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": anthropic_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-sonnet-4-6",
-                        "max_tokens": 1000,
-                        "system": self.SYSTEM_PROMPT,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
+            if _ANTHROPIC_SDK_AVAILABLE and anthropic_key:
+                # Use the official async SDK — handles versioning and beta headers
+                # automatically for all model families including Claude 4.
+                async_client = _anthropic_sdk.AsyncAnthropic(api_key=anthropic_key)
+                message = await async_client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=1000,
+                    system=self.SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
                 )
-                resp.raise_for_status()
-                payload = resp.json()
-
-            response_text = payload["content"][0]["text"].strip()
+                response_text = message.content[0].text.strip()
+                _latency_ms = int((time.time() - _t0) * 1000)
+                # Track cost via JarvisLLMClient if available
+                if hasattr(self._llm, "track_raw_call"):
+                    await self._llm.track_raw_call(
+                        model="claude-sonnet-4-6",
+                        input_tokens=message.usage.input_tokens,
+                        output_tokens=message.usage.output_tokens,
+                        latency_ms=_latency_ms,
+                        agent_name="fundamental_analyst",
+                    )
+            else:
+                # Fallback: raw httpx when SDK is not installed
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": anthropic_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": "claude-sonnet-4-6",
+                            "max_tokens": 1000,
+                            "system": self.SYSTEM_PROMPT,
+                            "messages": [{"role": "user", "content": prompt}],
+                        },
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
+                _latency_ms = int((time.time() - _t0) * 1000)
+                # Track cost via JarvisLLMClient if available
+                usage = payload.get("usage", {})
+                if hasattr(self._llm, "track_raw_call"):
+                    await self._llm.track_raw_call(
+                        model="claude-sonnet-4-6",
+                        input_tokens=usage.get("input_tokens", 0),
+                        output_tokens=usage.get("output_tokens", 0),
+                        latency_ms=_latency_ms,
+                        agent_name="fundamental_analyst",
+                    )
+                response_text = payload["content"][0]["text"].strip()
 
             # Strip markdown code blocks if present
             if response_text.startswith("```"):

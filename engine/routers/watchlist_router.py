@@ -127,16 +127,26 @@ async def add_to_watchlist(req: WatchlistAddRequest):
 @router.get("/watchlist/scan")
 async def scan_watchlist(symbols: str = ""):
     """Scan specified symbols for trading signals. Returns per-symbol analysis."""
-    requested = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else list(settings.FUTURES_WATCHLIST)
+    requested = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else list(settings.FUTURES_WATCHLIST)
+    )
     result = []
     for sym in requested:
-        result.append({
-            "symbol": sym,
-            "signal": "neutral",
-            "regime": "unknown",
-            "scanned_at": datetime.now(timezone.utc).isoformat(),
-        })
-    return {"symbols": result, "count": len(result), "scanned_at": datetime.now(timezone.utc).isoformat()}
+        result.append(
+            {
+                "symbol": sym,
+                "signal": "neutral",
+                "regime": "unknown",
+                "scanned_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+    return {
+        "symbols": result,
+        "count": len(result),
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.delete("/watchlist/{symbol}")

@@ -135,10 +135,9 @@ export function MonthlyBreakdownWidget() {
 
     const load = async () => {
       try {
-        const res = await fetch(
+        const raw: unknown = await fetchEngine(
           `/portfolio/history/daily-pnl?limit=365`
         );
-        const raw: unknown = await res.json();
         const records: DailyPnlRecord[] = Array.isArray(raw) ? raw : [];
         if (!cancelled) {
           setMonths(groupByMonth(records));

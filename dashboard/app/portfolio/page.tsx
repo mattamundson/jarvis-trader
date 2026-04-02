@@ -238,7 +238,7 @@ export default function PortfolioPage() {
                 ["/performance", "Performance"], ["/validation", "Validation"],
                 ["/journal", "Journal"], ["/paper", "Paper"], ["/watchlist", "Watchlist"],
                 ["/scorecard", "Scorecard"], ["/settings", "Settings"], ["/health", "Health"],
-                ["/options", "Options"], ["/crypto", "Crypto"],
+                ["/options", "Options"], ["/crypto", "Crypto"], ["/discord", "Discord Intel"],
               ].map(([href, label]) => (
                 <a key={href} href={href} className={`text-xs transition-colors ${href === "/portfolio" ? "text-accent font-semibold" : "text-muted-foreground hover:text-foreground"}`}>
                   {label}

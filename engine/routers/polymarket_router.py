@@ -2,6 +2,7 @@
 Polymarket router — prediction market trading endpoints.
 All endpoints paper-only by default (POLYMARKET_ENABLED=False).
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/polymarket", tags=["polymarket"])
 def _get_module():
     try:
         from orchestrator import get_orchestrator
+
         orch = get_orchestrator()
         if orch:
             return orch.get_module("polymarket")
@@ -29,7 +31,10 @@ async def polymarket_status():
     """Return Polymarket module health and connection status."""
     module = _get_module()
     if not module:
-        return {"status": "disabled", "message": "Polymarket module not registered. Set POLYMARKET_ENABLED=True to enable."}
+        return {
+            "status": "disabled",
+            "message": "Polymarket module not registered. Set POLYMARKET_ENABLED=True to enable.",
+        }
     health = module.health_check()
     return {
         "status": health.status.value,
@@ -61,6 +66,7 @@ async def scan_markets():
         return {"error": "Polymarket not enabled", "opportunities": []}
     try:
         from markets.polymarket.scanner import PolymarketScanner
+
         scanner = PolymarketScanner(client=module._client)
         opps = scanner.scan()
         return {

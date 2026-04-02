@@ -287,9 +287,7 @@ class PaperTradeLogger:
         for trade in all_trades:
             timestamp_str = trade.get("timestamp", "")
             try:
-                trade_date = datetime.fromisoformat(
-                    timestamp_str.replace("Z", "+00:00")
-                ).date()
+                trade_date = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00")).date()
                 if trade_date == today:
                     today_trades.append(trade)
             except (ValueError, AttributeError):

@@ -9,8 +9,6 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
-from ._helpers import _utcnow
-
 logger = logging.getLogger("jarvis_trader.database")
 
 

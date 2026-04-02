@@ -27,7 +27,7 @@
 
 - Runtime: `.venv/Scripts/python` — never system Python
 - Start: `.venv/Scripts/python -m uvicorn main:app --reload --port 8010`
-- Tests: `.venv/Scripts/python -m pytest tests/ -v` (300+ tests, 147 new)
+- Tests: `.venv/Scripts/python -m pytest tests/ -v` (467+ tests passing)
 - Async throughout with graceful sync fallback
 - Pydantic v2 for all models
 - ruff-clean (no lint errors before commit)

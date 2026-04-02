@@ -5,6 +5,7 @@ GET /portfolio/health — health status of all market modules
 GET /portfolio/risk — cross-market risk state
 GET /portfolio/halt — emergency halt all markets (POST)
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,6 +32,7 @@ def inject_dependencies(pt, dbm):
 def _get_orchestrator():
     try:
         from orchestrator import get_orchestrator
+
         return get_orchestrator()
     except Exception:
         return None
@@ -100,9 +102,16 @@ async def resume_trading():
 async def streak_stats():
     """Return win/loss streak statistics from trade history."""
     if not paper_tracker:
-        return {"current_win_streak": 0, "current_loss_streak": 0, "max_win_streak": 0, "max_loss_streak": 0}
+        return {
+            "current_win_streak": 0,
+            "current_loss_streak": 0,
+            "max_win_streak": 0,
+            "max_loss_streak": 0,
+        }
     try:
-        trades = paper_tracker.get_closed_trades() if hasattr(paper_tracker, "get_closed_trades") else []
+        trades = (
+            paper_tracker.get_closed_trades() if hasattr(paper_tracker, "get_closed_trades") else []
+        )
         max_wins = 0
         cur_wins = 0
         cur_losses = 0

@@ -41,6 +41,7 @@ def import_app():
 
     try:
         from main import app
+
         return app
     except ImportError as e:
         print(f"Error importing app: {e}")

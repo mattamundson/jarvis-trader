@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from slowapi.errors import RateLimitExceeded
+
 from middleware.rate_limit import limiter, rate_limit_exception_handler
 from routers import safety_router as sr_mod
-from slowapi.errors import RateLimitExceeded
 
 
 def test_safety_status_without_dependencies_returns_503() -> None:

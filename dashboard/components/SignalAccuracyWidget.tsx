@@ -46,10 +46,9 @@ export function SignalAccuracyWidget() {
 
   async function fetchTrades() {
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine(
         `/portfolio/history/trades?limit=500&status=CLOSED`
       );
-      const raw: unknown = await res.json();
       const rows: ClosedTrade[] = Array.isArray(raw)
         ? raw
         : ((raw as { trades?: ClosedTrade[] }).trades ?? []);

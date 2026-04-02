@@ -21,18 +21,15 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 try:
     import httpx
 except ImportError:
-    import urllib.request
-    import urllib.error
     httpx = None  # type: ignore
 
 logger = logging.getLogger("eod_summary")
@@ -155,8 +152,14 @@ def run_eod_summary() -> int:
             current = pos.get("current_price", entry)
             unreal = pos.get("unrealized_pnl", 0)
 
-            if isinstance(qty, (int, float)) and isinstance(entry, (int, float)) and isinstance(current, (int, float)):
-                lines.append(f"    - {symbol}: {qty:+.0f} @ {entry:.2f} (current: {current:.2f}, U/L: ${unreal:+,.2f})")
+            if (
+                isinstance(qty, (int, float))
+                and isinstance(entry, (int, float))
+                and isinstance(current, (int, float))
+            ):
+                lines.append(
+                    f"    - {symbol}: {qty:+.0f} @ {entry:.2f} (current: {current:.2f}, U/L: ${unreal:+,.2f})"
+                )
             else:
                 lines.append(f"    - {symbol}: {qty} @ {entry}")
     else:

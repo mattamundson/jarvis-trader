@@ -79,10 +79,7 @@ class PaperModeSafetyTester:
         critical_passed = all(
             r.passed
             for r in self.results
-            if any(
-                x in r.check_name
-                for x in ["PAPER_TRADING", "LIVE_TRADING", "Human Approval"]
-            )
+            if any(x in r.check_name for x in ["PAPER_TRADING", "LIVE_TRADING", "Human Approval"])
         )
         return critical_passed
 
@@ -136,7 +133,9 @@ class PaperModeSafetyTester:
                 logger.info(f"  PASS: {message}")
                 logger.info(f"  Details: {details}")
             else:
-                message = f"FAIL: LIVE_TRADING_ENABLED = {settings.LIVE_TRADING_ENABLED} (must be False)"
+                message = (
+                    f"FAIL: LIVE_TRADING_ENABLED = {settings.LIVE_TRADING_ENABLED} (must be False)"
+                )
                 self.results.append(SafetyCheckResult(check_name, False, message))
                 logger.error(f"  FAIL: {message}")
 
@@ -247,9 +246,7 @@ class PaperModeSafetyTester:
                             ]
                         ):
                             found_blocking = True
-                            details_parts.append(
-                                f"Found port safety logic in {file_path.name}"
-                            )
+                            details_parts.append(f"Found port safety logic in {file_path.name}")
 
             # Also check IB Gateway connector for live mode guard
             ib_connector = self.engine_dir / "execution" / "ib_gateway_connector.py"
@@ -271,9 +268,7 @@ class PaperModeSafetyTester:
             else:
                 message = "WARNING: Could not verify port 4001 blocking in code"
                 details = "Manual code review recommended"
-                self.results.append(
-                    SafetyCheckResult(check_name, False, message, details)
-                )
+                self.results.append(SafetyCheckResult(check_name, False, message, details))
                 logger.warning(f"  WARNING: {message}")
                 logger.warning(f"  Details: {details}")
 

@@ -4,6 +4,7 @@ JARVIS TRADER — RL Module Tests
 Tests for rl_config, rl_environment, rl_agent (safety contract).
 All tests use synthetic data — no network calls required.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -11,6 +12,7 @@ import pandas as pd
 import pytest
 
 # ── Synthetic data factory ────────────────────────────────────────────────────
+
 
 def _make_synthetic_ohlcv(n_bars: int = 300) -> pd.DataFrame:
     """
@@ -22,33 +24,35 @@ def _make_synthetic_ohlcv(n_bars: int = 300) -> pd.DataFrame:
     rng = np.random.default_rng(seed=42)
 
     close = 5000.0 + np.cumsum(rng.normal(0, 5, n_bars))
-    high  = close + rng.uniform(2, 10, n_bars)
-    low   = close - rng.uniform(2, 10, n_bars)
+    high = close + rng.uniform(2, 10, n_bars)
+    low = close - rng.uniform(2, 10, n_bars)
     open_ = close + rng.normal(0, 3, n_bars)
     volume = rng.integers(1000, 10000, n_bars).astype(float)
 
     atr = rng.uniform(8, 20, n_bars)
 
-    df = pd.DataFrame({
-        "open":   open_,
-        "high":   high,
-        "low":    low,
-        "close":  close,
-        "volume": volume,
-        # Required indicator columns
-        "atr":           atr,
-        "stc_val":       rng.uniform(10, 90, n_bars),
-        "ema_21":        close * rng.uniform(0.99, 1.01, n_bars),
-        "ema_trend":     rng.choice(["bullish", "neutral", "bearish"], n_bars),
-        "phase_val":     rng.uniform(-50, 50, n_bars),
-        "volume_signal": rng.choice(["buyer_dominant", "balanced", "seller_dominant"], n_bars),
-        # Additional columns that layer1_regime may access
-        "macd_hist":     rng.normal(0, 1, n_bars),
-        "rsi":           rng.uniform(30, 70, n_bars),
-        "bb_upper":      close + atr * 2,
-        "bb_lower":      close - atr * 2,
-        "adx":           rng.uniform(15, 45, n_bars),
-    })
+    df = pd.DataFrame(
+        {
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+            # Required indicator columns
+            "atr": atr,
+            "stc_val": rng.uniform(10, 90, n_bars),
+            "ema_21": close * rng.uniform(0.99, 1.01, n_bars),
+            "ema_trend": rng.choice(["bullish", "neutral", "bearish"], n_bars),
+            "phase_val": rng.uniform(-50, 50, n_bars),
+            "volume_signal": rng.choice(["buyer_dominant", "balanced", "seller_dominant"], n_bars),
+            # Additional columns that layer1_regime may access
+            "macd_hist": rng.normal(0, 1, n_bars),
+            "rsi": rng.uniform(30, 70, n_bars),
+            "bb_upper": close + atr * 2,
+            "bb_lower": close - atr * 2,
+            "adx": rng.uniform(15, 45, n_bars),
+        }
+    )
     return df
 
 
@@ -62,8 +66,8 @@ def _make_env(n_bars: int = 300):
 
 # ── Test: config ──────────────────────────────────────────────────────────────
 
-class TestRLConfig:
 
+class TestRLConfig:
     def test_rl_config_valid(self):
         """TradingConfig values are in valid ranges."""
         from strategies.rl_config import (
@@ -95,9 +99,9 @@ class TestRLConfig:
         """Action enum integer values are stable."""
         from strategies.rl_config import Action
 
-        assert int(Action.HOLD)  == 0
-        assert int(Action.BUY)   == 1
-        assert int(Action.SELL)  == 2
+        assert int(Action.HOLD) == 0
+        assert int(Action.BUY) == 1
+        assert int(Action.SELL) == 2
         assert int(Action.CLOSE) == 3
 
     def test_get_instrument_params_defaults(self):
@@ -115,8 +119,8 @@ class TestRLConfig:
 
 # ── Test: environment ─────────────────────────────────────────────────────────
 
-class TestRLEnvironment:
 
+class TestRLEnvironment:
     def test_rl_environment_reset(self):
         """env.reset() returns a valid observation with correct shape."""
         from strategies.rl_config import N_FEATURES
@@ -165,10 +169,10 @@ class TestRLEnvironment:
         env = _make_env(n_bars=200)
         env.reset()
 
-        env.step(int(Action.BUY))    # open long
-        env.step(int(Action.HOLD))   # hold
+        env.step(int(Action.BUY))  # open long
+        env.step(int(Action.HOLD))  # hold
         env.step(int(Action.CLOSE))  # close long
-        env.step(int(Action.SELL))   # open short
+        env.step(int(Action.SELL))  # open short
         env.step(int(Action.CLOSE))  # close short
 
     def test_rl_environment_episode_metrics(self):
@@ -205,8 +209,8 @@ class TestRLEnvironment:
 
 # ── Test: safety layer integration ───────────────────────────────────────────
 
-class TestSafetyLayerBlocks:
 
+class TestSafetyLayerBlocks:
     def test_safety_layer_blocks_when_killed(self, mock_safety_layer):
         """When kill switch is active, agent.predict() must return HOLD (0)."""
         from strategies.rl_agent import RLTradingAgent
@@ -219,9 +223,9 @@ class TestSafetyLayerBlocks:
         fake_obs = np.zeros(18, dtype=np.float32)
         action = agent.predict(fake_obs, kill_switch_active=True)
 
-        assert action == int(Action.HOLD), (
-            f"Expected HOLD ({int(Action.HOLD)}) when kill switch active, got {action}"
-        )
+        assert action == int(
+            Action.HOLD
+        ), f"Expected HOLD ({int(Action.HOLD)}) when kill switch active, got {action}"
 
     def test_safety_layer_blocks_untrained_agent(self):
         """Untrained agent always returns HOLD regardless of observation."""
@@ -234,9 +238,7 @@ class TestSafetyLayerBlocks:
         obs = np.random.rand(18).astype(np.float32)
         action = agent.predict(obs, kill_switch_active=False)
 
-        assert action == int(Action.HOLD), (
-            f"Untrained agent must return HOLD, got {action}"
-        )
+        assert action == int(Action.HOLD), f"Untrained agent must return HOLD, got {action}"
 
     def test_kill_switch_reason_manual(self, mock_safety_layer):
         """Kill switch activated with MANUAL reason is captured correctly."""

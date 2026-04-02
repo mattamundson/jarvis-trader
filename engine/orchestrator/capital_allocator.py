@@ -2,6 +2,7 @@
 CapitalAllocator — dynamic capital rebalancing based on performance.
 Adjusts per-market allocations over time, favoring better performers.
 """
+
 from __future__ import annotations
 
 import logging

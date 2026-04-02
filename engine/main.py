@@ -15,7 +15,7 @@ import os
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional
+from typing import Dict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -66,6 +66,7 @@ from portfolio.tracker import PortfolioTracker
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
+from routers.discord_router import router as discord_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
 from routers.webhook_router import get_recent_webhooks
@@ -547,6 +548,7 @@ app.add_middleware(
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(webhook_router)
+app.include_router(discord_router)
 app.include_router(v1_router)
 
 

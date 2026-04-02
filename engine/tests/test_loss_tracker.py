@@ -10,7 +10,6 @@ from config import TradingConfig
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.safety_layer import OrderRequest, SafetyLayer
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 

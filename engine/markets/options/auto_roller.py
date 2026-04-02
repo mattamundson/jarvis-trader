@@ -6,6 +6,7 @@ Rules:
   - Roll at 21 DTE to next month (if still profitable)
   - Stop at 2x loss (max loss = 2 × initial credit)
 """
+
 from __future__ import annotations
 
 import logging
@@ -14,9 +15,9 @@ from datetime import date, datetime
 
 logger = logging.getLogger("jarvis_trader.markets.options.auto_roller")
 
-CLOSE_AT_PROFIT_PCT = 0.50   # Close when 50% of max profit reached
-ROLL_AT_DTE = 21              # Roll when 21 days to expiry
-STOP_LOSS_MULTIPLIER = 2.0   # Stop when loss = 2x initial credit
+CLOSE_AT_PROFIT_PCT = 0.50  # Close when 50% of max profit reached
+ROLL_AT_DTE = 21  # Roll when 21 days to expiry
+STOP_LOSS_MULTIPLIER = 2.0  # Stop when loss = 2x initial credit
 
 
 @dataclass

@@ -255,4 +255,3 @@ class TradingConfig(BaseSettings):
 
 
 settings = TradingConfig()
-              

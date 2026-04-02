@@ -89,9 +89,7 @@ class StrategyTuner:
         try:
             num_trades = len(recent_trades)
             win_rate = sum(1 for t in recent_trades if t.get("won")) / num_trades
-            r_multiples = [
-                t.get("pnl", 0) / max(t.get("risk", 1), 1) for t in recent_trades
-            ]
+            r_multiples = [t.get("pnl", 0) / max(t.get("risk", 1), 1) for t in recent_trades]
             avg_r_multiple = sum(r_multiples) / num_trades
 
             logger.debug(

@@ -301,6 +301,137 @@ def migration_005(conn: sqlite3.Connection) -> None:
     logger.info("Migration 005 applied — alert_log table created.")
 
 
+def migration_006(conn: sqlite3.Connection) -> None:
+    """
+    006 — Discord signal tables.
+
+    Adds four tables for persisting parsed Discord messages from the JARVIS
+    trading Discord server:
+
+      discord_bot_signals      — parsed signals from proton-bot-alerts and
+                                  instrument channels (es, nq, gc, cl, ym, rty,
+                                  eurusd, btc, spy).  Captures direction, entry,
+                                  targets, stops, win-rate, MFE/MAE, R:R, etc.
+      discord_ib_reports       — Initial Balance reports from indicator-alerts
+                                  channel (IB OHLC, extensions ibu/ibd, auction
+                                  context, trade plan).
+      discord_corey_alerts     — Manual trade alerts posted by Corey (tathedog)
+                                  in the trade-alerts channel.
+      discord_corey_commentary — Market commentary from Corey in market-updates
+                                  or general channels.
+
+    All tables use message_id as a UNIQUE key so re-importing the same Discord
+    export is idempotent (INSERT OR IGNORE).
+    """
+    # ── discord_bot_signals ───────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discord_bot_signals (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id      TEXT    UNIQUE NOT NULL,
+            timestamp       TEXT    NOT NULL,          -- ISO-8601 UTC
+            symbol          TEXT    NOT NULL,           -- e.g. ES, NQ, GC, CL
+            timeframe       TEXT,                       -- e.g. "1 m", "15 m"
+            direction       TEXT,                       -- LONG | SHORT
+            signal_type     TEXT,                       -- ENTRY | EXIT
+            entry_price     REAL,
+            target1         REAL,
+            target2         REAL,
+            stop1           REAL,
+            stop2           REAL,
+            win_rate        REAL,
+            wins            INTEGER,
+            losses          INTEGER,
+            mfe             REAL,
+            mae             REAL,
+            rr              REAL,
+            gain            REAL,
+            draw            REAL,
+            net             REAL,
+            last_price      REAL,
+            raw_description TEXT,
+            source_channel  TEXT,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dbs_symbol    ON discord_bot_signals(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dbs_timestamp ON discord_bot_signals(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dbs_direction ON discord_bot_signals(direction)")
+
+    # ── discord_ib_reports ────────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discord_ib_reports (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id      TEXT    UNIQUE NOT NULL,
+            timestamp       TEXT    NOT NULL,          -- ISO-8601 UTC
+            symbol          TEXT    NOT NULL,           -- e.g. ES, NQ
+            timeframe       TEXT,
+            ib_open         REAL,
+            ib_high         REAL,
+            ib_low          REAL,
+            ib_close        REAL,
+            ib_range        REAL,
+            ibu50           REAL,
+            ibu100          REAL,
+            ibd50           REAL,
+            ibd100          REAL,
+            auction_context TEXT,
+            trade_plan      TEXT,
+            raw_content     TEXT,
+            source_channel  TEXT    NOT NULL DEFAULT 'indicator-alerts',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dir_symbol    ON discord_ib_reports(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dir_timestamp ON discord_ib_reports(timestamp)")
+
+    # ── discord_corey_alerts ──────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discord_corey_alerts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id      TEXT    UNIQUE NOT NULL,
+            timestamp       TEXT    NOT NULL,          -- ISO-8601 UTC
+            content         TEXT    NOT NULL,
+            symbol          TEXT,
+            direction       TEXT,                       -- LONG | SHORT
+            price           REAL,
+            source_channel  TEXT    NOT NULL DEFAULT 'trade-alerts',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dca_timestamp ON discord_corey_alerts(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dca_symbol    ON discord_corey_alerts(symbol)")
+
+    # ── discord_corey_commentary ──────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discord_corey_commentary (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id      TEXT    UNIQUE NOT NULL,
+            timestamp       TEXT    NOT NULL,          -- ISO-8601 UTC
+            content         TEXT    NOT NULL,
+            channel         TEXT    NOT NULL,           -- market-updates | general
+            author_id       TEXT    NOT NULL DEFAULT '564449478174703646',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_dcc_timestamp ON discord_corey_commentary(timestamp)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_dcc_channel   ON discord_corey_commentary(channel)"
+    )
+
+    conn.commit()
+    logger.info("Migration 006 applied — Discord signal tables created.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -310,6 +441,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_003,  # version 3
     migration_004,  # version 4
     migration_005,  # version 5
+    migration_006,  # version 6
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -318,6 +450,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Pipeline runs: pipeline_runs table for webhook/manual run history",
     "Journal notes: journal_notes table with note_type, title, body, tags (JSON array)",
     "Alert log: alert_log table for WhatsApp notification history",
+    "Discord signals: discord_bot_signals, discord_ib_reports, discord_corey_alerts, discord_corey_commentary",
 ]
 
 

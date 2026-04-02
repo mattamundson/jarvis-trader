@@ -28,12 +28,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 try:
     import httpx
 except ImportError:
-    import urllib.request
-    import urllib.error
     httpx = None  # type: ignore
 
 logger = logging.getLogger("daily_health_check")
@@ -93,16 +92,10 @@ def _make_request(endpoint: str, method: str = "GET") -> dict[str, Any] | None:
 
 
 def _get_ct_timestamp() -> str:
-    """Return current time in CT as ISO string."""
+    """Return current time in US Central as ISO string."""
     now_utc = datetime.now(timezone.utc)
-    now_ct = now_utc.astimezone(
-        timezone(
-            None  # Get local timezone, works on configured systems
-        )
-        if hasattr(timezone, "__init__")
-        else None
-    )
-    return now_utc.isoformat()
+    now_ct = now_utc.astimezone(ZoneInfo("America/Chicago"))
+    return now_ct.isoformat()
 
 
 def _format_currency(value: float) -> str:
@@ -126,7 +119,9 @@ def run_health_check() -> int:
         is_healthy = False
         issues.append("Engine offline")
     else:
-        logger.info(f"Health: {health_data.get('status')} (uptime: {health_data.get('uptime_seconds', 0):.1f}s)")
+        logger.info(
+            f"Health: {health_data.get('status')} (uptime: {health_data.get('uptime_seconds', 0):.1f}s)"
+        )
 
     safety_data = _make_request("/safety/status")
     if safety_data is None:
@@ -177,7 +172,9 @@ def run_health_check() -> int:
         unrealized_pnl = portfolio_data.get("unrealized_pnl", 0.0)
         positions = portfolio_data.get("positions", [])
 
-        logger.info(f"Portfolio: Equity={_format_currency(equity)} | Cash={_format_currency(cash)} | Unrealized={_format_currency(unrealized_pnl)}")
+        logger.info(
+            f"Portfolio: Equity={_format_currency(equity)} | Cash={_format_currency(cash)} | Unrealized={_format_currency(unrealized_pnl)}"
+        )
         logger.info(f"Open positions: {len(positions)}")
 
     validation_data = _make_request("/paper/validation/progress")
@@ -202,7 +199,9 @@ def run_health_check() -> int:
             "summary": summary_line,
             "issues": issues,
             "engine_online": health_data is not None,
-            "kill_switch_active": safety_data.get("kill_switch_active", False) if safety_data else None,
+            "kill_switch_active": safety_data.get("kill_switch_active", False)
+            if safety_data
+            else None,
             "daily_pnl": daily_pnl if safety_data else None,
             "drawdown_pct": drawdown if safety_data else None,
             "equity": portfolio_data.get("total_equity", 0.0) if portfolio_data else None,

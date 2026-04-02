@@ -102,9 +102,7 @@ class TestFuturesMarketModuleInterface:
         mock_ib_gateway.connect.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_futures_connect_already_connected(
-        self, futures_module, mock_ib_gateway
-    ):
+    async def test_futures_connect_already_connected(self, futures_module, mock_ib_gateway):
         """Test connect when already connected."""
         mock_ib_gateway.is_connected.return_value = True
         result = await futures_module.connect()
@@ -217,9 +215,7 @@ class TestOptionsMarketModule:
     @pytest.mark.asyncio
     async def test_options_run_strategy_cycle(self, options_module):
         """Test options strategy cycle."""
-        with patch.object(
-            options_module._scanner, "scan", return_value=[]
-        ):
+        with patch.object(options_module._scanner, "scan", return_value=[]):
             signals = await options_module.run_strategy_cycle()
             assert isinstance(signals, list)
 
@@ -360,9 +356,7 @@ class TestCryptoMarketModule:
     @pytest.mark.asyncio
     async def test_crypto_connect_success(self, crypto_module, mock_freqtrade_bridge):
         """Test connecting to Freqtrade."""
-        with patch.object(
-            crypto_module, "is_enabled", return_value=True
-        ):
+        with patch.object(crypto_module, "is_enabled", return_value=True):
             result = await crypto_module.connect()
             assert result is True
             assert crypto_module._status == MarketStatus.PAPER
@@ -377,9 +371,7 @@ class TestCryptoMarketModule:
             assert result is False
 
     @pytest.mark.asyncio
-    async def test_crypto_connect_freqtrade_not_running(
-        self, crypto_module, mock_freqtrade_bridge
-    ):
+    async def test_crypto_connect_freqtrade_not_running(self, crypto_module, mock_freqtrade_bridge):
         """Test connect when Freqtrade is not running."""
         with patch.object(crypto_module, "is_enabled", return_value=True):
             mock_freqtrade_bridge.is_running.return_value = False
@@ -438,9 +430,7 @@ class TestFreqtradeBridge:
         with patch("markets.crypto.freqtrade_bridge.httpx.AsyncClient") as mock_client:
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_response.json.return_value = {
-                "access_token": "test-token-123"
-            }
+            mock_response.json.return_value = {"access_token": "test-token-123"}
             mock_client.return_value.post = AsyncMock(return_value=mock_response)
             bridge._client = mock_client.return_value
 
@@ -466,11 +456,7 @@ class TestFreqtradeBridge:
         with patch("markets.crypto.freqtrade_bridge.httpx.AsyncClient") as mock_client:
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_response.json.return_value = {
-                "trades": [
-                    {"pair": "BTC/USDT", "amount": 0.5}
-                ]
-            }
+            mock_response.json.return_value = {"trades": [{"pair": "BTC/USDT", "amount": 0.5}]}
             mock_client.return_value.get = AsyncMock(return_value=mock_response)
             bridge._client = mock_client.return_value
 
@@ -519,9 +505,7 @@ class TestPolymarketModule:
     @pytest.mark.asyncio
     async def test_polymarket_connect_when_disabled(self, polymarket_module):
         """Test connect returns False when disabled."""
-        with patch.object(
-            polymarket_module, "is_enabled", return_value=False
-        ):
+        with patch.object(polymarket_module, "is_enabled", return_value=False):
             result = await polymarket_module.connect()
             assert result is False
 

@@ -158,7 +158,12 @@ def _post_engine_json(path: str, payload: Dict[str, Any]) -> Optional[Dict[str, 
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
             return json.loads(raw) if raw else {}
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        json.JSONDecodeError,
+    ) as exc:
         logging.getLogger("paper_runner.engine_sync").warning("Engine sync failed: %s", exc)
         return None
 
@@ -307,8 +312,11 @@ def fetch_bars(symbol: str, futures_map: Dict[str, str], bars: int = 150) -> Opt
     def _normalise(df: pd.DataFrame) -> Optional[pd.DataFrame]:
         df = df.rename(
             columns={
-                "Open": "open", "High": "high",
-                "Low": "low", "Close": "close", "Volume": "volume",
+                "Open": "open",
+                "High": "high",
+                "Low": "low",
+                "Close": "close",
+                "Volume": "volume",
             }
         )
         cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
@@ -394,15 +402,15 @@ def manage_open_position(
     bar_low = float(last_bar["low"])
 
     # ── Check stop first (highest priority) ──────────────────────────────────
-    stop_hit = (side == "long" and bar_low <= stop) or (
-        side == "short" and bar_high >= stop
-    )
+    stop_hit = (side == "long" and bar_low <= stop) or (side == "short" and bar_high >= stop)
 
     if stop_hit:
         # Slippage against us on stop
         slip = slippage_ticks * tick_size
         exit_price = stop - slip if side == "long" else stop + slip
-        pnl = _compute_pnl(entry_price, exit_price, side, contracts_remaining, multiplier, commission)
+        pnl = _compute_pnl(
+            entry_price, exit_price, side, contracts_remaining, multiplier, commission
+        )
 
         record = {
             "symbol": symbol,
@@ -454,7 +462,9 @@ def manage_open_position(
             # Minor favorable slippage on target fills (2× tighter)
             slip = (slippage_ticks // 2) * tick_size
             exit_price = target_price - slip if side == "long" else target_price + slip
-            pnl = _compute_pnl(entry_price, exit_price, side, exit_contracts, multiplier, commission)
+            pnl = _compute_pnl(
+                entry_price, exit_price, side, exit_contracts, multiplier, commission
+            )
 
             record = {
                 "symbol": symbol,
@@ -668,15 +678,17 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             if updated_pos is None:
                 # Position closed
                 del positions[symbol]
-                action = f"closed_{closed_record.get('exit_reason', 'unknown')}" if closed_record else "closed"
+                action = (
+                    f"closed_{closed_record.get('exit_reason', 'unknown')}"
+                    if closed_record
+                    else "closed"
+                )
             else:
                 positions[symbol] = updated_pos
                 action = "holding"
 
         # ── Check for new entry (only if no open position) ────────────────────
-        elif cfg.get("max_concurrent_positions", 1) > len(
-            [s for s in positions if s == symbol]
-        ):
+        elif cfg.get("max_concurrent_positions", 1) > len([s for s in positions if s == symbol]):
             new_pos = check_for_entry(symbol, df_signals, cfg)
             if new_pos:
                 positions[symbol] = new_pos

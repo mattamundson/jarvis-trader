@@ -37,7 +37,9 @@ class ThinkScriptRequest(BaseModel):
 async def generate_thinkscript(req: ThinkScriptRequest):
     """Generate ThinkScript code for ThinkorSwim from JARVIS analysis"""
     if ThinkScriptGeneratorAgent is None:
-        return {"error": "ThinkScript generator unavailable — agents.thinkscript_generator could not be imported"}
+        return {
+            "error": "ThinkScript generator unavailable — agents.thinkscript_generator could not be imported"
+        }
     gen = ThinkScriptGeneratorAgent(
         llm_client=technical_analyst.llm_client if technical_analyst else None
     )

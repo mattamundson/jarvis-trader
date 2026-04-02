@@ -1,4 +1,5 @@
 """Multi-market trading modules."""
+
 from .base import HealthStatus, MarketModule, MarketStatus, Position, TradeResult, TradeSignal
 
 __all__ = [

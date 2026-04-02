@@ -2,6 +2,7 @@
 OptionsRiskManager — position-level risk checks for options module.
 Enforces: max Greeks exposure, earnings blackout, concentration limits.
 """
+
 from __future__ import annotations
 
 import logging
@@ -10,15 +11,16 @@ from typing import Optional
 
 logger = logging.getLogger("jarvis_trader.markets.options.risk")
 
-MAX_THETA_DAILY = 500.0       # Max total daily theta decay ($)
-MAX_DELTA_TOTAL = 50.0        # Max net delta (share equivalents)
-MAX_VEGA_TOTAL = 2000.0       # Max total vega exposure
-MAX_POSITION_COUNT = 10       # Max open positions
-EARNINGS_BLACKOUT_DAYS = 5    # Avoid opening within N days of earnings
+MAX_THETA_DAILY = 500.0  # Max total daily theta decay ($)
+MAX_DELTA_TOTAL = 50.0  # Max net delta (share equivalents)
+MAX_VEGA_TOTAL = 2000.0  # Max total vega exposure
+MAX_POSITION_COUNT = 10  # Max open positions
+EARNINGS_BLACKOUT_DAYS = 5  # Avoid opening within N days of earnings
 
 
 class OptionsRiskCheck:
     """Result of a risk check."""
+
     def __init__(self, approved: bool, reason: str = ""):
         self.approved = approved
         self.reason = reason
