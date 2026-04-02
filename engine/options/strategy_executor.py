@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +78,8 @@ class OptionsOrder:
 
     def __str__(self) -> str:
         legs_str = ", ".join(
-            f"{l.action} {l.option_type.upper()} {l.strike} {l.expiry}"
-            for l in self.legs
+            f"{leg.action} {leg.option_type.upper()} {leg.strike} {leg.expiry}"
+            for leg in self.legs
         )
         return (
             f"[{self.strategy.value}] {self.symbol} | "
@@ -412,8 +412,7 @@ def build_straddle(
 
     # Rough premium: ~1.5 % of underlying for ATM straddle
     estimated_premium = round(futures_price * 0.015, 4)
-    max_risk   = round(estimated_premium * 100 * 2, 2)  # total debit for 2 legs
-    max_profit = float("inf")                            # unlimited
+    max_risk = round(estimated_premium * 100 * 2, 2)  # total debit for 2 legs
 
     logger.info(
         "[build_straddle] %s | strike=%.2f DTE=%d", symbol, atm_strike, expiry_dte
@@ -597,8 +596,8 @@ def validate_order(
         ):
             return (
                 False,
-                f"Protective put in LOW VIX + non-VOLATILE regime is cost-ineffective. "
-                f"Premium is expensive relative to hedging benefit.",
+                "Protective put in LOW VIX + non-VOLATILE regime is cost-ineffective. "
+                "Premium is expensive relative to hedging benefit.",
             )
 
     # --- Short credit strategies in EXTREME VIX ---

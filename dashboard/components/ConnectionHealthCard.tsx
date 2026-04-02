@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Response shapes ────────────────────────────────────────────────────────────
 
@@ -45,8 +45,8 @@ export function ConnectionHealthCard() {
 
   async function fetchAll() {
     const [healthResult, ibResult] = await Promise.allSettled([
-      fetch(`${ENGINE_URL}/health`).then((r) => r.json() as Promise<HealthResponse>),
-      fetch(`${ENGINE_URL}/ib/connection-test`).then(
+      fetchEngine(`/health`),
+      fetchEngine(`/ib/connection-test`).then(
         (r) => r.json() as Promise<IBConnectionTestResponse>
       ),
     ]);

@@ -5,9 +5,9 @@ Black-Scholes pricing, probability of profit, expected value, spread metrics.
 
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
-from typing import Literal, Optional
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 

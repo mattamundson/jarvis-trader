@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("jarvis_trader.eod_scheduler")
 
 # Starting balance used when no prior DB record exists (paper trading default)
-_DEFAULT_STARTING_BALANCE = 100_000.0
+_DEFAULT_STARTING_BALANCE = 10_000.0
 
 
 class EODScheduler:

@@ -8,13 +8,13 @@ import logging
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Generator, Literal, Optional
 
 from .greeks_monitor import GreeksMonitor, PortfolioGreeks
-from .strategy_executor import OptionsLeg, OptionsOrder, OptionsStrategy
+from .strategy_executor import OptionsLeg, OptionsOrder
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +377,7 @@ class OptionsPositionManager:
                 symbol=pos.symbol,
                 strategy=pos.strategy,
                 greeks=greeks,
-                leg_type="short" if any(l.get("action") == "SELL" for l in pos.legs) else "long",
+                leg_type="short" if any(leg.get("action") == "SELL" for leg in pos.legs) else "long",
             )
             return True
         return False

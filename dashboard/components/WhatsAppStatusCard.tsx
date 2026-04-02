@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -77,19 +76,10 @@ export function WhatsAppStatusCard() {
   const load = async () => {
     try {
       // Fetch alert history (most recent 1) and stats in parallel
-      const [histRes, statsRes] = await Promise.all([
-        fetch(`${ENGINE_URL}/alerts/history?limit=1`),
-        fetch(`${ENGINE_URL}/alerts/stats`),
+      const [histData, statsData] = await Promise.all([
+        fetchEngine<{ alerts: AlertEntry[]; count: number }>("/alerts/history?limit=1"),
+        fetchEngine<AlertStats>("/alerts/stats"),
       ]);
-
-      if (!histRes.ok || !statsRes.ok) {
-        // Engine responded but endpoints errored — treat as not-configured fallback
-        setState({ configured: false, totalAlerts: 0, error: true });
-        return;
-      }
-
-      const histData: { alerts: AlertEntry[]; count: number } = await histRes.json();
-      const statsData: AlertStats = await statsRes.json();
 
       const lastAlert = histData.alerts?.[0];
 

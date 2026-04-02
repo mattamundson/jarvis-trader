@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GitCompare } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,9 +38,6 @@ interface CompareResponse {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ENGINE_URL =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_ENGINE_URL) ||
-  "http://localhost:8010";
 
 const REFRESH_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -73,11 +71,10 @@ export function BacktestComparisonCard() {
   const load = useCallback(async () => {
     try {
       const res = await fetch(
-        `${ENGINE_URL}/analytics/performance/compare`,
+        `/analytics/performance/compare`,
         { cache: "no-store" }
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: CompareResponse = await res.json();
+      const json = (await res.json()) as CompareResponse;
       setData(json);
       setError(null);
     } catch (e) {

@@ -3,8 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -220,65 +219,45 @@ function SignalCard({ label, data, loading, error }: SignalCardProps) {
 }
 
 // ── Main Widget ────────────────────────────────────────────────────────────────
+// Shows MCL (WFE=0.82) and MNQ (WFE=0.57) — the two approved paper instruments.
+// Data sourced from /paper/runner-status which reads paper_runner.py live files.
 
 export function SymbolSignalWidget() {
-  const [mesData, setMesData] = useState<SignalData | null>(null);
-  const [mesLoading, setMesLoading] = useState(true);
-  const [mesError, setMesError] = useState(false);
+  const [mclData, setMclData] = useState<SignalData | null>(null);
+  const [mclLoading, setMclLoading] = useState(true);
+  const [mclError, setMclError] = useState(false);
 
-  const [mgcData, setMgcData] = useState<SignalData | null>(null);
-  const [mgcLoading, setMgcLoading] = useState(true);
-  const [mgcError, setMgcError] = useState(false);
+  const [mnqData, setMnqData] = useState<SignalData | null>(null);
+  const [mnqLoading, setMnqLoading] = useState(true);
+  const [mnqError, setMnqError] = useState(false);
 
   const [pipelineRun, setPipelineRun] = useState<PipelineRun | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const [tick, setTick] = useState(0);
 
   const fetchSignals = async () => {
-    // MES signal
+    // MCL + MNQ from paper runner status endpoint
     try {
-      const res = await fetch(`${ENGINE_URL}/paper/mes-signal`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: SignalData = await res.json();
-      setMesData(json);
-      setMesError(false);
+      const json = await fetchEngine<Record<string, SignalData>>("/paper/runner-status");
+      if (json.MCL) { setMclData(json.MCL); setMclError(false); }
+      else { setMclData(null); }
+      if (json.MNQ) { setMnqData(json.MNQ); setMnqError(false); }
+      else { setMnqData(null); }
     } catch {
-      setMesError(true);
-      setMesData(null);
+      setMclError(true);
+      setMnqError(true);
+      setMclData(null);
+      setMnqData(null);
     } finally {
-      setMesLoading(false);
-    }
-
-    // MGC signal — 404 is handled gracefully
-    try {
-      const res = await fetch(`${ENGINE_URL}/paper/mgc-signal`);
-      if (res.status === 404) {
-        setMgcData(null);
-        setMgcError(false);
-      } else if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      } else {
-        const json: SignalData = await res.json();
-        setMgcData(json);
-        setMgcError(false);
-      }
-    } catch {
-      setMgcError(true);
-      setMgcData(null);
-    } finally {
-      setMgcLoading(false);
+      setMclLoading(false);
+      setMnqLoading(false);
     }
 
     // Pipeline history — handle 404 gracefully
     try {
-      const res = await fetch(`${ENGINE_URL}/pipeline/history?limit=1`);
-      if (res.ok) {
-        const json: PipelineHistoryResponse = await res.json();
-        const runs = json.runs ?? (Array.isArray(json) ? (json as PipelineRun[]) : []);
-        setPipelineRun(runs[0] ?? null);
-      } else {
-        setPipelineRun(null);
-      }
+      const json = await fetchEngine<PipelineHistoryResponse>("/pipeline/history?limit=1");
+      const runs = json.runs ?? (Array.isArray(json) ? (json as PipelineRun[]) : []);
+      setPipelineRun(runs[0] ?? null);
     } catch {
       setPipelineRun(null);
     }
@@ -309,19 +288,19 @@ export function SymbolSignalWidget() {
         <CardTitle>Signal Monitor</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Two signal cards side by side */}
+        {/* Two signal cards side by side — MCL (WFE=0.82) and MNQ (WFE=0.57) */}
         <div className="flex gap-4 flex-col sm:flex-row">
           <SignalCard
-            label="MES"
-            data={mesData}
-            loading={mesLoading}
-            error={mesError}
+            label="MCL"
+            data={mclData}
+            loading={mclLoading}
+            error={mclError}
           />
           <SignalCard
-            label="MGC"
-            data={mgcData}
-            loading={mgcLoading}
-            error={mgcError}
+            label="MNQ"
+            data={mnqData}
+            loading={mnqLoading}
+            error={mnqError}
           />
         </div>
 

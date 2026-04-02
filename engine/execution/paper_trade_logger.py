@@ -40,7 +40,6 @@ SCHEMA (data/paper_trades.json):
 }
 """
 
-import asyncio
 import json
 import logging
 from datetime import datetime
@@ -339,12 +338,12 @@ class PaperTradeLogger:
                     # Add trades_today and symbols_traded
                     today_trades = await self.get_trades_today()
                     all_trades = data.get("trades", [])
-                    symbols = set(t.get("symbol") for t in all_trades if t.get("symbol"))
+                    symbols = {t.get("symbol") for t in all_trades if t.get("symbol")}
 
                     return {
                         **summary,
                         "trades_today": len(today_trades),
-                        "symbols_traded": sorted(list(symbols)),
+                        "symbols_traded": sorted(symbols),
                         "last_updated": datetime.utcnow().isoformat() + "Z",
                     }
             except Exception as exc:

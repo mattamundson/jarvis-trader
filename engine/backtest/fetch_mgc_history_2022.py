@@ -112,7 +112,7 @@ def fetch_gc_batched(start: str, end: str, batch_years: int = 2) -> pd.DataFrame
     Fetch GC=F in yearly batches to avoid rate limiting.
     Adds a 3-second sleep between batches.
     """
-    from datetime import date, timedelta
+    from datetime import date
 
     start_d = datetime.strptime(start, "%Y-%m-%d").date()
     end_d = datetime.strptime(end, "%Y-%m-%d").date()
@@ -240,7 +240,7 @@ def build_cache(
     df.to_csv(out_path, index=False)
 
     logger.info(f"\n{'=' * 60}")
-    logger.info(f"MGC 2022+ history cached:")
+    logger.info("MGC 2022+ history cached:")
     logger.info(f"  File:   {out_path}")
     logger.info(f"  Rows:   {len(df)}")
     logger.info(f"  Range:  {df['timestamp'].iloc[0]} → {df['timestamp'].iloc[-1]}")

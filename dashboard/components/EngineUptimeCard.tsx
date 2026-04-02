@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Response shape ─────────────────────────────────────────────────────────────
 
@@ -58,10 +58,8 @@ export function EngineUptimeCard() {
 
   async function fetchHealth() {
     try {
-      const res = await fetch(`${ENGINE_URL}/health`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as HealthResponse;
-      setData(json);
+      const payload = await fetchEngine<HealthResponse>(`/health`);
+      setData(payload);
       setError(null);
       setLastChecked(new Date().toLocaleTimeString("en-US", {
         hour: "2-digit",

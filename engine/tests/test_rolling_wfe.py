@@ -33,7 +33,6 @@ from backtest.rolling_wfe_scheduler import (
     run_scheduler,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture

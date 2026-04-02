@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface TradeRecord {
   id: string | number;
@@ -96,11 +96,13 @@ export function TradeRiskRewardWidget() {
   const fetchTrades = useCallback(async () => {
     try {
       const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?limit=500&status=CLOSED`
+        `/portfolio/history/trades?limit=500&status=CLOSED`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: TradesResponse = await res.json();
-      const computed = computeMetrics(data.trades || []);
+      const raw: unknown = await res.json();
+      const trades: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as TradesResponse).trades ?? []);
+      const computed = computeMetrics(trades);
       setMetrics(computed);
       setError(null);
     } catch (err) {

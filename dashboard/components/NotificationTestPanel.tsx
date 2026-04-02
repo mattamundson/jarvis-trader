@@ -2,8 +2,7 @@
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { postEngine } from "@/lib/api";
 
 interface TestResult {
   sent: boolean;
@@ -20,10 +19,7 @@ export function NotificationTestPanel() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch(`${ENGINE_URL}/notifications/whatsapp/test`, {
-        method: "POST",
-      });
-      const data = await res.json();
+      const data = await postEngine<TestResult>("/notifications/whatsapp/test");
       setResult(data);
     } catch (err) {
       setResult({

@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface DailyPnlRecord {
   date: string;
@@ -37,7 +37,7 @@ export function DrawdownChart() {
 
   useEffect(() => {
     const load = () => {
-      fetch(`${ENGINE_URL}/portfolio/history/daily-pnl?limit=90`)
+      fetchEngine(`/portfolio/history/daily-pnl?limit=90`)
         .then((r) => r.json())
         .then((d) => {
           const rows: DailyPnlRecord[] = d.records ?? [];

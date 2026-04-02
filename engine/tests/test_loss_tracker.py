@@ -6,9 +6,35 @@ import tempfile
 
 import pytest
 
-from config import settings
+from config import TradingConfig
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.safety_layer import OrderRequest, SafetyLayer
+
+
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def mock_settings():
+    """Isolated test config — overrides all safety gates for order-approval tests."""
+    config = TradingConfig()
+    config.LIVE_TRADING_ENABLED = True
+    config.REQUIRE_HUMAN_APPROVAL = False
+    config.MAX_DAILY_LOSS_PCT = 0.02
+    config.MAX_DRAWDOWN_PCT = 0.10
+    config.MAX_POSITION_SIZE_PCT = 0.05
+    config.MAX_SINGLE_ORDER_VALUE = 5000.0
+    config.MAX_ORDERS_PER_MINUTE = 10
+    config.MAX_CONTRACTS_PER_INSTRUMENT = 2
+    config.MAX_MARGIN_UTILIZATION = 0.40
+    config.PRICE_COLLAR_PCT = 0.05
+    config.MAX_CORRELATED_EXPOSURE_PCT = 0.20
+    # Consecutive-loss thresholds matching tracker fixture below
+    config.CONSECUTIVE_LOSS_HALF_SIZE = 3
+    config.CONSECUTIVE_LOSS_QUARTER_SIZE = 5
+    config.CONSECUTIVE_LOSS_HALT = 7
+    config.CONSECUTIVE_LOSS_HALT_HOURS = 24
+    return config
 
 
 class TestConsecutiveLossTracker:
@@ -148,7 +174,8 @@ class TestConsecutiveLossTracker:
         assert status["global_consecutive_losses"] == 3
         assert status["symbol_losses"]["MES"] == 2
         assert status["symbol_losses"]["MNQ"] == 1
-        assert status["position_size_multiplier"] == 1.0
+        # 3 global losses crosses consecutive_loss_half_size=3, so multiplier is 0.5
+        assert status["position_size_multiplier"] == 0.5
         assert "last_trade_symbol" in status
         assert "config" in status
 
@@ -157,8 +184,10 @@ class TestSafetyLayerWithLossTracker:
     """Integration tests for SafetyLayer with ConsecutiveLossTracker"""
 
     @pytest.fixture
-    def components(self):
-        """Create SafetyLayer with loss tracker"""
+    def components(self, mock_settings):
+        """Create SafetyLayer with loss tracker using isolated test config."""
+        # Allow larger quantities so contract-limit check does not mask loss-tracker tests
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
         with tempfile.TemporaryDirectory() as tmpdir:
             tracker = ConsecutiveLossTracker(
                 data_dir=tmpdir,
@@ -166,7 +195,7 @@ class TestSafetyLayerWithLossTracker:
                 consecutive_loss_quarter_size=5,
                 consecutive_loss_halt=7,
             )
-            layer = SafetyLayer(settings, loss_tracker=tracker)
+            layer = SafetyLayer(mock_settings, loss_tracker=tracker)
             yield layer, tracker
 
     def test_order_approved_with_no_losses(self, components):
@@ -220,8 +249,9 @@ class TestSafetyLayerWithLossTracker:
         )
         result = layer.check_order(order, portfolio_equity=50000.0)
         assert not result.approved
-        assert "halt" in result.rejection_reason.lower()
+        # get_halt_reason() returns: "Consecutive loss limit reached (N losses) — trading paused..."
         assert "consecutive loss" in result.rejection_reason.lower()
+        assert "trading paused" in result.rejection_reason.lower()
 
     def test_record_trade_result_api(self, components):
         """Test recording trade results via SafetyLayer API"""
@@ -263,8 +293,10 @@ class TestPositionSizingReduction:
     """Test position sizing reduction logic in detail"""
 
     @pytest.fixture
-    def components(self):
-        """Create SafetyLayer with loss tracker"""
+    def components(self, mock_settings):
+        """Create SafetyLayer with loss tracker using isolated test config."""
+        # Allow larger quantities so contract-limit check does not mask loss-tracker tests
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
         with tempfile.TemporaryDirectory() as tmpdir:
             tracker = ConsecutiveLossTracker(
                 data_dir=tmpdir,
@@ -272,7 +304,7 @@ class TestPositionSizingReduction:
                 consecutive_loss_quarter_size=5,
                 consecutive_loss_halt=7,
             )
-            layer = SafetyLayer(settings, loss_tracker=tracker)
+            layer = SafetyLayer(mock_settings, loss_tracker=tracker)
             yield layer, tracker
 
     def test_quantity_reduced_with_multiplier(self, components):

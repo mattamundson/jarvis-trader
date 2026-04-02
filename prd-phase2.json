@@ -1,0 +1,201 @@
+{
+  "project": "JARVIS Trader — Multi-Market Framework Completion",
+  "branchName": "master",
+  "description": "Complete the remaining work from the multi-market framework build: Learning System (Phase 6), main.py decomposition, integration tests for all new modules, Polymarket dashboard page, and engine boot verification.",
+  "userStories": [
+    {
+      "id": "US-011",
+      "title": "Create Learning System — pattern_extractor.py",
+      "description": "As a trader, I want the system to automatically extract recurring patterns from completed trades so that strategies can improve over time.",
+      "acceptanceCriteria": [
+        "engine/learning/__init__.py exists and exports PatternExtractor",
+        "engine/learning/pattern_extractor.py implements PatternExtractor class",
+        "PatternExtractor.extract(trades: list[dict]) -> list[Pattern] method",
+        "Pattern dataclass with: name, frequency, win_rate, avg_return, conditions",
+        "Extracts: time-of-day patterns, regime-based patterns, consecutive win/loss streaks",
+        "Unit test in engine/tests/test_learning.py covers extract() with sample trades",
+        "ruff check passes with zero errors"
+      ],
+      "priority": 1,
+      "passes": true,
+      "agent": "agent-1",
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Create Learning System — trade_classifier.py",
+      "description": "As a trader, I want completed trades classified by outcome quality so the system can learn what distinguishes good setups from bad ones.",
+      "acceptanceCriteria": [
+        "engine/learning/trade_classifier.py implements TradeClassifier class",
+        "TradeClassifier.classify(trade: dict) -> TradeClassification",
+        "TradeClassification: grade (A/B/C/D/F), setup_quality, execution_quality, factors list",
+        "Grades based on: R-multiple, time in trade vs ATR target, slippage, regime alignment",
+        "Unit test in engine/tests/test_learning.py covers classify()",
+        "ruff check passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "agent": "agent-1",
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Create Learning System — strategy_tuner.py",
+      "description": "As a developer, I want an automated parameter tuner that suggests adjustments based on recent trade performance.",
+      "acceptanceCriteria": [
+        "engine/learning/strategy_tuner.py implements StrategyTuner class",
+        "StrategyTuner.suggest_adjustments(recent_trades, current_params) -> list[Suggestion]",
+        "Suggestion dataclass: param_name, current_value, suggested_value, confidence, reason",
+        "Suggestions are conservative: max 10% change per parameter per cycle",
+        "Never suggests changes to safety parameters (those are Tier 3)",
+        "Unit test in engine/tests/test_learning.py covers suggest_adjustments()",
+        "ruff check passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "agent": "agent-1",
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Create Learning System — session_memory.py",
+      "description": "As a trader, I want the system to remember lessons from each trading session so mistakes are not repeated.",
+      "acceptanceCriteria": [
+        "engine/learning/session_memory.py implements SessionMemory class",
+        "SessionMemory.record_session(date, trades, market_conditions, lessons) stores to SQLite/JSON",
+        "SessionMemory.get_lessons(market_condition) -> list[Lesson] retrieves relevant past lessons",
+        "Lesson dataclass: date, condition, lesson_text, trades_affected, outcome",
+        "Storage uses JSON file in data/ directory (no new DB dependency)",
+        "Unit test in engine/tests/test_learning.py covers record and retrieve",
+        "ruff check passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "agent": "agent-1",
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Split main.py into route modules",
+      "description": "As a developer, I want main.py split into logical modules so the codebase follows the 800-line-max rule and is maintainable.",
+      "acceptanceCriteria": [
+        "main.py reduced to under 400 lines (app setup, lifespan, middleware, router includes)",
+        "Routes split into engine/routers/ by domain: trading, backtest, analytics, health, pipeline, market_data, paper_trading, settings",
+        "Each router file is under 400 lines",
+        "All existing endpoints preserved (same paths, same responses)",
+        "Engine boots cleanly: .venv/Scripts/python -c 'from main import app; print(len(app.routes))'",
+        "ruff check passes on all new/modified files"
+      ],
+      "priority": 5,
+      "passes": false,
+      "agent": "agent-2",
+      "notes": "main.py is currently 4,066 lines. This is the highest-risk story — must preserve all routes."
+    },
+    {
+      "id": "US-016",
+      "title": "Integration tests for MultiMarketOrchestrator",
+      "description": "As a developer, I want tests verifying the orchestrator can register modules, start/stop them, and run cycles.",
+      "acceptanceCriteria": [
+        "engine/tests/test_orchestrator.py exists with at least 8 tests",
+        "Tests cover: register_module, start_all, stop_all, run_all_cycles, get_portfolio_summary",
+        "Tests use mock MarketModule implementations (no real broker connections)",
+        "Tests verify singleton pattern (get_orchestrator/set_orchestrator)",
+        "Tests verify error handling when a module fails during cycle",
+        "pytest tests/test_orchestrator.py passes with 0 failures",
+        "ruff check passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "agent": "agent-3",
+      "notes": "23 tests covering all acceptance criteria. Tests: 6 basic registration, 4 strategy cycles, 4 portfolio aggregation, 3 singleton pattern, 3 halt/resume, 2 uptime."
+    },
+    {
+      "id": "US-017",
+      "title": "Integration tests for hooks, capital allocator, and correlation monitor",
+      "description": "As a developer, I want tests for the foundation layer components to ensure event routing, capital management, and correlation checks work correctly.",
+      "acceptanceCriteria": [
+        "engine/tests/test_foundation.py exists with at least 10 tests",
+        "HookRegistry tests: on/emit, multiple listeners, emit_sync, unknown events",
+        "CapitalAllocator tests: initial allocation, ramp-up logic, rebalance after P&L",
+        "CorrelationMonitor tests: position tracking, directional exposure calc, blocking threshold",
+        "CrossMarketRiskManager tests: per-market halt, portfolio halt, resume",
+        "pytest tests/test_foundation.py passes with 0 failures",
+        "ruff check passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "agent": "agent-3",
+      "notes": "42 tests covering all acceptance criteria. Tests: 11 HookRegistry, 9 CapitalAllocator, 8 CorrelationMonitor, 14 CrossMarketRiskManager."
+    },
+    {
+      "id": "US-018",
+      "title": "Integration tests for market modules (futures, options, crypto, polymarket)",
+      "description": "As a developer, I want tests for each market module to verify they implement the MarketModule interface correctly.",
+      "acceptanceCriteria": [
+        "engine/tests/test_market_modules.py exists with at least 12 tests",
+        "Each module tested: FuturesMarketModule, OptionsMarketModule, CryptoMarketModule, PolymarketModule",
+        "Tests verify ABC interface compliance: connect, get_positions, get_daily_pnl, run_strategy_cycle, health_check, shutdown",
+        "Tests use mocks for external dependencies (IB Gateway, Freqtrade, Polymarket API)",
+        "Options scanner test: IV rank filtering, DTE range filtering",
+        "Options auto-roller test: profit target close, DTE roll, loss stop",
+        "Crypto bridge test: mock Freqtrade REST responses",
+        "pytest tests/test_market_modules.py passes with 0 failures",
+        "ruff check passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "agent": "agent-4",
+      "notes": "49 tests created and all passing. Covers all 4 market modules with comprehensive ABC interface verification."
+    },
+    {
+      "id": "US-019",
+      "title": "Create Polymarket dashboard page",
+      "description": "As a trader, I want a Polymarket page in the dashboard showing positions, markets, and P&L.",
+      "acceptanceCriteria": [
+        "dashboard/app/polymarket/page.tsx exists",
+        "Page displays: module status (enabled/disabled), active positions, daily P&L, available markets",
+        "Uses fetchEngine for all API calls to /polymarket/* endpoints",
+        "Includes regulatory disclaimer banner (U.S. regulatory note)",
+        "Uses Tailwind for styling, consistent with other dashboard pages",
+        "TypeScript strict — no any types",
+        "pnpm run build passes with 0 errors"
+      ],
+      "priority": 9,
+      "passes": true,
+      "agent": "agent-5",
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Add navigation links for all new pages",
+      "description": "As a trader, I want all new market pages accessible from the main navigation.",
+      "acceptanceCriteria": [
+        "Main layout or home page has links to: /portfolio, /options, /crypto, /polymarket, /validation",
+        "Navigation is consistent and accessible from all pages",
+        "Active page is visually indicated",
+        "pnpm run build passes with 0 errors"
+      ],
+      "priority": 10,
+      "passes": true,
+      "agent": "agent-5",
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Clean up stale test files from engine root",
+      "description": "As a developer, I want test files that are in the engine root moved to engine/tests/ so the project structure is clean.",
+      "acceptanceCriteria": [
+        "Move or remove: test_e2e_pipeline.py, test_redis_cache.py, test_setup.py, test_walk_forward_system.py, test_whatsapp.py from engine/ root",
+        "If tests are still valid, move to engine/tests/ with updated imports",
+        "If tests are obsolete or duplicated, remove them",
+        "Remove engine/nul (empty Windows artifact)",
+        "pytest tests/ -v still passes after cleanup",
+        "ruff check passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "agent": "agent-5",
+      "notes": "All obsolete test files deleted. test_e2e_pipeline.py, test_redis_cache.py, test_setup.py were non-pytest scripts. test_walk_forward_system.py replaced by test_rolling_wfe.py. test_whatsapp.py was legacy async script. nul Windows artifact removed."
+    }
+  ]
+}

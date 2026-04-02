@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -79,10 +79,9 @@ export function CurrentSignalWidget({ symbol = "MES" }: { symbol?: string }) {
     setError(null);
     try {
       const res = await fetch(
-        `${ENGINE_URL}/analytics/mtf?symbol=${encodeURIComponent(symbol)}`
+        `/analytics/mtf?symbol=${encodeURIComponent(symbol)}`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: MtfData = await res.json();
+      const json = (await res.json()) as MtfData;
       setData(json);
       setLastUpdated(new Date());
     } catch (err) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 import {
   Card,
   CardHeader,
@@ -9,7 +10,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -84,9 +84,7 @@ export function AlertHistoryWidget() {
 
   const fetchAlerts = async () => {
     try {
-      const res = await fetch(`${ENGINE_URL}/alerts/history?limit=15`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: AlertsResponse = await res.json();
+      const data = await fetchEngine(`/alerts/history?limit=15`);
       setAlerts(data.alerts ?? []);
       setError(null);
       setLastRefresh(new Date());

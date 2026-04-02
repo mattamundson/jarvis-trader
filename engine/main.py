@@ -579,7 +579,7 @@ async def health():
         "kill_switch_active": safety.get("kill_switch_active", False),
         "paper_mode": not settings.LIVE_TRADING_ENABLED,
         "database": "connected" if db_ok else "error",
-        "ibkr_connected": data_manager.ibkr.is_connected()
+        "ibkr_connected": bool(getattr(data_manager.ibkr, "is_connected", False))
         if data_manager and data_manager.ibkr
         else False,
         "schwab_connected": False,  # Schwab connector TODO
@@ -4064,4 +4064,4 @@ async def get_weekly_stats():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-# ──────────────────────────────────�
+# ──────────────────────────────────�

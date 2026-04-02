@@ -3,8 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 const STARTING_BALANCE = 10_000;
 const REFRESH_MS = 300_000; // 5 minutes
 
@@ -98,18 +97,9 @@ export function ValidationChecklist() {
     setState((prev) => ({ ...prev, loading: prev.criteria.length === 0, error: null }));
 
     const [perfResult, pnlResult, daysResult] = await Promise.allSettled([
-      fetch(`${ENGINE_URL}/analytics/performance`).then((r) => {
-        if (!r.ok) throw new Error(`/analytics/performance ${r.status}`);
-        return r.json() as Promise<PerformanceData>;
-      }),
-      fetch(`${ENGINE_URL}/portfolio/history/daily-pnl?limit=90`).then((r) => {
-        if (!r.ok) throw new Error(`/portfolio/history/daily-pnl ${r.status}`);
-        return r.json() as Promise<DailyPnlEntry[] | { data?: DailyPnlEntry[] }>;
-      }),
-      fetch(`${ENGINE_URL}/portfolio/stats/trading-days`).then((r) => {
-        if (!r.ok) throw new Error(`/portfolio/stats/trading-days ${r.status}`);
-        return r.json() as Promise<TradingDaysData>;
-      }),
+      fetchEngine<PerformanceData>("/analytics/performance"),
+      fetchEngine<DailyPnlEntry[] | { data?: DailyPnlEntry[] }>("/portfolio/history/daily-pnl?limit=90"),
+      fetchEngine<TradingDaysData>("/portfolio/stats/trading-days"),
     ]);
 
     // ── Extract performance metrics ──────────────────────────────────────────

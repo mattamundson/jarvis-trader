@@ -3,6 +3,18 @@ const ENGINE = "/api/engine";
 const FETCH_TIMEOUT_MS = 30000; // 30 seconds
 const RETRY_DELAY_MS = 2000; // 2 seconds
 
+// API key injected via NEXT_PUBLIC_ENGINE_API_KEY env var.
+// Falls back to the engine's default dev key so the dashboard works out-of-the-box.
+const API_KEY =
+  process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "jarvis-dev-key-change-me";
+
+function engineHeaders(extra?: HeadersInit): HeadersInit {
+  return {
+    "X-API-Key": API_KEY,
+    ...extra,
+  };
+}
+
 async function fetchWithTimeout<T>(
   url: string,
   options?: RequestInit
@@ -52,14 +64,18 @@ async function fetchWithRetry<T>(
   }
 }
 
-export async function fetchEngine<T>(path: string, options?: RequestInit): Promise<T> {
-  return fetchWithRetry<T>(`${ENGINE}${path}`, { cache: "no-store", ...options });
+export async function fetchEngine<T = any>(path: string, options?: RequestInit): Promise<T> {
+  return fetchWithRetry<T>(`${ENGINE}${path}`, {
+    cache: "no-store",
+    ...options,
+    headers: engineHeaders(options?.headers),
+  });
 }
 
-export async function postEngine<T>(path: string, body?: unknown): Promise<T> {
+export async function postEngine<T = any>(path: string, body?: unknown): Promise<T> {
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: engineHeaders({ "Content-Type": "application/json" }),
     body: body ? JSON.stringify(body) : undefined,
   });
 }
@@ -101,6 +117,115 @@ export interface TechnicalReport {
   resistance_levels: number[];
   reasoning: string;
   timestamp: string;
+}
+
+/** OHLCV bar for charts (`time` = unix seconds; engine may send ISO strings — normalize in hooks). */
+export interface OHLCVBar {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
+/** POST /analyze/technical — engine nested payload plus optional flattened fields for chart overlays. */
+export interface TechnicalAnalysisResult {
+  symbol?: string;
+  timestamp?: string;
+  timeframe?: string;
+  signal?: string | number;
+  confidence?: number;
+  trend?: string | null;
+  regime?: string | null;
+  is_overbought?: boolean;
+  is_oversold?: boolean;
+  summary?: string | null;
+  reasoning?: string | null;
+  scores?: Record<string, number>;
+  levels?: Record<string, unknown>;
+  raw_indicators?: Record<string, unknown>;
+  ema_8?: number;
+  ema_21?: number;
+  ema_34?: number;
+  kelt_inner_upper?: number;
+  kelt_inner_lower?: number;
+  entry_price?: number;
+  stop_level?: number;
+  target_1?: number;
+  stc_val?: number;
+  stc_signal?: string;
+  direction?: string;
+  adaptive_stc_ob?: number | null;
+  adaptive_stc_os?: number | null;
+  atr?: number;
+  ema_trend?: string;
+}
+
+/** GET /backtest/regime-status */
+export interface RegimeStatusResult {
+  current_regime?: string;
+  regime_breakdown?: Record<string, number>;
+  adaptive_stc_os?: number | null;
+  adaptive_stc_ob?: number | null;
+  [key: string]: unknown;
+}
+
+/** GET /watchlist/scan */
+export interface WatchlistScanRow {
+  symbol: string;
+  signal?: string;
+  direction?: string;
+  entry_price?: number;
+  stop_level?: number;
+  target_1?: number;
+}
+
+export interface WatchlistScanResponse {
+  symbols?: WatchlistScanRow[];
+  signals?: unknown[];
+}
+
+/** GET /pipeline/history */
+export interface PipelineHistoryEntry {
+  id?: string | number;
+  created_at?: string;
+  timestamp?: string;
+  symbol?: string;
+  agent_name?: string;
+  final_action?: string;
+  confidence?: number;
+  regime?: string;
+  risk_verdict?: string | null;
+}
+
+/** GET /options/chain/{symbol} */
+export interface OptionsContract {
+  strike: number;
+  delta?: number;
+  bid?: number;
+  ask?: number;
+  iv?: number | null;
+  open_interest?: number | string;
+}
+
+export interface OptionsChainData {
+  error?: string;
+  underlying_price: number;
+  expiry: string;
+  iv_rank?: number | null;
+  calls: OptionsContract[];
+  puts: OptionsContract[];
+}
+
+/** GET /options/greeks */
+export interface OptionsGreeksPortfolio {
+  error?: string;
+  total_delta?: number;
+  total_gamma?: number;
+  total_theta?: number;
+  total_vega?: number;
+  positions_count?: number | string;
 }
 
 export interface WatchlistItem {

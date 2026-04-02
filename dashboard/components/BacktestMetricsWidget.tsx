@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   TrendingUp,
   BarChart2,
@@ -13,8 +14,6 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
-void ENGINE_URL; // ENGINE_URL is for documentation purposes; actual fetches go through fetchEngine
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -168,7 +167,7 @@ function MetricTile({
   label: string;
   value: string;
   variant: BV;
-  icon: React.ElementType;
+  icon: LucideIcon;
   sub?: string;
 }) {
   const valueColors: Record<BV, string> = {

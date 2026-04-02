@@ -142,6 +142,18 @@ export default function DashboardPage() {
               <a href="/journal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Journal
               </a>
+              <a href="/portfolio" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Portfolio
+              </a>
+              <a href="/options" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Options
+              </a>
+              <a href="/crypto" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Crypto
+              </a>
+              <a href="/polymarket" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Polymarket
+              </a>
               <a href="/paper" className="text-xs text-accent font-semibold hover:text-foreground transition-colors">
                 Paper Trading
               </a>
@@ -180,6 +192,7 @@ export default function DashboardPage() {
 
             {/* Mode badges */}
             {health?.live_trading && <Badge variant="bull">LIVE</Badge>}
+            {health?.paper_mode && <Badge variant="info">PAPER MODE</Badge>}
             {health?.kill_switch_active && (
               <Badge variant="bear">
                 <AlertTriangle className="mr-1 h-3 w-3" />
@@ -612,14 +625,11 @@ function RiskRow({
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
         <span className="text-muted-foreground">{label}</span>
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground/60">{limit}</span>
-          <span className={`tabular-nums font-medium ${danger ? "text-bear" : "text-foreground"}`}>
-            {value}
-          </span>
-        </div>
+        <span>
+          {value} / {limit}
+        </span>
       </div>
-      <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${barColor}`}
           style={{ width: `${clampedPct * 100}%` }}

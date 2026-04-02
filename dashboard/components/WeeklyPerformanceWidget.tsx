@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Minus, Calendar } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -226,11 +226,13 @@ export function WeeklyPerformanceWidget() {
   const fetchTrades = useCallback(async () => {
     try {
       const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
+        `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: TradesResponse = await res.json();
-      const aggregated = aggregateByWeek(data.trades || []);
+      const raw: unknown = await res.json();
+      const trades: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
+      const aggregated = aggregateByWeek(trades);
       setWeeks(aggregated);
       setError(null);
     } catch (err) {

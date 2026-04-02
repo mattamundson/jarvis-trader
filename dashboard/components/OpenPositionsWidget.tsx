@@ -10,8 +10,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, RefreshCw, WifiOff } from "lucide-react";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -82,9 +81,7 @@ export function OpenPositionsWidget() {
   const fetchPositions = useCallback(async () => {
     setRefreshing(true);
     try {
-      const res = await fetch(`${ENGINE_URL}/portfolio/paper/positions`);
-      if (!res.ok) throw new Error(`Engine returned HTTP ${res.status}`);
-      const json = (await res.json()) as PaperPositionsResponse;
+      const json = await fetchEngine<PaperPositionsResponse>("/portfolio/paper/positions");
       setData(json);
       setError(null);
       setLastUpdated(new Date().toLocaleTimeString());

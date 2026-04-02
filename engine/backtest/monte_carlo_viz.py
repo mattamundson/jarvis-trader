@@ -411,7 +411,7 @@ def save_fan_chart(
     # Extract metadata
     symbol = data.get("symbol", "MES")
     interval = data.get("interval", "1h")
-    initial_capital = data.get("initial_capital", 100_000)
+    initial_capital = data.get("initial_capital", 10_000)
     max_slippage = data.get("max_slippage_ticks", 0)
 
     # Get trades list

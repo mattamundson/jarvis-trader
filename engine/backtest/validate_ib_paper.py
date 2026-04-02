@@ -313,7 +313,6 @@ async def run_validation(host: str = PAPER_HOST, port: int = PAPER_PORT) -> dict
 
     # Summary
     passed = [r for r in all_results if r.passed]
-    failed = [r for r in all_results if not r.passed]
     overall = "PASS" if all(r.passed for r in all_results) else "FAIL"
 
     logger.info("\n" + "=" * 60)

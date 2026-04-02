@@ -1,5 +1,6 @@
 "use client";
 
+import type { LucideIcon } from "lucide-react";
 import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +24,7 @@ const variantStyles: Record<ToastVariant, string> = {
   info: "bg-accent/20 border-accent/40 text-accent",
 };
 
-const iconMap: Record<ToastVariant, React.ElementType> = {
+const iconMap: Record<ToastVariant, LucideIcon> = {
   success: CheckCircle,
   error: AlertCircle,
   warning: AlertCircle,
@@ -47,7 +48,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
         className="ml-2 inline-flex shrink-0 opacity-60 hover:opacity-100 transition-opacity"
         aria-label="Dismiss"
       >
-        <X className="h-4 w-4" />
+        <X className="h-3.5 w-3.5" />
       </button>
     </div>
   );

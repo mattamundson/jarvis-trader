@@ -64,7 +64,7 @@ def _compute_max_dd(equity: np.ndarray) -> float:
 def run_monte_carlo(
     result: BacktestResult,
     n_simulations: int = 10_000,
-    initial_capital: float = 100_000.0,
+    initial_capital: float = 10_000.0,
     max_slippage_ticks: float = 0.0,
     symbol: str = "MES",
     seed: int = 42,
@@ -77,7 +77,7 @@ def run_monte_carlo(
     Args:
         result: BacktestResult object with trades
         n_simulations: Number of Monte Carlo runs (default 1000)
-        initial_capital: Starting capital (default 100000)
+        initial_capital: Starting capital (default 10000)
         max_slippage_ticks: Max random slippage per trade in ticks (default 0)
         symbol: Instrument symbol for tick value lookup (default MES)
         seed: Random seed for reproducibility (default 42)
@@ -354,7 +354,7 @@ def _load_result_from_json(path: str) -> BacktestResult:
                 )
             )
 
-    initial_capital = data.get("initial_capital", 100_000.0)
+    initial_capital = data.get("initial_capital", 10_000.0)
     total_pnl = sum(t.pnl for t in trades)
 
     result = BacktestResult(
@@ -382,7 +382,7 @@ def main():
         "--n-sims", type=int, default=1_000, help="Number of simulations (default: 1000)"
     )
     parser.add_argument(
-        "--capital", type=float, default=100_000.0, help="Initial capital (default: 100000)"
+        "--capital", type=float, default=10_000.0, help="Initial capital (default: 10000)"
     )
     parser.add_argument(
         "--max-slippage",

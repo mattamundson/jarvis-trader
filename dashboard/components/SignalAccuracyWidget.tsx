@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface ClosedTrade {
   id: string;
@@ -47,12 +47,14 @@ export function SignalAccuracyWidget() {
   async function fetchTrades() {
     try {
       const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?limit=500&status=CLOSED`
+        `/portfolio/history/trades?limit=500&status=CLOSED`
       );
-      if (!res.ok) throw new Error("non-200");
-      const data: TradesResponse = await res.json();
-      const closed = (data.trades ?? []).filter(
-        (t) => t.status === "CLOSED" && t.pnl != null
+      const raw: unknown = await res.json();
+      const rows: ClosedTrade[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: ClosedTrade[] }).trades ?? []);
+      const closed = rows.filter(
+        (t: ClosedTrade) => t.status === "CLOSED" && t.pnl != null
       );
       setTrades(closed);
       setError(false);

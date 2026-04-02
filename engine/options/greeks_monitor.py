@@ -8,7 +8,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 

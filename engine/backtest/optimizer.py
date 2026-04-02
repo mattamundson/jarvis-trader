@@ -298,7 +298,7 @@ def run_optimization(
     interval: str = "1d",
     fast: bool = True,
     top_n: int = 10,
-    capital: float = 100_000.0,
+    capital: float = 10_000.0,
     output: Optional[str] = None,
 ) -> list[OptResult]:
 

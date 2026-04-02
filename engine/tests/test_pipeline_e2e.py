@@ -4,7 +4,7 @@ End-to-end testing of the multi-agent trading pipeline.
 """
 
 from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -573,7 +573,7 @@ class TestPipelinePortfolio:
 
         mock_agents_dict["risk_manager"].review = capturing_review
         mock_agents_dict["portfolio"] = MagicMock()
-        mock_agents_dict["portfolio"].get_portfolio = MagicMock(return_value=mock_portfolio)
+        mock_agents_dict["portfolio"].get_portfolio = AsyncMock(return_value=mock_portfolio)
 
         # Act
         await trading_pipeline.analyze_and_decide("MES", is_futures=True)

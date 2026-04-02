@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Database, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -71,13 +71,13 @@ export function DatabaseStatsCard() {
     setLoading(true);
 
     const [tradesResult, decisionsResult, alertsResult] = await Promise.allSettled([
-      fetch(`${ENGINE_URL}/portfolio/history/trades?limit=500&status=CLOSED`).then(
+      fetchEngine(`/portfolio/history/trades?limit=500&status=CLOSED`).then(
         (r) => r.json() as Promise<TradesResponse>
       ),
-      fetch(`${ENGINE_URL}/portfolio/history/decisions?limit=500`).then(
+      fetchEngine(`/portfolio/history/decisions?limit=500`).then(
         (r) => r.json() as Promise<DecisionsResponse>
       ),
-      fetch(`${ENGINE_URL}/alerts/history?limit=500`).then(
+      fetchEngine(`/alerts/history?limit=500`).then(
         (r) => r.json() as Promise<AlertsResponse>
       ),
     ]);

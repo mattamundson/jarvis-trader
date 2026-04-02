@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, ArrowUp, ArrowDown } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -215,16 +215,16 @@ export function LongShortBreakdownWidget() {
   const fetchTrades = useCallback(async () => {
     try {
       const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=200`
+        `/portfolio/history/trades?status=CLOSED&limit=200`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: TradesResponse = await res.json();
-
-      const trades = data.trades || [];
+      const raw: unknown = await res.json();
+      const trades: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
 
       // Filter: exit_time non-null, status CLOSED
       const closed = trades.filter(
-        (t) => t.exit_time !== null && t.status === "CLOSED"
+        (t: TradeRecord) => t.exit_time !== null && t.status === "CLOSED"
       );
 
       const newLong: DirectionStats = { count: 0, wins: 0, totalPnl: 0, winRate: 0 };

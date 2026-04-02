@@ -163,6 +163,16 @@ class IBKRDataConnector:
     def is_connected(self) -> bool:
         return self._connected
 
+    async def health_check(self) -> dict:
+        """Return IBKR connection health status for /health/full endpoint."""
+        return {
+            "status": "connected" if self._connected else "disconnected",
+            "mode": "live" if self._port == 4001 else "paper",
+            "port": self._port,
+            "host": self._host,
+            "client_id": self._client_id,
+        }
+
 
 class PolygonDataConnector:
     """

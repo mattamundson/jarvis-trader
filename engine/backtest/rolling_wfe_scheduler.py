@@ -31,7 +31,7 @@ import argparse
 import json
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -171,8 +171,8 @@ def run_wfe_for_instrument(
         return cfg.get("last_known_wfe")
 
     try:
-        from backtest.walk_forward import WalkForwardValidator
         from backtest.data_loader import BacktestDataLoader
+        from backtest.walk_forward import WalkForwardValidator
     except ImportError as e:
         logger.error(f"  [{symbol}] Import error: {e}. Make sure you're in the engine/ directory.")
         return None

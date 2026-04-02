@@ -24,17 +24,22 @@ Usage:
   python -m backtest.paper_runner          # single run
   python -m backtest.paper_runner --watch  # continuous (runs every hour)
   python -m backtest.paper_runner --status # print open positions and metrics
+
+Optional engine sync (POST /portfolio/paper/trade) so the FastAPI tracker matches the runner:
+  JARVIS_ENGINE_URL=http://127.0.0.1:8010
+  JARVIS_API_KEY=<same as engine API_KEY>
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import logging.handlers
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -114,6 +119,82 @@ def append_trade_record(record: Dict[str, Any]) -> None:
         f.write(json.dumps(record, default=str) + "\n")
 
 
+# ── Optional sync to engine PortfolioTracker (POST /portfolio/paper/trade) ───
+
+
+def _engine_sync_url() -> Optional[str]:
+    base = os.environ.get("JARVIS_ENGINE_URL", "").strip().rstrip("/")
+    return base or None
+
+
+def _engine_api_key() -> Optional[str]:
+    k = (
+        os.environ.get("JARVIS_API_KEY")
+        or os.environ.get("X_API_KEY")
+        or os.environ.get("API_KEY")
+        or ""
+    ).strip()
+    return k or None
+
+
+def _post_engine_json(path: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """POST JSON to engine. Returns parsed body or None on failure."""
+    base = _engine_sync_url()
+    key = _engine_api_key()
+    if not base or not key:
+        return None
+    url = f"{base}{path}"
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": key,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+        logging.getLogger("paper_runner.engine_sync").warning("Engine sync failed: %s", exc)
+        return None
+
+
+def _try_sync_engine_open(position: Dict[str, Any]) -> None:
+    """After local entry, register open trade with engine; sets engine_trade_id on success."""
+    side = str(position.get("side", "long")).lower()
+    body = {
+        "action": "open",
+        "symbol": position.get("symbol", ""),
+        "side": side,
+        "quantity": float(position.get("contracts", position.get("contracts_remaining", 1))),
+        "entry_price": float(position.get("entry_price", 0)),
+        "notes": "paper_runner",
+    }
+    res = _post_engine_json("/portfolio/paper/trade", body)
+    if res and res.get("trade_id"):
+        position["engine_trade_id"] = res["trade_id"]
+
+
+def _try_sync_engine_close(position: Dict[str, Any], record: Dict[str, Any]) -> None:
+    """On exit, close the linked engine paper trade."""
+    tid = position.get("engine_trade_id")
+    if not tid:
+        return
+    exit_px = float(record.get("exit_price", 0))
+    body = {
+        "action": "close",
+        "symbol": record.get("symbol", position.get("symbol", "")),
+        "trade_id": tid,
+        "exit_price": exit_px,
+        "pnl": record.get("pnl"),
+    }
+    _post_engine_json("/portfolio/paper/trade", body)
+
+
 # ── WhatsApp Notification (optional, graceful failure) ───────────────────────
 
 
@@ -144,12 +225,77 @@ def _notify(message: str) -> None:
 # ── Bar Fetching ──────────────────────────────────────────────────────────────
 
 
+def _fetch_bars_v8(yf_ticker: str, days: int = 60) -> Optional[pd.DataFrame]:
+    """
+    Direct Yahoo Finance v8 API fallback for when yfinance is rate-limited.
+
+    Fetches the last `days` days of 1h data in one request. Uses a browser
+    User-Agent to avoid bot detection.
+    """
+    import requests
+
+    end_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    start_dt = end_dt - timedelta(days=days)
+    period1 = int(start_dt.timestamp())
+    period2 = int(end_dt.timestamp())
+
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_ticker}"
+    params = {
+        "interval": "1h",
+        "period1": period1,
+        "period2": period2,
+        "includePrePost": "false",
+    }
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json",
+    }
+
+    try:
+        time.sleep(1.5)  # polite delay before direct API hit
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        result = data.get("chart", {}).get("result")
+        if not result:
+            return None
+
+        meta = result[0]
+        timestamps = meta.get("timestamp", [])
+        quotes = meta.get("indicators", {}).get("quote", [{}])[0]
+
+        if not timestamps:
+            return None
+
+        df = pd.DataFrame(
+            {
+                "open": quotes.get("open", []),
+                "high": quotes.get("high", []),
+                "low": quotes.get("low", []),
+                "close": quotes.get("close", []),
+                "volume": quotes.get("volume", []),
+            },
+            index=pd.to_datetime(timestamps, unit="s", utc=True),
+        )
+        df.index.name = "datetime"
+        df = df.dropna(subset=["open", "high", "low", "close"])
+        return df if len(df) > 0 else None
+
+    except Exception:
+        return None
+
+
 def fetch_bars(symbol: str, futures_map: Dict[str, str], bars: int = 150) -> Optional[pd.DataFrame]:
     """
-    Fetch recent 1h OHLCV bars for a futures symbol via yfinance.
+    Fetch recent 1h OHLCV bars for a futures symbol.
 
-    Uses FUTURES_MAP to translate micro-futures symbols (MCL, MNQ) to
-    yfinance continuous-contract tickers (CL=F, NQ=F).
+    Primary: yfinance Ticker.history (60d, 1h).
+    Fallback: direct Yahoo v8 API (used when yfinance is rate-limited).
 
     Returns None if data is unavailable or too thin for indicator warmup.
     """
@@ -158,35 +304,44 @@ def fetch_bars(symbol: str, futures_map: Dict[str, str], bars: int = 150) -> Opt
     log = logging.getLogger(f"paper_runner.{symbol}")
     yf_ticker = futures_map.get(symbol, symbol)
 
-    try:
-        ticker = yf.Ticker(yf_ticker)
-        # 60d gives ~600 1h bars (plenty of warmup for STC slow=50 period)
-        df = ticker.history(period="60d", interval="1h", auto_adjust=True)
-        if df is None or df.empty:
-            log.warning(f"No data returned for {yf_ticker}")
-            return None
-
+    def _normalise(df: pd.DataFrame) -> Optional[pd.DataFrame]:
         df = df.rename(
             columns={
-                "Open": "open",
-                "High": "high",
-                "Low": "low",
-                "Close": "close",
-                "Volume": "volume",
+                "Open": "open", "High": "high",
+                "Low": "low", "Close": "close", "Volume": "volume",
             }
         )
-        df = df[["open", "high", "low", "close", "volume"]].dropna()
-
+        cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
+        df = df[cols].dropna(subset=["open", "high", "low", "close"])
         if len(df) < 60:
             log.warning(f"Only {len(df)} bars for {symbol} — need ≥60 for indicator warmup")
             return None
-
         log.debug(f"Fetched {len(df)} 1h bars for {symbol} ({yf_ticker})")
         return df
 
+    # ── Primary: yfinance ────────────────────────────────────────────────────
+    try:
+        ticker = yf.Ticker(yf_ticker)
+        df = ticker.history(period="60d", interval="1h", auto_adjust=True)
+        if df is not None and not df.empty:
+            result = _normalise(df)
+            if result is not None:
+                return result
     except Exception as exc:
-        log.error(f"Bar fetch failed for {symbol}: {exc}")
-        return None
+        rate_limited = "rate limit" in str(exc).lower() or "too many" in str(exc).lower()
+        if not rate_limited:
+            log.error(f"Bar fetch failed for {symbol}: {exc}")
+            return None
+        log.warning(f"{symbol}: yfinance rate-limited — trying v8 API fallback")
+
+    # ── Fallback: direct Yahoo v8 ────────────────────────────────────────────
+    log.info(f"{symbol}: fetching via Yahoo v8 direct API")
+    df2 = _fetch_bars_v8(yf_ticker, days=60)
+    if df2 is not None and not df2.empty:
+        return _normalise(df2)
+
+    log.error(f"Bar fetch failed for {symbol} — both yfinance and v8 fallback failed")
+    return None
 
 
 # ── Position Management ───────────────────────────────────────────────────────
@@ -264,6 +419,7 @@ def manage_open_position(
 
         tracker.add_trade(record)
         append_trade_record(record)
+        _try_sync_engine_close(pos, record)
 
         log.info(
             f"STOP HIT {symbol} {side.upper()} | entry={entry_price:.2f} "
@@ -337,6 +493,7 @@ def manage_open_position(
 
             # If all contracts exited, close position
             if pos["contracts_remaining"] <= 0 or i == len(targets):
+                _try_sync_engine_close(pos, record)
                 return None, record
 
             return pos, record
@@ -523,6 +680,7 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             new_pos = check_for_entry(symbol, df_signals, cfg)
             if new_pos:
                 positions[symbol] = new_pos
+                _try_sync_engine_open(new_pos)
                 action = "entered"
 
         summary[symbol] = {
@@ -611,82 +769,72 @@ def _cmd_status() -> None:
 
         pos = positions.get(symbol)
         if pos:
-            targets_hit = [
-                f"T{i+1}✓" for i in range(3) if pos.get(f"t{i+1}_hit")
-            ]
-            print(f"\n    OPEN POSITION:")
-            print(f"      Side:    {pos['side'].upper()}")
-            print(f"      Entry:   {pos['entry_price']} @ {pos['entry_date']}")
-            print(f"      Stop:    {pos['stop']}")
-            print(f"      Targets: {pos['targets']}  {' '.join(targets_hit)}")
-            print(f"      Regime:  {pos.get('regime', '?')}")
-        else:
-            print(f"    No open position")
-
-    print("\n" + "═" * 60 + "\n")
+            print(
+                f"    Open:      {pos['side'].upper()} {pos.get('qty', 1)} @ "
+                f"{pos['entry_price']}  stop={pos['stop']}  targets={pos['targets']}"
+            )
 
 
-# ── Watch Mode ────────────────────────────────────────────────────────────────
+# ── Entry Point ───────────────────────────────────────────────────────────────
 
+if __name__ == "__main__":
+    import argparse
 
-def _watch_loop(interval_minutes: int = 60) -> None:
-    """
-    Run continuously, sleeping between cycles.
-    Fires at the top of each hour + 5 minutes (bar-close buffer).
-    """
-    _setup_logging()
-    log = logging.getLogger("paper_runner")
-    log.info(f"Watch mode: running every {interval_minutes}m. Ctrl-C to stop.")
-
-    while True:
-        try:
-            run_one_cycle()
-        except KeyboardInterrupt:
-            log.info("Stopped by user.")
-            break
-        except Exception as exc:
-            log.error(f"Cycle error: {exc}", exc_info=True)
-
-        # Sleep until next scheduled run (top of hour + 5min)
-        now = datetime.now(timezone.utc)
-        next_run = now.replace(minute=5, second=0, microsecond=0) + timedelta(hours=1)
-        if next_run < now:
-            next_run += timedelta(hours=1)
-        wait_secs = max(1, (next_run - now).total_seconds())
-        log.info(f"Next run in {wait_secs / 60:.1f} min @ {next_run.strftime('%H:%M UTC')}")
-        time.sleep(wait_secs)
-
-
-# ── Entry point ───────────────────────────────────────────────────────────────
-
-
-def main() -> None:
     parser = argparse.ArgumentParser(
+        prog="paper_runner.py",
         description="JARVIS Paper Trading Runner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python -m backtest.paper_runner          # single cycle
-  python -m backtest.paper_runner --watch  # continuous hourly loop
-  python -m backtest.paper_runner --status # show current positions & metrics
-""",
+        epilog=(
+            "Examples:\n"
+            "  python -m backtest.paper_runner          # single cycle\n"
+            "  python -m backtest.paper_runner --watch  # continuous hourly loop\n"
+            "  python -m backtest.paper_runner --status # show current positions & metrics"
+        ),
     )
-    parser.add_argument("--watch", action="store_true", help="Run continuously every hour")
-    parser.add_argument("--status", action="store_true", help="Print positions and metrics, then exit")
-    parser.add_argument("--interval", type=int, default=60, help="Watch mode interval in minutes")
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Run continuously every hour",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Print positions and metrics, then exit",
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=60,
+        metavar="INTERVAL",
+        help="Watch mode interval in minutes",
+    )
+
     args = parser.parse_args()
 
     if args.status:
         _cmd_status()
-        return
+        sys.exit(0)
 
     if args.watch:
-        _watch_loop(interval_minutes=args.interval)
-        return
-
-    # Default: single run
-    run_one_cycle()
-
-
-if __name__ == "__main__":
-    main()
+        _setup_logging()
+        log = logging.getLogger("paper_runner")
+        interval_minutes = args.interval
+        log.info("Watch mode: running every %dm. Ctrl-C to stop.", interval_minutes)
+        while True:
+            try:
+                run_one_cycle()
+            except KeyboardInterrupt:
+                log.info("Stopped by user.")
+                break
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Cycle error: %s — retrying next interval", exc)
+            next_run = datetime.now() + timedelta(minutes=interval_minutes)
+            # Align to :05 past the next hour if interval is 60m
+            if interval_minutes == 60:
+                next_run = next_run.replace(minute=5, second=0, microsecond=0)
+            wait_secs = max(0, (next_run - datetime.now()).total_seconds())
+            log.info("Next run in %.1f min @ %s UTC", wait_secs / 60, next_run.strftime("%H:%M"))
+            time.sleep(wait_secs)
+    else:
+        # Single cycle (default)
+        run_one_cycle()

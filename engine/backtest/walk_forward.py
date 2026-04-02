@@ -137,7 +137,7 @@ class WalkForwardValidator:
         df: pd.DataFrame,
         symbol: str,
         multiplier: float = 1.0,
-        capital: float = 100_000.0,
+        capital: float = 10_000.0,
         top_n_params: int = 1,
         fast: bool = True,
         adaptive_regime: bool = False,
@@ -511,7 +511,7 @@ def main():
     parser.add_argument(
         "--step-months", type=int, default=3, help="Step size between windows (months)"
     )
-    parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital")
+    parser.add_argument("--capital", type=float, default=10_000.0, help="Initial capital")
     parser.add_argument("--full-grid", action="store_true", help="Use full parameter grid (slower)")
     parser.add_argument(
         "--adaptive-regime", action="store_true", help="Use regime-adaptive STC thresholds per bar"
@@ -575,7 +575,3 @@ def main():
         mtf_filter=args.mtf_filter,
     )
     print(f"\nResults saved to: {out_path}")
-
-
-if __name__ == "__main__":
-    main()

@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ export function DailyPnLCalendarWidget() {
   async function fetchData() {
     // 1. Try primary endpoint
     try {
-      const primaryRes = await fetch(`${ENGINE_URL}/analytics/daily-pnl`);
+      const primaryRes = await fetchEngine(`/analytics/daily-pnl`);
       if (primaryRes.ok) {
         const data: unknown = await primaryRes.json();
         if (
@@ -124,7 +124,7 @@ export function DailyPnLCalendarWidget() {
     // 2. Fallback: compute from closed trades
     try {
       const tradesRes = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
+        `/portfolio/history/trades?status=CLOSED&limit=500`
       );
       if (!tradesRes.ok) throw new Error("trades fetch failed");
 

@@ -3,8 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,11 +90,7 @@ export function RiskSettingsWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${ENGINE_URL}/settings/risk`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: RiskSettingsResponse = await res.json();
+      const json = await fetchEngine<RiskSettingsResponse>("/settings/risk");
       setData(json);
       setLastRefreshed(new Date());
       setSecondsAgo(0);

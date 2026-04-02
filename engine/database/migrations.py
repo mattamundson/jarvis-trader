@@ -358,11 +358,7 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         try:
             migrate_fn(conn)
             _record_version(conn, version, description)
-            logger.info(f"  Migration {version:03d} complete.")
+            logger.info(f"  Migration {version:03d} applied successfully")
         except Exception as exc:
-            logger.error(f"  Migration {version:03d} FAILED — rolling back: {exc}")
-            conn.rollback()
-            raise RuntimeError(f"Migration {version:03d} failed: {exc}") from exc
-
-    final = _get_current_version(conn)
-    logger.info(f"All migrations complete.  Schema version: {final}.")
+            logger.error(f"Migration {version:03d} failed: {exc}")
+            raise

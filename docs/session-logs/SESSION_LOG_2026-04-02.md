@@ -823,31 +823,15 @@ New endpoints:
 
 ### Secrets Found and Scrubbed
 
-| Secret | Type | Replacement Text in History |
-|--------|------|----------------------------|
-| `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` | Anthropic API Key #1 | `***ANTHROPIC_KEY_REMOVED***` |
-| `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` | Anthropic API Key #2 | `***ANTHROPIC_KEY_REMOVED***` |
-| `AC358933780f5511cd53c3454d74aa1a2d` | Twilio Account SID | `***TWILIO_SID_REMOVED***` |
-| `82979185d63feaf1780da212c469768b` | Twilio Auth Token (old) | `***TWILIO_TOKEN_REMOVED***` |
-| `yTH5rktrXpDpdvKWg0K6paPlXiYOwv0c` | Polygon API Key (old) | `***POLYGON_KEY_REMOVED***` |
-| `fc-7a0e82e955784c50a178d0ee85a5bbef` | Firecrawl API Key | `***FIRECRAWL_KEY_REMOVED***` |
+Six credential values (Anthropic ×2, Twilio SID/token, Polygon, Firecrawl) were removed from git history via `git-filter-repo --replace-text`. **Exact values are not reproduced in this repository copy** — use your provider consoles and `docs/runbooks/API_KEY_ROTATION.md` if you need to rotate again.
 
 ### Tool Used
 `git-filter-repo --replace-text secrets-replace.txt --force`
 Installed at: `engine/.venv/Scripts/git-filter-repo`
 
-### `secrets-replace.txt` Content (deleted after use)
-```
-literal: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==>***ANTHROPIC_KEY_REMOVED***
-literal:sk-ant-api03-1tjBIYnp8VpDcFWEzHiNxJb83BnjQthWfQd8ylS7SXoUuue==>***ANTHROPIC_KEY_REMOVED***
-literal:sk-ant-api03-1tjBIYnp8VpDcFWEzHiNxJb83BnjQ==>***ANTHROPIC_KEY_REMOVED***
-literal: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==>***ANTHROPIC_KEY_REMOVED***
-literal:sk-ant-api03-Hw_wglwIgH5D0tzJfEpJHOESrWZgiaY-EJIVSeY5gp6qFUzrPgZ2BYYzZX3a==>***ANTHROPIC_KEY_REMOVED***
-literal:AC358933780f5511cd53c3454d74aa1a2d==>***TWILIO_SID_REMOVED***
-literal:82979185d63feaf1780da212c469768b==>***TWILIO_TOKEN_REMOVED***
-literal:yTH5rktrXpDpdvKWg0K6paPlXiYOwv0c==>***POLYGON_KEY_REMOVED***
-literal:fc-7a0e82e955784c50a178d0ee85a5bbef==>***FIRECRAWL_KEY_REMOVED***
-```
+### `secrets-replace.txt` (deleted after use)
+
+Mapping file used the standard format `literal:<old>==><placeholder>` for each secret and several partial-line fragments for keys split across lines. The concrete `literal:` lines are intentionally omitted here so this log never reintroduces key material into the tree.
 
 ### Critical Complication: Keys Split Across Lines
 The Anthropic keys in `docs/setup-guides/APIKEY_VERIFICATION.md` were stored with embedded newlines (e.g., the key was split across two lines in the file). The `literal:` mode in git-filter-repo matches per-line, so the full key string never matched on the first run.
@@ -867,24 +851,18 @@ git push origin master --force
 ```
 
 ### Verification (all return 0 hits)
-```bash
-git log -p --all | grep "sk-ant-api03-1tjB"     # 0
-git log -p --all | grep "sk-ant-api03-Hw_w"     # 0
-git log -p --all | grep "AC358933780f5511"       # 0
-git log -p --all | grep "82979185d63feaf1"       # 0
-git log -p --all | grep "yTH5rktrXpDpdvKW"      # 0
-git log -p --all | grep "fc-7a0e82e955784c"     # 0
-```
+
+After scrub, `git log -p --all` was searched for **unique substrings** derived from each leaked value (first line segment / provider-specific prefix only). All searches returned zero hits. Exact grep patterns are omitted here.
 
 ### .env Updates After Scrub
 
-| Variable | Old Value | New Value | Status |
-|----------|-----------|-----------|--------|
-| `POLYGON_API_KEY` | `yTH5rktrXpDpdvKWg0K6paPlXiYOwv0c` | `av8ZgIsVnSSpqVhFvIAyhvf8_wiiDVSv` | Rotated |
-| `TWILIO_AUTH_TOKEN` | `82979185d63feaf1780da212c469768b` | `rWknQ0Q25b4e9T544ft1UFPEDyrmEem6` | Rotated |
-| `TWILIO_ACCOUNT_SID` | `AC358933780f5511cd53c3454d74aa1a2d` | (unchanged) | Same |
-| `ANTHROPIC_API_KEY` | `sk-ant-api03-Hw_w...` (revoked) | new key (see .env) | Rotated — needs credits |
-| Firecrawl | `fc-7a0e82e955784c50a178d0ee85a5bbef` | (system env only, not in .env) | Pending revocation at firecrawl.dev |
+| Variable | Notes |
+|----------|--------|
+| `POLYGON_API_KEY` | Rotated at Polygon dashboard; store only in `.env` (never commit). |
+| `TWILIO_AUTH_TOKEN` | Rotated in Twilio console. |
+| `TWILIO_ACCOUNT_SID` | Unchanged (public identifier; still keep out of docs). |
+| `ANTHROPIC_API_KEY` | New key in local `.env` only. |
+| Firecrawl | Prefer system env; revoke any leaked key at firecrawl.dev. |
 
 ### Remaining Manual Actions
 - [ ] Revoke old Firecrawl key at firecrawl.dev (engine does not use it — low priority)
@@ -1192,7 +1170,7 @@ Even with `--reload`, the uvicorn file watcher sometimes misses changes (especia
 
 ### Immediate
 1. **Add Anthropic billing credits** — console.anthropic.com → Plans & Billing. This unblocks all 10 pipeline agents and enables live pipeline runs.
-2. **Revoke Firecrawl key** `fc-7a0e82e955784c50a178d0ee85a5bbef` at firecrawl.dev (low priority, not engine-critical).
+2. **Revoke any Firecrawl key** that ever appeared in git history at firecrawl.dev (low priority if unused by engine).
 
 ### This Sprint
 3. **Dashboard `/command-center`** Iron Man HUD — primary ops view for monitoring paper trading, regime state, pipeline signals. Was in development, not complete.

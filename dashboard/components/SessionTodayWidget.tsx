@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sun } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
 interface SessionToday {
   date: string;
@@ -28,9 +29,8 @@ export function SessionTodayWidget() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch("http://localhost:8010/portfolio/stats/session-today");
-        if (!res.ok) throw new Error();
-        setData(await res.json());
+        const payload = await fetchEngine("/portfolio/stats/session-today");
+        setData(payload);
       } catch {
         setData(null);
       } finally {
