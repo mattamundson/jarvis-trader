@@ -54,16 +54,19 @@ class IBGatewayConnector:
     When ready for live trading, replace order logging with actual IB API calls.
     """
 
-    def __init__(self, settings, safety_layer):
+    def __init__(self, settings, safety_layer, portfolio_tracker=None):
         """
         Initialize the IB Gateway connector.
 
         Args:
             settings: TradingConfig with PAPER_TRADING, IBKR_HOST, IBKR_PORT, etc.
             safety_layer: RiskSafetyLayer for pre-trade validation
+            portfolio_tracker: Optional ``PortfolioTracker`` — when set, paper fills
+                can mirror to the engine API book via ``PaperTradeLogger`` (see execution README).
         """
         self._settings = settings
         self._safety_layer = safety_layer
+        self._portfolio_tracker = portfolio_tracker
         self._connected = False
         self._ib_client = None  # Will hold ib_insync.IB() when live trading is implemented
         self._paper_trade_logger = None  # Lazy-loaded on first use
@@ -93,9 +96,12 @@ class IBGatewayConnector:
                 "Orders will be logged to data/paper_trades.json"
             )
             # Initialize paper trade logger on first connect
-            from engine.execution.paper_trade_logger import PaperTradeLogger  # noqa: PLC0415
+            from execution.paper_trade_logger import PaperTradeLogger  # noqa: PLC0415
 
-            self._paper_trade_logger = PaperTradeLogger(self._settings)
+            self._paper_trade_logger = PaperTradeLogger(
+                self._settings,
+                portfolio_tracker=self._portfolio_tracker,
+            )
             self._connected = True
             return True
 
@@ -264,11 +270,12 @@ class IBGatewayConnector:
         # Log to paper trades file
         try:
             if self._paper_trade_logger is None:
-                from engine.execution.paper_trade_logger import (  # noqa: PLC0415
-                    PaperTradeLogger,
-                )
+                from execution.paper_trade_logger import PaperTradeLogger  # noqa: PLC0415
 
-                self._paper_trade_logger = PaperTradeLogger(self._settings)
+                self._paper_trade_logger = PaperTradeLogger(
+                    self._settings,
+                    portfolio_tracker=self._portfolio_tracker,
+                )
 
             await self._paper_trade_logger.log_trade(
                 {
