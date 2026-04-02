@@ -71,7 +71,7 @@ Global API key middleware is on the engine: unauthenticated browser calls to the
 
 - [ ] `dashboard/.env.local` includes `NEXT_PUBLIC_ENGINE_API_KEY` matching engine.
 - [ ] `pnpm dev` → open **Health** or **Paper** page; no repeated 401 in network tab for `/api/engine/*` proxy.
-- [ ] **Watchlist** (`/watchlist`): VIX card uses the dashboard proxy — DevTools should show **POST** `/api/engine/notifications/vix-alert-check` and **GET** `/api/engine/settings/risk` (not requests to `localhost:3010/notifications/...`).
+- [x] **Watchlist** (`/watchlist`): VIX card uses the dashboard proxy — DevTools should show **POST** `/api/engine/notifications/vix-alert-check` and **GET** `/api/engine/settings/risk` (not requests to `localhost:3010/notifications/...`). *Code audit 2026-04-02:* `VIXRegimeCard.tsx` uses `fetchEngineRaw("/notifications/vix-alert-check")` and `fetchEngine("/settings/risk")`, which resolve to those `/api/engine/*` URLs via `dashboard/lib/api.ts`. Re-check in DevTools when the engine is up.*
 
 ---
 
