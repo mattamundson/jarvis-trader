@@ -242,28 +242,6 @@ async def lifespan(app: FastAPI):
         pnl_monitor._ib = data_manager.ibkr
         logger.info("✅ PnL Monitor: IB Gateway wired (live account data source active)")
 
-    # Wire real-time price streaming → WebSocket emitter
-    if data_manager.ibkr is not None and getattr(data_manager.ibkr, "is_connected", False):
-        futures_symbols = list(settings.FUTURES_WATCHLIST) if settings.FUTURES_WATCHLIST else ["MCL", "MNQ"]
-        for _sym in futures_symbols:
-            def _make_price_callback(sym: str):
-                def _on_bar(bar) -> None:
-                    import asyncio as _asyncio
-                    try:
-                        loop = _asyncio.get_event_loop()
-                        loop.create_task(emit_price_update(sym, bar.close))
-                    except Exception:
-                        pass
-                return _on_bar
-            try:
-                import asyncio
-                asyncio.create_task(
-                    data_manager.ibkr.subscribe_real_time(_sym, _make_price_callback(_sym), is_futures=True)
-                )
-                logger.info(f"✅ Price streaming subscribed: {_sym}")
-            except Exception as _e:
-                logger.warning(f"Price streaming subscription failed for {_sym}: {_e}")
-
     # Agents (need LLM client)
     class SimpleLLMClient:
         api_key = settings.ANTHROPIC_API_KEY
@@ -4233,4 +4211,38 @@ async def get_trading_days_stats():
     """
     Distinct calendar days with at least one closed paper exit (SQLite).
 
-    Aliases match dashboard consumers: TradingDaysCountdownCard, Validat
+    Aliases match dashboard consumers: TradingDaysCountdownCard, ValidationChecklist.
+    """
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    threshold = 30
+    try:
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(DISTINCT DATE(exit_time)) AS td
+                FROM paper_trades
+                WHERE LOWER(TRIM(status)) = 'closed'
+                  AND exit_time IS NOT NULL
+                """
+            )
+            row = cursor.fetchone()
+            conn.close()
+
+        n = int(row["td"] or 0) if row else 0
+        return {
+            "trading_days": n,
+            "trading_days_completed": n,
+            "days_traded": n,
+            "completed_days": n,
+            "threshold": threshold,
+            "threshold_met": n >= threshold,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+# --- portfolio stats (trading-days) ---
