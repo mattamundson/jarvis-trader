@@ -59,9 +59,15 @@ STATE_FEATURES = [
     "current_position",  # 1=long, 0=flat, -1=short
     "unrealized_pnl_atr",  # unrealized_pnl / atr  (negative when underwater)
     "bars_in_trade",  # number of bars since position opened (normalized /100)
+    # Discord signal context (indices 18-22)
+    "discord_signal_active",      # index 18: 0/1 — signal in last 4 bars
+    "discord_win_rate_context",   # index 19: 0.0-1.0 — rolling 30-day win rate
+    "discord_proximity_entry",    # index 20: -1.0 to 1.0 — (price-entry)/ATR
+    "discord_proximity_target",   # index 21: 0.0-2.0 — abs(price-t1)/ATR
+    "discord_alignment",          # index 22: -1/0/1 — signal alignment with JARVIS
 ]
 
-N_FEATURES = len(STATE_FEATURES)  # 18
+N_FEATURES = len(STATE_FEATURES)  # 23
 
 # ── Regime Score Mapping ──────────────────────────────────────────────────────
 
@@ -103,33 +109,32 @@ def get_instrument_params(symbol: str) -> tuple:
     return RL_INSTRUMENT_PARAMS.get(symbol.upper(), DEFAULT_INSTRUMENT_PARAMS)
 
 
+# ── Trade Duration Cap ────────────────────────────────────────────────────────
+# Hard limit on bars in a single trade. Environment forces close at this threshold.
+# Run 10: added after Run 9 OOS showed avg_bars_in_trade=109 (must be <50).
+MAX_BARS_IN_TRADE: int = 50
+
 # ── Reward Configuration ──────────────────────────────────────────────────────
 
 REWARD_CONFIG = {
     # Primary: P&L normalized by ATR so reward is scale-invariant across instruments
     "pnl_atr_weight": 1.0,
     # Holding cost per bar when in a position (encourages closing losers quickly)
-    # Run 9: reduced from -0.002 → -0.001.
-    # Run 8 result (MES, 500k steps): HOLD=66.1%, episode reward ~+7 (stagnant).
-    # The -0.002 hold_cost was over-penalising positions, causing the agent to
-    # close trades too early then default back to HOLD-when-flat. Halving hold_cost
-    # lets the agent carry winners longer while the reduced entry_cost (-0.01)
-    # simultaneously lowers the barrier to open new positions. Together these
-    # two levers should pull HOLD into the 40-60% target band.
-    "hold_cost_per_bar": -0.001,
+    # Run 10 (Strong-Exit): raised 10x from Run 9's -0.001 → -0.010.
+    # Run 9 OOS FAILURE: avg_bars_in_trade=109 (limit=50), t1_hit_rate=0%.
+    # Root cause: hold_cost=-0.001 was too weak to deter 100+ bar holds.
+    # At -0.010 with entry_cost=-0.01: break-even = 0.01/0.010 = 1 bar.
+    # Agent must exit within 1 bar to break even from hold pressure alone.
+    # MAX_BARS_IN_TRADE=50 env cap provides a hard ceiling in rl_config.MAX_BARS_IN_TRADE.
+    "hold_cost_per_bar": -0.010,
     # Entry cost fired on each new BUY or SELL (discourages overtrading)
-    # Run 9: halved from -0.02 → -0.01.
-    # At -0.02, break-even hold = 10 bars. At -0.01, break-even = 5 bars.
-    # Lower barrier per trade incentivises ~2 entries per day on a 390-step
-    # (6.5 hour) episode. MGC Run 8 (HOLD=44.5%, positive reward) used the same
-    # -0.002 / -0.02 pair and achieved the closest-to-target result — the MES
-    # agent needs the entry_cost halved further to match that behaviour.
+    # Run 10: kept at -0.01 from Run 9. Break-even = entry_cost/hold_cost = 1 bar.
     "entry_cost": -0.01,
     # Bonus for reaching T1 ATR target (reinforces quality exits)
-    "t1_bonus": 0.10,
-    # No flat reward — pure P&L signal (unchanged from Runs 7-8).
-    # Agent never earned flat_hold_reward in prior runs; keeping at zero to
-    # avoid re-introducing the passive-income trap from Runs 1-5.
+    # Run 10: raised 5x from 0.10 → 0.50. Makes T1 exits strongly rewarded
+    # vs the heavy hold pressure, so agent learns to reach targets not just close fast.
+    "t1_bonus": 0.50,
+    # No flat reward — pure P&L signal (unchanged from Runs 7-10).
     "flat_hold_reward": 0.000,
 }
 
@@ -149,8 +154,12 @@ REWARD_CONFIG = {
 #   Run 8    : entry_cost=-0.02, hold_cost=-0.002 (Two-Lever adjustment)
 #              → MES: HOLD=66.1%, reward ~+7 (stagnant, still above target)
 #              → MGC (same params): HOLD=44.5%, reward +9.95 (rising) — BEST
-#   Run 9    : entry_cost=-0.01, hold_cost=-0.001 (see REWARD_CONFIG above)
-#              → Goal: MES HOLD in 40-60% range, n_trades >= 60 per episode
+#   Run 9    : entry_cost=-0.01, hold_cost=-0.001
+#              → OOS FAILED: avg_bars_in_trade=109, t1_hit_rate=0%, PF=0.074
+#              → Root cause: hold_cost too weak; agent held 109 bars on avg
+#   Run 10 (Strong-Exit): entry_cost=-0.01, hold_cost=-0.010, t1_bonus=0.50
+#              → break-even=1 bar; MAX_BARS_IN_TRADE=50 env hard cap
+#              → Goal: avg_bars_in_trade<50, t1_hit_rate>0%, PF>1.5
 #
 # REWARD ARCHITECTURE REVIEW
 # ---------------------------

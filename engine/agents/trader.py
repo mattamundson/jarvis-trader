@@ -145,7 +145,7 @@ class TraderAgent:
         indicators = technical_report.get("indicators", {})
         atr: Optional[float] = indicators.get("atr") if isinstance(indicators, dict) else None
 
-        from ..config import settings  # local import to avoid circular deps at module level
+        from config import settings  # local import to avoid circular deps at module level
 
         max_contracts: int = settings.MAX_CONTRACTS_PER_INSTRUMENT
 

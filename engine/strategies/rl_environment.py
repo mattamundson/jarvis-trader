@@ -4,7 +4,8 @@ JARVIS TRADER — RL Trading Environment
 Gymnasium-compatible trading environment that uses jarvis-trader's
 existing signal pipeline as the observation space.
 
-State  : 18 float features derived from signals.py compute_all_indicators()
+State  : 23 float features — 18 from signals.py compute_all_indicators()
+         + 5 Discord signal context features (indices 18-22)
 Actions: HOLD=0, BUY=1, SELL=2, CLOSE=3  (Discrete 4)
 Reward : P&L / ATR  −  hold cost  −  entry cost
 
@@ -14,11 +15,17 @@ Usage:
     env = build_env("MES", df)   # df = processed DataFrame from signals.py
     obs, info = env.reset()
     obs, reward, terminated, truncated, info = env.step(Action.BUY)
+
+    # With Discord signal context (optional — backward compatible):
+    from engine.discord.signal_context import DiscordSignalContext
+    ctx = DiscordSignalContext()
+    env = build_env("MES", df, discord_context=ctx)
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -37,8 +44,10 @@ except ImportError:
     _GymBase = object  # type: ignore
 
 from backtest.signals import compute_all_indicators, layer1_regime
+from discord.signal_context import DiscordSignalContext
 from strategies.rl_config import (
     EMA_TREND_SCORES,
+    MAX_BARS_IN_TRADE,
     MAX_EPISODE_BARS,
     N_ACTIONS,
     N_FEATURES,
@@ -64,7 +73,10 @@ def extract_features(
     symbol: str,
 ) -> np.ndarray:
     """
-    Extract the 18-feature state vector from a single DataFrame row.
+    Extract the 18-feature base state vector from a single DataFrame row.
+
+    Discord signal context features (indices 18-22) are appended separately
+    in TradingEnvironment._get_obs() when a discord_context is provided.
 
     Parameters
     ----------
@@ -77,7 +89,7 @@ def extract_features(
 
     Returns
     -------
-    np.ndarray of shape (N_FEATURES,), dtype float32
+    np.ndarray of shape (18,), dtype float32 — base features only
     """
     row = df.iloc[idx]
     stc_os, stc_ob = get_instrument_params(symbol)[:2]
@@ -189,12 +201,16 @@ class TradingEnvironment(_GymBase):
 
     Parameters
     ----------
-    symbol        : Futures symbol (MES, MNQ, MCL)
-    df            : DataFrame with OHLCV + all indicators from compute_all_indicators()
-    initial_capital: Starting capital for P&L tracking
-    max_position  : Maximum position size in contracts (default 1)
+    symbol          : Futures symbol (MES, MNQ, MCL)
+    df              : DataFrame with OHLCV + all indicators from compute_all_indicators()
+    initial_capital : Starting capital for P&L tracking
+    max_position    : Maximum position size in contracts (default 1)
+    discord_context : Optional DiscordSignalContext instance. When provided, appends
+                      5 Discord signal features (indices 18-22) to each observation.
+                      When None (default), those indices are filled with zeros for
+                      full backward compatibility.
 
-    Observation space : Box(shape=(18,), dtype=float32)
+    Observation space : Box(shape=(23,), dtype=float32)  — 18 base + 5 discord
     Action space      : Discrete(4) — HOLD, BUY, SELL, CLOSE
     """
 
@@ -206,6 +222,7 @@ class TradingEnvironment(_GymBase):
         max_position: int = 1,
         max_episode_bars: int = MAX_EPISODE_BARS,
         reward_config: dict | None = None,
+        discord_context: Optional[DiscordSignalContext] = None,
     ):
         if not GYM_AVAILABLE:
             raise ImportError("gymnasium is required: pip install gymnasium")
@@ -221,6 +238,7 @@ class TradingEnvironment(_GymBase):
         self._episode_end: int = self.n_bars  # updated each reset()
 
         self._reward_cfg = {**REWARD_CONFIG, **(reward_config or {})}
+        self.discord_context = discord_context  # None → backward-compat zeros at indices 18-22
 
         params = get_instrument_params(self.symbol)
         self.stc_os = params[0]
@@ -364,6 +382,23 @@ class TradingEnvironment(_GymBase):
         if self._position != 0:
             self._bars_in_trade += 1
 
+        # Forced close: hard cap on bars in trade (Run 10 — prevents 100+ bar holds)
+        if self._position != 0 and self._bars_in_trade >= MAX_BARS_IN_TRADE:
+            force_close = float(self.df.iloc[self._idx]["close"]) if self._idx < len(self.df) else close
+            if self._position == 1:
+                forced_pnl = force_close - self._entry_price
+            else:
+                forced_pnl = self._entry_price - force_close
+            realized_pnl += forced_pnl
+            self._record_trade(forced_pnl)
+            self._position = 0
+            self._entry_price = 0.0
+            self._bars_in_trade = 0
+            logger.debug(
+                "Forced close at bar %d — held %d bars (cap=%d), pnl=%.4f",
+                self._idx, MAX_BARS_IN_TRADE, MAX_BARS_IN_TRADE, forced_pnl,
+            )
+
         # Track flat-HOLD rate (more meaningful than blended hold_rate)
         if self._position == 0:
             self._bars_flat += 1
@@ -419,7 +454,7 @@ class TradingEnvironment(_GymBase):
 
     def _get_obs(self) -> np.ndarray:
         idx = min(self._idx, self.n_bars - 1)
-        return extract_features(
+        base_obs = extract_features(
             df=self.df,
             idx=idx,
             position=self._position,
@@ -427,6 +462,36 @@ class TradingEnvironment(_GymBase):
             bars_in_trade=self._bars_in_trade,
             symbol=self.symbol,
         )
+
+        # Append 5 Discord signal context features (indices 18-22).
+        # Falls back to safe defaults when discord_context is None or query fails.
+        if self.discord_context is not None:
+            try:
+                row = self.df.iloc[idx]
+                # Resolve timestamp: use DataFrame index if it is datetime-typed
+                if hasattr(self.df.index, 'dtype') and hasattr(self.df.index[idx], 'to_pydatetime'):
+                    timestamp = self.df.index[idx].to_pydatetime()
+                elif isinstance(self.df.index[idx], datetime):
+                    timestamp = self.df.index[idx]
+                else:
+                    timestamp = datetime.now()
+                price = float(row.get("close", row.get("Close", 0.0)))
+                atr = float(row.get("atr", 1.0) or 1.0)
+                discord_feats = self.discord_context.get_feature_list(
+                    symbol=self.symbol,
+                    timestamp=timestamp,
+                    price=price,
+                    atr=atr,
+                    jarvis_bias='NEUTRAL',  # can be enhanced later to use regime_score
+                )
+                discord_arr = np.array(discord_feats, dtype=np.float32)
+            except Exception:
+                discord_arr = np.array([0.0, 0.5, 0.0, 0.0, 0.0], dtype=np.float32)
+        else:
+            # No discord context — fill with neutral defaults (0.5 for win rate, 0 elsewhere)
+            discord_arr = np.array([0.0, 0.5, 0.0, 0.0, 0.0], dtype=np.float32)
+
+        return np.concatenate([base_obs, discord_arr])
 
     def _get_info(self, realized_pnl: float = 0.0) -> dict:
         return {
@@ -610,8 +675,17 @@ def build_env(
     max_position: int = 1,
     max_episode_bars: int = MAX_EPISODE_BARS,
     reward_config: dict | None = None,
+    discord_context: Optional[DiscordSignalContext] = None,
 ) -> "TradingEnvironment":
-    """Factory: create a TradingEnvironment from a processed DataFrame."""
+    """
+    Factory: create a TradingEnvironment from a processed DataFrame.
+
+    Parameters
+    ----------
+    discord_context : Optional DiscordSignalContext. When provided, features 18-22
+                      are populated from the Discord signal DB. When None (default),
+                      features 18-22 are zeros/neutral — backward compatible.
+    """
     return TradingEnvironment(
         symbol=symbol,
         df=df,
@@ -619,4 +693,5 @@ def build_env(
         max_position=max_position,
         max_episode_bars=max_episode_bars,
         reward_config=reward_config,
+        discord_context=discord_context,
     )

@@ -61,6 +61,7 @@ def test_routes_wired():
         ("GET", "/api/v1/health"): "v1 health check (if using prefix)",
         ("POST", "/pipeline/run"): "run trading pipeline",
         ("GET", "/portfolio/summary"): "portfolio summary",
+        ("GET", "/portfolio/stats/trading-days"): "distinct trading days (validation UI)",
         ("GET", "/safety/status"): "safety layer status",
     }
 
