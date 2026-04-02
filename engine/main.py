@@ -22,6 +22,7 @@ from apscheduler.triggers.cron import CronTrigger
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi.errors import RateLimitExceeded
 
 from agents.bear_researcher import BearResearcherAgent
 from agents.bull_researcher import BullResearcherAgent
@@ -64,7 +65,6 @@ from execution.ib_order_manager import IBOrderManager
 from llm.cost_tracker import CostTracker
 from middleware.api_key_middleware import APIKeyMiddleware
 from middleware.rate_limit import get_limiter, rate_limit_exception_handler
-from slowapi.errors import RateLimitExceeded
 from portfolio.tracker import PortfolioTracker
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
@@ -82,7 +82,7 @@ from routers.validation_router import router as validation_router
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
 from schedulers.eod_scheduler import EODScheduler
-from websocket.events import set_ws_manager
+from websocket.events import emit_price_update, set_ws_manager
 from websocket.manager import WebSocketManager
 
 # ── Logging (initialized in lifespan) ────────────────────────────────────
@@ -518,17 +518,46 @@ async def lifespan(app: FastAPI):
     inject_portfolio_deps(paper_tracker, db_manager)
     inject_safety_router_deps(safety_layer, loss_tracker)
 
-    logger.info("✅ JARVIS TRADER ready. Dashboard: http://localhost:3010")
+    # Multi-Market Orchestrator
+    try:
+        from markets.futures.module import FuturesMarketModule
+        from orchestrator.multi_market import MultiMarketOrchestrator, set_orchestrator
+
+        _orchestrator = MultiMarketOrchestrator(
+            daily_target=getattr(settings, "DAILY_TARGET", 500.0),
+        )
+        _futures_module = FuturesMarketModule(
+            ib_gateway=data_manager.ibkr,
+            portfolio_tracker=paper_tracker,
+            safety_layer=safety_layer,
+            trading_pipeline=trading_pipeline,
+            symbols=["MCL", "MNQ"],
+        )
+        _orchestrator.register(_futures_module)
+        set_orchestrator(_orchestrator)
+        await _orchestrator.start()
+        logger.info("MultiMarketOrchestrator started with 1 module (futures: MCL, MNQ)")
+    except Exception as _orch_err:
+        logger.warning("MultiMarketOrchestrator init failed (non-fatal): %s", _orch_err)
+
+    logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
     yield  # Server runs here
 
     # Teardown
+    try:
+        from orchestrator.multi_market import get_orchestrator
+        _orch = get_orchestrator()
+        if _orch:
+            await _orch.stop()
+    except Exception:
+        pass
     if data_manager and data_manager.ibkr:
         await data_manager.ibkr.disconnect()
     if scheduler and scheduler.running:
         scheduler.shutdown(wait=False)
-    logger.info("👋 JARVIS TRADER shutdown complete")
+    logger.info("JARVIS TRADER shutdown complete")
 
 
 app = FastAPI(
@@ -4018,12 +4047,15 @@ async def import_paper_trades(request: Request):
             try:
                 for i, t in enumerate(trades):
                     try:
+                        import uuid as _uuid
+                        trade_id = t.get("trade_id") or str(_uuid.uuid4())
                         conn.execute(
                             """INSERT INTO paper_trades
-                               (symbol, side, entry_price, exit_price, quantity,
+                               (trade_id, symbol, side, entry_price, exit_price, quantity,
                                 pnl, status, entry_time, exit_time, strategy_params, notes)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                             (
+                                trade_id,
                                 str(t.get("symbol", "UNKNOWN")),
                                 str(t.get("action", t.get("side", "LONG"))),
                                 float(t.get("entry_price", 0)),
