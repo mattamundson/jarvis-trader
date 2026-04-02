@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import useSWR from "swr";
+import { fetchEngine, postEngine } from "@/lib/api";
 import {
   Activity,
   AlertTriangle,
@@ -101,10 +102,7 @@ interface RiskSettingsResponse {
 }
 
 async function fetchRiskSettings(): Promise<RiskSettingsResponse> {
-  const ENGINE = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8010";
-  const res = await fetch(`${ENGINE}/settings/risk`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  return fetchEngine<RiskSettingsResponse>("/settings/risk");
 }
 
 async function postRiskSettings(payload: Partial<RiskConfig>): Promise<{
@@ -112,14 +110,11 @@ async function postRiskSettings(payload: Partial<RiskConfig>): Promise<{
   errors: Record<string, string>;
   count: number;
 }> {
-  const ENGINE = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8010";
-  const res = await fetch(`${ENGINE}/settings/risk`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  return postEngine<{
+    updated: Partial<RiskConfig>;
+    errors: Record<string, string>;
+    count: number;
+  }>("/settings/risk", payload);
 }
 
 function RiskSettingsPanel() {
@@ -648,14 +643,10 @@ function NotificationsPanel() {
     setSending(true);
     setFeedback(null);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8010"}/notifications/morning-briefing`,
-        { method: "POST" }
+      const data = await postEngine<{ sent: boolean; detail?: string }>(
+        "/notifications/morning-briefing"
       );
-      const data = await res.json();
-      if (!res.ok) {
-        setFeedback(`Error: ${data.detail ?? res.statusText}`);
-      } else if (data.sent) {
+      if (data.sent) {
         setFeedback("Morning briefing sent via WhatsApp.");
       } else {
         setFeedback("WhatsApp not configured or send failed.");

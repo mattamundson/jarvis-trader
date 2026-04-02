@@ -21,6 +21,7 @@ giving the pipeline sophisticated contextual risk reasoning.
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -219,6 +220,7 @@ class RiskManagerAgent:
 
         try:
             api_key = getattr(self._llm, "api_key", None) or os.getenv("ANTHROPIC_API_KEY", "")
+            _t0 = time.time()
 
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
@@ -237,6 +239,19 @@ class RiskManagerAgent:
                 )
                 resp.raise_for_status()
                 payload = resp.json()
+
+            _latency_ms = int((time.time() - _t0) * 1000)
+
+            # Track cost via JarvisLLMClient if available
+            usage = payload.get("usage", {})
+            if hasattr(self._llm, "track_raw_call"):
+                await self._llm.track_raw_call(
+                    model=self.MODEL,
+                    input_tokens=usage.get("input_tokens", 0),
+                    output_tokens=usage.get("output_tokens", 0),
+                    latency_ms=_latency_ms,
+                    agent_name="risk_manager",
+                )
 
             response_text = payload["content"][0]["text"].strip()
 

@@ -1,0 +1,363 @@
+"""
+Health and System Status Endpoints
+
+Endpoints for monitoring system health, running preflight checks, and getting
+status information about all JARVIS TRADER subsystems.
+"""
+
+import logging
+import sqlite3
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException
+
+from api.models import FullHealthResponse, HealthResponse
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="", tags=["health", "system"])
+
+# Global references (injected from main.py)
+_start_time = None
+data_manager = None
+safety_layer = None
+db_manager = None
+paper_tracker = None
+pnl_monitor = None
+trading_pipeline = None
+
+
+def inject_dependencies(start_time, dm, sl, dbm, pt, pm, tp):
+    """Inject global dependencies from main.py"""
+    global _start_time, data_manager, safety_layer, db_manager
+    global paper_tracker, pnl_monitor, trading_pipeline
+    _start_time = start_time
+    data_manager = dm
+    safety_layer = sl
+    db_manager = dbm
+    paper_tracker = pt
+    pnl_monitor = pm
+    trading_pipeline = tp
+
+
+@router.get("/health", response_model=HealthResponse)
+async def health():
+    """Quick health check endpoint"""
+    try:
+        return await _health_inner()
+    except Exception as exc:
+        logger.exception("Health endpoint error: %s", exc)
+        raise HTTPException(status_code=503, detail=f"Health check failed: {exc}") from exc
+
+
+async def _health_inner() -> dict:
+    safety = safety_layer.get_status() if safety_layer else {}
+
+    # Quick database connectivity check
+    db_ok = False
+    try:
+        if db_manager:
+            db_manager.health_check()
+            db_ok = True
+    except Exception:
+        pass
+
+    now = datetime.now(timezone.utc)
+    status = "ok" if db_ok else "degraded"
+
+    _dm_settings = getattr(data_manager, "settings", None) if data_manager else None
+    live_trading_val: bool = bool(getattr(_dm_settings, "LIVE_TRADING_ENABLED", False))
+    ibkr_conn: bool = (
+        bool(data_manager.ibkr.is_connected)
+        if (data_manager and getattr(data_manager, "ibkr", None))
+        else False
+    )
+
+    return {
+        "status": status,
+        "version": "1.1.0",
+        "timestamp": now.isoformat(),
+        "live_trading": live_trading_val,
+        "kill_switch_active": bool(safety.get("kill_switch_active", False)),
+        "paper_mode": True,
+        "database": "connected" if db_ok else "error",
+        "ibkr_connected": ibkr_conn,
+        "schwab_connected": False,
+        "uptime_seconds": float((now - _start_time).total_seconds()) if _start_time else 0.0,
+    }
+
+
+@router.get("/health/full", response_model=FullHealthResponse)
+async def full_health_check():
+    """Comprehensive health check of all JARVIS TRADER subsystems"""
+    try:
+        return await _full_health_inner()
+    except Exception as exc:
+        logger.exception("Full health check error: %s", exc)
+        raise HTTPException(status_code=503, detail=f"Health check failed: {exc}") from exc
+
+
+async def _full_health_inner() -> dict:
+    status: dict = {}
+    overall = "healthy"
+
+    # 1. Database health
+    try:
+        if db_manager:
+            db_health = db_manager.health_check()
+            status["database"] = {"status": "ok", "details": db_health}
+        else:
+            status["database"] = {"status": "not_initialized"}
+            overall = "degraded"
+    except Exception as e:
+        status["database"] = {"status": "error", "error": str(e)}
+        overall = "degraded"
+
+    # 2. Safety layer
+    try:
+        if safety_layer:
+            kill_switch = safety_layer._kill_switch_active
+            kill_reason = safety_layer._kill_switch_reason
+            status["safety_layer"] = {
+                "status": "ok",
+                "kill_switch_active": kill_switch,
+                "kill_switch_reason": kill_reason.value if kill_reason else None,
+            }
+            if kill_switch:
+                overall = "kill_switch_active"
+        else:
+            status["safety_layer"] = {"status": "not_initialized"}
+            overall = "degraded"
+    except Exception as e:
+        status["safety_layer"] = {"status": "error", "error": str(e)}
+        overall = "degraded"
+
+    # 3. IB Gateway (optional)
+    try:
+        ib_gw = data_manager.ibkr if data_manager else None
+        if ib_gw:
+            ib_health = await ib_gw.health_check()
+            status["ib_gateway"] = ib_health
+        else:
+            status["ib_gateway"] = {"status": "not_configured", "mode": "paper_only"}
+    except Exception as e:
+        status["ib_gateway"] = {"status": "error", "error": str(e)}
+
+    # 4. Circuit breakers
+    try:
+        if safety_layer and hasattr(safety_layer, "check_circuit_breakers"):
+            breakers = safety_layer.check_circuit_breakers()
+            all_clear = not breakers.get("daily_limit_breached", False) and not breakers.get(
+                "drawdown_breached", False
+            )
+            status["circuit_breakers"] = {
+                "status": "ok" if all_clear else "tripped",
+                "all_clear": all_clear,
+                "kill_switch_active": breakers.get("kill_switch_active", False),
+                "details": breakers,
+            }
+            if not all_clear:
+                if overall == "healthy":
+                    overall = "circuit_breaker_tripped"
+        else:
+            status["circuit_breakers"] = {"status": "not_available"}
+    except Exception as e:
+        status["circuit_breakers"] = {"status": "error", "error": str(e)}
+
+    # 5. Portfolio tracker
+    try:
+        if paper_tracker:
+            positions = paper_tracker.get_open_positions()
+            status["portfolio"] = {
+                "status": "ok",
+                "open_positions": len(positions),
+            }
+        else:
+            status["portfolio"] = {"status": "not_initialized"}
+    except Exception as e:
+        status["portfolio"] = {"status": "error", "error": str(e)}
+
+    # 6. PnL monitor
+    try:
+        if pnl_monitor:
+            pnl_state = pnl_monitor.get_current_pnl_state()
+            status["pnl_monitor"] = {
+                "status": "ok",
+                "source": pnl_state.source,
+                "daily_pnl": round(pnl_monitor.get_daily_pnl(), 4),
+                "drawdown_pct": round(pnl_monitor.get_drawdown_pct(), 6),
+                "current_balance": round(pnl_state.current_balance, 2),
+                "starting_balance": round(pnl_state.starting_balance, 2),
+            }
+        else:
+            status["pnl_monitor"] = {"status": "not_initialized"}
+    except Exception as e:
+        status["pnl_monitor"] = {"status": "error", "error": str(e)}
+
+    return {
+        "overall": overall,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "uptime_seconds": (datetime.now(timezone.utc) - _start_time).total_seconds()
+        if _start_time
+        else 0,
+        "subsystems": status,
+        "version": "1.1.0",
+        "phase": "paper_trading",
+    }
+
+
+@router.get("/system/preflight")
+async def system_preflight():
+    """
+    Run all critical pre-flight checks before accepting trading signals.
+    Returns a list of checks with pass/fail/warn status.
+    """
+    checks = []
+    all_pass = True
+
+    def add_check(name: str, status: str, detail: str):
+        nonlocal all_pass
+        if status == "fail":
+            all_pass = False
+        checks.append({"name": name, "status": status, "detail": detail})
+
+    # 1. Database health
+    try:
+        if db_manager is None:
+            add_check("Database", "fail", "Not initialized")
+        else:
+            with db_manager._lock:
+                conn = sqlite3.connect(str(db_manager._db_path))
+                try:
+                    conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()
+                    add_check(
+                        "Database",
+                        "pass",
+                        f"SQLite healthy — {str(db_manager._db_path).split('/')[-1]}",
+                    )
+                finally:
+                    conn.close()
+    except Exception as e:
+        add_check("Database", "fail", str(e))
+
+    # 2. Kill switch clear
+    try:
+        if safety_layer is None:
+            add_check("Kill Switch", "warn", "SafetyLayer not initialized")
+        else:
+            ks = safety_layer._kill_switch_active
+            if ks:
+                add_check("Kill Switch", "fail", "KILL SWITCH IS ACTIVE")
+            else:
+                add_check("Kill Switch", "pass", "Kill switch clear")
+    except Exception as e:
+        add_check("Kill Switch", "warn", f"Could not check: {e}")
+
+    # 3. Circuit breakers
+    try:
+        if safety_layer is not None:
+            cb_result = safety_layer.check_circuit_breakers()
+            daily_breached = cb_result.get("daily_limit_breached", False)
+            drawdown_breached_flag = cb_result.get("drawdown_breached", False)
+            if daily_breached or drawdown_breached_flag:
+                tripped = []
+                if daily_breached:
+                    tripped.append("daily_loss_limit")
+                if drawdown_breached_flag:
+                    tripped.append("drawdown_limit")
+                add_check("Circuit Breakers", "fail", f"Tripped: {', '.join(tripped)}")
+            else:
+                add_check("Circuit Breakers", "pass", "All circuit breakers clear")
+        else:
+            add_check("Circuit Breakers", "warn", "SafetyLayer not initialized")
+    except Exception as e:
+        add_check("Circuit Breakers", "warn", f"Could not check: {e}")
+
+    # 4. Trading pipeline
+    try:
+        if trading_pipeline is None:
+            add_check("Pipeline", "fail", "TradingPipeline not initialized")
+        else:
+            add_check("Pipeline", "pass", "TradingPipeline ready")
+    except Exception as e:
+        add_check("Pipeline", "fail", str(e))
+
+    # 5. VIX overlay
+    try:
+        from analytics.vix_overlay import fetch_vix
+
+        vix_state = fetch_vix()
+        vix_val = getattr(vix_state, "vix_value", None)
+        source = getattr(vix_state, "source", "unknown")
+        if vix_val is not None:
+            add_check(
+                "VIX Data",
+                "pass" if source != "error_fallback" else "warn",
+                f"VIX={vix_val:.1f} (source: {source})",
+            )
+        else:
+            add_check("VIX Data", "warn", "VIX unavailable")
+    except Exception as e:
+        add_check("VIX Data", "warn", f"VIX check failed: {e}")
+
+    # 6. Market session
+    try:
+        from datetime import datetime as _dt
+
+        import pytz
+
+        ct_tz = pytz.timezone("America/Chicago")
+        now_ct = _dt.now(ct_tz)
+        weekday = now_ct.weekday()
+        hour = now_ct.hour
+        if weekday >= 5:
+            add_check("Market Session", "warn", "Weekend — market closed")
+        elif 8 <= hour < 15:
+            add_check("Market Session", "pass", f"RTH active ({now_ct.strftime('%H:%M')} CT)")
+        elif 17 <= hour or hour < 6:
+            add_check(
+                "Market Session", "pass", f"Futures session active ({now_ct.strftime('%H:%M')} CT)"
+            )
+        else:
+            add_check(
+                "Market Session",
+                "warn",
+                f"Outside primary trading hours ({now_ct.strftime('%H:%M')} CT)",
+            )
+    except Exception as e:
+        add_check("Market Session", "warn", str(e))
+
+    # 7. IB Gateway connection
+    try:
+        ib_gw = data_manager.ibkr if data_manager else None
+        if ib_gw is None:
+            add_check("IB Gateway", "warn", "Not initialized (paper only)")
+        else:
+            connected = bool(getattr(ib_gw, "is_connected", False))
+            if connected:
+                add_check("IB Gateway", "pass", "Paper port 4002 connected")
+            else:
+                add_check("IB Gateway", "warn", "Not connected (paper only)")
+    except Exception as e:
+        add_check("IB Gateway", "warn", f"Could not check: {e}")
+
+    # 8. Portfolio tracker
+    try:
+        if paper_tracker is None:
+            add_check("Portfolio Tracker", "fail", "Not initialized")
+        else:
+            positions = paper_tracker.get_open_positions()
+            if pnl_monitor is not None:
+                pnl_state = pnl_monitor.get_current_pnl_state()
+                balance = round(pnl_state.current_balance, 2)
+                add_check(
+                    "Portfolio Tracker",
+                    "pass",
+                    f"Balance: ${balance:,.2f} | {len(positions)} open position(s)",
+                )
+            else:
+                add_check("Portfolio Tracker", "pass", f"{len(positions)} open position(s)")
+    except Exception as e:
+        add_check("Portfolio Tracker", "fail", str(e))
+
+    return {"all_pass": all_pass, "checks": checks}

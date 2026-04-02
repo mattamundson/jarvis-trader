@@ -106,9 +106,7 @@ class OrderRouter:
         # ── PAPER TRADING MODE (all orders → IBGatewayConnector) ───────────────
         if self._settings.PAPER_TRADING:
             if self._ib_gateway is None or not self._ib_gateway.is_connected:
-                logger.error(
-                    "Paper trading mode enabled but IBGatewayConnector not connected"
-                )
+                logger.error("Paper trading mode enabled but IBGatewayConnector not connected")
                 result = {
                     "status": "error",
                     "reason": "IBGatewayConnector not connected for paper trading",
@@ -275,7 +273,9 @@ class OrderRouter:
         if self._ib_gateway and self._ib_gateway.is_connected:
             try:
                 ib_gateway_cancelled = await self._ib_gateway.cancel_all_orders()
-                logger.info("Kill switch: IBGatewayConnector cancelled %d orders", ib_gateway_cancelled)
+                logger.info(
+                    "Kill switch: IBGatewayConnector cancelled %d orders", ib_gateway_cancelled
+                )
             except Exception as exc:
                 logger.error(
                     "Kill switch: IBGatewayConnector cancel_all_orders failed: %s",

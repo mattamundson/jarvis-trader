@@ -26,14 +26,10 @@ INTERFACE:
   All methods are async.
 """
 
-import asyncio
-import json
 import logging
 import random
 import uuid
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +68,9 @@ class IBGatewayConnector:
         self._ib_client = None  # Will hold ib_insync.IB() when live trading is implemented
         self._paper_trade_logger = None  # Lazy-loaded on first use
         self._account_summary = {
-            "equity": 100000.0,
-            "cash": 100000.0,
-            "buying_power": 400000.0,
+            "equity": 10000.0,
+            "cash": 10000.0,
+            "buying_power": 40000.0,
         }
         self._positions = {}
         self._open_orders = {}

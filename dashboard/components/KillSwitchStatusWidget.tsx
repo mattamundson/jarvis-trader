@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 
 interface SafetyStatus {
   kill_switch_active: boolean;
@@ -23,11 +22,7 @@ export function KillSwitchStatusWidget() {
 
   async function fetchStatus() {
     try {
-      const res = await fetch(`${ENGINE_URL}/safety/status`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: SafetyStatus = await res.json();
+      const json = await fetchEngine<SafetyStatus>("/safety/status");
       setData(json);
       setError(false);
     } catch {

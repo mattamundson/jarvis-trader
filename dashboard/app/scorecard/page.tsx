@@ -2,6 +2,7 @@
 
 import React from "react";
 import useSWR from "swr";
+import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   AlertTriangle,
@@ -157,7 +158,7 @@ function MetricCard({
   value: string;
   sub?: string;
   level: ColorLevel;
-  icon: React.ElementType;
+  icon: LucideIcon;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-2">
@@ -412,7 +413,7 @@ export default function ScorecardPage() {
               Auto-refresh 60s
             </span>
             <a
-              href="http://localhost:8010/reports/performance?format=download"
+              href="/api/engine/reports/performance?format=download"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-accent"

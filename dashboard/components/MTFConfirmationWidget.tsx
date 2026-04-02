@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Layers } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
 interface TFSignal {
   timeframe: string;
@@ -45,9 +46,8 @@ export function MTFConfirmationWidget({ symbol = "MES" }: { symbol?: string }) {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(`http://localhost:8010/analytics/mtf?symbol=${symbol}`);
-        if (!res.ok) throw new Error();
-        setData(await res.json());
+        const payload = await fetchEngine(`/analytics/mtf?symbol=${symbol}`);
+        setData(payload);
       } catch {
         setData(null);
       } finally {

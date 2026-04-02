@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Session logic ─────────────────────────────────────────────────────────────
 
@@ -185,9 +185,7 @@ export function MarketSessionStatusCard() {
 
   async function fetchSessionData() {
     try {
-      const res = await fetch(`${ENGINE_URL}/portfolio/stats/session-today`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: SessionTodayData = await res.json();
+      const data = await fetchEngine(`/portfolio/stats/session-today`);
       setSessionData(data);
       setFetchError(false);
     } catch {

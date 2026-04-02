@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Backtest benchmarks ────────────────────────────────────────────────────────
 
@@ -110,9 +110,8 @@ export function BacktestCompareWidget() {
   const [error, setError] = useState(false);
 
   function fetchData() {
-    fetch(`${ENGINE_URL}/analytics/performance`)
+    fetchEngine(`/analytics/performance`)
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
       .then((json: Partial<PerformanceData>) => {

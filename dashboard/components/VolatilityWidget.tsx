@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Activity, RefreshCw, Target, ShieldAlert, TrendingUp } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -82,9 +82,7 @@ export function VolatilityWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${ENGINE_URL}/paper/mgc-signal`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: MGCSignalData = await res.json();
+      const json = await fetchEngine(`/paper/mgc-signal`);
       if (json.atr == null || typeof json.atr !== "number") {
         throw new Error("ATR data unavailable");
       }

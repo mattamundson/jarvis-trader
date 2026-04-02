@@ -408,16 +408,20 @@ Respond with JSON in exactly this format:
 }}"""
 
         try:
-            import anthropic
-
-            client = anthropic.Anthropic(api_key=self._llm.api_key)
-            message = client.messages.create(
+            # Use JarvisLLMClient.call() so every LLM call is tracked in the
+            # cost database (token counts, latency, USD cost per call).
+            llm_result = await self._llm.call(
                 model="claude-sonnet-4-6",
-                max_tokens=1024,
                 system=self.SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
+                max_tokens=1024,
+                agent_name="technical_analyst",
             )
-            response_text = message.content[0].text.strip()
+            if not llm_result.success:
+                logger.error(f"LLM call failed for {symbol}: {llm_result.error}")
+                return self._empty_report(symbol, timeframe)
+
+            response_text = llm_result.content.strip()
 
             # Strip markdown code blocks if present
             if response_text.startswith("```"):

@@ -18,7 +18,7 @@ logger = logging.getLogger("jarvis_trader.rate_limit")
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["60/minute"],  # Default: 60 requests per minute
-    storage_uri="memory",  # In-memory storage (for single-process deployments)
+    storage_uri="memory://",  # limits>=5 expects URI scheme (was "memory")
 )
 
 

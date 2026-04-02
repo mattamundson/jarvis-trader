@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,9 +61,7 @@ export function TodaySummaryWidget() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch(`${ENGINE_URL}/portfolio/stats/session-today`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: SessionTodayResponse = await res.json();
+      const json = await fetchEngine(`/portfolio/stats/session-today`);
       setData(json);
       setError(null);
       setLastUpdated(new Date().toLocaleTimeString());

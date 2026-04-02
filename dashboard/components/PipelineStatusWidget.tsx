@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { Activity, CheckCircle, XCircle, AlertCircle, RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 
 interface PipelineStatusResponse {
   available: boolean;
@@ -85,11 +84,7 @@ export function PipelineStatusWidget() {
 
   async function fetchStatus() {
     try {
-      const res = await fetch(`${ENGINE_URL}/pipeline/status`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: PipelineStatusResponse = await res.json();
+      const data = await fetchEngine<PipelineStatusResponse>("/pipeline/status");
       setStatus(data);
       setFetchError(false);
     } catch {

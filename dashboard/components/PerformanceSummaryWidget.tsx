@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import { TrendingUp, Activity, Target, Award, DollarSign, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ interface PrimaryCardProps {
   value: string;
   threshold: string;
   pass: boolean | null;
-  icon: React.ElementType;
+  icon: LucideIcon;
 }
 
 function PrimaryCard({ label, value, threshold, pass, icon: Icon }: PrimaryCardProps) {
@@ -147,7 +148,7 @@ export function PerformanceSummaryWidget() {
   const [error, setError] = useState(false);
 
   const load = () => {
-    fetch(`${ENGINE_URL}/analytics/performance`)
+    fetchEngine(`/analytics/performance`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<PerformanceData>;

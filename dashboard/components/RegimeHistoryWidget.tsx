@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -140,34 +140,27 @@ export function RegimeHistoryWidget() {
 
     // Attempt 1: GET /pipeline/history?limit=20
     try {
-      const res = await fetch(`${ENGINE_URL}/pipeline/history?limit=20`);
-      if (res.ok) {
-        const json: PipelineHistoryResponse | PipelineRun[] = await res.json();
-        if (Array.isArray(json)) {
-          fetched = json;
-        } else {
-          fetched = (json as PipelineHistoryResponse).runs ?? [];
-        }
-        success = true;
+      const raw = await fetchEngine(`/pipeline/history?limit=20`);
+      if (Array.isArray(raw)) {
+        fetched = raw;
+      } else {
+        fetched = (raw as PipelineHistoryResponse).runs ?? [];
       }
-      // 404 → fall through to attempt 2
+      success = true;
     } catch {
-      // network error → fall through
+      // fall through to attempt 2
     }
 
     // Attempt 2: GET /pipeline/decisions?limit=20
     if (!success || fetched.length === 0) {
       try {
-        const res = await fetch(`${ENGINE_URL}/pipeline/decisions?limit=20`);
-        if (res.ok) {
-          const json: DecisionsResponse | PipelineRun[] = await res.json();
-          if (Array.isArray(json)) {
-            fetched = json;
-          } else {
-            fetched = (json as DecisionsResponse).decisions ?? [];
-          }
-          success = true;
+        const raw = await fetchEngine(`/pipeline/decisions?limit=20`);
+        if (Array.isArray(raw)) {
+          fetched = raw;
+        } else {
+          fetched = (raw as DecisionsResponse).decisions ?? [];
         }
+        success = true;
       } catch {
         // both failed
       }

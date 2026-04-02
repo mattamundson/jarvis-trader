@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Static backtest reference values ─────────────────────────────────────────
 
@@ -72,9 +72,7 @@ export function BacktestVsPaperWidget() {
 
   async function fetchMetrics() {
     try {
-      const res = await fetch(`${ENGINE_URL}/analytics/performance`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await fetchEngine(`/analytics/performance`);
       setPaper(data);
       setError(null);
     } catch (err) {

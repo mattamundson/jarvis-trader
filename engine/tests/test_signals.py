@@ -143,9 +143,9 @@ class TestComputeAllIndicators:
 
         # Assert - at end of strong uptrend, EMAs should align bullishly
         last_rows = df.tail(10)
-        assert (last_rows["ema_8"] >= last_rows["ema_21"]).sum() >= 5, (
-            "EMA 8 should exceed 21 in bullish trend"
-        )
+        assert (
+            last_rows["ema_8"] >= last_rows["ema_21"]
+        ).sum() >= 5, "EMA 8 should exceed 21 in bullish trend"
 
 
 class TestSTCCrossover:
@@ -250,9 +250,9 @@ class TestATRStops:
             signals.iloc[150:]["bias"].isin(["STRONG_BULL", "LEAN_BULL"])
         ]
         if len(long_rows) > 0:
-            assert (long_rows["stop_level"] < long_rows["close"]).all(), (
-                "Long stops should be below current price"
-            )
+            assert (
+                long_rows["stop_level"] < long_rows["close"]
+            ).all(), "Long stops should be below current price"
 
     def test_atr_stop_calculation_short(self, bearish_ohlcv_df):
         """Short stop = close + stop_atr * ATR."""
@@ -267,9 +267,9 @@ class TestATRStops:
             signals.iloc[150:]["bias"].isin(["STRONG_BEAR", "LEAN_BEAR"])
         ]
         if len(short_rows) > 0:
-            assert (short_rows["stop_level"] > short_rows["close"]).all(), (
-                "Short stops should be above current price"
-            )
+            assert (
+                short_rows["stop_level"] > short_rows["close"]
+            ).all(), "Short stops should be above current price"
 
     def test_atr_stop_respects_instrument_params(self, bullish_ohlcv_df):
         """Instrument-specific ATR stop ratio applied."""
@@ -349,9 +349,9 @@ class TestLayer3Bias:
         # Assert - skip warmup period (~150 bars for STC)
         # In bullish trend, expect STRONG_BULL or LEAN_BULL
         bullish_count = (signals.iloc[150:]["bias"].isin(["STRONG_BULL", "LEAN_BULL"])).sum()
-        assert bullish_count > 0, (
-            "Bullish trend should produce bullish bias (STRONG_BULL or LEAN_BULL)"
-        )
+        assert (
+            bullish_count > 0
+        ), "Bullish trend should produce bullish bias (STRONG_BULL or LEAN_BULL)"
 
     def test_bias_strong_bear_all_aligned(self, bearish_ohlcv_df):
         """All bearish indicators → STRONG_BEAR or LEAN_BEAR."""
@@ -364,9 +364,9 @@ class TestLayer3Bias:
         # Assert - skip warmup period (~150 bars for STC)
         # In bearish trend, expect STRONG_BEAR or LEAN_BEAR
         bearish_count = (signals.iloc[150:]["bias"].isin(["STRONG_BEAR", "LEAN_BEAR"])).sum()
-        assert bearish_count > 0, (
-            "Bearish trend should produce bearish bias (STRONG_BEAR or LEAN_BEAR)"
-        )
+        assert (
+            bearish_count > 0
+        ), "Bearish trend should produce bearish bias (STRONG_BEAR or LEAN_BEAR)"
 
     def test_bias_neutral_mixed_indicators(self, ranging_ohlcv_df):
         """Mixed signals → NEUTRAL bias."""

@@ -107,7 +107,6 @@ def fetch_intraday(
     days: int = 180,
     force: bool = False,
 ) -> pd.DataFrame | None:
-
     ticker_sym = FUTURES_MAP.get(symbol.upper(), symbol)
     cache_file = CACHE_DIR / f"{symbol}_{interval}_{days}d.csv"
 

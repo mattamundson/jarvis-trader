@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
 type TFResult = { alignment: string; stc_value: number; signal: string };
 
@@ -42,7 +43,7 @@ export function WatchlistScanWidget({ symbols = "MES,MNQ,MCL" }: { symbols?: str
 
   const scan = () => {
     setLoading(true);
-    fetch(`http://localhost:8010/watchlist/scan?symbols=${encodeURIComponent(symbols)}`)
+    fetchEngine(`/watchlist/scan?symbols=${encodeURIComponent(symbols)}`)
       .then((r) => r.json())
       .then((d) => {
         setData(d);

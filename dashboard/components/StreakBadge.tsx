@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Flame, TrendingDown } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
 interface StreakData {
   current_streak: number;
@@ -19,9 +20,8 @@ export function StreakBadge() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch("http://localhost:8010/portfolio/stats/streaks");
-        if (!res.ok) throw new Error("fetch failed");
-        setData(await res.json());
+        const payload = await fetchEngine("/portfolio/stats/streaks");
+        setData(payload);
       } catch {
         setData(null);
       }
