@@ -2,6 +2,18 @@
 
 All conversation history and work logs from every development session, in chronological order.
 
+## Planning & roadmap
+
+| Doc | Purpose |
+|-----|---------|
+| [Integrated roadmap 2026-04](../plans/INTEGRATED_ROADMAP_2026-04.md) | Merged backlog: P0–P4, SWOT, scoped analysis passes, strategy guardrails |
+| [P0 paper + IB verification](../runbooks/P0_PAPER_IB_VERIFICATION.md) | Operational checklist: IB Gateway, engine health, paper_runner vs engine portfolio |
+| [Paper data sources (A/B/A+B)](../runbooks/PAPER_DATA_SOURCES.md) | Default ops: engine portfolio + optional runner sync |
+| [IB connector overview](../runbooks/IB_CONNECTOR_OVERVIEW.md) | P0.2 audit: connector vs health surfaces |
+| [Anthropic billing + pipeline smoke](../runbooks/ANTHROPIC_BILLING_AND_PIPELINE_SMOKE.md) | P2 external billing + `smoke_pipeline.py` |
+| [Gated symbols WFE playbook](../research/GATED_SYMBOLS_WFE_PLAYBOOK.md) | P4 MES/MGC/research gates |
+| [Analysis pass A–D summary](../architecture/CODEBASE_ANALYSIS_PASS_SUMMARY.md) | Condensed codebase milestones |
+
 ## Session Index
 
 | # | Log File | Date | Messages | Description |
@@ -11,6 +23,15 @@ All conversation history and work logs from every development session, in chrono
 | 3 | [Skill Project Log](jarvis-trader-skill-project-log.md) | Mar 29, 2026 | 435 lines | GMS Intelligence plugin skills, JARVIS dev companion |
 | 4 | [Dashboard Session 5](jarvis-trader-dashboard-session5-log.md) | Mar 30, 2026 | 157 lines | Dashboard enhancements, Three.js audit dashboard |
 | 5 | [Current Session](SESSION_LOG_CURRENT.md) | Mar 31, 2026 | 1,342 lines | 30-item audit, post-audit hardening (5 stories), quality gates, operational scripts |
+| 6 | [Session Log 2026-04-02](SESSION_LOG_2026-04-02.md) | Apr 2, 2026 | — | Phase 6 completion, P0 security scrub, `/health/full` fixes, Sprint 12 wrap-up (paper runner + dashboard build) |
+| 7 | [Cursor transcript archive](transcripts/ARCHIVE_0e951585-2622-4dad-8e88-e6dd89a4f98b.md) | Apr 2, 2026 | JSONL bundle | Verbatim Cursor agent transcript — parent [0e951585-2622-4dad-8e88-e6dd89a4f98b](transcripts/0e951585-2622-4dad-8e88-e6dd89a4f98b/) + subagents; see [transcripts/README.md](transcripts/README.md) |
+| 8 | [P0 comprehensive plan execution](P0_COMPREHENSIVE_PLAN_2026-04-02.md) | Apr 2, 2026 | — | Plan P0–P4 + analysis passes: scripts, docs, rate limit, contract tests, dashboard TS/build fixes |
+| 9 | [Next sprint execution (paper phase)](NEXT_SPRINT_EXECUTION_2026-04-02.md) | Apr 2–3, 2026 | — | P0 waiver + verify probe, git/pytest/RL/Session4 gates, smoke_pipeline, PM2/paper audit, cold-start test, optional WFE deferred |
+| 10 | [Comprehensive archive: Proceed + logging request](SESSION_COMPREHENSIVE_2026-04-02-proceed.md) | Apr 2, 2026 | — | Full cold-start test source, sprint recap, commands, where verbatim transcripts live |
+| 11 | [Comprehensive full context capture](SESSION_LOG_2026-04-02_COMPREHENSIVE_FULL.md) | Apr 2, 2026 | — | Master consolidated log: cold-start narrative, all 6 sessions summarized, full config, WFE results, RL status, P0 security, next steps |
+| 12 | [Sprint 10-Agent Parallel Deployment](SESSION_LOG_2026-04-02_SPRINT_10AGENTS.md) | Apr 2, 2026 | — | Documentation sprint: README rewrite (ports/Python/tests), MEMORY.md update, session index update, engine/CLAUDE.md verification, LAUNCH_QUICK_START.md verification |
+| 13 | [Dashboard fetchEngine backlog](DASHBOARD_FETCHENGINE_BACKLOG.md) | Apr 2, 2026 | — | Inventory of widgets on bare `fetch`; `EngineAvailabilityHint` uses `fetchEngine` |
+| 14 | [Transcript refresh log (bundle)](transcripts/REFRESH_LOG_2026-04-02.md) | Apr 2, 2026 | — | Secrets hook re-run; no new JSONL copied — see [transcripts/README.md](transcripts/README.md) |
 
 ## Compacted Summary (from session continuation)
 

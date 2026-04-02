@@ -5,8 +5,8 @@ import { AlertTriangle, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -102,14 +102,10 @@ export function MarketRegimeWidget() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${ENGINE_URL}/analytics/mtf?symbol=MES`, {
+      const payload = await fetchEngine(`/analytics/mtf?symbol=MES`, {
         cache: "no-store",
       });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const json: MtfAnalysisResponse = await res.json();
-      setData(json);
+      setData(payload);
       setError(null);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (e) {

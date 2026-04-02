@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 
 interface CircuitBreakerData {
   daily_pnl: number;
@@ -64,9 +63,7 @@ export function CircuitBreakerWidget() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch(`${ENGINE_URL}/safety/circuit-breakers`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json: CircuitBreakerData = await res.json();
+        const json = await fetchEngine<CircuitBreakerData>("/safety/circuit-breakers");
         setData(json);
         setError(null);
         setLastUpdated(new Date().toLocaleTimeString());

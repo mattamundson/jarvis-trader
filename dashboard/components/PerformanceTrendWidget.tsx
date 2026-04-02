@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface DailyPnlRecord {
   date: string;
@@ -52,7 +52,7 @@ export function PerformanceTrendWidget() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${ENGINE_URL}/portfolio/history/daily-pnl?limit=30`)
+    fetchEngine(`/portfolio/history/daily-pnl?limit=30`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<DailyPnlResponse>;

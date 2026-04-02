@@ -4,8 +4,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface DailyPnLEntry {
   date: string;
@@ -106,12 +106,10 @@ export function PnLStreakWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/daily-pnl?limit=60`
+      const payload: unknown = await fetchEngine(
+        `/portfolio/history/daily-pnl?limit=60`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: DailyPnLEntry[] = await res.json();
-      setEntries(Array.isArray(data) ? data : []);
+      setEntries(Array.isArray(payload) ? (payload as DailyPnLEntry[]) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch");
       setEntries([]);

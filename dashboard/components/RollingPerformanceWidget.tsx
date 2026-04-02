@@ -9,8 +9,8 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ export function RollingPerformanceWidget() {
       const dayParams = [7, 14, 30];
       const results = await Promise.all(
         dayParams.map((d) =>
-          fetch(`${ENGINE_URL}/analytics/performance/rolling?days=${d}`)
+          fetchEngine(`/analytics/performance/rolling?days=${d}`)
             .then((r) => {
               if (!r.ok) throw new Error(`HTTP ${r.status}`);
               return r.json();

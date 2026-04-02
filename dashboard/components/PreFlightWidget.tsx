@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, AlertTriangle, RefreshCw } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
 type CheckResult = {
   name: string;
@@ -39,8 +40,7 @@ export function PreFlightWidget() {
 
   const runCheck = () => {
     setLoading(true);
-    fetch("http://localhost:8010/system/preflight")
-      .then((r) => r.json())
+    fetchEngine<PreflightData>("/system/preflight")
       .then((d) => {
         setData(d);
         setLastRun(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));

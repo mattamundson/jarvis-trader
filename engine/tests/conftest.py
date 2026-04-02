@@ -4,9 +4,15 @@ Shared test fixtures for all test modules.
 """
 
 import os
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import pytest
+
+_tests_dir = Path(__file__).resolve().parent
+if str(_tests_dir) not in sys.path:
+    sys.path.insert(0, str(_tests_dir))
 
 # Set test environment variables BEFORE any imports
 test_env_vars = {
@@ -71,7 +77,7 @@ def mock_safety_layer(mock_settings):
 def mock_portfolio():
     """Standard test portfolio state."""
     return {
-        "total_value": 100_000.0,
+        "total_value": 10_000.0,
         "available_cash": 50_000.0,
         "margin_used_pct": 0.0,
         "daily_pnl": 0.0,

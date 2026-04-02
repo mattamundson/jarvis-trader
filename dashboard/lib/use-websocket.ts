@@ -48,9 +48,14 @@ interface WebSocketManagerConfig {
  * }, [lastEvent]);
  * ```
  */
+function defaultWsUrl(): string {
+  const engineHttp = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8010";
+  return engineHttp.replace(/^http/, "ws") + "/ws/events";
+}
+
 export function useWebSocket(config: WebSocketManagerConfig = {}): UseWebSocketReturn {
   const {
-    url = 'ws://localhost:8010/ws/events',
+    url = defaultWsUrl(),
     autoConnect = true,
     reconnectOnClose = true,
     maxReconnectAttempts = 10,

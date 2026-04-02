@@ -42,21 +42,19 @@ _ENGINE_BASE = "http://localhost:8010"
 
 def _engine_running() -> bool:
     """
-    Return True if the JARVIS engine is accepting connections on port 8010
-    AND the /health endpoint returns a 2xx response.
-
-    A connection-refused error means the engine is not started (skip tests).
-    A 404/5xx means a route is missing but the engine is up (tests will run
-    and report the missing routes explicitly).
+    True only for a full JARVIS stack on port 8010 (not a generic /health-only service).
+    See ``live_engine_probe.jarvis_engine_ready``.
     """
-    try:
-        with urllib.request.urlopen(f"{_ENGINE_BASE}/health", timeout=2) as resp:
-            return 200 <= resp.status < 300
-    except urllib.error.HTTPError:
-        # HTTP error from the engine — it's running but health route is broken
-        return True
-    except Exception:
-        return False
+    from live_engine_probe import jarvis_engine_ready
+
+    return jarvis_engine_ready(_ENGINE_BASE)
+
+
+def _session4_api_ready() -> bool:
+    """True when Session 4 HTTP contract routes are deployed (see live_engine_probe)."""
+    from live_engine_probe import session4_api_ready
+
+    return session4_api_ready(_ENGINE_BASE)
 
 
 # ===========================================================================
@@ -595,8 +593,10 @@ class TestPortfolioEndpoints(unittest.TestCase):
     def _get(self, path: str) -> tuple[int, dict]:
         """GET the given path and return (status_code, parsed_json)."""
         url = f"{self.BASE}{path}"
+        req = urllib.request.Request(url)
+        req.add_header("X-API-Key", "test-key")
         try:
-            with urllib.request.urlopen(url, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 return resp.status, json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             try:
@@ -1237,7 +1237,10 @@ class TestWebhookDedup(unittest.TestCase):
 # ===========================================================================
 
 
-@unittest.skipUnless(_engine_running(), "JARVIS engine not running on localhost:8010")
+@unittest.skipUnless(
+    _session4_api_ready(),
+    "Session 4 API not deployed on localhost:8010 (or engine down) — skipping contract tests",
+)
 class TestSession4Endpoints(unittest.TestCase):
     """
     Smoke-tests for Session 4 endpoints.
@@ -1255,8 +1258,10 @@ class TestSession4Endpoints(unittest.TestCase):
         url = f"{self.BASE}{path}"
         if params:
             url = f"{url}?{urlencode(params)}"
+        req = urllib.request.Request(url)
+        req.add_header("X-API-Key", "test-key")
         try:
-            with urllib.request.urlopen(url, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 return resp.status, json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             try:
@@ -1274,7 +1279,10 @@ class TestSession4Endpoints(unittest.TestCase):
         url = f"{self.BASE}{path}"
         data = json.dumps(payload).encode()
         req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json"}, method="POST"
+            url,
+            data=data,
+            headers={"Content-Type": "application/json", "X-API-Key": "test-key"},
+            method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
@@ -1426,8 +1434,10 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
         url = f"{self.BASE}{path}"
         if params:
             url = f"{url}?{urlencode(params)}"
+        req = urllib.request.Request(url)
+        req.add_header("X-API-Key", "test-key")
         try:
-            with urllib.request.urlopen(url, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 return resp.status, json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             try:
@@ -1445,7 +1455,10 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
         url = f"{self.BASE}{path}"
         data = json.dumps(payload).encode()
         req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json"}, method="POST"
+            url,
+            data=data,
+            headers={"Content-Type": "application/json", "X-API-Key": "test-key"},
+            method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
@@ -1461,8 +1474,10 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        if not _engine_running():
-            raise unittest.SkipTest("Engine not running — start with: uvicorn main:app --port 8010")
+        if not _session4_api_ready():
+            raise unittest.SkipTest(
+                "Session 4 API not deployed — see live_engine_probe.session4_api_ready"
+            )
 
     # ── GET /analytics/trades/by-day ──────────────────────────────────────────
 
@@ -1555,14 +1570,17 @@ class TestSession4ContinuationEndpoints(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        if not _engine_running():
-            raise unittest.SkipTest("Engine not running — start with: uvicorn main:app --port 8010")
+        if not _session4_api_ready():
+            raise unittest.SkipTest(
+                "Session 4 API not deployed — see live_engine_probe.session4_api_ready"
+            )
 
     def _get(self, path: str) -> tuple[int, dict]:
         """GET path and return (status_code, body)."""
         import json as _json
 
         req = urllib.request.Request(f"{self.BASE_URL}{path}")
+        req.add_header("X-API-Key", "test-key")
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return resp.status, _json.loads(resp.read().decode())

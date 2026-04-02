@@ -323,6 +323,41 @@ class JarvisLLMClient:
         output_cost = (output_tokens / 1_000_000) * costs["output"]
         return input_cost + output_cost
 
+    async def track_raw_call(
+        self,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        latency_ms: int,
+        agent_name: str = "unknown",
+        success: bool = True,
+    ) -> None:
+        """
+        Record cost metrics for an LLM call made via raw HTTP (not via .call()).
+
+        Use this in agents that build their own httpx/requests calls so that their
+        token usage still appears in the /llm/stats endpoint.
+
+        Args:
+            model: Model name, e.g. "claude-sonnet-4-6"
+            input_tokens: Input token count from the API response usage field
+            output_tokens: Output token count from the API response usage field
+            latency_ms: Elapsed wall-clock milliseconds for the HTTP round-trip
+            agent_name: Calling agent identifier (for per-agent cost breakdown)
+            success: True if the HTTP call returned a 2xx status
+        """
+        cost = self._calculate_cost(model, input_tokens, output_tokens)
+        await self.cost_tracker.log_call(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            latency_ms=latency_ms,
+            agent_name=agent_name,
+            success=success,
+        )
+
     async def get_daily_stats(self) -> dict:
         """
         Get daily cost and usage statistics.

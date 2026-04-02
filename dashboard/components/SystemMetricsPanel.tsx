@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Database, Activity, Clock } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // Shape of GET /health response
 interface HealthResponse {
@@ -110,24 +110,18 @@ export function SystemMetricsPanel() {
     const load = async () => {
       try {
         // Fetch basic health
-        const res = await fetch(`${ENGINE_URL}/health`);
-        if (res.ok) {
-          const json = (await res.json()) as HealthResponse;
-          setHealth(json);
-        }
+        const json = await fetchEngine<HealthResponse>(`/health`);
+        setHealth(json);
       } catch {
         // ignore — engine may be offline
       }
 
       try {
         // Fetch full health to get DB row counts from subsystems.database.details
-        const fullRes = await fetch(`${ENGINE_URL}/health/full`);
-        if (fullRes.ok) {
-          const fullJson = (await fullRes.json()) as FullHealthPartial;
-          const details = fullJson?.subsystems?.database?.details;
-          if (details) {
-            setDbDetails(details);
-          }
+        const fullJson = await fetchEngine<FullHealthPartial>(`/health/full`);
+        const details = fullJson?.subsystems?.database?.details;
+        if (details) {
+          setDbDetails(details);
         }
       } catch {
         // ignore

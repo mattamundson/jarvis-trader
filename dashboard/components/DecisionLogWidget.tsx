@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Activity, Clock, Cpu } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -177,11 +177,11 @@ export function DecisionLogWidget() {
     try {
       // Fetch recent decisions (in-memory ring buffer, newest last)
       const decisionsRes = await fetch(
-        `${ENGINE_URL}/decisions/recent?limit=10`,
+        `/decisions/recent?limit=10`,
         { cache: "no-store" }
       );
       // Fetch pipeline status for availability + count
-      const statusRes = await fetch(`${ENGINE_URL}/pipeline/status`, {
+      const statusRes = await fetchEngine(`/pipeline/status`, {
         cache: "no-store",
       });
 

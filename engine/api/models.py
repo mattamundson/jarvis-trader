@@ -184,6 +184,14 @@ class SafetyStatusResponse(BaseModel):
     starting_balance: float = Field(0, description="Starting balance")
     pnl_source: str = Field("sqlite", description="P&L data source")
     current_balance: float = Field(0, description="Current balance")
+    orders_last_minute: Optional[int] = Field(
+        None, description="Orders recorded in the last minute"
+    )
+    consecutive_losses: Optional[int] = Field(
+        None, description="Consecutive losing trades (loss tracker)"
+    )
+    equity_peak: Optional[float] = Field(None, description="Peak equity from safety snapshot")
+    daily_realized_pnl: Optional[float] = Field(None, description="Daily realized P&L component")
 
 
 class CircuitBreakerStatus(BaseModel):

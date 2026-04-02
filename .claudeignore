@@ -1,0 +1,47 @@
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Virtual environment (huge — never needed)
+engine/.venv/
+
+# Databases (binary files)
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Log files
+**/*.log
+logs/
+engine/logs/
+
+# Backtest generated outputs (large, regenerated on demand)
+engine/backtest/cache/
+engine/backtest/results/
+
+# Node.js
+dashboard/node_modules/
+dashboard/.next/
+dashboard/.turbo/
+
+# Historical/archive docs (not needed for active coding)
+docs/session-logs/
+docs/archive/
+docs/dashboards/
+
+# ThinkorSwim scripts (separate project, unrelated)
+thinkorswim-scripts/
+
+# Test artifacts
+.pytest_cache/
+**/*.coverage
+engine/pytest.log
+
+# Infrastructure config (rarely touched)
+infrastructure/
+
+# Redundant implementation summary docs in engine root
+engine/IMPLEMENTATION_COMPLETE.md
+engine/IMPLEMENTATION_SUMMARY.md
+engine/PYDANTIC_MODELS_SUMMARY.txt

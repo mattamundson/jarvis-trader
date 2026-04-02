@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 const REFRESH_MS = 2 * 60 * 1000; // 2 minutes
 
 // ── Types ─────────────────────────────────────────────────────────────────────

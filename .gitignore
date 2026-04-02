@@ -61,6 +61,10 @@ data/*.csv
 data/*.h5
 data/*.pkl
 
+# RL training artifacts (large; regenerate locally)
+engine/data/rl_cache/
+engine/data/rl_models/
+
 # Logs
 *.log
 logs/

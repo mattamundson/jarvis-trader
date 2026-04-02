@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
 type AlertEntry = {
   id: number;
@@ -37,12 +38,11 @@ export function AlertHistoryLog() {
 
   useEffect(() => {
     const load = () => {
-      const url =
+      const path =
         filter === "all"
-          ? "http://localhost:8010/alerts/history?limit=50"
-          : `http://localhost:8010/alerts/history?limit=50&alert_type=${filter}`;
-      fetch(url)
-        .then((r) => r.json())
+          ? "/alerts/history?limit=50"
+          : `/alerts/history?limit=50&alert_type=${filter}`;
+      fetchEngine<{ alerts: AlertEntry[] }>(path)
         .then((d) => {
           setAlerts(d.alerts ?? []);
           setLoading(false);

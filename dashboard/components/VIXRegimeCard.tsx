@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ export function VIXRegimeCard() {
   const fetchData = async () => {
     try {
       // POST /notifications/vix-alert-check — returns vix + regime
-      const vixRes = await fetch(`${ENGINE_URL}/notifications/vix-alert-check`, {
+      const vixRes = await fetch(`/notifications/vix-alert-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -101,7 +101,7 @@ export function VIXRegimeCard() {
       // GET /settings/risk — returns max_contracts
       let maxContracts = 1;
       try {
-        const riskRes = await fetch(`${ENGINE_URL}/settings/risk`);
+        const riskRes = await fetchEngine(`/settings/risk`);
         if (riskRes.ok) {
           const riskJson: RiskSettingsResponse = await riskRes.json();
           maxContracts = riskJson.config?.max_contracts ?? 1;

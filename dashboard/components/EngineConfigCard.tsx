@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, Cpu } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface HealthData {
   version: string;
@@ -82,8 +82,8 @@ export function EngineConfigCard() {
     try {
       // Fetch /health and /settings/risk in parallel
       const [healthRes, riskRes] = await Promise.allSettled([
-        fetch(`${ENGINE_URL}/health`, { cache: "no-store" }),
-        fetch(`${ENGINE_URL}/settings/risk`, { cache: "no-store" }),
+        fetchEngine(`/health`, { cache: "no-store" }),
+        fetchEngine(`/settings/risk`, { cache: "no-store" }),
       ]);
 
       let health: HealthData | null = null;

@@ -142,10 +142,14 @@ class TestCostTracking:
         """Test monthly summary with daily breakdown."""
         now = datetime.now(timezone.utc)
 
-        # Log 10 calls
+        # Log 10 calls — normalise to midnight so all records fall before any
+        # month_start timestamp computed inside get_monthly_summary (which uses
+        # the current wall-clock time, not midnight).
         for i in range(10):
             await cost_tracker.log_call(
-                timestamp=now.replace(day=min(i + 1, 28)).isoformat(),
+                timestamp=now.replace(
+                    day=min(i + 1, 28), hour=0, minute=0, second=0, microsecond=0
+                ).isoformat(),
                 model="claude-sonnet-4-6",
                 input_tokens=500,
                 output_tokens=200,

@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Database } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ interface DbInfo {
 
 interface HealthResponse {
   status?: string;
-  database?: DbInfo;
+  database?: DbInfo | string;
   uptime_seconds?: number;
 }
 
@@ -91,24 +91,21 @@ export function DatabaseStatusWidget() {
 
   async function fetchStatus() {
     try {
-      const res = await fetch(`${ENGINE_URL}/health`);
-      if (!res.ok) {
-        // API responded but not OK — treat DB as disconnected
-        setState((prev) => ({
-          ...prev,
-          connected: false,
+      const json = await fetchEngine<HealthResponse>(`/health`);
+      const db = json.database;
+
+      if (typeof db === "string") {
+        setState({
+          connected: db === "connected",
+          path: null,
+          size_bytes: null,
+          tables: null,
+          uptime_seconds: json.uptime_seconds ?? null,
           loading: false,
           error: false,
           lastChecked: new Date(),
-        }));
-        return;
-      }
-
-      const json: HealthResponse = await res.json();
-
-      const db = json.database;
-
-      if (db) {
+        });
+      } else if (db && typeof db === "object") {
         setState({
           connected: db.connected ?? true,
           path: db.path ?? null,
@@ -123,7 +120,7 @@ export function DatabaseStatusWidget() {
         // /health returned OK but no database key — try fallback
         try {
           const fallback = await fetch(
-            `${ENGINE_URL}/portfolio/history/trades?limit=1`
+            `/portfolio/history/trades?limit=1`
           );
           setState({
             connected: fallback.ok,

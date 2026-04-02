@@ -3,6 +3,11 @@ FRED Economic Data
 ==================
 Federal Reserve Economic Data — free, no API key needed via fredapi.
 Provides macro context for trading decisions.
+
+When FRED is unreachable (rate-limited, no API key, network issues), all
+public methods fall back to FRED_SNAPSHOT_DEFAULTS so callers always receive
+numeric values rather than None. Defaults reflect Q1 2026 levels and should
+be updated quarterly.
 """
 
 import logging
@@ -12,6 +17,16 @@ from typing import Optional
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# Hardcoded fallback values used when FRED cannot be reached.
+# Series: DGS10 (ten_year_yield) is the most commonly requested — keep accurate.
+FRED_SNAPSHOT_DEFAULTS: dict[str, float] = {
+    "FEDFUNDS": 4.33,  # Federal Funds Rate
+    "GS10": 4.30,  # 10-Year Treasury Yield (GS10, monthly)
+    "GS2": 4.05,  # 2-Year Treasury Yield
+    "VIXCLS": 20.0,  # CBOE VIX (daily close)
+    "UNRATE": 4.1,  # Unemployment Rate
+}
 
 # Key FRED series for trading context
 FRED_SERIES = {
@@ -80,10 +95,27 @@ class FREDDataService:
             return None
 
     def get_latest(self, series_id: str) -> Optional[float]:
-        """Get the most recent value for a series."""
+        """
+        Get the most recent value for a series.
+        Returns the live FRED value when available; falls back to
+        FRED_SNAPSHOT_DEFAULTS and logs a WARNING when the series cannot
+        be fetched (API key missing, rate-limited, network error, etc.).
+        """
         data = self.get_series(series_id, periods=3)
         if data is not None and len(data) > 0:
             return float(data.dropna().iloc[-1])
+
+        default_val = FRED_SNAPSHOT_DEFAULTS.get(series_id)
+        if default_val is not None:
+            logger.warning(
+                f"FRED series {series_id} unavailable — using hardcoded default "
+                f"{default_val} (update FRED_SNAPSHOT_DEFAULTS quarterly)"
+            )
+            return default_val
+
+        logger.warning(
+            f"FRED series {series_id} unavailable and no default defined — returning None"
+        )
         return None
 
     def get_macro_snapshot(self) -> dict:

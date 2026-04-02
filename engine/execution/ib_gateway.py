@@ -20,8 +20,44 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 from typing import Optional
+
+
+def _nearest_front_month(reference: Optional[date] = None) -> str:
+    """
+    Return the nearest active front-month expiry as "YYYYMM" (IB contract month format).
+
+    Used for monthly-expiry futures (MCL crude oil) where the front month rolls
+    approximately on the 25th of the month prior to delivery.
+    """
+    ref = reference or date.today()
+    # If we're past the 20th, the current month has likely rolled — use next month
+    if ref.day >= 20:
+        if ref.month == 12:
+            return f"{ref.year + 1}01"
+        return f"{ref.year}{ref.month + 1:02d}"
+    return f"{ref.year}{ref.month:02d}"
+
+
+def _nearest_quarterly_expiry(reference: Optional[date] = None) -> str:
+    """
+    Return the nearest active quarterly expiry as "YYYYMMDD".
+
+    Quarterly months: March (3), June (6), September (9), December (12).
+    Approximate expiry: third Friday ~21st of expiry month.
+    """
+    ref = reference or date.today()
+    quarterly_months = [3, 6, 9, 12]
+    expiry_day_approx = 21
+    for month in quarterly_months:
+        candidate = date(ref.year, month, expiry_day_approx)
+        if candidate > ref:
+            return candidate.strftime("%Y%m%d")
+    # All quarterly months in current year passed — use March of next year
+    return date(ref.year + 1, 3, expiry_day_approx).strftime("%Y%m%d")
+
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +138,24 @@ FUTURES_SYMBOL_MAP: dict[str, dict] = {
         "currency": "USD",
         "secType": "FUT",
         "multiplier": "2",
+    },
+    # Micro Crude Oil — NYMEX (approved paper-trading instrument, WFE=0.82)
+    # Error 321 root cause: MCL was missing from this map and fell back to Stock().
+    # Fix: explicitly map MCL to NYMEX with correct contract metadata.
+    "MCL": {
+        "underlying": "MCL",
+        "exchange": "NYMEX",
+        "currency": "USD",
+        "secType": "FUT",
+        "multiplier": "100",
+    },
+    # Micro Gold — COMEX
+    "MGC": {
+        "underlying": "MGC",
+        "exchange": "COMEX",
+        "currency": "USD",
+        "secType": "FUT",
+        "multiplier": "10",
     },
     # Extended micro-futures for future use
     "MYM": {
@@ -354,15 +408,29 @@ class IBGatewayManager:
 
         if upper in FUTURES_SYMBOL_MAP:
             spec = FUTURES_SYMBOL_MAP[upper]
-            # Use empty lastTradeDateOrContractMonth to let IB resolve front month
+
+            # MCL (Micro Crude Oil) uses monthly expiry; all others use quarterly.
+            # Providing lastTradeDateOrContractMonth prevents IB Error 321
+            # ("Error validating request") which occurs when the contract spec is
+            # ambiguous because both exchange AND expiry are unspecified.
+            if upper == "MCL":
+                contract_month = _nearest_front_month()
+            else:
+                contract_month = _nearest_quarterly_expiry()
+
             contract = Future(
                 symbol=spec["underlying"],
+                lastTradeDateOrContractMonth=contract_month,
                 exchange=spec["exchange"],
                 currency=spec["currency"],
                 multiplier=spec["multiplier"],
             )
             logger.debug(
-                "Resolved %s → Future(%s, %s)", symbol, spec["underlying"], spec["exchange"]
+                "Resolved %s → Future(%s, %s, month=%s)",
+                symbol,
+                spec["underlying"],
+                spec["exchange"],
+                contract_month,
             )
             return contract
 
@@ -391,7 +459,9 @@ class IBGatewayManager:
 
     # ── Order placement ───────────────────────────────────────────────────
 
-    def _validate_order_preconditions(self, action: str, quantity: int) -> Optional[tuple[str, str]]:
+    def _validate_order_preconditions(
+        self, action: str, quantity: int
+    ) -> Optional[tuple[str, str]]:
         """Validate safety and input preconditions. Returns (action_upper, order_type_upper) or None."""
         if self._config.port == LIVE_TRADING_PORT:
             logger.critical("place_paper_order: port 4001 rejected — live trading disabled")

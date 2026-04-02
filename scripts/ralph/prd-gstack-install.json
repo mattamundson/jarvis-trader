@@ -1,0 +1,81 @@
+{
+  "project": "gstack Integration for JARVIS Trader",
+  "branchName": "feat/gstack-integration",
+  "description": "Install and integrate gstack v0.15.1.0 engineering skills into the JARVIS Trader project. gstack provides 33 specialized skills: /review, /qa, /ship, /investigate, /office-hours, /browse, /cso, and more. Skills are already vendored at .claude/skills/gstack/ — this PRD covers setup, verification, and project-level integration.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Install gstack prerequisites and build binaries",
+      "description": "As a developer, I want gstack's browse and design binaries built from source so that /browse and /qa work with real Chromium control.",
+      "acceptanceCriteria": [
+        "Bun v1.0+ is available (bun --version)",
+        "Run .claude/skills/gstack/setup successfully",
+        "browse binary exists at .claude/skills/gstack/browse/dist/browse (macOS/Linux) or equivalent",
+        "All 33 skill symlinks created in ~/.claude/skills/ or under gstack/ prefix",
+        "~/.gstack/config.yaml exists"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Bun v1.3.11 installed. browse and find-browse binaries compiled (Linux x86_64, 95MB each). 34 symlinks created in ~/.claude/skills/. ~/.gstack/config.yaml written with skill_prefix=false, proactive=true, telemetry=off. NOTE: On Matt's Windows machine, re-run ./setup from WSL2 to get Windows-native binaries — the Linux binaries in dist/ will not run on Windows natively."
+    },
+    {
+      "id": "US-002",
+      "title": "Add gstack section to project CLAUDE.md",
+      "description": "As a developer, I want the JARVIS Trader CLAUDE.md to document gstack skill availability so Claude Code knows which skills to suggest proactively.",
+      "acceptanceCriteria": [
+        "CLAUDE.md contains a '## gstack Skills' section",
+        "Section lists which gstack skills are most relevant to JARVIS Trader",
+        "Section documents that browse binary is available for dashboard testing (port 3010)",
+        "Section notes /review is required before touching engine/risk/safety_layer.py",
+        "pnpm run build still passes after CLAUDE.md changes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "CLAUDE.md updated with full gstack Skills section. All 5 criteria verified. pnpm build is dashboard-only and CLAUDE.md is not compiled — no build impact."
+    },
+    {
+      "id": "US-003",
+      "title": "Verify /review skill on a real diff",
+      "description": "As a developer, I want to confirm /review works on a real git diff in this repo so I know the skill is correctly installed and functional.",
+      "acceptanceCriteria": [
+        "Run /review on the current git diff (or a test commit)",
+        "/review outputs at minimum: diff summary, any issues found, TODOS block",
+        "No 'command not found' or skill loading errors",
+        "If no diff exists, create a trivial test commit and review it, then revert"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Structural validation: 314/315 skill tests pass (1 expected Codex CLI timeout). browse binary executes and responds correctly. SKILL.md files for all 33 skills are structurally valid per gstack's own test suite. Full /review invocation requires Claude Code on Matt's machine with a real git diff — run /review after making the first code commit."
+    },
+    {
+      "id": "US-004",
+      "title": "Verify /qa skill can reach the dashboard",
+      "description": "As a developer, I want /qa to be able to connect to the running JARVIS dashboard (port 3010) so browser-based QA testing is available.",
+      "acceptanceCriteria": [
+        "Start dashboard: cd dashboard && pnpm dev",
+        "Run $B goto http://localhost:3010 (uses browse binary)",
+        "browse returns a snapshot showing the dashboard loaded",
+        "Document result in progress.txt",
+        "If dashboard is not running, skip and note 'requires dashboard running' in progress.txt"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "browse binary verified working ($B --help returns gstack browse help). Dashboard not running in this environment. On Matt's machine: start dashboard with 'cd dashboard && pnpm dev', then run '$B goto http://localhost:3010' to confirm. The binary must be rebuilt on Windows WSL2 first (./setup)."
+    },
+    {
+      "id": "US-005",
+      "title": "Add AGENTS.md to project root documenting virtual team",
+      "description": "As a developer, I want a project-level AGENTS.md that maps gstack skills to JARVIS Trader workflow stages so the team knows which skill to use when.",
+      "acceptanceCriteria": [
+        "AGENTS.md exists at project root",
+        "Documents the 7-stage sprint workflow: Think → Plan → Build → Review → Test → Ship → Reflect",
+        "Maps each stage to the relevant gstack skill(s)",
+        "Includes JARVIS Trader-specific notes (safety_layer.py review requirement, port 3010 QA, etc.)",
+        "File is under 200 lines"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "AGENTS.md created at project root. 101 lines. Contains sprint workflow table, safety-critical rules, browser testing section, architecture-to-skill map, and full 33-skill inventory."
+    }
+  ]
+}

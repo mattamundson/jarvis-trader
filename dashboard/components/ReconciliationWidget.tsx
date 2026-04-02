@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
 interface ReconcileResult {
   ib_connected: boolean;
@@ -32,9 +33,8 @@ export function ReconciliationWidget() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8010/ib/reconcile");
-      if (!res.ok) throw new Error();
-      setData(await res.json());
+      const payload = await fetchEngine("/ib/reconcile");
+      setData(payload);
     } catch {
       setData(null);
     } finally {

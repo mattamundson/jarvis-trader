@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 const STARTING_BALANCE = 10_000;
 
 interface PaperPhaseSummaryResponse {
@@ -42,6 +42,15 @@ function badgeVariant(roi: number): "bull" | "info" | "bear" {
   return "bear";
 }
 
+/** `/portfolio/stats/paper-phase-summary` payload subset */
+interface PaperPhaseSummary {
+  current_balance?: number;
+  balance?: number;
+  total_pnl?: number;
+  trading_days?: number;
+  days_traded?: number;
+}
+
 export function AccountROIWidget() {
   const [data, setData] = useState<ROIState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,9 +58,9 @@ export function AccountROIWidget() {
 
   async function fetchStats() {
     try {
-      const res = await fetch(`${ENGINE_URL}/portfolio/stats/paper-phase-summary`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: PaperPhaseSummaryResponse = await res.json();
+      const json = await fetchEngine<PaperPhaseSummary>(
+        `/portfolio/stats/paper-phase-summary`,
+      );
 
       const currentBalance =
         json.current_balance ??

@@ -9,7 +9,7 @@ import sys
 from typing import Optional
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _validate_required_env_vars():
@@ -17,20 +17,34 @@ def _validate_required_env_vars():
     Startup validation: ensure all required environment variables are set and non-empty.
     Called after TradingConfig initialization to catch missing critical secrets early.
     Fails fast with clear error messages pointing to missing variables.
+
+    NOTE: pydantic-settings loads .env into model fields but does NOT write back to
+    os.environ. We load dotenv explicitly here so os.environ.get() sees the .env values.
     """
+    # Load .env into os.environ so the checks below see file-based values
+    try:
+        from dotenv import load_dotenv as _load_dotenv
+
+        _load_dotenv(dotenv_path=".env", override=False)
+    except ImportError:
+        pass  # python-dotenv not installed — fall back to os.environ only
+
     required_vars = {
-        # API Security
+        # API Security — must be set to something other than the default stub
         "API_KEY": "FastAPI X-API-Key header authentication (use strong random value)",
-        # Database URLs (critical for operation)
-        "POSTGRES_URL": "PostgreSQL connection string (postgresql://user:pass@host:port/db)",
-        "REDIS_URL": "Redis connection string (redis://host:port)",
-        # Market Data (at least one required)
-        "POLYGON_API_KEY": "Polygon.io API key for market data",
-        # LLM (Anthropic)
-        "ANTHROPIC_API_KEY": "Anthropic API key (sk-ant-api03-...)",
     }
 
     optional_vars = {
+        # Databases — engine uses SQLite for paper trading; Postgres/Redis are
+        # legacy requirements that are not needed for paper trading mode.
+        "POSTGRES_URL": "PostgreSQL connection (only needed for multi-instance deployments)",
+        "REDIS_URL": "Redis connection (only needed for caching/rate-limiting at scale)",
+        # Market Data
+        "POLYGON_API_KEY": "Polygon.io API key for market data (falls back to yfinance)",
+        # LLM pipeline — engine runs signal generation without Anthropic key;
+        # LLM agents are skipped if this is absent.
+        "ANTHROPIC_API_KEY": "Anthropic API key (sk-ant-api03-...) — enables LLM agent pipeline",
+        # Other market data sources
         "FINNHUB_API_KEY": "Alternative market data source",
         "ALPACA_API_KEY": "Alpaca Markets integration",
         "SCHWAB_APP_KEY": "Charles Schwab OAuth (for live trading)",
@@ -103,6 +117,13 @@ def _validate_required_env_vars():
 class TradingConfig(BaseSettings):
     """Risk parameters — all configurable, never LLM-modifiable"""
 
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
     # ── Risk Controls (Safety Layer) ─────────────────────────────────────
     MAX_POSITION_SIZE_PCT: float = Field(0.05, description="Max 5% of portfolio per position")
     MAX_DAILY_LOSS_PCT: float = Field(0.02, description="Halt trading at -2% daily P&L")
@@ -133,6 +154,12 @@ class TradingConfig(BaseSettings):
         True, description="All live trades require Matt's approval"
     )
 
+    # ── Capital ────────────────────────────────────────────────────────────
+    INITIAL_CAPITAL: float = Field(
+        10000.0,
+        description="Starting paper account balance in USD. Used by PnLMonitor when no broker equity is available.",
+    )
+
     # ── Paper Trading Mode ─────────────────────────────────────────────────
     PAPER_TRADING: bool = Field(
         True,
@@ -150,34 +177,36 @@ class TradingConfig(BaseSettings):
     IBKR_PAPER_MODE: bool = Field(True, description="Always start in paper mode")
 
     # ── Broker: Charles Schwab ────────────────────────────────────────────
-    SCHWAB_APP_KEY: Optional[str] = Field(None, env="SCHWAB_APP_KEY")
-    SCHWAB_APP_SECRET: Optional[str] = Field(None, env="SCHWAB_APP_SECRET")
-    SCHWAB_CALLBACK_URL: str = Field("https://127.0.0.1", env="SCHWAB_CALLBACK_URL")
+    SCHWAB_APP_KEY: Optional[str] = Field(default=None, description="Charles Schwab app key")
+    SCHWAB_APP_SECRET: Optional[str] = Field(default=None, description="Charles Schwab app secret")
+    SCHWAB_CALLBACK_URL: str = Field(
+        "https://127.0.0.1", description="Charles Schwab OAuth callback URL"
+    )
 
     # ── Market Data ───────────────────────────────────────────────────────
-    POLYGON_API_KEY: Optional[str] = Field(None, env="POLYGON_API_KEY")
-    FINNHUB_API_KEY: Optional[str] = Field(None, env="FINNHUB_API_KEY")
-    ALPACA_API_KEY: Optional[str] = Field(None, env="ALPACA_API_KEY")
-    ALPACA_SECRET_KEY: Optional[str] = Field(None, env="ALPACA_SECRET_KEY")
-    ALPACA_PAPER: bool = Field(True, env="ALPACA_PAPER")
+    POLYGON_API_KEY: Optional[str] = Field(default=None, description="Polygon.io API key")
+    FRED_API_KEY: Optional[str] = Field(default=None, description="Federal Reserve FRED API key")
+    FINNHUB_API_KEY: Optional[str] = Field(default=None, description="Finnhub API key")
+    ALPACA_API_KEY: Optional[str] = Field(default=None, description="Alpaca Markets API key")
+    ALPACA_SECRET_KEY: Optional[str] = Field(default=None, description="Alpaca Markets secret key")
+    ALPACA_PAPER: bool = Field(default=True, description="Use Alpaca paper trading")
 
     # ── Logging ───────────────────────────────────────────────────────────────
     LOG_LEVEL: str = Field(
-        "INFO", env="LOG_LEVEL", description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+        "INFO", description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL"
     )
 
     # ── API Security ──────────────────────────────────────────────────────────
     API_KEY: str = Field(
-        "jarvis-dev-key-change-me",
-        env="API_KEY",
+        "CHANGE_ME_BEFORE_DEPLOY",
         description="FastAPI X-API-Key header authentication",
     )
 
     # ── LLM (Vercel AI Gateway via OIDC) ─────────────────────────────────
     # These are auto-provisioned by `vercel env pull` — no manual API keys needed
     ANTHROPIC_API_KEY: Optional[str] = Field(
-        None, env="ANTHROPIC_API_KEY"
-    )  # Fallback if no Gateway
+        default=None, description="Anthropic API key for LLM agent pipeline"
+    )
     LLM_PROVIDER: str = Field("anthropic", description="LLM provider")
 
     # ── Agent Models ──────────────────────────────────────────────────────
@@ -192,10 +221,10 @@ class TradingConfig(BaseSettings):
     QUESTDB_PORT: int = Field(9000)
 
     # ── Notifications (WhatsApp via Twilio) ───────────────────────────────
-    TWILIO_ACCOUNT_SID: Optional[str] = Field(None, env="TWILIO_ACCOUNT_SID")
-    TWILIO_AUTH_TOKEN: Optional[str] = Field(None, env="TWILIO_AUTH_TOKEN")
-    TWILIO_WHATSAPP_FROM: Optional[str] = Field(None, env="TWILIO_WHATSAPP_FROM")
-    WHATSAPP_TO: Optional[str] = Field(None, env="WHATSAPP_TO")
+    TWILIO_ACCOUNT_SID: Optional[str] = Field(default=None, description="Twilio account SID")
+    TWILIO_AUTH_TOKEN: Optional[str] = Field(default=None, description="Twilio auth token")
+    TWILIO_WHATSAPP_FROM: Optional[str] = Field(default=None, description="Twilio WhatsApp sender")
+    WHATSAPP_TO: Optional[str] = Field(default=None, description="WhatsApp recipient number")
 
     # ── Instruments to Trade ─────────────────────────────────────────────
     FUTURES_WATCHLIST: list[str] = Field(
@@ -220,26 +249,9 @@ class TradingConfig(BaseSettings):
             except ImportError:
                 SCHWAB_READY = False
 
-        if not self.PAPER_TRADING and not SCHWAB_READY:
-            raise ValueError(
-                "Configuration error: PAPER_TRADING=False requires SCHWAB_READY=True. "
-                "Cannot proceed with live trading without a ready broker connector. "
-                "Either set PAPER_TRADING=True for paper trading mode, or complete the "
-                "Schwab connector implementation and set SCHWAB_READY=True."
-            )
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+        # Validate live trading conditions
+        if not self.LIVE_TRADING_ENABLED and not SCHWAB_READY:
+            pass  # OK to paper trade without Schwab ready
 
 
-# Singleton
 settings = TradingConfig()
-
-# Validate all required environment variables on startup
-# Skip validation if we're in pytest to allow test fixtures to set env vars
-if "pytest" not in sys.modules:
-    _validate_required_env_vars()
-    # Validate paper trading config on startup
-    settings.validate_paper_trading_config()

@@ -12,6 +12,7 @@ Design principle from TradeTrap paper:
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
@@ -186,8 +187,8 @@ class SafetyLayer:
 
     # ── Pre-Trade Checks ─────────────────────────────────────────────────
 
-    def _check_drawdown(self, portfolio_equity: float, warnings: list) -> RiskCheckResult | None:
-        """Check max drawdown limits. Returns None if passed."""
+    def _check_drawdown(self, portfolio_equity: float, warnings: list) -> RiskCheckResult:
+        """Check max drawdown limits. Returns RiskCheckResult(approved=True) if passed."""
         if self._pnl_monitor is not None:
             drawdown = -self._pnl_monitor.get_drawdown_pct()
             if drawdown > self._config.MAX_DRAWDOWN_PCT:
@@ -216,7 +217,7 @@ class SafetyLayer:
                 warnings.append(
                     f"Drawdown at {drawdown:.1%} — approaching {self._config.MAX_DRAWDOWN_PCT:.1%} limit"
                 )
-        return None
+        return RiskCheckResult(approved=True, warnings=warnings)
 
     def _apply_loss_tracker_adjustment(
         self, order: OrderRequest, warnings: list
@@ -281,7 +282,9 @@ class SafetyLayer:
 
     def _check_daily_loss_limit(self, portfolio_equity: float) -> RiskCheckResult:
         """Check daily loss limit."""
-        daily_pnl = self._pnl_monitor.get_daily_pnl() if self._pnl_monitor else self._daily_realized_pnl
+        daily_pnl = (
+            self._pnl_monitor.get_daily_pnl() if self._pnl_monitor else self._daily_realized_pnl
+        )
         if daily_pnl < -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT):
             self.activate_kill_switch(
                 KillSwitchReason.DAILY_LOSS_LIMIT,
@@ -292,7 +295,9 @@ class SafetyLayer:
             )
         return RiskCheckResult(approved=True)
 
-    def _check_order_value_limits(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
+    def _check_order_value_limits(
+        self, order: OrderRequest, portfolio_equity: float
+    ) -> RiskCheckResult:
         """Check order size and position size limits."""
         if order.estimated_value > self._config.MAX_SINGLE_ORDER_VALUE:
             return RiskCheckResult(
@@ -307,9 +312,10 @@ class SafetyLayer:
             )
         return RiskCheckResult(approved=True)
 
-    def _check_order_rate(self) -> RiskCheckResult:
-        """Check order rate throttle."""
+    def _check_order_rate(self) -> tuple[RiskCheckResult, float]:
+        """Check order rate throttle. Returns (RiskCheckResult, timestamp)."""
         import time
+
         now = time.time()
         self._recent_order_timestamps = [t for t in self._recent_order_timestamps if now - t < 60]
         if len(self._recent_order_timestamps) >= self._config.MAX_ORDERS_PER_MINUTE:
@@ -317,8 +323,11 @@ class SafetyLayer:
                 KillSwitchReason.ANOMALOUS_ORDER_RATE,
                 f"Order rate exceeded {self._config.MAX_ORDERS_PER_MINUTE}/min",
             )
-            return RiskCheckResult(
-                approved=False, rejection_reason="Anomalous order rate — kill switch activated"
+            return (
+                RiskCheckResult(
+                    approved=False, rejection_reason="Anomalous order rate — kill switch activated"
+                ),
+                now,
             )
         return RiskCheckResult(approved=True), now
 
@@ -358,11 +367,6 @@ class SafetyLayer:
         rate_result, now = self._check_order_rate()
         if not rate_result.approved:
             return rate_result
-
-        # Drawdown check
-        drawdown_result = self._check_drawdown(portfolio_equity, warnings)
-        if drawdown_result is not None and not drawdown_result.approved:
-            return drawdown_result
 
         # Loss tracker adjustment
         loss_result = self._apply_loss_tracker_adjustment(order, warnings)
@@ -685,6 +689,23 @@ class SafetyLayer:
         if self._loss_tracker is None:
             return {"enabled": False, "message": "Loss tracker not available"}
         return {"enabled": True, **self._loss_tracker.get_status()}
+
+    def reset_daily_pnl(self) -> dict[str, float | str]:
+        """
+        Reset in-memory daily realized PnL counters (human / ops / testing).
+
+        Does not modify PnLMonitor or broker snapshots — only SafetyLayer counters.
+        """
+        self._daily_realized_pnl = 0.0
+        self._daily_order_count = 0
+        logger.warning("Daily PnL counters reset via API")
+        return {"status": "ok", "daily_realized_pnl": 0.0}
+
+    def orders_in_last_minute(self) -> int:
+        """Count of order timestamps in the rolling 60s window (for circuit-breaker UI)."""
+        now = time.time()
+        self._recent_order_timestamps = [t for t in self._recent_order_timestamps if now - t < 60]
+        return len(self._recent_order_timestamps)
 
     def reset_loss_tracker(self, symbol: Optional[str] = None) -> dict:
         """

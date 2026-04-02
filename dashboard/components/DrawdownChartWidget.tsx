@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 const REFRESH_INTERVAL_MS = 120_000;
 const DD_LIMIT = 15; // percent — breach threshold
@@ -196,12 +196,13 @@ export function DrawdownChartWidget() {
   async function fetchTrades() {
     try {
       const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=200`
+        `/portfolio/history/trades?status=CLOSED&limit=200`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const raw: unknown = await res.json();
       // Handle both array and { trades: [...] } wrapped response
-      const list: TradeRecord[] = Array.isArray(json) ? json : (json.trades ?? []);
+      const list: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
       setTrades(list);
       setLoadState("ok");
     } catch {

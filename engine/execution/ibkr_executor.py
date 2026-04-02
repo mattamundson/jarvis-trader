@@ -321,7 +321,9 @@ class IBKRExecutor:
 
     # ── Order submission ──────────────────────────────────────────────────────
 
-    def _build_ib_order(self, order_type: str, action: str, qty: int, order: OrderRequest) -> Optional[Order]:
+    def _build_ib_order(
+        self, order_type: str, action: str, qty: int, order: OrderRequest
+    ) -> Optional[Order]:
         """Build IB order object. Returns Order or None."""
         ot = order_type.lower()
 
@@ -339,7 +341,9 @@ class IBKRExecutor:
             return StopOrder(action, qty, order.stop_price)
         if ot == "stop_limit":
             if order.limit_price is None or order.stop_price is None:
-                logger.error("submit_order: Both limit_price and stop_price required for stop_limit")
+                logger.error(
+                    "submit_order: Both limit_price and stop_price required for stop_limit"
+                )
                 return None
             return StopLimitOrder(action, qty, order.limit_price, order.stop_price)
 

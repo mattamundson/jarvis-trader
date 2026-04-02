@@ -4,8 +4,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { RefreshCw, TrendingDown, AlertTriangle, ShieldCheck } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // Circuit breaker limit (from engine config / settings.MAX_DRAWDOWN_PCT default)
 const CIRCUIT_BREAKER_LIMIT_PCT = 15;
@@ -97,9 +97,7 @@ export function MaxDrawdownTrackerWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${ENGINE_URL}/analytics/performance`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: AnalyticsPerformanceResponse = await res.json();
+      const json = await fetchEngine(`/analytics/performance`);
       setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch");

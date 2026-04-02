@@ -147,6 +147,7 @@ class PortfolioTracker:
         if self._db is not None:
             try:
                 self._db.insert_paper_trade(
+                    trade_id,
                     symbol=trade.symbol,
                     side=trade.action,
                     quantity=trade.quantity,
@@ -334,6 +335,7 @@ class PortfolioTracker:
         if self._db is not None:
             try:
                 self._db.insert_paper_trade(
+                    trade_id,
                     symbol=trade.symbol,
                     side=side,
                     quantity=float(quantity),

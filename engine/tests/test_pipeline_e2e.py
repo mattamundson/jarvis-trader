@@ -4,7 +4,7 @@ End-to-end testing of the multi-agent trading pipeline.
 """
 
 from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -137,6 +137,7 @@ def mock_agents_dict():
 @pytest.fixture
 def disable_cache(monkeypatch):
     """Disable caching for all tests by mocking cache functions to return False."""
+
     async def mock_should_use_cache(symbol):
         return False
 
@@ -147,8 +148,12 @@ def disable_cache(monkeypatch):
         pass
 
     # Patch the cache functions in the pipeline module
-    monkeypatch.setattr("agents.pipeline.should_use_cache", AsyncMock(side_effect=mock_should_use_cache))
-    monkeypatch.setattr("agents.pipeline.get_cached_signal", AsyncMock(side_effect=mock_get_cached_signal))
+    monkeypatch.setattr(
+        "agents.pipeline.should_use_cache", AsyncMock(side_effect=mock_should_use_cache)
+    )
+    monkeypatch.setattr(
+        "agents.pipeline.get_cached_signal", AsyncMock(side_effect=mock_get_cached_signal)
+    )
     monkeypatch.setattr("agents.pipeline.cache_signal", AsyncMock(side_effect=mock_cache_signal))
     return None
 
@@ -573,7 +578,7 @@ class TestPipelinePortfolio:
 
         mock_agents_dict["risk_manager"].review = capturing_review
         mock_agents_dict["portfolio"] = MagicMock()
-        mock_agents_dict["portfolio"].get_portfolio = MagicMock(return_value=mock_portfolio)
+        mock_agents_dict["portfolio"].get_portfolio = AsyncMock(return_value=mock_portfolio)
 
         # Act
         await trading_pipeline.analyze_and_decide("MES", is_futures=True)

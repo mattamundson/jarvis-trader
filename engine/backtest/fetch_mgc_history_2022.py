@@ -48,8 +48,8 @@ DEFAULT_END = datetime.now().strftime("%Y-%m-%d")
 # MGC (Micro Gold): 10 troy oz (0.10 × GC)
 # Price levels are the SAME (both quoted $/oz) — only multiplier differs for P&L.
 # We store raw price levels; walk_forward.py multiplies by the configured `multiplier`.
-GC_TICKER = "GC=F"    # Gold futures (Yahoo Finance)
-GLD_TICKER = "GLD"    # SPDR Gold ETF (proxy fallback)
+GC_TICKER = "GC=F"  # Gold futures (Yahoo Finance)
+GLD_TICKER = "GLD"  # SPDR Gold ETF (proxy fallback)
 GLD_TO_GC_RATIO = 10.0  # GLD ≈ 1/10 of gold spot; adjust to approximate GC point levels
 
 logging.basicConfig(
@@ -100,7 +100,9 @@ def fetch_gc_direct(start: str, end: str) -> pd.DataFrame | None:
         if len(df) < 50:
             logger.warning(f"GC=F returned only {len(df)} rows — likely incomplete")
             return None
-        logger.info(f"GC=F: {len(df)} rows ({df['timestamp'].iloc[0]} → {df['timestamp'].iloc[-1]})")
+        logger.info(
+            f"GC=F: {len(df)} rows ({df['timestamp'].iloc[0]} → {df['timestamp'].iloc[-1]})"
+        )
         return df
     except Exception as e:
         logger.warning(f"GC=F fetch failed: {e}")
@@ -112,7 +114,7 @@ def fetch_gc_batched(start: str, end: str, batch_years: int = 2) -> pd.DataFrame
     Fetch GC=F in yearly batches to avoid rate limiting.
     Adds a 3-second sleep between batches.
     """
-    from datetime import date, timedelta
+    from datetime import date
 
     start_d = datetime.strptime(start, "%Y-%m-%d").date()
     end_d = datetime.strptime(end, "%Y-%m-%d").date()
@@ -200,7 +202,9 @@ def build_cache(
     if out_path.exists() and not force_proxy:
         df_existing = pd.read_csv(out_path)
         if len(df_existing) > 200:
-            logger.info(f"Cache hit: {out_path} ({len(df_existing)} rows). Use --force to re-download.")
+            logger.info(
+                f"Cache hit: {out_path} ({len(df_existing)} rows). Use --force to re-download."
+            )
             return out_path
 
     if force_proxy:
@@ -240,7 +244,7 @@ def build_cache(
     df.to_csv(out_path, index=False)
 
     logger.info(f"\n{'=' * 60}")
-    logger.info(f"MGC 2022+ history cached:")
+    logger.info("MGC 2022+ history cached:")
     logger.info(f"  File:   {out_path}")
     logger.info(f"  Rows:   {len(df)}")
     logger.info(f"  Range:  {df['timestamp'].iloc[0]} → {df['timestamp'].iloc[-1]}")

@@ -11,6 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import type { LucideIcon } from "lucide-react";
 import { Activity, TrendingUp, Award, BarChart2, Percent } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -160,7 +161,7 @@ function StatCard({
   label: string;
   value: string;
   sub?: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   valueClass?: string;
 }) {
   return (
@@ -619,16 +620,9 @@ export default function BacktestPage() {
         )}
 
         {/* Optimizer / Parameters section */}
-        {results && <OptimizerPanel results={results} />}
-
-        {/* Empty state */}
-        {!isLoading && !error && backtestResults.length === 0 && (
-          <div className="rounded-xl border border-border bg-card p-10 text-center">
-            <BarChart2 className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm font-medium text-muted-foreground">No backtest results yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Run a backtest from the engine CLI to populate results here.
-            </p>
+        {(results?.length ?? 0) === 0 && (
+          <div className="text-center text-muted-foreground py-12">
+            <p>No backtest results yet. Run a backtest above to see results.</p>
           </div>
         )}
       </main>

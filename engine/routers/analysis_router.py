@@ -1,0 +1,164 @@
+"""
+Technical analysis and sentiment endpoints
+
+Provides technical analysis, OHLCV bars, LLM statistics, and sentiment scoring.
+"""
+
+import logging
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from api.models import (
+    BarsResponse,
+    RedditSentimentResponse,
+    TechnicalAnalysisResponse,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="", tags=["analysis"])
+
+# Global references (injected from main.py)
+technical_analyst = None
+data_manager = None
+cost_tracker = None
+
+
+def inject_dependencies(ta, dm, ct):
+    """Inject global dependencies from main.py"""
+    global technical_analyst, data_manager, cost_tracker
+    technical_analyst = ta
+    data_manager = dm
+    cost_tracker = ct
+
+
+class AnalysisRequest(BaseModel):
+    """Technical analysis request"""
+
+    symbol: str
+    timeframe: str = "15m"
+    is_futures: bool = False
+
+
+@router.post("/analyze/technical", response_model=TechnicalAnalysisResponse)
+async def run_technical_analysis(req: AnalysisRequest):
+    """Run the Technical Analyst agent on a symbol"""
+    if not technical_analyst:
+        raise HTTPException(503, "Technical analyst not available (no API key)")
+
+    try:
+        report = await technical_analyst.analyze(req.symbol, req.timeframe, req.is_futures)
+
+        return {
+            "symbol": report.symbol,
+            "timestamp": report.timestamp.isoformat(),
+            "timeframe": report.timeframe,
+            "signal": report.signal,
+            "confidence": report.confidence,
+            "trend": report.trend,
+            "regime": report.regime,
+            "is_overbought": report.is_overbought,
+            "is_oversold": report.is_oversold,
+            "summary": report.summary,
+            "reasoning": report.reasoning,
+            "scores": {
+                "trend": report.trend_score,
+                "momentum": report.momentum_score,
+                "volatility": report.volatility_score,
+                "volume": report.volume_score,
+            },
+            "levels": {
+                "current_price": report.current_price,
+                "support": report.support_levels,
+                "resistance": report.resistance_levels,
+            },
+            "raw_indicators": report.indicators,
+        }
+    except Exception as e:
+        logger.error(f"[ANALYSIS] Technical analysis failed: {e}")
+        raise HTTPException(500, f"Technical analysis failed: {e}") from e
+
+
+@router.get("/analyze/bars/{symbol}", response_model=BarsResponse)
+async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: bool = False):
+    """Get OHLCV bars for a symbol"""
+    if not data_manager:
+        raise HTTPException(503, "Data manager not initialized")
+
+    try:
+        df = await data_manager.get_bars(
+            symbol, lookback_days=days, timeframe=timeframe, is_futures=futures
+        )
+        if df.empty:
+            raise HTTPException(404, f"No data available for {symbol}")
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "bars": df.tail(200).to_dict(orient="records"),
+            "count": len(df),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ANALYSIS] Failed to get bars for {symbol}: {e}")
+        raise HTTPException(500, f"Failed to get bars: {e}") from e
+
+
+@router.get("/llm/stats")
+async def get_llm_stats(days_back: int = 0):
+    """
+    Get LLM API usage and cost statistics for a given day.
+
+    Query Parameters:
+        days_back: 0 for today, 1 for yesterday, etc. (default: 0)
+
+    Returns:
+        date: ISO date string
+        total_calls: Total LLM API calls made
+        total_cost_usd: Total cost in USD
+        success_rate: Percentage of successful calls (0-1)
+        avg_latency_ms: Average API latency in milliseconds
+        per_model: Dict[model_name] -> {calls, input_tokens, output_tokens, cost_usd}
+        per_agent: Dict[agent_name] -> {calls, cost_usd}
+    """
+    if not cost_tracker:
+        raise HTTPException(500, "Cost tracker not initialized")
+    try:
+        return await cost_tracker.get_daily_summary(days_back=days_back)
+    except Exception as e:
+        logger.error(f"[LLM-STATS] Daily summary failed: {e}")
+        raise HTTPException(500, f"Failed to get LLM stats: {e}") from e
+
+
+@router.get("/sentiment/reddit", response_model=RedditSentimentResponse)
+async def get_reddit_sentiment(filter: str = "all-stocks"):
+    """Get trending tickers from Reddit"""
+    if not data_manager:
+        raise HTTPException(503, "Data manager not initialized")
+
+    try:
+        tickers = await data_manager.reddit.get_trending_tickers(filter)
+        return {"filter": filter, "tickers": tickers[:20]}
+    except Exception as e:
+        logger.error(f"[SENTIMENT] Reddit sentiment failed: {e}")
+        raise HTTPException(500, f"Failed to get Reddit sentiment: {e}") from e
+
+
+@router.get("/analytics/performance/rolling")
+async def rolling_performance(days: int = 30):
+    """Return rolling performance metrics over the given number of days."""
+    from datetime import datetime, timedelta, timezone
+
+    if days <= 0:
+        days = 30
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    # Return stub metrics — real data populated when db_manager is available
+    return {
+        "days": days,
+        "start_date": cutoff.date().isoformat(),
+        "end_date": datetime.now(timezone.utc).date().isoformat(),
+        "total_trades": 0,
+        "win_rate": 0.0,
+    }

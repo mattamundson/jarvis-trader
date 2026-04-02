@@ -4,8 +4,8 @@ import React, { useState, useEffect } from "react";
 import { TrendingUp, RefreshCw, Target, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -157,12 +157,8 @@ export function SharpeRatioWidget() {
 
   async function fetchData() {
     try {
-      const res = await fetch(`${ENGINE_URL}/analytics/performance`);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      const json: PerformanceResponse = await res.json();
-      setData(json);
+      const payload = await fetchEngine(`/analytics/performance`);
+      setData(payload);
       setError(null);
       setLastRefresh(new Date());
     } catch (err) {

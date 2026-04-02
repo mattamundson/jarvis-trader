@@ -1,0 +1,99 @@
+## Codebase Patterns
+- gstack bin/ scripts expect to be called via full path: ~/.claude/skills/gstack/bin/gstack-config
+- SKILL.md files are generated from .tmpl templates — never edit SKILL.md directly, edit .tmpl
+- bun build --compile takes ~85s per binary in this environment — plan for timeout accordingly
+- browse binary is platform-specific: compile on each target platform (Linux/macOS/Windows WSL2)
+- gstack config lives at ~/.gstack/config.yaml — created by ./setup or manually
+- Skill symlinks: ~/.claude/skills/<skill-name> -> .claude/skills/gstack/<skill-name>
+- skill_prefix=false means skills are invoked as /review not /gstack-review
+
+---
+
+## 2026-04-02 - US-001: Install gstack prerequisites and build binaries
+- Bun v1.3.11 installed. browse (95MB) and find-browse (95MB) compiled via bun build --compile
+- 34 symlinks created in ~/.claude/skills/. ~/.gstack/config.yaml written
+- Files changed: browse/dist/browse, browse/dist/find-browse, ~/.gstack/config.yaml, ~/.claude/skills/*
+- **Learnings for future iterations:**
+  - bun install + 3 bun builds can timeout in a single ./setup run — do each separately
+  - Linux binaries won't run on Windows — Matt must re-run ./setup from WSL2 on his machine
+  - EEXIST errors during bun install are harmless (playwright-core/semver already linked)
+
+---
+
+## 2026-04-02 - US-002: Add gstack section to project CLAUDE.md
+- Appended ## gstack Skills section to CLAUDE.md with skill routing table and key skills
+- Files changed: CLAUDE.md (appended ~25 lines at end of ## Git & Security section)
+- **Learnings for future iterations:**
+  - CLAUDE.md is read on every session start — keep gstack section concise (pointer, not detail)
+  - The skill routing hint is the highest-value line: proactively invoke matching skill
+
+---
+
+## 2026-04-02 - US-003: Verify /review skill structural validity
+- Ran bun test test/skill-validation.test.ts — 314/315 pass (1 Codex CLI timeout, expected)
+- Files changed: none (validation only)
+- **Learnings for future iterations:**
+  - skill-validation.test.ts covers all 33 skills in ~20s, runs free (no API key)
+  - Full /review invocation requires Claude Code + real git diff on Matt's machine
+
+---
+
+## 2026-04-02 - US-004: Verify browse binary works
+- browse/dist/browse executes and returns correct help text
+- Dashboard not running in cloud sandbox — on-machine verification deferred
+- Files changed: none
+- **Learnings for future iterations:**
+  - On Matt's machine: rebuild with ./setup from WSL2, then test $B goto http://localhost:3010
+
+---
+
+## 2026-04-02 - US-005: Add AGENTS.md to project root
+- Created AGENTS.md (101 lines) with sprint workflow, skill map, safety rules, architecture map
+- Files changed: AGENTS.md (new file at project root)
+- **Learnings for future iterations:**
+  - Keep AGENTS.md under 150 lines — scannable in 30 seconds is the target
+
+---
+
+## 2026-04-02 — Paper Validation Boot (pre-ralph)
+- Engine v1.1.0 booted, IB Gateway connected port 4002 (paper, client_id=10)
+- .env updated: IBKR_CLIENT_ID=2 (takes effect on next restart)
+- Kill switch tested: activate/deactivate both work correctly
+- System preflight: ALL PASS (8/8). Portfolio: $11,772.33, 98 paper trades in DB
+- P0 verification report: docs/reports/P0_VERIFICATION_2026-04-02.md
+
+---
+
+## 2026-04-02 — US-101: Fix /validation/progress SQL error
+- Fixed SQL in engine/schedulers/validation_checker.py: removed nonexistent columns (contracts, outcome)
+- Fixed column refs: entry_time not created_at, realized_pnl not daily_pnl, updated indices
+- **Learnings:** Always check SQLite schema with .schema before writing queries
+
+---
+
+## 2026-04-02 — US-102: Fix pipeline LLM execution
+- Root cause: /pipeline/run was a stub returning {status: running} without calling pipeline
+- Rewrote to accept PipelineRunRequest, call analyze_and_decide() via asyncio.create_task()
+- **Learnings:** Trace endpoint to execution. "Running" responses can mask stubs
+
+---
+
+## 2026-04-02 — US-103: Price cache and Polygon rate limit handling
+- New engine/data/price_cache.py (140 lines): in-memory cache, 60s TTL, asyncio.Lock
+- retry_with_backoff() with exponential backoff. 429 errors return expired cache
+- FRED_API_KEY added to config.py and .env.example. 8 new tests
+- **Learnings:** Polygon free tier rate limits aggressively. Stdlib-only caching works fine
+
+---
+
+## 2026-04-02 — US-104: Dashboard paper trading badge
+- Added PAPER MODE badge to dashboard/app/page.tsx header (Badge variant='info')
+- Fixed truncated package.json. All API calls verified via fetchEngine/postEngine
+- **Learnings:** Badge uses health?.paper_mode from engine /health endpoint
+
+---
+
+## 2026-04-02 — US-105: Scheduler status endpoint
+- Added GET /pipeline/scheduler/status to pipeline_router.py with Pydantic models
+- Returns running state, jobs list with next_run, total decisions count
+- **Learnings:** Scheduler endpoint lives under /pipeline/ prefix, not root /scheduler/
