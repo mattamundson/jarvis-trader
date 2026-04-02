@@ -49,15 +49,16 @@ logger = logging.getLogger("scripts.train_rl")
 
 # ── ANSI helpers ──────────────────────────────────────────────────────────────
 
+
 def _supports_color() -> bool:
     """Return True if the terminal supports ANSI color codes."""
     return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
 
 _GREEN = "\033[92m" if _supports_color() else ""
-_RED   = "\033[91m" if _supports_color() else ""
-_BOLD  = "\033[1m"  if _supports_color() else ""
-_RESET = "\033[0m"  if _supports_color() else ""
+_RED = "\033[91m" if _supports_color() else ""
+_BOLD = "\033[1m" if _supports_color() else ""
+_RESET = "\033[0m" if _supports_color() else ""
 
 
 def _pass(value: str) -> str:
@@ -69,6 +70,7 @@ def _fail(value: str) -> str:
 
 
 # ── CLI argument parsing ──────────────────────────────────────────────────────
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -112,6 +114,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 # ── Dry-run validation ────────────────────────────────────────────────────────
 
+
 def run_dry_run(symbol: str, timesteps: int) -> int:
     """
     Validate that all required modules can be imported and the RL pipeline
@@ -128,14 +131,15 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
     # 1. Import rl_config
     try:
         from strategies.rl_config import (  # noqa: F401
-            PPO_CONFIG,
-            VALIDATION_GATES,
-            N_FEATURES,
-            TIMESTEPS_DEFAULT,
-            RL_MODELS_DIR,
-            RL_CACHE_DIR,
             DEFAULT_INTERVAL,
+            N_FEATURES,
+            PPO_CONFIG,
+            RL_CACHE_DIR,
+            RL_MODELS_DIR,
+            TIMESTEPS_DEFAULT,
+            VALIDATION_GATES,
         )
+
         steps_ok.append(("strategies.rl_config", True, ""))
     except Exception as exc:
         steps_ok.append(("strategies.rl_config", False, str(exc)))
@@ -143,6 +147,7 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
     # 2. Import rl_agent (requires stable-baselines3 + gymnasium)
     try:
         from strategies.rl_agent import RLTradingAgent  # noqa: F401
+
         steps_ok.append(("strategies.rl_agent", True, ""))
     except Exception as exc:
         steps_ok.append(("strategies.rl_agent", False, str(exc)))
@@ -150,6 +155,7 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
     # 3. Import rl_environment (requires gymnasium + backtest.signals)
     try:
         from strategies.rl_environment import build_env, prepare_dataframe  # noqa: F401
+
         steps_ok.append(("strategies.rl_environment", True, ""))
     except Exception as exc:
         steps_ok.append(("strategies.rl_environment", False, str(exc)))
@@ -157,6 +163,7 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
     # 4. Import rl_trainer
     try:
         from strategies.rl_trainer import RLTrainer  # noqa: F401
+
         steps_ok.append(("strategies.rl_trainer", True, ""))
     except Exception as exc:
         steps_ok.append(("strategies.rl_trainer", False, str(exc)))
@@ -164,6 +171,7 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
     # 5. Check stable-baselines3 is available
     try:
         from stable_baselines3 import PPO  # noqa: F401
+
         steps_ok.append(("stable-baselines3", True, ""))
     except ImportError as exc:
         steps_ok.append(("stable-baselines3", False, str(exc)))
@@ -171,6 +179,7 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
     # 6. Check gymnasium is available
     try:
         import gymnasium as gym  # noqa: F401
+
         steps_ok.append(("gymnasium", True, ""))
     except ImportError as exc:
         steps_ok.append(("gymnasium", False, str(exc)))
@@ -178,6 +187,7 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
     # 7. Check yfinance (data fallback)
     try:
         import yfinance as yf  # noqa: F401
+
         steps_ok.append(("yfinance", True, ""))
     except ImportError as exc:
         steps_ok.append(("yfinance", False, str(exc)))
@@ -185,14 +195,22 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
     # 8. Check memory usage reporting (psutil optional — not a hard requirement)
     try:
         import psutil  # noqa: F401
+
         steps_ok.append(("psutil (memory reporting)", True, ""))
     except ImportError:
         # psutil is optional — mark as warning, not failure
-        steps_ok.append(("psutil (memory reporting) [optional]", True, "not installed — pip install psutil to enable memory stats"))
+        steps_ok.append(
+            (
+                "psutil (memory reporting) [optional]",
+                True,
+                "not installed — pip install psutil to enable memory stats",
+            )
+        )
 
     # 9. Ensure model/cache directories are creatable
     try:
-        from strategies.rl_config import RL_MODELS_DIR, RL_CACHE_DIR
+        from strategies.rl_config import RL_CACHE_DIR, RL_MODELS_DIR
+
         RL_MODELS_DIR.mkdir(parents=True, exist_ok=True)
         RL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         steps_ok.append(("data directories", True, f"models={RL_MODELS_DIR}  cache={RL_CACHE_DIR}"))
@@ -201,7 +219,8 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
 
     # 10. Validate symbol is known
     try:
-        from strategies.rl_config import get_instrument_params, RL_INSTRUMENT_PARAMS
+        from strategies.rl_config import RL_INSTRUMENT_PARAMS, get_instrument_params
+
         params = get_instrument_params(symbol)
         known = symbol.upper() in RL_INSTRUMENT_PARAMS
         note = f"STC_OS={params[0]} STC_OB={params[1]} STOP_ATR={params[2]}"
@@ -228,10 +247,11 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
         from strategies.rl_config import (
             N_FEATURES,
             PPO_CONFIG,
-            VALIDATION_GATES,
-            RL_MODELS_DIR,
             RL_CACHE_DIR,
+            RL_MODELS_DIR,
+            VALIDATION_GATES,
         )
+
         print("Configuration:")
         print(f"  Symbol     : {symbol}")
         print(f"  Timesteps  : {timesteps:,}")
@@ -265,10 +285,12 @@ def run_dry_run(symbol: str, timesteps: int) -> int:
 
 # ── Memory helper ─────────────────────────────────────────────────────────────
 
+
 def _mem_mb() -> str:
     """Return current process RSS in MB, or empty string if psutil missing."""
     try:
         import psutil
+
         proc = psutil.Process(os.getpid())
         rss_mb = proc.memory_info().rss / 1024 / 1024
         return f"{rss_mb:.0f} MB"
@@ -278,9 +300,11 @@ def _mem_mb() -> str:
 
 # ── Training progress printer ─────────────────────────────────────────────────
 
+
 def _print_progress(step: int, ep_info_buffer) -> None:
     """Print a single progress line for the given checkpoint step."""
     import numpy as np
+
     if ep_info_buffer:
         reward_mean = float(np.mean([ep["r"] for ep in ep_info_buffer]))
         ep_len_mean = float(np.mean([ep["l"] for ep in ep_info_buffer]))
@@ -294,6 +318,7 @@ def _print_progress(step: int, ep_info_buffer) -> None:
 
 # ── Validation gate printer ───────────────────────────────────────────────────
 
+
 def _print_validation(metrics: dict, gates: dict, model_path: str) -> None:
     """Print validation gate results table."""
     print("\nValidation Results:")
@@ -306,24 +331,23 @@ def _print_validation(metrics: dict, gates: dict, model_path: str) -> None:
             passes = value >= threshold
             cmp = f">= {threshold:{fmt}}"
         formatted = f"{value:{fmt}}"
-        status = _pass("") if passes else _fail("")
         # Trim the trailing PASS/FAIL label — rebuild cleanly
         tick = f"{_GREEN}PASS{_RESET}" if passes else f"{_RED}FAIL{_RESET}"
         print(f"  {label:<18} {formatted:>8}  [{tick}]  (gate: {cmp})")
 
-    pf        = metrics.get("profit_factor", 0.0)
-    sharpe    = metrics.get("sharpe", 0.0)
-    win_rate  = metrics.get("win_rate", 0.0)
+    pf = metrics.get("profit_factor", 0.0)
+    sharpe = metrics.get("sharpe", 0.0)
+    win_rate = metrics.get("win_rate", 0.0)
     hold_rate = metrics.get("hold_rate", 0.0)
-    max_dd    = metrics.get("max_drawdown", 1.0)
-    n_trades  = int(metrics.get("n_trades", 0))
+    max_dd = metrics.get("max_drawdown", 1.0)
+    n_trades = int(metrics.get("n_trades", 0))
 
-    _gate_line("Profit Factor:",  pf,        gates["min_profit_factor"],  ".2f")
-    _gate_line("Sharpe Ratio:",   sharpe,    gates["min_sharpe"],         ".2f")
-    _gate_line("Win Rate:",       win_rate,  gates["min_win_rate"],       ".1%")
-    _gate_line("HOLD Rate:",      hold_rate, gates["min_hold_rate"],      ".1%")
-    _gate_line("Max Drawdown:",   max_dd,    gates["max_drawdown"],       ".1%", lower_is_better=True)
-    _gate_line("Trade Count:",    n_trades,  gates["min_trades"],         "d")
+    _gate_line("Profit Factor:", pf, gates["min_profit_factor"], ".2f")
+    _gate_line("Sharpe Ratio:", sharpe, gates["min_sharpe"], ".2f")
+    _gate_line("Win Rate:", win_rate, gates["min_win_rate"], ".1%")
+    _gate_line("HOLD Rate:", hold_rate, gates["min_hold_rate"], ".1%")
+    _gate_line("Max Drawdown:", max_dd, gates["max_drawdown"], ".1%", lower_is_better=True)
+    _gate_line("Trade Count:", n_trades, gates["min_trades"], "d")
 
     passes = metrics.get("passes_validation", False)
     print()
@@ -333,18 +357,25 @@ def _print_validation(metrics: dict, gates: dict, model_path: str) -> None:
         print(f"{_RED}{_BOLD}VALIDATION FAILED{_RESET}")
         # Show which gates failed
         failed_gates = []
-        if pf       < gates["min_profit_factor"]:  failed_gates.append(f"PF={pf:.2f} (need {gates['min_profit_factor']})")
-        if sharpe   < gates["min_sharpe"]:         failed_gates.append(f"Sharpe={sharpe:.2f} (need {gates['min_sharpe']})")
-        if win_rate < gates["min_win_rate"]:        failed_gates.append(f"WR={win_rate:.1%} (need {gates['min_win_rate']:.0%})")
-        if hold_rate< gates["min_hold_rate"]:       failed_gates.append(f"HOLD={hold_rate:.1%} (need {gates['min_hold_rate']:.0%})")
-        if max_dd   > gates["max_drawdown"]:        failed_gates.append(f"MaxDD={max_dd:.1%} (limit {gates['max_drawdown']:.0%})")
-        if n_trades < gates["min_trades"]:          failed_gates.append(f"Trades={n_trades} (need {gates['min_trades']})")
+        if pf < gates["min_profit_factor"]:
+            failed_gates.append(f"PF={pf:.2f} (need {gates['min_profit_factor']})")
+        if sharpe < gates["min_sharpe"]:
+            failed_gates.append(f"Sharpe={sharpe:.2f} (need {gates['min_sharpe']})")
+        if win_rate < gates["min_win_rate"]:
+            failed_gates.append(f"WR={win_rate:.1%} (need {gates['min_win_rate']:.0%})")
+        if hold_rate < gates["min_hold_rate"]:
+            failed_gates.append(f"HOLD={hold_rate:.1%} (need {gates['min_hold_rate']:.0%})")
+        if max_dd > gates["max_drawdown"]:
+            failed_gates.append(f"MaxDD={max_dd:.1%} (limit {gates['max_drawdown']:.0%})")
+        if n_trades < gates["min_trades"]:
+            failed_gates.append(f"Trades={n_trades} (need {gates['min_trades']})")
         print(f"  Failed gates: {', '.join(failed_gates)}")
 
     print(f"\nModel saved: {model_path}")
 
 
 # ── Custom SB3 callback for CLI progress output ───────────────────────────────
+
 
 def _make_progress_callback(timesteps: int, log_every: int = 10_000):
     """Return a SB3 BaseCallback that prints progress to stdout."""
@@ -371,6 +402,7 @@ def _make_progress_callback(timesteps: int, log_every: int = 10_000):
 
 # ── Main training flow ────────────────────────────────────────────────────────
 
+
 async def run_training(symbol: str, bars: int, timesteps: int) -> int:
     """
     Full training pipeline:
@@ -385,17 +417,17 @@ async def run_training(symbol: str, bars: int, timesteps: int) -> int:
 
     Returns 0 on validation pass, 1 on failure.
     """
+    from strategies.rl_agent import RLTradingAgent
     from strategies.rl_config import (
-        N_FEATURES,
-        PPO_CONFIG,
-        VALIDATION_GATES,
-        RL_MODELS_DIR,
-        RL_CACHE_DIR,
         DEFAULT_INTERVAL,
         MAX_EPISODE_BARS,
+        N_FEATURES,
+        PPO_CONFIG,
+        RL_CACHE_DIR,
+        RL_MODELS_DIR,
         TRAIN_LOOKBACK_DAYS,
+        VALIDATION_GATES,
     )
-    from strategies.rl_agent import RLTradingAgent
     from strategies.rl_environment import build_env, prepare_dataframe
     from strategies.rl_trainer import RLTrainer
 
@@ -447,7 +479,7 @@ async def run_training(symbol: str, bars: int, timesteps: int) -> int:
     # 3. Train / test split (80 / 20)
     split_idx = int(len(df) * 0.80)
     df_train = df.iloc[:split_idx].reset_index(drop=True)
-    df_test  = df.iloc[split_idx:].reset_index(drop=True)
+    df_test = df.iloc[split_idx:].reset_index(drop=True)
     print(f"  Train: {len(df_train):,} bars | Test: {len(df_test):,} bars")
 
     # 4. Build environments
@@ -463,7 +495,7 @@ async def run_training(symbol: str, bars: int, timesteps: int) -> int:
     )
 
     # 5. Train
-    print(f"\nTraining started...")
+    print("\nTraining started...")
     log_every = max(10_000, timesteps // 10)
     cli_cb = _make_progress_callback(timesteps, log_interval=log_every)
 
@@ -479,7 +511,10 @@ async def run_training(symbol: str, bars: int, timesteps: int) -> int:
         if cli_cb is not None:
             callbacks.append(cli_cb)
         from stable_baselines3.common.callbacks import CallbackList
-        combined = CallbackList(callbacks) if len(callbacks) > 1 else (callbacks[0] if callbacks else None)
+
+        combined = (
+            CallbackList(callbacks) if len(callbacks) > 1 else (callbacks[0] if callbacks else None)
+        )
         return orig_learn(total_timesteps=total_timesteps, callback=combined, **kwargs)
 
     agent.model.learn = _patched_learn  # type: ignore[method-assign]
@@ -516,6 +551,7 @@ async def run_training(symbol: str, bars: int, timesteps: int) -> int:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     symbol = args.symbol.upper()
@@ -523,11 +559,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         return run_dry_run(symbol=symbol, timesteps=args.timesteps)
 
-    return asyncio.run(run_training(
-        symbol=symbol,
-        bars=args.bars,
-        timesteps=args.timesteps,
-    ))
+    return asyncio.run(
+        run_training(
+            symbol=symbol,
+            bars=args.bars,
+            timesteps=args.timesteps,
+        )
+    )
 
 
 if __name__ == "__main__":
