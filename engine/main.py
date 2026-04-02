@@ -4178,4 +4178,4 @@ async def get_trading_days_stats():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
-# ──────────────────────────────────�
+# --- portfolio stats (trading-days) ---

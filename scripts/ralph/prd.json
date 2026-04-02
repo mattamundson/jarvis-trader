@@ -1,0 +1,34 @@
+{
+  "project": "JARVIS RL Run 10 — Strong-Exit Config",
+  "branchName": "chore/sprint-closeout-2026-04-02",
+  "description": "Fix RL agent hold behavior. Run 9 failed: avg_bars=109, PF=0.07, t1_hit=0%. Run 10 uses strong hold_cost=-0.010 and t1_bonus=0.50 to force fast exits.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Update rl_config.py for Run 10",
+      "description": "Set hold_cost=-0.010, t1_bonus=0.50 in REWARD_CONFIG",
+      "acceptanceCriteria": ["hold_cost=-0.010 in rl_config.py", "t1_bonus=0.50 in rl_config.py", "Run 10 comment added"],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add MAX_BARS_IN_TRADE=50 hard limit to rl_environment.py",
+      "description": "Force close positions held > 50 bars regardless of agent action",
+      "acceptanceCriteria": ["Hard close at 50 bars in step()", "forced_close key in info dict", "84/84 tests still pass"],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Run 10 training and evaluate",
+      "description": "Run 500K timestep training with Run 10 config, evaluate all 6 gates",
+      "acceptanceCriteria": ["n_trades >= 30", "avg_bars_in_trade < 50", "t1_hit_rate > 0", "profit_factor > 1.5"],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
