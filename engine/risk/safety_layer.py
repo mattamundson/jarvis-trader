@@ -108,6 +108,7 @@ class SafetyLayer:
         self._ib_gateway = ib_gateway  # used only by submit_paper_order()
         self._pnl_monitor: Optional[object] = pnl_monitor  # PnLMonitor | None
         self._loss_tracker: Optional[object] = loss_tracker  # ConsecutiveLossTracker | None
+        self.schwab = None  # SchwabConnector | None — injected after construction via attach_schwab()
         self._kill_switch_active = False
         self._kill_switch_reason: KillSwitchReason | None = None
 
@@ -129,6 +130,11 @@ class SafetyLayer:
     def attach_ib_gateway(self, gateway) -> None:
         """Wire in an IB gateway after construction (called after paper connector connects)."""
         self._ib_gateway = gateway
+
+    def attach_schwab(self, connector) -> None:
+        """Attach Schwab connector for equity/options order routing."""
+        self.schwab = connector
+        logger.info("SafetyLayer: Schwab connector attached")
 
     # ── Kill Switch ───────────────────────────────────────────────────────
 
@@ -380,16 +386,14 @@ class SafetyLayer:
 
         # Tilt detector check
         if self.tilt_detector is not None:
-            from risk.tilt_detector import TiltState
-
             tilt_state = self.tilt_detector.check()
-            if tilt_state == TiltState.HALT:
+            if tilt_state.position_size_multiplier == 0.0:
                 return RiskCheckResult(
                     approved=False,
                     rejection_reason="Trading halted due to tilt detection (emotional/behavioral risk)",
                 )
-            elif tilt_state == TiltState.CAUTION:
-                warnings.append("Tilt caution: behavioral risk indicators elevated")
+            elif tilt_state.severity in ("caution", "warning", "critical"):
+                warnings.append(f"Tilt {tilt_state.severity}: behavioral risk indicators elevated")
 
         # Loss tracker adjustment
         loss_result = self._apply_loss_tracker_adjustment(order, warnings)
@@ -397,10 +401,22 @@ class SafetyLayer:
             return loss_result
         adjusted_order, warnings = loss_result
 
-        # All checks passed
+        # All checks passed — log which broker will handle this order
         self._recent_order_timestamps.append(now)
+        if adjusted_order.is_futures:
+            broker_target = "IBKR (futures)"
+        elif adjusted_order.is_options and self.schwab is not None:
+            broker_target = "Schwab (options/equity)"
+        else:
+            broker_target = "IBKR (default)"
+        import math as _math
+        _est_val_display = 0 if _math.isnan(adjusted_order.estimated_value) else int(adjusted_order.estimated_value)
         logger.info(
-            f"✅ Order approved: {adjusted_order.symbol} qty={adjusted_order.quantity} est_value=${adjusted_order.estimated_value:,.0f}"
+            "Order approved: %s qty=%d est_value=$%d — routing to %s",
+            adjusted_order.symbol,
+            adjusted_order.quantity,
+            _est_val_display,
+            broker_target,
         )
         return RiskCheckResult(
             approved=True,
@@ -748,6 +764,98 @@ class SafetyLayer:
 
         self._loss_tracker.reset(symbol=symbol)
         return {"status": "Reset successful", **self._loss_tracker.get_status()}
+
+    def get_recommended_size(
+        self,
+        symbol: str,
+        atr: float,
+        account_value: float,
+        current_drawdown: float = 0.0,
+    ) -> dict:
+        """
+        Calculate recommended position size using ATR-based risk framework.
+
+        ADVISORY ONLY — does not override hardcoded safety limits.
+        If position_sizer recommends LESS than hardcoded max, use recommendation.
+        If position_sizer recommends MORE than hardcoded max, use hardcoded max.
+
+        Parameters
+        ----------
+        symbol : str
+            Trading symbol (e.g., "MES", "MCL")
+        atr : float
+            Average True Range in points
+        account_value : float
+            Current account equity in dollars
+        current_drawdown : float
+            Current drawdown from peak as percentage (e.g., 5.5 for 5.5%)
+
+        Returns
+        -------
+        dict with recommended position sizing details and hardcoded limits
+        """
+        try:
+            from risk.position_sizer import calculate_position_size
+        except ImportError:
+            try:
+                from engine.risk.position_sizer import calculate_position_size
+            except ImportError:
+                logger.error("[POSITION-SIZER] Failed to import calculate_position_size")
+                return {
+                    "error": "Position sizer module unavailable",
+                    "symbol": symbol,
+                    "recommended_contracts": 0,
+                    "hardcoded_max_contracts": self._config.MAX_CONTRACTS_PER_INSTRUMENT,
+                }
+
+        # Map symbol to contract multiplier (futures only)
+        multipliers = {
+            "MES": 5.0,   # Micro E-mini S&P 500
+            "MNQ": 2.0,   # Micro E-mini Nasdaq 100
+            "M2K": 5.0,   # Micro E-mini Russell 2000
+            "MCL": 10.0,  # Micro Crude Oil
+            "MGC": 10.0,  # Micro Gold
+            "MHG": 1.0,   # Micro Copper
+            "MSI": 10.0,  # Micro Silver
+            "ES": 50.0,   # E-mini S&P 500
+            "NQ": 20.0,   # E-mini Nasdaq 100
+            "RTY": 50.0,  # E-mini Russell 2000
+            "CL": 100.0,  # Crude Oil
+            "GC": 100.0,  # Gold
+            "HG": 25.0,   # Copper
+        }
+        multiplier = multipliers.get(symbol.upper(), 5.0)
+
+        # Call position_sizer with current config limits
+        position_size = calculate_position_size(
+            equity=account_value,
+            risk_pct=1.0,  # 1% risk per trade
+            atr=atr,
+            contract_multiplier=multiplier,
+            max_contracts=self._config.MAX_CONTRACTS_PER_INSTRUMENT,
+            max_position_pct=self._config.MAX_POSITION_SIZE_PCT,
+            drawdown_pct=current_drawdown,
+        )
+
+        recommended_contracts = min(
+            position_size.contracts,
+            self._config.MAX_CONTRACTS_PER_INSTRUMENT,
+        )
+
+        return {
+            "symbol": symbol,
+            "atr": atr,
+            "account_value": account_value,
+            "current_drawdown_pct": current_drawdown,
+            "recommended_contracts": recommended_contracts,
+            "position_sizer_contracts": position_size.contracts,
+            "hardcoded_max_contracts": self._config.MAX_CONTRACTS_PER_INSTRUMENT,
+            "hardcoded_max_position_pct": self._config.MAX_POSITION_SIZE_PCT,
+            "risk_amount": position_size.risk_amount,
+            "max_loss": position_size.max_loss,
+            "sizing_method": position_size.sizing_method,
+            "scale_factor": position_size.scale_factor,
+        }
 
     async def _log_safety_event(
         self,
