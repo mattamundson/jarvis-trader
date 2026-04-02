@@ -62,7 +62,9 @@ from api.models import (
 from config import settings
 from data.market_data import MarketDataManager
 from database.schema import DatabaseManager, init_db
+from execution.ib_gateway_connector import IBGatewayConnector
 from execution.ib_order_manager import IBOrderManager
+from llm.client import is_billing_error_active
 from llm.cost_tracker import CostTracker
 from middleware.api_key_middleware import APIKeyMiddleware
 from middleware.exception_handler import GlobalExceptionHandler
@@ -72,6 +74,9 @@ from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
 from routers.discord_router import router as discord_router
+from routers.flags_router import router as flags_router
+from routers.flags_router import set_flags as set_flags_router
+from routers.kairos_router import router as kairos_router
 from routers.learning_router import router as learning_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
@@ -159,6 +164,7 @@ db_manager: DatabaseManager | None = None
 pnl_monitor: PnLMonitor | None = None
 eod_scheduler: EODScheduler | None = None
 order_manager: IBOrderManager | None = None
+ib_paper_connector: IBGatewayConnector | None = None
 ws_manager: WebSocketManager | None = None
 cost_tracker: "CostTracker | None" = None
 loss_tracker: "ConsecutiveLossTracker | None" = None
@@ -185,6 +191,7 @@ async def lifespan(app: FastAPI):
         pnl_monitor, \
         eod_scheduler, \
         order_manager, \
+        ib_paper_connector, \
         ws_manager, \
         cost_tracker, \
         loss_tracker
@@ -207,6 +214,13 @@ async def lifespan(app: FastAPI):
     set_journal_db(db_manager)
     logger.info("✅ SQLite database initialized at data/jarvis_trader.db")
 
+    # Feature Flags — two-layer flag system (config defaults + runtime SQLite overrides)
+    from flags import FeatureFlags, set_flags_instance
+    feature_flags = FeatureFlags(config=settings, db=db_manager)
+    set_flags_instance(feature_flags)
+    set_flags_router(feature_flags)
+    logger.info("✅ Feature Flags system initialised")
+
     # Paper trading tracker — initialise before safety layer so it is always available
     paper_tracker = PortfolioTracker(db_manager=db_manager)
     logger.info("✅ Paper portfolio tracker ready")
@@ -224,14 +238,32 @@ async def lifespan(app: FastAPI):
     # Safety layer — always first; PnLMonitor feeds circuit breakers with live data
     safety_layer = SafetyLayer(settings, pnl_monitor=pnl_monitor)
 
-    # IB Order Manager — bridges SafetyLayer + IBGateway for paper-order submission
-    # ib_gateway is None until data_manager connects; injected below after data_manager init
+    # Paper IB connector — JSON audit + optional PortfolioTracker mirror; wired into SafetyLayer
+    ib_paper_connector = None
+    if settings.PAPER_TRADING:
+        ib_paper_connector = IBGatewayConnector(
+            settings,
+            safety_layer,
+            portfolio_tracker=paper_tracker,
+        )
+        _paper_ib_ok = await ib_paper_connector.connect()
+        if _paper_ib_ok:
+            safety_layer.attach_ib_gateway(ib_paper_connector)
+            logger.info(
+                "✅ IBGatewayConnector (paper) connected — SafetyLayer routes fills; "
+                "tracker mirror active when configured"
+            )
+        else:
+            logger.warning(
+                "⚠️ IBGatewayConnector.connect() returned False — paper orders stay dry-run"
+            )
+
     order_manager = IBOrderManager(
         safety_layer=safety_layer,
-        ib_gateway=None,
+        ib_gateway=ib_paper_connector,
         portfolio_tracker=paper_tracker,
     )
-    logger.info("✅ IBOrderManager initialized (ib_gateway=None until IBKR connects)")
+    logger.info("✅ IBOrderManager initialized")
 
     # Market data connections
     data_manager = MarketDataManager(settings)
@@ -521,6 +553,16 @@ async def lifespan(app: FastAPI):
     inject_portfolio_deps(paper_tracker, db_manager)
     inject_safety_router_deps(safety_layer, loss_tracker)
 
+    # Initialize Tilt Detection
+    try:
+        if getattr(settings, "ENABLE_TILT_DETECTION", True):
+            from risk.tilt_detector import TiltDetector
+            tilt_detector = TiltDetector(config=settings, loss_tracker=loss_tracker)
+            safety_layer.tilt_detector = tilt_detector
+            logger.info("✅ TiltDetector initialized")
+    except Exception as _tilt_err:
+        logger.error(f"TiltDetector init failed (non-fatal): {_tilt_err}")
+
     # Multi-Market Orchestrator
     try:
         from markets.futures.module import FuturesMarketModule
@@ -543,6 +585,85 @@ async def lifespan(app: FastAPI):
     except Exception as _orch_err:
         logger.warning("MultiMarketOrchestrator init failed (non-fatal): %s", _orch_err)
 
+    # Initialize KAIROS if enabled
+    if getattr(settings, "ENABLE_KAIROS", False):
+        try:
+            from kairos import KairosDaemon, set_kairos_instance
+            from kairos.watchers import (
+                RegimeChangeWatcher, STCCrossoverWatcher, RiskLimitWatcher,
+                VIXSpikeWatcher, VolumeAnomalyWatcher, SpreadWideningWatcher,
+                CorrelationBreakWatcher,
+            )
+            logger.info("KAIROS: initializing proactive monitoring daemon...")
+            kairos_daemon = KairosDaemon(
+                config=settings,
+                data_manager=data_manager,
+                safety_layer=safety_layer,
+                ws_manager=ws_manager,
+                notifier=None,  # TODO: wire in WhatsApp notifier once available
+            )
+            # Register all watchers
+            kairos_daemon.register_watcher(RegimeChangeWatcher())
+            kairos_daemon.register_watcher(STCCrossoverWatcher())
+            kairos_daemon.register_watcher(RiskLimitWatcher())
+            kairos_daemon.register_watcher(VIXSpikeWatcher())
+            kairos_daemon.register_watcher(VolumeAnomalyWatcher())
+            kairos_daemon.register_watcher(SpreadWideningWatcher())
+            kairos_daemon.register_watcher(CorrelationBreakWatcher())
+            set_kairos_instance(kairos_daemon)
+            await kairos_daemon.start()
+            logger.info("KAIROS: started")
+        except Exception as _kairos_err:
+            logger.error("KAIROS: init failed (non-fatal, engine will start without KAIROS): %s", _kairos_err)
+    else:
+        logger.info("KAIROS: disabled (set ENABLE_KAIROS=True to enable)")
+
+    # Initialize Speculation Engine (pre-fetches market data during idle periods)
+    if getattr(settings, "ENABLE_SPECULATION", False):
+        try:
+            from speculation import SpeculationEngine, set_speculation_engine
+
+            speculation_engine = SpeculationEngine(
+                config=settings,
+                data_manager=data_manager,
+                prefetch_ttl=600,  # 10-minute cache TTL
+            )
+            set_speculation_engine(speculation_engine)
+            logger.info("SpeculationEngine: initialized")
+
+            # Register 15-min pre-fetch job offset from the 30-min pipeline scan
+            # (fires at :15 and :45 past each hour so data is warm before :00/:30 scans)
+            async def run_speculation_cycle():
+                result = await speculation_engine.speculate()
+                logger.debug(
+                    f"SpeculationEngine: cycle {result['speculation_count']} — "
+                    f"{result['symbols_processed']}/{result['symbols_requested']} symbols "
+                    f"cached in {result['duration_ms']:.0f}ms"
+                )
+
+            scheduler.add_job(
+                run_speculation_cycle,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour="9-15",
+                    minute="15,45",
+                    timezone="America/Chicago",
+                ),
+                id="speculation_prefetch",
+                name="Speculation Pre-fetch",
+                max_instances=1,
+                misfire_grace_time=120,
+            )
+            if not scheduler.running:
+                scheduler.start()
+            logger.info(
+                "SpeculationEngine: pre-fetch job registered — fires at :15/:45 past each hour (9-4 CT weekdays)"
+            )
+        except Exception as _spec_err:
+            logger.error(f"SpeculationEngine init failed (non-fatal): {_spec_err}")
+    else:
+        logger.info("SpeculationEngine: disabled (set ENABLE_SPECULATION=True to enable)")
+
     logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
@@ -556,8 +677,21 @@ async def lifespan(app: FastAPI):
             await _orch.stop()
     except Exception:
         pass
+    # Shutdown KAIROS
+    try:
+        from kairos import get_kairos
+        kairos = get_kairos()
+        if kairos:
+            await kairos.stop()
+    except Exception:
+        pass
     if data_manager and data_manager.ibkr:
         await data_manager.ibkr.disconnect()
+    try:
+        if ib_paper_connector and ib_paper_connector.is_connected():
+            await ib_paper_connector.disconnect()
+    except Exception:
+        pass
     if scheduler and scheduler.running:
         scheduler.shutdown(wait=False)
     logger.info("JARVIS TRADER shutdown complete")
@@ -593,6 +727,7 @@ app.state.limiter = get_limiter()
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
 app.include_router(market_router)
 app.include_router(safety_router)
@@ -601,6 +736,7 @@ app.include_router(validation_router)
 app.include_router(webhook_router)
 app.include_router(discord_router)
 app.include_router(learning_router)
+app.include_router(kairos_router)
 app.include_router(v1_router)
 
 
@@ -638,6 +774,7 @@ async def health():
         else False,
         "schwab_connected": False,  # Schwab connector TODO
         "uptime_seconds": (now - _start_time).total_seconds(),
+        "llm_available": not is_billing_error_active(),
     }
 
 
@@ -2299,7 +2436,9 @@ async def run_pipeline(req: PipelineRequest):
     )
 
     # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
-    if not settings.LIVE_TRADING_ENABLED and final_action != "hold" and paper_tracker:
+    # Guard: only log approved instruments (FUTURES_WATCHLIST) — never DO NOT TRADE symbols
+    _approved_for_paper = {s.upper() for s in (settings.FUTURES_WATCHLIST or [])}
+    if not settings.LIVE_TRADING_ENABLED and final_action != "hold" and paper_tracker and req.symbol.upper() in _approved_for_paper:
         try:
             trade_dec = result.get("trade_decision") or {}
             # Prefer limit_price, fall back to stop_price, then last known price from indicators
@@ -4058,7 +4197,7 @@ async def import_paper_trades(request: Request):
                         import uuid as _uuid
                         trade_id = t.get("trade_id") or str(_uuid.uuid4())
                         conn.execute(
-                            """INSERT INTO paper_trades
+                            """INSERT OR IGNORE INTO paper_trades
                                (trade_id, symbol, side, entry_price, exit_price, quantity,
                                 pnl, status, entry_time, exit_time, strategy_params, notes)
                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
