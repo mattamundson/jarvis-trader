@@ -59,6 +59,7 @@ from api.models import (
 )
 from config import settings
 from data.market_data import MarketDataManager
+from middleware.api_key_middleware import APIKeyMiddleware
 from database.schema import DatabaseManager, init_db
 from execution.ib_order_manager import IBOrderManager
 from llm.cost_tracker import CostTracker
@@ -69,6 +70,13 @@ from risk.safety_layer import SafetyLayer
 from routers.discord_router import router as discord_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
+from routers.market_router import router as market_router
+from routers.portfolio_router import inject_dependencies as inject_portfolio_deps
+from routers.portfolio_router import router as portfolio_router
+from routers.safety_router import inject_dependencies as inject_safety_router_deps
+from routers.safety_router import router as safety_router
+from routers.strategies_router import router as strategies_router
+from routers.validation_router import router as validation_router
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
 from schedulers.eod_scheduler import EODScheduler
@@ -204,6 +212,7 @@ async def lifespan(app: FastAPI):
         db_manager=db_manager,
         ib_gateway=None,  # updated below once data_manager is initialised
         paper_tracker=paper_tracker,
+        starting_balance=settings.INITIAL_CAPITAL,
     )
     logger.info("✅ PnL Monitor initialised (SQLite + paper tracker sources active)")
 
@@ -508,6 +517,10 @@ async def lifespan(app: FastAPI):
     loss_tracker = ConsecutiveLossTracker(data_dir="data")
     logger.info("✅ Consecutive Loss Tracker initialized")
 
+    # Wire router dependencies now that all singletons are ready
+    inject_portfolio_deps(paper_tracker, db_manager)
+    inject_safety_router_deps(safety_layer, loss_tracker)
+
     logger.info("✅ JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
@@ -545,8 +558,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(APIKeyMiddleware)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
+app.include_router(market_router)
+app.include_router(safety_router)
+app.include_router(strategies_router)
+app.include_router(validation_router)
 app.include_router(webhook_router)
 app.include_router(discord_router)
 app.include_router(v1_router)
@@ -641,8 +660,9 @@ async def full_health_check():
     try:
         if safety_layer and hasattr(safety_layer, "check_circuit_breakers"):
             breakers = safety_layer.check_circuit_breakers()
-            status["circuit_breakers"] = breakers
-            if not breakers.get("all_clear", True):
+            all_clear = not breakers.get("daily_limit_breached", False) and not breakers.get("drawdown_breached", False)
+            status["circuit_breakers"] = {"status": "ok" if all_clear else "tripped", "details": breakers}
+            if not all_clear:
                 # Only escalate if kill switch hasn't already set a stronger state
                 if overall == "healthy":
                     overall = "circuit_breaker_tripped"
@@ -3921,12 +3941,12 @@ async def import_paper_trades(request: Request):
                     try:
                         conn.execute(
                             """INSERT INTO paper_trades
-                               (symbol, action, entry_price, exit_price, quantity,
-                                pnl, status, entry_time, exit_time, strategy, notes)
+                               (symbol, side, entry_price, exit_price, quantity,
+                                pnl, status, entry_time, exit_time, strategy_params, notes)
                                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                             (
                                 str(t.get("symbol", "UNKNOWN")),
-                                str(t.get("action", "LONG")),
+                                str(t.get("action", t.get("side", "LONG"))),
                                 float(t.get("entry_price", 0)),
                                 float(t.get("exit_price", 0)),
                                 int(t.get("quantity", 1)),
@@ -3934,7 +3954,7 @@ async def import_paper_trades(request: Request):
                                 "CLOSED",
                                 str(t.get("entry_time", datetime.now(timezone.utc).isoformat())),
                                 str(t.get("exit_time", datetime.now(timezone.utc).isoformat())),
-                                str(t.get("strategy", "imported")),
+                                str(t.get("strategy", t.get("strategy_params", "imported"))),
                                 str(t.get("notes", "")),
                             ),
                         )

@@ -400,6 +400,7 @@ class Backtester:
             capital_change += capital_from_targets
             targets_hit.extend(new_targets)
             if open_trade is not None:
+                trade_before_stop = open_trade
                 open_trade, new_t1, new_t2, new_t3, capital_from_stop, targets_hit = (
                     self._check_stop_exit(
                         open_trade,
@@ -413,10 +414,11 @@ class Backtester:
                     )
                 )
                 if open_trade is None:
-                    completed.append(True)
+                    completed.append(trade_before_stop)
                 open_contracts_t1, open_contracts_t2, open_contracts_t3 = new_t1, new_t2, new_t3
                 capital_change += capital_from_stop
         else:
+            trade_before_stop = open_trade
             open_trade, new_t1, new_t2, new_t3, capital_from_stop, targets_hit = (
                 self._check_stop_exit(
                     open_trade,
@@ -430,7 +432,7 @@ class Backtester:
                 )
             )
             if open_trade is None:
-                completed.append(True)
+                completed.append(trade_before_stop)
             else:
                 open_contracts_t1, open_contracts_t2, open_contracts_t3 = new_t1, new_t2, new_t3
                 capital_change += capital_from_stop
