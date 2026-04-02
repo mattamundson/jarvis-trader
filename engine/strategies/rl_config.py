@@ -119,22 +119,21 @@ MAX_BARS_IN_TRADE: int = 50
 REWARD_CONFIG = {
     # Primary: P&L normalized by ATR so reward is scale-invariant across instruments
     "pnl_atr_weight": 1.0,
-    # Holding cost per bar when in a position (encourages closing losers quickly)
-    # Run 10 (Strong-Exit): raised 10x from Run 9's -0.001 → -0.010.
-    # Run 9 OOS FAILURE: avg_bars_in_trade=109 (limit=50), t1_hit_rate=0%.
-    # Root cause: hold_cost=-0.001 was too weak to deter 100+ bar holds.
-    # At -0.010 with entry_cost=-0.01: break-even = 0.01/0.010 = 1 bar.
-    # Agent must exit within 1 bar to break even from hold pressure alone.
-    # MAX_BARS_IN_TRADE=50 env cap provides a hard ceiling in rl_config.MAX_BARS_IN_TRADE.
+    # Holding cost per bar when in a position.
+    # Run 11: hold cost only applies while position is LOSING (unrealized_pnl <= 0).
+    # Zero hold cost while winning — agent is free to hold profitable positions to T1.
+    # Encodes the trading rule: "cut losers, let winners run."
+    # Run 10 diagnosis: always-on hold_cost=-0.010 taught agent to close at bar 3-5
+    # for tiny positive PnL (break-even=1 bar), never reaching T1 (t1_hit_rate=2.2%).
     "hold_cost_per_bar": -0.010,
+    # When True: hold_cost only charged while unrealized_pnl <= 0 (losing position).
+    # When False (Run 10 behavior): hold_cost charged every bar in position.
+    "hold_cost_only_when_losing": True,
     # Entry cost fired on each new BUY or SELL (discourages overtrading)
-    # Run 10: kept at -0.01 from Run 9. Break-even = entry_cost/hold_cost = 1 bar.
     "entry_cost": -0.01,
     # Bonus for reaching T1 ATR target (reinforces quality exits)
-    # Run 10: raised 5x from 0.10 → 0.50. Makes T1 exits strongly rewarded
-    # vs the heavy hold pressure, so agent learns to reach targets not just close fast.
     "t1_bonus": 0.50,
-    # No flat reward — pure P&L signal (unchanged from Runs 7-10).
+    # No flat reward — pure P&L signal (unchanged from Runs 7-11).
     "flat_hold_reward": 0.000,
 }
 
@@ -158,8 +157,14 @@ REWARD_CONFIG = {
 #              → OOS FAILED: avg_bars_in_trade=109, t1_hit_rate=0%, PF=0.074
 #              → Root cause: hold_cost too weak; agent held 109 bars on avg
 #   Run 10 (Strong-Exit): entry_cost=-0.01, hold_cost=-0.010, t1_bonus=0.50
-#              → break-even=1 bar; MAX_BARS_IN_TRADE=50 env hard cap
-#              → Goal: avg_bars_in_trade<50, t1_hit_rate>0%, PF>1.5
+#              → COMPLETED: avg_bars=8.5 ✅ hold_rate=27.3% ✅ n_trades=90 ✅
+#              → FAILED: PF=0.620 ❌ sharpe=-1.966 ❌ t1_hit_rate=2.2% ❌
+#              → Diagnosis: always-on hold_cost closed winners early (bar 3-5);
+#                break-even=1 bar pressure outweighed t1_bonus incentive
+#   Run 11 (Let-Winners-Run): hold_cost_only_when_losing=True
+#              → hold_cost=-0.010 charged only while unrealized_pnl<=0
+#              → Holding a winning position is FREE — only losing holds penalized
+#              → Goal: t1_hit_rate>15%, PF>1.5, sharpe>1.0
 #
 # REWARD ARCHITECTURE REVIEW
 # ---------------------------

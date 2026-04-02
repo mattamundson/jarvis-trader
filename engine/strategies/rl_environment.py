@@ -519,7 +519,17 @@ class TradingEnvironment(_GymBase):
         pnl_reward = (realized_pnl / atr * cfg["pnl_atr_weight"]) if atr > 0 else 0.0
 
         # Flat holding cost per bar when in a position (NOT compounding — was a bug)
-        hold_cost = cfg["hold_cost_per_bar"] if self._position != 0 else 0.0
+        # Run 11: when hold_cost_only_when_losing=True, charge hold cost only while
+        # position is underwater. Free holds while winning → agent can reach T1.
+        if self._position != 0:
+            if cfg.get("hold_cost_only_when_losing", False) and self._entry_price > 0:
+                current_close = float(self.df.iloc[self._idx]["close"])
+                unrealized_pnl = (current_close - self._entry_price) * self._position
+                hold_cost = cfg["hold_cost_per_bar"] if unrealized_pnl <= 0 else 0.0
+            else:
+                hold_cost = cfg["hold_cost_per_bar"]
+        else:
+            hold_cost = 0.0
 
         # Small reward for HOLDing when flat — teaches patience, pushes hold_rate up
         flat_hold_reward = (
