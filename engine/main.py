@@ -64,6 +64,7 @@ from data.market_data import MarketDataManager
 from database.schema import DatabaseManager, init_db
 from execution.ib_gateway_connector import IBGatewayConnector
 from execution.ib_order_manager import IBOrderManager
+from llm.client import JarvisLLMClient
 from llm.cost_tracker import CostTracker
 from middleware.api_key_middleware import APIKeyMiddleware
 from middleware.exception_handler import GlobalExceptionHandler
@@ -75,10 +76,10 @@ from risk.safety_layer import SafetyLayer
 from routers.discord_router import router as discord_router
 from routers.flags_router import router as flags_router
 from routers.flags_router import set_flags as set_flags_router
-from routers.kairos_router import router as kairos_router
-from routers.learning_router import router as learning_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
+from routers.kairos_router import router as kairos_router
+from routers.learning_router import router as learning_router
 from routers.market_router import router as market_router
 from routers.portfolio_router import inject_dependencies as inject_portfolio_deps
 from routers.portfolio_router import router as portfolio_router
@@ -89,7 +90,7 @@ from routers.validation_router import router as validation_router
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
 from schedulers.eod_scheduler import EODScheduler
-from websocket.events import emit_price_update, set_ws_manager
+from websocket.events import set_ws_manager
 from websocket.manager import WebSocketManager
 
 # ── Logging (initialized in lifespan) ────────────────────────────────────
@@ -215,6 +216,7 @@ async def lifespan(app: FastAPI):
 
     # Feature Flags — two-layer flag system (config defaults + runtime SQLite overrides)
     from flags import FeatureFlags, set_flags_instance
+
     feature_flags = FeatureFlags(config=settings, db=db_manager)
     set_flags_instance(feature_flags)
     set_flags_router(feature_flags)
@@ -275,11 +277,8 @@ async def lifespan(app: FastAPI):
         logger.info("✅ PnL Monitor: IB Gateway wired (live account data source active)")
 
     # Agents (need LLM client)
-    class SimpleLLMClient:
-        api_key = settings.ANTHROPIC_API_KEY
-
     if settings.ANTHROPIC_API_KEY:
-        llm_client = SimpleLLMClient()
+        llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY)
 
         # Stage 1: Analysts
         technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
@@ -560,6 +559,7 @@ async def lifespan(app: FastAPI):
     try:
         if getattr(settings, "ENABLE_TILT_DETECTION", True):
             from risk.tilt_detector import TiltDetector
+
             tilt_detector = TiltDetector(config=settings, loss_tracker=loss_tracker)
             safety_layer.tilt_detector = tilt_detector
             logger.info("✅ TiltDetector initialized")
@@ -575,7 +575,7 @@ async def lifespan(app: FastAPI):
             daily_target=getattr(settings, "DAILY_TARGET", 500.0),
         )
         _futures_module = FuturesMarketModule(
-            ib_gateway=data_manager.ibkr,
+            ib_gateway=ib_paper_connector,
             portfolio_tracker=paper_tracker,
             safety_layer=safety_layer,
             trading_pipeline=trading_pipeline,
@@ -593,10 +593,15 @@ async def lifespan(app: FastAPI):
         try:
             from kairos import KairosDaemon, set_kairos_instance
             from kairos.watchers import (
-                RegimeChangeWatcher, STCCrossoverWatcher, RiskLimitWatcher,
-                VIXSpikeWatcher, VolumeAnomalyWatcher, SpreadWideningWatcher,
                 CorrelationBreakWatcher,
+                RegimeChangeWatcher,
+                RiskLimitWatcher,
+                SpreadWideningWatcher,
+                STCCrossoverWatcher,
+                VIXSpikeWatcher,
+                VolumeAnomalyWatcher,
             )
+
             logger.info("KAIROS: initializing proactive monitoring daemon...")
             kairos_daemon = KairosDaemon(
                 config=settings,
@@ -617,7 +622,9 @@ async def lifespan(app: FastAPI):
             await kairos_daemon.start()
             logger.info("KAIROS: started")
         except Exception as _kairos_err:
-            logger.error("KAIROS: init failed (non-fatal, engine will start without KAIROS): %s", _kairos_err)
+            logger.error(
+                "KAIROS: init failed (non-fatal, engine will start without KAIROS): %s", _kairos_err
+            )
     else:
         logger.info("KAIROS: disabled (set ENABLE_KAIROS=True to enable)")
 
@@ -675,6 +682,7 @@ async def lifespan(app: FastAPI):
     # Teardown
     try:
         from orchestrator.multi_market import get_orchestrator
+
         _orch = get_orchestrator()
         if _orch:
             await _orch.stop()
@@ -683,6 +691,7 @@ async def lifespan(app: FastAPI):
     # Shutdown KAIROS
     try:
         from kairos import get_kairos
+
         kairos = get_kairos()
         if kairos:
             await kairos.stop()
@@ -833,8 +842,13 @@ async def full_health_check():
     try:
         if safety_layer and hasattr(safety_layer, "check_circuit_breakers"):
             breakers = safety_layer.check_circuit_breakers()
-            all_clear = not breakers.get("daily_limit_breached", False) and not breakers.get("drawdown_breached", False)
-            status["circuit_breakers"] = {"status": "ok" if all_clear else "tripped", "details": breakers}
+            all_clear = not breakers.get("daily_limit_breached", False) and not breakers.get(
+                "drawdown_breached", False
+            )
+            status["circuit_breakers"] = {
+                "status": "ok" if all_clear else "tripped",
+                "details": breakers,
+            }
             if not all_clear:
                 # Only escalate if kill switch hasn't already set a stronger state
                 if overall == "healthy":
@@ -1011,7 +1025,7 @@ async def system_preflight():
         if ib_gw is None:
             add_check("IB Gateway", "warn", "Not initialized (paper only — optional)")
         else:
-            connected = getattr(ib_gw, "is_connected", lambda: False)()
+            connected = bool(getattr(ib_gw, "is_connected", False))
             if connected:
                 add_check("IB Gateway", "pass", "Paper port 4002 connected")
             else:
@@ -2416,6 +2430,7 @@ async def get_upcoming_earnings(days: int = 7):
 class PipelineRequest(BaseModel):
     symbol: str
     is_futures: bool = False
+    interval: str = "1h"
 
 
 @app.post("/pipeline/run")
@@ -2424,7 +2439,9 @@ async def run_pipeline(req: PipelineRequest):
     if not trading_pipeline:
         raise HTTPException(503, "Pipeline not available (no ANTHROPIC_API_KEY)")
 
-    result = await trading_pipeline.analyze_and_decide(req.symbol, req.is_futures)
+    result = await trading_pipeline.analyze_and_decide(
+        req.symbol, req.is_futures, timeframe=req.interval
+    )
 
     final_action = result.get("final_action", "hold")
 
@@ -2441,7 +2458,12 @@ async def run_pipeline(req: PipelineRequest):
     # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
     # Guard: only log approved instruments (FUTURES_WATCHLIST) — never DO NOT TRADE symbols
     _approved_for_paper = {s.upper() for s in (settings.FUTURES_WATCHLIST or [])}
-    if not settings.LIVE_TRADING_ENABLED and final_action != "hold" and paper_tracker and req.symbol.upper() in _approved_for_paper:
+    if (
+        not settings.LIVE_TRADING_ENABLED
+        and final_action != "hold"
+        and paper_tracker
+        and req.symbol.upper() in _approved_for_paper
+    ):
         try:
             trade_dec = result.get("trade_decision") or {}
             # Prefer limit_price, fall back to stop_price, then last known price from indicators
@@ -4198,6 +4220,7 @@ async def import_paper_trades(request: Request):
                 for i, t in enumerate(trades):
                     try:
                         import uuid as _uuid
+
                         trade_id = t.get("trade_id") or str(_uuid.uuid4())
                         conn.execute(
                             """INSERT OR IGNORE INTO paper_trades
@@ -4347,8 +4370,6 @@ async def get_weekly_stats():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-
-
 @app.get("/portfolio/stats/trading-days")
 async def get_trading_days_stats():
     """
@@ -4382,3 +4403,11 @@ async def get_trading_days_stats():
             "trading_days_completed": n,
             "days_traded": n,
             "completed_days": n,
+            "target_days": threshold,
+            "threshold": threshold,
+            "threshold_met": n >= threshold,
+            "remaining_days": max(0, threshold - n),
+            "progress_pct": round(min(100.0, n / threshold * 100), 1),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
