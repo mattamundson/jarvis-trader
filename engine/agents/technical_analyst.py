@@ -183,10 +183,12 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         Fetch up to 1 year of daily bars via yfinance.
         Returns a normalized DataFrame with lowercase OHLCV columns.
         """
+        _YF_MAP = {"MCL": "CL=F", "MNQ": "NQ=F", "MES": "ES=F", "MGC": "GC=F"}
+        yf_symbol = _YF_MAP.get(symbol, symbol)
         try:
             import yfinance as yf
 
-            ticker = yf.Ticker(symbol)
+            ticker = yf.Ticker(yf_symbol)
             df = ticker.history(period="1y", interval="1d")
             if df.empty:
                 logger.warning(f"yfinance daily fetch returned empty for {symbol}")
@@ -221,10 +223,12 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         Returns the best available price for symbol via yfinance.info.
         Priority: regularMarketPrice > currentPrice > previousClose > 0.0
         """
+        _YF_MAP = {"MCL": "CL=F", "MNQ": "NQ=F", "MES": "ES=F", "MGC": "GC=F"}
+        yf_symbol = _YF_MAP.get(symbol, symbol)
         try:
             import yfinance as yf
 
-            info = yf.Ticker(symbol).info
+            info = yf.Ticker(yf_symbol).info
             for key in ("regularMarketPrice", "currentPrice", "previousClose"):
                 val = info.get(key)
                 if val and float(val) > 0:
