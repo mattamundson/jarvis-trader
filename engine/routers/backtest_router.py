@@ -73,6 +73,30 @@ class MGCTradeLogRequest(BaseModel):
     regime_type: str = "unknown"
 
 
+def _sanitize_floats(obj):
+    """
+    Recursively replace inf/nan float values with None so json.dumps() never
+    raises ValueError ('Out of range float values are not JSON compliant').
+
+    Python's json.loads() silently accepts inf/nan written as bare tokens in
+    some JSON files produced by the backtest engine (profit_factor can be inf
+    when gross_loss == 0). Starlette's JSONResponse uses the stdlib json.dumps
+    which rejects those values, causing a 500 *after* response headers are sent
+    (shows up as plain-text "Internal Server Error" rather than a JSON error).
+    """
+    import math
+
+    if isinstance(obj, float):
+        if math.isinf(obj) or math.isnan(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_floats(v) for v in obj]
+    return obj
+
+
 @router.get("/backtest/results")
 async def get_backtest_results():
     """Return all saved backtest result JSON files from backtest/results/."""
@@ -88,7 +112,9 @@ async def get_backtest_results():
             try:
                 data = json.loads(json_file.read_text(encoding="utf-8"))
                 data["_filename"] = json_file.name
-                results.append(data)
+                # Sanitize inf/nan floats — stdlib json.dumps rejects them and
+                # causes a streaming 500 even though json.loads accepted them.
+                results.append(_sanitize_floats(data))
             except Exception as e:
                 logger.warning(f"Failed to parse {json_file.name}: {e}")
 

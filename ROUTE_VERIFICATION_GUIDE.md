@@ -63,7 +63,7 @@ python3 scripts/verify_routes_static.py
 - journal_router — Trade journal
 - watchlist_router — Watchlist mgmt
 - websocket_router — Real-time events
-- notifications_router — Alerts
+- Notifications + VIX routes — registered on `engine/main.py` (no separate `notifications_router` file)
 - webhook_router — TradingView webhooks
 - validation_router — Validation progress
 - prices_router — Price data

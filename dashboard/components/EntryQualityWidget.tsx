@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Target, ShieldAlert, Minus, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngineRaw } from "@/lib/api";
 
 
 interface TradeRecord {
@@ -99,7 +99,7 @@ export function EntryQualityWidget() {
 
   async function load() {
     try {
-      const res = await fetch(
+      const res = await fetchEngineRaw(
         `/portfolio/history/trades?status=CLOSED&limit=200`,
         { cache: "no-store" }
       );

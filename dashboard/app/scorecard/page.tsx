@@ -18,6 +18,12 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
+import {
+  type BacktestBaselineRow,
+  fmtBaselineNum,
+  pickApprovedBacktestBaseline,
+  type ScorecardBacktestBaseline,
+} from "@/lib/scorecardBaseline";
 import { formatCurrency } from "@/lib/utils";
 import { ReadinessCheckWidget } from "@/components/ReadinessCheckWidget";
 import { StreakBadge } from "@/components/StreakBadge";
@@ -33,16 +39,6 @@ import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const BACKTEST = {
-  profitFactor: 5.27,
-  sharpeRatio: 4.16,
-  winRate: 68,        // percent
-  maxDrawdown: 8.2,   // percent (positive = loss)
-  totalReturn: "+47.2%",
-  instrument: "MES — Micro E-mini S&P 500",
-  timeframe: "1-hour bars",
-};
 
 const TARGETS = {
   profitFactor: 2.0,  // v2.7 live gate (paper gate: 1.5)
@@ -89,6 +85,8 @@ const fetchPerformance = () =>
   fetchEngine<AnalyticsPerformance>("/analytics/performance");
 const fetchDrawdown = () =>
   fetchEngine<DrawdownStats>("/portfolio/stats/drawdown");
+const fetchBacktestResults = () =>
+  fetchEngine<BacktestBaselineRow[]>("/backtest/results");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -284,12 +282,21 @@ export default function ScorecardPage() {
     refreshInterval: REFRESH_MS,
   });
 
+  const { data: backtestRows, mutate: mutateBacktest } = useSWR<BacktestBaselineRow[]>(
+    "scorecard/backtest-results",
+    fetchBacktestResults,
+    { refreshInterval: REFRESH_MS }
+  );
+  const baseline: ScorecardBacktestBaseline | null =
+    pickApprovedBacktestBaseline(backtestRows);
+
   const isLoading = loadingSummary || loadingPerf || loadingDrawdown;
 
   function refreshAll() {
     mutateSummary();
     mutatePerf();
     mutateDrawdown();
+    mutateBacktest();
   }
 
   // Derived values
@@ -444,7 +451,9 @@ export default function ScorecardPage() {
               Paper Trading Scorecard
             </h2>
             <p className="text-xs text-muted-foreground">
-              {BACKTEST.instrument} &mdash; {BACKTEST.timeframe} &mdash; Validation targets for live trading promotion
+              {baseline
+                ? `${baseline.label} — ${baseline.timeframe} — Validation targets for live trading promotion`
+                : "No MCL/MNQ baseline JSON — Validation targets for live trading promotion"}
             </p>
           </div>
         </div>
@@ -623,7 +632,7 @@ export default function ScorecardPage() {
                     Profit Factor
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
-                    {BACKTEST.profitFactor}
+                    {fmtBaselineNum(baseline?.profitFactor ?? null)}
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
@@ -651,7 +660,7 @@ export default function ScorecardPage() {
                     Sharpe Ratio
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
-                    {BACKTEST.sharpeRatio}
+                    {fmtBaselineNum(baseline?.sharpeRatio ?? null)}
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
@@ -679,7 +688,9 @@ export default function ScorecardPage() {
                     Win Rate
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
-                    {BACKTEST.winRate}%
+                    {baseline?.winRatePct != null
+                      ? `${baseline.winRatePct.toFixed(1)}%`
+                      : "—"}
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
@@ -711,7 +722,9 @@ export default function ScorecardPage() {
                     Max Drawdown
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
-                    -{BACKTEST.maxDrawdown}%
+                    {baseline?.maxDrawdownPct != null
+                      ? `-${Math.abs(baseline.maxDrawdownPct).toFixed(1)}%`
+                      : "—"}
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
@@ -838,8 +851,20 @@ export default function ScorecardPage() {
 
         {/* Footer note */}
         <p className="text-[11px] text-muted-foreground text-center pb-4">
-          Backtest baseline: MES 1h &mdash; PF {BACKTEST.profitFactor}, Sharpe {BACKTEST.sharpeRatio},{" "}
-          {BACKTEST.totalReturn}, Win Rate {BACKTEST.winRate}% &mdash; Auto-refresh every 60s
+          {baseline ? (
+            <>
+              Backtest baseline: {baseline.label} &mdash; PF{" "}
+              {fmtBaselineNum(baseline.profitFactor)}, Sharpe{" "}
+              {fmtBaselineNum(baseline.sharpeRatio)}, {baseline.totalReturnLabel ?? "—"}, Win Rate{" "}
+              {baseline.winRatePct != null ? `${baseline.winRatePct.toFixed(1)}%` : "—"} &mdash;
+              Auto-refresh every 60s
+            </>
+          ) : (
+            <>
+              Baseline from saved backtest (MCL/MNQ preferred) &mdash; none loaded &mdash;
+              Auto-refresh every 60s
+            </>
+          )}
         </p>
       </main>
     </div>

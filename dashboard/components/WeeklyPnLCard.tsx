@@ -52,10 +52,7 @@ export function WeeklyPnLCard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `/portfolio/history/daily-pnl?limit=14`
-      );
-      const payload: unknown = await res.json();
+      const payload = await fetchEngine<unknown>(`/portfolio/history/daily-pnl?limit=14`);
       setEntries(Array.isArray(payload) ? (payload as DailyPnLEntry[]) : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");

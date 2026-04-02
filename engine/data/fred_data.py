@@ -67,6 +67,10 @@ class FREDDataService:
         except ImportError:
             logger.warning("fredapi not installed")
             return None
+        except Exception as e:
+            # fredapi raises ValueError when no API key is configured
+            logger.warning("fredapi client init failed (no API key?): %s — using defaults", e)
+            return None
 
     def get_series(self, series_id: str, periods: int = 12) -> Optional[pd.Series]:
         """Get a FRED series, cached for 1 hour."""

@@ -432,6 +432,48 @@ def migration_006(conn: sqlite3.Connection) -> None:
     logger.info("Migration 006 applied — Discord signal tables created.")
 
 
+def migration_007(conn: sqlite3.Connection) -> None:
+    """
+    007 — Capital allocation table.
+
+    Tracks how the $10,000 total account capital is distributed across
+    trading instruments/markets.  One row per symbol (e.g. MES, MNQ, MGC,
+    MCL).  The script scripts/init_capital.py seeds the initial rows;
+    subsequent writes use INSERT OR REPLACE so the table is always current.
+
+    Columns
+    -------
+    symbol          — instrument ticker (e.g. MES, MNQ)
+    market          — market module name (futures | options | crypto | polymarket)
+    allocation      — USD amount allocated to this instrument
+    allocation_pct  — fraction of total capital (0.0–1.0)
+    total_capital   — total account capital at time of last update (USD)
+    notes           — optional free-text notes
+    updated_at      — ISO-8601 UTC timestamp of last upsert
+    created_at      — ISO-8601 UTC timestamp when row was first inserted
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS capital_allocation (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT    NOT NULL UNIQUE,
+            market          TEXT    NOT NULL DEFAULT 'futures',
+            allocation      REAL    NOT NULL DEFAULT 0.0,
+            allocation_pct  REAL    NOT NULL DEFAULT 0.0,
+            total_capital   REAL    NOT NULL DEFAULT 10000.0,
+            notes           TEXT    DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc')),
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ca_market ON capital_allocation(market)"
+    )
+    conn.commit()
+    logger.info("Migration 007 applied — capital_allocation table created.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -442,6 +484,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_004,  # version 4
     migration_005,  # version 5
     migration_006,  # version 6
+    migration_007,  # version 7
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -451,6 +494,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Journal notes: journal_notes table with note_type, title, body, tags (JSON array)",
     "Alert log: alert_log table for WhatsApp notification history",
     "Discord signals: discord_bot_signals, discord_ib_reports, discord_corey_alerts, discord_corey_commentary",
+    "Capital allocation: capital_allocation table for $10K cross-market distribution",
 ]
 
 

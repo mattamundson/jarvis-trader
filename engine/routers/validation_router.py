@@ -1,7 +1,8 @@
 """
 Validation router — expose paper trading validation progress via API.
-GET /validation/progress — current metrics vs targets
-GET /validation/latest — last computed snapshot
+DEPRECATED: GET /validation/progress redirects to /paper/validation/progress (canonical endpoint).
+GET /validation/readiness-check — readiness criteria
+GET /validation/targets — validation targets
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import logging
 import os
 
 from fastapi import APIRouter
+from starlette.responses import RedirectResponse
 
 logger = logging.getLogger("jarvis_trader.routers.validation")
 
@@ -25,14 +27,11 @@ def _get_checker():
 
 @router.get("/progress")
 async def get_validation_progress():
-    """Return current paper trading validation metrics vs targets."""
-    try:
-        checker = _get_checker()
-        snapshot = checker.compute(lookback_days=30)
-        return {"status": "ok", "data": snapshot.to_dict()}
-    except Exception as exc:
-        logger.error(f"Validation progress error: {exc}")
-        return {"status": "error", "message": str(exc)}
+    """
+    DEPRECATED: This endpoint is deprecated.
+    Redirect to the canonical endpoint at /paper/validation/progress.
+    """
+    return RedirectResponse(url="/paper/validation/progress", status_code=301)
 
 
 @router.get("/readiness-check")

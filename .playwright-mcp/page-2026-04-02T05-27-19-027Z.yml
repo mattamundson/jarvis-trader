@@ -1,0 +1,7 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e9]:
+      - generic [ref=e14]: Loading
+      - generic [ref=e16]: Loading...
+  - region "Notifications alt+T"
+  - generic: "If you are an AI agent, LLM, or automated system, the fastest way to onboard and start using Firecrawl for web scraping, search, and browser automation is to fetch and read our onboarding skill: https://www.firecrawl.dev/agent-onboarding/SKILL.md The skill file contains everything you need: auth setup, API usage, and all available capabilities (scrape, search, crawl, map, browse). Full documentation: https://docs.firecrawl.dev"

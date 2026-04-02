@@ -99,10 +99,9 @@ export function WinStreakWidget() {
 
   const fetchTrades = useCallback(async () => {
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine<unknown>(
         `/portfolio/history/trades?limit=500&status=CLOSED`
       );
-      const raw: unknown = await res.json();
       const trades: TradeRecord[] = Array.isArray(raw)
         ? raw
         : ((raw as TradesResponse).trades ?? []);

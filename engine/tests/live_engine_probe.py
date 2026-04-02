@@ -53,8 +53,9 @@ def session4_api_ready(base: str = DEFAULT_BASE) -> bool:
     """
     True when Session 4 contract paths exist on the running engine.
 
-    Those routes are not all implemented in-tree yet; without this guard, live
-    tests fail with 404 when a real JARVIS instance is on :8010.
+    Guard remains for live E2E tests that verify actual DB/broker state.
+    Routes are fully implemented — see test_session4_contract.py for TestClient
+    equivalents that run without a live engine.
     """
     if not jarvis_engine_ready(base):
         return False

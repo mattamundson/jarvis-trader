@@ -79,10 +79,9 @@ export function TradeDurationWidget() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(
+        const body: unknown = await fetchEngine<unknown>(
           `/portfolio/history/trades?limit=500&status=CLOSED`
         );
-        const body: unknown = await res.json();
         const trades: Trade[] = Array.isArray(body)
           ? body
           : ((body as { trades?: Trade[] }).trades ?? []);

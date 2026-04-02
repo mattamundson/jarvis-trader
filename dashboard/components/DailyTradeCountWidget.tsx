@@ -79,13 +79,9 @@ export function DailyTradeCountWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine<unknown>(
         `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const raw: unknown = await res.json();
       const trades: TradeRecord[] = Array.isArray(raw)
         ? raw
         : ((raw as { trades?: TradeRecord[] }).trades ?? []);

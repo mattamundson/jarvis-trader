@@ -189,14 +189,9 @@ export function WinRateBySymbolWidget() {
   async function fetchData() {
     setError(null);
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine<unknown>(
         `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const raw: unknown = await res.json();
 
       // Handle both array and { trades: [...] } shapes
       let trades: TradeRecord[];

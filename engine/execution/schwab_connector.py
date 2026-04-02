@@ -1,3 +1,4 @@
+# Phase 3 only — SCHWAB_READY=False. Do not activate until live trading is approved.
 """
 SCHWAB CONNECTOR — STATUS: INCOMPLETE (March 2026)
 ===================================================

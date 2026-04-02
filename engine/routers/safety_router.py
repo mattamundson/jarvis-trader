@@ -68,9 +68,9 @@ async def calculate_position_sizing(
 ) -> dict[str, Any]:
     """Calculate position size based on risk parameters."""
     try:
-        from utils.position_sizing import calculate_contracts
+        from utils.position_sizing import calculate_position_size
 
-        contracts = calculate_contracts(
+        result = calculate_position_size(
             symbol=symbol,
             account_value=account_value,
             atr=atr,
@@ -78,11 +78,15 @@ async def calculate_position_sizing(
         )
 
         return {
-            "symbol": symbol,
-            "account_value": account_value,
+            "symbol": result.symbol,
+            "account_value": result.account_value,
             "atr": atr,
             "risk_pct": risk_pct,
-            "contracts": contracts,
+            "contracts": result.contracts,
+            "risk_per_trade": result.risk_per_trade,
+            "stop_distance": result.stop_distance,
+            "dollar_risk_per_contract": result.dollar_risk_per_contract,
+            "reasoning": result.reasoning,
         }
     except Exception as e:
         logger.error(f"[POSITION-SIZING] Calculate error: {e}")

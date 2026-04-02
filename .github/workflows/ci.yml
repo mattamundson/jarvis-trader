@@ -54,6 +54,13 @@ jobs:
           pip install -q -r engine/requirements-core.txt
           pip install -q mypy==1.8.0 types-requests
 
+      - name: Mypy gate (allowlisted clean files)
+        run: |
+          mypy engine/tests/test_paper_runner_engine_sync.py \
+            engine/tests/test_portfolio_paper_trade_post.py \
+            --ignore-missing-imports --config-file engine/pyproject.toml \
+            --explicit-package-bases --namespace-packages
+
       - name: Run mypy type checking
         continue-on-error: true
         run: |
@@ -86,6 +93,9 @@ jobs:
           # Full engine/tests/ has mock/async debt on master; restore full suite in a follow-up PR.
           pytest engine/tests/test_signals.py engine/tests/test_rolling_wfe.py \
             engine/tests/test_cold_start_degraded.py \
+            engine/tests/test_portfolio_paper_trade_post.py \
+            engine/tests/test_api_contract_minimal.py \
+            engine/tests/test_routes_wired.py \
             -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage artifact
@@ -122,6 +132,30 @@ jobs:
         working-directory: dashboard
         env:
           NODE_ENV: production
+
+      - name: No bare await fetch in dashboard app/hooks
+        run: |
+          set -euo pipefail
+          HITS=$(grep -r "await fetch(" dashboard/app dashboard/hooks \
+            --include="*.tsx" --include="*.ts" 2>/dev/null || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Use fetchEngine/postEngine from dashboard/lib/api.ts instead of bare fetch."
+            exit 1
+          fi
+          echo "OK: no bare await fetch in dashboard/app or dashboard/hooks."
+
+      - name: No bare await fetch in dashboard components
+        run: |
+          set -euo pipefail
+          HITS=$(grep -r "await fetch(" dashboard/components \
+            --include="*.tsx" --include="*.ts" 2>/dev/null || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Use fetchEngine/postEngine/fetchEngineRaw from dashboard/lib/api.ts instead of bare fetch."
+            exit 1
+          fi
+          echo "OK: no bare await fetch in dashboard/components."
 
   security-scan:
     name: Security Scan

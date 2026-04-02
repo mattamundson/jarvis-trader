@@ -103,19 +103,16 @@ export function DailyPnLCalendarWidget() {
   async function fetchData() {
     // 1. Try primary endpoint
     try {
-      const primaryRes = await fetchEngine(`/analytics/daily-pnl`);
-      if (primaryRes.ok) {
-        const data: unknown = await primaryRes.json();
-        if (
-          data !== null &&
-          typeof data === "object" &&
-          !Array.isArray(data)
-        ) {
-          setDailyPnl(data as DailyPnLMap);
-          setLoading(false);
-          setError(false);
-          return;
-        }
+      const data = await fetchEngine<unknown>(`/analytics/daily-pnl`);
+      if (
+        data !== null &&
+        typeof data === "object" &&
+        !Array.isArray(data)
+      ) {
+        setDailyPnl(data as DailyPnLMap);
+        setLoading(false);
+        setError(false);
+        return;
       }
     } catch {
       // fall through to fallback
@@ -123,12 +120,9 @@ export function DailyPnLCalendarWidget() {
 
     // 2. Fallback: compute from closed trades
     try {
-      const tradesRes = await fetch(
+      const raw: unknown = await fetchEngine<unknown>(
         `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!tradesRes.ok) throw new Error("trades fetch failed");
-
-      const raw: unknown = await tradesRes.json();
       let trades: TradeRecord[];
       if (Array.isArray(raw)) {
         trades = raw as TradeRecord[];

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Database } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, fetchEngineRaw } from "@/lib/api";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -119,9 +119,7 @@ export function DatabaseStatusWidget() {
       } else {
         // /health returned OK but no database key — try fallback
         try {
-          const fallback = await fetch(
-            `/portfolio/history/trades?limit=1`
-          );
+          const fallback = await fetchEngineRaw(`/portfolio/history/trades?limit=1`);
           setState({
             connected: fallback.ok,
             path: null,

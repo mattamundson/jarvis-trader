@@ -184,11 +184,10 @@ export default function AvgTradeTimeWidget() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(
+        const json: unknown = await fetchEngine<unknown>(
           `/portfolio/history/trades?status=CLOSED&limit=200`,
           { cache: "no-store" }
         );
-        const json: unknown = await res.json();
         const trades: TradeRecord[] = Array.isArray(json) ? json : (json as { trades?: TradeRecord[] }).trades ?? [];
         const computed = computeData(trades);
         setData(computed);

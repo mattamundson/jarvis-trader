@@ -78,10 +78,9 @@ export function CurrentSignalWidget({ symbol = "MES" }: { symbol?: string }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
+      const json = await fetchEngine<MtfData>(
         `/analytics/mtf?symbol=${encodeURIComponent(symbol)}`
       );
-      const json = (await res.json()) as MtfData;
       setData(json);
       setLastUpdated(new Date());
     } catch (err) {

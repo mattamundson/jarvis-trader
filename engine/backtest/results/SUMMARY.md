@@ -122,3 +122,45 @@
 - Sharpe ratio computed using daily P&L series; annualized assuming 252 trading days.
 - *SPY 1h **Total return** is the backtester’s fractional return on default capital (`run_backtest` default `$100,000` unless overridden); **+1.55%** ≈ **+$1,550** gross at that size. File: `SPY_1h_2024-06-01_2026-03-27.json`.
 - Daily 2024 dollar figures in the table are from earlier documented runs; keep methodology consistent when adding 2025 rows.
+
+## COHEN-MES Composite (1h) — 2024-06-01 to 2026-03-31
+Strategy: STC+ORB+VWAP regime-adaptive composite (threshold=0.35, band_mult=2.5)
+Trades: 366 | Win Rate: 9.3% | PF: 0.27 | Sharpe: 1.52 | Max DD: 0.0% | WFE: 0.80
+Status: NEEDS TUNING
+File: composite_MES_1h_2024-06-01_2026-03-31.json
+
+## COHEN-MES Composite (1h) — 2024-06-01 to 2026-03-31
+Strategy: STC+ORB+VWAP regime-adaptive composite (threshold=0.3, band_mult=3.0)
+Trades: 406 | Win Rate: 8.4% | PF: 0.26 | Sharpe: 1.58 | Max DD: 0.0% | WFE: 0.84
+Status: NEEDS TUNING
+File: composite_MES_1h_2024-06-01_2026-03-31.json
+
+## COHEN-MES Composite (1h) — 2024-06-01 to 2026-03-31
+Strategy: STC+ORB+VWAP regime-adaptive composite (threshold=0.4, band_mult=2.0)
+Trades: 366 | Win Rate: 9.3% | PF: 0.27 | Sharpe: 1.52 | Max DD: 0.0% | WFE: 0.80
+Status: NEEDS TUNING
+File: composite_MES_1h_2024-06-01_2026-03-31.json
+
+## COHEN-MES Composite (1h) — 2024-06-01 to 2026-03-31
+Strategy: STC+ORB+VWAP regime-adaptive composite (threshold=0.35, band_mult=2.5)
+Trades: 422 | Win Rate: 31.5% | PF: 0.28 | Sharpe: 2.23 | Max DD: 0.0% | WFE: 0.44
+Status: NEEDS TUNING
+File: composite_MES_1h_2024-06-01_2026-03-31.json
+
+## COHEN-MES Composite (1h) — 2024-06-01 to 2026-03-31
+Strategy: STC+ORB+VWAP regime-adaptive composite (threshold=0.35, band_mult=2.5)
+Trades: 422 | Win Rate: 31.5% | PF: 0.28 | Sharpe: 2.23 | Max DD: 0.0% | WFE: 0.44
+Status: NEEDS TUNING
+File: composite_MES_1h_2024-06-01_2026-03-31.json
+
+## COHEN-MES Composite (1h) — 2024-06-01 to 2026-03-31
+Strategy: STC+ORB+VWAP regime-adaptive composite (threshold=0.35, band_mult=2.5)
+Trades: 461 | Win Rate: 8.5% | PF: 0.17 | Sharpe: 1.97 | Max DD: 0.0% | WFE: 0.68
+Status: NEEDS TUNING
+File: composite_MES_1h_2024-06-01_2026-03-31.json
+
+## COHEN-MES Composite (1h) — 2024-06-01 to 2026-03-31
+Strategy: STC+ORB+VWAP regime-adaptive composite (threshold=0.35, band_mult=2.5)
+Trades: 412 | Win Rate: 11.9% | PF: 0.15 | Sharpe: 2.14 | Max DD: 0.0% | WFE: 0.68
+Status: NEEDS TUNING
+File: composite_MES_1h_2024-06-01_2026-03-31.json
