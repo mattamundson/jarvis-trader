@@ -59,10 +59,10 @@ from api.models import (
 )
 from config import settings
 from data.market_data import MarketDataManager
-from middleware.api_key_middleware import APIKeyMiddleware
 from database.schema import DatabaseManager, init_db
 from execution.ib_order_manager import IBOrderManager
 from llm.cost_tracker import CostTracker
+from middleware.api_key_middleware import APIKeyMiddleware
 from portfolio.tracker import PortfolioTracker
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
@@ -324,20 +324,15 @@ async def lifespan(app: FastAPI):
                 price_info = trade_dec.get("limit_price") or trade_dec.get("stop_price")
                 reasoning = trade_dec.get("reasoning", "")
 
-                # Always log to decision feed
-                _decision_log.append(
-                    {
-                        "id": len(_decision_log) + 1,
-                        "timestamp": datetime.now().isoformat(),
-                        "symbol": symbol,
-                        "action": action,
-                        "confidence": confidence,
-                        "source": "scheduler",
-                        "summary": result.get("summary", ""),
-                    }
+                # Always log to decision feed (in-memory + SQLite)
+                _log_decision(
+                    symbol=symbol,
+                    action=action,
+                    confidence=float(confidence),
+                    source="scheduler",
+                    summary=result.get("summary", ""),
+                    reasoning=reasoning,
                 )
-                if len(_decision_log) > 100:
-                    _decision_log.pop(0)
 
                 if action not in ("hold",):
                     logger.info(f"{symbol}: {action.upper()} qty={qty} confidence={confidence:.0%}")
@@ -1837,18 +1832,83 @@ async def watchlist_scan(symbols: str = "MES,MNQ,MCL"):
 _decision_log: list[dict] = []  # In-memory ring buffer, 100 entries
 
 
+def _log_decision(
+    symbol: str,
+    action: str,
+    confidence: float = 0.0,
+    source: str = "unknown",
+    summary: str = "",
+    reasoning: str = "",
+    regime: str | None = None,
+    signal_data: dict | None = None,
+) -> None:
+    """Append a decision to the in-memory ring buffer AND persist to SQLite."""
+    entry: dict = {
+        "id": len(_decision_log) + 1,
+        "timestamp": datetime.now().isoformat(),
+        "symbol": symbol,
+        "action": action,
+        "confidence": confidence,
+        "source": source,
+        "summary": summary,
+    }
+    _decision_log.append(entry)
+    if len(_decision_log) > 100:
+        _decision_log.pop(0)
+
+    # Persist to SQLite (non-blocking best-effort — never crash the caller)
+    if db_manager:
+        try:
+            db_manager.insert_decision(
+                symbol=symbol,
+                action=action,
+                confidence=confidence,
+                regime=regime,
+                signal_data=signal_data or {"source": source, "summary": summary},
+                reasoning=reasoning or summary,
+            )
+        except Exception as _db_err:
+            logger.warning(f"[DB] Failed to persist decision for {symbol}: {_db_err}")
+
+
 @app.get("/decisions/recent")
 async def get_recent_decisions(limit: int = 20):
-    """Return most recent agent decisions"""
+    """Return most recent agent decisions — queries SQLite first, falls back to in-memory."""
+    if db_manager:
+        try:
+            rows = db_manager.get_decisions(limit=limit)
+            if rows:
+                # Normalise to the same shape the dashboard expects
+                return [
+                    {
+                        "id": r.get("id"),
+                        "timestamp": r.get("timestamp"),
+                        "symbol": r.get("symbol"),
+                        "action": r.get("action"),
+                        "confidence": r.get("confidence"),
+                        "source": (r.get("signal_data_json") or {}).get("source", "db"),
+                        "summary": r.get("reasoning") or "",
+                    }
+                    for r in rows
+                ]
+        except Exception as _db_err:
+            logger.warning(f"[DB] get_decisions failed, falling back to in-memory: {_db_err}")
     return _decision_log[-limit:]
 
 
 @app.post("/decisions/log")
 async def log_decision(decision: dict):
     """Internal: agents call this to log decisions"""
-    _decision_log.append({**decision, "id": len(_decision_log) + 1})
-    if len(_decision_log) > 100:
-        _decision_log.pop(0)
+    _log_decision(
+        symbol=decision.get("symbol", "UNKNOWN"),
+        action=decision.get("action", "hold"),
+        confidence=float(decision.get("confidence", 0.0)),
+        source=decision.get("source", "api"),
+        summary=decision.get("summary", ""),
+        reasoning=decision.get("reasoning", ""),
+        regime=decision.get("regime"),
+        signal_data=decision,
+    )
     return {"ok": True}
 
 
@@ -2166,20 +2226,15 @@ async def run_pipeline(req: PipelineRequest):
 
     final_action = result.get("final_action", "hold")
 
-    # Log to decision feed
-    _decision_log.append(
-        {
-            "id": len(_decision_log) + 1,
-            "timestamp": datetime.now().isoformat(),
-            "symbol": req.symbol,
-            "action": final_action,
-            "confidence": result.get("confidence", 0),
-            "source": "pipeline",
-            "summary": result.get("summary", ""),
-        }
+    # Log to decision feed (in-memory + SQLite)
+    _log_decision(
+        symbol=req.symbol,
+        action=final_action,
+        confidence=float(result.get("confidence", 0)),
+        source="pipeline",
+        summary=result.get("summary", ""),
+        reasoning=(result.get("trade_decision") or {}).get("reasoning", ""),
     )
-    if len(_decision_log) > 100:
-        _decision_log.pop(0)
 
     # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
     if not settings.LIVE_TRADING_ENABLED and final_action != "hold" and paper_tracker:
@@ -2307,19 +2362,15 @@ async def trigger_scan_now():
             price_info = trade_dec.get("limit_price") or trade_dec.get("stop_price")
             reasoning = trade_dec.get("reasoning", "")
 
-            _decision_log.append(
-                {
-                    "id": len(_decision_log) + 1,
-                    "timestamp": datetime.now().isoformat(),
-                    "symbol": symbol,
-                    "action": action,
-                    "confidence": confidence,
-                    "source": "manual_scan",
-                    "summary": result.get("summary", ""),
-                }
+            # Log to decision feed (in-memory + SQLite)
+            _log_decision(
+                symbol=symbol,
+                action=action,
+                confidence=float(confidence),
+                source="manual_scan",
+                summary=result.get("summary", ""),
+                reasoning=reasoning,
             )
-            if len(_decision_log) > 100:
-                _decision_log.pop(0)
 
             alert_sent = False
             alert_suppressed_reason = None
@@ -4085,5 +4136,46 @@ async def get_weekly_stats():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
+
+
+
+@app.get("/portfolio/stats/trading-days")
+async def get_trading_days_stats():
+    """
+    Distinct calendar days with at least one closed paper exit (SQLite).
+
+    Aliases match dashboard consumers: TradingDaysCountdownCard, ValidationChecklist.
+    """
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    threshold = 30
+    try:
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(DISTINCT DATE(exit_time)) AS td
+                FROM paper_trades
+                WHERE LOWER(TRIM(status)) = 'closed'
+                  AND exit_time IS NOT NULL
+                """
+            )
+            row = cursor.fetchone()
+            conn.close()
+
+        n = int(row["td"] or 0) if row else 0
+        return {
+            "trading_days": n,
+            "trading_days_completed": n,
+            "days_traded": n,
+            "completed_days": n,
+            "threshold": threshold,
+            "threshold_met": n >= threshold,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 # ──────────────────────────────────�

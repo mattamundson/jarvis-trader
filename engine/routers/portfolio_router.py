@@ -1,21 +1,28 @@
 """
-Portfolio router — unified multi-market portfolio summary.
-GET /portfolio/summary — total P&L, all markets, daily target progress
-GET /portfolio/health — health status of all market modules
-GET /portfolio/risk — cross-market risk state
-GET /portfolio/halt — emergency halt all markets (POST)
+Portfolio router - unified multi-market portfolio summary.
+
+GET /portfolio/summary - total P&L, all markets, daily target progress
+GET /portfolio/health - health status of all market modules
+GET /portfolio/halt - emergency halt all markets (POST)
+GET /portfolio/resume - resume after halt (POST)
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import date, datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from config import settings
+
 logger = logging.getLogger("jarvis_trader.routers.portfolio")
 
 router = APIRouter(prefix="", tags=["portfolio", "multi-market"])
+
+TARGET_TRADING_DAYS = 30
 
 # Global references (injected from main.py)
 paper_tracker = None
@@ -36,6 +43,61 @@ def _get_orchestrator():
         return get_orchestrator()
     except Exception:
         return None
+
+
+def _parse_trade_day(row: Any) -> date | None:
+    """Best-effort calendar day (UTC) from a closed-trade row (dict or object)."""
+    ts = None
+    if isinstance(row, dict):
+        ts = row.get("exit_time") or row.get("entry_time")
+    else:
+        ts = getattr(row, "exit_time", None) or getattr(row, "entry_time", None)
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts.astimezone(timezone.utc).date()
+    s = str(ts).strip()
+    if len(s) >= 10:
+        try:
+            return date.fromisoformat(s[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _row_is_closed(row: Any) -> bool:
+    """True if the row represents a completed exit (SQLite dict or PaperTrade dict)."""
+    if isinstance(row, dict):
+        if row.get("is_open") is True:
+            return False
+        st = str(row.get("status") or "").strip().lower()
+        if st == "open":
+            return False
+        if row.get("exit_time") is not None:
+            return True
+        if st == "closed":
+            return True
+        if row.get("exit_price") is not None and row.get("is_open") is False:
+            return True
+        return False
+    if getattr(row, "is_open", None) is True:
+        return False
+    return getattr(row, "exit_time", None) is not None
+
+
+def _row_pnl(row: Any) -> float:
+    if isinstance(row, dict):
+        p = row.get("pnl")
+    else:
+        p = getattr(row, "pnl", None)
+    if p is None:
+        return 0.0
+    try:
+        return float(p)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 @router.get("")
@@ -79,7 +141,7 @@ async def portfolio_health():
 
 
 @router.post("/halt")
-async def halt_all_markets(reason: str = "Manual halt via API"):
+async def halt(reason: str = "Manual halt via API"):
     """Emergency halt all market modules."""
     orch = _get_orchestrator()
     if not orch:
@@ -89,7 +151,7 @@ async def halt_all_markets(reason: str = "Manual halt via API"):
 
 
 @router.post("/resume")
-async def resume_trading():
+async def resume():
     """Resume trading after a halt (requires investigation first)."""
     orch = _get_orchestrator()
     if not orch:
@@ -98,40 +160,95 @@ async def resume_trading():
     return {"status": "resumed"}
 
 
-@router.get("/stats/streaks")
-async def streak_stats():
-    """Return win/loss streak statistics from trade history."""
-    if not paper_tracker:
-        return {
-            "current_win_streak": 0,
-            "current_loss_streak": 0,
-            "max_win_streak": 0,
-            "max_loss_streak": 0,
-        }
-    try:
-        trades = (
-            paper_tracker.get_closed_trades() if hasattr(paper_tracker, "get_closed_trades") else []
-        )
-        max_wins = 0
-        cur_wins = 0
-        cur_losses = 0
-        for t in trades:
-            pnl = getattr(t, "pnl", None) or (t.get("pnl") if isinstance(t, dict) else 0) or 0
-            if pnl > 0:
-                cur_wins += 1
-                cur_losses = 0
-                if cur_wins > max_wins:
-                    max_wins = cur_wins
-            else:
-                cur_losses += 1
-                pass
+# GET /portfolio/stats/streaks - canonical handler is on the FastAPI app in main.py (StreakBadge).
 
-    except Exception:
-        return {"max_consecutive_wins": 0, "max_consecutive_losses": 0}
+
+@router.get("/stats/paper-phase-summary")
+async def paper_phase_summary():
+    """
+    Paper validation phase rollup: balance, return, distinct trading days, status.
+    Uses PortfolioTracker closed-trade history and settings.INITIAL_CAPITAL.
+    """
+    starting = float(settings.INITIAL_CAPITAL)
+    base = {
+        "phase": "paper",
+        "start_date": "",
+        "starting_balance": starting,
+        "current_balance": starting,
+        "total_return_pct": 0.0,
+        "total_pnl": 0.0,
+        "trading_days": 0,
+        "target_trading_days": TARGET_TRADING_DAYS,
+        "trades_completed": 0,
+        "validation_status": "no_tracker",
+    }
+    if not paper_tracker:
+        return base
+
+    rows: list[Any] = []
+    try:
+        rows = paper_tracker.get_trade_history(limit=5000)
+    except Exception as exc:
+        logger.warning("paper_phase_summary: get_trade_history failed: %s", exc)
+        rows = []
+
+    closed_rows = [r for r in rows if _row_is_closed(r)]
+    days_set: set[date] = set()
+    for r in closed_rows:
+        d = _parse_trade_day(r)
+        if d is not None:
+            days_set.add(d)
+
+    total_pnl = sum(_row_pnl(r) for r in closed_rows)
+    if not closed_rows:
+        try:
+            perf = paper_tracker.get_performance()
+            total_pnl = float(perf.get("total_pnl") or 0.0)
+        except Exception as exc:
+            logger.warning("paper_phase_summary: get_performance fallback failed: %s", exc)
+
+    current_balance = starting + total_pnl
+    total_return_pct = (total_pnl / starting * 100.0) if starting else 0.0
+
+    start_date = ""
+    if days_set:
+        start_date = min(days_set).isoformat()
+
+    trades_completed = len(closed_rows)
+    trading_days = len(days_set)
+
+    if trades_completed == 0 and total_pnl == 0.0:
+        validation_status = "no_trades"
+    else:
+        try:
+            perf = paper_tracker.get_performance()
+            pf = perf.get("profit_factor")
+        except Exception:
+            pf = None
+        if trading_days >= TARGET_TRADING_DAYS:
+            if pf is not None and float(pf) >= 2.0:
+                validation_status = "passed"
+            else:
+                validation_status = "review_ready"
+        else:
+            validation_status = "in_progress"
+
+    return {
+        "phase": "paper",
+        "start_date": start_date,
+        "starting_balance": starting,
+        "current_balance": round(current_balance, 4),
+        "total_return_pct": round(total_return_pct, 4),
+        "total_pnl": round(total_pnl, 4),
+        "trading_days": trading_days,
+        "target_trading_days": TARGET_TRADING_DAYS,
+        "trades_completed": trades_completed,
+        "validation_status": validation_status,
+    }
 
 
 class PaperTradeSyncRequest(BaseModel):
-    """Paper runner / external sync → engine PortfolioTracker."""
+    """Paper runner / external sync -> engine PortfolioTracker."""
 
     action: str = Field(..., description="open | close")
     symbol: str = Field(..., min_length=1)
@@ -140,7 +257,7 @@ class PaperTradeSyncRequest(BaseModel):
     entry_price: float | None = None
     exit_price: float | None = None
     pnl: float | None = None
-    trade_id: str | None = Field(None, description="PortfolioTracker id — required for close")
+    trade_id: str | None = Field(None, description="PortfolioTracker id - required for close")
     notes: str = ""
 
 

@@ -81,3 +81,32 @@ def test_circuit_breakers_shape(contract_client: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert "all_clear" in body
+
+
+def test_paper_phase_summary_shape(contract_client: TestClient) -> None:
+    """GET /portfolio/stats/paper-phase-summary matches dashboard PaperPhaseSummary."""
+    r = contract_client.get("/portfolio/stats/paper-phase-summary")
+    assert r.status_code == 200
+    body = r.json()
+    for key in (
+        "phase",
+        "start_date",
+        "starting_balance",
+        "current_balance",
+        "total_return_pct",
+        "total_pnl",
+        "trading_days",
+        "target_trading_days",
+        "trades_completed",
+        "validation_status",
+    ):
+        assert key in body
+    assert isinstance(body["phase"], str)
+    assert isinstance(body["starting_balance"], (int, float))
+    assert isinstance(body["current_balance"], (int, float))
+    assert isinstance(body["total_return_pct"], (int, float))
+    assert isinstance(body["total_pnl"], (int, float))
+    assert isinstance(body["trading_days"], int)
+    assert isinstance(body["target_trading_days"], int)
+    assert isinstance(body["trades_completed"], int)
+    assert isinstance(body["validation_status"], str)
