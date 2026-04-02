@@ -118,12 +118,17 @@ def _skip_if_no_legacy_rl_status() -> None:
 def require_engine():
     """Session-level guard: skip all tests if the engine is not up."""
     import urllib.request
+
     try:
         with urllib.request.urlopen(f"{BASE_URL}/health", timeout=3) as resp:
             if not (200 <= resp.status < 300):
-                pytest.skip(f"Engine at {BASE_URL} returned non-2xx on /health — skipping all RL endpoint tests")
+                pytest.skip(
+                    f"Engine at {BASE_URL} returned non-2xx on /health — skipping all RL endpoint tests"
+                )
     except Exception:
-        pytest.skip(f"Engine not reachable at {BASE_URL} — skipping all RL endpoint tests (start engine first)")
+        pytest.skip(
+            f"Engine not reachable at {BASE_URL} — skipping all RL endpoint tests (start engine first)"
+        )
     _skip_if_unreachable()
 
 

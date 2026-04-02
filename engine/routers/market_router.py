@@ -107,8 +107,8 @@ async def get_upcoming_earnings(days: int = 7):
 @router.get("/market/session")
 async def get_market_session():
     """Return current market session status (pre-market, regular, after-hours, closed)."""
-    from datetime import datetime, timezone
     import zoneinfo
+    from datetime import datetime
 
     eastern = zoneinfo.ZoneInfo("America/New_York")
     now = datetime.now(tz=eastern)

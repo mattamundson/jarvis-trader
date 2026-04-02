@@ -66,21 +66,24 @@ class TradingPipeline:
     All agents are optional — the pipeline degrades gracefully when absent.
     """
 
-    def __init__(self, agents: dict, safety_layer, db_manager=None):
+    def __init__(self, agents: dict, safety_layer, db_manager=None, context_manager=None):
         """
         Args:
-            agents:       Dict of named agent instances (see class docstring)
-            safety_layer: SafetyLayer instance — provides get_status() and kill switch
-            db_manager:   Optional DatabaseManager — if set, pipeline runs are persisted
+            agents:          Dict of named agent instances (see class docstring)
+            safety_layer:    SafetyLayer instance — provides get_status() and kill switch
+            db_manager:      Optional DatabaseManager — if set, pipeline runs are persisted
+            context_manager: Optional context manager instance for pipeline execution context
         """
         self._agents = agents
         self._safety = safety_layer
         self.db_manager = db_manager
+        self.context_manager = context_manager
 
     async def analyze_and_decide(
         self,
         symbol: str,
         is_futures: bool = True,
+        timeframe: str = "1h",
     ) -> dict:
         """
         Run the full pipeline for a symbol.
@@ -127,7 +130,7 @@ class TradingPipeline:
 
         # ── Stage 1: Analysts in parallel ─────────────────────────────────
 
-        analyst_reports = await self._run_analysts(symbol, is_futures, errors)
+        analyst_reports = await self._run_analysts(symbol, is_futures, errors, timeframe=timeframe)
         pipeline_result["analyst_reports"] = analyst_reports
 
         # ── Stage 2: Bull/Bear Debate ──────────────────────────────────────
@@ -233,6 +236,7 @@ class TradingPipeline:
         symbol: str,
         is_futures: bool,
         errors: list,
+        timeframe: str = "1h",
     ) -> dict:
         """Run all four analysts concurrently via asyncio.gather."""
 
@@ -257,7 +261,9 @@ class TradingPipeline:
                 return {"signal": 0.0, "confidence": 0.0, "summary": f"{name} unavailable"}
 
         # Build coroutines — skip missing agents gracefully
-        technical_coro = self._call_agent_analyze("technical", symbol, is_futures=is_futures)
+        technical_coro = self._call_agent_analyze(
+            "technical", symbol, is_futures=is_futures, timeframe=timeframe
+        )
         news_coro = self._call_agent_analyze("news", symbol)
         social_coro = self._call_agent_analyze("social", symbol)
         fundamental_coro = self._call_agent_analyze("fundamental", symbol)

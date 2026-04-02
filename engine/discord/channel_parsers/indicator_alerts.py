@@ -84,9 +84,9 @@ def parse_ib_description(description: str, title: str = "") -> dict:
         "ib_range": r"(?:IB\s*)?(?:OR\s+)?Range\s*:\s*([\d.]+)",
         # IB extension targets: "IB UP 1" / "IB UP 2" / "IB DOWN 1" / "IB DOWN 2"
         # Also accept legacy IBU50/IBU100/IBD50/IBD100 formats
-        "ibu50":  r"(?:IB\s+UP\s+1|IBU50)\s*:\s*([\d.]+)",
+        "ibu50": r"(?:IB\s+UP\s+1|IBU50)\s*:\s*([\d.]+)",
         "ibu100": r"(?:IB\s+UP\s+2|IBU100)\s*:\s*([\d.]+)",
-        "ibd50":  r"(?:IB\s+DOWN\s+1|IBD50)\s*:\s*([\d.]+)",
+        "ibd50": r"(?:IB\s+DOWN\s+1|IBD50)\s*:\s*([\d.]+)",
         "ibd100": r"(?:IB\s+DOWN\s+2|IBD100)\s*:\s*([\d.]+)",
     }
     for field, pattern in patterns.items():

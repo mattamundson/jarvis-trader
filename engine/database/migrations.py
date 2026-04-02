@@ -467,9 +467,7 @@ def migration_007(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_ca_market ON capital_allocation(market)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ca_market ON capital_allocation(market)")
     conn.commit()
     logger.info("Migration 007 applied — capital_allocation table created.")
 

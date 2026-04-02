@@ -18,7 +18,7 @@ import logging
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -27,21 +27,62 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 BULLISH_KEYWORDS = [
-    'long', 'buy', 'support', 'breakout', 'squeeze', 'auction higher',
-    'accepting', 'initiative buying', 'demand zone', 'above poc', 'above val',
-    'buyers', 'bid', 'strong', 'bounce', 'recovery', 'upside',
+    "long",
+    "buy",
+    "support",
+    "breakout",
+    "squeeze",
+    "auction higher",
+    "accepting",
+    "initiative buying",
+    "demand zone",
+    "above poc",
+    "above val",
+    "buyers",
+    "bid",
+    "strong",
+    "bounce",
+    "recovery",
+    "upside",
 ]
 
 BEARISH_KEYWORDS = [
-    'short', 'sell', 'resistance', 'breakdown', 'distribution',
-    'auction lower', 'rejecting', 'initiative selling', 'supply zone',
-    'below poc', 'below vah', 'sellers', 'offer', 'weak', 'fade', 'downside',
+    "short",
+    "sell",
+    "resistance",
+    "breakdown",
+    "distribution",
+    "auction lower",
+    "rejecting",
+    "initiative selling",
+    "supply zone",
+    "below poc",
+    "below vah",
+    "sellers",
+    "offer",
+    "weak",
+    "fade",
+    "downside",
 ]
 
 CAUTION_KEYWORDS = [
-    'choppy', 'balanced', 'inside', 'wait', 'no trade', 'avoid',
-    'tight', 'holiday', 'news', 'fomc', 'cpi', 'jobs', 'chop',
-    'sideways', 'range bound', 'unclear', 'patience',
+    "choppy",
+    "balanced",
+    "inside",
+    "wait",
+    "no trade",
+    "avoid",
+    "tight",
+    "holiday",
+    "news",
+    "fomc",
+    "cpi",
+    "jobs",
+    "chop",
+    "sideways",
+    "range bound",
+    "unclear",
+    "patience",
 ]
 
 # ---------------------------------------------------------------------------
@@ -64,6 +105,7 @@ CREATE TABLE IF NOT EXISTS discord_daily_sentiment (
 # Module-level helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_db_path() -> str:
     """
     Resolve path to jarvis_trader.db by walking up from this file's location.
@@ -74,10 +116,7 @@ def _get_db_path() -> str:
         candidate = parent / "data" / "jarvis_trader.db"
         if candidate.exists():
             return str(candidate)
-    raise FileNotFoundError(
-        "Cannot find jarvis_trader.db — searched all parents of "
-        f"{here}"
-    )
+    raise FileNotFoundError("Cannot find jarvis_trader.db — searched all parents of " f"{here}")
 
 
 def score_message(content: str) -> float:
@@ -109,6 +148,7 @@ def score_message(content: str) -> float:
 # ---------------------------------------------------------------------------
 # SentimentProvider
 # ---------------------------------------------------------------------------
+
 
 class SentimentProvider:
     """
@@ -249,7 +289,9 @@ class SentimentProvider:
                 if row and row[0]:
                     start_date = date.fromisoformat(row[0])
                 else:
-                    logger.warning("[SentimentProvider] No rows in discord_corey_commentary — ETL skipped.")
+                    logger.warning(
+                        "[SentimentProvider] No rows in discord_corey_commentary — ETL skipped."
+                    )
                     return
             except sqlite3.Error as e:
                 logger.error(f"[SentimentProvider] Cannot determine start_date: {e}")
@@ -276,7 +318,9 @@ class SentimentProvider:
 
         dates_with_data = [row["d"] for row in rows if row["d"]]
         total = len(dates_with_data)
-        logger.info(f"[SentimentProvider] ETL processing {total} dates from {start_date} to {end_date}")
+        logger.info(
+            f"[SentimentProvider] ETL processing {total} dates from {start_date} to {end_date}"
+        )
 
         processed = 0
         for date_str in dates_with_data:

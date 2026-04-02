@@ -60,11 +60,11 @@ STATE_FEATURES = [
     "unrealized_pnl_atr",  # unrealized_pnl / atr  (negative when underwater)
     "bars_in_trade",  # number of bars since position opened (normalized /100)
     # Discord signal context (indices 18-22)
-    "discord_signal_active",      # index 18: 0/1 — signal in last 4 bars
-    "discord_win_rate_context",   # index 19: 0.0-1.0 — rolling 30-day win rate
-    "discord_proximity_entry",    # index 20: -1.0 to 1.0 — (price-entry)/ATR
-    "discord_proximity_target",   # index 21: 0.0-2.0 — abs(price-t1)/ATR
-    "discord_alignment",          # index 22: -1/0/1 — signal alignment with JARVIS
+    "discord_signal_active",  # index 18: 0/1 — signal in last 4 bars
+    "discord_win_rate_context",  # index 19: 0.0-1.0 — rolling 30-day win rate
+    "discord_proximity_entry",  # index 20: -1.0 to 1.0 — (price-entry)/ATR
+    "discord_proximity_target",  # index 21: 0.0-2.0 — abs(price-t1)/ATR
+    "discord_alignment",  # index 22: -1/0/1 — signal alignment with JARVIS
 ]
 
 N_FEATURES = len(STATE_FEATURES)  # 23

@@ -88,6 +88,7 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
     """Route to composite or standard signal generation based on instrument."""
     if symbol in COMPOSITE_INSTRUMENTS:
         from backtest.composite_signals import generate_composite_signals
+
         return generate_composite_signals(df, symbol=symbol, **kwargs)
     return generate_signals(df, symbol=symbol, **kwargs)
 

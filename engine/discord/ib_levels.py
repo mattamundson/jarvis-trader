@@ -6,10 +6,10 @@
 # Cache by (discord_symbol, date) — IB levels don't change intraday
 # Returns None gracefully when no data for the date/symbol
 
+import os
 import sqlite3
 from datetime import date, datetime
 from typing import Optional
-import os
 
 
 class IBLevelProvider:
@@ -28,21 +28,19 @@ class IBLevelProvider:
 
     # Map JARVIS micro-contract symbols → Discord full-contract symbols
     SYMBOL_MAP = {
-        'MES': 'ES',
-        'MNQ': 'NQ',
-        'MGC': 'GC',
-        'MCL': 'CL',
-        'MYM': 'YM',
-        'M2K': 'RTY',
+        "MES": "ES",
+        "MNQ": "NQ",
+        "MGC": "GC",
+        "MCL": "CL",
+        "MYM": "YM",
+        "M2K": "RTY",
     }
 
     def __init__(self, db_path: str = None):
         if db_path is None:
             # Resolve relative to project root: engine/discord/ → engine/ → project root
-            base = os.path.dirname(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            )
-            db_path = os.path.join(base, 'data', 'jarvis_trader.db')
+            base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            db_path = os.path.join(base, "data", "jarvis_trader.db")
         self.db_path = db_path
         self._cache: dict = {}  # key: (discord_symbol, date_str) → dict | None
 
@@ -111,14 +109,14 @@ class IBLevelProvider:
                 return None
 
             return {
-                'ib_high': row['ib_high'],
-                'ib_low': row['ib_low'],
-                'ib_range': row['ib_range'],
-                'ibu50': row['ibu50'],
-                'ibu100': row['ibu100'],
-                'ibd50': row['ibd50'],
-                'ibd100': row['ibd100'],
-                'auction_context': row['auction_context'],
+                "ib_high": row["ib_high"],
+                "ib_low": row["ib_low"],
+                "ib_range": row["ib_range"],
+                "ibu50": row["ibu50"],
+                "ibu100": row["ibu100"],
+                "ibd50": row["ibd50"],
+                "ibd100": row["ibd100"],
+                "auction_context": row["auction_context"],
             }
         except Exception:
             return None

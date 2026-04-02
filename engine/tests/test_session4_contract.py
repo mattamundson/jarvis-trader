@@ -105,9 +105,10 @@ class TestSession4Endpoints:
     def test_rolling_performance(self) -> None:
         """GET /analytics/performance/rolling?days=30 — route exists, returns dict with 'days'."""
         r = client.get("/analytics/performance/rolling", params={"days": 30}, headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert isinstance(body, dict), "Response must be a JSON object"
@@ -118,9 +119,10 @@ class TestSession4Endpoints:
     def test_session_today(self) -> None:
         """GET /portfolio/stats/session-today — route exists and responds."""
         r = client.get("/portfolio/stats/session-today", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert isinstance(body, dict), "Response must be a JSON object"
@@ -131,9 +133,10 @@ class TestSession4Endpoints:
     def test_alerts_history(self) -> None:
         """GET /alerts/history?limit=10 — route exists, returns dict with 'alerts' list."""
         r = client.get("/alerts/history", params={"limit": 10}, headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert isinstance(body, dict), "Response must be a JSON object"
@@ -144,9 +147,10 @@ class TestSession4Endpoints:
     def test_alerts_stats(self) -> None:
         """GET /alerts/stats — route exists, returns dict with 'stats' and 'total'."""
         r = client.get("/alerts/stats", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert isinstance(body, dict), "Response must be a JSON object"
@@ -158,9 +162,10 @@ class TestSession4Endpoints:
     def test_system_preflight(self) -> None:
         """GET /system/preflight — route exists and responds with non-empty dict."""
         r = client.get("/system/preflight", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert isinstance(body, dict), "Response must be a JSON object"
@@ -171,9 +176,10 @@ class TestSession4Endpoints:
     def test_streak_stats(self) -> None:
         """GET /portfolio/stats/streaks — route exists, responds with streak fields."""
         r = client.get("/portfolio/stats/streaks", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert isinstance(body, dict), "Response must be a JSON object"
@@ -184,14 +190,13 @@ class TestSession4Endpoints:
     def test_import_trades_empty(self) -> None:
         """POST /portfolio/import/trades with empty list — imported=0."""
         r = client.post("/portfolio/import/trades", json={"trades": []}, headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503 for empty import, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503 for empty import, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
-            assert body.get("imported") == 0, (
-                f"Expected 0 imports for empty list. Body: {body}"
-            )
+            assert body.get("imported") == 0, f"Expected 0 imports for empty list. Body: {body}"
             assert "errors" in body, f"Response missing 'errors' field. Body: {body}"
 
     def test_import_trades_single(self) -> None:
@@ -207,25 +212,22 @@ class TestSession4Endpoints:
             "exit_time": "2026-03-01T10:00:00Z",
         }
         r = client.post("/portfolio/import/trades", json={"trades": [trade]}, headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503 for single trade import, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503 for single trade import, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert body.get("imported") == 1, f"Expected 1 import. Body: {body}"
             assert body.get("skipped") == 0, f"Expected 0 skipped. Body: {body}"
-            assert isinstance(body.get("errors"), list), (
-                f"'errors' must be a list. Body: {body}"
-            )
+            assert isinstance(body.get("errors"), list), f"'errors' must be a list. Body: {body}"
 
     def test_import_trades_bad_body(self) -> None:
         """POST /portfolio/import/trades with non-list 'trades' — must return 400."""
-        r = client.post(
-            "/portfolio/import/trades", json={"trades": "not-a-list"}, headers=_AUTH
-        )
-        assert r.status_code == 400, (
-            f"Expected 400 for invalid body, got {r.status_code}. Body: {r.text}"
-        )
+        r = client.post("/portfolio/import/trades", json={"trades": "not-a-list"}, headers=_AUTH)
+        assert (
+            r.status_code == 400
+        ), f"Expected 400 for invalid body, got {r.status_code}. Body: {r.text}"
 
 
 # ===========================================================================
@@ -241,9 +243,10 @@ class TestSession4ExtendedEndpoints:
     def test_trades_by_day(self) -> None:
         """GET /analytics/trades/by-day — route exists, returns dict with 'days'."""
         r = client.get("/analytics/trades/by-day", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "days" in body, f"Response missing 'days' field. Body: {body}"
@@ -253,9 +256,10 @@ class TestSession4ExtendedEndpoints:
     def test_trades_by_symbol(self) -> None:
         """GET /analytics/trades/by-symbol — route exists, returns dict with 'symbols'."""
         r = client.get("/analytics/trades/by-symbol", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "symbols" in body, f"Response missing 'symbols' field. Body: {body}"
@@ -266,9 +270,11 @@ class TestSession4ExtendedEndpoints:
         """GET /analytics/trades/by-hour — route exists, returns dict with 'hours'."""
         r = client.get("/analytics/trades/by-hour", headers=_AUTH)
         # 500 accepted: some DB-dependent routes raise AttributeError on None db_manager
-        assert r.status_code in (200, 500, 503), (
-            f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            500,
+            503,
+        ), f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "hours" in body, f"Response missing 'hours' field. Body: {body}"
@@ -279,9 +285,11 @@ class TestSession4ExtendedEndpoints:
         """GET /portfolio/stats/weekly — route exists, returns trade stats with period='7d'."""
         r = client.get("/portfolio/stats/weekly", headers=_AUTH)
         # 500 accepted: route accesses db_manager._lock directly without None guard
-        assert r.status_code in (200, 500, 503), (
-            f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            500,
+            503,
+        ), f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "total_trades" in body, f"Response missing 'total_trades'. Body: {body}"
@@ -293,14 +301,15 @@ class TestSession4ExtendedEndpoints:
     def test_commissions(self) -> None:
         """GET /portfolio/stats/commissions — route exists, returns 'total_commissions'."""
         r = client.get("/portfolio/stats/commissions", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
-            assert "total_commissions" in body, (
-                f"Response missing 'total_commissions'. Body: {body}"
-            )
+            assert (
+                "total_commissions" in body
+            ), f"Response missing 'total_commissions'. Body: {body}"
 
     # ── GET /watchlist/scan ───────────────────────────────────────────────
 
@@ -308,9 +317,11 @@ class TestSession4ExtendedEndpoints:
         """GET /watchlist/scan?symbols=MES,MNQ — route exists, returns 'symbols'."""
         r = client.get("/watchlist/scan", params={"symbols": "MES,MNQ"}, headers=_AUTH)
         # MTF analyzer may fail without market data — also accept 500 here
-        assert r.status_code in (200, 500, 503), (
-            f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            500,
+            503,
+        ), f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "symbols" in body, f"Response missing 'symbols' field. Body: {body}"
@@ -319,21 +330,20 @@ class TestSession4ExtendedEndpoints:
 
     def test_import_trades_over_limit(self) -> None:
         """POST /portfolio/import/trades with >1000 trades — must return 400."""
-        r = client.post(
-            "/portfolio/import/trades", json={"trades": [{}] * 1001}, headers=_AUTH
-        )
-        assert r.status_code == 400, (
-            f"Expected 400 for >1000-trade payload, got {r.status_code}. Body: {r.text}"
-        )
+        r = client.post("/portfolio/import/trades", json={"trades": [{}] * 1001}, headers=_AUTH)
+        assert (
+            r.status_code == 400
+        ), f"Expected 400 for >1000-trade payload, got {r.status_code}. Body: {r.text}"
 
     # ── POST /notifications/whatsapp/test ─────────────────────────────────
 
     def test_whatsapp_test_notification(self) -> None:
         """POST /notifications/whatsapp/test — route exists, returns 'sent' and 'timestamp'."""
         r = client.post("/notifications/whatsapp/test", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "sent" in body, f"Response missing 'sent' field. Body: {body}"
@@ -353,9 +363,10 @@ class TestSession4ContinuationEndpoints:
     def test_rolling_performance_7d(self) -> None:
         """GET /analytics/performance/rolling?days=7 — returns valid structure."""
         r = client.get("/analytics/performance/rolling", params={"days": 7}, headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             assert isinstance(r.json(), dict), "Expected dict response"
 
@@ -364,9 +375,10 @@ class TestSession4ContinuationEndpoints:
     def test_rolling_performance_30d(self) -> None:
         """GET /analytics/performance/rolling?days=30 — returns valid structure."""
         r = client.get("/analytics/performance/rolling", params={"days": 30}, headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             assert isinstance(r.json(), dict), "Expected dict response"
 
@@ -375,9 +387,12 @@ class TestSession4ContinuationEndpoints:
     def test_rolling_performance_invalid_days(self) -> None:
         """GET /analytics/performance/rolling?days=0 — returns error or empty dict."""
         r = client.get("/analytics/performance/rolling", params={"days": 0}, headers=_AUTH)
-        assert r.status_code in (200, 400, 422, 503), (
-            f"Expected 200/400/422/503 for days=0, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            400,
+            422,
+            503,
+        ), f"Expected 200/400/422/503 for days=0, got {r.status_code}. Body: {r.text}"
 
     # ── GET /portfolio/stats/weekly ───────────────────────────────────────
 
@@ -385,9 +400,11 @@ class TestSession4ContinuationEndpoints:
         """GET /portfolio/stats/weekly — returns period and trade stats."""
         r = client.get("/portfolio/stats/weekly", headers=_AUTH)
         # 500 accepted: route accesses db_manager._lock directly without None guard
-        assert r.status_code in (200, 500, 503), (
-            f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            500,
+            503,
+        ), f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "period" in body, f"Response missing 'period'. Body: {body}"
@@ -401,24 +418,25 @@ class TestSession4ContinuationEndpoints:
         """GET /analytics/trades/by-hour — returns hours list."""
         r = client.get("/analytics/trades/by-hour", headers=_AUTH)
         # 500 accepted: route accesses db_manager._lock directly without None guard
-        assert r.status_code in (200, 500, 503), (
-            f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            500,
+            503,
+        ), f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "hours" in body, f"Response missing 'hours'. Body: {body}"
-            assert isinstance(body["hours"], list), (
-                f"Expected 'hours' to be a list. Body: {body}"
-            )
+            assert isinstance(body["hours"], list), f"Expected 'hours' to be a list. Body: {body}"
 
     # ── GET /market/session ───────────────────────────────────────────────
 
     def test_market_session(self) -> None:
         """GET /market/session — route exists, returns 'session' field."""
         r = client.get("/market/session", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "session" in body, f"Response missing 'session'. Body: {body}"
@@ -430,9 +448,11 @@ class TestSession4ContinuationEndpoints:
         r = client.get("/position-sizing/calculate", headers=_AUTH)
         # 500 accepted: route has no try/except — may raise if position_sizing module
         # fails to import or compute without full config context.
-        assert r.status_code in (200, 500, 503), (
-            f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            500,
+            503,
+        ), f"Expected 200/500/503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             assert isinstance(r.json(), dict), "Expected dict response"
 
@@ -441,12 +461,13 @@ class TestSession4ContinuationEndpoints:
     def test_validation_readiness_check(self) -> None:
         """GET /validation/readiness-check — returns criteria list."""
         r = client.get("/validation/readiness-check", headers=_AUTH)
-        assert r.status_code in (200, 503), (
-            f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
-        )
+        assert r.status_code in (
+            200,
+            503,
+        ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
             assert "criteria" in body, f"Response missing 'criteria'. Body: {body}"
-            assert isinstance(body["criteria"], list), (
-                f"Expected 'criteria' to be a list. Body: {body}"
-            )
+            assert isinstance(
+                body["criteria"], list
+            ), f"Expected 'criteria' to be a list. Body: {body}"

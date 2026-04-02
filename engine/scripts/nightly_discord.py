@@ -18,6 +18,7 @@ Windows Task Scheduler Setup:
     Start in: C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine
     Schedule: Daily at 6:00 AM (before market open)
 """
+
 import argparse
 import logging
 import sys
@@ -49,6 +50,7 @@ def run_sentiment_etl() -> dict:
     logger.info("Starting sentiment ETL...")
     try:
         from discord.sentiment_provider import SentimentProvider
+
         sp = SentimentProvider()
         sp.run_etl()  # returns None — side effects are written to DB
         result = {"status": "ok"}
@@ -64,6 +66,7 @@ def run_discord_import() -> dict:
     logger.info("Starting Discord import...")
     try:
         import subprocess
+
         result = subprocess.run(
             [sys.executable, "-m", "discord.cli"],
             capture_output=True,

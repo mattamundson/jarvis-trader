@@ -123,6 +123,13 @@ class SafetyLayer:
         # Orders per minute tracking
         self._recent_order_timestamps: list[float] = []
 
+        # Tilt detector (optional — injected after construction)
+        self.tilt_detector = None
+
+    def attach_ib_gateway(self, gateway) -> None:
+        """Wire in an IB gateway after construction (called after paper connector connects)."""
+        self._ib_gateway = gateway
+
     # ── Kill Switch ───────────────────────────────────────────────────────
 
     def activate_kill_switch(self, reason: KillSwitchReason | str, message: str = "") -> None:
@@ -269,6 +276,9 @@ class SafetyLayer:
     def _check_gating_conditions(self) -> RiskCheckResult:
         """Check live trading enabled and human approval conditions."""
         if not self._config.LIVE_TRADING_ENABLED:
+            if getattr(self._config, "ALLOW_PAPER_SIMULATED_ORDERS", False):
+                # Explicit opt-in: route through simulated paper path, skip all gating
+                return RiskCheckResult(approved=True)
             return RiskCheckResult(
                 approved=False,
                 rejection_reason="Live trading is disabled (LIVE_TRADING_ENABLED=False)",
@@ -367,6 +377,19 @@ class SafetyLayer:
         rate_result, now = self._check_order_rate()
         if not rate_result.approved:
             return rate_result
+
+        # Tilt detector check
+        if self.tilt_detector is not None:
+            from risk.tilt_detector import TiltState
+
+            tilt_state = self.tilt_detector.check()
+            if tilt_state == TiltState.HALT:
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason="Trading halted due to tilt detection (emotional/behavioral risk)",
+                )
+            elif tilt_state == TiltState.CAUTION:
+                warnings.append("Tilt caution: behavioral risk indicators elevated")
 
         # Loss tracker adjustment
         loss_result = self._apply_loss_tracker_adjustment(order, warnings)

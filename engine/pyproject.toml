@@ -42,6 +42,7 @@ markers = [
     "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "integration_ib: needs IB Gateway on paper port 4002 (skips if unavailable)",
     "unit: marks tests as unit tests",
     "smoke: marks tests as smoke tests",
 ]
@@ -154,6 +155,4 @@ exclude_lines = [
     "def __repr__",
     "raise AssertionError",
     "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
 ]

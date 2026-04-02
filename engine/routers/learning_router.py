@@ -29,6 +29,7 @@ router = APIRouter(prefix="/learning", tags=["learning"])
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_db_path() -> str:
     """Return the SQLite database path from env or default."""
     return os.environ.get("DB_PATH", "data/jarvis_trader.db")
@@ -53,9 +54,7 @@ def _fetch_closed_trades(
     """
     db_path = _get_db_path()
 
-    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d %H:%M:%S")
 
     conditions = ["status = 'closed'", "exit_time IS NOT NULL", "exit_time >= ?"]
     params: list = [cutoff]
@@ -97,9 +96,7 @@ def _fetch_closed_trades(
                     try:
                         dt_entry = datetime.strptime(entry, fmt)
                         dt_exit = datetime.strptime(exit_, fmt)
-                        time_in_trade = max(
-                            0.01, (dt_exit - dt_entry).total_seconds() / 3600
-                        )
+                        time_in_trade = max(0.01, (dt_exit - dt_entry).total_seconds() / 3600)
                         break
                     except ValueError:
                         continue
@@ -123,7 +120,7 @@ def _fetch_closed_trades(
                 "entry_price": entry_price,
                 "exit_price": exit_price,
                 "time_in_trade": time_in_trade,
-                "regime": "unknown",       # extended later if regime column exists
+                "regime": "unknown",  # extended later if regime column exists
                 "regime_aligned": False,
                 "won": pnl > 0,
                 "slippage": 0.0,
@@ -162,6 +159,7 @@ def _get_trade_by_id(trade_id: str) -> Optional[dict]:
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+
 class LessonRequest(BaseModel):
     """Body for POST /learning/memory."""
 
@@ -172,6 +170,7 @@ class LessonRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("/patterns")
 async def get_patterns(
@@ -257,9 +256,7 @@ async def classify_trade(
                     try:
                         dt_entry = datetime.strptime(entry, fmt)
                         dt_exit = datetime.strptime(exit_, fmt)
-                        time_in_trade = max(
-                            0.01, (dt_exit - dt_entry).total_seconds() / 3600
-                        )
+                        time_in_trade = max(0.01, (dt_exit - dt_entry).total_seconds() / 3600)
                         break
                     except ValueError:
                         continue
@@ -312,9 +309,7 @@ async def get_suggestions(
     trade performance.  Safety parameters are never touched.
     """
     try:
-        trades = _fetch_closed_trades(
-            symbol=symbol, lookback_days=lookback_days, limit=50
-        )
+        trades = _fetch_closed_trades(symbol=symbol, lookback_days=lookback_days, limit=50)
 
         # Pull current strategy params from settings table if available
         current_params = _load_strategy_params()
@@ -401,9 +396,7 @@ async def record_lesson(body: LessonRequest):
         )
 
         if not success:
-            raise HTTPException(
-                status_code=500, detail="SessionMemory failed to persist lesson"
-            )
+            raise HTTPException(status_code=500, detail="SessionMemory failed to persist lesson")
 
         return {
             "status": "ok",
@@ -425,6 +418,7 @@ async def record_lesson(body: LessonRequest):
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _grade_explanation(grade: str) -> str:
     """Return a human-readable explanation for a letter grade."""

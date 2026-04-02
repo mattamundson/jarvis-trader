@@ -1,11 +1,14 @@
 """Quick test that RL training works with 23 features."""
+
 import sys
-sys.path.insert(0, r'C:\Users\mattm\ThinkorSwim\jarvis-trader\engine')
+
+sys.path.insert(0, r"C:\Users\mattm\ThinkorSwim\jarvis-trader\engine")
 
 import numpy as np
 import pandas as pd
 
 # ── Replicate _make_synthetic_ohlcv and _make_env from test_rl_module ──────────
+
 
 def _make_synthetic_ohlcv(n_bars: int = 300) -> pd.DataFrame:
     rng = np.random.default_rng(seed=42)
@@ -15,29 +18,32 @@ def _make_synthetic_ohlcv(n_bars: int = 300) -> pd.DataFrame:
     open_ = close + rng.normal(0, 3, n_bars)
     volume = rng.integers(1000, 10000, n_bars).astype(float)
     atr = rng.uniform(8, 20, n_bars)
-    df = pd.DataFrame({
-        "open": open_,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-        "atr": atr,
-        "stc_val": rng.uniform(10, 90, n_bars),
-        "ema_21": close * rng.uniform(0.99, 1.01, n_bars),
-        "ema_trend": rng.choice(["bullish", "neutral", "bearish"], n_bars),
-        "phase_val": rng.uniform(-50, 50, n_bars),
-        "volume_signal": rng.choice(["buyer_dominant", "balanced", "seller_dominant"], n_bars),
-        "macd_hist": rng.normal(0, 1, n_bars),
-        "rsi": rng.uniform(30, 70, n_bars),
-        "bb_upper": close + atr * 2,
-        "bb_lower": close - atr * 2,
-        "adx": rng.uniform(15, 45, n_bars),
-    })
+    df = pd.DataFrame(
+        {
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+            "atr": atr,
+            "stc_val": rng.uniform(10, 90, n_bars),
+            "ema_21": close * rng.uniform(0.99, 1.01, n_bars),
+            "ema_trend": rng.choice(["bullish", "neutral", "bearish"], n_bars),
+            "phase_val": rng.uniform(-50, 50, n_bars),
+            "volume_signal": rng.choice(["buyer_dominant", "balanced", "seller_dominant"], n_bars),
+            "macd_hist": rng.normal(0, 1, n_bars),
+            "rsi": rng.uniform(30, 70, n_bars),
+            "bb_upper": close + atr * 2,
+            "bb_lower": close - atr * 2,
+            "adx": rng.uniform(15, 45, n_bars),
+        }
+    )
     return df
 
 
 def _make_env(n_bars: int = 300):
     from strategies.rl_environment import TradingEnvironment
+
     df = _make_synthetic_ohlcv(n_bars)
     return TradingEnvironment(symbol="MES", df=df, initial_capital=10_000.0)
 
@@ -45,6 +51,7 @@ def _make_env(n_bars: int = 300):
 # ── Step 1: Verify N_FEATURES == 23 ──────────────────────────────────────────
 
 from strategies.rl_config import N_FEATURES, TIMESTEPS_QUICK
+
 print(f"N_FEATURES = {N_FEATURES}")
 assert N_FEATURES == 23, f"Expected 23 features, got {N_FEATURES}"
 print("  [OK] N_FEATURES == 23")
@@ -79,6 +86,7 @@ print("\nTesting all 4 actions (BUY/HOLD/CLOSE/SELL/CLOSE)...")
 env2 = _make_env(n_bars=200)
 env2.reset()
 from strategies.rl_config import Action
+
 env2.step(int(Action.BUY))
 env2.step(int(Action.HOLD))
 env2.step(int(Action.CLOSE))
@@ -90,6 +98,7 @@ print("  [OK] All 4 actions execute without error")
 
 print("\nCreating RLTradingAgent for MES...")
 from strategies.rl_agent import RLTradingAgent
+
 agent = RLTradingAgent(symbol="MES", env=env)
 print(f"  Agent symbol: {agent.symbol}")
 print(f"  Agent trained: {agent._is_trained}")
@@ -109,6 +118,7 @@ print(f"  Untrained agent returned: {action} (HOLD=0) [OK]")
 print(f"\nStarting PPO training: {TIMESTEPS_QUICK:,} timesteps (quick smoke test)...")
 print("  (This will take ~15-30 seconds on a modern CPU...)")
 import time
+
 t0 = time.time()
 train_env = _make_env(n_bars=1000)  # larger dataset for more diverse episodes
 agent2 = RLTradingAgent(symbol="MES", env=train_env)
@@ -119,7 +129,7 @@ print(f"  Training completed in {elapsed:.1f}s")
 print(f"  Timesteps: {summary.get('total_timesteps', '?'):,}")
 print(f"  HOLD rate: {summary.get('action_distribution', {}).get('HOLD', '?')}")
 print(f"  Action distribution: {summary.get('action_distribution', {})}")
-if summary.get('episode_rewards'):
+if summary.get("episode_rewards"):
     print(f"  Last mean reward: {summary['episode_rewards'][-1]:.4f}")
 print("  [OK] Training run completed")
 
@@ -142,16 +152,17 @@ print("  [OK] Evaluation completed")
 
 print("\nSaving model...")
 import os
-os.makedirs(r'C:\Users\mattm\ThinkorSwim\jarvis-trader\data\rl_models', exist_ok=True)
-model_path = agent2.save(r'C:\Users\mattm\ThinkorSwim\jarvis-trader\data\rl_models\MES_smoke_test')
+
+os.makedirs(r"C:\Users\mattm\ThinkorSwim\jarvis-trader\data\rl_models", exist_ok=True)
+model_path = agent2.save(r"C:\Users\mattm\ThinkorSwim\jarvis-trader\data\rl_models\MES_smoke_test")
 print(f"  Saved to: {model_path}.zip")
 print("  [OK] Model saved")
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("ALL TESTS PASSED")
-print("="*60)
+print("=" * 60)
 print(f"  N_FEATURES    : {N_FEATURES} (expected 23)")
 print(f"  obs.shape     : {obs.shape}")
 print(f"  Training time : {elapsed:.1f}s for {TIMESTEPS_QUICK:,} steps")

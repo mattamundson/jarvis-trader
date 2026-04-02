@@ -1,11 +1,15 @@
 """
-Paper Validation Router — expose validation metrics via API.
+Paper Validation Router — expose validation metrics via API (READ-ONLY).
+
+Consolidation note (US-303): This router now reads validation metrics from
+ValidationTracker (which reads from PaperTradeTracker's JSON files). All state
+writes are managed by PaperTradeTracker directly.
 
 Endpoints:
   GET /paper/validation/progress — current metrics vs thresholds
   GET /paper/validation/trades — list of all paper trades
-  POST /paper/validation/record — record a new trade
   GET /paper/validation/status — overall pass/fail + days remaining
+  POST /paper/validation/record — DEPRECATED (kept for compatibility, no-op)
 """
 
 from __future__ import annotations
@@ -85,18 +89,28 @@ async def get_validation_trades(instrument: str = "MCL"):
 
 @router.post("/record")
 async def record_validation_trade(request: RecordTradeRequest):
-    """Record a new paper trade."""
+    """
+    DEPRECATED (US-303): This endpoint is deprecated.
+
+    Paper trades are now recorded directly by paper_runner.py via
+    PaperTradeTracker.add_trade(). ValidationTracker reads the tracker's
+    JSON files in read-only mode.
+
+    This endpoint is kept for backward compatibility and returns current
+    metrics without persisting new trades.
+    """
     try:
         tracker = _get_tracker()
-        tracker.record_trade(
-            instrument=request.instrument,
-            entry_price=request.entry_price,
-            exit_price=request.exit_price,
-            pnl=request.pnl,
-            setup_grade=request.setup_grade,
+        logger.warning(
+            f"POST /paper/validation/record deprecated. Use PaperTradeTracker directly. "
+            f"Request ignored: {request.instrument}"
         )
         progress = tracker.get_progress(request.instrument)
-        return {"status": "ok", "message": "Trade recorded", "data": progress}
+        return {
+            "status": "deprecated",
+            "message": "POST /record is deprecated. Trades are managed by PaperTradeTracker.",
+            "data": progress,
+        }
     except Exception as exc:
         logger.error(f"Trade recording error: {exc}")
         raise HTTPException(500, str(exc)) from exc

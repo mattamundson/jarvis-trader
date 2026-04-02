@@ -374,3 +374,20 @@ class JarvisLLMClient:
     async def close(self):
         """Close the cost tracker database connection."""
         await self.cost_tracker.close()
+
+
+# Module-level billing error flag — set to True by callers that receive a
+# billing/credit error from the Anthropic API so the health endpoint can
+# surface "llm_available": false without crashing.
+_billing_error_active: bool = False
+
+
+def set_billing_error_active(active: bool) -> None:
+    """Mark or clear the billing error flag."""
+    global _billing_error_active
+    _billing_error_active = active
+
+
+def is_billing_error_active() -> bool:
+    """Return True if a billing/credit error has been detected."""
+    return _billing_error_active

@@ -82,7 +82,7 @@ class TestGlobalExceptionHandler:
 
         # Verify common traceback patterns are NOT present
         assert "Traceback" not in response_text
-        assert "File \"" not in response_text
+        assert 'File "' not in response_text
         assert "line " not in response_text
         assert "RuntimeError" not in response_text
         assert "Sensitive implementation error message" not in response_text
@@ -128,6 +128,7 @@ class TestGlobalExceptionHandler:
         async def custom_error_endpoint():
             class CustomException(Exception):
                 pass
+
             raise CustomException("Custom error")
 
         test_client = TestClient(test_app)

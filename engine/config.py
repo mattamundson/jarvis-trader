@@ -154,6 +154,11 @@ class TradingConfig(BaseSettings):
         True, description="All live trades require Matt's approval"
     )
 
+    ALLOW_PAPER_SIMULATED_ORDERS: bool = Field(
+        False,
+        description="When True, paper trading mode allows simulated orders via check_order route",
+    )
+
     # ── Capital ────────────────────────────────────────────────────────────
     INITIAL_CAPITAL: float = Field(
         10000.0,
@@ -228,7 +233,8 @@ class TradingConfig(BaseSettings):
 
     # ── Instruments to Trade ─────────────────────────────────────────────
     FUTURES_WATCHLIST: Union[str, list[str]] = Field(
-        default="MES,MNQ,MCL", description="Micro futures contracts to trade (comma-separated or list)"
+        default="MES,MNQ,MCL",
+        description="Micro futures contracts to trade (comma-separated or list)",
     )
     OPTIONS_WATCHLIST: Union[str, list[str]] = Field(
         default=["SPY", "QQQ", "AAPL", "TSLA"], description="Underlying symbols for options trading"
@@ -250,11 +256,12 @@ class TradingConfig(BaseSettings):
             v = v.strip()
             if v.startswith("["):
                 import json
+
                 try:
                     return json.loads(v)
                 except (json.JSONDecodeError, ValueError):
                     pass
-            return [item.strip().strip('"\'') for item in v.split(",") if item.strip()]
+            return [item.strip().strip("\"'") for item in v.split(",") if item.strip()]
         return v
 
     @field_validator("API_KEY", mode="after")
