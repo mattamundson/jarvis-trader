@@ -18,11 +18,12 @@
 
 ## 2. IB Gateway (paper) — quick verify
 
-1. Start **IB Gateway** (paper), socket **7497** on the host the engine uses (`IBKR_HOST` / `IBKR_PORT` in [engine/config.py](../../engine/config.py) or `.env`).
+1. Start **IB Gateway** (paper), socket **4002** on the host the engine uses (`IBKR_HOST` / `IBKR_PORT` in [engine/config.py](../../engine/config.py) or `.env`).
+   - Note: Port 7497 is the TWS desktop client port. IB Gateway uses port 4002 for paper trading and 4001 for live (blocked during paper phase).
 2. From the machine running the engine, confirm the port is open (PowerShell):
 
    ```powershell
-   Test-NetConnection -ComputerName 127.0.0.1 -Port 7497
+   Test-NetConnection -ComputerName 127.0.0.1 -Port 4002
    ```
 
 3. Start the engine (venv): `cd engine` → `.venv\Scripts\python -m uvicorn main:app --reload --port 8010`
@@ -54,6 +55,8 @@ JARVIS_API_KEY=<same as engine API_KEY>
 
 Then entries/exits POST to `/portfolio/paper/trade` and positions can carry `engine_trade_id` in JSON.
 
+**Repo alignment:** `engine/backtest/paper_runner.py` uses `_post_engine_json("/portfolio/paper/trade", …)` with the same `action` / `symbol` / `side` / `entry_price` / `exit_price` / `trade_id` fields expected by `PaperTradeSyncRequest` in `engine/routers/portfolio_router.py`.
+
 **Checklist**
 
 - [ ] You know which source ops uses today (A only, B only, or A+B with sync).
@@ -68,6 +71,7 @@ Global API key middleware is on the engine: unauthenticated browser calls to the
 
 - [ ] `dashboard/.env.local` includes `NEXT_PUBLIC_ENGINE_API_KEY` matching engine.
 - [ ] `pnpm dev` → open **Health** or **Paper** page; no repeated 401 in network tab for `/api/engine/*` proxy.
+- [ ] **Watchlist** (`/watchlist`): VIX card uses the dashboard proxy — DevTools should show **POST** `/api/engine/notifications/vix-alert-check` and **GET** `/api/engine/settings/risk` (not requests to `localhost:3010/notifications/...`).
 
 ---
 
@@ -96,22 +100,4 @@ IB connector behavior summary: [IB_CONNECTOR_OVERVIEW.md](IB_CONNECTOR_OVERVIEW.
 2. Use the smallest contract size your test plan allows; confirm human-approval gates if enabled.
 3. Verify position appears in IB paper account **and** in engine portfolio/health surfaces you use.
 
-If you are **not** sending orders yet, mark this section **N/A** and still complete Sections 2–4.
-
----
-
-## 6. Sign-off
-
-| Gate | Pass |
-|------|------|
-| IB socket reachable + engine reports connection state | ☐ |
-| API key: dashboard ↔ engine aligned | ☐ |
-| Paper data story documented (A / B / A+B) | ☐ |
-| Optional `paper_runner` → engine sync tested or explicitly disabled | ☐ |
-| E2E order smoke (optional) | ☐ N/A / ☐ Done |
-
-**Owner / date:** _______________
-
----
-
-*Add findings to [SESSION_LOG_2026-04-02.md](../session-logs/SESSION_LOG_2026-04-02.md) or the next session log when this checklist is executed.*
+If you are **not** sending orders yet, mark this section **N/A** and still comple
