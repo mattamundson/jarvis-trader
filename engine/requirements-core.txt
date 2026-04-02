@@ -68,3 +68,4 @@ tenacity==9.0.0           # Retry logic with exponential backoff
 pytest==8.3.5
 pytest-asyncio==0.26.0
 pytest-timeout==2.3.1
+pytest-cov==5.0.0  # tier-1 CI uses --cov=engine

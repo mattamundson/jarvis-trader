@@ -31,7 +31,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install -q -r engine/requirements-core.txt
-          pip install -q pytest-cov==5.0.0 mypy==1.8.0 types-requests ruff==0.8.0
+          pip install -q mypy==1.8.0 types-requests ruff==0.8.0
 
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
