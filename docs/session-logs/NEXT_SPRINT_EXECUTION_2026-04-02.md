@@ -20,6 +20,7 @@ Paper-phase sprint outcomes (plan file not edited). Operator-dependent items are
 | `check-secrets.sh` | **Run (2026-04-02):** `C:\Windows\System32\bash.exe -lc` + repo path + `bash scripts/hooks/check-secrets.sh` — **exit 0**. |
 | **CI `ci-summary`** | **Patched:** [.github/workflows/ci.yml](../../.github/workflows/ci.yml) now fails the summary job if `engine-test` is not success (parity with other jobs). |
 | **`engine/ruff.toml`** | **Added:** extends [engine/pyproject.toml](../../engine/pyproject.toml) so `ruff check engine/ --config engine/ruff.toml` (CI) resolves a real config file. |
+| **GitHub Actions (PR #1, 2026-04-02)** | **Dashboard build:** pass. **Engine lint / mypy / pytest / security scan:** fail on current `master` baseline (e.g. ruff I001/C901/F821 in `engine/agents/*`, `engine/backtest/backtester.py`; security job grep false-positives / policy). Remediate on `master` in a dedicated hygiene PR; this closeout PR does not expand scope to the full engine tree. |
 
 ## Epic 3 — Billing + pipeline smoke
 
