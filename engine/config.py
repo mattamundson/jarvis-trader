@@ -6,9 +6,9 @@ Never hardcode secrets.
 
 import os
 import sys
-from typing import Optional
+from typing import Optional, Union
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -197,9 +197,9 @@ class TradingConfig(BaseSettings):
     )
 
     # ── API Security ──────────────────────────────────────────────────────────
-    API_KEY: str = Field(
-        "CHANGE_ME_BEFORE_DEPLOY",
-        description="FastAPI X-API-Key header authentication",
+    API_KEY: Optional[str] = Field(
+        default=None,
+        description="FastAPI X-API-Key header authentication (must be set explicitly in .env)",
     )
 
     # ── LLM (Vercel AI Gateway via OIDC) ─────────────────────────────────
@@ -227,31 +227,58 @@ class TradingConfig(BaseSettings):
     WHATSAPP_TO: Optional[str] = Field(default=None, description="WhatsApp recipient number")
 
     # ── Instruments to Trade ─────────────────────────────────────────────
-    FUTURES_WATCHLIST: list[str] = Field(
-        default=["MES", "MNQ", "MCL"], description="Micro futures contracts to trade"
+    FUTURES_WATCHLIST: Union[str, list[str]] = Field(
+        default="MES,MNQ,MCL", description="Micro futures contracts to trade (comma-separated or list)"
     )
-    OPTIONS_WATCHLIST: list[str] = Field(
+    OPTIONS_WATCHLIST: Union[str, list[str]] = Field(
         default=["SPY", "QQQ", "AAPL", "TSLA"], description="Underlying symbols for options trading"
     )
 
-    def validate_paper_trading_config(self):
+    @field_validator("FUTURES_WATCHLIST", "OPTIONS_WATCHLIST", mode="before")
+    @classmethod
+    def parse_watchlist(cls, v):
         """
-        Validate that trading configuration is safe:
-        - If PAPER_TRADING=False and SCHWAB_READY=False, raise error
-        This prevents accidental live trading without broker ready.
+        Parse list fields from comma-separated string or JSON array.
+        Supports both formats:
+        - Comma-separated: "MCL,MNQ"
+        - JSON array: ["MCL", "MNQ"]
+        Returns: list[str]
         """
-        # Import SCHWAB_READY guard
-        try:
-            from execution.schwab_connector import SCHWAB_READY
-        except ImportError:
-            try:
-                from engine.execution.schwab_connector import SCHWAB_READY
-            except ImportError:
-                SCHWAB_READY = False
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("["):
+                import json
+                try:
+                    return json.loads(v)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            return [item.strip().strip('"\'') for item in v.split(",") if item.strip()]
+        return v
 
-        # Validate live trading conditions
-        if not self.LIVE_TRADING_ENABLED and not SCHWAB_READY:
-            pass  # OK to paper trade without Schwab ready
+    @field_validator("API_KEY", mode="after")
+    @classmethod
+    def validate_api_key_not_default(cls, v):
+        """
+        Fail fast if API_KEY is not explicitly set.
+        Raises an error if API_KEY is None or a known placeholder value.
+        """
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            raise ValueError(
+                "API_KEY must be explicitly set to a real value. "
+                "Edit .env and set API_KEY to a strong random string. "
+                "Example: API_KEY=your-secret-api-key-here"
+            )
+        if v == "CHANGE_ME_BEFORE_DEPLOY":
+            raise ValueError(
+                "API_KEY must be explicitly set to a real value. "
+                "Found placeholder: 'CHANGE_ME_BEFORE_DEPLOY'. "
+                "Edit .env and set API_KEY to a strong random string."
+            )
+        return v
 
 
+# ── Module-level singleton ────────────────────────────────────────────────
+# Used by all engine modules via `from config import settings`
 settings = TradingConfig()

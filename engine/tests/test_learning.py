@@ -7,10 +7,10 @@ from datetime import datetime
 
 import pytest
 
-from learning.pattern_extractor import Pattern, PatternExtractor
-from learning.session_memory import Lesson, SessionMemory
-from learning.strategy_tuner import StrategyTuner, Suggestion
-from learning.trade_classifier import TradeClassification, TradeClassifier
+from learning._experimental.pattern_extractor import Pattern, PatternExtractor
+from learning._experimental.session_memory import Lesson, SessionMemory
+from learning._experimental.strategy_tuner import StrategyTuner, Suggestion
+from learning._experimental.trade_classifier import TradeClassification, TradeClassifier
 
 
 class TestPatternExtractor:

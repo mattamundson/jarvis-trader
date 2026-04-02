@@ -93,7 +93,7 @@ export default function OptionsPage() {
             <nav className="hidden lg:flex items-center gap-4 ml-6">
               {[
                 ["/", "Home"], ["/performance", "Performance"], ["/journal", "Journal"],
-                ["/portfolio", "Portfolio"], ["/crypto", "Crypto"], ["/health", "Health"],
+                ["/portfolio", "Portfolio"], ["/crypto", "Crypto"], ["/discord", "Discord Intel"], ["/learning", "Learning"], ["/health", "Health"],
               ].map(([href, label]) => (
                 <a key={href} href={href} className={`text-xs transition-colors ${href === "/options" ? "text-accent font-semibold" : "text-muted-foreground hover:text-foreground"}`}>
                   {label}

@@ -70,11 +70,9 @@ export function BacktestComparisonCard() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(
-        `/analytics/performance/compare`,
-        { cache: "no-store" }
-      );
-      const json = (await res.json()) as CompareResponse;
+      const json = await fetchEngine<CompareResponse>(`/analytics/performance/compare`, {
+        cache: "no-store",
+      });
       setData(json);
       setError(null);
     } catch (e) {

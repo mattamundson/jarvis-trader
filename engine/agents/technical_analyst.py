@@ -156,6 +156,28 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # 2. Compute all indicators (deterministic Python — no LLM)
         indicators = self._compute_indicators(df)
 
+        # 2b. Composite signal enrichment for MES (and future composite instruments)
+        try:
+            from backtest.signals import COMPOSITE_INSTRUMENTS
+            if symbol.upper() in COMPOSITE_INSTRUMENTS:
+                from backtest.composite_signals import generate_composite_signals
+                df_comp = generate_composite_signals(df.copy(), symbol=symbol.upper())
+                last = df_comp.iloc[-1]
+                composite_meta = {}
+                for col in ("composite_regime", "composite_score", "stc_contrib",
+                            "orb_contrib", "vwap_contrib", "composite_rr",
+                            "entry_signal", "bias"):
+                    if col in df_comp.columns:
+                        val = last[col]
+                        # Convert numpy types to native Python
+                        if hasattr(val, "item"):
+                            val = val.item()
+                        composite_meta[col] = val
+                indicators["composite"] = composite_meta
+                logger.info(f"Composite metadata added for {symbol}: {composite_meta}")
+        except Exception as e:
+            logger.debug(f"Composite signals not available for {symbol}: {e}")
+
         # 3. Always ensure current_price is populated.
         #    _compute_indicators sets it from the last close, but if that's still
         #    zero (e.g. pandas_ta not available and column missing), fall back to
@@ -237,6 +259,27 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         except Exception as e:
             logger.warning(f"_fetch_current_price failed for {symbol}: {e}")
         return 0.0
+
+    @staticmethod
+    def _format_composite_section(indicators: dict) -> str:
+        """Format composite signal metadata for the LLM prompt (if available)."""
+        comp = indicators.get("composite")
+        if not comp:
+            return ""
+        lines = [
+            "",
+            "COMPOSITE SIGNAL (STC+ORB+VWAP regime-adaptive):",
+            f"- Regime: {comp.get('composite_regime', 'N/A')}",
+            f"- Score: {comp.get('composite_score', 'N/A')} (>0.40 triggers entry)",
+            f"- Entry Signal: {comp.get('entry_signal', 'N/A')}",
+            f"- Bias: {comp.get('bias', 'N/A')}",
+            f"- STC contributed: {comp.get('stc_contrib', False)}",
+            f"- ORB contributed: {comp.get('orb_contrib', False)}",
+            f"- VWAP contributed: {comp.get('vwap_contrib', False)}",
+            f"- R:R at T1: {comp.get('composite_rr', 'N/A')}",
+            "",
+        ]
+        return "\n".join(lines)
 
     def _compute_indicators(self, df: pd.DataFrame) -> dict:
         """
@@ -394,7 +437,7 @@ VOLUME:
 KEY LEVELS:
 - Support: {indicators.get("support_levels", [])}
 - Resistance: {indicators.get("resistance_levels", [])}
-
+{self._format_composite_section(indicators)}
 Respond with JSON in exactly this format:
 {{
   "signal": <float -1.0 to 1.0>,

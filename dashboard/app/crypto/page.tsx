@@ -91,7 +91,7 @@ export default function CryptoPage() {
             <nav className="hidden lg:flex items-center gap-4 ml-6">
               {[
                 ["/", "Home"], ["/performance", "Performance"], ["/journal", "Journal"],
-                ["/portfolio", "Portfolio"], ["/options", "Options"], ["/discord", "Discord Intel"], ["/health", "Health"],
+                ["/portfolio", "Portfolio"], ["/options", "Options"], ["/discord", "Discord Intel"], ["/learning", "Learning"], ["/health", "Health"],
               ].map(([href, label]) => (
                 <a key={href} href={href} className={`text-xs transition-colors ${href === "/crypto" ? "text-accent font-semibold" : "text-muted-foreground hover:text-foreground"}`}>
                   {label}

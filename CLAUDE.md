@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-- **Engine**: FastAPI, Python 3.12, port **8010** — `engine/` (80+ routes, 24 routers)
+- **Engine**: FastAPI, Python 3.12, port **8010** — `engine/` (90+ routes, 26 routers)
 - **Dashboard**: Next.js 15, TypeScript, port **3010** — `dashboard/`
 - **Strategy**: STC oscillator (OS=15, OB=83) + ATR stops (0.70x) + 5-layer regime filter
 - **Status**: Hardening phase — multi-market framework complete, paper trading prep
@@ -51,8 +51,8 @@ task classification, playbook routing, and the acceptance checklist.
 
 | File | Purpose |
 |------|---------|
-| `engine/main.py` | FastAPI app, 421 lines, routes dispatched to 24 routers |
-| `engine/routers/` | 24 router files organizing 80+ API endpoints |
+| `engine/main.py` | FastAPI app, routes dispatched to 26 routers (90+ endpoints) |
+| `engine/routers/` | 26 router files organizing 90+ API endpoints |
 | `engine/config.py` | `TradingConfig` — all risk parameters |
 | `engine/agents/pipeline.py` | 5-stage trading pipeline orchestrator |
 | `engine/risk/safety_layer.py` | Kill switch, hard limits, order validation |
@@ -60,6 +60,9 @@ task classification, playbook routing, and the acceptance checklist.
 | `engine/markets/orchestrator.py` | Multi-market orchestrator (futures, options, crypto) |
 | `engine/learning/` | Learning system (events, feedback, patterns, recommendations) |
 | `engine/hooks/` | React hooks module (state + market data) |
+| `engine/strategies/rl_agent.py` | RL trading agent (PPO, MES only, experimental) |
+| `engine/strategies/rl_environment.py` | Gym trading environment (19 features from signals.py) |
+| `engine/strategies/rl_trainer.py` | RL training loop (max_episode_bars=500) |
 | `dashboard/lib/api.ts` | `fetchEngine`/`postEngine` — ALL dashboard API calls |
 | `dashboard/app/layout.tsx` | Root Next.js layout |
 
@@ -75,8 +78,11 @@ task classification, playbook routing, and the acceptance checklist.
 ## Environment & Commands
 
 ```bash
-# Engine (Python venv)
-cd engine && .venv/Scripts/python -m uvicorn main:app --reload --port 8010
+# Engine (Python venv) — NO --reload flag (IB Gateway creates duplicate connections)
+cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010
+
+# Restart engine (kills port 8010, restarts — use this for config changes)
+.\restart_engine.ps1
 
 # Dashboard
 cd dashboard && pnpm dev
@@ -87,6 +93,13 @@ start_jarvis.bat
 # Tests
 cd engine && .venv/Scripts/python -m pytest tests/ -v
 
+# Backtest
+cd engine && .venv/Scripts/python -m backtest.run_backtest --symbol MES --interval 1h
+cd engine && .venv/Scripts/python -m backtest.run_composite_backtest
+
+# Dashboard TypeScript check (use this, NOT npx tsc)
+cd dashboard && ./node_modules/.bin/tsc --noEmit
+
 # Dashboard build check
 cd dashboard && pnpm run build
 
@@ -96,6 +109,13 @@ bash scripts/hooks/check-secrets.sh
 
 **Python venv**: `engine/.venv/` — always use `.venv/Scripts/python`, not system Python
 **Package manager**: `pnpm` for all Node.js work — system npm is broken
+**CRITICAL**: Engine must NEVER run with `--reload` — use `.\restart_engine.ps1` after config changes
+
+## Capital & Validation Targets
+
+- **Total Capital**: $10,000 (paper trading)
+- **Validation gates**: PF >= 2.0, Sharpe >= 1.5, WR >= 55%, Trades >= 60, Days >= 30, DD <= 15%
+- **Best backtest**: MES 1h — PF 5.27, Sharpe 4.16, +47.2% (historical, NOT live-validated)
 
 ## Validated Instruments
 
@@ -105,6 +125,24 @@ bash scripts/hooks/check-secrets.sh
 | MNQ | 1h | 0.57 | APPROVED — paper trading active |
 | MGC | 1d | 0.14 | HALTED — overfit/small-sample |
 | MES | 1h | 0.09 | DO NOT TRADE |
+
+## Root Directory — Misplaced Files (do NOT move without review)
+
+The project root has ~59 files (expected ~10). Files at root that belong elsewhere:
+
+- `conftest.py` — Root pytest config (sets test env vars before imports). Intentionally at root
+  so pytest can find it before `engine/tests/conftest.py`. Do not move.
+- `verify_phase1_2.py` — Phase 1 & 2 integration smoke test. Could move to `scripts/` but
+  currently used with `python verify_phase1_2.py` from root — leave in place.
+- `*.log` files (`engine_error.log`, `engine_output.log`, `pytest.log`) — Runtime artifacts,
+  do not commit.
+- `*.md` files at root (AGENTS.md, CHANGELOG.md, DELIVERABLES.txt, etc.) — Session artifacts
+  and documentation. The canonical docs live in `docs/`.
+- `prd.json`, `prd-phase2.json` — PRD source files (also at `engine/prd.json` — reconcile).
+- `*.ps1` files (`check_pid.ps1`, `check_port.ps1`, `kill_engine.ps1`, etc.) — Ops scripts.
+  The canonical ops scripts live in `scripts/` — these are convenience copies at root.
+- `*.zip` files — Skill bundles, do not commit.
+- `zio7oVBD` — Unknown artifact, safe to delete.
 
 ## Documentation Layout
 

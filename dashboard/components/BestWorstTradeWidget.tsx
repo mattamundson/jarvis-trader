@@ -198,10 +198,9 @@ export function BestWorstTradeWidget() {
 
   const fetchTrades = async () => {
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine<unknown>(
         `/portfolio/history/trades?status=CLOSED&limit=200`
       );
-      const raw: unknown = await res.json();
       const rows: TradeRecord[] = Array.isArray(raw)
         ? raw
         : ((raw as { trades?: TradeRecord[] }).trades ?? []);

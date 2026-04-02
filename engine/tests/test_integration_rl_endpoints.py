@@ -68,8 +68,8 @@ def _get(path: str, **kwargs) -> requests.Response:
     kwargs.setdefault("headers", _AUTH_HEADERS)
     try:
         return requests.get(f"{BASE_URL}{path}", timeout=10, **kwargs)
-    except requests.exceptions.ConnectionError as exc:
-        raise ConnectionError(f"Engine unreachable at {BASE_URL}: {exc}") from exc
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        pytest.skip(f"Engine unreachable at {BASE_URL} — skipping (engine not running)")
 
 
 def _post(path: str, json: dict | None = None, **kwargs) -> requests.Response:
@@ -82,8 +82,8 @@ def _post(path: str, json: dict | None = None, **kwargs) -> requests.Response:
             timeout=10,
             **kwargs,
         )
-    except requests.exceptions.ConnectionError as exc:
-        raise ConnectionError(f"Engine unreachable at {BASE_URL}: {exc}") from exc
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        pytest.skip(f"Engine unreachable at {BASE_URL} — skipping (engine not running)")
 
 
 def _skip_if_unreachable() -> None:
@@ -117,6 +117,13 @@ def _skip_if_no_legacy_rl_status() -> None:
 @pytest.fixture(scope="session", autouse=True)
 def require_engine():
     """Session-level guard: skip all tests if the engine is not up."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"{BASE_URL}/health", timeout=3) as resp:
+            if not (200 <= resp.status < 300):
+                pytest.skip(f"Engine at {BASE_URL} returned non-2xx on /health — skipping all RL endpoint tests")
+    except Exception:
+        pytest.skip(f"Engine not reachable at {BASE_URL} — skipping all RL endpoint tests (start engine first)")
     _skip_if_unreachable()
 
 

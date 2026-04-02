@@ -38,7 +38,12 @@
       "Bash(powershell.exe:*)",
       "Bash(tasklist:*)",
       "Bash(ps aux:*)",
-      "Bash(/c/Users/mattm/ThinkorSwim/jarvis-trader/scripts/run9_standalone.py:*)"
+      "Bash(/c/Users/mattm/ThinkorSwim/jarvis-trader/scripts/run9_standalone.py:*)",
+      "Bash(rm:*)",
+      "Bash(sed:*)",
+      "Bash(./node_modules/.bin/tsc:*)",
+      "Bash(powershell:*)",
+      "Bash(pkill:*)"
     ],
     "deny": []
   }

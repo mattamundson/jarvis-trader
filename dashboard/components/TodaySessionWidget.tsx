@@ -121,10 +121,9 @@ export function TodaySessionWidget() {
 
   async function fetchTrades() {
     try {
-      const res = await fetch(
+      const body: unknown = await fetchEngine<unknown>(
         `/portfolio/history/trades?limit=100`
       );
-      const body: unknown = await res.json();
       const raw: TradeRecord[] = Array.isArray(body)
         ? body
         : Array.isArray((body as { trades?: TradeRecord[] }).trades)

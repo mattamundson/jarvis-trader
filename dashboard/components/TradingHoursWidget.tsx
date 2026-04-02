@@ -148,10 +148,9 @@ export function TradingHoursWidget() {
 
   const fetchTrades = useCallback(async () => {
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine<unknown>(
         `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      const raw: unknown = await res.json();
       const trades: TradeRecord[] = Array.isArray(raw)
         ? raw
         : ((raw as { trades?: TradeRecord[] }).trades ?? []);

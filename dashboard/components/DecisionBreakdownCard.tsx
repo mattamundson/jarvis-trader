@@ -97,10 +97,9 @@ export function DecisionBreakdownCard() {
 
   async function fetchDecisions() {
     try {
-      const res = await fetch(
+      const payload = await fetchEngine<unknown>(
         `/portfolio/history/decisions?limit=500`
       );
-      const payload: unknown = await res.json();
       // Handle both { decisions: [...] } and a top-level array
       const list: DecisionRecord[] = Array.isArray(payload)
         ? (payload as DecisionRecord[])

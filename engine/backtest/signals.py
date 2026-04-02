@@ -80,6 +80,18 @@ INSTRUMENT_PARAMS: Dict[str, tuple] = {
     # Defaults used for all other symbols: STC_OS=15, STC_OB=83, Stop=0.70, T1=1.00, regime ON
 }
 
+# Instruments that use composite signal generation (STC+ORB+VWAP regime-adaptive)
+COMPOSITE_INSTRUMENTS = {"MES"}
+
+
+def generate_instrument_signals(df, symbol: str, **kwargs):
+    """Route to composite or standard signal generation based on instrument."""
+    if symbol in COMPOSITE_INSTRUMENTS:
+        from backtest.composite_signals import generate_composite_signals
+        return generate_composite_signals(df, symbol=symbol, **kwargs)
+    return generate_signals(df, symbol=symbol, **kwargs)
+
+
 # Default STC thresholds
 STC_OS = 15  # Oversold threshold
 STC_OB = 83  # Overbought threshold

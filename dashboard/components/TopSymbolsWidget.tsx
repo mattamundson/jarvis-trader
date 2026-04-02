@@ -76,14 +76,9 @@ export function TopSymbolsWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine<unknown>(
         `/portfolio/history/trades?status=CLOSED&limit=200`
       );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const raw: unknown = await res.json();
       const trades: TradeRecord[] = Array.isArray(raw)
         ? raw
         : ((raw as TradeHistoryResponse).trades ?? []);

@@ -166,6 +166,9 @@ export default function DashboardPage() {
               <a href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Settings
               </a>
+              <a href="/learning" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Learning
+              </a>
               <a href="/health" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Health
               </a>

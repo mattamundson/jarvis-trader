@@ -195,10 +195,9 @@ export function DrawdownChartWidget() {
 
   async function fetchTrades() {
     try {
-      const res = await fetch(
+      const raw: unknown = await fetchEngine<unknown>(
         `/portfolio/history/trades?status=CLOSED&limit=200`
       );
-      const raw: unknown = await res.json();
       // Handle both array and { trades: [...] } wrapped response
       const list: TradeRecord[] = Array.isArray(raw)
         ? raw
