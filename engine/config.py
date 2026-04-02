@@ -40,7 +40,7 @@ def _validate_required_env_vars():
         "POSTGRES_URL": "PostgreSQL connection (only needed for multi-instance deployments)",
         "REDIS_URL": "Redis connection (only needed for caching/rate-limiting at scale)",
         # Market Data
-        "POLYGON_API_KEY": "Polygon.io API key for market data (falls back to yfinance)",
+        "POLYGON_API_KEY": "Polygon.io API key for market data (Tier 2 after IBKR)",
         # LLM pipeline — engine runs signal generation without Anthropic key;
         # LLM agents are skipped if this is absent.
         "ANTHROPIC_API_KEY": "Anthropic API key (sk-ant-api03-...) — enables LLM agent pipeline",

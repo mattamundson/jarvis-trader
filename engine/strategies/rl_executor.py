@@ -6,7 +6,7 @@ predicts action, applies SafetyLayer gate, routes to IBKR paper trading.
 
 Architecture:
     APScheduler (every 1h at bar close: :59, Mon-Fri 07:00-15:00 CT)
-      → fetch latest 150 bars for symbol via yfinance or data_manager
+      → fetch latest 150 bars for symbol via data_manager (IBKR → Polygon → CSV cache)
       → compute_all_indicators()
       → build observation vector (18 features)
       → RL agent.predict(obs) → action (HOLD/BUY/SELL/CLOSE)
@@ -46,14 +46,6 @@ except ImportError:
     BackgroundScheduler = None  # type: ignore[assignment,misc]
     CronTrigger = None  # type: ignore[assignment,misc]
 
-try:
-    import yfinance as yf
-
-    YFINANCE_AVAILABLE = True
-except ImportError:
-    YFINANCE_AVAILABLE = False
-    yf = None  # type: ignore[assignment]
-
 from backtest.signals import compute_all_indicators
 from strategies.rl_config import (
     ACTION_NAMES,
@@ -63,18 +55,6 @@ from strategies.rl_environment import extract_features
 
 logger = logging.getLogger(__name__)
 
-# ── Symbol → yfinance ticker mapping ─────────────────────────────────────────
-# Micro futures use continuous contract tickers
-_YF_TICKER_MAP: dict[str, str] = {
-    "MES": "MES=F",
-    "MNQ": "MNQ=F",
-    "MCL": "MCL=F",
-    "MGC": "MGC=F",
-    "ES": "ES=F",
-    "NQ": "NQ=F",
-    "CL": "CL=F",
-    "GC": "GC=F",
-}
 
 # ── Module-level executor registry ───────────────────────────────────────────
 # Keyed by symbol (upper-case). Allows API layer to retrieve/stop any executor.
@@ -112,7 +92,7 @@ class RLExecutor:
     symbol      : Futures symbol (MES, MNQ, MCL …)
     model_path  : Path to saved PPO model (without .zip extension)
     data_manager: Optional MarketDataManager — used to fetch bars from IBKR
-                  if available; falls back to yfinance when None or disconnected.
+                  if available; falls back to BacktestDataLoader when None or disconnected.
     safety_layer: Optional SafetyLayer — used for pre-trade risk gate.
                   When None, orders are only simulated (no IBKR submission).
     """
@@ -204,13 +184,12 @@ class RLExecutor:
 
         Priority:
           1. data_manager (IBKR) when connected
-          2. yfinance as fallback
+          2. data_manager.get_bars (Polygon) as fallback
+          3. BacktestDataLoader (CSV cache) as final fallback
 
         Returns a raw OHLCV DataFrame with lower-case column names,
         or None on failure.
         """
-        ticker = _YF_TICKER_MAP.get(self.symbol, f"{self.symbol}=F")
-
         # Try IBKR data_manager first
         if self._data_manager is not None:
             try:
@@ -234,40 +213,58 @@ class RLExecutor:
                         return df
             except Exception as exc:
                 logger.warning(
-                    "[RLExecutor] IBKR fetch failed for %s (%s) — falling back to yfinance",
+                    "[RLExecutor] IBKR fetch failed for %s (%s) — trying Polygon",
                     self.symbol,
                     exc,
                 )
 
-        # Fallback: yfinance
-        if not YFINANCE_AVAILABLE:
-            logger.error("[RLExecutor] yfinance not available and IBKR not connected.")
-            return None
-
-        try:
-            raw = yf.download(ticker, period="60d", interval="1h", progress=False, auto_adjust=True)
-            if raw is None or len(raw) < 60:
-                logger.warning(
-                    "[RLExecutor] yfinance returned only %d bars for %s",
-                    len(raw) if raw is not None else 0,
-                    self.symbol,
+            # Try Polygon via data_manager.get_bars
+            try:
+                loop = _get_or_create_event_loop()
+                df = loop.run_until_complete(
+                    self._data_manager.get_bars(
+                        symbol=self.symbol,
+                        lookback_days=60,
+                        timeframe="1h",
+                        is_futures=True,
+                    )
                 )
-                return None
+                if df is not None and len(df) >= 60:
+                    df.columns = [c.lower() for c in df.columns]
+                    df = df.tail(n).reset_index(drop=True)
+                    logger.debug(
+                        "[RLExecutor] Fetched %d bars via Polygon for %s", len(df), self.symbol
+                    )
+                    return df
+            except Exception as exc:
+                logger.warning(
+                    "[RLExecutor] Polygon fetch failed for %s (%s) — falling back to CSV cache",
+                    self.symbol,
+                    exc,
+                )
 
-            # Flatten multi-level columns if present (yfinance ≥0.2 quirk)
-            if isinstance(raw.columns, pd.MultiIndex):
-                raw.columns = raw.columns.get_level_values(0)
+        # Final fallback: BacktestDataLoader (CSV cache)
+        try:
+            from backtest.data_loader import BacktestDataLoader
+            from datetime import datetime, timedelta
 
-            df = raw[["Open", "High", "Low", "Close", "Volume"]].copy()
-            df.columns = ["open", "high", "low", "close", "volume"]
-            df = df.dropna().reset_index(drop=True)
-            df = df.tail(n).reset_index(drop=True)
-            logger.debug("[RLExecutor] Fetched %d bars via yfinance for %s", len(df), self.symbol)
-            return df
-
+            end_date = datetime.utcnow().strftime("%Y-%m-%d")
+            start_date = (datetime.utcnow() - timedelta(days=60)).strftime("%Y-%m-%d")
+            loader = BacktestDataLoader()
+            df = loader.load(self.symbol, start_date, end_date, "1h")
+            if df is not None and len(df) >= 60:
+                if isinstance(df.columns, pd.Index):
+                    df.columns = [c.lower() for c in df.columns]
+                df = df.tail(n).reset_index(drop=True)
+                logger.debug(
+                    "[RLExecutor] Fetched %d bars via CSV cache for %s", len(df), self.symbol
+                )
+                return df
         except Exception as exc:
-            logger.error("[RLExecutor] yfinance fetch failed for %s: %s", self.symbol, exc)
-            return None
+            logger.error("[RLExecutor] BacktestDataLoader fetch failed for %s: %s", self.symbol, exc)
+
+        logger.error("[RLExecutor] All data sources failed for %s — cannot fetch bars", self.symbol)
+        return None
 
     # ── Observation builder ───────────────────────────────────────────────
 

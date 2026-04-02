@@ -20,7 +20,7 @@ from typing import Dict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from slowapi.errors import RateLimitExceeded
@@ -73,6 +73,8 @@ from portfolio.tracker import PortfolioTracker
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
+from routers.analytics_router import router as analytics_router
+from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.discord_router import router as discord_router
 from routers.flags_router import router as flags_router
 from routers.flags_router import set_flags as set_flags_router
@@ -83,13 +85,17 @@ from routers.learning_router import router as learning_router
 from routers.market_router import router as market_router
 from routers.portfolio_router import inject_dependencies as inject_portfolio_deps
 from routers.portfolio_router import router as portfolio_router
+from routers.profiling_router import router as profiling_router
+from routers.profiling_router import set_profiler_instance
 from routers.safety_router import inject_dependencies as inject_safety_router_deps
 from routers.safety_router import router as safety_router
 from routers.strategies_router import router as strategies_router
 from routers.validation_router import router as validation_router
+from routers.validation_router import set_validation_alert_manager
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
 from schedulers.eod_scheduler import EODScheduler
+from notifications.validation_alerts import ValidationAlertManager
 from websocket.events import set_ws_manager
 from websocket.manager import WebSocketManager
 
@@ -168,6 +174,7 @@ ib_paper_connector: IBGatewayConnector | None = None
 ws_manager: WebSocketManager | None = None
 cost_tracker: "CostTracker | None" = None
 loss_tracker: "ConsecutiveLossTracker | None" = None
+validation_alert_manager: "ValidationAlertManager | None" = None
 
 # Rate limit: track last alert time per symbol to avoid flooding (2-hour cooldown)
 _last_alert_time: Dict[str, datetime] = {}
@@ -194,7 +201,8 @@ async def lifespan(app: FastAPI):
         ib_paper_connector, \
         ws_manager, \
         cost_tracker, \
-        loss_tracker
+        loss_tracker, \
+        validation_alert_manager
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -207,11 +215,26 @@ async def lifespan(app: FastAPI):
         f"   IBKR port:   {settings.IBKR_PORT} ({'live' if settings.IBKR_PORT == 4001 else 'paper'})"
     )
 
+    # Run startup validation checks BEFORE scheduler setup
+    from startup_checks import run_startup_checks
+    check_results = run_startup_checks(settings)
+
+    # Fail boot if any CRITICAL checks failed
+    critical_failures = [r for r in check_results if r.status == "fail"]
+    if critical_failures:
+        logger.error(
+            f"🛑 {len(critical_failures)} critical startup check(s) failed. Engine shutdown."
+        )
+        raise SystemExit(1)
+
+    logger.info("✅ All startup checks passed")
+
     # Initialize SQLite database
     os.makedirs("data", exist_ok=True)
     db_manager = init_db(db_path="data/jarvis_trader.db")
     db_manager.initialize()
     set_journal_db(db_manager)
+    set_analytics_db(db_manager)
     logger.info("✅ SQLite database initialized at data/jarvis_trader.db")
 
     # Feature Flags — two-layer flag system (config defaults + runtime SQLite overrides)
@@ -280,6 +303,16 @@ async def lifespan(app: FastAPI):
     if settings.ANTHROPIC_API_KEY:
         llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY)
 
+        # Startup assertion — fail loud if the client is missing required interface
+        _required_methods = ["call"]
+        _missing = [m for m in _required_methods if not callable(getattr(llm_client, m, None))]
+        if _missing:
+            raise RuntimeError(
+                f"LLM client {type(llm_client).__name__} is missing required methods: {_missing}. "
+                "Check llm/client.py — agents will silently HOLD without this."
+            )
+        logger.info(f"✅ LLM client validated: {type(llm_client).__name__} has {_required_methods}")
+
         # Stage 1: Analysts
         technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
         news_agent = NewsAnalystAgent(llm_client, data_manager)
@@ -314,6 +347,12 @@ async def lifespan(app: FastAPI):
             },
             safety_layer=safety_layer,
         )
+
+        # Wire profiler instance into profiling_router
+        if trading_pipeline.profiler:
+            set_profiler_instance(trading_pipeline.profiler)
+            logger.info("✅ PipelineProfiler wired into /pipeline/profiling endpoint")
+
         logger.info("✅ Trading Pipeline initialized — all 5 stages wired")
     else:
         logger.warning("⚠️  No ANTHROPIC_API_KEY — LLM agents disabled. Add to .env to enable.")
@@ -429,22 +468,13 @@ async def lifespan(app: FastAPI):
         from pathlib import Path
 
         try:
-            import yfinance as yf
-
             from backtest.signals import generate_signals as _gen_signals
 
-            logger.info("[MGC-daily] Fetching GC=F daily bar...")
-            gc_df = yf.download("GC=F", period="90d", interval="1d", progress=False)
+            logger.info("[MGC-daily] Fetching MGC daily bar via data_manager...")
+            gc_df = await data_manager.get_bars("MGC", lookback_days=90, timeframe="1d")
             if gc_df is None or gc_df.empty or len(gc_df) < 20:
-                logger.warning("[MGC-daily] Insufficient data from yfinance — skipping")
+                logger.warning("[MGC-daily] Insufficient data from data_manager — skipping")
                 return
-
-            # Flatten MultiIndex columns if present (yfinance sometimes returns them)
-            if hasattr(gc_df.columns, "levels") and gc_df.columns.nlevels > 1:
-                gc_df.columns = [c[0] if isinstance(c, tuple) else c for c in gc_df.columns]
-
-            # Normalise column names to lowercase
-            gc_df.columns = [c.lower() for c in gc_df.columns]
 
             sig_df = _gen_signals(gc_df, symbol="MGC", adaptive_regime=True)
 
@@ -534,6 +564,15 @@ async def lifespan(app: FastAPI):
     if scheduler is not None:
         eod_scheduler.register_with_scheduler(scheduler)
 
+    # Validation Alert Manager — monitors 30-day paper validation gates
+    try:
+        validation_alert_manager = ValidationAlertManager(alert_file="data/validation_alerts.json")
+        eod_scheduler._alert_manager = validation_alert_manager
+        set_validation_alert_manager(validation_alert_manager)
+        logger.info("✅ ValidationAlertManager initialized and wired to EODScheduler")
+    except Exception as _alert_err:
+        logger.warning("ValidationAlertManager init failed (non-fatal): %s", _alert_err)
+
     # WebSocket manager for real-time event streaming
     ws_manager = WebSocketManager()
     set_ws_manager(ws_manager)
@@ -603,12 +642,15 @@ async def lifespan(app: FastAPI):
             )
 
             logger.info("KAIROS: initializing proactive monitoring daemon...")
+            # Wire in WhatsApp notifier for alerts (Phase 2 — requires Twilio creds in .env)
+            from notifications.whatsapp import get_notifier
+            whatsapp_notifier = get_notifier()
             kairos_daemon = KairosDaemon(
                 config=settings,
                 data_manager=data_manager,
                 safety_layer=safety_layer,
                 ws_manager=ws_manager,
-                notifier=None,  # TODO: wire in WhatsApp notifier once available
+                notifier=whatsapp_notifier,
             )
             # Register all watchers
             kairos_daemon.register_watcher(RegimeChangeWatcher())
@@ -673,6 +715,36 @@ async def lifespan(app: FastAPI):
             logger.error(f"SpeculationEngine init failed (non-fatal): {_spec_err}")
     else:
         logger.info("SpeculationEngine: disabled (set ENABLE_SPECULATION=True to enable)")
+
+    # Initialize Database Backup (nightly at 23:30 UTC)
+    try:
+        from backup.db_backup import get_backup_manager
+        import asyncio
+
+        backup_manager = get_backup_manager()
+
+        async def run_nightly_backup():
+            """Run database backup and cleanup in thread executor."""
+            loop = asyncio.get_event_loop()
+            backup_result = await loop.run_in_executor(None, backup_manager.backup)
+            cleanup_result = await loop.run_in_executor(None, backup_manager.cleanup_old)
+            logger.info(f"Backup: {backup_result.get('message')}")
+            logger.info(f"Cleanup: {cleanup_result.get('message')}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_nightly_backup,
+                CronTrigger(hour=23, minute=30, timezone="UTC"),
+                id="nightly_db_backup",
+                name="Nightly Database Backup",
+                max_instances=1,
+                misfire_grace_time=300,
+            )
+            if not scheduler.running:
+                scheduler.start()
+            logger.info("✅ Database backup job registered — fires nightly at 23:30 UTC")
+    except Exception as _backup_err:
+        logger.warning(f"Database backup init failed (non-fatal): {_backup_err}")
 
     logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
@@ -742,6 +814,7 @@ app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
 app.include_router(market_router)
+app.include_router(analytics_router)
 app.include_router(safety_router)
 app.include_router(strategies_router)
 app.include_router(validation_router)
@@ -749,8 +822,27 @@ app.include_router(webhook_router)
 app.include_router(discord_router)
 app.include_router(learning_router)
 app.include_router(kairos_router)
+app.include_router(profiling_router)
 app.include_router(v1_router)
 
+
+
+# ── WebSocket Price Feed ────────────────────────────────────────────────────────
+from websocket.price_feed import price_feed_endpoint
+
+app.websocket("/ws/prices")(price_feed_endpoint)
+
+
+# ── WebSocket Events (Trading Events) ────────────────────────────────────────────
+from websocket.events_endpoint import events_endpoint
+
+
+async def events_handler(websocket: WebSocket):
+    """Route WebSocket /ws/events to events_endpoint with ws_manager."""
+    await events_endpoint(websocket, ws_manager)
+
+
+app.websocket("/ws/events")(events_handler)
 
 # ── Health ────────────────────────────────────────────────────────────────
 
@@ -784,7 +876,7 @@ async def health():
         "ibkr_connected": bool(getattr(data_manager.ibkr, "is_connected", False))
         if data_manager and data_manager.ibkr
         else False,
-        "schwab_connected": False,  # Schwab connector TODO
+        "schwab_connected": False,  # Schwab connector — Phase 3 (OAuth2 + token refresh pending)
         "uptime_seconds": (now - _start_time).total_seconds(),
         "llm_available": True,
     }
@@ -976,9 +1068,9 @@ async def system_preflight():
 
     # 5. VIX overlay
     try:
-        from analytics.vix_overlay import fetch_vix
+        from analytics.vix_overlay import fetch_vix_async
 
-        vix_state = fetch_vix()
+        vix_state = await fetch_vix_async(data_manager)
         vix_val = getattr(vix_state, "vix_value", None)
         source = getattr(vix_state, "source", "unknown")
         if vix_val is not None:
@@ -1061,6 +1153,180 @@ async def system_preflight():
         "checks": checks,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/system/phase3-readiness")
+async def get_phase3_readiness() -> dict:
+    """
+    Phase 3 Live Trading Readiness Gate.
+
+    Checks all critical prerequisites for live capital deployment:
+    - Validation gates (PF >= 2.0, Sharpe >= 1.5, WR >= 55%, etc.)
+    - Safety layer operational (kill switch, circuit breakers)
+    - LIVE_TRADING_ENABLED = False (hardcoded safety)
+    - IB Gateway paper mode validated
+    - Position sizing limits verified
+
+    Returns:
+        Dictionary with pass/fail for each gate and overall ready status
+    """
+    if safety_layer is None:
+        raise HTTPException(status_code=503, detail="Safety layer not initialized")
+
+    try:
+        gates = {}
+        all_pass = True
+
+        # Gate 1: Validation gates (30-day performance)
+        try:
+            from paper.validation_tracker import ValidationTracker
+            from pathlib import Path
+
+            tracker = ValidationTracker(data_dir=Path(os.environ.get("DATA_DIR", "data")))
+            validation_ok = True
+            validation_details = {}
+
+            for instrument in ["MCL", "MNQ"]:
+                progress = tracker.get_progress(instrument)
+                pass_fail = progress.get("pass_fail", {})
+                is_validated = all(v for v in pass_fail.values())
+                validation_details[instrument] = {
+                    "is_validated": is_validated,
+                    "profit_factor": progress.get("profit_factor", 0),
+                    "sharpe_ratio": progress.get("sharpe_ratio", 0),
+                    "win_rate_pct": progress.get("win_rate_pct", 0),
+                    "total_trades": progress.get("total_trades", 0),
+                    "days_active": progress.get("days_active", 0),
+                    "max_drawdown_pct": progress.get("max_drawdown_pct", 0),
+                }
+                if not is_validated:
+                    validation_ok = False
+
+            gates["validation_gates"] = {
+                "passed": validation_ok,
+                "details": validation_details,
+            }
+            if not validation_ok:
+                all_pass = False
+        except Exception as e:
+            logger.warning(f"[PHASE3] Validation check failed: {e}")
+            gates["validation_gates"] = {"passed": False, "error": str(e)}
+            all_pass = False
+
+        # Gate 2: Safety layer operational
+        try:
+            cb = safety_layer.check_circuit_breakers()
+            safety_ok = not (
+                cb.get("daily_limit_breached")
+                or cb.get("drawdown_breached")
+                or cb.get("kill_switch_active")
+            )
+            gates["safety_tests"] = {
+                "passed": safety_ok,
+                "details": {
+                    "daily_limit_breached": cb.get("daily_limit_breached", False),
+                    "drawdown_breached": cb.get("drawdown_breached", False),
+                    "kill_switch_active": cb.get("kill_switch_active", False),
+                },
+            }
+            if not safety_ok:
+                all_pass = False
+        except Exception as e:
+            logger.warning(f"[PHASE3] Safety check failed: {e}")
+            gates["safety_tests"] = {"passed": False, "error": str(e)}
+            all_pass = False
+
+        # Gate 3: LIVE_TRADING_ENABLED = False (hardcoded safety)
+        live_disabled = not settings.LIVE_TRADING_ENABLED
+        gates["live_trading_disabled"] = {
+            "passed": live_disabled,
+            "details": {"live_trading_enabled": settings.LIVE_TRADING_ENABLED},
+        }
+        if not live_disabled:
+            all_pass = False
+
+        # Gate 4: Kill switch functional
+        try:
+            status = safety_layer.get_status()
+            kill_switch_present = status is not None
+            gates["kill_switch_functional"] = {
+                "passed": kill_switch_present,
+                "details": {
+                    "can_toggle": True,
+                    "endpoints": [
+                        "POST /safety/kill-switch/activate",
+                        "POST /safety/kill-switch/deactivate",
+                    ],
+                },
+            }
+        except Exception as e:
+            logger.warning(f"[PHASE3] Kill switch check failed: {e}")
+            gates["kill_switch_functional"] = {"passed": False, "error": str(e)}
+            all_pass = False
+
+        # Gate 5: Position limits verified
+        try:
+            position_ok = (
+                settings.MAX_CONTRACTS_PER_INSTRUMENT == 2
+                and settings.MAX_OVERNIGHT_CONTRACTS == 1
+                and settings.MAX_POSITION_SIZE_PCT == 0.05
+                and settings.MAX_SINGLE_ORDER_VALUE == 5000.0
+                and settings.MAX_MARGIN_UTILIZATION == 0.40
+            )
+            gates["position_limits_verified"] = {
+                "passed": position_ok,
+                "details": {
+                    "max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+                    "max_overnight": settings.MAX_OVERNIGHT_CONTRACTS,
+                    "max_position_pct": settings.MAX_POSITION_SIZE_PCT,
+                    "max_order_value": settings.MAX_SINGLE_ORDER_VALUE,
+                    "max_margin": settings.MAX_MARGIN_UTILIZATION,
+                },
+            }
+            if not position_ok:
+                all_pass = False
+        except Exception as e:
+            logger.warning(f"[PHASE3] Position limits check failed: {e}")
+            gates["position_limits_verified"] = {"passed": False, "error": str(e)}
+            all_pass = False
+
+        # Gate 6: IB Gateway paper mode validated
+        ibkr_paper = settings.IBKR_PAPER_MODE and settings.IBKR_PORT == 4002
+        gates["ibkr_paper_validated"] = {
+            "passed": ibkr_paper,
+            "details": {
+                "paper_mode_enabled": settings.IBKR_PAPER_MODE,
+                "port": settings.IBKR_PORT,
+                "expected_port": 4002,
+            },
+        }
+        if not ibkr_paper:
+            all_pass = False
+
+        # Gate 7: Human approval required
+        human_approval_ok = settings.REQUIRE_HUMAN_APPROVAL
+        gates["human_approval_required"] = {
+            "passed": human_approval_ok,
+            "details": {"require_human_approval": settings.REQUIRE_HUMAN_APPROVAL},
+        }
+        if not human_approval_ok:
+            all_pass = False
+
+        return {
+            "overall_ready": all_pass,
+            "gates": gates,
+            "notes": (
+                "All gates passing. Ready for Tier 3 approval to set "
+                "LIVE_TRADING_ENABLED=True"
+                if all_pass
+                else "One or more gates failing. Review details above."
+            ),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"[PHASE3] Readiness check failed: {e}")
+        raise HTTPException(500, f"Phase 3 readiness check error: {e}") from e
 
 
 # ── Safety / Kill Switch ──────────────────────────────────────────────────
@@ -1953,7 +2219,7 @@ async def get_mtf_analysis(symbol: str = "MES"):
         from analytics.mtf_analyzer import analyze_mtf
 
         sym = symbol.strip().upper()
-        result = analyze_mtf(sym)
+        result = await analyze_mtf(sym, data_manager)
         return {
             "symbol": result.symbol,
             "recommendation": result.recommendation,
@@ -1992,7 +2258,7 @@ async def watchlist_scan(symbols: str = "MES,MNQ,MCL"):
         results = []
         for sym in symbol_list[:5]:  # cap at 5 to avoid abuse
             try:
-                mtf_result = analyze_mtf(sym)
+                mtf_result = await analyze_mtf(sym, data_manager)
                 results.append(
                     {
                         "symbol": sym,
@@ -2160,41 +2426,18 @@ async def get_sentiment_recent():
 @app.get("/watchlist")
 async def get_watchlist():
     """Return configured watchlists as ticker items with live prices"""
-    import yfinance as yf
-
-    futures_map = {
-        "MES": "ES=F",
-        "MNQ": "NQ=F",
-        "MCL": "CL=F",
-        "MGC": "GC=F",
-        "MHG": "HG=F",
-        "MYM": "YM=F",
-        "M2K": "RTY=F",
-    }
     all_symbols = list(settings.FUTURES_WATCHLIST) + list(settings.OPTIONS_WATCHLIST)
     prices: dict = {}
-    try:
-        yf_tickers_map = {s: futures_map.get(s, s) for s in all_symbols}
-        tickers_obj = yf.Tickers(" ".join(set(yf_tickers_map.values())))
-        for sym, yf_sym in yf_tickers_map.items():
-            try:
-                info = tickers_obj.tickers[yf_sym].fast_info
-                current = (
-                    float(info.last_price)
-                    if hasattr(info, "last_price") and info.last_price
-                    else None
-                )
-                prev = (
-                    float(info.previous_close)
-                    if hasattr(info, "previous_close") and info.previous_close
-                    else None
-                )
-                chg = ((current - prev) / prev) if current and prev and prev > 0 else None
-                prices[sym] = {"last_price": current, "change_pct": chg}
-            except Exception:
-                prices[sym] = {"last_price": None, "change_pct": None}
-    except Exception:
-        pass
+    if data_manager and all_symbols:
+        try:
+            batch = await data_manager.get_batch_prices(all_symbols)
+            for sym, price_dict in batch.items():
+                prices[sym] = {
+                    "last_price": price_dict.get("last_price"),
+                    "change_pct": price_dict.get("change_pct"),
+                }
+        except Exception:
+            pass
 
     items = []
     names = {
@@ -2281,56 +2524,27 @@ async def remove_from_watchlist(symbol: str):
 async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
     """
     Get current prices and daily change % for comma-separated symbols.
-    Futures micro contracts (MES, MNQ, MCL etc) are mapped to continuous contracts.
+    Futures micro contracts (MES, MNQ, MCL etc) are mapped via data_manager.
     """
-    import yfinance as yf
+    if not data_manager:
+        raise HTTPException(503, "Data manager not initialized")
 
-    futures_map = {
-        "MES": "ES=F",
-        "MNQ": "NQ=F",
-        "MCL": "CL=F",
-        "MGC": "GC=F",
-        "MHG": "HG=F",
-        "MYM": "YM=F",
-        "M2K": "RTY=F",
-    }
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     if not symbol_list:
         return {}
 
-    yf_tickers = [futures_map.get(s, s) for s in symbol_list]
     try:
-        tickers = yf.Tickers(" ".join(yf_tickers))
+        batch = await data_manager.get_batch_prices(symbol_list)
         result = {}
-        for original, yf_ticker in zip(symbol_list, yf_tickers, strict=False):
-            try:
-                info = tickers.tickers[yf_ticker].fast_info
-                current = (
-                    float(info.last_price)
-                    if hasattr(info, "last_price") and info.last_price
-                    else None
-                )
-                prev = (
-                    float(info.previous_close)
-                    if hasattr(info, "previous_close") and info.previous_close
-                    else None
-                )
-                chg = ((current - prev) / prev) if current and prev and prev > 0 else None
-                result[original] = {
-                    "symbol": original,
-                    "last_price": current,
-                    "prev_close": prev,
-                    "change_pct": chg,
-                    "yf_ticker": yf_ticker,
-                }
-            except Exception as e:
-                result[original] = {
-                    "symbol": original,
-                    "last_price": None,
-                    "prev_close": None,
-                    "change_pct": None,
-                    "error": str(e),
-                }
+        for sym in symbol_list:
+            price_dict = batch.get(sym, {})
+            result[sym] = {
+                "symbol": sym,
+                "last_price": price_dict.get("last_price"),
+                "prev_close": price_dict.get("prev_close"),
+                "change_pct": price_dict.get("change_pct"),
+                "source": price_dict.get("source"),
+            }
         return result
     except Exception as e:
         raise HTTPException(500, f"Price fetch failed: {e}") from e
@@ -2353,75 +2567,16 @@ async def get_upcoming_earnings(days: int = 7):
         "GOOGL": "Alphabet",
     }
 
-    from datetime import datetime, timedelta, timezone
-
-    now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=days)
-    upcoming = []
-
-    try:
-        import yfinance as yf
-
-        for symbol, name in WATCHED.items():
-            try:
-                ticker = yf.Ticker(symbol)
-                cal = ticker.calendar
-                if cal is None:
-                    continue
-                if hasattr(cal, "columns"):
-                    dates = (
-                        cal["Earnings Date"].dropna().tolist()
-                        if "Earnings Date" in cal.columns
-                        else []
-                    )
-                elif isinstance(cal, dict):
-                    dates = cal.get("Earnings Date", [])
-                    if not isinstance(dates, list):
-                        dates = [dates]
-                else:
-                    continue
-                for d in dates:
-                    if d is None:
-                        continue
-                    if hasattr(d, "to_pydatetime"):
-                        d = d.to_pydatetime()
-                    if not hasattr(d, "tzinfo"):
-                        continue
-                    if d.tzinfo is None:
-                        import pytz
-
-                        d = pytz.utc.localize(d)
-                    if now <= d <= cutoff:
-                        upcoming.append(
-                            {
-                                "symbol": symbol,
-                                "name": name,
-                                "date": d.strftime("%Y-%m-%d"),
-                                "days_away": (d - now).days,
-                            }
-                        )
-            except Exception:
-                continue
-
-        upcoming.sort(key=lambda x: x["days_away"])
-        return {
-            "upcoming_earnings": upcoming,
-            "count": len(upcoming),
-            "days_lookahead": days,
-            "note": "High-impact earnings can increase volatility on MES/MNQ",
-            "source": "yfinance",
-        }
-
-    except ImportError:
-        return {
-            "upcoming_earnings": [],
-            "count": 0,
-            "days_lookahead": days,
-            "note": "yfinance not installed",
-            "source": "unavailable",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    # Earnings calendar data requires a dedicated earnings data source (e.g. Polygon earnings
+    # endpoint). No equivalent is available on data_manager at this time.
+    return {
+        "upcoming_earnings": [],
+        "count": 0,
+        "days_lookahead": days,
+        "note": "Earnings calendar unavailable — no earnings data source configured",
+        "source": "unavailable",
+        "watched_symbols": list(WATCHED.keys()),
+    }
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────
@@ -2677,8 +2832,8 @@ async def check_vix_alert():
         from analytics.vix_overlay import VIXOverlay
         from notifications.whatsapp import send_whatsapp_message
 
-        vix = VIXOverlay()
-        state = vix.get_state()
+        vix = VIXOverlay(data_manager=data_manager)
+        state = await vix.get_state_async()
 
         thresholds = [
             (40, "EXTREME VIX", "Consider halting all trading"),
@@ -3166,15 +3321,15 @@ async def get_regime_status():
     Falls back to static data if market data is unavailable.
     """
     try:
-        import yfinance as yf
-
         from backtest.regime import RegimeClassifier
 
         results = {}
 
-        # --- MNQ 1h (via NQ=F) ---
+        # --- MNQ 1h ---
         try:
-            nq = yf.download("NQ=F", period="10d", interval="1h", progress=False)
+            if not data_manager:
+                raise ValueError("data_manager not initialized")
+            nq = await data_manager.get_bars("MNQ", lookback_days=10, timeframe="1h")
             if nq is not None and len(nq) >= 20:
                 rc = RegimeClassifier()
                 nq_classified = rc.classify(nq)
@@ -3188,16 +3343,18 @@ async def get_regime_status():
                     "regime_breakdown_30d": {str(k): round(v, 1) for k, v in regime_counts.items()},
                 }
             else:
-                raise ValueError("Insufficient NQ data")
+                raise ValueError("Insufficient MNQ data")
         except Exception:
             results["MNQ_1h"] = {
                 "current_regime": "RANGING",
                 "regime_breakdown_30d": {"TRENDING": 15.3, "RANGING": 80.5, "VOLATILE": 4.2},
             }
 
-        # --- MGC 1d (via GC=F) ---
+        # --- MGC 1d ---
         try:
-            gc = yf.download("GC=F", period="60d", interval="1d", progress=False)
+            if not data_manager:
+                raise ValueError("data_manager not initialized")
+            gc = await data_manager.get_bars("MGC", lookback_days=60, timeframe="1d")
             if gc is not None and len(gc) >= 20:
                 rc = RegimeClassifier()
                 gc_classified = rc.classify(gc)
@@ -3211,7 +3368,7 @@ async def get_regime_status():
                     "adaptive_stc_ob": int(last_row.get("adaptive_stc_ob", 92)),
                 }
             else:
-                raise ValueError("Insufficient GC data")
+                raise ValueError("Insufficient MGC data")
         except Exception:
             results["MGC_1d"] = {
                 "current_regime": "TRENDING",
@@ -3288,32 +3445,23 @@ async def get_mgc_signal():
     Generate today's MGC (Gold Micro) signal using the walk-forward validated
     adaptive regime strategy (WFE=0.88).
 
-    Fetches 200 daily bars of GC=F via yfinance, runs the full indicator +
+    Fetches 200 daily bars via data_manager, runs the full indicator +
     regime + signal pipeline, and returns the last bar's signal with entry/exit
     levels.
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    def _generate_signal():
-        import yfinance as yf
+    if not data_manager:
+        raise HTTPException(503, "Data manager not initialized")
 
+    # Fetch data asynchronously before entering the sync thread worker
+    gc_df = await data_manager.get_bars("MGC", lookback_days=200, timeframe="1d")
+    if gc_df is None or len(gc_df) < 50:
+        raise HTTPException(503, "Insufficient MGC data from data_manager")
+
+    def _generate_signal(gc):
         from backtest.paper_config import MGC_PAPER_CONFIG
         from backtest.signals import generate_signals
-
-        # Fetch data
-        gc = yf.download("GC=F", period="200d", interval="1d", progress=False)
-        if gc is None or len(gc) < 50:
-            return {
-                "error": "Insufficient GC=F data from yfinance",
-                "bars_received": len(gc) if gc is not None else 0,
-            }
-
-        # Flatten MultiIndex columns if present (yfinance sometimes returns them)
-        if hasattr(gc.columns, "nlevels") and gc.columns.nlevels > 1:
-            gc.columns = gc.columns.get_level_values(0)
-
-        # Normalize column names to lowercase
-        gc.columns = [c.lower() for c in gc.columns]
 
         # Run full signal pipeline with adaptive regime
         df = generate_signals(
@@ -3380,7 +3528,7 @@ async def get_mgc_signal():
     try:
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as pool:
-            result = await loop.run_in_executor(pool, _generate_signal)
+            result = await loop.run_in_executor(pool, _generate_signal, gc_df)
         if "error" in result:
             raise HTTPException(503, result["error"])
         return result

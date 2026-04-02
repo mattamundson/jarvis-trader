@@ -75,7 +75,7 @@ class StrategyRecommendRequest(BaseModel):
 
 @router.get("/chain/{symbol}", tags=["options"])
 async def get_options_chain(symbol: str, expiry_index: int = 0):
-    """Fetch the live options chain for a symbol via yfinance.
+    """Fetch the live options chain for a symbol via MarketDataManager.
 
     Query param ``expiry_index`` selects which expiry (0 = nearest).
     Returns calls, puts, Greeks, IV rank, and underlying price.
@@ -83,34 +83,30 @@ async def get_options_chain(symbol: str, expiry_index: int = 0):
     logger.info("[options_router] GET /options/chain/%s expiry_index=%d", symbol, expiry_index)
 
     try:
-        from options.chain_fetcher import _YFINANCE_AVAILABLE, fetch_chain_yfinance  # noqa: F401
+        from options.chain_fetcher import fetch_chain  # noqa: F401
     except ImportError as exc:
         logger.error("[options_router] chain_fetcher import failed: %s", exc)
         raise HTTPException(status_code=503, detail="Options chain module unavailable.") from exc
 
-    if not _YFINANCE_AVAILABLE:
-        raise HTTPException(
-            status_code=503,
-            detail="yfinance is not installed. Run: pip install yfinance",
-        )
-
     try:
-        # Resolve the requested expiry date string via the ticker
-        import yfinance as yf
+        # Resolve available expiries via data_manager
+        from data.market_data import MarketDataManager
 
-        ticker = yf.Ticker(symbol.upper())
-        available = ticker.options
-        if not available:
+        data_manager = MarketDataManager()
+        expirations = await data_manager.get_options_expirations(symbol.upper())
+        if not expirations:
             raise HTTPException(
                 status_code=404,
                 detail=f"No options data available for symbol '{symbol}'.",
             )
 
-        if expiry_index >= len(available):
+        if expiry_index >= len(expirations):
             expiry_index = 0  # fall back to nearest
 
-        expiry_dates = [available[expiry_index]]
-        chain = fetch_chain_yfinance(symbol.upper(), expiry_dates=expiry_dates)
+        expiry_dates = [expirations[expiry_index]]
+        chain = fetch_chain(
+            symbol.upper(), expiry_dates=expiry_dates, data_manager=data_manager
+        )
 
     except HTTPException:
         raise
@@ -182,20 +178,16 @@ async def get_iv_rank(symbol: str):
     logger.info("[options_router] GET /options/iv-rank/%s", symbol)
 
     try:
-        from options.chain_fetcher import _YFINANCE_AVAILABLE
         from options.chain_fetcher import get_iv_rank as _get_iv_rank
     except ImportError as exc:
         logger.error("[options_router] chain_fetcher import failed: %s", exc)
         raise HTTPException(status_code=503, detail="Options chain module unavailable.") from exc
 
-    if not _YFINANCE_AVAILABLE:
-        raise HTTPException(
-            status_code=503,
-            detail="yfinance is not installed. Run: pip install yfinance",
-        )
-
     try:
-        iv_rank = _get_iv_rank(symbol.upper(), days=252)
+        from data.market_data import MarketDataManager
+
+        data_manager = MarketDataManager()
+        iv_rank = _get_iv_rank(symbol.upper(), days=252, data_manager=data_manager)
     except Exception as exc:
         logger.exception("[options_router] get_iv_rank error for %s: %s", symbol, exc)
         raise HTTPException(status_code=502, detail=f"Failed to compute IV rank: {exc}") from exc

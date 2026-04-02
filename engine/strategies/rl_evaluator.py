@@ -76,7 +76,7 @@ class OOSEvaluator:
         end_date   : ISO date string, e.g. "2026-04-01"
         interval   : Bar interval for data (default "1h")
         data_manager: Optional MarketDataManager for data fetching.
-                      Falls back to yfinance when None.
+                      Falls back to BacktestDataLoader when None.
 
         Returns
         -------
@@ -245,7 +245,7 @@ class OOSEvaluator:
         interval: str,
         data_manager=None,
     ) -> Optional[pd.DataFrame]:
-        """Fetch raw OHLCV data. Uses data_manager if provided, else yfinance."""
+        """Fetch raw OHLCV data. Uses data_manager if provided, else BacktestDataLoader."""
         if data_manager is not None:
             try:
                 import asyncio
@@ -261,55 +261,30 @@ class OOSEvaluator:
                 if df is not None and len(df) >= 60:
                     return self._normalize_columns(df)
             except Exception as exc:
-                logger.warning(
-                    f"[OOSEvaluator] data_manager fetch failed: {exc}, falling back to yfinance"
-                )
+                logger.warning(f"[OOSEvaluator] data_manager fetch failed: {exc}, trying BacktestDataLoader")
 
-        return self._fetch_yfinance(symbol, lookback_days=730, interval=interval)
+        return self._fetch_via_loader(symbol, lookback_days=730, interval=interval)
 
-    def _fetch_yfinance(
+    def _fetch_via_loader(
         self,
         symbol: str,
         lookback_days: int,
         interval: str,
     ) -> Optional[pd.DataFrame]:
-        """Fetch via yfinance. Maps futures to equity proxies."""
+        """Fetch via BacktestDataLoader (Polygon → CSV cache)."""
         try:
-            import yfinance as yf
+            from backtest.data_loader import BacktestDataLoader
+            from datetime import datetime, timedelta
 
-            FUTURES_TO_YF = {
-                "MES": "ES=F",
-                "MNQ": "NQ=F",
-                "MCL": "CL=F",
-                "MGC": "GC=F",
-                "MYM": "YM=F",
-            }
-            ticker = FUTURES_TO_YF.get(symbol.upper(), symbol)
-            yf_interval = {"1h": "1h", "4h": "1h", "1d": "1d"}.get(interval, "1h")
-            period = f"{min(lookback_days, 730)}d"
-
-            df = yf.download(ticker, period=period, interval=yf_interval, progress=False)
-            if df.empty:
-                return None
-
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-
-            df = df.rename(
-                columns={
-                    "Open": "open",
-                    "High": "high",
-                    "Low": "low",
-                    "Close": "close",
-                    "Volume": "volume",
-                }
-            )
-            df = df[["open", "high", "low", "close", "volume"]].copy().dropna()
-            return df.reset_index(drop=True)
-
+            end = datetime.now().strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+            loader = BacktestDataLoader()
+            df = loader.load(symbol, start, end, interval=interval)
+            if df is not None and len(df) >= 60:
+                return self._normalize_columns(df)
         except Exception as exc:
-            logger.error(f"[OOSEvaluator] yfinance fetch failed: {exc}")
-            return None
+            logger.error(f"[OOSEvaluator] BacktestDataLoader fetch failed: {exc}")
+        return None
 
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Ensure lowercase OHLCV column names."""

@@ -13,11 +13,13 @@ router = APIRouter(prefix="", tags=["macro"])
 
 # Global references (injected from main.py)
 _macro_cache = {}
+_data_manager = None
 
 
-def inject_dependencies():
+def inject_dependencies(data_manager=None):
     """Inject dependencies from main.py"""
-    pass
+    global _data_manager
+    _data_manager = data_manager
 
 
 @router.get("/macro/snapshot")
@@ -47,29 +49,24 @@ async def get_macro_snapshot():
         logger.warning("get_macro_snapshot() raised unexpectedly: %s — building fallback", e)
         raw = {}
 
-    # If FRED returned nothing useful (all None), enrich VIX from yfinance
+    # If FRED returned nothing useful (all None), enrich VIX from data_manager
     if not raw or raw.get("vix", {}) in (None, {}, {"value": None}):
         try:
-            import yfinance as yf
-
-            vix_df = yf.download("^VIX", period="2d", interval="1d", progress=False)
-            if vix_df is not None and not vix_df.empty:
-                # Flatten MultiIndex if needed
-                if hasattr(vix_df.columns, "nlevels") and vix_df.columns.nlevels > 1:
-                    vix_df.columns = vix_df.columns.get_level_values(0)
-                vix_df.columns = [c.lower() for c in vix_df.columns]
-                vix_live = float(vix_df["close"].iloc[-1])
-                raw.setdefault(
-                    "vix",
-                    {
-                        "value": vix_live,
-                        "unit": "index",
-                        "description": "CBOE Volatility Index (yfinance)",
-                    },
-                )
-                logger.info("VIX fallback via yfinance: %.2f", vix_live)
-        except Exception as yf_err:
-            logger.warning("yfinance VIX fallback also failed: %s", yf_err)
+            if _data_manager is not None:
+                vix_result = await _data_manager.get_vix()
+                vix_value = vix_result.get("value")
+                if vix_value is not None:
+                    raw.setdefault(
+                        "vix",
+                        {
+                            "value": float(vix_value),
+                            "unit": "index",
+                            "description": f"CBOE Volatility Index ({vix_result.get('source', 'data_manager')})",
+                        },
+                    )
+                    logger.info("VIX fallback via data_manager: %.2f", float(vix_value))
+        except Exception as dm_err:
+            logger.warning("data_manager VIX fallback also failed: %s", dm_err)
 
     # The FREDDataService returns nested dicts: {"vix": {"value": 27.4, ...}, ...}
     # Flatten to the shape the dashboard WatchlistBar expects.
