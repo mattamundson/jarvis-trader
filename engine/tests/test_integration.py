@@ -1386,7 +1386,8 @@ class TestSession4Endpoints(unittest.TestCase):
     def test_import_trades_single(self) -> None:
         """POST /portfolio/import/trades with one trade must return HTTP 200, imported=1."""
         trade = {
-            "symbol": "MES",
+            "trade_id": "test-import-single-fixture-001",
+            "symbol": "TEST",
             "action": "LONG",
             "entry_price": 5000.0,
             "exit_price": 5010.0,
