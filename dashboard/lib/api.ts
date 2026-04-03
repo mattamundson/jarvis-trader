@@ -574,6 +574,14 @@ export interface PendingApproval {
   rejection_reason: string | null;
   paper_trade_id: string | null;
   ib_order_id: string | null;
+  regime?: string;
+  structure_position?: string;
+  bias?: string;
+  composite_score?: number | null;
+  stc_contrib?: boolean | null;
+  orb_contrib?: boolean | null;
+  vwap_contrib?: boolean | null;
+  risk_pct_used?: number | null;
 }
 
 export interface PendingApprovalRow {
@@ -890,39 +898,102 @@ export async function fetchTradeJournal(
   const path = queryString ? `/paper/trade-journal?${queryString}` : "/paper/trade-journal";
   return fetchEngine<TradeJournalEntry[]>(path);
 }
+
+// ── EOD Summary (US-1504) ────────────────────────────────────────────────────
+
+export interface ValidationGatesSummary {
+  pf: number | null;
+  sharpe: number | null;
+  win_rate: number | null;
+  trades_count: number;
+  days_trading: number;
+  max_drawdown: number | null;
+}
+
+export interface EODSummary {
+  date: string;
+  trades_today: number;
+  pnl_today_usd: number;
+  wins_today: number;
+  losses_today: number;
+  win_rate_today: number | null;
+  avg_r_today: number | null;
+  cumulative_trades: number;
+  cumulative_pnl_usd: number;
+  validation_gates: ValidationGatesSummary;
+  status: "on_track" | "at_risk" | "insufficient_data";
+}
+
+export async function fetchEODSummary(): Promise<EODSummary> {
+  return fetchEngine<EODSummary>("/paper/validation/summary/eod");
+}
+
+// ── Streak Tracker (Sprint 14) ───────────────────────────────────────────────
+
+export interface StreakRecord {
+  type: "WIN" | "LOSS";
+  count: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface StreaksResponse {
+  current_streak: { type: "WIN" | "LOSS" | "NONE"; count: number };
+  max_win_streak: number;
+  max_loss_streak: number;
+  streak_history: StreakRecord[];
+}
+
+// Win-Rate by Hour Widget
 export interface HourlyStatItem {
   hour: number;
   label: string;
   trades: number;
   win_rate: number;
-  avg_pnl: number;
-}
-
-export interface HourSummary {
-  hour: number;
-  label: string;
-  win_rate: number;
-  trades: number;
-  avg_pnl: number;
 }
 
 export interface HourlyStatsResponse {
   hourly_stats: HourlyStatItem[];
-  best_hour: HourSummary | null;
-  worst_hour: HourSummary | null;
+  best_hour: HourlyStatItem | null;
+  worst_hour: HourlyStatItem | null;
 }
 
-export interface StreakRecord {
-  type: string;
-  count: number;
-  start_date?: string | null;
-  end_date?: string | null;
+// Regime Attribution Journal
+export interface RegimeStatRow {
+  regime: string;
+  trade_count: number;
+  win_count: number;
+  loss_count: number;
+  win_rate_pct: number;
+  avg_pnl: number;
+  total_pnl: number;
 }
 
-export interface StreaksResponse {
-  current_streak: { type: string; count: number };
-  max_win_streak: number;
-  max_loss_streak: number;
-  streak_history: StreakRecord[];
-  total_trades: number;
+export interface RegimeStatsResponse {
+  regimes: RegimeStatRow[];
+  total_closed_trades: number;
+  timestamp: string;
+}
+
+// Dual-Timeframe STC Confirmation Widget
+export interface DualTFEntry {
+  stc_val: number;
+  direction: "long" | "short" | "neutral";
+  signal: string;
+}
+
+export interface DualTFSymbol {
+  symbol: string;
+  stc_os: number;
+  stc_ob: number;
+  tf_1h: DualTFEntry | null;
+  tf_15m: DualTFEntry | null;
+  confirmed: boolean;
+  direction: "long" | "short" | "neutral";
+  error: string | null;
+}
+
+export interface DualTFResponse {
+  symbols: DualTFSymbol[];
+  timestamp: string;
 }

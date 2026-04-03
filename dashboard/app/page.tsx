@@ -14,6 +14,7 @@ import { TradeHistory } from "@/components/TradeHistory";
 import { DailyPnlPanel } from "@/components/DailyPnlPanel";
 import { RegimeDisplay } from "@/components/RegimeDisplay";
 import { MTFConfirmationWidget } from "@/components/MTFConfirmationWidget";
+import { DualTFWidget } from "@/components/DualTFWidget";
 import { SignalHistory } from "@/components/SignalHistory";
 import { CircuitBreakerPanel } from "@/components/CircuitBreakerPanel";
 import { IBGatewayStatus } from "@/components/IBGatewayStatus";
@@ -23,6 +24,7 @@ import { StrategyParamsPanel } from "@/components/StrategyParamsPanel";
 import { SessionTodayWidget } from "@/components/SessionTodayWidget";
 import { RollingWFEWidget } from "@/components/RollingWFEWidget";
 import { TradeJournalWidget } from "@/components/TradeJournalWidget";
+import { EODSummaryWidget } from "@/components/EODSummaryWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -180,6 +182,9 @@ export default function DashboardPage() {
         {/* Watchlist ticker bar — live price feed */}
         <WatchlistBar items={watchlist ?? []} />
 
+        {/* EOD Summary — daily P&L and validation gates */}
+        <EODSummaryWidget />
+
         {/* Circuit breaker safety panel — safety-critical, shown before trading panels */}
         <CircuitBreakerPanel />
 
@@ -206,6 +211,7 @@ export default function DashboardPage() {
             />
             <RegimeDisplay />
             <MTFConfirmationWidget symbol="MES" />
+            <DualTFWidget />
           </div>
 
           {/* Center column — agent activity feed */}
