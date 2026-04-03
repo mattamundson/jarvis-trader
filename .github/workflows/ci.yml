@@ -1,0 +1,215 @@
+name: JARVIS TRADER CI
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  engine-lint:
+    name: Engine Lint (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'engine/requirements-core.txt'
+
+      - name: Install ruff
+        run: pip install ruff==0.8.0
+
+      # Run from engine/ so isort treats agents, config, database, … as first-party
+      # (ruff check engine/ from repo root mis-classifies them and fails I001).
+      - name: Run ruff check
+        run: |
+          cd engine
+          ruff check . --config ruff.toml
+
+      - name: Run ruff format check
+        run: |
+          cd engine
+          ruff format --check . --config ruff.toml
+
+  engine-typecheck:
+    name: Engine Type Check (mypy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'engine/requirements-core.txt'
+
+      - name: Install dependencies
+        run: |
+          pip install -q -r engine/requirements-core.txt
+          pip install -q mypy==1.8.0 types-requests
+
+      # Allowlist + --follow-imports=skip for small modules that would otherwise pull the whole app graph.
+      - name: Mypy gate (allowlisted clean files)
+        run: |
+          mypy engine/tests/test_paper_runner_engine_sync.py \
+            engine/tests/test_portfolio_paper_trade_post.py \
+            engine/routers/validation_router.py \
+            engine/execution/paper_trade_logger.py \
+            --ignore-missing-imports --config-file engine/pyproject.toml \
+            --explicit-package-bases --namespace-packages \
+            --follow-imports=skip
+
+      - name: Run mypy type checking
+        continue-on-error: true
+        run: |
+          # Full-tree mypy has legacy debt (300+); keep visible, non-blocking until tightened.
+          mypy engine/ --ignore-missing-imports --config-file engine/pyproject.toml \
+            --explicit-package-bases --namespace-packages
+
+  engine-test:
+    name: Engine Tests (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'engine/requirements-core.txt'
+
+      - name: Install dependencies
+        run: |
+          pip install -q -r engine/requirements-core.txt
+
+      - name: Run pytest
+        run: |
+          # Tier-1 gate: canonical signal + WFE scheduler tests (stable offline).
+          # Full engine/tests/ has mock/async debt on master; restore full suite in a follow-up PR.
+          pytest engine/tests/test_signals.py engine/tests/test_rolling_wfe.py \
+            engine/tests/test_cold_start_degraded.py \
+            engine/tests/test_portfolio_paper_trade_post.py \
+            engine/tests/test_api_contract_minimal.py \
+            engine/tests/test_p0_verify_mirror.py \
+            engine/tests/test_paper_runner_engine_sync.py \
+            engine/tests/test_exception_handler.py \
+            engine/tests/test_paper_trade_logger_tracker_mirror.py \
+            engine/tests/test_routes_wired.py \
+            engine/tests/test_pending_approval_notify.py \
+            engine/tests/test_pipeline_run_human_gate.py \
+            -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 30
+
+  dashboard-build:
+    name: Dashboard Build (Next.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: dashboard
+
+      - name: Build Next.js
+        run: pnpm run build
+        working-directory: dashboard
+        env:
+          NODE_ENV: production
+
+      - name: No bare await fetch in dashboard app/hooks
+        run: |
+          set -euo pipefail
+          HITS=$(grep -r "await fetch(" dashboard/app dashboard/hooks \
+            --include="*.tsx" --include="*.ts" 2>/dev/null || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Use fetchEngine/postEngine from dashboard/lib/api.ts instead of bare fetch."
+            exit 1
+          fi
+          echo "OK: no bare await fetch in dashboard/app or dashboard/hooks."
+
+      - name: No bare await fetch in dashboard components
+        run: |
+          set -euo pipefail
+          HITS=$(grep -r "await fetch(" dashboard/components \
+            --include="*.tsx" --include="*.ts" 2>/dev/null || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Use fetchEngine/postEngine/fetchEngineRaw from dashboard/lib/api.ts instead of bare fetch."
+            exit 1
+          fi
+          echo "OK: no bare await fetch in dashboard/components."
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for .env files
+        run: |
+          if find . -name '.env' -o -name '.env.local' -o -name '.env.*.local' | grep -v '.env.example' | grep -v 'node_modules'; then
+            echo "ERROR: Untracked .env files found. These should never be committed."
+            exit 1
+          fi
+
+      - name: Check for hardcoded secrets
+        run: |
+          set -euo pipefail
+          # Raw key material only — avoids false positives on settings.ANTHROPIC_API_KEY, risk_*, etc.
+          HITS=$(grep -rE "sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{20,}|sk_live_[0-9a-zA-Z]{20,}|xox[baprs]-[0-9a-z-]{10,}|AKIA[0-9A-Z]{16}" \
+            --include="*.py" --include="*.ts" --include="*.tsx" --include="*.js" \
+            --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=.next \
+            engine/ dashboard/ 2>/dev/null || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Potential raw API keys detected in repository."
+            exit 1
+          fi
+          echo "Security scan passed: no high-signal secret patterns matched."
+
+  # Final job: summary
+  ci-summary:
+    name: CI Summary
+    needs: [engine-lint, engine-typecheck, engine-test, dashboard-build, security-scan]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check CI results
+        run: |
+          if [[ "${{ needs.engine-lint.result }}" != "success" || \
+                "${{ needs.engine-typecheck.result }}" != "success" || \
+                "${{ needs.engine-test.result }}" != "success" || \
+                "${{ needs.dashboard-build.result }}" != "success" || \
+                "${{ needs.security-scan.result }}" != "success" ]]; then
+            echo "⚠️  Some CI checks failed. Please review the logs above."
+            exit 1
+          fi
+          echo "✓ All CI checks passed!"

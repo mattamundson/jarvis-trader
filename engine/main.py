@@ -4230,4 +4230,8 @@ async def get_trading_days_stats():
             "completed_days": n,
             "target_days": threshold,
             "threshold": threshold,
-            "threshold_m
+            "threshold_met": n >= threshold,
+            "target_trading_days": threshold,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
