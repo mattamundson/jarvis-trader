@@ -35,17 +35,8 @@ class TestFuturesMarketModuleInterface:
     """Test FuturesMarketModule implements MarketModule ABC correctly."""
 
     @pytest.fixture
-    def mock_ib_gateway(self):
-        """Mock IB Gateway manager."""
-        mock = AsyncMock()
-        mock.is_connected = Mock(return_value=True)
-        mock.connect.return_value = True
-        mock.disconnect.return_value = None
-        return mock
-
-    @pytest.fixture
     def mock_portfolio_tracker(self):
-        """Mock portfolio tracker."""
+        """Override conftest mock_paper_tracker with richer position data."""
         mock = MagicMock()
         mock.get_open_positions.return_value = [
             {
@@ -66,7 +57,7 @@ class TestFuturesMarketModuleInterface:
 
     @pytest.fixture
     def mock_safety_layer(self):
-        """Mock safety layer."""
+        """Mock safety layer (from conftest)."""
         return MagicMock()
 
     @pytest.fixture
@@ -171,12 +162,9 @@ class TestOptionsMarketModule:
     """Test OptionsMarketModule interface and lifecycle."""
 
     @pytest.fixture
-    def mock_ib_gateway_options(self):
-        """Mock IB Gateway for options."""
-        mock = AsyncMock()
-        mock.is_connected = Mock(return_value=True)
-        mock.connect.return_value = True
-        return mock
+    def mock_ib_gateway_options(self, mock_ib_gateway):
+        """Reuse conftest mock_ib_gateway for options testing."""
+        return mock_ib_gateway
 
     @pytest.fixture
     def options_module(self, mock_ib_gateway_options):

@@ -195,6 +195,7 @@ def _build_equity_curve(trades: list[dict]) -> list[float]:
     equity = 0.0
     curve = [equity]
     for trade in trades:
-        equity += trade.get("pnl", 0)
+        pnl = trade.get("pnl", 0)
+        equity += pnl
         curve.append(equity)
     return curve

@@ -69,7 +69,53 @@ async def get_validation_targets():
     """Return the validation targets required to go live."""
     from schedulers.validation_checker import TARGETS
 
-    return {
-        "targets": TARGETS,
-        "description": "All targets must be met for 30 consecutive days before live capital deployment.",
-    }
+    return {"targets": TARGETS}
+
+
+# ── Validation Alert Manager ──────────────────────────────────────────────────
+
+_validation_alert_manager = None
+
+
+def set_validation_alert_manager(manager) -> None:
+    """Inject ValidationAlertManager instance (called from main.py lifespan)."""
+    global _validation_alert_manager
+    _validation_alert_manager = manager
+
+
+@router.get("/alerts")
+async def get_validation_alerts():
+    """
+    Return recent validation gate alerts (status transitions from PASS/FAIL).
+
+    Returns:
+        {
+            "alerts": [list of recent alerts],
+            "current_gates": {gate_name: "PASS"|"FAIL"|"UNKNOWN", ...},
+            "status": "ok" | "no_manager"
+        }
+    """
+    if _validation_alert_manager is None:
+        return {
+            "alerts": [],
+            "current_gates": {},
+            "status": "no_manager",
+            "message": "ValidationAlertManager not initialized"
+        }
+
+    try:
+        alerts = _validation_alert_manager.get_alert_history()
+        gates = _validation_alert_manager.get_current_gate_status()
+        return {
+            "alerts": alerts,
+            "current_gates": gates,
+            "status": "ok"
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch validation alerts: {e}")
+        return {
+            "alerts": [],
+            "current_gates": {},
+            "status": "error",
+            "error": str(e)
+        }

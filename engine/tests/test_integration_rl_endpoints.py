@@ -39,7 +39,7 @@ _tests_dir = Path(__file__).resolve().parent
 if str(_tests_dir) not in sys.path:
     sys.path.insert(0, str(_tests_dir))
 
-from live_engine_probe import jarvis_rl_integration_ready
+from live_engine_probe import jarvis_rl_integration_ready, rl_evaluate_contract_ready
 
 BASE_URL = "http://localhost:8010"
 
@@ -683,6 +683,10 @@ class TestPreflightChecks:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not rl_evaluate_contract_ready(),
+    reason="Live engine must return 422 for empty POST /strategies/rl/evaluate — restart after deploy",
+)
 class TestRLEvaluateEndpoint:
     """
     Verify the evaluate endpoints respond with correct validation errors

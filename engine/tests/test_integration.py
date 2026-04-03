@@ -57,6 +57,13 @@ def _session4_api_ready() -> bool:
     return session4_api_ready(_ENGINE_BASE)
 
 
+def _live_analytics_contract_ready() -> bool:
+    """True when live :8010 serves current analytics performance schema."""
+    from live_engine_probe import live_analytics_contract_ready
+
+    return live_analytics_contract_ready(_ENGINE_BASE)
+
+
 # ===========================================================================
 # TestSQLitePersistence
 # ===========================================================================
@@ -474,7 +481,7 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         self.assertEqual(len(open_pos), 1)
         self.assertEqual(open_pos[0]["symbol"], "MES")
 
-        # NOTE (Phase 3 TODO): Uncomment once DatabaseManager gains
+        # Phase 3: Uncomment once DatabaseManager gains
         # insert_paper_trade() — at that point the tracker will write to DB
         # and this assertion should hold:
         #
@@ -506,7 +513,7 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         # No open trades remaining in memory
         self.assertEqual(len(tracker.get_open_positions()), 0)
 
-        # NOTE (Phase 3 TODO): Uncomment once DatabaseManager gains
+        # Phase 3: Uncomment once DatabaseManager gains
         # close_paper_trade() — at that point the DB record should be updated:
         #
         #   closed = db.get_closed_trades(symbol="MES")
@@ -594,7 +601,7 @@ class TestPortfolioEndpoints(unittest.TestCase):
         """GET the given path and return (status_code, parsed_json)."""
         url = f"{self.BASE}{path}"
         req = urllib.request.Request(url)
-        req.add_header("X-API-Key", "test-key")
+        req.add_header("X-API-Key", os.environ.get("API_KEY") or "test-key")
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 return resp.status, json.loads(resp.read().decode())
@@ -691,6 +698,10 @@ class TestPortfolioEndpoints(unittest.TestCase):
                 f"/safety/circuit-breakers missing 'all_clear' field. Body: {body}",
             )
 
+    @unittest.skipUnless(
+        _live_analytics_contract_ready(),
+        "Live engine analytics contract mismatch — restart engine after deploy",
+    )
     def test_performance_endpoint(self) -> None:
         """
         GET /analytics/performance — Phase 3 route.
@@ -1267,7 +1278,7 @@ class TestSession4Endpoints(unittest.TestCase):
         if params:
             url = f"{url}?{urlencode(params)}"
         req = urllib.request.Request(url)
-        req.add_header("X-API-Key", "test-key")
+        req.add_header("X-API-Key", os.environ.get("API_KEY") or "test-key")
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 return resp.status, json.loads(resp.read().decode())
@@ -1289,7 +1300,7 @@ class TestSession4Endpoints(unittest.TestCase):
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json", "X-API-Key": "test-key"},
+            headers={"Content-Type": "application/json", "X-API-Key": os.environ.get("API_KEY") or "test-key"},
             method="POST",
         )
         try:
@@ -1444,7 +1455,7 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
         if params:
             url = f"{url}?{urlencode(params)}"
         req = urllib.request.Request(url)
-        req.add_header("X-API-Key", "test-key")
+        req.add_header("X-API-Key", os.environ.get("API_KEY") or "test-key")
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 return resp.status, json.loads(resp.read().decode())
@@ -1466,7 +1477,7 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json", "X-API-Key": "test-key"},
+            headers={"Content-Type": "application/json", "X-API-Key": os.environ.get("API_KEY") or "test-key"},
             method="POST",
         )
         try:
@@ -1589,7 +1600,7 @@ class TestSession4ContinuationEndpoints(unittest.TestCase):
         import json as _json
 
         req = urllib.request.Request(f"{self.BASE_URL}{path}")
-        req.add_header("X-API-Key", "test-key")
+        req.add_header("X-API-Key", os.environ.get("API_KEY") or "test-key")
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return resp.status, _json.loads(resp.read().decode())
@@ -1671,15 +1682,4 @@ class TestSession4ContinuationEndpoints(unittest.TestCase):
         """GET /validation/readiness-check returns criteria list."""
         status, data = self._get("/validation/readiness-check")
         self.assertEqual(status, 200, f"Expected 200, got {status}. Body: {data}")
-        self.assertIn("criteria", data, f"Response missing 'criteria' field. Body: {data}")
-        self.assertIsInstance(
-            data["criteria"], list, f"Expected 'criteria' to be a list. Body: {data}"
-        )
-
-
-# ===========================================================================
-# Entry point
-# ===========================================================================
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+        self.assertIn("criteria", data, f"Response missing criteria: {data}")

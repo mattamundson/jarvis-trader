@@ -472,6 +472,42 @@ def migration_007(conn: sqlite3.Connection) -> None:
     logger.info("Migration 007 applied — capital_allocation table created.")
 
 
+def migration_008(conn: sqlite3.Connection) -> None:
+    """
+    008 — Pending human trade approvals.
+
+    Rows are created when the pipeline proposes buy/sell with requires_human=True.
+    Approve/reject updates status and records audit fields.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pending_trade_approvals (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            approval_id             TEXT    NOT NULL UNIQUE,
+            symbol                  TEXT    NOT NULL,
+            action                  TEXT    NOT NULL,
+            quantity                REAL    NOT NULL,
+            entry_price             REAL,
+            status                  TEXT    NOT NULL DEFAULT 'pending',
+            pipeline_snapshot_json  TEXT    NOT NULL,
+            created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
+            resolved_at             TEXT,
+            resolved_by             TEXT,
+            rejection_reason        TEXT,
+            paper_trade_id          TEXT,
+            ib_order_id             TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pta_status_created "
+        "ON pending_trade_approvals(status, created_at DESC)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pta_symbol ON pending_trade_approvals(symbol)")
+    conn.commit()
+    logger.info("Migration 008 applied — pending_trade_approvals table created.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -483,6 +519,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_005,  # version 5
     migration_006,  # version 6
     migration_007,  # version 7
+    migration_008,  # version 8
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -493,47 +530,30 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Alert log: alert_log table for WhatsApp notification history",
     "Discord signals: discord_bot_signals, discord_ib_reports, discord_corey_alerts, discord_corey_commentary",
     "Capital allocation: capital_allocation table for $10K cross-market distribution",
+    "Pending trade approvals: pending_trade_approvals for human-gated paper/live execution",
 ]
 
 
-# ── Public entry point ─────────────────────────────────────────────────────────
+# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def run_migrations(conn: sqlite3.Connection) -> None:
     """
-    Apply any pending migrations to `conn` in version order.
+    Run all pending migrations in order.
 
-    This function is idempotent — calling it multiple times is safe.
-    Each migration runs inside its own implicit transaction; the version
-    record is written only after the migration function returns without
-    raising.
-
-    Parameters
-    ----------
-    conn:
-        An open sqlite3.Connection to the target database.
-        WAL mode should already be set by the caller for best concurrency.
+    Idempotent — safe to call multiple times. Only applies migrations
+    that haven't been applied yet (as tracked by schema_version table).
     """
     _ensure_version_table(conn)
-    current = _get_current_version(conn)
-    total = len(MIGRATIONS)
+    current_version = _get_current_version(conn)
 
-    if current >= total:
-        logger.debug(f"Database schema is up-to-date (version {current}/{total}).")
-        return
+    for index, migration_func in enumerate(MIGRATIONS):
+        version = index + 1
+        if version > current_version:
+            migration_func(conn)
+            _record_version(conn, version, MIGRATION_DESCRIPTIONS[index])
+            logger.info(f"Applied migration {version}: {MIGRATION_DESCRIPTIONS[index]}")
+        else:
+            logger.debug(f"Skipped migration {version} (already applied)")
 
-    logger.info(f"Running migrations {current + 1}–{total} (currently at version {current})...")
-
-    for idx, migrate_fn in enumerate(MIGRATIONS):
-        version = idx + 1
-        if version <= current:
-            continue  # already applied
-        description = MIGRATION_DESCRIPTIONS[idx]
-        logger.info(f"  Applying migration {version:03d}: {description}")
-        try:
-            migrate_fn(conn)
-            _record_version(conn, version, description)
-            logger.info(f"  Migration {version:03d} applied successfully")
-        except Exception as exc:
-            logger.error(f"Migration {version:03d} failed: {exc}")
-            raise
+    logger.info(f"Migrations complete. Current schema version: {_get_current_version(conn)}")

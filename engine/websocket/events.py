@@ -99,6 +99,27 @@ async def emit_circuit_breaker(breaker_name: str, triggered: bool, value: Option
         logger.error(f"Error emitting circuit_breaker: {e}")
 
 
+async def emit_pending_approval_created(approval_id: str, symbol: str, final_action: str):
+    """Notify dashboards that a human-gated approval row was created."""
+    manager = _get_manager()
+    if not manager:
+        return
+    try:
+        await manager.broadcast(
+            "pending_approval_created",
+            {
+                "approval_id": approval_id,
+                "symbol": symbol,
+                "final_action": final_action,
+            },
+        )
+        logger.debug(
+            "Emitted pending_approval_created: %s → %s", symbol, approval_id[:8]
+        )
+    except Exception as e:
+        logger.error("Error emitting pending_approval_created: %s", e)
+
+
 async def emit_pipeline_complete(symbol: str, decision: str, timing: dict):
     """
     Broadcast pipeline completion event.

@@ -43,8 +43,6 @@ from api.models import (
     DailyPnLResponse,
     DecisionHistoryResponse,
     DrawdownResponse,
-    FullHealthResponse,
-    HealthResponse,
     KillSwitchToggleResponse,
     NewsSentimentResponse,
     PaperPerformanceResponse,
@@ -80,11 +78,15 @@ from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.discord_router import router as discord_router
 from routers.flags_router import router as flags_router
 from routers.flags_router import set_flags as set_flags_router
+from routers.health_router import inject_dependencies as inject_health_router_deps
+from routers.health_router import router as health_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
 from routers.kairos_router import router as kairos_router
 from routers.learning_router import router as learning_router
 from routers.market_router import router as market_router
+from routers.phase3_readiness_router import inject_dependencies as inject_phase3_readiness_deps
+from routers.phase3_readiness_router import router as phase3_readiness_router
 from routers.portfolio_router import inject_dependencies as inject_portfolio_deps
 from routers.portfolio_router import router as portfolio_router
 from routers.profiling_router import router as profiling_router
@@ -98,6 +100,10 @@ from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
+from routers.instruments_router import router as instruments_router
+from routers.brokers_router import router as brokers_router
+from routers.brokers_router import inject_dependencies as inject_brokers_deps
+from routers.options_router import router as options_router
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from websocket.events import set_ws_manager
@@ -635,6 +641,18 @@ async def lifespan(app: FastAPI):
     # Wire router dependencies now that all singletons are ready
     inject_portfolio_deps(paper_tracker, db_manager)
     inject_safety_router_deps(safety_layer, loss_tracker)
+    inject_phase3_readiness_deps(safety_layer)
+    inject_health_router_deps(
+        _health_server_start,
+        data_manager,
+        safety_layer,
+        db_manager,
+        paper_tracker,
+        pnl_monitor,
+        trading_pipeline,
+        schwab_connector,
+    )
+    inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
 
     # Initialize Tilt Detection
     try:
@@ -823,6 +841,8 @@ async def lifespan(app: FastAPI):
     logger.info("JARVIS TRADER shutdown complete")
 
 
+_health_server_start = datetime.now(timezone.utc)
+
 app = FastAPI(
     title="JARVIS TRADER",
     description="AI-powered autonomous trading system for futures and options",
@@ -852,6 +872,8 @@ app.add_middleware(APIKeyMiddleware)
 app.state.limiter = get_limiter()
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 
+app.include_router(health_router)
+app.include_router(phase3_readiness_router)
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
@@ -866,6 +888,9 @@ app.include_router(learning_router)
 app.include_router(kairos_router)
 app.include_router(profiling_router)
 app.include_router(schwab_router)
+app.include_router(instruments_router)
+app.include_router(brokers_router)
+app.include_router(options_router)
 app.include_router(v1_router)
 
 
@@ -886,493 +911,6 @@ async def events_handler(websocket: WebSocket):
 
 
 app.websocket("/ws/events")(events_handler)
-
-# ── Health ────────────────────────────────────────────────────────────────
-
-_start_time = datetime.now(timezone.utc)
-
-
-@app.get("/health", response_model=HealthResponse)
-async def health():
-    safety = safety_layer.get_status() if safety_layer else {}
-
-    # Quick database connectivity check
-    db_ok = False
-    try:
-        if db_manager:
-            db_manager.health_check()
-            db_ok = True
-    except Exception:
-        pass
-
-    now = datetime.now(timezone.utc)
-    status = "ok" if db_ok else "degraded"
-
-    return {
-        "status": status,
-        "version": "1.1.0",
-        "timestamp": now.isoformat(),
-        "live_trading": settings.LIVE_TRADING_ENABLED,
-        "kill_switch_active": safety.get("kill_switch_active", False),
-        "paper_mode": not settings.LIVE_TRADING_ENABLED,
-        "database": "connected" if db_ok else "error",
-        "ibkr_connected": bool(getattr(data_manager.ibkr, "is_connected", False))
-        if data_manager and data_manager.ibkr
-        else False,
-        "schwab_connected": bool(
-            schwab_connector and schwab_connector.is_connected
-        ),
-        "uptime_seconds": (now - _start_time).total_seconds(),
-        "llm_available": True,
-    }
-
-
-@app.get("/health/full", response_model=FullHealthResponse)
-async def full_health_check():
-    """Comprehensive health check of all JARVIS TRADER subsystems."""
-    status: dict = {}
-    overall = "healthy"
-
-    # 1. Database health
-    try:
-        if db_manager:
-            db_health = db_manager.health_check()
-            status["database"] = {"status": "ok", "details": db_health}
-        else:
-            status["database"] = {"status": "not_initialized"}
-            overall = "degraded"
-    except Exception as e:
-        status["database"] = {"status": "error", "error": str(e)}
-        overall = "degraded"
-
-    # 2. Safety layer
-    try:
-        if safety_layer:
-            kill_switch = safety_layer._kill_switch_active
-            kill_reason = safety_layer._kill_switch_reason
-            status["safety_layer"] = {
-                "status": "ok",
-                "kill_switch_active": kill_switch,
-                "kill_switch_reason": kill_reason.value if kill_reason else None,
-            }
-            if kill_switch:
-                overall = "kill_switch_active"
-        else:
-            status["safety_layer"] = {"status": "not_initialized"}
-            overall = "degraded"
-    except Exception as e:
-        status["safety_layer"] = {"status": "error", "error": str(e)}
-        overall = "degraded"
-
-    # 3. IB Gateway (optional — may not be connected)
-    try:
-        ib_gw = data_manager.ibkr if data_manager else None
-        if ib_gw:
-            ib_health = await ib_gw.health_check()
-            status["ib_gateway"] = ib_health
-        else:
-            status["ib_gateway"] = {"status": "not_configured", "mode": "paper_only"}
-    except Exception as e:
-        status["ib_gateway"] = {"status": "error", "error": str(e)}
-
-    # 4. Circuit breakers
-    try:
-        if safety_layer and hasattr(safety_layer, "check_circuit_breakers"):
-            breakers = safety_layer.check_circuit_breakers()
-            all_clear = not breakers.get("daily_limit_breached", False) and not breakers.get(
-                "drawdown_breached", False
-            )
-            status["circuit_breakers"] = {
-                "status": "ok" if all_clear else "tripped",
-                "details": breakers,
-            }
-            if not all_clear:
-                # Only escalate if kill switch hasn't already set a stronger state
-                if overall == "healthy":
-                    overall = "circuit_breaker_tripped"
-        else:
-            status["circuit_breakers"] = {"status": "not_available"}
-    except Exception as e:
-        status["circuit_breakers"] = {"status": "error", "error": str(e)}
-
-    # 5. Portfolio tracker
-    try:
-        if paper_tracker:
-            positions = paper_tracker.get_open_positions()
-            status["portfolio"] = {
-                "status": "ok",
-                "open_positions": len(positions),
-            }
-        else:
-            status["portfolio"] = {"status": "not_initialized"}
-    except Exception as e:
-        status["portfolio"] = {"status": "error", "error": str(e)}
-
-    # 6. PnL monitor
-    try:
-        if pnl_monitor:
-            pnl_state = pnl_monitor.get_current_pnl_state()
-            status["pnl_monitor"] = {
-                "status": "ok",
-                "source": pnl_state.source,
-                "daily_pnl": round(pnl_monitor.get_daily_pnl(), 4),
-                "drawdown_pct": round(pnl_monitor.get_drawdown_pct(), 6),
-                "current_balance": round(pnl_state.current_balance, 2),
-                "starting_balance": round(pnl_state.starting_balance, 2),
-            }
-        else:
-            status["pnl_monitor"] = {"status": "not_initialized"}
-    except Exception as e:
-        status["pnl_monitor"] = {"status": "error", "error": str(e)}
-
-    return {
-        "overall": overall,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "uptime_seconds": (datetime.now(timezone.utc) - _start_time).total_seconds(),
-        "subsystems": status,
-        "version": "1.1.0",
-        "phase": "paper_trading",
-    }
-
-
-@app.get("/system/preflight")
-async def system_preflight():
-    """
-    Run all critical pre-flight checks before accepting trading signals.
-    Returns a list of checks with pass/fail/warn status.
-    """
-    checks = []
-    all_pass = True
-
-    def add_check(name: str, status: str, detail: str):
-        nonlocal all_pass
-        if status == "fail":
-            all_pass = False
-        checks.append({"name": name, "status": status, "detail": detail})
-
-    # 1. Database health
-    try:
-        if db_manager is None:
-            add_check("Database", "fail", "Not initialized")
-        else:
-            with db_manager._lock:
-                conn = sqlite3.connect(str(db_manager._db_path))
-                try:
-                    conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()
-                    add_check(
-                        "Database",
-                        "pass",
-                        f"SQLite healthy — {str(db_manager._db_path).split('/')[-1]}",
-                    )
-                finally:
-                    conn.close()
-    except Exception as e:
-        add_check("Database", "fail", str(e))
-
-    # 2. Kill switch clear
-    try:
-        if safety_layer is None:
-            add_check("Kill Switch", "warn", "SafetyLayer not initialized")
-        else:
-            ks = safety_layer._kill_switch_active
-            if ks:
-                add_check("Kill Switch", "fail", "KILL SWITCH IS ACTIVE — trading blocked")
-            else:
-                add_check("Kill Switch", "pass", "Kill switch clear")
-    except Exception as e:
-        add_check("Kill Switch", "warn", f"Could not check: {e}")
-
-    # 3. Circuit breakers
-    try:
-        if safety_layer is not None:
-            cb_result = safety_layer.check_circuit_breakers()
-            daily_breached = cb_result.get("daily_limit_breached", False)
-            drawdown_breached_flag = cb_result.get("drawdown_breached", False)
-            if daily_breached or drawdown_breached_flag:
-                tripped = []
-                if daily_breached:
-                    tripped.append("daily_loss_limit")
-                if drawdown_breached_flag:
-                    tripped.append("drawdown_limit")
-                add_check("Circuit Breakers", "fail", f"Tripped: {', '.join(tripped)}")
-            else:
-                add_check("Circuit Breakers", "pass", "All circuit breakers clear")
-        else:
-            add_check("Circuit Breakers", "warn", "SafetyLayer not initialized")
-    except Exception as e:
-        add_check("Circuit Breakers", "warn", f"Could not check: {e}")
-
-    # 4. Trading pipeline
-    try:
-        if trading_pipeline is None:
-            add_check("Pipeline", "fail", "TradingPipeline not initialized")
-        else:
-            add_check("Pipeline", "pass", "TradingPipeline ready")
-    except Exception as e:
-        add_check("Pipeline", "fail", str(e))
-
-    # 5. VIX overlay
-    try:
-        from analytics.vix_overlay import fetch_vix_async
-
-        vix_state = await fetch_vix_async(data_manager)
-        vix_val = getattr(vix_state, "vix_value", None)
-        source = getattr(vix_state, "source", "unknown")
-        if vix_val is not None:
-            add_check(
-                "VIX Data",
-                "pass" if source != "error_fallback" else "warn",
-                f"VIX={vix_val:.1f} (source: {source})",
-            )
-        else:
-            add_check("VIX Data", "warn", "VIX unavailable — using fallback")
-    except Exception as e:
-        add_check("VIX Data", "warn", f"VIX check failed: {e}")
-
-    # 6. Market session
-    try:
-        from datetime import datetime as _dt
-
-        import pytz
-
-        ct_tz = pytz.timezone("America/Chicago")
-        now_ct = _dt.now(ct_tz)
-        weekday = now_ct.weekday()
-        hour = now_ct.hour
-        if weekday >= 5:
-            add_check("Market Session", "warn", "Weekend — market closed")
-        elif 8 <= hour < 15:
-            add_check("Market Session", "pass", f"RTH active ({now_ct.strftime('%H:%M')} CT)")
-        elif 17 <= hour or hour < 6:
-            add_check(
-                "Market Session", "pass", f"Futures session active ({now_ct.strftime('%H:%M')} CT)"
-            )
-        else:
-            add_check(
-                "Market Session",
-                "warn",
-                f"Outside primary trading hours ({now_ct.strftime('%H:%M')} CT)",
-            )
-    except Exception as e:
-        add_check("Market Session", "warn", str(e))
-
-    # 7. IB Gateway connection (paper port 4002)
-    try:
-        ib_gw = data_manager.ibkr if data_manager else None
-        if ib_gw is None:
-            add_check("IB Gateway", "warn", "Not initialized (paper only — optional)")
-        else:
-            connected = bool(getattr(ib_gw, "is_connected", False))
-            if connected:
-                add_check("IB Gateway", "pass", "Paper port 4002 connected")
-            else:
-                add_check("IB Gateway", "warn", "Not connected (paper only — optional)")
-    except Exception as e:
-        add_check("IB Gateway", "warn", f"Could not check: {e}")
-
-    # 8. Portfolio tracker
-    try:
-        if paper_tracker is None:
-            add_check("Portfolio Tracker", "fail", "Not initialized")
-        else:
-            positions = paper_tracker.get_open_positions()
-            if pnl_monitor is not None:
-                pnl_state = pnl_monitor.get_current_pnl_state()
-                balance = round(pnl_state.current_balance, 2)
-                add_check(
-                    "Portfolio Tracker",
-                    "pass",
-                    f"Balance: ${balance:,.2f} | {len(positions)} open position(s)",
-                )
-            else:
-                add_check("Portfolio Tracker", "pass", f"{len(positions)} open position(s)")
-    except Exception as e:
-        add_check("Portfolio Tracker", "fail", str(e))
-
-    return {
-        "all_pass": all_pass,
-        "check_count": len(checks),
-        "pass_count": sum(1 for c in checks if c["status"] == "pass"),
-        "fail_count": sum(1 for c in checks if c["status"] == "fail"),
-        "warn_count": sum(1 for c in checks if c["status"] == "warn"),
-        "checks": checks,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-@app.get("/system/phase3-readiness")
-async def get_phase3_readiness() -> dict:
-    """
-    Phase 3 Live Trading Readiness Gate.
-
-    Checks all critical prerequisites for live capital deployment:
-    - Validation gates (PF >= 2.0, Sharpe >= 1.5, WR >= 55%, etc.)
-    - Safety layer operational (kill switch, circuit breakers)
-    - LIVE_TRADING_ENABLED = False (hardcoded safety)
-    - IB Gateway paper mode validated
-    - Position sizing limits verified
-
-    Returns:
-        Dictionary with pass/fail for each gate and overall ready status
-    """
-    if safety_layer is None:
-        raise HTTPException(status_code=503, detail="Safety layer not initialized")
-
-    try:
-        gates = {}
-        all_pass = True
-
-        # Gate 1: Validation gates (30-day performance)
-        try:
-            from paper.validation_tracker import ValidationTracker
-            from pathlib import Path
-
-            tracker = ValidationTracker(data_dir=Path(os.environ.get("DATA_DIR", "data")))
-            validation_ok = True
-            validation_details = {}
-
-            for instrument in ["MCL", "MNQ"]:
-                progress = tracker.get_progress(instrument)
-                pass_fail = progress.get("pass_fail", {})
-                is_validated = all(v for v in pass_fail.values())
-                validation_details[instrument] = {
-                    "is_validated": is_validated,
-                    "profit_factor": progress.get("profit_factor", 0),
-                    "sharpe_ratio": progress.get("sharpe_ratio", 0),
-                    "win_rate_pct": progress.get("win_rate_pct", 0),
-                    "total_trades": progress.get("total_trades", 0),
-                    "days_active": progress.get("days_active", 0),
-                    "max_drawdown_pct": progress.get("max_drawdown_pct", 0),
-                }
-                if not is_validated:
-                    validation_ok = False
-
-            gates["validation_gates"] = {
-                "passed": validation_ok,
-                "details": validation_details,
-            }
-            if not validation_ok:
-                all_pass = False
-        except Exception as e:
-            logger.warning(f"[PHASE3] Validation check failed: {e}")
-            gates["validation_gates"] = {"passed": False, "error": str(e)}
-            all_pass = False
-
-        # Gate 2: Safety layer operational
-        try:
-            cb = safety_layer.check_circuit_breakers()
-            safety_ok = not (
-                cb.get("daily_limit_breached")
-                or cb.get("drawdown_breached")
-                or cb.get("kill_switch_active")
-            )
-            gates["safety_tests"] = {
-                "passed": safety_ok,
-                "details": {
-                    "daily_limit_breached": cb.get("daily_limit_breached", False),
-                    "drawdown_breached": cb.get("drawdown_breached", False),
-                    "kill_switch_active": cb.get("kill_switch_active", False),
-                },
-            }
-            if not safety_ok:
-                all_pass = False
-        except Exception as e:
-            logger.warning(f"[PHASE3] Safety check failed: {e}")
-            gates["safety_tests"] = {"passed": False, "error": str(e)}
-            all_pass = False
-
-        # Gate 3: LIVE_TRADING_ENABLED = False (hardcoded safety)
-        live_disabled = not settings.LIVE_TRADING_ENABLED
-        gates["live_trading_disabled"] = {
-            "passed": live_disabled,
-            "details": {"live_trading_enabled": settings.LIVE_TRADING_ENABLED},
-        }
-        if not live_disabled:
-            all_pass = False
-
-        # Gate 4: Kill switch functional
-        try:
-            status = safety_layer.get_status()
-            kill_switch_present = status is not None
-            gates["kill_switch_functional"] = {
-                "passed": kill_switch_present,
-                "details": {
-                    "can_toggle": True,
-                    "endpoints": [
-                        "POST /safety/kill-switch/activate",
-                        "POST /safety/kill-switch/deactivate",
-                    ],
-                },
-            }
-        except Exception as e:
-            logger.warning(f"[PHASE3] Kill switch check failed: {e}")
-            gates["kill_switch_functional"] = {"passed": False, "error": str(e)}
-            all_pass = False
-
-        # Gate 5: Position limits verified
-        try:
-            position_ok = (
-                settings.MAX_CONTRACTS_PER_INSTRUMENT == 2
-                and settings.MAX_OVERNIGHT_CONTRACTS == 1
-                and settings.MAX_POSITION_SIZE_PCT == 0.05
-                and settings.MAX_SINGLE_ORDER_VALUE == 5000.0
-                and settings.MAX_MARGIN_UTILIZATION == 0.40
-            )
-            gates["position_limits_verified"] = {
-                "passed": position_ok,
-                "details": {
-                    "max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
-                    "max_overnight": settings.MAX_OVERNIGHT_CONTRACTS,
-                    "max_position_pct": settings.MAX_POSITION_SIZE_PCT,
-                    "max_order_value": settings.MAX_SINGLE_ORDER_VALUE,
-                    "max_margin": settings.MAX_MARGIN_UTILIZATION,
-                },
-            }
-            if not position_ok:
-                all_pass = False
-        except Exception as e:
-            logger.warning(f"[PHASE3] Position limits check failed: {e}")
-            gates["position_limits_verified"] = {"passed": False, "error": str(e)}
-            all_pass = False
-
-        # Gate 6: IB Gateway paper mode validated
-        ibkr_paper = settings.IBKR_PAPER_MODE and settings.IBKR_PORT == 4002
-        gates["ibkr_paper_validated"] = {
-            "passed": ibkr_paper,
-            "details": {
-                "paper_mode_enabled": settings.IBKR_PAPER_MODE,
-                "port": settings.IBKR_PORT,
-                "expected_port": 4002,
-            },
-        }
-        if not ibkr_paper:
-            all_pass = False
-
-        # Gate 7: Human approval required
-        human_approval_ok = settings.REQUIRE_HUMAN_APPROVAL
-        gates["human_approval_required"] = {
-            "passed": human_approval_ok,
-            "details": {"require_human_approval": settings.REQUIRE_HUMAN_APPROVAL},
-        }
-        if not human_approval_ok:
-            all_pass = False
-
-        return {
-            "overall_ready": all_pass,
-            "gates": gates,
-            "notes": (
-                "All gates passing. Ready for Tier 3 approval to set "
-                "LIVE_TRADING_ENABLED=True"
-                if all_pass
-                else "One or more gates failing. Review details above."
-            ),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-
-    except Exception as e:
-        logger.error(f"[PHASE3] Readiness check failed: {e}")
-        raise HTTPException(500, f"Phase 3 readiness check error: {e}") from e
-
 
 # ── Safety / Kill Switch ──────────────────────────────────────────────────
 
