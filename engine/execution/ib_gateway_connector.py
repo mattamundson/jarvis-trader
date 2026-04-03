@@ -50,6 +50,7 @@ class ConnectionState(Enum):
     RECONNECTING = "reconnecting"
     FAILED = "failed"
 
+
 _FUTURES_ROOTS = frozenset(
     {
         "MES",
@@ -229,10 +230,9 @@ class IBGatewayConnector:
             return False
 
         self._reconnect_attempts += 1
-        backoff_seconds = 2 ** self._reconnect_attempts  # 2, 4, 8
+        backoff_seconds = 2**self._reconnect_attempts  # 2, 4, 8
         logger.warning(
-            "IBGatewayConnector: Reconnect attempt %d/%d. "
-            "Waiting %d seconds before retry.",
+            "IBGatewayConnector: Reconnect attempt %d/%d. " "Waiting %d seconds before retry.",
             self._reconnect_attempts,
             self._max_reconnect_attempts,
             backoff_seconds,

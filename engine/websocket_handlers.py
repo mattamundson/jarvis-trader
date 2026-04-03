@@ -12,8 +12,8 @@ from websocket.manager import WebSocketManager
 async def setup_websocket_endpoints(app, ws_manager: WebSocketManager) -> None:
     """Register WebSocket endpoints on the FastAPI app."""
 
-    from websocket.price_feed import price_feed_endpoint
     from websocket.events_endpoint import events_endpoint
+    from websocket.price_feed import price_feed_endpoint
 
     # Price feed endpoint
     app.websocket("/ws/prices")(price_feed_endpoint)

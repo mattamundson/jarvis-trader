@@ -99,6 +99,7 @@ def load_positions() -> Dict[str, Any]:
     """
     try:
         from database.manager import get_db
+
         db = get_db()
         open_trades = db.get_open_trades()
         # Convert to position format: {symbol: position_dict}
@@ -492,6 +493,7 @@ def check_for_entry(
 
     # Compute risk-scaled position size using Layer 5 conviction logic
     from backtest.signals import compute_position_size
+
     base_risk_pct = float(cfg.get("risk_per_trade", 0.0025))
     risk_pct_used = compute_position_size(bias, regime, structure_position, base_risk_pct)
 

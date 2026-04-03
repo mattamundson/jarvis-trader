@@ -48,8 +48,8 @@ _DEFAULT_LOG_PATH = (
 
 # ── Near-miss thresholds ──────────────────────────────────────────────────────
 
-NEAR_MISS_WFE_DELTA: float = 0.05   # within 0.05 WFE of best
-NEAR_MISS_PF_DELTA: float = 0.20    # within 0.20 PF of best
+NEAR_MISS_WFE_DELTA: float = 0.05  # within 0.05 WFE of best
+NEAR_MISS_PF_DELTA: float = 0.20  # within 0.20 PF of best
 
 
 # ── Composite score ───────────────────────────────────────────────────────────
@@ -182,8 +182,7 @@ class ExperimentLog:
             fh.write(json.dumps(record) + "\n")
 
         logger.info(
-            "[ExperimentLog] Logged run=%s  symbol=%s  category=%s  "
-            "score=%.4f  kept=%s",
+            "[ExperimentLog] Logged run=%s  symbol=%s  category=%s  " "score=%.4f  kept=%s",
             run_id,
             symbol.upper(),
             category,
@@ -306,12 +305,12 @@ class ExperimentLog:
                     f"  [{r['category']}] {r['hypothesis'][:60]}"
                 )
 
-        print(f"\n  CATEGORY COVERAGE:")
+        print("\n  CATEGORY COVERAGE:")
         for cat, cnt in sorted(self.category_counts(symbol).items()):
             bar = "█" * cnt
             print(f"    {cat:<22} {bar} ({cnt})")
 
-        print(f"\n  RECENT RUNS:")
+        print("\n  RECENT RUNS:")
         for r in records[:10]:
             rm = r["metrics"]
             kept_str = "✓KEEP" if r.get("kept") else "✗RESET"

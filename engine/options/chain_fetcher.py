@@ -194,9 +194,7 @@ def fetch_chain(
         if data_manager is not None:
             try:
                 loop = asyncio.get_event_loop()
-                price_data = loop.run_until_complete(
-                    data_manager.get_current_price(symbol)
-                )
+                price_data = loop.run_until_complete(data_manager.get_current_price(symbol))
                 underlying_price = float(price_data.get("last_price", 0) or 0) or None
             except Exception as exc:
                 logger.warning("[chain_fetcher] data_manager price fetch failed: %s", exc)
@@ -357,7 +355,6 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
         IV Rank in [0, 100].  Returns 50.0 (neutral) on data failure.
     """
     import asyncio
-    import pandas as pd
 
     try:
         closes = None
@@ -381,8 +378,9 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
         # Fallback to BacktestDataLoader
         if closes is None or len(closes) < 20:
             try:
-                from backtest.data_loader import BacktestDataLoader
                 from datetime import timedelta
+
+                from backtest.data_loader import BacktestDataLoader
 
                 end_date = datetime.utcnow().strftime("%Y-%m-%d")
                 start_date = (datetime.utcnow() - timedelta(days=days + 60)).strftime("%Y-%m-%d")
@@ -458,9 +456,7 @@ def fetch_nearest_expiries(
         if data_manager is not None:
             try:
                 loop = asyncio.get_event_loop()
-                available = loop.run_until_complete(
-                    data_manager.get_options_expirations(symbol)
-                )
+                available = loop.run_until_complete(data_manager.get_options_expirations(symbol))
             except Exception as exc:
                 logger.warning("[chain_fetcher] data_manager expiry fetch failed: %s", exc)
 
@@ -475,9 +471,7 @@ def fetch_nearest_expiries(
 
     chains: list[OptionsChain] = []
     for expiry_str in available:
-        chain = fetch_chain(
-            symbol, [expiry_str], risk_free_rate, data_manager=data_manager
-        )
+        chain = fetch_chain(symbol, [expiry_str], risk_free_rate, data_manager=data_manager)
         if chain:
             chains.append(chain)
 

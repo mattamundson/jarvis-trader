@@ -12,8 +12,9 @@ from fastapi.testclient import TestClient
 
 from config import TradingConfig
 from database.manager import DatabaseManager
-from routers.approval_router import inject_dependencies, router as approval_router
 from risk.safety_layer import SafetyLayer
+from routers.approval_router import inject_dependencies
+from routers.approval_router import router as approval_router
 
 
 @pytest.fixture

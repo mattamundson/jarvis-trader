@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/pipeline/profiling", tags=["profiling"])
 

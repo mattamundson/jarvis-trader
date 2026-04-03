@@ -116,7 +116,9 @@ class SafetyLayer:
         self._ib_gateway = ib_gateway  # used only by submit_paper_order()
         self._pnl_monitor: Optional[object] = pnl_monitor  # PnLMonitor | None
         self._loss_tracker: Optional[object] = loss_tracker  # ConsecutiveLossTracker | None
-        self.schwab = None  # SchwabConnector | None — injected after construction via attach_schwab()
+        self.schwab = (
+            None  # SchwabConnector | None — injected after construction via attach_schwab()
+        )
         self._kill_switch_active = False
         self._kill_switch_reason: KillSwitchReason | None = None
 
@@ -430,7 +432,12 @@ class SafetyLayer:
         else:
             broker_target = "IBKR (default)"
         import math as _math
-        _est_val_display = 0 if _math.isnan(adjusted_order.estimated_value) else int(adjusted_order.estimated_value)
+
+        _est_val_display = (
+            0
+            if _math.isnan(adjusted_order.estimated_value)
+            else int(adjusted_order.estimated_value)
+        )
         logger.info(
             "Order approved: %s qty=%d est_value=$%d — routing to %s",
             adjusted_order.symbol,
@@ -740,7 +747,9 @@ class SafetyLayer:
         # Set re-entry lockout after stop-out loss
         if pnl < 0:
             lockout_minutes = getattr(settings, "REENTRY_LOCKOUT_MINUTES", 240)
-            self._reentry_lockouts[symbol.upper()] = datetime.now() + timedelta(minutes=lockout_minutes)
+            self._reentry_lockouts[symbol.upper()] = datetime.now() + timedelta(
+                minutes=lockout_minutes
+            )
             logger.info("Re-entry lockout set for %s: %d minutes", symbol, lockout_minutes)
 
     def get_loss_tracker_status(self) -> dict:
@@ -836,19 +845,19 @@ class SafetyLayer:
 
         # Map symbol to contract multiplier (futures only)
         multipliers = {
-            "MES": 5.0,   # Micro E-mini S&P 500
-            "MNQ": 2.0,   # Micro E-mini Nasdaq 100
-            "M2K": 5.0,   # Micro E-mini Russell 2000
+            "MES": 5.0,  # Micro E-mini S&P 500
+            "MNQ": 2.0,  # Micro E-mini Nasdaq 100
+            "M2K": 5.0,  # Micro E-mini Russell 2000
             "MCL": 10.0,  # Micro Crude Oil
             "MGC": 10.0,  # Micro Gold
-            "MHG": 1.0,   # Micro Copper
+            "MHG": 1.0,  # Micro Copper
             "MSI": 10.0,  # Micro Silver
-            "ES": 50.0,   # E-mini S&P 500
-            "NQ": 20.0,   # E-mini Nasdaq 100
+            "ES": 50.0,  # E-mini S&P 500
+            "NQ": 20.0,  # E-mini Nasdaq 100
             "RTY": 50.0,  # E-mini Russell 2000
             "CL": 100.0,  # Crude Oil
             "GC": 100.0,  # Gold
-            "HG": 25.0,   # Copper
+            "HG": 25.0,  # Copper
         }
         multiplier = multipliers.get(symbol.upper(), 5.0)
 

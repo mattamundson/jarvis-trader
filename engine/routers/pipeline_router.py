@@ -417,8 +417,12 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
             if entry_price:
                 # Collect regime metadata from technical analyst for attribution
                 regime_label = technical_report.get("regime") or "unknown"
-                regime_bias = technical_report.get("trend") or technical_report.get("bias") or "unknown"
-                regime_layers = technical_report.get("regime_layers_aligned") or technical_report.get("layers_aligned")
+                regime_bias = (
+                    technical_report.get("trend") or technical_report.get("bias") or "unknown"
+                )
+                regime_layers = technical_report.get(
+                    "regime_layers_aligned"
+                ) or technical_report.get("layers_aligned")
                 stc_val = (technical_report.get("indicators") or {}).get("stc_value")
 
                 trade_id = _paper_tracker.add_paper_trade(
@@ -436,7 +440,9 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                         "regime": regime_label,
                         "bias": regime_bias,
                         "regime_layers_aligned": regime_layers,
-                        "entry_stc_value": round(float(stc_val), 2) if stc_val is not None else None,
+                        "entry_stc_value": round(float(stc_val), 2)
+                        if stc_val is not None
+                        else None,
                         "pipeline_conviction": round(float(conviction), 4),
                         "predicted_direction": final_action.upper(),
                     },
@@ -580,9 +586,7 @@ async def cost_summary() -> CostSummaryResponse:
         )
         return CostSummaryResponse(**result)
     except Exception as e:
-        logger.warning(
-            "[COST] Table unavailable or query failed (likely no migration 009): %s", e
-        )
+        logger.warning("[COST] Table unavailable or query failed (likely no migration 009): %s", e)
         # Return zeroed response gracefully if table doesn't exist
         return CostSummaryResponse(
             today_usd=0.0,

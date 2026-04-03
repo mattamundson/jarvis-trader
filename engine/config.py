@@ -154,7 +154,9 @@ class TradingConfig(BaseSettings):
     REENTRY_LOCKOUT_MINUTES: int = 240  # 4-hour lockout after stop-out
     BREAKEVEN_STOP_ATR_MULT: float = 0.50  # Move stop to BE after +0.50x ATR gain
     SESSION_FLATTEN_TIME_ET: str = "15:45"  # Flatten all positions at 3:45 PM ET
-    MCL_INVENTORY_BLACKOUT_MINUTES: int = 45  # EIA blackout: 15min before + 30min after Wed 10:30 ET
+    MCL_INVENTORY_BLACKOUT_MINUTES: int = (
+        45  # EIA blackout: 15min before + 30min after Wed 10:30 ET
+    )
 
     # ── STC Mid-Range Pre-Filter ──────────────────────────────────────────
     # When enabled, skips the full LLM pipeline if STC is between LOW and HIGH.

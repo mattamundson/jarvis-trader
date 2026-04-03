@@ -189,7 +189,9 @@ class SignalScanner:
         logger.info(f"[Scanner] Starting scan #{self._total_scans}")
 
         # Check breakeven stops for all open positions before scanning for new signals
-        if self._paper_tracker is not None and hasattr(self._paper_tracker, "check_and_move_breakeven"):
+        if self._paper_tracker is not None and hasattr(
+            self._paper_tracker, "check_and_move_breakeven"
+        ):
             for trade_id, trade in list(self._paper_tracker._open.items()):
                 if not trade.is_open:
                     continue
@@ -224,12 +226,12 @@ class SignalScanner:
         current_time_et = now_et.time()
         rth_open = time(9, 30)
         rth_no_entry_start = time(9, 35)  # Can enter after 9:35
-        rth_no_entry_end = time(15, 45)   # Must stop at 3:45 PM ET
+        rth_no_entry_end = time(15, 45)  # Must stop at 3:45 PM ET
         rth_close = time(16, 0)
 
         in_banned_window = (
-            (current_time_et >= rth_open and current_time_et < rth_no_entry_start) or  # First 5 min
-            (current_time_et >= rth_no_entry_end and current_time_et <= rth_close)      # Last 15 min
+            (current_time_et >= rth_open and current_time_et < rth_no_entry_start)  # First 5 min
+            or (current_time_et >= rth_no_entry_end and current_time_et <= rth_close)  # Last 15 min
         )
         if in_banned_window:
             logger.debug(
@@ -242,7 +244,9 @@ class SignalScanner:
             blackout_start = time(10, 15)
             blackout_end = time(11, 0)
             if blackout_start <= current_time_et <= blackout_end:
-                logger.debug("[Scanner] MCL: skipping — EIA inventory blackout (%s)", current_time_et)
+                logger.debug(
+                    "[Scanner] MCL: skipping — EIA inventory blackout (%s)", current_time_et
+                )
                 return
 
         logger.debug(f"[Scanner] Analyzing {symbol}")

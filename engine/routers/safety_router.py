@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
@@ -12,8 +11,8 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 
 from api.models import KillSwitchToggleResponse, SafetyStatusResponse
-from risk.safety_layer import KillSwitchReason
 from middleware.rate_limit import limiter
+from risk.safety_layer import KillSwitchReason
 
 router = APIRouter(prefix="/safety", tags=["safety"])
 logger = logging.getLogger(__name__)
@@ -252,9 +251,7 @@ async def deactivate_kill_switch(
     try:
         from websocket.events import emit_kill_switch_change
 
-        asyncio.create_task(
-            emit_kill_switch_change(active=False, reason="Manual deactivation")
-        )
+        asyncio.create_task(emit_kill_switch_change(active=False, reason="Manual deactivation"))
     except Exception as exc:
         logger.warning("[SAFETY] Kill-switch WS emit on deactivate: %s", exc)
 

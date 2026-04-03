@@ -12,7 +12,7 @@ GET /portfolio/paper/streaks - consecutive win/loss streaks with history
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -446,8 +446,7 @@ def _build_hold_time_response(
             if v
         },
         "by_symbol": {
-            k: {"avg_minutes": _avg(v), "trade_count": len(v)}
-            for k, v in by_sym.items()
+            k: {"avg_minutes": _avg(v), "trade_count": len(v)} for k, v in by_sym.items()
         },
         "hold_time_distribution": _distribution_buckets(all_mins),
     }

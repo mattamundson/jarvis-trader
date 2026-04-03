@@ -44,9 +44,7 @@ async def events_endpoint(websocket: WebSocket, ws_manager: WebSocketManager):
             try:
                 # Receive with timeout to allow periodic heartbeat
                 # Client sends keep-alive or subscribes to specific events
-                await asyncio.wait_for(
-                    websocket.receive_json(), timeout=heartbeat_interval
-                )
+                await asyncio.wait_for(websocket.receive_json(), timeout=heartbeat_interval)
                 # Events are already broadcast via manager.broadcast()
                 # Client messages here are optional (for future filtering)
 

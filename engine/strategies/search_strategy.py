@@ -45,8 +45,8 @@ ALL_CATEGORIES: list[str] = [
     "combine",
 ]
 
-EXPLORE_THRESHOLD: int = 3   # categories with fewer than this many runs → explore
-STAGNATION_WINDOW: int = 5   # look back this many runs to detect stagnation
+EXPLORE_THRESHOLD: int = 3  # categories with fewer than this many runs → explore
+STAGNATION_WINDOW: int = 5  # look back this many runs to detect stagnation
 
 
 # ── Suggestion helpers ────────────────────────────────────────────────────────
@@ -256,8 +256,7 @@ def suggest_next_experiment(
     under_explored = [
         cat
         for cat in ALL_CATEGORIES
-        if cat not in ("ablation", "combine")
-        and counts.get(cat, 0) < explore_threshold
+        if cat not in ("ablation", "combine") and counts.get(cat, 0) < explore_threshold
     ]
     if under_explored:
         return _suggest_explore(symbol=symbol, counts=counts)
@@ -295,18 +294,24 @@ def print_suggestion(symbol: str) -> None:
 
     if best:
         bm = best["metrics"]
-        print(f"\n  Current best: [{best['run_id']}] score={best['composite_score']:.4f}"
-              f"  WFE={bm.get('wfe', 0):.2f}  PF={bm.get('pf', 0):.2f}")
+        print(
+            f"\n  Current best: [{best['run_id']}] score={best['composite_score']:.4f}"
+            f"  WFE={bm.get('wfe', 0):.2f}  PF={bm.get('pf', 0):.2f}"
+        )
 
-    print(f"\n  Category coverage:")
+    print("\n  Category coverage:")
     for cat in ALL_CATEGORIES:
         n = counts.get(cat, 0)
         status = "✓" if n >= EXPLORE_THRESHOLD else "·"
         bar = "█" * n
         print(f"    {status} {cat:<22} {bar} ({n})")
 
-    print(f"\n  Run command:")
-    delta_str = repr(suggestion["suggested_delta"]).replace("'", '"') if suggestion["suggested_delta"] else "{}"
+    print("\n  Run command:")
+    delta_str = (
+        repr(suggestion["suggested_delta"]).replace("'", '"')
+        if suggestion["suggested_delta"]
+        else "{}"
+    )
     print(
         f"    python -m strategies.run_experiment "
         f"--symbol {symbol.upper()} "

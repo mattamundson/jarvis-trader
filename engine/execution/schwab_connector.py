@@ -96,14 +96,16 @@ class SchwabConnector:
         app_secret = self._settings.SCHWAB_APP_SECRET
 
         if not api_key or not app_secret:
-            logger.error("SchwabConnector: SCHWAB_APP_KEY/SECRET not set.\n%s",
-                         self._auth_instructions())
+            logger.error(
+                "SchwabConnector: SCHWAB_APP_KEY/SECRET not set.\n%s", self._auth_instructions()
+            )
             self._state = ConnectionState.ERROR
             return False
 
         if not _TOKEN_PATH.exists():
-            logger.error("SchwabConnector: token not found at %s\n%s",
-                         _TOKEN_PATH, self._auth_instructions())
+            logger.error(
+                "SchwabConnector: token not found at %s\n%s", _TOKEN_PATH, self._auth_instructions()
+            )
             self._state = ConnectionState.ERROR
             return False
 
@@ -121,13 +123,14 @@ class SchwabConnector:
                 accounts = response.json()
                 if accounts:
                     self._account_hash = accounts[0]["hashValue"]
-                    logger.info("SchwabConnector: connected — account hash %s…",
-                                self._account_hash[:8] if self._account_hash else "n/a")
+                    logger.info(
+                        "SchwabConnector: connected — account hash %s…",
+                        self._account_hash[:8] if self._account_hash else "n/a",
+                    )
                 else:
                     logger.warning("SchwabConnector: no accounts returned")
             else:
-                logger.warning("SchwabConnector: get_account_numbers HTTP %s",
-                               response.status_code)
+                logger.warning("SchwabConnector: get_account_numbers HTTP %s", response.status_code)
 
             self._state = ConnectionState.CONNECTED
             self._reconnect_attempts = 0
@@ -203,8 +206,12 @@ class SchwabConnector:
 
         self._reconnect_attempts += 1
         backoff = 2 ** (self._reconnect_attempts - 1)
-        logger.warning("SchwabConnector: reconnect %d/%d — waiting %ds",
-                       self._reconnect_attempts, self._max_reconnect_attempts, backoff)
+        logger.warning(
+            "SchwabConnector: reconnect %d/%d — waiting %ds",
+            self._reconnect_attempts,
+            self._max_reconnect_attempts,
+            backoff,
+        )
         self._state = ConnectionState.RECONNECTING
         await asyncio.sleep(backoff)
 
@@ -232,8 +239,16 @@ class SchwabConnector:
             )
         return self._paper_trade_logger
 
-    def _run_safety_check(self, symbol, quantity, order_type, limit_price,
-                           portfolio_equity, is_futures=False, is_options=False):
+    def _run_safety_check(
+        self,
+        symbol,
+        quantity,
+        order_type,
+        limit_price,
+        portfolio_equity,
+        is_futures=False,
+        is_options=False,
+    ):
         """Run safety layer check. Returns (approved, rejection_reason, warnings)."""
         if self._safety_layer is None:
             return True, None, []
@@ -341,8 +356,9 @@ class SchwabConnector:
                 end_date=end_dt,
             )
             if response.status_code != 200:
-                logger.warning("SchwabConnector.get_transaction_history: HTTP %s",
-                               response.status_code)
+                logger.warning(
+                    "SchwabConnector.get_transaction_history: HTTP %s", response.status_code
+                )
                 return []
 
             return [
@@ -421,18 +437,24 @@ class SchwabConnector:
                 for exp_str, strikes in exp_map.items():
                     for strike_str, contracts in strikes.items():
                         for c in contracts:
-                            legs.append({
-                                "option_symbol": c.get("symbol"),
-                                "expiry": exp_str,
-                                "strike": float(strike_str),
-                                "bid": c.get("bid"), "ask": c.get("ask"),
-                                "last": c.get("last"), "volume": c.get("totalVolume"),
-                                "open_interest": c.get("openInterest"),
-                                "delta": c.get("delta"), "gamma": c.get("gamma"),
-                                "theta": c.get("theta"), "vega": c.get("vega"),
-                                "iv": c.get("volatility"),
-                                "in_the_money": c.get("inTheMoney"),
-                            })
+                            legs.append(
+                                {
+                                    "option_symbol": c.get("symbol"),
+                                    "expiry": exp_str,
+                                    "strike": float(strike_str),
+                                    "bid": c.get("bid"),
+                                    "ask": c.get("ask"),
+                                    "last": c.get("last"),
+                                    "volume": c.get("totalVolume"),
+                                    "open_interest": c.get("openInterest"),
+                                    "delta": c.get("delta"),
+                                    "gamma": c.get("gamma"),
+                                    "theta": c.get("theta"),
+                                    "vega": c.get("vega"),
+                                    "iv": c.get("volatility"),
+                                    "in_the_money": c.get("inTheMoney"),
+                                }
+                            )
                 return legs
 
             underlying = data.get("underlying", {})
@@ -443,8 +465,9 @@ class SchwabConnector:
                 "puts": _parse_legs(data.get("putExpDateMap", {})),
             }
         except Exception as exc:
-            logger.error("SchwabConnector.get_options_chain failed for %s: %s",
-                         symbol, exc, exc_info=True)
+            logger.error(
+                "SchwabConnector.get_options_chain failed for %s: %s", symbol, exc, exc_info=True
+            )
             return {"error": str(exc)}
 
     # ── Order Execution ───────────────────────────────────────────────────────
@@ -473,41 +496,65 @@ class SchwabConnector:
 
         try:
             from schwab.orders.equities import (  # noqa: PLC0415
-                equity_buy_limit, equity_buy_market,
-                equity_sell_limit, equity_sell_market,
+                equity_buy_limit,
+                equity_buy_market,
+                equity_sell_limit,
+                equity_sell_market,
             )
 
-            logger.info("SchwabConnector.submit_equity_order | %s %s qty=%d type=%s limit=%s",
-                        side_upper, symbol, quantity, ot_internal, limit_price)
+            logger.info(
+                "SchwabConnector.submit_equity_order | %s %s qty=%d type=%s limit=%s",
+                side_upper,
+                symbol,
+                quantity,
+                ot_internal,
+                limit_price,
+            )
 
             if side_upper == "BUY":
-                spec = (equity_buy_limit(symbol, quantity, limit_price)
-                        if ot_internal == "limit" else equity_buy_market(symbol, quantity))
+                spec = (
+                    equity_buy_limit(symbol, quantity, limit_price)
+                    if ot_internal == "limit"
+                    else equity_buy_market(symbol, quantity)
+                )
             else:
-                spec = (equity_sell_limit(symbol, quantity, limit_price)
-                        if ot_internal == "limit" else equity_sell_market(symbol, quantity))
+                spec = (
+                    equity_sell_limit(symbol, quantity, limit_price)
+                    if ot_internal == "limit"
+                    else equity_sell_market(symbol, quantity)
+                )
 
             response = self._client.place_order(account_hash=self._account_hash, order_spec=spec)
 
             if response.status_code in (200, 201):
                 order_id = response.headers.get("Location", "").split("/")[-1] or str(uuid.uuid4())
-                logger.info("SchwabConnector: equity PLACED | id=%s %s %s qty=%d",
-                            order_id, side_upper, symbol, quantity)
+                logger.info(
+                    "SchwabConnector: equity PLACED | id=%s %s %s qty=%d",
+                    order_id,
+                    side_upper,
+                    symbol,
+                    quantity,
+                )
                 return {
-                    "status": "placed", "order_id": order_id,
-                    "symbol": symbol, "side": side_upper,
-                    "quantity": quantity, "order_type": ot_internal,
+                    "status": "placed",
+                    "order_id": order_id,
+                    "symbol": symbol,
+                    "side": side_upper,
+                    "quantity": quantity,
+                    "order_type": ot_internal,
                     "limit_price": limit_price,
                 }
 
             body = getattr(response, "text", str(getattr(response, "content", "")))
-            logger.error("SchwabConnector: equity FAILED | HTTP %s | %s",
-                         response.status_code, body)
+            logger.error(
+                "SchwabConnector: equity FAILED | HTTP %s | %s", response.status_code, body
+            )
             return {"status": "error", "reason": f"HTTP {response.status_code}", "body": body}
 
         except Exception as exc:
-            logger.error("SchwabConnector.submit_equity_order exception | %s: %s",
-                         symbol, exc, exc_info=True)
+            logger.error(
+                "SchwabConnector.submit_equity_order exception | %s: %s", symbol, exc, exc_info=True
+            )
             return {"status": "error", "reason": str(exc)}
 
     async def submit_options_order(self, order: dict, portfolio_equity: float) -> dict:
@@ -525,13 +572,22 @@ class SchwabConnector:
         limit_price = order.get("limit_price")
 
         if action not in _OPTIONS_ACTIONS:
-            return {"status": "error",
-                    "reason": f"Invalid action: {action!r}. Must be one of {sorted(_OPTIONS_ACTIONS)}"}
+            return {
+                "status": "error",
+                "reason": f"Invalid action: {action!r}. Must be one of {sorted(_OPTIONS_ACTIONS)}",
+            }
         if order_type not in _ORDER_TYPES:
             return {"status": "error", "reason": f"Invalid order_type: {order_type!r}"}
 
-        logger.info("SchwabConnector.submit_options_order | %s %s %s qty=%d %s limit=%s",
-                    symbol, action, option_symbol, quantity, order_type, limit_price)
+        logger.info(
+            "SchwabConnector.submit_options_order | %s %s %s qty=%d %s limit=%s",
+            symbol,
+            action,
+            option_symbol,
+            quantity,
+            order_type,
+            limit_price,
+        )
 
         # Safety check
         if self._safety_layer is not None:
@@ -548,10 +604,16 @@ class SchwabConnector:
             )
             result = self._safety_layer.check_order(req, portfolio_equity)
             if not result.approved:
-                logger.warning("SchwabConnector: options REJECTED | %s reason=%s",
-                               symbol, result.rejection_reason)
-                return {"status": "rejected", "reason": result.rejection_reason,
-                        "warnings": result.warnings}
+                logger.warning(
+                    "SchwabConnector: options REJECTED | %s reason=%s",
+                    symbol,
+                    result.rejection_reason,
+                )
+                return {
+                    "status": "rejected",
+                    "reason": result.rejection_reason,
+                    "warnings": result.warnings,
+                }
             for w in result.warnings:
                 logger.warning("SchwabConnector: options warning | %s", w)
             warnings = result.warnings
@@ -564,10 +626,14 @@ class SchwabConnector:
         try:
             from schwab.orders.options import (  # noqa: PLC0415
                 OptionSymbol,
-                option_buy_to_close_limit, option_buy_to_close_market,
-                option_buy_to_open_limit, option_buy_to_open_market,
-                option_sell_to_close_limit, option_sell_to_close_market,
-                option_sell_to_open_limit, option_sell_to_open_market,
+                option_buy_to_close_limit,
+                option_buy_to_close_market,
+                option_buy_to_open_limit,
+                option_buy_to_open_market,
+                option_sell_to_close_limit,
+                option_sell_to_close_market,
+                option_sell_to_open_limit,
+                option_sell_to_open_market,
             )
 
             _builders = {
@@ -583,33 +649,50 @@ class SchwabConnector:
 
             opt_sym = OptionSymbol.parse_symbol(option_symbol)
             builder_fn = _builders[(action, order_type)]
-            spec = (builder_fn(opt_sym, quantity, limit_price)
-                    if order_type == "limit" and limit_price is not None
-                    else builder_fn(opt_sym, quantity))
+            spec = (
+                builder_fn(opt_sym, quantity, limit_price)
+                if order_type == "limit" and limit_price is not None
+                else builder_fn(opt_sym, quantity)
+            )
 
             response = self._client.place_order(account_hash=self._account_hash, order_spec=spec)
 
             if response.status_code in (200, 201):
                 order_id = response.headers.get("Location", "").split("/")[-1] or str(uuid.uuid4())
                 estimated_value = (limit_price or 0.0) * abs(quantity) * 100
-                logger.info("SchwabConnector: options PLACED | id=%s %s %s qty=%d",
-                            order_id, symbol, action, quantity)
+                logger.info(
+                    "SchwabConnector: options PLACED | id=%s %s %s qty=%d",
+                    order_id,
+                    symbol,
+                    action,
+                    quantity,
+                )
                 return {
-                    "status": "placed", "order_id": order_id,
-                    "symbol": symbol, "option_symbol": option_symbol,
-                    "action": action, "quantity": quantity,
-                    "order_type": order_type, "limit_price": limit_price,
-                    "estimated_value": estimated_value, "warnings": warnings,
+                    "status": "placed",
+                    "order_id": order_id,
+                    "symbol": symbol,
+                    "option_symbol": option_symbol,
+                    "action": action,
+                    "quantity": quantity,
+                    "order_type": order_type,
+                    "limit_price": limit_price,
+                    "estimated_value": estimated_value,
+                    "warnings": warnings,
                 }
 
             body = getattr(response, "text", str(getattr(response, "content", "")))
-            logger.error("SchwabConnector: options FAILED | HTTP %s | %s",
-                         response.status_code, body)
+            logger.error(
+                "SchwabConnector: options FAILED | HTTP %s | %s", response.status_code, body
+            )
             return {"status": "error", "reason": f"HTTP {response.status_code}", "body": body}
 
         except Exception as exc:
-            logger.error("SchwabConnector.submit_options_order exception | %s: %s",
-                         symbol, exc, exc_info=True)
+            logger.error(
+                "SchwabConnector.submit_options_order exception | %s: %s",
+                symbol,
+                exc,
+                exc_info=True,
+            )
             return {"status": "error", "reason": str(exc)}
 
     async def place_paper_order(self, order: dict) -> dict:
@@ -627,8 +710,9 @@ class SchwabConnector:
         is_options = bool(order.get("is_options", False))
         portfolio_equity = float(order.get("portfolio_equity", 0.0))
 
-        logger.info("SchwabConnector.place_paper_order | symbol=%s is_options=%s",
-                    symbol, is_options)
+        logger.info(
+            "SchwabConnector.place_paper_order | symbol=%s is_options=%s", symbol, is_options
+        )
 
         # Equity-path safety check (options path runs its own inside submit_options_order)
         if not is_options and self._safety_layer is not None:
@@ -664,18 +748,20 @@ class SchwabConnector:
                 signed_qty = int(order.get("quantity", 0))
                 if not is_options and order.get("side", "BUY").upper() == "SELL":
                     signed_qty = -abs(signed_qty)
-                await self._get_paper_trade_logger().log_trade({
-                    "order_id": result.get("order_id"),
-                    "symbol": symbol,
-                    "quantity": signed_qty,
-                    "order_type": order.get("order_type", "market").lower(),
-                    "limit_price": order.get("limit_price"),
-                    "filled_price": order.get("limit_price") or 0.0,
-                    "slippage_ticks": 0,
-                    "fill_time": datetime.now(timezone.utc).isoformat() + "Z",
-                    "is_futures": False,
-                    "is_options": is_options,
-                })
+                await self._get_paper_trade_logger().log_trade(
+                    {
+                        "order_id": result.get("order_id"),
+                        "symbol": symbol,
+                        "quantity": signed_qty,
+                        "order_type": order.get("order_type", "market").lower(),
+                        "limit_price": order.get("limit_price"),
+                        "filled_price": order.get("limit_price") or 0.0,
+                        "slippage_ticks": 0,
+                        "fill_time": datetime.now(timezone.utc).isoformat() + "Z",
+                        "is_futures": False,
+                        "is_options": is_options,
+                    }
+                )
             except Exception as exc:
                 logger.error("SchwabConnector: tracker logging failed: %s", exc, exc_info=True)
 
@@ -701,10 +787,12 @@ class SchwabConnector:
             return [
                 {
                     "order_id": str(o.get("orderId", "")),
-                    "symbol": (o.get("orderLegCollection", [{}])[0]
-                               .get("instrument", {}).get("symbol")),
-                    "asset_type": (o.get("orderLegCollection", [{}])[0]
-                                   .get("instrument", {}).get("assetType")),
+                    "symbol": (
+                        o.get("orderLegCollection", [{}])[0].get("instrument", {}).get("symbol")
+                    ),
+                    "asset_type": (
+                        o.get("orderLegCollection", [{}])[0].get("instrument", {}).get("assetType")
+                    ),
                     "quantity": o.get("quantity"),
                     "remaining_quantity": o.get("remainingQuantity"),
                     "order_type": o.get("orderType"),
@@ -738,8 +826,11 @@ class SchwabConnector:
                         cancelled += 1
                         logger.info("SchwabConnector: cancelled order %s", order_id)
                     else:
-                        logger.warning("SchwabConnector: cancel failed %s — HTTP %s",
-                                       order_id, response.status_code)
+                        logger.warning(
+                            "SchwabConnector: cancel failed %s — HTTP %s",
+                            order_id,
+                            response.status_code,
+                        )
                 except Exception as exc:
                     logger.error("SchwabConnector: error cancelling %s: %s", order_id, exc)
         except Exception as exc:

@@ -46,8 +46,8 @@ for _mod_name in _MODULES_TO_MOCK:
     _saved_modules[_mod_name] = sys.modules.get(_mod_name)
     sys.modules[_mod_name] = mock.MagicMock()
 
-from config import settings  # noqa: E402
 import main as main_mod  # noqa: E402
+from config import settings  # noqa: E402
 
 for _mod_name, _original in _saved_modules.items():
     if _original is None:
@@ -65,8 +65,8 @@ for _mod_name in _MODULES_TO_MOCK:
             except AttributeError:
                 pass
 
-from database.manager import DatabaseManager  # noqa: E402
 import routers.pipeline_router as pipeline_router_mod  # noqa: E402
+from database.manager import DatabaseManager  # noqa: E402
 
 client = TestClient(main_mod.app)
 _HEADERS = {"X-API-Key": settings.API_KEY}
@@ -118,9 +118,7 @@ def _restore_router_deps(orig):
 
 def test_requires_human_inserts_pending_skips_paper(tmp_db_manager):
     mock_tp = MagicMock()
-    mock_tp.analyze_and_decide = AsyncMock(
-        return_value=_pipeline_payload(requires_human=True)
-    )
+    mock_tp.analyze_and_decide = AsyncMock(return_value=_pipeline_payload(requires_human=True))
     mock_pt = MagicMock()
     mock_safety = MagicMock()
     mock_safety.get_status = MagicMock(return_value={"kill_switch_active": False})
@@ -150,9 +148,7 @@ def test_requires_human_inserts_pending_skips_paper(tmp_db_manager):
 
 def test_without_human_logs_paper_no_pending_row(tmp_db_manager):
     mock_tp = MagicMock()
-    mock_tp.analyze_and_decide = AsyncMock(
-        return_value=_pipeline_payload(requires_human=False)
-    )
+    mock_tp.analyze_and_decide = AsyncMock(return_value=_pipeline_payload(requires_human=False))
     mock_pt = MagicMock()
     mock_pt.add_paper_trade.return_value = "paper-tid-test"
     mock_safety = MagicMock()

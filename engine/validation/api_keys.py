@@ -118,7 +118,9 @@ def validate_api_keys(config) -> Dict[str, any]:
 
     # Log capabilities summary
     logger.info("API Key Validation Results:")
-    logger.info(f"  LLM Agents:           {'ENABLED' if capabilities['llm_agents'] else 'DISABLED'}")
+    logger.info(
+        f"  LLM Agents:           {'ENABLED' if capabilities['llm_agents'] else 'DISABLED'}"
+    )
     logger.info(
         f"  Polygon Market Data:  {'ENABLED' if capabilities['polygon_market_data'] else 'DISABLED'}"
     )

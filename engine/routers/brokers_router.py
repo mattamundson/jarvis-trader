@@ -4,9 +4,9 @@ Brokers router — consolidated position view across IBKR and Schwab.
 GET /brokers/positions — combined live + paper positions with reconciliation
 GET /brokers/status   — connectivity status for all brokers
 """
+
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -107,18 +107,22 @@ def _build_reconciliation(
     discrepancies = []
 
     for sym in paper_symbols - live_symbols:
-        discrepancies.append({
-            "symbol": sym,
-            "type": "paper_only",
-            "detail": "Paper position open but no matching live broker position found.",
-        })
+        discrepancies.append(
+            {
+                "symbol": sym,
+                "type": "paper_only",
+                "detail": "Paper position open but no matching live broker position found.",
+            }
+        )
 
     for sym in live_symbols - paper_symbols:
-        discrepancies.append({
-            "symbol": sym,
-            "type": "live_only",
-            "detail": "Live broker position found but no corresponding paper record.",
-        })
+        discrepancies.append(
+            {
+                "symbol": sym,
+                "type": "live_only",
+                "detail": "Live broker position found but no corresponding paper record.",
+            }
+        )
 
     return {
         "discrepancies": discrepancies,
@@ -170,9 +174,7 @@ async def get_broker_positions():
 
         paper_normalised = [_normalise_paper_position(p) for p in paper_raw]
 
-        reconciliation = _build_reconciliation(
-            ibkr_normalised, schwab_normalised, paper_normalised
-        )
+        reconciliation = _build_reconciliation(ibkr_normalised, schwab_normalised, paper_normalised)
 
         return {
             "ibkr": {

@@ -238,6 +238,7 @@ async def lifespan(app: FastAPI):
 
     # Run startup validation checks BEFORE scheduler setup
     from startup_checks import run_startup_checks
+
     check_results = run_startup_checks(settings)
 
     # Fail boot if any CRITICAL checks failed
@@ -624,7 +625,9 @@ async def lifespan(app: FastAPI):
             return
 
         instruments = [("MCL", True), ("MNQ", True), ("MES", True)]
-        logger.info(f"[MARKET_OPEN] Starting parallel pipeline scan for {[s[0] for s in instruments]}")
+        logger.info(
+            f"[MARKET_OPEN] Starting parallel pipeline scan for {[s[0] for s in instruments]}"
+        )
 
         async def _scan_one(symbol: str, is_futures: bool) -> None:
             try:
@@ -885,6 +888,7 @@ async def lifespan(app: FastAPI):
             logger.info("KAIROS: initializing proactive monitoring daemon...")
             # Wire in WhatsApp notifier for alerts (Phase 2 — requires Twilio creds in .env)
             from notifications.whatsapp import get_notifier
+
             whatsapp_notifier = get_notifier()
             kairos_daemon = KairosDaemon(
                 config=settings,
@@ -990,9 +994,11 @@ async def lifespan(app: FastAPI):
 
     # Initialize Nightly Learning Consolidation (04:00 ET = 09:00 UTC)
     try:
+
         async def run_nightly_consolidation() -> None:
             try:
                 from learning.consolidator import TradingMemoryConsolidator
+
                 consolidator = TradingMemoryConsolidator(db_manager=db_manager)
                 result = await consolidator.consolidate_daily()
                 logger.info("[LEARNING] Nightly consolidation complete: %s", result)
@@ -1007,7 +1013,9 @@ async def lifespan(app: FastAPI):
                 name="Nightly Learning Consolidation",
                 replace_existing=True,
             )
-            logger.info("✅ Learning consolidation job registered — fires nightly at 09:00 UTC (04:00 ET)")
+            logger.info(
+                "✅ Learning consolidation job registered — fires nightly at 09:00 UTC (04:00 ET)"
+            )
     except Exception as _consolidation_err:
         logger.warning(f"Learning consolidation init failed (non-fatal): {_consolidation_err}")
 
@@ -1102,7 +1110,6 @@ app.include_router(pipeline_router)
 app.include_router(scanner_router)
 app.include_router(scheduler_router)
 app.include_router(v1_router)
-
 
 
 # ── WebSocket Price Feed ────────────────────────────────────────────────────────

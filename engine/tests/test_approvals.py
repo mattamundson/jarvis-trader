@@ -164,7 +164,7 @@ class TestListPendingApprovals:
         # Insert 5 approvals
         for i in range(5):
             db.insert_pending_approval(
-                symbol=f"MES",
+                symbol="MES",
                 action="buy",
                 quantity=float(i + 1),
                 entry_price=5800.0 + i,
@@ -672,7 +672,7 @@ class TestEdgeCases:
         db = DatabaseManager(str(tmp_path / "test.db"))
         db.initialize()
 
-        for i in range(3):
+        for _i in range(3):
             db.insert_pending_approval(
                 symbol="MES",
                 action="buy",
@@ -690,7 +690,7 @@ class TestEdgeCases:
         db.initialize()
 
         # Insert 3 rows
-        for i in range(3):
+        for _i in range(3):
             db.insert_pending_approval(
                 symbol="MES",
                 action="buy",

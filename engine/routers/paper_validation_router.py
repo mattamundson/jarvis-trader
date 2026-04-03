@@ -182,9 +182,7 @@ class ValidationGatesResponse(BaseModel):
     avg_conviction_score: float = Field(
         ..., description="Average conviction score (0-1) from Layer 5 position sizing"
     )
-    overall_pass: bool = Field(
-        ..., description="True if all gates pass or are met"
-    )
+    overall_pass: bool = Field(..., description="True if all gates pass or are met")
 
 
 def _compute_sharpe_ratio(trades: list[dict], risk_free_rate: float = 0.04) -> float:
@@ -229,7 +227,7 @@ def _compute_sharpe_ratio(trades: list[dict], risk_free_rate: float = 0.04) -> f
 
     # Annualize (252 trading days per year)
     annual_return = avg_return * 252
-    annual_std = std_dev * (252 ** 0.5)
+    annual_std = std_dev * (252**0.5)
 
     sharpe = (annual_return - risk_free_rate) / annual_std if annual_std > 0 else 0.0
     return round(max(0.0, sharpe), 2)
@@ -340,7 +338,11 @@ async def get_validation_gates():
         # Profit factor: gross_profit / abs(gross_loss)
         gross_profit = sum(t.get("pnl", 0) for t in closed_trades if t.get("pnl", 0) > 0)
         gross_loss = sum(abs(t.get("pnl", 0)) for t in closed_trades if t.get("pnl", 0) < 0)
-        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (gross_profit if gross_profit > 0 else 0.0)
+        profit_factor = (
+            (gross_profit / gross_loss)
+            if gross_loss > 0
+            else (gross_profit if gross_profit > 0 else 0.0)
+        )
 
         # Sharpe ratio
         sharpe_ratio = _compute_sharpe_ratio(closed_trades)
@@ -436,6 +438,7 @@ async def get_eod_summary():
     """
     try:
         from datetime import datetime
+
         from engine.database import get_db
 
         db = get_db()
@@ -480,8 +483,10 @@ async def get_eod_summary():
 
         gross_profit = sum(t.get("pnl", 0) for t in closed_trades if float(t.get("pnl", 0)) > 0)
         gross_loss = sum(abs(t.get("pnl", 0)) for t in closed_trades if float(t.get("pnl", 0)) < 0)
-        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (
-            gross_profit if gross_profit > 0 else 0.0
+        profit_factor = (
+            (gross_profit / gross_loss)
+            if gross_loss > 0
+            else (gross_profit if gross_profit > 0 else 0.0)
         )
 
         cumulative_pnl = sum(float(t.get("pnl", 0)) for t in closed_trades)
@@ -565,9 +570,7 @@ class WFEResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    instruments: list[WFEInstrument] = Field(
-        ..., description="WFE metrics per instrument"
-    )
+    instruments: list[WFEInstrument] = Field(..., description="WFE metrics per instrument")
     as_of: str = Field(..., description="ISO datetime when computed")
 
 
@@ -587,11 +590,11 @@ def _compute_rolling_wfe(
 
     # Compute profit factor from closed trades
     gross_profit = sum(t.get("pnl", 0) for t in closed_trades if t.get("pnl", 0) > 0)
-    gross_loss = sum(
-        abs(t.get("pnl", 0)) for t in closed_trades if t.get("pnl", 0) < 0
-    )
-    current_pf = (gross_profit / gross_loss) if gross_loss > 0 else (
-        gross_profit if gross_profit > 0 else 0.0
+    gross_loss = sum(abs(t.get("pnl", 0)) for t in closed_trades if t.get("pnl", 0) < 0)
+    current_pf = (
+        (gross_profit / gross_loss)
+        if gross_loss > 0
+        else (gross_profit if gross_profit > 0 else 0.0)
     )
 
     # WFE formula: (current_pf - 1.0) / (in_sample_pf - 1.0), clamped [0, 1]
@@ -640,13 +643,10 @@ async def get_rolling_wfe():
         for symbol in ACTIVE_INSTRUMENTS:
             # Filter trades for this symbol in the window
             symbol_trades = [
-                t for t in closed_trades
-                if t.get("symbol", "").upper() == symbol.upper()
+                t for t in closed_trades if t.get("symbol", "").upper() == symbol.upper()
             ]
 
-            wfe, pf, status = _compute_rolling_wfe(
-                symbol_trades, symbol, window_days=window_days
-            )
+            wfe, pf, status = _compute_rolling_wfe(symbol_trades, symbol, window_days=window_days)
 
             # Determine overall status based on thresholds
             kill_threshold = kill_thresholds.get(symbol, 0.5)

@@ -478,8 +478,6 @@ def safety_layer_mock():
     from unittest.mock import MagicMock
 
     mock = MagicMock()
-    mock.check_order.return_value = MagicMock(
-        approved=True, rejection_reason=None, warnings=[]
-    )
+    mock.check_order.return_value = MagicMock(approved=True, rejection_reason=None, warnings=[])
     mock.on_connection_state_change = MagicMock()
     return mock

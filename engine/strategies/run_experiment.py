@@ -52,7 +52,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Quieten stable-baselines + gymnasium noise so the summary is readable
-for noisy_pkg in ("stable_baselines3", "gymnasium", "strategies.rl_agent", "strategies.rl_environment"):
+for noisy_pkg in (
+    "stable_baselines3",
+    "gymnasium",
+    "strategies.rl_agent",
+    "strategies.rl_environment",
+):
     logging.getLogger(noisy_pkg).setLevel(logging.ERROR)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -98,7 +103,7 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--config",
         default="{}",
-        help='JSON dict of reward_config overrides, e.g. \'{"hold_cost": -0.008}\'',
+        help="JSON dict of reward_config overrides, e.g. '{\"hold_cost\": -0.008}'",
     )
     parser.add_argument(
         "--timesteps",
@@ -157,7 +162,7 @@ async def run_experiment(args: argparse.Namespace) -> int:
 
     # ── Train ─────────────────────────────────────────────────────────────
     print(f"\n{'='*64}")
-    print(f"  JARVIS EXPERIMENT RUN")
+    print("  JARVIS EXPERIMENT RUN")
     print(f"{'='*64}")
     print(f"  Symbol    : {args.symbol.upper()}")
     print(f"  Category  : {args.category}")
@@ -167,7 +172,7 @@ async def run_experiment(args: argparse.Namespace) -> int:
     print(f"  Prior runs: {n_prior}")
     print(f"  Best score: {best_score:.4f}" + (f"  ({best['run_id']})" if best else "  (none yet)"))
     print(f"{'='*64}")
-    print(f"  Training ... (this may take several minutes)")
+    print("  Training ... (this may take several minutes)")
     print()
 
     from strategies.rl_trainer import RLTrainer
@@ -245,13 +250,13 @@ async def run_experiment(args: argparse.Namespace) -> int:
     print(f"{'='*64}")
 
     if is_keep:
-        print(f"\n  Suggested git commit:")
-        print(f"    git commit -m \"rl-exp: [{run_id}] {args.category} — {args.hypothesis[:60]}\"")
-        print(f"\n  To mark this run as kept in the experiment log:")
-        print(f"    re-run with --keep flag")
+        print("\n  Suggested git commit:")
+        print(f'    git commit -m "rl-exp: [{run_id}] {args.category} — {args.hypothesis[:60]}"')
+        print("\n  To mark this run as kept in the experiment log:")
+        print("    re-run with --keep flag")
     else:
-        print(f"\n  Suggested git command:")
-        print(f"    git reset --hard HEAD  # revert rl_config.py changes")
+        print("\n  Suggested git command:")
+        print("    git reset --hard HEAD  # revert rl_config.py changes")
         print(f"\n  Score {score:.4f} < threshold {threshold:.4f} — RESET recommended.")
 
     print()

@@ -16,12 +16,12 @@ logger = logging.getLogger("jarvis_trader.database")
 # Token cost rates (per million tokens)
 MODEL_RATES: Dict[str, Dict[str, float]] = {
     "claude-sonnet-4-6": {
-        "input": 3.0,      # $3 per million input tokens
-        "output": 15.0,    # $15 per million output tokens
+        "input": 3.0,  # $3 per million input tokens
+        "output": 15.0,  # $15 per million output tokens
     },
     "claude-haiku-4-5": {
-        "input": 0.25,     # $0.25 per million input tokens
-        "output": 1.25,    # $1.25 per million output tokens
+        "input": 0.25,  # $0.25 per million input tokens
+        "output": 1.25,  # $1.25 per million output tokens
     },
 }
 

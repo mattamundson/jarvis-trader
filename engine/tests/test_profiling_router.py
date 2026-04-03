@@ -49,11 +49,27 @@ if _ENGINE_ROOT not in sys.path:
 def mock_profiler_instance():
     """Create a mocked profiler instance."""
     p = AsyncMock()
-    p.get_report = AsyncMock(return_value={"stage_1_technical": 0.125, "stage_2_debate": 0.245,
-        "stage_3_trader": 0.180, "stage_4_risk": 0.090, "stage_5_fund": 0.075, "total": 1.050})
+    p.get_report = AsyncMock(
+        return_value={
+            "stage_1_technical": 0.125,
+            "stage_2_debate": 0.245,
+            "stage_3_trader": 0.180,
+            "stage_4_risk": 0.090,
+            "stage_5_fund": 0.075,
+            "total": 1.050,
+        }
+    )
     p.get_average_times = AsyncMock(return_value={"stage_1_technical": 0.122, "total": 1.048})
-    p.get_history = AsyncMock(return_value=[{"run_id": 1, "timestamp": "2026-03-29T10:00:00",
-        "total": 1.050, "stages": {"stage_1_technical": 0.125, "total": 1.050}}])
+    p.get_history = AsyncMock(
+        return_value=[
+            {
+                "run_id": 1,
+                "timestamp": "2026-03-29T10:00:00",
+                "total": 1.050,
+                "stages": {"stage_1_technical": 0.125, "total": 1.050},
+            }
+        ]
+    )
     p.get_history_size = AsyncMock(return_value=2)
     p.get_max_history = AsyncMock(return_value=1000)
     return p
@@ -62,8 +78,8 @@ def mock_profiler_instance():
 @pytest.fixture
 def client(mock_profiler_instance):
     """FastAPI TestClient wrapping profiling router."""
-    from routers.profiling_router import router as profiling_router
     from routers import profiling_router as profiling_module
+    from routers.profiling_router import router as profiling_router
 
     app = FastAPI()
     app.include_router(profiling_router)
@@ -90,8 +106,8 @@ class TestProfilingRouter:
 
     def test_summary_returns_503_if_no_profiler(self):
         """Returns 503 if profiler not available."""
-        from routers.profiling_router import router as profiling_router
         from routers import profiling_router as profiling_module
+        from routers.profiling_router import router as profiling_router
 
         app = FastAPI()
         app.include_router(profiling_router)

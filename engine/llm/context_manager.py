@@ -86,8 +86,8 @@ class PipelineContextManager:
     # Tuned for 1M-token models: keeps costs bounded by compacting at absolute
     # token counts (~200K, ~300K, ~400K, ~500K) rather than % of full window.
     TIER_THRESHOLDS = {
-        CompactionTier.TRIM: 0.20,       # ~200K tokens
-        CompactionTier.TIME_CLEAR: 0.30, # ~300K tokens
+        CompactionTier.TRIM: 0.20,  # ~200K tokens
+        CompactionTier.TIME_CLEAR: 0.30,  # ~300K tokens
         CompactionTier.SUMMARIZE: 0.40,  # ~400K tokens
         CompactionTier.EMERGENCY: 0.50,  # ~500K tokens
     }

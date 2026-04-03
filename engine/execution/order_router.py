@@ -6,8 +6,9 @@ Routing rules:
   Equities (SPY, QQQ, AAPL, etc.) -> Schwab
   Options -> Schwab (preferred), fallback IBKR
 """
+
 import logging
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from execution.ib_gateway_connector import IBGatewayConnector
@@ -17,9 +18,29 @@ logger = logging.getLogger(__name__)
 
 # Futures symbols that must go to IBKR
 FUTURES_SYMBOLS = {
-    "MES", "ES", "MNQ", "NQ", "MCL", "CL", "MGC", "GC",
-    "MYM", "YM", "M2K", "RTY", "MBT", "BTC", "MET", "ETH",
-    "ZN", "ZB", "ZF", "ZT", "6E", "6B", "6J",
+    "MES",
+    "ES",
+    "MNQ",
+    "NQ",
+    "MCL",
+    "CL",
+    "MGC",
+    "GC",
+    "MYM",
+    "YM",
+    "M2K",
+    "RTY",
+    "MBT",
+    "BTC",
+    "MET",
+    "ETH",
+    "ZN",
+    "ZB",
+    "ZF",
+    "ZT",
+    "6E",
+    "6B",
+    "6J",
 }
 
 FUTURES_PREFIXES = ("M", "E", "C", "Z", "6")  # heuristic for unrecognized symbols
@@ -65,9 +86,7 @@ class OrderRouter:
 
         if self.is_futures(symbol):
             if not self.ibkr or not self.ibkr.is_connected():
-                raise RuntimeError(
-                    f"IBKR not connected — cannot route futures order for {symbol}"
-                )
+                raise RuntimeError(f"IBKR not connected — cannot route futures order for {symbol}")
             logger.info("Routing %s order to IBKR", symbol)
             fill_id = await self.ibkr.place_paper_order(
                 symbol=symbol,
@@ -90,9 +109,7 @@ class OrderRouter:
                 logger.info("Routing %s options order to Schwab", symbol)
                 return await self.schwab.submit_options_order(order)
             elif self.ibkr and self.ibkr.is_connected():
-                logger.info(
-                    "Routing %s options order to IBKR (Schwab unavailable)", symbol
-                )
+                logger.info("Routing %s options order to IBKR (Schwab unavailable)", symbol)
                 return await self.ibkr.place_paper_order(order)
             else:
                 raise RuntimeError("No broker connected for options order")
@@ -100,9 +117,7 @@ class OrderRouter:
         else:
             # Equity
             if not self.schwab or not self.schwab.is_connected:
-                raise RuntimeError(
-                    f"Schwab not connected — cannot route equity order for {symbol}"
-                )
+                raise RuntimeError(f"Schwab not connected — cannot route equity order for {symbol}")
             logger.info("Routing %s equity order to Schwab", symbol)
             return await self.schwab.place_paper_order(order)
 
@@ -110,9 +125,7 @@ class OrderRouter:
         return {
             "ibkr_connected": bool(self.ibkr and self.ibkr.is_connected()),
             "schwab_connected": bool(self.schwab and self.schwab.is_connected),
-            "futures_broker": (
-                "ibkr" if self.ibkr and self.ibkr.is_connected() else "unavailable"
-            ),
+            "futures_broker": ("ibkr" if self.ibkr and self.ibkr.is_connected() else "unavailable"),
             "equity_broker": (
                 "schwab" if self.schwab and self.schwab.is_connected else "unavailable"
             ),

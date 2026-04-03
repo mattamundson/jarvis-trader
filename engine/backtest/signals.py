@@ -688,10 +688,10 @@ def generate_signals(
 # ── Layer 5 — Conviction-Aware Position Sizing ────────────────────────────────
 # Scales base risk percentage by the alignment strength across Layers 1-4.
 # Safety layer hard limits (config.py) still apply — this is pre-safety sizing.
-SIZING_FULL = 1.00       # STRONG bias + TRENDING + directional structure
-SIZING_HIGH = 0.80       # STRONG bias + TRENDING (any structure)
-SIZING_HALF = 0.50       # LEAN bias OR RANGING regime
-SIZING_MIN = 0.25        # All other cases (minimum viable position)
+SIZING_FULL = 1.00  # STRONG bias + TRENDING + directional structure
+SIZING_HIGH = 0.80  # STRONG bias + TRENDING (any structure)
+SIZING_HALF = 0.50  # LEAN bias OR RANGING regime
+SIZING_MIN = 0.25  # All other cases (minimum viable position)
 
 
 def compute_position_size(

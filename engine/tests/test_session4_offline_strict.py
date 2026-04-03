@@ -59,9 +59,10 @@ for _mod_name in _MODULES_TO_MOCK:
     _saved_modules[_mod_name] = sys.modules.get(_mod_name)
     sys.modules[_mod_name] = mock.MagicMock()
 
-from config import settings  # noqa: E402  (must come after mocks)
 from fastapi.testclient import TestClient  # noqa: E402
+
 import main  # noqa: E402
+from config import settings  # noqa: E402  (must come after mocks)
 
 app = main.app
 
@@ -126,8 +127,8 @@ def _create_test_db() -> sqlite3.Connection:
 _CONN = _create_test_db()
 
 # Temp file path for endpoints that call sqlite3.connect(str(db_manager._db_path))
-import tempfile as _tempfile
 import os as _os
+import tempfile as _tempfile
 
 _TMP_DB_FILE = _tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 _TMP_DB_FILE.close()
@@ -187,9 +188,7 @@ class _FakeDbManager:
         finally:
             conn.close()
 
-    def get_alert_history(
-        self, limit: int = 100, alert_type: str | None = None
-    ) -> list[dict]:
+    def get_alert_history(self, limit: int = 100, alert_type: str | None = None) -> list[dict]:
         conn = sqlite3.connect(str(self._db_path))
         conn.row_factory = sqlite3.Row
         try:
@@ -325,9 +324,7 @@ class TestSession4OfflineStrict:
 
     def test_import_trades_empty(self) -> None:
         """POST /portfolio/import/trades with empty list must return 200, imported=0."""
-        r = client.post(
-            "/portfolio/import/trades", json={"trades": []}, headers=_AUTH
-        )
+        r = client.post("/portfolio/import/trades", json={"trades": []}, headers=_AUTH)
         assert r.status_code == 200, f"Expected 200, got {r.status_code}. Body: {r.text}"
         body = r.json()
         assert body.get("imported") == 0, f"Expected 0 imports for empty list. Body: {body}"
@@ -348,9 +345,7 @@ class TestSession4OfflineStrict:
             "entry_time": "2026-03-01T09:30:00Z",
             "exit_time": "2026-03-01T10:00:00Z",
         }
-        r = client.post(
-            "/portfolio/import/trades", json={"trades": [trade]}, headers=_AUTH
-        )
+        r = client.post("/portfolio/import/trades", json={"trades": [trade]}, headers=_AUTH)
         assert r.status_code == 200, f"Expected 200, got {r.status_code}. Body: {r.text}"
         body = r.json()
         assert body.get("imported") == 1, f"Expected 1 import. Body: {body}"
@@ -361,9 +356,7 @@ class TestSession4OfflineStrict:
 
     def test_import_trades_bad_body(self) -> None:
         """POST /portfolio/import/trades with non-list 'trades' must return 400."""
-        r = client.post(
-            "/portfolio/import/trades", json={"trades": "not-a-list"}, headers=_AUTH
-        )
-        assert r.status_code == 400, (
-            f"Expected 400 for invalid body, got {r.status_code}. Body: {r.text}"
-        )
+        r = client.post("/portfolio/import/trades", json={"trades": "not-a-list"}, headers=_AUTH)
+        assert (
+            r.status_code == 400
+        ), f"Expected 400 for invalid body, got {r.status_code}. Body: {r.text}"

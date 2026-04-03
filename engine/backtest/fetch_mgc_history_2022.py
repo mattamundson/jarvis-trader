@@ -85,7 +85,9 @@ def fetch_mgc_polygon(start: str, end: str) -> pd.DataFrame | None:
             return None
 
         df = pd.DataFrame(bars)
-        df = df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+        df = (
+            df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+        )
 
         if len(df) < 50:
             logger.warning(f"Polygon MGC returned only {len(df)} rows — likely incomplete")
@@ -142,7 +144,7 @@ def build_cache(
     logger.info(f"  File:   {out_path}")
     logger.info(f"  Rows:   {len(df)}")
     logger.info(f"  Range:  {df['timestamp'].iloc[0]} -> {df['timestamp'].iloc[-1]}")
-    logger.info(f"  Source: Polygon.io")
+    logger.info("  Source: Polygon.io")
     logger.info(f"  Close range: {df['close'].min():.2f} – {df['close'].max():.2f}")
     logger.info(f"{'=' * 60}\n")
 

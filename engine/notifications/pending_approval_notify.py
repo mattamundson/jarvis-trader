@@ -12,9 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _approval_dashboard_url() -> str:
-    base = (getattr(settings, "DASHBOARD_PUBLIC_URL", None) or "http://localhost:3010").rstrip(
-        "/"
-    )
+    base = (getattr(settings, "DASHBOARD_PUBLIC_URL", None) or "http://localhost:3010").rstrip("/")
     return f"{base}/trades/pending-approvals"
 
 
@@ -76,9 +74,7 @@ async def notify_pending_approval_queued(
             f"ID: {approval_id[:8]}…\n\n"
             f"Dashboard:\n{approve_url}"
         )
-        await send_whatsapp_message(
-            msg, alert_type="pending_approval", symbol=sym
-        )
+        await send_whatsapp_message(msg, alert_type="pending_approval", symbol=sym)
     except Exception as e:
         logger.debug("WhatsApp pending_approval skipped or failed: %s", e)
 
@@ -109,8 +105,6 @@ async def notify_pending_approval_queued(
             async with httpx.AsyncClient(timeout=8.0) as client:
                 r = await client.post(wh_url, json={"content": content[:1900]})
                 if r.status_code >= 400:
-                    logger.warning(
-                        "[APPROVAL-NOTIFY] Discord webhook HTTP %s", r.status_code
-                    )
+                    logger.warning("[APPROVAL-NOTIFY] Discord webhook HTTP %s", r.status_code)
         except Exception as e:
             logger.warning("[APPROVAL-NOTIFY] Discord webhook failed: %s", e)

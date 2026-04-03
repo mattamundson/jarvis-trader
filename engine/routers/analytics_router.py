@@ -222,7 +222,8 @@ async def get_trade_analytics(request: Request) -> TradeAnalyticsResponse:
     description="Analyze signal quality metrics across filtered trades with optional symbol and date range filters.",
 )
 @limiter.limit("120/minute")
-async def get_signal_quality(request: Request,
+async def get_signal_quality(
+    request: Request,
     symbol: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -245,16 +246,14 @@ async def get_signal_quality(request: Request,
         # Apply filters
         if symbol:
             trades = [
-                t for t in trades
-                if t.get("instrument") == symbol or t.get("symbol") == symbol
+                t for t in trades if t.get("instrument") == symbol or t.get("symbol") == symbol
             ]
 
         if start_date:
             try:
                 start = datetime.fromisoformat(start_date).date()
                 trades = [
-                    t for t in trades
-                    if (t.get("timestamp") or "").split("T")[0] >= str(start)
+                    t for t in trades if (t.get("timestamp") or "").split("T")[0] >= str(start)
                 ]
             except ValueError:
                 logger.warning(f"Invalid start_date: {start_date}")
@@ -262,10 +261,7 @@ async def get_signal_quality(request: Request,
         if end_date:
             try:
                 end = datetime.fromisoformat(end_date).date()
-                trades = [
-                    t for t in trades
-                    if (t.get("timestamp") or "").split("T")[0] <= str(end)
-                ]
+                trades = [t for t in trades if (t.get("timestamp") or "").split("T")[0] <= str(end)]
             except ValueError:
                 logger.warning(f"Invalid end_date: {end_date}")
 
@@ -366,6 +362,7 @@ async def get_rolling_performance(request: Request, days: int = 7) -> Performanc
 
         # Filter to only trades from the last N days
         from datetime import timedelta
+
         cutoff_date = datetime.utcnow() - timedelta(days=days)
         cutoff_iso = cutoff_date.isoformat()
 
@@ -505,12 +502,14 @@ async def get_trades_by_day(request: Request, days: int = 30) -> dict:
 
         result = []
         for row in rows:
-            result.append({
-                "date": row["date"],
-                "trades": int(row["trades"]),
-                "pnl": float(row["pnl"]),
-                "win_rate": float(row["win_rate"]) if row["win_rate"] else 0.0,
-            })
+            result.append(
+                {
+                    "date": row["date"],
+                    "trades": int(row["trades"]),
+                    "pnl": float(row["pnl"]),
+                    "win_rate": float(row["win_rate"]) if row["win_rate"] else 0.0,
+                }
+            )
         return {"days": result}
     except HTTPException:
         raise
@@ -554,13 +553,15 @@ async def get_trades_by_symbol(request: Request) -> dict:
 
         result = []
         for row in rows:
-            result.append({
-                "symbol": row["symbol"],
-                "trades": int(row["trades"]),
-                "pnl": float(row["pnl"]),
-                "win_rate": float(row["win_rate"]) if row["win_rate"] else 0.0,
-                "avg_pnl": float(row["avg_pnl"]),
-            })
+            result.append(
+                {
+                    "symbol": row["symbol"],
+                    "trades": int(row["trades"]),
+                    "pnl": float(row["pnl"]),
+                    "win_rate": float(row["win_rate"]) if row["win_rate"] else 0.0,
+                    "avg_pnl": float(row["avg_pnl"]),
+                }
+            )
         return {"symbols": result}
     except HTTPException:
         raise
@@ -595,7 +596,9 @@ async def get_trades_by_hour(request: Request) -> dict:
             ORDER BY hour ASC
         """
         rows = db.execute(sql).fetchall()
-        return {"hours": [{"hour": r[0], "trades": r[1], "pnl": r[2], "win_rate": r[3]} for r in rows]}
+        return {
+            "hours": [{"hour": r[0], "trades": r[1], "pnl": r[2], "win_rate": r[3]} for r in rows]
+        }
     except Exception:
         return {"hours": []}
 
@@ -661,9 +664,7 @@ async def get_dual_tf_status(
             tf_data: dict = {}
             for tf in ("1h", "15m"):
                 try:
-                    df = await dm.get_bars(
-                        sym, lookback_days=5, timeframe=tf, is_futures=True
-                    )
+                    df = await dm.get_bars(sym, lookback_days=5, timeframe=tf, is_futures=True)
                     if df is None or df.empty or len(df) < 20:
                         tf_data[tf] = None
                         continue

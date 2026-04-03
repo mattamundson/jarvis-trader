@@ -60,8 +60,8 @@ for _mod_name in _MODULES_TO_MOCK:
     _saved_modules[_mod_name] = sys.modules.get(_mod_name)
     sys.modules[_mod_name] = mock.MagicMock()
 
-from config import settings  # noqa: E402  (must come after mocks)
 import main as main_mod  # noqa: E402
+from config import settings  # noqa: E402  (must come after mocks)
 from main import app  # noqa: E402
 
 # Restore real modules after app is imported so other test files get genuine
@@ -87,9 +87,9 @@ for _mod_name in _MODULES_TO_MOCK:
 # Shared client + auth header
 # ---------------------------------------------------------------------------
 
-import routers.analytics_router as _analytics_router_mod  # noqa: E402
-
 from fastapi.testclient import TestClient  # noqa: E402
+
+import routers.analytics_router as _analytics_router_mod  # noqa: E402
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -101,6 +101,7 @@ _AUTH = {"X-API-Key": settings.API_KEY}
 # that satisfies both main.py routes (use _lock + _db_path) and
 # analytics_router.py routes (use _lock + _connect()).
 # ---------------------------------------------------------------------------
+
 
 class _FakeDbManager:
     """
@@ -185,8 +186,10 @@ class TestSession4ExtendedOffline(unittest.TestCase):
         The route is served by analytics_router (prefix=/analytics) which uses its own
         _db variable, so we patch both main_mod.db_manager and _analytics_router_mod._db.
         """
-        with patch.object(main_mod, "db_manager", self._db_mock), \
-             patch.object(_analytics_router_mod, "_db", self._db_mock):
+        with (
+            patch.object(main_mod, "db_manager", self._db_mock),
+            patch.object(_analytics_router_mod, "_db", self._db_mock),
+        ):
             r = client.get("/analytics/trades/by-day", headers=_AUTH)
         self.assertEqual(
             r.status_code,
@@ -203,8 +206,10 @@ class TestSession4ExtendedOffline(unittest.TestCase):
 
         Same analytics_router pattern as test_trades_by_day.
         """
-        with patch.object(main_mod, "db_manager", self._db_mock), \
-             patch.object(_analytics_router_mod, "_db", self._db_mock):
+        with (
+            patch.object(main_mod, "db_manager", self._db_mock),
+            patch.object(_analytics_router_mod, "_db", self._db_mock),
+        ):
             r = client.get("/analytics/trades/by-symbol", headers=_AUTH)
         self.assertEqual(
             r.status_code,
