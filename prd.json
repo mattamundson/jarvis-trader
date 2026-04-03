@@ -34,8 +34,8 @@
         "All Python ruff-clean. 0 test failures."
       ],
       "priority": 2,
-      "passes": false,
-      "notes": "IB Gateway may not be running — broker_unavailable is acceptable. The critical path is SQLite write correctness, not IB fill."
+      "passes": true,
+      "notes": "IB Gateway may not be running — broker_unavailable is acceptable. The critical path is SQLite write correctness, not IB fill. Verified 2026-04-03: full E2E flow passed — approval injected, approved via API, paper_trades row written (open), closed via /portfolio/paper/trade, pnl=$100.00 confirmed (MCL multiplier 100x, entry=68.5, exit=69.5, qty=1). Learning classifier returned grade B, R-multiple 2.00."
     },
     {
       "id": "US-1803",
@@ -67,7 +67,7 @@
         "Append to docs/reports/sprint18_system_health.md: IB Gateway prereq check results, smoke test output, connection test result."
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "IB_ACCOUNT_ID must be set by Matt in engine/.env before this story can complete. IB Gateway must be running on port 4002 (paper mode only — port 4001 is permanently blocked)."
     },
     {
