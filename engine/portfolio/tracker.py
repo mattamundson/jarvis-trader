@@ -228,6 +228,29 @@ class PortfolioTracker:
             trade.pnl,
             trade_id[:8],
         )
+
+        # Trade quality classification (lazy, non-blocking)
+        try:
+            from learning._experimental.trade_classifier import TradeClassifier
+            _cls = TradeClassifier().classify({
+                "id": trade_id,
+                "pnl": trade.pnl or 0.0,
+                "risk": 0.0,
+                "entry_price": trade.entry_price or 0.0,
+                "exit_price": trade.exit_price or 0.0,
+                "time_in_trade": 0.0,
+                "target_atr": 0.0,
+                "regime": "UNKNOWN",
+            })
+            logger.info(
+                "[LEARNING] Trade %s classified: grade=%s setup=%.2f",
+                str(trade_id)[:8],
+                _cls.grade,
+                _cls.setup_quality,
+            )
+        except Exception as _exc:
+            logger.debug("[LEARNING] Trade classification skipped: %s", _exc)
+
         return trade
 
     def get_open_positions(self) -> List[dict]:
