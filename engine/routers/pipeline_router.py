@@ -291,8 +291,52 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
         result.get("requires_human"),
     )
 
-    # Auto-log paper trade when the pipeline produces a directional decision
-    if final_action not in ("hold", "HOLD") and _paper_tracker is not None:
+    # Route directional decisions: queue for human approval OR auto-log as paper trade
+    is_directional = final_action not in ("hold", "HOLD")
+    requires_human = bool(result.get("requires_human", True))
+
+    if is_directional and requires_human and _db_manager is not None:
+        # Human approval required — queue in pending_trade_approvals
+        try:
+            from approval.snapshot import pipeline_result_for_approval_snapshot
+
+            trade_dec = result.get("trade_decision") or {}
+            analyst_reports = result.get("analyst_reports") or {}
+            technical_report = analyst_reports.get("technical") or {}
+            entry_price = (
+                trade_dec.get("limit_price")
+                or technical_report.get("current_price")
+                or technical_report.get("price")
+            )
+            final_qty = result.get("final_quantity", 1) or 1
+            snap = pipeline_result_for_approval_snapshot(result)
+            approval_id = _db_manager.insert_pending_approval(
+                symbol=symbol,
+                action=final_action,
+                quantity=float(final_qty),
+                entry_price=float(entry_price) if entry_price else None,
+                pipeline_snapshot=snap,
+            )
+            logger.info(
+                "[APPROVAL] Queued %s %s qty=%s entry=%s for human review — approval_id=%s",
+                symbol,
+                final_action.upper(),
+                final_qty,
+                f"{float(entry_price):.4f}" if entry_price else "none",
+                approval_id[:8],
+            )
+        except Exception as exc:
+            logger.error("[APPROVAL] Failed to queue pending approval for %s: %s", symbol, exc)
+
+    elif is_directional and requires_human and _db_manager is None:
+        logger.warning(
+            "[APPROVAL] Cannot queue %s %s — db_manager not injected. Trade skipped.",
+            symbol,
+            final_action.upper(),
+        )
+
+    elif is_directional and not requires_human and _paper_tracker is not None:
+        # No human approval required — auto-log paper trade immediately
         try:
             trade_dec = result.get("trade_decision") or {}
             analyst_reports = result.get("analyst_reports") or {}
@@ -347,7 +391,8 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                 )
         except Exception as exc:
             logger.error("[PAPER] Auto-log failed for %s: %s", symbol, exc)
-    elif final_action not in ("hold", "HOLD") and _paper_tracker is None:
+
+    elif is_directional and not requires_human and _paper_tracker is None:
         logger.warning(
             "[PAPER] Skipping paper trade log for %s %s — paper_tracker not injected",
             symbol,

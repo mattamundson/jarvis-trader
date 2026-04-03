@@ -21,7 +21,7 @@ import { SchwabStatusWidget } from "@/components/SchwabStatusWidget";
 import { StrategyParamsPanel } from "@/components/StrategyParamsPanel";
 import { SessionTodayWidget } from "@/components/SessionTodayWidget";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
   HealthResponse,
   SafetyStatus,
@@ -83,6 +83,13 @@ export default function DashboardPage() {
   );
 
   const engineOnline = !healthErr && !!health;
+
+  const { data: pendingApprovals } = useSWR(
+    engineOnline ? "pending-approvals-count" : null,
+    () => getPendingApprovals(50),
+    { refreshInterval: 25_000, shouldRetryOnError: false }
+  );
+  const pendingCount = pendingApprovals?.count ?? 0;
 
   const [analysisSymbol, setAnalysisSymbol] = React.useState("SPY");
   const [isRunning, setIsRunning] = React.useState(false);
@@ -158,11 +165,25 @@ export default function DashboardPage() {
               <a href="/paper" className="text-xs text-accent font-semibold hover:text-foreground transition-colors">
                 Paper Trading
               </a>
+              <a
+                href="/trades/pending-approvals"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
+              >
+                Approvals
+                {pendingCount > 0 ? (
+                  <Badge variant="warn" className="h-5 min-w-5 px-1 text-[10px]">
+                    {pendingCount}
+                  </Badge>
+                ) : null}
+              </a>
               <a href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Watchlist
               </a>
               <a href="/scorecard" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Scorecard
+              </a>
+              <a href="/stats" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Stats
               </a>
               <a href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Settings
@@ -607,41 +628,6 @@ function WFEStatusCard() {
             })}
         </div>
       )}
-    </div>
-  );
-}
-
-
-function RiskRow({
-  label,
-  value,
-  limit,
-  pct,
-  danger,
-}: {
-  label: string;
-  value: string;
-  limit: string;
-  pct: number;
-  danger: boolean;
-}) {
-  const clampedPct = Math.min(1, Math.max(0, pct));
-  const barColor = danger ? "bg-bear" : clampedPct > 0.7 ? "bg-warn" : "bg-bull";
-
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <span>
-          {value} / {limit}
-        </span>
-      </div>
-      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${barColor}`}
-          style={{ width: `${clampedPct * 100}%` }}
-        />
-      </div>
     </div>
   );
 }

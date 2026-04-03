@@ -340,3 +340,15 @@ Test Suite Verification and Fixes
 ### Remaining Work
 Signal tests require technical indicator tuning (warmup periods, indicator parameters).
 These are non-critical enhancements that do not block paper trading phase.
+
+## 2026-04-02 - US-1203 ✅ COMPLETE
+- Patched engine/routers/pipeline_router.py _run_pipeline_and_log()
+- Added requires_human = bool(result.get("requires_human", True)) check
+- When requires_human=True: calls _db_manager.insert_pending_approval() with pipeline snapshot
+- When requires_human=False: existing _paper_tracker.add_paper_trade() path unchanged
+- Telegram signal alert fires for ALL directional decisions regardless of requires_human
+- **Learnings:**
+  - pipeline_result_for_approval_snapshot() in approval/snapshot.py produces the correct JSON blob
+  - _db_manager is already injected into pipeline_router via inject_dependencies() in main.py
+  - The 4-branch if/elif structure covers: human+db, human+no-db, auto+tracker, auto+no-tracker
+---

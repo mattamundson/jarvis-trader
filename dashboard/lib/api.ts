@@ -1,4 +1,6 @@
-// All calls proxy through Next.js rewrites → http://localhost:8010
+// All dashboard calls MUST use fetchEngine() or postEngine() below.
+// These functions proxy through Next.js rewrites to the engine backend.
+// NEVER hardcode localhost:8010 or make fetch calls directly.
 const ENGINE = "/api/engine";
 const FETCH_TIMEOUT_MS = 30000; // 30 seconds
 const RETRY_DELAY_MS = 2000; // 2 seconds
@@ -555,6 +557,70 @@ export interface CompareToBacktestResponse {
   };
 }
 
+// ── Approval / Trade Gating API ──────────────────────────────────────────────
+
+export interface PendingApproval {
+  id: number;
+  approval_id: string;
+  symbol: string;
+  action: "buy" | "sell" | "BUY" | "SELL";
+  quantity: number;
+  entry_price: number | null;
+  status: "pending" | "approved" | "rejected" | "error";
+  pipeline_snapshot: Record<string, unknown> | null;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  rejection_reason: string | null;
+  paper_trade_id: string | null;
+  ib_order_id: string | null;
+}
+
+export interface PendingApprovalRow {
+  approval_id: string;
+  symbol: string;
+  action: "BUY" | "SELL" | "buy" | "sell";
+  quantity: number;
+  entry_price: number | null;
+  created_at: string;
+  pipeline_snapshot: Record<string, unknown> | null;
+  status: "pending" | "approved" | "rejected" | "error";
+}
+
+export interface PendingApprovalsResponse {
+  pending: PendingApproval[];
+  count: number;
+}
+
+export interface ApprovalActionResult {
+  status: "approved" | "rejected";
+  approval_id: string;
+  symbol: string;
+  action: string;
+  quantity: number;
+  entry_price?: number;
+  paper_trade_id?: string;
+  reason?: string;
+}
+
+export async function getPendingApprovals(limit: number = 50): Promise<PendingApprovalsResponse> {
+  return fetchEngine<PendingApprovalsResponse>(`/pipeline/pending-approvals?limit=${limit}`);
+}
+
+export async function postApprovePending(
+  approvalId: string,
+  body?: { entry_price?: number }
+): Promise<ApprovalActionResult> {
+  return postEngine<ApprovalActionResult>(`/pipeline/pending-approvals/${approvalId}/approve`, body || {});
+}
+
+export async function postRejectPending(
+  approvalId: string,
+  reason?: string
+): Promise<ApprovalActionResult> {
+  return postEngine<ApprovalActionResult>(`/pipeline/pending-approvals/${approvalId}/reject`, { reason: reason || "rejected_by_trader" });
+}
+
 // ── Kill Switch API ──────────────────────────────────────────────────────────
 
 export interface KillSwitchStatus {
@@ -578,4 +644,172 @@ export async function toggleKillSwitch(
 
 export async function resetPendingSignals(): Promise<{ cleared: number }> {
   return postEngine<{ cleared: number }>("/paper/reset-pending-signals");
+}
+
+// ── Analytics Endpoints ─────────────────────────────────────────────────────
+
+export interface PerformanceMetricsResponse {
+  sharpe_ratio: number;
+  profit_factor: number;
+  win_rate: number;
+  max_drawdown: number;
+  total_pnl: number;
+  total_trades: number;
+  expectancy: number;
+  timestamp: string;
+}
+
+export interface TradeAnalyticsResponse {
+  sharpe_ratio: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
+  win_rate: number;
+  expectancy: number;
+  total_trades: number;
+  total_pnl: number;
+  avg_win: number;
+  avg_loss: number;
+  best_trade: number;
+  worst_trade: number;
+}
+
+export interface SignalMetricsResponse {
+  total_signals: number;
+  profitable_signals: number;
+  accuracy: number;
+  avg_signal_to_entry_minutes: number;
+  avg_entry_to_peak_minutes: number;
+  avg_pnl_per_signal: number;
+  best_time_of_day: string;
+  worst_time_of_day: string;
+}
+
+export interface SignalQualityResponse {
+  overall: SignalMetricsResponse;
+  by_symbol: Record<string, SignalMetricsResponse>;
+  by_regime: Record<string, SignalMetricsResponse>;
+  recommendations: string[];
+}
+
+export interface TradesByDayItem {
+  date: string;
+  trades: number;
+  pnl: number;
+  win_rate: number;
+}
+
+export interface TradesBySymbolItem {
+  symbol: string;
+  trades: number;
+  pnl: number;
+  win_rate: number;
+  avg_pnl: number;
+}
+
+export interface TradesByHourItem {
+  hour: number;
+  trades: number;
+  pnl: number;
+  win_rate: number;
+}
+
+// ── Pipeline Profiling Endpoints ────────────────────────────────────────────
+
+export interface ProfilingReport {
+  [key: string]: unknown;
+}
+
+export interface ProfilingSummaryResponse {
+  status: string;
+  current_run: ProfilingReport;
+}
+
+export interface ProfilingAverageItem {
+  stage: string;
+  avg_ms: number;
+  min_ms: number;
+  max_ms: number;
+}
+
+export interface ProfilingAveragesResponse {
+  status: string;
+  rolling_averages: ProfilingAverageItem[];
+  period: string;
+}
+
+export interface ProfilingHistoryResponse {
+  status: string;
+  history: ProfilingReport[];
+  retrieved_count: number;
+  total_stored: number;
+  max_capacity: number;
+}
+
+export interface ProfilingStatsResponse {
+  status: string;
+  profiler_enabled: boolean;
+  max_history: number;
+  stored_runs: number;
+  utilization_pct: number;
+  current_run: ProfilingReport;
+  stage_averages: ProfilingAverageItem[];
+}
+
+// ── Validation Endpoints ────────────────────────────────────────────────────
+
+export interface ValidationAlert {
+  timestamp?: string;
+  gate?: string;
+  status?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export interface ValidationAlertsResponse {
+  alerts: ValidationAlert[];
+  current_gates: Record<string, string>;
+  status: string;
+  message?: string;
+  error?: string;
+}
+
+export interface ValidationReadinessCriterion {
+  name: string;
+  target: string;
+  description: string;
+}
+
+export interface ValidationReadinessResponse {
+  criteria: ValidationReadinessCriterion[];
+  description: string;
+  phase: string;
+}
+
+// ── System Endpoints ────────────────────────────────────────────────────────
+
+export interface BackupFile {
+  filename: string;
+  size_bytes: number;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+export interface BackupStatusResponse {
+  success: boolean;
+  timestamp: string;
+  backup_status: {
+    last_backup_time?: string;
+    last_backup_size_bytes?: number;
+    backup_count?: number;
+    retention_days?: number;
+    available_backups?: BackupFile[];
+    [key: string]: unknown;
+  };
+}
+
+export interface Phase3ReadinessResponse {
+  status: string;
+  ready: boolean;
+  requirements: Record<string, unknown>;
+  timestamp: string;
 }

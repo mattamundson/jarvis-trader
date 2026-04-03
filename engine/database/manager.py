@@ -39,6 +39,7 @@ from ._mixins_alerts import AlertsMixin
 from ._mixins_analytics import AnalyticsMixin
 from ._mixins_decisions import DecisionsMixin
 from ._mixins_journal import JournalMixin
+from ._mixins_pending_approvals import PendingApprovalsMixin
 from ._mixins_pnl import DailyPnLMixin
 from ._mixins_positions import PositionsMixin
 from ._mixins_settings import SettingsMixin
@@ -57,6 +58,7 @@ class DatabaseManager(
     SettingsMixin,
     JournalMixin,
     AlertsMixin,
+    PendingApprovalsMixin,
 ):
     """
     Thread-safe SQLite manager for JARVIS TRADER.
@@ -201,6 +203,6 @@ def get_db() -> DatabaseManager:
     if _db_instance is None:
         raise RuntimeError(
             "DatabaseManager has not been initialised.  "
-            "Call init_db() at application startup before calling get_db()."
+            "Call init_db() before using this function."
         )
     return _db_instance
