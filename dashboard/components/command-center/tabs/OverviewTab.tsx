@@ -684,7 +684,7 @@ export default function OverviewTab({ data }: OverviewTabProps) {
 
   // ── WebSocket: live price ticks for all instruments ───────────────────────
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
-  const { connected: wsConnected } = useWebSocket((event) => {
+  const { isConnected: wsConnected } = useWebSocket(undefined, (event) => {
     if (event.type === "price_update") {
       setLivePrices((prev) => ({ ...prev, [event.symbol]: event.price }));
     }

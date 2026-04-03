@@ -25,7 +25,7 @@ export function useWebSocket(url?: string, onEvent?: WsEventHandler) {
   const [lastEvent, setLastEvent] = useState<WsEvent | null>(null);
   const onEventRef = useRef(onEvent);
   const reconnectRef = useRef(true);
-  const reconnectTimer = useRef<NodeJS.Timeout>();
+  const reconnectTimer = useRef<NodeJS.Timeout | undefined>(undefined);
   const attemptRef = useRef(0);
 
   onEventRef.current = onEvent;

@@ -575,3 +575,7 @@ def main():
         mtf_filter=args.mtf_filter,
     )
     print(f"\nResults saved to: {out_path}")
+
+
+if __name__ == "__main__":
+    main()

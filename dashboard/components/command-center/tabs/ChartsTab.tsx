@@ -57,7 +57,7 @@ export function ChartsTab({ data }: { data: any }) {
     setLivePrice(null);
   }, [symbol]);
 
-  const { connected: wsConnected } = useWebSocket((event) => {
+  const { isConnected: wsConnected } = useWebSocket(undefined, (event) => {
     if (event.type === "price_update" && event.symbol === symbol) {
       setLivePrice(event.price);
     }

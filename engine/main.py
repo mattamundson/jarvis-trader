@@ -2143,7 +2143,6 @@ async def run_pipeline(req: PipelineRequest):
     if (
         not settings.LIVE_TRADING_ENABLED
         and final_action != "hold"
-        and paper_tracker
         and req.symbol.upper() in _approved_for_paper
     ):
         try:
@@ -2156,7 +2155,22 @@ async def run_pipeline(req: PipelineRequest):
             )
             final_qty = result.get("final_quantity", 1) or 1
 
-            if entry_price:
+            # Human-gate: when requires_human=True, insert a pending approval row
+            # and skip immediately opening the paper trade
+            if result.get("requires_human") and db_manager:
+                approval_id = db_manager.insert_pending_approval(
+                    symbol=req.symbol,
+                    action=final_action,
+                    quantity=float(final_qty),
+                    entry_price=float(entry_price) if entry_price else None,
+                    pipeline_snapshot=result,
+                )
+                result["pending_approval_id"] = approval_id
+                logger.info(
+                    f"[PAPER] Human gate — inserted pending approval {approval_id[:8]} "
+                    f"for {req.symbol} {final_action.upper()}"
+                )
+            elif paper_tracker and entry_price:
                 trade_id = paper_tracker.open_trade(
                     symbol=req.symbol,
                     action=final_action,
@@ -2169,7 +2183,7 @@ async def run_pipeline(req: PipelineRequest):
                     f"[PAPER] Auto-logged {req.symbol} {final_action.upper()} "
                     f"qty={final_qty} @ {entry_price:.4f}  id={trade_id[:8]}"
                 )
-            else:
+            elif not entry_price:
                 logger.warning(
                     f"[PAPER] Skipped auto-log for {req.symbol} {final_action.upper()} "
                     f"— could not determine entry price from pipeline result"

@@ -16,6 +16,10 @@ import { EntryQualityWidget } from "@/components/EntryQualityWidget";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
 import { WinRateBySymbolWidget } from "@/components/WinRateBySymbolWidget";
 import { DailyPnLCalendarWidget } from "@/components/DailyPnLCalendarWidget";
+import { PnlCalendarWidget } from "@/components/PnlCalendarWidget";
+import HoldTimeWidget from "@/components/HoldTimeWidget";
+import { WinRateByHourWidget } from "@/components/WinRateByHourWidget";
+import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
 
 // ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
 
@@ -666,6 +670,15 @@ export default function PerformancePage() {
         {/* Daily P&L Calendar */}
         <DailyPnLCalendarWidget />
 
+        {/* P&L Calendar Heatmap -- 13-week GitHub-style grid */}
+        <PnlCalendarWidget />
+
+        {/* Win Rate by Hour of Day */}
+        <WinRateByHourWidget />
+
+        {/* Streak Tracker */}
+        <StreakTrackerWidget />
+
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -701,6 +714,11 @@ export default function PerformancePage() {
           <SummaryCard label="Research" value="0" sub="All cleared or halted" color="#555" />
           <SummaryCard label="Do Not Trade" value="8" sub="Failed walk-forward" color="#ff4444" />
           <SummaryCard label="Best WFE" value="0.82" sub="MCL 1h APPROVED (static)" color="#00ff88" />
+        </div>
+
+        {/* Hold time analytics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <HoldTimeWidget />
         </div>
 
         {/* Weekly live performance summary */}
