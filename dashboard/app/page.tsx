@@ -17,6 +17,7 @@ import { MTFConfirmationWidget } from "@/components/MTFConfirmationWidget";
 import { SignalHistory } from "@/components/SignalHistory";
 import { CircuitBreakerPanel } from "@/components/CircuitBreakerPanel";
 import { IBGatewayStatus } from "@/components/IBGatewayStatus";
+import { SchwabStatusWidget } from "@/components/SchwabStatusWidget";
 import { StrategyParamsPanel } from "@/components/StrategyParamsPanel";
 import { SessionTodayWidget } from "@/components/SessionTodayWidget";
 import { Badge } from "@/components/ui/badge";
@@ -252,6 +253,9 @@ export default function DashboardPage() {
               reason={safety?.kill_switch_reason}
               onToggle={onKillSwitchToggle}
             />
+
+            {/* Schwab connection status */}
+            <SchwabStatusWidget />
 
             {/* Safety metrics */}
             {safety && (
