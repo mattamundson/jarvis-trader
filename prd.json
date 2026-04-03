@@ -54,8 +54,8 @@
         "Write docs/reports/sprint17_storage_unification.md documenting: JSON file location(s), record count before/after, schema mapping, any schema changes made to paper_trades table."
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "416 trades in JSON (source of truth), 6 in SQLite. Migration must compute pnl for any closed trades missing it."
+      "passes": true,
+      "notes": "DONE 2026-04-03. 11 unique JSONL trades → 9 inserted, 2 skipped (already in SQLite). Migration script at engine/scripts/migrate_json_to_sqlite.py. JSON write path marked for removal in tracker.py."
     },
     {
       "id": "US-1704",
