@@ -959,8 +959,9 @@ async def lifespan(app: FastAPI):
 
     # Initialize Database Backup (nightly at 23:30 UTC)
     try:
-        from backup.db_backup import get_backup_manager
         import asyncio
+
+        from backup.db_backup import get_backup_manager
 
         backup_manager = get_backup_manager()
 
@@ -986,6 +987,29 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Database backup job registered — fires nightly at 23:30 UTC")
     except Exception as _backup_err:
         logger.warning(f"Database backup init failed (non-fatal): {_backup_err}")
+
+    # Initialize Nightly Learning Consolidation (04:00 ET = 09:00 UTC)
+    try:
+        async def run_nightly_consolidation() -> None:
+            try:
+                from learning.consolidator import TradingMemoryConsolidator
+                consolidator = TradingMemoryConsolidator(db_manager=db_manager)
+                result = await consolidator.consolidate_daily()
+                logger.info("[LEARNING] Nightly consolidation complete: %s", result)
+            except Exception as exc:
+                logger.error("[LEARNING] Nightly consolidation failed: %s", exc)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_nightly_consolidation,
+                CronTrigger(hour=9, minute=0, timezone="UTC"),  # 04:00 ET = 09:00 UTC
+                id="nightly_learning_consolidation",
+                name="Nightly Learning Consolidation",
+                replace_existing=True,
+            )
+            logger.info("✅ Learning consolidation job registered — fires nightly at 09:00 UTC (04:00 ET)")
+    except Exception as _consolidation_err:
+        logger.warning(f"Learning consolidation init failed (non-fatal): {_consolidation_err}")
 
     logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
