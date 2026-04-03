@@ -43,10 +43,13 @@ def _nearest_front_month(reference: Optional[date] = None) -> str:
 
 def _nearest_quarterly_expiry(reference: Optional[date] = None) -> str:
     """
-    Return the nearest active quarterly expiry as "YYYYMMDD".
+    Return the nearest active quarterly expiry as "YYYYMM".
+
+    IB accepts the contract month in YYYYMM format and resolves the exact
+    expiry date itself. Using YYYYMMDD caused "No security definition" errors
+    because IB treats that as an exact date rather than a contract month.
 
     Quarterly months: March (3), June (6), September (9), December (12).
-    Approximate expiry: third Friday ~21st of expiry month.
     """
     ref = reference or date.today()
     quarterly_months = [3, 6, 9, 12]
@@ -54,9 +57,9 @@ def _nearest_quarterly_expiry(reference: Optional[date] = None) -> str:
     for month in quarterly_months:
         candidate = date(ref.year, month, expiry_day_approx)
         if candidate > ref:
-            return candidate.strftime("%Y%m%d")
+            return f"{ref.year}{month:02d}"
     # All quarterly months in current year passed — use March of next year
-    return date(ref.year + 1, 3, expiry_day_approx).strftime("%Y%m%d")
+    return f"{ref.year + 1}03"
 
 
 logger = logging.getLogger(__name__)
@@ -125,16 +128,19 @@ except ImportError:
 # Values: (ib_local_symbol_root, exchange, currency, multiplier)
 
 FUTURES_SYMBOL_MAP: dict[str, dict] = {
+    # MES — Micro E-mini S&P 500. IB requires exchange="CME" (not GLOBEX) for
+    # contract qualification. Symbol is "MES" (not the standard "ES" underlying).
     "MES": {
-        "underlying": "ES",
-        "exchange": "GLOBEX",
+        "underlying": "MES",
+        "exchange": "CME",
         "currency": "USD",
         "secType": "FUT",
         "multiplier": "5",
     },
+    # MNQ — Micro E-mini Nasdaq-100. exchange="CME" required for qualification.
     "MNQ": {
-        "underlying": "NQ",
-        "exchange": "GLOBEX",
+        "underlying": "MNQ",
+        "exchange": "CME",
         "currency": "USD",
         "secType": "FUT",
         "multiplier": "2",

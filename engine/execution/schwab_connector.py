@@ -89,6 +89,7 @@ class SchwabConnector:
 
     async def connect(self) -> bool:
         """Initialize schwab-py client from token file. Returns True on success."""
+        self._assert_schwab_ready()
         self._state = ConnectionState.CONNECTING
 
         api_key = self._settings.SCHWAB_APP_KEY
