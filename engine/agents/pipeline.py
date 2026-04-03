@@ -169,15 +169,20 @@ class TradingPipeline:
                             logger.info(
                                 "[Pipeline.Filter] symbol=%s stage=pre_filter "
                                 "stc_val=%.1f skip_range=(%.0f–%.0f) action=SKIP",
-                                symbol, _stc_val, _mid_lo, _mid_hi,
+                                symbol,
+                                _stc_val,
+                                _mid_lo,
+                                _mid_hi,
                             )
-                            record_signal_debug({
-                                "timestamp": datetime.now().isoformat(),
-                                "symbol": symbol,
-                                "stc_val": round(_stc_val, 2),
-                                "stage_blocked": "pre_filter",
-                                "reason": f"STC {_stc_val:.1f} inside skip range ({_mid_lo:.0f}–{_mid_hi:.0f})",
-                            })
+                            record_signal_debug(
+                                {
+                                    "timestamp": datetime.now().isoformat(),
+                                    "symbol": symbol,
+                                    "stc_val": round(_stc_val, 2),
+                                    "stage_blocked": "pre_filter",
+                                    "reason": f"STC {_stc_val:.1f} inside skip range ({_mid_lo:.0f}–{_mid_hi:.0f})",
+                                }
+                            )
                             return {
                                 "symbol": symbol,
                                 "is_futures": is_futures,
@@ -198,15 +203,20 @@ class TradingPipeline:
                             logger.info(
                                 "[Pipeline.Filter] symbol=%s stage=pre_filter "
                                 "stc_val=%.1f skip_range=(%.0f–%.0f) action=PASS_TO_PIPELINE",
-                                symbol, _stc_val, _mid_lo, _mid_hi,
+                                symbol,
+                                _stc_val,
+                                _mid_lo,
+                                _mid_hi,
                             )
-                            record_signal_debug({
-                                "timestamp": datetime.now().isoformat(),
-                                "symbol": symbol,
-                                "stc_val": round(_stc_val, 2),
-                                "stage_blocked": "approved",
-                                "reason": f"STC {_stc_val:.1f} outside skip range — proceeding to full pipeline",
-                            })
+                            record_signal_debug(
+                                {
+                                    "timestamp": datetime.now().isoformat(),
+                                    "symbol": symbol,
+                                    "stc_val": round(_stc_val, 2),
+                                    "stage_blocked": "approved",
+                                    "reason": f"STC {_stc_val:.1f} outside skip range — proceeding to full pipeline",
+                                }
+                            )
         except Exception as _pf_exc:
             logger.debug("[Pipeline] %s STC pre-filter skipped: %s", symbol, _pf_exc)
 

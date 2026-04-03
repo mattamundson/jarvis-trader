@@ -125,9 +125,7 @@ async def emit_pending_approval_created(
         if extra:
             payload.update(extra)
         await manager.broadcast("pending_approval_created", payload)
-        logger.debug(
-            "Emitted pending_approval_created: %s → %s", symbol, approval_id[:8]
-        )
+        logger.debug("Emitted pending_approval_created: %s → %s", symbol, approval_id[:8])
     except Exception as e:
         logger.error("Error emitting pending_approval_created: %s", e)
 

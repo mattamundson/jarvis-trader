@@ -135,9 +135,7 @@ class TestRLResultsOffline:
             "_run_registry",
             {_FAKE_RUN_ID: _FAKE_RUN_ENTRY},
         ):
-            response = client.get(
-                f"/strategies/rl/results/{_FAKE_RUN_ID}", headers=_AUTH
-            )
+            response = client.get(f"/strategies/rl/results/{_FAKE_RUN_ID}", headers=_AUTH)
 
         assert response.status_code == 200, (
             f"Expected 200 for run_id={_FAKE_RUN_ID}, "
@@ -156,9 +154,7 @@ class TestRLResultsOffline:
             "_run_registry",
             {_FAKE_RUN_ID: _FAKE_RUN_ENTRY},
         ):
-            response = client.get(
-                f"/strategies/rl/results/{_FAKE_RUN_ID}", headers=_AUTH
-            )
+            response = client.get(f"/strategies/rl/results/{_FAKE_RUN_ID}", headers=_AUTH)
 
         assert response.status_code == 200, (
             f"Expected 200 for run_id={_FAKE_RUN_ID}, "
@@ -168,9 +164,7 @@ class TestRLResultsOffline:
         data = response.json()
         required_fields = ["run_id", "symbol", "status", "started_at"]
         for field in required_fields:
-            assert field in data, (
-                f"Missing field '{field}' in results response. Body: {data}"
-            )
+            assert field in data, f"Missing field '{field}' in results response. Body: {data}"
 
         # Spot-check values match the injected entry.
         assert data["run_id"] == _FAKE_RUN_ID
@@ -222,16 +216,13 @@ class TestPnLMonitorOffline:
             response = client.get("/health/full", headers=_AUTH)
 
         assert response.status_code == 200, (
-            f"Expected 200 from /health/full, got {response.status_code}. "
-            f"Body: {response.text}"
+            f"Expected 200 from /health/full, got {response.status_code}. " f"Body: {response.text}"
         )
 
         body = response.json()
         pnl = body.get("subsystems", {}).get("pnl_monitor", {})
 
-        assert pnl.get("status") == "ok", (
-            f"pnl_monitor status should be 'ok', got: {pnl}"
-        )
+        assert pnl.get("status") == "ok", f"pnl_monitor status should be 'ok', got: {pnl}"
         # SubsystemStatus.daily_pnl is the declared float field that survives
         # Pydantic serialisation (starting_balance / current_balance are stripped
         # by extra="ignore").  Assert it is positive to confirm the mock was wired.

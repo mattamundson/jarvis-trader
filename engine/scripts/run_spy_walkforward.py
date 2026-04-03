@@ -24,7 +24,6 @@ Results saved to:
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -33,8 +32,8 @@ from pathlib import Path
 ENGINE_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(ENGINE_ROOT))
 
-from backtest.data_loader import BacktestDataLoader
-from backtest.walk_forward import WalkForwardValidator, _serialise_result
+from backtest.data_loader import BacktestDataLoader  # noqa: E402
+from backtest.walk_forward import WalkForwardValidator, _serialise_result  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -55,7 +54,7 @@ OUTPUT_FILE = OUTPUT_DIR / "spy_1h_walkforward.json"
 
 def main() -> None:
     print("=" * 65)
-    print(f"JARVIS TRADER — SPY 1h Walk-Forward Validation")
+    print("JARVIS TRADER — SPY 1h Walk-Forward Validation")
     print(f"Period : {START_DATE} to {END_DATE}")
     print(f"Windows: {TRAIN_MONTHS}m train / {TEST_MONTHS}m test, step {STEP_MONTHS}m")
     print(f"Capital: ${CAPITAL:,.0f}")

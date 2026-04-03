@@ -55,9 +55,7 @@ async def get_scheduled_jobs() -> JobsListResponse:
             return JobsListResponse(total_jobs=0, jobs=[])
 
         for job in _scheduler.get_jobs():
-            next_run_str = (
-                job.next_run_time.isoformat() if job.next_run_time is not None else None
-            )
+            next_run_str = job.next_run_time.isoformat() if job.next_run_time is not None else None
             jobs_list.append(
                 JobInfo(
                     id=job.id,

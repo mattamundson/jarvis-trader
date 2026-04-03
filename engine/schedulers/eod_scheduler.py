@@ -229,7 +229,9 @@ class EODScheduler:
                 }
                 alerts = self._alert_manager.evaluate_gates(metrics)
                 if alerts:
-                    logger.info(f"[EOD] Validation gate alerts: {len(alerts)} status changes detected")
+                    logger.info(
+                        f"[EOD] Validation gate alerts: {len(alerts)} status changes detected"
+                    )
             except Exception as exc:
                 logger.warning("[EOD] Validation gate evaluation failed: %s", exc)
 
@@ -454,7 +456,8 @@ class EODScheduler:
                 net_pnl = sum(t.get("pnl", 0) for t in closed) if isinstance(closed, list) else 0.0
                 logger.info(
                     "[EODScheduler] Session flatten complete: closed %d positions, net P&L: $%.2f",
-                    count, net_pnl,
+                    count,
+                    net_pnl,
                 )
             else:
                 logger.warning("[EODScheduler] flatten_all_positions not available on tracker")

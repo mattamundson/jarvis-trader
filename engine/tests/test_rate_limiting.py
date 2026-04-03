@@ -126,7 +126,7 @@ class TestTradingRateLimitFeasibility:
             ("/strategies/rl/deploy", "post"),
         ]
         # Just verify they exist (don't make actual calls since they require complex setup)
-        for endpoint, method in trading_endpoints:
+        for endpoint, _method in trading_endpoints:
             assert endpoint is not None
 
 
@@ -147,7 +147,7 @@ class TestRateLimitExceededBehavior:
         # Make many rapid requests to try to trigger rate limit
         # The in-memory limiter resets between test runs, so we do aggressive bursts
         responses_429 = []
-        for i in range(15):
+        for _i in range(15):
             response = client.get("/health/full", headers=_VALID_HEADERS)
             if response.status_code == 429:
                 responses_429.append(response)
@@ -181,7 +181,7 @@ class TestRateLimitMiddlewareIntegration:
 
     def test_limiter_available_from_middleware(self):
         """Limiter should be accessible from middleware module"""
-        from middleware.rate_limit import get_limiter, RATE_LIMIT_TIERS
+        from middleware.rate_limit import RATE_LIMIT_TIERS, get_limiter
 
         limiter = get_limiter()
         assert limiter is not None

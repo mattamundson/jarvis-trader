@@ -1300,7 +1300,10 @@ class TestSession4Endpoints(unittest.TestCase):
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json", "X-API-Key": os.environ.get("API_KEY") or "test-key"},
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": os.environ.get("API_KEY") or "test-key",
+            },
             method="POST",
         )
         try:
@@ -1477,7 +1480,10 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json", "X-API-Key": os.environ.get("API_KEY") or "test-key"},
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": os.environ.get("API_KEY") or "test-key",
+            },
             method="POST",
         )
         try:

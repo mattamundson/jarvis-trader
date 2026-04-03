@@ -43,15 +43,9 @@ class DatabaseBackup:
         retention_days: int = DEFAULT_RETENTION_DAYS,
     ) -> None:
         engine_root = Path(__file__).parent.parent
-        self._db_path = (
-            Path(db_path)
-            if Path(db_path).is_absolute()
-            else engine_root / db_path
-        )
+        self._db_path = Path(db_path) if Path(db_path).is_absolute() else engine_root / db_path
         self._backup_dir = (
-            Path(backup_dir)
-            if Path(backup_dir).is_absolute()
-            else engine_root / backup_dir
+            Path(backup_dir) if Path(backup_dir).is_absolute() else engine_root / backup_dir
         )
         self._retention_days = retention_days
         self._lock = threading.Lock()
@@ -109,8 +103,7 @@ class DatabaseBackup:
                 self._backup_count += 1
 
                 logger.info(
-                    f"✅ Database backed up to {backup_file.name} "
-                    f"({size_bytes:,} bytes)"
+                    f"✅ Database backed up to {backup_file.name} " f"({size_bytes:,} bytes)"
                 )
 
                 return {
@@ -200,19 +193,17 @@ class DatabaseBackup:
                 if self._backup_dir.exists():
                     for f in sorted(self._backup_dir.glob("paper_trades_*.db")):
                         stat = f.stat()
-                        available.append({
-                            "filename": f.name,
-                            "size_bytes": stat.st_size,
-                            "created_utc": datetime.fromtimestamp(
-                                stat.st_ctime
-                            ).isoformat(),
-                        })
+                        available.append(
+                            {
+                                "filename": f.name,
+                                "size_bytes": stat.st_size,
+                                "created_utc": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                            }
+                        )
 
                 return {
                     "last_backup_time": (
-                        self._last_backup_time.isoformat()
-                        if self._last_backup_time
-                        else None
+                        self._last_backup_time.isoformat() if self._last_backup_time else None
                     ),
                     "last_backup_size": self._last_backup_size,
                     "backup_count": self._backup_count,

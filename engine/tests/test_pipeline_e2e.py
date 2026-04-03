@@ -142,18 +142,21 @@ def disable_cache(monkeypatch):
     # Ensure the cache functions exist in the pipeline module namespace
     # They may not be present if the cache import failed
     if not hasattr(agents.pipeline, "should_use_cache"):
+
         async def mock_should_use_cache(symbol):
             return False
 
         agents.pipeline.should_use_cache = mock_should_use_cache
 
     if not hasattr(agents.pipeline, "get_cached_signal"):
+
         async def mock_get_cached_signal(symbol):
             return None
 
         agents.pipeline.get_cached_signal = mock_get_cached_signal
 
     if not hasattr(agents.pipeline, "cache_signal"):
+
         async def mock_cache_signal(symbol, result):
             pass
 
@@ -634,8 +637,8 @@ class TestSTCPreFilter:
 
     def _make_ohlcv_df(self, rows: int = 30, stc_val: float = 50.0):
         """Return a minimal DataFrame that generate_instrument_signals can consume."""
-        import pandas as pd
         import numpy as np
+        import pandas as pd
 
         idx = pd.date_range("2026-01-01", periods=rows, freq="1h")
         df = pd.DataFrame(

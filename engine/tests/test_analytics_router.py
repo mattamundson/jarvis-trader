@@ -84,6 +84,7 @@ def _mock_signal_quality_report():
 def client():
     """TestClient wrapping analytics router with rate limiting disabled."""
     import sys
+
     from slowapi import Limiter
 
     # Force re-import so @limiter.limit() decorators get patched as no-ops
@@ -127,9 +128,19 @@ class TestAnalyticsRouter:
         mock_calc.return_value = _mock_analytics()
 
         data = client.get("/analytics/trades").json()
-        required = ["sharpe_ratio", "profit_factor", "max_drawdown_pct", "win_rate",
-                    "expectancy", "total_trades", "total_pnl", "avg_win", "avg_loss",
-                    "best_trade", "worst_trade"]
+        required = [
+            "sharpe_ratio",
+            "profit_factor",
+            "max_drawdown_pct",
+            "win_rate",
+            "expectancy",
+            "total_trades",
+            "total_pnl",
+            "avg_win",
+            "avg_loss",
+            "best_trade",
+            "worst_trade",
+        ]
         for field in required:
             assert field in data
 
@@ -197,9 +208,7 @@ class TestAnalyticsRouter:
 
     @patch("analytics.performance.PerformanceCalculator")
     @patch("routers.analytics_router._get_db")
-    def test_validation_report_returns_200(
-        self, mock_get_db, mock_pc_cls, client, mock_trade_data
-    ):
+    def test_validation_report_returns_200(self, mock_get_db, mock_pc_cls, client, mock_trade_data):
         """GET /analytics/validation-report returns structured validation payload."""
         mock_get_db.return_value = MagicMock()
         inst = MagicMock()
@@ -234,6 +243,10 @@ class TestAnalyticsRouter:
 
         mock_get_db.return_value = mock_db
 
-        for endpoint in ["/analytics/trades/by-day", "/analytics/trades/by-symbol", "/analytics/trades/by-hour"]:
+        for endpoint in [
+            "/analytics/trades/by-day",
+            "/analytics/trades/by-symbol",
+            "/analytics/trades/by-hour",
+        ]:
             resp = client.get(endpoint)
             assert resp.status_code == 200

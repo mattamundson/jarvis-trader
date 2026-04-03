@@ -250,9 +250,7 @@ class TestHeartbeatMonitoring:
         connector._connected = False
 
         with patch("asyncio.sleep") as mock_sleep:
-            with patch.object(
-                connector, "_reconnect", new_callable=AsyncMock
-            ) as mock_reconnect:
+            with patch.object(connector, "_reconnect", new_callable=AsyncMock) as mock_reconnect:
                 mock_reconnect.return_value = True
                 mock_sleep.side_effect = asyncio.CancelledError()
 
@@ -315,7 +313,9 @@ class TestSafetyLayerNotification:
         assert safety_layer_mock.on_connection_state_change.call_count >= 2
 
     @pytest.mark.asyncio
-    async def test_notify_connection_state_graceful_fallback(self, settings_paper, safety_layer_mock):
+    async def test_notify_connection_state_graceful_fallback(
+        self, settings_paper, safety_layer_mock
+    ):
         """Notification failure doesn't crash connector."""
         from execution.ib_gateway_connector import IBGatewayConnector
 

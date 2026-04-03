@@ -1,5 +1,7 @@
 """Schwab connector control endpoints."""
+
 import logging
+
 from fastapi import APIRouter, HTTPException
 
 logger = logging.getLogger(__name__)
@@ -25,9 +27,7 @@ async def schwab_status():
     return {
         "connected": schwab_connector.is_connected,
         "state": (
-            schwab_connector.state.value
-            if hasattr(schwab_connector, "state")
-            else "unknown"
+            schwab_connector.state.value if hasattr(schwab_connector, "state") else "unknown"
         ),
     }
 

@@ -194,4 +194,3 @@ class TestCalculateAnalytics:
                 "worst_trade",
             ]
         )
-       

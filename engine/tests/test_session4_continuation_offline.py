@@ -125,13 +125,11 @@ class TestSession4ContinuationOffline:
         valid INSUFFICIENT_DATA response (200) rather than 503 or an error.
         """
         r = client.get("/analytics/performance", headers=_AUTH)
-        assert r.status_code == 200, (
-            f"Expected 200 from /analytics/performance, got {r.status_code}. Body: {r.text}"
-        )
+        assert (
+            r.status_code == 200
+        ), f"Expected 200 from /analytics/performance, got {r.status_code}. Body: {r.text}"
         body = r.json()
-        assert "status" in body, (
-            f"/analytics/performance missing 'status' field. Body: {body}"
-        )
+        assert "status" in body, f"/analytics/performance missing 'status' field. Body: {body}"
 
     # ── GET /analytics/performance/rolling?days=7 ─────────────────────────
 
@@ -201,9 +199,7 @@ class TestSession4ContinuationOffline:
         if r.status_code == 200:
             body = r.json()
             assert "hours" in body, f"Response missing 'hours' field. Body: {body}"
-            assert isinstance(body["hours"], list), (
-                f"Expected 'hours' to be a list. Body: {body}"
-            )
+            assert isinstance(body["hours"], list), f"Expected 'hours' to be a list. Body: {body}"
 
     # ── GET /market/session ───────────────────────────────────────────────
 

@@ -22,9 +22,9 @@ import sys
 import tempfile
 import threading
 import unittest.mock as mock
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
 
 import pytest
 
@@ -65,9 +65,10 @@ for _mod_name in _MODULES_TO_MOCK:
     _saved_modules[_mod_name] = sys.modules.get(_mod_name)
     sys.modules[_mod_name] = mock.MagicMock()
 
-from config import settings  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+
 import main  # noqa: E402
+from config import settings  # noqa: E402
 
 app = main.app
 
@@ -196,6 +197,7 @@ class _FakeDbManagerWithApprovals:
     ) -> str:
         approval_id = str(uuid.uuid4())
         from datetime import datetime, timezone
+
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             conn = self._connect()
@@ -271,6 +273,7 @@ class _FakeDbManagerWithApprovals:
         ib_order_id=None,
     ) -> bool:
         from datetime import datetime, timezone
+
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             conn = self._connect()
@@ -302,6 +305,7 @@ class _FakeDbManagerWithApprovals:
     ) -> str:
         trade_id = str(uuid.uuid4())
         from datetime import datetime, timezone
+
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             conn = self._connect()
@@ -380,9 +384,7 @@ def _make_paper_tracker() -> MagicMock:
 
 def _make_order_router() -> MagicMock:
     or_ = MagicMock()
-    or_.route_order = AsyncMock(
-        return_value={"order_id": "MOCK-001", "status": "submitted"}
-    )
+    or_.route_order = AsyncMock(return_value={"order_id": "MOCK-001", "status": "submitted"})
     return or_
 
 
@@ -417,6 +419,7 @@ class TestApprovalToOrderE2E:
 
         # Inject into approval_router module-level globals via inject_dependencies
         from routers import approval_router as _ar
+
         _ar.inject_dependencies(
             safety_layer=sl,
             paper_tracker=pt,
@@ -451,16 +454,14 @@ class TestApprovalToOrderE2E:
 
         # Verify it appears in the list endpoint
         r = client.get("/pipeline/pending-approvals", headers=_AUTH)
-        assert r.status_code == 200, (
-            f"GET /pipeline/pending-approvals returned {r.status_code}: {r.text}"
-        )
+        assert (
+            r.status_code == 200
+        ), f"GET /pipeline/pending-approvals returned {r.status_code}: {r.text}"
         body = r.json()
         # Router returns {"pending": [...], "count": N}
         pending_list = body.get("pending", body if isinstance(body, list) else [])
         ids = [a.get("approval_id") for a in pending_list]
-        assert approval_id in ids, (
-            f"Approval {approval_id[:8]} not in list response: {body}"
-        )
+        assert approval_id in ids, f"Approval {approval_id[:8]} not in list response: {body}"
 
     # ── Test 2: approve endpoint resolves the DB row ───────────────────────
 
@@ -481,9 +482,7 @@ class TestApprovalToOrderE2E:
             headers=_AUTH,
         )
 
-        assert r.status_code == 200, (
-            f"Approve returned {r.status_code}: {r.text}"
-        )
+        assert r.status_code == 200, f"Approve returned {r.status_code}: {r.text}"
 
         body = r.json()
         assert body.get("status") == "approved", f"Unexpected body status: {body}"
@@ -507,6 +506,7 @@ class TestApprovalToOrderE2E:
         or_ = _make_order_router()
 
         from routers import approval_router as _ar
+
         _ar.inject_dependencies(
             safety_layer=sl,
             paper_tracker=pt,
@@ -536,9 +536,7 @@ class TestApprovalToOrderE2E:
         # execution block must be present and show the mocked result
         execution = body.get("execution")
         assert execution is not None, f"No 'execution' field in response: {body}"
-        assert execution.get("status") == "submitted", (
-            f"Expected submitted, got: {execution}"
-        )
+        assert execution.get("status") == "submitted", f"Expected submitted, got: {execution}"
         # route_order must have been called once
         or_.route_order.assert_called_once()
 
@@ -570,9 +568,9 @@ class TestApprovalToOrderE2E:
         row = db.get_pending_approval(approval_id)
         assert row is not None
         assert row["status"] == "rejected", f"Expected 'rejected', got: {row['status']}"
-        assert "override" in (row.get("rejection_reason") or "").lower(), (
-            f"Rejection reason not persisted: {row.get('rejection_reason')}"
-        )
+        assert (
+            "override" in (row.get("rejection_reason") or "").lower()
+        ), f"Rejection reason not persisted: {row.get('rejection_reason')}"
 
     # ── Test 5: double-approve returns 409 ────────────────────────────────
 
@@ -600,9 +598,9 @@ class TestApprovalToOrderE2E:
             f"/pipeline/pending-approvals/{approval_id}/approve",
             headers=_AUTH,
         )
-        assert r2.status_code == 409, (
-            f"Expected 409 on double-approve, got {r2.status_code} — {r2.text}"
-        )
+        assert (
+            r2.status_code == 409
+        ), f"Expected 409 on double-approve, got {r2.status_code} — {r2.text}"
 
     # ── Test 6: approve unknown ID returns 404 ─────────────────────────────
 
@@ -615,9 +613,9 @@ class TestApprovalToOrderE2E:
             f"/pipeline/pending-approvals/{fake_id}/approve",
             headers=_AUTH,
         )
-        assert r.status_code == 404, (
-            f"Expected 404 for unknown approval, got {r.status_code} — {r.text}"
-        )
+        assert (
+            r.status_code == 404
+        ), f"Expected 404 for unknown approval, got {r.status_code} — {r.text}"
 
     # ── Test 7: kill switch blocks approve ─────────────────────────────────
 
@@ -638,12 +636,10 @@ class TestApprovalToOrderE2E:
             headers=_AUTH,
         )
         # approval_router raises HTTPException(409, "Kill switch active — cannot approve")
-        assert r.status_code == 409, (
-            f"Expected 409 with kill switch active, got {r.status_code} — {r.text}"
-        )
-        assert "kill switch" in r.text.lower(), (
-            f"Response should mention kill switch: {r.text}"
-        )
+        assert (
+            r.status_code == 409
+        ), f"Expected 409 with kill switch active, got {r.status_code} — {r.text}"
+        assert "kill switch" in r.text.lower(), f"Response should mention kill switch: {r.text}"
 
     # ── Test 8: approve with price override ────────────────────────────────
 
@@ -655,6 +651,7 @@ class TestApprovalToOrderE2E:
         or_ = _make_order_router()
 
         from routers import approval_router as _ar
+
         _ar.inject_dependencies(
             safety_layer=sl,
             paper_tracker=pt,
@@ -681,15 +678,13 @@ class TestApprovalToOrderE2E:
 
         assert r.status_code == 200, f"Approve with override returned {r.status_code}: {r.text}"
         body = r.json()
-        assert body.get("entry_price") == 72.5, (
-            f"Expected overridden price 72.5, got {body.get('entry_price')}"
-        )
+        assert (
+            body.get("entry_price") == 72.5
+        ), f"Expected overridden price 72.5, got {body.get('entry_price')}"
         # Verify open_trade was called with the overridden price
         call_kwargs = pt.open_trade.call_args
         assert call_kwargs is not None
-        assert call_kwargs.kwargs.get("price") == 72.5, (
-            f"open_trade price mismatch: {call_kwargs}"
-        )
+        assert call_kwargs.kwargs.get("price") == 72.5, f"open_trade price mismatch: {call_kwargs}"
 
     # ── Test 9: get single pending approval ────────────────────────────────
 
@@ -709,9 +704,7 @@ class TestApprovalToOrderE2E:
             f"/pipeline/pending-approvals/{approval_id}",
             headers=_AUTH,
         )
-        assert r.status_code == 200, (
-            f"GET single approval returned {r.status_code}: {r.text}"
-        )
+        assert r.status_code == 200, f"GET single approval returned {r.status_code}: {r.text}"
         body = r.json()
         assert body.get("approval_id") == approval_id
         assert body.get("symbol") == "MCL"

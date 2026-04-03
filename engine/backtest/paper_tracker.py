@@ -82,6 +82,7 @@ class PaperTradeTracker:
         # Lazy initialize database if not provided
         if db_manager is None:
             from database.manager import init_db
+
             self._db = init_db()
         else:
             self._db = db_manager

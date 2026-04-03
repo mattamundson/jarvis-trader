@@ -166,21 +166,26 @@ async def approve_pending(
     execution_result = None
     if _order_router is not None:
         try:
-            execution_result = await _order_router.route_order({
-                "symbol": sym,
-                "action": action,
-                "quantity": int(qty),
-                "order_type": "MKT",
-                "limit_price": float(price) if action.upper() == "SELL" else None,
-            })
+            execution_result = await _order_router.route_order(
+                {
+                    "symbol": sym,
+                    "action": action,
+                    "quantity": int(qty),
+                    "order_type": "MKT",
+                    "limit_price": float(price) if action.upper() == "SELL" else None,
+                }
+            )
             logger.info(
                 "Order routed for approved trade %s | symbol=%s result=%s",
-                trade_id[:8], sym, execution_result.get("status"),
+                trade_id[:8],
+                sym,
+                execution_result.get("status"),
             )
         except RuntimeError as exc:
             logger.warning(
                 "Order routing unavailable for %s (trade still approved): %s",
-                trade_id[:8], exc,
+                trade_id[:8],
+                exc,
             )
             execution_result = {"status": "broker_unavailable", "reason": str(exc)}
         except Exception as exc:

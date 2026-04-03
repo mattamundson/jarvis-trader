@@ -245,8 +245,9 @@ class RLExecutor:
 
         # Final fallback: BacktestDataLoader (CSV cache)
         try:
-            from backtest.data_loader import BacktestDataLoader
             from datetime import datetime, timedelta
+
+            from backtest.data_loader import BacktestDataLoader
 
             end_date = datetime.utcnow().strftime("%Y-%m-%d")
             start_date = (datetime.utcnow() - timedelta(days=60)).strftime("%Y-%m-%d")
@@ -261,7 +262,9 @@ class RLExecutor:
                 )
                 return df
         except Exception as exc:
-            logger.error("[RLExecutor] BacktestDataLoader fetch failed for %s: %s", self.symbol, exc)
+            logger.error(
+                "[RLExecutor] BacktestDataLoader fetch failed for %s: %s", self.symbol, exc
+            )
 
         logger.error("[RLExecutor] All data sources failed for %s — cannot fetch bars", self.symbol)
         return None

@@ -261,7 +261,9 @@ class OOSEvaluator:
                 if df is not None and len(df) >= 60:
                     return self._normalize_columns(df)
             except Exception as exc:
-                logger.warning(f"[OOSEvaluator] data_manager fetch failed: {exc}, trying BacktestDataLoader")
+                logger.warning(
+                    f"[OOSEvaluator] data_manager fetch failed: {exc}, trying BacktestDataLoader"
+                )
 
         return self._fetch_via_loader(symbol, lookback_days=730, interval=interval)
 
@@ -273,8 +275,9 @@ class OOSEvaluator:
     ) -> Optional[pd.DataFrame]:
         """Fetch via BacktestDataLoader (Polygon → CSV cache)."""
         try:
-            from backtest.data_loader import BacktestDataLoader
             from datetime import datetime, timedelta
+
+            from backtest.data_loader import BacktestDataLoader
 
             end = datetime.now().strftime("%Y-%m-%d")
             start = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")

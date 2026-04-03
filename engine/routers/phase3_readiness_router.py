@@ -172,8 +172,7 @@ async def get_phase3_readiness() -> dict:
             "overall_ready": all_pass,
             "gates": gates,
             "notes": (
-                "All gates passing. Ready for Tier 3 approval to set "
-                "LIVE_TRADING_ENABLED=True"
+                "All gates passing. Ready for Tier 3 approval to set " "LIVE_TRADING_ENABLED=True"
                 if all_pass
                 else "One or more gates failing. Review details above."
             ),
@@ -182,6 +181,4 @@ async def get_phase3_readiness() -> dict:
 
     except Exception as e:
         logger.error("[PHASE3] Readiness check failed: %s", e)
-        raise HTTPException(
-            status_code=500, detail=f"Phase 3 readiness check error: {e}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Phase 3 readiness check error: {e}") from e

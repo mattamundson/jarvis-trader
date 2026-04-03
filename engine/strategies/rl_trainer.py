@@ -712,8 +712,9 @@ class RLTrainer:
     ) -> Optional[pd.DataFrame]:
         """Fetch via BacktestDataLoader as fallback."""
         try:
-            from backtest.data_loader import BacktestDataLoader
             from datetime import datetime, timedelta
+
+            from backtest.data_loader import BacktestDataLoader
 
             end_date = datetime.utcnow().strftime("%Y-%m-%d")
             start_date = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
@@ -722,7 +723,9 @@ class RLTrainer:
             df = loader.load(symbol, start_date, end_date, interval)
 
             if df is None or df.empty:
-                logger.warning(f"[RLTrainer] BacktestDataLoader returned empty DataFrame for {symbol}")
+                logger.warning(
+                    f"[RLTrainer] BacktestDataLoader returned empty DataFrame for {symbol}"
+                )
                 return None
 
             df = df.reset_index(drop=True)

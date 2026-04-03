@@ -4,6 +4,7 @@ Instruments router — WFE status and monitoring.
 Exposes GET /instruments/wfe-status and POST /instruments/wfe-status/{symbol}
 for tracking walk-forward efficiency (WFE) scores and recalculation schedules.
 """
+
 import json
 import logging
 from datetime import date, timedelta
@@ -126,21 +127,16 @@ async def get_wfe_status():
         today = date.today()
 
         instruments = [
-            _build_instrument_status(symbol, record, today)
-            for symbol, record in wfe_data.items()
+            _build_instrument_status(symbol, record, today) for symbol, record in wfe_data.items()
         ]
 
         total_approved = sum(1 for i in instruments if i["status"] == "APPROVED")
-        total_halted = sum(
-            1 for i in instruments if i["status"] in ("HALTED", "DO_NOT_TRADE")
-        )
+        total_halted = sum(1 for i in instruments if i["status"] in ("HALTED", "DO_NOT_TRADE"))
         total_alerts = sum(1 for i in instruments if i["alert"])
 
         # Next recalculation: earliest due date among approved instruments
         approved = [i for i in instruments if i["status"] == "APPROVED"]
-        next_recalc = (
-            min(i["next_due_date"] for i in approved) if approved else None
-        )
+        next_recalc = min(i["next_due_date"] for i in approved) if approved else None
 
         return {
             "instruments": instruments,

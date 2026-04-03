@@ -1,10 +1,11 @@
 """Tests for SchwabConnector and OrderRouter — uses mocked schwab-py client."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
 
-from execution.schwab_connector import SchwabConnector, ConnectionState
-from execution.order_router import OrderRouter
+import pytest
 
+from execution.order_router import OrderRouter
+from execution.schwab_connector import ConnectionState, SchwabConnector
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -12,6 +13,7 @@ from execution.order_router import OrderRouter
 # Named with schwab_ prefix to avoid shadowing conftest.py's mock_settings
 # and mock_safety_layer fixtures (which return real TradingConfig/SafetyLayer).
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def schwab_settings():
@@ -59,6 +61,7 @@ def connector_ready(schwab_settings, schwab_safety):
 # SchwabConnector — lifecycle
 # ---------------------------------------------------------------------------
 
+
 def test_connector_instantiates(connector):
     assert connector is not None
 
@@ -103,6 +106,7 @@ def test_is_connected_false_for_all_non_connected_states(connector):
 # SchwabConnector — SCHWAB_READY gate
 # ---------------------------------------------------------------------------
 
+
 def test_assert_schwab_ready_raises_when_false(schwab_settings_gated, schwab_safety):
     """_assert_schwab_ready() raises when settings.SCHWAB_READY is False."""
     sc = SchwabConnector(settings=schwab_settings_gated, safety_layer=schwab_safety)
@@ -129,6 +133,7 @@ async def test_initialize_blocked_when_schwab_not_ready(schwab_settings_gated, s
 # These methods check is_connected at entry and return graceful defaults
 # (error dict or empty list/int) without raising.
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_get_account_summary_returns_error_dict_when_not_connected(connector):
@@ -165,8 +170,13 @@ async def test_cancel_all_orders_returns_zero_when_not_connected(connector):
 @pytest.mark.asyncio
 async def test_place_paper_order_returns_dict_when_not_connected(connector):
     """place_paper_order must return a dict (rejected/error) and not raise."""
-    order = {"symbol": "SPY", "quantity": 1, "side": "BUY", "asset_type": "equity",
-             "portfolio_equity": 10000.0}
+    order = {
+        "symbol": "SPY",
+        "quantity": 1,
+        "side": "BUY",
+        "asset_type": "equity",
+        "portfolio_equity": 10000.0,
+    }
     result = await connector.place_paper_order(order)
     assert isinstance(result, dict)
 
@@ -174,6 +184,7 @@ async def test_place_paper_order_returns_dict_when_not_connected(connector):
 # ---------------------------------------------------------------------------
 # SchwabConnector — disconnect resets state
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_disconnect_resets_state(connector_ready):
@@ -188,6 +199,7 @@ async def test_disconnect_resets_state(connector_ready):
 # SchwabConnector — auth instructions
 # ---------------------------------------------------------------------------
 
+
 def test_get_auth_instructions_returns_string(connector):
     instructions = connector.get_auth_instructions()
     assert isinstance(instructions, str)
@@ -198,6 +210,7 @@ def test_get_auth_instructions_returns_string(connector):
 # ---------------------------------------------------------------------------
 # OrderRouter — routing logic
 # ---------------------------------------------------------------------------
+
 
 def test_order_router_futures_routing():
     router = OrderRouter()
@@ -256,6 +269,7 @@ def test_order_router_attach_connectors():
 # ---------------------------------------------------------------------------
 # OrderRouter — route_order raises when brokers not connected
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_order_router_raises_without_ibkr_for_futures():

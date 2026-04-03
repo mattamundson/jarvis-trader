@@ -104,9 +104,7 @@ async def get_options_chain(symbol: str, expiry_index: int = 0):
             expiry_index = 0  # fall back to nearest
 
         expiry_dates = [expirations[expiry_index]]
-        chain = fetch_chain(
-            symbol.upper(), expiry_dates=expiry_dates, data_manager=data_manager
-        )
+        chain = fetch_chain(symbol.upper(), expiry_dates=expiry_dates, data_manager=data_manager)
 
     except HTTPException:
         raise

@@ -116,16 +116,14 @@ class TestRLEvaluateOffline:
         """POST /strategies/rl/evaluate with no body must return 422."""
         resp = client.post(_ENDPOINT, headers=_AUTH)
         assert resp.status_code == 422, (
-            f"Expected 422 for missing body, got {resp.status_code}. "
-            f"Body: {resp.text}"
+            f"Expected 422 for missing body, got {resp.status_code}. " f"Body: {resp.text}"
         )
 
     def test_evaluate_empty_body_422(self):
         """POST /strategies/rl/evaluate with empty JSON object must return 422."""
         resp = client.post(_ENDPOINT, json={}, headers=_AUTH)
         assert resp.status_code == 422, (
-            f"Expected 422 for empty body, got {resp.status_code}. "
-            f"Body: {resp.text}"
+            f"Expected 422 for empty body, got {resp.status_code}. " f"Body: {resp.text}"
         )
 
     def test_evaluate_missing_start_422(self):
@@ -136,8 +134,7 @@ class TestRLEvaluateOffline:
             headers=_AUTH,
         )
         assert resp.status_code == 422, (
-            f"Expected 422 for missing start_date, got {resp.status_code}. "
-            f"Body: {resp.text}"
+            f"Expected 422 for missing start_date, got {resp.status_code}. " f"Body: {resp.text}"
         )
 
     def test_evaluate_missing_end_422(self):
@@ -148,6 +145,5 @@ class TestRLEvaluateOffline:
             headers=_AUTH,
         )
         assert resp.status_code == 422, (
-            f"Expected 422 for missing end_date, got {resp.status_code}. "
-            f"Body: {resp.text}"
+            f"Expected 422 for missing end_date, got {resp.status_code}. " f"Body: {resp.text}"
         )

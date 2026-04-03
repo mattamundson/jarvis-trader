@@ -53,7 +53,6 @@ from strategies.rl_config import (
     N_FEATURES,
     REGIME_SCORES,
     REWARD_CONFIG,
-    VOLUME_SIGNAL_SCORES,
     Action,
     get_instrument_params,
 )
@@ -178,7 +177,7 @@ def extract_features(
             stc_slope,
             stc_above_os,
             stc_below_ob,
-            cci_50_norm,     # was: atr_14 (raw, scale-dependent) → CCI normalized [-1,1]
+            cci_50_norm,  # was: atr_14 (raw, scale-dependent) → CCI normalized [-1,1]
             atr_normalized,
             atr_vs_20d_avg,
             regime_score,

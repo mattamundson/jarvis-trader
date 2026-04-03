@@ -59,7 +59,9 @@ def format_table(results: dict) -> str:
     ]
     for sym, data in results.items():
         if data is None:
-            lines.append(f"| {sym} | ERROR | {BASELINE_1H.get(sym)} | {KILL_THRESHOLDS[sym]} | FAILED | N/A |")
+            lines.append(
+                f"| {sym} | ERROR | {BASELINE_1H.get(sym)} | {KILL_THRESHOLDS[sym]} | FAILED | N/A |"
+            )
         else:
             s = data["summary"]
             wfe = s["wfe"]

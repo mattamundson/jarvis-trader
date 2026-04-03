@@ -394,7 +394,7 @@ def get_trade_journal(
 
         # Convert rows to dicts
         col_names = [description[0] for description in cursor.description]
-        trades = [dict(zip(col_names, row)) for row in rows]
+        trades = [dict(zip(col_names, row, strict=False)) for row in rows]
 
         conn.close()
         return [TradeJournalEntry(**t) for t in trades]
@@ -566,24 +566,30 @@ def get_regime_stats() -> dict:
 
         regimes = []
         for row in rows:
-            row_dict = dict(row) if hasattr(row, "keys") else {
-                "regime": row[0],
-                "trade_count": row[1],
-                "win_count": row[2],
-                "loss_count": row[3],
-                "win_rate_pct": row[4],
-                "avg_pnl": row[5],
-                "total_pnl": row[6],
-            }
-            regimes.append({
-                "regime": row_dict.get("regime") or "unknown",
-                "trade_count": int(row_dict.get("trade_count") or 0),
-                "win_count": int(row_dict.get("win_count") or 0),
-                "loss_count": int(row_dict.get("loss_count") or 0),
-                "win_rate_pct": float(row_dict.get("win_rate_pct") or 0.0),
-                "avg_pnl": float(row_dict.get("avg_pnl") or 0.0),
-                "total_pnl": float(row_dict.get("total_pnl") or 0.0),
-            })
+            row_dict = (
+                dict(row)
+                if hasattr(row, "keys")
+                else {
+                    "regime": row[0],
+                    "trade_count": row[1],
+                    "win_count": row[2],
+                    "loss_count": row[3],
+                    "win_rate_pct": row[4],
+                    "avg_pnl": row[5],
+                    "total_pnl": row[6],
+                }
+            )
+            regimes.append(
+                {
+                    "regime": row_dict.get("regime") or "unknown",
+                    "trade_count": int(row_dict.get("trade_count") or 0),
+                    "win_count": int(row_dict.get("win_count") or 0),
+                    "loss_count": int(row_dict.get("loss_count") or 0),
+                    "win_rate_pct": float(row_dict.get("win_rate_pct") or 0.0),
+                    "avg_pnl": float(row_dict.get("avg_pnl") or 0.0),
+                    "total_pnl": float(row_dict.get("total_pnl") or 0.0),
+                }
+            )
 
         return {
             "regimes": regimes,

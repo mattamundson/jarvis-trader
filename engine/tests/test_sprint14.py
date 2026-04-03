@@ -230,7 +230,8 @@ def test_paper_tracker_no_jsonl_writes():
     lines = source.splitlines()
 
     jsonl_write_lines = [
-        line for line in lines
+        line
+        for line in lines
         if "open(" in line and ("'a'" in line or '"a"' in line) and ".jsonl" in line
     ]
 

@@ -134,6 +134,7 @@ def _run_single_instrument(args):
     # ── Get STC Parameters for Symbol ────────────────────────────────────
     try:
         from backtest.paper_config import PAPER_CONFIGS
+
         symbol_config = PAPER_CONFIGS.get(args.symbol)
         if symbol_config:
             stc_params = symbol_config.get("stc_params", {})
@@ -383,7 +384,9 @@ def _run_all_instruments(args):
 
     # Print as table
     if summary_data:
-        print(f"\n{'Symbol':<8} {'Status':<12} {'WFE':<10} {'Threshold':<12} {'Recommendation':<20}")
+        print(
+            f"\n{'Symbol':<8} {'Status':<12} {'WFE':<10} {'Threshold':<12} {'Recommendation':<20}"
+        )
         print("-" * 62)
         for row in summary_data:
             print(
@@ -497,9 +500,7 @@ def _write_composite_report(results, instruments, args):
             else:
                 recommendation = "BELOW_THRESHOLD"
             wfe_str = f"{wfe:.2f}" if wfe is not None else "N/A"
-            lines.append(
-                f"| {symbol} | {wfe_str} | {threshold:.2f} | OK | {recommendation} |"
-            )
+            lines.append(f"| {symbol} | {wfe_str} | {threshold:.2f} | OK | {recommendation} |")
 
     lines.append("")
     lines.append("## Recommendations")

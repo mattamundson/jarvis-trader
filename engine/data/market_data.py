@@ -5,10 +5,15 @@ Unified interface to IBKR, Polygon, and Finnhub.
 Data waterfall: IBKR → Polygon → CSV cache → structured None (no silent zeros).
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
+
+if TYPE_CHECKING:
+    from ib_async import Future
 
 import pandas as pd
 
@@ -16,22 +21,26 @@ logger = logging.getLogger(__name__)
 
 # Continuous contract symbol mappings — single source of truth
 FUTURES_MAP = {
-    "MCL": "MCL",   # Micro Crude Oil  (Polygon/IBKR)
-    "MNQ": "MNQ",   # Micro Nasdaq-100 (Polygon/IBKR)
-    "MES": "MES",   # Micro E-mini S&P (Polygon/IBKR)
-    "MGC": "MGC",   # Micro Gold       (Polygon/IBKR)
-    "CL":  "CL",
-    "NQ":  "NQ",
-    "ES":  "ES",
-    "GC":  "GC",
+    "MCL": "MCL",  # Micro Crude Oil  (Polygon/IBKR)
+    "MNQ": "MNQ",  # Micro Nasdaq-100 (Polygon/IBKR)
+    "MES": "MES",  # Micro E-mini S&P (Polygon/IBKR)
+    "MGC": "MGC",  # Micro Gold       (Polygon/IBKR)
+    "CL": "CL",
+    "NQ": "NQ",
+    "ES": "ES",
+    "GC": "GC",
 }
 
 # IBKR exchange map for futures
 FUTURES_EXCHANGE = {
-    "MCL": "NYMEX", "CL": "NYMEX",
-    "MNQ": "CME",   "NQ": "CME",
-    "MES": "CME",   "ES": "CME",
-    "MGC": "COMEX", "GC": "COMEX",
+    "MCL": "NYMEX",
+    "CL": "NYMEX",
+    "MNQ": "CME",
+    "NQ": "CME",
+    "MES": "CME",
+    "ES": "CME",
+    "MGC": "COMEX",
+    "GC": "COMEX",
 }
 
 
@@ -96,6 +105,7 @@ class IBKRDataConnector:
 
     def _make_contract(self, symbol: str, is_futures: bool):
         from ib_async import Future, Index, Stock
+
         if symbol.upper() in ("VIX",):
             return Index(symbol, "CBOE")
         if is_futures or symbol.upper() in FUTURES_MAP:
@@ -103,9 +113,10 @@ class IBKRDataConnector:
             return Future(symbol, exchange=exchange, currency="USD")
         return Stock(symbol, "SMART", "USD")
 
-    async def _resolve_front_month(self, symbol: str, exchange: str) -> "Future":
+    async def _resolve_front_month(self, symbol: str, exchange: str) -> Future:
         """Resolve futures symbol to the nearest expiry (front month) contract."""
         from ib_async import Future
+
         generic = Future(symbol, exchange=exchange, currency="USD")
         try:
             details = await self._ib.reqContractDetailsAsync(generic)
@@ -134,16 +145,28 @@ class IBKRDataConnector:
             else:
                 contract = self._make_contract(symbol, is_futures)
             bars = await self._ib.reqHistoricalDataAsync(
-                contract, endDateTime="", durationStr=duration,
-                barSizeSetting=bar_size, whatToShow="TRADES", useRTH=False,
+                contract,
+                endDateTime="",
+                durationStr=duration,
+                barSizeSetting=bar_size,
+                whatToShow="TRADES",
+                useRTH=False,
             )
             if not bars:
                 return pd.DataFrame()
-            return pd.DataFrame([
-                {"timestamp": bar.date, "open": bar.open, "high": bar.high,
-                 "low": bar.low, "close": bar.close, "volume": bar.volume}
-                for bar in bars
-            ])
+            return pd.DataFrame(
+                [
+                    {
+                        "timestamp": bar.date,
+                        "open": bar.open,
+                        "high": bar.high,
+                        "low": bar.low,
+                        "close": bar.close,
+                        "volume": bar.volume,
+                    }
+                    for bar in bars
+                ]
+            )
         except Exception as e:
             logger.warning(f"IBKR get_historical_bars failed for {symbol}: {e}")
             return pd.DataFrame()
@@ -151,20 +174,42 @@ class IBKRDataConnector:
     async def get_snapshot_price(self, symbol: str, is_futures: bool = False) -> dict:
         """Return a real-time snapshot price dict from IBKR."""
         if not self._connected:
-            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "ibkr_not_connected"}
+            return {
+                "last_price": None,
+                "prev_close": None,
+                "change_pct": None,
+                "source": "ibkr_not_connected",
+            }
         try:
             contract = self._make_contract(symbol, is_futures)
             tickers = await self._ib.reqTickersAsync(contract)
             if not tickers:
-                return {"last_price": None, "prev_close": None, "change_pct": None, "source": "ibkr_no_data"}
+                return {
+                    "last_price": None,
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "ibkr_no_data",
+                }
             t = tickers[0]
-            last = t.last if t.last and t.last > 0 else (t.close if t.close and t.close > 0 else None)
+            last = (
+                t.last if t.last and t.last > 0 else (t.close if t.close and t.close > 0 else None)
+            )
             prev = t.close if t.close and t.close > 0 else None
             change_pct = ((last - prev) / prev * 100) if last and prev and prev > 0 else None
-            return {"last_price": last, "prev_close": prev, "change_pct": change_pct, "source": "ibkr"}
+            return {
+                "last_price": last,
+                "prev_close": prev,
+                "change_pct": change_pct,
+                "source": "ibkr",
+            }
         except Exception as e:
             logger.warning(f"IBKR get_snapshot_price failed for {symbol}: {e}")
-            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "ibkr_error"}
+            return {
+                "last_price": None,
+                "prev_close": None,
+                "change_pct": None,
+                "source": "ibkr_error",
+            }
 
     async def subscribe_real_time(
         self,
@@ -180,16 +225,20 @@ class IBKRDataConnector:
             contract = self._make_contract(symbol, is_futures)
             bars = self._ib.reqRealTimeBars(contract, 5, "TRADES", False)
             bars.updateEvent += lambda bars, hasNewBar: (
-                callback(MarketDataBar(
-                    symbol=symbol,
-                    timestamp=datetime.fromtimestamp(bars[-1].time),
-                    open=bars[-1].open_,
-                    high=bars[-1].high,
-                    low=bars[-1].low,
-                    close=bars[-1].close,
-                    volume=bars[-1].volume,
-                    source="IBKR",
-                )) if hasNewBar else None
+                callback(
+                    MarketDataBar(
+                        symbol=symbol,
+                        timestamp=datetime.fromtimestamp(bars[-1].time),
+                        open=bars[-1].open_,
+                        high=bars[-1].high,
+                        low=bars[-1].low,
+                        close=bars[-1].close,
+                        volume=bars[-1].volume,
+                        source="IBKR",
+                    )
+                )
+                if hasNewBar
+                else None
             )
         except Exception as e:
             logger.warning(f"IBKR subscribe_real_time failed for {symbol}: {e}")
@@ -221,6 +270,7 @@ class PolygonDataConnector:
     def connect(self):
         try:
             from polygon import RESTClient
+
             self._client = RESTClient(self._api_key)
             logger.info("Polygon.io connected")
         except ImportError:
@@ -243,12 +293,19 @@ class PolygonDataConnector:
             return pd.DataFrame()
         bars = []
         try:
-            for agg in self._client.list_aggs(symbol, multiplier, timespan, from_date, to_date, limit=50000):
-                bars.append({
-                    "timestamp": datetime.fromtimestamp(agg.timestamp / 1000),
-                    "open": agg.open, "high": agg.high,
-                    "low": agg.low, "close": agg.close, "volume": agg.volume,
-                })
+            for agg in self._client.list_aggs(
+                symbol, multiplier, timespan, from_date, to_date, limit=50000
+            ):
+                bars.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(agg.timestamp / 1000),
+                        "open": agg.open,
+                        "high": agg.high,
+                        "low": agg.low,
+                        "close": agg.close,
+                        "volume": agg.volume,
+                    }
+                )
         except Exception as e:
             logger.warning(f"Polygon get_historical_bars failed for {symbol}: {e}")
             return pd.DataFrame()
@@ -257,28 +314,52 @@ class PolygonDataConnector:
     def get_last_price(self, symbol: str) -> dict:
         """Get latest price via most recent 1-minute bar. Works for equities and futures."""
         if not self._client:
-            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_unavailable"}
+            return {
+                "last_price": None,
+                "prev_close": None,
+                "change_pct": None,
+                "source": "polygon_unavailable",
+            }
         try:
             today = datetime.now().strftime("%Y-%m-%d")
             two_days_ago = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
             three_days_ago = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
 
             # Latest minute bar for current price
-            recent_bars = list(self._client.list_aggs(symbol, 1, "minute", two_days_ago, today, limit=10))
+            recent_bars = list(
+                self._client.list_aggs(symbol, 1, "minute", two_days_ago, today, limit=10)
+            )
             if not recent_bars:
-                return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_empty"}
+                return {
+                    "last_price": None,
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "polygon_empty",
+                }
 
             last_price = float(recent_bars[-1].close)
 
             # Previous day's close for change calculation
-            prev_bars = list(self._client.list_aggs(symbol, 1, "day", three_days_ago, two_days_ago, limit=2))
+            prev_bars = list(
+                self._client.list_aggs(symbol, 1, "day", three_days_ago, two_days_ago, limit=2)
+            )
             prev_close = float(prev_bars[-1].close) if prev_bars else None
             change_pct = ((last_price - prev_close) / prev_close * 100) if prev_close else None
 
-            return {"last_price": last_price, "prev_close": prev_close, "change_pct": change_pct, "source": "polygon"}
+            return {
+                "last_price": last_price,
+                "prev_close": prev_close,
+                "change_pct": change_pct,
+                "source": "polygon",
+            }
         except Exception as e:
             logger.warning(f"Polygon get_last_price failed for {symbol}: {e}")
-            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_error"}
+            return {
+                "last_price": None,
+                "prev_close": None,
+                "change_pct": None,
+                "source": "polygon_error",
+            }
 
     def get_vix_value(self) -> dict:
         """Get VIX index value. Polygon indices use 'I:VIX' ticker."""
@@ -300,7 +381,9 @@ class PolygonDataConnector:
             return []
         try:
             contracts = self._client.list_options_contracts(symbol, limit=500)
-            expirations = sorted({c.expiration_date for c in contracts if hasattr(c, "expiration_date")})
+            expirations = sorted(
+                {c.expiration_date for c in contracts if hasattr(c, "expiration_date")}
+            )
             return expirations
         except Exception as e:
             logger.warning(f"Polygon get_options_expirations failed for {symbol}: {e}")
@@ -317,6 +400,7 @@ class FinnhubConnector:
     def connect(self):
         try:
             import finnhub
+
             self._client = finnhub.Client(api_key=self._api_key)
             logger.info("Finnhub connected")
         except ImportError:
@@ -348,6 +432,7 @@ class RedditSentimentConnector:
 
     async def get_trending_tickers(self, filter_name: str = "all-stocks") -> list:
         import httpx
+
         try:
             async with httpx.AsyncClient() as client:
                 url = self.APEWISDOM_URL.format(filter=filter_name, page=1)
@@ -420,7 +505,13 @@ class MarketDataManager:
         if self.ibkr and self.ibkr.is_connected:
             duration_map = [(1, "1 D"), (7, "1 W"), (30, "1 M"), (90, "3 M"), (365, "1 Y")]
             duration = next((v for k, v in duration_map if lookback_days <= k), "1 M")
-            bar_size_map = {"1m": "1 min", "5m": "5 mins", "15m": "15 mins", "1h": "1 hour", "1d": "1 day"}
+            bar_size_map = {
+                "1m": "1 min",
+                "5m": "5 mins",
+                "15m": "15 mins",
+                "1h": "1 hour",
+                "1d": "1 day",
+            }
             bar_size = bar_size_map.get(timeframe, "5 mins")
             df = await self.ibkr.get_historical_bars(symbol, duration, bar_size, is_futures)
             if not df.empty:
@@ -431,11 +522,18 @@ class MarketDataManager:
         if self.polygon:
             from_date = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
             to_date = datetime.now().strftime("%Y-%m-%d")
-            tf_map = {"1m": ("minute", 1), "5m": ("minute", 5), "15m": ("minute", 15),
-                      "1h": ("hour", 1), "1d": ("day", 1)}
+            tf_map = {
+                "1m": ("minute", 1),
+                "5m": ("minute", 5),
+                "15m": ("minute", 15),
+                "1h": ("hour", 1),
+                "1d": ("day", 1),
+            }
             timespan, multiplier = tf_map.get(timeframe, ("minute", 5))
             polygon_symbol = FUTURES_MAP.get(symbol.upper(), symbol)
-            df = self.polygon.get_historical_bars(polygon_symbol, from_date, to_date, timespan, multiplier)
+            df = self.polygon.get_historical_bars(
+                polygon_symbol, from_date, to_date, timespan, multiplier
+            )
             if not df.empty:
                 logger.info(f"Polygon returned {len(df)} bars for {symbol}")
                 return df
@@ -446,7 +544,9 @@ class MarketDataManager:
         if not df.empty:
             return df
 
-        logger.error(f"All data sources failed for {symbol} — IBKR offline and Polygon unavailable.")
+        logger.error(
+            f"All data sources failed for {symbol} — IBKR offline and Polygon unavailable."
+        )
         return pd.DataFrame()
 
     async def get_current_price(self, symbol: str, is_futures: bool = False) -> dict:
@@ -473,7 +573,12 @@ class MarketDataManager:
         df = self._load_csv_cache(symbol, "1d", 2)
         if not df.empty and "close" in df.columns:
             last_close = float(df.iloc[-1]["close"])
-            return {"last_price": last_close, "prev_close": None, "change_pct": None, "source": "csv_cache"}
+            return {
+                "last_price": last_close,
+                "prev_close": None,
+                "change_pct": None,
+                "source": "csv_cache",
+            }
 
         return {"last_price": None, "prev_close": None, "change_pct": None, "source": "unavailable"}
 
@@ -492,6 +597,7 @@ class MarketDataManager:
         # Tier 1: FRED (VIXCLS series — most reliable, free)
         try:
             from data.fred_data import FREDDataService
+
             fred = FREDDataService(getattr(self._config, "FRED_API_KEY", None))
             vix_val = await fred.get_latest_value("VIXCLS")
             if vix_val is not None:
@@ -522,8 +628,11 @@ class MarketDataManager:
         if self.ibkr and self.ibkr.is_connected:
             try:
                 from ib_async import Stock
+
                 contract = Stock(symbol, "SMART", "USD")
-                chains = await self._ibkr_ib.reqSecDefOptParamsAsync("", "", contract.secType, contract.conId)
+                chains = await self._ibkr_ib.reqSecDefOptParamsAsync(
+                    "", "", contract.secType, contract.conId
+                )
                 if chains:
                     expirations = sorted(chains[0].expirations)
                     return list(expirations)
@@ -551,7 +660,11 @@ class MarketDataManager:
             df = df.tail(lookback_days * bars_per_day).copy()
             if not df.empty:
                 logger.warning(f"[{symbol}] Using CSV cache: {matches[-1].name} ({len(df)} bars)")
-            cols = [c for c in ["timestamp", "open", "high", "low", "close", "volume"] if c in df.columns]
+            cols = [
+                c
+                for c in ["timestamp", "open", "high", "low", "close", "volume"]
+                if c in df.columns
+            ]
             return df[cols] if cols else pd.DataFrame()
         except Exception as e:
             logger.debug(f"[{symbol}] CSV cache load failed: {e}")

@@ -100,22 +100,13 @@ async def get_validation_alerts():
             "alerts": [],
             "current_gates": {},
             "status": "no_manager",
-            "message": "ValidationAlertManager not initialized"
+            "message": "ValidationAlertManager not initialized",
         }
 
     try:
         alerts = _validation_alert_manager.get_alert_history()
         gates = _validation_alert_manager.get_current_gate_status()
-        return {
-            "alerts": alerts,
-            "current_gates": gates,
-            "status": "ok"
-        }
+        return {"alerts": alerts, "current_gates": gates, "status": "ok"}
     except Exception as e:
         logger.error(f"Failed to fetch validation alerts: {e}")
-        return {
-            "alerts": [],
-            "current_gates": {},
-            "status": "error",
-            "error": str(e)
-        }
+        return {"alerts": [], "current_gates": {}, "status": "error", "error": str(e)}

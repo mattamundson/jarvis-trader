@@ -87,12 +87,8 @@ async def _health_inner() -> dict:
         "ibkr_connected": bool(getattr(data_manager.ibkr, "is_connected", False))
         if data_manager and data_manager.ibkr
         else False,
-        "schwab_connected": bool(
-            schwab_connector and schwab_connector.is_connected
-        ),
-        "uptime_seconds": (now - _start_time).total_seconds()
-        if _start_time
-        else 0.0,
+        "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
+        "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,
     }
 
@@ -402,4 +398,6 @@ async def get_backup_status():
         }
     except Exception as e:
         logger.error(f"Backup status check failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Backup status check failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Backup status check failed: {str(e)}"
+        ) from None
