@@ -21,6 +21,7 @@ import { SchwabStatusWidget } from "@/components/SchwabStatusWidget";
 import { BrokerPositionsWidget } from "@/components/BrokerPositionsWidget";
 import { StrategyParamsPanel } from "@/components/StrategyParamsPanel";
 import { SessionTodayWidget } from "@/components/SessionTodayWidget";
+import { ValidationGatesWidget } from "@/components/ValidationGatesWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -275,6 +276,9 @@ export default function DashboardPage() {
               reason={safety?.kill_switch_reason}
               onToggle={onKillSwitchToggle}
             />
+
+            {/* Validation gates progress */}
+            <ValidationGatesWidget />
 
             {/* Schwab connection status */}
             <SchwabStatusWidget />
@@ -626,49 +630,4 @@ function WFEStatusCard() {
                   <span style={{ color: "#00ff88" }}>{k.replace("_", " ")}</span>
                   <span>cleared: {entry.cleared_date ?? "\u2014"}</span>
                   <span>risk: {entry.risk_per_trade ?? "\u2014"}</span>
-                  <span style={{ color: "#00d4ff" }}>{entry.config ?? ""}</span>
-                </div>
-              );
-            })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Risk Row ──────────────────────────────────────────────────────────────
-
-function RiskRow({
-  label,
-  value,
-  limit,
-  pct,
-  danger,
-}: {
-  label: string;
-  value: string;
-  limit: string;
-  pct: number;
-  danger: boolean;
-}) {
-  const clampedPct = Math.min(pct, 1);
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <div className="flex items-center gap-2">
-          <span className={`font-mono font-semibold tabular-nums ${danger ? "text-bear" : "text-foreground"}`}>
-            {value}
-          </span>
-          <span className="text-[10px] text-muted-foreground">{limit}</span>
-        </div>
-      </div>
-      <div className="h-1 rounded-full bg-muted overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${danger ? "bg-bear" : "bg-bull"}`}
-          style={{ width: `${clampedPct * 100}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+                
