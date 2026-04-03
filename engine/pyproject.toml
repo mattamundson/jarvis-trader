@@ -133,6 +133,10 @@ ignore = [
     "F401",  # pytest fixtures are often unused in the file they're defined
     "E402",  # conftest can have imports mid-file
 ]
+"main.py" = [
+    "I001",  # import block unsorted — 4100-line file with sprints of appended router imports
+    "E402",  # late websocket imports are intentional (circular import avoidance)
+]
 "backtest/backtester.py" = [
     "B023",  # false positive: nested functions in loops used as closures
 ]

@@ -51,8 +51,8 @@
         "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "COMPLETE. sprint16_db_health.md written, DB integrity checked (ok), ghost DB documented, kill switch confirmed inactive."
     },
     {
       "id": "US-1604",
@@ -68,8 +68,8 @@
         "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "COMPLETE. Nightly consolidator wired to APScheduler (04:00 ET CronTrigger). Trade classifier hook added to close_trade() in portfolio/tracker.py."
     },
     {
       "id": "US-1605",
