@@ -508,6 +508,38 @@ def migration_008(conn: sqlite3.Connection) -> None:
     logger.info("Migration 008 applied — pending_trade_approvals table created.")
 
 
+def migration_009(conn: sqlite3.Connection) -> None:
+    """
+    009 — LLM cost tracking per pipeline run.
+
+    Tracks token usage (input/output) and estimated costs for each LLM call
+    within a pipeline execution, allowing cost monitoring and optimization.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pipeline_llm_costs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id          TEXT    NOT NULL,
+            symbol          TEXT    NOT NULL,
+            stage           TEXT    NOT NULL,
+            model           TEXT    NOT NULL,
+            input_tokens    INTEGER NOT NULL DEFAULT 0,
+            output_tokens   INTEGER NOT NULL DEFAULT 0,
+            estimated_cost_usd REAL NOT NULL DEFAULT 0.0,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_llm_costs_run_id ON pipeline_llm_costs(run_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_llm_costs_created_at ON pipeline_llm_costs(created_at)"
+    )
+    conn.commit()
+    logger.info("Migration 009 applied — pipeline_llm_costs table created.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -520,6 +552,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_006,  # version 6
     migration_007,  # version 7
     migration_008,  # version 8
+    migration_009,  # version 9
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -531,6 +564,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Discord signals: discord_bot_signals, discord_ib_reports, discord_corey_alerts, discord_corey_commentary",
     "Capital allocation: capital_allocation table for $10K cross-market distribution",
     "Pending trade approvals: pending_trade_approvals for human-gated paper/live execution",
+    "LLM cost tracking: pipeline_llm_costs table for token usage and estimated costs",
 ]
 
 
