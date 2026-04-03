@@ -137,24 +137,32 @@ def mock_agents_dict():
 @pytest.fixture
 def disable_cache(monkeypatch):
     """Disable caching for all tests by mocking cache functions to return False."""
+    import agents.pipeline
 
-    async def mock_should_use_cache(symbol):
-        return False
+    # Ensure the cache functions exist in the pipeline module namespace
+    # They may not be present if the cache import failed
+    if not hasattr(agents.pipeline, "should_use_cache"):
+        async def mock_should_use_cache(symbol):
+            return False
 
-    async def mock_get_cached_signal(symbol):
-        return None
+        agents.pipeline.should_use_cache = mock_should_use_cache
 
-    async def mock_cache_signal(symbol, result):
-        pass
+    if not hasattr(agents.pipeline, "get_cached_signal"):
+        async def mock_get_cached_signal(symbol):
+            return None
 
-    # Patch the cache functions in the pipeline module
-    monkeypatch.setattr(
-        "agents.pipeline.should_use_cache", AsyncMock(side_effect=mock_should_use_cache)
-    )
-    monkeypatch.setattr(
-        "agents.pipeline.get_cached_signal", AsyncMock(side_effect=mock_get_cached_signal)
-    )
-    monkeypatch.setattr("agents.pipeline.cache_signal", AsyncMock(side_effect=mock_cache_signal))
+        agents.pipeline.get_cached_signal = mock_get_cached_signal
+
+    if not hasattr(agents.pipeline, "cache_signal"):
+        async def mock_cache_signal(symbol, result):
+            pass
+
+        agents.pipeline.cache_signal = mock_cache_signal
+
+    # Now monkeypatch them to always return the safe test values
+    monkeypatch.setattr("agents.pipeline.should_use_cache", AsyncMock(return_value=False))
+    monkeypatch.setattr("agents.pipeline.get_cached_signal", AsyncMock(return_value=None))
+    monkeypatch.setattr("agents.pipeline.cache_signal", AsyncMock(return_value=None))
     return None
 
 

@@ -24,6 +24,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { fetchEngine } from "@/lib/api";
+import { INSTRUMENTS, WFE_ROWS } from "./constants";
+import { SignalFeedWidget } from "@/components/SignalFeedWidget";
+import ApprovalPanel from "@/components/ApprovalPanel";
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
@@ -207,44 +210,6 @@ function getMarketSession(): SessionInfo {
     isActive: false,
   };
 }
-
-// ── Instrument Config ─────────────────────────────────────────────────────
-
-const INSTRUMENTS = [
-  {
-    symbol: "MCL",
-    tf: "1h",
-    status: "APPROVED" as const,
-    wfe: 0.82,
-    regime: "BULL",
-    lastSignal: "LONG",
-    atr: "~0.42",
-  },
-  {
-    symbol: "MNQ",
-    tf: "1h",
-    status: "APPROVED" as const,
-    wfe: 0.57,
-    regime: "NEUTRAL",
-    lastSignal: "FLAT",
-    atr: "~18.5",
-  },
-  {
-    symbol: "MGC",
-    tf: "1d",
-    status: "HALTED" as const,
-    wfe: 0.88,
-    regime: "OVERFIT",
-    lastSignal: "—",
-    atr: "~9.2",
-  },
-];
-
-const WFE_ROWS = [
-  { symbol: "MCL", tf: "1h", wfe: 0.82, threshold: 0.3, status: "PASS" as const },
-  { symbol: "MNQ", tf: "1h", wfe: 0.57, threshold: 0.3, status: "PASS" as const },
-  { symbol: "MGC", tf: "1d", wfe: 0.88, threshold: 0.3, status: "OVERFIT" as const },
-];
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -504,6 +469,23 @@ export default function CommandCenterPage() {
             {killSwitchActive ? "⚠ KILL SWITCH ACTIVE" : "KILL SWITCH"}
           </Button>
         </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          TRADE APPROVALS — human-in-the-loop gate
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <Card className="border border-amber-500/30 bg-zinc-900/50">
+          <CardHeader className="pb-1.5 pt-3 px-4">
+            <CardTitle className="text-xs font-mono text-amber-400 tracking-widest flex items-center gap-1.5">
+              <AlertTriangle className="w-3 h-3" />
+              TRADE APPROVALS
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <ApprovalPanel />
+          </CardContent>
+        </Card>
       </div>
 
       {/* ═══════════════════════════════════════════════════════
@@ -1291,6 +1273,13 @@ export default function CommandCenterPage() {
             </Button>
           </CardContent>
         </Card>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          ROW 6 — SIGNAL FEED (full width)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mt-3">
+        <SignalFeedWidget />
       </div>
     </div>
   );
