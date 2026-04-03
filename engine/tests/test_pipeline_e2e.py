@@ -655,7 +655,7 @@ class TestSTCPreFilter:
     async def test_stc_mid_range_pre_filters_without_calling_llm_agents(
         self, mock_agents_dict, mock_safety_layer, disable_cache
     ):
-        """When STC is mid-range (25–73 for MCL OS=15/OB=83), pipeline returns HOLD
+        """When STC is mid-range (33–73 for MCL OS=23/OB=83), pipeline returns HOLD
         immediately with pre_filtered=True — no LLM agents should be invoked."""
         import pandas as pd
 
@@ -678,7 +678,7 @@ class TestSTCPreFilter:
         assert result.get("pre_filtered") is True
         assert result["pre_filter_reason"] == "STC mid-range pre-filter"
         assert result["pre_filter_stc"] == stc_mid
-        assert result["pre_filter_stc_os"] == 15
+        assert result["pre_filter_stc_os"] == 23
         assert result["pre_filter_stc_ob"] == 83
         # No LLM agents should have been called
         assert mock_agents_dict["technical"].call_count == 0
@@ -689,13 +689,13 @@ class TestSTCPreFilter:
     async def test_stc_at_oversold_does_not_pre_filter(
         self, mock_agents_dict, mock_safety_layer, disable_cache
     ):
-        """When STC is AT or below OS=15 (skip-range LOW), the pre-filter must NOT
+        """When STC is AT or below OS=23 (skip-range LOW), the pre-filter must NOT
         trigger — the OS crossover is an actionable signal and must reach Stage 1.
 
-        Sprint 16 updated defaults: LOW=15.0 (OS threshold), HIGH=83.0 (OB threshold).
-        STC=14 is below LOW → passes through. STC=18 is inside 15-83 → pre-filtered.
+        US-1602 updated MCL params: OS=23 (stc_os), OB=83. LOW boundary = stc_os = 23.
+        STC=14 is below LOW=23 → passes through. STC=50 is inside 23-83 → pre-filtered.
         """
-        stc_at_os = 14.0  # 14 <= 15 (STC_MIDRANGE_SKIP_LOW), so NOT filtered
+        stc_at_os = 14.0  # 14 <= 23 (STC_MIDRANGE_SKIP_LOW for MCL), so NOT filtered
         sig_df = self._make_ohlcv_df(rows=30, stc_val=stc_at_os)
 
         mock_data = MagicMock()
