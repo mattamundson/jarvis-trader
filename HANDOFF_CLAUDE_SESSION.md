@@ -1,182 +1,165 @@
 # JARVIS TRADER — Claude Cowork Session Handoff
-**Date**: 2026-04-03 (updated post-Sprint 16 completion)
-**Session type**: Strategy/planning (Cowork) + active Sprint 16 execution (Claude Code in Cursor)
+**Date**: 2026-04-03 (updated post-Sprint 17 completion)
+**Session type**: Strategy/planning (Cowork) + Sprint 16 + Sprint 17 execution (Claude Code in Cursor)
 **Branch**: master
-**Sprint 16 status**: COMPLETE — all 5 stories `passes: true`
+**Sprint 16 status**: COMPLETE
+**Sprint 17 status**: COMPLETE
 
 ---
 
-## SPRINT 16 COMPLETION SUMMARY
+## SPRINT 17 COMPLETION SUMMARY
 
-All 5 stories complete. 1,209 tests passing, 0 failures, 26/26 dashboard routes, 0 TypeScript errors.
+All 5 stories complete. 1,212 tests passing, 0 failures, 26/26 dashboard routes, 0 ruff errors.
 
 | Story | Commit | Key Change |
 |-------|--------|-----------|
-| US-1605 | be8cf99 | inject_pipeline_deps wired; deprecated strategy_router deleted |
-| US-1601 | f9fc4a6 | STC pre-filter made config-driven (LOW=15/HIGH=83); /pipeline/signal-debug endpoint added |
-| US-1602 | 93464ae | MCL OS=23/stop=0.50/T1=1.00; composite target_3 exit bug fixed |
-| US-1604 | 1654c5a | Nightly consolidator (04:00 ET APScheduler) + trade classifier hook in close_trade() |
-| US-1603 | 8270c43 | DB health report written — 3 critical anomalies documented |
+| US-1701 | a559f50 | Ghost 0-byte DB deleted. `SQLITE_DB_PATH` constant added to `config.py` pointing to `engine/data/jarvis_trader.db` |
+| US-1702 | 66efdac | `close_trade()` now computes pnl with `INSTRUMENT_MULTIPLIERS` (MCL=100, MNQ=2, MES=5, MGC=10). `backfill_pnl.py` written. |
+| US-1703 | 1ee915b | JSONL migration: 11 unique trades → 9 inserted, 2 dupes skipped. Source was `portfolio/trades.jsonl` |
+| US-1704 | e9fc15d | `experiment_log.py`, `run_experiment.py`, `search_strategy.py`, `mes_search_space.json`, 3 unit tests |
+| US-1705 | b4a53ff | `run_walk_forward_for_params()` added to `walk_forward.py`. 10 MES experiments logged. `GET /experiments/mes/status` wired. Report written. |
 
 **Final git log (top 10)**:
 ```
+b4a53ff feat: US-1705 — run 10 MES WFE experiments, add run_walk_forward_for_params, write round1 report
+a2882ca feat: US-1705 — add GET /experiments/mes/status endpoint
+e9fc15d feat: US-1704 — recover n-autoresearch experiment loop, mes_search_space.json, 3 unit tests
+7357dbb chore: US-1703 passes: true — migration ran (9 inserted, 2 dupes)
+1ee915b feat: US-1703 — write migration script for JSONL paper trades to SQLite
+daa0029 chore: US-1701/1702 passes: true in prd.json
+66efdac fix: US-1702 — fix NULL pnl in close_trade(), add INSTRUMENT_MULTIPLIERS
+a559f50 fix: US-1701 — add SQLITE_DB_PATH config constant, delete ghost DB
 6462b85 feat: US-1606 — enhance DB health reporting with additional checks
 8270c43 docs: US-1603 — DB health report (ghost DB, NULL pnl, dual storage)
-1654c5a feat: US-1604 — wire nightly learning consolidator + trade classifier hook
-e75fb4a chore: US-1601/02/05 marked passes:true in prd.json
-93464ae feat: US-1602 — MCL WF params (OS=23/stop=0.50/T1=1.00), composite exit fix
-48af2d1 docs: strategy canon HTML review + builder script
-be8cf99 fix: US-1605 — wire inject_pipeline_deps, remove deprecated strategy_router
-6a4f1d4 docs: add strategy canon TRADING_RULES and EQUATIONS
-67e52e2 fix: complete trading-days stats endpoint; extend CI with approval notify tests
-6f3ec61 feat: Sprint 14 extended — cost tracking, SQLite paper state, E2E smoke, trade journal + WFE widgets
 ```
 
 ---
 
-## US-1603 CRITICAL FINDINGS — NEW P0 BLOCKERS FOR SPRINT 17
+## CRITICAL FINDINGS FROM SPRINT 17 — CHANGES SPRINT 18 SHAPE
 
-These findings fundamentally change Sprint 17's shape. **All three must be fixed before signal frequency verification, MES work, or any dashboard P&L numbers can be trusted.**
+### Finding 1 — The 416 trades were a miscount (IMPORTANT)
+The earlier estimate of 416 JSON trades was wrong. The actual live paper trade source is `engine/portfolio/trades.jsonl` with only **11 trades total** (9 inserted into SQLite, 2 dupes). The 416 figure came from backtest result files, not the live trading engine. This means:
+- The 30-day validation gate (60 trades) is at 11/60 after ~2 days
+- Signal frequency (US-1601 fix) needs verification immediately — we need ~2/day per instrument
+- The real paper trade P&L picture is much smaller than assumed
 
-### P0-A: Ghost Database
-`engine/jarvis_trader.db` is a **0-byte ghost file**. The real database is at `engine/data/jarvis_trader.db`. Any code reading from `engine/jarvis_trader.db` gets an empty database. This explains why the dashboard shows anomalous balances and why validation gate stats look wrong.
+### Finding 2 — MES WFE = 0.0 at 1h STC (all 10 experiments)
+Every MES walk-forward experiment returned WFE = 0.0. The 1h STC signal has no generalizable edge for MES regardless of OS/OB/ATR parameter combinations. Root cause: insufficient 1h MES historical data available via current Polygon key. Sprint 18 must:
+1. Rotate the Polygon API key (current one needs rotation per agent report)
+2. Fetch 4h and 15m MES data
+3. Run experiments 11-30 on 4h timeframe specifically
 
-### P0-B: NULL pnl in All Paper Trades
-All 6 SQLite paper trades have `pnl = NULL`. The `close_trade()` path in `portfolio/tracker.py` never writes the P&L value back to SQLite on trade close. This means:
-- The learning loop consolidator (just wired in US-1604) will process trades with NULL pnl — garbage in, garbage out
-- The ValidationGatesWidget profit factor calculation is broken
-- The $1,772.33 balance anomaly is explained: portfolio endpoint was computing from NULL + wrong DB path
-
-### P0-C: Dual Storage Divergence
-**416 trades exist in JSON files** vs **6 trades in SQLite**. JSON is the actual source of truth — the paper trading engine has been writing to JSON all along. SQLite was intended to be the canonical store but the write path was never completed. This means:
-- 410 trades are invisible to any endpoint reading SQLite
-- The learning loop is training on 6 records instead of 416
-- Validation gate trade count (60-trade gate) is reading 6 instead of the real number
+### Finding 3 — Real paper trade count is 11, not 416
+Only 11 trades are in `portfolio/trades.jsonl`. Of these, some are open (MCL positions), some closed. The $7 total P&L mentioned earlier from 3 closed trades is likely accurate. The validation gate clock is running but signal frequency is the critical metric to check now.
 
 ---
 
-## SPRINT 17 — SHAPE AND PRIORITIES
-
-Sprint 17 prd.json is written at `C:\Users\mattm\ThinkorSwim\jarvis-trader\prd.json`.
-
-**Priority order**: DB fixes first (US-1701, 1702, 1703), then MES foundation (US-1704, 1705).
-
-| Story | Title | Priority |
-|-------|-------|----------|
-| US-1701 | Fix ghost DB path — canonicalize to engine/data/jarvis_trader.db | 1 |
-| US-1702 | Fix NULL pnl — complete the SQLite close_trade() write path | 2 |
-| US-1703 | Unify dual storage — migrate 416 JSON trades into SQLite | 3 |
-| US-1704 | Recover n-autoresearch experiment loop files | 4 |
-| US-1705 | MES search space definition + first 10 experiments | 5 |
-
----
-
-## CURRENT SYSTEM STATE (post-Sprint 16)
+## CURRENT SYSTEM STATE (post-Sprint 17)
 
 ### Engine (port 8010)
-- **Status**: Requires `.\restart_engine.ps1` to activate Sprint 16 changes (migration + scheduler jobs)
-- **Tests**: 1,209 passed, 94 skipped, 0 failures
-- **DB**: TWO databases exist — `engine/jarvis_trader.db` (0-byte ghost), `engine/data/jarvis_trader.db` (real, 6 SQLite trades + 416 JSON trades)
-- **STC pre-filter**: Now config-driven. LOW=15, HIGH=83. Signals at OS/OB extremes skip LLM; mid-range signals go through full pipeline.
-- **MCL params**: OS=23, stop=0.50, T1=1.00 (walk-forward validated)
-- **Learning loop**: Wired but will process NULL pnl until US-1702 is fixed
-- **Anthropic credits**: Confirmed $50+ — LLM pipeline fully operational
+- **DB path**: Canonicalized to `engine/data/jarvis_trader.db` via `SQLITE_DB_PATH` in `config.py`
+- **P&L tracking**: Fixed — `close_trade()` now computes pnl using `INSTRUMENT_MULTIPLIERS`
+- **Paper trades in SQLite**: 9 records (migrated from JSONL)
+- **STC pre-filter**: Config-driven, LOW=15/HIGH=83 (Sprint 16 fix)
+- **MCL params**: OS=23, stop=0.50, T1=1.00 (WF validated)
+- **Learning loop**: Wired — nightly consolidator at 04:00 ET, trade classifier on close
+- **Experiment loop**: `engine/strategies/experiment_log.py`, `run_experiment.py`, `search_strategy.py` all committed
+- **MES experiments**: 10 run, all WFE=0.0 at 1h. Report at `docs/reports/sprint17_mes_experiment_round1.md`
 
 ### Dashboard (port 3010)
 - **Build**: 26/26 routes, 0 TypeScript errors
-- **Validation gates**: Reading from wrong/empty DB until US-1701/1702 fixed
+- **Experiment status**: `GET /experiments/mes/status` endpoint live
 
 ### Paper Trading
-- **Real trade count**: 416 trades in JSON (source of truth), 6 in SQLite (broken)
-- **P&L**: Cannot be trusted until NULL pnl is fixed and dual storage unified
-- **30-day validation clock**: Started 2026-04-02. Day 1 = 2026-04-02. Must complete by 2026-05-02.
+- **Real live trades**: 11 in `portfolio/trades.jsonl` → 9 in SQLite
+- **Validation gate progress**: ~11/60 trades, Day 1-2 of 30
+- **Signal frequency**: UNVERIFIED — must check after engine restart
 
 ### Validated Instruments
 | Symbol | TF | WFE | Status |
 |--------|----|-----|--------|
-| MCL | 1h | 0.82 | APPROVED — paper active, now using WF params (OS=23) |
+| MCL | 1h | 0.82 | APPROVED — paper active, WF params (OS=23) |
 | MNQ | 1h | 0.57 | APPROVED — paper active |
 | MGC | 1d | 0.14 | HALTED |
-| MES | 1h | 0.09 | DO NOT TRADE — experiment loop development pending |
+| MES | 1h | 0.09 | DO NOT TRADE — 1h STC WFE=0.0, need 4h/15m data (Polygon key rotation required) |
 
 ---
 
-## SPRINT 17 CLAUDE CODE PROMPT
+## IMMEDIATE ACTIONS REQUIRED (Matt — before Sprint 18)
 
-Paste this into a fresh Cursor Claude Code terminal after Task 2 (ops setup) is complete:
-
-> "Read `prd.json` at the project root and run `/ralph` to execute Sprint 17.
->
-> **Critical context**: US-1603 from Sprint 16 found 3 database P0 blockers that must be fixed before any MES or signal work:
-> 1. Ghost DB: `engine/jarvis_trader.db` is 0-byte. Real DB is `engine/data/jarvis_trader.db`. All DB path references need to point to the data/ subdirectory.
-> 2. NULL pnl: All paper trades in SQLite have `pnl = NULL` because `close_trade()` in `portfolio/tracker.py` never writes pnl back to SQLite on close.
-> 3. Dual storage: 416 trades in JSON, 6 in SQLite. JSON is source of truth. Need migration to SQLite.
->
-> Work stories in priority order: US-1701 → 1702 → 1703 → 1704 → 1705. Each story must pass `cd engine && .venv/Scripts/python -m pytest tests/ -v` with 0 failures before the next begins. 5 parallel agents should be deployed and maintained throughout."
-
----
-
-## IMMEDIATE ACTIONS REQUIRED (Matt — before Sprint 17)
-
-1. **`.\restart_engine.ps1`** — activates Sprint 16 APScheduler jobs and MCL param changes
-2. **Set `IB_ACCOUNT_ID`** in `engine/.env` (replace `YOUR_IBKR_ACCOUNT_ID`)
-3. **Start IB Gateway** in paper mode (port 4002) if not running
+1. **`.\restart_engine.ps1`** — activates all Sprint 16+17 changes
+2. **Set `IB_ACCOUNT_ID`** in `engine/.env` (replace `YOUR_IBKR_ACCOUNT_ID`) if not done
+3. **Rotate Polygon API key** — current key cannot fetch sufficient MES historical data. Go to polygon.io, generate a new key, update `engine/.env` POLYGON_API_KEY.
 4. **Run smoke test**: `cd engine && .venv\Scripts\python ..\scripts\smoke_test_approvals.py`
-5. **Do NOT run signal frequency check yet** — the 416 JSON vs 6 SQLite divergence means the query will return wrong results until US-1701/1702/1703 are complete
+5. **Run signal frequency check** (48h after restart):
+```powershell
+cd C:\Users\mattm\ThinkorSwim\jarvis-trader\engine
+.venv\Scripts\python -c "
+import sqlite3
+conn = sqlite3.connect('data/jarvis_trader.db')
+cur = conn.cursor()
+cur.execute(\"SELECT symbol, COUNT(*) as signals, DATE(created_at) as day FROM trade_signals GROUP BY symbol, day ORDER BY day DESC LIMIT 20\")
+for row in cur.fetchall(): print(row)
+"
+```
 
 ---
 
-## FULL TODO LIST (updated)
+## SPRINT 18 — SHAPE AND PRIORITIES
+
+Sprint 18 prd.json is written at `C:\Users\mattm\ThinkorSwim\jarvis-trader\prd.json`.
+
+| Story | Title | Priority |
+|-------|-------|----------|
+| US-1801 | Rotate Polygon key + fetch MES 4h/15m historical data | 1 |
+| US-1802 | MES experiments 11-30 on 4h timeframe | 2 |
+| US-1803 | Signal frequency audit + validation gate status report | 3 |
+| US-1804 | RL training baseline — 100 PPO episodes on MES | 4 |
+| US-1805 | MCL/MNQ parallel scan confirmation + trade count projection | 5 |
+
+---
+
+## SPRINT 18 CLAUDE CODE PROMPT
+
+Paste this into a fresh Cursor Claude Code terminal:
+
+> "Read `prd.json` at the project root and run `/ralph` to execute Sprint 18.
+>
+> **Critical context**: Sprint 17 complete (1,212 tests passing). Two key findings shape Sprint 18:
+> 1. MES WFE=0.0 across all 10 experiments at 1h — the Polygon API key needs rotation to fetch 4h/15m MES data. Without fresh data, MES experiments are meaningless. US-1801 must rotate the key and fetch data before US-1802 runs experiments.
+> 2. Only 11 real paper trades exist in portfolio/trades.jsonl (not 416 — that was a miscount from backtest files). The 60-trade validation gate is at ~11/60. Signal frequency after the US-1601 pre-filter fix is the most important metric to verify.
+>
+> Work stories in priority order: US-1801 → 1802 → 1803 → 1804 → 1805. Each story must pass `cd engine && .venv/Scripts/python -m pytest tests/ -v` with 0 failures before the next begins. Deploy and maintain 5 parallel agents throughout."
+
+---
+
+## FULL TODO LIST (updated post-Sprint 17)
 
 | Priority | Item | Status | Sprint |
 |----------|------|--------|--------|
-| P0 | Fix ghost DB path (jarvis_trader.db → data/jarvis_trader.db) | NOT STARTED | S17 US-1701 |
-| P0 | Fix NULL pnl in close_trade() SQLite write path | NOT STARTED | S17 US-1702 |
-| P0 | Migrate 416 JSON trades into SQLite (unify dual storage) | NOT STARTED | S17 US-1703 |
-| P0 | Restart engine + run smoke test | Matt action | Immediate |
-| P0 | Set IB_ACCOUNT_ID in engine/.env | Matt action | Immediate |
-| P1 | Recover n-autoresearch experiment loop files | NOT STARTED | S17 US-1704 |
-| P1 | MES search space + first 10 experiments | NOT STARTED | S17 US-1705 |
-| P1 | Signal frequency verification (after US-1701/1702/1703) | Matt action | Post-S17 DB fix |
-| P2 | MCL/MNQ parallel scan confirmation | NOT STARTED | S17 or standalone |
-| P2 | MES parameter search experiments 11–30 | NOT STARTED | S18 |
-| P2 | RL 500-episode training run (MES) | NOT STARTED | S17–S18 parallel |
-| P3 | MES experiment dashboard endpoint | NOT STARTED | S17 US-1705 |
-| P3 | Learning loop feedback validation | After DB fix | Post-S17 |
-| P3 | Sprint 18 prd.json authoring | NOT STARTED | After S17 complete |
+| P0 | Restart engine (activate S16+S17 changes) | Matt action | Immediate |
+| P0 | Rotate Polygon API key | Matt action | Immediate |
+| P0 | Rotate Polygon key + fetch MES 4h/15m data | NOT STARTED | S18 US-1801 |
+| P0 | MES experiments 11-30 on 4h timeframe | NOT STARTED | S18 US-1802 |
+| P1 | Signal frequency audit + validation gate status | NOT STARTED | S18 US-1803 |
+| P1 | RL training baseline — 100 PPO episodes MES | NOT STARTED | S18 US-1804 |
+| P1 | MCL/MNQ parallel scan confirmation | NOT STARTED | S18 US-1805 |
+| P2 | Signal frequency check (48h after restart) | Matt action | Post-restart |
+| P2 | MES experiments 21-30 (if 4h WFE promising) | NOT STARTED | S18-S19 |
+| P3 | MES paper validation protocol (if WFE gate passes) | NOT STARTED | S19 |
+| P3 | Sprint 19 prd.json authoring | NOT STARTED | After S18 complete |
 
 ---
 
 ## KEY DECISIONS (standing)
 
-- **MES**: DO NOT TRADE until WFE ≥ 0.50 via experiment loop. RL agent (PPO) is the MES sandbox. Proper path: experiment loop → WFE gate → isolated paper validation → Tier 3 sign-off.
-- **Workflow**: Cowork = strategy/planning/PRD authoring. Claude Code in Cursor = all coding/testing/git.
-- **5-agent protocol**: Always maintain 5 parallel agents in Cursor. Replace on completion. Saved to MEMORY.md.
-- **DB canonical path**: After US-1701, all code must reference `engine/data/jarvis_trader.db`. Never `engine/jarvis_trader.db`.
-- **JSON vs SQLite**: After US-1703, SQLite is canonical. JSON files become archive/backup only.
-
----
-
-## GIT STATE (post-Sprint 16)
-
-**Branch**: master (5 commits ahead of origin/master)
-
-**Last 10 commits**:
-```
-6462b85 feat: US-1606 — enhance DB health reporting with additional checks
-8270c43 docs: US-1603 — DB health report (ghost DB, NULL pnl, dual storage)
-1654c5a feat: US-1604 — wire nightly learning consolidator + trade classifier hook
-e75fb4a chore: US-1601/02/05 marked passes:true in prd.json
-93464ae feat: US-1602 — MCL WF params (OS=23/stop=0.50/T1=1.00), composite exit fix
-48af2d1 docs: strategy canon HTML review + builder script
-be8cf99 fix: US-1605 — wire inject_pipeline_deps, remove deprecated strategy_router
-6a4f1d4 docs: add strategy canon TRADING_RULES and EQUATIONS
-67e52e2 fix: complete trading-days stats endpoint; extend CI with approval notify tests
-6f3ec61 feat: Sprint 14 extended — cost tracking, SQLite paper state, E2E smoke, trade journal + WFE widgets
-```
-
-**Uncommitted changes**: None (all Sprint 16 work committed)
-**Untracked**: tradingview-mcp (submodule with modified content — do not commit)
+- **MES**: DO NOT TRADE until WFE ≥ 0.50. 1h STC exhausted (WFE=0.0). Next: 4h timeframe with fresh Polygon data.
+- **Workflow**: Cowork = strategy/planning/PRD. Claude Code in Cursor = all coding/testing/git.
+- **5-agent protocol**: Always maintain 5 parallel agents in Cursor. Saved to MEMORY.md.
+- **DB canonical path**: `engine/data/jarvis_trader.db` via `SQLITE_DB_PATH` in `config.py`.
+- **SQLite is canonical**: JSON write path removed in US-1703. All new trades write to SQLite only.
+- **INSTRUMENT_MULTIPLIERS**: MCL=100, MNQ=2, MES=5, MGC=10. Defined in `config.py`.
+- **Validation gate clock**: Started 2026-04-02. Target 60 trades by 2026-05-02. Currently ~11/60.
 
 ---
 
@@ -189,5 +172,5 @@ be8cf99 fix: US-1605 — wire inject_pipeline_deps, remove deprecated strategy_r
 
 ---
 
-*Handoff updated: 2026-04-03 post-Sprint 16 completion*
-*Next action: Matt runs ops setup (restart + .env), then Sprint 17 prompt into fresh Cursor session*
+*Handoff updated: 2026-04-03 post-Sprint 17 completion*
+*Next action: Matt rotates Polygon key + restarts engine, then Sprint 18 prompt into fresh Cursor session*

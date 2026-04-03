@@ -1,96 +1,90 @@
 {
-  "project": "JARVIS TRADER Sprint 17 — The Database Fix",
-  "branchName": "ralph/database-fix",
-  "description": "Sprint 16 US-1603 uncovered three critical database blockers that corrupt every P&L metric, validation gate, and learning loop feed in the system: (1) engine/jarvis_trader.db is a 0-byte ghost file — real DB is engine/data/jarvis_trader.db, (2) all paper trades have NULL pnl because close_trade() never writes P&L to SQLite, (3) 416 trades exist in JSON files vs only 6 in SQLite — JSON is the real source of truth but all endpoints query SQLite. These must be fixed before any MES experiment work, signal frequency verification, or learning loop feedback can be trusted. After the DB fix trilogy, Sprint 17 completes with n-autoresearch file recovery and MES experiment foundation setup.",
+  "project": "JARVIS TRADER Sprint 18 — Phase 1 System Verification",
+  "branchName": "ralph/phase1-verification",
+  "description": "Phase 1 goal is a working system, not strategy optimization. The trading strategy (parameters, rules, WFE targets) has not been approved and will be built from scratch in Phase 2. Sprint 18 verifies the system works end-to-end: engine starts cleanly, schedulers fire on schedule, signals reach the pipeline, trades flow from approval through to IB Gateway paper fill, and the dashboard shows accurate real-time data. No parameter tuning, no WFE experiments, no RL training.",
   "userStories": [
     {
-      "id": "US-1701",
-      "title": "Fix ghost DB path — canonicalize to engine/data/jarvis_trader.db",
-      "description": "As the system operator, I need all database connections to point to the real database at engine/data/jarvis_trader.db instead of the 0-byte ghost at engine/jarvis_trader.db so that every endpoint, test, and learning loop reads real data.",
+      "id": "US-1801",
+      "title": "Engine health verification — confirm clean startup and scheduler firing",
+      "description": "As the system operator, I need to verify the engine starts without errors, all routers register correctly, and all APScheduler jobs are registered and firing on schedule so I know the system is operationally sound.",
       "acceptanceCriteria": [
-        "Search all Python files in engine/ for references to 'jarvis_trader.db' that do NOT include 'data/' in the path: grep -rn \"jarvis_trader.db\" engine/ --include='*.py' | grep -v 'data/jarvis_trader'. List every file and line number found.",
-        "For each file found: update the path string to 'data/jarvis_trader.db' or use the canonical path constant if one exists. If a DB_PATH constant exists in engine/config.py or engine/database/, update it there and confirm all other files import from it rather than hardcoding the path.",
-        "Confirm engine/data/jarvis_trader.db exists and passes PRAGMA integrity_check: cd engine && .venv/Scripts/python -c \"import sqlite3; conn = sqlite3.connect('data/jarvis_trader.db'); print(conn.execute('PRAGMA integrity_check').fetchone())\"",
-        "Run PRAGMA integrity_check on the real DB and confirm it returns 'ok'. If not ok, run the WAL rebuild: sqlite3 data/jarvis_trader.db '.dump' | sqlite3 data/jarvis_trader_clean.db and replace the original.",
-        "Delete or rename engine/jarvis_trader.db (the 0-byte ghost) to engine/jarvis_trader.db.ghost so it cannot accidentally be used: mv engine/jarvis_trader.db engine/jarvis_trader.db.ghost",
-        "Run full test suite: cd engine && .venv/Scripts/python -m pytest tests/ -q --tb=short. Target: same pass count as Sprint 16 baseline (1209 passed, 0 failures). Any test that hardcodes the old path will now fail and must be updated.",
-        "Write a one-paragraph note in docs/reports/sprint17_db_path_fix.md confirming the canonical path, listing all files updated, and the integrity check result.",
+        "Start the engine: cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010 (NO --reload flag). Capture the startup log output. Confirm: zero ERROR or CRITICAL lines during startup, all routers listed as registered, APScheduler shows all 6 jobs scheduled (market_open_scan, eod_summary, morning_briefing, weekly_review, vix_hourly, nightly_learning_consolidator).",
+        "Hit the health endpoint: GET http://localhost:8010/health — confirm HTTP 200 and response includes engine_status: 'ok'.",
+        "Hit the scheduler status endpoint if it exists: GET http://localhost:8010/scheduler/jobs — list all scheduled jobs with their next_run_time. If endpoint does not exist, add GET /scheduler/jobs to engine/routers/scheduler_router.py returning [{id, name, next_run_time, trigger}] for all registered APScheduler jobs.",
+        "Trigger a manual scan to verify the pipeline runs end-to-end without crashing: POST http://localhost:8010/scanner/run or equivalent endpoint with body {symbol: 'MCL'}. Confirm HTTP 200 and no 500 errors in logs. The result can be HOLD or a signal — what matters is the pipeline completed without exception.",
+        "Check engine logs for any recurring errors after 10 minutes of uptime: look for repeated ERROR lines that indicate a background task is failing silently.",
+        "Write docs/reports/sprint18_system_health.md with: startup log summary (errors/warnings count), list of registered APScheduler jobs with next_run_time, manual scan result, any recurring errors found.",
         "All Python ruff-clean. 0 test failures."
       ],
       "priority": 1,
-      "passes": true,
-      "notes": "Ghost DB at engine/jarvis_trader.db is 0-byte. Real DB confirmed at engine/data/jarvis_trader.db with 6 SQLite paper trades."
+      "passes": false,
+      "notes": "Engine requires restart after S16/S17 changes. Run without --reload flag per CLAUDE.md safety rules."
     },
     {
-      "id": "US-1702",
-      "title": "Fix NULL pnl — complete the SQLite close_trade() write path",
-      "description": "As a trader, I need paper trade P&L to be correctly written to SQLite when a trade closes so that the ValidationGatesWidget, learning loop, and all P&L endpoints show accurate numbers instead of NULL.",
+      "id": "US-1802",
+      "title": "Paper trade end-to-end flow verification",
+      "description": "As a trader, I need to verify that the complete paper trade flow works without errors — from signal generation through approval through SQLite write through IB Gateway paper routing — so I know the system can actually execute trades.",
       "acceptanceCriteria": [
-        "Read engine/portfolio/tracker.py close_trade() function in full. Identify: (a) where exit_price is set, (b) where pnl should be computed (entry_price vs exit_price × contract multiplier × direction), (c) the exact SQL UPDATE or INSERT that writes the closed trade back to SQLite — and confirm whether pnl is included in that statement.",
-        "If pnl is missing from the UPDATE statement: add it. For futures contracts, pnl = (exit_price - entry_price) × quantity × contract_multiplier for LONG, and (entry_price - exit_price) × quantity × contract_multiplier for SHORT. MCL multiplier = 100 (micro crude oil = 100 barrels). MNQ multiplier = 2 (micro Nasdaq = $2/point). Use a INSTRUMENT_MULTIPLIERS dict in config.py if one exists, otherwise add it.",
-        "After the fix, manually close a test trade by inserting an open paper_trade row into engine/data/jarvis_trader.db, then calling close_trade() via a test script, and confirming the closed row has a non-NULL pnl value.",
-        "Run the existing paper trades in SQLite through a retroactive pnl calculation: for all 6 existing SQLite trades with NULL pnl, if entry_price and exit_price are both non-NULL, compute and UPDATE pnl in place. Write this as a one-time migration script at engine/scripts/backfill_pnl.py and run it.",
-        "Confirm the ValidationGatesWidget endpoint now returns non-NULL PF and Sharpe values: GET http://localhost:8010/paper-validation/summary/eod — response should have numeric values, not null.",
-        "Run full test suite: 0 failures. All Python ruff-clean.",
-        "Append findings to docs/reports/sprint17_db_path_fix.md: what the pnl write bug was, what the fix was, what the contract multipliers are for each instrument."
+        "Verify a pending approval can be created: POST http://localhost:8010/pipeline/run or equivalent with symbol='MCL'. If the pipeline returns HOLD, that is acceptable — confirm a pending_approval row was NOT created (HOLD should not create approvals). If it returns a BUY/SELL signal, confirm a pending_approval row WAS created in engine/data/jarvis_trader.db.",
+        "If no live signal is available, inject a test approval directly: POST http://localhost:8010/approvals/pending with a synthetic MCL BUY approval payload. Confirm HTTP 201 and the row appears in the pending_approvals table in SQLite.",
+        "Approve the pending trade: POST http://localhost:8010/approvals/{id}/approve. Confirm: (a) paper_trades table gets a new row with status='open', entry_price non-NULL, pnl=NULL (trade is open), (b) the response includes execution field showing either 'placed' (IB Gateway connected) or 'broker_unavailable' (IB Gateway not running — this is acceptable).",
+        "Close the test trade: POST http://localhost:8010/paper/close/{trade_id} or equivalent with exit_price. Confirm: (a) paper_trades row updates to status='closed', exit_price non-NULL, pnl non-NULL (computed by the US-1702 fix), (b) the learning classifier hook fires (check logs for '[LEARNING] Trade classified' line).",
+        "Query final state: SELECT symbol, direction, entry_price, exit_price, pnl, status FROM paper_trades WHERE id={trade_id}. Confirm all fields non-NULL and pnl = correct computed value.",
+        "Append results to docs/reports/sprint18_system_health.md: E2E flow result (pass/fail), each step's HTTP status, final paper_trades row, pnl computation accuracy.",
+        "All Python ruff-clean. 0 test failures."
       ],
       "priority": 2,
-      "passes": true,
-      "notes": "DONE 2026-04-03. close_trade() now computes pnl with contract multipliers (MCL=100, MNQ=2, MES=5, MGC=10). backfill_pnl.py written at engine/scripts/backfill_pnl.py. Sprint17_db_path_fix.md updated with pnl fix details."
+      "passes": false,
+      "notes": "IB Gateway may not be running — broker_unavailable is acceptable. The critical path is SQLite write correctness, not IB fill."
     },
     {
-      "id": "US-1703",
-      "title": "Unify dual storage — migrate 416 JSON trades into SQLite",
-      "description": "As the system operator, I need all 416 paper trades currently stored in JSON files to be migrated into SQLite so that the database is the single source of truth and all endpoints, validation gates, and learning loops see the complete trade history.",
+      "id": "US-1803",
+      "title": "Dashboard data accuracy verification",
+      "description": "As a trader, I need the dashboard to show accurate real-time data — correct trade count, correct P&L, and correct validation gate status — now that the DB path and pnl write fixes from Sprint 17 are in place.",
       "acceptanceCriteria": [
-        "Locate the JSON trade files: find the path(s) where paper trades are stored as JSON. Likely candidates: engine/data/paper_trades/*.json, engine/paper/*.json, or engine/data/trades.jsonl. Run: find engine/ -name '*.json' -path '*/paper*' -o -name '*.jsonl' | head -20 to identify them.",
-        "Read the JSON schema for one trade record. Map each JSON field to the corresponding SQLite paper_trades column. Note any fields that exist in JSON but not in SQLite (add columns if needed via ALTER TABLE) and any fields in SQLite that don't exist in JSON (these stay NULL).",
-        "Write a migration script at engine/scripts/migrate_json_to_sqlite.py that: (a) reads all JSON/JSONL trade records, (b) computes pnl for closed trades if not already present using the multiplier logic from US-1702, (c) INSERTs each record into paper_trades with ON CONFLICT IGNORE to avoid duplicates, (d) prints a summary: records_read, records_inserted, records_skipped_duplicate.",
-        "Run the migration script: cd engine && .venv/Scripts/python scripts/migrate_json_to_sqlite.py. Confirm output shows approximately 416 records_read and 410 new records_inserted (6 already exist from prior SQLite writes).",
-        "After migration, update the paper trade write path so all new trades write ONLY to SQLite going forward — remove or archive the JSON write path. Add a comment: '# JSON write path removed Sprint 17 US-1703 — SQLite is now canonical'.",
-        "Verify the ValidationGatesWidget now shows the correct trade count (target: close to 416 total, minus any that were still open at migration time): GET http://localhost:8010/paper-validation/summary/eod — trades_closed field should be non-trivial.",
-        "Verify the learning loop consolidator can now see all trades: cd engine && .venv/Scripts/python -c \"from learning.consolidator import TradingMemoryConsolidator; import asyncio; c = TradingMemoryConsolidator(); print(asyncio.run(c.consolidate_daily()))\"",
-        "Run full test suite: 0 failures. All Python ruff-clean.",
-        "Write docs/reports/sprint17_storage_unification.md documenting: JSON file location(s), record count before/after, schema mapping, any schema changes made to paper_trades table."
+        "With the engine running, open the dashboard at http://localhost:3010. Navigate to the main dashboard page. Confirm no console errors, no 'Failed to fetch' errors, and the widgets load within 5 seconds.",
+        "Navigate to Pending Approvals (/trades/pending-approvals). Confirm the page loads and SWR refresh is working (check that the 'Last updated' timestamp updates every 5 seconds).",
+        "Navigate to the Validation Gates page (/paper/validation/gates). Confirm: (a) trade count shows the actual number of paper trades (should be close to 9-11 from the migration), (b) PF and Sharpe show numeric values (not null/NaN/undefined), (c) days elapsed shows correct count from 2026-04-02.",
+        "Navigate to Paper Trading (/paper or equivalent). Confirm the balance widget shows a non-zero, non-anomalous value consistent with starting capital +/- actual closed trade PnL.",
+        "Hit GET http://localhost:8010/paper-validation/summary/eod directly. Confirm all numeric fields (trades_closed, profit_factor, sharpe_ratio, win_rate, max_drawdown) are numbers, not null.",
+        "Document any dashboard widget that still shows null, NaN, or clearly wrong data — these become targeted bugs for Sprint 19 rather than blockers for Sprint 18.",
+        "Append results to docs/reports/sprint18_system_health.md: dashboard page health summary, any widgets still broken, EOD summary endpoint response."
       ],
       "priority": 3,
-      "passes": true,
-      "notes": "DONE 2026-04-03. 11 unique JSONL trades → 9 inserted, 2 skipped (already in SQLite). Migration script at engine/scripts/migrate_json_to_sqlite.py. JSON write path marked for removal in tracker.py."
+      "passes": false,
+      "notes": "DB fixes from Sprint 17 should make dashboard numbers accurate for first time. Document any remaining null widgets."
     },
     {
-      "id": "US-1704",
-      "title": "Recover n-autoresearch experiment loop files and wire CLI entry point",
-      "description": "As a developer, I need the n-autoresearch experiment loop infrastructure committed to master and accessible via a CLI entry point so that MES parameter search experiments can be run in Sprint 17 US-1705 and Sprint 18.",
+      "id": "US-1804",
+      "title": "IB Gateway E2E smoke test",
+      "description": "As a trader, I need to verify that IB Gateway paper trading is reachable and that a paper order can be routed through the approval system to IB so that the broker connection is confirmed working before live paper trading begins.",
       "acceptanceCriteria": [
-        "Check if these files exist on disk: engine/strategies/experiment_log.py, engine/strategies/run_experiment.py, engine/strategies/search_strategy.py. Run: ls engine/strategies/ to see the full listing.",
-        "If files exist: verify they are importable (python -c 'from strategies.experiment_log import ExperimentLog; print(\"OK\")') and git add + commit them as 'feat: recover n-autoresearch experiment loop files from prior session'.",
-        "If files do NOT exist: reconstruct from docs/session-logs/session-2026-04-03-n-autoresearch-experiment-loop.md which contains the full code from the prior Node session. Create all three files at engine/strategies/.",
-        "Verify rl_trainer.py in engine/strategies/ has WFE tracking additions from the n-autoresearch session. If missing, add: after each walk-forward fold evaluation, compute wfe = fold_pf_walkforward / fold_pf_insample and log to the experiment log.",
-        "Create engine/strategies/mes_search_space.json defining the MES parameter grid: timeframes ['15m','1h','4h'], stc_os [10,13,15,18,20,23,25], stc_ob [75,78,80,83,85,88], stop_atr_mult [0.40,0.50,0.60,0.70,0.80], t1_atr_mult [0.80,1.00,1.20,1.50,2.00], regime_required [3,4,5].",
-        "Add a CLI entry point: python -m strategies.run_experiment --symbol MES --config strategies/mes_search_space.json --n 1 should run 1 experiment and print the WFE result without error.",
-        "Add 3 unit tests in engine/tests/test_experiment_loop.py: ExperimentLog instantiation, dummy experiment log/read roundtrip, search_strategy returns valid param dict from seeded prior result.",
-        "Run full test suite: 0 failures. All Python ruff-clean."
+        "PREREQUISITE CHECK: Confirm IB_ACCOUNT_ID is set in engine/.env (not 'YOUR_IBKR_ACCOUNT_ID'). If not set, write clear instructions: 'ACTION REQUIRED: Open engine/.env and set IB_ACCOUNT_ID to your IBKR paper account ID (found in IB Gateway → Account menu). Then re-run this story.' Do not proceed past this check if not set.",
+        "PREREQUISITE CHECK: Confirm IB Gateway is running on port 4002 (paper mode): python -c \"import socket; s=socket.socket(); s.settimeout(2); result=s.connect_ex(('127.0.0.1',4002)); print('IB Gateway reachable' if result==0 else 'IB Gateway NOT reachable on 4002'); s.close()\". If not reachable, write instructions for starting IB Gateway and mark story as blocked-on-Matt.",
+        "If both prerequisites pass: run the existing smoke test script: cd engine && .venv/Scripts/python ../scripts/smoke_test_approvals.py. Capture full output.",
+        "If smoke test passes: attempt a live IB Gateway connection test via the engine's IBGatewayConnector: python -c \"import asyncio; from engine.execution.ib_gateway import IBGatewayConnector; conn = IBGatewayConnector(); asyncio.run(conn.connect()); print('Connected:', conn.is_connected())\" — run from the engine/ directory with the venv active.",
+        "Document result: connected / not connected / blocked-on-prerequisites. If connected, confirm the paper account ID matches and the connection is to port 4002 (not 4001 — live port is permanently blocked).",
+        "Append to docs/reports/sprint18_system_health.md: IB Gateway prereq check results, smoke test output, connection test result."
       ],
       "priority": 4,
-      "passes": true,
-      "notes": "feat/experiment-loop branch never existed. Files may be uncommitted on disk or need reconstruction from session log."
+      "passes": false,
+      "notes": "IB_ACCOUNT_ID must be set by Matt in engine/.env before this story can complete. IB Gateway must be running on port 4002 (paper mode only — port 4001 is permanently blocked)."
     },
     {
-      "id": "US-1705",
-      "title": "MES search space — run first 10 experiments and report best WFE",
-      "description": "As a trader developing MES as a future instrument, I need the first 10 walk-forward experiments run across the MES parameter search space so we have an initial WFE map and can determine whether any configuration shows promise toward the 0.50 gate.",
+      "id": "US-1805",
+      "title": "Daily ops runbook — what Matt runs every trading day",
+      "description": "As the system operator, I need a clear, tested daily checklist for starting, monitoring, and shutting down JARVIS TRADER each trading day so that operations are repeatable and nothing is forgotten.",
       "acceptanceCriteria": [
-        "Using the CLI from US-1704, run 10 experiments: python -m strategies.run_experiment --symbol MES --config strategies/mes_search_space.json --n 10. The search_strategy should select configurations intelligently (not random grid) — first 5 should be space-covering samples, next 5 should exploit the best region found in the first 5.",
-        "Each experiment must log to engine/strategies/experiment_log.json: config_used (all param values), wfe, pf_insample, pf_walkforward, sharpe_walkforward, trade_count, walkforward_window_months, timestamp.",
-        "After all 10 complete, print a summary table: rank by WFE descending, show top 3 configs with their WFE, PF_wf, and Sharpe_wf values.",
-        "Evaluate: if any config has WFE >= 0.30 (halfway to gate), note it as a promising region for Sprint 18 experiments 11-30. If no config exceeds WFE 0.15, the 1h STC signal type may have no MES edge — note that Sprint 18 should pivot to 4h timeframe experiments.",
-        "Write docs/reports/sprint17_mes_experiment_round1.md with: the 10 configs tested, their WFE results, the best config, and the recommendation for Sprint 18 experiment direction.",
-        "Add GET /experiments/mes/status to engine/routers/strategies_router.py returning: {experiments_run: int, best_wfe: float, best_config: dict, wfe_gate_passed: bool, gate_threshold: 0.50, sprint18_recommendation: str}. Read from engine/strategies/experiment_log.json.",
-        "Run full test suite: 0 failures. Dashboard build: 0 TypeScript errors. All Python ruff-clean."
+        "Read engine/docs/runbooks/ and docs/runbooks/ for any existing runbook content. Incorporate it rather than duplicating.",
+        "Write docs/runbooks/daily_ops.md covering the complete daily routine: (1) Pre-market startup sequence (IB Gateway → engine restart → smoke test → dashboard check), (2) RTH monitoring (what to watch, how to approve pending trades, when to intervene), (3) EOD shutdown sequence (confirm EOD job ran, check daily P&L, confirm DB written correctly), (4) What to do if engine crashes (restart command, log location, how to check for lost trades), (5) Weekly tasks (check rolling WFE dashboard, review learning loop output).",
+        "Include exact commands for every step — no vague instructions. Every command must use the correct venv path (.venv/Scripts/python), the correct DB path (engine/data/jarvis_trader.db), and the correct port (8010 engine, 3010 dashboard, 4002 IB Gateway paper).",
+        "Include a pre-market checklist table that Matt can scan in 60 seconds: engine running (Y/N), IB Gateway port 4002 (Y/N), smoke test passed (Y/N), Anthropic credits > $10 (Y/N), pending approvals reviewed (Y/N).",
+        "Test every command in the runbook by running it. Mark each with 'VERIFIED 2026-04-03' so future sessions know which commands are tested.",
+        "Append to docs/reports/sprint18_system_health.md: link to the new runbook, confirmation that all commands were verified."
       ],
       "priority": 5,
-      "passes": true,
-      "notes": "DONE 2026-04-03. 10 experiments run. All WFE=0.00 — MES has no STC edge at 1h (IS PF ranges 0.49-0.70, all below 1.0). Best OOS PF=0.64 (stc_os=13, stc_ob=83, stop=0.40, t1=0.80). 15m/4h experiments blocked by missing Polygon key (7/10 experiments got no data). Sprint 18 recommendation: pivot to 4h timeframe. run_walk_forward_for_params() added to walk_forward.py. Report: docs/reports/sprint17_mes_experiment_round1.md."
+      "passes": false,
+      "notes": "Runbook is the Phase 1 completion artifact. When Matt can run through this checklist every morning in under 5 minutes, Phase 1 is done."
     }
   ]
 }
