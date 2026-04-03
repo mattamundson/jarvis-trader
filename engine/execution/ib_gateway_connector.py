@@ -29,15 +29,26 @@ INTERFACE:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
 import uuid
 from datetime import datetime
-from typing import Optional
+from enum import Enum
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["IBGatewayConnector"]
+__all__ = ["IBGatewayConnector", "ConnectionState"]
+
+
+class ConnectionState(Enum):
+    """State transitions for IB Gateway connection."""
+
+    CONNECTED = "connected"
+    DISCONNECTING = "disconnecting"
+    RECONNECTING = "reconnecting"
+    FAILED = "failed"
 
 _FUTURES_ROOTS = frozenset(
     {
@@ -100,11 +111,19 @@ class IBGatewayConnector:
         self._positions = {}
         self._open_orders = {}
 
+        # Connection resilience
+        self._connection_state = ConnectionState.FAILED
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 3
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._on_disconnect_callback: Optional[Callable] = None
+        self._last_heartbeat: Optional[datetime] = None
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def connect(self) -> bool:
         """
-        Connect to IB Gateway.
+        Connect to IB Gateway with resilience.
 
         In paper trading mode: just initializes local state and paper trade logger.
         In live mode: Would connect to IB Gateway at IBKR_HOST:IBKR_PORT.
@@ -125,6 +144,21 @@ class IBGatewayConnector:
                 portfolio_tracker=self._portfolio_tracker,
             )
             self._connected = True
+            self._connection_state = ConnectionState.CONNECTED
+            self._reconnect_attempts = 0
+            self._last_heartbeat = datetime.utcnow()
+
+            # Notify safety layer of connection state change
+            self._notify_connection_state(ConnectionState.CONNECTED)
+
+            # Start heartbeat monitoring if not already running
+            if self._heartbeat_task is None or self._heartbeat_task.done():
+                self._heartbeat_task = asyncio.create_task(self._heartbeat())
+
+            logger.info(
+                "IBGatewayConnector: Connected. Heartbeat started. State=%s",
+                self._connection_state.value,
+            )
             return True
 
         # Live mode: not yet implemented
@@ -133,6 +167,8 @@ class IBGatewayConnector:
             "Set PAPER_TRADING=True for now."
         )
         self._connected = False
+        self._connection_state = ConnectionState.FAILED
+        self._notify_connection_state(ConnectionState.FAILED)
         return False
 
     async def disconnect(self) -> bool:
@@ -145,20 +181,154 @@ class IBGatewayConnector:
         Returns:
             True if successfully disconnected
         """
+        self._connection_state = ConnectionState.DISCONNECTING
+        logger.info("IBGatewayConnector: Disconnecting. State=%s", self._connection_state.value)
+
+        # Cancel heartbeat task if running
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                logger.debug("IBGatewayConnector: Heartbeat task cancelled")
+
         if self._ib_client:
             try:
-                # TODO: When live trading implemented, call self._ib_client.disconnect()
+                # Phase 3 (live trading): call self._ib_client.disconnect() for clean shutdown
                 pass
             except Exception as exc:
                 logger.error("Error disconnecting from IB Gateway: %s", exc)
 
         self._connected = False
+        self._connection_state = ConnectionState.FAILED
+        self._notify_connection_state(ConnectionState.FAILED)
         logger.info("IBGatewayConnector: Disconnected")
         return True
 
     def is_connected(self) -> bool:
         """Return True if connected to IB Gateway (or in paper trading simulation)."""
         return self._connected
+
+    async def _reconnect(self) -> bool:
+        """
+        Attempt to reconnect with exponential backoff.
+
+        Retries: 3 attempts at 2s, 4s, 8s intervals
+        On persistent failure, logs CRITICAL and emits safety event
+
+        Returns:
+            True if reconnect succeeded, False if all retries exhausted
+        """
+        if self._reconnect_attempts >= self._max_reconnect_attempts:
+            logger.critical(
+                "IBGatewayConnector: Max reconnect attempts (%d) exhausted. Connection FAILED.",
+                self._max_reconnect_attempts,
+            )
+            self._connection_state = ConnectionState.FAILED
+            self._notify_connection_state(ConnectionState.FAILED)
+            return False
+
+        self._reconnect_attempts += 1
+        backoff_seconds = 2 ** self._reconnect_attempts  # 2, 4, 8
+        logger.warning(
+            "IBGatewayConnector: Reconnect attempt %d/%d. "
+            "Waiting %d seconds before retry.",
+            self._reconnect_attempts,
+            self._max_reconnect_attempts,
+            backoff_seconds,
+        )
+
+        self._connection_state = ConnectionState.RECONNECTING
+        self._notify_connection_state(ConnectionState.RECONNECTING)
+
+        await asyncio.sleep(backoff_seconds)
+
+        # Attempt reconnect
+        success = await self.connect()
+        if success:
+            logger.info(
+                "IBGatewayConnector: Reconnection succeeded on attempt %d",
+                self._reconnect_attempts,
+            )
+            self._connection_state = ConnectionState.CONNECTED
+            self._notify_connection_state(ConnectionState.CONNECTED)
+            return True
+
+        # If still failed, try next retry
+        return await self._reconnect()
+
+    async def _heartbeat(self) -> None:
+        """
+        Monitor connection health every 60 seconds.
+
+        Checks if connection is still active. If disconnected,
+        triggers _reconnect() automatically.
+
+        The disconnection check runs at the TOP of each loop iteration
+        (before sleeping) so that a disconnect detected while sleeping is
+        caught on the very next wakeup, and so tests that cancel the sleep
+        immediately still exercise the reconnect path.
+        """
+        heartbeat_interval = 60
+
+        while True:
+            try:
+                # Check connection health at the start of every iteration.
+                # This ensures a disconnection is detected even if sleep is
+                # cancelled immediately (e.g. in tests).
+                if not self._connected:
+                    logger.warning(
+                        "IBGatewayConnector: Heartbeat detected disconnection. "
+                        "Triggering auto-reconnect."
+                    )
+                    # Reset retry counter on new disconnection
+                    self._reconnect_attempts = 0
+                    await self._reconnect()
+                else:
+                    self._last_heartbeat = datetime.utcnow()
+                    logger.debug(
+                        "IBGatewayConnector: Heartbeat OK. State=%s",
+                        self._connection_state.value,
+                    )
+
+                await asyncio.sleep(heartbeat_interval)
+
+            except asyncio.CancelledError:
+                logger.debug("IBGatewayConnector: Heartbeat task cancelled")
+                break
+            except Exception as exc:
+                logger.error("IBGatewayConnector: Heartbeat error: %s", exc, exc_info=True)
+
+    def _notify_connection_state(self, state: ConnectionState) -> None:
+        """
+        Notify safety layer of connection state changes.
+
+        Args:
+            state: New connection state
+        """
+        try:
+            if hasattr(self._safety_layer, "on_connection_state_change"):
+                self._safety_layer.on_connection_state_change(state)
+                logger.debug(
+                    "IBGatewayConnector: SafetyLayer notified of state change: %s",
+                    state.value,
+                )
+        except Exception as exc:
+            logger.error(
+                "IBGatewayConnector: Failed to notify SafetyLayer of state change: %s",
+                exc,
+                exc_info=True,
+            )
+
+    def set_on_disconnect_callback(self, callback: Callable[[ConnectionState], None]) -> None:
+        """
+        Register a callback to be invoked on disconnect events.
+
+        Args:
+            callback: Callable that accepts a ConnectionState enum value
+        """
+        self._on_disconnect_callback = callback
+        logger.debug("IBGatewayConnector: Disconnect callback registered")
 
     # ── Order Execution ───────────────────────────────────────────────────────
 
