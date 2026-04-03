@@ -508,7 +508,7 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         # In-memory close must always work
         self.assertFalse(closed_trade.is_open)
         self.assertAlmostEqual(closed_trade.exit_price, 5250.0)
-        self.assertAlmostEqual(closed_trade.pnl, 50.0)  # (5250-5200)*1
+        self.assertAlmostEqual(closed_trade.pnl, 250.0)  # (5250-5200)*1*5.0 (MES multiplier)
 
         # No open trades remaining in memory
         self.assertEqual(len(tracker.get_open_positions()), 0)
@@ -539,7 +539,7 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         closed_trade = tracker.close_trade(trade_id, exit_price=19600.0)
         self.assertIsNotNone(closed_trade)
         self.assertFalse(closed_trade.is_open)
-        self.assertAlmostEqual(closed_trade.pnl, 200.0)  # (19600 - 19500) * 2
+        self.assertAlmostEqual(closed_trade.pnl, 400.0)  # (19600 - 19500) * 2 * 2.0 (MNQ multiplier)
 
         positions_after = tracker.get_open_positions()
         self.assertEqual(len(positions_after), 0)
@@ -555,14 +555,14 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         tracker = self._make_tracker(db=None)
         trade_id = tracker.open_trade("MES", "buy", 3, 5000.0)
         closed = tracker.close_trade(trade_id, exit_price=5010.0)
-        self.assertAlmostEqual(closed.pnl, 30.0)  # (5010-5000)*3
+        self.assertAlmostEqual(closed.pnl, 150.0)  # (5010-5000)*3*5.0 (MES multiplier)
 
     def test_tracker_pnl_short(self) -> None:
         """P&L for a short trade: (entry - exit) * qty."""
         tracker = self._make_tracker(db=None)
         trade_id = tracker.open_trade("MES", "sell", 2, 5100.0)
         closed = tracker.close_trade(trade_id, exit_price=5080.0)
-        self.assertAlmostEqual(closed.pnl, 40.0)  # (5100-5080)*2
+        self.assertAlmostEqual(closed.pnl, 200.0)  # (5100-5080)*2*5.0 (MES multiplier)
 
 
 # ===========================================================================
