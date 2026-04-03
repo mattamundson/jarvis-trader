@@ -75,7 +75,7 @@ jobs:
   engine-test:
     name: Engine Tests (pytest)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -92,19 +92,8 @@ jobs:
 
       - name: Run pytest
         run: |
-          # Tier-1 gate: canonical signal + WFE scheduler tests (stable offline).
-          # Full engine/tests/ has mock/async debt on master; restore full suite in a follow-up PR.
-          pytest engine/tests/test_signals.py engine/tests/test_rolling_wfe.py \
-            engine/tests/test_cold_start_degraded.py \
-            engine/tests/test_portfolio_paper_trade_post.py \
-            engine/tests/test_api_contract_minimal.py \
-            engine/tests/test_p0_verify_mirror.py \
-            engine/tests/test_paper_runner_engine_sync.py \
-            engine/tests/test_exception_handler.py \
-            engine/tests/test_paper_trade_logger_tracker_mirror.py \
-            engine/tests/test_routes_wired.py \
-            engine/tests/test_pending_approval_notify.py \
-            engine/tests/test_pipeline_run_human_gate.py \
+          # Full suite (offline-first); live-engine tests skip when no localhost:8010 RL surface, etc.
+          pytest engine/tests/ \
             -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage artifact
