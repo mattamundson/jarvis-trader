@@ -1,13 +1,13 @@
 # PR queue (post restart_engine / CI green)
 
-Scheduled follow-ups from the 2026-04-03 plan. Each item should be a **narrow PR**.
+Scheduled follow-ups from the 2026-04-03 plan. Each item should be a **narrow PR** when picked up.
 
-| Order | Topic | Notes |
-|-------|--------|--------|
-| 1 | **Full test suite** | CI runs a Tier-1 subset; `engine/tests/` has async/mock/auth debt per session analysis. Expand only after triage. |
-| 2 | **OrderRouter / `route_order()`** | Dead path today — remove or wire with tests if the abstraction stays. |
-| 3 | **Dev API key hygiene** | Rotate `jarvis-dev-key-change-me` in local `.env`; never commit real keys (CI security grep). |
-| 4 | **Strategy / trading rules doc** | Single canon under `docs/strategy/` if not already satisfied by `TRADING_RULES.md` / `EQUATIONS.md`. |
-| 5 | **CI pytest expansion** | Add files to `.github/workflows/ci.yml` only when stable offline. |
+| Order | Topic | Status / notes |
+|-------|--------|----------------|
+| 1 | **Full test suite in CI** | **Done** — `.github/workflows/ci.yml` runs `pytest engine/tests/` (Apr 2026). |
+| 2 | **OrderRouter / `route_order()`** | **Wired** — `approval_router` calls injected `OrderRouter.route_order`; see `engine/routers/approval_router.py`. E2E coverage in `test_approval_to_order_e2e.py`. |
+| 3 | **Dev API key hygiene** | **Ops** — copy `engine/.env.example` to `.env`; set `API_KEY` and `NEXT_PUBLIC_ENGINE_API_KEY` to the same random value (never commit `.env`). |
+| 4 | **Strategy / trading rules doc** | **Canon** — see [docs/strategy/README.md](../strategy/README.md) (index to `TRADING_RULES.md`, `EQUATIONS.md`). |
+| 5 | **Pre-deploy test depth** | Optional — [deploy-check.yml](../../.github/workflows/deploy-check.yml) still runs a **Tier-1** pytest slice for speed; align with full suite if you want parity. |
 
 Local parity commands mirror [.github/workflows/ci.yml](../../.github/workflows/ci.yml).
