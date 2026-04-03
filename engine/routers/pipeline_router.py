@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+from collections import deque
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -9,6 +11,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 logger = logging.getLogger(__name__)
+
+# ── Signal Debug Log ──────────────────────────────────────────────────────────
+# Rolling log of the last 50 pipeline filter decisions (pre-filter + pass-through).
+# Populated by record_signal_debug() called from agents/pipeline.py.
+_signal_debug_log: deque = deque(maxlen=50)
+
+
+def record_signal_debug(entry: dict) -> None:
+    """Append a filter decision to the signal debug log."""
+    _signal_debug_log.append(entry)
 
 
 class PipelineRunRequest(BaseModel):
@@ -87,10 +99,23 @@ def set_notifier(notifier) -> None:
     _telegram_notifier = notifier
 
 
+@router.get("/signal-debug")
+async def get_signal_debug():
+    """Return the last 50 pipeline filter decisions.
+
+    Each entry contains:
+      - timestamp: ISO string of when the decision was made
+      - symbol: trading symbol
+      - stc_val: the STC value at decision time
+      - stage_blocked: one of 'pre_filter' | 'approved' | 'regime' | 'llm_confidence'
+      - reason: human-readable explanation
+    """
+    return {"entries": list(_signal_debug_log), "count": len(_signal_debug_log)}
+
+
 @router.post("/notifications/telegram/test")
 async def test_telegram():
     """Test Telegram notification config"""
-    from datetime import datetime
     from datetime import timezone as _tz
 
     try:
@@ -190,7 +215,6 @@ async def manual_scan():
 @router.post("/notifications/whatsapp/test")
 async def test_whatsapp():
     """Test WhatsApp notification config"""
-    from datetime import datetime
     from datetime import timezone as _tz
 
     try:

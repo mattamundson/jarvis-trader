@@ -686,13 +686,17 @@ class TestSTCPreFilter:
         assert mock_agents_dict["risk_manager"].call_count == 0
 
     @pytest.mark.asyncio
-    async def test_stc_near_oversold_does_not_pre_filter(
+    async def test_stc_at_oversold_does_not_pre_filter(
         self, mock_agents_dict, mock_safety_layer, disable_cache
     ):
-        """When STC is near OS (18 for MCL, below the mid-range threshold of 25),
-        the pre-filter must NOT trigger — pipeline proceeds to Stage 1."""
-        stc_near_os = 18.0  # 18 < 25 (OS+10), so NOT mid-range
-        sig_df = self._make_ohlcv_df(rows=30, stc_val=stc_near_os)
+        """When STC is AT or below OS=15 (skip-range LOW), the pre-filter must NOT
+        trigger — the OS crossover is an actionable signal and must reach Stage 1.
+
+        Sprint 16 updated defaults: LOW=15.0 (OS threshold), HIGH=83.0 (OB threshold).
+        STC=14 is below LOW → passes through. STC=18 is inside 15-83 → pre-filtered.
+        """
+        stc_at_os = 14.0  # 14 <= 15 (STC_MIDRANGE_SKIP_LOW), so NOT filtered
+        sig_df = self._make_ohlcv_df(rows=30, stc_val=stc_at_os)
 
         mock_data = MagicMock()
         mock_data.get_bars = AsyncMock(return_value=sig_df)

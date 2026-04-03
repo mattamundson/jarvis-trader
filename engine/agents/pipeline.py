@@ -136,12 +136,18 @@ class TradingPipeline:
                     cached["completed_at"] = datetime.now().isoformat()
                     return cached
 
-        # ── STC Mid-Range Pre-Filter (saves ~60-70% LLM cost) ─────────────
-        # Skip the full 5-stage pipeline when STC is between OS+10 and OB-10.
-        # No signal is possible in this zone — return HOLD immediately.
+        # ── STC Mid-Range Pre-Filter (configurable LLM cost optimisation) ──
+        # When STC_MIDRANGE_SKIP_ENABLED, skip the full LLM pipeline if STC
+        # is strictly between STC_MIDRANGE_SKIP_LOW and STC_MIDRANGE_SKIP_HIGH.
+        # Defaults: LOW=15, HIGH=83 (the OS/OB thresholds) — this means only
+        # readings already at/beyond the extreme thresholds are fast-pathed, and
+        # all mid-range values proceed to full LLM analysis. Set LOW=25/HIGH=73
+        # to restore the aggressive Sprint-14 cost-saving behaviour.
         # Any data/import error falls through to the full pipeline silently.
         try:
             from backtest.signals import INSTRUMENT_PARAMS, generate_instrument_signals
+            from config import settings as _cfg
+            from routers.pipeline_router import record_signal_debug
 
             _tech_agent = self._agents.get("technical")
             _data_mgr = getattr(_tech_agent, "_data", None)
@@ -157,13 +163,21 @@ class TradingPipeline:
                             symbol, (15, 83, 0.70, 1.00, 1.618, 2.618, True)
                         )
                         _stc_os, _stc_ob = int(_params[0]), int(_params[1])
-                        _mid_lo = _stc_os + 10
-                        _mid_hi = _stc_ob - 10
-                        if _mid_lo < _stc_val < _mid_hi:
+                        _mid_lo = float(_cfg.STC_MIDRANGE_SKIP_LOW)
+                        _mid_hi = float(_cfg.STC_MIDRANGE_SKIP_HIGH)
+                        if _cfg.STC_MIDRANGE_SKIP_ENABLED and _mid_lo < _stc_val < _mid_hi:
                             logger.info(
-                                f"[Pipeline] {symbol} STC={_stc_val:.1f} — "
-                                f"mid-range ({_mid_lo}–{_mid_hi}) pre-filter, skipping pipeline"
+                                "[Pipeline.Filter] symbol=%s stage=pre_filter "
+                                "stc_val=%.1f skip_range=(%.0f–%.0f) action=SKIP",
+                                symbol, _stc_val, _mid_lo, _mid_hi,
                             )
+                            record_signal_debug({
+                                "timestamp": datetime.now().isoformat(),
+                                "symbol": symbol,
+                                "stc_val": round(_stc_val, 2),
+                                "stage_blocked": "pre_filter",
+                                "reason": f"STC {_stc_val:.1f} inside skip range ({_mid_lo:.0f}–{_mid_hi:.0f})",
+                            })
                             return {
                                 "symbol": symbol,
                                 "is_futures": is_futures,
@@ -180,8 +194,21 @@ class TradingPipeline:
                                 "errors": [],
                                 "cache_hit": False,
                             }
+                        else:
+                            logger.info(
+                                "[Pipeline.Filter] symbol=%s stage=pre_filter "
+                                "stc_val=%.1f skip_range=(%.0f–%.0f) action=PASS_TO_PIPELINE",
+                                symbol, _stc_val, _mid_lo, _mid_hi,
+                            )
+                            record_signal_debug({
+                                "timestamp": datetime.now().isoformat(),
+                                "symbol": symbol,
+                                "stc_val": round(_stc_val, 2),
+                                "stage_blocked": "approved",
+                                "reason": f"STC {_stc_val:.1f} outside skip range — proceeding to full pipeline",
+                            })
         except Exception as _pf_exc:
-            logger.debug(f"[Pipeline] {symbol} STC pre-filter skipped: {_pf_exc}")
+            logger.debug("[Pipeline] %s STC pre-filter skipped: %s", symbol, _pf_exc)
 
         # ── Stage 1: Analysts in parallel ─────────────────────────────────
 
@@ -785,4 +812,3 @@ class TradingPipeline:
                 "req_id": req_id,
                 "error": str(exc),
             }
-        
