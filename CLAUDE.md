@@ -85,6 +85,8 @@ cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010
 
 # Restart engine (kills port 8010, restarts — use this for config changes)
 .\restart_engine.ps1
+# If taskkill fails with Access denied, run elevated (UAC):
+.\restart_engine_admin.ps1
 
 # Dashboard
 cd dashboard && pnpm dev
@@ -111,7 +113,7 @@ bash scripts/hooks/check-secrets.sh
 
 **Python venv**: `engine/.venv/` — always use `.venv/Scripts/python`, not system Python
 **Package manager**: `pnpm` for all Node.js work — system npm is broken
-**CRITICAL**: Engine must NEVER run with `--reload` — use `.\restart_engine.ps1` after config changes
+**CRITICAL**: Engine must NEVER run with `--reload` — use `.\restart_engine.ps1` after config changes; if the listener cannot be killed, use `.\restart_engine_admin.ps1`
 
 ## Capital & Validation Targets
 
