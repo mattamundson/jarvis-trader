@@ -755,3 +755,61 @@ async def rl_strategy_health() -> dict:
         "gymnasium": gym_ok,
         "stable_baselines3": sb3_ok,
     }
+
+
+# ── MES Experiment Search Endpoints ───────────────────────────────────────────
+
+
+@router.get(
+    "/experiments/mes/status",
+    description="Return current MES experiment search status, best WFE found, and Sprint 18 recommendation.",
+)
+async def get_mes_experiment_status() -> dict:
+    """Return current MES experiment search status."""
+    import json
+    import os
+
+    log_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "strategies",
+        "experiment_log.json",
+    )
+
+    experiments: list[dict] = []
+    if os.path.exists(log_path):
+        try:
+            with open(log_path) as f:
+                experiments = json.load(f)
+        except Exception:
+            experiments = []
+
+    best_wfe = 0.0
+    best_config: dict = {}
+    if experiments:
+        best = max(experiments, key=lambda r: r.get("wfe", 0.0))
+        best_wfe = best.get("wfe", 0.0)
+        best_config = best.get("config_used", {})
+
+    gate_threshold = 0.50
+    wfe_gate_passed = best_wfe >= gate_threshold
+
+    sprint18_recommendation = (
+        "Pivot to 4h timeframe experiments — no MES edge found in 1h STC configs"
+        if experiments and best_wfe < 0.15
+        else (
+            "Continue 1h experiments — promising region found, run 11-30 in Sprint 18"
+            if best_wfe >= 0.30
+            else "Run experiments 11-30 in Sprint 18 across broader parameter space"
+        )
+        if experiments
+        else "Run experiments 1-10 first via: python -m strategies.run_experiment --symbol MES --config strategies/mes_search_space.json --n 10"
+    )
+
+    return {
+        "experiments_run": len(experiments),
+        "best_wfe": round(best_wfe, 4),
+        "best_config": best_config,
+        "wfe_gate_passed": wfe_gate_passed,
+        "gate_threshold": gate_threshold,
+        "sprint18_recommendation": sprint18_recommendation,
+    }
