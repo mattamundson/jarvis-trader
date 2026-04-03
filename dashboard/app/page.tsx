@@ -21,7 +21,8 @@ import { SchwabStatusWidget } from "@/components/SchwabStatusWidget";
 import { BrokerPositionsWidget } from "@/components/BrokerPositionsWidget";
 import { StrategyParamsPanel } from "@/components/StrategyParamsPanel";
 import { SessionTodayWidget } from "@/components/SessionTodayWidget";
-import { ValidationGatesWidget } from "@/components/ValidationGatesWidget";
+import { RollingWFEWidget } from "@/components/RollingWFEWidget";
+import { TradeJournalWidget } from "@/components/TradeJournalWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -136,67 +137,7 @@ export default function DashboardPage() {
                 IBKR Futures + Schwab Options
               </p>
             </div>
-            <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Analysis
-              </a>
-              <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Backtest
-              </a>
-              <a href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Performance
-              </a>
-              <a href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Validation
-              </a>
-              <a href="/journal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Journal
-              </a>
-              <a href="/portfolio" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Portfolio
-              </a>
-              <a href="/options" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Options
-              </a>
-              <a href="/crypto" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Crypto
-              </a>
-              <a href="/polymarket" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Polymarket
-              </a>
-              <a href="/paper" className="text-xs text-accent font-semibold hover:text-foreground transition-colors">
-                Paper Trading
-              </a>
-              <a
-                href="/trades/pending-approvals"
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
-              >
-                Approvals
-                {pendingCount > 0 ? (
-                  <Badge variant="warn" className="h-5 min-w-5 px-1 text-[10px]">
-                    {pendingCount}
-                  </Badge>
-                ) : null}
-              </a>
-              <a href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Watchlist
-              </a>
-              <a href="/scorecard" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Scorecard
-              </a>
-              <a href="/stats" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Stats
-              </a>
-              <a href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Settings
-              </a>
-              <a href="/learning" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Learning
-              </a>
-              <a href="/health" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Health
-              </a>
-            </nav>
+            
           </div>
 
           <div className="flex items-center gap-3">
@@ -245,6 +186,9 @@ export default function DashboardPage() {
         {/* Walk-Forward / Paper Trading Status */}
         <WFEStatusCard />
 
+        {/* Rolling WFE Monitoring */}
+        <RollingWFEWidget />
+
         {/* Main grid */}
         <div className="grid grid-cols-12 gap-4">
           {/* Left column — positions + performance + regime */}
@@ -276,9 +220,6 @@ export default function DashboardPage() {
               reason={safety?.kill_switch_reason}
               onToggle={onKillSwitchToggle}
             />
-
-            {/* Validation gates progress */}
-            <ValidationGatesWidget />
 
             {/* Schwab connection status */}
             <SchwabStatusWidget />
@@ -363,6 +304,9 @@ export default function DashboardPage() {
 
         {/* Paper trading positions panel — full width below main grid */}
         <PaperTradingPanel />
+
+        {/* Trade journal with full signal provenance (US-1404) */}
+        <TradeJournalWidget />
 
         {/* Persisted history — full width, three-column on large screens */}
         <div className="grid grid-cols-12 gap-4">
@@ -630,4 +574,53 @@ function WFEStatusCard() {
                   <span style={{ color: "#00ff88" }}>{k.replace("_", " ")}</span>
                   <span>cleared: {entry.cleared_date ?? "\u2014"}</span>
                   <span>risk: {entry.risk_per_trade ?? "\u2014"}</span>
-                
+                  <span style={{ color: "#00d4ff" }}>{entry.config ?? ""}</span>
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Risk Row ──────────────────────────────────────────────────────────────
+
+function RiskRow({
+  label,
+  value,
+  limit,
+  pct,
+  danger,
+}: {
+  label: string;
+  value: string;
+  limit: string;
+  pct: number;
+  danger: boolean;
+}) {
+  const clampedPct = Math.min(pct, 1);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono font-semibold" style={{ color: danger ? "#ff4444" : "#e0e0e0" }}>
+            {value}
+          </span>
+          <span className="font-mono" style={{ color: "#555" }}>/ {limit}</span>
+        </div>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "#1a1a2e" }}>
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${clampedPct * 100}%`,
+            backgroundColor: danger ? "#ff4444" : clampedPct > 0.7 ? "#ffcc00" : "#00ff88",
+          }}
+        />
+      </div>
+      <p className="font-mono text-[10px]" style={{ color: "#555" }}>{limit}</p>
+    </div>
+  );
+}

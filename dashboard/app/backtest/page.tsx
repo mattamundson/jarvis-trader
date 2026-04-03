@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import {
   AreaChart,
@@ -496,15 +497,15 @@ export default function BacktestPage() {
             <p className="text-xs text-muted-foreground">Historical strategy performance</p>
           </div>
           <nav className="hidden lg:flex items-center gap-4 ml-6">
-            <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Dashboard
-            </a>
-            <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Analysis
-            </a>
-            <a href="/backtest" className="text-xs text-accent transition-colors font-medium">
+            </Link>
+            <Link href="/backtest" className="text-xs text-accent transition-colors font-medium">
               Backtest
-            </a>
+            </Link>
           </nav>
         </div>
       </header>

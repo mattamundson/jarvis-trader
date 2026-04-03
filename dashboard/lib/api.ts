@@ -828,3 +828,101 @@ export interface Phase3ReadinessResponse {
   requirements: Record<string, unknown>;
   timestamp: string;
 }
+
+// ── Rolling WFE Monitoring ─────────────────────────────────────────────────
+
+export interface WFEInstrument {
+  symbol: string;
+  current_wfe: number | null;
+  kill_threshold: number;
+  status: "healthy" | "warning" | "critical" | "insufficient_data";
+  trades_in_window: number;
+  window_days: number;
+  current_pf: number | null;
+}
+
+export interface WFEResponse {
+  instruments: WFEInstrument[];
+  as_of: string;
+}
+
+export async function fetchRollingWFE(): Promise<WFEResponse> {
+  return fetchEngine<WFEResponse>("/paper/validation/wfe");
+}
+
+// ── Trade Journal (US-1404) ────────────────────────────────────────────────
+
+export interface TradeJournalEntry {
+  id: number;
+  trade_id: string;
+  symbol: string;
+  side: string;
+  quantity: number;
+  entry_price: number;
+  exit_price: number | null;
+  entry_time: string;
+  exit_time: string | null;
+  pnl: number | null;
+  status: string;
+  strategy_params: string | null;
+  notes: string | null;
+  // Signal provenance
+  regime: string | null;
+  structure_position: string | null;
+  bias: string | null;
+  composite_score: number | null;
+  stc_contrib: number | null;
+  orb_contrib: number | null;
+  vwap_contrib: number | null;
+}
+
+export async function fetchTradeJournal(
+  symbol?: string,
+  regime?: string,
+  limit?: number
+): Promise<TradeJournalEntry[]> {
+  const params = new URLSearchParams();
+  if (symbol) params.append("symbol", symbol);
+  if (regime) params.append("regime", regime);
+  if (limit) params.append("limit", String(limit));
+
+  const queryString = params.toString();
+  const path = queryString ? `/paper/trade-journal?${queryString}` : "/paper/trade-journal";
+  return fetchEngine<TradeJournalEntry[]>(path);
+}
+export interface HourlyStatItem {
+  hour: number;
+  label: string;
+  trades: number;
+  win_rate: number;
+  avg_pnl: number;
+}
+
+export interface HourSummary {
+  hour: number;
+  label: string;
+  win_rate: number;
+  trades: number;
+  avg_pnl: number;
+}
+
+export interface HourlyStatsResponse {
+  hourly_stats: HourlyStatItem[];
+  best_hour: HourSummary | null;
+  worst_hour: HourSummary | null;
+}
+
+export interface StreakRecord {
+  type: string;
+  count: number;
+  start_date?: string | null;
+  end_date?: string | null;
+}
+
+export interface StreaksResponse {
+  current_streak: { type: string; count: number };
+  max_win_streak: number;
+  max_loss_streak: number;
+  streak_history: StreakRecord[];
+  total_trades: number;
+}

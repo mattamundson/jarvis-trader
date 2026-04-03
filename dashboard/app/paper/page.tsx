@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
 import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals } from "@/lib/api";
@@ -79,19 +80,19 @@ export default function PaperTradingPage() {
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+              <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
                 <ArrowLeft className="h-3 w-3" />
                 Dashboard
-              </a>
-              <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Analysis
-              </a>
-              <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Backtest
-              </a>
-              <a href="/paper" className="text-xs text-accent font-semibold transition-colors">
+              </Link>
+              <Link href="/paper" className="text-xs text-accent font-semibold transition-colors">
                 Paper Trading
-              </a>
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-2">
