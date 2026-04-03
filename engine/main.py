@@ -66,43 +66,30 @@ from llm.cost_tracker import CostTracker
 from middleware.api_key_middleware import APIKeyMiddleware
 from middleware.exception_handler import GlobalExceptionHandler
 from middleware.rate_limit import get_limiter, rate_limit_exception_handler
-from notifications.validation_alerts import ValidationAlertManager
 from portfolio.tracker import PortfolioTracker
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
 from routers.analytics_router import router as analytics_router
 from routers.analytics_router import set_db_manager as set_analytics_db
-from routers.approval_router import inject_dependencies as inject_approval_deps
-from routers.approval_router import router as approval_router
-from routers.brokers_router import inject_dependencies as inject_brokers_deps
-from routers.brokers_router import router as brokers_router
 from routers.discord_router import router as discord_router
 from routers.flags_router import router as flags_router
 from routers.flags_router import set_flags as set_flags_router
 from routers.health_router import inject_dependencies as inject_health_router_deps
 from routers.health_router import router as health_router
-from routers.instruments_router import router as instruments_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
 from routers.kairos_router import router as kairos_router
 from routers.learning_router import router as learning_router
 from routers.market_router import router as market_router
-from routers.options_router import router as options_router
 from routers.phase3_readiness_router import inject_dependencies as inject_phase3_readiness_deps
 from routers.phase3_readiness_router import router as phase3_readiness_router
-from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
-from routers.pipeline_router import router as pipeline_router
 from routers.portfolio_router import inject_dependencies as inject_portfolio_deps
 from routers.portfolio_router import router as portfolio_router
 from routers.profiling_router import router as profiling_router
 from routers.profiling_router import set_profiler_instance
 from routers.safety_router import inject_dependencies as inject_safety_router_deps
 from routers.safety_router import router as safety_router
-from routers.scanner_router import inject_dependencies as inject_scanner_deps
-from routers.scanner_router import router as scanner_router
-from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
-from routers.scheduler_router import router as scheduler_router
 from routers.schwab_router import router as schwab_router
 from routers.schwab_router import set_schwab_connector
 from routers.strategies_router import router as strategies_router
@@ -110,7 +97,20 @@ from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
+from routers.instruments_router import router as instruments_router
+from routers.brokers_router import router as brokers_router
+from routers.brokers_router import inject_dependencies as inject_brokers_deps
+from routers.options_router import router as options_router
+from routers.approval_router import router as approval_router
+from routers.approval_router import inject_dependencies as inject_approval_deps
+from routers.pipeline_router import router as pipeline_router
+from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
+from routers.scanner_router import router as scanner_router
+from routers.scanner_router import inject_dependencies as inject_scanner_deps
+from routers.scheduler_router import router as scheduler_router
+from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
 from schedulers.eod_scheduler import EODScheduler
+from notifications.validation_alerts import ValidationAlertManager
 from websocket.events import set_ws_manager
 from websocket.manager import WebSocketManager
 
@@ -438,7 +438,7 @@ async def lifespan(app: FastAPI):
 
         notifier = get_notifier()
 
-        for symbol, is_futures in symbols_to_scan:
+        async def _analyze_and_alert(symbol: str, is_futures: bool) -> None:
             try:
                 result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
                 action = result.get("final_action", "hold")
@@ -498,6 +498,8 @@ async def lifespan(app: FastAPI):
 
             except Exception as e:
                 logger.error(f"Scheduler analysis failed for {symbol}: {e}")
+
+        await asyncio.gather(*[_analyze_and_alert(sym, fut) for sym, fut in symbols_to_scan])
 
     # Run every 30 minutes on weekdays, 9:30am-4:00pm Chicago time
     if settings.ANTHROPIC_API_KEY:
@@ -618,16 +620,18 @@ async def lifespan(app: FastAPI):
             logger.info("[MARKET_OPEN] Skipping — kill switch active")
             return
 
-        instruments = [("MCL", True), ("MNQ", True)]
-        logger.info(f"[MARKET_OPEN] Starting pipeline scan for {[s[0] for s in instruments]}")
+        instruments = [("MCL", True), ("MNQ", True), ("MES", True)]
+        logger.info(f"[MARKET_OPEN] Starting parallel pipeline scan for {[s[0] for s in instruments]}")
 
-        for symbol, is_futures in instruments:
+        async def _scan_one(symbol: str, is_futures: bool) -> None:
             try:
                 result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
                 action = result.get("final_action", "hold")
                 logger.info(f"[MARKET_OPEN] {symbol}: {action.upper()}")
             except Exception as e:
                 logger.error(f"[MARKET_OPEN] Pipeline failed for {symbol}: {e}")
+
+        await asyncio.gather(*[_scan_one(sym, fut) for sym, fut in instruments])
 
     scheduler.add_job(
         market_open_scan_job,
@@ -690,7 +694,7 @@ async def lifespan(app: FastAPI):
     )
     logger.info("⏰ EOD summary job registered — 16:05 ET weekdays")
 
-    # ── Intraday 15-minute scanner (09:45-15:45 ET every 15 min) ──────────────
+    # ── Intraday 15-minute scanner (US-1402) ──────────────────────────────────
     async def intraday_scan_15m_job():
         """Scan MCL and MNQ on 15m timeframe to increase trade frequency."""
         try:
@@ -704,41 +708,29 @@ async def lifespan(app: FastAPI):
                 return
 
             loader = BacktestDataLoader()
-            symbols = ["MCL", "MNQ"]
-
-            for symbol in symbols:
+            for symbol in ["MCL", "MNQ"]:
                 try:
                     config = FIFTEEN_MIN_CONFIGS.get(symbol)
                     if not config or not config.get("enabled"):
                         continue
-
                     end_date = datetime.now().strftime("%Y-%m-%d")
                     start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-
-                    df = loader.load(
-                        symbol=symbol,
-                        start=start_date,
-                        end=end_date,
-                        interval="15m",
-                    )
-
+                    df = loader.load(symbol=symbol, start=start_date, end=end_date, interval="15m")
                     if df is None or df.empty:
                         logger.warning(f"[INTRADAY_15M] No data for {symbol} 15m")
                         continue
-
                     df = df.tail(50).reset_index(drop=True)
                     df = compute_all_indicators(df)
-                    stc_params = config.get("stc_params", {})
+                    stc = config.get("stc_params", {})
                     df = generate_signals(
                         df,
                         regime_filter=config.get("regime_filter", True),
-                        stc_oversold=stc_params.get("stc_os"),
-                        stc_overbought=stc_params.get("stc_ob"),
+                        stc_oversold=stc.get("stc_os"),
+                        stc_overbought=stc.get("stc_ob"),
                         symbol=symbol,
                         adaptive_regime=config.get("adaptive_regime", False),
                         volume_filter=config.get("volume_filter", False),
                     )
-
                     entry_rows = df[df["entry_signal"] == "ENTRY_NOW"]
                     if not entry_rows.empty:
                         latest = entry_rows.iloc[-1]
@@ -751,24 +743,17 @@ async def lifespan(app: FastAPI):
                             composite_score=None,
                         )
                         logger.info(
-                            f"[INTRADAY_15M] {symbol} 15m ENTRY_NOW — "
+                            f"[INTRADAY_15M] {symbol} ENTRY_NOW — "
                             f"regime={latest.get('regime')}, bias={latest.get('bias')}"
                         )
-
                 except Exception as sym_err:
-                    logger.error(f"[INTRADAY_15M] {symbol} scan failed: {sym_err}")
-
+                    logger.error(f"[INTRADAY_15M] {symbol} failed: {sym_err}")
         except Exception as e:
-            logger.error(f"[INTRADAY_15M] Job failed: {e}")
+            logger.error(f"[INTRADAY_15M] job failed: {e}")
 
     scheduler.add_job(
         intraday_scan_15m_job,
-        CronTrigger(
-            minute="*/15",
-            day_of_week="mon-fri",
-            hour="9-15",
-            timezone="America/New_York",
-        ),
+        CronTrigger(minute="*/15", day_of_week="mon-fri", hour="9-15", timezone="America/New_York"),
         id="intraday_scan_15m",
         name="Intraday 15m Scanner",
         replace_existing=True,
@@ -829,9 +814,8 @@ async def lifespan(app: FastAPI):
         schwab_connector,
     )
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
-    inject_approval_deps(safety_layer, paper_tracker, db_manager, order_router)
+    inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_scheduler_router_scheduler(scheduler)
-    inject_pipeline_deps(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker)
 
     # Initialize Signal Scanner
     try:
@@ -841,7 +825,6 @@ async def lifespan(app: FastAPI):
             trading_pipeline=trading_pipeline,
             db_manager=db_manager,
         )
-        signal_scanner.set_paper_tracker(paper_tracker)
         inject_scanner_deps(signal_scanner)
         await signal_scanner.start()
         logger.info("Signal scanner started (MCL + MNQ, 60-min interval)")
@@ -972,9 +955,8 @@ async def lifespan(app: FastAPI):
 
     # Initialize Database Backup (nightly at 23:30 UTC)
     try:
-        import asyncio
-
         from backup.db_backup import get_backup_manager
+        import asyncio
 
         backup_manager = get_backup_manager()
 
@@ -1087,9 +1069,9 @@ app.include_router(instruments_router)
 app.include_router(brokers_router)
 app.include_router(options_router)
 app.include_router(approval_router)
+app.include_router(pipeline_router)
 app.include_router(scanner_router)
 app.include_router(scheduler_router)
-app.include_router(pipeline_router)
 app.include_router(v1_router)
 
 
@@ -4249,4 +4231,4 @@ async def get_trading_days_stats():
             "progress_pct": round(min(100.0, n / threshold * 100), 1),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Validation check failed: {e}") from e
+        raise HTTPException(status_code=500, detail=str(e)) from e
