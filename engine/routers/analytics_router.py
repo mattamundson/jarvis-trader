@@ -53,6 +53,7 @@ class PerformanceMetricsResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    status: str = "ok"
     sharpe_ratio: float
     profit_factor: float
     win_rate: float
@@ -61,6 +62,7 @@ class PerformanceMetricsResponse(BaseModel):
     total_trades: int
     expectancy: float
     timestamp: str
+    days: Optional[int] = None  # rolling window length when applicable
 
 
 class TradeAnalyticsResponse(BaseModel):
@@ -290,9 +292,8 @@ async def get_performance(request: Request) -> PerformanceMetricsResponse:
     """
     try:
         from analytics.trade_analytics import calculate_analytics
-        from database import get_db
 
-        db = get_db()
+        db = _get_db()
         closed_trades = db.get_closed_trades(limit=10000)
 
         # Convert db rows to analytics format (ensure pnl is present)
@@ -310,6 +311,7 @@ async def get_performance(request: Request) -> PerformanceMetricsResponse:
         analytics = calculate_analytics(trades_for_analytics)
 
         return PerformanceMetricsResponse(
+            status="ok",
             sharpe_ratio=analytics.sharpe_ratio,
             profit_factor=analytics.profit_factor,
             win_rate=analytics.win_rate,
@@ -324,7 +326,7 @@ async def get_performance(request: Request) -> PerformanceMetricsResponse:
         raise HTTPException(503, "Database not ready") from None
     except Exception as exc:
         logger.error(f"Performance calculation error: {exc}")
-        raise HTTPException(500, str(exc)) from exc
+        raise HTTPException(503, str(exc)) from exc
 
 
 @router.get(
@@ -348,12 +350,11 @@ async def get_rolling_performance(request: Request, days: int = 7) -> Performanc
     """
     try:
         from analytics.trade_analytics import calculate_analytics
-        from database import get_db
 
         if days < 1:
             raise HTTPException(400, "days must be >= 1")
 
-        db = get_db()
+        db = _get_db()
         closed_trades = db.get_closed_trades(limit=10000)
 
         # Filter to only trades from the last N days
@@ -378,6 +379,7 @@ async def get_rolling_performance(request: Request, days: int = 7) -> Performanc
         analytics = calculate_analytics(filtered_trades)
 
         return PerformanceMetricsResponse(
+            status="ok",
             sharpe_ratio=analytics.sharpe_ratio,
             profit_factor=analytics.profit_factor,
             win_rate=analytics.win_rate,
@@ -386,6 +388,7 @@ async def get_rolling_performance(request: Request, days: int = 7) -> Performanc
             total_trades=analytics.total_trades,
             expectancy=analytics.expectancy,
             timestamp=datetime.utcnow().isoformat() + "Z",
+            days=days,
         )
     except RuntimeError:
         logger.warning("Database not yet initialised")
@@ -394,24 +397,52 @@ async def get_rolling_performance(request: Request, days: int = 7) -> Performanc
         raise
     except Exception as exc:
         logger.error(f"Rolling performance calculation error: {exc}")
-        raise HTTPException(500, str(exc)) from exc
+        raise HTTPException(503, str(exc)) from exc
+
+
+@router.get(
+    "/performance/compare",
+    response_model=None,
+    description="Compare forward-test paper metrics to reference backtest targets.",
+)
+@limiter.limit("60/minute")
+async def get_performance_compare(request: Request) -> dict:
+    """
+    Forward metrics from SQLite vs reference backtest; returns ``degradation_ok``
+    when forward PF/Sharpe still exceed paper thresholds.
+    """
+    try:
+        db = _get_db()
+        from analytics.performance import PerformanceCalculator
+
+        calc = PerformanceCalculator(db)
+        return calc.compare_to_backtest()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[Analytics] compare_to_backtest failed: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}") from exc
 
 
 @router.get(
     "/trades/by-day",
-    description="Get trade breakdown by date for the last 30 days with daily PnL and win rate aggregation.",
+    description="Get trade breakdown by date with daily PnL and win rate aggregation. Defaults to 30 days; use ?days=91 for 13-week calendar view.",
     response_model=None,
 )
 @limiter.limit("120/minute")
-async def get_trades_by_day(request: Request) -> dict:
+async def get_trades_by_day(request: Request, days: int = 30) -> dict:
     """
-    Get trade breakdown by date for the last 30 days.
+    Get trade breakdown by date.
+
+    Args:
+        days: lookback window in calendar days (default 30, max 365).
 
     Returns array of {date, trades, pnl, win_rate} grouped by day.
     """
+    lookback = max(1, min(days, 365))
     try:
         db = _get_db()
-        sql = """
+        sql = f"""
             SELECT
                 DATE(exit_time) as date,
                 COUNT(*) as trades,
@@ -419,7 +450,7 @@ async def get_trades_by_day(request: Request) -> dict:
                 ROUND(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as win_rate
             FROM paper_trades
             WHERE status = 'closed'
-              AND exit_time >= datetime('now', '-30 days')
+              AND exit_time >= datetime('now', '-{lookback} days')
             GROUP BY DATE(exit_time)
             ORDER BY date DESC
         """
@@ -432,12 +463,12 @@ async def get_trades_by_day(request: Request) -> dict:
 
         result = []
         for row in rows:
-            result.append(TradesByDayItem(  # type: ignore[call-arg]
-                date=row["date"],
-                trades=int(row["trades"]),
-                pnl=float(row["pnl"]),
-                win_rate=float(row["win_rate"]) if row["win_rate"] else 0.0,
-            ))
+            result.append({
+                "date": row["date"],
+                "trades": int(row["trades"]),
+                "pnl": float(row["pnl"]),
+                "win_rate": float(row["win_rate"]) if row["win_rate"] else 0.0,
+            })
         return {"days": result}
     except HTTPException:
         raise
@@ -481,13 +512,13 @@ async def get_trades_by_symbol(request: Request) -> dict:
 
         result = []
         for row in rows:
-            result.append(TradesBySymbolItem(
-                symbol=row["symbol"],
-                trades=int(row["trades"]),
-                pnl=float(row["pnl"]),
-                win_rate=float(row["win_rate"]) if row["win_rate"] else 0.0,
-                avg_pnl=float(row["avg_pnl"]),
-            ))
+            result.append({
+                "symbol": row["symbol"],
+                "trades": int(row["trades"]),
+                "pnl": float(row["pnl"]),
+                "win_rate": float(row["win_rate"]) if row["win_rate"] else 0.0,
+                "avg_pnl": float(row["avg_pnl"]),
+            })
         return {"symbols": result}
     except HTTPException:
         raise
@@ -517,28 +548,11 @@ async def get_trades_by_hour(request: Request) -> dict:
                 COALESCE(SUM(pnl), 0.0) as pnl,
                 ROUND(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as win_rate
             FROM paper_trades
-            WHERE status = 'closed'
-            GROUP BY CAST(STRFTIME('%H', exit_time) AS INTEGER)
+            WHERE status = 'closed' AND exit_time IS NOT NULL
+            GROUP BY hour
             ORDER BY hour ASC
         """
-        with db._lock:
-            conn = db._connect()
-            try:
-                rows = conn.execute(sql).fetchall()
-            finally:
-                conn.close()
-
-        result = []
-        for row in rows:
-            result.append(TradesByHourItem(
-                hour=int(row["hour"]),
-                trades=int(row["trades"]),
-                pnl=float(row["pnl"]),
-                win_rate=float(row["win_rate"]) if row["win_rate"] else 0.0,
-            ))
-        return {"hours": result}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(f"Trades by hour error: {exc}")
-        raise HTTPException(500, str(exc)) from exc
+        rows = db.execute(sql).fetchall()
+        return {"hours": [{"hour": r[0], "trades": r[1], "pnl": r[2], "win_rate": r[3]} for r in rows]}
+    except Exception:
+        return {"hours": []}

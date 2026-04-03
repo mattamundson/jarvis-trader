@@ -187,6 +187,10 @@ class TradingConfig(BaseSettings):
     SCHWAB_CALLBACK_URL: str = Field(
         "https://127.0.0.1", description="Charles Schwab OAuth callback URL"
     )
+    SCHWAB_READY: bool = Field(
+        default=False,
+        description="Enable Schwab connector (requires SCHWAB_APP_KEY and SCHWAB_APP_SECRET)",
+    )
 
     # ── Market Data ───────────────────────────────────────────────────────
     POLYGON_API_KEY: Optional[str] = Field(default=None, description="Polygon.io API key")
@@ -236,6 +240,7 @@ class TradingConfig(BaseSettings):
         default="MES,MNQ,MCL",
         description="Micro futures contracts to trade (comma-separated or list)",
     )
+    # Options module: dry-run in paper before enabling live routing; see docs/backlog/EPICS_12_17_FOLLOWONS.md
     OPTIONS_WATCHLIST: Union[str, list[str]] = Field(
         default=["SPY", "QQQ", "AAPL", "TSLA"], description="Underlying symbols for options trading"
     )
@@ -286,6 +291,8 @@ class TradingConfig(BaseSettings):
         return v
 
 
-# ── Module-level singleton ────────────────────────────────────────────────
-# Used by all engine modules via `from config import settings`
+# ── Module-level singleton ─────────────────────────────────────────
 settings = TradingConfig()
+
+# Validate required environment variables on module load
+_validate_required_env_vars()

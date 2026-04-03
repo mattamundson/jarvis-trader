@@ -752,7 +752,6 @@ async def rl_strategy_health() -> dict:
         sb3_ok = False
 
     return {
-        "gymnasium_available": gym_ok,
-        "stable_baselines3_available": sb3_ok,
-        "ready": gym_ok and sb3_ok,
+        "gymnasium": gym_ok,
+        "stable_baselines3": sb3_ok,
     }

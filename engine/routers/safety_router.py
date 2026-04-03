@@ -39,7 +39,10 @@ class KillSwitchJsonBody(BaseModel):
     activate: bool = Field(default=True)
 
 
-@router.get("/loss-tracker/status")
+@router.get(
+    "/loss-tracker/status",
+    description="Get loss tracker status including halt state, resume time, last trade symbol, and loss threshold configuration.",
+)
 async def get_loss_tracker_status() -> dict[str, Any]:
     """Get loss tracker status.
 
@@ -59,7 +62,10 @@ async def get_loss_tracker_status() -> dict[str, Any]:
         raise HTTPException(500, f"Failed to get loss tracker status: {e}") from e
 
 
-@router.get("/position-sizing/calculate")
+@router.get(
+    "/position-sizing/calculate",
+    description="Calculate recommended position size based on symbol, account value, ATR, and risk percentage for position sizing guidance.",
+)
 async def calculate_position_sizing(
     symbol: str = "MES",
     account_value: float = 10000.0,
@@ -93,7 +99,11 @@ async def calculate_position_sizing(
         raise HTTPException(500, f"Failed to calculate position size: {e}") from e
 
 
-@router.get("/status", response_model=SafetyStatusResponse)
+@router.get(
+    "/status",
+    response_model=SafetyStatusResponse,
+    description="Aggregated safety status and PnL snapshot including kill switch, circuit breakers, daily limits, drawdown, and portfolio equity.",
+)
 @limiter.limit("10/minute")
 async def get_safety_status(request: Request) -> dict[str, Any]:
     """Aggregated safety + PnL snapshot for dashboards and scripts."""
@@ -154,7 +164,10 @@ async def get_safety_status(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/circuit-breakers")
+@router.get(
+    "/circuit-breakers",
+    description="Circuit breaker snapshot showing daily limit status, drawdown breach state, and all_clear flag for dashboard.",
+)
 async def get_circuit_breakers() -> dict[str, Any]:
     """Circuit breaker snapshot for dashboards (includes all_clear)."""
     if _safety_layer is None:
@@ -192,7 +205,10 @@ async def get_circuit_breakers() -> dict[str, Any]:
     return cb
 
 
-@router.post("/kill-switch/activate")
+@router.post(
+    "/kill-switch/activate",
+    description="Activate the global kill switch with optional reason and message (requires API key authorization).",
+)
 async def activate_kill_switch(
     reason: Optional[str] = Query(None, description="KillSwitchReason name (query override)"),
     body: Annotated[Optional[KillSwitchActivateBody], Body()] = None,
@@ -211,7 +227,10 @@ async def activate_kill_switch(
     return {"status": "activated", "reason": reason_str, "activated_at": now}
 
 
-@router.post("/kill-switch/deactivate")
+@router.post(
+    "/kill-switch/deactivate",
+    description="Deactivate the global kill switch to resume trading after halt (requires API key authorization).",
+)
 async def deactivate_kill_switch(
     authorized_by: str = "api",
 ) -> dict[str, Any]:
@@ -224,7 +243,10 @@ async def deactivate_kill_switch(
     return {"status": "deactivated", "reason": None, "activated_at": now}
 
 
-@router.post("/kill-switch")
+@router.post(
+    "/kill-switch",
+    description="Toggle kill switch state via dashboard JSON body with activate boolean flag (legacy endpoint).",
+)
 async def kill_switch_legacy(body: KillSwitchJsonBody) -> dict[str, Any]:
     """Toggle kill switch from dashboard JSON body `{ \"activate\": true|false }`."""
     if body.activate:
@@ -235,9 +257,51 @@ async def kill_switch_legacy(body: KillSwitchJsonBody) -> dict[str, Any]:
     return await deactivate_kill_switch(authorized_by="dashboard")
 
 
-@router.post("/reset-daily-pnl")
+@router.post(
+    "/reset-daily-pnl",
+    description="Reset SafetyLayer daily PnL counters for testing or manual recovery after circuit breaker triggers.",
+)
 async def reset_daily_pnl() -> dict[str, Any]:
     """Reset SafetyLayer daily PnL counters (testing / manual recovery)."""
     if _safety_layer is None:
         raise HTTPException(status_code=503, detail="Safety layer not initialized")
     return _safety_layer.reset_daily_pnl()
+
+
+@router.get(
+    "/position-size",
+    description="Calculate recommended position size using ATR-based framework with hardcoded contract limits respecting drawdown state.",
+)
+async def get_position_size(
+    symbol: str = "MES",
+    atr: float = 10.0,
+    account_value: float = 10000.0,
+    current_drawdown: float = 0.0,
+) -> dict[str, Any]:
+    """
+    Calculate recommended position size using SafetyLayer ATR-based framework.
+
+    ADVISORY ONLY — respects hardcoded contract and position size limits.
+
+    Query Parameters:
+        symbol: Trading symbol (e.g., "MES", "MCL")
+        atr: Average True Range in points
+        account_value: Current account equity in dollars
+        current_drawdown: Current drawdown from peak as percentage (default 0.0)
+
+    Returns:
+        Recommended contracts, risk amount, sizing details, and hardcoded limits
+    """
+    if _safety_layer is None:
+        raise HTTPException(status_code=503, detail="Safety layer not initialized")
+
+    try:
+        return _safety_layer.get_recommended_size(
+            symbol=symbol,
+            atr=atr,
+            account_value=account_value,
+            current_drawdown=current_drawdown,
+        )
+    except Exception as e:
+        logger.error(f"[POSITION-SIZE] Calculate error: {e}")
+        raise HTTPException(500, f"Failed to calculate position size: {e}") from e

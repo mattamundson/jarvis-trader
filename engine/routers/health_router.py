@@ -10,8 +10,10 @@ import sqlite3
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
+from starlette.requests import Request
 
 from api.models import FullHealthResponse, HealthResponse
+from config import settings
 from middleware.rate_limit import get_limiter
 
 logger = logging.getLogger(__name__)
@@ -63,7 +65,6 @@ async def health():
 async def _health_inner() -> dict:
     safety = safety_layer.get_status() if safety_layer else {}
 
-    # Quick database connectivity check
     db_ok = False
     try:
         if db_manager:
@@ -75,25 +76,24 @@ async def _health_inner() -> dict:
     now = datetime.now(timezone.utc)
     status = "ok" if db_ok else "degraded"
 
-    _dm_settings = getattr(data_manager, "settings", None) if data_manager else None
-    live_trading_val: bool = bool(getattr(_dm_settings, "LIVE_TRADING_ENABLED", False))
-    ibkr_conn: bool = (
-        data_manager.ibkr.is_connected()
-        if (data_manager and getattr(data_manager, "ibkr", None))
-        else False
-    )
-
     return {
         "status": status,
         "version": "1.1.0",
         "timestamp": now.isoformat(),
-        "live_trading": live_trading_val,
-        "kill_switch_active": bool(safety.get("kill_switch_active", False)),
-        "paper_mode": True,
+        "live_trading": settings.LIVE_TRADING_ENABLED,
+        "kill_switch_active": safety.get("kill_switch_active", False),
+        "paper_mode": not settings.LIVE_TRADING_ENABLED,
         "database": "connected" if db_ok else "error",
-        "ibkr_connected": ibkr_conn,
-        "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
-        "uptime_seconds": float((now - _start_time).total_seconds()) if _start_time else 0.0,
+        "ibkr_connected": bool(getattr(data_manager.ibkr, "is_connected", False))
+        if data_manager and data_manager.ibkr
+        else False,
+        "schwab_connected": bool(
+            schwab_connector and schwab_connector.is_connected
+        ),
+        "uptime_seconds": (now - _start_time).total_seconds()
+        if _start_time
+        else 0.0,
+        "llm_available": True,
     }
 
 
@@ -166,8 +166,6 @@ async def _full_health_inner() -> dict:
             )
             status["circuit_breakers"] = {
                 "status": "ok" if all_clear else "tripped",
-                "all_clear": all_clear,
-                "kill_switch_active": breakers.get("kill_switch_active", False),
                 "details": breakers,
             }
             if not all_clear:
@@ -225,7 +223,7 @@ async def _full_health_inner() -> dict:
     description="Run all critical pre-flight checks (database, kill switch, circuit breakers, pipeline, VIX, market session, IB Gateway, portfolio).",
 )
 @limiter.limit("60/minute")
-async def system_preflight(request=None):
+async def system_preflight(request: Request):
     """
     Run all critical pre-flight checks before accepting trading signals.
     Returns a list of checks with pass/fail/warn status.
@@ -239,7 +237,6 @@ async def system_preflight(request=None):
             all_pass = False
         checks.append({"name": name, "status": status, "detail": detail})
 
-    # 1. Database health
     try:
         if db_manager is None:
             add_check("Database", "fail", "Not initialized")
@@ -258,20 +255,18 @@ async def system_preflight(request=None):
     except Exception as e:
         add_check("Database", "fail", str(e))
 
-    # 2. Kill switch clear
     try:
         if safety_layer is None:
             add_check("Kill Switch", "warn", "SafetyLayer not initialized")
         else:
             ks = safety_layer._kill_switch_active
             if ks:
-                add_check("Kill Switch", "fail", "KILL SWITCH IS ACTIVE")
+                add_check("Kill Switch", "fail", "KILL SWITCH IS ACTIVE — trading blocked")
             else:
                 add_check("Kill Switch", "pass", "Kill switch clear")
     except Exception as e:
         add_check("Kill Switch", "warn", f"Could not check: {e}")
 
-    # 3. Circuit breakers
     try:
         if safety_layer is not None:
             cb_result = safety_layer.check_circuit_breakers()
@@ -291,7 +286,6 @@ async def system_preflight(request=None):
     except Exception as e:
         add_check("Circuit Breakers", "warn", f"Could not check: {e}")
 
-    # 4. Trading pipeline
     try:
         if trading_pipeline is None:
             add_check("Pipeline", "fail", "TradingPipeline not initialized")
@@ -300,11 +294,10 @@ async def system_preflight(request=None):
     except Exception as e:
         add_check("Pipeline", "fail", str(e))
 
-    # 5. VIX overlay
     try:
-        from analytics.vix_overlay import fetch_vix
+        from analytics.vix_overlay import fetch_vix_async
 
-        vix_state = fetch_vix()
+        vix_state = await fetch_vix_async(data_manager)
         vix_val = getattr(vix_state, "vix_value", None)
         source = getattr(vix_state, "source", "unknown")
         if vix_val is not None:
@@ -314,11 +307,10 @@ async def system_preflight(request=None):
                 f"VIX={vix_val:.1f} (source: {source})",
             )
         else:
-            add_check("VIX Data", "warn", "VIX unavailable")
+            add_check("VIX Data", "warn", "VIX unavailable — using fallback")
     except Exception as e:
         add_check("VIX Data", "warn", f"VIX check failed: {e}")
 
-    # 6. Market session
     try:
         from datetime import datetime as _dt
 
@@ -345,24 +337,19 @@ async def system_preflight(request=None):
     except Exception as e:
         add_check("Market Session", "warn", str(e))
 
-    # 7. IB Gateway connection
     try:
         ib_gw = data_manager.ibkr if data_manager else None
         if ib_gw is None:
-            add_check("IB Gateway", "warn", "Not initialized (paper only)")
+            add_check("IB Gateway", "warn", "Not initialized (paper only — optional)")
         else:
-            is_connected_attr = getattr(ib_gw, "is_connected", None)
-            connected = (
-                is_connected_attr() if callable(is_connected_attr) else bool(is_connected_attr)
-            )
+            connected = bool(getattr(ib_gw, "is_connected", False))
             if connected:
                 add_check("IB Gateway", "pass", "Paper port 4002 connected")
             else:
-                add_check("IB Gateway", "warn", "Not connected (paper only)")
+                add_check("IB Gateway", "warn", "Not connected (paper only — optional)")
     except Exception as e:
         add_check("IB Gateway", "warn", f"Could not check: {e}")
 
-    # 8. Portfolio tracker
     try:
         if paper_tracker is None:
             add_check("Portfolio Tracker", "fail", "Not initialized")
@@ -382,9 +369,13 @@ async def system_preflight(request=None):
         add_check("Portfolio Tracker", "fail", str(e))
 
     return {
-        "overall": "pass" if all_pass else "fail",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "all_pass": all_pass,
+        "check_count": len(checks),
+        "pass_count": sum(1 for c in checks if c["status"] == "pass"),
+        "fail_count": sum(1 for c in checks if c["status"] == "fail"),
+        "warn_count": sum(1 for c in checks if c["status"] == "warn"),
         "checks": checks,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 

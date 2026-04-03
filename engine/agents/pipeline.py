@@ -27,6 +27,13 @@ from typing import Any, Optional
 from database import repository
 
 try:
+    from profiling.pipeline_profiler import PipelineProfiler
+
+    _PROFILER_AVAILABLE = True
+except Exception:  # pragma: no cover — optional dependency
+    _PROFILER_AVAILABLE = False
+
+try:
     from cache import (
         cache_signal,
         get_cached_signal,
@@ -78,6 +85,7 @@ class TradingPipeline:
         self._safety = safety_layer
         self.db_manager = db_manager
         self.context_manager = context_manager
+        self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
 
     async def analyze_and_decide(
         self,
@@ -130,40 +138,60 @@ class TradingPipeline:
 
         # ── Stage 1: Analysts in parallel ─────────────────────────────────
 
+        if self.profiler:
+            await self.profiler.start_stage("analysts")
         analyst_reports = await self._run_analysts(symbol, is_futures, errors, timeframe=timeframe)
+        if self.profiler:
+            await self.profiler.end_stage("analysts")
         pipeline_result["analyst_reports"] = analyst_reports
 
         # ── Stage 2: Bull/Bear Debate ──────────────────────────────────────
 
+        if self.profiler:
+            await self.profiler.start_stage("debate")
         debate_result = await self._run_debate(symbol, analyst_reports, errors)
+        if self.profiler:
+            await self.profiler.end_stage("debate")
         pipeline_result["debate_result"] = debate_result
 
         # ── Stage 3: Trader Decision ───────────────────────────────────────
 
+        if self.profiler:
+            await self.profiler.start_stage("trader")
         safety_status = self._safety.get_status()
         trade_decision = await self._run_trader(
             symbol, debate_result, analyst_reports, safety_status, errors
         )
+        if self.profiler:
+            await self.profiler.end_stage("trader")
         pipeline_result["trade_decision"] = trade_decision
 
         # ── Stage 4: Risk Manager Review ──────────────────────────────────
 
+        if self.profiler:
+            await self.profiler.start_stage("risk_manager")
         # We always pass an empty portfolio if none is available — callers should
         # inject a real portfolio dict via a wrapper or subclass
         portfolio = await self._get_portfolio()
         risk_decision = await self._run_risk_manager(
             trade_decision, safety_status, portfolio, errors
         )
+        if self.profiler:
+            await self.profiler.end_stage("risk_manager")
         pipeline_result["risk_decision"] = risk_decision
 
         # ── Stage 5: Fund Manager (only if Risk Manager approved) ──────────
 
         fund_decision: Optional[dict] = None
         if risk_decision.get("approved", False):
+            if self.profiler:
+                await self.profiler.start_stage("fund_manager")
             open_positions = portfolio.get("positions", [])
             fund_decision = await self._run_fund_manager(
                 trade_decision, risk_decision, portfolio, open_positions, errors
             )
+            if self.profiler:
+                await self.profiler.end_stage("fund_manager")
         else:
             logger.info(f"[Pipeline] Risk Manager vetoed {symbol} — skipping Fund Manager")
 
@@ -227,6 +255,11 @@ class TradingPipeline:
 
         # Add cache_hit flag for logging
         pipeline_result["cache_hit"] = False
+
+        # Finish profiler run (stores report in history)
+        if self.profiler:
+            await self.profiler.finish_run()
+
         return pipeline_result
 
     # ── Stage Runners ──────────────────────────────────────────────────────
@@ -705,3 +738,4 @@ class TradingPipeline:
                 "req_id": req_id,
                 "error": str(exc),
             }
+        
