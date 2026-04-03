@@ -8,7 +8,8 @@
  * into your dashboard components.
  *
  * The hook automatically:
- * - Connects to ws://localhost:8010/ws/events
+ * - Connects to the engine WebSocket via NEXT_PUBLIC_ENGINE_URL env var
+ * - Falls back to ws://localhost:8010/ws/events if env var is not set
  * - Reconnects with exponential backoff on disconnect
  * - Buffers the last 100 events
  * - Sends ping/pong keep-alive every 30 seconds
