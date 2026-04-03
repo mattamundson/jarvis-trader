@@ -39,11 +39,9 @@ from agents.thinkscript_generator import ThinkScriptGeneratorAgent
 from agents.trader import TraderAgent
 from api.models import (
     BarsResponse,
-    CircuitBreakerStatus,
     DailyPnLResponse,
     DecisionHistoryResponse,
     DrawdownResponse,
-    KillSwitchToggleResponse,
     NewsSentimentResponse,
     PaperPerformanceResponse,
     PaperPositionsResponse,
@@ -52,7 +50,6 @@ from api.models import (
     PortfolioResponse,
     RedditSentimentResponse,
     SafetyConfigResponse,
-    SafetyStatusResponse,
     StatsSummaryResponse,
     TechnicalAnalysisResponse,
     TradeHistoryResponse,
@@ -104,6 +101,10 @@ from routers.instruments_router import router as instruments_router
 from routers.brokers_router import router as brokers_router
 from routers.brokers_router import inject_dependencies as inject_brokers_deps
 from routers.options_router import router as options_router
+from routers.approval_router import router as approval_router
+from routers.approval_router import inject_dependencies as inject_approval_deps
+from routers.scanner_router import router as scanner_router
+from routers.scanner_router import inject_dependencies as inject_scanner_deps
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from websocket.events import set_ws_manager
@@ -653,6 +654,21 @@ async def lifespan(app: FastAPI):
         schwab_connector,
     )
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
+    inject_approval_deps(safety_layer, paper_tracker, db_manager)
+
+    # Initialize Signal Scanner
+    try:
+        from scanner.signal_scanner import SignalScanner
+
+        signal_scanner = SignalScanner(
+            trading_pipeline=trading_pipeline,
+            db_manager=db_manager,
+        )
+        inject_scanner_deps(signal_scanner)
+        await signal_scanner.start()
+        logger.info("Signal scanner started (MCL + MNQ, 60-min interval)")
+    except Exception as e:
+        logger.warning("Signal scanner failed to start: %s (non-fatal)", e)
 
     # Initialize Tilt Detection
     try:
@@ -891,6 +907,8 @@ app.include_router(schwab_router)
 app.include_router(instruments_router)
 app.include_router(brokers_router)
 app.include_router(options_router)
+app.include_router(approval_router)
+app.include_router(scanner_router)
 app.include_router(v1_router)
 
 
@@ -912,71 +930,7 @@ async def events_handler(websocket: WebSocket):
 
 app.websocket("/ws/events")(events_handler)
 
-# ── Safety / Kill Switch ──────────────────────────────────────────────────
-
-
-@app.post("/safety/kill-switch/activate", response_model=KillSwitchToggleResponse)
-async def activate_kill_switch(reason: str = "manual"):
-    if not safety_layer:
-        raise HTTPException(500, "Safety layer not initialized")
-    from risk.safety_layer import KillSwitchReason
-
-    safety_layer.activate_kill_switch(KillSwitchReason.MANUAL, f"Manual activation: {reason}")
-    from notifications.whatsapp import get_notifier
-    from websocket.events import emit_kill_switch_change
-
-    asyncio.create_task(get_notifier().alert_kill_switch(reason))
-    asyncio.create_task(emit_kill_switch_change(active=True, reason=reason))
-    return {"status": "kill_switch_activated", "reason": reason}
-
-
-@app.post("/safety/kill-switch/deactivate", response_model=KillSwitchToggleResponse)
-async def deactivate_kill_switch():
-    if not safety_layer:
-        raise HTTPException(500, "Safety layer not initialized")
-    from websocket.events import emit_kill_switch_change
-
-    safety_layer.deactivate_kill_switch(authorized_by="matt_dashboard")
-    asyncio.create_task(emit_kill_switch_change(active=False, reason="Manual deactivation"))
-    return {"status": "kill_switch_deactivated"}
-
-
-@app.get("/safety/status", response_model=SafetyStatusResponse)
-async def safety_status():
-    if not safety_layer:
-        raise HTTPException(500, "Safety layer not initialized")
-    return safety_layer.get_status()
-
-
-@app.get("/safety/circuit-breakers", response_model=CircuitBreakerStatus)
-async def get_circuit_breakers():
-    """
-    Current circuit breaker state for all safety limits.
-
-    Returns a snapshot of every circuit breaker without triggering any
-    state changes.  Safe to poll frequently (e.g. every 5 seconds from
-    the dashboard).
-
-    Response fields:
-        daily_pnl            — today's P&L in dollars (realized + unrealized)
-        daily_limit          — max allowed daily loss in dollars (negative)
-        daily_pnl_pct        — daily P&L as fraction of starting balance
-        daily_limit_pct      — configured daily loss limit (e.g. -0.02)
-        daily_limit_breached — True when daily loss limit has been exceeded
-        drawdown_pct         — current drawdown from peak (negative fraction)
-        drawdown_limit_pct   — configured max drawdown limit (e.g. -0.10)
-        drawdown_breached    — True when max drawdown has been exceeded
-        kill_switch_active   — whether the kill switch is currently on
-        kill_switch_reason   — reason string or null
-        pnl_source           — data origin: "ib" | "sqlite" | "memory"
-        current_balance      — current account balance in dollars
-        starting_balance     — balance at start of today in dollars
-        orders_last_minute   — number of orders placed in the last 60 seconds
-        all_clear            — True when no circuit breaker has tripped
-    """
-    if not safety_layer:
-        raise HTTPException(500, "Safety layer not initialized")
-    return safety_layer.check_circuit_breakers()
+# ── Safety / Kill Switch (shared routes live in routers/safety_router.py) ───
 
 
 @app.get("/safety/config", response_model=SafetyConfigResponse)
@@ -1025,16 +979,6 @@ async def calculate_position_size_alias():
         "account_value": result.account_value,
         "reasoning": result.reasoning,
     }
-
-
-@app.post("/safety/reset-daily-pnl", response_model=dict)
-async def reset_daily_pnl():
-    """Reset the in-memory daily P&L counter (useful for testing)."""
-    if not safety_layer:
-        raise HTTPException(500, "Safety layer not initialized")
-    safety_layer._daily_realized_pnl = 0.0
-    safety_layer._daily_order_count = 0
-    return {"status": "daily_pnl_reset", "message": "Daily P&L counter cleared"}
 
 
 @app.get("/safety/loss-tracker")
