@@ -1,0 +1,1753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — The Stark-Cohen Protocol</title>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2332;
+    --border: #1e3a5f;
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --gold: #f59e0b;
+    --bull: #10b981;
+    --bear: #ef4444;
+    --warn: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --glow: 0 0 20px rgba(0,212,255,0.15);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .hero {
+    background: linear-gradient(135deg, #0a0e17 0%, #111827 40%, #1a1040 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 3rem 2rem 2rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(0,212,255,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 50%, rgba(124,58,237,0.08) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .hero h1 {
+    font-size: 2.4rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 50%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+    position: relative;
+  }
+  .hero .subtitle {
+    color: var(--muted);
+    font-size: 1rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .hero .version {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 4px 14px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: rgba(0,212,255,0.1);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: var(--accent);
+    letter-spacing: 0.1em;
+  }
+
+  /* Tab Nav */
+  .tab-nav {
+    display: flex;
+    gap: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-btn {
+    flex: 1;
+    min-width: 120px;
+    padding: 14px 16px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: rgba(0,212,255,0.05);
+  }
+
+  /* Tab Content */
+  .tab-content { display:none; padding: 2rem; max-width: 1200px; margin: 0 auto; }
+  .tab-content.active { display: block; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--glow);
+  }
+  .card h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .card h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 1.2rem 0 0.6rem;
+    color: var(--accent);
+  }
+  .card p { margin-bottom: 0.8rem; }
+
+  /* Badge */
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .badge-bull { background: rgba(16,185,129,0.15); color: var(--bull); border: 1px solid rgba(16,185,129,0.3); }
+  .badge-bear { background: rgba(239,68,68,0.15); color: var(--bear); border: 1px solid rgba(239,68,68,0.3); }
+  .badge-warn { background: rgba(245,158,11,0.15); color: var(--warn); border: 1px solid rgba(245,158,11,0.3); }
+  .badge-accent { background: rgba(0,212,255,0.12); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); }
+  .badge-purple { background: rgba(124,58,237,0.15); color: #a78bfa; border: 1px solid rgba(124,58,237,0.3); }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin: 1rem 0;
+  }
+  th, td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  th {
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+  }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* Grid layouts */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  /* Layer boxes */
+  .layer-box {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 1.2rem;
+    border-left: 3px solid var(--accent);
+    margin-bottom: 1rem;
+  }
+  .layer-box.l1 { border-left-color: #06b6d4; }
+  .layer-box.l2 { border-left-color: #8b5cf6; }
+  .layer-box.l3 { border-left-color: #f59e0b; }
+  .layer-box.l4 { border-left-color: #10b981; }
+  .layer-box.l5 { border-left-color: #ef4444; }
+
+  .layer-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-bottom: 0.4rem;
+  }
+  .l1 .layer-label { color: #06b6d4; }
+  .l2 .layer-label { color: #8b5cf6; }
+  .l3 .layer-label { color: #f59e0b; }
+  .l4 .layer-label { color: #10b981; }
+  .l5 .layer-label { color: #ef4444; }
+
+  /* Code blocks */
+  code {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    background: rgba(0,212,255,0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+  pre {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    margin: 1rem 0;
+  }
+  pre code { background: none; padding: 0; }
+
+  /* Flow diagram */
+  .flow-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+    flex-wrap: wrap;
+  }
+  .flow-box {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .flow-arrow {
+    color: var(--muted);
+    font-size: 1.2rem;
+  }
+  .flow-gate { background: rgba(239,68,68,0.15); color: var(--bear); border: 1px solid rgba(239,68,68,0.3); }
+  .flow-signal { background: rgba(16,185,129,0.15); color: var(--bull); border: 1px solid rgba(16,185,129,0.3); }
+  .flow-ai { background: rgba(124,58,237,0.15); color: #a78bfa; border: 1px solid rgba(124,58,237,0.3); }
+  .flow-exec { background: rgba(0,212,255,0.12); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); }
+
+  /* Metric card */
+  .metric-card {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 1.2rem;
+    text-align: center;
+  }
+  .metric-card .label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
+  .metric-card .value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .metric-card .sub {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 0.2rem;
+  }
+
+  /* Decision tree */
+  .decision-tree {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.8;
+    padding: 1rem;
+    background: #0d1117;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .dt-if { color: #c084fc; }
+  .dt-then { color: #10b981; }
+  .dt-else { color: #ef4444; }
+  .dt-val { color: var(--accent); }
+  .dt-comment { color: var(--muted); }
+
+  /* Callout */
+  .callout {
+    border-left: 3px solid var(--gold);
+    background: rgba(245,158,11,0.06);
+    padding: 1rem 1.2rem;
+    border-radius: 0 8px 8px 0;
+    margin: 1rem 0;
+    font-size: 0.88rem;
+  }
+  .callout-danger {
+    border-left-color: var(--bear);
+    background: rgba(239,68,68,0.06);
+  }
+  .callout strong { color: var(--gold); }
+  .callout-danger strong { color: var(--bear); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* Instrument comparison */
+  .inst-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem; }
+  @media (max-width: 900px) { .inst-grid { grid-template-columns: 1fr; } }
+  .inst-card {
+    background: var(--surface2);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .inst-header {
+    padding: 1rem 1.2rem;
+    font-weight: 700;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .inst-body { padding: 0 1.2rem 1.2rem; }
+  .inst-mcl .inst-header { background: linear-gradient(90deg, rgba(245,158,11,0.12), transparent); border-bottom: 1px solid rgba(245,158,11,0.2); }
+  .inst-mnq .inst-header { background: linear-gradient(90deg, rgba(0,212,255,0.12), transparent); border-bottom: 1px solid rgba(0,212,255,0.2); }
+
+  /* Session timeline */
+  .timeline {
+    position: relative;
+    padding-left: 2rem;
+    margin: 1rem 0;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+  }
+  .tl-item {
+    position: relative;
+    margin-bottom: 1.2rem;
+    padding-left: 1rem;
+  }
+  .tl-item::before {
+    content: '';
+    position: absolute;
+    left: -1.55rem;
+    top: 6px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+  }
+  .tl-item.tl-hot::before { background: var(--bull); }
+  .tl-item.tl-cold::before { background: var(--muted); }
+  .tl-time {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .tl-desc { font-size: 0.88rem; margin-top: 0.2rem; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- HERO                                                                   -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="hero">
+  <h1>The Stark-Cohen Protocol</h1>
+  <div class="subtitle">JARVIS TRADER &mdash; Comprehensive Trading Strategy</div>
+  <div class="version">v1.0 &bull; 30-Day Paper Validation &bull; April 2026</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB NAV                                                                -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<nav class="tab-nav" role="tablist">
+  <button class="tab-btn active" data-tab="philosophy">Philosophy</button>
+  <button class="tab-btn" data-tab="framework">5-Layer Framework</button>
+  <button class="tab-btn" data-tab="instruments">Instruments</button>
+  <button class="tab-btn" data-tab="entries">Entry Rules</button>
+  <button class="tab-btn" data-tab="exits">Exit Rules</button>
+  <button class="tab-btn" data-tab="sizing">Position Sizing</button>
+  <button class="tab-btn" data-tab="risk">Risk Management</button>
+  <button class="tab-btn" data-tab="pipeline">AI Pipeline</button>
+  <button class="tab-btn" data-tab="session">Session Protocol</button>
+  <button class="tab-btn" data-tab="validation">Validation Gates</button>
+  <button class="tab-btn" data-tab="math">Math Reference</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 1: PHILOSOPHY                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="philosophy" class="tab-content active">
+  <div class="card">
+    <h2>The Thesis</h2>
+    <p>This is not a "system." It is a <strong>decision architecture</strong> that fuses the quantitative edge of Steven Cohen's multi-signal validation with the engineering discipline of Tony Stark's layered defense systems. Every trade must pass through five independent layers of confirmation before a single contract is risked. The AI doesn't generate alpha &mdash; the <em>indicators</em> generate alpha. The AI <strong>validates, debates, and stress-tests</strong> the signal before execution.</p>
+    <p>The core insight: <strong>markets are not random, but they are adversarial.</strong> The edge comes not from predicting the future, but from entering only when five independent systems agree that the present moment is asymmetrically favorable &mdash; and sizing the bet to survive being wrong.</p>
+  </div>
+
+  <div class="grid-3">
+    <div class="metric-card">
+      <div class="label">Signal Sources</div>
+      <div class="value" style="color:var(--accent);">22</div>
+      <div class="sub">ThinkScript studies reimplemented in Python</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">AI Agents</div>
+      <div class="value" style="color:var(--accent2);">10</div>
+      <div class="sub">5-stage pipeline with debate architecture</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Safety Checks</div>
+      <div class="value" style="color:var(--bear);">8</div>
+      <div class="sub">Hardcoded Python &mdash; no LLM in the safety path</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.5rem;">
+    <h2>Three Operating Principles</h2>
+    <h3>1. Never Bet on One Signal (Cohen)</h3>
+    <p>No trade fires on a single indicator. The standard signal requires STC momentum alignment <em>plus</em> regime confirmation <em>plus</em> structural confirmation <em>plus</em> directional bias from 4 independent sources. The composite MES strategy adds ORB and VWAP reversion on top. A single indicator can be gamed; five agreeing simultaneously is a statistical event worth betting on.</p>
+
+    <h3>2. Layered Defense Architecture (Stark)</h3>
+    <p>Each of the five layers acts as an independent filter. Layer 1 (Regime) sets the environment. Layer 2 (Structure) identifies where price sits relative to auction theory. Layer 3 (Bias) aggregates four directional votes. Layer 4 (Entry) waits for the exact trigger. Layer 5 (Sizing) calibrates the bet to survive worst-case scenarios. An entry requires ALL five layers to be permissive &mdash; any single layer can veto.</p>
+
+    <h3>3. The AI is the Risk Manager, Not the Trader</h3>
+    <p>The mechanical signal system generates entries. The 10-agent AI pipeline then <strong>debates the entry</strong> &mdash; bull vs. bear researchers present opposing cases, the trader synthesizes, the risk manager validates, and the fund manager gives final approval. The AI's job is to <em>reject bad signals</em>, not to find signals the math missed. This is the difference between an AI copilot and an AI pilot.</p>
+  </div>
+
+  <div class="callout">
+    <strong>The Mandate:</strong> During the 30-day paper validation phase (April 2 &ndash; May 2, 2026), the system must prove it can achieve a Profit Factor &ge; 2.0, Sharpe Ratio &ge; 1.5, Win Rate &ge; 55%, across &ge; 60 trades, with max drawdown &le; 15%. Every trade requires human approval. The kill switch is non-negotiable.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 2: 5-LAYER FRAMEWORK                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="framework" class="tab-content">
+  <div class="card">
+    <h2>The Five Layers</h2>
+    <p>Every bar of market data flows through five sequential layers. Each layer adds context. No layer can be skipped. The output of one layer feeds the next. This is the heartbeat of the entire system.</p>
+
+    <div class="flow-row" style="margin: 1.5rem 0;">
+      <div class="flow-box" style="background:rgba(6,182,212,0.15);color:#06b6d4;border:1px solid rgba(6,182,212,0.3);">L1: Regime</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-box" style="background:rgba(139,92,246,0.15);color:#8b5cf6;border:1px solid rgba(139,92,246,0.3);">L2: Structure</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-box" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);">L3: Bias</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-box flow-signal">L4: Entry</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-box flow-gate">L5: Size / Risk</div>
+    </div>
+  </div>
+
+  <!-- Layer 1 -->
+  <div class="layer-box l1">
+    <div class="layer-label">Layer 1 &mdash; Regime Map</div>
+    <h3 style="color:#06b6d4;margin-top:0;">What environment are we in?</h3>
+    <p>Layer 1 classifies the current market environment from four computed inputs. Each input is derived from raw OHLCV bars:</p>
+
+    <h3>Input 1: ATR Range Consumed %</h3>
+    <pre><code>ATR_consumed = |close - prior_close| / ATR * 100
+
+where ATR = Wilder's Average True Range (period=14):
+  TR[i] = max(high - low, |high - prior_close|, |low - prior_close|)
+  ATR[14] = mean(TR[0..13])
+  ATR[i] = (ATR[i-1] * 13 + TR[i]) / 14    (Wilder smoothing)
+
+Example: MCL close=69.20, prior_close=68.80, ATR=0.45
+  consumed = |69.20 - 68.80| / 0.45 * 100 = 88.9%
+  Interpretation: 88.9% of the expected daily range has been used up</code></pre>
+    <p><strong>Why it matters:</strong> If price has already moved 90%+ of its expected range, there's little fuel left. Entering a trend trade when the move is nearly spent is a losing proposition.</p>
+
+    <h3>Input 2: Phase Oscillator</h3>
+    <pre><code>Phase = (close - EMA21) / (3 * ATR) * 100, clamped to [-100, +100]
+
+where EMA21 = exponential moving average of close, span=21
+
+Example: close=69.20, EMA21=68.90, ATR=0.45
+  Phase = (69.20 - 68.90) / (3 * 0.45) * 100 = 22.2
+  Interpretation: price is 22.2% of a normalized range above its mean</code></pre>
+    <p><strong>Why it matters:</strong> Phase tells you how far price has deviated from its mean, in volatility-adjusted terms. Fibonacci zones at +/-23.6, +/-61.8, +/-100 mark increasing levels of extension. Extreme readings (&gt; 61.8) signal exhaustion.</p>
+
+    <h3>Input 3: Phase Compression</h3>
+    <pre><code>BB_width = (SMA20 + 2*stddev) - (SMA20 - 2*stddev) = 4 * rolling_stddev(close, 21)
+ATR_band_width = 2 * ATR
+
+Compression = True when BB_width &lt; ATR_band_width
+  i.e., when 4 * stddev &lt; 2 * ATR → stddev &lt; 0.5 * ATR
+
+Interpretation: realized volatility (stddev) has contracted to less
+than half of expected volatility (ATR). The market is coiling.</code></pre>
+    <p><strong>Why it matters:</strong> Compression precedes expansion. But you can't predict <em>which direction</em> the expansion will go. So compression = don't enter, wait for the breakout.</p>
+
+    <h3>Input 4: EMA Ribbon Trend</h3>
+    <pre><code>EMA8  = EWM(close, span=8)
+EMA21 = EWM(close, span=21)
+EMA34 = EWM(close, span=34)
+
+IF EMA8 &gt; EMA21 &gt; EMA34 → "bullish"  (all three aligned upward)
+IF EMA8 &lt; EMA21 &lt; EMA34 → "bearish"  (all three aligned downward)
+ELSE                     → "neutral"  (tangled — no clear trend)</code></pre>
+    <p><strong>Why it matters:</strong> Three timeframes of momentum stacked in order means the short, medium, and long-term trends agree. When they don't agree, it's chop.</p>
+
+    <h3>The Regime Decision Tree</h3>
+    <div class="decision-tree">
+      <span class="dt-if">IF</span> consumed &gt; 90%<br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">EXHAUSTED</span> <span class="dt-comment">// move is spent, block new entries</span><br>
+      <span class="dt-if">ELIF</span> compression == True <span class="dt-if">AND</span> consumed &lt; 50%<br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">COMPRESSION</span> <span class="dt-comment">// volatility coiling, wait for breakout</span><br>
+      <span class="dt-if">ELIF</span> ema_trend == "bullish" <span class="dt-if">AND</span> consumed &lt; 70% <span class="dt-if">AND</span> phase &gt; 0<br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">TRENDING_BULL</span> <span class="dt-comment">// room to run + aligned trend + above mean</span><br>
+      <span class="dt-if">ELIF</span> ema_trend == "bearish" <span class="dt-if">AND</span> consumed &lt; 70% <span class="dt-if">AND</span> phase &lt; 0<br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">TRENDING_BEAR</span> <span class="dt-comment">// room to run + aligned trend + below mean</span><br>
+      <span class="dt-if">ELSE</span><br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">RANGE_BOUND</span> <span class="dt-comment">// mixed signals, no clear environment</span>
+    </div>
+
+    <table style="margin-top:1rem;">
+      <tr><th>Regime</th><th>Trading Action</th></tr>
+      <tr><td><span class="badge badge-bull">TRENDING_BULL</span></td><td>Full signal processing — trend-following entries</td></tr>
+      <tr><td><span class="badge badge-bear">TRENDING_BEAR</span></td><td>Full signal processing — trend-following shorts</td></tr>
+      <tr><td><span class="badge badge-warn">RANGE_BOUND</span></td><td>Entries allowed but require stronger confirmation</td></tr>
+      <tr><td><span class="badge badge-purple">COMPRESSION</span></td><td>BLOCKED (if regime_filter=True) or downgraded to RANGE_BOUND</td></tr>
+      <tr><td><span class="badge badge-bear">EXHAUSTED</span></td><td>BLOCKED or FADE_EXTREME only (if phase &gt; 61.8 or &lt; -61.8)</td></tr>
+    </table>
+    <div class="callout">
+      <strong>Regime filter by instrument:</strong> MCL and MNQ use <code>regime_filter=True</code> (blocks EXHAUSTED/COMPRESSION). MES uses <code>regime_filter=False</code> (downgrades to RANGE_BOUND, letting composite signals fire).
+    </div>
+  </div>
+
+  <!-- Layer 2 -->
+  <div class="layer-box l2">
+    <div class="layer-label">Layer 2 &mdash; Structure Map</div>
+    <h3 style="color:#8b5cf6;margin-top:0;">Where is price relative to value?</h3>
+    <p>Layer 2 determines whether price is inside or outside the "value area" — the zone where most trading activity occurred recently. This is rooted in <strong>auction market theory</strong>: price that moves away from value and is <em>accepted</em> there (doesn't snap back) signals a shift in perceived fair value.</p>
+
+    <h3>Input 1: VPOC (Volume Point of Control)</h3>
+    <pre><code>VPOC = rolling 20-bar Volume-Weighted Average Price
+
+VPOC[i] = sum(close[j] * volume[j], j=i-19..i) / sum(volume[j], j=i-19..i)
+
+Example: 20 bars of MCL data, total close*vol = 14,280,000, total vol = 210,000
+  VPOC = 14,280,000 / 210,000 = 68.00
+
+Interpretation: the price where the MOST volume transacted.
+This is "fair value" — where buyers and sellers agreed most.</code></pre>
+    <p><strong>Note:</strong> True VPOC requires tick-level data (TPO profiles). This VWAP proxy is the best approximation from hourly OHLCV bars. It captures the volume-weighted center of gravity of the last 20 bars.</p>
+
+    <h3>Input 2: VAH / VAL (Value Area High / Low)</h3>
+    <pre><code>VAH = 85th percentile of the last 20 bars' highs
+VAL = 15th percentile of the last 20 bars' lows
+
+Calculation: sort last 20 high values ascending, take value at position 17 (85%)
+             sort last 20 low values ascending, take value at position 3 (15%)
+
+Example: 20 bars of MCL
+  Sorted highs: [67.80, 68.00, ..., 69.30, 69.50]
+  VAH = 85th pctile ≈ 69.30
+  Sorted lows: [67.20, 67.40, ..., 68.90, 69.10]
+  VAL = 15th pctile ≈ 67.40
+
+Value Area = [67.40, 69.30]  (70% of price action happened here)
+  Price above 69.30 = above value → potential buyer control
+  Price below 67.40 = below value → potential seller control
+  Price between 67.40-69.30 = inside value → neutral</code></pre>
+    <p><strong>Why 85th/15th percentile?</strong> This captures the central 70% of price action (from 15th to 85th), which mirrors the classic TPO Value Area definition (70% of TPO letters).</p>
+
+    <h3>Input 3: IB High / IB Low (Initial Balance)</h3>
+    <pre><code>For hourly backtesting:
+  IB_HIGH = prior bar's high
+  IB_LOW  = prior bar's low
+
+For live intraday (minute data):
+  IB_HIGH = max(high[bar]) for bars from 9:30 to 10:30 AM ET
+  IB_LOW  = min(low[bar]) for bars from 9:30 to 10:30 AM ET
+  IB_RANGE = IB_HIGH - IB_LOW
+
+Extension targets (from live IB):
+  ext_50_up   = IB_HIGH + 0.50 * IB_RANGE
+  ext_100_up  = IB_HIGH + 1.00 * IB_RANGE
+  ext_300_up  = IB_HIGH + 3.00 * IB_RANGE
+  (mirror for downside)
+
+Example: MCL RTH opens, first hour trades 68.40 to 69.10
+  IB_HIGH = 69.10, IB_LOW = 68.40, IB_RANGE = 0.70
+  50% extension target up   = 69.10 + 0.35 = 69.45
+  100% extension target up  = 69.10 + 0.70 = 69.80
+  3x extension target up    = 69.10 + 2.10 = 71.20</code></pre>
+    <p><strong>Why IB matters:</strong> The first 60 minutes of RTH is when institutional order flow establishes the session's initial range. A breakout from this range is a statistically significant event — it means the market rejected the initial price discovery and is repricing. 80% of trending days show IB breakout in the first 2 hours.</p>
+
+    <h3>The Structure Decision</h3>
+    <pre><code>above_vah     = (close &gt; VAH)       // price left value area to the upside
+below_val     = (close &lt; VAL)       // price left value area to the downside
+above_ib_high = (close &gt; IB_HIGH)   // price broke above initial balance
+below_ib_low  = (close &lt; IB_LOW)    // price broke below initial balance</code></pre>
+
+    <div class="decision-tree">
+      <span class="dt-if">IF</span> above_vah == True <span class="dt-if">AND</span> above_ib_high == True<br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">BUYER_CONTROL</span><br>
+      &nbsp;&nbsp;<span class="dt-comment">// Price is above where 70% of volume traded AND above the session range.</span><br>
+      &nbsp;&nbsp;<span class="dt-comment">// Two independent structural signals agree: genuine buyer acceptance.</span><br><br>
+      <span class="dt-if">ELIF</span> below_val == True <span class="dt-if">AND</span> below_ib_low == True<br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">SELLER_CONTROL</span><br>
+      &nbsp;&nbsp;<span class="dt-comment">// Price is below value AND below session range. Sellers drove it out.</span><br><br>
+      <span class="dt-if">ELSE</span><br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">NEUTRAL_STRUCTURE</span><br>
+      &nbsp;&nbsp;<span class="dt-comment">// Inside value area, or mixed (above VAH but inside IB, etc).</span><br>
+      &nbsp;&nbsp;<span class="dt-comment">// No structural edge. Require STC crossover for entry.</span>
+    </div>
+
+    <p style="margin-top:1rem;"><strong>Why BOTH conditions?</strong> Being above VAH alone could be a brief spike that snaps back. Being above IB High alone could be noise in a wide IB range. But being above <em>both</em> means: (1) price left the zone where 70% of volume traded, AND (2) it broke beyond the session's opening range. The conjunction of two independent structural signals is what distinguishes genuine acceptance from a wick.</p>
+  </div>
+
+  <!-- Layer 3 -->
+  <div class="layer-box l3">
+    <div class="layer-label">Layer 3 &mdash; Directional Bias</div>
+    <h3 style="color:#f59e0b;margin-top:0;">Which way should we lean?</h3>
+    <p>Layer 3 polls four mathematically independent indicators. Each one captures a different market dynamic. Each casts a vote: bull (+1), bear (+1), or abstain (0). The tally determines directional bias.</p>
+
+    <h3>Voter 1: KAMA — Kaufman Adaptive Moving Average (period=10)</h3>
+    <pre><code>Efficiency Ratio (ER):
+  ER = |close - close[10 bars ago]| / sum(|close[i] - close[i-1]|, last 10 bars)
+  Range: 0.0 (pure chop) to 1.0 (straight-line trend)
+
+Smoothing Constant (SC):
+  fast_sc = 2 / (2 + 1) = 0.667    (fast EMA weighting)
+  slow_sc = 2 / (30 + 1) = 0.0645  (slow EMA weighting)
+  SC = (ER * (fast_sc - slow_sc) + slow_sc)^2
+
+KAMA:
+  KAMA[i] = KAMA[i-1] + SC * (close[i] - KAMA[i-1])
+
+Vote:
+  IF close &gt; KAMA → BULL (+1)   // price above adaptive trend
+  IF close &lt; KAMA → BEAR (+1)   // price below adaptive trend
+
+Example: MCL close=69.20, KAMA=68.95 → close &gt; KAMA → BULL vote</code></pre>
+    <p><strong>Why KAMA, not a simple MA?</strong> KAMA speeds up in trends (ER near 1.0 → SC is large → tracks price closely) and slows down in chop (ER near 0.0 → SC is tiny → barely moves). This means it doesn't whipsaw in ranging markets but reacts fast to real moves. It's an adaptive momentum filter.</p>
+
+    <h3>Voter 2: STC — Schaff Trend Cycle Direction</h3>
+    <pre><code>MACD = EMA(close, 23) - EMA(close, 50)
+
+First Stochastic of MACD:
+  K1 = (MACD - lowest(MACD, 10)) / (highest(MACD, 10) - lowest(MACD, 10)) * 100
+  D1 = EMA(K1, 3)
+
+Second Stochastic of D1:
+  K2 = (D1 - lowest(D1, 10)) / (highest(D1, 10) - lowest(D1, 10)) * 100
+  STC = EMA(K2, 3), clamped [0, 100]
+
+STC Direction:
+  IF STC &lt; OS (15) → "oversold"
+  IF STC &gt; OB (83/92) → "overbought"
+  IF STC &gt; STC_prev → "rising"
+  IF STC &lt; STC_prev → "falling"
+
+Vote:
+  IF oversold OR rising → BULL (+1)   // momentum favors upside
+  IF overbought OR falling → BEAR (+1)  // momentum favors downside
+
+Example: STC=12.5 (below OS=15) → "oversold" → BULL vote</code></pre>
+    <p><strong>Why double-stochastic of MACD?</strong> MACD captures momentum as the spread between a fast and slow EMA. Applying stochastic twice smooths out noise while preserving inflection points. The result oscillates 0-100 and spends most time near 0 or 100 — the crossings of the OS/OB thresholds are the high-probability signals.</p>
+
+    <h3>Voter 3: Volume Stack — Who's Actually Trading?</h3>
+    <pre><code>buy_volume  = volume * (close - low) / (high - low)
+sell_volume = volume * (high - close) / (high - low)
+buy_pct     = buy_volume / (buy_volume + sell_volume) * 100
+
+Logic: if close is near the high of the bar, buyers won.
+       if close is near the low, sellers won.
+       The ratio tells you who controlled the bar.
+
+Vote:
+  IF buy_pct &gt; 60% → BULL (+1)   // buyers dominated this bar
+  IF buy_pct &lt; 40% → BEAR (+1)   // sellers dominated this bar
+  IF 40-60%        → abstain      // balanced, no edge
+
+Example: MCL bar high=69.30, low=68.80, close=69.20, volume=15000
+  buy_vol = 15000 * (69.20 - 68.80) / (69.30 - 68.80) = 15000 * 0.80 = 12,000
+  sell_vol = 15000 * (69.30 - 69.20) / (69.30 - 68.80) = 15000 * 0.20 = 3,000
+  buy_pct = 12,000 / 15,000 * 100 = 80% → BULL vote</code></pre>
+    <p><strong>Why this matters:</strong> Price can move on low volume (noise) or high volume (conviction). Volume Stack tells you which side had conviction. An upward move with 80% buy volume is real. An upward move with 45% buy volume is suspect.</p>
+
+    <h3>Voter 4: EMA Ribbon (8/21/34)</h3>
+    <pre><code>EMA8  = EWM(close, span=8)   // fast (reacts to ~8 bars)
+EMA21 = EWM(close, span=21)  // medium
+EMA34 = EWM(close, span=34)  // slow (reacts to ~34 bars)
+
+Vote:
+  IF EMA8 &gt; EMA21 &gt; EMA34 → BULL (+1)  // all three stacked bullish
+  IF EMA8 &lt; EMA21 &lt; EMA34 → BEAR (+1)  // all three stacked bearish
+  ELSE → abstain                          // tangled = no clear trend
+
+Example: EMA8=69.15, EMA21=68.90, EMA34=68.70
+  69.15 &gt; 68.90 &gt; 68.70 → stacked bullish → BULL vote</code></pre>
+    <p><strong>Why three EMAs, not one?</strong> A single MA gives one data point. Three stacked in order means short, medium, and long-term momentum ALL agree. When they tangle (cross each other), it's a sign the trend is breaking down.</p>
+
+    <h3>The Bias Tally</h3>
+    <div class="decision-tree">
+      <span class="dt-comment">// Count votes</span><br>
+      bull_count = (KAMA==bull) + (STC==bull) + (VolStack==bull) + (EMA==bull)<br>
+      bear_count = (KAMA==bear) + (STC==bear) + (VolStack==bear) + (EMA==bear)<br><br>
+
+      <span class="dt-if">IF</span> bull_count &ge; 4 <span class="dt-then">→</span> <span class="dt-val">STRONG_BULL</span> <span class="dt-comment">// unanimous</span><br>
+      <span class="dt-if">ELIF</span> bull_count &ge; 3 <span class="dt-if">OR</span> (bull_count == 2 <span class="dt-if">AND</span> ema == "bullish")<br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">LEAN_BULL</span> <span class="dt-comment">// majority, or 2+trend confirmation</span><br>
+      <span class="dt-if">ELIF</span> bear_count &ge; 4 <span class="dt-then">→</span> <span class="dt-val">STRONG_BEAR</span><br>
+      <span class="dt-if">ELIF</span> bear_count &ge; 3 <span class="dt-if">OR</span> (bear_count == 2 <span class="dt-if">AND</span> ema == "bearish")<br>
+      &nbsp;&nbsp;<span class="dt-then">→</span> <span class="dt-val">LEAN_BEAR</span><br>
+      <span class="dt-if">ELSE</span> <span class="dt-then">→</span> <span class="dt-else">NEUTRAL</span> <span class="dt-comment">// no agreement → NO TRADE</span>
+    </div>
+
+    <p style="margin-top:1rem;"><strong>Why the EMA tiebreaker?</strong> When only 2 of 4 voters agree on direction, we need a tiebreaker. The EMA ribbon gets that role because trend structure is the most reliable edge in futures markets. If 2 voters say bull and the trend is bullish, that's enough conviction. If 2 voters say bull but the trend is bearish, the disagreement is too large — we sit out.</p>
+
+    <div class="callout">
+      <strong>NEUTRAL = NO TRADE. Period.</strong> If the four voters can't agree on a direction, the edge is gone and we sit on our hands. This is the single most important filter in the system — it prevents trading in chop, which is where most retail accounts die.
+    </div>
+  </div>
+
+  <!-- Layer 4 -->
+  <div class="layer-box l4">
+    <div class="layer-label">Layer 4 &mdash; Entry Timing</div>
+    <h3 style="color:#10b981;margin-top:0;">When exactly do we pull the trigger?</h3>
+    <p>Layer 4 combines Layers 1-3 with the STC crossover and IB breakout to determine the exact entry moment.</p>
+
+    <div class="decision-tree">
+      <span class="dt-comment">// Priority 1: Regime veto</span><br>
+      <span class="dt-if">IF</span> regime == EXHAUSTED <span class="dt-if">AND</span> consumed &gt; 90% <span class="dt-if">AND</span> |phase| &gt; 61.8<br>
+      &nbsp;&nbsp;<span class="dt-then">THEN</span> <span class="dt-val">FADE_EXTREME</span> <span class="dt-comment">// counter-trend fade only</span><br>
+      <span class="dt-if">IF</span> regime == EXHAUSTED (other) <span class="dt-then">THEN</span> <span class="dt-else">NO_TRADE</span><br><br>
+
+      <span class="dt-comment">// Priority 2: Bias veto</span><br>
+      <span class="dt-if">IF</span> bias == NEUTRAL <span class="dt-then">THEN</span> <span class="dt-else">NO_TRADE</span><br><br>
+
+      <span class="dt-comment">// Priority 3: Structure-boosted entry (no STC crossover needed)</span><br>
+      <span class="dt-if">IF</span> structure == BUYER_CONTROL <span class="dt-if">AND</span> bias is bullish <span class="dt-if">AND</span> regime == TRENDING_BULL<br>
+      &nbsp;&nbsp;<span class="dt-then">THEN</span> <span class="dt-val">ENTRY_NOW</span> <span class="dt-comment">// highest conviction long</span><br>
+      <span class="dt-if">IF</span> structure == SELLER_CONTROL <span class="dt-if">AND</span> bias is bearish <span class="dt-if">AND</span> regime == TRENDING_BEAR<br>
+      &nbsp;&nbsp;<span class="dt-then">THEN</span> <span class="dt-val">ENTRY_NOW</span> <span class="dt-comment">// highest conviction short</span><br><br>
+
+      <span class="dt-comment">// Priority 4: IB breakout (fresh breakout this bar)</span><br>
+      <span class="dt-if">IF</span> close &gt; IB_HIGH <span class="dt-if">AND</span> prev_close &le; IB_HIGH <span class="dt-if">AND</span> bias is bullish<br>
+      &nbsp;&nbsp;<span class="dt-then">THEN</span> <span class="dt-val">ENTRY_NOW</span> <span class="dt-comment">// IB breakout long</span><br>
+      <span class="dt-if">IF</span> close &lt; IB_LOW <span class="dt-if">AND</span> structure == SELLER_CONTROL <span class="dt-if">AND</span> bias is bearish<br>
+      &nbsp;&nbsp;<span class="dt-then">THEN</span> <span class="dt-val">ENTRY_NOW</span> <span class="dt-comment">// IB breakdown short</span><br><br>
+
+      <span class="dt-comment">// Priority 5: Standard STC crossover</span><br>
+      <span class="dt-if">IF</span> bias is bullish <span class="dt-if">AND</span> STC crosses above OS threshold<br>
+      &nbsp;&nbsp;<span class="dt-then">THEN</span> <span class="dt-val">ENTRY_NOW</span><br>
+      <span class="dt-if">IF</span> bias is bearish <span class="dt-if">AND</span> STC crosses below OB threshold<br>
+      &nbsp;&nbsp;<span class="dt-then">THEN</span> <span class="dt-val">ENTRY_NOW</span><br><br>
+
+      <span class="dt-comment">// Priority 6: STC in no-man's-land</span><br>
+      <span class="dt-if">IF</span> 20 &le; STC &le; 80 <span class="dt-then">THEN</span> <span class="dt-val">WAIT_FOR_PULLBACK</span><br>
+      <span class="dt-if">ELSE</span> <span class="dt-else">NO_TRADE</span>
+    </div>
+  </div>
+
+  <!-- Layer 5 -->
+  <div class="layer-box l5">
+    <div class="layer-label">Layer 5 &mdash; Position Sizing &amp; Risk</div>
+    <h3 style="color:#ef4444;margin-top:0;">How much do we bet?</h3>
+    <p>ATR-based risk budgeting. 1% equity risked per trade. Contracts = (equity * risk_pct) / (ATR * multiplier). Hard capped at 2 micro contracts per instrument, 1 overnight. Drawdown scaling automatically reduces size as losses accumulate.</p>
+    <table>
+      <tr><th>Drawdown Zone</th><th>Scale Factor</th><th>Effect</th></tr>
+      <tr><td>0% &ndash; 5%</td><td>1.00x</td><td>Full position size</td></tr>
+      <tr><td>5% &ndash; 8%</td><td>0.75x</td><td>Reduce by 25%</td></tr>
+      <tr><td>8% &ndash; 10%</td><td>0.50x</td><td>Half size</td></tr>
+      <tr><td>&gt; 10%</td><td>0.00x</td><td>KILL SWITCH &mdash; stop trading</td></tr>
+    </table>
+    <p><strong>Consecutive loss ladder:</strong> After 3 consecutive losses &rarr; 0.5x size. After 5 &rarr; 0.25x. After 7 &rarr; 24-hour trading halt. This is behavioral risk management &mdash; tilt protection built into the code.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 3: INSTRUMENTS                                                     -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="instruments" class="tab-content">
+  <div class="card">
+    <h2>Approved Instruments</h2>
+    <p>Only instruments that pass Walk-Forward Efficiency validation with sufficient out-of-sample performance are approved for live paper trading. Currently two instruments are cleared:</p>
+  </div>
+
+  <div class="inst-grid">
+    <div class="inst-card inst-mcl">
+      <div class="inst-header">
+        MCL &mdash; Micro Crude Oil
+        <span class="badge badge-bull">ACTIVE</span>
+      </div>
+      <div class="inst-body">
+        <table>
+          <tr><td style="color:var(--muted)">Timeframe</td><td>1 Hour</td></tr>
+          <tr><td style="color:var(--muted)">WFE Score</td><td style="color:var(--bull);font-weight:700;">0.82</td></tr>
+          <tr><td style="color:var(--muted)">STC Oversold</td><td><code>15</code></td></tr>
+          <tr><td style="color:var(--muted)">STC Overbought</td><td><code>83</code></td></tr>
+          <tr><td style="color:var(--muted)">Stop</td><td><code>0.90 ATR</code></td></tr>
+          <tr><td style="color:var(--muted)">Target 1</td><td><code>1.50 ATR</code> (R:R = 1.67)</td></tr>
+          <tr><td style="color:var(--muted)">Target 2</td><td><code>2.618 ATR</code></td></tr>
+          <tr><td style="color:var(--muted)">Target 3</td><td><code>4.00 ATR</code></td></tr>
+          <tr><td style="color:var(--muted)">Regime Filter</td><td>ON &mdash; blocks EXHAUSTED/COMPRESSION</td></tr>
+          <tr><td style="color:var(--muted)">Contract Multiplier</td><td>$10/point</td></tr>
+          <tr><td style="color:var(--muted)">Backtest PF</td><td>1.81 (65 trades)</td></tr>
+          <tr><td style="color:var(--muted)">Character</td><td>Commodity momentum &mdash; strong trends, geopolitical sensitivity, wide ATR</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="inst-card inst-mnq">
+      <div class="inst-header">
+        MNQ &mdash; Micro Nasdaq 100
+        <span class="badge badge-bull">ACTIVE</span>
+      </div>
+      <div class="inst-body">
+        <table>
+          <tr><td style="color:var(--muted)">Timeframe</td><td>1 Hour</td></tr>
+          <tr><td style="color:var(--muted)">WFE Score</td><td style="color:var(--bull);font-weight:700;">0.57</td></tr>
+          <tr><td style="color:var(--muted)">STC Oversold</td><td><code>15</code></td></tr>
+          <tr><td style="color:var(--muted)">STC Overbought</td><td><code>92</code> (higher to filter Nasdaq noise)</td></tr>
+          <tr><td style="color:var(--muted)">Stop</td><td><code>0.70 ATR</code></td></tr>
+          <tr><td style="color:var(--muted)">Target 1</td><td><code>1.00 ATR</code> (R:R = 1.43)</td></tr>
+          <tr><td style="color:var(--muted)">Target 2</td><td><code>1.80 ATR</code></td></tr>
+          <tr><td style="color:var(--muted)">Target 3</td><td><code>2.618 ATR</code></td></tr>
+          <tr><td style="color:var(--muted)">Regime Filter</td><td>ON &mdash; blocks EXHAUSTED/COMPRESSION</td></tr>
+          <tr><td style="color:var(--muted)">Contract Multiplier</td><td>$2/point</td></tr>
+          <tr><td style="color:var(--muted)">Backtest PF</td><td>1.51 (86 trades)</td></tr>
+          <tr><td style="color:var(--muted)">Character</td><td>Tech-driven equity index &mdash; noisy, high OB threshold filters false signals</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.5rem;">
+    <h2>Halted / Excluded Instruments</h2>
+    <table>
+      <tr><th>Symbol</th><th>WFE</th><th>Status</th><th>Reason</th></tr>
+      <tr><td>MGC (Micro Gold)</td><td style="color:var(--bear);">0.14</td><td><span class="badge badge-bear">HALTED</span></td><td>Overfit to in-sample &mdash; small sample, daily TF too slow</td></tr>
+      <tr><td>MES (Micro S&P)</td><td style="color:var(--bear);">0.09</td><td><span class="badge badge-bear">DO NOT TRADE</span></td><td>WFE failure. Composite strategy (STC+ORB+VWAP) in development. Needs further validation before activation.</td></tr>
+    </table>
+    <div class="callout-danger callout">
+      <strong>MES Composite Status:</strong> The COHEN-MES composite generator (STC + ORB + VWAP with regime-adaptive weighting) is implemented but NOT yet paper-validated. It routes through a separate code path (<code>composite_signals.py</code>). Activation requires a separate 30-day validation cycle.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Correlation Exposure Rule</h2>
+    <p>MCL and MNQ are deliberately chosen because they have <strong>low correlation</strong>. Crude oil is commodity-driven (supply/demand, geopolitics); Nasdaq is tech-sentiment-driven (earnings, rates, AI hype). This gives us natural diversification.</p>
+    <p><strong>Hard limit:</strong> Max 20% of portfolio in correlated positions (<code>MAX_CORRELATED_EXPOSURE_PCT = 0.20</code>). Since MCL and MNQ are uncorrelated, each can run at full allocation simultaneously.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 4: ENTRY RULES                                                     -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="entries" class="tab-content">
+  <div class="card">
+    <h2>Entry Signal Taxonomy</h2>
+    <p>There are four distinct entry types, ranked by conviction:</p>
+  </div>
+
+  <div class="card">
+    <h3>Type A: Structure-Confirmed Trend Entry <span class="badge badge-bull">HIGHEST CONVICTION</span></h3>
+    <p><strong>Conditions:</strong> All three required simultaneously:</p>
+    <p>1. Structure = BUYER_CONTROL (or SELLER_CONTROL for shorts)<br>
+    2. Bias = STRONG_BULL or LEAN_BULL (or bearish equivalent)<br>
+    3. Regime = TRENDING_BULL (or TRENDING_BEAR)</p>
+    <p><strong>Why it works:</strong> Price has accepted above the value area AND above the prior session's Initial Balance. Three independent confirmation systems agree. This is the "the building is on fire, run with the crowd" setup. No STC crossover required &mdash; the structural evidence is overwhelming.</p>
+    <p><strong>Position size:</strong> Full allocation (1% risk budget).</p>
+  </div>
+
+  <div class="card">
+    <h3>Type B: IB Breakout Entry <span class="badge badge-bull">HIGH CONVICTION</span></h3>
+    <p><strong>Conditions:</strong></p>
+    <p>1. Close crossed above IB High this bar (was below on prior bar) + bullish bias<br>
+    2. OR: Close below IB Low + SELLER_CONTROL structure + bearish bias</p>
+    <p><strong>Why it works:</strong> The Initial Balance (first 60 minutes of regular trading hours) establishes the "playground" for the session. A breakout from this range with directional confirmation is a powerful intraday signal. Extensions target 50%, 100%, and 3x the IB range.</p>
+    <p><strong>Position size:</strong> Full allocation.</p>
+  </div>
+
+  <div class="card">
+    <h3>Type C: STC Crossover Entry <span class="badge badge-accent">STANDARD</span></h3>
+    <p><strong>Conditions:</strong></p>
+    <p>1. Bullish bias + STC crosses above OS threshold (15 for MNQ/MCL)<br>
+    2. OR: Bearish bias + STC crosses below OB threshold (92 MNQ / 83 MCL)</p>
+    <p><strong>Why it works:</strong> The Schaff Trend Cycle is a double-smoothed MACD/stochastic hybrid that catches momentum inflection points. Crossing out of oversold/overbought territory signals a regime shift in momentum. Combined with directional bias confirmation, this is the "bread and butter" signal.</p>
+    <p><strong>Position size:</strong> Full allocation.</p>
+  </div>
+
+  <div class="card">
+    <h3>Type D: Fade Extreme <span class="badge badge-warn">COUNTER-TREND</span></h3>
+    <p><strong>Conditions:</strong></p>
+    <p>1. Regime = EXHAUSTED (ATR consumed &gt; 90%)<br>
+    2. Phase Oscillator at extreme (&gt; 61.8 or &lt; -61.8)</p>
+    <p><strong>Why it works:</strong> When a market has consumed &gt; 90% of its expected range AND the phase oscillator is at a Fibonacci extreme, mean reversion is statistically likely. This is the "rubber band" trade &mdash; aggressive, counter-trend, confirmed by Keltner 3x channel extremes.</p>
+    <p><strong>Position size:</strong> Half allocation (0.5% risk). Counter-trend = conservative sizing.</p>
+  </div>
+
+  <div class="card">
+    <h2>Entry Rejection Reasons</h2>
+    <table>
+      <tr><th>Signal</th><th>Meaning</th><th>Action</th></tr>
+      <tr><td><code>NO_TRADE</code></td><td>Conditions not met</td><td>Wait</td></tr>
+      <tr><td><code>WAIT_FOR_PULLBACK</code></td><td>STC between 20-80 &mdash; no momentum edge</td><td>Monitor for STC to reach extreme</td></tr>
+      <tr><td><code>LOW_VOLUME_BLOCK</code></td><td>Volume below 20-period average</td><td>Wait for volume confirmation</td></tr>
+      <tr><td><code>MTF_BLOCKED</code></td><td>4h timeframe trend opposes 1h entry</td><td>Do not fight the higher TF</td></tr>
+      <tr><td><code>NEWS_BLACKOUT</code></td><td>Within 30 min of FOMC/CPI/NFP/GDP</td><td>Sit out. Period.</td></tr>
+      <tr><td><code>COMPOSITE_VOLATILE_BLOCK</code></td><td>MES composite: regime is VOLATILE</td><td>No entries in volatile regime</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 5: EXIT RULES                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="exits" class="tab-content">
+  <div class="card">
+    <h2>Exit Architecture</h2>
+    <p>Exits are ATR-based and tiered. Every entry has a mathematically defined stop, three target levels, and a time-based forced exit. The goal: let winners run in tiers while cutting losers with mechanical precision.</p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3 style="color:var(--gold);">MCL Exit Levels</h3>
+      <table>
+        <tr><th>Level</th><th>ATR Multiple</th><th>Example (ATR=$0.50)</th></tr>
+        <tr><td style="color:var(--bear);">Stop</td><td>0.90 ATR</td><td>$0.45 from entry</td></tr>
+        <tr><td style="color:var(--bull);">Target 1</td><td>1.50 ATR</td><td>$0.75 from entry</td></tr>
+        <tr><td style="color:var(--bull);">Target 2</td><td>2.618 ATR</td><td>$1.31 from entry</td></tr>
+        <tr><td style="color:var(--bull);">Target 3</td><td>4.00 ATR</td><td>$2.00 from entry</td></tr>
+      </table>
+      <p style="font-size:0.82rem;color:var(--muted);margin-top:0.5rem;">R:R at T1 = 1.67:1 &bull; R:R at T2 = 2.91:1 &bull; R:R at T3 = 4.44:1</p>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--accent);">MNQ Exit Levels</h3>
+      <table>
+        <tr><th>Level</th><th>ATR Multiple</th><th>Example (ATR=50pts)</th></tr>
+        <tr><td style="color:var(--bear);">Stop</td><td>0.70 ATR</td><td>35 pts from entry</td></tr>
+        <tr><td style="color:var(--bull);">Target 1</td><td>1.00 ATR</td><td>50 pts from entry</td></tr>
+        <tr><td style="color:var(--bull);">Target 2</td><td>1.80 ATR</td><td>90 pts from entry</td></tr>
+        <tr><td style="color:var(--bull);">Target 3</td><td>2.618 ATR</td><td>131 pts from entry</td></tr>
+      </table>
+      <p style="font-size:0.82rem;color:var(--muted);margin-top:0.5rem;">R:R at T1 = 1.43:1 &bull; R:R at T2 = 2.57:1 &bull; R:R at T3 = 3.74:1</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Tiered Exit Protocol</h2>
+    <table>
+      <tr><th>Event</th><th>Action</th><th>Reason</th></tr>
+      <tr><td>Price hits Target 1</td><td>Close 50% of position. Move stop to breakeven.</td><td>Lock in profit, make the remaining position "free"</td></tr>
+      <tr><td>Price hits Target 2</td><td>Close 25% of original. Trail stop to T1 level.</td><td>Capture extended move, trail for maximum extraction</td></tr>
+      <tr><td>Price hits Target 3</td><td>Close remaining 25%. Position flat.</td><td>Full extension &mdash; take all profits off the table</td></tr>
+      <tr><td>Stop hit</td><td>Close entire position. Record loss.</td><td>Non-negotiable. The stop is the stop. No widening.</td></tr>
+      <tr><td>End of day (4:00 PM ET)</td><td>Close all positions unless overnight criteria met</td><td>Overnight gap risk exceeds the edge of most intraday signals</td></tr>
+      <tr><td>Kill switch fires</td><td>Flatten ALL positions immediately</td><td>Safety layer override &mdash; no debate, no AI input, instant execution</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Overnight Hold Criteria</h2>
+    <p>Max 1 contract overnight (<code>MAX_OVERNIGHT_CONTRACTS = 1</code>). A position may be held overnight ONLY if ALL of these are true:</p>
+    <p>1. Position is profitable (at or above T1)<br>
+    2. Stop has been moved to breakeven or better<br>
+    3. Regime is TRENDING (not RANGE_BOUND or EXHAUSTED)<br>
+    4. No major economic data release before next open (check economic calendar)<br>
+    5. Human (Matt) explicitly approves the overnight hold</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 6: POSITION SIZING                                                 -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="sizing" class="tab-content">
+  <div class="card">
+    <h2>ATR-Based Risk Budgeting</h2>
+    <p>Position size is a function of equity, risk tolerance, and current market volatility. Not a fixed lot size &mdash; the system adapts to the ATR of each instrument on each bar.</p>
+
+    <pre><code>Contracts = (Equity * Risk%) / (ATR * Contract_Multiplier)
+
+Example: MCL with $10,000 equity, 1% risk, ATR = $0.50, multiplier = $10/pt
+  Contracts = ($10,000 * 0.01) / ($0.50 * $10) = $100 / $5 = 20
+  But MAX_CONTRACTS = 2, so: Contracts = 2
+
+Example: MNQ with $10,000 equity, 1% risk, ATR = 50pts, multiplier = $2/pt
+  Contracts = ($10,000 * 0.01) / (50 * $2) = $100 / $100 = 1
+  Contracts = 1</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>Hard Limits (Non-Negotiable)</h2>
+    <div class="grid-3">
+      <div class="metric-card">
+        <div class="label">Max Contracts</div>
+        <div class="value" style="color:var(--bear);">2</div>
+        <div class="sub">Per instrument</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Max Position</div>
+        <div class="value" style="color:var(--bear);">5%</div>
+        <div class="sub">Of portfolio equity</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Max Single Order</div>
+        <div class="value" style="color:var(--bear);">$5K</div>
+        <div class="sub">Order value cap</div>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-top:1rem;">
+      <div class="metric-card">
+        <div class="label">Max Overnight</div>
+        <div class="value" style="color:var(--warn);">1</div>
+        <div class="sub">Contract only</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Max Margin</div>
+        <div class="value" style="color:var(--warn);">40%</div>
+        <div class="sub">Utilization cap</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Risk Per Trade</div>
+        <div class="value" style="color:var(--accent);">1%</div>
+        <div class="sub">Of equity</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Drawdown Scaling Ladder</h2>
+    <p>As the account draws down from its peak, position size automatically decreases. This prevents a losing streak from becoming catastrophic.</p>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:1rem 0;">
+      <div style="flex:1;min-width:120px;padding:1rem;border-radius:8px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);text-align:center;">
+        <div style="font-size:0.7rem;color:var(--bull);font-weight:700;">0-5% DD</div>
+        <div style="font-size:1.4rem;font-weight:800;color:var(--bull);">1.00x</div>
+      </div>
+      <div style="flex:1;min-width:120px;padding:1rem;border-radius:8px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);text-align:center;">
+        <div style="font-size:0.7rem;color:var(--warn);font-weight:700;">5-8% DD</div>
+        <div style="font-size:1.4rem;font-weight:800;color:var(--warn);">0.75x</div>
+      </div>
+      <div style="flex:1;min-width:120px;padding:1rem;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);text-align:center;">
+        <div style="font-size:0.7rem;color:var(--bear);font-weight:700;">8-10% DD</div>
+        <div style="font-size:1.4rem;font-weight:800;color:var(--bear);">0.50x</div>
+      </div>
+      <div style="flex:1;min-width:120px;padding:1rem;border-radius:8px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.5);text-align:center;">
+        <div style="font-size:0.7rem;color:var(--bear);font-weight:700;">&gt;10% DD</div>
+        <div style="font-size:1.4rem;font-weight:800;color:var(--bear);">HALT</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Consecutive Loss Tilt Protection</h2>
+    <table>
+      <tr><th>Consecutive Losses</th><th>Position Size</th><th>Rationale</th></tr>
+      <tr><td>0-2</td><td>1.00x (full)</td><td>Normal variance</td></tr>
+      <tr><td>3</td><td>0.50x (half)</td><td>Pattern suggests adverse conditions</td></tr>
+      <tr><td>5</td><td>0.25x (quarter)</td><td>Something is wrong &mdash; minimize exposure</td></tr>
+      <tr><td>7+</td><td>0.00x (24hr halt)</td><td>Full stop. Reassess strategy assumptions. Human review required.</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Kelly Criterion (Quarter-Kelly, Advisory Only)</h2>
+    <p>Once we have 30+ trades of live data, the system computes the Kelly fraction: <code>f* = (bp - q) / b</code> where b = avg_win/avg_loss, p = win_rate, q = 1-p. Capped at 0.25 (quarter-Kelly) for safety. This provides a theoretical optimal risk fraction that we compare against the ATR-based calculation &mdash; we always use the more conservative of the two.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 7: RISK MANAGEMENT                                                 -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="risk" class="tab-content">
+  <div class="card">
+    <h2>The Safety Layer</h2>
+    <p>Every order passes through 8 hardcoded safety checks before reaching any broker. This layer is pure Python &mdash; no LLM reasoning, no AI judgment, no exceptions. The checks run sequentially; the first failure stops the order.</p>
+  </div>
+
+  <div class="card">
+    <h2>The 8 Pre-Trade Checks</h2>
+    <table>
+      <tr><th>#</th><th>Check</th><th>Limit</th><th>On Breach</th></tr>
+      <tr><td>1</td><td>Kill Switch</td><td>Active/Inactive</td><td>REJECT immediately</td></tr>
+      <tr><td>2</td><td>Live Trading Gate</td><td>LIVE_TRADING_ENABLED</td><td>REJECT unless paper sim mode</td></tr>
+      <tr><td>3</td><td>Daily Loss Limit</td><td>-2% of equity</td><td>Activate kill switch + REJECT</td></tr>
+      <tr><td>4</td><td>Max Drawdown</td><td>-10% from peak</td><td>Activate kill switch + REJECT</td></tr>
+      <tr><td>5</td><td>Single Order Value</td><td>$5,000 max</td><td>REJECT</td></tr>
+      <tr><td>6</td><td>Position Size %</td><td>5% of portfolio</td><td>REJECT</td></tr>
+      <tr><td>7</td><td>Order Rate</td><td>10/minute</td><td>Activate kill switch + REJECT</td></tr>
+      <tr><td>8</td><td>Contract Limit</td><td>2 per instrument</td><td>REJECT</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Kill Switch Triggers</h2>
+    <table>
+      <tr><th>Trigger</th><th>Threshold</th><th>Recovery</th></tr>
+      <tr><td>Daily P&amp;L</td><td>-2% of equity</td><td>Human deactivation only</td></tr>
+      <tr><td>Drawdown from peak</td><td>-10%</td><td>Human deactivation only</td></tr>
+      <tr><td>Anomalous order rate</td><td>&gt; 10 orders/minute</td><td>Human deactivation only</td></tr>
+      <tr><td>Data feed loss</td><td>No market data for 60s</td><td>Auto-resume when feed returns</td></tr>
+      <tr><td>Broker disconnect</td><td>IB Gateway connection lost</td><td>Auto-resume on reconnect</td></tr>
+      <tr><td>Market circuit breaker</td><td>Exchange halt</td><td>Auto-resume when exchange reopens</td></tr>
+      <tr><td>Manual activation</td><td>Human triggers via API/dashboard</td><td>Human deactivation only</td></tr>
+    </table>
+    <div class="callout-danger callout">
+      <strong>NON-NEGOTIABLE:</strong> Kill switch deactivation requires human authorization. No agent, no AI, no code path can re-enable trading after a kill switch event. Matt must explicitly call <code>deactivate_kill_switch(authorized_by="Matt")</code>.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Portfolio-Level Risk</h2>
+    <table>
+      <tr><td style="color:var(--muted)">Total Capital</td><td>$10,000</td></tr>
+      <tr><td style="color:var(--muted)">Max Risk Per Trade</td><td>$100 (1%)</td></tr>
+      <tr><td style="color:var(--muted)">Max Concurrent Positions</td><td>2 (one MCL + one MNQ)</td></tr>
+      <tr><td style="color:var(--muted)">Max Correlated Exposure</td><td>20%</td></tr>
+      <tr><td style="color:var(--muted)">Max Daily Risk</td><td>$200 (2%)</td></tr>
+      <tr><td style="color:var(--muted)">Max Drawdown Before Halt</td><td>$1,000 (10%)</td></tr>
+      <tr><td style="color:var(--muted)">Price Collar</td><td>Reject orders &gt; 5% from NBBO</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 8: AI PIPELINE                                                     -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="pipeline" class="tab-content">
+  <div class="card">
+    <h2>5-Stage AI Decision Pipeline</h2>
+    <p>When a mechanical signal fires (ENTRY_NOW from Layer 4), it enters the AI pipeline for multi-perspective validation. The AI does NOT generate signals &mdash; it <em>validates or rejects</em> them.</p>
+
+    <div class="flow-row" style="margin:1.5rem 0;">
+      <div class="flow-box flow-signal">Signal: ENTRY_NOW</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-box flow-ai">Stage 1: Analysts</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-box flow-ai">Stage 2: Debate</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-box flow-ai">Stage 3: Trader</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-box flow-gate">Stage 4: Risk Mgr</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-box flow-exec">Stage 5: Fund Mgr</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Stage 1: Parallel Analysis</h3>
+    <p>Four analysts run concurrently, each examining the opportunity through a different lens:</p>
+    <table>
+      <tr><th>Agent</th><th>Model</th><th>Focus</th></tr>
+      <tr><td>TechnicalAnalyst</td><td>claude-sonnet-4-6</td><td>Chart patterns, indicator confluence, support/resistance</td></tr>
+      <tr><td>NewsAnalyst</td><td>claude-sonnet-4-6</td><td>Breaking news, earnings, economic data impact</td></tr>
+      <tr><td>SocialAnalyst</td><td>claude-sonnet-4-6</td><td>Sentiment, retail flow, social media momentum</td></tr>
+      <tr><td>FundamentalistAgent</td><td>claude-sonnet-4-6</td><td>Macro conditions, sector rotation, valuation context</td></tr>
+    </table>
+    <p>Each analyst produces a structured report. If an analyst fails, it returns a neutral empty report &mdash; the pipeline continues.</p>
+
+    <h3>Stage 2: Adversarial Debate</h3>
+    <p>A <strong>BullResearcher</strong> and <strong>BearResearcher</strong> receive all analyst reports and must argue their case. The <strong>DebateOrchestrator</strong> synthesizes both arguments and produces a balanced assessment. This is the "red team / blue team" approach that prevents confirmation bias.</p>
+
+    <h3>Stage 3: Trade Decision</h3>
+    <p>The <strong>TraderAgent</strong> (claude-opus-4-6) receives: all analyst reports + debate summary + mechanical signal + current portfolio state. It synthesizes a final <code>TradeDecision</code>: action, sizing, conviction level.</p>
+
+    <h3>Stage 4: Risk Validation (VETO Power)</h3>
+    <p>The <strong>RiskManagerAgent</strong> (claude-opus-4-6) has full VETO authority. It checks: portfolio concentration, correlation risk, timing risk, macro risk. If it vetoes, the trade does not proceed &mdash; no appeal.</p>
+
+    <h3>Stage 5: Fund Manager Approval</h3>
+    <p>The <strong>FundManagerAgent</strong> (claude-opus-4-6) gives final portfolio-level approval. It considers: overall portfolio balance, daily risk budget consumed, capital allocation across instruments.</p>
+  </div>
+
+  <div class="callout">
+    <strong>Key Insight:</strong> The AI pipeline is <em>conservative by design</em>. Its job is to REJECT signals, not to find them. A mechanical ENTRY_NOW signal that survives all five stages of AI scrutiny has been vetted by 10 independent "eyes" &mdash; 4 analysts, 2 debaters, 1 synthesizer, 1 risk manager, and 1 fund manager. This is the Cohen approach: never bet without overwhelming consensus.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 9: SESSION PROTOCOL                                                -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="session" class="tab-content">
+  <div class="card">
+    <h2>Trading Day Timeline</h2>
+    <p>All times Central Time (CT). The system runs a 30-minute watchlist scan during market hours.</p>
+  </div>
+
+  <div class="card">
+    <div class="timeline">
+      <div class="tl-item tl-cold">
+        <div class="tl-time">8:00 AM CT &mdash; Pre-Market Prep</div>
+        <div class="tl-desc">Review overnight futures moves. Check economic calendar for FOMC/CPI/NFP/GDP releases. Enable/disable news blackout window. Verify IB Gateway connection status.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">8:30 AM CT &mdash; Market Data Feed Verification</div>
+        <div class="tl-desc">Confirm Polygon.io data feed is live. Verify last quote timestamps are current. Check dashboard connectivity at <code>http://localhost:3011</code>.</div>
+      </div>
+      <div class="tl-item tl-hot">
+        <div class="tl-time">8:30 AM CT &mdash; Regular Trading Hours Open (Futures)</div>
+        <div class="tl-desc">RTH begins. Initial Balance period starts (first 60 minutes). Watchlist scanner activates. First scan fires at 9:30 AM CT.</div>
+      </div>
+      <div class="tl-item tl-hot">
+        <div class="tl-time">9:30 AM CT &mdash; IB Range Established</div>
+        <div class="tl-desc">IB High/Low captured from first hour. IB breakout signals now armed. This is the highest-opportunity window of the day. STC crossovers + IB breakouts = aggressive entry zone.</div>
+      </div>
+      <div class="tl-item tl-hot">
+        <div class="tl-time">9:30 AM &ndash; 12:00 PM CT &mdash; Prime Trading Window</div>
+        <div class="tl-desc">Scanner runs every 30 minutes. Maximum signal density. MCL responds to energy complex opens. MNQ responds to tech sector rotation. AI pipeline fully engaged.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">12:00 PM &ndash; 1:00 PM CT &mdash; Lunch Doldrums</div>
+        <div class="tl-desc">Volume typically drops. RANGE_BOUND regime more likely. Scanner continues but entry threshold naturally higher due to low volume filter.</div>
+      </div>
+      <div class="tl-item tl-hot">
+        <div class="tl-time">1:00 PM &ndash; 3:00 PM CT &mdash; Power Hour</div>
+        <div class="tl-desc">Volume returns. Institutional order flow increases. Second-best window for signals. Trend continuation or reversal patterns form.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">3:00 PM CT &mdash; End of Day Protocol</div>
+        <div class="tl-desc">Evaluate all open positions for overnight hold criteria. Close positions that don't qualify. Move stops to breakeven on profitable positions. Final scan at 3:30 PM.</div>
+      </div>
+      <div class="tl-item tl-cold">
+        <div class="tl-time">3:15 PM CT &mdash; RTH Close</div>
+        <div class="tl-desc">Regular trading hours end. All non-overnight positions must be flat. Scanner deactivates. Log daily P&amp;L, trade count, and win rate to paper trading database.</div>
+      </div>
+      <div class="tl-item tl-cold">
+        <div class="tl-time">3:30 PM CT &mdash; End of Day Review</div>
+        <div class="tl-desc">Review all signals generated vs. trades taken. Log rejected signals and reasons. Update learning system with trade outcomes. Generate daily report.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>News Blackout Windows</h2>
+    <table>
+      <tr><th>Event</th><th>Blackout Period</th><th>Typical Time</th></tr>
+      <tr><td>FOMC Decision / Minutes</td><td>30 min before &amp; after</td><td>1:00 PM CT</td></tr>
+      <tr><td>CPI / PPI Release</td><td>30 min before &amp; after</td><td>7:30 AM CT</td></tr>
+      <tr><td>Non-Farm Payrolls</td><td>30 min before &amp; after</td><td>7:30 AM CT (1st Friday)</td></tr>
+      <tr><td>GDP Release</td><td>30 min before &amp; after</td><td>7:30 AM CT</td></tr>
+      <tr><td>EIA Petroleum Report</td><td>30 min before &amp; after</td><td>9:30 AM CT (Wed) &mdash; critical for MCL</td></tr>
+    </table>
+    <p style="font-size:0.85rem;color:var(--muted);">During blackout: all ENTRY_NOW signals are overridden to NEWS_BLACKOUT. Existing positions are NOT closed (they have stops). No new entries until the window closes.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 10: VALIDATION GATES                                               -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="validation" class="tab-content">
+  <div class="card">
+    <h2>30-Day Paper Validation Gates</h2>
+    <p>April 2 &ndash; May 2, 2026. The system must pass ALL gates before any consideration of live capital deployment.</p>
+  </div>
+
+  <div class="grid-3">
+    <div class="metric-card">
+      <div class="label">Profit Factor</div>
+      <div class="value" style="color:var(--bull);">&ge; 2.0</div>
+      <div class="sub">Gross profit / gross loss</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Sharpe Ratio</div>
+      <div class="value" style="color:var(--bull);">&ge; 1.5</div>
+      <div class="sub">Risk-adjusted return</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Win Rate</div>
+      <div class="value" style="color:var(--bull);">&ge; 55%</div>
+      <div class="sub">Winning trades / total</div>
+    </div>
+  </div>
+  <div class="grid-3" style="margin-top:1rem;">
+    <div class="metric-card">
+      <div class="label">Minimum Trades</div>
+      <div class="value" style="color:var(--accent);">&ge; 60</div>
+      <div class="sub">Statistical significance</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Duration</div>
+      <div class="value" style="color:var(--accent);">&ge; 30</div>
+      <div class="sub">Calendar days</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Max Drawdown</div>
+      <div class="value" style="color:var(--bear);">&le; 15%</div>
+      <div class="sub">Peak-to-trough</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.5rem;">
+    <h2>Phase Progression</h2>
+    <table>
+      <tr><th>Phase</th><th>Requirement</th><th>Capital</th><th>Autonomy</th></tr>
+      <tr>
+        <td><span class="badge badge-accent">Phase 1 (Current)</span></td>
+        <td>All 6 validation gates passed</td>
+        <td>$10,000 paper</td>
+        <td>REQUIRE_HUMAN_APPROVAL = True. Every trade manually approved by Matt.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-warn">Phase 2</span></td>
+        <td>Phase 1 passed + 30 additional days of consistency</td>
+        <td>$10,000 live (micro contracts only)</td>
+        <td>Semi-autonomous: AI executes, Matt gets WhatsApp alerts, can veto within 5 min window.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-bull">Phase 3</span></td>
+        <td>Phase 2 passed + demonstrated live profitability</td>
+        <td>Graduated scaling</td>
+        <td>Full autonomy with safety layer hard limits. Matt monitors daily dashboard.</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>What Failure Looks Like</h2>
+    <p>If ANY validation gate fails after 30 days:</p>
+    <p>1. <strong>Do not proceed to Phase 2.</strong> No exceptions, no "close enough."</p>
+    <p>2. Analyze failure mode: Was it the signal quality? Position sizing? Timing? AI pipeline rejecting too many good signals or accepting too many bad ones?</p>
+    <p>3. Re-optimize the specific failure point. Run new backtest. Validate new parameters.</p>
+    <p>4. Reset the 30-day clock. Start a new validation cycle from day 1.</p>
+    <p>5. After 3 consecutive validation failures: pause and conduct a fundamental strategy review. The thesis may be wrong.</p>
+  </div>
+
+  <div class="callout">
+    <strong>The Cohen Principle applied to validation:</strong> "I only bet when I have an edge, and I never bet more than I can afford to lose." If 30 days of paper trading can't prove the edge exists with statistical significance, the edge doesn't exist. Move on. Find a different setup. The math doesn't lie.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 11: MATH REFERENCE                                                 -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="math" class="tab-content">
+  <div class="card">
+    <h2>Complete Indicator Formula Reference</h2>
+    <p>Every indicator used by JARVIS, from raw OHLCV to final value. Source: <code>engine/backtest/indicators.py</code> and <code>engine/backtest/signals.py</code>. All implementations are pure Python/NumPy — no TA-Lib dependency.</p>
+  </div>
+
+  <div class="card">
+    <h2>1. Wilder's Average True Range (ATR)</h2>
+    <p><strong>Used by:</strong> Regime (range consumed), Phase Oscillator, Stop/Target levels, Keltner Channels, Position Sizing</p>
+    <p><strong>Source:</strong> Saty ATR Levels ThinkScript</p>
+    <pre><code>True Range (TR):
+  TR[i] = max(
+    high[i] - low[i],              // today's range
+    |high[i] - close[i-1]|,       // gap up + today's range
+    |low[i] - close[i-1]|         // gap down + today's range
+  )
+
+Wilder's ATR (period=14):
+  ATR[13] = mean(TR[0], TR[1], ..., TR[13])     // seed: simple average of first 14 TRs
+  ATR[i]  = (ATR[i-1] * 13 + TR[i]) / 14        // Wilder smoothing (recursive)
+
+Key property: Wilder smoothing is slower than EMA — it "remembers" more history.
+This prevents ATR from spiking on a single volatile bar.
+
+Used in Layer 5 (position sizing):
+  risk_per_contract = ATR * contract_multiplier
+  contracts = (equity * risk_pct) / risk_per_contract</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>2. Schaff Trend Cycle (STC)</h2>
+    <p><strong>Used by:</strong> Layer 3 (Bias vote), Layer 4 (Entry crossover trigger)</p>
+    <p><strong>Source:</strong> shared_OB_STYLE_CYCLE ThinkScript &mdash; the primary entry timing indicator</p>
+    <pre><code>Step 1: MACD Line
+  EMA_fast = EWM(close, span=23)
+  EMA_slow = EWM(close, span=50)
+  MACD = EMA_fast - EMA_slow
+
+Step 2: First Stochastic of MACD (K-period=10)
+  K1[i] = (MACD[i] - min(MACD, 10 bars)) / (max(MACD, 10 bars) - min(MACD, 10 bars)) * 100
+  D1 = EWM(K1, span=3)    // smooth with 3-period EMA
+
+Step 3: Second Stochastic of D1 (K-period=10)
+  K2[i] = (D1[i] - min(D1, 10 bars)) / (max(D1, 10 bars) - min(D1, 10 bars)) * 100
+  STC = EWM(K2, span=3)   // smooth again
+  STC = clamp(STC, 0, 100)
+
+Result: oscillator 0-100 that spends most time at extremes.
+  STC near 0 → oversold (momentum exhausted to downside)
+  STC near 100 → overbought (momentum exhausted to upside)
+
+Entry crossover signals:
+  stc_cross_up   = STC[i] > OS_threshold AND STC[i-1] <= OS_threshold
+  stc_cross_down = STC[i] < OB_threshold AND STC[i-1] >= OB_threshold
+
+Per-instrument thresholds:
+  MCL: OS=15, OB=83  (standard — crude trends cleanly)
+  MNQ: OS=15, OB=92  (higher OB filters Nasdaq noise — fewer false overbought signals)
+  MES: OS=15, OB=83  (standard, used in composite with ORB+VWAP)</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>3. KAMA — Kaufman Adaptive Moving Average</h2>
+    <p><strong>Used by:</strong> Layer 3 (Bias vote)</p>
+    <p><strong>Source:</strong> NextSignalMomentum ThinkScript</p>
+    <pre><code>Parameters: period=10, fast_period=2, slow_period=30
+
+Step 1: Efficiency Ratio (ER)
+  change = |close[i] - close[i - 10]|         // net price change over 10 bars
+  volatility = sum(|close[j] - close[j-1]|, j=i-9..i)  // total bar-to-bar movement
+  ER = change / volatility                     // 0 to 1.0
+
+  ER = 1.0 → price moved in a straight line (perfect trend)
+  ER = 0.0 → price went nowhere despite lots of movement (pure chop)
+
+Step 2: Smoothing Constant (SC)
+  fast_sc = 2 / (2 + 1) = 0.6667
+  slow_sc = 2 / (30 + 1) = 0.0645
+  SC = (ER * (fast_sc - slow_sc) + slow_sc)^2
+
+  When ER=1.0: SC = (0.6667)^2 = 0.444  → very responsive
+  When ER=0.0: SC = (0.0645)^2 = 0.004  → nearly frozen
+
+Step 3: KAMA Update
+  KAMA[i] = KAMA[i-1] + SC * (close[i] - KAMA[i-1])
+
+Key insight: SC is SQUARED, making the adaptation non-linear.
+In chop (ER≈0), KAMA barely moves (avoids whipsaws).
+In trend (ER≈1), KAMA tracks price closely (captures moves).</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>4. Phase Oscillator</h2>
+    <p><strong>Used by:</strong> Layer 1 (Regime classification, compression detection)</p>
+    <p><strong>Source:</strong> Saty Phase Oscillator ThinkScript</p>
+    <pre><code>Phase Value:
+  EMA21 = EWM(close, span=21)
+  ATR14 = Wilder_ATR(high, low, close, period=14)
+  Phase = (close - EMA21) / (3 * ATR14) * 100
+  Phase = clamp(Phase, -100, +100)
+
+  Division by 3*ATR normalizes the deviation to a "3 ATR band" — a standard
+  statistical measure of how extreme price is vs its moving average.
+
+Fibonacci interpretation zones:
+  Phase > +61.8  → extended up (exhaustion zone)
+  Phase +23.6 to +61.8 → bullish
+  Phase -23.6 to +23.6 → neutral
+  Phase -61.8 to -23.6 → bearish
+  Phase < -61.8  → extended down (exhaustion zone)
+
+Compression Detection:
+  BB_width = 4 * rolling_stddev(close, 21)    // Bollinger Band width
+  ATR_width = 2 * ATR14                        // ATR channel width
+  is_compression = (BB_width < ATR_width)
+
+  When realized volatility (stddev) < expected volatility (ATR):
+    → market is "coiling" — energy building for a directional move
+    → direction is unknown → do not enter</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>5. Volume Stack</h2>
+    <p><strong>Used by:</strong> Layer 3 (Bias vote)</p>
+    <p><strong>Source:</strong> Saty Volume Stack ThinkScript</p>
+    <pre><code>Estimating buy vs sell volume from a single OHLCV bar:
+  buy_volume  = volume * (close - low) / (high - low)
+  sell_volume = volume * (high - close) / (high - low)
+  buy_pct     = buy_volume / (buy_volume + sell_volume) * 100
+
+Intuition: where did the bar close relative to its range?
+  Close at the HIGH → (close-low)/(high-low) = 1.0 → 100% buy volume
+  Close at the LOW  → (close-low)/(high-low) = 0.0 → 0% buy volume
+  Close at midpoint → 50/50 split
+
+Edge case: high == low (doji bar) → buy_pct defaults to 50%
+
+Thresholds:
+  buy_pct > 60% → "buyer_dominant"  (BULL vote)
+  buy_pct < 40% → "seller_dominant" (BEAR vote)
+  40-60%         → "balanced"       (no vote)
+
+This is a bar-level proxy for order flow. It's not as precise as tick data
+or Level 2 DOM, but across many bars the signal is statistically significant.</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>6. EMA Ribbon (8/21/34)</h2>
+    <p><strong>Used by:</strong> Layer 1 (Regime trend input), Layer 3 (Bias vote + tiebreaker)</p>
+    <p><strong>Source:</strong> Saty ATR Levels ThinkScript</p>
+    <pre><code>EMA (Exponential Moving Average):
+  EMA[0] = close[0]  (seed)
+  EMA[i] = close[i] * alpha + EMA[i-1] * (1 - alpha)
+  where alpha = 2 / (span + 1)
+
+Three spans:
+  EMA8:  alpha = 2/9  = 0.222  (fast — reacts to ~8 bars of history)
+  EMA21: alpha = 2/22 = 0.091  (medium)
+  EMA34: alpha = 2/35 = 0.057  (slow — reacts to ~34 bars of history)
+
+Trend classification:
+  EMA8 > EMA21 > EMA34 → "bullish" (all three aligned up — stacked)
+  EMA8 < EMA21 < EMA34 → "bearish" (all three aligned down — stacked)
+  Any other order       → "neutral" (crossed/tangled — no clear trend)
+
+Why stacking matters: when a fast EMA crosses a slow EMA, it's a "golden cross"
+or "death cross." When ALL THREE are stacked, it means short, medium, AND
+long-term momentum agree. This is a strong filter for choppy markets.</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>7. Keltner Channels (1.5x / 2.0x / 3.0x)</h2>
+    <p><strong>Used by:</strong> Exhaustion/reversal detection, OB Omega confirmation</p>
+    <p><strong>Source:</strong> KMaster / OB_OMEGA ThinkScript</p>
+    <pre><code>Basis = SMA(close, 20)
+ATR = SMA of True Range (NOT Wilder's — uses simple MA of TR over 20 bars)
+
+Inner Channel (1.5x):
+  Upper = Basis + 1.5 * ATR
+  Lower = Basis - 1.5 * ATR
+
+Outer Channel (2.0x):
+  Upper = Basis + 2.0 * ATR
+  Lower = Basis - 2.0 * ATR
+
+Extreme Channel (3.0x):
+  Upper = Basis + 3.0 * ATR
+  Lower = Basis - 3.0 * ATR
+
+Interpretation:
+  Price at 1.5x band → normal trending move
+  Price at 2.0x band → extended move, potential pullback
+  Price at 3.0x band → extreme extension, high probability of reversal
+    → This is where FADE_EXTREME entries trigger (combined with Phase > 61.8)</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>8. CCI — Commodity Channel Index (period=50)</h2>
+    <p><strong>Used by:</strong> Available for analysis, not currently a direct bias voter</p>
+    <p><strong>Source:</strong> shared_mtftrendbar ThinkScript</p>
+    <pre><code>Typical Price (TP) = (high + low + close) / 3
+MA = SMA(TP, 50)
+Mean Deviation = mean(|TP[i] - MA|, last 50 bars)
+CCI = (TP - MA) / (0.015 * Mean_Deviation)
+
+The 0.015 constant normalizes so ~75% of values fall between -100 and +100.
+  CCI > 0: price above its average → bullish pressure
+  CCI > +100: strongly above average
+  CCI < -100: strongly below average
+  Zero-cross: trend direction change</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>9. Range Consumed %</h2>
+    <p><strong>Used by:</strong> Layer 1 (Regime — primary exhaustion detector)</p>
+    <pre><code>range_consumed = |close - prior_close| / ATR * 100
+
+Capped at 200% (2x ATR move — extremely rare, gap day).
+
+  consumed < 50%  → low range used, room for expansion
+  consumed 50-70% → moderate, still room to run
+  consumed > 70%  → getting stretched
+  consumed > 90%  → EXHAUSTED — most of the expected move is done
+
+This is the simplest but most important filter in the regime layer.
+It answers: "how much of today's expected range has already been used?"</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>10. VPOC / VAH / VAL Approximation</h2>
+    <p><strong>Used by:</strong> Layer 2 (Structure Map)</p>
+    <pre><code>VPOC (Volume Point of Control):
+  VPOC = rolling_sum(close * volume, 20) / rolling_sum(volume, 20)
+  This is a 20-bar VWAP — the volume-weighted average price.
+  It approximates where the most volume transacted.
+
+VAH (Value Area High):
+  VAH = rolling_quantile(high, 20, 0.85)
+  The 85th percentile of the last 20 bars' highs.
+
+VAL (Value Area Low):
+  VAL = rolling_quantile(low, 20, 0.15)
+  The 15th percentile of the last 20 bars' lows.
+
+The spread [VAL, VAH] captures roughly 70% of price action.
+This mirrors the TPO Value Area concept but works from OHLCV bars
+without tick-level data.
+
+These are the "value" reference points that Layer 2 uses to determine
+whether price is inside value (neutral) or has been accepted outside
+value (buyer/seller control).</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>11. Initial Balance (IB) Levels</h2>
+    <p><strong>Used by:</strong> Layer 2 (Structure), Layer 4 (IB breakout entry)</p>
+    <pre><code>Live Intraday Calculation (minute bars):
+  IB_HIGH = max(high[bar]) for bars from 9:30 to 10:30 AM ET
+  IB_LOW  = min(low[bar]) for bars from 9:30 to 10:30 AM ET
+  IB_RANGE = IB_HIGH - IB_LOW
+
+Hourly Backtester Approximation:
+  IB_HIGH = high[i-1]     // prior bar's high
+  IB_LOW  = low[i-1]      // prior bar's low
+
+Extension Targets (from IB_RANGE):
+  Quartiles (within IB):
+    Q25 = IB_LOW + 0.25 * IB_RANGE
+    Q50 = IB_LOW + 0.50 * IB_RANGE  (midpoint)
+    Q75 = IB_LOW + 0.75 * IB_RANGE
+
+  Extensions (beyond IB):
+    50% up    = IB_HIGH + 0.50 * IB_RANGE
+    100% up   = IB_HIGH + 1.00 * IB_RANGE
+    300% up   = IB_HIGH + 3.00 * IB_RANGE
+    (mirror for downside)
+
+IB Breakout Detection:
+  Long:  close[i] > IB_HIGH AND close[i-1] <= IB_HIGH  (fresh breakout this bar)
+  Short: close[i] < IB_LOW  AND structure == SELLER_CONTROL</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>12. Position Size Formula</h2>
+    <p><strong>Used by:</strong> Layer 5 (SafetyLayer + position_sizer)</p>
+    <pre><code>ATR-Based Risk Budget:
+  risk_budget = equity * effective_risk_pct / 100
+  risk_per_contract = ATR * contract_multiplier
+  contracts_raw = floor(risk_budget / risk_per_contract)
+
+Drawdown Scaling:
+  IF drawdown < 5%   → scale = 1.00
+  IF drawdown 5-8%   → scale = 0.75
+  IF drawdown 8-10%  → scale = 0.50
+  IF drawdown > 10%  → scale = 0.00 (HALT)
+  effective_risk_pct = risk_pct * scale
+
+Hard Limits Applied:
+  contracts = min(contracts_raw, MAX_CONTRACTS_PER_INSTRUMENT)
+  position_value = contracts * ATR * multiplier
+  IF position_value > equity * MAX_POSITION_SIZE_PCT → reduce contracts
+
+Consecutive Loss Adjustment:
+  IF consecutive_losses >= 3 → contracts *= 0.50
+  IF consecutive_losses >= 5 → contracts *= 0.25
+  IF consecutive_losses >= 7 → contracts = 0 (24-hour halt)
+
+Kelly Criterion (advisory, post-30-trade):
+  f* = (b*p - q) / b
+  where b = avg_win/avg_loss, p = win_rate, q = 1-p
+  Capped at 0.25 (quarter-Kelly) for safety
+  Used as sanity check against ATR-based sizing, take the lower</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>13. Composite Score (MES Only)</h2>
+    <p><strong>Used by:</strong> MES composite signal generator (STC + ORB + VWAP)</p>
+    <pre><code>Three signal sources, each fires 0 or 1:
+  STC_long  = 1 if stc_cross_up this bar, else 0
+  ORB_long  = 1 if ORB LONG_ENTRY, else 0
+  VWAP_long = 1 if VWAP LONG_ENTRY, else 0
+  (mirror for short)
+
+Regime-Adaptive Weights:
+  TRENDING: w_stc=0.60, w_orb=0.30, w_vwap=0.10  (STC dominates)
+  RANGING:  w_stc=0.50, w_orb=0.20, w_vwap=0.30  (VWAP gets more weight)
+  VOLATILE: w_stc=0.00, w_orb=0.00, w_vwap=0.00  (sit out entirely)
+
+Composite Score:
+  long_score  = w_stc * STC_long + w_orb * ORB_long + w_vwap * VWAP_long
+  short_score = w_stc * STC_short + w_orb * ORB_short + w_vwap * VWAP_short
+  composite   = long_score - short_score  (positive = bullish, negative = bearish)
+
+Entry Gate:
+  ENTRY_NOW requires:
+    1. score >= 0.35 (entry threshold)
+    2. STC must fire (STC is the GATE — ORB/VWAP add score but can't enter alone)
+    3. regime != VOLATILE
+    4. R:R >= 1.2 (reward/risk at T1)
+
+  Why 0.35? STC alone in TRENDING regime = 0.60 (passes). STC alone in RANGING = 0.50 (passes).
+  VWAP alone in RANGING = 0.30 (blocked). This prevents VWAP-only entries which have lower edge.</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>14. Stop / Target Calculations</h2>
+    <pre><code>For LONG entries:
+  stop_level = close - STOP_ATR * ATR      // below entry
+  target_1   = close + T1_ATR * ATR        // first profit target
+  target_2   = close + T2_ATR * ATR        // stretch target
+  target_3   = close + T3_ATR * ATR        // full extension
+
+For SHORT entries:
+  stop_level = close + STOP_ATR * ATR      // above entry
+  target_1   = close - T1_ATR * ATR
+  target_2   = close - T2_ATR * ATR
+  target_3   = close - T3_ATR * ATR
+
+Per-Instrument ATR Multiples:
+  MCL: STOP=0.90, T1=1.50, T2=2.618, T3=4.00   R:R at T1 = 1.67:1
+  MNQ: STOP=0.70, T1=1.00, T2=1.80,  T3=2.618  R:R at T1 = 1.43:1
+  MES: STOP=1.00, T1=2.50, T2=4.00   (composite) R:R at T1 = 2.50:1
+
+Breakeven WR (to be profitable at T1 only, ignoring T2/T3):
+  MCL: 1 / (1 + 1.67) = 37.5%  (need to win 37.5% of trades to break even)
+  MNQ: 1 / (1 + 1.43) = 41.2%
+  MES: 1 / (1 + 2.50) = 28.6%
+
+  With tiered exit (50% at T1, 25% at T2, 25% at T3), effective R:R improves
+  significantly — a winning trade that hits all three targets returns much
+  more than the nominal T1 R:R.</code></pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- FOOTER                                                                 -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div style="text-align:center;padding:2rem;color:var(--muted);font-size:0.75rem;border-top:1px solid var(--border);">
+  JARVIS TRADER &mdash; The Stark-Cohen Protocol v1.0<br>
+  Generated April 2, 2026 &bull; 30-Day Paper Validation Phase<br>
+  <span style="color:var(--accent);">LIVE_TRADING_ENABLED = False</span> &bull;
+  <span style="color:var(--bull);">REQUIRE_HUMAN_APPROVAL = True</span> &bull;
+  <span style="color:var(--bear);">Kill Switch: -2% Daily / -10% Drawdown</span>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB SWITCHING JS                                                       -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+</script>
+
+</body>
+</html>

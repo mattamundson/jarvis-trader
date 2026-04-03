@@ -1,0 +1,110 @@
+"""
+Macro economic data endpoints
+"""
+
+import logging
+from datetime import datetime
+
+from fastapi import APIRouter, HTTPException
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="", tags=["macro"])
+
+# Global references (injected from main.py)
+_macro_cache = {}
+_data_manager = None
+
+
+def inject_dependencies(data_manager=None):
+    """Inject dependencies from main.py"""
+    global _data_manager
+    _data_manager = data_manager
+
+
+@router.get("/macro/snapshot")
+async def get_macro_snapshot():
+    """
+    Current macro environment from FRED — flat snapshot for dashboard polling.
+
+    Returns:
+        {"vix": float, "fed_funds_rate": float, "ten_year_yield": float, "unemployment": float}
+
+    Uses a 5-minute in-memory cache so 60s dashboard polling doesn't hammer FRED.
+    The underlying FREDDataService already caches at 1h per series; this adds a
+    dedicated short-TTL cache for the flattened response shape.
+    """
+    from data.fred_data import get_fred_service
+
+    # 5-minute in-memory cache for the flattened snapshot
+    now = datetime.now()
+    cached = _macro_cache.get("snapshot")
+    if cached and (now - cached["_ts"]).total_seconds() < 300:
+        return {k: v for k, v in cached.items() if k != "_ts"}
+
+    service = get_fred_service()
+    try:
+        raw = service.get_macro_snapshot()
+    except Exception as e:
+        logger.warning("get_macro_snapshot() raised unexpectedly: %s — building fallback", e)
+        raw = {}
+
+    # If FRED returned nothing useful (all None), enrich VIX from data_manager
+    if not raw or raw.get("vix", {}) in (None, {}, {"value": None}):
+        try:
+            if _data_manager is not None:
+                vix_result = await _data_manager.get_vix()
+                vix_value = vix_result.get("value")
+                if vix_value is not None:
+                    raw.setdefault(
+                        "vix",
+                        {
+                            "value": float(vix_value),
+                            "unit": "index",
+                            "description": f"CBOE Volatility Index ({vix_result.get('source', 'data_manager')})",
+                        },
+                    )
+                    logger.info("VIX fallback via data_manager: %.2f", float(vix_value))
+        except Exception as dm_err:
+            logger.warning("data_manager VIX fallback also failed: %s", dm_err)
+
+    # The FREDDataService returns nested dicts: {"vix": {"value": 27.4, ...}, ...}
+    # Flatten to the shape the dashboard WatchlistBar expects.
+    def _val(key: str):
+        entry = raw.get(key)
+        if entry is None:
+            return None
+        if isinstance(entry, dict):
+            return entry.get("value")
+        try:
+            return float(entry)
+        except (TypeError, ValueError):
+            return None
+
+    flat = {
+        "vix": _val("vix"),
+        "fed_funds_rate": _val("fed_funds_rate"),
+        "ten_year_yield": _val("ten_year_yield"),
+        "unemployment": _val("unemployment"),
+        "timestamp": raw.get("timestamp", now.isoformat()),
+    }
+
+    # Store in cache with sentinel timestamp
+    _macro_cache["snapshot"] = {**flat, "_ts": now}
+
+    return flat
+
+
+@router.get("/macro/series/{series_id}")
+async def get_macro_series(series_id: str, periods: int = 24):
+    """Get historical data for a FRED series (e.g. FEDFUNDS, GS10, VIXCLS)"""
+    from data.fred_data import get_fred_service
+
+    service = get_fred_service()
+    history = service.get_series_history(series_id.upper(), periods)
+    if not history:
+        raise HTTPException(404, f"FRED series {series_id} not found or unavailable")
+    return {"series_id": series_id.upper(), "data": history, "count": len(history)}
+
+
+# ── Backtest endpoint ──────────────────────────────────────────────────────────

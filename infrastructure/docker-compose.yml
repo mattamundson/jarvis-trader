@@ -1,0 +1,149 @@
+# JARVIS TRADER — Production Infrastructure
+# Docker Compose v2 format (no version field — uses latest)
+# Run: docker compose up -d
+# Provides: QuestDB (time-series), PostgreSQL (relational), Redis (cache),
+#           Prometheus (metrics), Grafana (dashboards)
+#
+# For paper trading mode, overlay with: docker compose -f docker-compose.yml -f docker-compose.paper.yml up -d
+
+services:
+
+  # ── PostgreSQL 16 — Relational Database ────────────────────────────────────
+  # Stores: trades, orders, portfolio state, audit trail, agent decisions
+  # Default credentials: jarvis/jarvis on jarvis_trader database
+  postgres:
+    image: postgres:16-alpine
+    container_name: jarvis_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: jarvis
+      POSTGRES_PASSWORD: jarvis
+      POSTGRES_DB: jarvis_trader
+      POSTGRES_INITDB_ARGS: "-c shared_buffers=256MB -c max_connections=100"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis -d jarvis_trader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Redis 7 — In-Memory Cache & Signal Bus ─────────────────────────────────
+  # Stores: market data cache, signal bus, feature store, session state
+  # Configured with AOF persistence and LRU eviction (512MB max)
+  redis:
+    image: redis:7-alpine
+    container_name: jarvis_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --loglevel notice
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── QuestDB 8 — Time-Series Database for Market Data ───────────────────────
+  # Stores: OHLCV candles, tick data, technical indicators
+  # Exposes HTTP API (9000), InfluxDB protocol (9009), PG wire (8812)
+  questdb:
+    image: questdb/questdb:8.2.3
+    container_name: jarvis_questdb
+    restart: unless-stopped
+    ports:
+      - "9000:9000"    # HTTP API + Web console: http://localhost:9000
+      - "9009:9009"    # InfluxDB line protocol (for ingestion)
+      - "8812:8812"    # PostgreSQL wire protocol
+    volumes:
+      - questdb_data:/var/lib/questdb
+    environment:
+      QDB_HTTP_ENABLED: "true"
+      QDB_HTTP_BIND_TO: "0.0.0.0:9000"
+      QDB_HTTP_KEEP_ALIVE_TIMEOUT: "30000"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo ok >&3 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Prometheus 2 — Metrics Time-Series Database ────────────────────────────
+  # Scrapes: Engine (/metrics), Redis (via exporter), PostgreSQL (via exporter)
+  # Retention: 15 days (default)
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: jarvis_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Grafana 11 — Monitoring & Dashboards ──────────────────────────────────
+  # Access: http://localhost:3030 (port 3030 to avoid conflict with Next.js 3010)
+  # Default login: admin / (password from GF_ADMIN_PASSWORD env)
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: jarvis_grafana
+    restart: unless-stopped
+    ports:
+      - "3030:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-jarvis_change_me}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      GF_INSTALL_PLUGINS: "grafana-clock-panel,grafana-simple-json-datasource"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  questdb_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
