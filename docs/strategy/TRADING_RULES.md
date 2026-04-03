@@ -4,6 +4,7 @@
 **Date:** 2026-04-03  
 **Canonical code:** [`engine/backtest/signals.py`](../../engine/backtest/signals.py), [`engine/backtest/composite_signals.py`](../../engine/backtest/composite_signals.py), [`engine/config.py`](../../engine/config.py)  
 **Math reference:** [EQUATIONS.md](./EQUATIONS.md) — LaTeX-style formulas aligned to those modules.  
+**HTML review bundle:** [STRATEGY_CANON_REVIEW.html](./STRATEGY_CANON_REVIEW.html) — browser view of this doc + equations (regenerate: `python scripts/build_strategy_review_html.py`).  
 **Next review:** After 30-day paper milestone or any change to `INSTRUMENT_PARAMS` / safety limits.
 
 ---
