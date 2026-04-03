@@ -20,8 +20,47 @@ function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
 }
 
+type EngineHealthPayload = { status?: string };
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function PaperTradingPage() {
+  const { data: health, error: healthError, isLoading: healthLoading } = useSWR<EngineHealthPayload>(
+    "/health",
+    fetcher,
+    { refreshInterval: 30_000, revalidateOnFocus: true }
+  );
+
+  let engineHealthLabel = "ENGINE …";
+  let engineHealthStyle: React.CSSProperties = {
+    borderColor: "#88888844",
+    backgroundColor: "#88888810",
+    color: "#888888",
+  };
+  if (healthError) {
+    engineHealthLabel = "ENGINE offline";
+    engineHealthStyle = {
+      borderColor: "#ff444466",
+      backgroundColor: "#ff444410",
+      color: "#ff6666",
+    };
+  } else if (!healthLoading && health) {
+    if (health.status === "ok") {
+      engineHealthLabel = "ENGINE ok";
+      engineHealthStyle = {
+        borderColor: "#00aaff44",
+        backgroundColor: "#00aaff12",
+        color: "#00ccff",
+      };
+    } else {
+      engineHealthLabel = `ENGINE ${health.status ?? "?"}`;
+      engineHealthStyle = {
+        borderColor: "#ffaa0044",
+        backgroundColor: "#ffaa0010",
+        color: "#ffcc66",
+      };
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -56,6 +95,13 @@ export default function PaperTradingPage() {
             </nav>
           </div>
           <div className="flex items-center gap-2">
+            <span
+              className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
+              style={engineHealthStyle}
+              title="GET /health — same check as WORKING_TODAY smoke"
+            >
+              {engineHealthLabel}
+            </span>
             <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
               style={{ borderColor: "#00ff8833", backgroundColor: "#00ff8810", color: "#00ff88" }}>
               PAPER MODE

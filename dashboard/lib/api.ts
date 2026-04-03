@@ -813,3 +813,41 @@ export interface Phase3ReadinessResponse {
   requirements: Record<string, unknown>;
   timestamp: string;
 }
+
+// ── Hourly Win Rate & Streak types ──────────────────────────────────────────
+
+export interface HourlyStatItem {
+  hour: number;
+  label: string;
+  trades: number;
+  wins: number;
+  win_rate: number;
+  avg_pnl: number;
+}
+
+export interface HourSummary {
+  hour: number;
+  label: string;
+  win_rate: number;
+}
+
+export interface HourlyStatsResponse {
+  hourly_stats: HourlyStatItem[];
+  best_hour: HourSummary | null;
+  worst_hour: HourSummary | null;
+}
+
+export interface StreakRecord {
+  type: "WIN" | "LOSS";
+  count: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface StreaksResponse {
+  current_streak: { type: "WIN" | "LOSS" | "NONE"; count: number };
+  max_win_streak: number;
+  max_loss_streak: number;
+  streak_history: StreakRecord[];
+  total_trades: number;
+}

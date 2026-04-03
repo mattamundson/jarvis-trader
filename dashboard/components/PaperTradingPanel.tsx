@@ -15,17 +15,25 @@ function fetcher<T>(url: string): Promise<T> {
 }
 
 export function PaperTradingPanel() {
-  const { data: performance } = useSWR<PaperPerformance>(
+  const { data: perfData } = useSWR<PaperPerformance | { performance: PaperPerformance }>(
     "/portfolio/paper/performance",
     fetcher,
     { refreshInterval: POLL_MS, shouldRetryOnError: false }
   );
+  const performance: PaperPerformance | undefined = perfData
+    ? "performance" in perfData
+      ? (perfData as { performance: PaperPerformance }).performance
+      : (perfData as PaperPerformance)
+    : undefined;
 
-  const { data: positions } = useSWR<PaperPosition[]>(
+  const { data: positionsData } = useSWR<{ positions: PaperPosition[]; count: number }>(
     "/portfolio/paper/positions",
     fetcher,
     { refreshInterval: POLL_MS, shouldRetryOnError: false }
   );
+  const positions = Array.isArray(positionsData)
+    ? positionsData
+    : positionsData?.positions ?? [];
 
   const sessionNotStarted =
     !performance ||
@@ -68,12 +76,14 @@ export function PaperTradingPanel() {
                 <PerfStat
                   label="Prof. Factor"
                   value={
-                    isFinite(performance.profit_factor)
+                    performance.profit_factor != null && isFinite(performance.profit_factor)
                       ? performance.profit_factor.toFixed(2)
-                      : "∞"
+                      : "—"
                   }
                   colorClass={
-                    performance.profit_factor >= 1.5
+                    performance.profit_factor == null
+                      ? "text-muted-foreground"
+                      : performance.profit_factor >= 1.5
                       ? "text-bull"
                       : performance.profit_factor >= 1
                       ? "text-warn"
