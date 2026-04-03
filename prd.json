@@ -89,8 +89,8 @@
         "Run full test suite: 0 failures. Dashboard build: 0 TypeScript errors. All Python ruff-clean."
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "WFE gate for MES is 0.50. MES currently at 0.09 with default 1h/OS=15 params. 10 experiments establishes baseline map."
+      "passes": true,
+      "notes": "DONE 2026-04-03. 10 experiments run. All WFE=0.00 — MES has no STC edge at 1h (IS PF ranges 0.49-0.70, all below 1.0). Best OOS PF=0.64 (stc_os=13, stc_ob=83, stop=0.40, t1=0.80). 15m/4h experiments blocked by missing Polygon key (7/10 experiments got no data). Sprint 18 recommendation: pivot to 4h timeframe. run_walk_forward_for_params() added to walk_forward.py. Report: docs/reports/sprint17_mes_experiment_round1.md."
     }
   ]
 }
