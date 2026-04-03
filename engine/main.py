@@ -105,6 +105,8 @@ from routers.approval_router import router as approval_router
 from routers.approval_router import inject_dependencies as inject_approval_deps
 from routers.scanner_router import router as scanner_router
 from routers.scanner_router import inject_dependencies as inject_scanner_deps
+from routers.scheduler_router import router as scheduler_router
+from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from websocket.events import set_ws_manager
@@ -602,6 +604,90 @@ async def lifespan(app: FastAPI):
         scheduler.start()
     logger.info("⏰ MGC daily signal job registered — 18:00 ET (23:00 UTC) weekdays")
 
+    # ── Market open scan (09:31 ET) — triggers pipeline for MCL then MNQ ────────
+    async def market_open_scan_job():
+        """Trigger pipeline analysis at market open for approved instruments."""
+        if not trading_pipeline or not safety_layer:
+            logger.warning("[MARKET_OPEN] Pipeline or safety layer not available")
+            return
+
+        safety = safety_layer.get_status()
+        if safety.get("kill_switch_active"):
+            logger.info("[MARKET_OPEN] Skipping — kill switch active")
+            return
+
+        instruments = [("MCL", True), ("MNQ", True)]
+        logger.info(f"[MARKET_OPEN] Starting pipeline scan for {[s[0] for s in instruments]}")
+
+        for symbol, is_futures in instruments:
+            try:
+                result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
+                action = result.get("final_action", "hold")
+                logger.info(f"[MARKET_OPEN] {symbol}: {action.upper()}")
+            except Exception as e:
+                logger.error(f"[MARKET_OPEN] Pipeline failed for {symbol}: {e}")
+
+    scheduler.add_job(
+        market_open_scan_job,
+        CronTrigger(
+            day_of_week="mon-fri",
+            hour=9,
+            minute=31,
+            timezone="America/New_York",
+        ),
+        id="market_open_scan",
+        name="Market Open Scan",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+    logger.info("⏰ Market open scan job registered — 09:31 ET weekdays")
+
+    # ── EOD summary (16:05 ET) — logs daily P&L summary ────────────────────────
+    async def eod_summary_job():
+        """Log end-of-day summary with P&L metrics."""
+        try:
+            if paper_tracker is None:
+                logger.info("[EOD_SUMMARY] No trades today")
+                return
+
+            today_trades = paper_tracker.get_trades_by_date(
+                date_str=datetime.now().strftime("%Y-%m-%d")
+            )
+            total_trades = len(today_trades) if today_trades else 0
+
+            if total_trades == 0:
+                logger.info("[EOD_SUMMARY] No trades today")
+                return
+
+            realized_pnl = sum(t.get("realized_pnl", 0) for t in today_trades)
+            winning = sum(1 for t in today_trades if t.get("realized_pnl", 0) > 0)
+            losing = sum(1 for t in today_trades if t.get("realized_pnl", 0) < 0)
+
+            logger.info(
+                f"[EOD_SUMMARY] Trades: {total_trades} | "
+                f"P&L: ${realized_pnl:.2f} | Wins: {winning} | Losses: {losing}"
+            )
+
+        except Exception as e:
+            logger.error(f"[EOD_SUMMARY] Failed: {e}")
+
+    scheduler.add_job(
+        eod_summary_job,
+        CronTrigger(
+            day_of_week="mon-fri",
+            hour=16,
+            minute=5,
+            timezone="America/New_York",
+        ),
+        id="eod_summary",
+        name="EOD Summary",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+    logger.info("⏰ EOD summary job registered — 16:05 ET weekdays")
+
     # EOD P&L snapshot scheduler — registers its own jobs on the existing scheduler
     from notifications.whatsapp import get_notifier as _get_notifier
 
@@ -655,6 +741,7 @@ async def lifespan(app: FastAPI):
     )
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
+    inject_scheduler_router_scheduler(scheduler)
 
     # Initialize Signal Scanner
     try:
@@ -909,6 +996,7 @@ app.include_router(brokers_router)
 app.include_router(options_router)
 app.include_router(approval_router)
 app.include_router(scanner_router)
+app.include_router(scheduler_router)
 app.include_router(v1_router)
 
 

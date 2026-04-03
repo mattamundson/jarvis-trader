@@ -39,6 +39,7 @@ from ._mixins_alerts import AlertsMixin
 from ._mixins_analytics import AnalyticsMixin
 from ._mixins_decisions import DecisionsMixin
 from ._mixins_journal import JournalMixin
+from ._mixins_llm_costs import LLMCostsMixin
 from ._mixins_pending_approvals import PendingApprovalsMixin
 from ._mixins_pnl import DailyPnLMixin
 from ._mixins_positions import PositionsMixin
@@ -59,6 +60,7 @@ class DatabaseManager(
     JournalMixin,
     AlertsMixin,
     PendingApprovalsMixin,
+    LLMCostsMixin,
 ):
     """
     Thread-safe SQLite manager for JARVIS TRADER.

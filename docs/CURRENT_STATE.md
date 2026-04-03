@@ -70,6 +70,11 @@ MAX_MARGIN_UTILIZATION=0.40
 # API Key
 API_KEY=jarvis-dev-key-change-me
 
+# Simulated IB paper routing (optional)
+# ALLOW_PAPER_SIMULATED_ORDERS — default False in .env.example. Enables the gated
+# SafetyLayer → connector path only; the portfolio paper API (/portfolio/paper/*) and
+# WORKING_TODAY smoke do not require this flag.
+
 # Approved Futures
 FUTURES_WATCHLIST=MCL,MNQ
 ```
@@ -156,3 +161,4 @@ All live trading changes require **Tier 3 confirmation** from the trader.
 ---
 
 **Document Version:** 1.0 | **Lines:** 150 | **Scope:** System snapshot, not development log
+
