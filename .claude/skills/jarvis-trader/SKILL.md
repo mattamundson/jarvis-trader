@@ -214,7 +214,30 @@ release / deploy        →  playbooks/release.md
 
 ---
 
-## 10. Completion Criteria
+## 10. External Tool Routing (JARVIS as Orchestrator)
+
+**Read `TOOLS.md` for the complete routing map.** JARVIS TRADER is the central
+intelligence — every task type has a designated external tool or Cowork skill.
+
+Quick reference:
+
+| Need | Go To |
+|---|---|
+| Live web research (news, macro, earnings, SEC filings) | Claude in Chrome / Kapture — see `TOOLS.md` Cat. 1 |
+| Stored docs and strategy notes | Google Drive search — see `TOOLS.md` Cat. 1 |
+| Trade data analysis, SQL, statistical work | `data:analyze`, `data:statistical-analysis` skills — see `TOOLS.md` Cat. 2 |
+| Performance reports, P&L statements | `finance:financial-statements`, `data:interactive-dashboard-builder` — see `TOOLS.md` Cat. 2 |
+| Debug a bug or pipeline failure | `engineering:debug` skill + `playbooks/debug.md` — see `TOOLS.md` Cat. 3 |
+| Code review for safety-critical changes | `engineering:code-review` + gstack `/review` (both) — see `TOOLS.md` Cat. 3 |
+| Start/stop engine, read logs | Desktop Commander — see `TOOLS.md` Cat. 4 |
+| Store/retrieve reports and docs | Google Drive fetch/search — see `TOOLS.md` Cat. 4 |
+
+**Safety rule applies to all tools:** No external tool can override `safety_layer.py`,
+modify `INSTRUMENT_PARAMS`, or interact with IB Gateway without Tier 3 confirmation.
+
+---
+
+## 11. Completion Criteria
 
 A task is complete ONLY when:
 
