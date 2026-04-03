@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { Activity, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 
@@ -82,7 +83,7 @@ export default function AnalysisPage() {
             <p className="text-xs text-muted-foreground">5-stage AI pipeline</p>
           </div>
           <span className="text-xs text-muted-foreground ml-auto">
-            <a href="/" className="hover:text-foreground transition-colors">← Dashboard</a>
+            <Link href="/" className="hover:text-foreground transition-colors">← Dashboard</Link>
           </span>
         </div>
       </header>

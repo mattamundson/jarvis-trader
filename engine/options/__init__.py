@@ -1,1 +1,0 @@
-# JARVIS Trader Options Engine

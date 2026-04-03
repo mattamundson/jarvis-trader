@@ -1,2 +1,0 @@
-# CI invokes: ruff check engine/ --config engine/ruff.toml
-extend = "pyproject.toml"

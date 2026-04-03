@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "tradingview": {
-      "command": "node",
-      "args": ["C:/Users/mattm/ThinkorSwim/jarvis-trader/tradingview-mcp/src/server.js"],
-      "env": {}
-    }
-  }
-}

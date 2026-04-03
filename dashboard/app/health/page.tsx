@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import {
   Activity,
@@ -376,39 +377,39 @@ export default function HealthPage() {
               <p className="text-xs text-muted-foreground">IBKR Futures + Schwab Options</p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Dashboard
-              </a>
-              <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Analysis
-              </a>
-              <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Backtest
-              </a>
-              <a href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Performance
-              </a>
-              <a href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Validation
-              </a>
-              <a href="/journal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/journal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Journal
-              </a>
-              <a href="/paper" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/paper" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Paper Trading
-              </a>
-              <a href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Watchlist
-              </a>
-              <a href="/scorecard" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/scorecard" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Scorecard
-              </a>
-              <a href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Settings
-              </a>
-              <a href="/health" className="text-xs text-foreground font-semibold border-b border-accent pb-0.5">
+              </Link>
+              <Link href="/health" className="text-xs text-foreground font-semibold border-b border-accent pb-0.5">
                 Health
-              </a>
+              </Link>
             </nav>
           </div>
 

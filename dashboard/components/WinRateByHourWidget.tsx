@@ -122,7 +122,7 @@ export function WinRateByHourWidget() {
               minWidth: `${data.hourly_stats.length * 52}px`,
             }}
           >
-            {data.hourly_stats.map((stat) => (
+            {data.hourly_stats.map((stat: HourlyStatItem) => (
               <HourBar key={stat.hour} stat={stat} />
             ))}
           </div>

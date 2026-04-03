@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Brain, ArrowLeft, Play, RefreshCw, CheckCircle, XCircle, Clock, Zap, Activity, Cpu, StopCircle } from "lucide-react";
 import { fetchEngine, postEngine } from "@/lib/api";
 import { SectionHeader } from "./SectionHeader";
@@ -2132,10 +2133,10 @@ export default function StrategiesPage() {
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
             </button>
-            <a href="/" className="flex items-center gap-1.5 text-xs transition-colors" style={{ color: "#888" }}>
+            <Link href="/" className="flex items-center gap-1.5 text-xs transition-colors" style={{ color: "#888" }}>
               <ArrowLeft className="h-3.5 w-3.5" />
               Back
-            </a>
+            </Link>
           </div>
         </div>
       </header>
