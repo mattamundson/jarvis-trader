@@ -17,8 +17,8 @@
         "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "COMPLETE. STC pre-filter fix applied — skip range widened to OS/OB thresholds (STC_MIDRANGE_SKIP_LOW=15, STC_MIDRANGE_SKIP_HIGH=83). GET /pipeline/signal-debug endpoint added. Committed."
     },
     {
       "id": "US-1602",
@@ -34,8 +34,8 @@
         "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "COMPLETE. MCL params updated to WF consensus (stc_os=23, stop_atr_mult=0.50, t1_atr_mult=1.00) in signals.py, paper_config.py, and MCL_15M_CONFIG. Composite backtester exit tracking bug fixed. Committed at 93464ae."
     },
     {
       "id": "US-1603",
@@ -83,8 +83,8 @@
         "All Python is ruff-clean."
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "COMPLETE. inject_pipeline_deps wired into main.py lifespan. Deprecated duplicate RL router removed/consolidated. Committed."
     }
   ]
 }
