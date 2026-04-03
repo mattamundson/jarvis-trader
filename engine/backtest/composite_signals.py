@@ -269,6 +269,7 @@ def generate_composite_signals(
     COMP_STOP_ATR = 1.00
     COMP_T1_ATR = 2.50
     COMP_T2_ATR = 4.00
+    COMP_T3_ATR = 6.00  # Sprint 16: fixes exit_date=None (target_3 was always NaN)
 
     # LONG entries
     long_idx = result.index[is_long_entry]
@@ -287,8 +288,10 @@ def generate_composite_signals(
             # Composite targets: closer T1 for higher hit rate
             t1 = entry_p + COMP_T1_ATR * atr_val
             t2 = entry_p + COMP_T2_ATR * atr_val
+            t3 = entry_p + COMP_T3_ATR * atr_val
             result.at[idx_val, "target_1"] = round(t1, 4)
             result.at[idx_val, "target_2"] = round(t2, 4)
+            result.at[idx_val, "target_3"] = round(t3, 4)
 
             # R:R
             risk = entry_p - composite_stop
@@ -317,8 +320,10 @@ def generate_composite_signals(
             # Composite targets: closer T1 for higher hit rate
             t1 = entry_p - COMP_T1_ATR * atr_val
             t2 = entry_p - COMP_T2_ATR * atr_val
+            t3 = entry_p - COMP_T3_ATR * atr_val
             result.at[idx_val, "target_1"] = round(t1, 4)
             result.at[idx_val, "target_2"] = round(t2, 4)
+            result.at[idx_val, "target_3"] = round(t3, 4)
 
             # R:R
             risk = composite_stop - entry_p
