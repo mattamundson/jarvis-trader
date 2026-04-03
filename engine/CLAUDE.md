@@ -59,3 +59,4 @@
 | MNQ | 1h | 0.57 | APPROVED — paper active |
 | MGC | 1d | 0.14 | HALTED |
 | MES | 1h | 0.09 | DO NOT TRADE |
+| SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 |
