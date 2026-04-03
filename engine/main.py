@@ -1744,39 +1744,8 @@ async def get_pipeline_history(limit: int = 50, symbol: str = ""):
 
 
 # ── Analytics / Performance Validation ────────────────────────────────────
-
-
-@app.get("/analytics/performance")
-async def get_analytics_performance():
-    """
-    Forward-test validation report.
-
-    Computes Profit Factor, Sharpe ratio, win rate, average win/loss,
-    max drawdown, and total P&L from all closed paper trades and daily P&L
-    records stored in SQLite.
-
-    Returns a structured report with status PASS / FAIL / INSUFFICIENT_DATA
-    and a plain-English recommendation.
-    """
-    if not db_manager:
-        return {
-            "status": "INSUFFICIENT_DATA",
-            "metrics": {},
-            "thresholds": {
-                "profit_factor": 2.0,
-                "sharpe_ratio": 1.5,
-                "min_trades_required": 10,
-            },
-            "recommendation": "Database not initialized.",
-        }
-    try:
-        from analytics.performance import PerformanceCalculator
-
-        calc = PerformanceCalculator(db_manager)
-        return calc.get_validation_report()
-    except Exception as exc:
-        logger.error(f"[Analytics] get_validation_report failed: {exc}")
-        raise HTTPException(500, f"Analytics error: {exc}") from exc
+# GET /analytics/performance — canonical metrics: routers/analytics_router.py
+# GET /analytics/validation-report — PASS/FAIL report: routers/analytics_router.py
 
 
 @app.get("/analytics/performance/rolling")
