@@ -1,0 +1,90 @@
+{
+  "project": "JARVIS TRADER Sprint 16 — The Signal Unlock",
+  "branchName": "ralph/signal-unlock",
+  "description": "Sprint 16 addresses the core operational blockers preventing real paper trading. The pipeline is generating 115 HOLD decisions per day with 3-6% confidence — the STC mid-range pre-filter added in Sprint 14 Task 2 is the prime suspect. MCL is trading with in-sample params (stc_os=15) instead of the walk-forward validated consensus params (stc_os=23). The composite backtester has a broken exit tracking bug. The database may be corrupted and a $1,772.33 balance anomaly needs investigation. The learning loop is fully built but never wired into the trading cycle. Pre-existing test failures and duplicate routes need cleanup. Five stories targeting the highest-impact blockers.",
+  "userStories": [
+    {
+      "id": "US-1601",
+      "title": "Diagnose and fix pipeline signal generation (115 HOLDs/day)",
+      "description": "As a trader, I need to understand why the pipeline generates HOLD on every single decision so I can fix it and start accumulating real paper trades toward the 60-trade validation gate.",
+      "acceptanceCriteria": [
+        "DIAGNOSIS FIRST: Read engine/backtest/signals.py to find the STC_MIDRANGE_SKIP range and confirm it exists. Read the pipeline code (engine/agents/pipeline.py or equivalent) to trace exactly where signals get filtered before reaching the LLM stage. Document the filter chain with line numbers.",
+        "Add STC_MIDRANGE_SKIP_ENABLED = True and STC_MIDRANGE_SKIP_LOW = 25 and STC_MIDRANGE_SKIP_HIGH = 73 as configurable constants to engine/config.py TradingConfig. These replace any hardcoded values in the pre-filter logic.",
+        "Add a GET /pipeline/signal-debug endpoint to engine/routers/pipeline_router.py returning the last 50 filter decisions. Each entry: { timestamp, symbol, stc_val, stage_blocked: 'pre_filter' | 'regime' | 'llm_confidence' | 'approved', reason: str }. Store decisions in a module-level deque(maxlen=50) in pipeline_router.py — same pattern as scanner_router.py uses for signals.",
+        "Add logging at each filter stage in the pipeline: log at INFO level when a signal is blocked by the pre-filter, regime filter, or LLM confidence threshold. Format: '[Pipeline.Filter] symbol=MCL stage=pre_filter stc_val=45.2 action=SKIP'",
+        "If the pre-filter is the confirmed culprit (blocking >70% of signals during RTH), widen the skip range: change STC_MIDRANGE_SKIP_LOW to 15 and STC_MIDRANGE_SKIP_HIGH to 83 (the OS/OB thresholds themselves). This means only signals already in extreme territory get fast-pathed; mid-range signals go through the full LLM analysis.",
+        "Write a brief docs/reports/sprint16_signal_diagnosis.md documenting: what the filter chain looks like, what percentage of signals each stage was blocking (use the last available logs or estimate from code logic), and what change was made and why.",
+        "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-1602",
+      "title": "MCL parameter reconciliation + composite backtester exit fix",
+      "description": "As a trader, I want MCL to use its walk-forward validated parameters (stc_os=23, stop=0.50, t1=1.00) instead of the original in-sample params (stc_os=15, stop=0.90, t1=1.50), and I want the composite backtester exit tracking bug fixed so composite stats are meaningful.",
+      "acceptanceCriteria": [
+        "Read engine/backtest/signals.py INSTRUMENT_PARAMS['MCL'] — currently stc_os=15, stop_atr_mult=0.90, t1_atr_mult=1.50. Update to stc_os=23, stop_atr_mult=0.50, t1_atr_mult=1.00 (WF consensus params from WF_MCL_1h_walk_forward.json). This is a Tier 3 change authorized by Sprint 16 PRD.",
+        "Update paper_config.py MCL_PAPER_CONFIG['stc_params'] to match: stc_os=23, stc_ob=83, stop_atr_mult=0.50, t1_atr_mult=1.00, t2_atr_mult=2.618, t3_atr_mult=4.00.",
+        "Update MCL_15M_CONFIG['stc_params'] to use stc_os=23 as well (maintain consistency — 15m uses same OS as 1h).",
+        "Composite backtester exit bug: read engine/backtest/composite_signals.py and engine/backtest/backtester.py. Find why exit_date is None for all 581 trades when running the composite signal path. The bug is likely that generate_composite_signals() generates ENTRY_NOW signals but the backtester's exit logic (trailing stop, ATR-based targets) is not being triggered for composite-generated entries. Fix exit tracking so trades have valid exit_date and exit_price.",
+        "Verify fix: run python -m backtest.run_composite_backtest --symbol MCL from engine/ directory. Confirm zero trades have exit_date=None in the output. PF should be meaningfully different from 0.41.",
+        "Write docs/reports/sprint16_mcl_param_update.md documenting the param change rationale, before/after values, and composite backtester bug root cause + fix.",
+        "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-1603",
+      "title": "Database integrity check + circuit breaker investigation",
+      "description": "As a trader, I need confidence that my trade database is healthy and that the $1,772.33 portfolio balance anomaly is understood before I trust any paper trading P&L numbers.",
+      "acceptanceCriteria": [
+        "Run SQLite integrity check: execute 'PRAGMA integrity_check' on engine/jarvis_trader.db. If it returns anything other than 'ok', the DB is corrupted. Document the result.",
+        "If corrupted: rebuild from WAL/backup using 'sqlite3 jarvis_trader.db \".dump\" | sqlite3 jarvis_trader_clean.db', verify the clean copy passes integrity check, then replace jarvis_trader.db with jarvis_trader_clean.db. If clean: note it is healthy.",
+        "Query paper_trades table to understand the $1,772.33 balance: SELECT symbol, direction, entry_price, exit_price, pnl, status, opened_at, closed_at FROM paper_trades ORDER BY opened_at. Print all rows. Calculate: starting_capital(10000) + sum(pnl for closed trades) = expected_balance. Compare to what the portfolio endpoint returns.",
+        "Query the daily_pnl table if it exists: SELECT * FROM daily_pnl ORDER BY date. This shows cumulative P&L by day.",
+        "Check safety layer kill switch state programmatically: from engine/ directory run python -c \"from risk.safety_layer import SafetyLayer; sl = SafetyLayer(); print('kill_switch_active:', sl.is_kill_switch_active())\" — confirm it is False.",
+        "Write docs/reports/sprint16_db_health.md with: integrity check result, full paper_trades query output, balance reconciliation math, kill switch state, and recommendation (healthy / needs_attention).",
+        "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-1604",
+      "title": "Wire the learning loop into the trading cycle",
+      "description": "As a trader, I want the learning system to actually run — classifying trades when they close and running the nightly consolidator — so the system can improve over time instead of repeating the same decisions.",
+      "acceptanceCriteria": [
+        "Read engine/learning/ directory listing. Identify the consolidator module (likely consolidator.py or similar). Read it to understand its interface — what function to call, what it expects.",
+        "Run the consolidator manually once from engine/: python -c \"from learning.consolidator import <ConsolidatorClass>; c = <ConsolidatorClass>(); c.run()\" (use the actual class/function name). It should process any existing closed paper_trades. If it errors, fix the error. Document what it does and what tables it writes to.",
+        "Add the nightly consolidator as an APScheduler job in engine/main.py lifespan: CronTrigger at 04:00 ET Mon-Fri (UTC equivalent: 09:00 UTC). Job name: 'nightly_learning_consolidator'. Follow the exact same pattern as the existing APScheduler jobs in main.py.",
+        "Add trade classification on close: in engine/portfolio/tracker.py (the LIVE tracker, not backtest), find where a trade is marked as closed (status set to 'closed' or equivalent). After closing, call the learning system's trade classifier if available — import lazily to avoid circular imports. If the learning classifier interface is not clear, add a TODO comment with the exact hook point rather than guessing.",
+        "Verify learning tables are being written: after running the consolidator manually, check that at least one learning table (patterns, trade_classifications, or equivalent) has rows. Print row counts.",
+        "Update the APScheduler job count in engine/tests/test_schedulers.py: if the test asserts a specific job count (currently 5), increment to 6.",
+        "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-1605",
+      "title": "Fix pre-existing failures + resolve duplicate RL routes",
+      "description": "As the system operator, I want the full test suite to pass with zero failures and the duplicate RL route conflict resolved so the codebase is clean before Sprint 17.",
+      "acceptanceCriteria": [
+        "Fix test_approval_to_order_e2e.py: the file does 'import main' at module level which causes pytest's collector to choke. Change to use importlib or a TestClient(app) pattern with a conftest fixture instead of bare import. The test logic itself should remain — only fix the import mechanism. Verify: cd engine && python -m pytest tests/test_approval_to_order_e2e.py -v passes.",
+        "Resolve duplicate RL routes: read engine/routers/strategies_router.py and engine/routers/strategy_router.py. One registers at /strategies/rl/* and the other at /rl/*. Decide which is canonical (prefer /rl/* via strategy_router.py as it is more direct). In strategies_router.py, remove or comment out the duplicate RL endpoint functions and add a comment: '# RL endpoints consolidated into strategy_router.py at /rl/*'. Do not delete the file — it may have non-RL routes.",
+        "Run the full test suite: cd engine && python -m pytest tests/ -v. Target: 0 failures. Document any remaining skips with their reason.",
+        "Confirm dashboard still builds: cd dashboard && pnpm run build. Must show 0 TypeScript errors.",
+        "All Python is ruff-clean."
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

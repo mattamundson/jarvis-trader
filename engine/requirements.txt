@@ -1,0 +1,64 @@
+# Core Framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+pydantic==2.11.2
+pydantic-settings==2.8.1
+
+# LLM & AI
+anthropic==0.50.0
+langchain==0.3.23
+langchain-anthropic==0.3.10
+langgraph==0.3.21
+langchain-community==0.3.21
+
+# Trading & Market Data
+ib_async==0.9.86          # Interactive Brokers (successor to ib_insync)
+schwab-py==1.4.2          # Charles Schwab Trader API
+alpaca-py==0.35.0         # Alpaca (for paper trading / data)
+polygon-api-client==1.14.4 # Polygon.io market data
+
+# Technical Analysis
+pandas-ta==0.3.14b        # 150+ indicators
+ta-lib==0.4.32            # TA-Lib C library (must install binary first)
+
+# Data Processing
+pandas==2.2.3
+numpy==2.2.4
+scipy==1.15.2
+
+# Backtesting
+vectorbt==0.26.2          # Fast vectorized backtesting
+nautilus_trader==1.211.0  # Production-grade event-driven backtesting
+
+# Databases
+psycopg2-binary==2.9.10   # PostgreSQL
+redis==5.2.1              # Redis
+questdb==1.2.1            # QuestDB client
+
+# HTTP & WebSockets
+httpx==0.28.1
+websockets==14.2
+aiohttp==3.11.14
+
+# Sentiment & News
+finnhub-python==2.4.22    # Finnhub news + sentiment
+praw==7.8.1               # Reddit API (for WSB/r/stocks sentiment)
+
+# SEC Filing Analysis
+edgartools==2.28.0        # EDGAR filing parser
+fredapi==0.5.2            # FRED economic data
+
+# Scheduling
+apscheduler==3.11.0
+
+# Monitoring
+prometheus-client==0.21.1
+
+# Utilities
+python-dotenv==1.1.0
+loguru==0.7.3
+rich==13.9.4              # Pretty terminal output
+
+# Testing
+pytest==8.3.5
+pytest-asyncio==0.26.0

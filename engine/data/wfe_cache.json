@@ -1,0 +1,42 @@
+{
+  "MCL": {
+    "wfe": 0.82,
+    "interval": "1h",
+    "status": "APPROVED",
+    "last_calculated": "2026-03-30"
+  },
+  "MNQ": {
+    "wfe": 0.57,
+    "interval": "1h",
+    "status": "APPROVED",
+    "last_calculated": "2026-03-30"
+  },
+  "MGC": {
+    "wfe": 0.14,
+    "interval": "1d",
+    "status": "HALTED",
+    "last_calculated": "2026-03-30"
+  },
+  "MES": {
+    "wfe": 0.09,
+    "interval": "1h",
+    "status": "DO_NOT_TRADE",
+    "last_calculated": "2026-03-30"
+  },
+  "SPY": {
+    "wfe": 0.0,
+    "interval": "1h",
+    "status": "REJECTED",
+    "last_calculated": "2026-04-02",
+    "result_file": "engine/backtest/results/WF_SPY_1h_walk_forward.json",
+    "summary": {
+      "avg_is_return_pct": -1.06,
+      "avg_oos_return_pct": -0.77,
+      "avg_oos_sharpe": -1.839,
+      "avg_oos_profit_factor": 0.2037,
+      "windows_profitable": 0,
+      "total_windows": 5
+    },
+    "notes": "WFE=0.00 — avg IS return negative, formula floors at 0. All 5 OOS windows unprofitable. STC strategy does not generalise to SPY 1h."
+  }
+}
