@@ -158,6 +158,12 @@ class TradingConfig(BaseSettings):
         45  # EIA blackout: 15min before + 30min after Wed 10:30 ET
     )
 
+    # ── Infrastructure ────────────────────────────────────────────────────
+    SQLITE_DB_PATH: str = Field(
+        "data/jarvis_trader.db",
+        description="Canonical SQLite database path (relative to engine root)",
+    )
+
     # ── STC Mid-Range Pre-Filter ──────────────────────────────────────────
     # When enabled, skips the full LLM pipeline if STC is between LOW and HIGH.
     # Default LOW=15/HIGH=83 (the OS/OB thresholds) means only extreme readings
