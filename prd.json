@@ -1,90 +1,96 @@
 {
-  "project": "JARVIS TRADER Sprint 16 — The Signal Unlock",
-  "branchName": "ralph/signal-unlock",
-  "description": "Sprint 16 addresses the core operational blockers preventing real paper trading. The pipeline is generating 115 HOLD decisions per day with 3-6% confidence — the STC mid-range pre-filter added in Sprint 14 Task 2 is the prime suspect. MCL is trading with in-sample params (stc_os=15) instead of the walk-forward validated consensus params (stc_os=23). The composite backtester has a broken exit tracking bug. The database may be corrupted and a $1,772.33 balance anomaly needs investigation. The learning loop is fully built but never wired into the trading cycle. Pre-existing test failures and duplicate routes need cleanup. Five stories targeting the highest-impact blockers.",
+  "project": "JARVIS TRADER Sprint 17 — The Database Fix",
+  "branchName": "ralph/database-fix",
+  "description": "Sprint 16 US-1603 uncovered three critical database blockers that corrupt every P&L metric, validation gate, and learning loop feed in the system: (1) engine/jarvis_trader.db is a 0-byte ghost file — real DB is engine/data/jarvis_trader.db, (2) all paper trades have NULL pnl because close_trade() never writes P&L to SQLite, (3) 416 trades exist in JSON files vs only 6 in SQLite — JSON is the real source of truth but all endpoints query SQLite. These must be fixed before any MES experiment work, signal frequency verification, or learning loop feedback can be trusted. After the DB fix trilogy, Sprint 17 completes with n-autoresearch file recovery and MES experiment foundation setup.",
   "userStories": [
     {
-      "id": "US-1601",
-      "title": "Diagnose and fix pipeline signal generation (115 HOLDs/day)",
-      "description": "As a trader, I need to understand why the pipeline generates HOLD on every single decision so I can fix it and start accumulating real paper trades toward the 60-trade validation gate.",
+      "id": "US-1701",
+      "title": "Fix ghost DB path — canonicalize to engine/data/jarvis_trader.db",
+      "description": "As the system operator, I need all database connections to point to the real database at engine/data/jarvis_trader.db instead of the 0-byte ghost at engine/jarvis_trader.db so that every endpoint, test, and learning loop reads real data.",
       "acceptanceCriteria": [
-        "DIAGNOSIS FIRST: Read engine/backtest/signals.py to find the STC_MIDRANGE_SKIP range and confirm it exists. Read the pipeline code (engine/agents/pipeline.py or equivalent) to trace exactly where signals get filtered before reaching the LLM stage. Document the filter chain with line numbers.",
-        "Add STC_MIDRANGE_SKIP_ENABLED = True and STC_MIDRANGE_SKIP_LOW = 25 and STC_MIDRANGE_SKIP_HIGH = 73 as configurable constants to engine/config.py TradingConfig. These replace any hardcoded values in the pre-filter logic.",
-        "Add a GET /pipeline/signal-debug endpoint to engine/routers/pipeline_router.py returning the last 50 filter decisions. Each entry: { timestamp, symbol, stc_val, stage_blocked: 'pre_filter' | 'regime' | 'llm_confidence' | 'approved', reason: str }. Store decisions in a module-level deque(maxlen=50) in pipeline_router.py — same pattern as scanner_router.py uses for signals.",
-        "Add logging at each filter stage in the pipeline: log at INFO level when a signal is blocked by the pre-filter, regime filter, or LLM confidence threshold. Format: '[Pipeline.Filter] symbol=MCL stage=pre_filter stc_val=45.2 action=SKIP'",
-        "If the pre-filter is the confirmed culprit (blocking >70% of signals during RTH), widen the skip range: change STC_MIDRANGE_SKIP_LOW to 15 and STC_MIDRANGE_SKIP_HIGH to 83 (the OS/OB thresholds themselves). This means only signals already in extreme territory get fast-pathed; mid-range signals go through the full LLM analysis.",
-        "Write a brief docs/reports/sprint16_signal_diagnosis.md documenting: what the filter chain looks like, what percentage of signals each stage was blocking (use the last available logs or estimate from code logic), and what change was made and why.",
-        "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
+        "Search all Python files in engine/ for references to 'jarvis_trader.db' that do NOT include 'data/' in the path: grep -rn \"jarvis_trader.db\" engine/ --include='*.py' | grep -v 'data/jarvis_trader'. List every file and line number found.",
+        "For each file found: update the path string to 'data/jarvis_trader.db' or use the canonical path constant if one exists. If a DB_PATH constant exists in engine/config.py or engine/database/, update it there and confirm all other files import from it rather than hardcoding the path.",
+        "Confirm engine/data/jarvis_trader.db exists and passes PRAGMA integrity_check: cd engine && .venv/Scripts/python -c \"import sqlite3; conn = sqlite3.connect('data/jarvis_trader.db'); print(conn.execute('PRAGMA integrity_check').fetchone())\"",
+        "Run PRAGMA integrity_check on the real DB and confirm it returns 'ok'. If not ok, run the WAL rebuild: sqlite3 data/jarvis_trader.db '.dump' | sqlite3 data/jarvis_trader_clean.db and replace the original.",
+        "Delete or rename engine/jarvis_trader.db (the 0-byte ghost) to engine/jarvis_trader.db.ghost so it cannot accidentally be used: mv engine/jarvis_trader.db engine/jarvis_trader.db.ghost",
+        "Run full test suite: cd engine && .venv/Scripts/python -m pytest tests/ -q --tb=short. Target: same pass count as Sprint 16 baseline (1209 passed, 0 failures). Any test that hardcodes the old path will now fail and must be updated.",
+        "Write a one-paragraph note in docs/reports/sprint17_db_path_fix.md confirming the canonical path, listing all files updated, and the integrity check result.",
+        "All Python ruff-clean. 0 test failures."
       ],
       "priority": 1,
       "passes": true,
-      "notes": "COMPLETE. STC pre-filter fix applied — skip range widened to OS/OB thresholds (STC_MIDRANGE_SKIP_LOW=15, STC_MIDRANGE_SKIP_HIGH=83). GET /pipeline/signal-debug endpoint added. Committed."
+      "notes": "Ghost DB at engine/jarvis_trader.db is 0-byte. Real DB confirmed at engine/data/jarvis_trader.db with 6 SQLite paper trades."
     },
     {
-      "id": "US-1602",
-      "title": "MCL parameter reconciliation + composite backtester exit fix",
-      "description": "As a trader, I want MCL to use its walk-forward validated parameters (stc_os=23, stop=0.50, t1=1.00) instead of the original in-sample params (stc_os=15, stop=0.90, t1=1.50), and I want the composite backtester exit tracking bug fixed so composite stats are meaningful.",
+      "id": "US-1702",
+      "title": "Fix NULL pnl — complete the SQLite close_trade() write path",
+      "description": "As a trader, I need paper trade P&L to be correctly written to SQLite when a trade closes so that the ValidationGatesWidget, learning loop, and all P&L endpoints show accurate numbers instead of NULL.",
       "acceptanceCriteria": [
-        "Read engine/backtest/signals.py INSTRUMENT_PARAMS['MCL'] — currently stc_os=15, stop_atr_mult=0.90, t1_atr_mult=1.50. Update to stc_os=23, stop_atr_mult=0.50, t1_atr_mult=1.00 (WF consensus params from WF_MCL_1h_walk_forward.json). This is a Tier 3 change authorized by Sprint 16 PRD.",
-        "Update paper_config.py MCL_PAPER_CONFIG['stc_params'] to match: stc_os=23, stc_ob=83, stop_atr_mult=0.50, t1_atr_mult=1.00, t2_atr_mult=2.618, t3_atr_mult=4.00.",
-        "Update MCL_15M_CONFIG['stc_params'] to use stc_os=23 as well (maintain consistency — 15m uses same OS as 1h).",
-        "Composite backtester exit bug: read engine/backtest/composite_signals.py and engine/backtest/backtester.py. Find why exit_date is None for all 581 trades when running the composite signal path. The bug is likely that generate_composite_signals() generates ENTRY_NOW signals but the backtester's exit logic (trailing stop, ATR-based targets) is not being triggered for composite-generated entries. Fix exit tracking so trades have valid exit_date and exit_price.",
-        "Verify fix: run python -m backtest.run_composite_backtest --symbol MCL from engine/ directory. Confirm zero trades have exit_date=None in the output. PF should be meaningfully different from 0.41.",
-        "Write docs/reports/sprint16_mcl_param_update.md documenting the param change rationale, before/after values, and composite backtester bug root cause + fix.",
-        "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
+        "Read engine/portfolio/tracker.py close_trade() function in full. Identify: (a) where exit_price is set, (b) where pnl should be computed (entry_price vs exit_price × contract multiplier × direction), (c) the exact SQL UPDATE or INSERT that writes the closed trade back to SQLite — and confirm whether pnl is included in that statement.",
+        "If pnl is missing from the UPDATE statement: add it. For futures contracts, pnl = (exit_price - entry_price) × quantity × contract_multiplier for LONG, and (entry_price - exit_price) × quantity × contract_multiplier for SHORT. MCL multiplier = 100 (micro crude oil = 100 barrels). MNQ multiplier = 2 (micro Nasdaq = $2/point). Use a INSTRUMENT_MULTIPLIERS dict in config.py if one exists, otherwise add it.",
+        "After the fix, manually close a test trade by inserting an open paper_trade row into engine/data/jarvis_trader.db, then calling close_trade() via a test script, and confirming the closed row has a non-NULL pnl value.",
+        "Run the existing paper trades in SQLite through a retroactive pnl calculation: for all 6 existing SQLite trades with NULL pnl, if entry_price and exit_price are both non-NULL, compute and UPDATE pnl in place. Write this as a one-time migration script at engine/scripts/backfill_pnl.py and run it.",
+        "Confirm the ValidationGatesWidget endpoint now returns non-NULL PF and Sharpe values: GET http://localhost:8010/paper-validation/summary/eod — response should have numeric values, not null.",
+        "Run full test suite: 0 failures. All Python ruff-clean.",
+        "Append findings to docs/reports/sprint17_db_path_fix.md: what the pnl write bug was, what the fix was, what the contract multipliers are for each instrument."
       ],
       "priority": 2,
-      "passes": true,
-      "notes": "COMPLETE. MCL params updated to WF consensus (stc_os=23, stop_atr_mult=0.50, t1_atr_mult=1.00) in signals.py, paper_config.py, and MCL_15M_CONFIG. Composite backtester exit tracking bug fixed. Committed at 93464ae."
+      "passes": false,
+      "notes": "All 6 SQLite paper trades have pnl=NULL. close_trade() writes exit_price but never computes or stores pnl."
     },
     {
-      "id": "US-1603",
-      "title": "Database integrity check + circuit breaker investigation",
-      "description": "As a trader, I need confidence that my trade database is healthy and that the $1,772.33 portfolio balance anomaly is understood before I trust any paper trading P&L numbers.",
+      "id": "US-1703",
+      "title": "Unify dual storage — migrate 416 JSON trades into SQLite",
+      "description": "As the system operator, I need all 416 paper trades currently stored in JSON files to be migrated into SQLite so that the database is the single source of truth and all endpoints, validation gates, and learning loops see the complete trade history.",
       "acceptanceCriteria": [
-        "Run SQLite integrity check: execute 'PRAGMA integrity_check' on engine/jarvis_trader.db. If it returns anything other than 'ok', the DB is corrupted. Document the result.",
-        "If corrupted: rebuild from WAL/backup using 'sqlite3 jarvis_trader.db \".dump\" | sqlite3 jarvis_trader_clean.db', verify the clean copy passes integrity check, then replace jarvis_trader.db with jarvis_trader_clean.db. If clean: note it is healthy.",
-        "Query paper_trades table to understand the $1,772.33 balance: SELECT symbol, direction, entry_price, exit_price, pnl, status, opened_at, closed_at FROM paper_trades ORDER BY opened_at. Print all rows. Calculate: starting_capital(10000) + sum(pnl for closed trades) = expected_balance. Compare to what the portfolio endpoint returns.",
-        "Query the daily_pnl table if it exists: SELECT * FROM daily_pnl ORDER BY date. This shows cumulative P&L by day.",
-        "Check safety layer kill switch state programmatically: from engine/ directory run python -c \"from risk.safety_layer import SafetyLayer; sl = SafetyLayer(); print('kill_switch_active:', sl.is_kill_switch_active())\" — confirm it is False.",
-        "Write docs/reports/sprint16_db_health.md with: integrity check result, full paper_trades query output, balance reconciliation math, kill switch state, and recommendation (healthy / needs_attention).",
-        "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
+        "Locate the JSON trade files: find the path(s) where paper trades are stored as JSON. Likely candidates: engine/data/paper_trades/*.json, engine/paper/*.json, or engine/data/trades.jsonl. Run: find engine/ -name '*.json' -path '*/paper*' -o -name '*.jsonl' | head -20 to identify them.",
+        "Read the JSON schema for one trade record. Map each JSON field to the corresponding SQLite paper_trades column. Note any fields that exist in JSON but not in SQLite (add columns if needed via ALTER TABLE) and any fields in SQLite that don't exist in JSON (these stay NULL).",
+        "Write a migration script at engine/scripts/migrate_json_to_sqlite.py that: (a) reads all JSON/JSONL trade records, (b) computes pnl for closed trades if not already present using the multiplier logic from US-1702, (c) INSERTs each record into paper_trades with ON CONFLICT IGNORE to avoid duplicates, (d) prints a summary: records_read, records_inserted, records_skipped_duplicate.",
+        "Run the migration script: cd engine && .venv/Scripts/python scripts/migrate_json_to_sqlite.py. Confirm output shows approximately 416 records_read and 410 new records_inserted (6 already exist from prior SQLite writes).",
+        "After migration, update the paper trade write path so all new trades write ONLY to SQLite going forward — remove or archive the JSON write path. Add a comment: '# JSON write path removed Sprint 17 US-1703 — SQLite is now canonical'.",
+        "Verify the ValidationGatesWidget now shows the correct trade count (target: close to 416 total, minus any that were still open at migration time): GET http://localhost:8010/paper-validation/summary/eod — trades_closed field should be non-trivial.",
+        "Verify the learning loop consolidator can now see all trades: cd engine && .venv/Scripts/python -c \"from learning.consolidator import TradingMemoryConsolidator; import asyncio; c = TradingMemoryConsolidator(); print(asyncio.run(c.consolidate_daily()))\"",
+        "Run full test suite: 0 failures. All Python ruff-clean.",
+        "Write docs/reports/sprint17_storage_unification.md documenting: JSON file location(s), record count before/after, schema mapping, any schema changes made to paper_trades table."
       ],
       "priority": 3,
-      "passes": true,
-      "notes": "COMPLETE. sprint16_db_health.md written, DB integrity checked (ok), ghost DB documented, kill switch confirmed inactive."
+      "passes": false,
+      "notes": "416 trades in JSON (source of truth), 6 in SQLite. Migration must compute pnl for any closed trades missing it."
     },
     {
-      "id": "US-1604",
-      "title": "Wire the learning loop into the trading cycle",
-      "description": "As a trader, I want the learning system to actually run — classifying trades when they close and running the nightly consolidator — so the system can improve over time instead of repeating the same decisions.",
+      "id": "US-1704",
+      "title": "Recover n-autoresearch experiment loop files and wire CLI entry point",
+      "description": "As a developer, I need the n-autoresearch experiment loop infrastructure committed to master and accessible via a CLI entry point so that MES parameter search experiments can be run in Sprint 17 US-1705 and Sprint 18.",
       "acceptanceCriteria": [
-        "Read engine/learning/ directory listing. Identify the consolidator module (likely consolidator.py or similar). Read it to understand its interface — what function to call, what it expects.",
-        "Run the consolidator manually once from engine/: python -c \"from learning.consolidator import <ConsolidatorClass>; c = <ConsolidatorClass>(); c.run()\" (use the actual class/function name). It should process any existing closed paper_trades. If it errors, fix the error. Document what it does and what tables it writes to.",
-        "Add the nightly consolidator as an APScheduler job in engine/main.py lifespan: CronTrigger at 04:00 ET Mon-Fri (UTC equivalent: 09:00 UTC). Job name: 'nightly_learning_consolidator'. Follow the exact same pattern as the existing APScheduler jobs in main.py.",
-        "Add trade classification on close: in engine/portfolio/tracker.py (the LIVE tracker, not backtest), find where a trade is marked as closed (status set to 'closed' or equivalent). After closing, call the learning system's trade classifier if available — import lazily to avoid circular imports. If the learning classifier interface is not clear, add a TODO comment with the exact hook point rather than guessing.",
-        "Verify learning tables are being written: after running the consolidator manually, check that at least one learning table (patterns, trade_classifications, or equivalent) has rows. Print row counts.",
-        "Update the APScheduler job count in engine/tests/test_schedulers.py: if the test asserts a specific job count (currently 5), increment to 6.",
-        "All Python is ruff-clean. engine pytest tests/ -v passes (0 failures)."
+        "Check if these files exist on disk: engine/strategies/experiment_log.py, engine/strategies/run_experiment.py, engine/strategies/search_strategy.py. Run: ls engine/strategies/ to see the full listing.",
+        "If files exist: verify they are importable (python -c 'from strategies.experiment_log import ExperimentLog; print(\"OK\")') and git add + commit them as 'feat: recover n-autoresearch experiment loop files from prior session'.",
+        "If files do NOT exist: reconstruct from docs/session-logs/session-2026-04-03-n-autoresearch-experiment-loop.md which contains the full code from the prior Node session. Create all three files at engine/strategies/.",
+        "Verify rl_trainer.py in engine/strategies/ has WFE tracking additions from the n-autoresearch session. If missing, add: after each walk-forward fold evaluation, compute wfe = fold_pf_walkforward / fold_pf_insample and log to the experiment log.",
+        "Create engine/strategies/mes_search_space.json defining the MES parameter grid: timeframes ['15m','1h','4h'], stc_os [10,13,15,18,20,23,25], stc_ob [75,78,80,83,85,88], stop_atr_mult [0.40,0.50,0.60,0.70,0.80], t1_atr_mult [0.80,1.00,1.20,1.50,2.00], regime_required [3,4,5].",
+        "Add a CLI entry point: python -m strategies.run_experiment --symbol MES --config strategies/mes_search_space.json --n 1 should run 1 experiment and print the WFE result without error.",
+        "Add 3 unit tests in engine/tests/test_experiment_loop.py: ExperimentLog instantiation, dummy experiment log/read roundtrip, search_strategy returns valid param dict from seeded prior result.",
+        "Run full test suite: 0 failures. All Python ruff-clean."
       ],
       "priority": 4,
-      "passes": true,
-      "notes": "COMPLETE. Nightly consolidator wired to APScheduler (04:00 ET CronTrigger). Trade classifier hook added to close_trade() in portfolio/tracker.py."
+      "passes": false,
+      "notes": "feat/experiment-loop branch never existed. Files may be uncommitted on disk or need reconstruction from session log."
     },
     {
-      "id": "US-1605",
-      "title": "Fix pre-existing failures + resolve duplicate RL routes",
-      "description": "As the system operator, I want the full test suite to pass with zero failures and the duplicate RL route conflict resolved so the codebase is clean before Sprint 17.",
+      "id": "US-1705",
+      "title": "MES search space — run first 10 experiments and report best WFE",
+      "description": "As a trader developing MES as a future instrument, I need the first 10 walk-forward experiments run across the MES parameter search space so we have an initial WFE map and can determine whether any configuration shows promise toward the 0.50 gate.",
       "acceptanceCriteria": [
-        "Fix test_approval_to_order_e2e.py: the file does 'import main' at module level which causes pytest's collector to choke. Change to use importlib or a TestClient(app) pattern with a conftest fixture instead of bare import. The test logic itself should remain — only fix the import mechanism. Verify: cd engine && python -m pytest tests/test_approval_to_order_e2e.py -v passes.",
-        "Resolve duplicate RL routes: read engine/routers/strategies_router.py and engine/routers/strategy_router.py. One registers at /strategies/rl/* and the other at /rl/*. Decide which is canonical (prefer /rl/* via strategy_router.py as it is more direct). In strategies_router.py, remove or comment out the duplicate RL endpoint functions and add a comment: '# RL endpoints consolidated into strategy_router.py at /rl/*'. Do not delete the file — it may have non-RL routes.",
-        "Run the full test suite: cd engine && python -m pytest tests/ -v. Target: 0 failures. Document any remaining skips with their reason.",
-        "Confirm dashboard still builds: cd dashboard && pnpm run build. Must show 0 TypeScript errors.",
-        "All Python is ruff-clean."
+        "Using the CLI from US-1704, run 10 experiments: python -m strategies.run_experiment --symbol MES --config strategies/mes_search_space.json --n 10. The search_strategy should select configurations intelligently (not random grid) — first 5 should be space-covering samples, next 5 should exploit the best region found in the first 5.",
+        "Each experiment must log to engine/strategies/experiment_log.json: config_used (all param values), wfe, pf_insample, pf_walkforward, sharpe_walkforward, trade_count, walkforward_window_months, timestamp.",
+        "After all 10 complete, print a summary table: rank by WFE descending, show top 3 configs with their WFE, PF_wf, and Sharpe_wf values.",
+        "Evaluate: if any config has WFE >= 0.30 (halfway to gate), note it as a promising region for Sprint 18 experiments 11-30. If no config exceeds WFE 0.15, the 1h STC signal type may have no MES edge — note that Sprint 18 should pivot to 4h timeframe experiments.",
+        "Write docs/reports/sprint17_mes_experiment_round1.md with: the 10 configs tested, their WFE results, the best config, and the recommendation for Sprint 18 experiment direction.",
+        "Add GET /experiments/mes/status to engine/routers/strategies_router.py returning: {experiments_run: int, best_wfe: float, best_config: dict, wfe_gate_passed: bool, gate_threshold: 0.50, sprint18_recommendation: str}. Read from engine/strategies/experiment_log.json.",
+        "Run full test suite: 0 failures. Dashboard build: 0 TypeScript errors. All Python ruff-clean."
       ],
       "priority": 5,
-      "passes": true,
-      "notes": "COMPLETE. inject_pipeline_deps wired into main.py lifespan. Deprecated duplicate RL router removed/consolidated. Committed."
+      "passes": false,
+      "notes": "WFE gate for MES is 0.50. MES currently at 0.09 with default 1h/OS=15 params. 10 experiments establishes baseline map."
     }
   ]
 }
