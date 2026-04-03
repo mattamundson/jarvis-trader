@@ -819,6 +819,7 @@ async def lifespan(app: FastAPI):
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_scheduler_router_scheduler(scheduler)
+    inject_pipeline_deps(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker)
 
     # Initialize Signal Scanner
     try:
