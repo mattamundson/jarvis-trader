@@ -33,6 +33,23 @@ logger = logging.getLogger("jarvis_trader.portfolio")
 # Default JSONL storage path — sits next to this file at engine/portfolio/trades.jsonl
 _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
 
+# Contract multipliers — dollar value per point per contract
+# MCL: micro crude oil (100 barrels × $0.01/barrel/tick → $1/tick, $100/point)
+# MNQ: micro Nasdaq ($2/point)
+# MES: micro E-mini S&P 500 ($5/point)
+# MGC: micro gold (10 troy oz × $0.10/oz/tick → $1/tick, $10/point)
+INSTRUMENT_MULTIPLIERS: dict = {
+    "MCL": 100.0,
+    "MNQ": 2.0,
+    "MES": 5.0,
+    "MGC": 10.0,
+    "ES": 50.0,
+    "NQ": 20.0,
+    "CL": 1000.0,
+    "GC": 100.0,
+}
+_DEFAULT_MULTIPLIER = 1.0
+
 
 # ── Data model ────────────────────────────────────────────────────────────────
 
@@ -201,10 +218,13 @@ class PortfolioTracker:
         # Direction: actions containing "sell" or "short" are short; everything else long
         action_lower = trade.action.lower()
         is_short = "sell" in action_lower or "short" in action_lower
+
+        # Apply contract multiplier so pnl reflects real dollar value per contract
+        multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
         if is_short:
-            trade.pnl = (trade.entry_price - exit_price) * trade.quantity
+            trade.pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
         else:
-            trade.pnl = (exit_price - trade.entry_price) * trade.quantity
+            trade.pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
 
         self._closed.append(trade)
         self._append_record(trade)
@@ -222,10 +242,11 @@ class PortfolioTracker:
                 logger.error("DB close_paper_trade failed for %s: %s", trade_id[:8], exc)
 
         logger.info(
-            "[PAPER] CLOSE %s @ %.4f  pnl=%+.2f  id=%s",
+            "[PAPER] CLOSE %s @ %.4f  pnl=%+.2f  mult=%.1f  id=%s",
             trade.symbol,
             exit_price,
             trade.pnl,
+            multiplier,
             trade_id[:8],
         )
 
@@ -429,10 +450,11 @@ class PortfolioTracker:
         else:
             action_lower = trade.action.lower()
             is_short = "sell" in action_lower or "short" in action_lower
+            multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
             if is_short:
-                trade.pnl = (trade.entry_price - exit_price) * trade.quantity
+                trade.pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
             else:
-                trade.pnl = (exit_price - trade.entry_price) * trade.quantity
+                trade.pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
 
         self._closed.append(trade)
         self._append_record(trade)
@@ -716,7 +738,11 @@ class PortfolioTracker:
     # ── Persistence — JSONL (always on) ───────────────────────────────────────
 
     def _append_record(self, trade: PaperTrade) -> None:
-        """Append a single trade record to the JSONL store (append-only audit log)."""
+        """Append a single trade record to the JSONL store (append-only audit log).
+
+        TODO Sprint 17 US-1703: Remove this JSON write path after migration completes.
+        JSON write path marked for removal — SQLite will be canonical after migration.
+        """
         try:
             with self._store.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(trade.to_dict()) + "\n")
