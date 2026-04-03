@@ -72,6 +72,7 @@ from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
 from routers.analytics_router import router as analytics_router
 from routers.analytics_router import set_db_manager as set_analytics_db
+from routers.analytics_router import set_data_manager as set_analytics_data_manager
 from routers.discord_router import router as discord_router
 from routers.flags_router import router as flags_router
 from routers.flags_router import set_flags as set_flags_router
@@ -95,6 +96,7 @@ from routers.schwab_router import set_schwab_connector
 from routers.strategies_router import router as strategies_router
 from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
+from routers.paper_validation_router import router as paper_validation_router
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
 from routers.instruments_router import router as instruments_router
@@ -345,6 +347,7 @@ async def lifespan(app: FastAPI):
     # Market data connections
     data_manager = MarketDataManager(settings)
     await data_manager.initialize()
+    set_analytics_data_manager(data_manager)
 
     # Now that data_manager is ready, inject the IB gateway into PnLMonitor
     # so the circuit breakers can read live account data from IBKR when connected.
@@ -1059,6 +1062,7 @@ app.include_router(analytics_router)
 app.include_router(safety_router)
 app.include_router(strategies_router)
 app.include_router(validation_router)
+app.include_router(paper_validation_router)
 app.include_router(webhook_router)
 app.include_router(discord_router)
 app.include_router(learning_router)
@@ -4226,9 +4230,4 @@ async def get_trading_days_stats():
             "completed_days": n,
             "target_days": threshold,
             "threshold": threshold,
-            "threshold_met": n >= threshold,
-            "remaining_days": max(0, threshold - n),
-            "progress_pct": round(min(100.0, n / threshold * 100), 1),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+            "threshold_m
