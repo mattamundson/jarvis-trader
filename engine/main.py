@@ -282,7 +282,9 @@ async def lifespan(app: FastAPI):
     # US-2004 / Bug B9: rebuild in-memory open-position state from SQLite so that
     # any crash-induced JSONL/in-memory divergence is corrected before trading resumes.
     paper_tracker.reload_open_positions_from_db()
-    logger.info("✅ Paper portfolio tracker ready (open positions rebuilt from SQLite)")
+    # Also sync closed trades from SQLite to ensure P&L calculations match DB on restart
+    paper_tracker.initialize_closed_trades_from_db()
+    logger.info("✅ Paper portfolio tracker ready (open + closed trades rebuilt from SQLite)")
 
     # P&L Monitor — wires SQLite + IB Gateway data to circuit breakers
     # IB gateway is not available yet at this point; it is injected after data_manager is ready

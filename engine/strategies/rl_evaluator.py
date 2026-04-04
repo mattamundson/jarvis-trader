@@ -150,6 +150,8 @@ class OOSEvaluator:
         wr = episode_metrics.get("win_rate", 0.0)
         max_dd = episode_metrics.get("max_drawdown", 1.0)
         n_trades = episode_metrics.get("n_trades", 0)
+        avg_bars_in_trade = episode_metrics.get("avg_bars_in_trade", 0.0)
+        t1_hit_rate = episode_metrics.get("t1_hit_rate", 0.0)
 
         passes_validation = all(
             [
@@ -160,6 +162,17 @@ class OOSEvaluator:
                 hold_rate >= gates["min_hold_rate"],
                 sharpe >= gates["min_sharpe"],
             ]
+        )
+
+        # Run 10 gate checks: avg_bars_in_trade < 50, t1_hit_rate > 0.05
+        avg_bars_gate_pass = avg_bars_in_trade < 50
+        t1_hit_rate_gate_pass = t1_hit_rate > 0.05
+        gate_status = "PASS" if (avg_bars_gate_pass and t1_hit_rate_gate_pass) else "FAIL"
+        logger.info(
+            f"[OOSEvaluator] Run 10 gates: "
+            f"avg_bars_in_trade={avg_bars_in_trade:.1f} {'PASS' if avg_bars_gate_pass else 'FAIL'} | "
+            f"t1_hit_rate={t1_hit_rate:.1%} {'PASS' if t1_hit_rate_gate_pass else 'FAIL'} | "
+            f"Overall: {gate_status}"
         )
 
         elapsed = (datetime.now(timezone.utc) - start_dt).total_seconds()
@@ -179,6 +192,8 @@ class OOSEvaluator:
             "n_trades": n_trades,
             "total_pnl": episode_metrics.get("total_pnl", 0.0),
             "avg_pnl": episode_metrics.get("avg_pnl", 0.0),
+            "avg_bars_in_trade": round(avg_bars_in_trade, 1),
+            "t1_hit_rate": round(t1_hit_rate, 4),
             "action_distribution": {
                 "HOLD": round(action_counts[0] / total_actions, 4),
                 "BUY": round(action_counts[1] / total_actions, 4),

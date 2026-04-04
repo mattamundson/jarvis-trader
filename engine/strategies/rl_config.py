@@ -115,6 +115,7 @@ def get_instrument_params(symbol: str) -> tuple:
 MAX_BARS_IN_TRADE: int = 50
 
 # ── Reward Configuration ──────────────────────────────────────────────────────
+# Run 10: strong-exit config
 
 REWARD_CONFIG = {
     # Primary: P&L normalized by ATR so reward is scale-invariant across instruments

@@ -334,6 +334,7 @@ class TradingEnvironment(_GymBase):
 
         realized_pnl = 0.0
         is_new_entry = False
+        forced_close = False
 
         # ── Execute action ───────────────────────────────────────────────
         if action == Action.BUY:
@@ -389,6 +390,7 @@ class TradingEnvironment(_GymBase):
 
         # Forced close: hard cap on bars in trade (Run 10 — prevents 100+ bar holds)
         if self._position != 0 and self._bars_in_trade >= MAX_BARS_IN_TRADE:
+            forced_close = True
             force_close = (
                 float(self.df.iloc[self._idx]["close"]) if self._idx < len(self.df) else close
             )
@@ -425,6 +427,7 @@ class TradingEnvironment(_GymBase):
             realized_pnl=realized_pnl,
             atr=atr,
             is_new_entry=is_new_entry,
+            forced_close=forced_close,
         )
         self._total_reward += reward
 
@@ -444,7 +447,7 @@ class TradingEnvironment(_GymBase):
             self._position = 0
 
         obs = self._get_obs() if not terminated else np.zeros(N_FEATURES, dtype=np.float32)
-        info = self._get_info(realized_pnl=realized_pnl)
+        info = self._get_info(realized_pnl=realized_pnl, forced_close=forced_close)
 
         return obs, reward, terminated, False, info
 
@@ -503,7 +506,7 @@ class TradingEnvironment(_GymBase):
 
         return np.concatenate([base_obs, discord_arr])
 
-    def _get_info(self, realized_pnl: float = 0.0) -> dict:
+    def _get_info(self, realized_pnl: float = 0.0, forced_close: bool = False) -> dict:
         return {
             "idx": self._idx,
             "position": self._position,
@@ -514,6 +517,7 @@ class TradingEnvironment(_GymBase):
             "realized_pnl": realized_pnl,
             "total_reward": self._total_reward,
             "n_trades": len(self._episode_trades),
+            "forced_close": forced_close,
         }
 
     def _calculate_reward(
@@ -522,6 +526,7 @@ class TradingEnvironment(_GymBase):
         realized_pnl: float,
         atr: float,
         is_new_entry: bool,
+        forced_close: bool = False,
     ) -> float:
         cfg = self._reward_cfg
 
@@ -573,8 +578,11 @@ class TradingEnvironment(_GymBase):
             t1_bonus = cfg["t1_bonus"]
             self._t1_hits += 1
 
+        # Penalty for forced close at MAX_BARS_IN_TRADE limit (Run 10)
+        forced_close_penalty = cfg.get("entry_cost", -0.01) if forced_close else 0.0
+
         return float(
-            pnl_reward + hold_cost + flat_hold_reward + entry_cost + redundant_cost + t1_bonus
+            pnl_reward + hold_cost + flat_hold_reward + entry_cost + redundant_cost + t1_bonus + forced_close_penalty
         )
 
     def _record_trade(self, pnl: float) -> None:

@@ -51,7 +51,109 @@ except Exception:  # pragma: no cover — optional dependency
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["TradingPipeline"]
+__all__ = ["TradingPipeline", "pre_filter_signal"]
+
+
+async def pre_filter_signal(
+    symbol: str,
+    timeframe: str,
+    is_futures: bool,
+    agents: dict,
+) -> dict | None:
+    """
+    Pre-filter: skip pipeline when STC is mid-range (between OS+10 and OB-10).
+
+    Args:
+        symbol: Trading symbol
+        timeframe: Timeframe (1h, 1d, etc.)
+        is_futures: True if futures contract
+        agents: Dict of agents (must include "technical" agent with _data)
+
+    Returns:
+        dict with pre-filter result if filter applied (HOLD action), or None to proceed
+    """
+    try:
+        from backtest.signals import INSTRUMENT_PARAMS, generate_instrument_signals
+        from config import settings as _cfg
+        from routers.pipeline_router import record_signal_debug
+
+        _tech_agent = agents.get("technical")
+        _data_mgr = getattr(_tech_agent, "_data", None)
+        if _data_mgr is None:
+            return None
+
+        _df = await _data_mgr.get_bars(
+            symbol, lookback_days=5, timeframe=timeframe, is_futures=is_futures
+        )
+        if _df is None or _df.empty or len(_df) < 20:
+            return None
+
+        _sig_df = generate_instrument_signals(_df.copy(), symbol)
+        if "stc_val" not in _sig_df.columns:
+            return None
+
+        _stc_val = float(_sig_df["stc_val"].iloc[-1])
+        _params = INSTRUMENT_PARAMS.get(symbol, (15, 83, 0.70, 1.00, 1.618, 2.618, True))
+        _stc_os, _stc_ob = int(_params[0]), int(_params[1])
+        _mid_lo = float(_cfg.STC_MIDRANGE_SKIP_LOW)
+        _mid_hi = float(_cfg.STC_MIDRANGE_SKIP_HIGH)
+
+        if not _cfg.STC_MIDRANGE_SKIP_ENABLED or not (_mid_lo < _stc_val < _mid_hi):
+            logger.debug(
+                "[pre_filter_signal] symbol=%s stc_val=%.1f range=(%.0f–%.0f) action=PASS",
+                symbol,
+                _stc_val,
+                _mid_lo,
+                _mid_hi,
+            )
+            record_signal_debug(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "symbol": symbol,
+                    "stc_val": round(_stc_val, 2),
+                    "stage_blocked": "approved",
+                    "reason": f"STC {_stc_val:.1f} outside skip range",
+                }
+            )
+            return None
+
+        logger.info(
+            "[pre_filter_signal] symbol=%s stc_val=%.1f range=(%.0f–%.0f) action=SKIP",
+            symbol,
+            _stc_val,
+            _mid_lo,
+            _mid_hi,
+        )
+        record_signal_debug(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "symbol": symbol,
+                "stc_val": round(_stc_val, 2),
+                "stage_blocked": "pre_filter",
+                "reason": f"STC {_stc_val:.1f} in skip range",
+            }
+        )
+
+        return {
+            "symbol": symbol,
+            "is_futures": is_futures,
+            "started_at": datetime.now().isoformat(),
+            "completed_at": datetime.now().isoformat(),
+            "final_action": "hold",
+            "final_quantity": 0,
+            "requires_human": False,
+            "pre_filtered": True,
+            "pre_filter_reason": "STC mid-range pre-filter",
+            "pre_filter_stc": round(_stc_val, 2),
+            "pre_filter_stc_os": _stc_os,
+            "pre_filter_stc_ob": _stc_ob,
+            "errors": [],
+            "cache_hit": False,
+        }
+
+    except Exception as e:
+        logger.debug("[pre_filter_signal] %s skipped: %s", symbol, e)
+        return None
 
 
 class TradingPipeline:
@@ -117,6 +219,7 @@ class TradingPipeline:
             "symbol": symbol,
             "is_futures": is_futures,
             "started_at": started_at.isoformat(),
+            "timeframe": timeframe,
             "errors": errors,
         }
 
@@ -136,89 +239,10 @@ class TradingPipeline:
                     cached["completed_at"] = datetime.now().isoformat()
                     return cached
 
-        # ── STC Mid-Range Pre-Filter (configurable LLM cost optimisation) ──
-        # When STC_MIDRANGE_SKIP_ENABLED, skip the full LLM pipeline if STC
-        # is strictly between STC_MIDRANGE_SKIP_LOW and STC_MIDRANGE_SKIP_HIGH.
-        # Defaults: LOW=15, HIGH=83 (the OS/OB thresholds) — this means only
-        # readings already at/beyond the extreme thresholds are fast-pathed, and
-        # all mid-range values proceed to full LLM analysis. Set LOW=25/HIGH=73
-        # to restore the aggressive Sprint-14 cost-saving behaviour.
-        # Any data/import error falls through to the full pipeline silently.
-        try:
-            from backtest.signals import INSTRUMENT_PARAMS, generate_instrument_signals
-            from config import settings as _cfg
-            from routers.pipeline_router import record_signal_debug
-
-            _tech_agent = self._agents.get("technical")
-            _data_mgr = getattr(_tech_agent, "_data", None)
-            if _data_mgr is not None:
-                _df = await _data_mgr.get_bars(
-                    symbol, lookback_days=5, timeframe=timeframe, is_futures=is_futures
-                )
-                if _df is not None and not _df.empty and len(_df) >= 20:
-                    _sig_df = generate_instrument_signals(_df.copy(), symbol)
-                    if "stc_val" in _sig_df.columns:
-                        _stc_val = float(_sig_df["stc_val"].iloc[-1])
-                        _params = INSTRUMENT_PARAMS.get(
-                            symbol, (15, 83, 0.70, 1.00, 1.618, 2.618, True)
-                        )
-                        _stc_os, _stc_ob = int(_params[0]), int(_params[1])
-                        _mid_lo = float(_cfg.STC_MIDRANGE_SKIP_LOW)
-                        _mid_hi = float(_cfg.STC_MIDRANGE_SKIP_HIGH)
-                        if _cfg.STC_MIDRANGE_SKIP_ENABLED and _mid_lo < _stc_val < _mid_hi:
-                            logger.info(
-                                "[Pipeline.Filter] symbol=%s stage=pre_filter "
-                                "stc_val=%.1f skip_range=(%.0f–%.0f) action=SKIP",
-                                symbol,
-                                _stc_val,
-                                _mid_lo,
-                                _mid_hi,
-                            )
-                            record_signal_debug(
-                                {
-                                    "timestamp": datetime.now().isoformat(),
-                                    "symbol": symbol,
-                                    "stc_val": round(_stc_val, 2),
-                                    "stage_blocked": "pre_filter",
-                                    "reason": f"STC {_stc_val:.1f} inside skip range ({_mid_lo:.0f}–{_mid_hi:.0f})",
-                                }
-                            )
-                            return {
-                                "symbol": symbol,
-                                "is_futures": is_futures,
-                                "started_at": started_at.isoformat(),
-                                "completed_at": datetime.now().isoformat(),
-                                "final_action": "hold",
-                                "final_quantity": 0,
-                                "requires_human": False,
-                                "pre_filtered": True,
-                                "pre_filter_reason": "STC mid-range pre-filter",
-                                "pre_filter_stc": round(_stc_val, 2),
-                                "pre_filter_stc_os": _stc_os,
-                                "pre_filter_stc_ob": _stc_ob,
-                                "errors": [],
-                                "cache_hit": False,
-                            }
-                        else:
-                            logger.info(
-                                "[Pipeline.Filter] symbol=%s stage=pre_filter "
-                                "stc_val=%.1f skip_range=(%.0f–%.0f) action=PASS_TO_PIPELINE",
-                                symbol,
-                                _stc_val,
-                                _mid_lo,
-                                _mid_hi,
-                            )
-                            record_signal_debug(
-                                {
-                                    "timestamp": datetime.now().isoformat(),
-                                    "symbol": symbol,
-                                    "stc_val": round(_stc_val, 2),
-                                    "stage_blocked": "approved",
-                                    "reason": f"STC {_stc_val:.1f} outside skip range — proceeding to full pipeline",
-                                }
-                            )
-        except Exception as _pf_exc:
-            logger.debug("[Pipeline] %s STC pre-filter skipped: %s", symbol, _pf_exc)
+        # ── STC Mid-Range Pre-Filter ───────────────────────────────────────────
+        pre_filter_result = await pre_filter_signal(symbol, timeframe, is_futures, self._agents)
+        if pre_filter_result is not None:
+            return pre_filter_result
 
         # ── Stage 1: Analysts in parallel ─────────────────────────────────
 

@@ -415,6 +415,39 @@ async def record_lesson(body: LessonRequest):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.post("/consolidate")
+async def consolidate_memory(target_date: Optional[str] = Query(None)) -> dict:
+    """
+    Trigger nightly memory consolidation for the learning system.
+
+    Consolidates trades from target_date into pattern database via TradingMemoryConsolidator.
+    Runs automatically at EOD (4:05pm ET) via scheduler but can be triggered manually.
+
+    Args:
+        target_date: ISO-8601 date string (YYYY-MM-DD). Defaults to today.
+
+    Returns:
+        Consolidation result with status, patterns extracted, and signal accuracy.
+    """
+    try:
+        from learning.consolidator import TradingMemoryConsolidator
+        from database.manager import db_manager
+
+        consolidator = TradingMemoryConsolidator(db_manager=db_manager)
+        result = await consolidator.consolidate_daily(target_date=target_date)
+
+        logger.info(
+            f"Memory consolidation completed: {result.get('patterns_extracted', 0)} "
+            f"patterns from {result.get('trades_analyzed', 0)} trades"
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Error in POST /learning/consolidate: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------

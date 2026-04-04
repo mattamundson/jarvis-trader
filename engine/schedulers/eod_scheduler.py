@@ -44,16 +44,19 @@ class EODScheduler:
         db_manager: Any = None,
         portfolio_tracker: Any = None,
         whatsapp_notifier: Any = None,
+        learning_consolidator: Any = None,
     ) -> None:
         self._db = db_manager
         self._tracker = portfolio_tracker
         self._notifier = whatsapp_notifier
+        self._consolidator = learning_consolidator
         self._alert_manager = None  # Injected by main.py after ValidationAlertManager is created
         logger.info(
-            "EODScheduler initialised — db=%s tracker=%s whatsapp=%s",
+            "EODScheduler initialised — db=%s tracker=%s whatsapp=%s consolidator=%s",
             "yes" if self._db else "no",
             "yes" if self._tracker else "no",
             "yes" if self._notifier else "no",
+            "yes" if self._consolidator else "no",
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -234,6 +237,18 @@ class EODScheduler:
                     )
             except Exception as exc:
                 logger.warning("[EOD] Validation gate evaluation failed: %s", exc)
+
+        # Run memory consolidation at EOD
+        if self._consolidator is not None:
+            try:
+                consolidation_result = await self._consolidator.consolidate_daily(target_date=today)
+                logger.info(
+                    "[EOD] Memory consolidation complete: %d patterns from %d trades",
+                    consolidation_result.get("patterns_extracted", 0),
+                    consolidation_result.get("trades_analyzed", 0),
+                )
+            except Exception as exc:
+                logger.warning("[EOD] Memory consolidation failed: %s", exc)
 
         return snapshot
 

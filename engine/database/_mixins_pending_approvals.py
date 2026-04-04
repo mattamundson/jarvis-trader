@@ -24,6 +24,7 @@ class PendingApprovalsMixin:
         quantity: float,
         entry_price: Optional[float],
         pipeline_snapshot: dict,
+        timeframe: Optional[str] = None,
     ) -> str:
         """Insert a pending row; returns ``approval_id`` (UUID string)."""
         approval_id = str(uuid.uuid4())
@@ -32,8 +33,8 @@ class PendingApprovalsMixin:
         sql = """
             INSERT INTO pending_trade_approvals
                 (approval_id, symbol, action, quantity, entry_price, status,
-                 pipeline_snapshot_json, created_at)
-            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+                 pipeline_snapshot_json, created_at, timeframe)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
         """
         params = (
             approval_id,
@@ -43,6 +44,7 @@ class PendingApprovalsMixin:
             float(entry_price) if entry_price is not None else None,
             payload,
             created_at,
+            timeframe,
         )
         with self._lock:
             conn = self._connect()
@@ -64,7 +66,7 @@ class PendingApprovalsMixin:
         sql = """
             SELECT id, approval_id, symbol, action, quantity, entry_price, status,
                    pipeline_snapshot_json, created_at, resolved_at, resolved_by,
-                   rejection_reason, paper_trade_id, ib_order_id
+                   rejection_reason, paper_trade_id, ib_order_id, timeframe
             FROM pending_trade_approvals
             WHERE status = 'pending'
             ORDER BY created_at DESC, id DESC
@@ -83,7 +85,7 @@ class PendingApprovalsMixin:
         sql = """
             SELECT id, approval_id, symbol, action, quantity, entry_price, status,
                    pipeline_snapshot_json, created_at, resolved_at, resolved_by,
-                   rejection_reason, paper_trade_id, ib_order_id
+                   rejection_reason, paper_trade_id, ib_order_id, timeframe
             FROM pending_trade_approvals
             WHERE approval_id = ?
         """

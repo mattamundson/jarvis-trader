@@ -31,10 +31,12 @@ import { PipelineRunHistory } from "@/components/PipelineRunHistory";
 import { PositionSizingCalculator } from "@/components/PositionSizingCalculator";
 import { ReconciliationWidget } from "@/components/ReconciliationWidget";
 import { ExportDataWidget } from "@/components/ExportDataWidget";
+import { WFEMonitorWidget } from "@/components/WFEMonitorWidget";
 import { TradingDaysCountdownCard } from "@/components/TradingDaysCountdownCard";
 import { BacktestVsPaperWidget } from "@/components/BacktestVsPaperWidget";
 import { ValidationChecklist } from "@/components/ValidationChecklist";
 import { GoLivePlanCard } from "@/components/GoLivePlanCard";
+import { InstrumentValidationScorecard } from "@/components/InstrumentValidationScorecard";
 import {
   type BacktestBaselineRow,
   fmtBaselineNum,
@@ -1510,6 +1512,12 @@ export default function ValidationPage() {
           <ValidationScorecardCard />
         </section>
 
+        {/* Section 1B: Instrument Validation Scorecard */}
+        <section>
+          <SectionLabel>1B — Instrument Approval Gates</SectionLabel>
+          <InstrumentValidationScorecard />
+        </section>
+
         {/* Section 2: Monte Carlo Confidence Intervals */}
         <section>
           <SectionLabel>2 — Monte Carlo Confidence Intervals</SectionLabel>
@@ -1596,6 +1604,12 @@ export default function ValidationPage() {
         <section>
           <SectionLabel>J — Go-Live Roadmap</SectionLabel>
           <GoLivePlanCard />
+        </section>
+
+        {/* Section K: WFE Live Monitor */}
+        <section>
+          <SectionLabel>K — Walk-Forward Efficiency Monitor</SectionLabel>
+          <WFEMonitorWidget />
         </section>
       </main>
     </div>

@@ -1065,3 +1065,15 @@ export interface ConfidenceStatsResponse {
 export async function fetchPipelineConfidenceStats(): Promise<ConfidenceStatsResponse> {
   return fetchEngine<ConfidenceStatsResponse>("/pipeline/confidence-stats");
 }
+
+export interface ClosedTrade {
+  trade_id: string;
+  symbol: string;
+  direction: string;
+  entry_price: number;
+  exit_price: number;
+  entry_time: string;
+  exit_time: string;
+  pnl: number;
+  duration_seconds: number;
+}

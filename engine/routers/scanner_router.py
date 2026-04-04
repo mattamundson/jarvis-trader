@@ -67,6 +67,7 @@ class IntraDaySignal(BaseModel):
     bias: Optional[str] = None
     regime: Optional[str] = None
     composite_score: Optional[float] = None
+    position_size_multiplier: float = 1.0  # Default 1.0 for 1h, 0.5 for 15m
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -87,6 +88,7 @@ def record_signal(
     bias: Optional[str] = None,
     regime: Optional[str] = None,
     composite_score: Optional[float] = None,
+    position_size_multiplier: float = 1.0,
 ) -> None:
     """
     Record an intraday signal in the deque.
@@ -105,6 +107,8 @@ def record_signal(
         Market regime (e.g., "TRENDING_BULL", "RANGING")
     composite_score : float, optional
         Composite signal score if applicable
+    position_size_multiplier : float, optional
+        Position size multiplier (1.0 for 1h, 0.5 for 15m)
     """
     signal = IntraDaySignal(
         symbol=symbol,
@@ -114,6 +118,7 @@ def record_signal(
         bias=bias,
         regime=regime,
         composite_score=composite_score,
+        position_size_multiplier=position_size_multiplier,
     )
     _signals_deque.append(signal)
     logger.debug(f"[Scanner] Recorded {symbol} {timeframe} signal: {entry_signal}")

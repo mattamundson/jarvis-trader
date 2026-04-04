@@ -1,0 +1,54 @@
+{
+  "project": "Sprint 21-A: DB Cleanup + Learning Table Migration",
+  "branchName": "feat/sprint21-learning-tables",
+  "description": "Fix 0-byte engine/jarvis_trader.db ghost file, create learning_events and trading_patterns migration, wire learning consolidator to EOD scheduler. P0-3 blocker resolution.",
+  "userStories": [
+    {
+      "id": "US-2101",
+      "title": "Delete ghost 0-byte jarvis_trader.db and prevent recreation",
+      "description": "As a developer, I want the engine to use only engine/data/jarvis_trader.db so that there's one canonical source of truth for all trade data.",
+      "acceptanceCriteria": [
+        "engine/jarvis_trader.db (0-byte ghost file) is deleted",
+        "config.py SQLITE_DB_PATH resolves correctly relative to engine/ working dir",
+        "python3 -c 'from engine.config import TradingConfig; c=TradingConfig(); print(c.SQLITE_DB_PATH)' prints 'data/jarvis_trader.db'",
+        "No new 0-byte DB created after import",
+        "pytest tests/test_safety_layer.py passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Ghost file is at engine/jarvis_trader.db (0 bytes). Real DB is at engine/data/jarvis_trader.db (18 tables, 2 paper trades). DB manager already defaults to data/jarvis_trader.db. COMPLETED: ghost file deleted, config verified."
+    },
+    {
+      "id": "US-2102",
+      "title": "Add learning_events and trading_patterns migration (migration_013)",
+      "description": "As a system, I want learning_events and trading_patterns tables so that the learning loop can store and retrieve trading patterns.",
+      "acceptanceCriteria": [
+        "engine/database/migrations.py has migration_013 creating learning_events table",
+        "engine/database/migrations.py has migration_013 creating trading_patterns table",
+        "learning_events columns: id, trade_id, event_type, symbol, regime_tier, signal_strength, outcome, pnl_usd, created_at",
+        "trading_patterns columns: id, pattern_hash, symbol, regime_tier, conditions, win_rate, sample_count, last_seen, created_at",
+        "Migration runs without error on engine/data/jarvis_trader.db",
+        "pytest tests/ -k 'not integration' passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "COMPLETED: migration_013 already exists with both tables. Tables have IF NOT EXISTS and proper indexes for symbol, regime_tier, and timing columns."
+    },
+    {
+      "id": "US-2103",
+      "title": "Wire TradingMemoryConsolidator into EOD scheduler",
+      "description": "As a trader, I want the learning consolidator to run every evening at 4:05pm ET so that the system learns from each day's trades automatically.",
+      "acceptanceCriteria": [
+        "engine/main.py eod_summary_job calls consolidator.consolidate_daily() after P&L logging",
+        "POST /learning/consolidate endpoint added to learning_router.py",
+        "learning_router already registered in engine/main.py",
+        "Consolidator logs 'Memory consolidation starting' on invocation",
+        "pytest tests/ -k 'not integration' passes",
+        "ruff check engine/learning/ engine/routers/learning_router.py passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "COMPLETED: Added consolidator call in eod_summary_job with non-fatal try/except. Added POST /learning/consolidate endpoint to learning_router.py. Router already registered."
+    }
+  ]
+}

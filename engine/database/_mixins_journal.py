@@ -29,6 +29,12 @@ class JournalMixin:
         mood: Optional[str] = None,
         lesson: Optional[str] = None,
         timestamp: Optional[str] = None,
+        regime_tier: Optional[int] = None,
+        deciding_stage: Optional[str] = None,
+        bull_score: Optional[float] = None,
+        bear_score: Optional[float] = None,
+        debate_confidence: Optional[float] = None,
+        timeframe: Optional[str] = None,
     ) -> int:
         """
         Insert a new journal entry linked to a trade.
@@ -41,16 +47,36 @@ class JournalMixin:
         mood:       One of "confident", "uncertain", "frustrated", "neutral".
         lesson:     What was learned from this trade.
         timestamp:  ISO-8601 UTC; defaults to now.
+        regime_tier:        Market regime tier at decision (optional).
+        deciding_stage:     Pipeline stage that drove decision (optional).
+        bull_score:         Bull researcher score (optional).
+        bear_score:         Bear researcher score (optional).
+        debate_confidence:  Debate stage confidence (optional).
+        timeframe:          Signal timeframe ('1h' or '15m', optional).
 
         Returns the auto-incremented ``id`` of the new row.
         """
         ts = timestamp or _utcnow()
         sql = """
             INSERT INTO trade_journal
-                (trade_id, timestamp, note, tags, mood, lesson)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (trade_id, timestamp, note, tags, mood, lesson,
+                 regime_tier, deciding_stage, bull_score, bear_score, debate_confidence, timeframe)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        params = (trade_id, ts, note, tags, mood, lesson)
+        params = (
+            trade_id,
+            ts,
+            note,
+            tags,
+            mood,
+            lesson,
+            regime_tier,
+            deciding_stage,
+            bull_score,
+            bear_score,
+            debate_confidence,
+            timeframe,
+        )
         with self._lock:
             conn = self._connect()
             try:
