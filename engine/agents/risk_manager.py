@@ -293,6 +293,16 @@ class RiskManagerAgent:
         else:
             positions_text = "  (no open positions)\n"
 
+        # Build correlation warning section
+        correlation_warning = ""
+        proposed_symbol = (trade.get("symbol") or "").upper()
+        if proposed_symbol in ("MNQ", "MES"):
+            open_symbols = {p.get("symbol", "").upper() for p in positions}
+            if proposed_symbol == "MNQ" and "MES" in open_symbols:
+                correlation_warning = "\nWARNING: MNQ position proposed but MES already open. High correlation (0.95).\n  → If both open, max contracts reduced to 1 each.\n"
+            elif proposed_symbol == "MES" and "MNQ" in open_symbols:
+                correlation_warning = "\nWARNING: MES position proposed but MNQ already open. High correlation (0.95).\n  → If both open, max contracts reduced to 1 each.\n"
+
         return f"""Review this trade for risk:
 
 === PROPOSED TRADE ===
@@ -313,6 +323,7 @@ Available cash: ${available_cash:,.2f}
 Margin used: {margin_used_pct:.1%}
 Open positions:
 {positions_text}
+{correlation_warning}
 
 === SAFETY STATUS ===
 Daily P&L: ${safety.get("daily_pnl", 0):,.2f}

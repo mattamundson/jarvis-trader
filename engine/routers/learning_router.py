@@ -497,3 +497,97 @@ def _load_strategy_params() -> dict:
         logger.debug(f"Could not load strategy params from settings table: {exc}")
 
     return defaults
+
+
+@router.get("/status")
+async def get_learning_status() -> dict:
+    """
+    Get the current status of the learning system.
+
+    Returns:
+        {
+            "feedback_lessons": int,
+            "patterns": int,
+            "recommendations_available": int,
+            "last_lesson_at": str or null,
+            "connection_status": {
+                "events": bool,
+                "feedback": bool,
+                "patterns": bool,
+                "recommendations": bool
+            }
+        }
+    """
+    try:
+        from datetime import datetime, timedelta
+        from database import get_db as get_db_manager
+
+        db = get_db_manager()
+        if not db:
+            return {
+                "feedback_lessons": 0,
+                "patterns": 0,
+                "recommendations_available": 0,
+                "last_lesson_at": None,
+                "connection_status": {
+                    "events": False,
+                    "feedback": False,
+                    "patterns": False,
+                    "recommendations": False,
+                },
+                "error": "Database unavailable",
+            }
+
+        # Count feedback lessons (from learning_events table or similar)
+        try:
+            lesson_rows = db.query(
+                "SELECT COUNT(*) as count, MAX(created_at) as last_at FROM learning_events"
+            )
+            lesson_count = lesson_rows[0]["count"] if lesson_rows else 0
+            last_lesson_at = lesson_rows[0]["last_at"] if lesson_rows and lesson_rows[0]["last_at"] else None
+        except Exception as e:
+            logger.debug(f"Could not query learning_events: {e}")
+            lesson_count = 0
+            last_lesson_at = None
+
+        # Count patterns (from trading_patterns table)
+        try:
+            pattern_rows = db.query(
+                "SELECT COUNT(*) as count FROM trading_patterns WHERE is_active = 1"
+            )
+            pattern_count = pattern_rows[0]["count"] if pattern_rows else 0
+        except Exception as e:
+            logger.debug(f"Could not query trading_patterns: {e}")
+            pattern_count = 0
+
+        # Count active recommendations for last 30 days
+        try:
+            cutoff = (datetime.utcnow() - timedelta(days=30)).isoformat()
+            rec_rows = db.query(
+                "SELECT COUNT(*) as count FROM trading_patterns "
+                "WHERE is_active = 1 AND last_seen >= ?",
+                (cutoff,),
+            )
+            rec_count = rec_rows[0]["count"] if rec_rows else 0
+        except Exception as e:
+            logger.debug(f"Could not query recommendations: {e}")
+            rec_count = 0
+
+        return {
+            "feedback_lessons": lesson_count,
+            "patterns": pattern_count,
+            "recommendations_available": rec_count,
+            "last_lesson_at": last_lesson_at,
+            "connection_status": {
+                "events": True,  # Always true if we got this far
+                "feedback": True,
+                "patterns": True,
+                "recommendations": True,
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Error in GET /learning/status: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

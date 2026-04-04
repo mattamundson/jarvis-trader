@@ -399,8 +399,28 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         Use LLM to synthesize indicator data into a structured trading report.
         The LLM adds pattern recognition and contextual reasoning — the numbers
         are computed deterministically above.
+
+        Injects historical pattern recommendations from learning system (non-blocking fallback).
         """
+        # Inject learning recommendations (non-blocking graceful fallback)
+        learning_context = ""
+        try:
+            from learning.recommendations import get_recommendations, format_recommendations_for_prompt
+            from database.manager import db_manager
+
+            recommendations = await get_recommendations(symbol, timeframe, db_manager=db_manager)
+            if recommendations:
+                learning_context = format_recommendations_for_prompt(recommendations)
+                logger.info(f"[LEARNING] {len(recommendations)} recommendations injected for {symbol}")
+            else:
+                logger.debug(f"[LEARNING] No active recommendations for {symbol}")
+        except Exception as lc_err:
+            logger.debug(f"[LEARNING] Recommendation injection skipped: {lc_err}")
+            # Continue normally without learning context
+
         prompt = f"""Analyze these technical indicators for {symbol} on {timeframe} timeframe:
+
+{learning_context}
 
 Current Price: ${indicators.get("current_price", "N/A")}
 Price Change (20 bars): {indicators.get("price_change_pct", "N/A"):.1f}%
