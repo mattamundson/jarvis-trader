@@ -32,16 +32,11 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from paper.validation_gate_config import PAPER_VALIDATION_GATES
+
 logger = logging.getLogger(__name__)
 
-PASS_THRESHOLDS = {
-    "profit_factor": 2.0,
-    "sharpe_ratio": 1.5,
-    "win_rate_pct": 55.0,
-    "min_trades": 60,
-    "min_days": 30,
-    "max_drawdown_pct": 15.0,
-}
+PASS_THRESHOLDS = PAPER_VALIDATION_GATES
 
 
 class TradeRecord(BaseModel):

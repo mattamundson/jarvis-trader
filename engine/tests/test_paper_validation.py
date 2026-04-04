@@ -20,7 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from paper.validation_tracker import ValidationTracker
+from paper.validation_gate_config import PAPER_VALIDATION_GATES
+from paper.validation_tracker import PASS_THRESHOLDS, ValidationTracker
 
 
 def _create_mock_tracker_file(data_dir: Path, symbol: str, trades: list) -> None:
@@ -589,3 +590,18 @@ class TestGetAllTrades:
         assert len(trades) == 2
         assert trades[0]["pnl"] == 500.0
         assert trades[1]["pnl"] == -400.0
+
+
+class TestValidationGateConfig:
+    """Canonical gates must stay aligned between config and ValidationTracker."""
+
+    def test_pass_thresholds_is_shared_config_object(self):
+        assert PASS_THRESHOLDS is PAPER_VALIDATION_GATES
+
+    def test_canonical_numeric_targets(self):
+        assert PAPER_VALIDATION_GATES["profit_factor"] == 2.0
+        assert PAPER_VALIDATION_GATES["sharpe_ratio"] == 1.5
+        assert PAPER_VALIDATION_GATES["win_rate_pct"] == 55.0
+        assert PAPER_VALIDATION_GATES["min_trades"] == 60
+        assert PAPER_VALIDATION_GATES["min_days"] == 30
+        assert PAPER_VALIDATION_GATES["max_drawdown_pct"] == 15.0

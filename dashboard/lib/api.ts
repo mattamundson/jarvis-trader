@@ -929,6 +929,37 @@ export async function fetchEODSummary(): Promise<EODSummary> {
   return fetchEngine<EODSummary>("/paper/validation/summary/eod");
 }
 
+// ── Approved paper gates (MCL / MNQ) — Phase 4 dashboard ─────────────────────
+
+export interface ApprovedPaperValidationGate {
+  name: string;
+  current: number;
+  target: number;
+  passes: boolean;
+  unit: string;
+}
+
+export interface ApprovedInstrumentGateRow {
+  symbol: string;
+  trade_count: number;
+  days_with_trades: number;
+  gates: ApprovedPaperValidationGate[];
+  overall_pass: boolean;
+}
+
+export interface ApprovedPaperGatesResponse {
+  status: string;
+  thresholds: Record<string, number>;
+  instruments: ApprovedInstrumentGateRow[];
+  note: string;
+}
+
+export async function fetchApprovedPaperGates(): Promise<ApprovedPaperGatesResponse> {
+  return fetchEngine<ApprovedPaperGatesResponse>(
+    "/paper/validation/approved-paper-gates"
+  );
+}
+
 // ── Streak Tracker (Sprint 14) ───────────────────────────────────────────────
 
 export interface StreakRecord {
