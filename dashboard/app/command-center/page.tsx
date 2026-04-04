@@ -27,6 +27,7 @@ import { fetchEngine } from "@/lib/api";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
+import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
@@ -489,9 +490,9 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          ROW 1 — STATUS OVERVIEW (4 columns)
+          ROW 1 — STATUS OVERVIEW (5 columns)
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-5 gap-3 mb-4">
         {/* Portfolio */}
         <Card className="bg-slate-900/60 border border-cyan-900/50">
           <CardHeader className="pb-1.5 pt-3 px-4">
@@ -677,6 +678,9 @@ export default function CommandCenterPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Portfolio Correlation */}
+        <PortfolioCorrelationWidget />
       </div>
 
       {/* ═══════════════════════════════════════════════════════

@@ -4,7 +4,6 @@ import useSWR from "swr";
 import {
   fetchClosedPaperTrades,
   type ClosedPaperTradesResponse,
-  type ClosedTrade,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import {
