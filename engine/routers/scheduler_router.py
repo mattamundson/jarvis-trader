@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
@@ -69,3 +69,25 @@ async def get_scheduled_jobs() -> JobsListResponse:
     except Exception as e:
         logger.error(f"Failed to get scheduled jobs: {e}")
         raise HTTPException(500, f"Failed to get scheduled jobs: {e}") from e
+
+
+@router.post("/morning-brief/trigger")
+async def trigger_morning_brief(background_tasks: BackgroundTasks) -> dict:
+    """Manually trigger morning intelligence brief (for testing).
+
+    Auth is handled globally by middleware. Runs assembly + send in background.
+    """
+
+    async def _run() -> None:
+        try:
+            from notifications.morning_brief import assemble_morning_brief
+            from notifications.openclaw_notifier import send_raw
+
+            brief = await assemble_morning_brief()
+            await send_raw(brief)
+            logger.info("[MorningBrief] Manual trigger complete")
+        except Exception as exc:
+            logger.error("[MorningBrief] Manual trigger failed: %s", exc)
+
+    background_tasks.add_task(_run)
+    return {"status": "triggered", "message": "Morning brief sending in background"}

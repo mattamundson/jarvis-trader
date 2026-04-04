@@ -27,6 +27,12 @@ import uuid
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
+
+# ---------------------------------------------------------------------------
+# Load engine .env so API_KEY is available via os.environ.get("API_KEY")
+# ---------------------------------------------------------------------------
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # ---------------------------------------------------------------------------
 # Path bootstrap — make the engine package importable from tests/

@@ -295,3 +295,85 @@ Validation targets: PF>=2.0, Sharpe>=1.5, WR>=55%, Trades>=60, Days>=30, DD<=15%
 - `PORT 4001 PERMANENTLY BLOCKED` — no live trading during Phase 1
 - Safety layer (`engine/risk/safety_layer.py`) is hardcoded authority — no LLM overrides
 
+
+---
+
+## 11. ROOT CAUSE ANALYSIS -- ALL-HOLD PIPELINE BUG (Historical Reference)
+
+Symptom: 140/140 pipeline decisions were HOLD for a full week.
+
+Bug 1: BullResearcher MAX_TOKENS=600 (ROOT CAUSE -- FIXED commit b240797)
+  engine/agents/bull_researcher.py:87 had MAX_TOKENS=600 (BearResearcher had 1200)
+  Anthropic truncated JSON mid-string: JSONDecodeError on every run
+  Bull conviction = 0.00 always; bear conviction = 0.5-0.7 normally
+  Systematic short bias caused HOLD on 140/140 runs
+  Fix: MAX_TOKENS=1200
+
+Bug 2: Fund Manager Schema Mismatch (FIXED commit b240797)
+  _resolve_final_action() checked fund_decision.get('execute')
+  FundDecision.to_dict() outputs 'approved' key -- 'execute' never existed
+  ALL symbols silently not-approved -> HOLD every time
+  Fix: Rewrote _resolve_final_action() with correct key names
+
+Bug 3: Weekly Stats SQL Case Sensitivity (FIXED commit b240797)
+  engine/main.py had WHERE status = 'CLOSED' (uppercase) x4
+  SQLite stores 'closed' (lowercase) -- case-sensitive
+  All weekly stats always 0 trades, 0% WR, 0 PF
+  Fix: Changed all 4 to WHERE status = 'closed'
+
+---
+
+## 12. MES OWNER OVERRIDE (Permanent Authorization Record)
+
+Date: 2026-04-04
+Authorized by: Matt Morrison (project owner, explicit direct order)
+Implementation: FUND_MANAGER_BYPASS_SYMBOLS = {'MES'} in engine/agents/pipeline.py
+What is NOT bypassed: Risk Manager veto, Safety Layer, REQUIRE_HUMAN_APPROVAL, ConsecutiveLossTracker
+MES WFE=0.09 (overfit). Re-validation in progress via engine/backtest/run_mes_experiment.py.
+Do NOT use MES in production until WFE >= 0.50.
+
+---
+
+## 13. SPRINT 21 RALPH LOOP SUMMARY (Completed Prior Session)
+
+Sprint 21-A: DB Cleanup + Learning Tables (3/3 PASS)
+  - Deleted ghost 0-byte engine/jarvis_trader.db
+  - migration_013: learning_events + trading_patterns tables
+  - EODScheduler wired to TradingMemoryConsolidator.consolidate_daily()
+
+Sprint 21-B: RL Run 10 Config (3/3 PASS)
+  - rl_config.py: hold_cost=-0.010, t1_bonus=0.50 (strong exit incentives)
+  - MAX_BARS_IN_TRADE=50 in rl_environment.py
+  - rl_evaluator.py: avg_bars + t1_hit_rate gates added
+
+Sprint 21-C: Parallel Scanner (3/3 PASS)
+  - MCL+MNQ concurrent via asyncio.gather() (~50% faster)
+  - 15m timeframe added as secondary scan
+  - signal_timeframe column added to trade tables
+
+Sprint 21-D: Trade Journal + Attribution (3/3 PASS)
+  - regime_tier + deciding_stage stored per trade
+  - GET /analytics/pipeline/confidence endpoint
+  - /trades/journal page + InstrumentValidationScorecard.tsx
+
+Sprint 21-E: WFE Monitoring + Pre-Filter (3/3 PASS)
+  - engine/agents/pre_filter.py (NEW): haiku 400t, skip when STC 15-83 flat
+  - Weekly WFE snapshots to wfe_snapshots table
+  - WFEMonitorWidget.tsx + validation page integration
+
+---
+
+## 14. SPRINT 22 DETAILS (Completed This Session)
+
+US-2201: trade_outcomes table + persist_trade_outcome() + fire-and-forget hook in close_trade()
+US-2202: get_trade_history_context(symbol) -> injected into TechnicalAnalyst Stage 1 prompt
+US-2203: [AGENT_INPUT] logging + honest fallbacks for all 4 Stage 1 agents
+US-2204: POST /openclaw/webhook -- WhatsApp 'yes'/'no'/'hold' -> approve/reject/skip
+US-2205: Sprint close-out, all tests passing, prd.json updated
+
+---
+
+## 15. POLYGON API KEY (in engine/.env, do not commit)
+POLYGON_API_KEY=95PhPqp1RdZhcPeZU5519TDAdbm7c7o6
+
+---

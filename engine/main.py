@@ -115,6 +115,7 @@ from routers.trades_router import router as trades_router
 from routers.wfe_router import router as wfe_router
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
+from notifications.morning_brief import inject_morning_brief_deps
 from websocket.events import set_ws_manager
 from websocket.manager import WebSocketManager
 
@@ -941,7 +942,7 @@ async def lifespan(app: FastAPI):
     logger.info("✅ ConsecutiveLossTracker wired into SafetyLayer (3→0.5x, 5→0.25x, 7→halt)")
 
     # Wire router dependencies now that all singletons are ready
-    inject_portfolio_deps(paper_tracker, db_manager)
+    inject_portfolio_deps(paper_tracker, db_manager, data_manager)
     inject_safety_router_deps(safety_layer, loss_tracker)
     inject_phase3_readiness_deps(safety_layer)
     inject_health_router_deps(
@@ -958,6 +959,8 @@ async def lifespan(app: FastAPI):
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_scheduler_router_scheduler(scheduler)
     inject_pipeline_deps(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker)
+    # Morning brief deps
+    inject_morning_brief_deps(data_manager, paper_tracker, safety_layer)
 
     # Initialize Signal Scanner
     try:
@@ -1153,6 +1156,38 @@ async def lifespan(app: FastAPI):
             )
     except Exception as _consolidation_err:
         logger.warning(f"Learning consolidation init failed (non-fatal): {_consolidation_err}")
+
+    # Initialize Morning Intelligence Brief (8:45 CT, Mon–Fri)
+    try:
+
+        async def run_morning_brief() -> None:
+            """Fire-and-forget morning intelligence brief at 8:45 CT."""
+            try:
+                from notifications.morning_brief import assemble_morning_brief
+                from notifications.openclaw_notifier import send_raw
+                brief_text = await assemble_morning_brief()
+                logger.info("[MorningBrief] Assembled: %s chars", len(brief_text))
+                await send_raw(brief_text)
+            except Exception as exc:
+                logger.error("[MorningBrief] run_morning_brief failed: %s", exc)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_morning_brief,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=8,
+                    minute=45,
+                    timezone="America/Chicago",
+                ),
+                id="morning_brief",
+                name="Morning Intelligence Brief",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("✅ Morning brief job registered — fires Mon–Fri at 08:45 CT")
+    except Exception as _brief_err:
+        logger.warning(f"Morning brief init failed (non-fatal): {_brief_err}")
 
     logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
