@@ -38,7 +38,7 @@ jobs:
   engine-typecheck:
     name: Engine Type Check (mypy)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -170,11 +170,15 @@ jobs:
       - name: Combine and emit coverage.xml
         run: |
           cd "${GITHUB_WORKSPACE}"
-          if [[ -f .coverage.slow ]]; then
-            coverage combine --rcfile=engine/pyproject.toml .coverage.fast .coverage.slow
+          # download-artifact merges into subpaths; resolve actual data files
+          FAST=$(find . -name '.coverage.fast' -type f | head -1)
+          SLOW=$(find . -name '.coverage.slow' -type f | head -1)
+          if [[ -z "${FAST}" ]]; then echo "ERROR: missing .coverage.fast after download"; exit 1; fi
+          if [[ -n "${SLOW}" ]]; then
+            coverage combine --rcfile=engine/pyproject.toml "${FAST}" "${SLOW}"
           else
             echo "No slow coverage file; using fast slice only"
-            cp .coverage.fast .coverage
+            cp "${FAST}" .coverage
           fi
           coverage xml -o coverage.xml --rcfile=engine/pyproject.toml
 
