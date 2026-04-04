@@ -728,7 +728,9 @@ def migration_014(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
-    logger.info("Migration 014 applied — timeframe columns added to pending_trade_approvals and trade_journal.")
+    logger.info(
+        "Migration 014 applied — timeframe columns added to pending_trade_approvals and trade_journal."
+    )
 
 
 def migration_015(conn: sqlite3.Connection) -> None:

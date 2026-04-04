@@ -642,9 +642,8 @@ class TradingPipeline:
         symbol = (trade_decision or {}).get("symbol", "")
         if symbol in self.FUND_MANAGER_BYPASS_SYMBOLS:
             action = (trade_decision or {}).get("action", "hold").lower()
-            quantity = (
-                risk_decision.get("modified_quantity")
-                or (trade_decision or {}).get("quantity", 1)
+            quantity = risk_decision.get("modified_quantity") or (trade_decision or {}).get(
+                "quantity", 1
             )
             logger.info(
                 f"[Resolution] {symbol} bypass — Fund Manager skipped → {action} qty={quantity}"

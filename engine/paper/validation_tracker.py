@@ -343,9 +343,7 @@ class ValidationTracker:
                 instrument_key="symbol",
                 setup_grade_key="notes",
             )
-            logger.debug(
-                "Loaded %d trades for %s from SQLite [live]", len(trade_list), inst
-            )
+            logger.debug("Loaded %d trades for %s from SQLite [live]", len(trade_list), inst)
 
         return metrics
 
@@ -383,9 +381,7 @@ class ValidationTracker:
                         instrument,
                     )
                 except Exception as exc:
-                    logger.warning(
-                        "Failed to load tracker data for %s: %s", instrument, exc
-                    )
+                    logger.warning("Failed to load tracker data for %s: %s", instrument, exc)
 
         return metrics
 
@@ -418,8 +414,7 @@ class ValidationTracker:
         This method is kept for backward compatibility but is a no-op.
         """
         logger.warning(
-            "ValidationTracker.record_daily_pnl() is deprecated. "
-            "Use PaperTradeTracker instead."
+            "ValidationTracker.record_daily_pnl() is deprecated. " "Use PaperTradeTracker instead."
         )
 
     # ------------------------------------------------------------------
@@ -495,9 +490,7 @@ class ValidationTracker:
         return {
             "timestamp": datetime.utcnow().isoformat(),
             "instruments": instruments,
-            "overall_pass": all(
-                self.is_validated(inst) for inst in _TRACKED_INSTRUMENTS
-            ),
+            "overall_pass": all(self.is_validated(inst) for inst in _TRACKED_INSTRUMENTS),
         }
 
     def get_all_trades(self, instrument: str = "MCL") -> list[dict]:

@@ -74,9 +74,7 @@ async def get_recommendations(
     """
     try:
         if not db_manager:
-            logger.debug(
-                f"[LEARNING] Recommendations skipped for {symbol}: no database manager"
-            )
+            logger.debug(f"[LEARNING] Recommendations skipped for {symbol}: no database manager")
             return []
 
         symbol = symbol.upper()
@@ -127,9 +125,7 @@ async def get_recommendations(
                 continue
 
         if recommendations:
-            logger.info(
-                f"[LEARNING] {len(recommendations)} recommendations injected for {symbol}"
-            )
+            logger.info(f"[LEARNING] {len(recommendations)} recommendations injected for {symbol}")
 
         return recommendations
 

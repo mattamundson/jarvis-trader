@@ -753,10 +753,9 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.error(f"[MARKET_OPEN] 15m scan failed for {symbol}: {e}")
 
-        tasks = (
-            [_scan_1h(sym) for sym, _ in instruments_1h]
-            + [_scan_15m(sym) for sym, _ in instruments_15m]
-        )
+        tasks = [_scan_1h(sym) for sym, _ in instruments_1h] + [
+            _scan_15m(sym) for sym, _ in instruments_15m
+        ]
         await asyncio.gather(*tasks)
 
     scheduler.add_job(
@@ -804,9 +803,12 @@ async def lifespan(app: FastAPI):
             # Run memory consolidation (non-fatal if it fails)
             try:
                 from learning.consolidator import TradingMemoryConsolidator
+
                 consolidator = TradingMemoryConsolidator(db_manager=db_manager)
                 result = await consolidator.consolidate_daily()
-                logger.info(f"[EOD_CONSOLIDATION] {result.get('patterns_extracted', 0)} patterns extracted")
+                logger.info(
+                    f"[EOD_CONSOLIDATION] {result.get('patterns_extracted', 0)} patterns extracted"
+                )
             except Exception as consolidation_error:
                 logger.warning(f"[EOD_CONSOLIDATION] Non-fatal error: {consolidation_error}")
 

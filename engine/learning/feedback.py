@@ -101,11 +101,15 @@ async def process_trade_outcome(
             lesson_type = "winning_trade"
             r_multiple = pnl / 10.0 if pnl > 0 else 0.0  # simple R estimation
             lesson_text = f"Winning trade on {symbol}: +${pnl:.2f} ({r_multiple:.1f}R). "
-            lesson_text += f"Action: {action.upper()}, duration: {_get_trade_duration(entry_time, exit_time)}"
+            lesson_text += (
+                f"Action: {action.upper()}, duration: {_get_trade_duration(entry_time, exit_time)}"
+            )
         elif pnl < 0:
             lesson_type = "losing_trade"
             lesson_text = f"Losing trade on {symbol}: -${abs(pnl):.2f}. "
-            lesson_text += f"Action: {action.upper()}, duration: {_get_trade_duration(entry_time, exit_time)}"
+            lesson_text += (
+                f"Action: {action.upper()}, duration: {_get_trade_duration(entry_time, exit_time)}"
+            )
         else:
             lesson_type = "breakeven_trade"
             lesson_text = f"Breakeven trade on {symbol}. Action: {action.upper()}"

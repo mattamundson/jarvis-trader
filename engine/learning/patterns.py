@@ -36,9 +36,7 @@ class TradePattern:
         self.loss_count = loss_count
         self.last_seen = last_seen or datetime.now().isoformat()
         self.sample_count = win_count + loss_count
-        self.win_rate = (
-            round(win_count / self.sample_count, 3) if self.sample_count > 0 else 0.0
-        )
+        self.win_rate = round(win_count / self.sample_count, 3) if self.sample_count > 0 else 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -152,7 +150,9 @@ async def _upsert_pattern_to_db(db_manager, pattern: TradePattern) -> None:
             # Update win/loss counts
             new_win = existing["win_count"] + pattern.win_count
             new_loss = existing["loss_count"] + pattern.loss_count
-            new_win_rate = round(new_win / (new_win + new_loss), 3) if (new_win + new_loss) > 0 else 0.0
+            new_win_rate = (
+                round(new_win / (new_win + new_loss), 3) if (new_win + new_loss) > 0 else 0.0
+            )
 
             await db_manager.execute(
                 "UPDATE trading_patterns SET win_count=?, loss_count=?, win_rate=?, "

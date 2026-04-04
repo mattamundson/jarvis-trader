@@ -136,7 +136,9 @@ def _compute_snapshot_stats(symbol: str, week_start: str, conn: sqlite3.Connecti
     # Profit factor
     winning_pnl = sum(p for p in pnls if p > 0)
     losing_pnl = abs(sum(p for p in pnls if p < 0))
-    profit_factor = winning_pnl / losing_pnl if losing_pnl > 0 else (winning_pnl if winning_pnl > 0 else 0.0)
+    profit_factor = (
+        winning_pnl / losing_pnl if losing_pnl > 0 else (winning_pnl if winning_pnl > 0 else 0.0)
+    )
 
     # Max drawdown (simple: cumulative max / current equity)
     cumulative_pnl = 0.0
@@ -148,11 +150,16 @@ def _compute_snapshot_stats(symbol: str, week_start: str, conn: sqlite3.Connecti
         drawdown = peak_equity - cumulative_pnl
         max_dd_amount = max(max_dd_amount, drawdown)
 
-    max_dd_pct = (max_dd_amount / (settings.INITIAL_CAPITAL + peak_equity)) if (settings.INITIAL_CAPITAL + peak_equity) > 0 else 0.0
+    max_dd_pct = (
+        (max_dd_amount / (settings.INITIAL_CAPITAL + peak_equity))
+        if (settings.INITIAL_CAPITAL + peak_equity) > 0
+        else 0.0
+    )
 
     # Sharpe ratio (simplified: mean / std of returns)
     if len(pnls) > 1:
         import statistics
+
         mean_pnl = statistics.mean(pnls)
         std_pnl = statistics.stdev(pnls) if len(pnls) > 1 else 0.0
         sharpe = (mean_pnl / std_pnl) if std_pnl > 0 else 0.0
@@ -217,13 +224,17 @@ async def post_wfe_snapshot(
             )
             conn.commit()
 
-            created_snapshots.append({
-                "symbol": sym,
-                "week_start": week_start,
-                "trades": stats["trades"],
-                "snapshot_id": cursor.lastrowid,
-            })
-            logger.info(f"[WFE] Snapshot created for {sym}: {stats['trades']} trades, PF={stats['profit_factor']}")
+            created_snapshots.append(
+                {
+                    "symbol": sym,
+                    "week_start": week_start,
+                    "trades": stats["trades"],
+                    "snapshot_id": cursor.lastrowid,
+                }
+            )
+            logger.info(
+                f"[WFE] Snapshot created for {sym}: {stats['trades']} trades, PF={stats['profit_factor']}"
+            )
 
         return {
             "status": "ok",

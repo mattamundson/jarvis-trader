@@ -582,7 +582,13 @@ class TradingEnvironment(_GymBase):
         forced_close_penalty = cfg.get("entry_cost", -0.01) if forced_close else 0.0
 
         return float(
-            pnl_reward + hold_cost + flat_hold_reward + entry_cost + redundant_cost + t1_bonus + forced_close_penalty
+            pnl_reward
+            + hold_cost
+            + flat_hold_reward
+            + entry_cost
+            + redundant_cost
+            + t1_bonus
+            + forced_close_penalty
         )
 
     def _record_trade(self, pnl: float) -> None:

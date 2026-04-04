@@ -935,7 +935,9 @@ class PortfolioTracker:
             rows = self._db.get_trade_history(limit=5000)
             if not rows:
                 self._open = {}
-                logger.info("[TRACKER] reload_open_positions_from_db: no trades in DB, cleared open")
+                logger.info(
+                    "[TRACKER] reload_open_positions_from_db: no trades in DB, cleared open"
+                )
                 return
 
             rebuilt: Dict[str, PaperTrade] = {}

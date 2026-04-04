@@ -89,6 +89,7 @@ def notify_target_reached(
         import asyncio
 
         from notifications.openclaw_notifier import notify_target as _oc_target
+
         loop = asyncio.get_event_loop()
         if loop.is_running():
             loop.create_task(_oc_target(market=market, pnl=pnl, target=target))

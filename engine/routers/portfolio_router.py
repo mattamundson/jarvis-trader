@@ -215,7 +215,9 @@ async def paper_phase_summary():
         try:
             rows = db_manager.get_trade_history(limit=5000)
         except Exception as exc:
-            logger.warning("paper_phase_summary: SQLite get_trade_history failed, using in-memory: %s", exc)
+            logger.warning(
+                "paper_phase_summary: SQLite get_trade_history failed, using in-memory: %s", exc
+            )
             rows = []
 
     # Fallback to in-memory if no DB rows or DB unavailable
@@ -345,7 +347,9 @@ async def paper_performance():
                     performance = {
                         "total_pnl": round(sum(pnls), 4),
                         "win_rate": round(len(wins) / len(pnls), 4) if pnls else 0.0,
-                        "profit_factor": round(profit_factor, 4) if profit_factor is not None else None,
+                        "profit_factor": round(profit_factor, 4)
+                        if profit_factor is not None
+                        else None,
                         "num_trades": len(pnls),
                         "num_open": len(paper_tracker.get_open_positions()),
                         "avg_win": round(sum(wins) / len(wins), 4) if wins else 0.0,
@@ -709,9 +713,7 @@ async def get_portfolio_risk():
             "correlation_threshold": threshold,
             "active_positions": open_positions,
             "open_symbol_count": correlation_exposure["open_count"],
-            "correlation_reduction_active": correlation_exposure[
-                "correlation_reduction_active"
-            ],
+            "correlation_reduction_active": correlation_exposure["correlation_reduction_active"],
             "default_max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
             "correlated_max_contracts": settings.CORRELATED_PAIR_MAX_CONTRACTS,
             "total_margin_utilization": min(margin_used / 40.0 * 100, 100.0),
@@ -1057,7 +1059,9 @@ async def close_stale_positions():
             except Exception as exc:
                 logger.warning("close_stale_positions: could not close %s: %s", trade_id, exc)
 
-        logger.info("close_stale_positions: closed %d stale %s positions", closed_count, STALE_SYMBOL)
+        logger.info(
+            "close_stale_positions: closed %d stale %s positions", closed_count, STALE_SYMBOL
+        )
         return {"status": "success", "closed_count": closed_count}
     except Exception as exc:
         logger.error("close_stale_positions failed: %s", exc)
