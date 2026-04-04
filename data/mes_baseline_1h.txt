@@ -1,0 +1,26 @@
+JARVIS TRADER Backtester
+Symbol: MES | Period: 2024-01-01 -> 2026-03-28
+Capital: $10,000 | Risk/trade: 1.0%
+--------------------------------------------------
+Loading MES data...
+[DataLoader] Cache hit: MES_2024-01-01_2026-03-28_1h.csv (10943 bars)
+Loaded 10943 bars. Computing signals...
+Found 1554 ENTRY_NOW signals out of 10943 bars.
+Running simulation...
+
+=== BACKTEST RESULTS: MES ===
+Period: 2024-04-26 -> 2026-03-27
+Capital: $10,000 -> $366,231
+Return: -22.1%  |  Max DD: 0.0%
+
+Trades: 630 total  |  Win Rate: 34.9%
+Avg Win: $973  |  Avg Loss: $-1,061
+Profit Factor: 0.49
+Sharpe: 2.58  |  Sortino: 5.86
+Max Consec. Losses: 13  |  Wins: 8
+
+Calmar: -2042.57  |  Expectancy: $-351  |  Recovery Factor: -94.00
+Long Trades: 464 (WR 34%)  |  Short Trades: 166 (WR 39%)
+Avg Holding: 4.5 bars  |  Max DD Duration: 200 bars
+
+Results saved to: /sessions/ecstatic-eloquent-thompson/mnt/jarvis-trader/engine/backtest/results/MES_1h_2024-01-01_2026-03-28.json

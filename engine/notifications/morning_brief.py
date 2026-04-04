@@ -1,6 +1,7 @@
 """
 JARVIS Morning Intelligence Brief — assembled at 8:45 CT daily.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -77,8 +78,16 @@ async def assemble_morning_brief(
                     dm.get_current_price("MNQ"),
                     return_exceptions=True,
                 )
-                prices["MCL"] = float(results[0]) if not isinstance(results[0], Exception) and results[0] is not None else None
-                prices["MNQ"] = float(results[1]) if not isinstance(results[1], Exception) and results[1] is not None else None
+                prices["MCL"] = (
+                    float(results[0])
+                    if not isinstance(results[0], Exception) and results[0] is not None
+                    else None
+                )
+                prices["MNQ"] = (
+                    float(results[1])
+                    if not isinstance(results[1], Exception) and results[1] is not None
+                    else None
+                )
             except Exception as exc:
                 logger.warning("[MorningBrief] Price fetch failed: %s", exc)
 
@@ -95,6 +104,7 @@ async def assemble_morning_brief(
                 if df is None or df.empty:
                     return "N/A", "UNKNOWN"
                 from backtest.signals import generate_signals
+
                 df_sig = generate_signals(df, symbol=sym)
                 row = df_sig.iloc[-1]
                 stc = row.get("stc_val", None)
@@ -126,7 +136,9 @@ async def assemble_morning_brief(
                     return_exceptions=True,
                 )
                 for sym, res in zip(syms, pos_results, strict=True):
-                    pos_price_map[sym] = float(res) if not isinstance(res, Exception) and res is not None else None
+                    pos_price_map[sym] = (
+                        float(res) if not isinstance(res, Exception) and res is not None else None
+                    )
             except Exception:
                 pass
 

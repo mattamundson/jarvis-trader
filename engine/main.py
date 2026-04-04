@@ -1165,6 +1165,7 @@ async def lifespan(app: FastAPI):
             try:
                 from notifications.morning_brief import assemble_morning_brief
                 from notifications.openclaw_notifier import send_raw
+
                 brief_text = await assemble_morning_brief()
                 logger.info("[MorningBrief] Assembled: %s chars", len(brief_text))
                 await send_raw(brief_text)
