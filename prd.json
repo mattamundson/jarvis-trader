@@ -1,90 +1,107 @@
 {
-  "project": "JARVIS TRADER Sprint 18 — Phase 1 System Verification",
-  "branchName": "ralph/phase1-verification",
-  "description": "Phase 1 goal is a working system, not strategy optimization. The trading strategy (parameters, rules, WFE targets) has not been approved and will be built from scratch in Phase 2. Sprint 18 verifies the system works end-to-end: engine starts cleanly, schedulers fire on schedule, signals reach the pipeline, trades flow from approval through to IB Gateway paper fill, and the dashboard shows accurate real-time data. No parameter tuning, no WFE experiments, no RL training.",
-  "userStories": [
+  "sprint": "Sprint 21 — IB Live Data + Dashboard Hardening + Trade Review Page",
+  "goal": "Make JARVIS fully operational before Monday market open (09:31 CT, 2026-04-06): fix IB contract qualification so live prices flow, fix dashboard API key mismatch, close 4 stale test positions via code, and build the post-trade analysis page so Matt can review every closed paper trade from the dashboard.",
+  "context": "Sprint 20 complete (all 5 stories passed). Engine v1.1.0 on port 8010. IB Gateway connected on port 4002 but live prices NOT flowing — contract conId qualification missing in get_snapshot_price. Dashboard sends wrong API key env var (NEXT_PUBLIC_ENGINE_API_KEY not set in .env.local). 4 stale MES test positions open in SQLite + in-memory tracker polluting win-rate. No post-trade review page exists.",
+  "rules": [
+    "Phase 1 only — no strategy parameters, no WFE experiments, no RL training",
+    "Safety invariants: LIVE_TRADING_ENABLED=False, REQUIRE_HUMAN_APPROVAL=True, port 4001 blocked",
+    "All stories: cd engine && .venv/Scripts/python -m pytest tests/ -v must pass with 0 failures",
+    "Deploy and maintain 5 parallel agents throughout using /ralph loop",
+    "Never modify engine/risk/safety_layer.py or engine/config.py without Tier 3 confirmation",
+    "Dashboard: pnpm run build must pass (26/26 routes, 0 TypeScript errors) before story passes"
+  ],
+  "stories": [
     {
-      "id": "US-1801",
-      "title": "Engine health verification — confirm clean startup and scheduler firing",
-      "description": "As the system operator, I need to verify the engine starts without errors, all routers register correctly, and all APScheduler jobs are registered and firing on schedule so I know the system is operationally sound.",
+      "id": "US-2101",
+      "title": "Fix IB contract conId qualification in get_snapshot_price",
+      "priority": "P0",
+      "passes": false,
+      "goal": "engine/data/market_data.py get_snapshot_price() calls _make_contract() which returns an unqualified Future with no conId. IB throws: 'Contract Future(symbol=MES) can't be hashed because no conId value exists'. Fix: use _resolve_front_month() for futures symbols in get_snapshot_price (same pattern as get_historical_bars). After fix, GET /data/price/{symbol} must return a numeric last_price for MCL and MNQ when IB Gateway is connected.",
       "acceptanceCriteria": [
-        "Start the engine: cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010 (NO --reload flag). Capture the startup log output. Confirm: zero ERROR or CRITICAL lines during startup, all routers listed as registered, APScheduler shows all 6 jobs scheduled (market_open_scan, eod_summary, morning_briefing, weekly_review, vix_hourly, nightly_learning_consolidator).",
-        "Hit the health endpoint: GET http://localhost:8010/health — confirm HTTP 200 and response includes engine_status: 'ok'.",
-        "Hit the scheduler status endpoint if it exists: GET http://localhost:8010/scheduler/jobs — list all scheduled jobs with their next_run_time. If endpoint does not exist, add GET /scheduler/jobs to engine/routers/scheduler_router.py returning [{id, name, next_run_time, trigger}] for all registered APScheduler jobs.",
-        "Trigger a manual scan to verify the pipeline runs end-to-end without crashing: POST http://localhost:8010/scanner/run or equivalent endpoint with body {symbol: 'MCL'}. Confirm HTTP 200 and no 500 errors in logs. The result can be HOLD or a signal — what matters is the pipeline completed without exception.",
-        "Check engine logs for any recurring errors after 10 minutes of uptime: look for repeated ERROR lines that indicate a background task is failing silently.",
-        "Write docs/reports/sprint18_system_health.md with: startup log summary (errors/warnings count), list of registered APScheduler jobs with next_run_time, manual scan result, any recurring errors found.",
-        "All Python ruff-clean. 0 test failures."
+        "engine/data/market_data.py: get_snapshot_price() calls _resolve_front_month() for futures symbols (when symbol in FUTURES_MAP or is_futures=True)",
+        "No 'can't be hashed because no conId' error in engine logs after restart",
+        "GET /data/price/MCL returns {last_price: <float>, source: 'ibkr_snapshot'} when IB Gateway is on port 4002",
+        "GET /data/price/MNQ returns {last_price: <float>, source: 'ibkr_snapshot'} when IB Gateway is on port 4002",
+        "Fallback still works: if IB not connected, returns {last_price: null, source: 'ibkr_not_connected'}",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures"
       ],
-      "priority": 1,
-      "passes": true,
-      "notes": "Engine requires restart after S16/S17 changes. Run without --reload flag per CLAUDE.md safety rules."
+      "notes": "The fix is surgical — get_snapshot_price is ~30 lines. Change _make_contract call to await self._resolve_front_month(symbol, exchange) when is_futures or symbol in FUTURES_MAP. FUTURES_EXCHANGE dict is already in scope."
     },
     {
-      "id": "US-1802",
-      "title": "Paper trade end-to-end flow verification",
-      "description": "As a trader, I need to verify that the complete paper trade flow works without errors — from signal generation through approval through SQLite write through IB Gateway paper routing — so I know the system can actually execute trades.",
+      "id": "US-2102",
+      "title": "Fix dashboard API key — verify NEXT_PUBLIC_ENGINE_API_KEY in .env.local",
+      "priority": "P0",
+      "passes": false,
+      "goal": "Dashboard lib/api.ts reads process.env.NEXT_PUBLIC_ENGINE_API_KEY and falls back to 'jarvis-dev-key-change-me' if not set. Engine logs show 'Invalid X-API-Key attempt from dashboard routes' — meaning the env var is not set in dashboard/.env.local. Fix: read engine/.env to get the real API_KEY value, then write dashboard/.env.local with NEXT_PUBLIC_ENGINE_API_KEY=<that value>. Restart dashboard. Verify no more API key errors in engine log.",
       "acceptanceCriteria": [
-        "Verify a pending approval can be created: POST http://localhost:8010/pipeline/run or equivalent with symbol='MCL'. If the pipeline returns HOLD, that is acceptable — confirm a pending_approval row was NOT created (HOLD should not create approvals). If it returns a BUY/SELL signal, confirm a pending_approval row WAS created in engine/data/jarvis_trader.db.",
-        "If no live signal is available, inject a test approval directly: POST http://localhost:8010/approvals/pending with a synthetic MCL BUY approval payload. Confirm HTTP 201 and the row appears in the pending_approvals table in SQLite.",
-        "Approve the pending trade: POST http://localhost:8010/approvals/{id}/approve. Confirm: (a) paper_trades table gets a new row with status='open', entry_price non-NULL, pnl=NULL (trade is open), (b) the response includes execution field showing either 'placed' (IB Gateway connected) or 'broker_unavailable' (IB Gateway not running — this is acceptable).",
-        "Close the test trade: POST http://localhost:8010/paper/close/{trade_id} or equivalent with exit_price. Confirm: (a) paper_trades row updates to status='closed', exit_price non-NULL, pnl non-NULL (computed by the US-1702 fix), (b) the learning classifier hook fires (check logs for '[LEARNING] Trade classified' line).",
-        "Query final state: SELECT symbol, direction, entry_price, exit_price, pnl, status FROM paper_trades WHERE id={trade_id}. Confirm all fields non-NULL and pnl = correct computed value.",
-        "Append results to docs/reports/sprint18_system_health.md: E2E flow result (pass/fail), each step's HTTP status, final paper_trades row, pnl computation accuracy.",
-        "All Python ruff-clean. 0 test failures."
+        "Read engine/.env to get the current API_KEY value",
+        "Write/update dashboard/.env.local: NEXT_PUBLIC_ENGINE_API_KEY=<value from engine/.env>",
+        "Also set NEXT_PUBLIC_ENGINE_URL=http://localhost:8010 if not already present",
+        "pnpm run build passes in dashboard/",
+        "After dashboard restart (pnpm dev), engine logs show NO 'Invalid X-API-Key' errors on dashboard route calls",
+        "GET /health from dashboard fetch succeeds (check browser network tab or engine access log)"
       ],
-      "priority": 2,
-      "passes": true,
-      "notes": "IB Gateway may not be running — broker_unavailable is acceptable. The critical path is SQLite write correctness, not IB fill. Verified 2026-04-03: full E2E flow passed — approval injected, approved via API, paper_trades row written (open), closed via /portfolio/paper/trade, pnl=$100.00 confirmed (MCL multiplier 100x, entry=68.5, exit=69.5, qty=1). Learning classifier returned grade B, R-multiple 2.00."
+      "notes": "engine/.env should have API_KEY=jarvis-dev-key-change-me. dashboard/lib/api.ts already has the correct env var name (NEXT_PUBLIC_ENGINE_API_KEY). Only the .env.local file is missing. DO NOT commit .env.local — it is gitignored."
     },
     {
-      "id": "US-1803",
-      "title": "Dashboard data accuracy verification",
-      "description": "As a trader, I need the dashboard to show accurate real-time data — correct trade count, correct P&L, and correct validation gate status — now that the DB path and pnl write fixes from Sprint 17 are in place.",
+      "id": "US-2103",
+      "title": "Close 4 stale MES test positions via management endpoint",
+      "priority": "P1",
+      "passes": false,
+      "goal": "4 test MES positions are open in SQLite (paper_trades) and in-memory tracker from Sprint 18/19 testing. They pollute win-rate, profit-factor, and position count. Add POST /portfolio/paper/admin/close-stale endpoint that closes all open positions where symbol='MES' and entry_price=5800.0 with exit_price=entry_price (zero P&L). After calling it, GET /portfolio/paper/positions returns empty list, GET /paper/validation/summary returns trades_closed >= 1 (the real MCL trade), win_rate > 0.",
       "acceptanceCriteria": [
-        "With the engine running, open the dashboard at http://localhost:3010. Navigate to the main dashboard page. Confirm no console errors, no 'Failed to fetch' errors, and the widgets load within 5 seconds.",
-        "Navigate to Pending Approvals (/trades/pending-approvals). Confirm the page loads and SWR refresh is working (check that the 'Last updated' timestamp updates every 5 seconds).",
-        "Navigate to the Validation Gates page (/paper/validation/gates). Confirm: (a) trade count shows the actual number of paper trades (should be close to 9-11 from the migration), (b) PF and Sharpe show numeric values (not null/NaN/undefined), (c) days elapsed shows correct count from 2026-04-02.",
-        "Navigate to Paper Trading (/paper or equivalent). Confirm the balance widget shows a non-zero, non-anomalous value consistent with starting capital +/- actual closed trade PnL.",
-        "Hit GET http://localhost:8010/paper-validation/summary/eod directly. Confirm all numeric fields (trades_closed, profit_factor, sharpe_ratio, win_rate, max_drawdown) are numbers, not null.",
-        "Document any dashboard widget that still shows null, NaN, or clearly wrong data — these become targeted bugs for Sprint 19 rather than blockers for Sprint 18.",
-        "Append results to docs/reports/sprint18_system_health.md: dashboard page health summary, any widgets still broken, EOD summary endpoint response."
+        "POST /portfolio/paper/admin/close-stale endpoint added to engine/routers/portfolio_router.py (or paper_validation_router.py)",
+        "Endpoint closes all open paper_trades WHERE symbol='MES' AND entry_price=5800.0 — sets status='closed', exit_price=entry_price, pnl=0.0, exit_time=now()",
+        "Also removes those positions from the in-memory tracker (portfolio_tracker.open_positions)",
+        "Endpoint is protected by X-API-Key header check",
+        "After calling endpoint: GET /portfolio/paper/positions returns [] or only legitimate open positions",
+        "GET /paper/validation/summary shows trades_closed=1 (the real MCL $100 trade), not 5",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures"
       ],
-      "priority": 3,
-      "passes": true,
-      "notes": "Verified 2026-04-03. 10 bugs documented as Sprint 19 backlog in docs/reports/sprint18_system_health.md. Dashboard home page has React hydration ISE; /paper/validation/gates and /summary/eod return 500 due to wrong absolute import path (engine.database). Portfolio balance endpoint works ($10,130). Build passes 26/26 routes, 0 TS errors."
+      "notes": "The real MCL trade (pnl=$100) must NOT be touched. Only close test positions where symbol='MES' AND entry_price=5800.0. The 4 trade_ids are: MES_2026-04-03_short_5800.0, MES_2026-04-02_long_5800.0, MES_2026-04-02_long_5810.0, MES_2026-04-01_long_5800.0. Hard-code a list filter OR use symbol+price filter. Add the endpoint, call it once in the story verification, confirm clean state."
     },
     {
-      "id": "US-1804",
-      "title": "IB Gateway E2E smoke test",
-      "description": "As a trader, I need to verify that IB Gateway paper trading is reachable and that a paper order can be routed through the approval system to IB so that the broker connection is confirmed working before live paper trading begins.",
+      "id": "US-2104",
+      "title": "Post-trade analysis dashboard page",
+      "priority": "P1",
+      "passes": false,
+      "goal": "Build dashboard/app/trades/page.tsx — a post-trade analysis page showing all closed paper trades from SQLite. Shows: trade_id, symbol, direction (LONG/SHORT), entry_price, exit_price, pnl ($), entry_time, exit_time, duration. Each row has a win/loss badge (green for pnl>0, red for pnl<=0). Page auto-refreshes every 30s. Uses GET /paper/trades/closed endpoint (add it if missing). Page linked in sidebar nav.",
       "acceptanceCriteria": [
-        "PREREQUISITE CHECK: Confirm IB_ACCOUNT_ID is set in engine/.env (not 'YOUR_IBKR_ACCOUNT_ID'). If not set, write clear instructions: 'ACTION REQUIRED: Open engine/.env and set IB_ACCOUNT_ID to your IBKR paper account ID (found in IB Gateway → Account menu). Then re-run this story.' Do not proceed past this check if not set.",
-        "PREREQUISITE CHECK: Confirm IB Gateway is running on port 4002 (paper mode): python -c \"import socket; s=socket.socket(); s.settimeout(2); result=s.connect_ex(('127.0.0.1',4002)); print('IB Gateway reachable' if result==0 else 'IB Gateway NOT reachable on 4002'); s.close()\". If not reachable, write instructions for starting IB Gateway and mark story as blocked-on-Matt.",
-        "If both prerequisites pass: run the existing smoke test script: cd engine && .venv/Scripts/python ../scripts/smoke_test_approvals.py. Capture full output.",
-        "If smoke test passes: attempt a live IB Gateway connection test via the engine's IBGatewayConnector: python -c \"import asyncio; from engine.execution.ib_gateway import IBGatewayConnector; conn = IBGatewayConnector(); asyncio.run(conn.connect()); print('Connected:', conn.is_connected())\" — run from the engine/ directory with the venv active.",
-        "Document result: connected / not connected / blocked-on-prerequisites. If connected, confirm the paper account ID matches and the connection is to port 4002 (not 4001 — live port is permanently blocked).",
-        "Append to docs/reports/sprint18_system_health.md: IB Gateway prereq check results, smoke test output, connection test result."
+        "GET /paper/trades/closed endpoint exists in engine — returns array of closed paper_trades from SQLite ordered by exit_time DESC",
+        "dashboard/app/trades/page.tsx exists and renders the closed trades table",
+        "Table columns: Symbol | Direction | Entry | Exit | P&L | Duration | Closed At | Result",
+        "Result badge: variant='bull' for pnl>0, variant='bear' for pnl<=0, variant='neutral' for pnl=0",
+        "P&L formatted as $+100.00 or $-50.00 with color (green/red via badge)",
+        "Duration formatted as human-readable: '2h 14m' not raw seconds",
+        "Page auto-refreshes via useSWR with refreshInterval: 30000",
+        "Sidebar nav includes 'Trade History' link pointing to /trades",
+        "pnpm run build passes — 0 TypeScript errors, all routes build",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes"
       ],
-      "priority": 4,
-      "passes": true,
-      "notes": "IB_ACCOUNT_ID must be set by Matt in engine/.env before this story can complete. IB Gateway must be running on port 4002 (paper mode only — port 4001 is permanently blocked)."
+      "notes": "The endpoint query: SELECT * FROM paper_trades WHERE status='closed' ORDER BY exit_time DESC. The trade_id, symbol, action, entry_price, exit_price, pnl, entry_time, exit_time columns all exist. duration = (exit_time - entry_time) in seconds. Use fetchEngine<ClosedTrade[]>('/paper/trades/closed') in the dashboard component. Sidebar is in dashboard/app/layout.tsx or a shared nav component — find it and add the link."
     },
     {
-      "id": "US-1805",
-      "title": "Daily ops runbook — what Matt runs every trading day",
-      "description": "As the system operator, I need a clear, tested daily checklist for starting, monitoring, and shutting down JARVIS TRADER each trading day so that operations are repeatable and nothing is forgotten.",
+      "id": "US-2105",
+      "title": "Sprint 21 close-out — restart, verify, commit, handoff",
+      "priority": "P1",
+      "passes": false,
+      "goal": "After all 4 stories pass: restart engine, call the stale position close endpoint, verify all critical endpoints return correct data, run full test suite + dashboard build, commit all changes, update prd.json (all passes: true), update HANDOFF_CLAUDE_SESSION.md with Sprint 21 state.",
       "acceptanceCriteria": [
-        "Read engine/docs/runbooks/ and docs/runbooks/ for any existing runbook content. Incorporate it rather than duplicating.",
-        "Write docs/runbooks/daily_ops.md covering the complete daily routine: (1) Pre-market startup sequence (IB Gateway → engine restart → smoke test → dashboard check), (2) RTH monitoring (what to watch, how to approve pending trades, when to intervene), (3) EOD shutdown sequence (confirm EOD job ran, check daily P&L, confirm DB written correctly), (4) What to do if engine crashes (restart command, log location, how to check for lost trades), (5) Weekly tasks (check rolling WFE dashboard, review learning loop output).",
-        "Include exact commands for every step — no vague instructions. Every command must use the correct venv path (.venv/Scripts/python), the correct DB path (engine/data/jarvis_trader.db), and the correct port (8010 engine, 3010 dashboard, 4002 IB Gateway paper).",
-        "Include a pre-market checklist table that Matt can scan in 60 seconds: engine running (Y/N), IB Gateway port 4002 (Y/N), smoke test passed (Y/N), Anthropic credits > $10 (Y/N), pending approvals reviewed (Y/N).",
-        "Test every command in the runbook by running it. Mark each with 'VERIFIED 2026-04-03' so future sessions know which commands are tested.",
-        "Append to docs/reports/sprint18_system_health.md: link to the new runbook, confirmation that all commands were verified."
+        "Engine restarted: .\\restart_engine.ps1",
+        "POST /portfolio/paper/admin/close-stale called — 4 stale positions closed",
+        "GET /health returns {status: 'healthy', database: 'connected', ibkr_connected: true}",
+        "GET /data/price/MCL returns numeric last_price (not null)",
+        "GET /data/price/MNQ returns numeric last_price (not null)",
+        "GET /portfolio/paper/positions returns [] (no stale positions)",
+        "GET /paper/validation/summary returns trades_closed=1, win_rate=100.0, profit_factor=9999.0",
+        "GET /paper/trades/closed returns 1 trade (the MCL $100 trade)",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v — 0 failures",
+        "cd dashboard && pnpm run build — 26+ routes, 0 TypeScript errors",
+        "All Sprint 21 changes committed with conventional commit messages",
+        "prd.json updated: all 5 stories passes: true",
+        "HANDOFF_CLAUDE_SESSION.md updated with current engine state, open items, and Monday readiness checklist"
       ],
-      "priority": 5,
-      "passes": true,
-      "notes": "Runbook is the Phase 1 completion artifact. When Matt can run through this checklist every morning in under 5 minutes, Phase 1 is done."
+      "notes": "Commit order: US-2101 fix, US-2102 docs (do not commit .env.local), US-2103 endpoint, US-2104 dashboard page + endpoint, US-2105 docs. Use git add <specific files> — never git add -A which might catch secrets."
     }
   ]
 }
