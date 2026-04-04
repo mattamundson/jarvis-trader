@@ -111,6 +111,8 @@ from routers.scanner_router import router as scanner_router
 from routers.scanner_router import inject_dependencies as inject_scanner_deps
 from routers.scheduler_router import router as scheduler_router
 from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
+from routers.trades_router import router as trades_router
+from routers.wfe_router import router as wfe_router
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from websocket.events import set_ws_manager
@@ -644,9 +646,9 @@ async def lifespan(app: FastAPI):
         scheduler.start()
     logger.info("⏰ MGC daily signal job registered — 18:00 ET (23:00 UTC) weekdays")
 
-    # ── Market open scan (09:31 ET) — triggers pipeline for MCL then MNQ ────────
+    # ── Market open scan (09:31 ET) — parallel 1h + 15m scans for MCL, MNQ ──────
     async def market_open_scan_job():
-        """Trigger pipeline analysis at market open for approved instruments."""
+        """Trigger parallel 1h and 15m pipeline scans at market open (MCL, MNQ)."""
         if not trading_pipeline or not safety_layer:
             logger.warning("[MARKET_OPEN] Pipeline or safety layer not available")
             return
@@ -656,22 +658,20 @@ async def lifespan(app: FastAPI):
             logger.info("[MARKET_OPEN] Skipping — kill switch active")
             return
 
-        instruments = [("MCL", True), ("MNQ", True), ("MES", True)]
-        logger.info(
-            f"[MARKET_OPEN] Starting parallel pipeline scan for {[s[0] for s in instruments]}"
-        )
+        instruments_1h = [("MCL", True), ("MNQ", True)]
+        instruments_15m = [("MCL", "15m"), ("MNQ", "15m")]
+        logger.info("[MARKET_OPEN] Starting parallel 1h+15m scans for MCL, MNQ")
 
-        async def _scan_one(symbol: str, is_futures: bool) -> None:
+        async def _scan_1h(symbol: str) -> None:
             import time as _time_mod
 
             try:
                 _t0 = _time_mod.monotonic()
-                result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
+                result = await trading_pipeline.analyze_and_decide(symbol, True, timeframe="1h")
                 _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
                 action = result.get("final_action", "hold")
-                logger.info(f"[MARKET_OPEN] {symbol}: {action.upper()}")
+                logger.info(f"[MARKET_OPEN] {symbol} 1h: {action.upper()}")
 
-                # Persist every market-open pipeline run for audit trail.
                 if db_manager:
                     try:
                         from approval.pipeline_history import pipeline_run_record_from_result
@@ -680,19 +680,82 @@ async def lifespan(app: FastAPI):
                             symbol=symbol,
                             result=result,
                             duration_ms=_duration_ms,
-                            source="market_open",
+                            source="market_open_1h",
                         )
                         db_manager.insert_pipeline_run(_run_record)
                     except Exception as _db_exc:
                         logger.warning(
-                            "[MARKET_OPEN] Failed to log pipeline_run for %s: %s",
+                            "[MARKET_OPEN] Failed to log pipeline_run 1h for %s: %s",
                             symbol,
                             _db_exc,
                         )
             except Exception as e:
-                logger.error(f"[MARKET_OPEN] Pipeline failed for {symbol}: {e}")
+                logger.error(f"[MARKET_OPEN] 1h pipeline failed for {symbol}: {e}")
 
-        await asyncio.gather(*[_scan_one(sym, fut) for sym, fut in instruments])
+        async def _scan_15m(symbol: str) -> None:
+            import time as _time_mod
+
+            try:
+                from backtest.data_loader import BacktestDataLoader
+                from backtest.paper_config import FIFTEEN_MIN_CONFIGS
+                from backtest.signals import compute_all_indicators, generate_signals
+                from routers.scanner_router import record_signal
+
+                _t0 = _time_mod.monotonic()
+                loader = BacktestDataLoader()
+                config = FIFTEEN_MIN_CONFIGS.get(symbol)
+                if not config or not config.get("enabled"):
+                    logger.info(f"[MARKET_OPEN] {symbol} 15m not enabled, skipping")
+                    return
+
+                end_date = datetime.now().strftime("%Y-%m-%d")
+                start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+                df = loader.load(symbol=symbol, start=start_date, end=end_date, interval="15m")
+                if df is None or df.empty:
+                    logger.warning(f"[MARKET_OPEN] No 15m data for {symbol}")
+                    return
+
+                df = df.tail(50).reset_index(drop=True)
+                df = compute_all_indicators(df)
+                stc = config.get("stc_params", {})
+                df = generate_signals(
+                    df,
+                    regime_filter=config.get("regime_filter", True),
+                    stc_oversold=stc.get("stc_os"),
+                    stc_overbought=stc.get("stc_ob"),
+                    symbol=symbol,
+                    adaptive_regime=config.get("adaptive_regime", False),
+                    volume_filter=config.get("volume_filter", False),
+                )
+                entry_rows = df[df["entry_signal"] == "ENTRY_NOW"]
+                if not entry_rows.empty:
+                    latest = entry_rows.iloc[-1]
+                    record_signal(
+                        symbol=symbol,
+                        timeframe="15m",
+                        entry_signal="ENTRY_NOW",
+                        bias=latest.get("bias"),
+                        regime=latest.get("regime"),
+                        composite_score=None,
+                        position_size_multiplier=0.5,
+                    )
+                    _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
+                    logger.info(
+                        f"[MARKET_OPEN] {symbol} 15m ENTRY_NOW — "
+                        f"regime={latest.get('regime')}, bias={latest.get('bias')} "
+                        f"({_duration_ms:.0f}ms)"
+                    )
+                else:
+                    _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
+                    logger.info(f"[MARKET_OPEN] {symbol} 15m: no signal ({_duration_ms:.0f}ms)")
+            except Exception as e:
+                logger.error(f"[MARKET_OPEN] 15m scan failed for {symbol}: {e}")
+
+        tasks = (
+            [_scan_1h(sym) for sym, _ in instruments_1h]
+            + [_scan_15m(sym) for sym, _ in instruments_15m]
+        )
+        await asyncio.gather(*tasks)
 
     scheduler.add_job(
         market_open_scan_job,
@@ -735,6 +798,15 @@ async def lifespan(app: FastAPI):
                 f"[EOD_SUMMARY] Trades: {total_trades} | "
                 f"P&L: ${realized_pnl:.2f} | Wins: {winning} | Losses: {losing}"
             )
+
+            # Run memory consolidation (non-fatal if it fails)
+            try:
+                from learning.consolidator import TradingMemoryConsolidator
+                consolidator = TradingMemoryConsolidator(db_manager=db_manager)
+                result = await consolidator.consolidate_daily()
+                logger.info(f"[EOD_CONSOLIDATION] {result.get('patterns_extracted', 0)} patterns extracted")
+            except Exception as consolidation_error:
+                logger.warning(f"[EOD_CONSOLIDATION] Non-fatal error: {consolidation_error}")
 
         except Exception as e:
             logger.error(f"[EOD_SUMMARY] Failed: {e}")
@@ -825,11 +897,15 @@ async def lifespan(app: FastAPI):
 
     # EOD P&L snapshot scheduler — registers its own jobs on the existing scheduler
     from notifications.whatsapp import get_notifier as _get_notifier
+    from learning.consolidator import TradingMemoryConsolidator
+
+    learning_consolidator = TradingMemoryConsolidator(db_manager=db_manager)
 
     eod_scheduler = EODScheduler(
         db_manager=db_manager,
         portfolio_tracker=paper_tracker,
         whatsapp_notifier=_get_notifier(),
+        learning_consolidator=learning_consolidator,
     )
     if scheduler is not None:
         eod_scheduler.register_with_scheduler(scheduler)
@@ -1143,6 +1219,7 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 app.include_router(health_router)
 app.include_router(phase3_readiness_router)
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(trades_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
 app.include_router(market_router)
@@ -1164,6 +1241,7 @@ app.include_router(approval_router)
 app.include_router(pipeline_router)
 app.include_router(scanner_router)
 app.include_router(scheduler_router)
+app.include_router(wfe_router)
 app.include_router(v1_router)
 
 
@@ -2387,6 +2465,7 @@ async def run_pipeline(req: PipelineRequest):
                     quantity=float(final_qty),
                     entry_price=float(entry_price) if entry_price else None,
                     pipeline_snapshot=result,
+                    timeframe=result.get("timeframe", "1h"),
                 )
                 result["pending_approval_id"] = approval_id
                 logger.info(
