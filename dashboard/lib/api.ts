@@ -1084,7 +1084,73 @@ export interface EventsResponse {
 }
 
 export async function fetchEvents(limit: number = 20): Promise<EventsResponse> {
-  return fetchEngine<EventsResponse>(`/api/events/recent?limit=${limit}`);
+  return fetchEngine<EventsResponse>(`/events/recent?limit=${limit}`);
 }
 
-// ── Win-Rat
+// ── Dual-TF Confirmation (Sprint 24) ─────────────────────────────────────────
+
+export interface DualTFTimeframe {
+  stc_val: number;
+  direction: "long" | "short" | "neutral";
+}
+
+export interface DualTFSymbol {
+  symbol: string;
+  confirmed: boolean;
+  direction: "long" | "short" | "neutral";
+  stc_os: number;
+  stc_ob: number;
+  tf_1h: DualTFTimeframe | null;
+  tf_15m: DualTFTimeframe | null;
+  error?: string;
+}
+
+export interface DualTFResponse {
+  timestamp: string;
+  symbols: DualTFSymbol[];
+}
+
+// ── Regime Attribution (Sprint 24) ───────────────────────────────────────────
+
+export interface RegimeStatRow {
+  regime: string;
+  trade_count: number;
+  win_rate_pct: number;
+  total_pnl: number;
+}
+
+export interface RegimeStatsResponse {
+  regimes: RegimeStatRow[];
+  total_closed_trades: number;
+}
+
+// ── Unrealized P&L Widget ────────────────────────────────────────────────────
+
+export interface UnrealizedPosition {
+  trade_id: string;
+  symbol: string;
+  direction: string;
+  quantity: number;
+  entry_price: number;
+  current_price: number | null;
+  unrealized_pnl: number | null;
+  stop_distance: number | null;
+  target_distance: number | null;
+}
+
+export type UnrealizedPositionsResponse = UnrealizedPosition[];
+
+// ── Win Rate by Hour Widget ──────────────────────────────────────────────────
+
+export interface HourlyStatItem {
+  hour: number;
+  label: string;
+  win_rate: number;
+  trades: number;
+}
+
+export interface HourlyStatsResponse {
+  hourly_stats: HourlyStatItem[];
+  best_hour: HourlyStatItem | null;
+  worst_hour: HourlyStatItem | null;
+}
