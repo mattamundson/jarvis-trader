@@ -259,11 +259,25 @@ async def paper_phase_summary():
     if trades_completed == 0 and total_pnl == 0.0:
         validation_status = "no_trades"
     else:
-        try:
-            perf = paper_tracker.get_performance()
-            pf = perf.get("profit_factor")
-        except Exception:
-            pf = None
+        # Compute profit_factor from the same closed_rows used for total_pnl so
+        # the validation_status gate is consistent with SQLite (Bug B9 / US-2504).
+        pf: Any = None
+        if closed_rows:
+            try:
+                row_pnls = [_row_pnl(r) for r in closed_rows]
+                gross_profit = sum(p for p in row_pnls if p > 0)
+                gross_loss = abs(sum(p for p in row_pnls if p <= 0))
+                pf = round(gross_profit / gross_loss, 4) if gross_loss > 0 else None
+            except Exception as exc:
+                logger.warning("paper_phase_summary: profit_factor from rows failed: %s", exc)
+                pf = None
+        if pf is None:
+            # Last-resort fallback to in-memory tracker
+            try:
+                perf = paper_tracker.get_performance()
+                pf = perf.get("profit_factor")
+            except Exception:
+                pf = None
         if trading_days >= TARGET_TRADING_DAYS:
             if pf is not None and float(pf) >= 2.0:
                 validation_status = "passed"
@@ -528,16 +542,29 @@ def _build_hold_time_response(
     description="P&L grouped by calendar day (UTC) across the last 90 days with positive/negative day counts.",
 )
 async def get_daily_pnl():
-    """Daily P&L rollup for closed trades, last 90 days."""
+    """Daily P&L rollup for closed trades, last 90 days.
+
+    SQLite is the single source of truth (Bug B9 / US-2504).  Falls back to
+    the in-memory tracker only when no db_manager is wired.
+    """
     empty = {"daily_pnl": [], "total_days_traded": 0, "positive_days": 0, "negative_days": 0}
     if not paper_tracker:
         return empty
 
-    try:
-        rows = paper_tracker.get_trade_history(limit=5000)
-    except Exception as exc:
-        logger.warning("get_daily_pnl: get_trade_history failed: %s", exc)
-        return empty
+    rows: list[Any] = []
+    if db_manager:
+        try:
+            rows = db_manager.get_trade_history(limit=5000)
+        except Exception as exc:
+            logger.warning("get_daily_pnl: SQLite get_trade_history failed, using in-memory: %s", exc)
+            rows = []
+
+    if not rows:
+        try:
+            rows = paper_tracker.get_trade_history(limit=5000)
+        except Exception as exc:
+            logger.warning("get_daily_pnl: get_trade_history failed: %s", exc)
+            return empty
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).date()
     day_pnl: dict[date, float] = {}

@@ -799,6 +799,33 @@ def migration_016(conn: sqlite3.Connection) -> None:
         logger.debug("Migration 016 skipped — divergence_flag already exists in wfe_snapshots.")
 
 
+def migration_017(conn: sqlite3.Connection) -> None:
+    """
+    017 — System state persistence table.
+
+    Adds the system_state key/value table for persisting engine state across
+    restarts.  Initially used to persist kill switch activation so the safety
+    layer re-arms automatically on restart without human re-intervention.
+
+    Columns
+    -------
+    key        — state key (e.g. 'kill_switch_active', 'kill_switch_reason')
+    value      — TEXT value (JSON-serialisable)
+    updated_at — ISO-8601 UTC timestamp of last write
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS system_state (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.commit()
+    logger.info("Migration 017 applied — system_state table created.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -819,6 +846,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_014,  # version 14
     migration_015,  # version 15
     migration_016,  # version 16
+    migration_017,  # version 17
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -838,6 +866,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Signal timeframe attribution: timeframe column for pending_trade_approvals and trade_journal (1h/15m)",
     "Pipeline confidence monitoring: confidence and final_decision columns for hold-rate detection",
     "WFE divergence flag: divergence_flag column for wfe_snapshots table to track performance divergence",
+    "System state persistence: system_state key/value table for kill switch and engine state across restarts",
 ]
 
 

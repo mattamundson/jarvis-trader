@@ -300,7 +300,11 @@ async def lifespan(app: FastAPI):
     logger.info("✅ PnL Monitor initialised (SQLite + paper tracker sources active)")
 
     # Safety layer — always first; PnLMonitor feeds circuit breakers with live data
-    safety_layer = SafetyLayer(settings, pnl_monitor=pnl_monitor)
+    safety_layer = SafetyLayer(
+        settings,
+        pnl_monitor=pnl_monitor,
+        db_path=str(db_manager._db_path),
+    )
 
     # Paper IB connector — JSON audit + optional PortfolioTracker mirror; wired into SafetyLayer
     ib_paper_connector = None
@@ -1241,9 +1245,9 @@ async def lifespan(app: FastAPI):
     except Exception as _discord_err:
         logger.warning(f"Discord nightly import init failed (non-fatal): {_discord_err}")
 
-
     # Initialize IB Gateway Health Monitor (every 15 minutes, Mon-Fri 8:00am-4:45pm CT)
     try:
+
         async def run_ib_health_check() -> None:
             """Check IB Gateway health and alert on disconnect."""
             try:
@@ -1271,7 +1275,9 @@ async def lifespan(app: FastAPI):
                 misfire_grace_time=60,
                 replace_existing=True,
             )
-            logger.info("✅ IB health monitor job registered — fires every 15 min Mon–Fri 8am–4:45pm CT")
+            logger.info(
+                "✅ IB health monitor job registered — fires every 15 min Mon–Fri 8am–4:45pm CT"
+            )
     except Exception as _health_err:
         logger.warning(f"IB health monitor init failed (non-fatal): {_health_err}")
 
@@ -4441,6 +4447,3 @@ async def import_paper_trades(request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
-
-
-       

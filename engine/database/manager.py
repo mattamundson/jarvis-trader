@@ -25,6 +25,7 @@ Tables
   positions      -- current open positions (live mirror)
   settings       -- key/value config store
   pipeline_runs  -- history of every TradingPipeline execution
+  system_state   -- key/value persistence (e.g. kill switch across restarts)
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ from ._mixins_pending_approvals import PendingApprovalsMixin
 from ._mixins_pnl import DailyPnLMixin
 from ._mixins_positions import PositionsMixin
 from ._mixins_settings import SettingsMixin
+from ._mixins_system_state import SystemStateMixin
 from ._mixins_trades import TradesMixin
 from .migrations import run_migrations
 
@@ -57,6 +59,7 @@ class DatabaseManager(
     DailyPnLMixin,
     PositionsMixin,
     SettingsMixin,
+    SystemStateMixin,
     JournalMixin,
     AlertsMixin,
     PendingApprovalsMixin,
