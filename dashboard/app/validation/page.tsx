@@ -37,6 +37,8 @@ import { BacktestVsPaperWidget } from "@/components/BacktestVsPaperWidget";
 import { ValidationChecklist } from "@/components/ValidationChecklist";
 import { GoLivePlanCard } from "@/components/GoLivePlanCard";
 import { InstrumentValidationScorecard } from "@/components/InstrumentValidationScorecard";
+import { PortfolioPLChart } from "@/components/PortfolioPLChart";
+import { MESRevalidationTracker } from "@/components/MESRevalidationTracker";
 import {
   type BacktestBaselineRow,
   fmtBaselineNum,
@@ -1518,6 +1520,12 @@ export default function ValidationPage() {
           <InstrumentValidationScorecard />
         </section>
 
+        {/* Section 1C: MES Re-Validation Progress */}
+        <section>
+          <SectionLabel>1C — MES Re-Validation Progress</SectionLabel>
+          <MESRevalidationTracker />
+        </section>
+
         {/* Section 2: Monte Carlo Confidence Intervals */}
         <section>
           <SectionLabel>2 — Monte Carlo Confidence Intervals</SectionLabel>
@@ -1610,6 +1618,12 @@ export default function ValidationPage() {
         <section>
           <SectionLabel>K — Walk-Forward Efficiency Monitor</SectionLabel>
           <WFEMonitorWidget />
+        </section>
+
+        {/* Section L: Portfolio P&L Chart */}
+        <section>
+          <SectionLabel>L — Portfolio Cumulative P&L</SectionLabel>
+          <PortfolioPLChart />
         </section>
       </main>
     </div>
