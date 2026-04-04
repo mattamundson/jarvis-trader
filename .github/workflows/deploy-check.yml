@@ -7,7 +7,7 @@ jobs:
   pre-deploy-check:
     name: Pre-Deploy Verification
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -49,10 +49,9 @@ jobs:
           mypy engine/ --ignore-missing-imports --config-file engine/pyproject.toml \
             --explicit-package-bases --namespace-packages || echo "::warning::mypy debt — tighten in follow-up"
 
-          echo "=== Running Tests (Tier-1 gate) ==="
-          pytest engine/tests/test_signals.py engine/tests/test_rolling_wfe.py \
-            engine/tests/test_cold_start_degraded.py \
-            -v --tb=short
+          echo "=== Running Tests (full suite — parity with ci.yml engine-test) ==="
+          pytest engine/tests/ \
+            -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
 
           echo "=== Building Dashboard ==="
           cd dashboard && pnpm run build && cd ..
