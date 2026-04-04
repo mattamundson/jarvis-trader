@@ -24,6 +24,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from paper.validation_gate_config import APPROVED_PAPER_SYMBOLS, PAPER_VALIDATION_GATES
 
+try:
+    from database import get_db
+except ImportError:  # pragma: no cover
+    get_db = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/paper/validation", tags=["paper_validation"])
@@ -862,4 +867,220 @@ async def get_closed_trades():
 
     except Exception as exc:
         logger.error(f"Get closed trades error: {exc}")
+        raise HTTPException(500, str(exc)) from exc
+
+
+STARTING_CAPITAL = 10000.0
+
+
+class GateResult(BaseModel):
+    """Single validation gate result."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    status: str  # PASS | FAIL | INSUFFICIENT_DATA
+    current_value: float | None
+    target_value: float
+
+
+class ValidationCheckpointResponse(BaseModel):
+    """Validation checkpoint response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    overall_status: str
+    trade_count: int
+    trading_days: int
+    win_rate: float | None
+    profit_factor: float | None
+    sharpe_ratio: float | None
+    max_drawdown_pct: float | None
+    gates: dict[str, GateResult]
+    validation_start: str | None
+    days_elapsed: int
+    days_remaining: int
+
+
+@router.get("/checkpoint")
+async def get_validation_checkpoint():
+    """
+    Get validation checkpoint: overall status, trade count, metrics, and gate evaluation.
+
+    Returns ValidationCheckpointResponse with all 6 gates and overall status:
+    - ACCUMULATING if < 5 trades
+    - APPROVED if all gates pass
+    - FAILING if any gate fails
+    - ON_TRACK otherwise
+    """
+    try:
+        from datetime import datetime, date
+
+        db = get_db()
+
+        closed_trades = db.get_closed_trades(limit=500)
+        trade_count = len(closed_trades)
+
+        # Compute trading days
+        trading_days = _distinct_trade_days(closed_trades)
+
+        # Win rate computation
+        def _pnl(t: dict) -> float:
+            return float(t.get("pnl") or 0.0)
+
+        win_count = sum(1 for t in closed_trades if _pnl(t) > 0)
+        loss_count = sum(1 for t in closed_trades if _pnl(t) < 0)
+        win_rate = (win_count / trade_count) if trade_count > 0 else None
+
+        # Profit factor computation
+        gross_profit = sum(_pnl(t) for t in closed_trades if _pnl(t) > 0)
+        gross_loss = sum(abs(_pnl(t)) for t in closed_trades if _pnl(t) < 0)
+        profit_factor = (
+            (gross_profit / gross_loss)
+            if gross_loss > 0
+            else (None if gross_profit == 0 else 9999.0)
+        )
+
+        # Sharpe ratio from daily P&L
+        sharpe_ratio = _compute_sharpe_ratio(closed_trades)
+
+        # Max drawdown
+        max_drawdown_pct = _compute_max_drawdown_pct(closed_trades)
+
+        # Validation start time (min entry_time)
+        validation_start = None
+        if closed_trades:
+            min_entry = min(
+                t.get("entry_time") for t in closed_trades if t.get("entry_time")
+            )
+            if min_entry:
+                validation_start = str(min_entry)
+                try:
+                    entry_dt = datetime.fromisoformat(
+                        str(min_entry).replace("Z", "+00:00")
+                    )
+                    today = datetime.utcnow().date()
+                    days_elapsed = (today - entry_dt.date()).days
+                except (ValueError, TypeError):
+                    days_elapsed = 0
+            else:
+                days_elapsed = 0
+        else:
+            days_elapsed = 0
+
+        days_remaining = max(0, 30 - days_elapsed)
+
+        # Gate evaluation
+        cfg = PAPER_VALIDATION_GATES
+        pf_target = float(cfg["profit_factor"])
+        sharpe_target = float(cfg["sharpe_ratio"])
+        wr_target = float(cfg["win_rate_pct"]) / 100.0
+        trades_target = int(cfg["min_trades"])
+        days_target = int(cfg["min_days"])
+        dd_target = float(cfg["max_drawdown_pct"]) / 100.0
+
+        gates = {}
+
+        # PF gate
+        if trade_count < 5:
+            gates["profit_factor"] = GateResult(
+                status="INSUFFICIENT_DATA", current_value=profit_factor, target_value=pf_target
+            )
+        else:
+            pf_passes = (profit_factor or 0.0) >= pf_target
+            gates["profit_factor"] = GateResult(
+                status="PASS" if pf_passes else "FAIL",
+                current_value=profit_factor,
+                target_value=pf_target,
+            )
+
+        # Sharpe gate
+        if trade_count < 5:
+            gates["sharpe_ratio"] = GateResult(
+                status="INSUFFICIENT_DATA",
+                current_value=sharpe_ratio,
+                target_value=sharpe_target,
+            )
+        else:
+            sharpe_passes = (sharpe_ratio or 0.0) >= sharpe_target
+            gates["sharpe_ratio"] = GateResult(
+                status="PASS" if sharpe_passes else "FAIL",
+                current_value=sharpe_ratio,
+                target_value=sharpe_target,
+            )
+
+        # Win rate gate
+        if trade_count < 5:
+            gates["win_rate"] = GateResult(
+                status="INSUFFICIENT_DATA",
+                current_value=win_rate,
+                target_value=wr_target,
+            )
+        else:
+            wr_passes = (win_rate or 0.0) >= wr_target
+            gates["win_rate"] = GateResult(
+                status="PASS" if wr_passes else "FAIL",
+                current_value=win_rate,
+                target_value=wr_target,
+            )
+
+        # Trades gate
+        trades_passes = trade_count >= trades_target
+        gates["trades"] = GateResult(
+            status="PASS" if trades_passes else "FAIL",
+            current_value=float(trade_count),
+            target_value=float(trades_target),
+        )
+
+        # Days gate
+        days_passes = days_elapsed >= days_target
+        gates["days"] = GateResult(
+            status="PASS" if days_passes else "FAIL",
+            current_value=float(days_elapsed),
+            target_value=float(days_target),
+        )
+
+        # Drawdown gate
+        if trade_count < 5:
+            gates["max_drawdown"] = GateResult(
+                status="INSUFFICIENT_DATA",
+                current_value=max_drawdown_pct,
+                target_value=dd_target,
+            )
+        else:
+            dd_passes = (max_drawdown_pct or 0.0) <= dd_target
+            gates["max_drawdown"] = GateResult(
+                status="PASS" if dd_passes else "FAIL",
+                current_value=max_drawdown_pct,
+                target_value=dd_target,
+            )
+
+        # Overall status determination
+        if trade_count < 5:
+            overall_status = "ACCUMULATING"
+        else:
+            # Check if all gates pass
+            gate_statuses = [g.status for g in gates.values()]
+            if all(s == "PASS" for s in gate_statuses):
+                overall_status = "APPROVED"
+            elif any(s == "FAIL" for s in gate_statuses):
+                overall_status = "FAILING"
+            else:
+                overall_status = "ON_TRACK"
+
+        return ValidationCheckpointResponse(
+            overall_status=overall_status,
+            trade_count=trade_count,
+            trading_days=trading_days,
+            win_rate=win_rate,
+            profit_factor=profit_factor,
+            sharpe_ratio=sharpe_ratio,
+            max_drawdown_pct=max_drawdown_pct,
+            gates=gates,
+            validation_start=validation_start,
+            days_elapsed=days_elapsed,
+            days_remaining=days_remaining,
+        )
+
+    except Exception as exc:
+        logger.error(f"Validation checkpoint error: {exc}")
         raise HTTPException(500, str(exc)) from exc

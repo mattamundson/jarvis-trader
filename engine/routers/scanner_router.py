@@ -121,6 +121,37 @@ def record_signal(
         position_size_multiplier=position_size_multiplier,
     )
     _signals_deque.append(signal)
+    # Publish signal event if not HOLD
+    try:
+        from events.bus import publish as publish_event, detect_regime_change
+        if entry_signal != "HOLD":
+            publish_event(
+                'signal_fired',
+                f'{symbol} {timeframe} {entry_signal}',
+                symbol=symbol,
+                severity='info'
+            )
+        
+        # Check for regime change
+        if regime:
+            old_regime = detect_regime_change(symbol, regime)
+            if old_regime and old_regime != regime:
+                publish_event(
+                    'regime_change',
+                    f'{symbol}: {old_regime} → {regime}',
+                    symbol=symbol,
+                    severity='warn'
+                )
+                # Notify regime change (asyncio task)
+                import asyncio
+                try:
+                    from notifications.openclaw_notifier import notify_regime_change
+                    asyncio.create_task(notify_regime_change(symbol, old_regime, regime))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    
     logger.debug(f"[Scanner] Recorded {symbol} {timeframe} signal: {entry_signal}")
 
 

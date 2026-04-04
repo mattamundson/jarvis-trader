@@ -465,6 +465,55 @@ def _grade_explanation(grade: str) -> str:
     return explanations.get(grade, "Unknown grade.")
 
 
+def _compute_local_metrics(trades: list[dict]) -> tuple[float, float, float, float]:
+    """
+    Compute win_rate, avg_winner, avg_loser, and r_ratio from trades list.
+    Local copy to avoid circular import.
+
+    Returns: (win_rate, avg_winner, avg_loser, r_ratio)
+    """
+    if not trades:
+        return 0.0, 0.0, 0.0, 1.0
+
+    total = len(trades)
+    winners = []
+    losers = []
+    wins = 0
+
+    for trade in trades:
+        pnl = float(trade.get("pnl") or 0)
+        outcome = str(trade.get("outcome") or "").lower()
+
+        if pnl > 0 or outcome == "winning_trade":
+            wins += 1
+            winners.append(pnl if pnl > 0 else 1.0)
+        elif pnl < 0 or outcome == "losing_trade":
+            losers.append(abs(pnl))
+
+    win_rate = wins / total if total > 0 else 0.0
+    avg_winner = sum(winners) / len(winners) if winners else 0.0
+    avg_loser = sum(losers) / len(losers) if losers else 0.0
+    r_ratio = avg_winner / avg_loser if avg_loser > 0 else 1.0
+
+    return win_rate, avg_winner, avg_loser, r_ratio
+
+
+def _format_confidence_note(win_rate: float, r_ratio: float, multiplier: float) -> str:
+    """Return a human-readable explanation for the confidence adjustment."""
+    if multiplier == 1.35:
+        return f"Strong edge detected: {win_rate:.1%} win rate with {r_ratio:.2f}R ratio"
+    elif multiplier == 1.20:
+        return f"Solid edge: {win_rate:.1%} win rate with {r_ratio:.2f}R ratio"
+    elif multiplier == 1.10:
+        return f"Slight edge: {win_rate:.1%} win rate"
+    elif multiplier == 0.65:
+        return f"Poor performance: {win_rate:.1%} win rate — signal confidence reduced 35%"
+    elif multiplier == 0.80:
+        return f"Below average: {win_rate:.1%} win rate — signal confidence reduced 20%"
+    else:
+        return f"Neutral: {win_rate:.1%} win rate, {r_ratio:.2f}R ratio"
+
+
 def _load_strategy_params() -> dict:
     """
     Attempt to load current strategy parameters from the settings table.
@@ -497,6 +546,89 @@ def _load_strategy_params() -> dict:
         logger.debug(f"Could not load strategy params from settings table: {exc}")
 
     return defaults
+
+
+@router.get("/confidence/{symbol}")
+async def get_confidence_score(symbol: str):
+    """
+    Get the confidence adjustment score for a symbol based on recent trade history.
+
+    Returns:
+        {
+            "symbol": str,
+            "confidence_adjustment": float (multiplier in [0.60, 1.40]),
+            "trade_count": int,
+            "win_rate": float (0.0-1.0),
+            "r_ratio": float,
+            "sample_sufficient": bool (True if >= 20 trades),
+            "note": str (human-readable explanation)
+        }
+    """
+    try:
+        from learning.confidence_scorer import MIN_TRADES_REQUIRED
+
+        symbol = symbol.upper().strip()
+
+        # Fetch trades for this symbol
+        db_path = _get_db_path()
+        cutoff = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+        sql = """
+            SELECT pnl, outcome FROM paper_trades
+            WHERE symbol = ? AND exit_time >= ?
+            ORDER BY created_at DESC LIMIT 100
+        """
+        trades = _query_db(db_path, sql, (symbol, cutoff))
+
+        trade_count = len(trades)
+        sample_sufficient = trade_count >= MIN_TRADES_REQUIRED
+
+        if not sample_sufficient:
+            return {
+                "status": "ok",
+                "data": {
+                    "symbol": symbol,
+                    "confidence_adjustment": 1.0,
+                    "trade_count": trade_count,
+                    "win_rate": 0.0,
+                    "r_ratio": 1.0,
+                    "sample_sufficient": False,
+                    "note": f"Only {trade_count} trades found (minimum {MIN_TRADES_REQUIRED} required)",
+                },
+            }
+
+        # Compute metrics (replicate logic from confidence_scorer)
+        win_rate, avg_winner, avg_loser, r_ratio = _compute_local_metrics(trades)
+
+        # Compute multiplier
+        if win_rate >= 0.65 and r_ratio >= 1.8:
+            multiplier = 1.35
+        elif win_rate >= 0.60 and r_ratio >= 1.5:
+            multiplier = 1.20
+        elif win_rate >= 0.55:
+            multiplier = 1.10
+        elif win_rate <= 0.35:
+            multiplier = 0.65
+        elif win_rate <= 0.42:
+            multiplier = 0.80
+        else:
+            multiplier = 1.0
+
+        return {
+            "status": "ok",
+            "data": {
+                "symbol": symbol,
+                "confidence_adjustment": multiplier,
+                "trade_count": trade_count,
+                "win_rate": round(win_rate, 4),
+                "r_ratio": round(r_ratio, 4),
+                "sample_sufficient": True,
+                "note": _format_confidence_note(win_rate, r_ratio, multiplier),
+            },
+        }
+
+    except Exception as exc:
+        logger.exception(f"Error in GET /learning/confidence/{symbol}: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/status")

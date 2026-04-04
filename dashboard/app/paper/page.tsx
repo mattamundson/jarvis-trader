@@ -17,6 +17,7 @@ import { TodaySummaryWidget } from "@/components/TodaySummaryWidget";
 import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 import { SignalQueueWidget } from "@/components/SignalQueueWidget";
 import { PaperApprovedValidationWidget } from "@/components/PaperApprovedValidationWidget";
+import ValidationCheckpointWidget from "@/components/ValidationCheckpointWidget";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
@@ -135,6 +136,9 @@ export default function PaperTradingPage() {
 
         {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
         <PaperApprovedValidationWidget />
+
+        {/* Overall validation checkpoint (30-day window progress) */}
+        <ValidationCheckpointWidget />
 
         {/* Circuit breaker / safety status */}
         <CircuitBreakerWidget />

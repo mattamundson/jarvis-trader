@@ -264,13 +264,34 @@ async def notify_target(
     return sent
 
 
-async def send_raw(message: str) -> bool:
-    """Send a raw WhatsApp message with no cooldown or rate limiting.
-
-    Used for morning brief and other non-signal messages.
-    Skips if TESTING env var is set. Returns True on success.
-    """
+async def notify_ib_disconnect(last_connected_at: str = '') -> bool:
+    """Send WhatsApp alert when IB Gateway disconnects during market hours. No cooldown."""
     if os.getenv("TESTING"):
-        logger.debug("OpenClaw send_raw suppressed in TESTING mode")
+        logger.debug("OpenClaw IB disconnect notify suppressed in TESTING mode")
         return False
-    return await _send(message)
+    ts = _ct_time()
+    last_conn_str = last_connected_at or "unknown"
+    msg = (
+        f"JARVIS IB ALERT\n"
+        f"IB Gateway disconnected during market hours.\n"
+        f"Time: {ts} CT\n"
+        f"Last connected: {last_conn_str}\n"
+        f"Restart IB Gateway and reconnect."
+    )
+    return await _send(msg)
+
+
+async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) -> bool:
+    """Send WhatsApp alert when regime changes. No cooldown (regimes change rarely)."""
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw regime change notify suppressed in TESTING mode")
+        return False
+    ts = _ct_time()
+    msg = (
+        f"JARVIS Regime Alert
+"
+        f"{symbol}: {old_regime} → {new_regime}
+"
+        f"Time: {ts} CT"
+    )
+    return await _send(msg)

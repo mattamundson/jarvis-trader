@@ -199,6 +199,18 @@ class PortfolioTracker:
             price,
             trade_id[:8],
         )
+        # Publish trade opened event
+        try:
+            from events.bus import publish as publish_event
+            publish_event(
+                'trade_opened',
+                f'{symbol.upper()} {action.upper()} {quantity} @ {price}',
+                symbol=symbol.upper(),
+                severity='info'
+            )
+        except Exception:
+            pass
+        
         return trade_id
 
     def close_trade(self, trade_id: str, exit_price: float) -> PaperTrade:
@@ -327,6 +339,19 @@ class PortfolioTracker:
         except Exception as _oc_exc:
             logger.debug("[PAPER] OpenClaw trade-close notify skipped: %s", _oc_exc)
 
+        # Publish trade closed event
+        try:
+            from events.bus import publish as publish_event
+            severity = 'warn' if trade.pnl and trade.pnl < 0 else 'info'
+            publish_event(
+                'trade_closed',
+                f'{trade.symbol} closed pnl={trade.pnl}',
+                symbol=trade.symbol,
+                severity=severity
+            )
+        except Exception:
+            pass
+        
         return trade
 
     def get_open_positions(self) -> List[dict]:

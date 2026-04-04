@@ -1,5 +1,5 @@
 {
-  "project": "JARVIS Trader — Roadmap Phase 6 + Cleanup",
+  "project": "JARVIS Trader \u2014 Roadmap Phase 6 + Cleanup",
   "branchName": "main",
   "description": "Complete 4 remaining roadmap items: RL Learning System, integration test fixes, capital config update to $10K, and Polymarket dashboard page.",
   "userStories": [
@@ -37,10 +37,10 @@
       "title": "Fix 4 failing integration tests",
       "description": "As a developer, I want all integration tests passing so the CI baseline is clean before adding new tests.",
       "acceptanceCriteria": [
-        "test_import_trades_single passes — fix: paper_trades schema missing 'action' column. Add migration or update test fixture to match actual schema",
-        "test_market_session passes — fix: 404 means endpoint missing. Add /api/v1/market/session or update test URL to match actual endpoint",
-        "test_position_sizing_calculate passes — fix: 404. Add endpoint or update URL",
-        "test_validation_readiness_check passes — fix: 404. Add endpoint or update URL",
+        "test_import_trades_single passes \u2014 fix: paper_trades schema missing 'action' column. Add migration or update test fixture to match actual schema",
+        "test_market_session passes \u2014 fix: 404 means endpoint missing. Add /api/v1/market/session or update test URL to match actual endpoint",
+        "test_position_sizing_calculate passes \u2014 fix: 404. Add endpoint or update URL",
+        "test_validation_readiness_check passes \u2014 fix: 404. Add endpoint or update URL",
         "test_whatsapp_test_notification: mark with @pytest.mark.skipif when TWILIO_ACCOUNT_SID not set (env-dependent, not a code bug)",
         "cd engine && .venv/Scripts/python -m pytest tests/test_integration.py -v shows 0 failures (skips allowed for env-dependent tests)"
       ],
@@ -66,14 +66,14 @@
     },
     {
       "id": "US-005",
-      "title": "Polymarket dashboard page — production quality",
+      "title": "Polymarket dashboard page \u2014 production quality",
       "description": "As a trader, I want the Polymarket page to be a production-quality display of the module status with regulatory context, not a stub.",
       "acceptanceCriteria": [
         "dashboard/app/polymarket/page.tsx renders: module status (DISABLED with regulatory note), Kalshi alternative suggestion, market listing section (empty state when disabled), enable/disable toggle only visible when POLYMARKET_ENABLED env var is set",
-        "Page uses correct API endpoint — verify against engine/markets/polymarket/module.py and main.py for actual health/status route",
+        "Page uses correct API endpoint \u2014 verify against engine/markets/polymarket/module.py and main.py for actual health/status route",
         "Regulatory disclaimer prominently displayed: 'Polymarket has U.S. regulatory restrictions (CFTC settled 2022). Module disabled by default.'",
         "cd dashboard && pnpm run build passes with 0 TypeScript errors",
-        "Page looks production-quality matching dark terminal aesthetic — NOT a stub or placeholder"
+        "Page looks production-quality matching dark terminal aesthetic \u2014 NOT a stub or placeholder"
       ],
       "priority": 5,
       "passes": true,

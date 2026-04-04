@@ -368,6 +368,21 @@ class TradingPipeline:
         if self.profiler:
             await self.profiler.finish_run()
 
+        # Publish pipeline result event
+        try:
+            from events.bus import publish as publish_event
+            symbol_val = kwargs.get('symbol', 'UNKNOWN')
+            action = pipeline_result.get('action', 'HOLD').upper() if pipeline_result else 'HOLD'
+            conviction = pipeline_result.get('conviction', 0) if pipeline_result else 0
+            publish_event(
+                'pipeline_run',
+                f'{symbol_val} → {action} conviction={conviction:.0%}',
+                symbol=symbol_val,
+                severity='info'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to publish pipeline event: {e}")
+        
         return pipeline_result
 
     # ── Stage Runners ──────────────────────────────────────────────────────
