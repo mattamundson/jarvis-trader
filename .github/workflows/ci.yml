@@ -72,10 +72,13 @@ jobs:
           mypy engine/ --ignore-missing-imports --config-file engine/pyproject.toml \
             --explicit-package-bases --namespace-packages
 
-  engine-test:
-    name: Engine Tests (pytest)
+  # Parallel slices (wall-clock): fast ~unit/router + slow integration/E2E (see pytest.mark.slow).
+  engine-test-fast:
+    name: Engine Tests (pytest, fast)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
+    env:
+      COVERAGE_FILE: ${{ github.workspace }}/.coverage.fast
     steps:
       - uses: actions/checkout@v4
 
@@ -90,15 +93,90 @@ jobs:
         run: |
           pip install -q -r engine/requirements-core.txt
 
-      - name: Run pytest
+      - name: Run pytest (-m "not slow")
         run: |
-          # Fast slice first (PR feedback); then @pytest.mark.slow integration/E2E modules.
-          # Full coverage: first pass writes coverage.xml; second uses --cov-append and overwrites xml.
           pytest engine/tests/ -m "not slow" \
-            -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
+            -v --tb=short --cov=engine --cov-report=term-missing
+
+      - name: Upload coverage data
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data-fast
+          path: .coverage.fast
+          retention-days: 7
+
+  engine-test-slow:
+    name: Engine Tests (pytest, slow)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COVERAGE_FILE: ${{ github.workspace }}/.coverage.slow
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'engine/requirements-core.txt'
+
+      - name: Install dependencies
+        run: |
+          pip install -q -r engine/requirements-core.txt
+
+      - name: Run pytest (-m slow)
+        run: |
           pytest engine/tests/ -m slow \
-            -v --tb=short --cov=engine --cov-append --cov-report=term-missing --cov-report=xml \
-            || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow pass"; exit 0; fi; exit "$ec"; }
+            -v --tb=short --cov=engine --cov-report=term-missing \
+            || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow slice"; exit 0; fi; exit "$ec"; }
+
+      - name: Upload coverage data
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data-slow
+          path: .coverage.slow
+          if-no-files-found: ignore
+          retention-days: 7
+
+  engine-coverage-merge:
+    name: Engine Tests (coverage merge)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [engine-test-fast, engine-test-slow]
+    if: ${{ needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'engine/requirements-core.txt'
+
+      - name: Install coverage
+        run: pip install -q -r engine/requirements-core.txt
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+          path: ${{ github.workspace }}
+
+      - name: Combine and emit coverage.xml
+        run: |
+          cd "${GITHUB_WORKSPACE}"
+          if [[ -f .coverage.slow ]]; then
+            coverage combine --rcfile=engine/pyproject.toml .coverage.fast .coverage.slow
+          else
+            echo "No slow coverage file; using fast slice only"
+            cp .coverage.fast .coverage
+          fi
+          coverage xml -o coverage.xml --rcfile=engine/pyproject.toml
 
       - name: Upload coverage artifact
         if: always()
@@ -191,7 +269,14 @@ jobs:
   # Final job: summary
   ci-summary:
     name: CI Summary
-    needs: [engine-lint, engine-typecheck, engine-test, dashboard-build, security-scan]
+    needs:
+      - engine-lint
+      - engine-typecheck
+      - engine-test-fast
+      - engine-test-slow
+      - engine-coverage-merge
+      - dashboard-build
+      - security-scan
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -199,10 +284,17 @@ jobs:
         run: |
           if [[ "${{ needs.engine-lint.result }}" != "success" || \
                 "${{ needs.engine-typecheck.result }}" != "success" || \
-                "${{ needs.engine-test.result }}" != "success" || \
+                "${{ needs.engine-test-fast.result }}" != "success" || \
+                "${{ needs.engine-test-slow.result }}" != "success" || \
                 "${{ needs.dashboard-build.result }}" != "success" || \
                 "${{ needs.security-scan.result }}" != "success" ]]; then
             echo "⚠️  Some CI checks failed. Please review the logs above."
+            exit 1
+          fi
+          if [[ "${{ needs.engine-test-fast.result }}" == "success" && \
+                "${{ needs.engine-test-slow.result }}" == "success" && \
+                "${{ needs.engine-coverage-merge.result }}" != "success" ]]; then
+            echo "⚠️  Coverage merge failed while both pytest slices passed."
             exit 1
           fi
           echo "✓ All CI checks passed!"
