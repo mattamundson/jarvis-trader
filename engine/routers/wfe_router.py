@@ -197,7 +197,7 @@ async def post_wfe_snapshot(symbol: Optional[str] = None, conn: sqlite3.Connecti
             stats = _compute_snapshot_stats(sym, week_start, conn)
 
             # Insert into wfe_snapshots
-            conn.execute(
+            cursor = conn.execute(
                 """
                 INSERT INTO wfe_snapshots (symbol, week_start, trades, win_rate, profit_factor, sharpe, max_dd, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -219,7 +219,7 @@ async def post_wfe_snapshot(symbol: Optional[str] = None, conn: sqlite3.Connecti
                 "symbol": sym,
                 "week_start": week_start,
                 "trades": stats["trades"],
-                "snapshot_id": conn.lastrowid,
+                "snapshot_id": cursor.lastrowid,
             })
             logger.info(f"[WFE] Snapshot created for {sym}: {stats['trades']} trades, PF={stats['profit_factor']}")
 

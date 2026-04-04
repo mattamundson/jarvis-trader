@@ -278,6 +278,32 @@ class PortfolioTracker:
         except Exception as _exc:
             logger.debug("[LEARNING] Trade classification skipped: %s", _exc)
 
+        # Wire trade close event to learning feedback module (non-blocking, best-effort)
+        try:
+            import asyncio as _asyncio_fb
+            import os as _os_fb
+
+            from learning.feedback import process_trade_outcome as _process_feedback
+
+            if not _os_fb.getenv("TESTING"):
+                _loop_fb = _asyncio_fb.get_event_loop()
+                if _loop_fb.is_running():
+                    _loop_fb.create_task(
+                        _process_feedback(
+                            trade_id=trade_id,
+                            symbol=trade.symbol,
+                            pnl=trade.pnl or 0.0,
+                            entry_price=trade.entry_price or 0.0,
+                            exit_price=float(exit_price),
+                            entry_time=trade.entry_time or "",
+                            exit_time=exit_time,
+                            action=trade.action or "",
+                        )
+                    )
+                    logger.info("[LEARNING] Feedback queued for trade %s", str(trade_id)[:8])
+        except Exception as _fb_exc:
+            logger.debug("[LEARNING] Feedback generation skipped: %s", _fb_exc)
+
         # OpenClaw WhatsApp alert on trade close (non-blocking, best-effort)
         try:
             import asyncio as _asyncio
@@ -938,20 +964,60 @@ class PortfolioTracker:
         except Exception as exc:
             logger.error("[TRACKER] reload_open_positions_from_db failed: %s", exc)
 
+    def initialize_closed_trades_from_db(self) -> None:
+        """
+        Populate self._closed from SQLite on engine startup.
 
-# ── Singleton ─────────────────────────────────────────────────────────────────
+        This ensures that after a restart, the in-memory closed trade history
+        matches the database (Bug B9 / US-2004). Called after load_from_db()
+        and _load_history() to fill any gaps.
 
-_tracker: Optional[PortfolioTracker] = None
+        Errors are caught and logged; the tracker remains usable even if the DB
+        is temporarily unavailable.
+        """
+        if self._db is None:
+            logger.debug("[TRACKER] initialize_closed_trades_from_db: no db_manager, skipping")
+            return
 
+        try:
+            rows = self._db.get_trade_history(limit=5000)
+            if not rows:
+                logger.debug("[TRACKER] initialize_closed_trades_from_db: no rows in DB")
+                return
 
-def get_tracker(db_manager: Any = None) -> PortfolioTracker:
-    """
-    Return the module-level singleton tracker, creating it on first call.
+            existing_ids = {t.trade_id for t in self._closed}
+            added = 0
+            for row in rows:
+                try:
+                    is_open_flag = row.get("is_open", row.get("exit_price") is None)
+                    if is_open_flag:
+                        continue
+                    trade_id = str(row.get("trade_id") or row.get("id", ""))
+                    if trade_id in existing_ids:
+                        continue
+                    trade = PaperTrade(
+                        trade_id=trade_id,
+                        symbol=str(row.get("symbol", "")),
+                        action=str(row.get("side") or row.get("action", "")),
+                        quantity=float(row.get("quantity", 0)),
+                        entry_price=float(row.get("entry_price", 0)),
+                        entry_time=str(row.get("entry_time", "")),
+                        exit_price=row.get("exit_price"),
+                        exit_time=row.get("exit_time"),
+                        pnl=row.get("pnl"),
+                        notes=str(row.get("notes") or ""),
+                        is_open=False,
+                    )
+                    self._closed.append(trade)
+                    existing_ids.add(trade_id)
+                    added += 1
+                except (TypeError, ValueError, KeyError) as exc:
+                    logger.warning("[TRACKER] initialize_closed: skipping bad row: %s", exc)
 
-    Pass db_manager on the first call to enable SQLite persistence.
-    Subsequent calls return the existing instance regardless of db_manager.
-    """
-    global _tracker
-    if _tracker is None:
-        _tracker = PortfolioTracker(db_manager=db_manager)
-    return _tracker
+            self._closed.sort(key=lambda t: t.entry_time)
+            logger.info(
+                "[TRACKER] initialize_closed_trades_from_db: added %d closed trades from SQLite",
+                added,
+            )
+        except Exception as exc:
+            logger.error("[TRACKER] initialize_closed_trades_from_db failed: %s", exc)
