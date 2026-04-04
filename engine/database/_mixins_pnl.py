@@ -7,6 +7,7 @@ DatabaseManager mixin providing CRUD methods for the daily_pnl table.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 logger = logging.getLogger("jarvis_trader.database")
@@ -65,9 +66,13 @@ class DailyPnLMixin:
         self,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
+        days: Optional[int] = None,
     ) -> List[Dict]:
         """
         Return daily P&L rows, optionally filtered by date range (YYYY-MM-DD).
+
+        If ``days`` is set and ``start_date`` is not, rows on or after
+        (today UTC − ``days`` calendar days) are returned.
         Results are ordered oldest-first (ascending date).
         """
         clauses = []
@@ -75,6 +80,10 @@ class DailyPnLMixin:
         if start_date:
             clauses.append("date >= ?")
             params.append(start_date)
+        elif days is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=int(days))).date().isoformat()
+            clauses.append("date >= ?")
+            params.append(cutoff)
         if end_date:
             clauses.append("date <= ?")
             params.append(end_date)
