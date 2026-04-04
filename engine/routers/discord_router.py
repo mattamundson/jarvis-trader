@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,6 +10,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 logger = logging.getLogger("jarvis_trader.discord")
 
 router = APIRouter(prefix="/discord", tags=["discord"])
+
+# Injected from main.py (optional — intelligence still works without live prices)
+_data_manager = None
+
+
+def inject_data_manager(dm) -> None:
+    """Wire MarketDataManager for live quotes on /discord/intelligence."""
+    global _data_manager
+    _data_manager = dm
 
 
 def get_db_path() -> str:
@@ -210,3 +220,53 @@ async def get_stats(db_path: str = Depends(get_db_path)):
         return stats
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/intelligence")
+async def get_discord_intelligence(
+    jarvis_bias: str = Query(
+        "NEUTRAL",
+        description="JARVIS directional bias for alignment: LONG, SHORT, or NEUTRAL",
+    ),
+    db_path: str = Depends(get_db_path),
+):
+    """
+    Aggregated Discord bot features for MCL and MNQ (dashboard widget).
+
+    Uses ``DiscordSignalContext`` — same five features as the RL state vector.
+    Live last prices come from ``data_manager`` when connected; otherwise
+    proximity uses the signal entry price when a recent signal exists.
+    """
+    from zoneinfo import ZoneInfo
+
+    from discord.signal_context import DiscordSignalContext
+
+    bias = (jarvis_bias or "NEUTRAL").upper()
+    if bias not in ("LONG", "SHORT", "NEUTRAL"):
+        raise HTTPException(status_code=400, detail="jarvis_bias must be LONG, SHORT, or NEUTRAL") from None
+
+    ctx = DiscordSignalContext(db_path=db_path)
+    now_ct = datetime.now(ZoneInfo("America/Chicago"))
+    symbols: dict[str, dict[str, float]] = {}
+
+    for sym in ("MCL", "MNQ"):
+        live: Optional[float] = None
+        if _data_manager is not None:
+            try:
+                snap = await _data_manager.get_current_price(sym)
+                if isinstance(snap, dict) and snap.get("last_price") is not None:
+                    lp = float(snap["last_price"])
+                    if lp > 0:
+                        live = lp
+            except Exception as exc:
+                logger.debug("discord intelligence price %s: %s", sym, exc)
+
+        # 0.0 lets get_features fall back to signal entry for proximity when IBKR is offline
+        price_arg = live if live is not None else 0.0
+        feats = ctx.get_features(sym, now_ct, price_arg, 1.0, jarvis_bias=bias)
+        symbols[sym] = feats
+
+    return {
+        "symbols": symbols,
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+    }

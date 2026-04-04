@@ -100,6 +100,15 @@ class DiscordSignalContext:
         since = timestamp - timedelta(minutes=lookback_minutes)
         recent_signal = self._get_recent_signal(discord_symbol, since, timestamp)
 
+        # Effective price for proximity: live quote, else signal entry (dashboard/API with no IBKR)
+        price_eff: float
+        if price is not None and float(price) > 0:
+            price_eff = float(price)
+        elif recent_signal and recent_signal.get("entry_price") and float(recent_signal["entry_price"]) > 0:
+            price_eff = float(recent_signal["entry_price"])
+        else:
+            price_eff = 0.0
+
         # Feature 18: signal active
         signal_active = 1.0 if recent_signal is not None else 0.0
 
@@ -107,15 +116,15 @@ class DiscordSignalContext:
         win_rate = self._get_rolling_win_rate(discord_symbol, timestamp)
 
         # Feature 20: proximity to entry_price
-        if recent_signal and recent_signal.get("entry_price") and recent_signal["entry_price"] > 0:
-            proximity_entry = (price - recent_signal["entry_price"]) / atr
+        if recent_signal and recent_signal.get("entry_price") and recent_signal["entry_price"] > 0 and price_eff > 0:
+            proximity_entry = (price_eff - recent_signal["entry_price"]) / atr
             proximity_entry = max(-1.0, min(1.0, proximity_entry))
         else:
             proximity_entry = 0.0
 
         # Feature 21: proximity to target1
-        if recent_signal and recent_signal.get("target1") and recent_signal["target1"] > 0:
-            proximity_target = abs(price - recent_signal["target1"]) / atr
+        if recent_signal and recent_signal.get("target1") and recent_signal["target1"] > 0 and price_eff > 0:
+            proximity_target = abs(price_eff - recent_signal["target1"]) / atr
             proximity_target = max(0.0, min(2.0, proximity_target))
         else:
             proximity_target = 0.0
