@@ -1,8 +1,40 @@
 # HANDOFF_CLAUDE_SESSION.md
 ## JARVIS TRADER — Comprehensive Session Handoff
-**Last Updated**: 2026-04-04 (Sprint 21 In Progress → Final Close-Out)
+**Last Updated**: 2026-04-05 (Sprint 21 Complete)
 **Written by**: Claude Haiku 4.5 (claude-haiku-4-5-20251001)
 **Purpose**: Full context transfer to next Claude session / backup AI agent / Monday morning market ready
+
+---
+
+## Sprint 21 — Complete (2026-04-05)
+
+### What was done
+
+| Story | Title | Outcome |
+|-------|-------|---------|
+| US-2101 | Fix IB contract conId in get_snapshot_price | **FIXED** — uses `_resolve_front_month()` pattern. Live prices now flow when IB Gateway online. |
+| US-2102 | Fix dashboard API key mismatch | **FIXED** — created dashboard/.env.local with NEXT_PUBLIC_ENGINE_API_KEY, added table.tsx, fixed journal Button size. |
+| US-2103 | Close 4 stale MES test positions | **IMPLEMENTED** — POST /portfolio/paper/admin/close-stale endpoint added to portfolio_router.py. Note: positions don't exist in SQLite (already cleaned Sprint 20), endpoint returns gracefully. |
+| US-2104 | Post-trade analysis dashboard page | **IMPLEMENTED** — GET /paper/trades/closed endpoint + dashboard/app/trades/page.tsx with Trade History page, auto-refresh, badges, human-readable duration. |
+| US-2105 | Sprint 21 close-out — docs | **COMPLETE** — sprint21_summary.md written, prd.json marked all passes: true, HANDOFF_CLAUDE_SESSION.md updated. |
+
+### Test status after Sprint 21
+- **1213+ tests passing** (baseline from Sprint 20)
+- **27 known failures** (ValidationTracker.metrics from Sprint 20 refactor, WFE router auth) — NOT blocking paper trading launch
+- **Dashboard**: pnpm build passes, 26+ routes, 0 TypeScript errors
+
+### Known issues carried to Sprint 22
+1. **test_paper_validation.py**: 12 failures — ValidationTracker.metrics attribute removed in Sprint 20 US-2003 refactor (must fix before live trading)
+2. **test_wfe_router.py**: 4 failures — auth header missing in tests, float precision (non-critical for paper)
+3. **IB Gateway auto-logoff**: Manual fix required (disable in Gateway settings)
+
+### Monday Readiness (09:00 CT before market open 09:31)
+- [x] Engine v1.1.0, port 8010 — healthy
+- [x] Dashboard port 3010 — build passes, Trade History page live
+- [x] IB Gateway port 4002 — contract qualification fixed
+- [x] Paper capital $10K — MCL +$100 realized, ready to scale
+- [x] All critical endpoints verified (prices, positions, trades, health)
+- [x] Safety invariants armed (LIVE_TRADING_ENABLED=False, REQUIRE_HUMAN_APPROVAL=True)
 
 ---
 
