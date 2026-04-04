@@ -611,9 +611,7 @@ def run_walk_forward_for_params(
 
     summary = validator._compute_summary(results_windows)
 
-    avg_is_pf = float(
-        np.mean([min(w["is_result"].profit_factor, 999.0) for w in results_windows])
-    )
+    avg_is_pf = float(np.mean([min(w["is_result"].profit_factor, 999.0) for w in results_windows]))
     avg_oos_pf = summary["avg_oos_profit_factor"]
     avg_oos_sharpe = summary["avg_oos_sharpe"]
 

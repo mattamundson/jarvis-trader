@@ -539,7 +539,9 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         closed_trade = tracker.close_trade(trade_id, exit_price=19600.0)
         self.assertIsNotNone(closed_trade)
         self.assertFalse(closed_trade.is_open)
-        self.assertAlmostEqual(closed_trade.pnl, 400.0)  # (19600 - 19500) * 2 * 2.0 (MNQ multiplier)
+        self.assertAlmostEqual(
+            closed_trade.pnl, 400.0
+        )  # (19600 - 19500) * 2 * 2.0 (MNQ multiplier)
 
         positions_after = tracker.get_open_positions()
         self.assertEqual(len(positions_after), 0)

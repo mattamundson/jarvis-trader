@@ -1,4 +1,5 @@
 """Experiment log for n-autoresearch MES parameter search."""
+
 from __future__ import annotations
 
 import json

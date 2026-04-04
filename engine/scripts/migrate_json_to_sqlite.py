@@ -205,9 +205,7 @@ def _insert_trade(conn: sqlite3.Connection, record: dict, dry_run: bool) -> bool
         return True
 
     conn.execute(sql, params)
-    return conn.execute(
-        "SELECT changes()"
-    ).fetchone()[0] > 0  # 0 = ON CONFLICT IGNORE fired
+    return conn.execute("SELECT changes()").fetchone()[0] > 0  # 0 = ON CONFLICT IGNORE fired
 
 
 # ---------------------------------------------------------------------------
