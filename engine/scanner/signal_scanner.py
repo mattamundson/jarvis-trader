@@ -206,7 +206,7 @@ class SignalScanner:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Log any exceptions from individual symbol scans
-        for symbol, result in zip(self.symbols, results):
+        for symbol, result in zip(self.symbols, results, strict=False):
             if isinstance(result, Exception):
                 logger.error(f"[Scanner] Failed to scan {symbol}: {result}", exc_info=result)
                 self._error_count += 1

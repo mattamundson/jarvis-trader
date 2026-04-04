@@ -2,14 +2,16 @@
 Tests for US-2141: WFE live tracking endpoints
 """
 
-import pytest
-from datetime import datetime, timedelta
-from fastapi.testclient import TestClient
-from main import app
-from routers.wfe_router import _get_week_start, _compute_snapshot_stats
-from config import settings
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from config import settings
+from main import app
+from routers.wfe_router import _compute_snapshot_stats, _get_week_start
 
 
 @pytest.fixture

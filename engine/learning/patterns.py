@@ -11,7 +11,7 @@ Integrates with consolidator.py for persistent storage.
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ async def update_patterns_from_feedback(
         try:
             from datetime import datetime
 
-            for fmt in ["%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S"]:
+            for _fmt in ["%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S"]:
                 try:
                     entry_dt = datetime.fromisoformat(entry_time_str.replace("Z", "+00:00"))
                     hour = entry_dt.hour

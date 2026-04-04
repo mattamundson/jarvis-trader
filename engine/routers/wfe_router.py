@@ -9,15 +9,14 @@ Endpoints:
 """
 
 import logging
-from datetime import datetime, timedelta
-from typing import Optional
-
 import sqlite3
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import datetime, timedelta
+from typing import Annotated, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from config import settings
-from database.manager import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +169,10 @@ def _compute_snapshot_stats(symbol: str, week_start: str, conn: sqlite3.Connecti
 
 
 @router.post("/snapshot", response_model=dict)
-async def post_wfe_snapshot(symbol: Optional[str] = None, conn: sqlite3.Connection = Depends(get_db_connection)):
+async def post_wfe_snapshot(
+    conn: Annotated[sqlite3.Connection, Depends(get_db_connection)],
+    symbol: Optional[str] = None,
+):
     """
     Compute current period stats from paper_trades and write to wfe_snapshots.
 
@@ -231,14 +233,14 @@ async def post_wfe_snapshot(symbol: Optional[str] = None, conn: sqlite3.Connecti
 
     except Exception as e:
         logger.error(f"[WFE] POST /snapshot failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create WFE snapshot: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create WFE snapshot: {e}") from e
 
 
 @router.get("/snapshots", response_model=WFESnapshotResponse)
 async def get_wfe_snapshots(
+    conn: Annotated[sqlite3.Connection, Depends(get_db_connection)],
     symbol: Optional[str] = None,
     limit: int = 100,
-    conn: sqlite3.Connection = Depends(get_db_connection),
 ):
     """
     Get all WFE snapshots with divergence flag.
@@ -304,4 +306,4 @@ async def get_wfe_snapshots(
 
     except Exception as e:
         logger.error(f"[WFE] GET /snapshots failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to fetch WFE snapshots: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch WFE snapshots: {e}") from e

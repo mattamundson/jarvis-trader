@@ -87,6 +87,7 @@ def notify_target_reached(
     # OpenClaw WhatsApp alert
     try:
         import asyncio
+
         from notifications.openclaw_notifier import notify_target as _oc_target
         loop = asyncio.get_event_loop()
         if loop.is_running():

@@ -9,10 +9,8 @@ When a trade closes, this module:
 Used by portfolio/tracker.py:close_trade() via async callbacks.
 """
 
-import json
 import logging
 from datetime import datetime
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +126,7 @@ async def process_trade_outcome(
 def _get_trade_duration(entry_time_str: str, exit_time_str: str) -> str:
     """Compute human-readable trade duration."""
     try:
-        for fmt in ["%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"]:
+        for _fmt in ["%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"]:
             try:
                 entry = datetime.fromisoformat(entry_time_str.replace("Z", "+00:00"))
                 exit_dt = datetime.fromisoformat(exit_time_str.replace("Z", "+00:00"))

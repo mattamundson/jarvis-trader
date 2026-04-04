@@ -3,7 +3,8 @@ Tests for US-2140: LLM pre-filter for STC mid-range skipping
 """
 
 import pytest
-from agents.pre_filter import pre_filter_signal, pre_filter_decision
+
+from agents.pre_filter import pre_filter_decision, pre_filter_signal
 from config import settings
 
 

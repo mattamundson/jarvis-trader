@@ -15,6 +15,7 @@ Pre-filter statistics are logged to track savings:
 """
 
 import logging
+
 from config import settings
 
 logger = logging.getLogger(__name__)

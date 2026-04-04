@@ -405,8 +405,11 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # Inject learning recommendations (non-blocking graceful fallback)
         learning_context = ""
         try:
-            from learning.recommendations import get_recommendations, format_recommendations_for_prompt
             from database.manager import db_manager
+            from learning.recommendations import (
+                format_recommendations_for_prompt,
+                get_recommendations,
+            )
 
             recommendations = await get_recommendations(symbol, timeframe, db_manager=db_manager)
             if recommendations:
