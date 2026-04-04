@@ -160,20 +160,27 @@ jobs:
       - name: Install coverage
         run: pip install -q -r engine/requirements-core.txt
 
-      - name: Download coverage data
+      - name: Download fast coverage data
         uses: actions/download-artifact@v4
         with:
-          pattern: coverage-data-*
-          merge-multiple: true
-          path: ${{ github.workspace }}
+          name: coverage-data-fast
+          path: cov-fast
+
+      - name: Download slow coverage data
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-data-slow
+          path: cov-slow
 
       - name: Combine and emit coverage.xml
         run: |
           cd "${GITHUB_WORKSPACE}"
-          # download-artifact merges into subpaths; resolve actual data files
-          FAST=$(find . -name '.coverage.fast' -type f | head -1)
-          SLOW=$(find . -name '.coverage.slow' -type f | head -1)
-          if [[ -z "${FAST}" ]]; then echo "ERROR: missing .coverage.fast after download"; exit 1; fi
+          # upload-artifact preserves filename under the given directory
+          FAST=$(find cov-fast -type f | head -1)
+          SLOW=""
+          if [[ -d cov-slow ]]; then SLOW=$(find cov-slow -type f | head -1); fi
+          if [[ -z "${FAST}" ]]; then echo "ERROR: missing fast coverage after download"; ls -laR cov-fast || true; exit 1; fi
           if [[ -n "${SLOW}" ]]; then
             coverage combine --rcfile=engine/pyproject.toml "${FAST}" "${SLOW}"
           else
