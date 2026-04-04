@@ -570,6 +570,16 @@ export interface ClosedTrade {
   duration_seconds: number;
 }
 
+export interface ClosedPaperTradesResponse {
+  status: string;
+  trades: ClosedTrade[];
+}
+
+/** Canonical: GET /paper/validation/trades/closed */
+export async function fetchClosedPaperTrades(): Promise<ClosedPaperTradesResponse> {
+  return fetchEngine<ClosedPaperTradesResponse>("/paper/validation/trades/closed");
+}
+
 // ── Approval / Trade Gating API ──────────────────────────────────────────────
 
 export interface PendingApproval {
@@ -1066,14 +1076,27 @@ export async function fetchPipelineConfidenceStats(): Promise<ConfidenceStatsRes
   return fetchEngine<ConfidenceStatsResponse>("/pipeline/confidence-stats");
 }
 
-export interface ClosedTrade {
-  trade_id: string;
+// ── Approved Paper Validation Gates ─────────────────────────────────────────
+
+export interface ApprovedPaperValidationGate {
+  name: string;
+  current: number;
+  target: number;
+  passes: boolean;
+  unit: string;
+}
+
+export interface ApprovedInstrumentGateRow {
   symbol: string;
-  direction: string;
-  entry_price: number;
-  exit_price: number;
-  entry_time: string;
-  exit_time: string;
-  pnl: number;
-  duration_seconds: number;
+  trade_count: number;
+  days_with_trades: number;
+  gates: ApprovedPaperValidationGate[];
+  overall_pass: boolean;
+}
+
+export interface ApprovedPaperGatesResponse {
+  status: string;
+  thresholds: Record<string, number>;
+  instruments: ApprovedInstrumentGateRow[];
+  note: string;
 }

@@ -62,9 +62,9 @@ function InstrumentValidationScorecard() {
         symbol: "MCL",
         timeframe: "1h",
         wfe: "0.82",
-        pf: pfGate?.value ?? null,
-        sharpe: sharpeGate?.value ?? null,
-        wr: wrGate?.value ?? null,
+        pf: pfGate?.current ?? null,
+        sharpe: sharpeGate?.current ?? null,
+        wr: wrGate?.current ?? null,
         status: mcl.overall_pass ? "APPROVED" : "REVIEWING",
         badgeVariant: mcl.overall_pass ? "bull" : "info",
       });
@@ -93,9 +93,9 @@ function InstrumentValidationScorecard() {
         symbol: "MNQ",
         timeframe: "1h",
         wfe: "0.57",
-        pf: pfGate?.value ?? null,
-        sharpe: sharpeGate?.value ?? null,
-        wr: wrGate?.value ?? null,
+        pf: pfGate?.current ?? null,
+        sharpe: sharpeGate?.current ?? null,
+        wr: wrGate?.current ?? null,
         status: mnq.overall_pass ? "APPROVED" : "REVIEWING",
         badgeVariant: mnq.overall_pass ? "bull" : "info",
       });
@@ -281,4 +281,4 @@ function InstrumentValidationScorecard() {
   );
 }
 
-export { InstrumentValidationS
+export { InstrumentValidationScorecard };
