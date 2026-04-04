@@ -175,6 +175,18 @@ class SafetyLayer:
         except RuntimeError:
             # No running event loop (e.g., in tests or sync context)
             logger.debug("No running event loop for async logging")
+        # OpenClaw WhatsApp alert (non-blocking, best-effort)
+        try:
+            from notifications.openclaw_notifier import notify_kill_switch as _oc_kill
+
+            asyncio.create_task(
+                _oc_kill(
+                    reason=reason.value if hasattr(reason, "value") else str(reason),
+                    message=message,
+                )
+            )
+        except Exception:
+            logger.debug("OpenClaw kill switch notification skipped (no event loop or error)")
 
     def deactivate_kill_switch(self, authorized_by: str = "human") -> None:
         """Resume trading. Only callable by human action (not by agents)."""
