@@ -1,8 +1,11 @@
 "use client";
 
 import useSWR from "swr";
-import { fetchEngine } from "@/lib/api";
-import type { ClosedTrade } from "@/lib/api";
+import {
+  fetchClosedPaperTrades,
+  type ClosedPaperTradesResponse,
+  type ClosedTrade,
+} from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -50,9 +53,9 @@ function formatTime(timeStr: string): string {
 }
 
 export default function TradesPage() {
-  const { data, error, isLoading } = useSWR<{ status: string; trades: ClosedTrade[] }>(
-    "/paper/validation/trades/closed",
-    fetchEngine,
+  const { data, error, isLoading } = useSWR<ClosedPaperTradesResponse>(
+    "closed-paper-trades",
+    fetchClosedPaperTrades,
     { refreshInterval: 30000 }
   );
 
