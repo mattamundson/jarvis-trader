@@ -558,6 +558,18 @@ export interface CompareToBacktestResponse {
   };
 }
 
+export interface ClosedTrade {
+  trade_id: string;
+  symbol: string;
+  direction: string; // LONG or SHORT
+  entry_price: number;
+  exit_price: number;
+  entry_time: string;
+  exit_time: string;
+  pnl: number;
+  duration_seconds: number;
+}
+
 // ── Approval / Trade Gating API ──────────────────────────────────────────────
 
 export interface PendingApproval {
@@ -883,6 +895,12 @@ export interface TradeJournalEntry {
   stc_contrib: number | null;
   orb_contrib: number | null;
   vwap_contrib: number | null;
+  // Trade attribution (US-2130)
+  regime_tier: number | null;
+  deciding_stage: string | null;
+  bull_score: number | null;
+  bear_score: number | null;
+  debate_confidence: number | null;
 }
 
 export async function fetchTradeJournal(
@@ -896,7 +914,7 @@ export async function fetchTradeJournal(
   if (limit) params.append("limit", String(limit));
 
   const queryString = params.toString();
-  const path = queryString ? `/paper/trade-journal?${queryString}` : "/paper/trade-journal";
+  const path = queryString ? `/trades/journal?${queryString}` : "/trades/journal";
   return fetchEngine<TradeJournalEntry[]>(path);
 }
 
@@ -1028,4 +1046,22 @@ export interface DualTFSymbol {
 export interface DualTFResponse {
   symbols: DualTFSymbol[];
   timestamp: string;
+}
+
+// Pipeline Confidence Monitoring (US-2131)
+export interface ConfidenceStatsResponse {
+  total_runs: number;
+  hold_count: number;
+  trade_count: number;
+  avg_confidence: number;
+  min_confidence: number;
+  max_confidence: number;
+  hold_rate: number;
+  alert?: string;
+  period: string;
+  timestamp: string;
+}
+
+export async function fetchPipelineConfidenceStats(): Promise<ConfidenceStatsResponse> {
+  return fetchEngine<ConfidenceStatsResponse>("/pipeline/confidence-stats");
 }
