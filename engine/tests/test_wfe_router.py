@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 from main import app
 from routers.wfe_router import _get_week_start, _compute_snapshot_stats
+from config import settings
 import sqlite3
 from pathlib import Path
 
@@ -170,7 +171,7 @@ class TestComputeSnapshotStats:
         stats = _compute_snapshot_stats("MCL", week_start, db_connection)
 
         assert stats["trades"] == 3
-        assert stats["win_rate"] == 2.0 / 3.0  # 2 wins / 3 trades
+        assert stats["win_rate"] == pytest.approx(2.0 / 3.0, rel=1e-3)  # 2 wins / 3 trades
         # profit_factor = (500 + 300) / abs(-200) = 800 / 200 = 4.0
         assert stats["profit_factor"] == 4.0
 
@@ -181,7 +182,7 @@ class TestWFERouter:
     def test_post_snapshot_creates_snapshot(self):
         """POST /wfe/snapshot should create a snapshot."""
         client = TestClient(app)
-        response = client.post("/wfe/snapshot")
+        response = client.post("/wfe/snapshot", headers={"X-API-Key": settings.API_KEY})
 
         # Should return 200 with status='ok'
         assert response.status_code == 200
@@ -192,7 +193,7 @@ class TestWFERouter:
     def test_get_snapshots_returns_list(self):
         """GET /wfe/snapshots should return list of snapshots."""
         client = TestClient(app)
-        response = client.get("/wfe/snapshots")
+        response = client.get("/wfe/snapshots", headers={"X-API-Key": settings.API_KEY})
 
         assert response.status_code == 200
         data = response.json()
@@ -203,7 +204,7 @@ class TestWFERouter:
     def test_get_snapshots_with_symbol_filter(self):
         """GET /wfe/snapshots?symbol=MCL should filter by symbol."""
         client = TestClient(app)
-        response = client.get("/wfe/snapshots?symbol=MCL")
+        response = client.get("/wfe/snapshots?symbol=MCL", headers={"X-API-Key": settings.API_KEY})
 
         assert response.status_code == 200
         data = response.json()
