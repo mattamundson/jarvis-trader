@@ -9,6 +9,7 @@ Endpoints:
   GET /paper/validation/progress — current metrics vs thresholds
   GET /paper/validation/trades — list of all paper trades
   GET /paper/validation/status — overall pass/fail + days remaining
+  GET /paper/validation/approved-paper-gates — MCL/MNQ gates vs canonical thresholds (SQLite)
   POST /paper/validation/record — DEPRECATED (kept for compatibility, no-op)
 """
 
@@ -20,6 +21,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+
+from paper.validation_gate_config import APPROVED_PAPER_SYMBOLS, PAPER_VALIDATION_GATES
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +188,129 @@ class ValidationGatesResponse(BaseModel):
     overall_pass: bool = Field(..., description="True if all gates pass or are met")
 
 
+class ApprovedInstrumentGateRow(BaseModel):
+    """Validation gates for one approved paper symbol (MCL / MNQ)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    symbol: str
+    trade_count: int
+    days_with_trades: int
+    gates: list[ValidationGate]
+    overall_pass: bool
+
+
+class ApprovedPaperGatesAPIResponse(BaseModel):
+    """GET /paper/validation/approved-paper-gates"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    status: str = "ok"
+    thresholds: dict[str, float | int]
+    instruments: list[ApprovedInstrumentGateRow]
+    note: str
+
+
+def _distinct_trade_days(trades: list[dict]) -> int:
+    """Count distinct calendar dates with a closed trade (exit_time)."""
+    from datetime import datetime
+
+    days: set = set()
+    for trade in trades:
+        exit_time_str = trade.get("exit_time")
+        if not exit_time_str:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(exit_time_str).replace("Z", "+00:00"))
+            days.add(dt.date())
+        except (ValueError, AttributeError, TypeError):
+            continue
+    return len(days)
+
+
+def _build_validation_gate_rows(
+    closed_trades: list[dict],
+    *,
+    days_for_min_days_gate: int,
+) -> tuple[list[ValidationGate], float, bool]:
+    """
+    Build the six validation gates from closed trade rows.
+
+    ``days_for_min_days_gate`` is the value compared to ``min_days`` (global endpoint
+    uses ``daily_pnl`` row count; per-symbol uses distinct exit dates).
+    """
+    cfg = PAPER_VALIDATION_GATES
+
+    def _pnl(t: dict) -> float:
+        return float(t.get("pnl") or 0)
+
+    total_trades = len(closed_trades)
+    winning_trades = sum(1 for t in closed_trades if _pnl(t) > 0)
+    win_rate_pct = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
+    gross_profit = sum(_pnl(t) for t in closed_trades if _pnl(t) > 0)
+    gross_loss = sum(abs(_pnl(t)) for t in closed_trades if _pnl(t) < 0)
+    profit_factor = (
+        (gross_profit / gross_loss) if gross_loss > 0 else (9999.0 if gross_profit > 0 else 0.0)
+    )
+    sharpe_ratio = _compute_sharpe_ratio(closed_trades)
+    max_dd_pct = _compute_max_drawdown_pct(closed_trades)
+
+    pf_t = float(cfg["profit_factor"])
+    sharpe_t = float(cfg["sharpe_ratio"])
+    wr_t = float(cfg["win_rate_pct"])
+    trades_t = int(cfg["min_trades"])
+    days_t = int(cfg["min_days"])
+    dd_t = float(cfg["max_drawdown_pct"])
+
+    gates = [
+        ValidationGate(
+            name="profit_factor",
+            current=round(profit_factor, 2),
+            target=pf_t,
+            passes=profit_factor >= pf_t,
+            unit="",
+        ),
+        ValidationGate(
+            name="sharpe_ratio",
+            current=sharpe_ratio,
+            target=sharpe_t,
+            passes=sharpe_ratio >= sharpe_t,
+            unit="",
+        ),
+        ValidationGate(
+            name="win_rate",
+            current=round(win_rate_pct, 2),
+            target=wr_t,
+            passes=win_rate_pct >= wr_t,
+            unit="%",
+        ),
+        ValidationGate(
+            name="total_trades",
+            current=total_trades,
+            target=float(trades_t),
+            passes=total_trades >= trades_t,
+            unit="",
+        ),
+        ValidationGate(
+            name="days_active",
+            current=float(days_for_min_days_gate),
+            target=float(days_t),
+            passes=days_for_min_days_gate >= days_t,
+            unit="days",
+        ),
+        ValidationGate(
+            name="max_drawdown",
+            current=round(max_dd_pct, 2),
+            target=dd_t,
+            passes=max_dd_pct <= dd_t,
+            unit="%",
+        ),
+    ]
+    avg_conviction = _compute_conviction_score(closed_trades)
+    overall_pass = all(g.passes for g in gates)
+    return gates, avg_conviction, overall_pass
+
+
 def _compute_sharpe_ratio(trades: list[dict], risk_free_rate: float = 0.04) -> float:
     """
     Compute Sharpe ratio from closed trades.
@@ -205,9 +331,9 @@ def _compute_sharpe_ratio(trades: list[dict], risk_free_rate: float = 0.04) -> f
         try:
             dt = datetime.fromisoformat(exit_time_str.replace("Z", "+00:00"))
             day = dt.date()
-            pnl = float(trade.get("pnl", 0.0))
+            pnl = float(trade.get("pnl") or 0.0)
             daily_pnl[day] += pnl
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError, TypeError):
             continue
 
     if not daily_pnl:
@@ -245,17 +371,17 @@ def _compute_max_drawdown_pct(trades: list[dict]) -> float:
     daily_balances = defaultdict(float)
     running_pnl = 0.0
 
-    for trade in sorted(trades, key=lambda t: t.get("exit_time", "")):
+    for trade in sorted(trades, key=lambda t: t.get("exit_time") or ""):
         exit_time_str = trade.get("exit_time")
         if not exit_time_str:
             continue
         try:
             dt = datetime.fromisoformat(exit_time_str.replace("Z", "+00:00"))
             day = dt.date()
-            pnl = float(trade.get("pnl", 0.0))
+            pnl = float(trade.get("pnl") or 0.0)
             running_pnl += pnl
             daily_balances[day] = 10000 + running_pnl  # Starting capital $10k
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError, TypeError):
             continue
 
     if not daily_balances:
@@ -312,14 +438,12 @@ async def get_validation_gates():
     Returns all 6 validation gates with current/target values and pass status.
     """
     try:
-        from engine.database import get_db
+        from database import get_db
 
         db = get_db()
 
-        # Fetch all closed trades
         closed_trades = db.get_closed_trades(limit=1000)
 
-        # Fetch daily_pnl for days tracking
         sql = "SELECT COUNT(*) as cnt FROM daily_pnl"
         with db._lock:
             conn = db._connect()
@@ -329,92 +453,13 @@ async def get_validation_gates():
             finally:
                 conn.close()
 
-        # Compute metrics
-        total_trades = len(closed_trades)
-        winning_trades = sum(1 for t in closed_trades if t.get("pnl", 0) > 0)
-
-        win_rate_pct = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
-
-        # Profit factor: gross_profit / abs(gross_loss)
-        gross_profit = sum(t.get("pnl", 0) for t in closed_trades if t.get("pnl", 0) > 0)
-        gross_loss = sum(abs(t.get("pnl", 0)) for t in closed_trades if t.get("pnl", 0) < 0)
-        profit_factor = (
-            (gross_profit / gross_loss)
-            if gross_loss > 0
-            else (gross_profit if gross_profit > 0 else 0.0)
+        gates, avg_conviction, overall_pass = _build_validation_gate_rows(
+            closed_trades,
+            days_for_min_days_gate=days_elapsed,
         )
 
-        # Sharpe ratio
-        sharpe_ratio = _compute_sharpe_ratio(closed_trades)
-
-        # Max drawdown
-        max_dd_pct = _compute_max_drawdown_pct(closed_trades)
-
-        # Days remaining (target 30 days)
-        days_remaining = max(0, 30 - days_elapsed)
-
-        # Define validation targets
-        targets = {
-            "profit_factor": 2.0,
-            "sharpe_ratio": 1.5,
-            "win_rate": 55.0,
-            "total_trades": 60,
-            "days_active": 30,
-            "max_drawdown": 15.0,
-        }
-
-        # Build gates
-        gates = [
-            ValidationGate(
-                name="profit_factor",
-                current=round(profit_factor, 2),
-                target=targets["profit_factor"],
-                passes=profit_factor >= targets["profit_factor"],
-                unit="",
-            ),
-            ValidationGate(
-                name="sharpe_ratio",
-                current=sharpe_ratio,
-                target=targets["sharpe_ratio"],
-                passes=sharpe_ratio >= targets["sharpe_ratio"],
-                unit="",
-            ),
-            ValidationGate(
-                name="win_rate",
-                current=round(win_rate_pct, 2),
-                target=targets["win_rate"],
-                passes=win_rate_pct >= targets["win_rate"],
-                unit="%",
-            ),
-            ValidationGate(
-                name="total_trades",
-                current=total_trades,
-                target=targets["total_trades"],
-                passes=total_trades >= targets["total_trades"],
-                unit="",
-            ),
-            ValidationGate(
-                name="days_active",
-                current=days_elapsed,
-                target=targets["days_active"],
-                passes=days_elapsed >= targets["days_active"],
-                unit="days",
-            ),
-            ValidationGate(
-                name="max_drawdown",
-                current=round(max_dd_pct, 2),
-                target=targets["max_drawdown"],
-                passes=max_dd_pct <= targets["max_drawdown"],
-                unit="%",
-            ),
-        ]
-
-        # Compute average conviction score from Layer 5 position sizing
-        base_risk = 0.02  # 2% base risk per trade (per spec US-1403)
-        avg_conviction = _compute_conviction_score(closed_trades, base_risk)
-
-        # Overall pass: all gates must pass
-        overall_pass = all(g.passes for g in gates)
+        min_days = int(PAPER_VALIDATION_GATES["min_days"])
+        days_remaining = max(0, min_days - days_elapsed)
 
         return ValidationGatesResponse(
             gates=gates,
@@ -425,6 +470,52 @@ async def get_validation_gates():
         )
     except Exception as exc:
         logger.error(f"Validation gates error: {exc}")
+        raise HTTPException(500, str(exc)) from exc
+
+
+@router.get("/approved-paper-gates", response_model=ApprovedPaperGatesAPIResponse)
+async def get_approved_paper_gates():
+    """
+    Validation gates for **MCL** and **MNQ** only (approved paper futures).
+
+    Metrics are computed from **SQLite** ``paper_trades`` closed rows per symbol.
+    ``days_with_trades`` = distinct ``exit_time`` calendar dates (not ``daily_pnl`` rows).
+    """
+    try:
+        from database import get_db
+
+        db = get_db()
+        instruments: list[ApprovedInstrumentGateRow] = []
+
+        for sym in APPROVED_PAPER_SYMBOLS:
+            trades = db.get_closed_trades(symbol=sym, limit=5000)
+            days_distinct = _distinct_trade_days(trades)
+            gates, _, overall_pass = _build_validation_gate_rows(
+                trades,
+                days_for_min_days_gate=days_distinct,
+            )
+            instruments.append(
+                ApprovedInstrumentGateRow(
+                    symbol=sym,
+                    trade_count=len(trades),
+                    days_with_trades=days_distinct,
+                    gates=gates,
+                    overall_pass=overall_pass,
+                )
+            )
+
+        return ApprovedPaperGatesAPIResponse(
+            status="ok",
+            thresholds=dict(PAPER_VALIDATION_GATES),
+            instruments=instruments,
+            note=(
+                "Per-symbol gates use closed paper_trades (SQLite) for MCL/MNQ only; "
+                "days_active gate uses distinct exit dates. Global /gates uses all symbols "
+                "and daily_pnl row count for the days gate."
+            ),
+        )
+    except Exception as exc:
+        logger.error(f"Approved paper gates error: {exc}")
         raise HTTPException(500, str(exc)) from exc
 
 
@@ -439,7 +530,7 @@ async def get_eod_summary():
     try:
         from datetime import datetime
 
-        from engine.database import get_db
+        from database import get_db
 
         db = get_db()
 
@@ -449,12 +540,12 @@ async def get_eod_summary():
         # Get today's date in ISO format
         today_str = datetime.utcnow().date().isoformat()
 
-        # Fetch today's trades: WHERE status='closed' AND date(closed_at) = today
+        # Fetch today's trades: WHERE status='closed' AND date(exit_time) = today
         sql = """
-            SELECT symbol, side, quantity, entry_price, exit_price, pnl, closed_at
-            FROM trades
-            WHERE status = 'CLOSED'
-            AND DATE(closed_at) = DATE(?);
+            SELECT symbol, side, quantity, entry_price, exit_price, pnl, exit_time
+            FROM paper_trades
+            WHERE status = 'closed'
+            AND DATE(exit_time) = DATE(?);
         """
 
         with db._lock:
@@ -465,31 +556,35 @@ async def get_eod_summary():
             finally:
                 conn.close()
 
-        # Compute today's stats
+        # Compute today's stats (guard against None pnl)
+        def _pnl_today(t: dict) -> float:
+            return float(t.get("pnl") or 0)
+
         trades_today = len(today_trades)
-        pnl_today = sum(float(t.get("pnl", 0)) for t in today_trades)
-        wins_today = sum(1 for t in today_trades if float(t.get("pnl", 0)) > 0)
-        losses_today = sum(1 for t in today_trades if float(t.get("pnl", 0)) < 0)
+        pnl_today = sum(_pnl_today(t) for t in today_trades)
+        wins_today = sum(1 for t in today_trades if _pnl_today(t) > 0)
+        losses_today = sum(1 for t in today_trades if _pnl_today(t) < 0)
 
         win_rate_today = (wins_today / trades_today * 100) if trades_today > 0 else None
 
         # Compute avg R today (R = pnl / atr / contracts, but simplify to avg pnl per trade)
         avg_r_today = (pnl_today / trades_today) if trades_today > 0 else None
 
-        # Compute cumulative stats
+        # Compute cumulative stats (guard against None pnl from seed/legacy trades)
+        def _pnl_eod(t: dict) -> float:
+            return float(t.get("pnl") or 0)
+
         total_trades = len(closed_trades)
-        winning_trades = sum(1 for t in closed_trades if float(t.get("pnl", 0)) > 0)
+        winning_trades = sum(1 for t in closed_trades if _pnl_eod(t) > 0)
         win_rate_pct = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
 
-        gross_profit = sum(t.get("pnl", 0) for t in closed_trades if float(t.get("pnl", 0)) > 0)
-        gross_loss = sum(abs(t.get("pnl", 0)) for t in closed_trades if float(t.get("pnl", 0)) < 0)
+        gross_profit = sum(_pnl_eod(t) for t in closed_trades if _pnl_eod(t) > 0)
+        gross_loss = sum(abs(_pnl_eod(t)) for t in closed_trades if _pnl_eod(t) < 0)
         profit_factor = (
-            (gross_profit / gross_loss)
-            if gross_loss > 0
-            else (gross_profit if gross_profit > 0 else 0.0)
+            (gross_profit / gross_loss) if gross_loss > 0 else (9999.0 if gross_profit > 0 else 0.0)
         )
 
-        cumulative_pnl = sum(float(t.get("pnl", 0)) for t in closed_trades)
+        cumulative_pnl = sum(_pnl_eod(t) for t in closed_trades)
 
         # Sharpe ratio
         sharpe_ratio = _compute_sharpe_ratio(closed_trades)
@@ -588,13 +683,14 @@ def _compute_rolling_wfe(
     if len(closed_trades) < min_trades:
         return None, 0.0, "insufficient_data"
 
-    # Compute profit factor from closed trades
-    gross_profit = sum(t.get("pnl", 0) for t in closed_trades if t.get("pnl", 0) > 0)
-    gross_loss = sum(abs(t.get("pnl", 0)) for t in closed_trades if t.get("pnl", 0) < 0)
+    # Compute profit factor from closed trades (guard against None pnl)
+    def _p(t: dict) -> float:
+        return float(t.get("pnl") or 0.0)
+
+    gross_profit = sum(_p(t) for t in closed_trades if _p(t) > 0)
+    gross_loss = sum(abs(_p(t)) for t in closed_trades if _p(t) < 0)
     current_pf = (
-        (gross_profit / gross_loss)
-        if gross_loss > 0
-        else (gross_profit if gross_profit > 0 else 0.0)
+        (gross_profit / gross_loss) if gross_loss > 0 else (9999.0 if gross_profit > 0 else 0.0)
     )
 
     # WFE formula: (current_pf - 1.0) / (in_sample_pf - 1.0), clamped [0, 1]
@@ -618,11 +714,11 @@ async def get_rolling_wfe():
     try:
         from datetime import datetime
 
-        from engine.backtest.paper_config import (
+        from backtest.paper_config import (
             ACTIVE_INSTRUMENTS,
             PAPER_CONFIGS,
         )
-        from engine.database import get_db
+        from database import get_db
 
         db = get_db()
 

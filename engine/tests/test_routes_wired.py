@@ -80,6 +80,7 @@ def test_routes_wired():
         # Validation (legacy path redirects; canonical is /paper/validation/progress)
         ("GET", "/validation/progress"): "validation progress (redirects)",
         ("GET", "/paper/validation/progress"): "paper validation progress (canonical)",
+        ("GET", "/paper/validation/approved-paper-gates"): "MCL/MNQ per-symbol validation gates",
         # Safety
         ("GET", "/safety/status"): "safety status",
     }

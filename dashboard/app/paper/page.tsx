@@ -16,6 +16,7 @@ import { SessionSummaryWidget } from "@/components/SessionSummaryWidget";
 import { TodaySummaryWidget } from "@/components/TodaySummaryWidget";
 import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 import { SignalQueueWidget } from "@/components/SignalQueueWidget";
+import { PaperApprovedValidationWidget } from "@/components/PaperApprovedValidationWidget";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
@@ -131,6 +132,9 @@ export default function PaperTradingPage() {
 
         {/* Risk Status — always visible at top of page */}
         <RiskStatusWidget />
+
+        {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
+        <PaperApprovedValidationWidget />
 
         {/* Circuit breaker / safety status */}
         <CircuitBreakerWidget />
