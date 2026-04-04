@@ -125,7 +125,7 @@ async def assemble_morning_brief(
                     *[dm.get_current_price(s) for s in syms],
                     return_exceptions=True,
                 )
-                for sym, res in zip(syms, pos_results):
+                for sym, res in zip(syms, pos_results, strict=True):
                     pos_price_map[sym] = float(res) if not isinstance(res, Exception) and res is not None else None
             except Exception:
                 pass
