@@ -104,6 +104,7 @@ jobs:
         with:
           name: coverage-data-fast
           path: .coverage.fast
+          include-hidden-files: true
           retention-days: 7
 
   engine-test-slow:
@@ -138,6 +139,7 @@ jobs:
         with:
           name: coverage-data-slow
           path: .coverage.slow
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
 
