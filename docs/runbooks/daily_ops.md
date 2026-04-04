@@ -5,6 +5,8 @@
 
 **Engine**: http://localhost:8010 | **Dashboard**: http://localhost:3010 | **IB Gateway paper port**: 4002
 
+**Authenticated curls:** replace `<YOUR_ENGINE_API_KEY>` with the `API_KEY` value from `engine/.env`. Rotate engine + dashboard keys together: `python scripts/rotate_dev_api_key.py` (see `docs/setup-guides/DEV_API_KEY_ROTATION.md`).
+
 ---
 
 ## Pre-Market Checklist (60-second scan)
@@ -102,7 +104,7 @@ Open: http://localhost:3010
 ### Step 6 — Confirm Safety Status
 
 ```bash
-curl http://localhost:8010/safety/status -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/safety/status -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 Expected: `"kill_switch_active": false`, `"daily_limit_breached": false`, `"drawdown_breached": false`
@@ -129,7 +131,7 @@ The scheduler fires these jobs without any manual action:
 
 Verify scheduler is running:
 ```bash
-curl http://localhost:8010/scheduler/status -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/scheduler/status -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 VERIFIED 2026-04-03 — 12 jobs confirmed running including `market_open_scan`, `watchlist_scan`, `eod_summary`.
 
@@ -145,11 +147,11 @@ VERIFIED 2026-04-03 — Output: `{"pending":[],"count":0}`
 ```bash
 # Approve a trade (replace {ID} with actual approval ID from the list above)
 curl -X POST http://localhost:8010/pipeline/pending-approvals/{ID}/approve \
-  -H "X-API-Key: jarvis-dev-key-change-me"
+  -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 
 # Reject a trade
 curl -X POST http://localhost:8010/pipeline/pending-approvals/{ID}/reject \
-  -H "X-API-Key: jarvis-dev-key-change-me"
+  -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 Dashboard alternative: http://localhost:3010 (pending approvals show in main feed)
@@ -165,13 +167,13 @@ Check `"kill_switch_active"` field — if `true`, all trading is halted.
 To activate manually (emergency stop):
 ```bash
 curl -X POST "http://localhost:8010/safety/kill-switch/activate?reason=manual_halt" \
-  -H "X-API-Key: jarvis-dev-key-change-me"
+  -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 To deactivate:
 ```bash
 curl -X POST http://localhost:8010/safety/kill-switch/deactivate \
-  -H "X-API-Key: jarvis-dev-key-change-me"
+  -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 ### When to Intervene
@@ -186,7 +188,7 @@ curl -X POST http://localhost:8010/safety/kill-switch/deactivate \
 
 Check current P&L against limits:
 ```bash
-curl http://localhost:8010/safety/status -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/safety/status -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 Key fields: `daily_pnl` (dollars), `daily_limit_pct` (-0.02), `drawdown_pct`, `consecutive_losses`
@@ -206,7 +208,7 @@ VERIFIED 2026-04-03 — Output: `{"total_equity":10030,"daily_pnl":130,"open_pos
 ### Step 1 — Confirm EOD Job Ran
 
 ```bash
-curl http://localhost:8010/scheduler/status -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/scheduler/status -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 Look for `eod_summary` and `eod_snapshot` in the jobs list with a `next_run` tomorrow.
@@ -214,7 +216,7 @@ Look for `eod_summary` and `eod_snapshot` in the jobs list with a `next_run` tom
 ### Step 2 — Check Daily P&L
 
 ```bash
-curl http://localhost:8010/safety/status -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/safety/status -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 Note: `daily_pnl` (dollars), `daily_pnl_pct` (ratio), `current_balance`, `consecutive_losses`.
@@ -323,13 +325,13 @@ Dashboard: http://localhost:3010/paper
 
 Or via API:
 ```bash
-curl http://localhost:8010/portfolio -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/portfolio -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 ### Check Learning Loop Output
 
 ```bash
-curl http://localhost:8010/learning/recent -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/learning/recent -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 ### Review Validation Gate Progress
@@ -338,13 +340,13 @@ Dashboard: http://localhost:3010/paper (validation gates panel)
 
 Or:
 ```bash
-curl http://localhost:8010/paper-validation/summary -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/paper-validation/summary -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 ### Confirm Scanner Ran All Week
 
 ```bash
-curl http://localhost:8010/scheduler/status -H "X-API-Key: jarvis-dev-key-change-me"
+curl http://localhost:8010/scheduler/status -H "X-API-Key: <YOUR_ENGINE_API_KEY>"
 ```
 
 Check `watchlist_scan` and `market_open_scan` show recent `next_run` timestamps.
@@ -360,7 +362,7 @@ WFE targets (from backtest — check monthly):
 
 ## API Quick Reference
 
-All endpoints use `X-API-Key: jarvis-dev-key-change-me` header (except `/health` and `/pipeline/pending-approvals` GET).
+All endpoints use `X-API-Key: <YOUR_ENGINE_API_KEY>` header (except `/health` and `/pipeline/pending-approvals` GET).
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|

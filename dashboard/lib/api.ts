@@ -5,8 +5,9 @@ const ENGINE = "/api/engine";
 const FETCH_TIMEOUT_MS = 30000; // 30 seconds
 const RETRY_DELAY_MS = 2000; // 2 seconds
 
-// API key injected via NEXT_PUBLIC_ENGINE_API_KEY env var.
-// Falls back to the engine's default dev key so the dashboard works out-of-the-box.
+// API key injected via NEXT_PUBLIC_ENGINE_API_KEY (set in dashboard/.env.local).
+// Run `python scripts/rotate_dev_api_key.py` from repo root to sync with engine/.env API_KEY.
+// Fallback matches engine/.env.example only — rotate before any network exposure.
 const API_KEY =
   process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "jarvis-dev-key-change-me";
 
