@@ -1,6 +1,7 @@
 """Scheduler management router - query and manage scheduled jobs."""
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -25,6 +26,15 @@ class JobsListResponse(BaseModel):
 
     total_jobs: int
     jobs: list[JobInfo]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TriggerResponse(BaseModel):
+    """Response for manual trigger endpoint."""
+
+    triggered: bool
+    timestamp: str
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -91,3 +101,31 @@ async def trigger_morning_brief(background_tasks: BackgroundTasks) -> dict:
 
     background_tasks.add_task(_run)
     return {"status": "triggered", "message": "Morning brief sending in background"}
+
+
+@router.post("/discord-import/trigger")
+async def trigger_discord_import() -> TriggerResponse:
+    """
+    Manually trigger the Discord nightly import job.
+
+    Returns:
+        triggered: True if the job was triggered successfully
+        timestamp: ISO timestamp of the trigger
+    """
+    try:
+        if _scheduler is None:
+            raise HTTPException(500, "Scheduler not initialized")
+
+        job = _scheduler.get_job("nightly_discord_import")
+        if job is None:
+            raise HTTPException(404, "Discord import job not found in scheduler")
+
+        await job.func()
+
+        return TriggerResponse(triggered=True, timestamp=datetime.utcnow().isoformat())
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to trigger Discord import: {e}")
+        raise HTTPException(500, f"Failed to trigger Discord import: {e}") from e

@@ -340,6 +340,21 @@ export interface PaperPerformance {
   avg_loss: number;
 }
 
+/** GET /discord/intelligence — Discord signal status for dashboard widget */
+export interface DiscordIntelligenceStatus {
+  symbols: Record<
+    string,
+    {
+      discord_signal_active: number;
+      discord_win_rate_context: number;
+      discord_proximity_entry: number;
+      discord_proximity_target: number;
+      discord_alignment: number;
+    }
+  >;
+  last_updated: string;
+}
+
 // ── History / persistence types (new SQLite endpoints) ────────────────────
 
 export interface TradeRecord {
@@ -1153,4 +1168,4 @@ export interface HourlyStatsResponse {
   hourly_stats: HourlyStatItem[];
   best_hour: HourlyStatItem | null;
   worst_hour: HourlyStatItem | null;
-}
+}                                                                                                                                                                                                                                                                                                                                                                                                     
