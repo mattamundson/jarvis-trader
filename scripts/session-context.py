@@ -52,7 +52,7 @@ def check_engine_health() -> dict:
         import urllib.error
         req = urllib.request.Request(
             "http://localhost:8010/health",
-            headers={"X-API-Key": "test-key"},
+            headers={"X-API-Key": "jarvis-dev-key-change-me"},
         )
         with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read())
@@ -65,7 +65,7 @@ def check_safety_status() -> dict:
         import urllib.request
         req = urllib.request.Request(
             "http://localhost:8010/safety/status",
-            headers={"X-API-Key": "test-key"},
+            headers={"X-API-Key": "jarvis-dev-key-change-me"},
         )
         with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read())
