@@ -200,7 +200,12 @@ class IBKRDataConnector:
                 "source": "ibkr_not_connected",
             }
         try:
-            contract = await self._qualified_contract(symbol, is_futures)
+            # For futures symbols, resolve to front month contract; otherwise use standard contract
+            if is_futures or symbol.upper() in FUTURES_MAP:
+                exchange = FUTURES_EXCHANGE.get(symbol.upper(), "CME")
+                contract = await self._resolve_front_month(symbol, exchange)
+            else:
+                contract = self._make_contract(symbol, is_futures)
             tickers = await self._ib.reqTickersAsync(contract)
             if not tickers:
                 return {
