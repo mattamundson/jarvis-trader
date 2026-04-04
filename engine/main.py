@@ -267,6 +267,14 @@ async def lifespan(app: FastAPI):
     set_flags_router(feature_flags)
     logger.info("✅ Feature Flags system initialised")
 
+    # Hook system — register default logging/db hooks
+    from hooks.registry import get_hook_registry
+    from hooks.trading_hooks import register_default_hooks
+
+    _hook_registry = get_hook_registry()
+    register_default_hooks(_hook_registry)
+    logger.info("✅ Trading hook registry initialised")
+
     # Paper trading tracker — initialise before safety layer so it is always available
     paper_tracker = PortfolioTracker(db_manager=db_manager)
     logger.info("✅ Paper portfolio tracker ready")
@@ -3931,7 +3939,7 @@ async def get_trades_by_day():
                          SUM(pnl) AS total_pnl,
                          AVG(pnl) AS avg_pnl
                        FROM paper_trades
-                       WHERE status = 'CLOSED' AND exit_time IS NOT NULL
+                       WHERE status = 'closed' AND exit_time IS NOT NULL
                        GROUP BY dow
                        ORDER BY dow"""
                 ).fetchall()
@@ -3983,7 +3991,7 @@ async def get_trades_by_symbol():
                          MAX(pnl) AS best_trade,
                          MIN(pnl) AS worst_trade
                        FROM paper_trades
-                       WHERE status = 'CLOSED'
+                       WHERE status = 'closed'
                        GROUP BY symbol
                        ORDER BY total_pnl DESC"""
                 ).fetchall()
@@ -4130,7 +4138,7 @@ async def get_trades_by_hour():
                     ROUND(SUM(pnl), 2) as total_pnl,
                     ROUND(AVG(pnl), 2) as avg_pnl
                 FROM paper_trades
-                WHERE status = 'CLOSED' AND exit_time IS NOT NULL
+                WHERE status = 'closed' AND exit_time IS NOT NULL
                 GROUP BY hour
                 ORDER BY hour
             """)
@@ -4186,7 +4194,7 @@ async def get_weekly_stats():
                     ROUND(MIN(pnl), 2) as worst_trade,
                     COUNT(DISTINCT DATE(exit_time)) as trading_days
                 FROM paper_trades
-                WHERE status = 'CLOSED'
+                WHERE status = 'closed'
                   AND exit_time IS NOT NULL
                   AND exit_time >= ?
             """,
