@@ -1,4 +1,5 @@
 """Tests for morning_brief.py assembly function."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -75,9 +76,11 @@ async def test_assemble_morning_brief_contains_symbols():
 @pytest.mark.asyncio
 async def test_assemble_morning_brief_no_raise_none_prices():
     """Brief does not raise when data_manager returns None prices."""
+
     class NullDataManager:
         async def get_current_price(self, symbol):
             return None
+
         async def get_bars(self, *args, **kwargs):
             return None
 

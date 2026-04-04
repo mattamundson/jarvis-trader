@@ -10,6 +10,7 @@ Setup: Register JARVIS inbound URL with OpenClaw:
     -H "Content-Type: application/json" \\
     -d '{"url": "http://localhost:8010/openclaw/webhook", "events": ["message.received"]}'
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,6 +50,7 @@ def _send_reply(message: str) -> None:
     """Send confirmation WhatsApp reply — fire-and-forget, never raises."""
     try:
         from notifications.openclaw_notifier import send_whatsapp_message
+
         send_whatsapp_message(message)
     except Exception as exc:
         logger.debug("[OPENCLAW] Reply send skipped: %s", exc)
@@ -73,12 +75,8 @@ async def openclaw_webhook(request: Request) -> dict[str, Any]:
         body = {}
 
     # Normalise message — support OpenClaw envelope variants
-    message = (
-        body.get("message") or body.get("text") or body.get("body") or ""
-    ).strip().lower()
-    from_number = (
-        body.get("from_number") or body.get("from") or body.get("sender") or ""
-    ).strip()
+    message = (body.get("message") or body.get("text") or body.get("body") or "").strip().lower()
+    from_number = (body.get("from_number") or body.get("from") or body.get("sender") or "").strip()
 
     logger.info("[OPENCLAW] Webhook received: message='%s' from='%s'", message, from_number)
 
@@ -86,9 +84,7 @@ async def openclaw_webhook(request: Request) -> dict[str, Any]:
     allowed = _allowed_sender()
     incoming = _normalise_sender(from_number)
     if allowed and incoming and allowed != incoming:
-        logger.warning(
-            "[OPENCLAW] Unauthorized sender: '%s' (allowed: '%s')", from_number, allowed
-        )
+        logger.warning("[OPENCLAW] Unauthorized sender: '%s' (allowed: '%s')", from_number, allowed)
         return {"status": "unauthorized", "message": "Sender not authorized"}
 
     # Route command
@@ -101,9 +97,7 @@ async def openclaw_webhook(request: Request) -> dict[str, Any]:
 
     return {
         "status": "unknown_command",
-        "message": (
-            f"JARVIS: Unknown command '{message}'. Reply 'yes', 'no', or 'hold'."
-        ),
+        "message": (f"JARVIS: Unknown command '{message}'. Reply 'yes', 'no', or 'hold'."),
     }
 
 
@@ -139,6 +133,7 @@ async def _approve_latest_pending() -> dict[str, Any]:
     if entry_price is None:
         try:
             from approval.snapshot import entry_price_from_snapshot
+
             entry_price = entry_price_from_snapshot(snap)
         except Exception:
             pass
@@ -176,7 +171,10 @@ async def _approve_latest_pending() -> dict[str, Any]:
 
     logger.info(
         "[OPENCLAW] Trade approved via WhatsApp: approval_id=%s %s %s @ %.2f",
-        approval_id[:8], symbol, action.upper(), entry_price,
+        approval_id[:8],
+        symbol,
+        action.upper(),
+        entry_price,
     )
 
     confirm_msg = (
@@ -218,10 +216,14 @@ async def _reject_latest_pending() -> dict[str, Any]:
         rejection_reason="rejected_via_whatsapp",
     )
     if not ok:
-        logger.error("[OPENCLAW] resolve_pending_approval failed for rejection id=%s", approval_id[:8])
+        logger.error(
+            "[OPENCLAW] resolve_pending_approval failed for rejection id=%s", approval_id[:8]
+        )
         raise HTTPException(409, detail="Could not mark approval resolved (race condition?)")
 
-    logger.info("[OPENCLAW] Trade rejected via WhatsApp: approval_id=%s %s", approval_id[:8], symbol)
+    logger.info(
+        "[OPENCLAW] Trade rejected via WhatsApp: approval_id=%s %s", approval_id[:8], symbol
+    )
 
     msg = f"JARVIS: {symbol.upper()} trade rejected"
     _send_reply(msg)

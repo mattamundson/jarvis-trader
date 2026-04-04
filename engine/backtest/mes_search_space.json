@@ -1,0 +1,902 @@
+[
+  {
+    "id": "MES-001",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.5,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-002",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.5,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-003",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.5,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-004",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.5,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-005",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.5,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-006",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.5,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-007",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.5,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-008",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.5,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-009",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.6,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-010",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.6,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-011",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.6,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-012",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.6,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-013",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.6,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-014",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.6,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-015",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.6,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-016",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.6,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-017",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.7,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-018",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.7,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-019",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.7,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-020",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.7,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-021",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.7,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-022",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.7,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-023",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.7,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-024",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.7,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-025",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.8,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-026",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.8,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-027",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.8,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-028",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.8,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-029",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.8,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-030",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.8,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-031",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.8,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-032",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 8,
+    "atr_stop": 0.8,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-033",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.5,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-034",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.5,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-035",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.5,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-036",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.5,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-037",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.5,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-038",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.5,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-039",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.5,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-040",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.5,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-041",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.6,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-042",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.6,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-043",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.6,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-044",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.6,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-045",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.6,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-046",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.6,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-047",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.6,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-048",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.6,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-049",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-050",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-051",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-052",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-053",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-054",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-055",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-056",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.7,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-057",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.8,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-058",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.8,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-059",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.8,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-060",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.8,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-061",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.8,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-062",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.8,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-063",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.8,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-064",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 10,
+    "atr_stop": 0.8,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-065",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.5,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-066",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.5,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-067",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.5,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-068",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.5,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-069",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.5,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-070",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.5,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-071",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.5,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-072",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.5,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-073",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.6,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-074",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.6,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-075",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.6,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-076",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.6,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-077",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.6,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-078",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.6,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-079",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.6,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-080",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.6,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-081",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.7,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-082",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.7,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-083",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.7,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-084",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.7,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-085",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.7,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-086",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.7,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-087",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.7,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-088",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.7,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-089",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.8,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-090",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.8,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-091",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.8,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-092",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.8,
+    "atr_target": 1.5,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-093",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.8,
+    "atr_target": 1.8,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-094",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.8,
+    "atr_target": 1.8,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-095",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.8,
+    "atr_target": 2.0,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-096",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 12,
+    "atr_stop": 0.8,
+    "atr_target": 2.0,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-097",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 15,
+    "atr_stop": 0.5,
+    "atr_target": 1.2,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-098",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 15,
+    "atr_stop": 0.5,
+    "atr_target": 1.2,
+    "interval": "4h"
+  },
+  {
+    "id": "MES-099",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 15,
+    "atr_stop": 0.5,
+    "atr_target": 1.5,
+    "interval": "1h"
+  },
+  {
+    "id": "MES-100",
+    "stc_os": 10,
+    "stc_ob": 80,
+    "stc_cycle_length": 15,
+    "atr_stop": 0.5,
+    "atr_target": 1.5,
+    "interval": "4h"
+  }
+]
