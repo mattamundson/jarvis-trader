@@ -167,6 +167,9 @@ async def notify_kill_switch(
     market: str = "",
 ) -> bool:
     """Send CRITICAL WhatsApp alert when kill switch activates. No cooldown."""
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw kill-switch notify suppressed in TESTING mode")
+        return False
     ts = _ct_time()
     reason_str = reason.replace("_", " ").upper() if reason else "MANUAL"
     msg = (
@@ -243,6 +246,9 @@ async def notify_target(
     target: float = 0.0,
 ) -> bool:
     """Send WhatsApp alert when daily target is reached."""
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw target notify suppressed in TESTING mode")
+        return False
     cooldown_key = f"target:{market}"
     if _is_cooldown(cooldown_key):
         return False

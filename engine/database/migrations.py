@@ -758,13 +758,32 @@ def migration_015(conn: sqlite3.Connection) -> None:
 
 def migration_016(conn: sqlite3.Connection) -> None:
     """
-    016 — WFE divergence flag column.
+    016 — WFE snapshots table + divergence flag column.
 
-    Adds divergence_flag TEXT column to wfe_snapshots table to track when live
-    paper performance diverges from WFE baseline projections. Flag is set to
-    'DIVERGENCE_WARNING' when profit_factor falls below 50% of WFE baseline
-    after >= 10 trades in the snapshot period. Nullable for backward compatibility.
+    Creates the wfe_snapshots table (if not exists) for tracking weekly walk-forward
+    efficiency metrics per symbol. Also adds the divergence_flag TEXT column for
+    flagging when live paper performance diverges from WFE baseline projections.
     """
+    # Create the table first (idempotent)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wfe_snapshots (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT    NOT NULL,
+            week_start      TEXT    NOT NULL,
+            trades          INTEGER NOT NULL DEFAULT 0,
+            win_rate        REAL,
+            profit_factor   REAL,
+            sharpe          REAL,
+            max_dd          REAL,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.commit()
+    logger.info("Migration 016 — wfe_snapshots table ensured.")
+
+    # Add divergence_flag column (idempotent)
     try:
         conn.execute(
             """
