@@ -430,8 +430,8 @@ async def consolidate_memory(target_date: Optional[str] = Query(None)) -> dict:
         Consolidation result with status, patterns extracted, and signal accuracy.
     """
     try:
-        from learning.consolidator import TradingMemoryConsolidator
         from database.manager import db_manager
+        from learning.consolidator import TradingMemoryConsolidator
 
         consolidator = TradingMemoryConsolidator(db_manager=db_manager)
         result = await consolidator.consolidate_daily(target_date=target_date)
@@ -520,6 +520,7 @@ async def get_learning_status() -> dict:
     """
     try:
         from datetime import datetime, timedelta
+
         from database import get_db as get_db_manager
 
         db = get_db_manager()

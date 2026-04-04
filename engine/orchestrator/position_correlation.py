@@ -9,7 +9,6 @@ When both have open positions simultaneously, max_contracts reduces to 1 each.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger("jarvis_trader.orchestrator.position_correlation")
 

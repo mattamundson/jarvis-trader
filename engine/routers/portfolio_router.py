@@ -17,7 +17,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from config import settings
@@ -189,7 +189,7 @@ async def resume():
 async def paper_phase_summary():
     """
     Paper validation phase rollup: balance, return, distinct trading days, status.
-    
+
     Reads from SQLite when available (single source of truth for P&L history).
     Falls back to in-memory tracker on DB error or if no DB configured.
     """
@@ -217,7 +217,7 @@ async def paper_phase_summary():
         except Exception as exc:
             logger.warning("paper_phase_summary: SQLite get_trade_history failed, using in-memory: %s", exc)
             rows = []
-    
+
     # Fallback to in-memory if no DB rows or DB unavailable
     if not rows:
         try:
@@ -308,13 +308,13 @@ async def paper_positions():
 async def paper_performance():
     """
     Closed-trade performance summary.
-    
+
     Computes metrics from SQLite when db_manager is available (single source of truth).
     Falls back to in-memory tracker on DB error.
     """
     if not paper_tracker:
         return {"performance": {}}
-    
+
     # SQLite-first approach: query DB for closed trades if available (Bug B9 / US-2004)
     if db_manager:
         try:
@@ -323,14 +323,14 @@ async def paper_performance():
                 # Filter to closed trades and compute performance from DB
                 closed = [r for r in rows if r.get("exit_price") is not None]
                 pnls = [float(r.get("pnl", 0)) for r in closed if r.get("pnl") is not None]
-                
+
                 if pnls:
                     wins = [p for p in pnls if p > 0]
                     losses = [p for p in pnls if p <= 0]
                     gross_profit = sum(wins) if wins else 0.0
                     gross_loss = abs(sum(losses)) if losses else 0.0
                     profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
-                    
+
                     peak = 0.0
                     equity = 0.0
                     max_dd = 0.0
@@ -341,7 +341,7 @@ async def paper_performance():
                         dd = equity - peak
                         if dd < max_dd:
                             max_dd = dd
-                    
+
                     performance = {
                         "total_pnl": round(sum(pnls), 4),
                         "win_rate": round(len(wins) / len(pnls), 4) if pnls else 0.0,
@@ -357,7 +357,7 @@ async def paper_performance():
                     return {"performance": performance}
         except Exception as exc:
             logger.warning("paper_performance: SQLite query failed, using in-memory: %s", exc)
-    
+
     # Fallback to in-memory tracker
     return {"performance": paper_tracker.get_performance()}
 
@@ -722,7 +722,7 @@ async def get_portfolio_risk():
 
     except Exception as exc:
         logger.error("Error in get_portfolio_risk: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Risk calculation failed: {exc}")
+        raise HTTPException(status_code=500, detail=f"Risk calculation failed: {exc}") from exc
 
 
 @router.get(
