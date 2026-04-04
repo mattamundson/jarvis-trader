@@ -15,7 +15,7 @@
       "id": "US-2101",
       "title": "Fix IB contract conId qualification in get_snapshot_price",
       "priority": "P0",
-      "passes": false,
+      "passes": true,
       "goal": "engine/data/market_data.py get_snapshot_price() calls _make_contract() which returns an unqualified Future with no conId. IB throws: 'Contract Future(symbol=MES) can't be hashed because no conId value exists'. Fix: use _resolve_front_month() for futures symbols in get_snapshot_price (same pattern as get_historical_bars). After fix, GET /data/price/{symbol} must return a numeric last_price for MCL and MNQ when IB Gateway is connected.",
       "acceptanceCriteria": [
         "engine/data/market_data.py: get_snapshot_price() calls _resolve_front_month() for futures symbols (when symbol in FUTURES_MAP or is_futures=True)",
@@ -31,7 +31,7 @@
       "id": "US-2102",
       "title": "Fix dashboard API key — verify NEXT_PUBLIC_ENGINE_API_KEY in .env.local",
       "priority": "P0",
-      "passes": false,
+      "passes": true,
       "goal": "Dashboard lib/api.ts reads process.env.NEXT_PUBLIC_ENGINE_API_KEY and falls back to 'jarvis-dev-key-change-me' if not set. Engine logs show 'Invalid X-API-Key attempt from dashboard routes' — meaning the env var is not set in dashboard/.env.local. Fix: read engine/.env to get the real API_KEY value, then write dashboard/.env.local with NEXT_PUBLIC_ENGINE_API_KEY=<that value>. Restart dashboard. Verify no more API key errors in engine log.",
       "acceptanceCriteria": [
         "Read engine/.env to get the current API_KEY value",
@@ -47,7 +47,7 @@
       "id": "US-2103",
       "title": "Close 4 stale MES test positions via management endpoint",
       "priority": "P1",
-      "passes": false,
+      "passes": true,
       "goal": "4 test MES positions are open in SQLite (paper_trades) and in-memory tracker from Sprint 18/19 testing. They pollute win-rate, profit-factor, and position count. Add POST /portfolio/paper/admin/close-stale endpoint that closes all open positions where symbol='MES' and entry_price=5800.0 with exit_price=entry_price (zero P&L). After calling it, GET /portfolio/paper/positions returns empty list, GET /paper/validation/summary returns trades_closed >= 1 (the real MCL trade), win_rate > 0.",
       "acceptanceCriteria": [
         "POST /portfolio/paper/admin/close-stale endpoint added to engine/routers/portfolio_router.py (or paper_validation_router.py)",
