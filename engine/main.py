@@ -4116,6 +4116,43 @@ async def get_todays_session():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.get("/portfolio/stats/weekly")
+async def get_weekly_stats():
+    """Rolling 7-day trade statistics for the paper trading phase."""
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        with db_manager._lock:
+            conn = db_manager._connect()
+            try:
+                cursor = conn.execute(
+                    "SELECT pnl, symbol FROM paper_trades WHERE status = 'closed' AND exit_time >= ? ORDER BY exit_time DESC",
+                    (cutoff,),
+                )
+                cols = [d[0] for d in cursor.description]
+                trades = [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
+            finally:
+                conn.close()
+
+        pnls = [float(t.get("pnl", 0) or 0) for t in trades]
+        wins = [p for p in pnls if p > 0]
+        total = len(pnls)
+        win_rate = round(len(wins) / total, 4) if total else 0.0
+        return {
+            "period": "7d",
+            "total_trades": total,
+            "wins": len(wins),
+            "losses": len([p for p in pnls if p < 0]),
+            "win_rate": win_rate,
+            "gross_pnl": round(sum(pnls), 2),
+            "avg_pnl": round(sum(pnls) / total, 2) if total else 0.0,
+            "symbols": list({t.get("symbol") for t in trades}),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @app.get("/portfolio/stats/commissions")
 async def get_commission_stats():
     """
