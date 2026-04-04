@@ -272,8 +272,10 @@ class TradingConfig(BaseSettings):
 
     # ── Instruments to Trade ─────────────────────────────────────────────
     FUTURES_WATCHLIST: Union[str, list[str]] = Field(
-        default="MES,MNQ,MCL",
-        description="Micro futures contracts to trade (comma-separated or list)",
+        default="MCL,MNQ,MES",
+        description="Micro futures contracts to trade (comma-separated or list). "
+        "MCL first (WFE=0.82), MNQ second (WFE=0.57). MES last (WFE=0.09, data-collection only). "
+        "[:2] slice used by watchlist scheduler must yield MCL+MNQ.",
     )
     # Options module: dry-run in paper before enabling live routing; see docs/backlog/EPICS_12_17_FOLLOWONS.md
     OPTIONS_WATCHLIST: Union[str, list[str]] = Field(

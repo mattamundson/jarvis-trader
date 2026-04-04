@@ -170,25 +170,26 @@ class PortfolioTracker:
             is_open=True,
             atr_value=atr_value,
         )
+
+        # SQLite-first: write to DB before touching in-memory state.
+        # If the DB write fails the exception propagates and in-memory is NOT updated,
+        # preventing ghost positions on restart (Bug B9 / US-2004).
+        if self._db is not None:
+            self._db.insert_paper_trade(
+                trade_id,
+                symbol=trade.symbol,
+                side=trade.action,
+                quantity=trade.quantity,
+                entry_price=trade.entry_price,
+                entry_time=trade.entry_time,
+                stop_loss=None,
+                take_profit=None,
+                strategy_params={"notes": notes},
+            )
+
+        # DB write succeeded (or no DB configured) — update in-memory and JSONL
         self._open[trade_id] = trade
         self._append_record(trade)
-
-        # SQLite persistence
-        if self._db is not None:
-            try:
-                self._db.insert_paper_trade(
-                    trade_id,
-                    symbol=trade.symbol,
-                    side=trade.action,
-                    quantity=trade.quantity,
-                    entry_price=trade.entry_price,
-                    entry_time=trade.entry_time,
-                    stop_loss=None,
-                    take_profit=None,
-                    strategy_params={"notes": notes},
-                )
-            except Exception as exc:
-                logger.error("DB insert_paper_trade failed for %s: %s", trade_id[:8], exc)
 
         logger.info(
             "[PAPER] OPEN  %s %s qty=%s @ %.4f  id=%s",
@@ -205,41 +206,43 @@ class PortfolioTracker:
         Close an open trade and compute P&L.
 
         Raises KeyError if trade_id is not found in open positions.
-        Persists the closed record to trades.jsonl (and SQLite if db_manager set).
+        Persists the closed record to SQLite first (if db_manager set), then JSONL.
+        If the SQLite write fails the exception propagates and in-memory state is
+        left unchanged — preventing divergence on restart (Bug B9 / US-2004).
         """
-        trade = self._open.pop(trade_id, None)
+        trade = self._open.get(trade_id)
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
 
-        trade.exit_price = float(exit_price)
-        trade.exit_time = datetime.now(timezone.utc).isoformat()
-        trade.is_open = False
-
-        # Direction: actions containing "sell" or "short" are short; everything else long
+        # Compute close fields on a local copy before any writes
+        exit_time = datetime.now(timezone.utc).isoformat()
         action_lower = trade.action.lower()
         is_short = "sell" in action_lower or "short" in action_lower
-
-        # Apply contract multiplier so pnl reflects real dollar value per contract
         multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
         if is_short:
-            trade.pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
+            computed_pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
         else:
-            trade.pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+            computed_pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+
+        # SQLite-first: write to DB before mutating in-memory state.
+        # If this raises, _open is unchanged — no ghost position on restart.
+        if self._db is not None:
+            self._db.close_paper_trade(
+                trade_id=trade_id,
+                exit_price=float(exit_price),
+                exit_time=exit_time,
+                pnl=computed_pnl,
+            )
+
+        # DB write succeeded (or no DB) — now mutate in-memory and JSONL
+        self._open.pop(trade_id)
+        trade.exit_price = float(exit_price)
+        trade.exit_time = exit_time
+        trade.is_open = False
+        trade.pnl = computed_pnl
 
         self._closed.append(trade)
         self._append_record(trade)
-
-        # SQLite persistence
-        if self._db is not None:
-            try:
-                self._db.close_paper_trade(
-                    trade_id=trade_id,
-                    exit_price=trade.exit_price,
-                    exit_time=trade.exit_time,
-                    pnl=trade.pnl,
-                )
-            except Exception as exc:
-                logger.error("DB close_paper_trade failed for %s: %s", trade_id[:8], exc)
 
         logger.info(
             "[PAPER] CLOSE %s @ %.4f  pnl=%+.2f  mult=%.1f  id=%s",
@@ -274,6 +277,29 @@ class PortfolioTracker:
             )
         except Exception as _exc:
             logger.debug("[LEARNING] Trade classification skipped: %s", _exc)
+
+        # OpenClaw WhatsApp alert on trade close (non-blocking, best-effort)
+        try:
+            import asyncio as _asyncio
+            import os as _os
+
+            from notifications.openclaw_notifier import notify_trade_closed as _oc_close
+
+            if not _os.getenv("TESTING"):
+                _loop = _asyncio.get_event_loop()
+                if _loop.is_running():
+                    _loop.create_task(
+                        _oc_close(
+                            symbol=trade.symbol,
+                            action=trade.action,
+                            entry_price=trade.entry_price,
+                            exit_price=float(exit_price),
+                            pnl=trade.pnl or 0.0,
+                            quantity=trade.quantity,
+                        )
+                    )
+        except Exception as _oc_exc:
+            logger.debug("[PAPER] OpenClaw trade-close notify skipped: %s", _oc_exc)
 
         return trade
 
@@ -389,26 +415,24 @@ class PortfolioTracker:
             notes=notes,
             is_open=True,
         )
+
+        # SQLite-first: persist before updating in-memory (Bug B9 / US-2004).
+        if self._db is not None:
+            self._db.insert_paper_trade(
+                trade_id,
+                symbol=trade.symbol,
+                side=side,
+                quantity=float(quantity),
+                entry_price=float(entry_price),
+                entry_time=trade.entry_time,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                strategy_params=strategy_params,
+            )
+
+        # DB write succeeded (or no DB configured) — update in-memory and JSONL
         self._open[trade_id] = trade
         self._append_record(trade)
-
-        if self._db is not None:
-            try:
-                self._db.insert_paper_trade(
-                    trade_id,
-                    symbol=trade.symbol,
-                    side=side,
-                    quantity=float(quantity),
-                    entry_price=float(entry_price),
-                    entry_time=trade.entry_time,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit,
-                    strategy_params=strategy_params,
-                )
-            except Exception as exc:
-                logger.error(
-                    "DB insert_paper_trade (add_paper_trade) failed for %s: %s", trade_id[:8], exc
-                )
 
         logger.info(
             "[PAPER] ADD   %s %s qty=%s @ %.4f  sl=%s tp=%s  id=%s",
@@ -433,42 +457,45 @@ class PortfolioTracker:
         Extended close entry point that accepts an explicit exit_time and pnl.
 
         When pnl is provided it is used directly (e.g., broker-confirmed figure).
-        Falls back to close_trade() for in-memory state; writes to SQLite.
+        SQLite is written first; in-memory is only updated on success (Bug B9 / US-2004).
 
         Raises KeyError if trade_id is unknown.
         """
-        trade = self._open.pop(trade_id, None)
+        trade = self._open.get(trade_id)
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
 
-        trade.exit_price = float(exit_price)
-        trade.exit_time = exit_time or datetime.now(timezone.utc).isoformat()
-        trade.is_open = False
-
+        # Compute all close fields before any writes
+        resolved_exit_time = exit_time or datetime.now(timezone.utc).isoformat()
         if pnl is not None:
-            trade.pnl = float(pnl)
+            computed_pnl = float(pnl)
         else:
             action_lower = trade.action.lower()
             is_short = "sell" in action_lower or "short" in action_lower
             multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
             if is_short:
-                trade.pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
+                computed_pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
             else:
-                trade.pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+                computed_pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+
+        # SQLite-first: if this raises, _open remains unchanged (Bug B9 / US-2004).
+        if self._db is not None:
+            self._db.close_paper_trade(
+                trade_id=trade_id,
+                exit_price=float(exit_price),
+                exit_time=resolved_exit_time,
+                pnl=computed_pnl,
+            )
+
+        # DB write succeeded (or no DB) — mutate in-memory and JSONL
+        self._open.pop(trade_id)
+        trade.exit_price = float(exit_price)
+        trade.exit_time = resolved_exit_time
+        trade.is_open = False
+        trade.pnl = computed_pnl
 
         self._closed.append(trade)
         self._append_record(trade)
-
-        if self._db is not None:
-            try:
-                self._db.close_paper_trade(
-                    trade_id=trade_id,
-                    exit_price=trade.exit_price,
-                    exit_time=trade.exit_time,
-                    pnl=trade.pnl,
-                )
-            except Exception as exc:
-                logger.error("DB close_paper_trade failed for %s: %s", trade_id[:8], exc)
 
         logger.info(
             "[PAPER] CLOSE %s @ %.4f  pnl=%+.2f  id=%s",
@@ -864,6 +891,52 @@ class PortfolioTracker:
             logger.error("DB get_trade_history at startup failed: %s", exc)
 
         self._closed.sort(key=lambda t: t.entry_time)
+
+    def reload_open_positions_from_db(self) -> None:
+        """
+        Rebuild self._open from SQLite paper_trades (status='open').
+
+        Called from main.py lifespan after the tracker is initialised so that any
+        JSONL/in-memory divergence introduced by a prior crash is resolved before
+        trading resumes.  Errors are caught and logged — the tracker stays usable
+        even if the DB is temporarily unavailable (Bug B9 / US-2004).
+        """
+        if self._db is None:
+            logger.debug("[TRACKER] reload_open_positions_from_db: no db_manager, skipping")
+            return
+
+        try:
+            rows = self._db.get_trade_history(limit=5000)
+            if not rows:
+                self._open = {}
+                logger.info("[TRACKER] reload_open_positions_from_db: no trades in DB, cleared open")
+                return
+
+            rebuilt: Dict[str, PaperTrade] = {}
+            for row in rows:
+                try:
+                    # Accept both dict-like rows and sqlite3.Row objects
+                    is_open_flag = row.get("is_open", row.get("exit_price") is None)
+                    if not is_open_flag:
+                        continue
+                    rebuilt[str(row["trade_id"])] = PaperTrade(
+                        trade_id=str(row.get("trade_id") or row.get("id", "")),
+                        symbol=str(row.get("symbol", "")),
+                        action=str(row.get("side") or row.get("action", "")),
+                        quantity=float(row.get("quantity", 0)),
+                        entry_price=float(row.get("entry_price", 0)),
+                        entry_time=str(row.get("entry_time", "")),
+                        is_open=True,
+                        notes=str(row.get("notes") or ""),
+                    )
+                except (TypeError, ValueError, KeyError) as exc:
+                    logger.warning("[TRACKER] reload: skipping bad row: %s", exc)
+
+            self._open = rebuilt
+            logger.info("[TRACKER] Rebuilt %d open positions from SQLite", len(rebuilt))
+
+        except Exception as exc:
+            logger.error("[TRACKER] reload_open_positions_from_db failed: %s", exc)
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────

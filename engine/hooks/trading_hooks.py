@@ -84,6 +84,17 @@ def notify_target_reached(
 ) -> None:
     """Log when daily target is reached."""
     logger.info(f"[TARGET REACHED] {market}: ${pnl:,.2f} ≥ ${target:,.2f} 🎯")
+    # OpenClaw WhatsApp alert
+    try:
+        import asyncio
+        from notifications.openclaw_notifier import notify_target as _oc_target
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_oc_target(market=market, pnl=pnl, target=target))
+        else:
+            loop.run_until_complete(_oc_target(market=market, pnl=pnl, target=target))
+    except Exception:
+        pass  # Non-blocking, best-effort
 
 
 def register_default_hooks(registry: HookRegistry) -> None:

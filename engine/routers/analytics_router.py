@@ -55,6 +55,25 @@ def _get_db() -> DatabaseManager:
     return _db
 
 
+def _compute_days_from_trades(trades: list[dict]) -> int:
+    """
+    Compute the calendar-day span of a trade list using exit_time or entry_time.
+    Returns (max_date - min_date).days + 1, or 0 when no parseable timestamps exist.
+    """
+    parsed = []
+    for trade in trades:
+        raw = trade.get("exit_time") or trade.get("entry_time")
+        if not raw:
+            continue
+        try:
+            parsed.append(datetime.fromisoformat(str(raw).replace("Z", "+00:00")))
+        except (ValueError, AttributeError):
+            logger.debug("Could not parse trade timestamp: %s", raw)
+    if not parsed:
+        return 0
+    return (max(parsed) - min(parsed)).days + 1
+
+
 class PerformanceMetricsResponse(BaseModel):
     """Performance metrics response with timestamp."""
 
@@ -313,6 +332,9 @@ async def get_performance(request: Request) -> PerformanceMetricsResponse:
 
         analytics = calculate_analytics(trades_for_analytics)
 
+        # Compute days from the actual trade date range
+        days_computed: int = _compute_days_from_trades(trades_for_analytics)
+
         return PerformanceMetricsResponse(
             status="ok",
             sharpe_ratio=analytics.sharpe_ratio,
@@ -323,6 +345,7 @@ async def get_performance(request: Request) -> PerformanceMetricsResponse:
             total_trades=analytics.total_trades,
             expectancy=analytics.expectancy,
             timestamp=datetime.utcnow().isoformat() + "Z",
+            days=days_computed,
         )
     except RuntimeError:
         logger.warning("Database not yet initialised")

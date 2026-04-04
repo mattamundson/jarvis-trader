@@ -3,7 +3,12 @@ Paper Trading Validation Tracker — READ-ONLY metrics aggregator.
 
 Consolidation note (US-303): This module is now READ-ONLY. All paper trade state is
 managed by PaperTradeTracker (engine/backtest/paper_tracker.py). This module reads
-trades from the tracker's JSON files and computes validation metrics.
+trades from SQLite (primary) or the tracker's JSON files (fallback/tests) and computes
+validation metrics.
+
+US-2003: Primary data source changed from stale JSON files to SQLite
+(engine/data/jarvis_trader.db, paper_trades table). JSON fallback is retained for
+tests that supply a temp_data_dir with pre-populated JSON fixture files.
 
 Purpose: Aggregate per-instrument metrics and validate against PASS thresholds:
   Profit Factor >= 2.0
@@ -13,18 +18,22 @@ Purpose: Aggregate per-instrument metrics and validate against PASS thresholds:
   Days >= 30
   Max Drawdown <= 15%
 
-Data flow:
-  paper_runner.py → PaperTradeTracker (state source)
+Data flow (production):
+  paper_runner.py → SQLite paper_trades table
                  ↓
-            paper_trades_MCL.json, paper_trades_MNQ.json
-                 ↓
-           ValidationTracker (read-only aggregator)
+           ValidationTracker (reads from SQLite via _load_from_sqlite)
+
+Data flow (tests / fallback):
+  _create_mock_tracker_file → paper_trades_{symbol}.json
+                           ↓
+                  ValidationTracker (reads from JSON via _load_from_tracker)
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import statistics
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +46,9 @@ from paper.validation_gate_config import PAPER_VALIDATION_GATES
 logger = logging.getLogger(__name__)
 
 PASS_THRESHOLDS = PAPER_VALIDATION_GATES
+
+# Instruments tracked for paper validation
+_TRACKED_INSTRUMENTS = ["MCL", "MNQ"]
 
 
 class TradeRecord(BaseModel):
@@ -134,37 +146,194 @@ class InstrumentMetrics(BaseModel):
         return self.total_pnl / max(1, self.total_trades)
 
 
+def _build_metrics_from_trade_list(
+    instrument: str,
+    trade_dicts: list[dict],
+    *,
+    timestamp_key: str,
+    pnl_key: str,
+    entry_price_key: str,
+    exit_price_key: str,
+    instrument_key: str,
+    setup_grade_key: str,
+) -> InstrumentMetrics:
+    """
+    Build InstrumentMetrics from a list of trade dicts with configurable key names.
+
+    Shared by both the SQLite and JSON loading paths.
+    """
+    im = InstrumentMetrics(instrument=instrument)
+    for td in trade_dicts:
+        ts = td.get(timestamp_key, "") or ""
+        # Normalise to bare ISO string (strip timezone suffix if present)
+        if ts and ts.endswith("Z"):
+            ts = ts[:-1]
+        # Strip +00:00 / +HH:MM style offsets for fromisoformat compat on py<3.11
+        if "+" in ts[10:]:
+            ts = ts[: ts.rfind("+")]
+
+        trade = TradeRecord(
+            timestamp=ts,
+            instrument=td.get(instrument_key, instrument),
+            entry_price=float(td.get(entry_price_key, 0) or 0),
+            exit_price=float(td.get(exit_price_key, 0) or 0),
+            pnl=float(td.get(pnl_key, 0) or 0),
+            setup_grade=td.get(setup_grade_key, "unknown") or "unknown",
+        )
+        im.trades.append(trade)
+        im.total_pnl += trade.pnl
+        im.total_trades += 1
+
+        if trade.pnl > 0:
+            im.winning_trades += 1
+            im.consecutive_losses = 0
+        else:
+            im.losing_trades += 1
+            im.consecutive_losses += 1
+            if im.consecutive_losses > im.max_consecutive_losses:
+                im.max_consecutive_losses = im.consecutive_losses
+
+        if not im.first_trade_date:
+            im.first_trade_date = trade.timestamp
+        im.last_trade_date = trade.timestamp
+
+        date_key = trade.timestamp.split("T")[0] if trade.timestamp else ""
+        if date_key:
+            im.daily_pnl_values.append(trade.pnl)
+
+    return im
+
+
 class ValidationTracker:
     """
-    READ-ONLY validation metrics aggregator (US-303 consolidation).
+    READ-ONLY validation metrics aggregator (US-303 consolidation, US-2003 SQLite).
 
-    Reads trade data from PaperTradeTracker's JSON files and computes validation
-    metrics. This module observes state but never writes it.
+    Primary data source: SQLite paper_trades table (status='closed').
+    Fallback: PaperTradeTracker JSON files (used by tests via temp_data_dir).
+
+    This module observes state but never writes it.
 
     NOTE: record_trade() and record_daily_pnl() are deprecated.
     Use PaperTradeTracker (engine/backtest/paper_tracker.py) instead.
     """
 
-    def __init__(self, data_dir: Path | str = "data"):
+    def __init__(
+        self,
+        data_dir: Path | str = "data",
+        db_path: Optional[str | Path] = None,
+    ):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         # Legacy: store path (read-only, no longer written to)
         self.validation_file = self.data_dir / "paper_validation.json"
-        self.metrics: dict[str, InstrumentMetrics] = self._load_from_tracker()
+
+        # Resolve SQLite path.  Explicit db_path wins; otherwise check canonical
+        # location relative to data_dir (engine/data/jarvis_trader.db).
+        if db_path is not None:
+            self._db_path: Optional[Path] = Path(db_path)
+        else:
+            candidate = self.data_dir / "jarvis_trader.db"
+            self._db_path = candidate if candidate.exists() else None
+
+        self.metrics: dict[str, InstrumentMetrics] = self._load_metrics()
+
+    # ------------------------------------------------------------------
+    # Loading helpers
+    # ------------------------------------------------------------------
+
+    def _load_metrics(self) -> dict[str, InstrumentMetrics]:
+        """
+        Load trade data from the best available source.
+
+        Priority:
+          1. SQLite (self._db_path exists) — live paper trades, always current
+          2. JSON tracker files — tests / legacy environments without a DB
+        """
+        if self._db_path and self._db_path.exists():
+            try:
+                result = self._load_from_sqlite()
+                total = sum(m.total_trades for m in result.values())
+                logger.info(
+                    "ValidationTracker: loaded %d trades from SQLite (%s)",
+                    total,
+                    self._db_path,
+                )
+                return result
+            except Exception as exc:
+                logger.warning(
+                    "ValidationTracker: SQLite load failed (%s), falling back to JSON",
+                    exc,
+                )
+
+        return self._load_from_tracker()
+
+    def _load_from_sqlite(self) -> dict[str, InstrumentMetrics]:
+        """
+        Load closed paper trades from the SQLite paper_trades table.
+
+        Only rows with status IN ('closed', 'CLOSED') and symbol in
+        _TRACKED_INSTRUMENTS are loaded.
+        """
+        metrics: dict[str, InstrumentMetrics] = {
+            inst: InstrumentMetrics(instrument=inst) for inst in _TRACKED_INSTRUMENTS
+        }
+
+        conn = sqlite3.connect(str(self._db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cur = conn.cursor()
+            placeholders = ",".join("?" for _ in _TRACKED_INSTRUMENTS)
+            cur.execute(
+                f"""
+                SELECT symbol, entry_price, exit_price, entry_time, exit_time,
+                       pnl, notes, status
+                FROM paper_trades
+                WHERE LOWER(status) = 'closed'
+                  AND symbol IN ({placeholders})
+                ORDER BY exit_time
+                """,
+                _TRACKED_INSTRUMENTS,
+            )
+            rows = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+        # Group by symbol
+        by_symbol: dict[str, list[dict]] = {inst: [] for inst in _TRACKED_INSTRUMENTS}
+        for row in rows:
+            sym = row.get("symbol", "")
+            if sym in by_symbol:
+                by_symbol[sym].append(row)
+
+        for inst, trade_list in by_symbol.items():
+            if not trade_list:
+                continue
+            metrics[inst] = _build_metrics_from_trade_list(
+                inst,
+                trade_list,
+                timestamp_key="exit_time",
+                pnl_key="pnl",
+                entry_price_key="entry_price",
+                exit_price_key="exit_price",
+                instrument_key="symbol",
+                setup_grade_key="notes",
+            )
+            logger.info(
+                "Loaded %d trades for %s from SQLite", len(trade_list), inst
+            )
+
+        return metrics
 
     def _load_from_tracker(self) -> dict[str, InstrumentMetrics]:
         """
-        Load trade data from PaperTradeTracker's JSON files.
+        Load trade data from PaperTradeTracker's JSON files (fallback / tests).
 
-        Files: engine/backtest/results/paper_trades_{symbol}.json
-        (or in tests: temp_data_dir/backtest/results/paper_trades_{symbol}.json)
+        Files: <data_dir>/backtest/results/paper_trades_{symbol}.json
         """
         metrics: dict[str, InstrumentMetrics] = {}
-        # In production: engine/data/ → parent is engine/ → backtest/results
-        # In tests: temp_data_dir/ → backtest/results (at same level)
         tracker_dir = self.data_dir / "backtest" / "results"
 
-        for instrument in ["MCL", "MNQ"]:
+        for instrument in _TRACKED_INSTRUMENTS:
             metrics[instrument] = InstrumentMetrics(instrument=instrument)
             tracker_file = tracker_dir / f"paper_trades_{instrument}.json"
 
@@ -173,53 +342,31 @@ class ValidationTracker:
                     data = json.loads(tracker_file.read_text())
                     trades_list = data.get("trades", [])
 
-                    for trade_dict in trades_list:
-                        trade = TradeRecord(
-                            timestamp=trade_dict.get("recorded_at", ""),
-                            instrument=trade_dict.get("symbol", instrument),
-                            entry_price=float(trade_dict.get("entry_price", 0)),
-                            exit_price=float(trade_dict.get("exit_price", 0)),
-                            pnl=float(trade_dict.get("pnl", 0)),
-                            setup_grade=trade_dict.get("exit_reason", "unknown"),
-                        )
-                        metrics[instrument].trades.append(trade)
-                        metrics[instrument].total_pnl += trade.pnl
-                        metrics[instrument].total_trades += 1
-
-                        if trade.pnl > 0:
-                            metrics[instrument].winning_trades += 1
-                            metrics[instrument].consecutive_losses = 0
-                        else:
-                            metrics[instrument].losing_trades += 1
-                            metrics[instrument].consecutive_losses += 1
-                            if (
-                                metrics[instrument].consecutive_losses
-                                > metrics[instrument].max_consecutive_losses
-                            ):
-                                metrics[instrument].max_consecutive_losses = metrics[
-                                    instrument
-                                ].consecutive_losses
-
-                        if not metrics[instrument].first_trade_date:
-                            metrics[instrument].first_trade_date = trade.timestamp
-                        metrics[instrument].last_trade_date = trade.timestamp
-
-                        # Aggregate daily P&L for Sharpe/DD calculations
-                        date_key = trade.timestamp.split("T")[0] if trade.timestamp else ""
-                        if date_key:
-                            # Simple aggregation: sum P&L per day
-                            # (refined later if needed)
-                            if not metrics[instrument].daily_pnl_values:
-                                metrics[instrument].daily_pnl_values.append(trade.pnl)
-                            else:
-                                # Append for now; ideally aggregate by date
-                                metrics[instrument].daily_pnl_values.append(trade.pnl)
-
-                    logger.info(f"Loaded {len(trades_list)} trades for {instrument} from tracker")
-                except Exception as e:
-                    logger.warning(f"Failed to load tracker data for {instrument}: {e}")
+                    metrics[instrument] = _build_metrics_from_trade_list(
+                        instrument,
+                        trades_list,
+                        timestamp_key="recorded_at",
+                        pnl_key="pnl",
+                        entry_price_key="entry_price",
+                        exit_price_key="exit_price",
+                        instrument_key="symbol",
+                        setup_grade_key="exit_reason",
+                    )
+                    logger.info(
+                        "Loaded %d trades for %s from tracker JSON",
+                        len(trades_list),
+                        instrument,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to load tracker data for %s: %s", instrument, exc
+                    )
 
         return metrics
+
+    # ------------------------------------------------------------------
+    # Deprecated write methods (no-op, kept for backward compat)
+    # ------------------------------------------------------------------
 
     def record_trade(
         self,
@@ -246,8 +393,13 @@ class ValidationTracker:
         This method is kept for backward compatibility but is a no-op.
         """
         logger.warning(
-            "ValidationTracker.record_daily_pnl() is deprecated. " "Use PaperTradeTracker instead."
+            "ValidationTracker.record_daily_pnl() is deprecated. "
+            "Use PaperTradeTracker instead."
         )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def get_progress(self, instrument: str = "MCL") -> dict:
         """Get validation progress for an instrument."""
@@ -281,13 +433,13 @@ class ValidationTracker:
     def get_dashboard_data(self) -> dict:
         """Get formatted data for API response."""
         instruments = {}
-        for instrument in ["MCL", "MNQ"]:
+        for instrument in _TRACKED_INSTRUMENTS:
             instruments[instrument] = self.get_progress(instrument)
 
         return {
             "timestamp": datetime.utcnow().isoformat(),
             "instruments": instruments,
-            "overall_pass": all(self.is_validated(inst) for inst in ["MCL", "MNQ"]),
+            "overall_pass": all(self.is_validated(inst) for inst in _TRACKED_INSTRUMENTS),
         }
 
     def get_all_trades(self, instrument: str = "MCL") -> list[dict]:

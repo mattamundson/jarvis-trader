@@ -22,6 +22,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,35 @@ _last_sent: dict[str, float] = {}
 _COOLDOWN_SECONDS = 7200  # 2 hours per symbol
 
 
+_CT = ZoneInfo("America/Chicago")
+
+
 def _ct_time() -> str:
-    return datetime.now().strftime("%m/%d %I:%M %p")
+    return datetime.now(_CT).strftime("%m/%d %I:%M %p")
+
+
+def _is_globex_open() -> bool:
+    """Return True if CME Globex is currently open for MCL/MNQ/MES.
+
+    Schedule (all times CT / America/Chicago):
+      - Sun 5:00 PM → Fri 4:00 PM  (continuous)
+      - Daily maintenance break: 4:00 PM – 5:00 PM CT (Mon–Thu)
+      - Closed: Fri 4:00 PM → Sun 5:00 PM
+    """
+    now = datetime.now(_CT)
+    dow = now.weekday()  # 0=Mon … 4=Fri, 5=Sat, 6=Sun
+    t = now.hour * 60 + now.minute  # minutes since midnight CT
+
+    if dow == 5:  # Saturday — always closed
+        return False
+    if dow == 6 and t < 17 * 60:  # Sunday before 5:00 PM
+        return False
+    if dow == 4 and t >= 16 * 60:  # Friday at/after 4:00 PM
+        return False
+    # Mon–Thu: daily maintenance window 4:00 PM – 5:00 PM
+    if dow < 4 and 16 * 60 <= t < 17 * 60:
+        return False
+    return True
 
 
 def _is_cooldown(key: str) -> bool:
@@ -106,7 +134,13 @@ async def notify_signal(
     market: str = "futures",
 ) -> bool:
     """Send WhatsApp alert when a non-HOLD signal fires. Rate-limited per symbol."""
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw signal notify suppressed in TESTING mode")
+        return False
     if action.upper() == "HOLD":
+        return False
+    if not _is_globex_open():
+        logger.debug("OpenClaw signal suppressed — CME Globex closed for %s", symbol)
         return False
     cooldown_key = f"signal:{symbol}"
     if _is_cooldown(cooldown_key):
@@ -142,6 +176,64 @@ async def notify_kill_switch(
         + "\nAll trading halted. Deactivate at localhost:3010"
     )
     return await _send(msg)
+
+
+async def notify_approval_required(
+    *,
+    symbol: str,
+    action: str,
+    quantity: float = 0.0,
+    entry_price: float = 0.0,
+) -> bool:
+    """Send WhatsApp alert when a trade requires human approval. No cooldown — every approval matters."""
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw approval notify suppressed in TESTING mode")
+        return False
+    if not _is_globex_open():
+        logger.debug("OpenClaw approval notify suppressed — CME Globex closed for %s", symbol)
+        return False
+    ts = _ct_time()
+    act = action.upper()
+    qty_str = f" qty={int(quantity)}" if quantity else ""
+    px_str = f" @ ${entry_price:.2f}" if entry_price else ""
+    msg = (
+        f"JARVIS APPROVAL NEEDED — {ts}\n"
+        f"{symbol.upper()} {act}{qty_str}{px_str}\n"
+        f"Approve at localhost:3010/trades/pending-approvals"
+    )
+    return await _send(msg)
+
+
+async def notify_trade_closed(
+    *,
+    symbol: str,
+    action: str,
+    entry_price: float = 0.0,
+    exit_price: float = 0.0,
+    pnl: float = 0.0,
+    quantity: float = 1.0,
+) -> bool:
+    """Send WhatsApp alert when a paper trade is closed. Rate-limited per symbol."""
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw trade-close notify suppressed in TESTING mode")
+        return False
+    cooldown_key = f"close:{symbol}"
+    if _is_cooldown(cooldown_key):
+        logger.debug("OpenClaw trade-close cooldown active for %s", symbol)
+        return False
+    ts = _ct_time()
+    result_word = "WIN" if pnl >= 0 else "LOSS"
+    pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+    msg = (
+        f"JARVIS TRADE CLOSED — {ts}\n"
+        f"{symbol.upper()} {action.upper()}\n"
+        f"Entry: ${entry_price:.2f} | Exit: ${exit_price:.2f}\n"
+        f"P&L: {pnl_str} ({result_word})"
+    )
+    sent = await _send(msg)
+    if sent:
+        _mark_sent(cooldown_key)
+    return sent
 
 
 async def notify_target(

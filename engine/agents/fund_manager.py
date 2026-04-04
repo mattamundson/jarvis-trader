@@ -84,7 +84,7 @@ class FundManagerAgent:
     """
 
     MODEL = "claude-opus-4-6"
-    MAX_TOKENS = 800
+    MAX_TOKENS = 1600
 
     SYSTEM_PROMPT = (
         "You are the Fund Manager for JARVIS TRADER, an autonomous trading system. "
