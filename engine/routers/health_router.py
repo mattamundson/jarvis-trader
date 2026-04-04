@@ -401,3 +401,34 @@ async def get_backup_status():
         raise HTTPException(
             status_code=500, detail=f"Backup status check failed: {str(e)}"
         ) from None
+
+
+@router.get(
+    "/health/backup-status",
+    description="Get nightly backup status: count, last backup path, retention policy.",
+)
+async def health_backup_status():
+    """Return summary backup status from the singleton backup manager."""
+    try:
+        from backup.db_backup import get_backup_status as _get_status
+
+        return _get_status()
+    except Exception as e:
+        logger.error(f"Backup status check failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Backup status failed: {str(e)}") from None
+
+
+@router.post(
+    "/health/backup-now",
+    description="Trigger an immediate database backup outside the nightly schedule.",
+)
+async def trigger_backup_now():
+    """Trigger an on-demand backup of the SQLite database."""
+    try:
+        from backup.db_backup import run_nightly_backup
+
+        result = await run_nightly_backup(str(settings.SQLITE_DB_PATH))
+        return result
+    except Exception as e:
+        logger.error(f"On-demand backup failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}") from None
