@@ -67,8 +67,9 @@ MAX_ORDERS_PER_MINUTE=10
 MAX_SINGLE_ORDER_VALUE=5000.0
 MAX_MARGIN_UTILIZATION=0.40
 
-# API Key
-API_KEY=jarvis-dev-key-change-me
+# API Key (rotate locally; never commit real values)
+# python scripts/rotate_dev_api_key.py — see docs/setup-guides/DEV_API_KEY_ROTATION.md
+API_KEY=<from engine/.env>
 
 # Simulated IB paper routing (optional)
 # ALLOW_PAPER_SIMULATED_ORDERS — default False in .env.example. Enables the gated
