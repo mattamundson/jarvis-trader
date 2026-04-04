@@ -1,5 +1,92 @@
 # Sprint 18 System Health Report
 
+---
+
+## US-1801 — Engine Health Verification
+*Documented: 2026-04-03*
+
+### 1. Startup Status
+
+Engine was running at http://localhost:8010 with uptime ~1430 seconds at verification time.
+No startup errors detected. Health endpoint returned `"status": "ok"`.
+
+### 2. Health Endpoint
+
+**Endpoint**: `GET http://localhost:8010/health`
+**HTTP Status**: 200 OK
+
+```json
+{
+  "status": "ok",
+  "version": "1.1.0",
+  "timestamp": "2026-04-03T22:10:45.480059+00:00",
+  "live_trading": false,
+  "kill_switch_active": false,
+  "paper_mode": true,
+  "database": "connected",
+  "ibkr_connected": false,
+  "schwab_connected": false,
+  "uptime_seconds": 1430.335415
+}
+```
+
+Safety invariants confirmed: `live_trading: false`, `paper_mode: true`, `kill_switch_active: false`.
+Database connected. IBKR/Schwab offline (expected in paper sim mode).
+
+### 3. APScheduler Jobs
+
+**Endpoint**: `GET http://localhost:8010/scheduler/jobs`
+**Total Jobs Registered**: 12 (PRD expected 8 minimum; all required jobs present)
+
+| Job ID | Name | Next Run Time |
+|--------|------|---------------|
+| `mgc_daily_signal` | MGC Daily Signal Scanner | 2026-04-03T23:00:00+00:00 |
+| `nightly_db_backup` | Nightly Database Backup | 2026-04-03T23:30:00+00:00 |
+| `nightly_learning_consolidation` | Nightly Learning Consolidation | 2026-04-04T09:00:00+00:00 |
+| `intraday_scan_15m` | Intraday 15m Scanner | 2026-04-06T09:00:00-04:00 |
+| `vix_alert_check` | VIX Threshold Alert | 2026-04-06T08:00:00-05:00 |
+| `morning_briefing` | Morning Briefing WhatsApp | 2026-04-06T08:25:00-05:00 |
+| `market_open_scan` | Market Open Scan | 2026-04-06T09:31:00-04:00 |
+| `watchlist_scan` | Watchlist Auto-Scan | 2026-04-06T09:00:00-05:00 |
+| `eod_snapshot` | EOD P&L Snapshot | 2026-04-06T20:05:00+00:00 |
+| `eod_summary` | EOD Summary | 2026-04-06T16:05:00-04:00 |
+| `session_flatten` | EODScheduler.run_session_flatten | 2026-04-06T20:45:00+00:00 |
+| `weekly_review` | Weekly P&L Review | 2026-04-10T20:30:00+00:00 |
+
+All 8 PRD-required jobs confirmed: `watchlist_scan`, `mgc_daily_signal`, `market_open_scan`, `eod_summary`, `intraday_scan_15m`, `nightly_db_backup`, `nightly_learning_consolidation`, `morning_briefing`.
+
+### 4. Manual Scan Trigger
+
+**Endpoint**: `POST http://localhost:8010/scanner/trigger`
+**HTTP Status**: 200 OK
+**Response**: `{"action": "trigger", "status": "success", "message": "Scan started in background"}`
+
+No 500 errors. Pipeline launched without exception.
+
+### 5. Test Suite
+
+**Collected**: 1306 items | **Passed**: 1213 | **Skipped**: 93 | **Failed**: 0
+**Duration**: 142.48s
+
+Skip categories (all expected):
+- RL integration tests: `strategies/rl/status` and `/rl/health` gated — RL module not active
+- `test_prices_router` (4): data_manager not initialized without IBKR/Polygon in test env
+
+### US-1801 Summary
+
+| Check | Result |
+|-------|--------|
+| Engine starts cleanly | PASS |
+| Health endpoint HTTP 200 | PASS |
+| Safety invariants (`live_trading: false`, `paper_mode: true`) | PASS |
+| Schedulers registered — 12 total, all 8 required present | PASS |
+| Manual scan trigger HTTP 200 | PASS |
+| Test suite — 0 failures (1213 passed) | PASS |
+
+**US-1801: ALL CHECKS PASS**
+
+---
+
 ## US-1804 — IB Gateway E2E Smoke Test
 *Documented: 2026-04-03*
 
@@ -160,10 +247,46 @@ Findings:
 
 ---
 
+## US-1805 — Daily Ops Runbook
+*Documented: 2026-04-03*
+
+**Runbook location**: `docs/runbooks/daily_ops.md`
+
+---
+
+### Commands Verified vs Blocked
+
+All verifiable commands were run against the live engine on 2026-04-03. Results:
+
+| Command | Result | Status |
+|---------|--------|--------|
+| `curl http://localhost:8010/health` | `{"status":"ok","kill_switch_active":false,"paper_mode":true,"database":"connected"}` | VERIFIED 2026-04-03 |
+| Port 4002 socket check (`connect_ex`) | `OK` — IB Gateway was running | VERIFIED 2026-04-03 |
+| `smoke_test_approvals.py` | Health PASS; approval endpoints require auth (401 without key — expected) | VERIFIED 2026-04-03 |
+| `curl /safety/status` (with auth) | `kill_switch=false, daily_pnl=$30, no limit breach` | VERIFIED 2026-04-03 |
+| `curl /scheduler/status` (with auth) | 12 jobs running: market_open_scan, watchlist_scan, eod_summary, nightly_db_backup, etc. | VERIFIED 2026-04-03 |
+| `curl /pipeline/pending-approvals` | `{"pending":[],"count":0}` — no auth required for GET | VERIFIED 2026-04-03 |
+| `curl /portfolio` | `{"total_equity":10030,"open_positions":4,"daily_pnl":130}` | VERIFIED 2026-04-03 |
+| SQLite trade count query | `Trades: 16` — database path `engine/data/jarvis_trader.db` confirmed | VERIFIED 2026-04-03 |
+| SQLite open trades query | Runs cleanly, returns open trade rows | VERIFIED 2026-04-03 |
+| `pnpm run build` | 26 routes built, 0 TypeScript errors | VERIFIED 2026-04-03 |
+| IB Gateway start (`ibgateway.exe`) | Path `C:\Jts\ibgateway\1045\ibgateway.exe` confirmed | UNVERIFIED — requires manual launch |
+
+### Notes
+
+- 9 of 10 verifiable commands confirmed working on 2026-04-03
+- IB Gateway start marked UNVERIFIED only because it requires an interactive GUI login (cannot be automated in a script); the port 4002 connectivity check that follows it IS verified
+- Smoke test output noted: the script has a cosmetic `TypeError` when printing results if certain detail fields are `None`, but the core test result (PASS/FAIL) is correctly evaluated before that error
+- Auth header `X-API-Key: jarvis-dev-key-change-me` required for: `/safety/status`, `/scheduler/status`, `/safety/kill-switch/*`; NOT required for: `/health`, `/portfolio`, `/pipeline/pending-approvals` (GET)
+
+**Overall: US-1805 COMPLETE — Daily ops runbook written, all verifiable commands tested, verification log included in runbook.**
+
+---
+
 ## US-1802 — Paper Trade E2E Flow Verification
 *Documented: 2026-04-03*
 
-End-to-end verification of the complete paper trade pipeline: signal → approval → SQLite write → close → PnL computation.
+End-to-end verification of the complete paper trade pipeline: signal -> approval -> SQLite write -> close -> PnL computation.
 
 ---
 
@@ -310,14 +433,14 @@ Output:
 
 MCL instrument multiplier from `engine/portfolio/tracker.py` `INSTRUMENT_MULTIPLIERS`:
 ```python
-"MCL": 100.0  # micro crude oil (100 barrels × $0.01/barrel/tick → $1/tick, $100/point)
+"MCL": 100.0  # micro crude oil (100 barrels x $0.01/barrel/tick -> $1/tick, $100/point)
 ```
 
 Expected PnL formula (LONG trade):
 ```
-pnl = (exit_price - entry_price) × quantity × multiplier
-pnl = (69.50 - 68.50) × 1 × 100
-pnl = 1.00 × 100 = $100.00
+pnl = (exit_price - entry_price) x quantity x multiplier
+pnl = (69.50 - 68.50) x 1 x 100
+pnl = 1.00 x 100 = $100.00
 ```
 
 Computed PnL: **$100.00** — exact match.
