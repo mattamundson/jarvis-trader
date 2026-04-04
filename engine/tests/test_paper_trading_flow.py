@@ -23,6 +23,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 logger = logging.getLogger(__name__)
 
 

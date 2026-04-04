@@ -75,7 +75,7 @@ jobs:
   engine-test:
     name: Engine Tests (pytest)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -92,9 +92,13 @@ jobs:
 
       - name: Run pytest
         run: |
-          # Full suite (offline-first); live-engine tests skip when no localhost:8010 RL surface, etc.
-          pytest engine/tests/ \
+          # Fast slice first (PR feedback); then @pytest.mark.slow integration/E2E modules.
+          # Full coverage: first pass writes coverage.xml; second uses --cov-append and overwrites xml.
+          pytest engine/tests/ -m "not slow" \
             -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
+          pytest engine/tests/ -m slow \
+            -v --tb=short --cov=engine --cov-append --cov-report=term-missing --cov-report=xml \
+            || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow pass"; exit 0; fi; exit "$ec"; }
 
       - name: Upload coverage artifact
         if: always()
