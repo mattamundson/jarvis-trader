@@ -1042,120 +1042,49 @@ export interface StreaksResponse {
   streak_history: StreakRecord[];
 }
 
-// Win-Rate by Hour Widget
-export interface HourlyStatItem {
-  hour: number;
-  label: string;
-  trades: number;
-  win_rate: number;
+// ── Validation Checkpoint (US-2403) ─────────────────────────────────────────
+
+export interface GateResult {
+  status: "PASS" | "FAIL" | "INSUFFICIENT_DATA";
+  current_value: number | null;
+  target_value: number;
 }
 
-export interface HourlyStatsResponse {
-  hourly_stats: HourlyStatItem[];
-  best_hour: HourlyStatItem | null;
-  worst_hour: HourlyStatItem | null;
-}
-
-// Regime Attribution Journal
-export interface RegimeStatRow {
-  regime: string;
+export interface ValidationCheckpointResponse {
+  overall_status: string;
   trade_count: number;
-  win_count: number;
-  loss_count: number;
-  win_rate_pct: number;
-  avg_pnl: number;
-  total_pnl: number;
+  trading_days: number;
+  win_rate: number | null;
+  profit_factor: number | null;
+  sharpe_ratio: number | null;
+  max_drawdown_pct: number | null;
+  gates: Record<string, GateResult>;
+  validation_start: string | null;
+  days_elapsed: number;
+  days_remaining: number;
 }
 
-export interface RegimeStatsResponse {
-  regimes: RegimeStatRow[];
-  total_closed_trades: number;
+export async function fetchValidationCheckpoint(): Promise<ValidationCheckpointResponse> {
+  return fetchEngine<ValidationCheckpointResponse>("/paper/validation/checkpoint");
+}
+
+export interface JarvisEvent {
+  id: string;
+  type: string;
+  symbol: string | null;
+  message: string;
+  severity: "info" | "warn" | "critical";
   timestamp: string;
 }
 
-// Dual-Timeframe STC Confirmation Widget
-export interface DualTFEntry {
-  stc_val: number;
-  direction: "long" | "short" | "neutral";
-  signal: string;
+export interface EventsResponse {
+  events: JarvisEvent[];
+  count: number;
+  buffer_size: number;
 }
 
-export interface DualTFSymbol {
-  symbol: string;
-  stc_os: number;
-  stc_ob: number;
-  tf_1h: DualTFEntry | null;
-  tf_15m: DualTFEntry | null;
-  confirmed: boolean;
-  direction: "long" | "short" | "neutral";
-  error: string | null;
+export async function fetchEvents(limit: number = 20): Promise<EventsResponse> {
+  return fetchEngine<EventsResponse>(`/api/events/recent?limit=${limit}`);
 }
 
-export interface DualTFResponse {
-  symbols: DualTFSymbol[];
-  timestamp: string;
-}
-
-// Pipeline Confidence Monitoring (US-2131)
-export interface ConfidenceStatsResponse {
-  total_runs: number;
-  hold_count: number;
-  trade_count: number;
-  avg_confidence: number;
-  min_confidence: number;
-  max_confidence: number;
-  hold_rate: number;
-  alert?: string;
-  period: string;
-  timestamp: string;
-}
-
-export async function fetchPipelineConfidenceStats(): Promise<ConfidenceStatsResponse> {
-  return fetchEngine<ConfidenceStatsResponse>("/pipeline/confidence-stats");
-}
-
-// ── Approved Paper Validation Gates ─────────────────────────────────────────
-
-export interface ApprovedPaperValidationGate {
-  name: string;
-  current: number;
-  target: number;
-  passes: boolean;
-  unit: string;
-}
-
-export interface ApprovedInstrumentGateRow {
-  symbol: string;
-  trade_count: number;
-  days_with_trades: number;
-  gates: ApprovedPaperValidationGate[];
-  overall_pass: boolean;
-}
-
-export interface ApprovedPaperGatesResponse {
-  status: string;
-  thresholds: Record<string, number>;
-  instruments: ApprovedInstrumentGateRow[];
-  note: string;
-}
-
-// ── Unrealized P&L (US-2303) ─────────────────────────────────────────────────
-
-export interface UnrealizedPosition {
-  trade_id: string;
-  symbol: string;
-  action: string;
-  quantity: number;
-  entry_price: number;
-  current_price: number | null;
-  unrealized_pnl: number | null;
-  unrealized_pnl_pct: number | null;
-  stop_loss: number | null;
-  take_profit: number | null;
-  stop_distance: number | null;
-  target_distance: number | null;
-  entry_time: string;
-  direction: string;
-}
-
-export type UnrealizedPositionsResponse = UnrealizedPosition[];
+// ── Win-Rat

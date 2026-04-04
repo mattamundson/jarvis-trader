@@ -330,7 +330,12 @@ export default function DashboardPage() {
             <DailyPnlPanel />
           </div>
         </div>
-      </main>
+      
+      <div className="mt-8">
+        <EventsFeedWidget />
+      </div>
+    
+</main>
     </div>
   );
 }
@@ -467,6 +472,7 @@ const FALLBACK_PAPER: Record<string, PaperStatusEntry> = {
   },
 };
 
+import { EventsFeedWidget } from '@/components/EventsFeedWidget';
 const FALLBACK_REGIME: Record<string, RegimeStatusEntry> = {
   "MGC_1d": { current_regime: "TRENDING" },
   "MNQ_1h": { current_regime: "RANGING" },

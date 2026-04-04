@@ -442,7 +442,7 @@ def test_client():
 
     app = FastAPI()
     # Add auth headers matching conftest env vars
-    client = TestClient(app, headers={"X-API-Key": "test-key"})
+    client = TestClient(app, headers={"X-API-Key": _real_api_key})
     return client
 
 

@@ -1,8 +1,80 @@
 # HANDOFF_CLAUDE_SESSION.md
 ## JARVIS TRADER — Comprehensive Session Handoff
-**Last Updated**: 2026-04-05 (Sprint 21 Complete)
-**Written by**: Claude Haiku 4.5 (claude-haiku-4-5-20251001)
+**Last Updated**: 2026-04-04 (Sprint 24 Complete)
+**Written by**: Claude Sonnet 4.6
 **Purpose**: Full context transfer to next Claude session / backup AI agent / Monday morning market ready
+
+---
+
+## Sprint 23 — Complete (2026-04-04)
+
+### What was done
+
+| Story | Title | Outcome |
+|-------|-------|---------|
+| US-2301 | Morning intelligence brief | **LIVE** — APScheduler CronTrigger Mon-Fri 8:45 CT. engine/notifications/morning_brief.py (190 lines). Concurrent MCL+MNQ price fetch via asyncio.gather. STC signals, positions with unrealized P&L, safety status, 400-char truncation. openclaw_notifier.send_raw() added (no cooldown). POST /scheduler/morning-brief/trigger for manual fire. |
+| US-2302 | Unrealized P&L API | **LIVE** — GET /portfolio/paper/positions/unrealized. INSTRUMENT_POINT_VALUES dict. Direction detection from action field. Concurrent price fetch. UnrealizedPositionResponse Pydantic v2 model. stop_distance/target_distance computed. |
+| US-2303 | Unrealized P&L dashboard widget | **LIVE** — dashboard/components/UnrealizedPnLWidget.tsx. useSWR 10-second polling. formatPrice() per symbol type. Emerald/red direction badges. Empty state. Added to dashboard/app/page.tsx. |
+| US-2304 | Sprint 23 close-out | **COMPLETE** — 3 commits pushed (a26a0cb, 33d4998, f0d7104). Tests 1295 passed, 69 skipped, 0 failed. Dashboard build clean. |
+
+### Test status after Sprint 23
+- **1295 tests passing**, 69 skipped (IB Gateway offline, RL endpoints need live engine), **0 failures**
+- All 27 Sprint 21 known failures resolved (ValidationTracker, WFE router auth — fixed in Sprint 22)
+- **Dashboard**: pnpm build passes, 0 TypeScript errors
+
+### Git state after Sprint 23
+- Branch: master
+- Last pushed commit: f0d7104 (feat: US-2302 unrealized PnL API + docs)
+- Concurrent Cursor commit 265f0ba: PortfolioCorrelationWidget, PortfolioPLChart, MESRevalidationTracker, api.ts types (UnrealizedPosition interface present)
+
+### Key new files/modules
+- `engine/notifications/morning_brief.py` — morning brief assembler (assemble_morning_brief, inject_morning_brief_deps)
+- `engine/notifications/openclaw_notifier.py` — added send_raw() no-cooldown send
+- `engine/routers/scheduler_router.py` — POST /morning-brief/trigger endpoint
+- `engine/tests/test_morning_brief.py` — 5 tests, all pass
+- `engine/tests/test_unrealized_pnl.py` — 5 tests, all pass
+- `dashboard/components/UnrealizedPnLWidget.tsx` — live unrealized P&L widget (10s SWR)
+
+---
+
+## Sprint 24 — "JARVIS Gets Sharp" (COMPLETE as of 2026-04-04)
+
+### Goal
+Four capability gaps: confidence scoring from trade history, real-time events ring buffer + feed, paper validation checkpoint widget, IB Gateway health monitor. All 4 stories pass.
+
+### Stories
+
+| Story | Title | Priority | Status |
+|-------|-------|----------|--------|
+| US-2401 | Confidence scoring — pipeline weights final_conviction using symbol trade history | P0 | **COMPLETE** |
+| US-2402 | Events ring buffer — real-time feed API + regime-change WhatsApp + dashboard widget | P0 | **COMPLETE** |
+| US-2403 | Paper validation checkpoint — live progress against 30-day gates | P1 | **COMPLETE** |
+| US-2404 | IB health monitor + fix 6 pre-existing test failures | P1 | **COMPLETE** |
+
+### Key new files/modules (Sprint 24)
+- `engine/learning/confidence_scorer.py` — get_confidence_adjustment(symbol, db_manager) -> float [0.60, 1.40]
+- `engine/events/bus.py` + `engine/events/__init__.py` — 150-event ring buffer with publish(), get_recent(), detect_regime_change()
+- `engine/routers/events_router.py` — GET /events/recent endpoint
+- `engine/health/ib_monitor.py` + `__init__.py` — market-hours check Mon-Fri 8:30-16:15 CT, 60-min cooldown
+- `dashboard/components/EventsFeedWidget.tsx` — 5-second SWR polling, severity badges
+- `dashboard/components/ValidationCheckpointWidget.tsx` — gate progress bars, ON_TRACK/FAILING badges
+- GET /paper/validation/checkpoint in paper_validation_router.py (with module-level get_db fix)
+
+### Test status after Sprint 24
+- **1228 passed, 0 failed, 65 skipped** (full suite run 2026-04-04)
+- Sprint 24 new tests: test_confidence_scorer.py (20 tests), test_ib_monitor.py (9 tests), test_validation_checkpoint.py (5 tests), test_events_bus.py
+- Dashboard: pnpm build passes, 0 TypeScript errors (DualTFWidget, RegimeAttributionWidget, UnrealizedPnLWidget, ValidationCheckpointWidget, WinRateByHourWidget types all added to api.ts)
+
+### Bugs fixed this session (non-story)
+- `learning_router.py` — stripped 560 trailing null bytes (file corruption)
+- `main.py` — removed truncated incomplete `get_trades_by_hour()` function (syntax error)
+- `test_ib_monitor.py` — fixed async/await (check_ib_health is async, tests were calling synchronously)
+- `paper_validation_router.py` — added module-level `from database import get_db` so test monkeypatching works
+- Dashboard Badge variants: MESRevalidationTracker, PortfolioCorrelationWidget, PortfolioPLChart all fixed from invalid variants to bull/bear/warn/neutral
+
+### Safety invariants (unchanged)
+- LIVE_TRADING_ENABLED=False, REQUIRE_HUMAN_APPROVAL=True, port 4001 permanently blocked
+- Do NOT modify engine/risk/safety_layer.py or engine/config.py (Tier 3)
 
 ---
 
@@ -138,242 +210,4 @@ Validation targets: PF>=2.0, Sharpe>=1.5, WR>=55%, Trades>=60, Days>=30, DD<=15%
 - **File**: `engine/routers/paper_validation_router.py` line 804
 - **Status**: COMPLETE — endpoint implemented, returns array of ClosedTrade objects with all required fields
 - **Route**: GET /paper/trades/closed
-- **Response**: [{trade_id, symbol, direction, entry_price, exit_price, pnl, entry_time, exit_time, duration_seconds}, ...]
-
-#### Sub-Task 2: Dashboard Trades Page [NOT DONE — CRITICAL FOR US-2104 PASS]
-- **Missing File**: `dashboard/app/trades/page.tsx`
-- **What's Needed**:
-  - Server component that fetches closed trades via fetchEngine<ClosedTrade[]>('/paper/trades/closed')
-  - Table with columns: Symbol | Direction | Entry | Exit | P&L | Duration | Closed At | Result
-  - Result badge: green (bull) for pnl>0, red (bear) for pnl<=0, neutral for pnl=0
-  - Auto-refresh via useSWR with refreshInterval: 30000 (30 seconds)
-  - Duration formatted as human-readable (e.g., "2h 14m" not "8040 seconds")
-  - P&L formatted as currency ($+100.00, $-50.00) with color
-  - Sidebar navigation link to /trades
-
-#### Sub-Task 3: Sidebar Navigation Link [POSSIBLY NOT DONE]
-- **File**: `dashboard/app/layout.tsx` (or shared nav component)
-- **Action**: Add 'Trade History' link pointing to /trades
-- **Status**: Unknown — verify when dashboard page is created
-
----
-
-## §3 — OUTSTANDING BLOCKERS (Non-Blocking for Paper Trading Launch)
-## §3 — OUTSTANDING BLOCKERS (Non-Blocking for Paper Trading Launch)
-
-### B2: IB Gateway Error 1100 — Connectivity
-- **Problem**: "Connectivity between IB and TWS has been lost" — auto-disconnects after inactivity
-- **Fix**: In IB Gateway settings: disable "Auto-logoff" timer, enable "Keep connection alive"
-- **Workaround**: `.\restart_engine.ps1` reconnects after Gateway restart
-- **Status**: Requires manual setup on Windows, not code-related
-
----
-
-## §4 — NEXT STEPS FOR MONDAY MARKET OPEN (2026-04-06)
-
-### CRITICAL PATH TO LAUNCH (do in order on Sunday/Monday)
-
-1. **Complete US-2104: Create dashboard/app/trades/page.tsx**
-   - Copy template structure from dashboard/app/journal/page.tsx
-   - Implement closed trades table per acceptance criteria
-   - Add sidebar nav link to /trades
-   - Run `cd dashboard && pnpm run build` → must pass with 0 TS errors
-   - Test locally: http://localhost:3010/trades → should load closed trades
-
-2. **Verify all endpoints respond correctly (before market open 09:31 CT Monday)**
-   ```bash
-   # IB contract fix (US-2101)
-   curl -H "X-API-Key: jarvis-dev-key-change-me" http://localhost:8010/data/price/MCL
-   curl -H "X-API-Key: jarvis-dev-key-change-me" http://localhost:8010/data/price/MNQ
-   # Should return {last_price: <float>, source: 'ibkr'} when IB Gateway online
-
-   # Stale position cleanup (US-2103)
-   curl -X POST -H "X-API-Key: jarvis-dev-key-change-me" http://localhost:8010/portfolio/paper/admin/close-stale
-   # Should return {status: 'success', closed_count: N}
-
-   # Closed trades endpoint (US-2104)
-   curl -H "X-API-Key: jarvis-dev-key-change-me" http://localhost:8010/paper/trades/closed
-   # Should return array of ClosedTrade objects
-   ```
-
-3. **Run full test suite (Windows terminal)**
-   ```bash
-   cd engine
-   .venv/Scripts/python -m pytest tests/ -v
-   # Must see: X passed in Ys, 0 failures
-   ```
-
-4. **Run dashboard build check**
-   ```bash
-   cd dashboard
-   pnpm run build
-   # Must see: 26+ routes built, 0 TypeScript errors
-   ```
-
-5. **Commit all Sprint 21 changes**
-   ```bash
-   cd /sessions/admiring-beautiful-thompson/mnt/jarvis-trader
-   git add engine/routers/portfolio_router.py       # close-stale endpoint (US-2103)
-   git add engine/routers/paper_validation_router.py # closed trades endpoint (US-2104)
-   git add dashboard/app/trades/page.tsx             # trades page (US-2104)
-   git add dashboard/app/layout.tsx                  # nav link (US-2104)
-   git add prd.json                                  # update all passes: true
-   git commit -m "feat: Sprint 21 close-out — US-2101/2102/2103/2104 all pass"
-   git push origin master
-   ```
-
-6. **Update prd.json: Set all stories passes: true**
-   ```json
-   "stories": [
-     {"id": "US-2101", "passes": true},
-     {"id": "US-2102", "passes": true},
-     {"id": "US-2103", "passes": true},
-     {"id": "US-2104", "passes": true},
-     {"id": "US-2105", "passes": true}
-   ]
-   ```
-
-7. **Start engine & dashboard (Friday/Sunday test, Monday live)**
-   ```bash
-   # Windows PowerShell
-   .\start_jarvis.bat
-   # Or manually:
-   # Terminal 1: cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010
-   # Terminal 2: cd dashboard && pnpm dev
-   # Terminal 3: Monitor: IB Gateway on port 4002, Redis on 6379
-   ```
-
-8. **Verify paper trading state at market open (Monday 09:31 CT)**
-   - Engine health: GET /health → {status: 'healthy', database: 'connected', ibkr_connected: true}
-   - Live prices flowing: GET /data/price/MCL and /data/price/MNQ return numeric values
-   - No stale positions: GET /portfolio/paper/positions → [] or only legitimate trades
-   - Dashboard loads: http://localhost:3010 → no 401 errors, no TS issues
-   - Trade history visible: http://localhost:3010/trades → shows MCL $100 trade
-
----
-
-## §5 — MONDAY MORNING CHECKLIST (09:00 CT, before market open 09:31)
-
-### Pre-Market Verification (30 minutes before open)
-
-- [ ] Engine running on port 8010, zero errors in console
-- [ ] Dashboard running on port 3010, zero TypeScript errors
-- [ ] IB Gateway connected on port 4002 (check engine logs for "IBKR connected")
-- [ ] Redis running on port 6379 (check with `redis-cli ping` → PONG)
-- [ ] GET /health returns healthy status with ibkr_connected: true
-- [ ] GET /data/price/MCL returns numeric last_price (not null)
-- [ ] GET /data/price/MNQ returns numeric last_price (not null)
-- [ ] GET /portfolio/paper/positions returns no stale MES positions
-- [ ] Dashboard /trades page loads with closed trade (MCL $100 win)
-- [ ] All environment variables set: engine/.env, dashboard/.env.local
-
-### Post-Market (09:31+ CT)
-
-- Monitor first signal generation from trading pipeline
-- Watch for API key errors in engine logs (indicates dashboard auth issue)
-- Check /paper/validation/summary for live win_rate and profit_factor
-- Verify new trades appear in /paper/trades/closed within 5 seconds of exit
-
----
-
-## §6 — ENVIRONMENT & DEPLOYMENT NOTES
-
-### Windows PowerShell Only
-- All commands use `.\restart_engine.ps1` (backslash paths)
-- `pnpm` is system package manager (NOT npm)
-- Python venv is Windows-only: `engine/.venv/Scripts/python`
-- IB Gateway binary must be running (TWS or standalone Gateway)
-
-### Git Status (Before Pushing)
-- Run: `bash scripts/hooks/check-secrets.sh` → must pass with no NEW secrets
-- Verify: no `.env` files staged, no `client_secret*.json` files
-- Commit message: conventional format (feat:, fix:, docs:, refactor:)
-
-### Safety Invariants (NEVER MODIFY)
-- `LIVE_TRADING_ENABLED = False` — paper mode only
-- `REQUIRE_HUMAN_APPROVAL = True` — every trade needs approval
-- `PORT 4001 PERMANENTLY BLOCKED` — no live trading during Phase 1
-- Safety layer (`engine/risk/safety_layer.py`) is hardcoded authority — no LLM overrides
-
-
----
-
-## 11. ROOT CAUSE ANALYSIS -- ALL-HOLD PIPELINE BUG (Historical Reference)
-
-Symptom: 140/140 pipeline decisions were HOLD for a full week.
-
-Bug 1: BullResearcher MAX_TOKENS=600 (ROOT CAUSE -- FIXED commit b240797)
-  engine/agents/bull_researcher.py:87 had MAX_TOKENS=600 (BearResearcher had 1200)
-  Anthropic truncated JSON mid-string: JSONDecodeError on every run
-  Bull conviction = 0.00 always; bear conviction = 0.5-0.7 normally
-  Systematic short bias caused HOLD on 140/140 runs
-  Fix: MAX_TOKENS=1200
-
-Bug 2: Fund Manager Schema Mismatch (FIXED commit b240797)
-  _resolve_final_action() checked fund_decision.get('execute')
-  FundDecision.to_dict() outputs 'approved' key -- 'execute' never existed
-  ALL symbols silently not-approved -> HOLD every time
-  Fix: Rewrote _resolve_final_action() with correct key names
-
-Bug 3: Weekly Stats SQL Case Sensitivity (FIXED commit b240797)
-  engine/main.py had WHERE status = 'CLOSED' (uppercase) x4
-  SQLite stores 'closed' (lowercase) -- case-sensitive
-  All weekly stats always 0 trades, 0% WR, 0 PF
-  Fix: Changed all 4 to WHERE status = 'closed'
-
----
-
-## 12. MES OWNER OVERRIDE (Permanent Authorization Record)
-
-Date: 2026-04-04
-Authorized by: Matt Morrison (project owner, explicit direct order)
-Implementation: FUND_MANAGER_BYPASS_SYMBOLS = {'MES'} in engine/agents/pipeline.py
-What is NOT bypassed: Risk Manager veto, Safety Layer, REQUIRE_HUMAN_APPROVAL, ConsecutiveLossTracker
-MES WFE=0.09 (overfit). Re-validation in progress via engine/backtest/run_mes_experiment.py.
-Do NOT use MES in production until WFE >= 0.50.
-
----
-
-## 13. SPRINT 21 RALPH LOOP SUMMARY (Completed Prior Session)
-
-Sprint 21-A: DB Cleanup + Learning Tables (3/3 PASS)
-  - Deleted ghost 0-byte engine/jarvis_trader.db
-  - migration_013: learning_events + trading_patterns tables
-  - EODScheduler wired to TradingMemoryConsolidator.consolidate_daily()
-
-Sprint 21-B: RL Run 10 Config (3/3 PASS)
-  - rl_config.py: hold_cost=-0.010, t1_bonus=0.50 (strong exit incentives)
-  - MAX_BARS_IN_TRADE=50 in rl_environment.py
-  - rl_evaluator.py: avg_bars + t1_hit_rate gates added
-
-Sprint 21-C: Parallel Scanner (3/3 PASS)
-  - MCL+MNQ concurrent via asyncio.gather() (~50% faster)
-  - 15m timeframe added as secondary scan
-  - signal_timeframe column added to trade tables
-
-Sprint 21-D: Trade Journal + Attribution (3/3 PASS)
-  - regime_tier + deciding_stage stored per trade
-  - GET /analytics/pipeline/confidence endpoint
-  - /trades/journal page + InstrumentValidationScorecard.tsx
-
-Sprint 21-E: WFE Monitoring + Pre-Filter (3/3 PASS)
-  - engine/agents/pre_filter.py (NEW): haiku 400t, skip when STC 15-83 flat
-  - Weekly WFE snapshots to wfe_snapshots table
-  - WFEMonitorWidget.tsx + validation page integration
-
----
-
-## 14. SPRINT 22 DETAILS (Completed This Session)
-
-US-2201: trade_outcomes table + persist_trade_outcome() + fire-and-forget hook in close_trade()
-US-2202: get_trade_history_context(symbol) -> injected into TechnicalAnalyst Stage 1 prompt
-US-2203: [AGENT_INPUT] logging + honest fallbacks for all 4 Stage 1 agents
-US-2204: POST /openclaw/webhook -- WhatsApp 'yes'/'no'/'hold' -> approve/reject/skip
-US-2205: Sprint close-out, all tests passing, prd.json updated
-
----
-
-## 15. POLYGON API KEY (in engine/.env, do not commit)
-POLYGON_API_KEY=95PhPqp1RdZhcPeZU5519TDAdbm7c7o6
-
----
+- **Response**: [{trad

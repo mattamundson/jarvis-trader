@@ -82,6 +82,7 @@ from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
 from routers.kairos_router import router as kairos_router
 from routers.learning_router import router as learning_router
+from routers.events_router import router as events_router
 from routers.market_router import router as market_router
 from routers.phase3_readiness_router import inject_dependencies as inject_phase3_readiness_deps
 from routers.phase3_readiness_router import router as phase3_readiness_router
@@ -1190,6 +1191,39 @@ async def lifespan(app: FastAPI):
     except Exception as _brief_err:
         logger.warning(f"Morning brief init failed (non-fatal): {_brief_err}")
 
+    # Initialize IB Gateway Health Monitor (every 15 minutes, Mon-Fri 8:00am-4:45pm CT)
+    try:
+        async def run_ib_health_check() -> None:
+            """Check IB Gateway health and alert on disconnect."""
+            try:
+                from health.ib_monitor import check_ib_health
+                from brokers.ib_paper_connector import ib_paper_connector
+
+                result = await check_ib_health(ib_paper_connector)
+                if not result:
+                    logger.warning("[IBHealth] IB Gateway health check failed (disconnected)")
+            except Exception as exc:
+                logger.debug(f"[IBHealth] Health check failed (non-fatal): {exc}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_ib_health_check,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour="8-16",
+                    minute="0,15,30,45",
+                    timezone="America/Chicago",
+                ),
+                id="ib_health_monitor",
+                name="IB Gateway Health Monitor",
+                max_instances=1,
+                misfire_grace_time=60,
+                replace_existing=True,
+            )
+            logger.info("✅ IB health monitor job registered — fires every 15 min Mon–Fri 8am–4:45pm CT")
+    except Exception as _health_err:
+        logger.warning(f"IB health monitor init failed (non-fatal): {_health_err}")
+
     logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
@@ -1271,6 +1305,7 @@ app.include_router(paper_validation_router)
 app.include_router(webhook_router)
 app.include_router(discord_router)
 app.include_router(learning_router)
+app.include_router(events_router)
 app.include_router(kairos_router)
 app.include_router(profiling_router)
 app.include_router(schwab_router)
@@ -4320,157 +4355,4 @@ async def import_paper_trades(request: Request):
         raise HTTPException(status_code=503, detail=str(e)) from e
 
 
-@app.get("/analytics/trades/by-hour")
-async def get_trades_by_hour():
-    """Hour-of-day trade performance breakdown."""
-    try:
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT
-                    CAST(strftime('%H', exit_time) AS INTEGER) as hour,
-                    COUNT(*) as count,
-                    SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
-                    SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) as losses,
-                    ROUND(SUM(pnl), 2) as total_pnl,
-                    ROUND(AVG(pnl), 2) as avg_pnl
-                FROM paper_trades
-                WHERE status = 'closed' AND exit_time IS NOT NULL
-                GROUP BY hour
-                ORDER BY hour
-            """)
-            rows = cursor.fetchall()
-            conn.close()
-
-        hours = []
-        for row in rows:
-            h = row["hour"]
-            count = row["count"]
-            wins = row["wins"]
-            losses = row["losses"]
-            win_rate = round(wins / count * 100, 1) if count > 0 else 0.0
-            hours.append(
-                {
-                    "hour": h,
-                    "hour_label": f"{h:02d}:00",
-                    "count": count,
-                    "wins": wins,
-                    "losses": losses,
-                    "win_rate": win_rate,
-                    "total_pnl": row["total_pnl"] or 0.0,
-                    "avg_pnl": row["avg_pnl"] or 0.0,
-                }
-            )
-
-        return {"hours": hours, "total_hours_analyzed": len(hours)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@app.get("/portfolio/stats/weekly")
-async def get_weekly_stats():
-    """7-day rolling performance summary."""
-    try:
-        from datetime import timedelta
-
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT
-                    COUNT(*) as total_trades,
-                    SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
-                    SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) as losses,
-                    ROUND(SUM(pnl), 2) as total_pnl,
-                    ROUND(AVG(pnl), 2) as avg_pnl,
-                    ROUND(MAX(pnl), 2) as best_trade,
-                    ROUND(MIN(pnl), 2) as worst_trade,
-                    COUNT(DISTINCT DATE(exit_time)) as trading_days
-                FROM paper_trades
-                WHERE status = 'closed'
-                  AND exit_time IS NOT NULL
-                  AND exit_time >= ?
-            """,
-                (cutoff,),
-            )
-            row = cursor.fetchone()
-            conn.close()
-
-        if not row or row["total_trades"] == 0:
-            return {
-                "period": "7d",
-                "total_trades": 0,
-                "wins": 0,
-                "losses": 0,
-                "win_rate": 0.0,
-                "total_pnl": 0.0,
-                "avg_pnl": 0.0,
-                "best_trade": 0.0,
-                "worst_trade": 0.0,
-                "trading_days": 0,
-            }
-
-        total = row["total_trades"]
-        wins = row["wins"] or 0
-        return {
-            "period": "7d",
-            "total_trades": total,
-            "wins": wins,
-            "losses": row["losses"] or 0,
-            "win_rate": round(wins / total * 100, 1) if total > 0 else 0.0,
-            "total_pnl": row["total_pnl"] or 0.0,
-            "avg_pnl": row["avg_pnl"] or 0.0,
-            "best_trade": row["best_trade"] or 0.0,
-            "worst_trade": row["worst_trade"] or 0.0,
-            "trading_days": row["trading_days"] or 0,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@app.get("/portfolio/stats/trading-days")
-async def get_trading_days_stats():
-    """
-    Distinct calendar days with at least one closed paper exit (SQLite).
-
-    Aliases match dashboard consumers: TradingDaysCountdownCard, ValidationChecklist.
-    """
-    if not db_manager:
-        raise HTTPException(status_code=503, detail="Database not initialized")
-
-    threshold = 30
-    try:
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT COUNT(DISTINCT DATE(exit_time)) AS td
-                FROM paper_trades
-                WHERE LOWER(TRIM(status)) = 'closed'
-                  AND exit_time IS NOT NULL
-                """
-            )
-            row = cursor.fetchone()
-            conn.close()
-
-        n = int(row["td"] or 0) if row else 0
-        return {
-            "trading_days": n,
-            "trading_days_completed": n,
-            "days_traded": n,
-            "completed_days": n,
-            "target_days": threshold,
-            "threshold": threshold,
-            "threshold_met": n >= threshold,
-            "target_trading_days": threshold,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+       
