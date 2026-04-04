@@ -1,4 +1,5 @@
 """Search strategy for MES experiment parameter selection."""
+
 from __future__ import annotations
 
 import random

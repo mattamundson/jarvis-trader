@@ -1,4 +1,5 @@
 """CLI entry point for MES parameter search experiments."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,9 +10,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def run_single_experiment(
-    symbol: str, config_used: dict, log_path: str | None = None
-) -> dict:
+def run_single_experiment(symbol: str, config_used: dict, log_path: str | None = None) -> dict:
     """Run one walk-forward experiment and return result dict."""
     from strategies.experiment_log import EXPERIMENT_LOG_PATH, ExperimentLog
 

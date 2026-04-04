@@ -62,6 +62,10 @@ fredapi==0.5.2            # FRED — Federal Reserve data, free, no key needed
 # ── Scheduling ─────────────────────────────────────────────────────────────
 apscheduler==3.11.0
 
+# ── RL / session tests (full pytest on CI) ─────────────────────────────────
+gymnasium==1.0.0          # TradingEnvironment + test_rl_module
+pytz==2024.2              # journal/session routes (test_session4_*)
+
 # ── Utilities ──────────────────────────────────────────────────────────────
 python-dotenv==1.1.0
 loguru==0.7.3
