@@ -8,6 +8,7 @@ import { DiscordSignalTable } from "@/components/discord/DiscordSignalTable";
 import { SignalFeed } from "@/components/discord/signal-feed";
 import { IBReportCard } from "@/components/discord/ib-report-card";
 import { CoreyFeed } from "@/components/discord/corey-feed";
+import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
 
 type Tab = "overview" | "signals" | "ib-reports" | "commentary";
 
@@ -102,6 +103,8 @@ export default function DiscordPage() {
           <div className="space-y-6">
             {/* Row 1: Summary stats (full width) */}
             <DiscordStats />
+
+            <DiscordIntelligenceWidget />
 
             {/* Row 2: Win rate chart (left) + commentary snippet (right) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -318,6 +318,12 @@ def layer2_structure(row: pd.Series) -> dict:
     elif below_val and below_ib_low:
         result["position"] = "SELLER_CONTROL"
 
+    # Discord IB level fields (additive — None when not injected)
+    result["discord_ibu50"] = float(row["discord_ibu50"]) if "discord_ibu50" in row and row["discord_ibu50"] is not None else None
+    result["discord_ibu100"] = float(row["discord_ibu100"]) if "discord_ibu100" in row and row["discord_ibu100"] is not None else None
+    result["discord_ibd50"] = float(row["discord_ibd50"]) if "discord_ibd50" in row and row["discord_ibd50"] is not None else None
+    result["discord_ibd100"] = float(row["discord_ibd100"]) if "discord_ibd100" in row and row["discord_ibd100"] is not None else None
+
     return result
 
 
