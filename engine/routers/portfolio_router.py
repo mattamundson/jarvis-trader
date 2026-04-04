@@ -13,12 +13,13 @@ POST /portfolio/paper/admin/close-stale - close stale test MES positions (admin 
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from config import settings
 
@@ -31,13 +32,15 @@ TARGET_TRADING_DAYS = 30
 # Global references (injected from main.py)
 paper_tracker = None
 db_manager = None
+_data_manager = None
 
 
-def inject_dependencies(pt, dbm):
+def inject_dependencies(pt, dbm, dm=None):
     """Inject dependencies from main.py"""
-    global paper_tracker, db_manager
+    global paper_tracker, db_manager, _data_manager
     paper_tracker = pt
     db_manager = dbm
+    _data_manager = dm
 
 
 def _get_orchestrator():
@@ -1066,3 +1069,136 @@ async def close_stale_positions():
     except Exception as exc:
         logger.error("close_stale_positions failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+INSTRUMENT_POINT_VALUES: dict[str, float] = {
+    "MCL": 100.0,
+    "MNQ": 2.0,
+    "MES": 5.0,
+    "MGC": 10.0,
+    "DEFAULT": 1.0,
+}
+
+
+class UnrealizedPositionResponse(BaseModel):
+    trade_id: str
+    symbol: str
+    action: str
+    quantity: float
+    entry_price: float
+    current_price: float | None
+    unrealized_pnl: float | None
+    unrealized_pnl_pct: float | None
+    stop_loss: float | None
+    take_profit: float | None
+    stop_distance: float | None
+    target_distance: float | None
+    entry_time: str
+    direction: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+def _compute_unrealized(pos: dict, current_price: float | None, point_values: dict) -> dict:
+    """Compute unrealized P&L fields for one position."""
+    symbol = str(pos.get("symbol", "")).upper()
+    action = str(pos.get("action", "") or pos.get("side", "") or "").lower()
+    quantity = float(pos.get("quantity", 1) or 1)
+    entry_price = float(pos.get("entry_price", 0) or 0)
+    stop_loss = pos.get("stop_loss") or pos.get("stop_price")
+    take_profit = pos.get("take_profit") or pos.get("target_price")
+    entry_time = str(pos.get("entry_time") or pos.get("created_at") or "")
+    trade_id = str(pos.get("trade_id") or pos.get("id") or "")
+
+    # Direction
+    if action in ("buy", "buy_to_open", "long", "buy_to_close"):
+        direction = "LONG"
+    elif action in ("sell", "sell_to_open", "short", "sell_to_close"):
+        direction = "SHORT"
+    else:
+        direction = "LONG"
+
+    point_value = point_values.get(symbol, point_values.get("DEFAULT", 1.0))
+
+    # Unrealized P&L
+    unrealized_pnl: float | None = None
+    unrealized_pnl_pct: float | None = None
+    if current_price is not None:
+        if direction == "LONG":
+            unrealized_pnl = (current_price - entry_price) * point_value * quantity
+        else:
+            unrealized_pnl = (entry_price - current_price) * point_value * quantity
+        denom = entry_price * point_value * quantity
+        if denom != 0:
+            unrealized_pnl_pct = (unrealized_pnl / denom) * 100
+
+    # Distance to stop / target
+    stop_distance: float | None = None
+    target_distance: float | None = None
+    if stop_loss is not None and current_price is not None:
+        try:
+            stop_distance = abs(current_price - float(stop_loss))
+        except (TypeError, ValueError):
+            pass
+    if take_profit is not None and current_price is not None:
+        try:
+            target_distance = abs(float(take_profit) - current_price)
+        except (TypeError, ValueError):
+            pass
+
+    return {
+        "trade_id": trade_id,
+        "symbol": symbol,
+        "action": action,
+        "quantity": quantity,
+        "entry_price": entry_price,
+        "current_price": current_price,
+        "unrealized_pnl": unrealized_pnl,
+        "unrealized_pnl_pct": unrealized_pnl_pct,
+        "stop_loss": float(stop_loss) if stop_loss is not None else None,
+        "take_profit": float(take_profit) if take_profit is not None else None,
+        "stop_distance": stop_distance,
+        "target_distance": target_distance,
+        "entry_time": entry_time,
+        "direction": direction,
+    }
+
+
+@router.get("/paper/positions/unrealized", response_model=list[UnrealizedPositionResponse])
+async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
+    """
+    Return all open paper positions enriched with current price and unrealized P&L.
+    Prices are fetched concurrently via asyncio.gather. Returns [] if no positions.
+    """
+    try:
+        if paper_tracker is None:
+            return []
+
+        positions: list[dict] = paper_tracker.get_open_positions()
+        if not positions:
+            return []
+
+        # Fetch current prices concurrently
+        symbols = [str(p.get("symbol", "")) for p in positions]
+        if _data_manager is not None:
+            results = await asyncio.gather(
+                *[_data_manager.get_current_price(sym) for sym in symbols],
+                return_exceptions=True,
+            )
+            current_prices = [
+                float(r) if not isinstance(r, Exception) and r is not None else None
+                for r in results
+            ]
+        else:
+            current_prices = [None] * len(positions)
+
+        enriched = []
+        for pos, current_price in zip(positions, current_prices):
+            computed = _compute_unrealized(pos, current_price, INSTRUMENT_POINT_VALUES)
+            enriched.append(UnrealizedPositionResponse(**computed))
+
+        return enriched
+
+    except Exception as exc:
+        logger.error("[UnrealizedPnL] Endpoint error: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))

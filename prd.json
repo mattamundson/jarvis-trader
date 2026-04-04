@@ -1,7 +1,7 @@
 {
-  "sprint": "Sprint 22 — JARVIS Gets a Memory",
-  "goal": "Wire the learning feedback loop so JARVIS remembers every trade it has ever made and injects that context into every future decision. Audit every LLM agent to confirm real data is flowing. Wire WhatsApp reply-to-approve so Matt can approve trades with one word from his phone. After this sprint JARVIS is no longer amnesiac — it will reason about MCL with the knowledge of every previous MCL trade it has taken.",
-  "context": "Sprint 21 complete. Engine v1.1.0. IB conId fixed, dashboard API key fixed, stale positions closed, Trade History page live. The learning/ directory has 4 fully-built modules (feedback.py, patterns.py, recommendations.py, consolidator.py) that are DISCONNECTED from everything. process_trade_outcome() is never called. get_recommendations() is never called by pipeline.py. trade_outcomes SQLite table does not exist yet. OpenClaw sends alerts but cannot receive replies.",
+  "sprint": "Sprint 23 — JARVIS Wakes Up",
+  "goal": "Give JARVIS two new senses it is currently missing: (1) a morning intelligence brief sent via WhatsApp at 8:45 CT every trading day — MCL/MNQ prices, STC values, regime, open positions, daily P&L context. (2) An unrealized P&L widget on the dashboard that shows live open-position profit/loss polled every 10 seconds. After this sprint JARVIS is no longer silent between signals — it briefs its operator every morning and the dashboard shows live position heat.",
+  "context": "Sprint 22 complete. Engine v1.1.0. Learning feedback loop wired (trade_outcomes table live). WhatsApp is now bidirectional (openclaw webhook handles yes/no/hold replies). APScheduler already runs in main.py with two jobs: watchlist_scan (every 30min, 9-3pm CT) and mgc_daily_signal (23:00 UTC). The morning brief needs a third job at 8:45 CT. The unrealized P&L API endpoint does not exist yet — /portfolio/paper/positions only returns static entry data with no live price enrichment. openclaw_notifier.py has notify_signal/notify_kill_switch/notify_approval_required as public async functions — we need to add a send_raw() public function for the morning brief. INSTRUMENT_POINT_VALUES exist in engine/backtest/data_loader.py (MCL=100.0, MNQ=2.0) and need to be added to a shared location.",
   "rules": [
     "Phase 1 only — no strategy parameters, no WFE experiments, no RL training",
     "Safety invariants: LIVE_TRADING_ENABLED=False, REQUIRE_HUMAN_APPROVAL=True, port 4001 blocked",
@@ -9,100 +9,89 @@
     "Deploy and maintain 5 parallel agents throughout using /ralph loop",
     "Never modify engine/risk/safety_layer.py or engine/config.py without Tier 3 confirmation",
     "Dashboard: pnpm run build must pass before any dashboard commit",
-    "Learning feedback must be fire-and-forget — a failure in feedback processing must never block a trade close"
+    "Morning brief must be fire-and-forget — a failure must never block engine startup or the APScheduler"
   ],
   "stories": [
     {
-      "id": "US-2201",
-      "title": "Wire learning feedback loop — persist trade outcomes to SQLite",
+      "id": "US-2301",
+      "title": "Morning intelligence brief — scheduled WhatsApp at 8:45 CT",
       "priority": "P0",
       "passes": false,
-      "goal": "After every trade closes in tracker.py, call process_trade_outcome() from learning/feedback.py and persist the structured result to a new trade_outcomes SQLite table. This is JARVIS's long-term memory store — every closed trade creates a permanent record with symbol, action, pnl, outcome, regime context, and lesson_text.",
+      "goal": "Every weekday at 8:45 AM CT, JARVIS sends a pre-market WhatsApp brief covering: MCL and MNQ current price and STC value, market regime, any open paper positions with unrealized P&L, daily P&L context, and number of signals today. This gives Matt a 60-second situational awareness read before the open.",
       "acceptanceCriteria": [
-        "trade_outcomes SQLite table created via migration: trade_id TEXT PK, symbol TEXT, action TEXT, pnl REAL, outcome TEXT (win/loss/scratch), entry_time TEXT, exit_time TEXT, duration_seconds INTEGER, lesson_type TEXT, lesson_text TEXT, created_at TEXT",
-        "tracker.py close_trade() calls process_trade_outcome() from learning/feedback.py after successful SQLite write — fire-and-forget (asyncio.create_task or threading.Thread)",
-        "feedback result is persisted to trade_outcomes table — all fields populated",
-        "process_trade_outcome() failure is caught and logged — never blocks trade close",
-        "GET /learning/outcomes endpoint added — returns trade_outcomes from SQLite (for verification)",
-        "After closing a paper trade via POST /portfolio/paper/close/{trade_id}, GET /learning/outcomes returns 1+ rows",
+        "engine/notifications/morning_brief.py: new file with assemble_morning_brief(data_manager, paper_tracker, safety_layer) -> str async function. Returns a formatted multi-line string. Never raises — returns a fallback string on any error.",
+        "assemble_morning_brief() calls data_manager.get_current_price('MCL') and data_manager.get_current_price('MNQ') concurrently via asyncio.gather. On price fetch failure, uses 'N/A' as fallback.",
+        "assemble_morning_brief() calls data_manager.get_bars(symbol, lookback_days=3, timeframe='1h') then runs generate_signals(df, symbol=symbol) from backtest.signals to get df.iloc[-1]['stc_val'] and df.iloc[-1]['regime']. On failure, uses 'STC: N/A' and 'UNKNOWN'.",
+        "assemble_morning_brief() calls paper_tracker.get_open_positions() to list open trades. For each position, computes unrealized P&L using INSTRUMENT_POINT_VALUES dict (MCL=100.0, MNQ=2.0, MES=5.0, default=1.0) and direction from action field (buy/long = +, sell/short = -).",
+        "assemble_morning_brief() calls safety_layer.get_status() to get daily_pnl and kill_switch_active.",
+        "Message format (exact): first line 'JARVIS Pre-Market Brief — MM/DD HH:MM CT', then blank line, then 'MCL: $XX.XX (STC: XX | REGIME)' and 'MNQ: $XX (STC: XX | REGIME)', then blank line, then 'Positions: N open' with each position on its own line as '  SYMBOL DIRECTION xQTY @ $ENTRY → $UNR_PNL', then blank line, then 'Daily P&L: $X.XX | Kill switch: INACTIVE/ACTIVE'. Total message under 400 characters.",
+        "engine/notifications/openclaw_notifier.py: add public async function send_raw(message: str) -> bool at the end of the file. No cooldown. Skips if TESTING env. Calls await _send(message).",
+        "engine/main.py: create async def run_morning_brief() function that calls assemble_morning_brief(data_manager, paper_tracker, safety_layer) then await send_raw(brief_text). Wrapped in try/except — logs error, never raises. Register CronTrigger(day_of_week='mon-fri', hour=8, minute=45, timezone='America/Chicago') with id='morning_brief', max_instances=1.",
+        "engine/routers/scheduler_router.py: add POST /scheduler/morning-brief/trigger endpoint that calls run_morning_brief() as a background task. Returns {'status': 'triggered', 'message': 'Morning brief sending in background'}. Requires X-API-Key header.",
+        "engine/tests/test_morning_brief.py: new test file. Tests: (1) assemble_morning_brief() returns a non-empty string when mocked with empty positions. (2) assemble_morning_brief() includes symbol names MCL and MNQ in the output. (3) assemble_morning_brief() does not raise when data_manager returns None prices. (4) unrealized P&L calculation correct for LONG MCL: entry=72.00, current=72.50, qty=1 → +$50.00 (100 * 0.50 * 1). (5) unrealized P&L correct for SHORT MNQ: entry=17500, current=17480, qty=1 → +$40.00 (2 * 20 * 1).",
+        "cd engine && .venv/Scripts/python -m pytest tests/test_morning_brief.py -v passes with 0 failures",
         "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures"
       ],
-      "notes": "learning/feedback.py already has process_trade_outcome() fully implemented. It generates TradeOutcomeFeedback with lesson_type and lesson_text. The ONLY missing pieces are: (1) call it from close_trade(), (2) create the trade_outcomes SQLite table, (3) persist the result. Do NOT modify feedback.py logic — just wire the call and the persistence."
+      "notes": "Key files to read first: engine/notifications/openclaw_notifier.py (understand _send() and public notify_ pattern), engine/schedulers/eod_scheduler.py (understand scheduler injection pattern), engine/main.py lines containing 'scheduler.add_job' (understand how to add a new job). INSTRUMENT_POINT_VALUES = {'MCL': 100.0, 'MNQ': 2.0, 'MES': 5.0, 'MGC': 10.0, 'ES': 50.0, 'NQ': 20.0}. For the direction check: action.lower() in ('buy', 'buy_to_open', 'long', 'buy_to_close') means LONG (current > entry = profit). action.lower() in ('sell', 'sell_to_open', 'short', 'sell_to_close') means SHORT (entry > current = profit). The generate_signals import: from backtest.signals import generate_signals. The data_loader POINT_VALUES are in engine/backtest/data_loader.py for reference but define them fresh in morning_brief.py. The morning_brief module stores injected dependencies as module-level globals (data_manager, paper_tracker, safety_layer). The run_morning_brief() function in main.py uses these globals. inject_morning_brief_deps(dm, pt, sl) function in morning_brief.py sets them. Call inject_morning_brief_deps in the lifespan function in main.py after all components are initialized. run_morning_brief must be defined in main.py (not in morning_brief.py) since it needs access to the main.py globals."
     },
     {
-      "id": "US-2202",
-      "title": "Inject learning context into pipeline — JARVIS remembers before it decides",
+      "id": "US-2302",
+      "title": "Unrealized P&L API — GET /portfolio/paper/positions/unrealized",
       "priority": "P0",
       "passes": false,
-      "goal": "Before Stage 1 of the pipeline runs, query trade_outcomes for the last 20 closed trades on the symbol being analyzed. Format a Historical Trading Context summary. Inject it into the TechnicalAnalyst and TraderAgent system prompts so every decision is informed by what actually happened last time JARVIS traded this symbol.",
+      "goal": "Add an endpoint that returns all open paper positions enriched with current market price and calculated unrealized P&L. The dashboard widget polls this every 10 seconds. The endpoint must be fast — use the price cache when available, fall back gracefully when price is unavailable.",
       "acceptanceCriteria": [
-        "learning/recommendations.py: add get_trade_history_context(symbol, limit=20) function that queries trade_outcomes SQLite table and returns a formatted string like: 'JARVIS TRADE HISTORY — MCL (last 5 trades): 3 wins / 2 losses (60% WR). Avg winner: +$95 | Avg loser: -$45. Last trade: LONG closed +$100 (2h 14m). Most recent loss: SHORT -$45.'",
-        "pipeline.py: before Stage 1 (TechnicalAnalyst call), call get_trade_history_context(symbol) and store result in pipeline_context dict",
-        "TechnicalAnalyst agent system prompt includes the history context block when it contains data (when trade_outcomes has rows for this symbol)",
-        "When trade_outcomes is empty (no history yet), context block is omitted gracefully — no error, no empty placeholder injected",
-        "Pipeline run result includes learning_context_injected: true/false field",
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures",
-        "Manual pipeline trigger via POST /scanner/trigger shows learning_context_injected in pipeline_runs or logs"
-      ],
-      "notes": "learning/recommendations.py already has get_recommendations() scaffolded. Create get_trade_history_context() as a NEW simpler function that reads directly from trade_outcomes SQLite table (not the patterns layer which needs a db_manager). The query: SELECT symbol, action, pnl, outcome, lesson_text FROM trade_outcomes WHERE symbol=? ORDER BY created_at DESC LIMIT 20. Format as a concise block. Keep under 300 tokens — must not bloat the LLM prompt."
-    },
-    {
-      "id": "US-2203",
-      "title": "Audit LLM agent data feeds — confirm real data reaches every agent",
-      "priority": "P0",
-      "passes": false,
-      "goal": "Add structured input logging to every Stage 1 agent (TechnicalAnalyst, NewsAnalyst, SocialAnalyst, FundamentalistAgent). After triggering a manual scan, read the logs to confirm what data each agent actually received. Fix any agent receiving empty/fallback data by identifying and patching its data source.",
-      "acceptanceCriteria": [
-        "Each Stage 1 agent logs at INFO level at the START of its analyze() method: '[AGENT_INPUT] {AgentName} received: {summary of actual data}' — e.g. '[AGENT_INPUT] NewsAnalyst received: 3 headlines for MCL, source=polygon'",
-        "After POST /scanner/trigger, engine logs show 4 [AGENT_INPUT] lines — one per agent — within 30 seconds",
-        "For each agent, determine: is it receiving real data (Polygon/Finnhub/IB) or falling back to empty/None?",
-        "If NewsAnalyst is receiving 0 headlines: diagnose why (Polygon key issue? wrong endpoint? rate limit?) and fix",
-        "If SocialAnalyst is receiving None sentiment: diagnose and fix or implement graceful fallback text that says 'No social data available — neutral assumption'",
-        "If FundamentalistAgent is receiving empty fundamentals: diagnose and implement fallback (futures have no P/E — the fallback should be macro context: VIX level, yield curve data if available, or explicit 'no fundamental data for futures — using macro regime only')",
-        "Write docs/reports/sprint22_agent_audit.md — one section per agent with: what it received, what source, pass/fail, fix applied if any",
+        "engine/routers/portfolio_router.py: add GET /portfolio/paper/positions/unrealized endpoint",
+        "Endpoint returns list of UnrealizedPositionResponse objects. Schema: trade_id (str), symbol (str), action (str), quantity (float), entry_price (float), current_price (float | None), unrealized_pnl (float | None), unrealized_pnl_pct (float | None), stop_loss (float | None), take_profit (float | None), stop_distance (float | None), target_distance (float | None), entry_time (str), direction (str — 'LONG' or 'SHORT')",
+        "For each open position from paper_tracker.get_open_positions(), fetch current_price via data_manager.get_current_price(symbol). Use asyncio.gather() to fetch all prices concurrently. On price fetch failure, current_price=None, unrealized_pnl=None.",
+        "INSTRUMENT_POINT_VALUES defined in portfolio_router.py: {'MCL': 100.0, 'MNQ': 2.0, 'MES': 5.0, 'MGC': 10.0, 'DEFAULT': 1.0}. Look up symbol.upper(), fall back to 'DEFAULT'.",
+        "direction computed from action field: 'buy'/'buy_to_open'/'long' → 'LONG'. 'sell'/'sell_to_open'/'short' → 'SHORT'. Default 'LONG' for unknown.",
+        "unrealized_pnl = (current_price - entry_price) * point_value * quantity for LONG. (entry_price - current_price) * point_value * quantity for SHORT. None if current_price is None.",
+        "unrealized_pnl_pct = (unrealized_pnl / (entry_price * point_value * quantity)) * 100 if computable, else None.",
+        "stop_distance = abs(current_price - stop_loss) if both are not None, else None. target_distance = abs(take_profit - current_price) if both are not None, else None.",
+        "Response Pydantic model: class UnrealizedPositionResponse(BaseModel): — use model_config = ConfigDict(from_attributes=True). Wrap the whole endpoint in try/except with HTTPException(500).",
+        "engine/tests/test_unrealized_pnl.py: new test file. Tests: (1) GET /portfolio/paper/positions/unrealized returns 200 with empty list when no positions. (2) Unrealized P&L calculation for LONG MCL with current=73, entry=72, qty=1 returns unrealized_pnl=100.0. (3) Unrealized P&L calculation for SHORT MNQ with current=17480, entry=17500, qty=1 returns unrealized_pnl=40.0. (4) Returns None unrealized_pnl when data_manager not injected. (5) stop_distance computed correctly.",
+        "cd engine && .venv/Scripts/python -m pytest tests/test_unrealized_pnl.py -v passes with 0 failures",
         "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures"
       ],
-      "notes": "The most likely finding: NewsAnalyst gets 0 headlines (Polygon news key may be on free tier with no news access), SocialAnalyst gets None (social sentiment API may not be configured), FundamentalistAgent gets empty dict (futures have no traditional fundamentals — the agent needs a macro fallback). Do not fake data — implement honest fallbacks that tell the LLM 'I have no data in this category, assume neutral.' This is better than hallucinated data."
+      "notes": "Read engine/routers/portfolio_router.py first to understand the existing inject_dependencies() pattern and how data_manager and paper_tracker are injected. The endpoint needs _data_manager (already injected as global in this router). Look for 'inject_dependencies' in portfolio_router.py — it may already inject data_manager and paper_tracker. If not, add it. The asyncio.gather pattern for concurrent price fetches: tasks = [data_manager.get_current_price(pos['symbol']) for pos in positions]; results = await asyncio.gather(*tasks, return_exceptions=True). Then zip results back to positions. For positions with exceptions, use None as current_price. Keep the function under 50 lines by extracting _compute_unrealized(pos: dict, current_price: float | None, point_values: dict) -> dict as a helper."
     },
     {
-      "id": "US-2204",
-      "title": "WhatsApp reply approval — one-word approve from phone",
+      "id": "US-2303",
+      "title": "Unrealized P&L dashboard widget",
       "priority": "P1",
       "passes": false,
-      "goal": "Wire OpenClaw inbound message listener so Matt can reply 'yes', 'no', or 'hold' to a WhatsApp approval alert and JARVIS instantly approves/rejects the pending trade. This transforms JARVIS from a notification system into a two-way collaborator.",
+      "goal": "Add a live Unrealized P&L widget to the dashboard that polls /portfolio/paper/positions/unrealized every 10 seconds and shows each open position with current price, unrealized P&L (green/red), and distance to stop/target. This is the 'live heat map' for open positions.",
       "acceptanceCriteria": [
-        "POST /openclaw/webhook endpoint added to engine — receives incoming OpenClaw webhook payload",
-        "Endpoint parses message body: 'yes' or 'approve' → approve the most recent pending_trade_approvals row; 'no' or 'reject' → reject it; 'hold' or 'skip' → leave it pending",
-        "After approving: POST /portfolio/paper/trade is called internally to open the paper position",
-        "After rejecting: pending_trade_approvals row status updated to 'rejected' with rejected_at timestamp",
-        "Confirmation WhatsApp sent back via OpenClaw: 'JARVIS: Trade approved — MCL LONG @ $72.50 opened' or 'JARVIS: Trade rejected'",
-        "Endpoint is idempotent — if no pending approvals exist, replies 'JARVIS: No pending trades to approve'",
-        "Endpoint is protected (verify sender is the registered OpenClaw phone number from config)",
-        "Write docs/runbooks/whatsapp_approval.md — how to configure OpenClaw webhook URL, test procedure",
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures"
+        "dashboard/lib/api.ts: add UnrealizedPosition interface: { trade_id: string; symbol: string; action: string; quantity: number; entry_price: number; current_price: number | null; unrealized_pnl: number | null; unrealized_pnl_pct: number | null; stop_loss: number | null; take_profit: number | null; stop_distance: number | null; target_distance: number | null; entry_time: string; direction: string; }",
+        "dashboard/lib/api.ts: add UnrealizedPositionsResponse type: UnrealizedPosition[] (the endpoint returns a list directly)",
+        "dashboard/components/UnrealizedPnLWidget.tsx: new 'use client' component. Uses useSWR('/portfolio/paper/positions/unrealized', fetchEngine, { refreshInterval: 10000 }). Renders a card with title 'Live Positions'.",
+        "When positions array is empty: show 'No open positions' centered in card with neutral color.",
+        "When loading: show a skeleton/loading state.",
+        "For each position, show one row: symbol + direction badge (bull for LONG, bear for SHORT), quantity, entry price, current price (or 'N/A' if null), unrealized P&L as '$XX.XX' colored green if positive / red if negative / neutral if null, stop distance as 'Stop: $X.XX away' if not null, target distance as 'Target: $X.XX away' if not null.",
+        "Badge variants STRICT: use 'bull' for LONG direction, 'bear' for SHORT direction. No other badge variants.",
+        "Format prices: MCL to 2 decimal places, MNQ/MES to 0 decimal places (integers). Format P&L always with 2 decimal places and + prefix for positive. Use a formatPrice(symbol, price) helper that returns toFixed(0) for MNQ/MES/MGC and toFixed(2) for MCL/others.",
+        "dashboard/app/portfolio/page.tsx OR dashboard/app/page.tsx (the command center / home page): import and render UnrealizedPnLWidget. Add it to the existing grid. Read the current page.tsx to determine correct placement. If a 'BrokerPositionsWidget' or similar exists on the page, place UnrealizedPnLWidget alongside it.",
+        "cd dashboard && pnpm run build passes with 0 TypeScript errors"
       ],
-      "notes": "OpenClaw runs on port 8009. Check OpenClaw documentation or endpoint list for how to register a webhook for incoming messages. The webhook registration may require a POST to http://localhost:8009/api/oc/webhook/register or similar. The JARVIS engine webhook URL to register would be http://localhost:8010/openclaw/webhook. Check engine/notifications/openclaw_notifier.py for any existing webhook registration code or OpenClaw API patterns already established."
+      "notes": "Read dashboard/lib/api.ts first to understand the fetchEngine function signature and existing interfaces. Read dashboard/app/page.tsx (the command center) to see the existing widget grid and where to insert UnrealizedPnLWidget. Read dashboard/components/BrokerPositionsWidget.tsx if it exists — the UnrealizedPnLWidget should follow the same card pattern. The useSWR import: import useSWR from 'swr'. The fetchEngine import: import { fetchEngine } from '@/lib/api'. Do NOT use hardcode http://localhost:8010 — use fetchEngine only. Badge component is in dashboard/components/ui/badge.tsx or similar. Import it from '@/components/ui/badge'. The 'use client' directive must be at the top of the file before any imports."
     },
     {
-      "id": "US-2205",
-      "title": "Sprint 22 close-out — verify memory injection, commit, handoff",
+      "id": "US-2304",
+      "title": "Sprint 23 close-out — test, commit, handoff",
       "priority": "P1",
       "passes": false,
-      "goal": "After all 4 stories complete: restart engine, trigger a scan, confirm learning context appears in pipeline logs, run full test suite, commit all changes, update handoff with Sprint 23 scope (morning intelligence brief + unrealized P&L widget).",
+      "goal": "After all 3 stories complete: run full test suite, restart engine, test the morning brief trigger endpoint, verify unrealized P&L endpoint, verify dashboard widget builds, commit all changes, update handoff with Sprint 24 scope.",
       "acceptanceCriteria": [
-        "Engine restarted: .\\restart_engine.ps1",
-        "POST /scanner/trigger called — 4 [AGENT_INPUT] lines in engine logs within 30 seconds",
-        "If trade_outcomes has any rows: pipeline logs show 'learning_context_injected: true' for the symbol scanned",
-        "GET /learning/outcomes returns HTTP 200 with correct schema",
-        "POST /openclaw/webhook with body {'message': 'yes'} returns HTTP 200 (or 200 with 'no pending trades' message)",
-        "docs/reports/sprint22_agent_audit.md exists with findings for all 4 agents",
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v — 0 failures",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v — 0 failures (all test files pass including test_morning_brief.py and test_unrealized_pnl.py)",
         "cd dashboard && pnpm run build — 0 TypeScript errors",
-        "All Sprint 22 changes committed with conventional commit messages",
-        "prd.json: all 5 stories passes: true",
-        "HANDOFF_CLAUDE_SESSION.md updated with Sprint 23 scope: morning intelligence brief + unrealized P&L dashboard widget"
+        "POST /scheduler/morning-brief/trigger with X-API-Key header returns HTTP 200 {status: 'triggered'}",
+        "GET /portfolio/paper/positions/unrealized returns HTTP 200 (empty list if no open positions, or list with data)",
+        "All Sprint 23 changes committed with conventional commit messages (separate commits per story)",
+        "prd.json: all 4 stories passes: true",
+        "HANDOFF_CLAUDE_SESSION.md updated with Sprint 23 completion block AND Sprint 24 scope: (1) Trade execution confidence scoring — after 20+ paper trades, compute per-symbol win rate, avg R, Sharpe from trade_outcomes table and weight the pipeline confidence score accordingly. (2) Dashboard alerts panel — real-time feed of JARVIS events (trades opened/closed, signals fired, regime changes, kill switch events) using WebSocket or polling GET /events/recent. (3) Paper validation checkpoint — auto-compute current PF, Sharpe, WR, trade count from paper_trades table and compare to gates (PF>=2.0, Sharpe>=1.5, WR>=55%, Trades>=60) with progress bar on dashboard."
       ],
-      "notes": "Sprint 23 scope to document in handoff: (1) Morning pre-market brief via WhatsApp at 8:45 CT — scheduled job that sends MCL/MNQ prices, STC values, regime, open positions, risk budget. (2) Unrealized P&L widget on dashboard — polls IB for current price on open positions, shows live P&L, distance to stop, distance to target."
+      "notes": "To trigger morning brief manually for testing: POST http://localhost:8010/scheduler/morning-brief/trigger with header X-API-Key: jarvis-dev-key-change-me. Check engine logs for '[MorningBrief]' lines. To test unrealized P&L: GET http://localhost:8010/portfolio/paper/positions/unrealized with X-API-Key header — should return 200. If no open positions, returns []. Commit order: (1) engine/notifications/morning_brief.py + openclaw_notifier.py + main.py + tests/test_morning_brief.py, (2) engine/routers/portfolio_router.py + tests/test_unrealized_pnl.py, (3) dashboard/lib/api.ts + dashboard/components/UnrealizedPnLWidget.tsx + relevant page.tsx, (4) prd.json + HANDOFF_CLAUDE_SESSION.md. Never commit engine/.env or dashboard/.env.local."
     }
   ]
 }

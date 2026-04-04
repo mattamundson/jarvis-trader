@@ -25,6 +25,7 @@ import { SessionTodayWidget } from "@/components/SessionTodayWidget";
 import { RollingWFEWidget } from "@/components/RollingWFEWidget";
 import { TradeJournalWidget } from "@/components/TradeJournalWidget";
 import { EODSummaryWidget } from "@/components/EODSummaryWidget";
+import UnrealizedPnLWidget from "@/components/UnrealizedPnLWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -232,6 +233,9 @@ export default function DashboardPage() {
 
             {/* Broker position reconciliation */}
             <BrokerPositionsWidget />
+
+            {/* Unrealized P&L — live paper positions with mark-to-market */}
+            <UnrealizedPnLWidget />
 
             {/* Safety metrics */}
             {safety && (

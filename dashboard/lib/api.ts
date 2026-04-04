@@ -1100,3 +1100,24 @@ export interface ApprovedPaperGatesResponse {
   instruments: ApprovedInstrumentGateRow[];
   note: string;
 }
+
+// ── Unrealized P&L (US-2303) ─────────────────────────────────────────────────
+
+export interface UnrealizedPosition {
+  trade_id: string;
+  symbol: string;
+  action: string;
+  quantity: number;
+  entry_price: number;
+  current_price: number | null;
+  unrealized_pnl: number | null;
+  unrealized_pnl_pct: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  stop_distance: number | null;
+  target_distance: number | null;
+  entry_time: string;
+  direction: string;
+}
+
+export type UnrealizedPositionsResponse = UnrealizedPosition[];

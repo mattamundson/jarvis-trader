@@ -262,3 +262,15 @@ async def notify_target(
     if sent:
         _mark_sent(cooldown_key)
     return sent
+
+
+async def send_raw(message: str) -> bool:
+    """Send a raw WhatsApp message with no cooldown or rate limiting.
+
+    Used for morning brief and other non-signal messages.
+    Skips if TESTING env var is set. Returns True on success.
+    """
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw send_raw suppressed in TESTING mode")
+        return False
+    return await _send(message)
