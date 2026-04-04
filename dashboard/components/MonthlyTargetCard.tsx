@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchDailyPnLHistory } from "@/lib/api";
 
 
 const MONTHLY_TARGET = 500;
@@ -45,10 +45,14 @@ export function MonthlyTargetCard() {
     setLoading(true);
     setError(null);
     try {
-      const payload: unknown = await fetchEngine(
-        `/portfolio/history/daily-pnl?limit=60`
+      const res = await fetchDailyPnLHistory({ days: 62 });
+      const rows = res.daily_pnl ?? [];
+      setEntries(
+        rows.map((r) => ({
+          date: String(r.date).slice(0, 10),
+          pnl: Number(r.realized_pnl ?? 0),
+        }))
       );
-      setEntries(Array.isArray(payload) ? (payload as DailyPnLEntry[]) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch");
       setEntries([]);
