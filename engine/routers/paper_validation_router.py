@@ -782,3 +782,84 @@ async def get_rolling_wfe():
     except Exception as exc:
         logger.error(f"Rolling WFE error: {exc}")
         raise HTTPException(500, str(exc)) from exc
+
+
+class ClosedTrade(BaseModel):
+    """A closed paper trade from the database."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trade_id: str
+    symbol: str
+    direction: str  # normalized from 'side' (buy, sell, buy_to_open, sell_to_open)
+    entry_price: float
+    exit_price: float
+    entry_time: str
+    exit_time: str
+    pnl: float
+    duration_seconds: int
+
+
+@router.get("/trades/closed")
+async def get_closed_trades():
+    """Get all closed paper trades from SQLite, ordered by exit_time DESC."""
+    try:
+        from database.schema import get_db
+
+        db = get_db()
+        conn = db.get_connection()
+
+        # Query all closed trades ordered by exit_time DESC
+        rows = conn.execute(
+            """
+            SELECT
+                trade_id,
+                symbol,
+                side,
+                entry_price,
+                exit_price,
+                entry_time,
+                exit_time,
+                pnl
+            FROM paper_trades
+            WHERE status = 'closed'
+            ORDER BY exit_time DESC
+            """
+        ).fetchall()
+
+        from datetime import datetime
+
+        trades: list[ClosedTrade] = []
+        for row in rows:
+            trade_id, symbol, side, entry_price, exit_price, entry_time, exit_time, pnl = row
+
+            # Normalize direction from side (buy/sell/buy_to_open/sell_to_open -> LONG/SHORT)
+            direction = "LONG" if side in ("buy", "buy_to_open") else "SHORT"
+
+            # Compute duration in seconds
+            try:
+                entry_dt = datetime.fromisoformat(entry_time.replace("Z", "+00:00"))
+                exit_dt = datetime.fromisoformat(exit_time.replace("Z", "+00:00"))
+                duration_seconds = int((exit_dt - entry_dt).total_seconds())
+            except (ValueError, AttributeError, TypeError):
+                duration_seconds = 0
+
+            trades.append(
+                ClosedTrade(
+                    trade_id=trade_id,
+                    symbol=symbol,
+                    direction=direction,
+                    entry_price=entry_price,
+                    exit_price=exit_price,
+                    entry_time=entry_time,
+                    exit_time=exit_time,
+                    pnl=pnl or 0.0,
+                    duration_seconds=duration_seconds,
+                )
+            )
+
+        return {"status": "ok", "trades": trades}
+
+    except Exception as exc:
+        logger.error(f"Get closed trades error: {exc}")
+        raise HTTPException(500, str(exc)) from exc
