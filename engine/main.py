@@ -73,6 +73,7 @@ from risk.safety_layer import SafetyLayer
 from routers.analytics_router import router as analytics_router
 from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.analytics_router import set_data_manager as set_analytics_data_manager
+from routers.discord_router import inject_data_manager as inject_discord_data_manager
 from routers.discord_router import router as discord_router
 from routers.flags_router import router as flags_router
 from routers.flags_router import set_flags as set_flags_router
@@ -956,6 +957,7 @@ async def lifespan(app: FastAPI):
         trading_pipeline,
         schwab_connector,
     )
+    inject_discord_data_manager(data_manager)
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_scheduler_router_scheduler(scheduler)
