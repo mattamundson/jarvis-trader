@@ -13,10 +13,11 @@ Design principle from TradeTrap paper:
 import asyncio
 import logging
 import time
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 try:
     from config import settings
@@ -51,6 +52,22 @@ except ImportError:
         ConsecutiveLossTracker = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
+
+
+def _schedule_background_coro(factory: Callable[[], Coroutine[Any, Any, Any]]) -> None:
+    """
+    Schedule *factory()* on the running loop, or no-op in sync contexts (tests, scripts).
+
+    Never call ``asyncio.create_task(coro())`` when *coro* is built before *create_task*:
+    if there is no running loop, the coroutine object would be discarded and Python
+    emits ``RuntimeWarning: coroutine was never awaited``.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        logger.debug("No running event loop — background coroutine not scheduled")
+        return
+    loop.create_task(factory())
 
 
 class KillSwitchReason(Enum):
@@ -164,29 +181,21 @@ class SafetyLayer:
         self._kill_switch_reason = reason
         logger.critical(f"🔴 KILL SWITCH ACTIVATED: {reason.value}. {message}")
         # Log to PostgreSQL asynchronously (never block)
-        try:
-            asyncio.create_task(
-                self._log_safety_event(
-                    "kill_switch_activate",
-                    reason.value,
-                    {"reason": reason.value, "message": message},
-                )
+        _schedule_background_coro(
+            lambda: self._log_safety_event(
+                "kill_switch_activate",
+                reason.value,
+                {"reason": reason.value, "message": message},
             )
-        except RuntimeError:
-            # No running event loop (e.g., in tests or sync context)
-            logger.debug("No running event loop for async logging")
+        )
         # OpenClaw WhatsApp alert (non-blocking, best-effort)
         try:
             from notifications.openclaw_notifier import notify_kill_switch as _oc_kill
-
-            asyncio.create_task(
-                _oc_kill(
-                    reason=reason.value if hasattr(reason, "value") else str(reason),
-                    message=message,
-                )
-            )
-        except Exception:
-            logger.debug("OpenClaw kill switch notification skipped (no event loop or error)")
+        except Exception as exc:
+            logger.debug("OpenClaw notifier unavailable: %s", exc)
+        else:
+            _reason_str = reason.value if hasattr(reason, "value") else str(reason)
+            _schedule_background_coro(lambda: _oc_kill(reason=_reason_str, message=message))
 
     def deactivate_kill_switch(self, authorized_by: str = "human") -> None:
         """Resume trading. Only callable by human action (not by agents)."""
@@ -194,17 +203,13 @@ class SafetyLayer:
         self._kill_switch_reason = None
         logger.info(f"✅ Kill switch deactivated by: {authorized_by}")
         # Log to PostgreSQL asynchronously
-        try:
-            asyncio.create_task(
-                self._log_safety_event(
-                    "kill_switch_deactivate",
-                    f"Deactivated by {authorized_by}",
-                    {"authorized_by": authorized_by, "resolved": True},
-                )
+        _schedule_background_coro(
+            lambda: self._log_safety_event(
+                "kill_switch_deactivate",
+                f"Deactivated by {authorized_by}",
+                {"authorized_by": authorized_by, "resolved": True},
             )
-        except RuntimeError:
-            # No running event loop (e.g., in tests or sync context)
-            logger.debug("No running event loop for async logging")
+        )
 
     @property
     def is_killed(self) -> bool:
