@@ -253,13 +253,14 @@ A task is complete ONLY when:
 
 ---
 
-## 11. Supporting Files in This Skill Pack
+## 12. Supporting Files in This Skill Pack
 
 | File | Contents |
 |---|---|
 | `SYSTEM_OVERVIEW.md` | What JARVIS TRADER is, who uses it, phase status |
 | `ARCHITECTURE.md` | Modules, data flow, boundaries, risky surfaces |
 | `COMMANDS.md` | All 80+ API endpoints with method, path, purpose |
+| `TOOLS.md` | **Complete external tool routing map** — research, data, engineering, file/process |
 | `playbooks/debug.md` | Reproduce → isolate → patch → verify |
 | `playbooks/add-feature.md` | Spec → design → implement → test → ship |
 | `playbooks/refactor.md` | Scope → extract → validate → review |

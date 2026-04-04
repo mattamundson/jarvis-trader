@@ -2,32 +2,29 @@
 
 > AI-powered futures & options trading system — paper trading validation phase
 
+<!-- IMPORTANT: Keep this file under 150 lines. Verbose sections live in .claude/imports/ and docs/. -->
+
+## Session Start
+
+**ALWAYS invoke `/jarvis-trader`** (NOT `/jarvis-v2`) for sessions in this directory.
+
 ## Project Overview
 
 - **Engine**: FastAPI, Python 3.12, port **8010** — `engine/` (90+ routes, 26 routers)
 - **Dashboard**: Next.js 15, TypeScript, port **3010** — `dashboard/`
 - **Strategy**: STC oscillator (OS=15, OB=83) + ATR stops (0.70x) + 5-layer regime filter
-- **Status**: Hardening phase — multi-market framework complete, paper trading prep
+- **Status**: Hardening phase — multi-market framework complete, paper trading validation
 - **Architecture**: 5-stage LLM pipeline + learning system + multi-market orchestrator + 10 agents
-
-## Session Start
-
-**ALWAYS invoke `/jarvis-trader`** (NOT `/jarvis-v2`) for sessions in this directory.
-`/jarvis-v2` is for Greenfield Metal Sales — unrelated project.
-
-**Skill Pack** — A complete Claude Code skill pack lives at `.claude/skills/jarvis-trader/`.
-Load `SKILL.md` from that directory at the start of any session for full codebase orientation,
-task classification, playbook routing, and the acceptance checklist.
 
 ## Critical Safety Rules
 
-> See `.claude/rules/safety.md` for full details.
+> Full invariants: @.claude/rules/safety.md
 
 - `LIVE_TRADING_ENABLED = False` — paper mode until Phase 3
 - `REQUIRE_HUMAN_APPROVAL = True` — always
-- Safety layer is **hardcoded Python** — never use LLM for safety decisions
+- Safety layer is **hardcoded Python** — NEVER use LLM for safety decisions
 - Kill switch: -2% daily loss, -10% drawdown — non-negotiable
-- No IB Gateway orders without Tier 3 confirmation
+- **engine/risk/safety_layer.py** and **engine/config.py** are Tier 3 files — require explicit confirmation
 
 ## Architecture
 
@@ -38,55 +35,18 @@ task classification, playbook routing, and the acceptance checklist.
 - Stage 4: Risk (RiskManagerAgent — full VETO power)
 - Stage 5: Approval (FundManagerAgent)
 
-**Multi-Market Framework**: `markets/orchestrator.py` manages futures, options, crypto with pluggable modules
+**Multi-Market Framework**: `markets/orchestrator.py` — futures, options, crypto
+**Learning System**: `learning/` — 4 modules (events, feedback, patterns, recommendations)
 
-**Learning System**: `learning/` (4 modules) — events, feedback, patterns, recommendations
-
-**Infrastructure**:
-- Risk params: `engine/config.py` → `TradingConfig`
-- Safety enforcement: `engine/risk/safety_layer.py` (hardcoded, never LLM)
-- Signal logic: `engine/backtest/signals.py` (canonical — Tier 3 to change)
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `engine/main.py` | FastAPI app, routes dispatched to 26 routers (90+ endpoints) |
-| `engine/routers/` | 26 router files organizing 90+ API endpoints |
-| `engine/config.py` | `TradingConfig` — all risk parameters |
-| `engine/agents/pipeline.py` | 5-stage trading pipeline orchestrator |
-| `engine/risk/safety_layer.py` | Kill switch, hard limits, order validation |
-| `engine/backtest/signals.py` | STC signal logic — CANONICAL parameter source |
-| `engine/markets/orchestrator.py` | Multi-market orchestrator (futures, options, crypto) |
-| `engine/learning/` | Learning — pipeline integration via `learning_router`; experimental modules live in `engine/learning/_experimental/` (see `_experimental/README.md`) |
-| `engine/hooks/` | React hooks module (state + market data) |
-| `engine/strategies/rl_agent.py` | RL trading agent (PPO, MES only, experimental) |
-| `engine/strategies/rl_environment.py` | Gym trading environment (19 features from signals.py) |
-| `engine/strategies/rl_trainer.py` | RL training loop (max_episode_bars=500) |
-| `dashboard/lib/api.ts` | `fetchEngine`/`postEngine` — ALL dashboard API calls |
-| `dashboard/app/layout.tsx` | Root Next.js layout |
-| `docs/strategy/TRADING_RULES.md` | Formal entry/exit, sizing, regime layers, session policy, edge thesis |
-| `docs/strategy/EQUATIONS.md` | Math reference (indicators, layers, composite) aligned to `signals.py` / `composite_signals.py` |
-
-## Coding Standards
-
-> See `.claude/rules/coding-style.md` for full details.
-
-- Python: async with graceful fallback, Pydantic v2, ruff-clean
-- TypeScript: Next.js App Router, `"use client"` only when needed, Tailwind
-- **All dashboard fetch via `fetchEngine`/`postEngine`** — never hardcode `localhost:8010`
-- File size: 400 lines typical, 800 max
+See @.claude/imports/key-files.md for the full file purpose table.
 
 ## Environment & Commands
 
 ```bash
-# Engine (Python venv) — NO --reload flag (IB Gateway creates duplicate connections)
+# Engine (no --reload — use restart_engine.ps1 after config changes)
 cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010
-
-# Restart engine (kills port 8010, restarts — use this for config changes)
-.\restart_engine.ps1
-# If taskkill fails with Access denied, run elevated (UAC):
-.\restart_engine_admin.ps1
+.\restart_engine.ps1           # kills port 8010, restarts
+.\restart_engine_admin.ps1     # if taskkill fails (UAC required)
 
 # Dashboard
 cd dashboard && pnpm dev
@@ -99,126 +59,69 @@ cd engine && .venv/Scripts/python -m pytest tests/ -v
 
 # Backtest
 cd engine && .venv/Scripts/python -m backtest.run_backtest --symbol MES --interval 1h
-cd engine && .venv/Scripts/python -m backtest.run_composite_backtest
 
-# Dashboard TypeScript check (use this, NOT npx tsc)
+# TypeScript check (NOT npx tsc)
 cd dashboard && ./node_modules/.bin/tsc --noEmit
 
-# Dashboard build check
+# Build check
 cd dashboard && pnpm run build
 
 # Secrets check
 bash scripts/hooks/check-secrets.sh
 ```
 
-**Python venv**: `engine/.venv/` — always use `.venv/Scripts/python`, not system Python
-**Package manager**: `pnpm` for all Node.js work — system npm is broken
-**CRITICAL**: Engine must NEVER run with `--reload` — use `.\restart_engine.ps1` after config changes; if the listener cannot be killed, use `.\restart_engine_admin.ps1`
+**Python venv**: `engine/.venv/` — always `.venv/Scripts/python`, never system Python
+**Package manager**: `pnpm` — system npm is broken
 
-## Capital & Validation Targets
+## Coding Standards
 
-- **Total Capital**: $10,000 (paper trading)
-- **Validation gates**: PF >= 2.0, Sharpe >= 1.5, WR >= 55%, Trades >= 60, Days >= 30, DD <= 15%
-- **Reference in-sample backtest (not a live gate)**: MES 1h was historically cited around PF ~5.3 / Sharpe ~4.2; **walk-forward efficiency for MES is ~0.09 — DO NOT TRADE** (see Validated Instruments). Use WFE + paper stats for decisions.
+> Full standards: @.claude/rules/coding-style.md
 
-## Validated Instruments
+- Python: async with graceful fallback, Pydantic v2, ruff-clean, 400 lines typical / 800 max
+- TypeScript: Next.js App Router, `"use client"` only when needed, Tailwind
+- **ALL dashboard API calls via `fetchEngine`/`postEngine`** — never hardcode `localhost:8010`
+- Badge variants STRICT: `"bull" | "bear" | "warn" | "info" | "neutral"` — no others
+
+## Validated Instruments & Capital
+
+> @.claude/imports/validated-instruments.md
 
 | Symbol | TF | WFE | Status |
 |--------|----|-----|--------|
-| MCL | 1h | 0.82 | APPROVED — paper trading active |
-| MNQ | 1h | 0.57 | APPROVED — paper trading active |
-| MGC | 1d | 0.14 | HALTED — overfit/small-sample |
+| MCL | 1h | 0.82 | APPROVED |
+| MNQ | 1h | 0.57 | APPROVED |
+| MGC | 1d | 0.14 | HALTED |
 | MES | 1h | 0.09 | DO NOT TRADE |
 
-## Root Directory — Misplaced Files (do NOT move without review)
-
-The project root has ~59 files (expected ~10). Files at root that belong elsewhere:
-
-- `conftest.py` — Root pytest config (sets test env vars before imports). Intentionally at root
-  so pytest can find it before `engine/tests/conftest.py`. Do not move.
-- `verify_phase1_2.py` — Phase 1 & 2 integration smoke test. Could move to `scripts/` but
-  currently used with `python verify_phase1_2.py` from root — leave in place.
-- `*.log` files (`engine_error.log`, `engine_output.log`, `pytest.log`) — Runtime artifacts,
-  do not commit.
-- `*.md` files at root (AGENTS.md, CHANGELOG.md, DELIVERABLES.txt, etc.) — Session artifacts
-  and documentation. The canonical docs live in `docs/`.
-- `prd.json`, `prd-phase2.json` — PRD source files (also at `engine/prd.json` — reconcile).
-- `*.ps1` files (`check_pid.ps1`, `check_port.ps1`, `kill_engine.ps1`, etc.) — Ops scripts.
-  The canonical ops scripts live in `scripts/` — these are convenience copies at root.
-- `*.zip` files — Skill bundles, do not commit.
-- `zio7oVBD` — Unknown artifact, safe to delete.
-
-## Documentation Layout
-
-```
-docs/
-├── architecture/    — Endpoints, WebSocket, API analysis
-├── setup-guides/    — Postgres, Prometheus, FRED, MCP, API keys
-├── runbooks/        — Paper trading, security remediation, daily routine
-├── reports/         — Verification reports, test results, strategy summary
-├── session-logs/    — Historical session logs
-├── dashboards/      — HTML status dashboards
-├── analysis/        — Deep-dive analysis files
-└── archive/         — Superseded documents (kept for reference)
-```
+Gates: PF ≥ 2.0, Sharpe ≥ 1.5, WR ≥ 55%, Trades ≥ 60, Days ≥ 30
 
 ## Git & Security
 
-> See `.claude/rules/git-workflow.md` for full details.
+> Full workflow: @.claude/rules/git-workflow.md
 
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
 - **Never commit**: `.env`, credentials, API keys, `client_secret*.json`
 - `pnpm run build` must pass before pushing
 
+## Custom Subagents
+
+`.claude/agents/` defines 4 trading-specific subagents:
+
+| Agent | Use For |
+|-------|---------|
+| `safety-reviewer` | Any PR touching risk/safety code (REQUIRED before merge) |
+| `backtest-runner` | Running backtests and interpreting WFE results |
+| `dashboard-qa` | Build verification and convention checks |
+| `pipeline-debugger` | Diagnosing pipeline stage failures |
+
 ## gstack Skills
 
-gstack v0.15.1.0 is vendored at `.claude/skills/gstack/`. 33 specialized engineering
-skills are available. See `AGENTS.md` for the full skill → workflow map.
+> @.claude/imports/gstack-skills.md
 
-**First-time setup** (requires Bun v1.0+):
-```bash
-cd .claude/skills/gstack && ./setup
-```
+Key skills: `/review` (safety PRs), `/qa` (browser testing), `/ship` (release), `/investigate` (debug)
 
-**Key skills for this project:**
+## Parallel Agents
 
-| Skill | When |
-|-------|------|
-| `/review` | **Required** before any PR touching `engine/risk/safety_layer.py` |
-| `/investigate` | Debug agent pipeline failures |
-| `/qa` | Test dashboard at http://localhost:3010 with real browser |
-| `/ship` | Full release workflow: tests → review → push → PR |
-| `/cso` | OWASP + STRIDE security audit of FastAPI engine |
-| `/benchmark` | Pipeline latency regression detection |
-| `/office-hours` | Product reframe before designing new trading features |
+> @.claude/imports/parallel-agents.md
 
-**Skill routing:** When the user asks to "review", "QA", "ship", or "investigate",
-proactively invoke the matching gstack skill. Skills read this CLAUDE.md for project
-context — they are platform-agnostic by design.
-
-**Browse binary:** `/qa` and `/browse` use a compiled Bun binary at
-`.claude/skills/gstack/browse/dist/browse`. Run `./setup` to build it.
-Dashboard QA target: `http://localhost:3010`. Engine API: `http://localhost:8010`.
-
-
-## Parallel agent sessions — atomic task checkout
-
-When running multiple Claude Code agents in parallel, use the task manifest to prevent conflicts:
-
-1. **At session start:** Read `.claude/task-manifest.json`
-2. **Claim your task:** Set `status: "in_progress"` and `owner: "your-session-id"`
-3. **Never edit a file owned by another session**
-4. **On completion:** Set `status: "done"`, `owner: null`
-
-Task manifest: `.claude/task-manifest.json` (20 tasks mapped to real engine files)
-
-Reset all tasks before a new multi-agent session:
-```bash
-python3 -c "
-import json
-with open('.claude/task-manifest.json') as f: m = json.load(f)
-for t in m['tasks']: t['status'] = 'unowned'; t['owner'] = None
-with open('.claude/task-manifest.json', 'w') as f: json.dump(m, f, indent=2)
-print('Manifest reset')
-"
-```
+Deploy up to 10 foreground agents. Use task manifest at `.claude/task-manifest.json` for atomic checkout. Reset before multi-agent session.
