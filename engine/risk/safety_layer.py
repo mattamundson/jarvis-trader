@@ -15,7 +15,7 @@ import logging
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -106,7 +106,7 @@ class SafetyLayer:
     Instantiated once at startup and shared across all agents.
     """
 
-    def __init__(self, config, ib_gateway=None, pnl_monitor=None, loss_tracker=None):
+    def __init__(self, config, ib_gateway=None, pnl_monitor=None, loss_tracker=None, db_path: Optional[str] = None):
         """
         Parameters
         ----------
@@ -128,6 +128,10 @@ class SafetyLayer:
             Optional ConsecutiveLossTracker instance. When provided, tracks
             consecutive losing trades and modulates position size accordingly.
             Passing None preserves full backward-compatibility.
+        db_path : str | None
+            Absolute path to the SQLite file used by the engine. When omitted or
+            empty, kill-switch state is **not** persisted (tests, one-off scripts).
+            ``main.py`` passes ``db_manager``'s path so restarts re-arm a latched kill switch.
         """
         self._config = config
         self._ib_gateway = ib_gateway  # used only by submit_paper_order()
@@ -157,6 +161,12 @@ class SafetyLayer:
         # Re-entry lockouts: symbol -> lockout_until datetime
         self._reentry_lockouts: dict[str, datetime] = {}
 
+        # Resolve DB path for kill switch persistence
+        self._db_path: Optional[str] = self._resolve_db_path(db_path)
+
+        # Load persisted kill switch state — must be last in __init__
+        self._load_kill_switch_state()
+
     def attach_ib_gateway(self, gateway) -> None:
         """Wire in an IB gateway after construction (called after paper connector connects)."""
         self._ib_gateway = gateway
@@ -165,6 +175,94 @@ class SafetyLayer:
         """Attach Schwab connector for equity/options order routing."""
         self.schwab = connector
         logger.info("SafetyLayer: Schwab connector attached")
+
+    # ── Kill Switch DB Persistence ────────────────────────────────────────
+
+    def _resolve_db_path(self, db_path: Optional[str]) -> Optional[str]:
+        """Return a non-empty SQLite path, or None to disable kill-switch persistence."""
+        if db_path and str(db_path).strip():
+            return str(db_path)
+        return None
+
+    def _load_kill_switch_state(self) -> None:
+        """
+        Read persisted kill switch state from SQLite on startup.
+
+        If the DB is unavailable or the table does not yet exist, the kill
+        switch remains inactive (fail-safe to trading paused, not trading
+        enabled).  DB failure here is non-fatal — logged as a warning.
+        """
+        if self._db_path is None:
+            logger.debug("SafetyLayer: no DB path — skipping kill switch state load")
+            return
+        try:
+            import sqlite3
+            conn = sqlite3.connect(self._db_path, timeout=5)
+            conn.row_factory = sqlite3.Row
+            try:
+                row = conn.execute(
+                    "SELECT value FROM system_state WHERE key = 'kill_switch_active'"
+                ).fetchone()
+                if row and row["value"] == "true":
+                    reason_row = conn.execute(
+                        "SELECT value FROM system_state WHERE key = 'kill_switch_reason'"
+                    ).fetchone()
+                    reason_str = reason_row["value"] if reason_row else None
+                    self._kill_switch_active = True
+                    if reason_str:
+                        try:
+                            self._kill_switch_reason = KillSwitchReason(reason_str)
+                        except ValueError:
+                            self._kill_switch_reason = KillSwitchReason.MANUAL
+                    else:
+                        self._kill_switch_reason = KillSwitchReason.MANUAL
+                    logger.critical(
+                        "SafetyLayer: kill switch restored from DB (reason=%s) — "
+                        "trading remains HALTED until human deactivates",
+                        self._kill_switch_reason.value if self._kill_switch_reason else "unknown",
+                    )
+                else:
+                    logger.debug("SafetyLayer: kill switch not active in DB — starting clean")
+            finally:
+                conn.close()
+        except Exception as exc:
+            logger.warning("SafetyLayer: failed to load kill switch state from DB: %s", exc)
+
+    def _persist_kill_switch_state(self, active: bool, reason: Optional[KillSwitchReason]) -> None:
+        """
+        Write kill switch state to SQLite.
+
+        Called synchronously after in-memory state is updated.  DB failure is
+        non-fatal — logged as a warning, the in-memory state change still takes
+        effect immediately.
+        """
+        if self._db_path is None:
+            return
+        try:
+            import sqlite3
+
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            active_str = "true" if active else "false"
+            reason_str = reason.value if reason else ""
+            conn = sqlite3.connect(self._db_path, timeout=5)
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, ?)",
+                    ("kill_switch_active", active_str, now),
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, ?)",
+                    ("kill_switch_reason", reason_str, now),
+                )
+                conn.commit()
+                logger.debug(
+                    "SafetyLayer: kill switch state persisted to DB (active=%s reason=%s)",
+                    active_str, reason_str,
+                )
+            finally:
+                conn.close()
+        except Exception as exc:
+            logger.warning("SafetyLayer: failed to persist kill switch state to DB: %s", exc)
 
     # ── Kill Switch ───────────────────────────────────────────────────────
 
@@ -179,7 +277,9 @@ class SafetyLayer:
                 logger.warning(f"Unknown kill switch reason: {reason}")
                 reason = KillSwitchReason.MANUAL
         self._kill_switch_reason = reason
-        logger.critical(f"🔴 KILL SWITCH ACTIVATED: {reason.value}. {message}")
+        logger.critical(f"KILL SWITCH ACTIVATED: {reason.value}. {message}")
+        # Persist state to SQLite (non-fatal if DB unavailable)
+        self._persist_kill_switch_state(True, reason)
         # Log to PostgreSQL asynchronously (never block)
         _schedule_background_coro(
             lambda: self._log_safety_event(
@@ -201,7 +301,9 @@ class SafetyLayer:
         """Resume trading. Only callable by human action (not by agents)."""
         self._kill_switch_active = False
         self._kill_switch_reason = None
-        logger.info(f"✅ Kill switch deactivated by: {authorized_by}")
+        logger.info(f"Kill switch deactivated by: {authorized_by}")
+        # Persist cleared state to SQLite (non-fatal if DB unavailable)
+        self._persist_kill_switch_state(False, None)
         # Log to PostgreSQL asynchronously
         _schedule_background_coro(
             lambda: self._log_safety_event(

@@ -170,7 +170,34 @@ class TradesByHourItem(BaseModel):
 
 
 def _get_all_trades() -> list[dict]:
-    """Retrieve all trades from paper validation tracker."""
+    """
+    Retrieve all closed trades — SQLite is the single source of truth.
+
+    When the injected DatabaseManager is available, queries ``paper_trades``
+    directly (Bug B9 / US-2504).  Falls back to ValidationTracker (JSON) only
+    when the DB has not been initialised, so the endpoint stays functional
+    during early startup or in test environments that do not wire a DB.
+    """
+    if _db is not None:
+        try:
+            rows = _db.get_closed_trades(limit=10000)
+            # Normalise field names expected by analytics helpers.
+            # ValidationTracker uses "instrument" + "timestamp"; SQLite uses
+            # "symbol" + "exit_time".  We expose both so downstream code works
+            # regardless of which key it checks.
+            normalised: list[dict] = []
+            for row in rows:
+                trade = dict(row) if hasattr(row, "keys") else row
+                trade.setdefault("instrument", trade.get("symbol", ""))
+                trade.setdefault("timestamp", trade.get("exit_time") or trade.get("entry_time", ""))
+                pnl = trade.get("pnl")
+                trade["pnl"] = float(pnl) if pnl is not None else 0.0
+                normalised.append(trade)
+            return normalised
+        except Exception as exc:
+            logger.error("_get_all_trades: SQLite query failed, falling back to ValidationTracker: %s", exc)
+
+    # Fallback — ValidationTracker reads stale JSON; only used when no DB is wired
     try:
         from paper.validation_tracker import ValidationTracker
 
@@ -181,7 +208,7 @@ def _get_all_trades() -> list[dict]:
             all_trades.extend(tracker.get_all_trades(instrument))
         return all_trades
     except Exception as exc:
-        logger.error(f"Failed to load trades: {exc}")
+        logger.error("_get_all_trades: ValidationTracker fallback also failed: %s", exc)
         return []
 
 
