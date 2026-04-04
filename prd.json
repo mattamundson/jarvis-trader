@@ -17,7 +17,7 @@
         "All Python ruff-clean. 0 test failures."
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Engine requires restart after S16/S17 changes. Run without --reload flag per CLAUDE.md safety rules."
     },
     {
@@ -51,8 +51,8 @@
         "Append results to docs/reports/sprint18_system_health.md: dashboard page health summary, any widgets still broken, EOD summary endpoint response."
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "DB fixes from Sprint 17 should make dashboard numbers accurate for first time. Document any remaining null widgets."
+      "passes": true,
+      "notes": "Verified 2026-04-03. 10 bugs documented as Sprint 19 backlog in docs/reports/sprint18_system_health.md. Dashboard home page has React hydration ISE; /paper/validation/gates and /summary/eod return 500 due to wrong absolute import path (engine.database). Portfolio balance endpoint works ($10,130). Build passes 26/26 routes, 0 TS errors."
     },
     {
       "id": "US-1804",
@@ -83,7 +83,7 @@
         "Append to docs/reports/sprint18_system_health.md: link to the new runbook, confirmation that all commands were verified."
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Runbook is the Phase 1 completion artifact. When Matt can run through this checklist every morning in under 5 minutes, Phase 1 is done."
     }
   ]
