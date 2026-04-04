@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchDailyPnLHistory, fetchEngine } from "@/lib/api";
 const STARTING_BALANCE = 10_000;
 const REFRESH_MS = 300_000; // 5 minutes
 
@@ -19,6 +19,7 @@ interface PerformanceData {
 interface DailyPnlEntry {
   cumulative_pnl?: number;
   pnl?: number;
+  realized_pnl?: number;
   date?: string;
 }
 
@@ -61,6 +62,9 @@ function computeMaxDrawdown(entries: DailyPnlEntry[]): number | null {
     } else if (typeof entry.pnl === "number") {
       running += entry.pnl;
       series.push(running);
+    } else if (typeof entry.realized_pnl === "number") {
+      running += entry.realized_pnl;
+      series.push(running);
     }
   }
 
@@ -98,7 +102,7 @@ export function ValidationChecklist() {
 
     const [perfResult, pnlResult, daysResult] = await Promise.allSettled([
       fetchEngine<PerformanceData>("/analytics/performance"),
-      fetchEngine<DailyPnlEntry[] | { data?: DailyPnlEntry[] }>("/portfolio/history/daily-pnl?limit=90"),
+      fetchDailyPnLHistory({ days: 90 }),
       fetchEngine<TradingDaysData>("/portfolio/stats/trading-days"),
     ]);
 
@@ -116,12 +120,7 @@ export function ValidationChecklist() {
     // ── Extract daily PnL ────────────────────────────────────────────────────
     let pnlEntries: DailyPnlEntry[] = [];
     if (pnlResult.status === "fulfilled") {
-      const raw = pnlResult.value;
-      if (Array.isArray(raw)) {
-        pnlEntries = raw;
-      } else if (raw && typeof raw === "object" && Array.isArray((raw as { data?: DailyPnlEntry[] }).data)) {
-        pnlEntries = (raw as { data: DailyPnlEntry[] }).data;
-      }
+      pnlEntries = pnlResult.value.daily_pnl ?? [];
     }
     const maxDrawdown = computeMaxDrawdown(pnlEntries);
 

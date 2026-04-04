@@ -378,6 +378,36 @@ export interface DailyPnlRecord {
   num_trades: number;
 }
 
+/** Raw SQLite `daily_pnl` row — may use `total_trades` and omit `cumulative_pnl`. */
+export type DailyPnlRow = Partial<DailyPnlRecord> & {
+  date: string;
+  realized_pnl?: number;
+  total_trades?: number;
+};
+
+/**
+ * Normalize engine daily_pnl rows for dashboard widgets (running cumulative when missing).
+ */
+export function normalizeDailyPnlRows(rows: DailyPnlRow[]): DailyPnlRecord[] {
+  let cum = 0;
+  return rows.map((r) => {
+    const realized = Number(r.realized_pnl ?? 0);
+    cum += realized;
+    const num =
+      typeof r.num_trades === "number"
+        ? r.num_trades
+        : typeof r.total_trades === "number"
+          ? r.total_trades
+          : 0;
+    return {
+      date: String(r.date).slice(0, 10),
+      realized_pnl: realized,
+      cumulative_pnl: typeof r.cumulative_pnl === "number" ? r.cumulative_pnl : cum,
+      num_trades: num,
+    };
+  });
+}
+
 /** GET /portfolio/history/daily-pnl */
 export interface DailyPnLHistoryResponse {
   daily_pnl: DailyPnlRecord[];
@@ -386,14 +416,20 @@ export interface DailyPnLHistoryResponse {
 }
 
 export async function fetchDailyPnLHistory(options?: {
-  limit?: number;
   days?: number;
 }): Promise<DailyPnLHistoryResponse> {
   const q = new URLSearchParams();
-  if (options?.limit != null) q.set("limit", String(options.limit));
   if (options?.days != null) q.set("days", String(options.days));
   const suffix = q.toString() ? `?${q.toString()}` : "";
   return fetchEngine<DailyPnLHistoryResponse>(`/portfolio/history/daily-pnl${suffix}`);
+}
+
+/** Fetch daily PnL history and normalize rows for charts / tables. */
+export async function fetchDailyPnlHistoryNormalized(options?: {
+  days?: number;
+}): Promise<DailyPnlRecord[]> {
+  const res = await fetchDailyPnLHistory(options);
+  return normalizeDailyPnlRows((res.daily_pnl ?? []) as DailyPnlRow[]);
 }
 
 /** GET /portfolio/risk — correlation-aware sizing snapshot */
@@ -1168,4 +1204,4 @@ export interface HourlyStatsResponse {
   hourly_stats: HourlyStatItem[];
   best_hour: HourlyStatItem | null;
   worst_hour: HourlyStatItem | null;
-}                                                                                                                                                                                                                                                                                                                                                                                                     
+}

@@ -3,15 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
-
-
-interface DailyPnlRecord {
-  date: string;
-  realized_pnl: number;
-  num_trades: number;
-  cumulative_pnl: number;
-}
+import { fetchDailyPnlHistoryNormalized, type DailyPnlRecord } from "@/lib/api";
 
 interface DrawdownPoint {
   date: string;
@@ -37,10 +29,8 @@ export function DrawdownChart() {
 
   useEffect(() => {
     const load = () => {
-      fetchEngine(`/portfolio/history/daily-pnl?limit=90`)
-        .then((r) => r.json())
-        .then((d) => {
-          const rows: DailyPnlRecord[] = d.records ?? [];
+      fetchDailyPnlHistoryNormalized({ days: 90 })
+        .then((rows) => {
           setRecords(rows);
           setLoading(false);
         })

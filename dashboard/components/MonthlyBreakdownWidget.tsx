@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchDailyPnlHistoryNormalized } from "@/lib/api";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -135,10 +135,7 @@ export function MonthlyBreakdownWidget() {
 
     const load = async () => {
       try {
-        const raw: unknown = await fetchEngine(
-          `/portfolio/history/daily-pnl?limit=365`
-        );
-        const records: DailyPnlRecord[] = Array.isArray(raw) ? raw : [];
+        const records = await fetchDailyPnlHistoryNormalized({ days: 400 });
         if (!cancelled) {
           setMonths(groupByMonth(records));
           setError(false);
