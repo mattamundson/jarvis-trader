@@ -7,6 +7,7 @@ GET /portfolio/halt - emergency halt all markets (POST)
 GET /portfolio/resume - resume after halt (POST)
 GET /portfolio/paper/hourly-stats - win rate by hour-of-day (CT)
 GET /portfolio/paper/streaks - consecutive win/loss streaks with history
+POST /portfolio/paper/admin/close-stale - close stale test MES positions (admin only)
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from config import settings
@@ -855,4 +856,63 @@ async def paper_streaks():
         "max_loss_streak": max_loss,
         "streak_history": streak_history[-20:],
         "total_trades": len(closed),
+    }
+
+
+_STALE_MES_IDS = [
+    "MES_2026-04-03_short_5800.0",
+    "MES_2026-04-02_long_5800.0",
+    "MES_2026-04-02_long_5810.0",
+    "MES_2026-04-01_long_5800.0",
+]
+
+
+@router.post("/paper/admin/close-stale")
+async def close_stale_test_positions(x_api_key: str = Header(None)):
+    """Close residual MES test positions that have no real market value."""
+    if x_api_key != settings.API_KEY:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    from datetime import datetime as _dt
+    import sqlite3 as _sqlite3
+
+    db_path = str(settings.SQLITE_DB_PATH)
+    now = _dt.utcnow().isoformat()
+    closed: list[str] = []
+    skipped: list[dict] = []
+
+    conn = _sqlite3.connect(db_path)
+    conn.row_factory = _sqlite3.Row
+    try:
+        for tid in _STALE_MES_IDS:
+            row = conn.execute(
+                "SELECT trade_id, status FROM paper_trades WHERE trade_id=?", (tid,)
+            ).fetchone()
+            if row and str(row["status"]).lower() == "open":
+                conn.execute(
+                    "UPDATE paper_trades SET status='closed', exit_price=entry_price, pnl=0.0, exit_time=? WHERE trade_id=?",
+                    (now, tid),
+                )
+                closed.append(tid)
+            else:
+                skipped.append({"trade_id": tid, "reason": "not_found_or_already_closed"})
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Remove from in-memory tracker if present
+    try:
+        from portfolio.tracker import portfolio_tracker
+        for tid in _STALE_MES_IDS:
+            portfolio_tracker._open.pop(tid, None)
+            if hasattr(portfolio_tracker, "open_positions"):
+                portfolio_tracker.open_positions.pop(tid, None)
+    except Exception as _exc:
+        logger.warning("In-memory stale-close partial: %s", _exc)
+
+    return {
+        "closed": closed,
+        "skipped": skipped,
+        "closed_count": len(closed),
+        "message": f"Closed {len(closed)} stale test positions with pnl=0",
     }
