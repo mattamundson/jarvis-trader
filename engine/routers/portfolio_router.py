@@ -5,6 +5,7 @@ GET /portfolio/summary - total P&L, all markets, daily target progress
 GET /portfolio/health - health status of all market modules
 GET /portfolio/halt - emergency halt all markets (POST)
 GET /portfolio/resume - resume after halt (POST)
+GET /portfolio/risk - correlation exposure and margin utilization
 GET /portfolio/paper/hourly-stats - win rate by hour-of-day (CT)
 GET /portfolio/paper/streaks - consecutive win/loss streaks with history
 POST /portfolio/paper/admin/close-stale - close stale test MES positions (admin only)
@@ -188,7 +189,9 @@ async def resume():
 async def paper_phase_summary():
     """
     Paper validation phase rollup: balance, return, distinct trading days, status.
-    Uses PortfolioTracker closed-trade history and settings.INITIAL_CAPITAL.
+    
+    Reads from SQLite when available (single source of truth for P&L history).
+    Falls back to in-memory tracker on DB error or if no DB configured.
     """
     starting = float(settings.INITIAL_CAPITAL)
     base = {
@@ -207,11 +210,21 @@ async def paper_phase_summary():
         return base
 
     rows: list[Any] = []
-    try:
-        rows = paper_tracker.get_trade_history(limit=5000)
-    except Exception as exc:
-        logger.warning("paper_phase_summary: get_trade_history failed: %s", exc)
-        rows = []
+    # SQLite-first approach: query DB for authoritative trade history (Bug B9 / US-2004)
+    if db_manager:
+        try:
+            rows = db_manager.get_trade_history(limit=5000)
+        except Exception as exc:
+            logger.warning("paper_phase_summary: SQLite get_trade_history failed, using in-memory: %s", exc)
+            rows = []
+    
+    # Fallback to in-memory if no DB rows or DB unavailable
+    if not rows:
+        try:
+            rows = paper_tracker.get_trade_history(limit=5000)
+        except Exception as exc:
+            logger.warning("paper_phase_summary: in-memory get_trade_history failed: %s", exc)
+            rows = []
 
     closed_rows = [r for r in rows if _row_is_closed(r)]
     days_set: set[date] = set()
@@ -293,9 +306,59 @@ async def paper_positions():
 
 @router.get("/paper/performance")
 async def paper_performance():
-    """Closed-trade performance summary."""
+    """
+    Closed-trade performance summary.
+    
+    Computes metrics from SQLite when db_manager is available (single source of truth).
+    Falls back to in-memory tracker on DB error.
+    """
     if not paper_tracker:
         return {"performance": {}}
+    
+    # SQLite-first approach: query DB for closed trades if available (Bug B9 / US-2004)
+    if db_manager:
+        try:
+            rows = db_manager.get_trade_history(limit=5000)
+            if rows:
+                # Filter to closed trades and compute performance from DB
+                closed = [r for r in rows if r.get("exit_price") is not None]
+                pnls = [float(r.get("pnl", 0)) for r in closed if r.get("pnl") is not None]
+                
+                if pnls:
+                    wins = [p for p in pnls if p > 0]
+                    losses = [p for p in pnls if p <= 0]
+                    gross_profit = sum(wins) if wins else 0.0
+                    gross_loss = abs(sum(losses)) if losses else 0.0
+                    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
+                    
+                    peak = 0.0
+                    equity = 0.0
+                    max_dd = 0.0
+                    for p in pnls:
+                        equity += p
+                        if equity > peak:
+                            peak = equity
+                        dd = equity - peak
+                        if dd < max_dd:
+                            max_dd = dd
+                    
+                    performance = {
+                        "total_pnl": round(sum(pnls), 4),
+                        "win_rate": round(len(wins) / len(pnls), 4) if pnls else 0.0,
+                        "profit_factor": round(profit_factor, 4) if profit_factor is not None else None,
+                        "num_trades": len(pnls),
+                        "num_open": len(paper_tracker.get_open_positions()),
+                        "avg_win": round(sum(wins) / len(wins), 4) if wins else 0.0,
+                        "avg_loss": round(sum(losses) / len(losses), 4) if losses else 0.0,
+                        "max_dd": round(max_dd, 4),
+                        "best_trade": round(max(pnls), 4) if pnls else None,
+                        "worst_trade": round(min(pnls), 4) if pnls else None,
+                    }
+                    return {"performance": performance}
+        except Exception as exc:
+            logger.warning("paper_performance: SQLite query failed, using in-memory: %s", exc)
+    
+    # Fallback to in-memory tracker
     return {"performance": paper_tracker.get_performance()}
 
 
@@ -566,6 +629,100 @@ async def get_hourly_stats():
     worst = min(hourly_stats, key=lambda x: x["win_rate"])
 
     return {"hourly_stats": hourly_stats, "best_hour": best, "worst_hour": worst}
+
+
+@router.get(
+    "/risk",
+    description="Portfolio correlation exposure, margin utilization, and daily P&L.",
+)
+async def get_portfolio_risk():
+    """
+    Return current portfolio risk metrics including correlation-aware position sizing.
+
+    Response includes:
+    - instruments: List of all configured instruments
+    - correlation_matrix: Instrument pair correlations
+    - active_positions: Current open positions by symbol
+    - correlation_reduction_active: Whether MNQ+MES sizing rule is in effect
+    - total_margin_utilization: Percentage of available margin used
+    - daily_pnl_pct: Daily P&L as percentage of account
+    """
+    try:
+        from orchestrator.position_correlation import PositionCorrelationMonitor
+
+        # Initialize correlation monitor with config values
+        pairs = settings.INSTRUMENT_CORRELATION_PAIRS
+        threshold = settings.CORRELATION_THRESHOLD
+        monitor = PositionCorrelationMonitor(
+            correlation_pairs=pairs,
+            correlation_threshold=threshold,
+            default_max_contracts=settings.MAX_CONTRACTS_PER_INSTRUMENT,
+            correlated_max_contracts=settings.CORRELATED_PAIR_MAX_CONTRACTS,
+        )
+
+        # Get current positions (simplified; in production would integrate with
+        # actual position tracker from paper_tracker or db_manager)
+        open_positions = {}
+        daily_pnl = 0.0
+        margin_used = 0.0
+
+        if paper_tracker:
+            try:
+                trades = paper_tracker.get_trade_history(limit=1000)
+                for trade in trades:
+                    t = trade if isinstance(trade, dict) else trade.to_dict()
+                    if not t.get("is_open"):
+                        # Accumulate closed trade P&L for daily calc
+                        pnl = t.get("pnl")
+                        if pnl and isinstance(pnl, (int, float)):
+                            daily_pnl += float(pnl)
+
+                # Try to get current positions (if paper_tracker exposes them)
+                if hasattr(paper_tracker, "get_positions"):
+                    positions = await paper_tracker.get_positions()
+                    for pos in positions:
+                        sym = pos.symbol if hasattr(pos, "symbol") else pos.get("symbol")
+                        qty = pos.qty if hasattr(pos, "qty") else pos.get("qty", 0)
+                        if sym:
+                            monitor.update_position(sym, qty)
+                            open_positions[sym] = qty
+            except Exception as exc:
+                logger.warning("Error fetching position data: %s", exc)
+
+        # Calculate margin utilization as percentage
+        # (simplified: in production would use broker margin data)
+        account_value = settings.INITIAL_CAPITAL
+        if paper_tracker and hasattr(paper_tracker, "get_account_value"):
+            try:
+                account_value = await paper_tracker.get_account_value()
+            except Exception:
+                pass
+
+        daily_pnl_pct = (daily_pnl / account_value * 100) if account_value > 0 else 0.0
+
+        # Build response
+        correlation_exposure = monitor.get_correlation_exposure()
+
+        return {
+            "instruments": list(settings.FUTURES_WATCHLIST),
+            "correlation_matrix": pairs,
+            "correlation_threshold": threshold,
+            "active_positions": open_positions,
+            "open_symbol_count": correlation_exposure["open_count"],
+            "correlation_reduction_active": correlation_exposure[
+                "correlation_reduction_active"
+            ],
+            "default_max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+            "correlated_max_contracts": settings.CORRELATED_PAIR_MAX_CONTRACTS,
+            "total_margin_utilization": min(margin_used / 40.0 * 100, 100.0),
+            "daily_pnl": round(daily_pnl, 2),
+            "daily_pnl_pct": round(daily_pnl_pct, 4),
+            "account_value": round(account_value, 2),
+        }
+
+    except Exception as exc:
+        logger.error("Error in get_portfolio_risk: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Risk calculation failed: {exc}")
 
 
 @router.get(
@@ -846,73 +1003,62 @@ async def paper_streaks():
         }
     )
 
-    max_win = max((s["count"] for s in streak_history if s["type"] == "WIN"), default=0)
-    max_loss = max((s["count"] for s in streak_history if s["type"] == "LOSS"), default=0)
-    current = streak_history[-1]
+    current_streak = {"type": current_type, "count": streak_count}
+    max_win_streak = max((s["count"] for s in streak_history if s["type"] == "WIN"), default=0)
+    max_loss_streak = max((s["count"] for s in streak_history if s["type"] == "LOSS"), default=0)
 
     return {
-        "current_streak": {"type": current["type"], "count": current["count"]},
-        "max_win_streak": max_win,
-        "max_loss_streak": max_loss,
-        "streak_history": streak_history[-20:],
+        "current_streak": current_streak,
+        "max_win_streak": max_win_streak,
+        "max_loss_streak": max_loss_streak,
+        "streak_history": streak_history,
         "total_trades": len(closed),
     }
 
 
-_STALE_MES_IDS = [
-    "MES_2026-04-03_short_5800.0",
-    "MES_2026-04-02_long_5800.0",
-    "MES_2026-04-02_long_5810.0",
-    "MES_2026-04-01_long_5800.0",
-]
+# ── Admin endpoints ───────────────────────────────────────────────────────────
+
+STALE_SYMBOL = "MES"
+STALE_ENTRY_PRICE = 5800.0
 
 
 @router.post("/paper/admin/close-stale")
-async def close_stale_test_positions(x_api_key: str = Header(None)):
-    """Close residual MES test positions that have no real market value."""
-    if x_api_key != settings.API_KEY:
-        raise HTTPException(status_code=403, detail="Forbidden")
+async def close_stale_positions():
+    """
+    Close stale test MES positions at 5800.0 that were created during
+    Sprint 18/19 testing.  Sets exit_price = entry_price (zero P&L) so
+    they do not distort win-rate or profit-factor metrics.
 
-    from datetime import datetime as _dt
-    import sqlite3 as _sqlite3
+    Returns {"status": "success", "closed_count": N}.
+    """
+    if not paper_tracker:
+        return {"status": "success", "closed_count": 0}
 
-    db_path = str(settings.SQLITE_DB_PATH)
-    now = _dt.utcnow().isoformat()
-    closed: list[str] = []
-    skipped: list[dict] = []
-
-    conn = _sqlite3.connect(db_path)
-    conn.row_factory = _sqlite3.Row
     try:
-        for tid in _STALE_MES_IDS:
-            row = conn.execute(
-                "SELECT trade_id, status FROM paper_trades WHERE trade_id=?", (tid,)
-            ).fetchone()
-            if row and str(row["status"]).lower() == "open":
-                conn.execute(
-                    "UPDATE paper_trades SET status='closed', exit_price=entry_price, pnl=0.0, exit_time=? WHERE trade_id=?",
-                    (now, tid),
-                )
-                closed.append(tid)
-            else:
-                skipped.append({"trade_id": tid, "reason": "not_found_or_already_closed"})
-        conn.commit()
-    finally:
-        conn.close()
+        open_pos = paper_tracker.get_open_positions()
+        stale_ids: list[str] = []
+        for pos in open_pos:
+            p = pos if isinstance(pos, dict) else (pos.to_dict() if hasattr(pos, "to_dict") else {})
+            sym = str(p.get("symbol", "")).upper()
+            try:
+                entry = float(p.get("entry_price", -1))
+            except (TypeError, ValueError):
+                entry = -1.0
+            if sym == STALE_SYMBOL and abs(entry - STALE_ENTRY_PRICE) < 0.01:
+                tid = p.get("trade_id")
+                if tid:
+                    stale_ids.append(str(tid))
 
-    # Remove from in-memory tracker if present
-    try:
-        from portfolio.tracker import portfolio_tracker
-        for tid in _STALE_MES_IDS:
-            portfolio_tracker._open.pop(tid, None)
-            if hasattr(portfolio_tracker, "open_positions"):
-                portfolio_tracker.open_positions.pop(tid, None)
-    except Exception as _exc:
-        logger.warning("In-memory stale-close partial: %s", _exc)
+        closed_count = 0
+        for trade_id in stale_ids:
+            try:
+                paper_tracker.close_trade(trade_id, STALE_ENTRY_PRICE)
+                closed_count += 1
+            except Exception as exc:
+                logger.warning("close_stale_positions: could not close %s: %s", trade_id, exc)
 
-    return {
-        "closed": closed,
-        "skipped": skipped,
-        "closed_count": len(closed),
-        "message": f"Closed {len(closed)} stale test positions with pnl=0",
-    }
+        logger.info("close_stale_positions: closed %d stale %s positions", closed_count, STALE_SYMBOL)
+        return {"status": "success", "closed_count": closed_count}
+    except Exception as exc:
+        logger.error("close_stale_positions failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

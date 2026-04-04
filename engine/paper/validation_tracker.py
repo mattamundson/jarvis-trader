@@ -10,6 +10,12 @@ US-2003: Primary data source changed from stale JSON files to SQLite
 (engine/data/jarvis_trader.db, paper_trades table). JSON fallback is retained for
 tests that supply a temp_data_dir with pre-populated JSON fixture files.
 
+Sprint 20 B3/B4 FIX: Metrics are now queried LIVE from SQLite on each call,
+not cached at init time. This ensures /paper/validation/status and
+/paper/validation/progress always return current trade counts. Previously,
+metrics were cached at initialization, so new trades added after the tracker
+was instantiated would not be reflected.
+
 Purpose: Aggregate per-instrument metrics and validate against PASS thresholds:
   Profit Factor >= 2.0
   Sharpe >= 1.5
@@ -18,15 +24,15 @@ Purpose: Aggregate per-instrument metrics and validate against PASS thresholds:
   Days >= 30
   Max Drawdown <= 15%
 
-Data flow (production):
-  paper_runner.py → SQLite paper_trades table
-                 ↓
-           ValidationTracker (reads from SQLite via _load_from_sqlite)
+Data flow (production, NEW):
+  paper_runner.py ↦ SQLite paper_trades table
+                 ↦ ValidationTracker.get_progress() ↦ live SQLite query
+                                                    ↦ computed metrics
 
 Data flow (tests / fallback):
-  _create_mock_tracker_file → paper_trades_{symbol}.json
-                           ↓
-                  ValidationTracker (reads from JSON via _load_from_tracker)
+  _create_mock_tracker_file ↦ paper_trades_{symbol}.json
+                            ↦ ValidationTracker.get_progress() ↦ JSON fallback
+                                                               ↦ computed metrics
 """
 
 from __future__ import annotations
@@ -208,6 +214,10 @@ class ValidationTracker:
     """
     READ-ONLY validation metrics aggregator (US-303 consolidation, US-2003 SQLite).
 
+    Sprint 20 B3/B4 FIX: Metrics are now queried LIVE from SQLite on each call,
+    not cached at init time. This ensures /paper/validation/status and
+    /paper/validation/progress always return current trade counts.
+
     Primary data source: SQLite paper_trades table (status='closed').
     Fallback: PaperTradeTracker JSON files (used by tests via temp_data_dir).
 
@@ -235,26 +245,41 @@ class ValidationTracker:
             candidate = self.data_dir / "jarvis_trader.db"
             self._db_path = candidate if candidate.exists() else None
 
-        self.metrics: dict[str, InstrumentMetrics] = self._load_metrics()
-
     # ------------------------------------------------------------------
-    # Loading helpers
+    # Backward-compatible metrics property
     # ------------------------------------------------------------------
 
-    def _load_metrics(self) -> dict[str, InstrumentMetrics]:
+    @property
+    def metrics(self) -> dict[str, "InstrumentMetrics"]:
         """
-        Load trade data from the best available source.
+        Backward-compatible property returning live metrics dict.
+
+        Tests and legacy callers that access tracker.metrics["MCL"] continue
+        to work. Each access queries the best available source (SQLite or JSON
+        fallback) so values are always current.
+        """
+        return self._get_metrics_live()
+
+    # ------------------------------------------------------------------
+    # Live loading (Sprint 20 B3/B4 fix)
+    # ------------------------------------------------------------------
+
+    def _get_metrics_live(self) -> dict[str, InstrumentMetrics]:
+        """
+        Load trade data from the best available source at query time.
 
         Priority:
           1. SQLite (self._db_path exists) — live paper trades, always current
           2. JSON tracker files — tests / legacy environments without a DB
+
+        Called on each request, ensuring fresh data from SQLite.
         """
         if self._db_path and self._db_path.exists():
             try:
                 result = self._load_from_sqlite()
                 total = sum(m.total_trades for m in result.values())
-                logger.info(
-                    "ValidationTracker: loaded %d trades from SQLite (%s)",
+                logger.debug(
+                    "ValidationTracker: loaded %d trades from SQLite (%s) [live]",
                     total,
                     self._db_path,
                 )
@@ -318,8 +343,8 @@ class ValidationTracker:
                 instrument_key="symbol",
                 setup_grade_key="notes",
             )
-            logger.info(
-                "Loaded %d trades for %s from SQLite", len(trade_list), inst
+            logger.debug(
+                "Loaded %d trades for %s from SQLite [live]", len(trade_list), inst
             )
 
         return metrics
@@ -352,7 +377,7 @@ class ValidationTracker:
                         instrument_key="symbol",
                         setup_grade_key="exit_reason",
                     )
-                    logger.info(
+                    logger.debug(
                         "Loaded %d trades for %s from tracker JSON",
                         len(trades_list),
                         instrument,
@@ -402,15 +427,18 @@ class ValidationTracker:
     # ------------------------------------------------------------------
 
     def get_progress(self, instrument: str = "MCL") -> dict:
-        """Get validation progress for an instrument."""
-        if instrument not in self.metrics:
+        """Get validation progress for an instrument. Queries live from SQLite."""
+        # SPRINT 20 B3/B4 FIX: Query live, don't use cached self.metrics
+        metrics_dict = self._get_metrics_live()
+
+        if instrument not in metrics_dict:
             return {
                 "instrument": instrument,
                 "status": "not_started",
                 "thresholds": PASS_THRESHOLDS,
             }
 
-        metrics = self.metrics[instrument]
+        metrics = metrics_dict[instrument]
         return {
             "instrument": instrument,
             "total_trades": metrics.total_trades,
@@ -431,30 +459,66 @@ class ValidationTracker:
         }
 
     def get_dashboard_data(self) -> dict:
-        """Get formatted data for API response."""
+        """Get formatted data for API response. Queries live from SQLite."""
+        # SPRINT 20 B3/B4 FIX: Query live, don't use cached self.metrics
+        metrics_dict = self._get_metrics_live()
+
         instruments = {}
         for instrument in _TRACKED_INSTRUMENTS:
-            instruments[instrument] = self.get_progress(instrument)
+            if instrument in metrics_dict:
+                metrics = metrics_dict[instrument]
+                instruments[instrument] = {
+                    "instrument": instrument,
+                    "total_trades": metrics.total_trades,
+                    "winning_trades": metrics.winning_trades,
+                    "losing_trades": metrics.losing_trades,
+                    "win_rate_pct": round(metrics.win_rate_pct, 2),
+                    "profit_factor": round(metrics.profit_factor, 3),
+                    "sharpe_ratio": round(metrics.sharpe_ratio, 3),
+                    "max_drawdown_pct": round(metrics.max_drawdown_pct, 2),
+                    "avg_r_multiple": round(metrics.avg_r_multiple, 3),
+                    "consecutive_losses": metrics.consecutive_losses,
+                    "max_consecutive_losses": metrics.max_consecutive_losses,
+                    "days_active": metrics.days_active,
+                    "total_pnl": round(metrics.total_pnl, 2),
+                    "thresholds": PASS_THRESHOLDS,
+                    "pass_fail": self._get_pass_fail(metrics),
+                    "is_validated": self.is_validated(instrument),
+                }
+            else:
+                instruments[instrument] = {
+                    "instrument": instrument,
+                    "status": "not_started",
+                    "thresholds": PASS_THRESHOLDS,
+                }
 
         return {
             "timestamp": datetime.utcnow().isoformat(),
             "instruments": instruments,
-            "overall_pass": all(self.is_validated(inst) for inst in _TRACKED_INSTRUMENTS),
+            "overall_pass": all(
+                self.is_validated(inst) for inst in _TRACKED_INSTRUMENTS
+            ),
         }
 
     def get_all_trades(self, instrument: str = "MCL") -> list[dict]:
-        """Get all trades for an instrument."""
-        if instrument not in self.metrics:
+        """Get all trades for an instrument. Queries live from SQLite."""
+        # SPRINT 20 B3/B4 FIX: Query live, don't use cached self.metrics
+        metrics_dict = self._get_metrics_live()
+
+        if instrument not in metrics_dict:
             return []
 
-        return [t.model_dump() for t in self.metrics[instrument].trades]
+        return [t.model_dump() for t in metrics_dict[instrument].trades]
 
     def is_validated(self, instrument: str = "MCL") -> bool:
-        """Check if validation passes all thresholds."""
-        if instrument not in self.metrics:
+        """Check if validation passes all thresholds. Queries live from SQLite."""
+        # SPRINT 20 B3/B4 FIX: Query live, don't use cached self.metrics
+        metrics_dict = self._get_metrics_live()
+
+        if instrument not in metrics_dict:
             return False
 
-        metrics = self.metrics[instrument]
+        metrics = metrics_dict[instrument]
 
         return (
             metrics.profit_factor >= PASS_THRESHOLDS["profit_factor"]
