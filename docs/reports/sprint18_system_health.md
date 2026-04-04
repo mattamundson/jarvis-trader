@@ -504,3 +504,166 @@ During E2E testing, one path discrepancy was found:
 | Learning classification | GET /learning/classify | 200 | PASS — grade B, R-multiple 2.00 |
 
 **Overall: US-1802 PASS — Paper trade E2E flow is fully functional.**
+
+---
+
+## US-1803 — Dashboard Data Accuracy Verification
+*Documented: 2026-04-03*
+
+---
+
+### 1. Engine Health Check
+
+**Result: RUNNING** — `status:ok`, `paper_mode:true`, `live_trading:false`, `database:connected`, uptime 1479s.
+
+---
+
+### 2. EOD Summary Endpoint
+
+**Acceptance criteria path**: `GET /paper-validation/summary/eod` — 404 Not Found (wrong prefix)
+
+**Correct path**: `GET /paper/validation/summary/eod` — `{"detail":"No module named 'engine'"}`
+
+**Root cause**: `engine/routers/paper_validation_router.py` line 442 uses
+`from engine.database import get_db` as an absolute import. The engine runs from within the
+`engine/` directory so the package is `database`, not `engine.database`. This causes an
+`ImportError: No module named 'engine'` at request time on every call.
+
+Affected endpoints:
+- `GET /paper/validation/gates` — 500: No module named 'engine'
+- `GET /paper/validation/summary/eod` — 500: No module named 'engine'
+
+Numeric fields from acceptance criteria — all unavailable due to 500 error.
+
+---
+
+### 3. Validation Gates Endpoint
+
+**Path**: `GET /paper/validation/gates` — `{"detail":"No module named 'engine'"}` (same root cause)
+
+**Alternate working endpoints** (use different data source):
+- `GET /paper/validation/progress` — returns 0 trades for MCL/MNQ (ValidationTracker reads JSON files, not SQLite)
+- `GET /paper/validation/status` — returns 0 trades, 0 days active
+
+---
+
+### 4. Paper Balance Endpoint
+
+**Path**: `GET /portfolio/stats/paper-phase-summary` — WORKING
+
+```json
+{"phase":"paper","start_date":"2026-04-01","starting_balance":10000.0,
+ "current_balance":10130.0,"total_return_pct":1.3,"total_pnl":130.0,
+ "trading_days":3,"target_trading_days":30,"trades_completed":16,
+ "validation_status":"in_progress"}
+```
+
+Balance $10,130 — non-zero, plausible, within expected range of $10,000 +/- paper PnL.
+
+---
+
+### 5. Analytics Performance Endpoint
+
+**Path**: `GET /analytics/performance` — WORKING but anomalous
+
+```json
+{"status":"ok","sharpe_ratio":0.0,"profit_factor":9999.0,"win_rate":18.75,
+ "max_drawdown":0.0,"total_pnl":130.0,"total_trades":16,"expectancy":8.125,
+ "timestamp":"2026-04-03T22:14:38Z","days":null}
+```
+
+Anomalies: `profit_factor=9999.0` (sentinel — no losing trades in in-memory state),
+`sharpe_ratio=0.0` (insufficient variance), `days=null` (not computed).
+
+---
+
+### 6. SQLite Ground Truth
+
+```
+Tables: paper_trades, daily_pnl, positions, decisions, trade_journal, pipeline_runs,
+        alert_log, pending_trade_approvals, pipeline_llm_costs (18 total)
+
+paper_trades count: 15 (all status='closed')
+Status breakdown: [('closed', 15)]
+Total PnL (sum where NOT NULL): 30.0
+Sample: MES trades have exit_price=None/pnl=None; MCL trades have pnl=0.0
+
+daily_pnl rows: 1
+daily_pnl: ('2026-04-03', open=10000.0, close=10030.0, pnl=30.0)
+```
+
+---
+
+### 7. Data Source Discrepancy Table
+
+| Metric | SQLite | /analytics/performance | /portfolio/stats/paper-phase-summary |
+|--------|--------|------------------------|--------------------------------------|
+| Total trades | 15 | 16 | 16 |
+| Total PnL | $30.00 | $130.00 | $130.00 |
+| Win rate | ~6.7% | 18.75% | N/A |
+| Profit factor | incalculable (nulls) | 9999.0 | N/A |
+| Current balance | $10,030 (daily_pnl) | N/A | $10,130 |
+
+Three independent data sources: SQLite `paper_trades`, PaperTradeTracker in-memory,
+ValidationTracker JSON files. All three are out of sync.
+
+---
+
+### 8. Dashboard Build Check
+
+**Result: PASS — 26/26 routes, 0 TypeScript errors**
+
+`pnpm run build` — all 26 routes built successfully as static content.
+`./node_modules/.bin/tsc --noEmit` — 0 errors.
+
+---
+
+### 9. Dashboard Browser Verification (http://localhost:3010)
+
+| Page | Visual | Notes |
+|------|--------|-------|
+| `/` (home) | "Internal Server Error" text | React hydration crash during client mount |
+| `/validation` | Nav only, no widget content | Page components not mounting |
+| `/health` | Nav only, no widget content | Page components not mounting |
+| `/trades/pending-approvals` | Nav only, no widget content | Page components not mounting |
+| `/paper` | Nav only, no widget content | Page components not mounting |
+
+Pattern: nav sidebar renders correctly across all pages; page-level widget content does not
+render. CSS loads (layout.css referenced in HTML), but the dark Tailwind theme is absent
+(white background). Likely caused by the home page React hydration crash cascading to prevent
+full client JS initialization.
+
+---
+
+### 10. Sprint 19 Bug List
+
+| # | Widget / Endpoint | File | Shows | Should Show | Root Cause |
+|---|------------------|------|-------|-------------|------------|
+| B1 | ValidationGatesWidget | `dashboard/components/ValidationGatesWidget.tsx` | 500 error | 6 validation gates | `engine.database` absolute import fails |
+| B2 | EODSummaryWidget | `dashboard/components/EODSummaryWidget.tsx` | 500 error | EOD P&L, trades, status | Same import error as B1 |
+| B3 | /paper/validation/status | API | 0 trades, 0 days | 15 trades, 3 days | ValidationTracker reads stale JSON |
+| B4 | /paper/validation/trades | API | Empty list | 15 trades | ValidationTracker reads empty JSON |
+| B5 | analytics profit_factor | `engine/routers/analysis_router.py` | 9999.0 | Real PF | No losing trades in in-memory state |
+| B6 | analytics sharpe_ratio | `engine/routers/analysis_router.py` | 0.0 | Real Sharpe | `days=null`, daily variance not computed |
+| B7 | Home page (`/`) | `dashboard/app/page.tsx` | "Internal Server Error" | Full widget grid | React component throws during hydration |
+| B8 | All dashboard pages | `dashboard/app/` | No page content | Dark terminal UI | Hydration crash cascade from B7 |
+| B9 | SQLite vs API PnL | Multiple routers | $30 vs $130 | Consistent | PaperTradeTracker in-memory diverged from SQLite |
+| B10 | analytics `days` field | `engine/routers/analysis_router.py` | null | Integer day count | Not computed |
+
+---
+
+### 11. US-1803 Acceptance Criteria Assessment
+
+| Criteria | Result |
+|----------|--------|
+| Dashboard loads, no console errors, widgets within 5s | FAIL — home ISE; all pages missing content |
+| /trades/pending-approvals loads with SWR refresh | PARTIAL — nav loads, content empty |
+| /validation/gates shows trade count, PF, Sharpe as numbers | FAIL — endpoint 500 |
+| Paper balance shows non-zero consistent value | PARTIAL — endpoint works ($10,130), widget not rendering |
+| GET /paper-validation/summary/eod returns numeric fields | FAIL — path 404; correct path 500 |
+| Broken widgets documented for Sprint 19 | DONE — 10 bugs in section 10 |
+| Results appended to sprint18_system_health.md | DONE |
+
+**Overall: US-1803 COMPLETE (verification task done; bugs documented as Sprint 19 backlog).**
+Engine layer functional. Dashboard has React hydration crash on home page and two endpoints
+broken by wrong absolute import path (`engine.database` instead of `database`).
