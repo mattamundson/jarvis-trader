@@ -265,3 +265,66 @@ def get_backup_manager(
             _backup_instance = DatabaseBackup(**kwargs)
             logger.info("DatabaseBackup singleton created.")
         return _backup_instance
+
+
+# -- Module-level async helpers -----------------------------------------------
+
+
+async def run_nightly_backup(db_path: str) -> Dict[str, Any]:
+    """
+    Async wrapper: run backup + prune via the singleton manager.
+
+    Parameters
+    ----------
+    db_path : str
+        Path to the SQLite database file to back up.
+
+    Returns
+    -------
+    dict
+        Status dict with keys: status, path/error, timestamp, cleanup.
+    """
+    import asyncio
+
+    manager = get_backup_manager(db_path=db_path)
+    loop = asyncio.get_event_loop()
+    backup_result = await loop.run_in_executor(None, manager.backup)
+    cleanup_result = await loop.run_in_executor(None, manager.cleanup_old)
+
+    if backup_result.get("success"):
+        return {
+            "status": "ok",
+            "path": backup_result.get("backup_file"),
+            "timestamp": backup_result.get("timestamp"),
+            "size_bytes": backup_result.get("size_bytes"),
+            "cleanup": cleanup_result,
+        }
+    return {
+        "status": "error",
+        "error": backup_result.get("message"),
+        "timestamp": backup_result.get("timestamp"),
+        "cleanup": cleanup_result,
+    }
+
+
+def get_backup_status() -> Dict[str, Any]:
+    """
+    Return backup status from the singleton manager.
+
+    Returns
+    -------
+    dict
+        Status dict with backup count, last backup info, and retention policy.
+    """
+    manager = get_backup_manager()
+    raw = manager.get_status()
+    last_backup = raw.get("available_backups", [])
+    last = last_backup[-1] if last_backup else None
+    return {
+        "backup_count": len(last_backup),
+        "last_backup": last.get("created_utc") if last else None,
+        "last_backup_path": last.get("filename") if last else None,
+        "retention_days": raw.get("retention_days", DEFAULT_RETENTION_DAYS),
+        "backup_dir": raw.get("backup_dir"),
+        "available_backups": last_backup,
+    }
