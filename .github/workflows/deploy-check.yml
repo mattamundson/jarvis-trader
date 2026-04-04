@@ -3,6 +3,10 @@ on:
   push:
     branches: [main, master]
 
+concurrency:
+  group: jarvis-deploy-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pre-deploy-check:
     name: Pre-Deploy Verification
