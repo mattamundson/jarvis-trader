@@ -1193,7 +1193,7 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
             current_prices = [None] * len(positions)
 
         enriched = []
-        for pos, current_price in zip(positions, current_prices):
+        for pos, current_price in zip(positions, current_prices, strict=True):
             computed = _compute_unrealized(pos, current_price, INSTRUMENT_POINT_VALUES)
             enriched.append(UnrealizedPositionResponse(**computed))
 
@@ -1201,4 +1201,4 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
 
     except Exception as exc:
         logger.error("[UnrealizedPnL] Endpoint error: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
