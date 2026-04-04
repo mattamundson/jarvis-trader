@@ -41,6 +41,8 @@ if str(_tests_dir) not in sys.path:
 
 from live_engine_probe import jarvis_rl_integration_ready, rl_evaluate_contract_ready
 
+pytestmark = pytest.mark.slow
+
 BASE_URL = "http://localhost:8010"
 
 

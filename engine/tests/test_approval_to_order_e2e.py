@@ -28,6 +28,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 # ---------------------------------------------------------------------------
 # sys.modules mocking — must happen before importing main
 # ---------------------------------------------------------------------------

@@ -26,6 +26,8 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Path bootstrap — make the engine package importable from tests/
 # ---------------------------------------------------------------------------
@@ -33,6 +35,8 @@ _ENGINE_DIR = Path(__file__).parent.parent  # engine/
 _PROJECT_ROOT = _ENGINE_DIR.parent  # jarvis-trader/
 if str(_ENGINE_DIR.parent) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR.parent))
+
+pytestmark = pytest.mark.slow
 
 # ---------------------------------------------------------------------------
 # Helper — probe whether the engine is up before running endpoint tests

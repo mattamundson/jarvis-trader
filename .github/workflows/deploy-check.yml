@@ -49,9 +49,12 @@ jobs:
           mypy engine/ --ignore-missing-imports --config-file engine/pyproject.toml \
             --explicit-package-bases --namespace-packages || echo "::warning::mypy debt — tighten in follow-up"
 
-          echo "=== Running Tests (full suite — parity with ci.yml engine-test) ==="
-          pytest engine/tests/ \
+          echo "=== Running Tests (fast then slow — parity with ci.yml engine-test) ==="
+          pytest engine/tests/ -m "not slow" \
             -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
+          pytest engine/tests/ -m slow \
+            -v --tb=short --cov=engine --cov-append --cov-report=term-missing --cov-report=xml \
+            || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow pass"; exit 0; fi; exit "$ec"; }
 
           echo "=== Building Dashboard ==="
           cd dashboard && pnpm run build && cd ..
