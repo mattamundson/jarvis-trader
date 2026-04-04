@@ -363,6 +363,44 @@ export interface DailyPnlRecord {
   num_trades: number;
 }
 
+/** GET /portfolio/history/daily-pnl */
+export interface DailyPnLHistoryResponse {
+  daily_pnl: DailyPnlRecord[];
+  days: number;
+  count: number;
+}
+
+export async function fetchDailyPnLHistory(options?: {
+  limit?: number;
+  days?: number;
+}): Promise<DailyPnLHistoryResponse> {
+  const q = new URLSearchParams();
+  if (options?.limit != null) q.set("limit", String(options.limit));
+  if (options?.days != null) q.set("days", String(options.days));
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return fetchEngine<DailyPnLHistoryResponse>(`/portfolio/history/daily-pnl${suffix}`);
+}
+
+/** GET /portfolio/risk — correlation-aware sizing snapshot */
+export interface PortfolioRiskResponse {
+  instruments: string[];
+  correlation_matrix: Record<string, number>;
+  correlation_threshold: number;
+  active_positions: Record<string, number>;
+  open_symbol_count: number;
+  correlation_reduction_active: boolean;
+  default_max_contracts: number;
+  correlated_max_contracts: number;
+  total_margin_utilization: number;
+  daily_pnl: number;
+  daily_pnl_pct: number;
+  account_value: number;
+}
+
+export async function fetchPortfolioRisk(): Promise<PortfolioRiskResponse> {
+  return fetchEngine<PortfolioRiskResponse>("/portfolio/risk");
+}
+
 export interface PerformanceSummary {
   total_trades: number;
   winning_trades: number;
