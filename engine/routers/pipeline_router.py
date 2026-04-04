@@ -356,6 +356,7 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                 or technical_report.get("price")
             )
             final_qty = result.get("final_quantity", 1) or 1
+            timeframe = technical_report.get("timeframe")  # Extract timeframe from signal
             snap = pipeline_result_for_approval_snapshot(result)
             approval_id = _db_manager.insert_pending_approval(
                 symbol=symbol,
@@ -363,6 +364,7 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                 quantity=float(final_qty),
                 entry_price=float(entry_price) if entry_price else None,
                 pipeline_snapshot=snap,
+                timeframe=timeframe,
             )
             logger.info(
                 "[APPROVAL] Queued %s %s qty=%s entry=%s for human review — approval_id=%s",

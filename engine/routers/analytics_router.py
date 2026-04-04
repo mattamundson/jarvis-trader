@@ -737,3 +737,112 @@ async def get_dual_tf_status(
         "symbols": results,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /analytics/pipeline/confidence-stats (US-2131)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PipelineConfidenceStatsResponse(BaseModel):
+    """Pipeline confidence statistics response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    total_runs: int
+    hold_count: int
+    trade_count: int
+    avg_confidence: float
+    min_confidence: float
+    max_confidence: float
+    hold_rate: float
+    alert: Optional[str] = None
+    timestamp: str
+
+
+@router.get(
+    "/pipeline/confidence-stats",
+    response_model=PipelineConfidenceStatsResponse,
+    summary="Get pipeline confidence statistics for last 24 hours",
+)
+async def get_pipeline_confidence_stats() -> PipelineConfidenceStatsResponse:
+    """
+    Get pipeline execution statistics for the last 24 hours.
+
+    Returns:
+      - total_runs: Total pipeline executions
+      - hold_count: Number of HOLD decisions
+      - trade_count: Number of BUY/SELL decisions
+      - avg_confidence: Average confidence across all runs (0-1)
+      - min_confidence: Minimum confidence observed
+      - max_confidence: Maximum confidence observed
+      - hold_rate: hold_count / total_runs (0.0 to 1.0)
+      - alert: If hold_rate > 0.90 and total_runs >= 5, 'HIGH_HOLD_RATE'
+
+    Flags regressions like the MAX_TOKENS bug (115 HOLDs/day) with high hold rates.
+    """
+    from datetime import datetime as dt
+    from datetime import timedelta
+
+    db = _get_db()
+
+    try:
+        with db._lock:  # type: ignore[attr-defined]
+            conn = db._connect()  # type: ignore[attr-defined]
+            try:
+                # Calculate 24 hours ago
+                now = dt.utcnow()
+                twenty_four_hours_ago = now - timedelta(hours=24)
+                cutoff_iso = twenty_four_hours_ago.isoformat() + "Z"
+
+                # Query pipeline_runs for last 24h with confidence statistics
+                sql = """
+                    SELECT
+                        COUNT(*) AS total_runs,
+                        SUM(CASE WHEN final_decision = 'hold' OR final_action = 'hold' THEN 1 ELSE 0 END) AS hold_count,
+                        SUM(CASE WHEN final_decision IN ('buy', 'sell') OR final_action IN ('buy', 'sell') THEN 1 ELSE 0 END) AS trade_count,
+                        COALESCE(AVG(confidence), 0.5) AS avg_confidence,
+                        COALESCE(MIN(confidence), 0.5) AS min_confidence,
+                        COALESCE(MAX(confidence), 0.5) AS max_confidence
+                    FROM pipeline_runs
+                    WHERE created_at >= ?
+                      AND status = 'completed'
+                """
+
+                row = conn.execute(sql, (cutoff_iso,)).fetchone()
+
+                total_runs = int(row[0]) if row and row[0] else 0
+                hold_count = int(row[1]) if row and row[1] else 0
+                trade_count = int(row[2]) if row and row[2] else 0
+                avg_confidence = float(row[3]) if row and row[3] is not None else 0.5
+                min_confidence = float(row[4]) if row and row[4] is not None else 0.5
+                max_confidence = float(row[5]) if row and row[5] is not None else 0.5
+
+                # Calculate hold_rate
+                hold_rate = hold_count / total_runs if total_runs > 0 else 0.0
+
+                # Check for high hold rate alert
+                alert = None
+                if hold_rate > 0.90 and total_runs >= 5:
+                    alert = "HIGH_HOLD_RATE"
+
+                conn.close()
+
+                return PipelineConfidenceStatsResponse(
+                    total_runs=total_runs,
+                    hold_count=hold_count,
+                    trade_count=trade_count,
+                    avg_confidence=round(avg_confidence, 4),
+                    min_confidence=round(min_confidence, 4),
+                    max_confidence=round(max_confidence, 4),
+                    hold_rate=round(hold_rate, 4),
+                    alert=alert,
+                    timestamp=now.isoformat() + "Z",
+                )
+
+            finally:
+                conn.close()
+
+    except Exception as exc:
+        logger.error(f"[PipelineConfidenceStats] Error: {exc}")
+        raise HTTPException(status_code=500, detail=f"Pipeline stats error: {exc}") from exc

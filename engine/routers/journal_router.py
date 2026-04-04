@@ -313,7 +313,7 @@ class DeleteNoteResponse(BaseModel):
 
 
 class TradeJournalEntry(BaseModel):
-    """A single paper trade with full signal provenance."""
+    """A single paper trade with full signal provenance and attribution."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -338,35 +338,29 @@ class TradeJournalEntry(BaseModel):
     stc_contrib: Optional[int] = None
     orb_contrib: Optional[int] = None
     vwap_contrib: Optional[int] = None
+    # Trade attribution (US-2130)
+    regime_tier: Optional[int] = None
+    deciding_stage: Optional[str] = None
+    bull_score: Optional[float] = None
+    bear_score: Optional[float] = None
+    debate_confidence: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
 # Paper Trade Journal — Endpoints (US-1404)
 # ---------------------------------------------------------------------------
 
-# ── GET /paper/trade-journal ──────────────────────────────────────────────
+# ── Shared helper for trade journal queries ────────────────────────────────
 
 
-@router.get(
-    "/trade-journal",
-    response_model=List[TradeJournalEntry],
-    summary="Get paper trades with full signal provenance",
-)
-def get_trade_journal(
-    symbol: Optional[str] = Query(None, description="Filter by symbol (e.g., MCL, MNQ)"),
-    regime: Optional[str] = Query(None, description="Filter by regime (e.g., TRENDING_BULL)"),
-    limit: int = Query(50, ge=1, le=200, description="Max trades to return"),
+def _query_trade_journal_entries(
+    symbol: Optional[str] = None,
+    regime: Optional[str] = None,
+    limit: int = 50,
 ) -> List[TradeJournalEntry]:
     """
-    Get all paper trades with full signal provenance (regime, structure, bias,
-    composite_score, signal contributions).
-
-    Optional filters:
-      - **symbol**: MCL, MNQ, etc.
-      - **regime**: TRENDING_BULL, TRENDING_BEAR, RANGE_BOUND, etc.
-      - **limit**: max 200 (default 50)
-
-    Returns trades ordered by entry_time DESC (most recent first).
+    Query paper trades with full signal provenance and attribution.
+    Shared by both /trade-journal and /trades endpoints.
     """
     try:
         from database import get_db as get_db_manager
@@ -403,8 +397,36 @@ def get_trade_journal(
         logger.error("Database error querying trade journal: %s", e)
         raise HTTPException(status_code=500, detail="Database error") from e
     except Exception as e:
-        logger.error("Unexpected error in get_trade_journal: %s", e)
+        logger.error("Unexpected error in trade journal query: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+# ── GET /journal/trade-journal and related ─────────────────────────────────
+
+
+@router.get(
+    "/trade-journal",
+    response_model=List[TradeJournalEntry],
+    summary="Get paper trades with full signal provenance and attribution",
+)
+def get_trade_journal(
+    symbol: Optional[str] = Query(None, description="Filter by symbol (e.g., MCL, MNQ)"),
+    regime: Optional[str] = Query(None, description="Filter by regime (e.g., TRENDING_BULL)"),
+    limit: int = Query(50, ge=1, le=200, description="Max trades to return"),
+) -> List[TradeJournalEntry]:
+    """
+    Get all paper trades with full signal provenance (regime, structure, bias,
+    composite_score, signal contributions) and trade attribution (regime tier,
+    deciding stage, bull/bear scores, debate confidence).
+
+    Optional filters:
+      - **symbol**: MCL, MNQ, etc.
+      - **regime**: TRENDING_BULL, TRENDING_BEAR, RANGE_BOUND, etc.
+      - **limit**: max 200 (default 50)
+
+    Returns trades ordered by entry_time DESC (most recent first).
+    """
+    return _query_trade_journal_entries(symbol=symbol, regime=regime, limit=limit)
 
 
 # ---------------------------------------------------------------------------

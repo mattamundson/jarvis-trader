@@ -67,10 +67,40 @@ def _extract_provenance(approval_row: dict[str, Any]) -> dict[str, Any]:
         "orb_contrib": tech.get("orb_contrib"),
         "vwap_contrib": tech.get("vwap_contrib"),
         "risk_pct_used": tech.get("risk_pct_used"),
+        # Extract timeframe from root level (set by pipeline) or technical report fallback
+        "timeframe": snap.get("timeframe") or tech.get("timeframe"),
     }
 
     # Merge provenance into approval row
     return {**approval_row, **provenance}
+
+
+def _extract_attribution(snap: dict[str, Any]) -> dict[str, Any]:
+    """Extract trade attribution fields from pipeline_snapshot for journal entry."""
+    if not isinstance(snap, dict):
+        return {}
+
+    # Extract from debate stage
+    debate = snap.get("debate") or {}
+    if not isinstance(debate, dict):
+        debate = {}
+
+    # Extract from technical stage
+    tech = snap.get("technical") or {}
+    if not isinstance(tech, dict):
+        tech = {}
+
+    # Build attribution dict - all fields optional (nullable in DB)
+    attribution = {
+        "regime_tier": snap.get("regime_tier"),  # could be at root or in technical
+        "deciding_stage": snap.get("deciding_stage"),  # which pipeline stage drove the decision
+        "bull_score": debate.get("bull_score"),
+        "bear_score": debate.get("bear_score"),
+        "debate_confidence": debate.get("debate_confidence"),
+    }
+
+    # Filter out None values for cleaner update
+    return {k: v for k, v in attribution.items() if v is not None}
 
 
 @router.get("/pending-approvals")
@@ -161,6 +191,33 @@ async def approve_pending(
     if not ok:
         logger.error("resolve_pending_approval failed after open_trade id=%s", trade_id[:8])
         raise HTTPException(409, detail="Could not mark approval resolved (race?)")
+
+    # Create trade journal entry with attribution metadata
+    try:
+        attribution = _extract_attribution(snap)
+        # Extract timeframe from pipeline result (set at root level, not in technical)
+        timeframe = snap.get("timeframe") if isinstance(snap, dict) else None
+        if attribution:
+            # Create journal entry with attribution fields
+            _db_manager.add_journal_entry(
+                trade_id=trade_id,
+                note="Trade approved via pipeline",
+                timestamp=None,  # Use server time
+                timeframe=timeframe,
+                **attribution,  # Include attribution fields
+            )
+            logger.info(
+                "Journal entry created for trade %s with attribution (timeframe=%s)",
+                trade_id[:8],
+                timeframe or "unknown",
+            )
+    except Exception as exc:
+        # Non-fatal if journal entry creation fails
+        logger.warning(
+            "Could not create journal entry with attribution for %s: %s",
+            trade_id[:8],
+            exc,
+        )
 
     # Submit order to IB Gateway via OrderRouter (non-fatal if unavailable)
     execution_result = None

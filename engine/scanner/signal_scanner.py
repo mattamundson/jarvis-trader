@@ -184,7 +184,7 @@ class SignalScanner:
                 await asyncio.sleep(60)  # Wait before retry
 
     async def _run_scan(self) -> None:
-        """Execute one complete scan of all symbols."""
+        """Execute one complete scan of all symbols concurrently."""
         self._last_scan_at = datetime.now(timezone.utc)
         self._total_scans += 1
         logger.info(f"[Scanner] Starting scan #{self._total_scans}")
@@ -201,11 +201,14 @@ class SignalScanner:
                 except Exception as exc:
                     logger.debug("[Scanner] breakeven check failed for %s: %s", trade_id[:8], exc)
 
-        for symbol in self.symbols:
-            try:
-                await self._scan_symbol(symbol)
-            except Exception as e:
-                logger.error(f"[Scanner] Failed to scan {symbol}: {e}", exc_info=True)
+        # Run all symbol scans concurrently using asyncio.gather
+        tasks = [self._scan_symbol(symbol) for symbol in self.symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Log any exceptions from individual symbol scans
+        for symbol, result in zip(self.symbols, results):
+            if isinstance(result, Exception):
+                logger.error(f"[Scanner] Failed to scan {symbol}: {result}", exc_info=result)
                 self._error_count += 1
 
         logger.info(f"[Scanner] Scan #{self._total_scans} complete")
@@ -296,6 +299,7 @@ class SignalScanner:
                 quantity=quantity,
                 entry_price=entry_price,
                 pipeline_snapshot=snapshot,
+                timeframe=snapshot.get("timeframe", "1h"),
             )
 
             self._approval_count += 1

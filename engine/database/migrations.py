@@ -610,6 +610,174 @@ def migration_011(conn: sqlite3.Connection) -> None:
     logger.info("Migration 011 applied — risk_pct_used column added to paper_trades.")
 
 
+def migration_012(conn: sqlite3.Connection) -> None:
+    """
+    012 — Trade journal attribution columns.
+
+    Adds attribution columns to trade_journal table to track which pipeline stage
+    drove each decision and what confidence/scores were involved:
+      regime_tier      — Market regime tier at decision (INTEGER, nullable)
+      deciding_stage   — Pipeline stage that drove decision (TEXT, e.g. 'technical', 'debate', 'news')
+      bull_score       — Bull researcher score (REAL, nullable)
+      bear_score       — Bear researcher score (REAL, nullable)
+      debate_confidence — Confidence from debate stage (REAL, nullable)
+
+    All nullable for backward compatibility with existing journal entries.
+    """
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN regime_tier INTEGER
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN deciding_stage TEXT
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN bull_score REAL
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN bear_score REAL
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN debate_confidence REAL
+        """
+    )
+    conn.commit()
+    logger.info("Migration 012 applied — attribution columns added to trade_journal.")
+
+
+def migration_013(conn: sqlite3.Connection) -> None:
+    """
+    013 — Learning events and trading patterns tables.
+
+    Adds two tables for the trading memory consolidation system:
+
+    learning_events  — individual learning events from each trade execution
+    trading_patterns — aggregated patterns extracted nightly from trade history
+    """
+    # ── learning_events ───────────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS learning_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_id        TEXT,                              -- soft FK → paper_trades.trade_id
+            event_type      TEXT    NOT NULL,                  -- entry | exit | stop_hit | profit_target
+            symbol          TEXT    NOT NULL,
+            regime_tier     INTEGER,                           -- market regime at event (nullable)
+            signal_strength REAL,                              -- confidence of signal (0.0–1.0, nullable)
+            outcome         TEXT,                              -- win | loss | neutral (nullable)
+            pnl_usd         REAL,                              -- P&L realized from event (nullable)
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_trade_id ON learning_events(trade_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_symbol ON learning_events(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_event_type ON learning_events(event_type)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_created_at ON learning_events(created_at)")
+
+    # ── trading_patterns ──────────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trading_patterns (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            pattern_hash    TEXT    NOT NULL UNIQUE,           -- hash of pattern conditions
+            symbol          TEXT    NOT NULL,
+            regime_tier     INTEGER,                           -- market regime context (nullable)
+            conditions      TEXT    NOT NULL,                  -- JSON: pattern definition
+            win_rate        REAL    NOT NULL DEFAULT 0.0,      -- 0.0–1.0
+            sample_count    INTEGER NOT NULL DEFAULT 0,        -- number of times pattern occurred
+            last_seen       TEXT,                              -- ISO-8601 UTC timestamp
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tp_pattern_hash ON trading_patterns(pattern_hash)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tp_symbol ON trading_patterns(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tp_regime_tier ON trading_patterns(regime_tier)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tp_last_seen ON trading_patterns(last_seen)")
+
+    conn.commit()
+    logger.info("Migration 013 applied — learning_events and trading_patterns tables created.")
+
+
+def migration_014(conn: sqlite3.Connection) -> None:
+    """
+    014 — Signal timeframe attribution columns.
+
+    Adds 'timeframe' TEXT column to both pending_trade_approvals and trade_journal
+    tables to track whether signals came from 1h or 15m timeframes. Nullable for
+    backward compatibility with existing rows. Enables post-validation attribution:
+    did 1h or 15m signals perform better?
+    """
+    conn.execute(
+        """
+        ALTER TABLE pending_trade_approvals ADD COLUMN timeframe TEXT
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN timeframe TEXT
+        """
+    )
+    conn.commit()
+    logger.info("Migration 014 applied — timeframe columns added to pending_trade_approvals and trade_journal.")
+
+
+def migration_015(conn: sqlite3.Connection) -> None:
+    """
+    015 — Pipeline runs confidence monitoring.
+
+    Adds columns to pipeline_runs table for tracking confidence/hold statistics:
+      confidence      — Average pipeline confidence (0-1, REAL, nullable)
+      final_decision  — Final decision made ('hold', 'buy', 'sell', 'pending', TEXT, nullable)
+
+    These fields enable high-hold-rate detection for pipeline regression monitoring.
+    All nullable for backward compatibility with existing runs.
+    """
+    conn.execute(
+        """
+        ALTER TABLE pipeline_runs ADD COLUMN confidence REAL
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE pipeline_runs ADD COLUMN final_decision TEXT
+        """
+    )
+    conn.commit()
+    logger.info("Migration 015 applied — confidence columns added to pipeline_runs.")
+
+
+def migration_016(conn: sqlite3.Connection) -> None:
+    """
+    016 — WFE divergence flag column.
+
+    Adds divergence_flag TEXT column to wfe_snapshots table to track when live
+    paper performance diverges from WFE baseline projections. Flag is set to
+    'DIVERGENCE_WARNING' when profit_factor falls below 50% of WFE baseline
+    after >= 10 trades in the snapshot period. Nullable for backward compatibility.
+    """
+    try:
+        conn.execute(
+            """
+            ALTER TABLE wfe_snapshots ADD COLUMN divergence_flag TEXT
+            """
+        )
+        conn.commit()
+        logger.info("Migration 016 applied — divergence_flag column added to wfe_snapshots.")
+    except sqlite3.OperationalError:
+        # Column already exists — idempotent
+        logger.debug("Migration 016 skipped — divergence_flag already exists in wfe_snapshots.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -625,6 +793,11 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_009,  # version 9
     migration_010,  # version 10
     migration_011,  # version 11
+    migration_012,  # version 12
+    migration_013,  # version 13
+    migration_014,  # version 14
+    migration_015,  # version 15
+    migration_016,  # version 16
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -639,6 +812,11 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "LLM cost tracking: pipeline_llm_costs table for token usage and estimated costs",
     "Paper trades signal provenance: regime, structure, bias, composite_score, signal contributions",
     "Layer 5 conviction-aware sizing: risk_pct_used column for position sizing by conviction",
+    "Trade journal attribution: regime_tier, deciding_stage, bull_score, bear_score, debate_confidence",
+    "Learning events and trading patterns: learning_events and trading_patterns tables for memory consolidation",
+    "Signal timeframe attribution: timeframe column for pending_trade_approvals and trade_journal (1h/15m)",
+    "Pipeline confidence monitoring: confidence and final_decision columns for hold-rate detection",
+    "WFE divergence flag: divergence_flag column for wfe_snapshots table to track performance divergence",
 ]
 
 
