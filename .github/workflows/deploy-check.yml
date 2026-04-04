@@ -56,6 +56,14 @@ jobs:
           echo "=== Building Dashboard ==="
           cd dashboard && pnpm run build && cd ..
 
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 30
+
       - name: Verify environment safety
         run: |
           # Check that .env does not exist (should use .env.example)
