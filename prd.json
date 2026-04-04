@@ -57,7 +57,7 @@
       "id": "US-2503",
       "title": "Inject Discord signal context into TechnicalAnalyst live pipeline prompt",
       "priority": "P0",
-      "passes": false,
+      "passes": true,
       "goal": "The TechnicalAnalyst LLM prompt has no awareness that a professional futures trading Discord bot (Corey Auction Tools) currently has an active signal on the same instrument. After this story, when a Discord signal is active for the symbol, the TechnicalAnalyst prompt includes a DISCORD INTELLIGENCE section showing: signal direction, 30-day win rate, proximity to bot's entry/target, and alignment with JARVIS technical bias. The LLM gets richer context. When Discord data is unavailable the prompt is unchanged.",
       "acceptanceCriteria": [
         "engine/agents/technical_analyst.py: add a new private async method _get_discord_context(self, symbol: str, current_price: float, atr: float) -> str. Returns a formatted string for inclusion in the prompt, or empty string '' if Discord unavailable. The method is non-blocking — wrapped in try/except, returns '' on any error.",
@@ -77,7 +77,7 @@
       "id": "US-2504",
       "title": "Wire discord_context into rl_trainer + Discord intelligence dashboard panel",
       "priority": "P1",
-      "passes": false,
+      "passes": true,
       "goal": "rl_trainer.py calls build_env() 5 times without passing discord_context — so every RL training run uses only 18 features despite the environment supporting 23. After this story rl_trainer instantiates DiscordSignalContext once per training run and passes it to all build_env() calls. The dashboard gets a Discord Intelligence Status panel showing current signal state and win rate for MCL and MNQ.",
       "acceptanceCriteria": [
         "engine/strategies/rl_trainer.py: at the top of the _run_training_async() function (after df_train/df_test split), instantiate discord_ctx. Import lazily: try: from discord.signal_context import DiscordSignalContext; discord_ctx = DiscordSignalContext() except Exception: discord_ctx = None. Log at INFO level whether discord_ctx was instantiated or fell back to None.",
