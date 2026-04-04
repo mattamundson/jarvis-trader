@@ -106,9 +106,16 @@ engine/portfolio/*.jsonl
 engine/data/*.jsonl
 
 # SQLite database files (runtime data — never commit)
+*.db-wal
+*.db-shm
+**/.fuse_hidden*
 engine/data/*.db
 engine/data/*.backup_*
+engine/data/backups/
 engine/jarvis_trader.db
+data/*.db
+data/*.db-wal
+data/*.db-shm
 
 # Tooling / analysis caches (regenerate locally)
 .mypy_cache/
