@@ -171,17 +171,23 @@ def calculate_expectancy(trades: list[dict]) -> float:
 def _calculate_daily_returns(trades: list[dict]) -> list[float]:
     """
     Aggregate trades by date and calculate daily returns.
-    Each trade must have 'date' or 'timestamp' key.
+    Supports 'date', 'timestamp', 'exit_time', or 'entry_time' keys.
+    ISO datetime strings are truncated to date-only (YYYY-MM-DD).
     """
     if not trades:
         return []
 
-    daily_pnl = {}
+    daily_pnl: dict[str, float] = {}
     for trade in trades:
-        date_key = trade.get("date") or trade.get("timestamp")
+        date_key = (
+            trade.get("date")
+            or trade.get("timestamp")
+            or trade.get("exit_time")
+            or trade.get("entry_time")
+        )
         if date_key:
-            if isinstance(date_key, str):
-                date_key = date_key.split("T")[0]
+            if isinstance(date_key, str) and len(date_key) > 10:
+                date_key = date_key[:10]  # "2026-04-03T22:12:52+00:00" → "2026-04-03"
             daily_pnl[date_key] = daily_pnl.get(date_key, 0.0) + trade.get("pnl", 0)
 
     return list(daily_pnl.values())

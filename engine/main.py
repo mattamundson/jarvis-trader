@@ -277,7 +277,10 @@ async def lifespan(app: FastAPI):
 
     # Paper trading tracker — initialise before safety layer so it is always available
     paper_tracker = PortfolioTracker(db_manager=db_manager)
-    logger.info("✅ Paper portfolio tracker ready")
+    # US-2004 / Bug B9: rebuild in-memory open-position state from SQLite so that
+    # any crash-induced JSONL/in-memory divergence is corrected before trading resumes.
+    paper_tracker.reload_open_positions_from_db()
+    logger.info("✅ Paper portfolio tracker ready (open positions rebuilt from SQLite)")
 
     # P&L Monitor — wires SQLite + IB Gateway data to circuit breakers
     # IB gateway is not available yet at this point; it is injected after data_manager is ready
@@ -451,8 +454,12 @@ async def lifespan(app: FastAPI):
         notifier = get_notifier()
 
         async def _analyze_and_alert(symbol: str, is_futures: bool) -> None:
+            import time as _time_mod
+
             try:
+                _t0 = _time_mod.monotonic()
                 result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
+                _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
                 action = result.get("final_action", "hold")
 
                 # Extract key fields for logging and alerting
@@ -472,6 +479,23 @@ async def lifespan(app: FastAPI):
                     summary=result.get("summary", ""),
                     reasoning=reasoning,
                 )
+
+                # Persist pipeline run to pipeline_runs for audit trail.
+                if db_manager:
+                    try:
+                        from approval.pipeline_history import pipeline_run_record_from_result
+
+                        _run_record = pipeline_run_record_from_result(
+                            symbol=symbol,
+                            result=result,
+                            duration_ms=_duration_ms,
+                            source="watchlist",
+                        )
+                        db_manager.insert_pipeline_run(_run_record)
+                    except Exception as _db_exc:
+                        logger.warning(
+                            "[Scheduler] Failed to log pipeline_run for %s: %s", symbol, _db_exc
+                        )
 
                 if action not in ("hold",):
                     logger.info(f"{symbol}: {action.upper()} qty={qty} confidence={confidence:.0%}")
@@ -638,10 +662,33 @@ async def lifespan(app: FastAPI):
         )
 
         async def _scan_one(symbol: str, is_futures: bool) -> None:
+            import time as _time_mod
+
             try:
+                _t0 = _time_mod.monotonic()
                 result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
+                _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
                 action = result.get("final_action", "hold")
                 logger.info(f"[MARKET_OPEN] {symbol}: {action.upper()}")
+
+                # Persist every market-open pipeline run for audit trail.
+                if db_manager:
+                    try:
+                        from approval.pipeline_history import pipeline_run_record_from_result
+
+                        _run_record = pipeline_run_record_from_result(
+                            symbol=symbol,
+                            result=result,
+                            duration_ms=_duration_ms,
+                            source="market_open",
+                        )
+                        db_manager.insert_pipeline_run(_run_record)
+                    except Exception as _db_exc:
+                        logger.warning(
+                            "[MARKET_OPEN] Failed to log pipeline_run for %s: %s",
+                            symbol,
+                            _db_exc,
+                        )
             except Exception as e:
                 logger.error(f"[MARKET_OPEN] Pipeline failed for {symbol}: {e}")
 
@@ -2346,6 +2393,39 @@ async def run_pipeline(req: PipelineRequest):
                     f"[PAPER] Human gate — inserted pending approval {approval_id[:8]} "
                     f"for {req.symbol} {final_action.upper()}"
                 )
+                # Fire-and-forget: WebSocket + WhatsApp + Telegram fan-out
+                try:
+                    from notifications.pending_approval_notify import (
+                        notify_pending_approval_queued as _notify_approval,
+                    )
+
+                    asyncio.create_task(
+                        _notify_approval(
+                            approval_id=approval_id,
+                            symbol=req.symbol,
+                            action=final_action,
+                            quantity=float(final_qty),
+                            entry_price=float(entry_price) if entry_price else None,
+                        )
+                    )
+                except Exception as _notify_exc:
+                    logger.warning("[PAPER] Approval notify task failed: %s", _notify_exc)
+                # OpenClaw WhatsApp alert (direct WSL path, non-blocking)
+                try:
+                    from notifications.openclaw_notifier import (
+                        notify_approval_required as _oc_approval,
+                    )
+
+                    asyncio.create_task(
+                        _oc_approval(
+                            symbol=req.symbol,
+                            action=final_action,
+                            quantity=float(final_qty),
+                            entry_price=float(entry_price) if entry_price else 0.0,
+                        )
+                    )
+                except Exception as _oc_exc:
+                    logger.warning("[PAPER] OpenClaw approval notify failed: %s", _oc_exc)
             elif paper_tracker and entry_price:
                 trade_id = paper_tracker.open_trade(
                     symbol=req.symbol,

@@ -75,7 +75,7 @@ class RiskManagerAgent:
     """
 
     MODEL = "claude-opus-4-6"
-    MAX_TOKENS = 800
+    MAX_TOKENS = 1600
 
     # Hard-coded ceiling regardless of config — last line of defence
     ABSOLUTE_MAX_ORDER_VALUE = 5_000.0

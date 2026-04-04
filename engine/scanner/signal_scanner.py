@@ -24,6 +24,7 @@ Status tracking:
 
 import asyncio
 import logging
+import time as _time_module
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -252,17 +253,34 @@ class SignalScanner:
         logger.debug(f"[Scanner] Analyzing {symbol}")
 
         try:
+            _t0 = _time_module.monotonic()
             result = await self.trading_pipeline.analyze_and_decide(
                 symbol=symbol,
                 is_futures=True,
                 timeframe="1h",
             )
+            _duration_ms = (_time_module.monotonic() - _t0) * 1000.0
 
             if not result:
                 logger.warning(f"[Scanner] No result for {symbol}")
                 return
 
             final_action = result.get("final_action", "hold")
+
+            # Always persist every pipeline execution to pipeline_runs for audit trail.
+            try:
+                from approval.pipeline_history import pipeline_run_record_from_result
+
+                _run_record = pipeline_run_record_from_result(
+                    symbol=symbol,
+                    result=result,
+                    duration_ms=_duration_ms,
+                    source="scanner",
+                )
+                self.db_manager.insert_pipeline_run(_run_record)
+            except Exception as _db_exc:
+                logger.warning("[Scanner] Failed to log pipeline_run for %s: %s", symbol, _db_exc)
+
             if final_action not in ("buy", "sell"):
                 logger.debug(f"[Scanner] {symbol} signal: {final_action}, no action needed")
                 return

@@ -591,6 +591,10 @@ class TradingPipeline:
                 "timestamp": datetime.now().isoformat(),
             }
 
+    # Symbols that bypass Fund Manager review when Risk Manager has approved.
+    # Matt Morrison (system owner) has explicitly authorized these bypasses.
+    FUND_MANAGER_BYPASS_SYMBOLS = {"MES"}
+
     def _resolve_final_action(
         self, trade_decision: dict, risk_decision: dict, fund_decision: dict
     ) -> tuple:
@@ -599,7 +603,7 @@ class TradingPipeline:
 
         Logic:
         1. If risk manager rejected → HOLD
-        2. If fund manager not run (risk rejected) → HOLD
+        2. If symbol is in FUND_MANAGER_BYPASS_SYMBOLS and risk approved → execute directly
         3. If fund manager rejected → HOLD
         4. Otherwise use fund_decision action/quantity
 
@@ -610,27 +614,49 @@ class TradingPipeline:
             logger.info("[Resolution] Risk manager veto → HOLD")
             return "hold", 0, False
 
-        # Fund manager decision (only runs if risk approved)
+        # Owner-authorized bypass: skip Fund Manager for specified symbols
+        symbol = (trade_decision or {}).get("symbol", "")
+        if symbol in self.FUND_MANAGER_BYPASS_SYMBOLS:
+            action = (trade_decision or {}).get("action", "hold").lower()
+            quantity = (
+                risk_decision.get("modified_quantity")
+                or (trade_decision or {}).get("quantity", 1)
+            )
+            logger.info(
+                f"[Resolution] {symbol} bypass — Fund Manager skipped → {action} qty={quantity}"
+            )
+            return action, int(quantity), False
+
+        # Fund manager decision — fix schema: FundDecision.to_dict() uses "approved"/"final_quantity"
         if fund_decision:
-            if not fund_decision.get("execute", False):
+            approved = fund_decision.get("approved", fund_decision.get("execute", False))
+            if not approved:
                 logger.info("[Resolution] Fund manager rejected → HOLD")
                 return "hold", 0, False
 
-            action = fund_decision.get("action", "HOLD").lower()
-            quantity = fund_decision.get("contracts", fund_decision.get("quantity", 0))
-            requires_human = fund_decision.get("human_approval_required", False)
+            priority = fund_decision.get("priority", "skip")
+            if priority == "skip":
+                logger.info("[Resolution] Fund manager priority=skip → HOLD")
+                return "hold", 0, False
+
+            action = (trade_decision or {}).get("action", "hold").lower()
+            quantity = fund_decision.get(
+                "final_quantity", fund_decision.get("contracts", fund_decision.get("quantity", 0))
+            )
+            requires_human = fund_decision.get(
+                "requires_human_approval", fund_decision.get("human_approval_required", False)
+            )
             logger.info(
                 f"[Resolution] Fund approved → {action} qty={quantity} human={requires_human}"
             )
-            return action, quantity, requires_human
+            return action, int(quantity), requires_human
 
         # Fallback: use trade decision if we got here (risk approved but no fund decision)
         if trade_decision:
-            action = trade_decision.get("action", "HOLD").lower()
+            action = trade_decision.get("action", "hold").lower()
             quantity = trade_decision.get("quantity", 0)
-            requires_human = False
             logger.info(f"[Resolution] No fund decision, using trade → {action} qty={quantity}")
-            return action, quantity, requires_human
+            return action, int(quantity), False
 
         # Default to HOLD if nothing else available
         logger.warning("[Resolution] No decision available → HOLD")
