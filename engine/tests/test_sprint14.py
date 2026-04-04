@@ -176,6 +176,37 @@ def test_rolling_wfe_instrument_schema():
 
 
 # ===========================================================================
+# (4b) GET /paper/validation/trades/closed — dashboard Trade History
+# ===========================================================================
+
+
+def test_closed_paper_trades_endpoint_exists():
+    """GET /paper/validation/trades/closed must be registered on paper_validation router."""
+    from routers.paper_validation_router import router
+
+    routes = [route.path for route in router.routes]
+    assert "/paper/validation/trades/closed" in routes
+
+
+def test_closed_trade_response_schema():
+    """ClosedTrade includes fields the dashboard /trades table expects."""
+    from routers.paper_validation_router import ClosedTrade
+
+    schema = ClosedTrade.model_json_schema()
+    props = schema.get("properties", {})
+    for key in (
+        "trade_id",
+        "symbol",
+        "direction",
+        "entry_price",
+        "exit_price",
+        "pnl",
+        "duration_seconds",
+    ):
+        assert key in props
+
+
+# ===========================================================================
 # (5) GET /paper-validation/gates — avg_conviction_score field
 # ===========================================================================
 

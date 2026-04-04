@@ -81,6 +81,7 @@ def test_routes_wired():
         ("GET", "/validation/progress"): "validation progress (redirects)",
         ("GET", "/paper/validation/progress"): "paper validation progress (canonical)",
         ("GET", "/paper/validation/approved-paper-gates"): "MCL/MNQ per-symbol validation gates",
+        ("GET", "/paper/validation/trades/closed"): "closed paper trades for dashboard /trades",
         # Safety
         ("GET", "/safety/status"): "safety status",
     }

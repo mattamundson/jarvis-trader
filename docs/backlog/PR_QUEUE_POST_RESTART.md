@@ -10,5 +10,6 @@ Scheduled follow-ups from the 2026-04-03 plan. Each item should be a **narrow PR
 | 4 | **Strategy / trading rules doc** | **Canon** — see [docs/strategy/README.md](../strategy/README.md) (index to `TRADING_RULES.md`, `EQUATIONS.md`). |
 | 5 | **Pre-deploy test depth** | **Done** — [deploy-check.yml](../../.github/workflows/deploy-check.yml) runs the same fast/slow pytest slices + `--cov-append` as CI (single runner). [ci.yml](../../.github/workflows/ci.yml) uses parallel fast/slow jobs + coverage merge for wall time. |
 | 6 | **CI concurrency** | **Done** — `concurrency` + `cancel-in-progress` on CI and pre-deploy workflows (Apr 2026). |
+| 7 | **Trade History + gates UI** | **Done** — `/trades` uses `fetchClosedPaperTrades` → `GET /paper/validation/trades/closed`; `InstrumentValidationScorecard` uses gate `current`; `app/trades/layout.tsx` sets `dynamic = force-dynamic` (Apr 2026). |
 
 Local parity commands mirror [.github/workflows/ci.yml](../../.github/workflows/ci.yml).
