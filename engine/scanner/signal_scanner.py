@@ -298,6 +298,20 @@ class SignalScanner:
                 entry_price=float(entry_price) if entry_price is not None else None,
             )
 
+            # OpenClaw WhatsApp alert for non-HOLD signals
+            try:
+                from notifications.openclaw_notifier import notify_signal as _oc_signal
+
+                await _oc_signal(
+                    symbol=symbol,
+                    action=final_action,
+                    confidence=float(result.get("confidence", 0.0)),
+                    reason=str(result.get("reason", "")),
+                    market="futures",
+                )
+            except Exception as _oc_err:
+                logger.debug(f"OpenClaw signal notification skipped: {_oc_err}")
+
         except Exception as e:
             logger.error(f"[Scanner] Pipeline error for {symbol}: {e}", exc_info=True)
             self._error_count += 1
