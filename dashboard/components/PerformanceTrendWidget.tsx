@@ -4,19 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { fetchEngine } from "@/lib/api";
-
-
-interface DailyPnlRecord {
-  date: string;
-  realized_pnl: number;
-  num_trades: number;
-  cumulative_pnl: number;
-}
-
-interface DailyPnlResponse {
-  records: DailyPnlRecord[];
-}
+import { fetchDailyPnLHistory, type DailyPnlRecord } from "@/lib/api";
 
 type Trend = "IMPROVING" | "DECLINING" | "FLAT";
 
@@ -52,13 +40,9 @@ export function PerformanceTrendWidget() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchEngine(`/portfolio/history/daily-pnl?limit=30`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<DailyPnlResponse>;
-      })
+    fetchDailyPnLHistory({ days: 30 })
       .then((data) => {
-        setRecords(data.records ?? []);
+        setRecords(data.daily_pnl ?? []);
         setLoading(false);
       })
       .catch((err: unknown) => {
