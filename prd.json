@@ -1,107 +1,108 @@
 {
-  "sprint": "Sprint 21 — IB Live Data + Dashboard Hardening + Trade Review Page",
-  "goal": "Make JARVIS fully operational before Monday market open (09:31 CT, 2026-04-06): fix IB contract qualification so live prices flow, fix dashboard API key mismatch, close 4 stale test positions via code, and build the post-trade analysis page so Matt can review every closed paper trade from the dashboard.",
-  "context": "Sprint 20 complete (all 5 stories passed). Engine v1.1.0 on port 8010. IB Gateway connected on port 4002 but live prices NOT flowing — contract conId qualification missing in get_snapshot_price. Dashboard sends wrong API key env var (NEXT_PUBLIC_ENGINE_API_KEY not set in .env.local). 4 stale MES test positions open in SQLite + in-memory tracker polluting win-rate. No post-trade review page exists.",
+  "sprint": "Sprint 22 — JARVIS Gets a Memory",
+  "goal": "Wire the learning feedback loop so JARVIS remembers every trade it has ever made and injects that context into every future decision. Audit every LLM agent to confirm real data is flowing. Wire WhatsApp reply-to-approve so Matt can approve trades with one word from his phone. After this sprint JARVIS is no longer amnesiac — it will reason about MCL with the knowledge of every previous MCL trade it has taken.",
+  "context": "Sprint 21 complete. Engine v1.1.0. IB conId fixed, dashboard API key fixed, stale positions closed, Trade History page live. The learning/ directory has 4 fully-built modules (feedback.py, patterns.py, recommendations.py, consolidator.py) that are DISCONNECTED from everything. process_trade_outcome() is never called. get_recommendations() is never called by pipeline.py. trade_outcomes SQLite table does not exist yet. OpenClaw sends alerts but cannot receive replies.",
   "rules": [
     "Phase 1 only — no strategy parameters, no WFE experiments, no RL training",
     "Safety invariants: LIVE_TRADING_ENABLED=False, REQUIRE_HUMAN_APPROVAL=True, port 4001 blocked",
     "All stories: cd engine && .venv/Scripts/python -m pytest tests/ -v must pass with 0 failures",
     "Deploy and maintain 5 parallel agents throughout using /ralph loop",
     "Never modify engine/risk/safety_layer.py or engine/config.py without Tier 3 confirmation",
-    "Dashboard: pnpm run build must pass (26/26 routes, 0 TypeScript errors) before story passes"
+    "Dashboard: pnpm run build must pass before any dashboard commit",
+    "Learning feedback must be fire-and-forget — a failure in feedback processing must never block a trade close"
   ],
   "stories": [
     {
-      "id": "US-2101",
-      "title": "Fix IB contract conId qualification in get_snapshot_price",
+      "id": "US-2201",
+      "title": "Wire learning feedback loop — persist trade outcomes to SQLite",
       "priority": "P0",
-      "passes": true,
-      "goal": "engine/data/market_data.py get_snapshot_price() calls _make_contract() which returns an unqualified Future with no conId. IB throws: 'Contract Future(symbol=MES) can't be hashed because no conId value exists'. Fix: use _resolve_front_month() for futures symbols in get_snapshot_price (same pattern as get_historical_bars). After fix, GET /data/price/{symbol} must return a numeric last_price for MCL and MNQ when IB Gateway is connected.",
+      "passes": false,
+      "goal": "After every trade closes in tracker.py, call process_trade_outcome() from learning/feedback.py and persist the structured result to a new trade_outcomes SQLite table. This is JARVIS's long-term memory store — every closed trade creates a permanent record with symbol, action, pnl, outcome, regime context, and lesson_text.",
       "acceptanceCriteria": [
-        "engine/data/market_data.py: get_snapshot_price() calls _resolve_front_month() for futures symbols (when symbol in FUTURES_MAP or is_futures=True)",
-        "No 'can't be hashed because no conId' error in engine logs after restart",
-        "GET /data/price/MCL returns {last_price: <float>, source: 'ibkr_snapshot'} when IB Gateway is on port 4002",
-        "GET /data/price/MNQ returns {last_price: <float>, source: 'ibkr_snapshot'} when IB Gateway is on port 4002",
-        "Fallback still works: if IB not connected, returns {last_price: null, source: 'ibkr_not_connected'}",
+        "trade_outcomes SQLite table created via migration: trade_id TEXT PK, symbol TEXT, action TEXT, pnl REAL, outcome TEXT (win/loss/scratch), entry_time TEXT, exit_time TEXT, duration_seconds INTEGER, lesson_type TEXT, lesson_text TEXT, created_at TEXT",
+        "tracker.py close_trade() calls process_trade_outcome() from learning/feedback.py after successful SQLite write — fire-and-forget (asyncio.create_task or threading.Thread)",
+        "feedback result is persisted to trade_outcomes table — all fields populated",
+        "process_trade_outcome() failure is caught and logged — never blocks trade close",
+        "GET /learning/outcomes endpoint added — returns trade_outcomes from SQLite (for verification)",
+        "After closing a paper trade via POST /portfolio/paper/close/{trade_id}, GET /learning/outcomes returns 1+ rows",
         "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures"
       ],
-      "notes": "The fix is surgical — get_snapshot_price is ~30 lines. Change _make_contract call to await self._resolve_front_month(symbol, exchange) when is_futures or symbol in FUTURES_MAP. FUTURES_EXCHANGE dict is already in scope."
+      "notes": "learning/feedback.py already has process_trade_outcome() fully implemented. It generates TradeOutcomeFeedback with lesson_type and lesson_text. The ONLY missing pieces are: (1) call it from close_trade(), (2) create the trade_outcomes SQLite table, (3) persist the result. Do NOT modify feedback.py logic — just wire the call and the persistence."
     },
     {
-      "id": "US-2102",
-      "title": "Fix dashboard API key — verify NEXT_PUBLIC_ENGINE_API_KEY in .env.local",
+      "id": "US-2202",
+      "title": "Inject learning context into pipeline — JARVIS remembers before it decides",
       "priority": "P0",
-      "passes": true,
-      "goal": "Dashboard lib/api.ts reads process.env.NEXT_PUBLIC_ENGINE_API_KEY and falls back to 'jarvis-dev-key-change-me' if not set. Engine logs show 'Invalid X-API-Key attempt from dashboard routes' — meaning the env var is not set in dashboard/.env.local. Fix: read engine/.env to get the real API_KEY value, then write dashboard/.env.local with NEXT_PUBLIC_ENGINE_API_KEY=<that value>. Restart dashboard. Verify no more API key errors in engine log.",
+      "passes": false,
+      "goal": "Before Stage 1 of the pipeline runs, query trade_outcomes for the last 20 closed trades on the symbol being analyzed. Format a Historical Trading Context summary. Inject it into the TechnicalAnalyst and TraderAgent system prompts so every decision is informed by what actually happened last time JARVIS traded this symbol.",
       "acceptanceCriteria": [
-        "Read engine/.env to get the current API_KEY value",
-        "Write/update dashboard/.env.local: NEXT_PUBLIC_ENGINE_API_KEY=<value from engine/.env>",
-        "Also set NEXT_PUBLIC_ENGINE_URL=http://localhost:8010 if not already present",
-        "pnpm run build passes in dashboard/",
-        "After dashboard restart (pnpm dev), engine logs show NO 'Invalid X-API-Key' errors on dashboard route calls",
-        "GET /health from dashboard fetch succeeds (check browser network tab or engine access log)"
+        "learning/recommendations.py: add get_trade_history_context(symbol, limit=20) function that queries trade_outcomes SQLite table and returns a formatted string like: 'JARVIS TRADE HISTORY — MCL (last 5 trades): 3 wins / 2 losses (60% WR). Avg winner: +$95 | Avg loser: -$45. Last trade: LONG closed +$100 (2h 14m). Most recent loss: SHORT -$45.'",
+        "pipeline.py: before Stage 1 (TechnicalAnalyst call), call get_trade_history_context(symbol) and store result in pipeline_context dict",
+        "TechnicalAnalyst agent system prompt includes the history context block when it contains data (when trade_outcomes has rows for this symbol)",
+        "When trade_outcomes is empty (no history yet), context block is omitted gracefully — no error, no empty placeholder injected",
+        "Pipeline run result includes learning_context_injected: true/false field",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures",
+        "Manual pipeline trigger via POST /scanner/trigger shows learning_context_injected in pipeline_runs or logs"
       ],
-      "notes": "engine/.env should have API_KEY=jarvis-dev-key-change-me. dashboard/lib/api.ts already has the correct env var name (NEXT_PUBLIC_ENGINE_API_KEY). Only the .env.local file is missing. DO NOT commit .env.local — it is gitignored."
+      "notes": "learning/recommendations.py already has get_recommendations() scaffolded. Create get_trade_history_context() as a NEW simpler function that reads directly from trade_outcomes SQLite table (not the patterns layer which needs a db_manager). The query: SELECT symbol, action, pnl, outcome, lesson_text FROM trade_outcomes WHERE symbol=? ORDER BY created_at DESC LIMIT 20. Format as a concise block. Keep under 300 tokens — must not bloat the LLM prompt."
     },
     {
-      "id": "US-2103",
-      "title": "Close 4 stale MES test positions via management endpoint",
-      "priority": "P1",
-      "passes": true,
-      "goal": "4 test MES positions are open in SQLite (paper_trades) and in-memory tracker from Sprint 18/19 testing. They pollute win-rate, profit-factor, and position count. Add POST /portfolio/paper/admin/close-stale endpoint that closes all open positions where symbol='MES' and entry_price=5800.0 with exit_price=entry_price (zero P&L). After calling it, GET /portfolio/paper/positions returns empty list, GET /paper/validation/summary returns trades_closed >= 1 (the real MCL trade), win_rate > 0.",
+      "id": "US-2203",
+      "title": "Audit LLM agent data feeds — confirm real data reaches every agent",
+      "priority": "P0",
+      "passes": false,
+      "goal": "Add structured input logging to every Stage 1 agent (TechnicalAnalyst, NewsAnalyst, SocialAnalyst, FundamentalistAgent). After triggering a manual scan, read the logs to confirm what data each agent actually received. Fix any agent receiving empty/fallback data by identifying and patching its data source.",
       "acceptanceCriteria": [
-        "POST /portfolio/paper/admin/close-stale endpoint added to engine/routers/portfolio_router.py (or paper_validation_router.py)",
-        "Endpoint closes all open paper_trades WHERE symbol='MES' AND entry_price=5800.0 — sets status='closed', exit_price=entry_price, pnl=0.0, exit_time=now()",
-        "Also removes those positions from the in-memory tracker (portfolio_tracker.open_positions)",
-        "Endpoint is protected by X-API-Key header check",
-        "After calling endpoint: GET /portfolio/paper/positions returns [] or only legitimate open positions",
-        "GET /paper/validation/summary shows trades_closed=1 (the real MCL $100 trade), not 5",
+        "Each Stage 1 agent logs at INFO level at the START of its analyze() method: '[AGENT_INPUT] {AgentName} received: {summary of actual data}' — e.g. '[AGENT_INPUT] NewsAnalyst received: 3 headlines for MCL, source=polygon'",
+        "After POST /scanner/trigger, engine logs show 4 [AGENT_INPUT] lines — one per agent — within 30 seconds",
+        "For each agent, determine: is it receiving real data (Polygon/Finnhub/IB) or falling back to empty/None?",
+        "If NewsAnalyst is receiving 0 headlines: diagnose why (Polygon key issue? wrong endpoint? rate limit?) and fix",
+        "If SocialAnalyst is receiving None sentiment: diagnose and fix or implement graceful fallback text that says 'No social data available — neutral assumption'",
+        "If FundamentalistAgent is receiving empty fundamentals: diagnose and implement fallback (futures have no P/E — the fallback should be macro context: VIX level, yield curve data if available, or explicit 'no fundamental data for futures — using macro regime only')",
+        "Write docs/reports/sprint22_agent_audit.md — one section per agent with: what it received, what source, pass/fail, fix applied if any",
         "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures"
       ],
-      "notes": "The real MCL trade (pnl=$100) must NOT be touched. Only close test positions where symbol='MES' AND entry_price=5800.0. The 4 trade_ids are: MES_2026-04-03_short_5800.0, MES_2026-04-02_long_5800.0, MES_2026-04-02_long_5810.0, MES_2026-04-01_long_5800.0. Hard-code a list filter OR use symbol+price filter. Add the endpoint, call it once in the story verification, confirm clean state."
+      "notes": "The most likely finding: NewsAnalyst gets 0 headlines (Polygon news key may be on free tier with no news access), SocialAnalyst gets None (social sentiment API may not be configured), FundamentalistAgent gets empty dict (futures have no traditional fundamentals — the agent needs a macro fallback). Do not fake data — implement honest fallbacks that tell the LLM 'I have no data in this category, assume neutral.' This is better than hallucinated data."
     },
     {
-      "id": "US-2104",
-      "title": "Post-trade analysis dashboard page",
+      "id": "US-2204",
+      "title": "WhatsApp reply approval — one-word approve from phone",
       "priority": "P1",
       "passes": false,
-      "goal": "Build dashboard/app/trades/page.tsx — a post-trade analysis page showing all closed paper trades from SQLite. Shows: trade_id, symbol, direction (LONG/SHORT), entry_price, exit_price, pnl ($), entry_time, exit_time, duration. Each row has a win/loss badge (green for pnl>0, red for pnl<=0). Page auto-refreshes every 30s. Uses GET /paper/trades/closed endpoint (add it if missing). Page linked in sidebar nav.",
+      "goal": "Wire OpenClaw inbound message listener so Matt can reply 'yes', 'no', or 'hold' to a WhatsApp approval alert and JARVIS instantly approves/rejects the pending trade. This transforms JARVIS from a notification system into a two-way collaborator.",
       "acceptanceCriteria": [
-        "GET /paper/trades/closed endpoint exists in engine — returns array of closed paper_trades from SQLite ordered by exit_time DESC",
-        "dashboard/app/trades/page.tsx exists and renders the closed trades table",
-        "Table columns: Symbol | Direction | Entry | Exit | P&L | Duration | Closed At | Result",
-        "Result badge: variant='bull' for pnl>0, variant='bear' for pnl<=0, variant='neutral' for pnl=0",
-        "P&L formatted as $+100.00 or $-50.00 with color (green/red via badge)",
-        "Duration formatted as human-readable: '2h 14m' not raw seconds",
-        "Page auto-refreshes via useSWR with refreshInterval: 30000",
-        "Sidebar nav includes 'Trade History' link pointing to /trades",
-        "pnpm run build passes — 0 TypeScript errors, all routes build",
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes"
+        "POST /openclaw/webhook endpoint added to engine — receives incoming OpenClaw webhook payload",
+        "Endpoint parses message body: 'yes' or 'approve' → approve the most recent pending_trade_approvals row; 'no' or 'reject' → reject it; 'hold' or 'skip' → leave it pending",
+        "After approving: POST /portfolio/paper/trade is called internally to open the paper position",
+        "After rejecting: pending_trade_approvals row status updated to 'rejected' with rejected_at timestamp",
+        "Confirmation WhatsApp sent back via OpenClaw: 'JARVIS: Trade approved — MCL LONG @ $72.50 opened' or 'JARVIS: Trade rejected'",
+        "Endpoint is idempotent — if no pending approvals exist, replies 'JARVIS: No pending trades to approve'",
+        "Endpoint is protected (verify sender is the registered OpenClaw phone number from config)",
+        "Write docs/runbooks/whatsapp_approval.md — how to configure OpenClaw webhook URL, test procedure",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures"
       ],
-      "notes": "The endpoint query: SELECT * FROM paper_trades WHERE status='closed' ORDER BY exit_time DESC. The trade_id, symbol, action, entry_price, exit_price, pnl, entry_time, exit_time columns all exist. duration = (exit_time - entry_time) in seconds. Use fetchEngine<ClosedTrade[]>('/paper/trades/closed') in the dashboard component. Sidebar is in dashboard/app/layout.tsx or a shared nav component — find it and add the link."
+      "notes": "OpenClaw runs on port 8009. Check OpenClaw documentation or endpoint list for how to register a webhook for incoming messages. The webhook registration may require a POST to http://localhost:8009/api/oc/webhook/register or similar. The JARVIS engine webhook URL to register would be http://localhost:8010/openclaw/webhook. Check engine/notifications/openclaw_notifier.py for any existing webhook registration code or OpenClaw API patterns already established."
     },
     {
-      "id": "US-2105",
-      "title": "Sprint 21 close-out — restart, verify, commit, handoff",
+      "id": "US-2205",
+      "title": "Sprint 22 close-out — verify memory injection, commit, handoff",
       "priority": "P1",
       "passes": false,
-      "goal": "After all 4 stories pass: restart engine, call the stale position close endpoint, verify all critical endpoints return correct data, run full test suite + dashboard build, commit all changes, update prd.json (all passes: true), update HANDOFF_CLAUDE_SESSION.md with Sprint 21 state.",
+      "goal": "After all 4 stories complete: restart engine, trigger a scan, confirm learning context appears in pipeline logs, run full test suite, commit all changes, update handoff with Sprint 23 scope (morning intelligence brief + unrealized P&L widget).",
       "acceptanceCriteria": [
         "Engine restarted: .\\restart_engine.ps1",
-        "POST /portfolio/paper/admin/close-stale called — 4 stale positions closed",
-        "GET /health returns {status: 'healthy', database: 'connected', ibkr_connected: true}",
-        "GET /data/price/MCL returns numeric last_price (not null)",
-        "GET /data/price/MNQ returns numeric last_price (not null)",
-        "GET /portfolio/paper/positions returns [] (no stale positions)",
-        "GET /paper/validation/summary returns trades_closed=1, win_rate=100.0, profit_factor=9999.0",
-        "GET /paper/trades/closed returns 1 trade (the MCL $100 trade)",
+        "POST /scanner/trigger called — 4 [AGENT_INPUT] lines in engine logs within 30 seconds",
+        "If trade_outcomes has any rows: pipeline logs show 'learning_context_injected: true' for the symbol scanned",
+        "GET /learning/outcomes returns HTTP 200 with correct schema",
+        "POST /openclaw/webhook with body {'message': 'yes'} returns HTTP 200 (or 200 with 'no pending trades' message)",
+        "docs/reports/sprint22_agent_audit.md exists with findings for all 4 agents",
         "cd engine && .venv/Scripts/python -m pytest tests/ -v — 0 failures",
-        "cd dashboard && pnpm run build — 26+ routes, 0 TypeScript errors",
-        "All Sprint 21 changes committed with conventional commit messages",
-        "prd.json updated: all 5 stories passes: true",
-        "HANDOFF_CLAUDE_SESSION.md updated with current engine state, open items, and Monday readiness checklist"
+        "cd dashboard && pnpm run build — 0 TypeScript errors",
+        "All Sprint 22 changes committed with conventional commit messages",
+        "prd.json: all 5 stories passes: true",
+        "HANDOFF_CLAUDE_SESSION.md updated with Sprint 23 scope: morning intelligence brief + unrealized P&L dashboard widget"
       ],
-      "notes": "Commit order: US-2101 fix, US-2102 docs (do not commit .env.local), US-2103 endpoint, US-2104 dashboard page + endpoint, US-2105 docs. Use git add <specific files> — never git add -A which might catch secrets."
+      "notes": "Sprint 23 scope to document in handoff: (1) Morning pre-market brief via WhatsApp at 8:45 CT — scheduled job that sends MCL/MNQ prices, STC values, regime, open positions, risk budget. (2) Unrealized P&L widget on dashboard — polls IB for current price on open positions, shows live P&L, distance to stop, distance to target."
     }
   ]
 }
