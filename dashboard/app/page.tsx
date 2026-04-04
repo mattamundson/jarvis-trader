@@ -241,24 +241,24 @@ export default function DashboardPage() {
                 </p>
                 <RiskRow
                   label="Daily P&L"
-                  value={`$${safety.daily_pnl.toFixed(0)}`}
-                  limit={`limit: $${Math.abs(safety.max_daily_loss).toFixed(0)}`}
-                  pct={Math.abs(safety.daily_pnl) / Math.abs(safety.max_daily_loss || 1)}
-                  danger={safety.daily_pnl < safety.max_daily_loss}
+                  value={`$${(safety.daily_pnl ?? 0).toFixed(0)}`}
+                  limit={`limit: $${Math.abs(safety.max_daily_loss ?? 0).toFixed(0)}`}
+                  pct={Math.abs(safety.daily_pnl ?? 0) / Math.abs(safety.max_daily_loss || 1)}
+                  danger={(safety.daily_pnl ?? 0) < (safety.max_daily_loss ?? 0)}
                 />
                 <RiskRow
                   label="Drawdown"
-                  value={`${(safety.current_drawdown * 100).toFixed(1)}%`}
+                  value={`${((safety.current_drawdown ?? 0) * 100).toFixed(1)}%`}
                   limit="limit: 10%"
-                  pct={safety.current_drawdown / 0.10}
-                  danger={safety.current_drawdown > 0.08}
+                  pct={(safety.current_drawdown ?? 0) / 0.10}
+                  danger={(safety.current_drawdown ?? 0) > 0.08}
                 />
                 <RiskRow
                   label="Orders Today"
-                  value={String(safety.orders_today)}
+                  value={String(safety.orders_today ?? 0)}
                   limit="limit: 50"
-                  pct={safety.orders_today / 50}
-                  danger={safety.orders_today > 40}
+                  pct={(safety.orders_today ?? 0) / 50}
+                  danger={(safety.orders_today ?? 0) > 40}
                 />
               </div>
             )}
