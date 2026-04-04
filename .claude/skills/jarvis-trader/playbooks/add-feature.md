@@ -4,6 +4,23 @@ Use for: new endpoints, new agents, new market modules, new dashboard pages, new
 
 ---
 
+## External Tools for Feature Work
+
+Before starting, identify which external tools this feature needs:
+
+| Situation | Tool |
+|---|---|
+| Feature requires live market data research | Claude in Chrome + `TOOLS.md` Cat. 1 |
+| Feature requires system design decision | `engineering:system-design` skill |
+| Feature needs a formal spec / PRD | `product-management:feature-spec` skill (write-spec) |
+| Feature adds a new data analysis capability | `data:data-context-extractor` skill to model schema |
+| Review before merging any safety-critical code | `engineering:code-review` + gstack `/review` (both required) |
+| QA the new dashboard page when built | gstack `/qa` at `http://localhost:3010` |
+| Ship the feature when complete | gstack `/ship` + `playbooks/release.md` |
+| Store the spec or design doc | `mcp__c1fc4002-5f49-5f9d-a4e5-93c4ef5d6a75__google_drive_fetch` → save to Drive |
+
+---
+
 ## Step 1 — Understand the Request
 
 Before designing anything, answer these questions:

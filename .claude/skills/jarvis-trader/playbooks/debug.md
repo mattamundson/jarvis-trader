@@ -4,6 +4,22 @@ Use for: errors, crashes, failing tests, unexpected behavior, tracing "why is X 
 
 ---
 
+## External Tools for Debugging
+
+Before starting, check which tools apply:
+
+| Situation | Tool |
+|---|---|
+| Need structured debug workflow with LLM guidance | `engineering:debug` skill (invoke first) |
+| Agent pipeline failure — need to trace execution | gstack `/investigate` |
+| Need to read a log file | `mcp__Desktop_Commander__read_file` → `engine/logs/*.log` |
+| Engine not running — need to start it | `mcp__Desktop_Commander__start_process` |
+| Need to check a running process / port | `mcp__Desktop_Commander__list_processes` |
+| Visual dashboard bug — need browser | gstack `/qa` at `http://localhost:3010` |
+| Need to look up related issues in stored docs | `mcp__c1fc4002-5f49-5f9d-a4e5-93c4ef5d6a75__google_drive_search` |
+
+---
+
 ## Step 1 — Reproduce
 
 Before touching any code, reproduce the problem deterministically.
