@@ -113,6 +113,29 @@ class IBKRDataConnector:
             return Future(symbol, exchange=exchange, currency="USD")
         return Stock(symbol, "SMART", "USD")
 
+    async def _qualified_contract(self, symbol: str, is_futures: bool):
+        """
+        Return a contract usable for market-data requests (tickers, historical, streaming).
+        IB requires conId for hashing/subscriptions; qualify generic symbols via the API.
+        """
+        from ib_async import Contract
+
+        exchange = FUTURES_EXCHANGE.get(symbol.upper(), "CME")
+        if is_futures or symbol.upper() in FUTURES_MAP:
+            c: Contract = await self._resolve_front_month(symbol, exchange)
+        else:
+            c = self._make_contract(symbol, is_futures)
+        cid = getattr(c, "conId", 0) or 0
+        if cid > 0:
+            return c
+        try:
+            qualified = await self._ib.qualifyContractsAsync(c)
+            if qualified:
+                return qualified[0]
+        except Exception as e:
+            logger.warning(f"qualifyContractsAsync failed for {symbol}: {e}")
+        return c
+
     async def _resolve_front_month(self, symbol: str, exchange: str) -> Future:
         """Resolve futures symbol to the nearest expiry (front month) contract."""
         from ib_async import Future
@@ -139,11 +162,7 @@ class IBKRDataConnector:
         if not self._connected:
             return pd.DataFrame()
         try:
-            exchange = FUTURES_EXCHANGE.get(symbol.upper(), "CME")
-            if is_futures or symbol.upper() in FUTURES_MAP:
-                contract = await self._resolve_front_month(symbol, exchange)
-            else:
-                contract = self._make_contract(symbol, is_futures)
+            contract = await self._qualified_contract(symbol, is_futures)
             bars = await self._ib.reqHistoricalDataAsync(
                 contract,
                 endDateTime="",
@@ -181,7 +200,7 @@ class IBKRDataConnector:
                 "source": "ibkr_not_connected",
             }
         try:
-            contract = self._make_contract(symbol, is_futures)
+            contract = await self._qualified_contract(symbol, is_futures)
             tickers = await self._ib.reqTickersAsync(contract)
             if not tickers:
                 return {
@@ -222,7 +241,7 @@ class IBKRDataConnector:
             logger.error("Not connected to IBKR")
             return
         try:
-            contract = self._make_contract(symbol, is_futures)
+            contract = await self._qualified_contract(symbol, is_futures)
             bars = self._ib.reqRealTimeBars(contract, 5, "TRADES", False)
             bars.updateEvent += lambda bars, hasNewBar: (
                 callback(
