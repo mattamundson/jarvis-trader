@@ -11,13 +11,14 @@ from fastapi.testclient import TestClient
 
 from config import settings
 from main import app
+from routers import wfe_router
 from routers.wfe_router import _compute_snapshot_stats, _get_week_start
 
 
 @pytest.fixture
 def db_connection():
     """Create an in-memory SQLite database for testing."""
-    conn = sqlite3.connect(":memory:")
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
 
     # Create paper_trades table
@@ -59,6 +60,20 @@ def db_connection():
     conn.commit()
     yield conn
     conn.close()
+
+
+@pytest.fixture
+def wfe_client_with_db(db_connection):
+    """TestClient with WFE routes using the in-memory DB (CI has no migrated SQLite file)."""
+
+    async def _override_conn():
+        yield db_connection
+
+    app.dependency_overrides[wfe_router.get_db_connection] = _override_conn
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.pop(wfe_router.get_db_connection, None)
 
 
 class TestGetWeekStart:
@@ -143,9 +158,9 @@ class TestComputeSnapshotStats:
         week_start = "2026-04-06"
 
         trades = [
-            ("trade1", 500.0, "2026-04-06T10:00:00"),   # win
+            ("trade1", 500.0, "2026-04-06T10:00:00"),  # win
             ("trade2", -200.0, "2026-04-06T11:00:00"),  # loss
-            ("trade3", 300.0, "2026-04-06T12:00:00"),   # win
+            ("trade3", 300.0, "2026-04-06T12:00:00"),  # win
         ]
 
         for trade_id, pnl, exit_time in trades:
@@ -181,9 +196,9 @@ class TestComputeSnapshotStats:
 class TestWFERouter:
     """Test WFE router endpoints."""
 
-    def test_post_snapshot_creates_snapshot(self):
+    def test_post_snapshot_creates_snapshot(self, wfe_client_with_db):
         """POST /wfe/snapshot should create a snapshot."""
-        client = TestClient(app)
+        client = wfe_client_with_db
         response = client.post("/wfe/snapshot", headers={"X-API-Key": settings.API_KEY})
 
         # Should return 200 with status='ok'
@@ -192,9 +207,9 @@ class TestWFERouter:
         assert data["status"] == "ok"
         assert "snapshots_created" in data
 
-    def test_get_snapshots_returns_list(self):
+    def test_get_snapshots_returns_list(self, wfe_client_with_db):
         """GET /wfe/snapshots should return list of snapshots."""
-        client = TestClient(app)
+        client = wfe_client_with_db
         response = client.get("/wfe/snapshots", headers={"X-API-Key": settings.API_KEY})
 
         assert response.status_code == 200
@@ -203,9 +218,9 @@ class TestWFERouter:
         assert "total_count" in data
         assert isinstance(data["snapshots"], list)
 
-    def test_get_snapshots_with_symbol_filter(self):
+    def test_get_snapshots_with_symbol_filter(self, wfe_client_with_db):
         """GET /wfe/snapshots?symbol=MCL should filter by symbol."""
-        client = TestClient(app)
+        client = wfe_client_with_db
         response = client.get("/wfe/snapshots?symbol=MCL", headers={"X-API-Key": settings.API_KEY})
 
         assert response.status_code == 200

@@ -41,6 +41,7 @@ class PositionCorrelationMonitor:
 
     def update_position(self, symbol: str, qty: int) -> None:
         """Update the open quantity for a symbol (0 = closed position)."""
+        symbol = symbol.upper()
         if qty > 0:
             self._open_positions[symbol] = qty
         else:
@@ -54,11 +55,12 @@ class PositionCorrelationMonitor:
         """
         Get the max contracts allowed for *symbol* given current open positions.
 
-        If *symbol* is part of a high-correlation pair and the other symbol
-        also has an open position, returns correlated_max_contracts (usually 1).
+        If *symbol* is part of a high-correlation pair and BOTH symbols
+        have open positions, returns correlated_max_contracts (usually 1).
         Otherwise returns default_max_contracts (usually 2).
         """
-        open_symbols = self.get_open_symbols()
+        open_symbols_upper = {s.upper() for s in self._open_positions}
+        symbol_upper = symbol.upper()
 
         # Check all correlation pairs
         for pair_str, corr_value in self.correlation_pairs.items():
@@ -70,28 +72,24 @@ class PositionCorrelationMonitor:
                 logger.warning(f"Invalid correlation pair format: {pair_str}")
                 continue
 
-            sym1, sym2 = parts[0].strip(), parts[1].strip()
+            sym1 = parts[0].strip().upper()
+            sym2 = parts[1].strip().upper()
 
-            # Check if symbol is in this pair and other symbol is open
-            if symbol.upper() == sym1.upper() and sym2.upper() in open_symbols:
-                logger.info(
-                    f"Correlation reduction applied: {sym1}+{sym2} both open, "
-                    f"max_contracts → {self.correlated_max_contracts}"
-                )
-                return self.correlated_max_contracts
-
-            if symbol.upper() == sym2.upper() and sym1.upper() in open_symbols:
-                logger.info(
-                    f"Correlation reduction applied: {sym1}+{sym2} both open, "
-                    f"max_contracts → {self.correlated_max_contracts}"
-                )
-                return self.correlated_max_contracts
+            # Both symbols must be open to trigger reduction
+            if symbol_upper in (sym1, sym2):
+                other = sym2 if symbol_upper == sym1 else sym1
+                if symbol_upper in open_symbols_upper and other in open_symbols_upper:
+                    logger.info(
+                        f"Correlation reduction applied: {sym1}+{sym2} both open, "
+                        f"max_contracts -> {self.correlated_max_contracts}"
+                    )
+                    return self.correlated_max_contracts
 
         return self.default_max_contracts
 
     def get_correlation_exposure(self) -> dict:
         """Return current correlation exposure status."""
-        open_symbols = self.get_open_symbols()
+        open_symbols_upper = {s.upper() for s in self._open_positions}
         reduction_active = False
 
         # Check if any high-correlation pair is open
@@ -103,14 +101,15 @@ class PositionCorrelationMonitor:
             if len(parts) != 2:
                 continue
 
-            sym1, sym2 = parts[0].strip(), parts[1].strip()
-            if sym1.upper() in open_symbols and sym2.upper() in open_symbols:
+            sym1 = parts[0].strip().upper()
+            sym2 = parts[1].strip().upper()
+            if sym1 in open_symbols_upper and sym2 in open_symbols_upper:
                 reduction_active = True
                 break
 
         return {
-            "open_symbols": list(open_symbols),
-            "open_count": len(open_symbols),
+            "open_symbols": list(open_symbols_upper),
+            "open_count": len(open_symbols_upper),
             "correlation_reduction_active": reduction_active,
             "default_max_contracts": self.default_max_contracts,
             "correlated_max_contracts": self.correlated_max_contracts,

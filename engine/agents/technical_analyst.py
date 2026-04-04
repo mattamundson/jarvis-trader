@@ -414,7 +414,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             recommendations = await get_recommendations(symbol, timeframe, db_manager=db_manager)
             if recommendations:
                 learning_context = format_recommendations_for_prompt(recommendations)
-                logger.info(f"[LEARNING] {len(recommendations)} recommendations injected for {symbol}")
+                logger.info(
+                    f"[LEARNING] {len(recommendations)} recommendations injected for {symbol}"
+                )
             else:
                 logger.debug(f"[LEARNING] No active recommendations for {symbol}")
         except Exception as lc_err:

@@ -545,7 +545,9 @@ async def get_learning_status() -> dict:
                 "SELECT COUNT(*) as count, MAX(created_at) as last_at FROM learning_events"
             )
             lesson_count = lesson_rows[0]["count"] if lesson_rows else 0
-            last_lesson_at = lesson_rows[0]["last_at"] if lesson_rows and lesson_rows[0]["last_at"] else None
+            last_lesson_at = (
+                lesson_rows[0]["last_at"] if lesson_rows and lesson_rows[0]["last_at"] else None
+            )
         except Exception as e:
             logger.debug(f"Could not query learning_events: {e}")
             lesson_count = 0
