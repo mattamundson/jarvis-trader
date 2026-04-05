@@ -3,6 +3,10 @@ JARVIS TRADER — Safety Layer Tests
 Comprehensive testing of all 14 hard rules.
 """
 
+import os
+import sqlite3
+import tempfile
+
 import pytest
 
 from risk.safety_layer import KillSwitchReason, OrderRequest, RiskCheckResult, SafetyLayer
@@ -630,3 +634,117 @@ class TestMultipleRuleInteraction:
         # Assert
         assert result.approved is True
         assert result.rejection_reason is None
+
+
+def _make_db_with_system_state() -> str:
+    """Create a temp SQLite DB with the system_state table and return its path."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS system_state (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+    return path
+
+
+class TestKillSwitchPersistence:
+    """Kill switch state is persisted to SQLite and restored on startup."""
+
+    def test_kill_switch_state_written_to_db(self, mock_settings):
+        """Activating kill switch writes active=true and reason to system_state."""
+        db_path = _make_db_with_system_state()
+        try:
+            safety = SafetyLayer(mock_settings, db_path=db_path)
+            safety.activate_kill_switch(KillSwitchReason.MANUAL, "test halt")
+
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            active_row = conn.execute(
+                "SELECT value FROM system_state WHERE key = 'kill_switch_active'"
+            ).fetchone()
+            reason_row = conn.execute(
+                "SELECT value FROM system_state WHERE key = 'kill_switch_reason'"
+            ).fetchone()
+            conn.close()
+
+            assert active_row is not None
+            assert active_row["value"] == "true"
+            assert reason_row is not None
+            assert reason_row["value"] == KillSwitchReason.MANUAL.value
+        finally:
+            os.unlink(db_path)
+
+    def test_kill_switch_state_loaded_on_startup(self, mock_settings):
+        """SafetyLayer loads active kill switch from DB and starts with it engaged."""
+        db_path = _make_db_with_system_state()
+        try:
+            # Pre-seed the DB as if a previous process had activated the kill switch
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+                ("kill_switch_active", "true"),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+                ("kill_switch_reason", KillSwitchReason.DAILY_LOSS_LIMIT.value),
+            )
+            conn.commit()
+            conn.close()
+
+            # Construct SafetyLayer — it should restore the kill switch from DB
+            safety = SafetyLayer(mock_settings, db_path=db_path)
+
+            assert safety.is_killed is True
+            assert safety._kill_switch_reason == KillSwitchReason.DAILY_LOSS_LIMIT
+        finally:
+            os.unlink(db_path)
+
+    def test_kill_switch_deactivate_clears_db(self, mock_settings):
+        """Deactivating kill switch writes active=false to system_state."""
+        db_path = _make_db_with_system_state()
+        try:
+            safety = SafetyLayer(mock_settings, db_path=db_path)
+            safety.activate_kill_switch(KillSwitchReason.MAX_DRAWDOWN, "test drawdown")
+            assert safety.is_killed is True
+
+            safety.deactivate_kill_switch(authorized_by="human")
+            assert safety.is_killed is False
+
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            active_row = conn.execute(
+                "SELECT value FROM system_state WHERE key = 'kill_switch_active'"
+            ).fetchone()
+            conn.close()
+
+            assert active_row is not None
+            assert active_row["value"] == "false"
+        finally:
+            os.unlink(db_path)
+
+    def test_db_failure_does_not_block_kill_switch(self, mock_settings):
+        """DB unavailable → kill switch still activates in memory (non-fatal)."""
+        # Point to a path that cannot be a valid DB
+        bad_db_path = "/nonexistent/path/to/jarvis.db"
+        safety = SafetyLayer(mock_settings, db_path=bad_db_path)
+
+        # Kill switch must still work even if DB write fails
+        safety.activate_kill_switch(KillSwitchReason.MANUAL, "DB failure test")
+        assert safety.is_killed is True
+        assert safety._kill_switch_reason == KillSwitchReason.MANUAL
+
+    def test_startup_without_db_path_does_not_crash(self, mock_settings):
+        """SafetyLayer with no DB path starts cleanly without kill switch active."""
+        # Ensure config has no SQLITE_DB_PATH set
+        if hasattr(mock_settings, "SQLITE_DB_PATH"):
+            mock_settings.SQLITE_DB_PATH = None
+        safety = SafetyLayer(mock_settings, db_path=None)
+        assert safety.is_killed is False
