@@ -34,25 +34,34 @@ logger = logging.getLogger("jarvis_trader.scanner")
 def _is_futures_market_hours() -> bool:
     """
     Check if current time is during US futures market hours.
-    Returns True if Sun 5pm - Fri 4pm CT.
+    Returns True if Sun 5pm - Fri 4pm CT (DST-aware).
+
+    CME Globex schedule (America/Chicago):
+      - Sunday 5:00 PM → Friday 4:00 PM CT (continuous)
+      - Daily maintenance break: 4:00 PM – 5:00 PM CT (Mon-Thu)
+      - Closed: Friday 4:00 PM → Sunday 5:00 PM
     """
-    now = datetime.now(timezone.utc)
-    ct_offset = timedelta(hours=-6)  # Central Time offset from UTC
-    now_ct = now + ct_offset
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
 
+    ct = ZoneInfo("America/Chicago")
+    now_ct = datetime.now(ct)
     weekday = now_ct.weekday()  # 0=Monday, 6=Sunday
-    current_time = now_ct.time()
+    h = now_ct.hour
 
-    sunday_open = time(17, 0)  # 5pm CT Sunday
-    friday_close = time(16, 0)  # 4pm CT Friday
-
-    if weekday == 6:  # Sunday
-        return current_time >= sunday_open
-    elif weekday < 5:  # Monday-Friday
-        return current_time < friday_close
-    elif weekday == 5:  # Saturday
+    # Saturday: fully closed
+    if weekday == 5:
         return False
-    return False
+    # Sunday: open at 5:00 PM CT
+    if weekday == 6:
+        return h >= 17
+    # Friday: closed at 4:00 PM CT
+    if weekday == 4:
+        return h < 16
+    # Monday–Thursday: open except 4:00–5:00 PM CT maintenance break
+    return not (h == 16)
 
 
 class SignalScanner:
