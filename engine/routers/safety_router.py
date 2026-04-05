@@ -232,6 +232,13 @@ async def activate_kill_switch(
     except Exception as exc:
         logger.warning("[SAFETY] Kill-switch side effects (notify/ws): %s", exc)
 
+    try:
+        from notifications.openclaw_notifier import notify_kill_switch as _oc_ks
+
+        asyncio.create_task(_oc_ks(market="ALL", reason=reason_label))
+    except Exception as exc:
+        logger.warning("[SAFETY] OpenClaw kill-switch notify: %s", exc)
+
     return {"status": "kill_switch_activated", "reason": reason_label}
 
 

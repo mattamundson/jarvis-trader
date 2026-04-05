@@ -125,6 +125,11 @@ async def _send(message: str, phone: str = _PHONE_TO) -> bool:
     return await loop.run_in_executor(None, _send_sync, message, phone)
 
 
+async def send_raw(message: str, phone: str = _PHONE_TO) -> bool:
+    """Send a raw message string directly via OpenClaw WhatsApp. No cooldown."""
+    return await _send(message, phone)
+
+
 async def notify_signal(
     *,
     symbol: str,
@@ -244,27 +249,31 @@ async def notify_target(
     market: str = "futures",
     pnl: float = 0.0,
     target: float = 0.0,
+    message: str | None = None,
 ) -> bool:
-    """Send WhatsApp alert when daily target is reached."""
+    """Send WhatsApp for daily target hit, or a custom alert (e.g. drawdown) with rate limit."""
     if os.getenv("TESTING"):
         logger.debug("OpenClaw target notify suppressed in TESTING mode")
         return False
-    cooldown_key = f"target:{market}"
+    cooldown_key = f"drawdown:{market}" if message else f"target:{market}"
     if _is_cooldown(cooldown_key):
         return False
     ts = _ct_time()
-    msg = (
-        f"JARVIS TARGET HIT — {ts}\n"
-        f"{market.upper()}: ${pnl:,.2f} >= ${target:,.2f} daily target\n"
-        f"Consider reducing exposure for remainder of session."
-    )
+    if message:
+        msg = f"{message}\nTime: {ts} CT"
+    else:
+        msg = (
+            f"JARVIS TARGET HIT — {ts}\n"
+            f"{market.upper()}: ${pnl:,.2f} >= ${target:,.2f} daily target\n"
+            f"Consider reducing exposure for remainder of session."
+        )
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
     return sent
 
 
-async def notify_ib_disconnect(last_connected_at: str = '') -> bool:
+async def notify_ib_disconnect(last_connected_at: str = "") -> bool:
     """Send WhatsApp alert when IB Gateway disconnects during market hours. No cooldown."""
     if os.getenv("TESTING"):
         logger.debug("OpenClaw IB disconnect notify suppressed in TESTING mode")
@@ -287,11 +296,5 @@ async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) ->
         logger.debug("OpenClaw regime change notify suppressed in TESTING mode")
         return False
     ts = _ct_time()
-    msg = (
-        f"JARVIS Regime Alert
-"
-        f"{symbol}: {old_regime} → {new_regime}
-"
-        f"Time: {ts} CT"
-    )
+    msg = f"JARVIS Regime Alert\n" f"{symbol}: {old_regime} → {new_regime}\n" f"Time: {ts} CT"
     return await _send(msg)

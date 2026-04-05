@@ -448,6 +448,48 @@ class RLExecutor:
                 current_price,
             )
 
+        # Fire WhatsApp notifications for BUY/SELL entries and CLOSE exits
+        try:
+            import asyncio as _aio
+
+            from notifications.openclaw_notifier import (
+                notify_signal as _oc_sig,
+            )
+            from notifications.openclaw_notifier import (
+                notify_trade_closed as _oc_tc,
+            )
+
+            _loop = _aio.get_event_loop()
+            if action_name in ("BUY", "SELL"):
+                _coro = _oc_sig(
+                    symbol=self.symbol,
+                    action=action_name,
+                    confidence=0.0,
+                    reason=f"RL model → pos {self._paper_position}→{new_position}",
+                    market=self.symbol,
+                )
+            elif action_name == "CLOSE":
+                _entry = self._entry_price or current_price
+                _pnl_est = (current_price - _entry) * (1 if self._paper_position == 1 else -1)
+                _coro = _oc_tc(
+                    symbol=self.symbol,
+                    action=ib_action,
+                    entry_price=_entry,
+                    exit_price=current_price,
+                    pnl=_pnl_est,
+                    quantity=1,
+                )
+            else:
+                _coro = None
+
+            if _coro is not None:
+                if _loop.is_running():
+                    _loop.create_task(_coro)
+                else:
+                    _loop.run_until_complete(_coro)
+        except Exception:
+            pass  # Non-blocking, best-effort
+
         # Update paper position state
         if new_position is not None:
             if new_position != 0:

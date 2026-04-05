@@ -604,6 +604,37 @@ class MarketDataManager:
                 "source": "csv_cache",
             }
 
+        # Tier 4: yfinance (free, delayed ~15min — IBKR-offline fallback)
+        try:
+            import json as _json
+            import urllib.request
+
+            _YF_MAP = {
+                "MCL": "CL=F",
+                "MNQ": "NQ=F",
+                "MES": "ES=F",
+                "MGC": "GC=F",
+                "MBT": "BTC=F",
+            }
+            yf_sym = _YF_MAP.get(symbol.upper(), symbol)
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_sym}?interval=1d&range=2d"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            data = _json.loads(urllib.request.urlopen(req, timeout=5).read())
+            meta = data["chart"]["result"][0]["meta"]
+            price = meta.get("regularMarketPrice") or meta.get("previousClose")
+            prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+            if price:
+                chg = round((price - prev) / prev * 100, 2) if prev else None
+                logger.info(f"yfinance fallback price for {symbol} ({yf_sym}): {price}")
+                return {
+                    "last_price": float(price),
+                    "prev_close": float(prev) if prev else None,
+                    "change_pct": chg,
+                    "source": "yfinance",
+                }
+        except Exception as _yfe:
+            logger.debug(f"yfinance fallback failed for {symbol}: {_yfe}")
+
         return {"last_price": None, "prev_close": None, "change_pct": None, "source": "unavailable"}
 
     async def get_batch_prices(self, symbols: list) -> dict:
