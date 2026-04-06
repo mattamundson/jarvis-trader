@@ -390,7 +390,7 @@ class TestPaperTradingIntegration(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix="test_paper_")
 
     @patch.dict(os.environ, {
-        "MAX_DAILY_LOSS_PCT": "0.02",
+        "MAX_DAILY_LOSS_PCT": "0.10",
         "MAX_DRAWDOWN_PCT": "0.10",
         "MAX_POSITION_SIZE_PCT": "0.05",
         "MAX_CONTRACTS_PER_INSTRUMENT": "2",
@@ -400,7 +400,7 @@ class TestPaperTradingIntegration(unittest.TestCase):
         from config import TradingConfig
 
         config = TradingConfig()
-        assert config.MAX_DAILY_LOSS_PCT == 0.02
+        assert config.MAX_DAILY_LOSS_PCT == 0.10  # paper trading mode
         assert config.MAX_DRAWDOWN_PCT == 0.10
         assert config.MAX_POSITION_SIZE_PCT == 0.05
         assert config.MAX_CONTRACTS_PER_INSTRUMENT == 2

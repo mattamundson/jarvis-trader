@@ -383,7 +383,22 @@ class PortfolioTracker:
             best_trade       : highest single-trade P&L
             worst_trade      : lowest single-trade P&L
         """
-        closed = self._closed
+        # B9 fix: prefer SQLite as single source of truth (Sprint 17 US-1703)
+        # Fall back to in-memory _closed if db_manager not available
+        if getattr(self, "db_manager", None) is not None:
+            try:
+                rows = self.db_manager.get_closed_trades(limit=10000)
+                closed = []
+                for row in rows:
+                    t = PaperTrade.__new__(PaperTrade)
+                    t.trade_id = row.get("trade_id", "")
+                    t.pnl = row.get("pnl") or row.get("realized_pnl")
+                    closed.append(t)
+            except Exception as exc:
+                logger.warning("[TRACKER] get_performance: SQLite read failed, using in-memory: %s", exc)
+                closed = self._closed
+        else:
+            closed = self._closed
         if not closed:
             return {
                 "total_pnl": 0.0,

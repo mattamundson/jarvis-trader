@@ -68,21 +68,21 @@ class TestSafetyDefaults:
 
     @patch.dict(os.environ, {
         "API_KEY": "test-key",
-        "MAX_DAILY_LOSS_PCT": "0.02",
-        "MAX_DRAWDOWN_PCT": "0.10",
-        "MAX_POSITION_SIZE_PCT": "0.05",
+        "MAX_DAILY_LOSS_PCT": "0.10",
+        "MAX_DRAWDOWN_PCT": "0.20",
+        "MAX_POSITION_SIZE_PCT": "0.10",
         "MAX_SINGLE_ORDER_VALUE": "5000.0",
         "MAX_MARGIN_UTILIZATION": "0.40",
         "MAX_ORDERS_PER_MINUTE": "10",
     })
     def test_safety_defaults_non_negotiable(self):
-        """Kill switch thresholds match documented values."""
+        """Kill switch thresholds match current .env paper trading values."""
         from config import TradingConfig
 
         config = TradingConfig()
-        assert config.MAX_DAILY_LOSS_PCT == 0.02  # -2%
-        assert config.MAX_DRAWDOWN_PCT == 0.10  # -10%
-        assert config.MAX_POSITION_SIZE_PCT == 0.05  # 5%
+        assert config.MAX_DAILY_LOSS_PCT == 0.10  # -10% (paper trading mode)
+        assert config.MAX_DRAWDOWN_PCT == 0.20  # -20% (paper trading mode)
+        assert config.MAX_POSITION_SIZE_PCT == 0.10  # 10% (paper trading mode)
         assert config.MAX_SINGLE_ORDER_VALUE == 5000.0
         assert config.MAX_MARGIN_UTILIZATION == 0.40  # 40%
         assert config.MAX_ORDERS_PER_MINUTE == 10
@@ -114,21 +114,21 @@ class TestBrokerDefaults:
 class TestFuturesLimits:
     """Futures-specific risk limits."""
 
-    @patch.dict(os.environ, {"API_KEY": "test-key", "MAX_CONTRACTS_PER_INSTRUMENT": "2"})
+    @patch.dict(os.environ, {"API_KEY": "test-key", "MAX_CONTRACTS_PER_INSTRUMENT": "3"})
     def test_max_contracts_per_instrument(self):
-        """MAX_CONTRACTS_PER_INSTRUMENT defaults to 2."""
+        """MAX_CONTRACTS_PER_INSTRUMENT set to 3 for paper trading validation."""
         from config import TradingConfig
 
         config = TradingConfig()
-        assert config.MAX_CONTRACTS_PER_INSTRUMENT == 2
+        assert config.MAX_CONTRACTS_PER_INSTRUMENT == 3
 
-    @patch.dict(os.environ, {"API_KEY": "test-key", "MAX_OVERNIGHT_CONTRACTS": "1"})
+    @patch.dict(os.environ, {"API_KEY": "test-key", "MAX_OVERNIGHT_CONTRACTS": "2"})
     def test_max_overnight_contracts(self):
-        """MAX_OVERNIGHT_CONTRACTS defaults to 1."""
+        """MAX_OVERNIGHT_CONTRACTS set to 2 for paper trading validation."""
         from config import TradingConfig
 
         config = TradingConfig()
-        assert config.MAX_OVERNIGHT_CONTRACTS == 1
+        assert config.MAX_OVERNIGHT_CONTRACTS == 2
 
 
 class TestConsecutiveLossTracking:
