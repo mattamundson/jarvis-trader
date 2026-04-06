@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import tempfile
 import unittest
 from datetime import datetime
@@ -388,15 +389,24 @@ class TestPaperTradingIntegration(unittest.TestCase):
         self.config = TradingConfig()
         self.tmpdir = tempfile.mkdtemp(prefix="test_paper_")
 
+    @patch.dict(os.environ, {
+        "MAX_DAILY_LOSS_PCT": "0.02",
+        "MAX_DRAWDOWN_PCT": "0.10",
+        "MAX_POSITION_SIZE_PCT": "0.05",
+        "MAX_CONTRACTS_PER_INSTRUMENT": "2",
+    })
     def test_trading_config_defaults(self):
         """TradingConfig has correct safety defaults."""
-        assert self.config.MAX_DAILY_LOSS_PCT == 0.1
-        assert self.config.MAX_DRAWDOWN_PCT == 0.2
-        assert self.config.MAX_POSITION_SIZE_PCT == 0.1
-        assert self.config.MAX_CONTRACTS_PER_INSTRUMENT == 3
-        assert self.config.LIVE_TRADING_ENABLED is False
-        assert self.config.REQUIRE_HUMAN_APPROVAL is True
-        assert self.config.PAPER_TRADING is True
+        from config import TradingConfig
+
+        config = TradingConfig()
+        assert config.MAX_DAILY_LOSS_PCT == 0.02
+        assert config.MAX_DRAWDOWN_PCT == 0.10
+        assert config.MAX_POSITION_SIZE_PCT == 0.05
+        assert config.MAX_CONTRACTS_PER_INSTRUMENT == 2
+        assert config.LIVE_TRADING_ENABLED is False
+        assert config.REQUIRE_HUMAN_APPROVAL is True
+        assert config.PAPER_TRADING is True
 
     def test_paper_tracker_persistence(self):
         """Paper tracker persists trades to SQLite and reloads them."""
