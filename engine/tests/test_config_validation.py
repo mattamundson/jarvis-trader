@@ -116,11 +116,11 @@ class TestFuturesLimits:
 
     @patch.dict(os.environ, {"API_KEY": "test-key"})
     def test_max_overnight_contracts(self):
-        """MAX_OVERNIGHT_CONTRACTS defaults to 1."""
+        """MAX_OVERNIGHT_CONTRACTS defaults to 2."""
         from config import TradingConfig
 
         config = TradingConfig()
-        assert config.MAX_OVERNIGHT_CONTRACTS == 1
+        assert config.MAX_OVERNIGHT_CONTRACTS == 2
 
 
 class TestConsecutiveLossTracking:

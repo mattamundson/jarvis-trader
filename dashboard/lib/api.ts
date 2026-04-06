@@ -289,14 +289,18 @@ export interface SentimentData {
 
 export interface AgentDecision {
   id: number;
-  created_at: string;
-  agent_name: string;
+  created_at?: string;
+  timestamp?: string;
+  agent_name?: string;
+  source?: string;
   symbol: string;
-  signal: number;
+  signal?: number;
+  action?: string;
   confidence: number;
-  reasoning: string;
-  model_used: string;
-  latency_ms: number;
+  reasoning?: string;
+  summary?: string;
+  model_used?: string;
+  latency_ms?: number;
 }
 
 export interface Position {

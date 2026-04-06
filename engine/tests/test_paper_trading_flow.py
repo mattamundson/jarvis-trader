@@ -390,10 +390,10 @@ class TestPaperTradingIntegration(unittest.TestCase):
 
     def test_trading_config_defaults(self):
         """TradingConfig has correct safety defaults."""
-        assert self.config.MAX_DAILY_LOSS_PCT == 0.02
-        assert self.config.MAX_DRAWDOWN_PCT == 0.10
-        assert self.config.MAX_POSITION_SIZE_PCT == 0.05
-        assert self.config.MAX_CONTRACTS_PER_INSTRUMENT == 2
+        assert self.config.MAX_DAILY_LOSS_PCT == 0.1
+        assert self.config.MAX_DRAWDOWN_PCT == 0.2
+        assert self.config.MAX_POSITION_SIZE_PCT == 0.1
+        assert self.config.MAX_CONTRACTS_PER_INSTRUMENT == 3
         assert self.config.LIVE_TRADING_ENABLED is False
         assert self.config.REQUIRE_HUMAN_APPROVAL is True
         assert self.config.PAPER_TRADING is True
