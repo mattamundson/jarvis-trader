@@ -109,3 +109,52 @@ class DailyPnLMixin:
                 return dict(row) if row else None
             finally:
                 conn.close()
+
+    # ── P&L Snapshots (safety layer persistence) ──────────────────────────────────────
+
+    def upsert_pnl_snapshot(
+        self,
+        *,
+        date: str,
+        daily_pnl: float,
+        portfolio_equity: float,
+        peak_equity: float = 0.0,
+        consecutive_losses: int = 0,
+    ) -> None:
+        """
+        Insert or replace the intraday P&L snapshot for the given date.
+
+        Called by SafetyLayer every time daily_pnl updates so state
+        survives engine restarts mid-session.
+        """
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        sql = """
+            INSERT OR REPLACE INTO pnl_snapshots
+                (date, daily_pnl, portfolio_equity, peak_equity, consecutive_losses, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(sql, (date, daily_pnl, portfolio_equity, peak_equity, consecutive_losses, now_utc))
+                conn.commit()
+                logger.debug(
+                    "[DB] upsert_pnl_snapshot date=%s daily_pnl=%+.2f equity=%.2f",
+                    date, daily_pnl, portfolio_equity,
+                )
+            finally:
+                conn.close()
+
+    def get_pnl_snapshot(self, date: str) -> Optional[Dict]:
+        """
+        Return the P&L snapshot for the given date (YYYY-MM-DD), or None.
+        Used by SafetyLayer on startup to restore intraday state.
+        """
+        sql = "SELECT * FROM pnl_snapshots WHERE date = ? LIMIT 1"
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(sql, (date,)).fetchone()
+                return dict(row) if row else None
+            finally:
+                conn.close()

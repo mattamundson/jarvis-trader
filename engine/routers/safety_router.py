@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # Global references (injected from main.py)
 _safety_layer = None
 _loss_tracker = None
+_alert_manager = None
 
 
 def inject_dependencies(safety_layer, loss_tracker):
@@ -27,6 +28,12 @@ def inject_dependencies(safety_layer, loss_tracker):
     global _safety_layer, _loss_tracker
     _safety_layer = safety_layer
     _loss_tracker = loss_tracker
+
+
+def inject_alert_manager(manager) -> None:
+    """Inject the AlertManager singleton so /safety/alerts/history can read its log."""
+    global _alert_manager
+    _alert_manager = manager
 
 
 class KillSwitchActivateBody(BaseModel):
@@ -277,6 +284,43 @@ async def kill_switch_legacy(body: KillSwitchJsonBody) -> dict[str, Any]:
             KillSwitchActivateBody(reason="MANUAL", message="dashboard"),
         )
     return await deactivate_kill_switch(authorized_by="dashboard")
+
+
+@router.get(
+    "/alerts/history",
+    description="Return the last 50 P&L threshold alerts fired today by the AlertManager.",
+)
+async def get_alerts_history(limit: int = 50) -> dict[str, Any]:
+    """
+    Returns the most recent P&L push alerts fired today, newest first.
+
+    Each entry includes:
+      - ts:      ISO timestamp (Chicago time)
+      - key:     threshold key (e.g. 'daily_loss_75pct', 'drawdown_5pct')
+      - message: the full alert message that was sent
+
+    Also includes a 'fired_keys' dict showing which thresholds fired today.
+    """
+    if _alert_manager is None:
+        return {
+            "alerts": [],
+            "fired_keys": {},
+            "total_today": 0,
+            "status": "AlertManager not initialized",
+        }
+    try:
+        cap = max(1, min(limit, 200))
+        history = _alert_manager.get_history(limit=cap)
+        fired = _alert_manager.get_fired_keys()
+        return {
+            "alerts": history,
+            "fired_keys": fired,
+            "total_today": len(history),
+            "status": "ok",
+        }
+    except Exception as exc:
+        logger.error("[ALERTS] get_alerts_history failed: %s", exc)
+        raise HTTPException(500, f"Failed to retrieve alert history: {exc}") from exc
 
 
 @router.post(

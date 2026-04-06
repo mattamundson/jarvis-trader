@@ -72,6 +72,25 @@ async def get_validation_targets():
     return {"targets": TARGETS}
 
 
+@router.get("/status")
+async def get_validation_status():
+    """
+    30-day paper trading validation dashboard.
+
+    Returns metrics computed directly from SQLite paper_trades:
+      - days_elapsed / days_remaining toward 30-day window
+      - total_trades, win_rate, profit_factor, Sharpe ratio, max_drawdown_pct
+      - targets_met: dict of gate name -> bool
+      - status: 'validated' | 'in_progress' | 'no_trades'
+
+    No auth required (read-only).
+    """
+    from analytics.validation_metrics import ValidationMetrics
+
+    metrics = ValidationMetrics()
+    return metrics.compute()
+
+
 # ── Validation Alert Manager ──────────────────────────────────────────────────
 
 _validation_alert_manager = None

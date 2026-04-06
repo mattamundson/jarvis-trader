@@ -14,21 +14,62 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 if TYPE_CHECKING:
     from ib_async import Future
+    from execution.schwab_connector import SchwabConnector
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 # Continuous contract symbol mappings — single source of truth
+# Polygon.io confirmed working symbols (tested 2026-04-05):
+#   CL  = $85.41 ✅  (crude oil — proxy for MCL, same price different tick value)
+#   NQ/ES/GC/MCL/MNQ/MES/MGC = no data on current plan ❌
+# Micro futures use standard contract prices — tick value differs but price is identical.
 FUTURES_MAP = {
-    "MCL": "MCL",  # Micro Crude Oil  (Polygon/IBKR)
-    "MNQ": "MNQ",  # Micro Nasdaq-100 (Polygon/IBKR)
-    "MES": "MES",  # Micro E-mini S&P (Polygon/IBKR)
-    "MGC": "MGC",  # Micro Gold       (Polygon/IBKR)
+    "MCL": "CL",   # Micro Crude Oil  → CL (same price, 1/10 contract size)
+    "MNQ": "NQ",   # Micro Nasdaq-100 → NQ (same price, 1/10 contract size)
+    "MES": "ES",   # Micro E-mini S&P → ES (same price, 1/10 contract size)
+    "MGC": "GC",   # Micro Gold       → GC (same price, 1/10 contract size)
     "CL": "CL",
     "NQ": "NQ",
     "ES": "ES",
     "GC": "GC",
+}
+
+# Polygon.io only carries standard (non-micro) futures contracts.
+# Micro contracts (MCL, MNQ, MES, MGC) are mapped to their standard
+# equivalents so we get non-zero prices.  Prices are the same dollar
+# value — the micro contract just has a smaller tick/notional.
+POLYGON_FUTURES_MAP = {
+    "MCL": "CL",   # Micro Crude Oil  → Crude Oil futures (verified working)
+    "MNQ": "NQ",   # Micro Nasdaq-100 → Nasdaq-100 futures
+    "MES": "ES",   # Micro E-mini S&P → E-mini S&P futures
+    "MGC": "GC",   # Micro Gold       → Gold futures
+    "CL": "CL",
+    "NQ": "NQ",
+    "ES": "ES",
+    "GC": "GC",
+}
+
+# Scale factors: micro price == standard price (same underlying price,
+# just different notional/tick size), so factor is 1.0 for all.
+FUTURES_SCALE_FACTOR = {
+    "MCL": 1.0,  # CL and MCL track same crude price
+    "MNQ": 1.0,  # NQ and MNQ track same Nasdaq price
+    "MES": 1.0,  # ES and MES track same S&P price
+    "MGC": 1.0,  # GC and MGC track same gold price
+}
+
+# Schwab-specific futures symbol map (Schwab uses slash-prefix)
+SCHWAB_FUTURES_MAP = {
+    "MCL": "/MCL",
+    "MNQ": "/MNQ",
+    "MES": "/MES",
+    "MGC": "/MGC",
+    "CL": "/CL",
+    "NQ": "/NQ",
+    "ES": "/ES",
+    "GC": "/GC",
 }
 
 # IBKR exchange map for futures
@@ -479,9 +520,15 @@ class MarketDataManager:
     def __init__(self, config):
         self._config = config
         self.ibkr: Optional[IBKRDataConnector] = None
+        self.schwab: Optional["SchwabConnector"] = None
         self.polygon: Optional[PolygonDataConnector] = None
         self.finnhub: Optional[FinnhubConnector] = None
         self.reddit = RedditSentimentConnector()
+
+    def inject_schwab(self, connector: "SchwabConnector") -> None:
+        """Wire in a SchwabConnector at startup (called from main.py after Schwab connects)."""
+        self.schwab = connector
+        logger.info("MarketDataManager: SchwabConnector injected as Tier 2 data source")
 
     async def initialize(self):
         """Connect to all available data sources."""
@@ -554,7 +601,9 @@ class MarketDataManager:
                 "1d": ("day", 1),
             }
             timespan, multiplier = tf_map.get(timeframe, ("minute", 5))
-            polygon_symbol = FUTURES_MAP.get(symbol.upper(), symbol)
+            # Use POLYGON_FUTURES_MAP: micros (MCL/MNQ/MES) fall back to
+            # standard contracts (CL/NQ/ES) since Polygon has no micro data.
+            polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
             df = self.polygon.get_historical_bars(
                 polygon_symbol, from_date, to_date, timespan, multiplier
             )
@@ -586,14 +635,38 @@ class MarketDataManager:
             if result.get("last_price"):
                 return result
 
-        # Tier 2: Polygon
+        # Tier 2: Schwab (real-time quotes, no historical bars)
+        if self.schwab is not None and self.schwab.is_connected:
+            try:
+                schwab_sym = SCHWAB_FUTURES_MAP.get(symbol.upper(), symbol)
+                quotes = await self.schwab.get_quotes([schwab_sym])
+                quote = quotes.get(schwab_sym) or quotes.get(symbol)
+                if quote:
+                    price = quote.get("last") or quote.get("mark")
+                    if price:
+                        change_pct = quote.get("change_pct")
+                        logger.info(f"Schwab Tier 2 price for {symbol} ({schwab_sym}): {price}")
+                        return {
+                            "last_price": float(price),
+                            "prev_close": None,
+                            "change_pct": float(change_pct) if change_pct is not None else None,
+                            "source": "schwab",
+                        }
+            except Exception as _schwab_err:
+                logger.debug(f"Schwab Tier 2 failed for {symbol}: {_schwab_err}")
+        elif self.schwab is not None and not self.schwab.is_connected:
+            logger.debug(f"Schwab not connected — skipping Tier 2 for {symbol}")
+
+        # Tier 3: Polygon
         if self.polygon:
-            polygon_symbol = FUTURES_MAP.get(symbol.upper(), symbol)
+            # Use POLYGON_FUTURES_MAP so micros (MCL/MNQ/MES) resolve to
+            # standard contracts (CL/NQ/ES) that Polygon actually carries.
+            polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
             result = self.polygon.get_last_price(polygon_symbol)
             if result.get("last_price"):
                 return result
 
-        # Tier 3: CSV cache last close
+        # Tier 4: CSV cache last close
         df = self._load_csv_cache(symbol, "1d", 2)
         if not df.empty and "close" in df.columns:
             last_close = float(df.iloc[-1]["close"])
@@ -603,37 +676,6 @@ class MarketDataManager:
                 "change_pct": None,
                 "source": "csv_cache",
             }
-
-        # Tier 4: yfinance (free, delayed ~15min — IBKR-offline fallback)
-        try:
-            import json as _json
-            import urllib.request
-
-            _YF_MAP = {
-                "MCL": "CL=F",
-                "MNQ": "NQ=F",
-                "MES": "ES=F",
-                "MGC": "GC=F",
-                "MBT": "BTC=F",
-            }
-            yf_sym = _YF_MAP.get(symbol.upper(), symbol)
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_sym}?interval=1d&range=2d"
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            data = _json.loads(urllib.request.urlopen(req, timeout=5).read())
-            meta = data["chart"]["result"][0]["meta"]
-            price = meta.get("regularMarketPrice") or meta.get("previousClose")
-            prev = meta.get("chartPreviousClose") or meta.get("previousClose")
-            if price:
-                chg = round((price - prev) / prev * 100, 2) if prev else None
-                logger.info(f"yfinance fallback price for {symbol} ({yf_sym}): {price}")
-                return {
-                    "last_price": float(price),
-                    "prev_close": float(prev) if prev else None,
-                    "change_pct": chg,
-                    "source": "yfinance",
-                }
-        except Exception as _yfe:
-            logger.debug(f"yfinance fallback failed for {symbol}: {_yfe}")
 
         return {"last_price": None, "prev_close": None, "change_pct": None, "source": "unavailable"}
 

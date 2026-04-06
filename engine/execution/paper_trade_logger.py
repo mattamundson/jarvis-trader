@@ -82,7 +82,10 @@ class PaperTradeLogger:
             self._trades_file = trades_file
             self._data_dir = trades_file.parent
         else:
-            self._data_dir = Path(__file__).parent.parent.parent / "data"
+            # paper_trade_logger.py lives at engine/execution/paper_trade_logger.py
+            # parent       = engine/execution/
+            # parent.parent = engine/          <-- correct root for data/
+            self._data_dir = Path(__file__).parent.parent / "data"
             self._trades_file = self._data_dir / "paper_trades.json"
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._lock = Lock()  # Ensure atomic writes
