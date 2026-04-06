@@ -28,6 +28,12 @@ if _engine_env.exists():
 # authenticate correctly even when the shell already has API_KEY set to something else.
 os.environ["API_KEY"] = _real_api_key
 
+# Disable outbound OpenClaw notifications during pytest runs to prevent
+# WhatsApp spam, gateway auth errors, and pending async shutdown noise.
+os.environ["TESTING"] = "1"
+os.environ["OPENCLAW_ENABLED"] = "false"
+os.environ.pop("OPENCLAW_WHATSAPP_TO", None)
+
 # Set remaining test environment variables BEFORE any imports.
 # Uses setdefault so shell overrides are respected for non-critical vars.
 test_env_vars = {
