@@ -199,6 +199,20 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         if not indicators.get("current_price"):
             indicators["current_price"] = await self._fetch_current_price(symbol)
 
+        # 3b. CRITICAL: If price is still 0 after all fallbacks, return a
+        #     zero-weight abstention instead of sending price=$0 to the LLM.
+        #     An LLM seeing price=$0.0 will produce a low-confidence bearish
+        #     signal (0.25-0.35) which then drags down the whole pipeline.
+        #     Missing price = abstention, NOT a bearish signal.
+        current_price = indicators.get("current_price", 0.0)
+        if not current_price or current_price <= 0.0:
+            logger.warning(
+                f"[TechnicalAnalyst] {symbol}: current_price=0 after all fallbacks — "
+                "returning zero-weight abstention (not a bearish signal)"
+            )
+            report = self._no_price_report(symbol, timeframe)
+            return report
+
         # 4. LLM synthesis
         report = await self._llm_synthesize(symbol, effective_timeframe, df, indicators)
 
@@ -537,4 +551,34 @@ Respond with JSON in exactly this format:
             volume_score=0.0,
             summary="Insufficient data",
             reasoning="Could not compute technical analysis — data unavailable",
+        )
+
+    def _no_price_report(self, symbol: str, timeframe: str) -> TechnicalReport:
+        """
+        Return a zero-weight abstention report when current price is unavailable.
+
+        This is NOT a bearish signal — it is an explicit abstention.
+        The pipeline orchestrator should skip zero-weight agents when computing
+        final confidence so that missing price data does not suppress the signal.
+
+        Key difference from _empty_report:
+          - weight=0.0 is set in indicators so the pipeline can detect this case
+          - reason='no_price_data' is set for downstream filtering
+          - confidence=0.0 with signal=0.0 (neutral, not bearish)
+        """
+        return TechnicalReport(
+            symbol=symbol,
+            timestamp=datetime.now(),
+            timeframe=timeframe,
+            signal=0.0,
+            confidence=0.0,
+            trend_score=0.0,
+            momentum_score=0.0,
+            volatility_score=0.0,
+            volume_score=0.0,
+            summary="No price data — technical analyst abstaining",
+            reasoning="current_price is None or 0.0; cannot compute meaningful technical signal. "
+                      "This is an abstention, not a bearish signal. Downstream agents should "
+                      "ignore this report when computing confidence.",
+            indicators={"weight": 0.0, "reason": "no_price_data", "current_price": 0.0},
         )
