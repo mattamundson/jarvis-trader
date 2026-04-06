@@ -102,6 +102,8 @@ class DatabaseManager(
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA synchronous=NORMAL")  # safe with WAL, faster than FULL
+        conn.execute("PRAGMA cache_size=10000")    # 10000 pages ≈ 40 MB default page size
+        conn.execute("PRAGMA temp_store=MEMORY")   # keep temp tables in RAM
         return conn
 
     # -- Lifecycle ------------------------------------------------------------
