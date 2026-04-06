@@ -178,6 +178,36 @@ class TradingConfig(BaseSettings):
         83.0, description="STC above this value bypasses pipeline (set to OB threshold)"
     )
 
+    # ── STC Signal Thresholds (Schaff Trend Cycle) ────────────────────────
+    # Canonical OS/OB levels used by the pre-filter and signal generators.
+    STC_OVERSOLD: float = Field(
+        15.0, description="STC below this = oversold / potential long setup"
+    )
+    STC_OVERBOUGHT: float = Field(
+        83.0, description="STC above this = overbought / potential short setup"
+    )
+    STC_REQUIRED: bool = Field(
+        True, description="Require STC signal alignment before pipeline generates a directional signal"
+    )
+
+    # ── Futures-Specific Confidence Tuning ───────────────────────────────
+    # Futures (MCL, MNQ, MES) have cleaner, faster technical signals than equities.
+    # Lower min-confidence threshold and apply a small boost after aggregation.
+    FUTURES_CONFIDENCE_BOOST: float = Field(
+        0.05,
+        description="Additive boost applied to raw confidence for futures instruments "
+                    "(compensates for fewer available analyst inputs vs. equities)",
+    )
+    FUTURES_MIN_CONFIDENCE_TO_TRADE: float = Field(
+        0.55,
+        description="Minimum pipeline confidence required before a futures BUY/SELL is issued "
+                    "(lower than equity threshold because futures signals are more direct)",
+    )
+    EQUITY_MIN_CONFIDENCE_TO_TRADE: float = Field(
+        0.62,
+        description="Minimum pipeline confidence required before an equity BUY/SELL is issued",
+    )
+
     # ── Autonomy Tier ─────────────────────────────────────────────────────
     LIVE_TRADING_ENABLED: bool = Field(False, description="Set True to enable live trading")
     REQUIRE_HUMAN_APPROVAL: bool = Field(
@@ -231,6 +261,7 @@ class TradingConfig(BaseSettings):
     POLYGON_API_KEY: Optional[str] = Field(default=None, description="Polygon.io API key")
     FRED_API_KEY: Optional[str] = Field(default=None, description="Federal Reserve FRED API key")
     FINNHUB_API_KEY: Optional[str] = Field(default=None, description="Finnhub API key")
+    BRAVE_API_KEY: Optional[str] = Field(default=None, description="Brave Search API key for news analyst live web search")
     ALPACA_API_KEY: Optional[str] = Field(default=None, description="Alpaca Markets API key")
     ALPACA_SECRET_KEY: Optional[str] = Field(default=None, description="Alpaca Markets secret key")
     ALPACA_PAPER: bool = Field(default=True, description="Use Alpaca paper trading")
