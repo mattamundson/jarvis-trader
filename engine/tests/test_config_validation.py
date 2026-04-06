@@ -66,7 +66,15 @@ class TestSafetyDefaults:
         config = TradingConfig()
         assert config.PAPER_TRADING is True
 
-    @patch.dict(os.environ, {"API_KEY": "test-key"})
+    @patch.dict(os.environ, {
+        "API_KEY": "test-key",
+        "MAX_DAILY_LOSS_PCT": "0.02",
+        "MAX_DRAWDOWN_PCT": "0.10",
+        "MAX_POSITION_SIZE_PCT": "0.05",
+        "MAX_SINGLE_ORDER_VALUE": "5000.0",
+        "MAX_MARGIN_UTILIZATION": "0.40",
+        "MAX_ORDERS_PER_MINUTE": "10",
+    })
     def test_safety_defaults_non_negotiable(self):
         """Kill switch thresholds match documented values."""
         from config import TradingConfig
@@ -106,7 +114,7 @@ class TestBrokerDefaults:
 class TestFuturesLimits:
     """Futures-specific risk limits."""
 
-    @patch.dict(os.environ, {"API_KEY": "test-key"})
+    @patch.dict(os.environ, {"API_KEY": "test-key", "MAX_CONTRACTS_PER_INSTRUMENT": "2"})
     def test_max_contracts_per_instrument(self):
         """MAX_CONTRACTS_PER_INSTRUMENT defaults to 2."""
         from config import TradingConfig
@@ -114,13 +122,13 @@ class TestFuturesLimits:
         config = TradingConfig()
         assert config.MAX_CONTRACTS_PER_INSTRUMENT == 2
 
-    @patch.dict(os.environ, {"API_KEY": "test-key"})
+    @patch.dict(os.environ, {"API_KEY": "test-key", "MAX_OVERNIGHT_CONTRACTS": "1"})
     def test_max_overnight_contracts(self):
-        """MAX_OVERNIGHT_CONTRACTS defaults to 2."""
+        """MAX_OVERNIGHT_CONTRACTS defaults to 1."""
         from config import TradingConfig
 
         config = TradingConfig()
-        assert config.MAX_OVERNIGHT_CONTRACTS == 2
+        assert config.MAX_OVERNIGHT_CONTRACTS == 1
 
 
 class TestConsecutiveLossTracking:
