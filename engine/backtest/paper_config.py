@@ -20,7 +20,7 @@ MCL_PAPER_CONFIG = {
     "interval": "1h",
     "enabled": True,  # WFE=0.82 EXCELLENT  APPROVED
     #  Capital & Sizing
-    "initial_capital": 25_000.0,
+    "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk (conservative)
     #  Strategy Mode
     "regime_filter": True,  # ON: oil is regime-sensitive
@@ -60,7 +60,7 @@ MNQ_PAPER_CONFIG = {
     "interval": "1h",
     "enabled": True,  # WFE=0.57 GOOD  APPROVED (adaptive regime only)
     #  Capital & Sizing
-    "initial_capital": 25_000.0,
+    "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk
     #  Strategy Mode
     "regime_filter": True,  # ON: required for adaptive_regime to work
@@ -99,7 +99,7 @@ MGC_PAPER_CONFIG = {
     "interval": "1d",
     "enabled": False,  # WFE=0.00 (2022-2026 extended, 0/14 valid windows)  CLOSED (v2.9)
     #  Capital & Sizing
-    "initial_capital": 25_000.0,
+    "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,
     #  Strategy Mode
     "regime_filter": False,  # OFF: anti-predictive for gold daily
@@ -137,7 +137,7 @@ MCL_15M_CONFIG = {
     "interval": "15m",
     "enabled": True,  # Enabled for trade frequency validation
     #  Capital & Sizing
-    "initial_capital": 25_000.0,
+    "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk (conservative)
     #  Strategy Mode
     "regime_filter": True,  # ON: baseline from 1h config
@@ -176,7 +176,7 @@ MNQ_15M_CONFIG = {
     "interval": "15m",
     "enabled": True,  # Enabled for trade frequency validation
     #  Capital & Sizing
-    "initial_capital": 25_000.0,
+    "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk
     #  Strategy Mode
     "regime_filter": True,  # ON: baseline from 1h config
@@ -215,7 +215,7 @@ MES_15M_CONFIG = {
     "interval": "15m",
     "enabled": False,  # Halted at 1h (WFE=0.09) — 15m pending validation
     #  Capital & Sizing
-    "initial_capital": 25_000.0,
+    "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk
     #  Strategy Mode
     "regime_filter": True,  # ON: baseline for regime-sensitive instruments
