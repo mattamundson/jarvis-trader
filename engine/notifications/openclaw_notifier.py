@@ -24,6 +24,8 @@ import subprocess
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from notifications import discord_notifier as _discord
+
 logger = logging.getLogger(__name__)
 
 _PHONE_TO = (os.getenv("OPENCLAW_WHATSAPP_TO") or "").strip()
@@ -162,6 +164,11 @@ async def notify_signal(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
+    asyncio.ensure_future(
+        _discord.discord_signal(
+            symbol=symbol, action=action, confidence=confidence, reason=reason
+        )
+    )
     return sent
 
 
@@ -183,7 +190,11 @@ async def notify_kill_switch(
         + (f"\n{message[:120]}" if message else "")
         + "\nAll trading halted. Deactivate at localhost:3010"
     )
-    return await _send(msg)
+    result = await _send(msg)
+    asyncio.ensure_future(
+        _discord.discord_kill_switch(reason=reason, message=message)
+    )
+    return result
 
 
 async def notify_approval_required(
@@ -209,7 +220,13 @@ async def notify_approval_required(
         f"{symbol.upper()} {act}{qty_str}{px_str}\n"
         f"Approve at localhost:3010/trades/pending-approvals"
     )
-    return await _send(msg)
+    result = await _send(msg)
+    asyncio.ensure_future(
+        _discord.discord_approval_required(
+            symbol=symbol, action=action, confidence=0.0,
+        )
+    )
+    return result
 
 
 async def notify_trade_closed(
@@ -241,6 +258,11 @@ async def notify_trade_closed(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
+    asyncio.ensure_future(
+        _discord.discord_trade_closed(
+            symbol=symbol, action=action, pnl=pnl
+        )
+    )
     return sent
 
 
@@ -270,6 +292,9 @@ async def notify_target(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
+    asyncio.ensure_future(
+        _discord.discord_target(market=market, pnl=pnl, target=target)
+    )
     return sent
 
 
@@ -287,7 +312,11 @@ async def notify_ib_disconnect(last_connected_at: str = "") -> bool:
         f"Last connected: {last_conn_str}\n"
         f"Restart IB Gateway and reconnect."
     )
-    return await _send(msg)
+    result = await _send(msg)
+    asyncio.ensure_future(
+        _discord.discord_ib_disconnect(last_connected_at=last_connected_at)
+    )
+    return result
 
 
 async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) -> bool:
@@ -297,4 +326,10 @@ async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) ->
         return False
     ts = _ct_time()
     msg = f"JARVIS Regime Alert\n" f"{symbol}: {old_regime} → {new_regime}\n" f"Time: {ts} CT"
-    return await _send(msg)
+    result = await _send(msg)
+    asyncio.ensure_future(
+        _discord.discord_regime_change(
+            symbol=symbol, old_regime=old_regime, new_regime=new_regime
+        )
+    )
+    return result
