@@ -812,25 +812,28 @@ async def get_closed_trades():
         from database.schema import get_db
 
         db = get_db()
-        conn = db.get_connection()
+        conn = db._connect()
 
         # Query all closed trades ordered by exit_time DESC
-        rows = conn.execute(
-            """
-            SELECT
-                trade_id,
-                symbol,
-                side,
-                entry_price,
-                exit_price,
-                entry_time,
-                exit_time,
-                pnl
-            FROM paper_trades
-            WHERE status = 'closed'
-            ORDER BY exit_time DESC
-            """
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                """
+                SELECT
+                    trade_id,
+                    symbol,
+                    side,
+                    entry_price,
+                    exit_price,
+                    entry_time,
+                    exit_time,
+                    pnl
+                FROM paper_trades
+                WHERE status = 'closed'
+                ORDER BY exit_time DESC
+                """
+            ).fetchall()
+        finally:
+            conn.close()
 
         from datetime import datetime
 
