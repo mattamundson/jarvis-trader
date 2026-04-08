@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -446,7 +447,77 @@ class PortfolioTracker:
             "max_dd": round(max_dd, 4),
             "best_trade": round(max(pnls), 4) if pnls else None,
             "worst_trade": round(min(pnls), 4) if pnls else None,
+            "starting_balance": round(self._get_starting_balance(), 4),
         }
+
+    def _get_starting_balance(self) -> float:
+        """
+        Return yesterday's closing equity as today's starting balance.
+
+        Computes INITIAL_CAPITAL + sum(pnl) for ALL closed paper trades whose
+        pnl is not NULL.  This ensures the daily P&L percentage is always
+        measured against the correct prior-day equity rather than the hardcoded
+        INITIAL_CAPITAL every day (Bug B4).
+
+        Result is cached on first call per calendar day so repeated calls
+        within the same trading session are O(1).
+
+        Falls back to INITIAL_CAPITAL when:
+          - No closed trades exist yet
+          - SQLite is unavailable
+          - Any exception is raised
+        """
+        # --- per-day cache ---
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        cached_date: str = getattr(self, "_starting_balance_date", "")
+        if cached_date == today_str:
+            return getattr(self, "_starting_balance_cache", 0.0)
+
+        # --- load INITIAL_CAPITAL from config ---
+        initial: float = 10_000.0
+        try:
+            from config import settings  # type: ignore[import]
+            initial = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0) or 10_000.0)
+        except Exception:
+            pass
+
+        # --- sum closed P&L from db_manager (B9-safe path) or raw SQLite ---
+        total_pnl: float = 0.0
+        try:
+            if self._db is not None:
+                rows = self._db.get_closed_trades(limit=100_000)
+                total_pnl = sum(
+                    float(r.get("pnl") or 0.0)
+                    for r in rows
+                    if r.get("pnl") is not None
+                )
+            else:
+                # Fallback: query the SQLite file directly using SQLITE_DB_PATH
+                try:
+                    from config import settings as _cfg  # type: ignore[import]
+                    db_path = getattr(_cfg, "SQLITE_DB_PATH", None)
+                except Exception:
+                    db_path = None
+                if db_path:
+                    conn = sqlite3.connect(str(db_path), timeout=5)
+                    cursor = conn.execute(
+                        "SELECT COALESCE(SUM(pnl), 0) FROM paper_trades WHERE pnl IS NOT NULL"
+                    )
+                    total_pnl = float(cursor.fetchone()[0] or 0.0)
+                    conn.close()
+        except Exception as exc:
+            logger.warning("[TRACKER] _get_starting_balance: pnl sum failed: %s", exc)
+            total_pnl = 0.0
+
+        balance = initial + total_pnl
+        # Cache for the rest of the trading day
+        self._starting_balance_date: str = today_str
+        self._starting_balance_cache: float = balance
+        logger.debug(
+            "[TRACKER] starting_balance computed: initial=%.2f + pnl=%.2f = %.2f",
+            initial, total_pnl, balance,
+        )
+        return balance
 
     # ── Public API — extended methods (used by db_manager callers) ────────────
 

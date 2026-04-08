@@ -21,6 +21,7 @@ from typing import Dict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -100,6 +101,7 @@ from routers.strategies_router import router as strategies_router
 from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.paper_validation_router import router as paper_validation_router
+from routers.proactive_validation_router import router as proactive_validation_router
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
 from routers.instruments_router import router as instruments_router
@@ -116,6 +118,7 @@ from routers.scheduler_router import router as scheduler_router
 from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
 from routers.trades_router import router as trades_router
 from routers.wfe_router import router as wfe_router
+from routers.discovery_router import router as discovery_router
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -1328,6 +1331,36 @@ async def lifespan(app: FastAPI):
     except Exception as _health_err:
         logger.warning(f"IB health monitor init failed (non-fatal): {_health_err}")
 
+    # Periodic SafetyLayer equity sync (every 60 seconds) — ground-truth from PnLMonitor
+    try:
+
+        async def _sync_safety_equity() -> None:
+            """Pull current equity + daily P&L from PnLMonitor and push to SafetyLayer."""
+            try:
+                if safety_layer is None or pnl_monitor is None:
+                    return
+                state = pnl_monitor.get_current_pnl_state()
+                equity = state.current_balance if state.current_balance > 0 else safety_layer._current_equity
+                daily_pnl = pnl_monitor.get_daily_pnl()
+                safety_layer.sync_from_broker(equity, daily_pnl)
+            except Exception as exc:
+                logger.debug("[sync_safety_equity] error: %s", exc)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _sync_safety_equity,
+                IntervalTrigger(seconds=60),
+                id="sync_safety_equity",
+                name="SafetyLayer Equity Sync",
+                max_instances=1,
+                replace_existing=True,
+            )
+            if not scheduler.running:
+                scheduler.start()
+            logger.info("✅ SafetyLayer equity sync job registered — fires every 60 seconds")
+    except Exception as _sync_err:
+        logger.warning(f"SafetyLayer equity sync job init failed (non-fatal): {_sync_err}")
+
     logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
@@ -1440,6 +1473,7 @@ app.include_router(safety_router)
 app.include_router(strategies_router)
 app.include_router(validation_router)
 app.include_router(paper_validation_router)
+app.include_router(proactive_validation_router)
 app.include_router(webhook_router)
 app.include_router(discord_router)
 app.include_router(learning_router)
@@ -1455,6 +1489,7 @@ app.include_router(pipeline_router)
 app.include_router(scanner_router)
 app.include_router(scheduler_router)
 app.include_router(wfe_router)
+app.include_router(discovery_router)
 app.include_router(v1_router)
 
 
