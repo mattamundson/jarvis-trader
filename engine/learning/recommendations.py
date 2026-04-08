@@ -4,13 +4,15 @@ Learning Recommendations Module — Retrieves relevant patterns for Stage 1 cont
 When TechnicalAnalystAgent starts analysis, this module:
 1. Queries the pattern library for the given symbol/timeframe
 2. Filters by relevance (active patterns, reasonable win rates)
-3. Formats recommendations into human-readable context
+3. Applies exponential temporal decay (half-life = 7 days) — recent patterns weighted 3x older
+4. Formats recommendations into human-readable context
 
 Integrates with technical_analyst.py for Stage 1 context injection.
 """
 
 import json
 import logging
+import math
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,33 @@ class Recommendation:
             f"Pattern: {self.pattern_type} ({win_pct}% win rate over {self.sample_count} trades) "
             f"conditions: {json.dumps(self.conditions)}"
         )
+
+
+_DECAY_HALF_LIFE_DAYS = 7.0
+_WIN_RATE_HIGH_THRESHOLD = 0.55  # inject if win_rate > 55%
+_WIN_RATE_LOW_THRESHOLD = 0.40   # inject if win_rate < 40% (bearish edge)
+
+
+def _decay_weight(last_seen_iso: str) -> float:
+    """
+    Exponential temporal decay weight based on pattern age.
+
+    Formula: weight = exp(-0.693 * age_days / half_life)
+    At age=0: weight=1.0 | At age=7d: weight=0.5 | At age=14d: weight=0.25
+
+    Args:
+        last_seen_iso: ISO datetime string of when the pattern was last observed
+
+    Returns:
+        Float in (0, 1] — recent patterns score near 1.0, old patterns near 0.0
+    """
+    try:
+        last_seen = datetime.fromisoformat(last_seen_iso)
+        age_days = (datetime.now() - last_seen).total_seconds() / 86400.0
+        age_days = max(0.0, age_days)
+        return math.exp(-0.693 * age_days / _DECAY_HALF_LIFE_DAYS)
+    except Exception:
+        return 0.5  # neutral weight if parse fails
 
 
 async def get_recommendations(
@@ -98,7 +127,7 @@ async def get_recommendations(
             logger.debug(f"[LEARNING] No active patterns found for {symbol}")
             return []
 
-        recommendations = []
+        weighted_recs: list[tuple[float, str]] = []
         for row in rows:
             try:
                 # Parse conditions JSON if stored as string
@@ -108,21 +137,37 @@ async def get_recommendations(
 
                 win_rate = float(row.get("win_rate", 0.0))
                 sample_count = int(row.get("sample_count", 0))
+                last_seen = row.get("last_seen", "")
 
-                # Filter: only include patterns with at least 2 trades and >40% win rate
-                # (40% is above random 50/50, means pattern shows some edge)
-                if sample_count >= 2 and (win_rate > 0.4 or win_rate < 0.4):
-                    rec = Recommendation(
-                        pattern_type=row.get("pattern_type", "unknown"),
-                        conditions=conditions,
-                        win_rate=win_rate,
-                        sample_count=sample_count,
-                        last_seen=row.get("last_seen", ""),
-                    )
-                    recommendations.append(rec.to_text())
+                # Win-rate guard: only inject patterns with a clear edge.
+                # Skip 50/50 noise (win_rate between 40% and 55%).
+                has_edge = win_rate > _WIN_RATE_HIGH_THRESHOLD or win_rate < _WIN_RATE_LOW_THRESHOLD
+                if sample_count < 2 or not has_edge:
+                    continue
+
+                # Temporal decay: weight recent patterns up to 3x older ones.
+                # exp decay with half-life=7d means 1d-old pattern scores ~0.91,
+                # 7d-old scores 0.5, 14d-old scores 0.25.
+                weight = _decay_weight(last_seen)
+
+                # Effective win_rate biased toward recent patterns
+                effective_win_rate = win_rate * weight
+
+                rec = Recommendation(
+                    pattern_type=row.get("pattern_type", "unknown"),
+                    conditions=conditions,
+                    win_rate=effective_win_rate,
+                    sample_count=sample_count,
+                    last_seen=last_seen,
+                )
+                weighted_recs.append((weight, rec.to_text()))
             except Exception as rec_err:
                 logger.debug(f"[LEARNING] Recommendation parse failed: {rec_err}")
                 continue
+
+        # Sort by decay weight descending — most recent patterns appear first
+        weighted_recs.sort(key=lambda x: x[0], reverse=True)
+        recommendations = [text for _, text in weighted_recs]
 
         if recommendations:
             logger.info(f"[LEARNING] {len(recommendations)} recommendations injected for {symbol}")

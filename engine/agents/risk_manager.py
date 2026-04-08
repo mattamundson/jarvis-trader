@@ -147,9 +147,52 @@ class RiskManagerAgent:
                 timestamp=datetime.now(),
             )
 
+        # ── Layer 1b: VIX Hard Check (async, non-blocking) ────────────────
+
+        vix_veto, vix_reason = await self._check_vix_risk_limit(trade_decision)
+        if vix_veto:
+            logger.warning(
+                "[RiskManager] VIX hard veto for %s: %s",
+                trade_decision.get("symbol"),
+                vix_reason,
+            )
+            return RiskDecision(
+                approved=False,
+                veto_reason=vix_reason,
+                reasoning=f"VIX extreme fear — force HOLD: {vix_reason}",
+                risk_score=1.0,
+                timestamp=datetime.now(),
+            )
+
         # ── Layer 2: Soft Rules (LLM reasoning) ───────────────────────────
 
         return await self._llm_review(trade_decision, safety_status, portfolio)
+
+    # ── VIX Risk Check ────────────────────────────────────────────────────
+
+    async def _check_vix_risk_limit(self, trade_decision: dict) -> tuple[bool, str]:
+        """
+        Return (veto, reason).
+
+        - VIX > 40: force HOLD (veto=True)
+        - VIX 30–40: log warning, allow trade (veto=False)
+        - VIX < 30 or check fails: no action (fail open)
+        """
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get("http://localhost:8010/macro/snapshot")
+            if resp.status_code == 200:
+                vix = float(resp.json().get("vix", 0) or 0)
+                if vix > 40:
+                    return True, f"VIX {vix:.1f} > 40 — fear extreme, force HOLD"
+                if vix > 30:
+                    logger.warning(
+                        "[RiskManager] VIX %.1f > 30 — elevated fear, trade allowed but size caution advised",
+                        vix,
+                    )
+        except Exception as exc:
+            logger.debug("[RiskManager] VIX check skipped (fail open): %s", exc)
+        return False, ""
 
     # ── Hard Rules ────────────────────────────────────────────────────────
 
