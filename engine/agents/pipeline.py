@@ -345,6 +345,31 @@ class TradingPipeline:
                     # Without technical signal, drop below threshold to force HOLD
                     boosted = 0.0
 
+                # ── ConfidenceScorer: symbol-performance adjustment ────────────
+                # Multiplies boosted confidence by a factor [0.60, 1.40] derived
+                # from win rate and R-ratio of recent trades for this symbol.
+                # Wraps in try/except — failure leaves confidence unchanged.
+                try:
+                    from learning.confidence_scorer import get_confidence_adjustment
+
+                    adjustment = await get_confidence_adjustment(symbol, self.db_manager)
+                    adjusted_confidence = boosted * adjustment
+                    logger.info(
+                        "Confidence adjusted %.2f → %.2f (multiplier: %.2f)",
+                        boosted,
+                        adjusted_confidence,
+                        adjustment,
+                    )
+                    boosted = adjusted_confidence
+                    pipeline_result["confidence_scorer_adjustment"] = round(adjustment, 4)
+                except Exception as _cs_err:
+                    logger.warning(
+                        "[Pipeline] ConfidenceScorer failed (non-fatal), "
+                        "using boosted confidence unchanged: %s",
+                        _cs_err,
+                    )
+                    pipeline_result["confidence_scorer_adjustment"] = 1.0
+
                 pipeline_result["raw_confidence"] = round(raw_confidence, 4)
                 pipeline_result["boosted_confidence"] = round(boosted, 4)
                 pipeline_result["confidence_threshold"] = round(min_thresh, 4)

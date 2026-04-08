@@ -21,7 +21,6 @@ from typing import Dict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -1222,10 +1221,12 @@ async def lifespan(app: FastAPI):
             try:
                 from notifications.morning_brief import assemble_morning_brief
                 from notifications.openclaw_notifier import send_raw
+                from notifications.discord_notifier import discord_morning_brief
 
                 brief_text = await assemble_morning_brief()
                 logger.info("[MorningBrief] Assembled: %s chars", len(brief_text))
                 await send_raw(brief_text)
+                await discord_morning_brief(brief_text)
             except Exception as exc:
                 logger.error("[MorningBrief] run_morning_brief failed: %s", exc)
 
@@ -1349,7 +1350,8 @@ async def lifespan(app: FastAPI):
         if scheduler is not None:
             scheduler.add_job(
                 _sync_safety_equity,
-                IntervalTrigger(seconds=60),
+                "interval",
+                seconds=60,
                 id="sync_safety_equity",
                 name="SafetyLayer Equity Sync",
                 max_instances=1,

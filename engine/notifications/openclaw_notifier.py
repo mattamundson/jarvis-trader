@@ -94,6 +94,8 @@ def _send_sync(message: str, phone: str = _PHONE_TO) -> bool:
                 "wsl",
                 "-d",
                 "Ubuntu",
+                "-u",
+                "root",
                 "-e",
                 "openclaw",
                 "message",

@@ -21,6 +21,13 @@ import httpx
 
 from utils.position_sizing import PositionSizeResult, calculate_position_size
 
+try:
+    from backtest.position_sizer import PositionSizer as _PositionSizer
+
+    _POSITION_SIZER_AVAILABLE = True
+except Exception:  # pragma: no cover — optional dependency
+    _POSITION_SIZER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["TraderAgent", "TradeDecision"]
@@ -163,6 +170,47 @@ class TraderAgent:
             f"account=${account_value:,.2f} atr={atr} => {position_size.contracts} contract(s) | "
             f"{position_size.reasoning}"
         )
+
+        # ── PositionSizer: signal-strength scaling ─────────────────────────
+        # Apply backtest.PositionSizer to optionally scale contracts based on
+        # debate conviction score. Falls back silently to the fixed-fractional
+        # result if PositionSizer is unavailable or raises.
+        if _POSITION_SIZER_AVAILABLE and atr and atr > 0:
+            try:
+                from utils.position_sizing import INSTRUMENT_MULTIPLIERS, _DEFAULT_MULTIPLIER
+
+                point_value = INSTRUMENT_MULTIPLIERS.get(symbol, _DEFAULT_MULTIPLIER)
+                sizer = _PositionSizer(
+                    capital=account_value,
+                    risk_pct=0.01,
+                    max_contracts=max_contracts,
+                )
+                atr_sized_contracts = sizer.compute_initial_size(
+                    atr=atr,
+                    stop_mult=0.70,
+                    multiplier=point_value,
+                )
+                # Use debate conviction as signal strength for scaling if available
+                conviction = float(debate_result.get("bull_score", 0.5))
+                scaled_contracts = sizer.signal_strength_scaling(atr_sized_contracts, conviction)
+                # Override only if the scaled value differs from fixed-fractional
+                if scaled_contracts != position_size.contracts:
+                    logger.info(
+                        "[Trader] PositionSizer scaled contracts: "
+                        "%d → %d (conviction=%.2f, atr=%.4f)",
+                        position_size.contracts,
+                        scaled_contracts,
+                        conviction,
+                        atr,
+                    )
+                    # Mutate the contracts field on the existing result dataclass
+                    position_size.contracts = scaled_contracts
+            except Exception as _ps_err:
+                logger.warning(
+                    "[Trader] PositionSizer scaling failed (non-fatal), "
+                    "using fixed-fractional result: %s",
+                    _ps_err,
+                )
 
         # Build the analysis prompt from all upstream reports
         prompt = self._build_prompt(
