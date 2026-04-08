@@ -81,6 +81,9 @@ def _get_eastern_hour(df: pd.DataFrame) -> pd.Series:
     convert to America/New_York so that the RTH session boundary
     (reset at 09:30 ET each day) is identified correctly.
     """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index)
+
     idx = df.index
     if hasattr(idx, "tz") and idx.tz is not None:
         eastern = idx.tz_convert("America/New_York")

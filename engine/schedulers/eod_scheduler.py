@@ -20,6 +20,27 @@ logger = logging.getLogger("jarvis_trader.eod_scheduler")
 _DEFAULT_STARTING_BALANCE = 10_000.0
 
 
+async def _save_wfe_snapshots() -> None:
+    """Save WFE snapshots for paper-validated instruments via the engine API."""
+    import httpx
+
+    from config import TradingConfig
+
+    config = TradingConfig()
+    for symbol in ["MCL", "MNQ"]:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "http://localhost:8010/wfe/snapshot",
+                    params={"symbol": symbol},
+                    headers={"X-API-Key": config.API_KEY},
+                    timeout=30.0,
+                )
+                logger.info("[EOD] WFE snapshot saved for %s: %s", symbol, resp.status_code)
+        except Exception as exc:
+            logger.warning("[EOD] WFE snapshot failed for %s: %s", symbol, exc)
+
+
 class EODScheduler:
     """
     End-of-Day P&L snapshot and weekly review scheduler.
@@ -218,6 +239,19 @@ class EODScheduler:
             except Exception as exc:
                 logger.warning("[EOD] WhatsApp notification failed: %s", exc)
 
+        # Send Discord EOD summary
+        try:
+            from notifications.discord_notifier import discord_eod_summary
+
+            await discord_eod_summary(
+                total_trades=snapshot["total_trades"],
+                wins=snapshot["winning_trades"],
+                losses=snapshot["losing_trades"],
+                daily_pnl=snapshot["realized_pnl"],
+            )
+        except Exception as exc:
+            logger.warning("[EOD] Discord EOD summary failed: %s", exc)
+
         # Evaluate validation gates (30-day paper trading targets)
         if self._alert_manager is not None:
             try:
@@ -249,6 +283,9 @@ class EODScheduler:
                 )
             except Exception as exc:
                 logger.warning("[EOD] Memory consolidation failed: %s", exc)
+
+        # Save WFE snapshots for paper-validated instruments
+        await _save_wfe_snapshots()
 
         return snapshot
 

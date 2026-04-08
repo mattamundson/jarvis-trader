@@ -60,6 +60,7 @@ _MODULES_TO_MOCK = [
     "apscheduler.schedulers",
     "apscheduler.schedulers.asyncio",
     "apscheduler.triggers.cron",
+    "apscheduler.triggers.interval",
 ]
 
 _saved_modules: dict = {}

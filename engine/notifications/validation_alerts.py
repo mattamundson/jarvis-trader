@@ -125,26 +125,37 @@ class ValidationAlertManager:
 
     def _send_notification(self, alert: GateAlert) -> None:
         """
-        Send notification via configured channel.
-        Graceful when not configured.
-        Note: WhatsApp notifier is async; we log the intent and skip async call.
+        Fire a Discord alert for the gate transition.
+        Uses asyncio.get_event_loop().create_task() for fire-and-forget from sync context.
+        Graceful when event loop is not running (e.g. during tests or CLI use).
         """
-        try:
-            # Try to import WhatsApp notifier (optional dependency)
-            from .whatsapp import get_notifier
+        import asyncio
 
-            notifier = get_notifier()
-            if notifier:
-                message = (
-                    f"VALIDATION ALERT: {alert.gate_name}\n"
-                    f"Status: {alert.old_status} → {alert.new_status}\n"
-                    f"Value: {alert.current_value:.2f} (target: {alert.target_value:.2f})"
+        try:
+            from notifications import discord_notifier as _discord
+
+            message = (
+                f"VALIDATION ALERT: {alert.gate_name}\n"
+                f"Status: {alert.old_status} → {alert.new_status}\n"
+                f"Value: {alert.current_value:.2f} (target: {alert.target_value:.2f})"
+            )
+
+            async def _fire() -> None:
+                await _discord.discord_validation_alert(
+                    gate_name=alert.gate_name,
+                    old_status=alert.old_status,
+                    new_status=alert.new_status,
+                    current_value=alert.current_value,
+                    target_value=alert.target_value,
                 )
-                # Note: send() is async; would need event loop context.
-                # For now, log the message and let async scheduler handle it.
-                logger.info(f"Notification queued: {message}")
+
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(_fire())
+            else:
+                logger.info(f"Validation alert (no event loop): {message}")
         except Exception as e:
-            logger.debug(f"Notification channel not configured — alert logged only: {e}")
+            logger.debug(f"Validation alert notification skipped: {e}")
 
     def _save_history(self) -> None:
         """Persist alert history to JSON file."""

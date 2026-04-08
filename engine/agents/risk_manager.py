@@ -30,6 +30,13 @@ import httpx
 
 from config import settings
 
+try:
+    from orchestrator.correlation_monitor import CorrelationMonitor
+
+    _CORRELATION_MONITOR_AVAILABLE = True
+except Exception:  # pragma: no cover — optional dependency
+    _CORRELATION_MONITOR_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["RiskManagerAgent", "RiskDecision"]
@@ -205,6 +212,30 @@ class RiskManagerAgent:
                 f"Estimated order value ${estimated_value:,.2f} exceeds "
                 f"max single order value ${max_order_value:,.2f}"
             )
+
+        # 5. Correlation / directional-exposure check
+        if _CORRELATION_MONITOR_AVAILABLE:
+            try:
+                total_capital = portfolio.get("total_value", 0.0) or 10_000.0
+                positions = portfolio.get("positions", [])
+                monitor = CorrelationMonitor(total_capital=total_capital)
+                for pos in positions:
+                    sym = pos.get("symbol", "unknown")
+                    qty = pos.get("quantity", 0)
+                    # Estimate exposure: use unrealized_pnl as a proxy for directional USD risk.
+                    # Sign: positive qty = long = positive exposure.
+                    exposure = pos.get("unrealized_pnl", 0.0)
+                    if qty < 0:
+                        exposure = -abs(exposure)
+                    monitor.update(sym, exposure)
+                if monitor.is_overexposed():
+                    return (
+                        "Portfolio is overexposed — correlated directional risk too high "
+                        f"({monitor.total_net_exposure_pct():.1%} of capital, "
+                        f"limit {monitor.max_directional_pct:.0%})"
+                    )
+            except Exception as _cm_err:
+                logger.warning("[RiskManager] CorrelationMonitor check failed (non-fatal): %s", _cm_err)
 
         return None  # All hard rules passed
 
