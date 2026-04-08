@@ -19,6 +19,7 @@ captured in pipeline_result["errors"].
 """
 
 import asyncio
+import datetime as _dt
 import logging
 import uuid
 from datetime import datetime
@@ -53,6 +54,160 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["TradingPipeline", "pre_filter_signal"]
 
+# ── Economic Calendar Blackout ─────────────────────────────────────────────────
+_ECONOMIC_BLACKOUT_EVENTS: list[dict] = [
+    # FOMC meetings 2026 (decision day, 2:00pm ET / 1:00pm CT)
+    {"name": "FOMC", "date": _dt.date(2026, 3, 19)},
+    {"name": "FOMC", "date": _dt.date(2026, 5, 7)},
+    {"name": "FOMC", "date": _dt.date(2026, 6, 18)},
+    # NFP — first Friday of each month (8:30am ET / 7:30am CT)
+    {"name": "NFP", "date": _dt.date(2026, 4, 3)},
+    {"name": "NFP", "date": _dt.date(2026, 5, 1)},
+    {"name": "NFP", "date": _dt.date(2026, 6, 5)},
+    # CPI (8:30am ET / 7:30am CT)
+    {"name": "CPI", "date": _dt.date(2026, 4, 10)},
+    {"name": "CPI", "date": _dt.date(2026, 5, 13)},
+    {"name": "CPI", "date": _dt.date(2026, 6, 10)},
+]
+_BLACKOUT_WINDOW_MINUTES: int = 30
+
+
+def _is_in_economic_blackout() -> bool:
+    """Return True if current time is within ±30 min of a scheduled high-impact event."""
+    now_ct = _dt.datetime.now(_dt.timezone.utc).astimezone(
+        _dt.timezone(_dt.timedelta(hours=-5))  # approximate CT (UTC-5)
+    )
+    today = now_ct.date()
+    for event in _ECONOMIC_BLACKOUT_EVENTS:
+        if event["date"] == today:
+            release_hour = 13 if event["name"] == "FOMC" else 7
+            release_minute = 0 if event["name"] == "FOMC" else 30
+            release_time = now_ct.replace(
+                hour=release_hour, minute=release_minute, second=0, microsecond=0
+            )
+            delta_min = abs((now_ct - release_time).total_seconds() / 60)
+            if delta_min <= _BLACKOUT_WINDOW_MINUTES:
+                return True
+    return False
+
+
+def _make_hold_result(symbol: str, is_futures: bool, reason: str, **extra: Any) -> dict:
+    """Build a standard HOLD early-return dict for pre-filter rejections."""
+    return {
+        "symbol": symbol,
+        "is_futures": is_futures,
+        "started_at": datetime.now().isoformat(),
+        "completed_at": datetime.now().isoformat(),
+        "final_action": "hold",
+        "final_quantity": 0,
+        "requires_human": False,
+        "pre_filtered": True,
+        "pre_filter_reason": reason,
+        "skipped": True,
+        "errors": [],
+        "cache_hit": False,
+        **extra,
+    }
+
+
+async def _check_vix_extreme() -> bool:
+    """
+    Return True if VIX > 35 (fear extreme — no directional edge).
+    Fetches from local macro snapshot endpoint.
+    Fails open: returns False if fetch errors.
+    """
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "http://localhost:8010/macro/snapshot", timeout=aiohttp.ClientTimeout(total=3)
+            ) as resp:
+                if resp.status != 200:
+                    return False
+                data = await resp.json()
+                vix_val = data.get("vix") or data.get("VIX")
+                if vix_val is None:
+                    return False
+                return float(vix_val) > 35.0
+    except Exception:
+        return False  # fail open
+
+
+async def _check_atr_spike(sig_df: Any) -> bool:
+    """
+    Return True if the latest ATR is > 3x the 20-bar ATR average (volatility spike).
+    sig_df must be a DataFrame with an 'atr' column.
+    Fails open: returns False on any error.
+    """
+    try:
+        import pandas as pd
+
+        if not isinstance(sig_df, pd.DataFrame):
+            return False
+        if "atr" not in sig_df.columns or len(sig_df) < 21:
+            return False
+        atr_series = sig_df["atr"].dropna()
+        if len(atr_series) < 21:
+            return False
+        current_atr = float(atr_series.iloc[-1])
+        avg_atr_20 = float(atr_series.iloc[-21:-1].mean())
+        if avg_atr_20 <= 0:
+            return False
+        return current_atr > 3.0 * avg_atr_20
+    except Exception:
+        return False  # fail open
+
+
+async def _check_mtf_misalignment(
+    symbol: str,
+    timeframe: str,
+    is_futures: bool,
+    data_mgr: Any,
+) -> bool:
+    """
+    Return True if 4h and 1h STC disagree on direction (MTF misalignment).
+    Uses MTFFilter with live-fetched bars from data manager.
+    Fails open: returns False on any error.
+    """
+    try:
+        from backtest.mtf_filter import MTFFilter
+        from backtest.signals import compute_all_indicators, generate_instrument_signals
+
+        df_1h = await data_mgr.get_bars(
+            symbol, lookback_days=10, timeframe=timeframe, is_futures=is_futures
+        )
+        if df_1h is None or df_1h.empty or len(df_1h) < 20:
+            return False
+
+        df_4h = await data_mgr.get_bars(
+            symbol, lookback_days=30, timeframe="4h", is_futures=is_futures
+        )
+        if df_4h is None or df_4h.empty or len(df_4h) < 10:
+            return False
+
+        df_1h_sig = generate_instrument_signals(df_1h.copy(), symbol)
+        df_4h_ind = compute_all_indicators(df_4h.copy())
+
+        required_4h = {"stc_signal", "stc_cross_up", "stc_cross_down"}
+        if not required_4h.issubset(df_4h_ind.columns):
+            return False
+        required_1h = {"bias", "entry_signal"}
+        if not required_1h.issubset(df_1h_sig.columns):
+            return False
+
+        # Force the last 1h bar to ENTRY_NOW so MTFFilter evaluates the current bar
+        df_1h_sig = df_1h_sig.copy()
+        df_1h_sig.loc[df_1h_sig.index[-1], "entry_signal"] = "ENTRY_NOW"
+
+        mtf = MTFFilter(cross_lookback=3)
+        aligned_series = mtf.check_alignment(df_1h_sig, df_4h_ind)
+        last_aligned = bool(aligned_series.iloc[-1])
+        return not last_aligned  # True = misaligned → block
+
+    except Exception:
+        return False  # fail open
+
 
 async def pre_filter_signal(
     symbol: str,
@@ -61,16 +216,19 @@ async def pre_filter_signal(
     agents: dict,
 ) -> dict | None:
     """
-    Pre-filter: skip pipeline when STC is mid-range (between OS+10 and OB-10).
+    Pre-filter gate — runs before the LLM pipeline.
 
-    Args:
-        symbol: Trading symbol
-        timeframe: Timeframe (1h, 1d, etc.)
-        is_futures: True if futures contract
-        agents: Dict of agents (must include "technical" agent with _data)
+    Checks (in order):
+      1. VIX > 35 — fear extreme, skip signal
+      2. ATR spike — current ATR > 3× 20-bar average, skip
+      3. MTF misalignment — 4h and 1h STC disagree on direction, skip
+      4. STC mid-range — STC between skip_low and skip_high, skip
+
+    All checks fail open: if data is unavailable the check is skipped
+    and the pipeline proceeds normally.
 
     Returns:
-        dict with pre-filter result if filter applied (HOLD action), or None to proceed
+        dict with HOLD result if any filter fires, or None to proceed.
     """
     try:
         from backtest.signals import INSTRUMENT_PARAMS, generate_instrument_signals
@@ -98,6 +256,57 @@ async def pre_filter_signal(
         _mid_lo = float(_cfg.STC_MIDRANGE_SKIP_LOW)
         _mid_hi = float(_cfg.STC_MIDRANGE_SKIP_HIGH)
 
+        # ── Check 1: VIX extreme ───────────────────────────────────────────
+        if await _check_vix_extreme():
+            logger.info("[pre_filter_signal] %s SKIP — VIX > 35 (fear extreme)", symbol)
+            record_signal_debug(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "symbol": symbol,
+                    "stc_val": round(_stc_val, 2),
+                    "stage_blocked": "pre_filter",
+                    "reason": "VIX > 35 — fear extreme, no directional edge",
+                }
+            )
+            return _make_hold_result(
+                symbol, is_futures, "VIX > 35 — fear extreme, no directional edge"
+            )
+
+        # ── Check 2: ATR spike ────────────────────────────────────────────
+        if await _check_atr_spike(_sig_df):
+            logger.info("[pre_filter_signal] %s SKIP — ATR spike > 3× 20-bar avg", symbol)
+            record_signal_debug(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "symbol": symbol,
+                    "stc_val": round(_stc_val, 2),
+                    "stage_blocked": "pre_filter",
+                    "reason": "ATR spike — current ATR > 3× 20-bar average",
+                }
+            )
+            return _make_hold_result(
+                symbol, is_futures, "ATR spike — current ATR > 3× 20-bar average"
+            )
+
+        # ── Check 3: MTF misalignment ─────────────────────────────────────
+        if _data_mgr is not None and await _check_mtf_misalignment(
+            symbol, timeframe, is_futures, _data_mgr
+        ):
+            logger.info("[pre_filter_signal] %s SKIP — MTF misalignment (4h vs 1h STC)", symbol)
+            record_signal_debug(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "symbol": symbol,
+                    "stc_val": round(_stc_val, 2),
+                    "stage_blocked": "pre_filter",
+                    "reason": "MTF misalignment — 4h and 1h STC disagree on direction",
+                }
+            )
+            return _make_hold_result(
+                symbol, is_futures, "MTF misalignment — 4h and 1h STC disagree on direction"
+            )
+
+        # ── Check 4: STC mid-range ────────────────────────────────────────
         if not _cfg.STC_MIDRANGE_SKIP_ENABLED or not (_mid_lo < _stc_val < _mid_hi):
             logger.debug(
                 "[pre_filter_signal] symbol=%s stc_val=%.1f range=(%.0f–%.0f) action=PASS",
@@ -239,7 +448,18 @@ class TradingPipeline:
                     cached["completed_at"] = datetime.now().isoformat()
                     return cached
 
-        # ── STC Mid-Range Pre-Filter ───────────────────────────────────────────
+        # ── Economic Calendar Blackout ─────────────────────────────────────────
+        if _is_in_economic_blackout():
+            logger.info(
+                "[Pipeline] %s HOLD — economic calendar blackout (scheduled event ±30 min)", symbol
+            )
+            return _make_hold_result(
+                symbol,
+                is_futures,
+                "Economic calendar blackout — scheduled event ±30 min",
+            )
+
+        # ── Pre-Filter Gate (STC, VIX, ATR spike, MTF) ────────────────────────
         pre_filter_result = await pre_filter_signal(symbol, timeframe, is_futures, self._agents)
         if pre_filter_result is not None:
             return pre_filter_result
@@ -467,7 +687,7 @@ class TradingPipeline:
             )
         except Exception as e:
             logger.warning(f"Failed to publish pipeline event: {e}")
-        
+
         return pipeline_result
 
     # ── Stage Runners ──────────────────────────────────────────────────────
@@ -512,9 +732,26 @@ class TradingPipeline:
                 errors.append(err)
                 return {"signal": 0.0, "confidence": 0.0, "summary": f"{name} unavailable"}
 
+        # Fetch historical edge context before Stage 1 (non-blocking — empty string on failure)
+        historical_context = ""
+        try:
+            from learning.recommendations import get_recommendations
+
+            recs = await get_recommendations(symbol)
+            if recs:
+                historical_context = "\n\nHistorical edge context:\n" + "\n".join(
+                    f"- {r}" for r in recs
+                )
+        except Exception:
+            pass  # learning context is optional — never block the pipeline
+
         # Build coroutines — skip missing agents gracefully
         technical_coro = self._call_agent_analyze(
-            "technical", symbol, is_futures=is_futures, timeframe=timeframe
+            "technical",
+            symbol,
+            is_futures=is_futures,
+            timeframe=timeframe,
+            historical_context=historical_context,
         )
         news_coro = self._call_agent_analyze("news", symbol)
         social_coro = self._call_agent_analyze("social", symbol)

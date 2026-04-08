@@ -109,13 +109,23 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # 3. Optionally enrich with StockTwits
         stocktwits_data = await self._fetch_stocktwits(symbol) if self._stocktwits_token else None
 
-        # 4. If no data found at all, return neutral
-        if symbol_data is None and stocktwits_data is None:
+        # 4. Enrich with JARVIS engine reddit sentiment (processed/cached)
+        engine_reddit_data = await self._fetch_engine_reddit_sentiment()
+
+        # 5. Fetch news sentiment for this symbol
+        news_sentiment = await self._fetch_engine_news_sentiment(symbol)
+
+        # 6. If no data found at all, return neutral
+        if symbol_data is None and stocktwits_data is None and not engine_reddit_data and not news_sentiment:
             logger.info(f"{symbol} not found in social trending data — returning neutral")
             return self._neutral_report(symbol)
 
-        # 5. LLM synthesis
-        report = await self._llm_synthesize(symbol, symbol_data, stocktwits_data, trending_data)
+        # 7. LLM synthesis
+        report = await self._llm_synthesize(
+            symbol, symbol_data, stocktwits_data, trending_data,
+            engine_reddit_data=engine_reddit_data,
+            news_sentiment=news_sentiment,
+        )
         return report
 
     async def _fetch_apewisdom(self) -> list[dict]:
@@ -143,6 +153,39 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             if item.get("ticker", "").upper() == symbol_upper:
                 return item
         return None
+
+    async def _fetch_engine_reddit_sentiment(self) -> dict:
+        """
+        Fetch JARVIS engine's processed Reddit sentiment (ApeWisdom via data_manager).
+        Returns the top-20 trending tickers from the engine's /sentiment/reddit endpoint.
+        Falls back to empty dict on any error so the pipeline is never blocked.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get("http://localhost:8010/sentiment/reddit")
+                if resp.status_code == 200:
+                    return resp.json()
+                logger.debug(f"Engine reddit sentiment returned {resp.status_code}")
+        except Exception as e:
+            logger.debug(f"Engine reddit sentiment fetch failed: {e}")
+        return {}
+
+    async def _fetch_engine_news_sentiment(self, symbol: str) -> dict:
+        """
+        Fetch news sentiment for the given symbol from the engine's news endpoint.
+        Returns sentiment dict or empty dict on any error.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"http://localhost:8010/sentiment/news/{symbol}")
+                if resp.status_code == 200:
+                    return resp.json()
+                logger.debug(
+                    f"Engine news sentiment for {symbol} returned {resp.status_code}"
+                )
+        except Exception as e:
+            logger.debug(f"Engine news sentiment fetch failed for {symbol}: {e}")
+        return {}
 
     async def _fetch_stocktwits(self, symbol: str) -> Optional[dict]:
         """
@@ -186,6 +229,8 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         symbol_data: Optional[dict],
         stocktwits_data: Optional[dict],
         all_trending: list[dict],
+        engine_reddit_data: Optional[dict] = None,
+        news_sentiment: Optional[dict] = None,
     ) -> "SocialReport":
         """Use LLM to synthesize social metrics into a structured signal"""
 
@@ -226,6 +271,40 @@ StockTwits Data:
 - Bearish sentiment: {bear_pct:.0f}%
 - Watchlist count: {stocktwits_data.get("watchlist_count", "N/A")}
 """
+
+        # Engine-processed Reddit sentiment (top trending list)
+        if engine_reddit_data and engine_reddit_data.get("tickers"):
+            engine_tickers = engine_reddit_data.get("tickers", [])
+            # Check if our symbol appears in the engine's processed list
+            engine_match = next(
+                (t for t in engine_tickers if t.get("ticker", "").upper() == symbol.upper()),
+                None,
+            )
+            if engine_match:
+                social_context += f"""
+JARVIS Engine Reddit Data (processed):
+- Engine rank: {engine_match.get("rank", "N/A")}
+- Engine mentions: {engine_match.get("mentions", "N/A")}
+"""
+            else:
+                social_context += f"""
+JARVIS Engine Reddit Data: {symbol} not in engine's top-{len(engine_tickers)} trending list
+"""
+        else:
+            social_context += "\nJARVIS Engine Reddit Data: unavailable\n"
+
+        # News sentiment
+        if news_sentiment and isinstance(news_sentiment, dict):
+            news_signal = news_sentiment.get("signal") or news_sentiment.get("sentiment")
+            news_summary = news_sentiment.get("summary") or news_sentiment.get("headline", "")
+            if news_signal is not None or news_summary:
+                social_context += f"""
+News Sentiment for {symbol}:
+- Signal: {news_signal if news_signal is not None else "N/A"}
+- Summary: {news_summary or "N/A"}
+"""
+        else:
+            social_context += f"\nNews Sentiment for {symbol}: unavailable\n"
 
         prompt = f"""{social_context}
 

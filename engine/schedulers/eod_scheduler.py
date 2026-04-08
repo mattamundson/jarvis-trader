@@ -66,18 +66,21 @@ class EODScheduler:
         portfolio_tracker: Any = None,
         whatsapp_notifier: Any = None,
         learning_consolidator: Any = None,
+        capital_allocator: Any = None,
     ) -> None:
         self._db = db_manager
         self._tracker = portfolio_tracker
         self._notifier = whatsapp_notifier
         self._consolidator = learning_consolidator
+        self._capital_allocator = capital_allocator
         self._alert_manager = None  # Injected by main.py after ValidationAlertManager is created
         logger.info(
-            "EODScheduler initialised — db=%s tracker=%s whatsapp=%s consolidator=%s",
+            "EODScheduler initialised — db=%s tracker=%s whatsapp=%s consolidator=%s allocator=%s",
             "yes" if self._db else "no",
             "yes" if self._tracker else "no",
             "yes" if self._notifier else "no",
             "yes" if self._consolidator else "no",
+            "yes" if self._capital_allocator else "no",
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -164,6 +167,44 @@ class EODScheduler:
             "losing_trades": losing_trades,
             "max_drawdown": round(perf.get("max_dd", 0.0), 4),
         }
+
+    def _build_paper_performance_by_symbol(self) -> Dict[str, Dict[str, float]]:
+        """
+        Build {symbol: {"sharpe": float, "current_allocation": float}} from
+        the portfolio tracker's closed-trade performance data.
+
+        Returns an empty dict when no tracker is available or no trades exist.
+        """
+        if self._tracker is None:
+            return {}
+
+        try:
+            perf = self._tracker.get_performance()
+        except Exception as exc:
+            logger.warning("[EOD] Could not fetch performance for rebalance: %s", exc)
+            return {}
+
+        # get_performance() may return per-symbol breakdown or a flat dict.
+        # Try per-symbol first; fall back to applying flat Sharpe to known symbols.
+        by_symbol: Dict[str, Dict[str, float]] = {}
+
+        symbol_breakdown = perf.get("by_symbol") or perf.get("symbols") or {}
+        if isinstance(symbol_breakdown, dict) and symbol_breakdown:
+            for sym, sym_perf in symbol_breakdown.items():
+                by_symbol[sym] = {
+                    "sharpe": float(sym_perf.get("sharpe", 0.0) or 0.0),
+                    "current_allocation": float(sym_perf.get("allocation", 0.25) or 0.25),
+                }
+        else:
+            # Flat performance dict — apply to known active instruments
+            flat_sharpe = float(perf.get("sharpe", 0.0) or 0.0)
+            for sym in ("MCL", "MNQ", "MES", "MGC"):
+                by_symbol[sym] = {
+                    "sharpe": flat_sharpe,
+                    "current_allocation": 0.25,
+                }
+
+        return by_symbol
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -286,6 +327,18 @@ class EODScheduler:
 
         # Save WFE snapshots for paper-validated instruments
         await _save_wfe_snapshots()
+
+        # Dynamic capital reallocation based on 30-day Sharpe per instrument
+        if self._capital_allocator is not None:
+            try:
+                paper_perf = self._build_paper_performance_by_symbol()
+                if paper_perf:
+                    new_allocations = self._capital_allocator.rebalance(paper_perf)
+                    logger.info("[EOD] Capital rebalance complete: %s", new_allocations)
+                else:
+                    logger.info("[EOD] Capital rebalance skipped — no performance data available")
+            except Exception as exc:
+                logger.warning("[EOD] Capital rebalance failed (non-fatal): %s", exc)
 
         return snapshot
 

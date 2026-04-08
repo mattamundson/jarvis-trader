@@ -148,23 +148,32 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
     async def analyze(self, symbol: str, is_futures: bool = True) -> "FundamentalReport":
         """Full fundamental/macro analysis pipeline for a symbol"""
 
-        # 1. Always fetch FRED macro data
+        # 1. Always fetch FRED macro data (direct FRED pull)
         macro_metrics = await self._fetch_fred_macro()
 
-        # 2. For equities, optionally enrich with Finnhub fundamentals
+        # 2. Enrich with JARVIS engine macro snapshot (cached, includes unemployment)
+        engine_macro = await self._fetch_engine_macro_snapshot()
+
+        # Merge engine macro — fills gaps left by FRED (e.g. unemployment) and
+        # uses the engine's cached + processed values as a cross-check.
+        for key, value in engine_macro.items():
+            if key not in macro_metrics and value is not None:
+                macro_metrics[key] = value
+
+        # 3. For equities, optionally enrich with Finnhub fundamentals
         equity_metrics: dict[str, float] = {}
         company_name = symbol
         if not is_futures:
             equity_metrics, company_name = await self._fetch_finnhub_fundamentals(symbol)
 
-        # 3. Merge all metrics
+        # 4. Merge all metrics
         key_metrics = {**macro_metrics, **equity_metrics}
 
         if not key_metrics:
             logger.warning(f"No fundamental data available for {symbol}")
             return self._neutral_report(symbol)
 
-        # 4. LLM synthesis
+        # 5. LLM synthesis
         report = await self._llm_synthesize(symbol, company_name, key_metrics, is_futures)
         return report
 
@@ -235,6 +244,42 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                     )
 
         return metrics
+
+    async def _fetch_engine_macro_snapshot(self) -> dict[str, float]:
+        """
+        Fetch JARVIS engine's processed macro snapshot from /macro/snapshot.
+        This endpoint uses a 5-minute in-memory cache and returns a flat dict:
+        {"vix": float, "fed_funds_rate": float, "ten_year_yield": float, "unemployment": float}.
+
+        Supplements FRED direct fetches with additional fields (e.g. unemployment)
+        and uses the engine's cached/validated values. Never blocks the pipeline.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get("http://localhost:8010/macro/snapshot")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    metrics: dict[str, float] = {}
+                    # Map engine field names to our internal metric names
+                    field_map = {
+                        "vix": "vix",
+                        "fed_funds_rate": "fed_funds_rate",
+                        "ten_year_yield": "us_10y_yield",
+                        "unemployment": "unemployment",
+                    }
+                    for engine_key, metric_key in field_map.items():
+                        val = data.get(engine_key)
+                        if val is not None:
+                            try:
+                                metrics[metric_key] = float(val)
+                            except (TypeError, ValueError):
+                                pass
+                    logger.debug(f"Engine macro snapshot fetched: {metrics}")
+                    return metrics
+                logger.debug(f"Engine macro snapshot returned {resp.status_code}")
+        except Exception as e:
+            logger.debug(f"Engine macro snapshot fetch failed: {e}")
+        return {}
 
     async def _fetch_finnhub_fundamentals(self, symbol: str) -> tuple[dict[str, float], str]:
         """
@@ -333,10 +378,13 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 )
             )
             macro_block += f"- VIX (Fear Index): {vix_val:.1f} [{vix_regime}]\n"
+        if "unemployment" in key_metrics:
+            macro_block += f"- Unemployment Rate: {key_metrics['unemployment']:.1f}%\n"
 
         # Build equity section (if applicable)
+        _MACRO_KEYS = {"fed_funds_rate", "us_10y_yield", "vix", "unemployment"}
         equity_block = ""
-        equity_keys = [k for k in key_metrics if k not in ("fed_funds_rate", "us_10y_yield", "vix")]
+        equity_keys = [k for k in key_metrics if k not in _MACRO_KEYS]
         if equity_keys and not is_futures:
             equity_block = "\nEQUITY FUNDAMENTALS:\n"
             label_map = {

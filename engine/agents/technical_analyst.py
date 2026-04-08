@@ -124,6 +124,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         symbol: str,
         timeframe: str = "15m",
         is_futures: bool = False,
+        historical_context: str = "",
     ) -> TechnicalReport:
         """Full technical analysis pipeline for a symbol"""
 
@@ -214,7 +215,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             return report
 
         # 4. LLM synthesis
-        report = await self._llm_synthesize(symbol, effective_timeframe, df, indicators)
+        report = await self._llm_synthesize(
+            symbol, effective_timeframe, df, indicators, historical_context=historical_context
+        )
 
         # 5. Tag the report when we used daily bars
         if using_daily_fallback:
@@ -408,6 +411,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         timeframe: str,
         df: pd.DataFrame,
         indicators: dict,
+        historical_context: str = "",
     ) -> TechnicalReport:
         """
         Use LLM to synthesize indicator data into a structured trading report.
@@ -415,27 +419,32 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         are computed deterministically above.
 
         Injects historical pattern recommendations from learning system (non-blocking fallback).
+        If historical_context is provided (injected by pipeline Stage 1), it is used directly
+        to avoid a redundant DB read. Otherwise, falls back to internal fetch.
         """
-        # Inject learning recommendations (non-blocking graceful fallback)
-        learning_context = ""
-        try:
-            from database.manager import db_manager
-            from learning.recommendations import (
-                format_recommendations_for_prompt,
-                get_recommendations,
-            )
-
-            recommendations = await get_recommendations(symbol, timeframe, db_manager=db_manager)
-            if recommendations:
-                learning_context = format_recommendations_for_prompt(recommendations)
-                logger.info(
-                    f"[LEARNING] {len(recommendations)} recommendations injected for {symbol}"
+        # Use pipeline-injected context if available; otherwise fetch from DB
+        learning_context = historical_context
+        if not learning_context:
+            try:
+                from database.manager import db_manager
+                from learning.recommendations import (
+                    format_recommendations_for_prompt,
+                    get_recommendations,
                 )
-            else:
-                logger.debug(f"[LEARNING] No active recommendations for {symbol}")
-        except Exception as lc_err:
-            logger.debug(f"[LEARNING] Recommendation injection skipped: {lc_err}")
-            # Continue normally without learning context
+
+                recommendations = await get_recommendations(
+                    symbol, timeframe, db_manager=db_manager
+                )
+                if recommendations:
+                    learning_context = format_recommendations_for_prompt(recommendations)
+                    logger.info(
+                        f"[LEARNING] {len(recommendations)} recommendations injected for {symbol}"
+                    )
+                else:
+                    logger.debug(f"[LEARNING] No active recommendations for {symbol}")
+            except Exception as lc_err:
+                logger.debug(f"[LEARNING] Recommendation injection skipped: {lc_err}")
+                # Continue normally without learning context
 
         prompt = f"""Analyze these technical indicators for {symbol} on {timeframe} timeframe:
 
