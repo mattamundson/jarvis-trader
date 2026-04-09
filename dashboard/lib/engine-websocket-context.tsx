@@ -71,7 +71,11 @@ export function EngineWebSocketProvider({
       if (wsRef.current?.readyState === WebSocket.OPEN) return;
       try {
         const engineHttp =
-          url || process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+          url ||
+          process.env.NEXT_PUBLIC_ENGINE_URL ||
+          (typeof window !== "undefined"
+            ? `${window.location.protocol}//${window.location.hostname}:8010`
+            : "http://localhost:8010");
         const engineWs = engineHttp.replace(/^http/, "ws");
         const ws = new WebSocket(`${engineWs}/ws/events`);
         ws.onopen = () => {
