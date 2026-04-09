@@ -17,6 +17,17 @@ from backtest.metrics import calculate_metrics
 # Re-export for backward compatibility — all existing imports continue to work
 from backtest.trade_manager import BacktestResult, Trade
 
+# Lazy import to avoid circular dependency; resolved at first use
+_settings = None
+
+
+def _get_settings():
+    global _settings
+    if _settings is None:
+        from config import settings  # noqa: PLC0415
+        _settings = settings
+    return _settings
+
 __all__ = ["Backtester", "BacktestResult", "Trade"]
 
 
@@ -50,8 +61,8 @@ class Backtester:
         max_drawdown: float = 0.05,
         t1_exit_pct: float = 0.50,  # % to exit at target 1
         t2_exit_pct: float = 0.30,  # % to exit at target 2
-        commission_per_contract: float = 2.50,
-        slippage_ticks: int = 1,
+        commission_per_contract: Optional[float] = None,
+        slippage_ticks: Optional[float] = None,
         trailing_stop: bool = False,
         trailing_atr_mult: float = 0.70,
         trailing_post_t1: bool = False,
@@ -62,15 +73,29 @@ class Backtester:
         self.max_drawdown = max_drawdown
         self.t1_exit_pct = t1_exit_pct
         self.t2_exit_pct = t2_exit_pct
-        self.commission_per_contract = commission_per_contract
-        self.slippage_ticks = slippage_ticks
+        # Pull from config if not explicitly overridden by caller
+        cfg = _get_settings()
+        self.commission_per_contract = commission_per_contract if commission_per_contract is not None else cfg.COMMISSION_PER_CONTRACT
+        self.slippage_ticks = slippage_ticks if slippage_ticks is not None else cfg.SLIPPAGE_TICKS
         self.trailing_stop = trailing_stop
         self.trailing_atr_mult = trailing_atr_mult
         self.trailing_post_t1 = trailing_post_t1
 
+    def _apply_slippage(self, price: float, direction: str, tick_size: float, slippage_ticks: float) -> float:
+        """Long entries pay up, short entries get worse fills. Realistic 1-tick adverse selection."""
+        pts = tick_size * slippage_ticks
+        return price + pts if direction == "long" else price - pts
+
+    def _round_trip_cost(self, contracts: int, commission_per_contract: float) -> float:
+        """Full round-trip commission (entry + exit combined)."""
+        return contracts * commission_per_contract
+
     def _transaction_cost(self, contracts: int, tick_size: float = 0.25) -> float:
-        """Round-trip cost: commission + slippage per contract."""
-        return contracts * (self.commission_per_contract + self.slippage_ticks * tick_size)
+        """Round-trip commission cost per contract.
+        Note: slippage is applied as adverse fill price in _apply_slippage(), not doubled here.
+        """
+        cfg = _get_settings()
+        return self._round_trip_cost(contracts, self.commission_per_contract) if cfg.COMMISSION_ENABLED else 0.0
 
     def _get_tick_size(self, symbol: str, multiplier: float) -> float:
         """Determine tick size from symbol or multiplier heuristic."""
@@ -102,11 +127,18 @@ class Backtester:
         tick_size: float,
     ) -> tuple[Optional[Trade], int, int, int, list, float]:
         """Process a pending entry signal (avoid look-ahead bias)."""
-        entry_price = row["open"]
+        raw_entry_price = row["open"]
         atr_val = pending_entry["atr"]
         direction = pending_entry["direction"]
 
-        # Recalculate stop and targets from actual entry price
+        # Apply slippage as adverse selection on the fill price
+        cfg = _get_settings()
+        if cfg.SLIPPAGE_ENABLED:
+            entry_price = self._apply_slippage(raw_entry_price, direction, tick_size, self.slippage_ticks)
+        else:
+            entry_price = raw_entry_price
+
+        # Recalculate stop and targets from actual entry price (post-slippage)
         if direction == "long":
             stop_price = entry_price - pending_entry["stop_atr_mult"] * atr_val
             target_1 = entry_price + pending_entry["t1_atr_mult"] * atr_val
@@ -478,14 +510,14 @@ class Backtester:
         symbol: str,
         multiplier: float = 1.0,
         commission_per_contract: Optional[float] = None,
-        slippage_ticks: Optional[int] = None,
+        slippage_ticks: Optional[float] = None,
     ) -> BacktestResult:
         """
         Walk-forward simulation. df must have signals from generate_signals().
         Required columns: open, high, low, close, entry_signal, bias,
                          stop_level, target_1, target_2, target_3, regime
         """
-        # Allow caller overrides
+        # Allow per-call overrides (takes precedence over config and __init__ defaults)
         if commission_per_contract is not None:
             self.commission_per_contract = commission_per_contract
         if slippage_ticks is not None:
@@ -701,6 +733,7 @@ class Backtester:
             final_capital=capital,
             trades=completed_trades,
             equity_curve=equity_curve,
+            total_bars=len(df),
         )
 
         return calculate_metrics(result)
