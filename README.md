@@ -694,6 +694,7 @@ cd dashboard && pnpm run build
 | **[docs/runbooks/PAPER_SOURCE_OF_TRUTH.md](docs/runbooks/PAPER_SOURCE_OF_TRUTH.md)** | Default paper ledger / dual-world rules |
 | **[docs/runbooks/IB_RECONNECT_AND_HEALTH.md](docs/runbooks/IB_RECONNECT_AND_HEALTH.md)** | IB auto-reconnect limits + operator flow |
 | **[docs/runbooks/HEALTH_API_CONTRACT.md](docs/runbooks/HEALTH_API_CONTRACT.md)** | `/health` and `/safety/*` JSON contract |
+| **[docs/runbooks/SQLITE_BACKUP.md](docs/runbooks/SQLITE_BACKUP.md)** | Nightly DB backup, retention, on-demand endpoint |
 
 ### Architecture
 

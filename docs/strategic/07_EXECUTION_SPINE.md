@@ -86,7 +86,7 @@
 
 - [ ] P0-1 checklist executed once  
 - [ ] Billing active; at least one full pipeline run recorded  
-- [ ] Paper state story documented (runner vs engine vs IB)
+- [x] Paper state story documented — [PAPER_SOURCE_OF_TRUTH.md](../runbooks/PAPER_SOURCE_OF_TRUTH.md) (default DB path + backup link)
 
 **Medium term**
 

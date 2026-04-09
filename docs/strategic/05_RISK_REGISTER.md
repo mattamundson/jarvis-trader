@@ -14,7 +14,7 @@
 | RISK-002 | Security | Keys or PII in logs, transcripts, or Discord | Med | High | Log review, grep CI | Sanitizer (+ Bearer / env-key patterns); [test_log_sanitizer](../../engine/tests/test_log_sanitizer.py); [SECURITY_OPERATOR_CHECKLIST.md](../runbooks/SECURITY_OPERATOR_CHECKLIST.md) | **Partial** |
 | RISK-003 | Safety | Kill switch / circuit state not persisted across engine restart | Med | High | Restart drill | **Mitigated:** `system_state` + `SafetyLayer._load_kill_switch_state`; [test_system_state.py](../../engine/tests/test_system_state.py), [test_safety_layer.py](../../engine/tests/test_safety_layer.py) | **Mitigated** |
 | RISK-004 | Ops | IB Gateway disconnect without auto-reconnect during validation | Med | High | Uptime monitor, alerts | `_reconnect()` + backoff in [ib_gateway_connector.py](../../engine/execution/ib_gateway_connector.py); [IB_RECONNECT_AND_HEALTH.md](../runbooks/IB_RECONNECT_AND_HEALTH.md); still max retry cap | **Partial** |
-| RISK-005 | Data | No automated DB / SQLite backup | Med | High | Backup job absent | Scheduled backup + restore drill; see audit US-1102 | **Open — verify** |
+| RISK-005 | Data | No automated DB / SQLite backup | Med | High | `GET /health/backup-status` | **Mitigated in code:** nightly job + `engine/backup/`; [SQLITE_BACKUP.md](../runbooks/SQLITE_BACKUP.md); operator must verify job runs in prod | **Partial** |
 | RISK-006 | Data | Dual ledger: JSONL / SQLite / paper_runner vs engine portfolio diverge | Med | High | Reconciliation script, widget cross-check | [PAPER_SOURCE_OF_TRUTH.md](../runbooks/PAPER_SOURCE_OF_TRUTH.md) + P0-2 checklist; operator must pick default | **Partial** |
 | RISK-007 | Research | Continued tuning on MES/MGC against validation policy | Med | Med | Instrument allowlist, WFE artifacts | Gates in [06_VALIDATION_GATES.md](06_VALIDATION_GATES.md) | **Open — process** |
 | RISK-008 | Engineering | `main.py` monolith changes cause unintended router/middleware regressions | Med | High | CI pytest + smoke routes | [test_routes_wired](../../engine/tests/test_routes_wired.py) (+ `/portfolio/stats/paper-phase-summary`); [HEALTH_API_CONTRACT.md](../runbooks/HEALTH_API_CONTRACT.md) | **Partial** |
@@ -62,5 +62,5 @@
 
 ## Changelog
 
-- 2026-04-10 — RISK-003 → Mitigated (DB persistence + tests). RISK-002/004/006/008 → Partial with runbook/code evidence. Sanitizer + CI snapshot script hardened.
+- 2026-04-10 — RISK-005 → Partial (SQLite backup runbook). RISK-003 → Mitigated. RISK-002/004/006/008 → Partial with runbook/code evidence.
 - 2026-04-09 — Initial register from master audit; statuses marked verify pending engineering confirmation.
