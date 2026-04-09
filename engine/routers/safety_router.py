@@ -269,6 +269,13 @@ async def deactivate_kill_switch(
     except Exception as exc:
         logger.warning("[SAFETY] Kill-switch WS emit on deactivate: %s", exc)
 
+    try:
+        from notifications import discord_notifier as _discord
+
+        asyncio.create_task(_discord.discord_kill_switch_deactivated())
+    except Exception as exc:
+        logger.warning("[SAFETY] Kill-switch deactivated notify failed: %s", exc)
+
     return {"status": "kill_switch_deactivated", "reason": None}
 
 

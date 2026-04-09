@@ -183,8 +183,14 @@ class SafetyLayer:
         # Load persisted kill switch state
         self._load_kill_switch_state()
 
-        # Restore today's P&L snapshot from SQLite if available - must be last in __init__
+        # Restore today's P&L snapshot from SQLite if available
         self._load_pnl_snapshot()
+
+        # Ensure equity_peak and current_equity are populated even when no
+        # db_manager exists or snapshot was empty.  Without this, circuit
+        # breakers are inert (daily_limit=0, drawdown check skipped).
+        if self._equity_peak == 0.0 or self._current_equity == 0.0:
+            self._seed_equity_from_pnl_monitor()
 
     def attach_ib_gateway(self, gateway) -> None:
         """Wire in an IB gateway after construction (called after paper connector connects)."""
@@ -220,6 +226,9 @@ class SafetyLayer:
         If a snapshot exists for today, restores daily_pnl, current_equity,
         and equity_peak so the safety layer doesn't reset drawdown to 0 on
         engine restarts mid-session.
+
+        When snapshot data is incomplete (peak_equity=0), seeds from PnLMonitor
+        or INITIAL_CAPITAL so circuit breakers are never inert.
         """
         if self._db_manager is None:
             logger.debug("SafetyLayer: no db_manager - skipping P&L snapshot load")
@@ -244,6 +253,47 @@ class SafetyLayer:
                 logger.debug("SafetyLayer: no P&L snapshot for %s - starting fresh", today)
         except Exception as exc:
             logger.warning("SafetyLayer: failed to load P&L snapshot from DB: %s", exc)
+
+    def _seed_equity_from_pnl_monitor(self) -> None:
+        """
+        Bootstrap _current_equity and _equity_peak from PnLMonitor or config.
+
+        Called once at startup when snapshot restoration left values at 0.
+        Source priority: PnLMonitor (SQLite) → INITIAL_CAPITAL config.
+        """
+        # Try PnLMonitor first (reads SQLite daily_pnl table)
+        if self._pnl_monitor is not None:
+            try:
+                state = self._pnl_monitor.get_current_pnl_state()
+                balance = float(getattr(state, "current_balance", 0.0) or 0.0)
+                if balance > 0:
+                    if self._current_equity == 0.0:
+                        self._current_equity = balance
+                    if self._equity_peak == 0.0:
+                        self._equity_peak = max(balance, self._current_equity)
+                    logger.info(
+                        "SafetyLayer: seeded from PnLMonitor — equity=%.2f peak=%.2f",
+                        self._current_equity,
+                        self._equity_peak,
+                    )
+                    self._persist_pnl_snapshot()
+                    return
+            except Exception as exc:
+                logger.warning("SafetyLayer: PnLMonitor seed failed: %s", exc)
+
+        # Fall back to configured INITIAL_CAPITAL
+        initial = getattr(self._config, "INITIAL_CAPITAL", 0.0) or 0.0
+        if initial > 0:
+            if self._current_equity == 0.0:
+                self._current_equity = initial
+            if self._equity_peak == 0.0:
+                self._equity_peak = max(initial, self._current_equity)
+            logger.info(
+                "SafetyLayer: seeded from INITIAL_CAPITAL — equity=%.2f peak=%.2f",
+                self._current_equity,
+                self._equity_peak,
+            )
+            self._persist_pnl_snapshot()
 
     def _persist_pnl_snapshot(self) -> None:
         """
@@ -918,14 +968,25 @@ class SafetyLayer:
         else:
             daily_pnl_for_check = self._daily_realized_pnl
 
+        # Resolve best-available equity for circuit breaker math.
+        # _current_equity may be 0 if sync_from_broker() was never called
+        # (no broker connected).  PnLMonitor reads SQLite and is always fresh.
+        equity_for_limits = self._current_equity
+        if equity_for_limits <= 0 and self._pnl_monitor is not None:
+            try:
+                pm_state = self._pnl_monitor.get_current_pnl_state()
+                equity_for_limits = float(getattr(pm_state, "current_balance", 0.0) or 0.0)
+            except Exception as exc:
+                logger.debug("SafetyLayer: PnLMonitor equity fallback failed: %s", exc)
+
         # Daily loss circuit breaker
         daily_limit = (
-            -(self._current_equity * self._config.MAX_DAILY_LOSS_PCT)
-            if self._current_equity > 0
+            -(equity_for_limits * self._config.MAX_DAILY_LOSS_PCT)
+            if equity_for_limits > 0
             else 0
         )
         daily_pnl_pct = (
-            (daily_pnl_for_check / self._current_equity) if self._current_equity > 0 else 0
+            (daily_pnl_for_check / equity_for_limits) if equity_for_limits > 0 else 0
         )
         daily_limit_pct = -self._config.MAX_DAILY_LOSS_PCT
         daily_limit_breached = daily_pnl_for_check < daily_limit
