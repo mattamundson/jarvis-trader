@@ -80,6 +80,25 @@ class PendingApprovalsMixin:
             finally:
                 conn.close()
 
+    def get_recent_approvals_all_statuses(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Return recent pipeline decisions (all statuses) ordered by created_at DESC."""
+        limit = min(max(1, limit), 50)
+        sql = """
+            SELECT id, approval_id, symbol, action, quantity, entry_price, status,
+                   pipeline_snapshot_json, created_at, resolved_at, resolved_by,
+                   rejection_reason, paper_trade_id, ib_order_id, timeframe
+            FROM pending_trade_approvals
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(sql, (limit,)).fetchall()
+                return [self._row_to_dict(r) for r in rows]  # type: ignore[arg-type]
+            finally:
+                conn.close()
+
     def get_pending_approval(self, approval_id: str) -> Optional[Dict[str, Any]]:
         """Fetch one row by approval_id or None."""
         sql = """

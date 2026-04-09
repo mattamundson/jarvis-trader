@@ -96,6 +96,12 @@ async def trigger_morning_brief(background_tasks: BackgroundTasks) -> dict:
             brief = await assemble_morning_brief()
             await send_raw(brief)
             logger.info("[MorningBrief] Manual trigger complete")
+            try:
+                import asyncio
+                from notifications.discord_notifier import discord_morning_brief
+                asyncio.create_task(discord_morning_brief(brief))
+            except Exception as exc:
+                logger.debug("[Scheduler] Discord brief send failed: %s", exc)
         except Exception as exc:
             logger.error("[MorningBrief] Manual trigger failed: %s", exc)
 

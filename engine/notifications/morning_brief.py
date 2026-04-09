@@ -118,6 +118,26 @@ async def assemble_morning_brief(
         stc_mcl, regime_mcl = await _get_stc_regime("MCL")
         stc_mnq, regime_mnq = await _get_stc_regime("MNQ")
 
+        # Trading plan based on STC position
+        def _trading_plan(sym: str, stc_str: str, regime: str) -> str:
+            try:
+                stc_val = float(stc_str)
+                if stc_val >= 83:
+                    return f"STC {stc_val:.0f} (AT/ABOVE OB=83) — SHORT setup active"
+                elif stc_val <= 15:
+                    return f"STC {stc_val:.0f} (AT/BELOW OS=15) — LONG setup active"
+                elif stc_val > 70:
+                    return f"STC {stc_val:.0f} — approaching OB=83, watch for SHORT"
+                elif stc_val < 25:
+                    return f"STC {stc_val:.0f} — approaching OS=15, watch for LONG"
+                else:
+                    return f"STC {stc_val:.0f} — mid-range, scanner will HOLD"
+            except (TypeError, ValueError):
+                return f"STC N/A — {regime}"
+
+        plan_mcl = _trading_plan("MCL", stc_mcl, regime_mcl)
+        plan_mnq = _trading_plan("MNQ", stc_mnq, regime_mnq)
+
         # Open positions with unrealized P&L
         open_positions: list[dict] = []
         if pt is not None:
@@ -125,6 +145,19 @@ async def assemble_morning_brief(
                 open_positions = pt.get_open_positions()
             except Exception as exc:
                 logger.warning("[MorningBrief] get_open_positions failed: %s", exc)
+
+        # Recently closed trades (since midnight CT)
+        closed_today: list[dict] = []
+        if pt is not None:
+            try:
+                midnight_ct = now_ct.replace(hour=0, minute=0, second=0, microsecond=0)
+                all_closed = pt.get_closed_trades() if hasattr(pt, 'get_closed_trades') else []
+                for t in all_closed:
+                    closed_str = t.get("exit_time") or t.get("closed_at") or ""
+                    if closed_str and closed_str >= midnight_ct.isoformat()[:10]:
+                        closed_today.append(t)
+            except Exception as exc:
+                logger.debug("[MorningBrief] closed trades fetch failed: %s", exc)
 
         # Fetch current prices for open positions
         pos_price_map: dict[str, float | None] = {}
@@ -155,42 +188,67 @@ async def assemble_morning_brief(
 
         # Assemble message
         lines = [
-            f"JARVIS Pre-Market Brief — {ts}",
+            f"JARVIS Pre-Market Intelligence — {ts}",
             "",
-            f"MCL: {_fmt_price('MCL')} (STC: {stc_mcl} | {regime_mcl})",
-            f"MNQ: {_fmt_price('MNQ')} (STC: {stc_mnq} | {regime_mnq})",
+            "INSTRUMENTS",
+            f"  MCL: {_fmt_price('MCL')} | STC: {stc_mcl} | {regime_mcl}",
+            f"  MNQ: {_fmt_price('MNQ')} | STC: {stc_mnq} | {regime_mnq}",
+            "",
+            "TRADING PLAN",
+            f"  MCL: {plan_mcl}",
+            f"  MNQ: {plan_mnq}",
             "",
         ]
 
+        # Overnight activity
+        n_closed = len(closed_today)
         n_pos = len(open_positions)
-        lines.append(f"Positions: {n_pos} open")
-        for pos in open_positions:
-            sym = str(pos.get("symbol", "?")).upper()
-            action = str(pos.get("action", "") or pos.get("side", "")).upper()
-            qty = int(pos.get("quantity", 1) or 1)
-            entry = float(pos.get("entry_price", 0) or 0)
-            cur = pos_price_map.get(sym)
-            unr = _compute_unrealized(pos, cur)
-            unr_str = f"${unr:+.2f}" if unr is not None else "N/A"
-            lines.append(f"  {sym} {action} x{qty} @ ${entry:.2f} → {unr_str}")
+        if n_closed > 0 or n_pos > 0:
+            lines.append("OVERNIGHT ACTIVITY")
+            for t in closed_today:
+                sym = str(t.get("symbol", "?")).upper()
+                side = str(t.get("side") or t.get("action", "")).upper()
+                pnl = t.get("pnl")
+                pnl_str = f"${pnl:+.2f}" if pnl is not None else "?"
+                lines.append(f"  CLOSED: {sym} {side} → {pnl_str}")
+            for pos in open_positions:
+                sym = str(pos.get("symbol", "?")).upper()
+                action = str(pos.get("action", "") or pos.get("side", "")).upper()
+                qty = int(pos.get("quantity", 1) or 1)
+                entry = float(pos.get("entry_price", 0) or 0)
+                cur = pos_price_map.get(sym)
+                unr = _compute_unrealized(pos, cur)
+                unr_str = f"${unr:+.2f}" if unr is not None else "open"
+                lines.append(f"  OPEN: {sym} {action} x{qty} @ ${entry:.2f} | unrealized: {unr_str}")
+            lines.append("")
 
-        lines.append("")
         pnl_str = f"${daily_pnl:+.2f}" if daily_pnl is not None else "N/A"
-        kill_str = "ACTIVE" if kill_active else "INACTIVE"
-        lines.append(f"Daily P&L: {pnl_str} | Kill switch: {kill_str}")
+        kill_str = "ACTIVE — TRADING HALTED" if kill_active else "inactive"
+        lines += [
+            "SAFETY",
+            f"  Daily P&L: {pnl_str} | Kill switch: {kill_str}",
+            "",
+            "Scanner active: MCL + MNQ | Next RTH scan: 9:30am CT",
+        ]
 
         msg = "\n".join(lines)
         if len(msg) > 400:
             # Truncate positions detail to keep under 400 chars
             short_lines = [
-                f"JARVIS Pre-Market Brief — {ts}",
+                f"JARVIS Pre-Market Intelligence — {ts}",
                 "",
-                f"MCL: {_fmt_price('MCL')} (STC: {stc_mcl} | {regime_mcl})",
-                f"MNQ: {_fmt_price('MNQ')} (STC: {stc_mnq} | {regime_mnq})",
+                "INSTRUMENTS",
+                f"  MCL: {_fmt_price('MCL')} | STC: {stc_mcl} | {regime_mcl}",
+                f"  MNQ: {_fmt_price('MNQ')} | STC: {stc_mnq} | {regime_mnq}",
                 "",
-                f"Positions: {n_pos} open",
+                "TRADING PLAN",
+                f"  MCL: {plan_mcl}",
+                f"  MNQ: {plan_mnq}",
                 "",
-                f"Daily P&L: {pnl_str} | Kill switch: {kill_str}",
+                "SAFETY",
+                f"  Daily P&L: {pnl_str} | Kill switch: {kill_str}",
+                "",
+                "Scanner active: MCL + MNQ | Next RTH scan: 9:30am CT",
             ]
             msg = "\n".join(short_lines)
         return msg

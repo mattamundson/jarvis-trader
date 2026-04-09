@@ -29,6 +29,7 @@ import { EventsFeedWidget } from '@/components/EventsFeedWidget';
 import UnrealizedPnLWidget from "@/components/UnrealizedPnLWidget";
 import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidget";
 import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
+import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -323,6 +324,9 @@ export default function DashboardPage() {
 
         {/* Paper trading positions panel — full width below main grid */}
         <PaperTradingPanel />
+
+        {/* Live pipeline reasoning — full 5-stage breakdown for each trade decision */}
+        <LiveTradeReasoningWidget />
 
         {/* Trade journal with full signal provenance (US-1404) */}
         <TradeJournalWidget />

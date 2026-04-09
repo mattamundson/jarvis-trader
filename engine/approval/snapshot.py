@@ -16,6 +16,7 @@ def pipeline_result_for_approval_snapshot(result: dict) -> dict:
         "trade_decision",
         "risk_decision",
         "fund_decision",
+        "debate_result",
         "final_action",
         "final_quantity",
         "requires_human",
@@ -23,6 +24,9 @@ def pipeline_result_for_approval_snapshot(result: dict) -> dict:
         "errors",
         "analyst_reports",
         "confidence",
+        "boosted_confidence",
+        "raw_confidence",
+        "confidence_threshold",
     )
     snap: Dict[str, Any] = {k: result.get(k) for k in keys}
     ar = result.get("analyst_reports") or {}
