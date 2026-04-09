@@ -211,7 +211,7 @@ class PortfolioTracker:
             )
         except Exception:
             pass
-        
+
         return trade_id
 
     def close_trade(self, trade_id: str, exit_price: float) -> PaperTrade:
@@ -352,7 +352,7 @@ class PortfolioTracker:
             )
         except Exception:
             pass
-        
+
         return trade
 
     def get_open_positions(self) -> List[dict]:
@@ -907,6 +907,12 @@ class PortfolioTracker:
         TODO Sprint 17 US-1703: Remove this JSON write path after migration completes.
         JSON write path marked for removal — SQLite will be canonical after migration.
         """
+        logger.warning(
+            "[DEPRECATED] Writing paper trade to JSON at %s — "
+            "JSON storage is deprecated; SQLite is the source of truth. "
+            "This path will be removed in a future release.",
+            self._store,
+        )
         try:
             with self._store.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(trade.to_dict()) + "\n")

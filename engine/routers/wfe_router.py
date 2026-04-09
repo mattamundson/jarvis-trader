@@ -318,3 +318,66 @@ async def get_wfe_snapshots(
     except Exception as e:
         logger.error(f"[WFE] GET /snapshots failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch WFE snapshots: {e}") from e
+
+
+# ── Bayesian Optimizer endpoint ───────────────────────────────────────────────
+
+
+class BayesianOptimizeRequest(BaseModel):
+    """Request body for Bayesian optimization run."""
+
+    symbol: str = Field(default="MCL", description="Trading symbol (e.g. MCL, MNQ)")
+    interval: str = Field(default="1h", description="Bar interval (e.g. 1h, 1d)")
+    start_date: str = Field(default="2024-01-01", description="Backtest start date YYYY-MM-DD")
+    end_date: str = Field(default="2026-04-01", description="Backtest end date YYYY-MM-DD")
+    n_calls: int = Field(default=50, ge=10, le=200, description="Number of objective evaluations")
+
+
+class BayesianOptimizeResponse(BaseModel):
+    """Response from Bayesian optimization run."""
+
+    best_params: Optional[dict] = Field(None, description="Optimal parameter values found")
+    best_score: float = Field(description="Best sharpe * profit_factor score achieved")
+    best_metrics: Optional[dict] = Field(None, description="Full backtest metrics at best params")
+    n_calls: int = Field(description="Number of evaluations performed")
+    method: str = Field(description="'bayesian' | 'random_fallback' | 'none'")
+    error: Optional[str] = Field(None, description="Error message if optimization failed")
+
+
+@router.post("/optimize-bayesian", response_model=BayesianOptimizeResponse)
+async def post_optimize_bayesian(body: BayesianOptimizeRequest):
+    """
+    Run Bayesian parameter optimization for a symbol.
+
+    Uses Gaussian Process surrogate (scikit-optimize) when available; falls
+    back to random search otherwise. Evaluates at most n_calls backtests —
+    3x fewer than a full 162-combination grid search.
+
+    Returns the best (stc_os, stc_ob, stop_mult, t1_mult) combination
+    and associated backtest metrics.
+    """
+    try:
+        from backtest.bayesian_optimizer import BayesianOptimizer
+
+        opt = BayesianOptimizer(
+            symbol=body.symbol,
+            interval=body.interval,
+            start_date=body.start_date,
+            end_date=body.end_date,
+        )
+        result = await opt.optimize(n_calls=body.n_calls)
+
+        logger.info(
+            "[WFE] Bayesian optimize complete: symbol=%s method=%s score=%.4f",
+            body.symbol,
+            result.get("method"),
+            result.get("best_score", 0.0),
+        )
+
+        return BayesianOptimizeResponse(**result)
+
+    except Exception as e:
+        logger.error("[WFE] POST /optimize-bayesian failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Bayesian optimization failed: {e}"
+        ) from e
