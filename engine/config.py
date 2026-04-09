@@ -151,6 +151,13 @@ class TradingConfig(BaseSettings):
     COMMISSION_ENABLED: bool = Field(True, description="Apply commission in backtests")
     SLIPPAGE_ENABLED: bool = Field(True, description="Apply slippage in backtests")
 
+    # Bid-ask spread modeling (separate from adverse-tick slippage)
+    # MES typical spread: 0.25 pts = 1 tick. Half-spread = 0.5 ticks paid on each side.
+    SPREAD_TICKS: float = Field(
+        0.5, description="Half-spread ticks — paid on entry AND exit (0.5 ticks = 1 full tick round-trip)"
+    )
+    SPREAD_ENABLED: bool = Field(True, description="Apply bid-ask spread simulation in backtests")
+
     # ── Consecutive Loss Tracking & Position Sizing ──────────────────────
     CONSECUTIVE_LOSS_HALF_SIZE: int = Field(
         3, description="Losses threshold for 0.5x position size"

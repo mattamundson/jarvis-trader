@@ -63,6 +63,7 @@ class Backtester:
         t2_exit_pct: float = 0.30,  # % to exit at target 2
         commission_per_contract: Optional[float] = None,
         slippage_ticks: Optional[float] = None,
+        spread_ticks: Optional[float] = None,
         trailing_stop: bool = False,
         trailing_atr_mult: float = 0.70,
         trailing_post_t1: bool = False,
@@ -77,6 +78,7 @@ class Backtester:
         cfg = _get_settings()
         self.commission_per_contract = commission_per_contract if commission_per_contract is not None else cfg.COMMISSION_PER_CONTRACT
         self.slippage_ticks = slippage_ticks if slippage_ticks is not None else cfg.SLIPPAGE_TICKS
+        self.spread_ticks = spread_ticks if spread_ticks is not None else cfg.SPREAD_TICKS
         self.trailing_stop = trailing_stop
         self.trailing_atr_mult = trailing_atr_mult
         self.trailing_post_t1 = trailing_post_t1
@@ -86,13 +88,48 @@ class Backtester:
         pts = tick_size * slippage_ticks
         return price + pts if direction == "long" else price - pts
 
+    def _apply_execution_costs(
+        self,
+        price: float,
+        direction: str,
+        tick_size: float,
+        slippage_ticks: float,
+        spread_ticks: float,
+    ) -> float:
+        """
+        Apply both adverse slippage AND half-spread to fill price.
+
+        Adverse slippage: we get a worse price than mid (1 tick by default).
+        Spread cost: we cross the spread on entry (buy at ask, sell at bid).
+        Both apply on entry; on exit, spread applies again (crossing the other side).
+        Net effect: each fill costs (slippage_ticks + spread_ticks) * tick_size more than mid.
+        """
+        total_adverse_ticks = slippage_ticks + spread_ticks
+        adverse_pts = tick_size * total_adverse_ticks
+        if direction == "long":
+            return price + adverse_pts   # Long entry: pay up (ask side + slippage)
+        else:
+            return price - adverse_pts   # Short entry: sell down (bid side + slippage)
+
+    def _exit_spread_cost(self, contracts: int, tick_size: float, multiplier: float) -> float:
+        """
+        Spread cost on exit fill: we cross the spread again when closing.
+        Long exit → sell at bid (mid - half_spread). Short exit → buy at ask (mid + half_spread).
+        Cost = contracts * spread_ticks * tick_size * multiplier.
+        """
+        cfg = _get_settings()
+        if not cfg.SPREAD_ENABLED:
+            return 0.0
+        return contracts * self.spread_ticks * tick_size * multiplier
+
     def _round_trip_cost(self, contracts: int, commission_per_contract: float) -> float:
         """Full round-trip commission (entry + exit combined)."""
         return contracts * commission_per_contract
 
     def _transaction_cost(self, contracts: int, tick_size: float = 0.25) -> float:
         """Round-trip commission cost per contract.
-        Note: slippage is applied as adverse fill price in _apply_slippage(), not doubled here.
+        Note: slippage is applied as adverse fill price in _apply_execution_costs(), not doubled here.
+              Exit spread cost is applied separately via _exit_spread_cost().
         """
         cfg = _get_settings()
         return self._round_trip_cost(contracts, self.commission_per_contract) if cfg.COMMISSION_ENABLED else 0.0
@@ -131,10 +168,13 @@ class Backtester:
         atr_val = pending_entry["atr"]
         direction = pending_entry["direction"]
 
-        # Apply slippage as adverse selection on the fill price
+        # Apply execution costs (adverse slippage + half-spread) on the fill price
         cfg = _get_settings()
-        if cfg.SLIPPAGE_ENABLED:
-            entry_price = self._apply_slippage(raw_entry_price, direction, tick_size, self.slippage_ticks)
+        effective_spread = self.spread_ticks if cfg.SPREAD_ENABLED else 0.0
+        if cfg.SLIPPAGE_ENABLED or cfg.SPREAD_ENABLED:
+            entry_price = self._apply_execution_costs(
+                raw_entry_price, direction, tick_size, self.slippage_ticks if cfg.SLIPPAGE_ENABLED else 0.0, effective_spread
+            )
         else:
             entry_price = raw_entry_price
 
@@ -202,7 +242,7 @@ class Backtester:
                 pnl = open_contracts_t1 * (exit_price - open_trade.entry_price) * multiplier
             else:
                 pnl = open_contracts_t1 * (open_trade.entry_price - exit_price) * multiplier
-            capital_change += pnl - self._transaction_cost(open_contracts_t1, tick_size)
+            capital_change += pnl - self._transaction_cost(open_contracts_t1, tick_size) - self._exit_spread_cost(open_contracts_t1, tick_size, multiplier)
             open_trade.pnl += pnl
             open_contracts_t1 = 0
             open_trade.stop_price = open_trade.entry_price
@@ -214,7 +254,7 @@ class Backtester:
                 pnl = open_contracts_t2 * (exit_price - open_trade.entry_price) * multiplier
             else:
                 pnl = open_contracts_t2 * (open_trade.entry_price - exit_price) * multiplier
-            capital_change += pnl - self._transaction_cost(open_contracts_t2, tick_size)
+            capital_change += pnl - self._transaction_cost(open_contracts_t2, tick_size) - self._exit_spread_cost(open_contracts_t2, tick_size, multiplier)
             open_trade.pnl += pnl
             open_contracts_t2 = 0
             targets_hit.append("target_2")
@@ -249,7 +289,7 @@ class Backtester:
             pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
         else:
             pnl = remaining * (open_trade.entry_price - exit_price) * multiplier
-        capital_change = pnl - self._transaction_cost(remaining, tick_size)
+        capital_change = pnl - self._transaction_cost(remaining, tick_size) - self._exit_spread_cost(remaining, tick_size, multiplier)
         open_trade.exit_price = exit_price
         open_trade.pnl += pnl
         open_trade.exit_reason = targets_hit[-1] if targets_hit else "stop"
@@ -279,7 +319,7 @@ class Backtester:
             if low <= open_trade.stop_price:
                 exit_price = open_trade.stop_price
                 pnl = open_contracts * (exit_price - open_trade.entry_price) * multiplier
-                capital_change = pnl - self._transaction_cost(open_contracts, tick_size)
+                capital_change = pnl - self._transaction_cost(open_contracts, tick_size) - self._exit_spread_cost(open_contracts, tick_size, multiplier)
                 open_trade.exit_price = exit_price
                 open_trade.pnl += pnl
                 open_trade.exit_reason = "trailing_stop"
@@ -311,7 +351,7 @@ class Backtester:
             if high >= open_trade.stop_price:
                 exit_price = open_trade.stop_price
                 pnl = open_contracts * (open_trade.entry_price - exit_price) * multiplier
-                capital_change = pnl - self._transaction_cost(open_contracts, tick_size)
+                capital_change = pnl - self._transaction_cost(open_contracts, tick_size) - self._exit_spread_cost(open_contracts, tick_size, multiplier)
                 open_trade.exit_price = exit_price
                 open_trade.pnl += pnl
                 open_trade.exit_reason = "trailing_stop"
@@ -359,7 +399,7 @@ class Backtester:
             pnl = remaining * (close - open_trade.entry_price) * multiplier
         else:
             pnl = remaining * (open_trade.entry_price - close) * multiplier
-        capital_change = pnl - self._transaction_cost(remaining, tick_size)
+        capital_change = pnl - self._transaction_cost(remaining, tick_size) - self._exit_spread_cost(remaining, tick_size, multiplier)
         open_trade.pnl += pnl
         open_trade.exit_price = close
         open_trade.exit_date = idx
@@ -511,6 +551,7 @@ class Backtester:
         multiplier: float = 1.0,
         commission_per_contract: Optional[float] = None,
         slippage_ticks: Optional[float] = None,
+        spread_ticks: Optional[float] = None,
     ) -> BacktestResult:
         """
         Walk-forward simulation. df must have signals from generate_signals().
@@ -522,6 +563,8 @@ class Backtester:
             self.commission_per_contract = commission_per_contract
         if slippage_ticks is not None:
             self.slippage_ticks = slippage_ticks
+        if spread_ticks is not None:
+            self.spread_ticks = spread_ticks
 
         tick_size = self._get_tick_size(symbol, multiplier)
 
@@ -725,6 +768,16 @@ class Backtester:
             if capital > high_water_mark:
                 high_water_mark = capital
 
+        # Compute total spread cost across all trades (entry half-spread + exit half-spread)
+        cfg = _get_settings()
+        if cfg.SPREAD_ENABLED:
+            spread_cost_total = sum(
+                t.contracts * self.spread_ticks * tick_size * multiplier * 2  # entry + exit
+                for t in completed_trades
+            )
+        else:
+            spread_cost_total = 0.0
+
         result = BacktestResult(
             symbol=symbol,
             start_date=str(df.index[0].date()) if len(df) > 0 else "",
@@ -734,6 +787,7 @@ class Backtester:
             trades=completed_trades,
             equity_curve=equity_curve,
             total_bars=len(df),
+            spread_cost_total=spread_cost_total,
         )
 
         return calculate_metrics(result)
