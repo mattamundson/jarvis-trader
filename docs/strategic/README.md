@@ -67,6 +67,7 @@ Then cross-check against [Unified Canon](../JARVIS_TRADER_UNIFIED_CANON.md) and 
 | Paper source of truth | [PAPER_SOURCE_OF_TRUTH.md](../runbooks/PAPER_SOURCE_OF_TRUTH.md) |
 | IB reconnect + health | [IB_RECONNECT_AND_HEALTH.md](../runbooks/IB_RECONNECT_AND_HEALTH.md) |
 | Health / safety JSON contract | [HEALTH_API_CONTRACT.md](../runbooks/HEALTH_API_CONTRACT.md) |
+| SQLite backup (nightly + on-demand) | [SQLITE_BACKUP.md](../runbooks/SQLITE_BACKUP.md) |
 
 ---
 

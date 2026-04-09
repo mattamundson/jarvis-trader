@@ -2,6 +2,12 @@
 
 **Goal:** One default ledger for dashboard, alerts, and human decisions. Ambiguity between JSON files, `paper_runner`, and engine DB causes **RISK-006** (dual ledger divergence).
 
+## Default source of truth (explicit)
+
+**Canonical paper ledger:** Engine SQLite at **`engine/data/jarvis_trader.db`** (path relative to process cwd, usually `engine/`). All `/portfolio/*`, `/paper/*`, and safety `system_state` rows live here.
+
+Backups: see [SQLITE_BACKUP.md](SQLITE_BACKUP.md).
+
 ## Canonical recommendation (default)
 
 | Surface | Primary source | Notes |

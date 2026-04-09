@@ -4,7 +4,7 @@
 
 **See also:** [Strategic command center (index)](strategic/README.md) — executive brief, system map, risk register, execution spine, and analysis passes.
 
-**New runbooks (2026-04-10):** [SECURITY_OPERATOR_CHECKLIST.md](runbooks/SECURITY_OPERATOR_CHECKLIST.md) · [PAPER_SOURCE_OF_TRUTH.md](runbooks/PAPER_SOURCE_OF_TRUTH.md) · [IB_RECONNECT_AND_HEALTH.md](runbooks/IB_RECONNECT_AND_HEALTH.md) · [HEALTH_API_CONTRACT.md](runbooks/HEALTH_API_CONTRACT.md)
+**New runbooks (2026-04-10):** [SECURITY_OPERATOR_CHECKLIST.md](runbooks/SECURITY_OPERATOR_CHECKLIST.md) · [PAPER_SOURCE_OF_TRUTH.md](runbooks/PAPER_SOURCE_OF_TRUTH.md) · [IB_RECONNECT_AND_HEALTH.md](runbooks/IB_RECONNECT_AND_HEALTH.md) · [HEALTH_API_CONTRACT.md](runbooks/HEALTH_API_CONTRACT.md) · [SQLITE_BACKUP.md](runbooks/SQLITE_BACKUP.md)
 
 ---
 
