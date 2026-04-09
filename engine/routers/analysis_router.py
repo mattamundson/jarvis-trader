@@ -109,11 +109,22 @@ async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: b
             logger.warning(f"[ANALYSIS] STC computation failed for {symbol}: {stc_err}")
             df['stc'] = float('nan')
 
+        # Compute EMA ribbon (8/21/34) for chart overlay — exponential moving averages
+        try:
+            df['ema_8'] = df['close'].ewm(span=8, adjust=False).mean()
+            df['ema_21'] = df['close'].ewm(span=21, adjust=False).mean()
+            df['ema_34'] = df['close'].ewm(span=34, adjust=False).mean()
+        except Exception as ema_err:
+            logger.warning(f"[ANALYSIS] EMA computation failed for {symbol}: {ema_err}")
+            df['ema_8'] = float('nan')
+            df['ema_21'] = float('nan')
+            df['ema_34'] = float('nan')
+
         # Tail 200 bars and build response, replacing NaN with None for JSON safety
         tail_df = df.tail(200)
         bars_records = tail_df.to_dict(orient="records")
         for bar in bars_records:
-            for key in ('vwap', 'stc'):
+            for key in ('vwap', 'stc', 'ema_8', 'ema_21', 'ema_34'):
                 val = bar.get(key)
                 if val is not None and (isinstance(val, float) and (val != val)):  # nan check
                     bar[key] = None

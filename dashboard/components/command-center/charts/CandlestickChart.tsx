@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import {
   createChart,
   ColorType,
@@ -33,11 +33,10 @@ export function CandlestickChart({
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-  // EMA overlay lines (stored but unused for the current implementation
-  // which uses price lines instead of full time-series)
-  const _ema8Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const _ema21Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const _ema34Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  // EMA overlay ribbon — full historical time-series
+  const ema8Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const ema21Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const ema34Ref = useRef<ISeriesApi<"Line"> | null>(null);
   // VWAP overlay and STC subpanel
   const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const stcSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -95,26 +94,29 @@ export function CandlestickChart({
       scaleMargins: { top: 0.8, bottom: 0 },
     });
 
-    // EMA line series (used for price lines; kept for future overlay data)
+    // EMA ribbon — full historical overlay series
     const ema8Series = chart.addSeries(LineSeries, {
-      color: "#00ff88",
+      color: "rgba(0, 255, 136, 0.85)",
       lineWidth: 1,
+      title: "EMA8",
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
       crosshairMarkerVisible: false,
     });
     const ema21Series = chart.addSeries(LineSeries, {
-      color: "#ffcc00",
+      color: "rgba(255, 204, 0, 0.85)",
       lineWidth: 1,
+      title: "EMA21",
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
       crosshairMarkerVisible: false,
     });
     const ema34Series = chart.addSeries(LineSeries, {
-      color: "#ff4466",
+      color: "rgba(255, 68, 102, 0.85)",
       lineWidth: 1,
+      title: "EMA34",
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
       crosshairMarkerVisible: false,
     });
 
@@ -162,9 +164,9 @@ export function CandlestickChart({
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
-    _ema8Ref.current = ema8Series;
-    _ema21Ref.current = ema21Series;
-    _ema34Ref.current = ema34Series;
+    ema8Ref.current = ema8Series;
+    ema21Ref.current = ema21Series;
+    ema34Ref.current = ema34Series;
     vwapSeriesRef.current = vwapSeries;
     stcSeriesRef.current = stcSeries;
 
@@ -182,9 +184,9 @@ export function CandlestickChart({
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
-      _ema8Ref.current = null;
-      _ema21Ref.current = null;
-      _ema34Ref.current = null;
+      ema8Ref.current = null;
+      ema21Ref.current = null;
+      ema34Ref.current = null;
       vwapSeriesRef.current = null;
       stcSeriesRef.current = null;
     };
@@ -216,6 +218,21 @@ export function CandlestickChart({
     candleSeriesRef.current.setData(candleData);
     if (volumeSeriesRef.current && volumeData.length) {
       volumeSeriesRef.current.setData(volumeData);
+    }
+
+    // EMA ribbon — full historical time-series overlays
+    const emaMap: Array<[MutableRefObject<ISeriesApi<"Line"> | null>, "ema_8" | "ema_21" | "ema_34"]> = [
+      [ema8Ref, "ema_8"],
+      [ema21Ref, "ema_21"],
+      [ema34Ref, "ema_34"],
+    ];
+    for (const [ref, field] of emaMap) {
+      if (ref.current) {
+        const emaData = bars
+          .filter((b) => b[field] != null && !isNaN(b[field] as number))
+          .map((b) => ({ time: b.time as Time, value: b[field] as number }));
+        if (emaData.length > 0) ref.current.setData(emaData);
+      }
     }
 
     // VWAP overlay
@@ -278,11 +295,7 @@ export function CandlestickChart({
       });
     };
 
-    // EMA levels
-    addLine(technical.ema_8, "#00ff88", "EMA8");
-    addLine(technical.ema_21, "#ffcc00", "EMA21");
-    addLine(technical.ema_34, "#ff4466", "EMA34");
-
+    // EMA ribbon is rendered as historical time-series overlays (see bars useEffect above)
     // Keltner channels
     addLine(
       technical.kelt_inner_upper,

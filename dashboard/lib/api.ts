@@ -152,6 +152,9 @@ export interface OHLCVBar {
   volume?: number;
   vwap?: number;
   stc?: number;
+  ema_8?: number;
+  ema_21?: number;
+  ema_34?: number;
 }
 
 /** POST /analyze/technical — engine nested payload plus optional flattened fields for chart overlays. */
