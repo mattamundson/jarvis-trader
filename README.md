@@ -690,6 +690,10 @@ cd dashboard && pnpm run build
 | **[docs/runbooks/IB_CONNECTOR_OVERVIEW.md](docs/runbooks/IB_CONNECTOR_OVERVIEW.md)** | IB connector architecture |
 | **[docs/runbooks/DAILY_AUTOMATION.md](docs/runbooks/DAILY_AUTOMATION.md)** | Daily ops automation |
 | **[docs/runbooks/ANTHROPIC_BILLING_AND_PIPELINE_SMOKE.md](docs/runbooks/ANTHROPIC_BILLING_AND_PIPELINE_SMOKE.md)** | LLM cost monitoring |
+| **[docs/runbooks/SECURITY_OPERATOR_CHECKLIST.md](docs/runbooks/SECURITY_OPERATOR_CHECKLIST.md)** | Key rotation, kill-switch evidence, incident steps |
+| **[docs/runbooks/PAPER_SOURCE_OF_TRUTH.md](docs/runbooks/PAPER_SOURCE_OF_TRUTH.md)** | Default paper ledger / dual-world rules |
+| **[docs/runbooks/IB_RECONNECT_AND_HEALTH.md](docs/runbooks/IB_RECONNECT_AND_HEALTH.md)** | IB auto-reconnect limits + operator flow |
+| **[docs/runbooks/HEALTH_API_CONTRACT.md](docs/runbooks/HEALTH_API_CONTRACT.md)** | `/health` and `/safety/*` JSON contract |
 
 ### Architecture
 
