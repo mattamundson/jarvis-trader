@@ -26,7 +26,7 @@ def _paper_offline_cfg():
             "PAPER_TRADING": True,
             "ALLOW_PAPER_SIMULATED_ORDERS": True,
             "MAX_SINGLE_ORDER_VALUE": 500_000.0,
-            "MAX_POSITION_SIZE_PCT": 1.0,
+            "MAX_POSITION_SIZE_PCT": 5.0,
         }
     )
 

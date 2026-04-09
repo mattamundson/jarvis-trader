@@ -106,6 +106,10 @@ def validate_backtest_result(stats: dict) -> dict:
         profit_violations.append(f"Calmar {stats.get('calmar_ratio', 0):.2f} < 0.8")
     if stats.get("profit_factor", 0) < 1.8:
         profit_violations.append(f"PF {stats.get('profit_factor', 0):.2f} < 1.8")
+    # CVaR gate: expected shortfall at 95% should not exceed -5% per day
+    cvar_daily = stats.get("cvar_95", 0)
+    if cvar_daily < -0.05:
+        profit_violations.append(f"CVaR-95 {cvar_daily:.2%} exceeds -5% daily threshold")
 
     profit_passed = len(profit_violations) == 0
     all_violations = violations + profit_violations

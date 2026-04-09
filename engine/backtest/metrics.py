@@ -185,6 +185,23 @@ def calculate_metrics(result: BacktestResult) -> BacktestResult:
                         (daily_returns.mean() / downside_std) * np.sqrt(252)
                     )
 
+        # Value at Risk (Historical VaR) — 95% and 99% confidence
+        if len(daily_returns) >= 10:
+            sorted_returns = np.sort(daily_returns)
+            var_95 = float(np.percentile(sorted_returns, 5))   # 5th percentile = 95% VaR
+            var_99 = float(np.percentile(sorted_returns, 1))   # 1st percentile = 99% VaR
+
+            # Conditional VaR (Expected Shortfall) — average loss beyond VaR threshold
+            tail_95 = sorted_returns[sorted_returns <= var_95]
+            cvar_95 = float(tail_95.mean()) if len(tail_95) > 0 else var_95
+            tail_99 = sorted_returns[sorted_returns <= var_99]
+            cvar_99 = float(tail_99.mean()) if len(tail_99) > 0 else var_99
+
+            result.var_95 = var_95
+            result.var_99 = var_99
+            result.cvar_95 = cvar_95
+            result.cvar_99 = cvar_99
+
     # Consecutive wins/losses
     max_consec_win = max_consec_loss = 0
     cur_win = cur_loss = 0

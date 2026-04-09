@@ -118,6 +118,15 @@ class BacktestResult:
     exposure_time_pct: float = 0.0
     total_bars: int = 0
 
+    # Bid-ask spread simulation cost (entry half-spread + exit half-spread, all trades)
+    spread_cost_total: float = 0.0
+
+    # Value-at-Risk (Historical, from equity curve daily returns)
+    var_95: float = 0.0   # 95% VaR — 5th-percentile daily return (negative = loss)
+    var_99: float = 0.0   # 99% VaR — 1st-percentile daily return
+    cvar_95: float = 0.0  # Expected Shortfall beyond 95% VaR
+    cvar_99: float = 0.0  # Expected Shortfall beyond 99% VaR
+
     def summary(self) -> str:
         """Human-readable one-screen summary."""
         lines = [
@@ -135,6 +144,7 @@ class BacktestResult:
             f"Calmar: {self.calmar_ratio:.2f}  |  Expectancy: ${self.expectancy:,.0f}  |  Recovery Factor: {self.recovery_factor:.2f}",
             f"Long Trades: {self.long_trades} (WR {self.long_win_rate:.0%})  |  Short Trades: {self.short_trades} (WR {self.short_win_rate:.0%})",
             f"Avg Holding: {self.avg_holding_bars:.1f} bars  |  Max DD Duration: {self.max_drawdown_duration_bars} bars",
+            f"Spread Cost Total: ${self.spread_cost_total:,.2f}",
         ]
         return "\n".join(lines)
 
@@ -185,6 +195,11 @@ class BacktestResult:
             "max_drawdown_duration_bars": self.max_drawdown_duration_bars,
             "exposure_time_pct": round(self.exposure_time_pct, 2),
             "total_bars": self.total_bars,
+            "var_95": round(self.var_95, 6),
+            "var_99": round(self.var_99, 6),
+            "cvar_95": round(self.cvar_95, 6),
+            "cvar_99": round(self.cvar_99, 6),
+            "spread_cost_total": round(self.spread_cost_total, 2),
             "equity_curve": [round(v, 2) for v in self.equity_curve],
             "trades": [t.to_dict() for t in self.trades],
         }

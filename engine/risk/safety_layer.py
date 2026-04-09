@@ -282,7 +282,10 @@ class SafetyLayer:
                 logger.warning("SafetyLayer: PnLMonitor seed failed: %s", exc)
 
         # Fall back to configured INITIAL_CAPITAL
-        initial = getattr(self._config, "INITIAL_CAPITAL", 0.0) or 0.0
+        try:
+            initial = float(getattr(self._config, "INITIAL_CAPITAL", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            initial = 0.0
         if initial > 0:
             if self._current_equity == 0.0:
                 self._current_equity = initial
