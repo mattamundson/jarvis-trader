@@ -119,6 +119,8 @@ from routers.scheduler_router import inject_scheduler as inject_scheduler_router
 from routers.trades_router import router as trades_router
 from routers.wfe_router import router as wfe_router
 from routers.discovery_router import router as discovery_router
+from routers.hidden_pivots_router import router as hidden_pivots_router
+from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -233,7 +235,8 @@ async def lifespan(app: FastAPI):
         ws_manager, \
         cost_tracker, \
         loss_tracker, \
-        validation_alert_manager
+        validation_alert_manager, \
+        sdk_pipeline
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -458,7 +461,7 @@ async def lifespan(app: FastAPI):
         try:
             sdk_pipeline = SDKTradingPipeline(
                 data_manager=data_manager,
-                api_key=getattr(settings, "JARVIS_API_KEY", ""),
+                api_key=getattr(settings, "API_KEY", ""),
             )
             logger.info("✅ SDK Pipeline initialized — /pipeline/run/sdk available")
         except Exception as _sdk_exc:
@@ -1017,9 +1020,10 @@ async def lifespan(app: FastAPI):
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_scheduler_router_scheduler(scheduler)
-    inject_pipeline_deps(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker)
+    inject_pipeline_deps(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline)
     # Morning brief deps
     inject_morning_brief_deps(data_manager, paper_tracker, safety_layer)
+    inject_hp_deps(data_manager, settings)
 
     # Initialize Signal Scanner
     try:
@@ -1566,6 +1570,7 @@ app.include_router(scanner_router)
 app.include_router(scheduler_router)
 app.include_router(wfe_router)
 app.include_router(discovery_router)
+app.include_router(hidden_pivots_router)
 app.include_router(v1_router)
 
 
