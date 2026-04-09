@@ -160,9 +160,13 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         Returns the top-20 trending tickers from the engine's /sentiment/reddit endpoint.
         Falls back to empty dict on any error so the pipeline is never blocked.
         """
+        _api_key = os.environ.get("API_KEY", "")
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get("http://localhost:8010/sentiment/reddit")
+                resp = await client.get(
+                    "http://localhost:8010/sentiment/reddit",
+                    headers={"x-api-key": _api_key},
+                )
                 if resp.status_code == 200:
                     return resp.json()
                 logger.debug(f"Engine reddit sentiment returned {resp.status_code}")
@@ -175,9 +179,13 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         Fetch news sentiment for the given symbol from the engine's news endpoint.
         Returns sentiment dict or empty dict on any error.
         """
+        _api_key = os.environ.get("API_KEY", "")
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(f"http://localhost:8010/sentiment/news/{symbol}")
+                resp = await client.get(
+                    f"http://localhost:8010/sentiment/news/{symbol}",
+                    headers={"x-api-key": _api_key},
+                )
                 if resp.status_code == 200:
                     return resp.json()
                 logger.debug(

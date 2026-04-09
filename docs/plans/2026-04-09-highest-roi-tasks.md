@@ -1,5 +1,7 @@
 # JARVIS Trader — Highest ROI Tasks Implementation Plan
 
+> **Reconciliation (2026-04-10):** Reconcile git/commit counts in Task 1 with `origin/master` before running verbatim — strategic push and HP tests may have landed. Kill-switch **persistence** is **mitigated** in code (`system_state` + tests); treat that bullet as **verify/closed**. See [docs/strategic/05_RISK_REGISTER.md](../strategic/05_RISK_REGISTER.md) and [SECURITY_OPERATOR_CHECKLIST.md](../runbooks/SECURITY_OPERATOR_CHECKLIST.md).
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Close the four highest-risk gaps in the JARVIS engine: git data-loss risk, zero HP test coverage, zombie PID restart fragility, and safety layer verification.

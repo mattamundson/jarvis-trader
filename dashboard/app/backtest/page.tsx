@@ -488,7 +488,7 @@ export default function BacktestPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1400px] flex items-center gap-3 px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center gap-3 px-6 py-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
             <Activity className="h-5 w-5 text-accent" />
           </div>
@@ -510,7 +510,7 @@ export default function BacktestPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
         {/* Strategy Parameters reference card */}
         <StrategyParamsCard />
 

@@ -58,5 +58,5 @@
 | MCL | 1h | 0.82 | APPROVED — paper active |
 | MNQ | 1h | 0.57 | APPROVED — paper active |
 | MGC | 1d | 0.14 | HALTED |
-| MES | 1h | 0.09 | DO NOT TRADE |
+| MES | 1h | 0.09 | PAPER — walk-forward in progress (authorized 2026-04-09, Tier 3) |
 | SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 |

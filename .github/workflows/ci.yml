@@ -97,6 +97,9 @@ jobs:
         run: |
           pip install -q -r engine/requirements-core.txt
 
+      - name: Strategic metrics snapshot script
+        run: python scripts/strategic_snapshot.py
+
       - name: Run pytest (-m "not slow")
         run: |
           pytest engine/tests/ -m "not slow" \

@@ -34,7 +34,7 @@ export default function StatsPage() {
     <div className="min-h-screen bg-background">
       {/* Sticky header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1400px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
               <BarChart3 className="h-5 w-5 text-accent" />
@@ -62,7 +62,7 @@ export default function StatsPage() {
       </header>
 
       {/* Page content */}
-      <main className="mx-auto max-w-[1400px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 
         {/* Row 1 — full width summary */}
         <SectionDivider title="Performance Overview" />

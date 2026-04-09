@@ -23,7 +23,7 @@
 | P0-1 | IB Gateway paper path E2E | Connect → trade or sim path → positions visible in engine + dashboard consistent with broker | [P0_PAPER_IB_VERIFICATION.md](../runbooks/P0_PAPER_IB_VERIFICATION.md) completed once; notes in session log |
 | P0-2 | Single source of truth for paper | Documented default SoT; dashboard widgets use it; optional `paper_runner` → engine sync env path tested or explicitly deprecated | ADR or runbook section + one reconciliation check |
 
-**Related risks:** [RISK-004](05_RISK_REGISTER.md), [RISK-006](05_RISK_REGISTER.md).
+**Related risks:** [RISK-004](05_RISK_REGISTER.md), [RISK-006](05_RISK_REGISTER.md). **SoT doc:** [PAPER_SOURCE_OF_TRUTH.md](../runbooks/PAPER_SOURCE_OF_TRUTH.md).
 
 ---
 

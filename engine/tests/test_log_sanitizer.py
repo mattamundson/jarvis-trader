@@ -95,6 +95,24 @@ class TestSanitizeMessage:
         assert "AAABBBCCCDDDEEEFFFGGGHHH" not in result
         assert "ZZZYYYXXXWWWVVV" not in result
 
+    def test_bearer_token_masked(self):
+        msg = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+        result = sanitize_message(msg)
+        assert "Bearer ***" in result
+        assert "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" not in result
+
+    def test_sk_proj_masked(self):
+        msg = "key sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcd"
+        result = sanitize_message(msg)
+        assert "sk-proj-***" in result
+        assert "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcd" not in result
+
+    def test_polygon_env_assignment_masked(self):
+        msg = "POLYGON_API_KEY=abcdefghijklmnopqrstuvwxyz1234567890"
+        result = sanitize_message(msg)
+        assert "POLYGON_API_KEY=***" in result
+        assert "abcdefghijklmnopqrstuvwxyz1234567890" not in result
+
     def test_signal_patterns_not_applied_by_default(self):
         msg = "Entry: 5000.00, Stop: 4900.00"
         result = sanitize_message(msg)

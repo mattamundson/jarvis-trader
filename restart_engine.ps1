@@ -26,7 +26,8 @@ function Kill-WSL2SafePids8010 {
 
     if (-not $netstatPids) { return }
 
-    $winPids = (Get-Process python* -ErrorAction SilentlyContinue).Id
+    # Match any live Windows PID (not only python*) so listeners under other hosts still resolve.
+    $winPids = (Get-Process -ErrorAction SilentlyContinue).Id
     $toKill = $netstatPids | Where-Object { $winPids -contains [int]$_ }
 
     foreach ($p in $toKill) {
@@ -80,6 +81,17 @@ Write-Host "Using IBKR client ID: $clientId"
 
 Write-Host "Starting engine..."
 $env:PYTHONUTF8 = "1"
+
+# Load .env into current session so Start-Process inherits correct values.
+# This overrides any stale system env vars (e.g., POLYGON_API_KEY=test, API_KEY=test-key).
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^([A-Z][A-Z0-9_]*)=(.*)$') {
+            $k = $matches[1]; $v = $matches[2].Trim('"').Trim("'")
+            Set-Item -Path "Env:\$k" -Value $v
+        }
+    }
+}
 
 if ($taskExists) {
     Write-Host "Starting via Task Scheduler (no admin required)..."

@@ -7,7 +7,7 @@
 | MCL | 1h | 0.82 | **APPROVED** — paper trading active |
 | MNQ | 1h | 0.57 | **APPROVED** — paper trading active |
 | MGC | 1d | 0.14 | **HALTED** — overfit/small-sample |
-| MES | 1h | 0.09 | **DO NOT TRADE** — overfit |
+| MES | 1h | 0.09 | **PAPER** — authorized 2026-04-09, WFE improvement pending |
 
 ## Capital & Validation Gates
 

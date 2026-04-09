@@ -32,6 +32,14 @@ def _venv_python(root: Path) -> Path | None:
     return None
 
 
+def _pytest_python(root: Path) -> Path:
+    """Prefer engine venv; fall back to current interpreter (CI with pip install)."""
+    v = _venv_python(root)
+    if v is not None:
+        return v
+    return Path(sys.executable)
+
+
 def main() -> int:
     root = _repo_root()
     main_py = root / "engine" / "main.py"
@@ -64,12 +72,12 @@ def main() -> int:
         )
 
     pytest_collected: int | None = None
-    venv_py = _venv_python(root)
-    if venv_py and tests_dir.is_dir():
+    pytest_py = _pytest_python(root)
+    if tests_dir.is_dir():
         try:
             proc = subprocess.run(
                 [
-                    str(venv_py),
+                    str(pytest_py),
                     "-m",
                     "pytest",
                     str(tests_dir),

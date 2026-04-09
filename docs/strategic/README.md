@@ -63,6 +63,10 @@ Then cross-check against [Unified Canon](../JARVIS_TRADER_UNIFIED_CANON.md) and 
 | Key rotation / secrets | [SECURITY_REMEDIATION.md](../runbooks/SECURITY_REMEDIATION.md) + [API_KEY_ROTATION.md](../runbooks/API_KEY_ROTATION.md) |
 | Daily ops | [daily_ops.md](../runbooks/daily_ops.md) |
 | Engine restart / incidents | [docs/troubleshooting.md](../troubleshooting.md) (repo root: `docs/troubleshooting.md`) |
+| Security operator checklist | [SECURITY_OPERATOR_CHECKLIST.md](../runbooks/SECURITY_OPERATOR_CHECKLIST.md) |
+| Paper source of truth | [PAPER_SOURCE_OF_TRUTH.md](../runbooks/PAPER_SOURCE_OF_TRUTH.md) |
+| IB reconnect + health | [IB_RECONNECT_AND_HEALTH.md](../runbooks/IB_RECONNECT_AND_HEALTH.md) |
+| Health / safety JSON contract | [HEALTH_API_CONTRACT.md](../runbooks/HEALTH_API_CONTRACT.md) |
 
 ---
 

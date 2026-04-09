@@ -21,6 +21,7 @@ captured in pipeline_result["errors"].
 import asyncio
 import datetime as _dt
 import logging
+import os
 import uuid
 from datetime import datetime
 from typing import Any, Optional
@@ -119,9 +120,12 @@ async def _check_vix_extreme() -> bool:
     try:
         import aiohttp
 
+        _api_key = os.environ.get("API_KEY", "")
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                "http://localhost:8010/macro/snapshot", timeout=aiohttp.ClientTimeout(total=3)
+                "http://localhost:8010/macro/snapshot",
+                headers={"x-api-key": _api_key},
+                timeout=aiohttp.ClientTimeout(total=3),
             ) as resp:
                 if resp.status != 200:
                     return False
@@ -289,7 +293,7 @@ async def pre_filter_signal(
             )
 
         # ── Check 3: MTF misalignment ─────────────────────────────────────
-        if _data_mgr is not None and await _check_mtf_misalignment(
+        if _data_mgr is not None and _cfg.MTF_FILTER_ENABLED and await _check_mtf_misalignment(
             symbol, timeframe, is_futures, _data_mgr
         ):
             logger.info("[pre_filter_signal] %s SKIP — MTF misalignment (4h vs 1h STC)", symbol)

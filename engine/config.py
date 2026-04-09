@@ -177,6 +177,13 @@ class TradingConfig(BaseSettings):
     STC_MIDRANGE_SKIP_HIGH: float = Field(
         83.0, description="STC above this value bypasses pipeline (set to OB threshold)"
     )
+    MTF_FILTER_ENABLED: bool = Field(
+        True,
+        description=(
+            "Enable MTF (multi-timeframe) 4h vs 1h STC alignment pre-filter. "
+            "Set to False to bypass when market data is stale or IB Gateway is offline."
+        ),
+    )
 
     # ── STC Signal Thresholds (Schaff Trend Cycle) ────────────────────────
     # Canonical OS/OB levels used by the pre-filter and signal generators.
@@ -305,8 +312,8 @@ class TradingConfig(BaseSettings):
     FUTURES_WATCHLIST: Union[str, list[str]] = Field(
         default="MCL,MNQ,MES",
         description="Micro futures contracts to trade (comma-separated or list). "
-        "MCL first (WFE=0.82), MNQ second (WFE=0.57). MES last (WFE=0.09, data-collection only). "
-        "[:2] slice used by watchlist scheduler must yield MCL+MNQ.",
+        "MCL first (WFE=0.82), MNQ second (WFE=0.57), MES third (WFE=0.09, paper trading authorized Tier 3 2026-04-09). "
+        "All three are active in the FuturesMarketModule.",
     )
     # Options module: dry-run in paper before enabling live routing; see docs/backlog/EPICS_12_17_FOLLOWONS.md
     OPTIONS_WATCHLIST: Union[str, list[str]] = Field(

@@ -1,8 +1,10 @@
 # JARVIS TRADER — Current System State
 
-**Status:** Hardening Phase | **Mode:** Paper Trading Validation | **Last Updated:** April 2, 2026
+**Status:** Hardening Phase | **Mode:** Paper Trading Validation | **Last Updated:** April 10, 2026
 
 **See also:** [Strategic command center (index)](strategic/README.md) — executive brief, system map, risk register, execution spine, and analysis passes.
+
+**New runbooks (2026-04-10):** [SECURITY_OPERATOR_CHECKLIST.md](runbooks/SECURITY_OPERATOR_CHECKLIST.md) · [PAPER_SOURCE_OF_TRUTH.md](runbooks/PAPER_SOURCE_OF_TRUTH.md) · [IB_RECONNECT_AND_HEALTH.md](runbooks/IB_RECONNECT_AND_HEALTH.md) · [HEALTH_API_CONTRACT.md](runbooks/HEALTH_API_CONTRACT.md)
 
 ---
 
