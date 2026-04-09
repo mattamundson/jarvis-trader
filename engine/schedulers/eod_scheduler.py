@@ -20,6 +20,49 @@ logger = logging.getLogger("jarvis_trader.eod_scheduler")
 _DEFAULT_STARTING_BALANCE = 10_000.0
 
 
+async def _check_wfe_decay(symbol: str, wfe_value: float) -> None:
+    """Fire alert if WFE drops below decay thresholds."""
+    if wfe_value >= 0.50:
+        return  # WFE healthy — no alert needed
+
+    if wfe_value < 0.30:
+        severity = "CRITICAL"
+        msg = (
+            f"CRITICAL: {symbol} WFE dropped to {wfe_value:.2f} — below 0.30 fail threshold. "
+            f"Strategy edge has degraded. Manual review required. Trading should be halted."
+        )
+    else:
+        severity = "WARNING"
+        msg = (
+            f"WARNING: {symbol} WFE is {wfe_value:.2f} — below 0.50 warn threshold. "
+            f"Strategy edge is weakening. Monitor closely."
+        )
+
+    logger.warning("[EOD] WFE decay alert for %s: severity=%s wfe=%.2f", symbol, severity, wfe_value)
+
+    # Discord alert
+    try:
+        from notifications.discord_notifier import discord_validation_alert
+
+        await discord_validation_alert(
+            gate_name=f"wfe_decay_{symbol.lower()}",
+            old_status="PASS",
+            new_status=severity,
+            current_value=wfe_value,
+            target_value=0.50,
+        )
+    except Exception as exc:
+        logger.debug("[EOD] Discord WFE alert failed (non-fatal): %s", exc)
+
+    # WhatsApp / OpenClaw alert
+    try:
+        from notifications.openclaw_notifier import send_raw
+
+        await send_raw(msg)
+    except Exception as exc:
+        logger.debug("[EOD] OpenClaw WFE alert failed (non-fatal): %s", exc)
+
+
 async def _save_wfe_snapshots() -> None:
     """Save WFE snapshots for paper-validated instruments via the engine API."""
     import httpx
@@ -37,6 +80,15 @@ async def _save_wfe_snapshots() -> None:
                     timeout=30.0,
                 )
                 logger.info("[EOD] WFE snapshot saved for %s: %s", symbol, resp.status_code)
+                # Check for WFE decay in the snapshot response
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                        wfe_val = data.get("wfe_score") or data.get("wfe") or data.get("value")
+                        if wfe_val is not None:
+                            await _check_wfe_decay(symbol, float(wfe_val))
+                    except Exception as _parse_exc:
+                        logger.debug("[EOD] WFE decay check parse error for %s: %s", symbol, _parse_exc)
         except Exception as exc:
             logger.warning("[EOD] WFE snapshot failed for %s: %s", symbol, exc)
 

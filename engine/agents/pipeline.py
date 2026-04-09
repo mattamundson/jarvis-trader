@@ -482,6 +482,48 @@ class TradingPipeline:
             await self.profiler.end_stage("debate")
         pipeline_result["debate_result"] = debate_result
 
+        # Adversarial scoring: if the debate is INCONCLUSIVE force HOLD
+        # immediately without consulting the TraderAgent.
+        debate_verdict = debate_result.get("verdict", "")
+        debate_score = debate_result.get("debate_score", 0.0)
+        if debate_verdict == "INCONCLUSIVE" and not debate_result.get("scoring_failed", False):
+            logger.info(
+                f"[Pipeline] {symbol} — debate INCONCLUSIVE "
+                f"(debate_score={debate_score:+.3f}); forcing HOLD before TraderAgent"
+            )
+            hold_decision: dict = {
+                "action": "hold",
+                "quantity": 0,
+                "confidence": 0.0,
+                "reasoning": (
+                    f"Debate inconclusive (score={debate_score:+.3f}). "
+                    "Bull and bear cases are too evenly matched — holding."
+                ),
+                "risk_notes": "Forced HOLD by debate scoring",
+                "timestamp": datetime.now().isoformat(),
+                "forced_hold": True,
+                "debate_score": debate_score,
+                "debate_verdict": debate_verdict,
+            }
+            pipeline_result["trade_decision"] = hold_decision
+            pipeline_result["risk_decision"] = {
+                "approved": False,
+                "reason": "Forced HOLD — debate inconclusive",
+                "forced_hold": True,
+            }
+            pipeline_result["fund_decision"] = None
+            pipeline_result["final_action"] = "hold"
+            pipeline_result["final_quantity"] = 0
+            pipeline_result["requires_human_approval"] = False
+            pipeline_result["completed_at"] = datetime.now().isoformat()
+            pipeline_result["errors"] = errors
+            return pipeline_result
+
+        logger.info(
+            f"[Pipeline] {symbol} — debate verdict={debate_verdict or 'N/A'} "
+            f"debate_score={debate_score:+.3f}; proceeding to TraderAgent"
+        )
+
         # ── Stage 3: Trader Decision ───────────────────────────────────────
 
         if self.profiler:

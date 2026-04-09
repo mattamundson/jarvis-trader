@@ -1363,6 +1363,31 @@ async def lifespan(app: FastAPI):
     except Exception as _sync_err:
         logger.warning(f"SafetyLayer equity sync job init failed (non-fatal): {_sync_err}")
 
+    # ── RL executor — MES paper validation (experimental, non-blocking) ───────
+    try:
+        from pathlib import Path as _RLPath
+        from strategies.rl_executor import RLExecutor
+
+        _rl_model_dir = _RLPath(__file__).parent / "data" / "rl_models"
+        _mes_models = sorted(_rl_model_dir.glob("MES_*.zip"))
+        if _mes_models:
+            _latest_mes_model = str(_mes_models[-1]).removesuffix(".zip")
+            _rl_executor = RLExecutor(
+                symbol="MES",
+                model_path=_latest_mes_model,
+                data_manager=data_manager,
+                safety_layer=safety_layer,
+            )
+            _rl_executor.start()  # sync — starts BackgroundScheduler thread (non-blocking)
+            logger.info(
+                "RL executor started — MES paper validation running (model: %s)",
+                _mes_models[-1].name,
+            )
+        else:
+            logger.warning("[RL Executor] No MES model found in data/rl_models/ — skipping")
+    except Exception as _rl_err:
+        logger.warning("[RL Executor] Could not start: %s — continuing without RL", _rl_err)
+
     # ── Weekly strategy discovery ──────────────────────────────────────────────
     try:
         async def _run_weekly_discovery() -> None:
