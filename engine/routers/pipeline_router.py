@@ -116,6 +116,28 @@ async def get_signal_debug():
     return {"entries": list(_signal_debug_log), "count": len(_signal_debug_log)}
 
 
+@router.post("/cache/invalidate/{symbol}")
+async def invalidate_cache(symbol: str):
+    """Invalidate the signal cache for a specific symbol.
+
+    Forces the next pipeline run for this symbol to bypass the cache
+    and fetch fresh data + re-run all agents.
+    """
+    from cache.signal_cache import invalidate_signal
+
+    ok = await invalidate_signal(symbol.upper())
+    return {"invalidated": ok, "symbol": symbol.upper()}
+
+
+@router.post("/cache/invalidate-all")
+async def invalidate_all_cache():
+    """Invalidate the entire signal cache (all symbols)."""
+    from cache.signal_cache import invalidate_all
+
+    ok = await invalidate_all()
+    return {"invalidated": ok}
+
+
 @router.post("/notifications/telegram/test")
 async def test_telegram():
     """Test Telegram notification config"""

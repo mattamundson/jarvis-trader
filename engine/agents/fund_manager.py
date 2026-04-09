@@ -83,7 +83,7 @@ class FundManagerAgent:
     to Matt but the pipeline does NOT forward it to execution.
     """
 
-    MODEL = "claude-opus-4-6"
+    MODEL = "claude-sonnet-4-6"
     MAX_TOKENS = 1600
 
     SYSTEM_PROMPT = (
