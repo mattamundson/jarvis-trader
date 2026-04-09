@@ -6,6 +6,7 @@ import { Brain, ArrowLeft, Play, RefreshCw, CheckCircle, XCircle, Clock, Zap, Ac
 import { fetchEngine, postEngine } from "@/lib/api";
 import { SectionHeader } from "./SectionHeader";
 import { HowItWorksPanel } from "./HowItWorksPanel";
+import { StrategyDiscoveryBrowser } from "@/components/StrategyDiscoveryBrowser";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -2236,6 +2237,9 @@ export default function StrategiesPage() {
           wfRunning={wfGridRunning}
           onRunWalkForward={handleRunWalkForward}
         />
+
+        {/* Strategy Discovery Browser */}
+        <StrategyDiscoveryBrowser />
 
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>

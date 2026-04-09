@@ -25,7 +25,10 @@ import { SessionTodayWidget } from "@/components/SessionTodayWidget";
 import { RollingWFEWidget } from "@/components/RollingWFEWidget";
 import { TradeJournalWidget } from "@/components/TradeJournalWidget";
 import { EODSummaryWidget } from "@/components/EODSummaryWidget";
+import { EventsFeedWidget } from '@/components/EventsFeedWidget';
 import UnrealizedPnLWidget from "@/components/UnrealizedPnLWidget";
+import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidget";
+import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -189,6 +192,9 @@ export default function DashboardPage() {
         {/* Circuit breaker safety panel — safety-critical, shown before trading panels */}
         <CircuitBreakerPanel />
 
+        {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
+        <ProactiveValidationWidget />
+
         {/* Walk-Forward / Paper Trading Status */}
         <WFEStatusCard />
 
@@ -268,6 +274,9 @@ export default function DashboardPage() {
             )}
 
             <SentimentPanel sentiments={sentiments ?? []} />
+
+            {/* Alert History — fired P&L threshold alerts */}
+            <AlertHistoryWidget />
 
             {/* Strategy Parameters */}
             <StrategyParamsPanel />
@@ -472,7 +481,6 @@ const FALLBACK_PAPER: Record<string, PaperStatusEntry> = {
   },
 };
 
-import { EventsFeedWidget } from '@/components/EventsFeedWidget';
 const FALLBACK_REGIME: Record<string, RegimeStatusEntry> = {
   "MGC_1d": { current_regime: "TRENDING" },
   "MNQ_1h": { current_regime: "RANGING" },

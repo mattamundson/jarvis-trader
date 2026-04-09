@@ -1363,6 +1363,43 @@ async def lifespan(app: FastAPI):
     except Exception as _sync_err:
         logger.warning(f"SafetyLayer equity sync job init failed (non-fatal): {_sync_err}")
 
+    # ── Weekly strategy discovery ──────────────────────────────────────────────
+    try:
+        async def _run_weekly_discovery() -> None:
+            """Saturday midnight: generate + evaluate one LLM strategy per active instrument."""
+            try:
+                from pathlib import Path as _Path
+                from strategies.discovery_loop import generate_strategy, evaluate_strategy_file
+
+                for _sym, _ivl in [("MCL", "1h"), ("MNQ", "1h")]:
+                    logger.info(f"[WeeklyDiscovery] Running cycle for {_sym}/{_ivl}")
+                    _path = await generate_strategy(symbol=_sym, interval=_ivl)
+                    if _path is None:
+                        logger.warning(f"[WeeklyDiscovery] No strategy generated for {_sym}")
+                        continue
+                    _result = evaluate_strategy_file(
+                        filename=_Path(_path).name, symbol=_sym, interval=_ivl
+                    )
+                    logger.info(
+                        f"[WeeklyDiscovery] {_sym} verdict={_result.get('verdict')} "
+                        f"sharpe={_result.get('sharpe', 0):.2f}"
+                    )
+            except Exception as _disc_err:
+                logger.error(f"[WeeklyDiscovery] Failed: {_disc_err}", exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_weekly_discovery,
+                CronTrigger(day_of_week="sat", hour=0, minute=0, timezone="America/Chicago"),
+                id="weekly_discovery",
+                name="Weekly Strategy Discovery",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("Weekly strategy discovery job registered (Saturday 00:00 Chicago)")
+    except Exception as _weekly_err:
+        logger.warning(f"Weekly discovery job init failed (non-fatal): {_weekly_err}")
+
     logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
