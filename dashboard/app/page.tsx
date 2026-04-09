@@ -30,6 +30,7 @@ import UnrealizedPnLWidget from "@/components/UnrealizedPnLWidget";
 import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidget";
 import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
+import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -278,6 +279,9 @@ export default function DashboardPage() {
 
             {/* Alert History — fired P&L threshold alerts */}
             <AlertHistoryWidget />
+
+            {/* Discord Intelligence — Corey Auction Tools signal context */}
+            <DiscordIntelligenceWidget />
 
             {/* Strategy Parameters */}
             <StrategyParamsPanel />

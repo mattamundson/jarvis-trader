@@ -32,9 +32,13 @@ from strategies.rl_config import (
     TRAIN_LOOKBACK_DAYS,
     VALIDATION_GATES,
 )
+from discord.signal_context import DiscordSignalContext
 from strategies.rl_environment import build_env, prepare_dataframe
 
 logger = logging.getLogger(__name__)
+
+# Module-level Discord context singleton (shared across all training runs)
+_discord_ctx = DiscordSignalContext()
 
 
 # ── Stop event (module-level so the API can trigger graceful abort) ───────────
@@ -198,8 +202,14 @@ class RLTrainer:
                 df=df_train,
                 max_episode_bars=MAX_EPISODE_BARS,
                 reward_config=reward_config,
+                discord_context=_discord_ctx,
             )
-            test_env = build_env(symbol=symbol, df=df_test, max_episode_bars=len(df_test))
+            test_env = build_env(
+                symbol=symbol,
+                df=df_test,
+                max_episode_bars=len(df_test),
+                discord_context=_discord_ctx,
+            )
 
             # ── 5. Train agent ───────────────────────────────────────────────
             if _stop_event.is_set():
@@ -622,6 +632,7 @@ class RLTrainer:
         timesteps: int,
         window_idx: int,
         reward_config: dict | None = None,
+        discord_context=None,
     ) -> dict:
         """
         Synchronous train + evaluate for a single walk-forward window.
@@ -637,8 +648,14 @@ class RLTrainer:
             df=df_train,
             max_episode_bars=MAX_EPISODE_BARS,
             reward_config=reward_config,
+            discord_context=discord_context,
         )
-        test_env = build_env(symbol=symbol, df=df_test, max_episode_bars=len(df_test))
+        test_env = build_env(
+            symbol=symbol,
+            df=df_test,
+            max_episode_bars=len(df_test),
+            discord_context=discord_context,
+        )
 
         agent = RLTradingAgent(symbol=symbol, env=train_env)
         training_summary = agent.train(timesteps)
@@ -648,7 +665,12 @@ class RLTrainer:
         # IS evaluation — evaluate trained agent on full training data to get IS profit_factor
         # Used by train_walkforward to compute WFE = avg(OOS_pf) / avg(IS_pf)
         try:
-            is_eval_env = build_env(symbol=symbol, df=df_train, max_episode_bars=len(df_train))
+            is_eval_env = build_env(
+                symbol=symbol,
+                df=df_train,
+                max_episode_bars=len(df_train),
+                discord_context=discord_context,
+            )
             is_metrics = agent.evaluate(is_eval_env, n_episodes=1)
         except Exception as is_err:
             logger.warning(f"[RLTrainer.WF] Window {window_idx} IS eval failed: {is_err}")

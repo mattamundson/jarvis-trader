@@ -405,6 +405,40 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 
         return indicators
 
+    async def _get_discord_context(self, symbol: str, current_price: float, atr: float) -> str:
+        """
+        Fetch active Discord signal context for the LLM prompt.
+        Returns formatted block when a signal is active; '' otherwise. Never raises.
+        """
+        try:
+            from zoneinfo import ZoneInfo
+            from discord.signal_context import DiscordSignalContext
+
+            ctx = DiscordSignalContext()
+            features = ctx.get_features(
+                symbol=symbol,
+                timestamp=datetime.now(tz=ZoneInfo("America/Chicago")),
+                price=max(float(current_price), 0.01),
+                atr=max(float(atr), 1.0),
+                jarvis_bias="NEUTRAL",
+            )
+            if features.get("discord_signal_active", 0) < 0.5:
+                return ""
+            win_rate = features.get("discord_win_rate_context", 0.0)
+            prox_entry = features.get("discord_proximity_entry", 0.0)
+            prox_target = features.get("discord_proximity_target", 0.0)
+            alignment = features.get("discord_alignment", 0.0)
+            align_str = "ALIGNED" if alignment > 0.5 else ("OPPOSED" if alignment < -0.5 else "NEUTRAL")
+            return (
+                f"\nDISCORD INTELLIGENCE (Corey Auction Tools — 30-day context):\n"
+                f"- Signal Active: YES | Bot Win Rate: {win_rate:.0%}\n"
+                f"- Proximity to Entry: {prox_entry:+.2f} ATR | To Target: {prox_target:.2f} ATR\n"
+                f"- Alignment with Jarvis Bias: {align_str}\n"
+            )
+        except Exception as exc:
+            logger.debug(f"[DISCORD_CTX] skipped: {exc}")
+            return ""
+
     async def _llm_synthesize(
         self,
         symbol: str,
@@ -446,9 +480,34 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 logger.debug(f"[LEARNING] Recommendation injection skipped: {lc_err}")
                 # Continue normally without learning context
 
+        # Discord sentiment multiplier from Corey Auction Tools commentary
+        discord_sentiment_line = ""
+        try:
+            from discord.sentiment_provider import SentimentProvider
+
+            _sp = SentimentProvider()
+            today = datetime.now().date()
+            sentiment_score = _sp.get_sentiment(today)
+            sentiment_mult = _sp.get_regime_multiplier(today)
+            if sentiment_score != 0.0:
+                bias_word = "BULLISH" if sentiment_score > 0.1 else ("BEARISH" if sentiment_score < -0.1 else "NEUTRAL")
+                discord_sentiment_line = (
+                    f"\nDISCORD EXPERT SENTIMENT (Corey Auction Tools): {bias_word} "
+                    f"(score {sentiment_score:+.2f}) | Regime Confidence Multiplier: {sentiment_mult:.2f}x"
+                )
+        except Exception:
+            pass  # Sentiment is enrichment — never block analysis
+
+        # Inject active Discord signal context (non-blocking)
+        discord_signal_str = await self._get_discord_context(
+            symbol,
+            float(indicators.get("current_price", 0.0) or 0.0),
+            float(indicators.get("atr", 1.0) or 1.0),
+        )
+
         prompt = f"""Analyze these technical indicators for {symbol} on {timeframe} timeframe:
 
-{learning_context}
+{learning_context}{discord_sentiment_line}{discord_signal_str}
 
 Current Price: ${indicators.get("current_price", "N/A")}
 Price Change (20 bars): {indicators.get("price_change_pct", "N/A"):.1f}%
@@ -480,7 +539,7 @@ VOLUME:
 KEY LEVELS:
 - Support: {indicators.get("support_levels", [])}
 - Resistance: {indicators.get("resistance_levels", [])}
-{self._format_composite_section(indicators)}
+{self._format_composite_section(indicators)}{discord_sentiment_line}
 Respond with JSON in exactly this format:
 {{
   "signal": <float -1.0 to 1.0>,

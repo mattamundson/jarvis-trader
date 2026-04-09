@@ -11,10 +11,22 @@ Layers wired:
 
 from __future__ import annotations
 
+import logging
 from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+try:
+    from discord.ib_levels import IBLevelProvider as _IBLevelProvider
+
+    _ib_provider = _IBLevelProvider()
+    _IB_AVAILABLE = True
+except Exception:
+    _ib_provider = None  # type: ignore[assignment]
+    _IB_AVAILABLE = False
 
 from .indicators import (
     cci,
@@ -503,6 +515,40 @@ def generate_signals(
     """
     df = compute_all_indicators(df)
 
+    # ── Discord IB extension levels (additive enrichment) ────────────────
+    # Populate discord_ibu50/ibu100/ibd50/ibd100 columns from historical
+    # IB reports in discord_ib_reports. One DB lookup per unique date (cached).
+    # layer2_structure() reads these columns; they are None when unavailable.
+    if _IB_AVAILABLE and symbol is not None:
+        try:
+            discord_sym = {"MNQ": "NQ", "MCL": "CL", "MES": "ES", "MGC": "GC"}.get(
+                symbol.upper(), symbol.upper()
+            )
+            for col in ("discord_ibu50", "discord_ibu100", "discord_ibd50", "discord_ibd100"):
+                if col not in df.columns:
+                    df[col] = None
+
+            # Batch by date — one query per unique trading date
+            if hasattr(df.index, "date"):
+                unique_dates = df.index.date
+            else:
+                unique_dates = [None] * len(df)
+
+            _date_cache: dict = {}
+            for i, bar_date in enumerate(unique_dates):
+                if bar_date is None:
+                    continue
+                if bar_date not in _date_cache:
+                    _date_cache[bar_date] = _ib_provider.get_levels(discord_sym, bar_date)
+                lvl = _date_cache[bar_date]
+                if lvl:
+                    df.iloc[i, df.columns.get_loc("discord_ibu50")] = lvl.get("ibu50")
+                    df.iloc[i, df.columns.get_loc("discord_ibu100")] = lvl.get("ibu100")
+                    df.iloc[i, df.columns.get_loc("discord_ibd50")] = lvl.get("ibd50")
+                    df.iloc[i, df.columns.get_loc("discord_ibd100")] = lvl.get("ibd100")
+        except Exception:
+            pass  # IB level enrichment is additive — never block signal generation
+
     # ── Optional regime-adaptive STC classification ───────────────────────
     if adaptive_regime:
         from backtest.regime import RegimeClassifier
@@ -741,3 +787,32 @@ def compute_position_size(
         multiplier = SIZING_MIN
 
     return round(base_risk_pct * multiplier, 6)
+
+
+def inject_ib_levels(df: pd.DataFrame, symbol: str, db_path: str | None = None) -> pd.DataFrame:
+    """Opt-in: inject Discord IB levels as additive discord_ columns. No-op on any error."""
+    for c in ("discord_ibu50", "discord_ibu100", "discord_ibd50", "discord_ibd100"):
+        if c not in df.columns:
+            df[c] = None
+    try:
+        from discord.ib_levels import IBLevelProvider
+        sym = IBLevelProvider.SYMBOL_MAP.get(symbol.upper(), symbol.upper())
+        p = (_ib_provider if _IB_AVAILABLE and db_path is None else IBLevelProvider(db_path=db_path))
+        dates = df.index.date if hasattr(df.index, "date") else [None] * len(df)
+        seen: dict = {}
+        for i, dt in enumerate(dates):
+            if dt and dt not in seen:
+                try:
+                    seen[dt] = p.get_levels(sym, dt)
+                except Exception:
+                    seen[dt] = None
+            lv = seen.get(dt)
+            if lv:
+                for k, c in zip(
+                    ("ibu50", "ibu100", "ibd50", "ibd100"),
+                    ("discord_ibu50", "discord_ibu100", "discord_ibd50", "discord_ibd100"),
+                ):
+                    df.at[df.index[i], c] = lv.get(k)
+    except Exception as exc:
+        logger.warning(f"[IB_LEVELS] inject_ib_levels error: {exc}")
+    return df
