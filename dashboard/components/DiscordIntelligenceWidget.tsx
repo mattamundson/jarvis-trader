@@ -1,144 +1,141 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import EngineWidget from "@/components/EngineWidget";
-import { DiscordIntelligenceStatus } from "@/lib/api";
+import useSWR from "swr";
+import { fetchEngine } from "@/lib/api";
+import type { DiscordIntelligenceStatus } from "@/lib/api";
 
-interface SymbolIntelligence {
+function fetcher<T>(url: string): Promise<T> {
+  return fetchEngine<T>(url);
+}
+
+function SignalPill({ active }: { active: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${
+        active
+          ? "bg-bull/15 text-bull border border-bull/30"
+          : "bg-muted/40 text-muted-foreground border border-border"
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${active ? "bg-bull animate-pulse" : "bg-muted-foreground/40"}`}
+      />
+      {active ? "ACTIVE" : "INACTIVE"}
+    </span>
+  );
+}
+
+function AlignmentPill({ alignment }: { alignment: number }) {
+  if (alignment > 0.5) {
+    return (
+      <span className="inline-flex items-center rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-bull/15 text-bull border border-bull/30">
+        ALIGNED
+      </span>
+    );
+  }
+  if (alignment < -0.5) {
+    return (
+      <span className="inline-flex items-center rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-bear/15 text-bear border border-bear/30">
+        OPPOSED
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-warn/15 text-warn border border-warn/30">
+      NEUTRAL
+    </span>
+  );
+}
+
+function SymbolCard({
+  symbol,
+  features,
+}: {
   symbol: string;
-  discord_signal_active: number;
-  discord_win_rate_context: number;
-  discord_proximity_entry: number;
-  discord_proximity_target: number;
-  discord_alignment: number;
-}
-
-function getSignalBadgeVariant(
-  isActive: number
-): "bull" | "bear" | "warn" | "info" | "neutral" {
-  return isActive > 0.5 ? "bull" : "neutral";
-}
-
-function getAlignmentBadgeVariant(
-  alignment: number
-): "bull" | "bear" | "warn" | "info" | "neutral" {
-  if (alignment > 0.5) return "bull";
-  if (alignment < -0.5) return "bear";
-  return "neutral";
-}
-
-function getAlignmentText(alignment: number): string {
-  if (alignment > 0.5) return "ALIGNED";
-  if (alignment < -0.5) return "OPPOSED";
-  return "NEUTRAL";
-}
-
-function SymbolCard({ symbol, data }: { symbol: string; data: SymbolIntelligence }) {
-  const isActive = data.discord_signal_active > 0.5;
-  const winRate = Math.round(data.discord_win_rate_context * 100);
-  const alignment = data.discord_alignment;
+  features: DiscordIntelligenceStatus["symbols"][string];
+}) {
+  const active = (features.discord_signal_active ?? 0) > 0.5;
+  const winRate = features.discord_win_rate_context ?? 0;
+  const proxEntry = features.discord_proximity_entry ?? 0;
+  const proxTarget = features.discord_proximity_target ?? 0;
+  const alignment = features.discord_alignment ?? 0;
 
   return (
-    <div
-      className="rounded-lg p-4"
-      style={{
-        backgroundColor: "#0a0a0a",
-        border: "1px solid #1a1a2e",
-      }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-mono font-bold text-sm">{symbol}</h3>
-        <Badge variant={getSignalBadgeVariant(data.discord_signal_active)}>
-          {isActive ? "ACTIVE" : "INACTIVE"}
-        </Badge>
+    <div className="rounded-lg border border-border bg-card/50 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-xs font-bold text-foreground">{symbol}</span>
+        <SignalPill active={active} />
       </div>
 
-      <div className="space-y-2 text-xs font-mono">
-        <div className="flex justify-between">
-          <span style={{ color: "#888" }}>Win Rate (30d):</span>
-          <span style={{ color: "#00ff88" }}>{winRate}%</span>
+      {active && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] text-muted-foreground">Win Rate</span>
+            <span className="font-mono text-[10px] font-semibold text-foreground tabular-nums">
+              {(winRate * 100).toFixed(0)}%
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] text-muted-foreground">Entry Prox</span>
+            <span className="font-mono text-[10px] font-semibold tabular-nums text-foreground">
+              {proxEntry >= 0 ? "+" : ""}{proxEntry.toFixed(2)} ATR
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] text-muted-foreground">Target Prox</span>
+            <span className="font-mono text-[10px] font-semibold tabular-nums text-foreground">
+              {proxTarget.toFixed(2)} ATR
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] text-muted-foreground">Alignment</span>
+            <AlignmentPill alignment={alignment} />
+          </div>
         </div>
+      )}
 
-        <div className="flex justify-between">
-          <span style={{ color: "#888" }}>Entry Proximity:</span>
-          <span style={{ color: "#aaa" }}>
-            {data.discord_proximity_entry >= 0 ? "+" : ""}
-            {data.discord_proximity_entry.toFixed(2)} ATR
-          </span>
-        </div>
-
-        <div className="flex justify-between">
-          <span style={{ color: "#888" }}>Target Distance:</span>
-          <span style={{ color: "#aaa" }}>{data.discord_proximity_target.toFixed(2)} ATR</span>
-        </div>
-
-        <div className="flex justify-between items-center pt-2 border-t border-[#1a1a2e]">
-          <span style={{ color: "#888" }}>Alignment:</span>
-          <Badge variant={getAlignmentBadgeVariant(alignment)}>
-            {getAlignmentText(alignment)}
-          </Badge>
-        </div>
-      </div>
+      {!active && (
+        <p className="font-mono text-[10px] text-muted-foreground/60">No active signal</p>
+      )}
     </div>
   );
 }
 
 export function DiscordIntelligenceWidget() {
+  const { data, error, isLoading } = useSWR<DiscordIntelligenceStatus>(
+    "/discord/intelligence",
+    fetcher,
+    { refreshInterval: 30_000, shouldRetryOnError: false }
+  );
+
   return (
-    <EngineWidget<DiscordIntelligenceStatus>
-      endpoint="/discord/intelligence"
-      title="Discord Intelligence"
-      refreshInterval={30_000}
-      render={(data) => {
-        const mcl = data.symbols.MCL ? {
-          symbol: "MCL",
-          ...data.symbols.MCL,
-        } as SymbolIntelligence : null;
-        const mnq = data.symbols.MNQ ? {
-          symbol: "MNQ",
-          ...data.symbols.MNQ,
-        } as SymbolIntelligence : null;
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Discord Intelligence
+        </p>
+        {data?.last_updated && (
+          <span className="font-mono text-[9px] text-muted-foreground/60">
+            {new Date(data.last_updated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
+      </div>
 
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Discord Intelligence</CardTitle>
-              <p className="font-mono text-xs" style={{ color: "#666", marginTop: "8px" }}>
-                Corey Auction Tools bot signals · Last: {new Date(data.last_updated).toLocaleTimeString()}
-              </p>
-            </CardHeader>
+      {isLoading && (
+        <p className="font-mono text-[10px] text-muted-foreground/60 animate-pulse">Loading...</p>
+      )}
 
-            <CardContent>
-              {mcl || mnq ? (
-                <div className="grid grid-cols-2 gap-3">
-                  {mcl && <SymbolCard symbol={mcl.symbol} data={mcl} />}
-                  {mnq && <SymbolCard symbol={mnq.symbol} data={mnq} />}
-                </div>
-              ) : (
-                <div
-                  className="rounded-lg p-4 text-center"
-                  style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}
-                >
-                  <p className="font-mono text-xs" style={{ color: "#666" }}>
-                    Discord data unavailable
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-      }}
-      fallback={
-        <div
-          className="rounded-lg p-4 text-center"
-          style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}
-        >
-          <p className="font-mono text-xs" style={{ color: "#666" }}>
-            Discord intelligence unavailable
-          </p>
+      {error && !isLoading && (
+        <p className="font-mono text-[10px] text-bear/70">Unavailable</p>
+      )}
+
+      {data && !error && (
+        <div className="grid grid-cols-2 gap-2">
+          {Object.entries(data.symbols).map(([sym, features]) => (
+            <SymbolCard key={sym} symbol={sym} features={features} />
+          ))}
         </div>
-      }
-    />
+      )}
+    </div>
   );
 }

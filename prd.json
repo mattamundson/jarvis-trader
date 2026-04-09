@@ -38,7 +38,7 @@
       "id": "US-2502",
       "title": "Wire IBLevelProvider into signals.py Layer 2 — real IB levels from Discord data",
       "priority": "P0",
-      "passes": false,
+      "passes": true,
       "goal": "signals.py Layer 2 currently approximates Initial Balance by using the previous bar's high/low as ib_high/ib_low. The Discord import contains actual IB levels (ibu50, ibu100, ibd50, ibd100) reported daily by the IB bot. After this story, when real IB levels are available for a symbol+date they replace the approximation. When unavailable the existing approximation remains — zero behavior change for symbols without Discord data.",
       "acceptanceCriteria": [
         "engine/backtest/signals.py: add a new function inject_ib_levels(df: pd.DataFrame, symbol: str, db_path: str | None = None) -> pd.DataFrame. This function is ADDITIVE — it adds 4 new optional columns to the dataframe: 'discord_ibu50', 'discord_ibu100', 'discord_ibd50', 'discord_ibd100'. It does NOT modify any existing columns (vpoc, ib_high, ib_low, etc.) and does NOT change any Tier 3 signal parameters.",
@@ -97,7 +97,7 @@
       "id": "US-2505",
       "title": "Sprint 25 close-out — full test suite, dashboard build, git commit",
       "priority": "P1",
-      "passes": false,
+      "passes": true,
       "goal": "All 4 feature stories verified end-to-end. Full test suite green. Dashboard build clean. Sprint 25 committed to master branch.",
       "acceptanceCriteria": [
         "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures across ALL test files (including pre-existing tests, Sprint 23 tests, Sprint 24 tests, and all 4 new Sprint 25 test files)",
