@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["DebateResult", "DebateOrchestrator"]
 
 # Scoring verdict thresholds
-_VERDICT_THRESHOLD = 0.2
+_VERDICT_THRESHOLD = 0.10
 
 
 @dataclass
@@ -196,6 +196,16 @@ class DebateOrchestrator:
             result.bull_weakest_point = bull_weakest
             result.bear_weakest_point = bear_weakest
             result.rounds_completed = 2
+
+            # Detect when BOTH scoring calls returned the failure default.
+            # In this case the 5/5 split is an artifact, not a real tie — set
+            # scoring_failed so the pipeline passes control to TraderAgent.
+            if bull_weakest == "Scoring unavailable" and bear_weakest == "Scoring unavailable":
+                logger.warning(
+                    f"[Debate] {symbol} — both _score_argument calls failed; "
+                    "treating as scoring failure (will not force HOLD)"
+                )
+                result.scoring_failed = True
 
             logger.info(f"[Debate] {symbol} — Round 3: rebuttals")
             bull_rebuttal, bear_rebuttal = await self._run_round_3(
