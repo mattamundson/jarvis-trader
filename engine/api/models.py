@@ -268,7 +268,7 @@ class RedditSentimentResponse(BaseModel):
     """Reddit trending tickers."""
 
     filter: str = Field("all-stocks", description="Filter applied")
-    tickers: List[str] = Field(default_factory=list, description="Trending tickers")
+    tickers: List[Dict[str, Any]] = Field(default_factory=list, description="Trending tickers")
 
 
 class NewsSentimentResponse(BaseModel):

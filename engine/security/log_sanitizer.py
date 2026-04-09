@@ -10,9 +10,17 @@ from typing import Optional
 
 # Patterns that match sensitive data
 SENSITIVE_PATTERNS = [
-    # API keys (various formats)
+    # API keys (various formats) — longer / more specific first
     (re.compile(r"sk-ant-[A-Za-z0-9\-_]{20,}"), "sk-ant-***"),
+    (re.compile(r"sk-proj-[A-Za-z0-9\-_]{20,}"), "sk-proj-***"),  # OpenAI project keys
     (re.compile(r"sk-[A-Za-z0-9]{40,}"), "sk-***"),
+    (re.compile(r"(?i)Bearer\s+[A-Za-z0-9_\-\.]{20,}"), "Bearer ***"),
+    (
+        re.compile(
+            r"(?i)(POLYGON_API_KEY|FINNHUB_API_KEY|ANTHROPIC_API_KEY|API_KEY)\s*=\s*([A-Za-z0-9_\-]{16,})"
+        ),
+        r"\1=***",
+    ),
     (re.compile(r"AC[a-f0-9]{32}"), "AC***"),  # Twilio Account SID
     # Phone numbers (WhatsApp format)
     (re.compile(r"whatsapp:\+\d{10,15}"), "whatsapp:+***"),

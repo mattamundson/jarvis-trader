@@ -179,8 +179,12 @@ class RiskManagerAgent:
         - VIX < 30 or check fails: no action (fail open)
         """
         try:
+            _api_key = os.environ.get("API_KEY", "")
             async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get("http://localhost:8010/macro/snapshot")
+                resp = await client.get(
+                    "http://localhost:8010/macro/snapshot",
+                    headers={"x-api-key": _api_key},
+                )
             if resp.status_code == 200:
                 vix = float(resp.json().get("vix", 0) or 0)
                 if vix > 40:

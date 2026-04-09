@@ -1,6 +1,6 @@
 {
-  "generated_at_utc": "2026-04-09T18:40:09Z",
-  "git_short_sha": "3d21cd1",
+  "generated_at_utc": "2026-04-09T18:58:02Z",
+  "git_short_sha": "f9928bc",
   "engine_main_py_include_router_calls": 31,
   "engine_routers_python_modules": 46,
   "engine_routers_module_names": [
@@ -53,6 +53,6 @@
   ],
   "engine_tests_test_modules": 87,
   "engine_python_files_excluding_dot_venv": 440,
-  "pytest_tests_collected": 1472,
+  "pytest_tests_collected": 1475,
   "notes": "Regenerate: python scripts/strategic_snapshot.py (from repo root)."
 }

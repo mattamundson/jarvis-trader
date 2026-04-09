@@ -214,6 +214,30 @@ Respond with valid JSON in exactly this format (no text outside the JSON):
         except (TypeError, ValueError):
             return None
 
+    async def _call_llm(self, prompt: str) -> str:
+        """Generic LLM call used by DebateOrchestrator for adversarial scoring/rebuttals."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.ANTHROPIC_API_URL,
+                    headers={
+                        "x-api-key": self._api_key,
+                        "anthropic-version": self.ANTHROPIC_VERSION,
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": self.MODEL,
+                        "max_tokens": 512,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["content"][0]["text"].strip()
+        except Exception as exc:
+            logger.warning(f"BearResearcherAgent._call_llm failed: {exc}")
+            return ""
+
     def _empty_report(self, symbol: str) -> BearReport:
         return BearReport(
             symbol=symbol,

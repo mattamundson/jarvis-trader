@@ -255,8 +255,12 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         and uses the engine's cached/validated values. Never blocks the pipeline.
         """
         try:
+            _api_key = os.environ.get("API_KEY", "")
             async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get("http://localhost:8010/macro/snapshot")
+                resp = await client.get(
+                    "http://localhost:8010/macro/snapshot",
+                    headers={"x-api-key": _api_key},
+                )
                 if resp.status_code == 200:
                     data = resp.json()
                     metrics: dict[str, float] = {}

@@ -68,7 +68,7 @@ export default function PaperTradingPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1600px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
               <Activity className="h-5 w-5 text-accent" />
@@ -113,7 +113,7 @@ export default function PaperTradingPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-4 space-y-4">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-4 space-y-4">
         {/* WFE Halt Banner */}
         <div className="rounded-xl p-4 font-mono"
           style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>

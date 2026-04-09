@@ -62,6 +62,7 @@ def test_routes_wired():
         ("POST", "/pipeline/run"): "run trading pipeline",
         ("GET", "/portfolio/summary"): "portfolio summary",
         ("GET", "/portfolio/stats/trading-days"): "distinct trading days (validation UI)",
+        ("GET", "/portfolio/stats/paper-phase-summary"): "dashboard paper phase widget",
         ("GET", "/safety/status"): "safety layer status",
     }
 

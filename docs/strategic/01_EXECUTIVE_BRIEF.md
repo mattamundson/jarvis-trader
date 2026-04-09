@@ -30,7 +30,7 @@ These align with [05_RISK_REGISTER.md](05_RISK_REGISTER.md). Verify mitigations 
 
 1. **Secrets exposure** — Historical or accidental API key leakage; unauthorized LLM or broker usage. *Pointer:* [docs/runbooks/SECURITY_REMEDIATION.md](../runbooks/SECURITY_REMEDIATION.md).
 2. **Operational fragility** — IB Gateway / engine restart / notification chains failing silently or requiring elevation. *Pointer:* [docs/troubleshooting.md](../troubleshooting.md), [docs/engine-restart-checklist.md](../engine-restart-checklist.md).
-3. **Dual paper truth** — Engine SQLite / portfolio APIs vs `paper_runner` or JSON artifacts diverging. *Pointer:* [INTEGRATED_ROADMAP §5](../plans/INTEGRATED_ROADMAP_2026-04.md), P0 items.
+3. **Dual paper truth** — Engine SQLite / portfolio APIs vs `paper_runner` or JSON artifacts diverging. *Pointer:* [PAPER_SOURCE_OF_TRUTH.md](../runbooks/PAPER_SOURCE_OF_TRUTH.md), [INTEGRATED_ROADMAP §5](../plans/INTEGRATED_ROADMAP_2026-04.md).
 4. **Strategy overfit on wrong instrument** — Tuning MES/MGC or expanding symbols without WFE discipline. *Pointer:* [06_VALIDATION_GATES.md](06_VALIDATION_GATES.md).
 5. **Complexity regression** — Large router surface + `main.py` orchestration without contract tests on critical paths. *Pointer:* Master audit §16–17; [07_EXECUTION_SPINE.md](07_EXECUTION_SPINE.md) P3.
 

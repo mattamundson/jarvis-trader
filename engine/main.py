@@ -1072,12 +1072,12 @@ async def lifespan(app: FastAPI):
             portfolio_tracker=paper_tracker,
             safety_layer=safety_layer,
             trading_pipeline=trading_pipeline,
-            symbols=["MCL", "MNQ"],
+            symbols=["MCL", "MNQ", "MES"],
         )
         _orchestrator.register(_futures_module)
         set_orchestrator(_orchestrator)
         await _orchestrator.start()
-        logger.info("MultiMarketOrchestrator started with 1 module (futures: MCL, MNQ)")
+        logger.info("MultiMarketOrchestrator started with 1 module (futures: MCL, MNQ, MES)")
     except Exception as _orch_err:
         logger.warning("MultiMarketOrchestrator init failed (non-fatal): %s", _orch_err)
 
