@@ -57,21 +57,27 @@ def compute_consensus(
     min_factors: int = 3,
     min_factors_volatile: int = 4,
     adx_volatile_threshold: float = 0.35,
+    roc: float = 0.0,              # Rate of Change — positive = upward momentum
+    vwap_zscore: float = 0.0,      # VWAP deviation z-score
+    roc_threshold: float = 0.3,    # |RoC| > 0.3% = directional momentum signal
+    vwap_z_threshold: float = 1.2, # |z| > 1.2 = extended, mean-reversion territory
 ) -> ConsensusResult:
     """
-    Six independent factors vote on directional bias.
+    Eight independent factors vote on directional bias.
 
     Requires min_factors (3) to agree for normal markets.
     Requires min_factors_volatile (4) in strongly trending markets (ADX > 0.35)
     because false breakouts are more costly in volatile regimes.
 
     Factor definitions:
-    1. ema_trend:     EMA8 vs EMA21 slope alignment
-    2. rsi_direction: RSI deviation from neutral 50
-    3. atr_regime:    ATR expansion (trending) vs compression (ranging)
-    4. adx_strength:  Directional index confirms a trend exists
-    5. vwap_position: Price relative to daily VWAP anchor
-    6. stc_state:     STC oscillator at extreme (oversold/overbought zone)
+    1. ema_trend:        EMA8 vs EMA21 slope alignment
+    2. rsi_direction:    RSI deviation from neutral 50
+    3. atr_regime:       ATR expansion (trending) vs compression (ranging)
+    4. adx_strength:     Directional index confirms a trend exists
+    5. vwap_position:    Price relative to daily VWAP anchor
+    6. stc_state:        STC oscillator at extreme (oversold/overbought zone)
+    7. roc_momentum:     Rate of Change — directional momentum over 10 bars
+    8. vwap_convergence: VWAP z-score — contrarian mean-reversion signal
 
     Args:
         ema_fast:        EMA8 current value
@@ -89,6 +95,10 @@ def compute_consensus(
         min_factors:     Minimum factors required in normal markets (default 3)
         min_factors_volatile: Minimum factors in trending markets (default 4)
         adx_volatile_threshold: ADX norm above which to use stricter threshold (default 0.35)
+        roc:             Rate of Change (10-bar) value in percent
+        vwap_zscore:     VWAP deviation in ATR units
+        roc_threshold:   |RoC| above which a momentum signal is asserted (default 0.3%)
+        vwap_z_threshold: |z| above which mean-reversion signal fires (default 1.2)
 
     Returns:
         ConsensusResult with direction, factor counts, and threshold_met flag
@@ -149,7 +159,23 @@ def compute_consensus(
     else:
         factors['stc_state'] = 0   # Midrange -> neutral
 
-    # Count votes
+    # Factor 7: Momentum (Rate of Change — adapted from Polymarket momentum strategy)
+    if roc > roc_threshold:
+        factors['roc_momentum'] = 1   # Upward momentum
+    elif roc < -roc_threshold:
+        factors['roc_momentum'] = -1  # Downward momentum
+    else:
+        factors['roc_momentum'] = 0   # Insufficient momentum
+
+    # Factor 8: VWAP convergence/mean-reversion (adapted from Polymarket convergence strategy)
+    # CONTRARIAN: price far ABOVE VWAP → SHORT signal (expect mean reversion back down)
+    # Only fires when z-score is extreme enough to matter
+    if abs(vwap_zscore) > vwap_z_threshold:
+        factors['vwap_convergence'] = -1 if vwap_zscore > vwap_z_threshold else 1
+    else:
+        factors['vwap_convergence'] = 0  # Near VWAP — no convergence signal
+
+    # Count votes (8 total factors)
     bull_count = sum(1 for v in factors.values() if v > 0)
     bear_count = sum(1 for v in factors.values() if v < 0)
 
@@ -160,7 +186,7 @@ def compute_consensus(
         return ConsensusResult(
             direction="LONG",
             factors_agree=bull_count,
-            factors_total=6,
+            factors_total=8,
             factors_detail=factors,
             threshold_met=True,
             required_factors=required,
@@ -169,7 +195,7 @@ def compute_consensus(
         return ConsensusResult(
             direction="SHORT",
             factors_agree=bear_count,
-            factors_total=6,
+            factors_total=8,
             factors_detail=factors,
             threshold_met=True,
             required_factors=required,
@@ -180,7 +206,7 @@ def compute_consensus(
         return ConsensusResult(
             direction="HOLD",
             factors_agree=max_agree,
-            factors_total=6,
+            factors_total=8,
             factors_detail=factors,
             threshold_met=False,
             required_factors=required,
