@@ -38,6 +38,9 @@ export function CandlestickChart({
   const _ema8Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const _ema21Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const _ema34Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  // VWAP overlay and STC subpanel
+  const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const stcSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
 
   // ── Initialize chart on mount ─────────────────────────────────────────────
   useEffect(() => {
@@ -115,12 +118,55 @@ export function CandlestickChart({
       crosshairMarkerVisible: false,
     });
 
+    // VWAP overlay — orange dashed, daily-anchored
+    const vwapSeries = chart.addSeries(LineSeries, {
+      color: '#FF9500',
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      title: 'VWAP',
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: true,
+    });
+
+    // STC histogram subpanel — occupies bottom 22% of chart
+    const stcSeries = chart.addSeries(HistogramSeries, {
+      color: 'rgba(0, 212, 255, 0.5)',
+      priceScaleId: 'stc_pane',
+      lastValueVisible: true,
+      title: 'STC',
+    });
+    chart.priceScale('stc_pane').applyOptions({
+      scaleMargins: { top: 0.78, bottom: 0.02 },
+      autoScale: true,
+    });
+
+    // OS / OB reference lines on STC pane
+    stcSeries.createPriceLine({
+      price: 15,
+      color: '#00ff88',
+      lineStyle: LineStyle.Dotted,
+      lineWidth: 1 as 1,
+      title: 'OS',
+      axisLabelVisible: true,
+    });
+    stcSeries.createPriceLine({
+      price: 83,
+      color: '#ff4444',
+      lineStyle: LineStyle.Dotted,
+      lineWidth: 1 as 1,
+      title: 'OB',
+      axisLabelVisible: true,
+    });
+
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
     _ema8Ref.current = ema8Series;
     _ema21Ref.current = ema21Series;
     _ema34Ref.current = ema34Series;
+    vwapSeriesRef.current = vwapSeries;
+    stcSeriesRef.current = stcSeries;
 
     // Responsive resize observer
     const ro = new ResizeObserver((entries) => {
@@ -139,6 +185,8 @@ export function CandlestickChart({
       _ema8Ref.current = null;
       _ema21Ref.current = null;
       _ema34Ref.current = null;
+      vwapSeriesRef.current = null;
+      stcSeriesRef.current = null;
     };
   }, [height]);
 
@@ -168,6 +216,34 @@ export function CandlestickChart({
     candleSeriesRef.current.setData(candleData);
     if (volumeSeriesRef.current && volumeData.length) {
       volumeSeriesRef.current.setData(volumeData);
+    }
+
+    // VWAP overlay
+    if (vwapSeriesRef.current) {
+      const vwapData = bars
+        .filter((b) => b.vwap != null && !isNaN(b.vwap as number))
+        .map((b) => ({ time: b.time as Time, value: b.vwap as number }));
+      if (vwapData.length > 0) {
+        vwapSeriesRef.current.setData(vwapData);
+      }
+    }
+
+    // STC histogram subpanel
+    if (stcSeriesRef.current) {
+      const stcData = bars
+        .filter((b) => b.stc != null && !isNaN(b.stc as number))
+        .map((b) => ({
+          time: b.time as Time,
+          value: b.stc as number,
+          color: (b.stc as number) <= 15
+            ? 'rgba(0, 255, 136, 0.8)'
+            : (b.stc as number) >= 83
+            ? 'rgba(255, 68, 68, 0.8)'
+            : 'rgba(0, 212, 255, 0.5)',
+        }));
+      if (stcData.length > 0) {
+        stcSeriesRef.current.setData(stcData);
+      }
     }
 
     chartRef.current?.timeScale().fitContent();

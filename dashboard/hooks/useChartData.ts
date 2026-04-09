@@ -83,21 +83,30 @@ export function useChartData(symbol: ChartSymbol, timeframe: ChartTimeframe) {
     { refreshInterval: 30_000, revalidateOnFocus: false }
   );
 
-  // Parse bars into lightweight-charts format
+  // Parse bars into lightweight-charts format.
+  // The engine returns BarsResponse {symbol, timeframe, bars: [...], count, vwap_current, vwap_trend}.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bars: OHLCVBar[] = Array.isArray(rawBars)
+  const rawBarsArray: any[] = Array.isArray(rawBars)
     ? rawBars
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((b: any) => ({
-          time: typeof b.time === "string" ? Math.floor(new Date(b.time).getTime() / 1000) : b.time,
-          open: Number(b.open),
-          high: Number(b.high),
-          low: Number(b.low),
-          close: Number(b.close),
-          volume: b.volume ? Number(b.volume) : undefined,
-        }))
-        .sort((a, b) => a.time - b.time)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    : Array.isArray((rawBars as any)?.bars)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ? (rawBars as any).bars
     : [];
+
+  const bars: OHLCVBar[] = rawBarsArray
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((b: any) => ({
+      time: typeof b.time === "string" ? Math.floor(new Date(b.time).getTime() / 1000) : b.time,
+      open: Number(b.open),
+      high: Number(b.high),
+      low: Number(b.low),
+      close: Number(b.close),
+      volume: b.volume != null ? Number(b.volume) : undefined,
+      vwap: b.vwap != null ? Number(b.vwap) : undefined,
+      stc: b.stc != null ? Number(b.stc) : undefined,
+    }))
+    .sort((a, b) => a.time - b.time);
 
   // Find current symbol signal from scan
   const currentSignal = scanData?.symbols?.find((s) => s.symbol === symbol) ?? null;
