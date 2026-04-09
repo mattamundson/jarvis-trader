@@ -256,12 +256,14 @@ class TechnicalAnalysisResponse(BaseModel):
 
 
 class BarsResponse(BaseModel):
-    """Historical OHLCV data."""
+    """Historical OHLCV data with VWAP and STC per bar."""
 
     symbol: str = Field(..., description="Symbol")
     timeframe: str = Field(..., description="Timeframe")
-    bars: List[Dict[str, Any]] = Field(default_factory=list, description="OHLCV bars")
+    bars: List[Dict[str, Any]] = Field(default_factory=list, description="OHLCV bars (each bar includes vwap and stc fields)")
     count: int = Field(0, description="Number of bars")
+    vwap_current: Optional[float] = Field(None, description="Current VWAP value (last bar)")
+    vwap_trend: Optional[str] = Field(None, description="'above' or 'below' — price vs VWAP")
 
 
 class RedditSentimentResponse(BaseModel):

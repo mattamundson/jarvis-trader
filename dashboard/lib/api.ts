@@ -150,6 +150,8 @@ export interface OHLCVBar {
   low: number;
   close: number;
   volume?: number;
+  vwap?: number;
+  stc?: number;
 }
 
 /** POST /analyze/technical — engine nested payload plus optional flattened fields for chart overlays. */

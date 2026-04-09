@@ -6,6 +6,7 @@ Provides technical analysis, OHLCV bars, LLM statistics, and sentiment scoring.
 
 import logging
 
+import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -14,6 +15,7 @@ from api.models import (
     RedditSentimentResponse,
     TechnicalAnalysisResponse,
 )
+from backtest.indicators import compute_vwap, stc as compute_stc
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +84,7 @@ async def run_technical_analysis(req: AnalysisRequest):
 
 @router.get("/analyze/bars/{symbol}", response_model=BarsResponse)
 async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: bool = False):
-    """Get OHLCV bars for a symbol"""
+    """Get OHLCV bars for a symbol, including VWAP and STC per bar"""
     if not data_manager:
         raise HTTPException(503, "Data manager not initialized")
 
@@ -93,11 +95,46 @@ async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: b
         if df.empty:
             raise HTTPException(404, f"No data available for {symbol}")
 
+        # Compute VWAP (session-reset daily)
+        try:
+            df['vwap'] = compute_vwap(df, session_reset=True)
+        except Exception as vwap_err:
+            logger.warning(f"[ANALYSIS] VWAP computation failed for {symbol}: {vwap_err}")
+            df['vwap'] = float('nan')
+
+        # Compute STC oscillator (STC 23/50/10/3 matching strategy config)
+        try:
+            df['stc'] = compute_stc(df['close'], fast=23, slow=50, k_period=10, d_period=3)
+        except Exception as stc_err:
+            logger.warning(f"[ANALYSIS] STC computation failed for {symbol}: {stc_err}")
+            df['stc'] = float('nan')
+
+        # Tail 200 bars and build response, replacing NaN with None for JSON safety
+        tail_df = df.tail(200)
+        bars_records = tail_df.to_dict(orient="records")
+        for bar in bars_records:
+            for key in ('vwap', 'stc'):
+                val = bar.get(key)
+                if val is not None and (isinstance(val, float) and (val != val)):  # nan check
+                    bar[key] = None
+                elif val is not None and isinstance(val, float) and not np.isfinite(val):
+                    bar[key] = None
+
+        # Compute summary fields from last bar
+        last_close = float(tail_df['close'].iloc[-1]) if len(tail_df) else None
+        last_vwap = float(tail_df['vwap'].iloc[-1]) if len(tail_df) and not tail_df['vwap'].isna().iloc[-1] else None
+
         return {
             "symbol": symbol,
             "timeframe": timeframe,
-            "bars": df.tail(200).to_dict(orient="records"),
+            "bars": bars_records,
             "count": len(df),
+            "vwap_current": last_vwap,
+            "vwap_trend": (
+                "above" if last_close is not None and last_vwap is not None and last_close > last_vwap
+                else "below" if last_close is not None and last_vwap is not None and last_close < last_vwap
+                else None
+            ),
         }
     except HTTPException:
         raise
