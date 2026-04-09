@@ -30,6 +30,8 @@ except Exception:
 
 from .indicators import (
     cci,
+    compute_adx,
+    compute_vwap,
     ema_ribbon,
     kama,
     keltner_channels,
@@ -275,6 +277,32 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["above_ib_high"] = df["close"] > df["ib_high"]
     df["below_ib_low"] = df["close"] < df["ib_low"]
 
+    # ── RSI (period=14) for consensus module ─────────────────────────────
+    from .indicators import rsi as _rsi
+    df["rsi_14"] = _rsi(df["close"], period=14)
+
+    # ── VWAP (session-reset daily) ────────────────────────────────────────
+    try:
+        df["vwap"] = compute_vwap(df, session_reset=True)
+    except Exception:
+        df["vwap"] = float("nan")
+
+    # ── ADX (period=14) ───────────────────────────────────────────────────
+    try:
+        adx_result = compute_adx(df, period=14)
+        df["adx"] = adx_result["adx"]
+        df["adx_norm"] = adx_result["adx_norm"]
+        df["plus_di"] = adx_result["plus_di"]
+        df["minus_di"] = adx_result["minus_di"]
+    except Exception:
+        df["adx"] = float("nan")
+        df["adx_norm"] = float("nan")
+        df["plus_di"] = float("nan")
+        df["minus_di"] = float("nan")
+
+    # ── ATR SMA (20-bar) for consensus module ─────────────────────────────
+    df["atr_sma20"] = df["atr"].rolling(20).mean()
+
     return df
 
 
@@ -371,15 +399,45 @@ def layer3_bias(row: pd.Series) -> str:
     elif ema == "bearish":
         bear_count += 1
 
+    # VWAP position adds to directional score
+    try:
+        vwap_val = row.get("vwap")
+        if vwap_val is not None and not pd.isna(vwap_val):
+            close_price = float(row.get("close", 0))
+            vwap_f = float(vwap_val)
+            if vwap_f > 0:
+                if close_price > vwap_f * 1.001:
+                    bull_count += 1  # price above VWAP = bullish
+                elif close_price < vwap_f * 0.999:
+                    bear_count += 1  # price below VWAP = bearish
+    except Exception:
+        pass  # VWAP is advisory
+
     if bull_count >= 4:
-        return "STRONG_BULL"
+        bias = "STRONG_BULL"
     elif bull_count >= 3 or (bull_count == 2 and ema == "bullish"):
-        return "LEAN_BULL"
+        bias = "LEAN_BULL"
     elif bear_count >= 4:
-        return "STRONG_BEAR"
+        bias = "STRONG_BEAR"
     elif bear_count >= 3 or (bear_count == 2 and ema == "bearish"):
-        return "LEAN_BEAR"
-    return "NEUTRAL"
+        bias = "LEAN_BEAR"
+    else:
+        bias = "NEUTRAL"
+
+    # ADX directional filter: downgrade STRONG signals in non-trending markets
+    try:
+        adx_value = row.get("adx")
+        if adx_value is not None and not pd.isna(adx_value):
+            ADX_STRONG_THRESHOLD = 20.0  # Must show directional movement for STRONG signals
+            if float(adx_value) < ADX_STRONG_THRESHOLD:
+                if bias == "STRONG_BULL":
+                    bias = "LEAN_BULL"
+                elif bias == "STRONG_BEAR":
+                    bias = "LEAN_BEAR"
+    except Exception:
+        pass  # ADX filter is advisory — never block on failure
+
+    return bias
 
 
 def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str:
@@ -446,16 +504,55 @@ def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str
     stc_cross_up = row.get("stc_cross_up", False)
     stc_cross_down = row.get("stc_cross_down", False)
 
+    entry_signal = "NO_TRADE"
     if bias in ("STRONG_BULL", "LEAN_BULL") and stc_cross_up:
-        return "ENTRY_NOW"
-    if bias in ("STRONG_BEAR", "LEAN_BEAR") and stc_cross_down:
-        return "ENTRY_NOW"
+        entry_signal = "ENTRY_NOW"
+    elif bias in ("STRONG_BEAR", "LEAN_BEAR") and stc_cross_down:
+        entry_signal = "ENTRY_NOW"
+    else:
+        stc_val = row.get("stc_val", 50)
+        if 20 <= stc_val <= 80:
+            entry_signal = "WAIT_FOR_PULLBACK"
 
-    stc_val = row.get("stc_val", 50)
-    if 20 <= stc_val <= 80:
-        return "WAIT_FOR_PULLBACK"
+    # Consensus filter: downgrade ENTRY_NOW if 6-factor consensus disagrees
+    if entry_signal == "ENTRY_NOW":
+        try:
+            from backtest.consensus import compute_consensus
 
-    return "NO_TRADE"
+            stc_current = float(row.get("stc_val", 50))
+            ema_fast = float(row.get("ema_8", row.get("close", 0)))
+            ema_slow = float(row.get("ema_21", row.get("close", 0)))
+            # ema_slow_prev not available in row — approximate with ema_34 as proxy
+            # (ema_34 lags ema_21, so ema_21 > ema_34 means ema_21 is still rising)
+            ema_slow_prev = float(row.get("ema_34", ema_slow))
+            rsi_raw = row.get("rsi_14", 50.0)
+            rsi_val = float(rsi_raw) if rsi_raw is not None and not pd.isna(rsi_raw) else 50.0
+            atr_val = float(row.get("atr", 1.0)) if not pd.isna(row.get("atr", float("nan"))) else 1.0
+            atr_sma_val = float(row.get("atr_sma20", atr_val)) if not pd.isna(row.get("atr_sma20", float("nan"))) else atr_val
+            vwap_val_raw = row.get("vwap", None)
+            vwap_val = float(vwap_val_raw) if vwap_val_raw is not None and not pd.isna(vwap_val_raw) else float(row.get("close", 0))
+            adx_norm_raw = row.get("adx_norm", None)
+            adx_norm_val = float(adx_norm_raw) if adx_norm_raw is not None and not pd.isna(adx_norm_raw) else 0.25
+
+            consensus = compute_consensus(
+                ema_fast=ema_fast,
+                ema_slow=ema_slow,
+                ema_slow_prev=ema_slow_prev,
+                rsi=rsi_val,
+                atr=atr_val,
+                atr_sma=atr_sma_val,
+                vwap=vwap_val,
+                close=float(row.get("close", 0)),
+                adx_norm=adx_norm_val,
+                stc_value=stc_current,
+            )
+
+            if not consensus.threshold_met or consensus.direction == "HOLD":
+                entry_signal = "WAIT_FOR_PULLBACK"  # Downgrade: consensus not met
+        except Exception:
+            pass  # Consensus is advisory — never block on error
+
+    return entry_signal
 
 
 def generate_signals(
