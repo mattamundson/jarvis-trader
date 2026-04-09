@@ -232,7 +232,13 @@ class IBKRDataConnector:
             return pd.DataFrame()
 
     async def get_snapshot_price(self, symbol: str, is_futures: bool = False) -> dict:
-        """Return a real-time snapshot price dict from IBKR."""
+        """Return a real-time snapshot price dict from IBKR.
+
+        Primary: reqTickersAsync for real-time L1 data.
+        Fallback: last historical bar close (1 D / 1 hour bars) when ticker
+        subscription is unavailable (IB Error 354 — market data not subscribed).
+        Historical bars always work on the paper account.
+        """
         if not self._connected:
             return {
                 "last_price": None,
@@ -248,33 +254,53 @@ class IBKRDataConnector:
             else:
                 contract = self._make_contract(symbol, is_futures)
             tickers = await self._ib.reqTickersAsync(contract)
-            if not tickers:
-                return {
-                    "last_price": None,
-                    "prev_close": None,
-                    "change_pct": None,
-                    "source": "ibkr_no_data",
-                }
-            t = tickers[0]
-            last = (
-                t.last if t.last and t.last > 0 else (t.close if t.close and t.close > 0 else None)
-            )
-            prev = t.close if t.close and t.close > 0 else None
-            change_pct = ((last - prev) / prev * 100) if last and prev and prev > 0 else None
-            return {
-                "last_price": last,
-                "prev_close": prev,
-                "change_pct": change_pct,
-                "source": "ibkr",
-            }
+            if tickers:
+                t = tickers[0]
+                last = (
+                    t.last
+                    if t.last and t.last > 0
+                    else (t.close if t.close and t.close > 0 else None)
+                )
+                prev = t.close if t.close and t.close > 0 else None
+                change_pct = ((last - prev) / prev * 100) if last and prev and prev > 0 else None
+                if last:
+                    return {
+                        "last_price": last,
+                        "prev_close": prev,
+                        "change_pct": change_pct,
+                        "source": "ibkr",
+                    }
         except Exception as e:
-            logger.warning(f"IBKR get_snapshot_price failed for {symbol}: {e}")
-            return {
-                "last_price": None,
-                "prev_close": None,
-                "change_pct": None,
-                "source": "ibkr_error",
-            }
+            logger.debug(f"IBKR reqTickersAsync failed for {symbol} (will try historical fallback): {e}")
+
+        # Fallback: use last historical bar close (works even without L1 subscription)
+        try:
+            logger.info(f"IBKR snapshot fallback: fetching last historical close for {symbol}")
+            bars_df = await self.get_historical_bars(
+                symbol, duration="1 D", bar_size="1 hour", is_futures=is_futures
+            )
+            if not bars_df.empty and "close" in bars_df.columns:
+                last_close = float(bars_df.iloc[-1]["close"])
+                prev_close = float(bars_df.iloc[-2]["close"]) if len(bars_df) >= 2 else None
+                change_pct = (
+                    ((last_close - prev_close) / prev_close * 100) if prev_close else None
+                )
+                logger.info(f"IBKR historical fallback price for {symbol}: {last_close}")
+                return {
+                    "last_price": last_close,
+                    "prev_close": prev_close,
+                    "change_pct": change_pct,
+                    "source": "ibkr_historical",
+                }
+        except Exception as e2:
+            logger.warning(f"IBKR historical fallback also failed for {symbol}: {e2}")
+
+        return {
+            "last_price": None,
+            "prev_close": None,
+            "change_pct": None,
+            "source": "ibkr_error",
+        }
 
     async def subscribe_real_time(
         self,

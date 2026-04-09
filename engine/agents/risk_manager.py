@@ -81,7 +81,7 @@ class RiskManagerAgent:
     Soft layer: Claude Opus reviews the trade in portfolio context for qualitative risk.
     """
 
-    MODEL = "claude-opus-4-6"
+    MODEL = "claude-sonnet-4-6"
     MAX_TOKENS = 1600
 
     # Hard-coded ceiling regardless of config — last line of defence
