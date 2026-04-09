@@ -676,6 +676,7 @@ cd dashboard && pnpm run build
 
 | Document | Purpose |
 |----------|---------|
+| **[docs/strategic/README.md](docs/strategic/README.md)** | Strategic command center — executive brief, SWOT, risk register, execution spine, analysis protocol |
 | **[LAUNCH_QUICK_START.md](LAUNCH_QUICK_START.md)** | Paper trading launch guide (PowerShell) |
 | **[CLAUDE.md](CLAUDE.md)** | AI agent instructions and project overview |
 | **[engine/CLAUDE.md](engine/CLAUDE.md)** | Engine-specific context |

@@ -2,6 +2,8 @@
 
 **Status:** Hardening Phase | **Mode:** Paper Trading Validation | **Last Updated:** April 2, 2026
 
+**See also:** [Strategic command center (index)](strategic/README.md) — executive brief, system map, risk register, execution spine, and analysis passes.
+
 ---
 
 ## Architecture Overview
