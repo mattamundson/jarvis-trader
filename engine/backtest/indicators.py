@@ -340,6 +340,119 @@ def volume_regime(volume: pd.Series, lookback: int = 20) -> pd.Series:
     return result
 
 
+def compute_vwap(df: "pd.DataFrame", session_reset: bool = True) -> "pd.Series":
+    """
+    Volume-Weighted Average Price.
+
+    Resets at the start of each trading day when session_reset=True.
+    Standard formula: cumsum(typical_price * volume) / cumsum(volume)
+
+    Args:
+        df: DataFrame with columns: high, low, close, volume. Index must be datetime.
+        session_reset: Reset accumulation at each new trading day (True for intraday use).
+
+    Returns:
+        pd.Series named 'vwap', same index as df.
+    """
+    import pandas as pd
+
+    typical_price = (df['high'] + df['low'] + df['close']) / 3.0
+    dollar_volume = typical_price * df['volume']
+
+    if session_reset:
+        try:
+            if hasattr(df.index, 'date'):
+                dates = df.index.date
+            else:
+                dates = pd.to_datetime(df.index).dt.date
+
+            cumulative_dv = dollar_volume.groupby(dates).cumsum()
+            cumulative_v = df['volume'].groupby(dates).cumsum()
+        except Exception:
+            # Fall back to rolling VWAP if date grouping fails
+            cumulative_dv = dollar_volume.cumsum()
+            cumulative_v = df['volume'].cumsum()
+    else:
+        cumulative_dv = dollar_volume.cumsum()
+        cumulative_v = df['volume'].cumsum()
+
+    vwap = cumulative_dv / cumulative_v.replace(0, float('nan'))
+    return vwap.rename('vwap')
+
+
+def compute_adx(df: "pd.DataFrame", period: int = 14) -> "pd.DataFrame":
+    """
+    Average Directional Index (ADX) with +DI and -DI.
+
+    ADX measures trend strength (0-100):
+    - ADX >= 25: strong trend
+    - ADX 20-25: developing trend
+    - ADX < 20: weak/ranging market
+
+    Returns DataFrame with columns: adx, adx_norm (0-1), plus_di, minus_di
+    """
+    import pandas as pd
+    import numpy as np
+
+    high = df['high']
+    low = df['low']
+    close = df['close']
+
+    # True Range components
+    tr = pd.concat([
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low - close.shift(1)).abs(),
+    ], axis=1).max(axis=1)
+
+    # Directional Movement
+    up_move = high.diff()
+    down_move = -low.diff()
+
+    plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0.0), index=df.index)
+    minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0.0), index=df.index)
+
+    # Wilder's smoothed averages (standard RMA: seed = sum of first period bars)
+    def wilder_smooth(series, period):
+        """Wilder RMA seeded with sum of first period values."""
+        result = series.copy().astype(float)
+        result.iloc[:period] = float('nan')
+        result.iloc[period - 1] = series.iloc[:period].sum()
+        for i in range(period, len(series)):
+            result.iloc[i] = result.iloc[i-1] - (result.iloc[i-1] / period) + series.iloc[i]
+        return result
+
+    tr_smooth = wilder_smooth(tr, period)
+    plus_dm_smooth = wilder_smooth(plus_dm, period)
+    minus_dm_smooth = wilder_smooth(minus_dm, period)
+
+    plus_di = 100 * plus_dm_smooth / tr_smooth.replace(0, float('nan'))
+    minus_di = 100 * minus_dm_smooth / tr_smooth.replace(0, float('nan'))
+
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, float('nan'))
+
+    # ADX: Wilder smooth of DX, seeded with mean of first `period` valid DX values.
+    # DX is NaN for first (period-1) bars, so we seed from index (2*period-2).
+    adx = pd.Series(float('nan'), index=df.index)
+    seed_end = 2 * period - 2  # inclusive index where the first valid DX batch ends
+    if len(dx) > seed_end:
+        valid_dx = dx.iloc[period - 1: seed_end + 1].dropna()
+        if len(valid_dx) > 0:
+            adx.iloc[seed_end] = valid_dx.mean()
+            for i in range(seed_end + 1, len(dx)):
+                if pd.isna(dx.iloc[i]):
+                    adx.iloc[i] = adx.iloc[i - 1]
+                else:
+                    adx.iloc[i] = (adx.iloc[i - 1] * (period - 1) + dx.iloc[i]) / period
+
+    return pd.DataFrame({
+        'adx': adx,
+        'adx_norm': adx / 100.0,
+        'plus_di': plus_di,
+        'minus_di': minus_di,
+    }, index=df.index)
+
+
 def rsi(close: pd.Series, period: int = 14) -> pd.Series:
     """
     Relative Strength Index (0-100).
