@@ -140,6 +140,17 @@ class TradingConfig(BaseSettings):
     MAX_CONTRACTS_PER_INSTRUMENT: int = Field(2, description="Max micro contracts per instrument")
     MAX_OVERNIGHT_CONTRACTS: int = Field(1, description="Max contracts to hold overnight")
 
+    # ── Execution Cost Modeling (Backtests) ──────────────────────────────
+    COMMISSION_PER_CONTRACT: float = Field(
+        1.42,
+        description="MES/MNQ CME round-trip commission ($0.72 exchange + $0.70 clearing)",
+    )
+    SLIPPAGE_TICKS: float = Field(
+        1.0, description="Conservative 1-tick adverse slippage per fill"
+    )
+    COMMISSION_ENABLED: bool = Field(True, description="Apply commission in backtests")
+    SLIPPAGE_ENABLED: bool = Field(True, description="Apply slippage in backtests")
+
     # ── Consecutive Loss Tracking & Position Sizing ──────────────────────
     CONSECUTIVE_LOSS_HALF_SIZE: int = Field(
         3, description="Losses threshold for 0.5x position size"
