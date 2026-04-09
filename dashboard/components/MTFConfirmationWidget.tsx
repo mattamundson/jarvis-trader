@@ -46,8 +46,25 @@ export function MTFConfirmationWidget({ symbol = "MES" }: { symbol?: string }) {
   useEffect(() => {
     const load = async () => {
       try {
-        const payload = await fetchEngine(`/analytics/mtf?symbol=${symbol}`);
-        setData(payload);
+        const payload: Record<string, unknown> = await fetchEngine(`/analytics/mtf?symbol=${symbol}`);
+        // Normalize: engine returns `timeframes` dict, widget expects `signals` array
+        if (payload && !payload.signals && payload.timeframes && typeof payload.timeframes === "object") {
+          const signals: TFSignal[] = Object.entries(payload.timeframes as Record<string, unknown>).map(
+            ([tf, val]) => {
+              const v = val as Record<string, unknown>;
+              return {
+                timeframe: tf,
+                stc_value: (v.stc_value as number) ?? 0,
+                stc_signal: (v.stc_signal as "BULLISH" | "BEARISH" | "NEUTRAL") ?? "NEUTRAL",
+                price: (v.price as number) ?? 0,
+                source: (v.source as string) ?? "live",
+              };
+            }
+          );
+          setData({ ...(payload as unknown as MTFData), signals });
+        } else {
+          setData(payload as unknown as MTFData);
+        }
       } catch {
         setData(null);
       } finally {
