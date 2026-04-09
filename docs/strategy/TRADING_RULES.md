@@ -1,7 +1,7 @@
 # JARVIS TRADER — Formal trading rules & strategy thesis
 
-**Version:** 1.0  
-**Date:** 2026-04-03  
+**Version:** 1.1  
+**Date:** 2026-04-06  
 **Canonical code:** [`engine/backtest/signals.py`](../../engine/backtest/signals.py), [`engine/backtest/composite_signals.py`](../../engine/backtest/composite_signals.py), [`engine/config.py`](../../engine/config.py)  
 **Math reference:** [EQUATIONS.md](./EQUATIONS.md) — LaTeX-style formulas aligned to those modules.  
 **HTML review bundle:** [STRATEGY_CANON_REVIEW.html](./STRATEGY_CANON_REVIEW.html) — browser view of this doc + equations (regenerate: `python scripts/build_strategy_review_html.py`).  
@@ -27,10 +27,12 @@
 
 | Path | Symbols | Entry function | Role |
 |------|---------|----------------|------|
-| **Standard 5-layer** | All symbols not in composite set, and STC base math | `generate_signals()` in `signals.py` | Layer1–4 + per-symbol `INSTRUMENT_PARAMS` for STC OS/OB and ATR multiples |
-| **Composite (Cohen-style)** | `MES`, `MCL`, `MNQ` only (`COMPOSITE_INSTRUMENTS`) | `generate_composite_signals()` in `composite_signals.py` | STC (**gated**) + ORB + VWAP, regime-weighted; **different** stops/targets than pure STC |
+| **Standard 5-layer** | **MCL**, **MNQ**, and every symbol not in `COMPOSITE_INSTRUMENTS` | `generate_signals()` in `signals.py` | Layers 1–4 + per-symbol `INSTRUMENT_PARAMS` for STC OS/OB and ATR multiples |
+| **Composite (Cohen-style)** | **`MES` only** (`COMPOSITE_INSTRUMENTS = {"MES"}` as of Sprint 16) | `generate_composite_signals()` in `composite_signals.py` | STC (**gated**) + ORB + VWAP, regime-weighted; **different** stops/targets than pure STC |
 
-Routing: `generate_instrument_signals(df, symbol, **kwargs)` calls composite for MES/MCL/MNQ, else `generate_signals()`.
+Routing: `generate_instrument_signals(df, symbol, **kwargs)` calls composite **only** when `symbol.upper()` is in `COMPOSITE_INSTRUMENTS`; otherwise it calls `generate_signals()`. **Walk-forward validation for approved micros (MCL, MNQ) used the standard path** — composite was removed from those symbols after `exit_date=None` artifacts.
+
+**Downstream usage:** The LLM pipeline’s STC mid-range pre-filter uses `generate_instrument_signals` ([`engine/agents/pipeline.py`](../../engine/agents/pipeline.py)). `TechnicalAnalyst` adds composite **metadata** to the prompt only when the symbol is in `COMPOSITE_INSTRUMENTS` ([`engine/agents/technical_analyst.py`](../../engine/agents/technical_analyst.py)) — today that is **MES only**.
 
 ### 1.2 Standard path — every condition that yields `ENTRY_NOW`
 
@@ -77,17 +79,18 @@ All paths require **non-NEUTRAL bias** from `layer3_bias` except where noted. **
 ### 1.3 Composite path — `ENTRY_NOW` conditions
 
 - **Volatile** `regime_type` (from `RegimeClassifier`): no entries; conflicting raw signals become `COMPOSITE_VOLATILE_BLOCK`.
-- **STC gate:** `stc_cross_up` / `stc_cross_down` must be true for long/short respectively (ORB/VWAP only add score; they cannot enter alone).
+- **STC gate:** `stc_cross_up` / `stc_cross_down` from the STC leg must be true for long/short respectively (`is_long_entry` / `is_short_entry` multiply score by that gate). ORB/VWAP add to `long_score` / `short_score` only — they cannot produce an entry without the STC crossover on that bar.
 - **Score:** `long_score` or `short_score` ≥ `entry_threshold` (default **0.35**), using regime weights: TRENDING STC 0.60 / ORB 0.30 / VWAP 0.10; RANGING STC 0.50 / ORB 0.20 / VWAP 0.30.
-- **R:R filter:** `composite_rr` must be ≥ **`MIN_RR = 1.2`** (entries below that are forced to `NO_TRADE`).
-- Composite sets **its own** stop/target ATR multiples: `COMP_STOP_ATR = 1.00`, `COMP_T1_ATR = 2.50`, `COMP_T2_ATR = 4.00` (not the same as `INSTRUMENT_PARAMS`).
+- **R:R filter:** `composite_rr` must be ≥ **`MIN_RR = 1.2`** (module constant in `composite_signals.py`; the file header comment still mentions 1.5 in one line — **code uses 1.2**).
+- Composite sets **its own** stop/target ATR multiples: `COMP_STOP_ATR = 1.00`, `COMP_T1_ATR = 2.50`, `COMP_T2_ATR = 4.00`, `COMP_T3_ATR = 6.00` (not the same as `INSTRUMENT_PARAMS`).
+- **STC leg inside composite** calls `generate_signals` with `adaptive_regime=True` and `regime_filter=False`; the ORB submodule is invoked with `volume_filter=True` for its own breakout logic ([`engine/backtest/composite_signals.py`](../../engine/backtest/composite_signals.py)).
 
 ### 1.4 Exit mechanics (stops, targets, EOD)
 
 **Standard + composite (column semantics)**
 
 - **Stop:** `stop_level` — long: `close - stop_atr * ATR`; short: `close + stop_atr * ATR` (composite uses fixed 1.0 ATR for its branch as above).
-- **Targets:** `target_1`, `target_2`, `target_3` from `t1_atr`, `t2_atr`, `t3_atr` × ATR (composite fills T1/T2; T3 may carry through from STC base where applicable).
+- **Targets:** `target_1`, `target_2`, `target_3` from per-path ATR multiples × ATR — standard path uses `INSTRUMENT_PARAMS`; composite overwrites all three with **2.50 / 4.00 / 6.00** × ATR ([`composite_signals.py`](../../engine/backtest/composite_signals.py)).
 
 **Backtest engine** ([`engine/backtest/backtester.py`](../../engine/backtest/backtester.py)): processes stop/target hits bar-by-bar and **EOD close** at day boundary (`_check_eod_close`).
 
@@ -95,18 +98,18 @@ All paths require **non-NEUTRAL bias** from `layer3_bias` except where noted. **
 
 **LLM pipeline** ([`engine/agents/pipeline.py`](../../engine/agents/pipeline.py)): does **not** recompute `signals.py` rows; `trade_decision` comes from agents (e.g. Technical analyst may expose `stop_price`, `limit_price`, `target_*`). Quantitative alignment is **best-effort**—operators should treat **`signals.py` + backtest** as canonical for rule formalization, and pipeline output as an overlay that must stay within [`engine/risk/safety_layer.py`](../../engine/risk/safety_layer.py) + `TradingConfig`.
 
-### 1.5 Rules table (template + approved micros)
+### 1.5 Rules table (template + approved micros + MES composite)
 
-| Item | MNQ (standard via router) | MCL (standard via router) | Notes |
-|------|---------------------------|---------------------------|--------|
-| **Routing** | Composite if `generate_instrument_signals` | Composite if `generate_instrument_signals` | Both in `COMPOSITE_INSTRUMENTS` → composite path for **backtests** that call `generate_instrument_signals` |
-| **STC OS / OB** | 15 / 92 | 15 / 83 | From `INSTRUMENT_PARAMS` when `symbol` passed into underlying `generate_signals` inside composite |
-| **Stop (× ATR)** | 0.70 | 0.90 | Per-symbol; **not** universal 0.70 |
-| **T1 / T2 / T3** | 1.00 / 1.80 / 2.618 | 1.50 / 2.618 / 4.00 | Long: below/above close per long/short rules |
-| **Regime filter flag** | True (block EXHAUSTED/COMPRESSION as entries) | True | Overridden inside composite STC leg with `regime_filter=False` then composite applies its own VOLATILE block |
-| **Invalidation** | NEUTRAL bias; EXHAUSTED (except fade); optional volume/MTF/news flags | Same | Composite adds score + R:R + STC gate |
+| Item | MNQ (standard) | MCL (standard) | MES (composite via router) |
+|------|----------------|----------------|----------------------------|
+| **`generate_instrument_signals`** | `generate_signals` | `generate_signals` | `generate_composite_signals` |
+| **STC OS / OB** | 15 / 92 | 23 / 83 | STC leg uses symbol params from `INSTRUMENT_PARAMS` / overrides inside composite |
+| **Stop (× ATR)** | 0.70 | 0.50 | Composite: **1.00** (fixed `COMP_STOP_ATR`) |
+| **T1 / T2 / T3** | 1.00 / 1.80 / 2.618 | 1.00 / 2.618 / 4.00 | Composite: **2.50 / 4.00 / 6.00** (`COMP_T1_ATR` … `COMP_T3_ATR`) |
+| **Regime filter (tuple flag)** | True in `INSTRUMENT_PARAMS` | True | MES tuple has **False** for research; composite STC leg still uses `regime_filter=False` + VOLATILE block |
+| **Invalidation** | NEUTRAL bias; EXHAUSTED (except fade); optional volume/MTF/news if enabled | Same | Score &lt; threshold, R:R &lt; 1.2, VOLATILE regime, or `COMPOSITE_VOLATILE_BLOCK` |
 
-*If your run uses **only** `generate_signals(symbol="MNQ")` without composite, use the MNQ row as pure 5-layer STC with composite-specific ORB/VWAP **off**.*
+**Paper runner** ([`paper_config.py`](../../engine/backtest/paper_config.py)) mirrors the approved micro rows: MNQ uses `adaptive_regime=True`; MCL uses static STC params with `adaptive_regime=False`. Neither uses `volume_filter`, `mtf_df`, or `news_blackout` in the default hourly loop ([`paper_runner.py`](../../engine/backtest/paper_runner.py)).
 
 ---
 
@@ -129,7 +132,7 @@ All paths require **non-NEUTRAL bias** from `layer3_bias` except where noted. **
 
 ### 2.2 Hard caps (`TradingConfig` + safety)
 
-From [`engine/config.py`](../../engine/config.py): `MAX_POSITION_SIZE_PCT` (5%), `MAX_CONTRACTS_PER_INSTRUMENT` (2 micros), `MAX_SINGLE_ORDER_VALUE` ($5k), `MAX_MARGIN_UTILIZATION` (40%), `MAX_CORRELATED_EXPOSURE_PCT` (20%), consecutive-loss scaling thresholds (`CONSECUTIVE_LOSS_*`), `PRICE_COLLAR_PCT`, `MAX_ORDERS_PER_MINUTE`. **Enforcement** is in the hardcoded safety layer—not LLM.
+From [`engine/config.py`](../../engine/config.py): `MAX_POSITION_SIZE_PCT` (5% of portfolio per position), `MAX_DAILY_LOSS_PCT` (−2% daily halt), `MAX_DRAWDOWN_PCT` (−10% from peak), `MAX_CONTRACTS_PER_INSTRUMENT` (2 micros), `MAX_OVERNIGHT_CONTRACTS`, `MAX_SINGLE_ORDER_VALUE` ($5k), `MAX_MARGIN_UTILIZATION` (40%), `MAX_CORRELATED_EXPOSURE_PCT` (20%), `CONSECUTIVE_LOSS_HALF_SIZE`, `CONSECUTIVE_LOSS_QUARTER_SIZE`, `CONSECUTIVE_LOSS_HALT`, `CONSECUTIVE_LOSS_HALT_HOURS`, `PRICE_COLLAR_PCT`, `MAX_ORDERS_PER_MINUTE`. **Enforcement** is in the hardcoded safety layer—not LLM.
 
 ### 2.3 Pipeline `final_quantity`
 
@@ -148,9 +151,13 @@ From [`engine/config.py`](../../engine/config.py): `MAX_POSITION_SIZE_PCT` (5%),
 
 **Outputs:** `EXHAUSTED`, `COMPRESSION`, `TRENDING_BULL`, `TRENDING_BEAR`, `RANGE_BOUND`.
 
-**Logic (simplified):** `atr_consumed_pct > 90` → `EXHAUSTED`; compression phase + low consumption → `COMPRESSION`; bullish/bearish EMA trend + phase + consumption bands → trending; else `RANGE_BOUND`.
+**Logic (simplified):** `atr_consumed_pct > 90` → `EXHAUSTED`; compression phase + consumption &lt; 50 → `COMPRESSION`; bullish/bearish EMA trend + consumption &lt; 70 and phase sign → `TRENDING_BULL` / `TRENDING_BEAR`; else `RANGE_BOUND`.
 
-**`regime_filter` in `generate_signals`:** When **True**, `EXHAUSTED` / `COMPRESSION` are **not** downgraded—`layer4_entry` still sees them (entries largely blocked in EXHAUSTED except fade). When **False**, those two are rewritten to `RANGE_BOUND` before `layer4_entry` (optimizer / composite STC leg behavior).
+**`regime_filter` in `generate_signals`:** When **False**, `EXHAUSTED` and `COMPRESSION` are **rewritten to `RANGE_BOUND`** before `layer4_entry` (optimizer bypass / composite STC leg). When **True**, regimes are passed through unchanged.
+
+**Important nuance:** `layer4_entry` has **no branch for `COMPRESSION`** — only `EXHAUSTED` is handled explicitly (`FADE_EXTREME` / `NO_TRADE`). So with `regime_filter=True`, **`COMPRESSION` can still yield `ENTRY_NOW`** (e.g. STC crossover + bullish/bearish bias) unless other gates block. The docstring on `generate_signals` that says EXHAUSTED and COMPRESSION “block all entries” when `regime_filter=True` is **stronger than the actual `layer4_entry` logic**; treat **code behavior** as canonical here.
+
+**Per-symbol default:** When `symbol=` is passed and `INSTRUMENT_PARAMS[symbol]` includes the 7-tuple, the tuple’s **7th element** sets `regime_filter` unless the caller overrides it after the merge (see [`generate_signals`](../../engine/backtest/signals.py) around the `inst_regime` assignment).
 
 ### 3.2 Layers 2–4 (operator view)
 
@@ -167,7 +174,9 @@ From [`engine/config.py`](../../engine/config.py): `MAX_POSITION_SIZE_PCT` (5%),
 | `mtf_df` | MTF alignment → else `MTF_BLOCKED` |
 | `news_blackout` | Economic calendar window → `NEWS_BLACKOUT` |
 
-**Production/paper defaults:** Typical **hourly backtest and paper_runner** paths use symbol-specific params; **not all** flags are enabled globally—confirm each entrypoint (e.g. `main.py` intraday job passes explicit flags). LLM pipeline **does not** automatically apply these flags to agent reasoning.
+**Paper (`paper_runner` + [`paper_config.py`](../../engine/backtest/paper_config.py)):** For approved **MCL** / **MNQ** 1h configs, `volume_filter=False`, `mtf_filter` is documented as off (and `mtf_df` is **not** passed to `generate_signals`). `news_blackout` is **not** passed (default off). **MNQ:** `adaptive_regime=True`. **MCL:** `adaptive_regime=False`.
+
+**LLM pipeline:** Agent reasoning does **not** re-run these Python gates. The STC **mid-range pre-filter** uses `generate_instrument_signals` without `volume_filter` / `mtf_df` / `news_blackout`. Optional gates apply only when callers pass them into `generate_signals` (backtests, experiments, or custom jobs).
 
 ### 3.4 Flow (onboarding)
 
@@ -185,7 +194,7 @@ flowchart TD
   post --> levels[stop_target_ATR_levels]
 ```
 
-**Composite parallel flow:** `generate_composite_signals` → STC (`generate_signals` with `adaptive_regime=True`, `regime_filter=False`) + ORB + VWAP → weighted score → STC gate → R:R filter → VOLATILE block.
+**Composite parallel flow (MES only today):** `generate_composite_signals` → STC (`generate_signals` with `adaptive_regime=True`, `regime_filter=False`) + ORB + VWAP → weighted score → STC gate → R:R filter → VOLATILE block.
 
 ---
 
@@ -196,14 +205,15 @@ flowchart TD
 | Symbol | STC_OS | STC_OB | Stop ATR | T1 | T2 | T3 | Regime filter |
 |--------|--------|--------|-----------|----|----|-----|----------------|
 | **MNQ** | 15 | 92 | 0.70 | 1.00 | 1.80 | 2.618 | True |
-| **MCL** | 15 | 83 | 0.90 | 1.50 | 2.618 | 4.00 | True |
+| **MCL** | 23 | 83 | 0.50 | 1.00 | 2.618 | 4.00 | True |
+| **MES** | 15 | 83 | 0.50 | 2.00 | 3.236 | 4.00 | **False** (research tuple; **DO NOT TRADE** per project status) |
 
 ### 4.2 Economics narrative
 
-- **MNQ:** Higher beta / noise; **wider STC OB (92)** and **tighter stop (0.70 ATR)** and **tighter T1 (1.00)** reflect Nasdaq microstructure and optimizer notes in-code (noise filtering).
-- **MCL:** **Wider stop (0.90)** and **wider T1 (1.50)** match crude’s swing characteristics and documented R:R intent in comments.
+- **MNQ:** Higher beta / noise; **wider STC OB (92)** with **0.70 ATR stop** and **T1 = 1.00** reflect Nasdaq microstructure and in-code optimizer notes (fewer false entries, intraday-friendly targets).
+- **MCL:** **Tighter stop (0.50 ATR)** and **T1 = 1.00** with **STC OS = 23** (less aggressive than default 15) match Sprint 16 walk-forward consensus on crude (comments in `signals.py`: WFE 0.82, OOS PF 1.21).
 
-**Intentional split:** Yes—parameters are **per-symbol research tuples**, not one-size-fits-all.
+**Intentional split:** Yes—parameters are **per-symbol research tuples** from separate optimizers / WFE runs, not one template copied across micros.
 
 ### 4.3 Validation / approval status (from root `CLAUDE.md`)
 
@@ -223,9 +233,9 @@ Align operator discipline with `CLAUDE.md` **Validated Instruments** table befor
 
 ### 5.1 Scanner ([`signal_scanner.py`](../../engine/scanner/signal_scanner.py))
 
-- **Futures week:** Sunday **5:00 PM CT** through Friday **4:00 PM CT** (loop uses approximate CT offset from UTC).
-- **Saturday:** no scan.
-- **RTH no-new-entry windows (ET, approximate offset UTC-5 in code):** no entries **9:30–9:35 ET**; no entries **3:45–4:00 PM ET** (last 15 minutes).
+- **Futures week (America/Chicago, DST-aware via `zoneinfo`):** Sunday **5:00 PM CT** open through Friday **4:00 PM CT** close; **Monday–Thursday 4:00–5:00 PM CT** maintenance break is treated as closed; **Saturday** fully closed.
+- **RTH no-new-entry windows:** Before calling the pipeline, the scanner skips when **ET** time is **9:30–9:35** (first five minutes) or **3:45–4:00 PM** (last fifteen minutes). Implementation uses `datetime.now(UTC) + timedelta(hours=-5)` — **fixed offset (no DST)** — so during daylight saving the wall-clock alignment to NYSE RTH is approximate; prefer a future refactor to `ZoneInfo("America/New_York")` for exact RTH.
+- **MCL-specific:** **Wednesday 10:15 AM–11:00 AM ET** EIA inventory blackout (same fixed ET approximation as above).
 
 ### 5.2 Signal layer vs scanner
 
@@ -243,7 +253,7 @@ Align operator discipline with `CLAUDE.md` **Validated Instruments** table befor
 
 ### 6.1 Thesis (one paragraph)
 
-The stack combines **multi-factor confluence** (trend/phase/volume/structure/STC) to trade **directional continuation and controlled reversals** in liquid micro futures, with **explicit risk geometry** (ATR-scaled stops and targets) and **regime gating** to avoid trading exhaustion/compression blindly. **Composite** symbols add **independent confirmation** (ORB + VWAP) so entries are not driven by a single indicator. Edge is **statistical**: positive expectancy emerges from the interaction of selective entries, bounded loss per trade, and scaling rules—not from single-bar prediction.
+The stack combines **multi-factor confluence** (trend/phase/volume/structure/STC) to trade **directional continuation and controlled reversals** in liquid micro futures, with **explicit risk geometry** (ATR-scaled stops and targets) and **regime-aware** logic to limit low-quality states (e.g. exhausted chop). **MES** (composite path) adds **independent confirmation** (ORB + VWAP) so entries are not driven by a single indicator; **MCL/MNQ** use the validated **standard** five-layer path. Edge is **statistical**: positive expectancy emerges from selective entries, bounded loss per trade, and scaling rules—not from single-bar prediction.
 
 ### 6.2 Measurable checks
 
@@ -259,13 +269,17 @@ Per-symbol **WFE** and **halt list** (e.g. MES, MGC) are **hard gates** before p
 
 **References (no code changes here):** [`engine/risk/safety_layer.py`](../../engine/risk/safety_layer.py), `TradingConfig` kill/drawdown fields.
 
+### 6.4 Canonical bundle
+
+This file is the **merged** strategy reference (entry/exit, sizing, regime flow, instrument split, session policy, thesis). Regenerate the standalone HTML bundle after edits: `python scripts/build_strategy_review_html.py` from the repo root.
+
 ---
 
 ## 7. Cross-check vs CLAUDE.md / project docs
 
 | Claim (typical summary) | This document / code | Verdict |
 |-------------------------|----------------------|---------|
-| STC OS=15, OB=83, ATR stop 0.70× | Defaults in `signals.py` module text use 15/83/0.70 for **generic** copy; **MNQ OB=92**, **MCL stop=0.90** in `INSTRUMENT_PARAMS` | **Nuance:** headline is **simplified**; approved micros use **table in §4.1** |
+| STC OS=15, OB=83, ATR stop 0.70× | Defaults in `compute_all_indicators` comments use 15/83 for **generic** STC display; **`INSTRUMENT_PARAMS`** sets **MNQ 15/92/0.70**, **MCL 23/83/0.50**, etc. | **Nuance:** headline is **simplified**; approved micros use **§4.1** |
 | 5-layer regime filter | Layers 1–4 explicit; Layer 5 is **sizing** not regime | **Agree** with framework naming; clarify Layer 5 = sizing |
 | MES / validation | Params exist for MES in `INSTRUMENT_PARAMS` but **DO NOT TRADE** in CLAUDE | **Agree** — status overrides raw params |
 

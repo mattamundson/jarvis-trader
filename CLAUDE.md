@@ -95,6 +95,16 @@ bash scripts/hooks/check-secrets.sh
 
 Gates: PF ≥ 2.0, Sharpe ≥ 1.5, WR ≥ 55%, Trades ≥ 60, Days ≥ 30
 
+## Troubleshooting
+
+**READ FIRST for any system issues**: `docs/troubleshooting.md`
+
+Covers: OpenClaw WhatsApp failures, Twilio config, engine restart (elevated process), Bun Stop hook, port 8010 zombie processes.
+
+Quick fix scripts:
+- OpenClaw lockout: `wsl -d Ubuntu -e python3 /mnt/c/Users/mattm/ThinkorSwim/jarvis-trader/scripts/fix-openclaw-lockout.py`
+- Engine restart blocked: kill oldest `python.exe` in Task Manager (Admin) → `.\restart_engine.ps1`
+
 ## Git & Security
 
 > Full workflow: @.claude/rules/git-workflow.md
