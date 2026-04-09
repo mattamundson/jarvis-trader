@@ -102,6 +102,15 @@ def compute_regime_breakdown(result: BacktestResult, trades: List[Trade]) -> Non
         }
 
 
+def compute_exposure_time(result: BacktestResult) -> None:
+    """Compute % of bars where a position was open."""
+    if not result.trades or result.total_bars == 0:
+        result.exposure_time_pct = 0.0
+        return
+    bars_in_market = sum(t.holding_bars for t in result.trades)
+    result.exposure_time_pct = (bars_in_market / result.total_bars) * 100
+
+
 def compute_duration_metrics(result: BacktestResult, trades: List[Trade]) -> None:
     """Compute trade duration and drawdown duration."""
     if trades:
@@ -198,5 +207,6 @@ def calculate_metrics(result: BacktestResult) -> BacktestResult:
     compute_direction_breakdown(result, trades)
     compute_regime_breakdown(result, trades)
     compute_duration_metrics(result, trades)
+    compute_exposure_time(result)
 
     return result

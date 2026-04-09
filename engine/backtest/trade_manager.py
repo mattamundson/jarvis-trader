@@ -114,6 +114,10 @@ class BacktestResult:
     # Drawdown duration
     max_drawdown_duration_bars: int = 0  # how many bars the max drawdown lasted
 
+    # Exposure time (% of bars with open position)
+    exposure_time_pct: float = 0.0
+    total_bars: int = 0
+
     def summary(self) -> str:
         """Human-readable one-screen summary."""
         lines = [
@@ -179,6 +183,8 @@ class BacktestResult:
             "max_holding_bars": self.max_holding_bars,
             "trailing_stop_exits": self.trailing_stop_exits,
             "max_drawdown_duration_bars": self.max_drawdown_duration_bars,
+            "exposure_time_pct": round(self.exposure_time_pct, 2),
+            "total_bars": self.total_bars,
             "equity_curve": [round(v, 2) for v in self.equity_curve],
             "trades": [t.to_dict() for t in self.trades],
         }

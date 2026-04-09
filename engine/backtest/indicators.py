@@ -284,3 +284,84 @@ def ema_ribbon(close: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
     ema_21 = close.ewm(span=21, adjust=False).mean()
     ema_34 = close.ewm(span=34, adjust=False).mean()
     return ema_8, ema_21, ema_34
+
+
+# ─── AutoTrade-derived indicators (Phase 1) ───────────────────────────
+
+
+def donchian_channels(
+    high: pd.Series, low: pd.Series, entry_period: int = 20, exit_period: int = 6
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
+    """
+    Donchian breakout + exit channels.
+    Shifted 1 bar to prevent look-ahead bias.
+    Returns (entry_high, entry_low, exit_high, exit_low).
+    """
+    entry_high = high.shift(1).rolling(entry_period).max()
+    entry_low = low.shift(1).rolling(entry_period).min()
+    exit_high = high.shift(1).rolling(exit_period).max()
+    exit_low = low.shift(1).rolling(exit_period).min()
+    return entry_high, entry_low, exit_high, exit_low
+
+
+def ema_slope(close: pd.Series, period: int = 21, lookback: int = 3) -> pd.Series:
+    """
+    Slope of EMA over lookback bars.
+    Positive = rising trend confirmation, negative = declining.
+    Filters flat crossovers where EMA is directionless.
+    """
+    ema = close.ewm(span=period, adjust=False).mean()
+    return ema - ema.shift(lookback)
+
+
+def atr_regime(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    atr_period: int = 14, sma_period: int = 20
+) -> pd.Series:
+    """
+    ATR regime filter: True when volatility is expanding (ATR > SMA of ATR).
+    Only enter trades when volatility is expanding — filters choppy markets.
+    """
+    atr = wilder_atr(high, low, close, atr_period)
+    atr_sma = atr.rolling(sma_period).mean()
+    return atr > atr_sma
+
+
+def volume_regime(volume: pd.Series, lookback: int = 20) -> pd.Series:
+    """
+    Volume regime classification: HIGH (>1.5x avg), NORMAL, LOW (<0.67x avg).
+    HIGH volume confirms institutional participation in moves.
+    """
+    avg = volume.rolling(lookback).mean()
+    ratio = volume / avg.replace(0, np.nan)
+    result = pd.Series("NORMAL", index=volume.index)
+    result[ratio > 1.5] = "HIGH"
+    result[ratio < 0.67] = "LOW"
+    return result
+
+
+def rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    """
+    Relative Strength Index (0-100).
+    Entry filter: >54 for longs, <46 for shorts.
+    Exit trigger: crosses 50 midpoint.
+    """
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+
+    # Wilder's smoothing (same as EMA with alpha=1/period)
+    avg_gain = gain.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return (100 - 100 / (1 + rs)).fillna(50.0)
+
+
+def fib_ema_stack(close: pd.Series) -> Dict[str, pd.Series]:
+    """
+    Fibonacci-period EMA stack: 8, 13, 21, 34, 55, 89, 144.
+    Extended trend analysis — all aligned = strong trend.
+    """
+    periods = [8, 13, 21, 34, 55, 89, 144]
+    return {f"ema_{p}": close.ewm(span=p, adjust=False).mean() for p in periods}
