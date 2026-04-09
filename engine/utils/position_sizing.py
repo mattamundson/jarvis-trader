@@ -197,3 +197,106 @@ def calculate_position_size(
         symbol=symbol,
         reasoning=reasoning,
     )
+
+
+# ---------------------------------------------------------------------------
+# Half-Kelly position sizing
+# ---------------------------------------------------------------------------
+
+
+def calculate_half_kelly_size(
+    capital: float,
+    win_rate: float,
+    avg_win_loss_ratio: float,
+    tick_value: float,
+    atr_ticks: float,
+    stop_atr_mult: float = 0.70,
+    max_risk_pct: float = 0.06,
+    min_contracts: int = 1,
+    max_contracts: int = 2,
+) -> dict:
+    """
+    Half-Kelly position sizing with multiple safety caps.
+
+    Kelly fraction = (win_rate * avg_win_loss_ratio - loss_rate) / avg_win_loss_ratio
+    Half-Kelly = Kelly / 2 (fractional Kelly for robustness against estimation error)
+
+    Falls back to min_contracts when edge is zero or negative.
+    Hard cap at max_risk_pct (6%) to prevent overbetting on noisy estimates.
+
+    Returns dict: contracts, risk_pct, method, kelly_fraction, dollar_risk
+    """
+    loss_rate = 1.0 - win_rate
+
+    if avg_win_loss_ratio <= 0:
+        return {
+            'contracts': min_contracts, 'risk_pct': 0.01,
+            'method': 'fixed_fallback', 'kelly_fraction': 0.0,
+            'dollar_risk': capital * 0.01
+        }
+
+    kelly_fraction = (win_rate * avg_win_loss_ratio - loss_rate) / avg_win_loss_ratio
+    half_kelly = kelly_fraction / 2.0
+
+    if half_kelly <= 0:
+        return {
+            'contracts': min_contracts, 'risk_pct': 0.01,
+            'method': 'no_edge_minimum', 'kelly_fraction': kelly_fraction,
+            'dollar_risk': capital * 0.01
+        }
+
+    risk_pct = min(half_kelly, max_risk_pct)
+
+    stop_dollars = atr_ticks * stop_atr_mult * tick_value
+    if stop_dollars <= 0:
+        return {
+            'contracts': min_contracts, 'risk_pct': risk_pct,
+            'method': 'stop_zero_fallback', 'kelly_fraction': kelly_fraction,
+            'dollar_risk': capital * risk_pct
+        }
+
+    dollar_risk = capital * risk_pct
+    raw_contracts = dollar_risk / stop_dollars
+    contracts = max(min_contracts, min(max_contracts, round(raw_contracts)))
+
+    return {
+        'contracts': contracts,
+        'risk_pct': risk_pct,
+        'method': 'half_kelly',
+        'kelly_fraction': kelly_fraction,
+        'half_kelly': half_kelly,
+        'dollar_risk': dollar_risk,
+        'stop_dollars': stop_dollars,
+    }
+
+
+def compute_rolling_edge(
+    recent_trades: list,
+    window: int = 20,
+) -> dict:
+    """
+    Compute edge metrics from last N closed paper trades.
+
+    Each trade in recent_trades should be a dict with a 'pnl' key (float).
+    Returns 'sufficient_data': False if fewer than 10 trades.
+
+    Returns: {sufficient_data, n_trades, win_rate, avg_win_loss_ratio, edge_pct}
+    """
+    if len(recent_trades) < 10:
+        return {'sufficient_data': False, 'n_trades': len(recent_trades)}
+
+    trades = recent_trades[-window:]
+    wins = [t['pnl'] for t in trades if t.get('pnl', 0) > 0]
+    losses = [abs(t['pnl']) for t in trades if t.get('pnl', 0) <= 0]
+
+    win_rate = len(wins) / len(trades) if trades else 0
+    avg_win = sum(wins) / len(wins) if wins else 0
+    avg_loss = sum(losses) / len(losses) if losses else 1
+
+    return {
+        'sufficient_data': True,
+        'n_trades': len(trades),
+        'win_rate': win_rate,
+        'avg_win_loss_ratio': avg_win / avg_loss if avg_loss > 0 else 0,
+        'edge_pct': win_rate - (1 - win_rate) * (avg_loss / avg_win) if avg_win > 0 else 0,
+    }
