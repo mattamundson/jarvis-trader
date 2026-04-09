@@ -478,3 +478,45 @@ def fib_ema_stack(close: pd.Series) -> Dict[str, pd.Series]:
     """
     periods = [8, 13, 21, 34, 55, 89, 144]
     return {f"ema_{p}": close.ewm(span=p, adjust=False).mean() for p in periods}
+
+
+# ─── Futures-adapted strategy indicators (Phase 2) ───────────────────────────
+
+
+def compute_roc(
+    close: pd.Series,
+    period: int = 10,
+) -> pd.Series:
+    """
+    Rate of Change (momentum oscillator).
+    RoC = (close / close[N periods ago] - 1) * 100
+
+    Positive RoC = upward momentum (price higher than N bars ago)
+    Negative RoC = downward momentum
+    Threshold: |RoC| > 0.3% = meaningful momentum signal
+
+    For MES/MCL/MNQ 1h bars, period=10 = ~10 hours of momentum lookback.
+    """
+    return ((close / close.shift(period)) - 1) * 100.0
+
+
+def compute_vwap_zscore(
+    close: pd.Series,
+    vwap: pd.Series,
+    atr: pd.Series,
+) -> pd.Series:
+    """
+    VWAP deviation z-score: how many ATR units is price from VWAP.
+
+    z = (close - vwap) / atr
+
+    z > +1.2 → price extended above VWAP (mean-reversion short opportunity)
+    z < -1.2 → price extended below VWAP (mean-reversion long opportunity)
+    |z| < 0.5 → price near VWAP (neutral)
+
+    Uses ATR as normalizer — scale-invariant across instruments (MES vs MCL).
+    Used as convergence/mean-reversion signal when opposite to trend bias.
+    """
+    deviation = close - vwap
+    zscore = deviation / atr.replace(0, float('nan'))
+    return zscore.rename('vwap_zscore')

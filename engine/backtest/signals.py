@@ -303,6 +303,17 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # ── ATR SMA (20-bar) for consensus module ─────────────────────────────
     df["atr_sma20"] = df["atr"].rolling(20).mean()
 
+    # ── Rate of Change (momentum, period=10) ──────────────────────────────
+    from .indicators import compute_roc as _roc
+    df["roc_10"] = _roc(df["close"], period=10)
+
+    # ── VWAP z-score (mean-reversion distance) ────────────────────────────
+    if "vwap" in df.columns and "atr" in df.columns:
+        from .indicators import compute_vwap_zscore as _vwap_z
+        df["vwap_zscore"] = _vwap_z(df["close"], df["vwap"], df["atr"])
+    else:
+        df["vwap_zscore"] = float("nan")
+
     return df
 
 
@@ -533,6 +544,8 @@ def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str
             vwap_val = float(vwap_val_raw) if vwap_val_raw is not None and not pd.isna(vwap_val_raw) else float(row.get("close", 0))
             adx_norm_raw = row.get("adx_norm", None)
             adx_norm_val = float(adx_norm_raw) if adx_norm_raw is not None and not pd.isna(adx_norm_raw) else 0.25
+            roc_val = float(row.get("roc_10", 0.0)) if not pd.isna(row.get("roc_10", float("nan"))) else 0.0
+            vwap_z_val = float(row.get("vwap_zscore", 0.0)) if not pd.isna(row.get("vwap_zscore", float("nan"))) else 0.0
 
             consensus = compute_consensus(
                 ema_fast=ema_fast,
@@ -545,6 +558,8 @@ def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str
                 close=float(row.get("close", 0)),
                 adx_norm=adx_norm_val,
                 stc_value=stc_current,
+                roc=roc_val,
+                vwap_zscore=vwap_z_val,
             )
 
             if not consensus.threshold_met or consensus.direction == "HOLD":
