@@ -481,16 +481,12 @@ async def lifespan(app: FastAPI):
             logger.info("Scheduler: skipping — kill switch active")
             return
 
-        symbols_to_scan = (
-            [
-                (sym, True)
-                for sym in settings.FUTURES_WATCHLIST  # All configured futures (MES, MNQ, MCL)
-            ]
-            + [
-                (sym, False)
-                for sym in settings.OPTIONS_WATCHLIST[:3]  # Top 3 equities
-            ]
-        )
+        # Only scan active futures symbols — equities removed to reduce memory pressure
+        # Running 6 parallel 10-agent LLM pipelines causes OOM kills on this host
+        symbols_to_scan = [
+            (sym, True)
+            for sym in settings.FUTURES_WATCHLIST  # MCL, MNQ (active paper instruments)
+        ]
 
         logger.info(f"Scheduled scan: {[s[0] for s in symbols_to_scan]}")
         from notifications.whatsapp import get_notifier
@@ -579,7 +575,9 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.error(f"Scheduler analysis failed for {symbol}: {e}")
 
-        await asyncio.gather(*[_analyze_and_alert(sym, fut) for sym, fut in symbols_to_scan])
+        # Sequential execution — avoids OOM from 6 simultaneous 10-agent LLM pipelines
+        for sym, fut in symbols_to_scan:
+            await _analyze_and_alert(sym, fut)
 
     # Run every 30 minutes on weekdays, 9:30am-4:00pm Chicago time
     if settings.ANTHROPIC_API_KEY:
