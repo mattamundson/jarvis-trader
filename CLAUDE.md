@@ -38,6 +38,8 @@
 **Multi-Market Framework**: `markets/orchestrator.py` — futures, options, crypto
 **Learning System**: `learning/` — 4 modules (events, feedback, patterns, recommendations)
 
+**Strategic docs:** `docs/strategic/README.md` — command-center index (brief, SWOT, risk register, execution spine).
+
 See @.claude/imports/key-files.md for the full file purpose table.
 
 ## Environment & Commands
