@@ -19,7 +19,12 @@ from typing import Optional
 
 import httpx
 
-from utils.position_sizing import PositionSizeResult, calculate_position_size
+from utils.position_sizing import (
+    PositionSizeResult,
+    calculate_position_size,
+    calculate_half_kelly_size,
+    compute_rolling_edge,
+)
 
 try:
     from backtest.position_sizer import PositionSizer as _PositionSizer
@@ -61,6 +66,9 @@ class TradeDecision:
     # Audit trail
     timestamp: datetime = field(default_factory=datetime.now)
 
+    # Position sizing method used ('half_kelly', 'fixed_fractional', etc.)
+    sizing_method: str = "fixed_fractional"
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -75,6 +83,7 @@ class TradeDecision:
             "reasoning": self.reasoning,
             "risk_notes": self.risk_notes,
             "timestamp": self.timestamp.isoformat(),
+            "sizing_method": self.sizing_method,
         }
 
 
@@ -104,12 +113,17 @@ class TraderAgent:
         "Respond with valid JSON only. Do not add any explanation outside the JSON."
     )
 
-    def __init__(self, llm_client):
+    def __init__(self, llm_client, db_manager=None):
         """
         Args:
             llm_client: Object with .api_key attribute (Anthropic key).
+            db_manager: Optional DatabaseManager instance. When provided,
+                        Half-Kelly sizing is attempted using recent closed
+                        paper trades (falls back to fixed-fractional when
+                        fewer than 10 trades exist or on any error).
         """
         self._llm = llm_client
+        self._db = db_manager
 
     async def decide(
         self,
@@ -212,6 +226,85 @@ class TraderAgent:
                     _ps_err,
                 )
 
+        # ── Half-Kelly sizing (optional enhancement) ───────────────────────
+        # Attempts to replace fixed-fractional with Half-Kelly if we have
+        # enough closed paper trade history (≥ 10 trades).  Never blocks a
+        # trade — any failure silently falls back to the fixed-fractional result.
+        sizing_method = 'fixed_fractional'
+        sizing_info: dict = {}
+
+        if self._db is not None:
+            try:
+                recent_trades_raw = (
+                    self._db.get_closed_trades(symbol=symbol, limit=20)
+                    if hasattr(self._db, 'get_closed_trades') else []
+                )
+                # Normalise: each item needs a 'pnl' key
+                recent_trades = [
+                    {'pnl': t.get('pnl', t.get('realized_pnl', 0))}
+                    for t in (recent_trades_raw or [])
+                ]
+                edge = compute_rolling_edge(recent_trades)
+
+                if edge.get('sufficient_data'):
+                    # Dollar value of one tick per instrument
+                    tick_value_map = {'MES': 12.50, 'MNQ': 5.00, 'MCL': 10.00, 'MGC': 10.00}
+                    tick_value = tick_value_map.get(symbol, 12.50)
+
+                    # ATR in ticks (atr in points / tick_size in points)
+                    tick_size_map = {'MES': 0.25, 'MNQ': 0.25, 'MCL': 0.01, 'MGC': 0.10}
+                    tick_size = tick_size_map.get(symbol, 0.25)
+                    atr_ticks = atr / tick_size if atr and atr > 0 else 60.0
+
+                    sizing_info = calculate_half_kelly_size(
+                        capital=account_value,
+                        win_rate=edge['win_rate'],
+                        avg_win_loss_ratio=edge['avg_win_loss_ratio'],
+                        tick_value=tick_value,
+                        atr_ticks=atr_ticks,
+                        max_contracts=max_contracts,
+                    )
+                    sizing_method = sizing_info.get('method', 'half_kelly')
+
+                    # Override contracts if Half-Kelly produced a valid result
+                    hk_contracts = sizing_info.get('contracts')
+                    if hk_contracts and sizing_method == 'half_kelly':
+                        logger.info(
+                            "[Trader] Half-Kelly sizing for %s: "
+                            "kelly=%.4f half_kelly=%.4f risk_pct=%.2f%% => %d contract(s) "
+                            "(was %d fixed-fractional)",
+                            symbol,
+                            sizing_info.get('kelly_fraction', 0),
+                            sizing_info.get('half_kelly', 0),
+                            sizing_info.get('risk_pct', 0) * 100,
+                            hk_contracts,
+                            position_size.contracts,
+                        )
+                        position_size.contracts = hk_contracts
+                    else:
+                        logger.info(
+                            "[Trader] Half-Kelly for %s returned method=%s "
+                            "(edge not sufficient for override); using fixed-fractional.",
+                            symbol,
+                            sizing_method,
+                        )
+                else:
+                    logger.debug(
+                        "[Trader] Half-Kelly skipped for %s: only %d closed trades "
+                        "(need ≥ 10).",
+                        symbol,
+                        edge.get('n_trades', 0),
+                    )
+            except Exception as _hk_err:
+                # Half-Kelly is optional — never block a trade on sizing errors
+                sizing_method = 'fixed_fractional_fallback'
+                sizing_info = {}
+                logger.warning(
+                    "[Trader] Half-Kelly sizing failed for %s (non-fatal): %s",
+                    symbol,
+                    _hk_err,
+                )
+
         # Build the analysis prompt from all upstream reports
         prompt = self._build_prompt(
             symbol, debate_result, analyst_reports, safety_status, position_size
@@ -261,7 +354,7 @@ class TraderAgent:
                     response_text = response_text[4:]
 
             result = json.loads(response_text)
-            return self._parse_decision(symbol, result, position_size)
+            return self._parse_decision(symbol, result, position_size, sizing_method)
 
         except Exception as e:
             logger.error(f"[Trader] LLM decision failed for {symbol}: {e}")
@@ -364,6 +457,7 @@ Respond with JSON in exactly this format:
         symbol: str,
         result: dict,
         position_size: Optional[PositionSizeResult] = None,
+        sizing_method: str = "fixed_fractional",
     ) -> TradeDecision:
         action = result.get("action", "hold").lower()
         if action not in ("buy", "sell", "hold"):
@@ -413,6 +507,7 @@ Respond with JSON in exactly this format:
             reasoning=reasoning,
             risk_notes=result.get("risk_notes", ""),
             timestamp=datetime.now(),
+            sizing_method=sizing_method,
         )
 
     def _hold_decision(self, symbol: str, reasoning: str, risk_notes: str) -> TradeDecision:
