@@ -47,6 +47,7 @@ except ImportError:
     CronTrigger = None  # type: ignore[assignment,misc]
 
 from backtest.signals import compute_all_indicators
+from discord.signal_context import DiscordSignalContext
 from strategies.rl_config import (
     ACTION_NAMES,
     Action,
@@ -128,6 +129,9 @@ class RLExecutor:
         # Lazy-loaded model (loaded once on first run or at start())
         self._agent = None  # RLTradingAgent instance
         self._model_loaded: bool = False
+
+        # Discord signal context for 5 additional RL features (indices 18-22)
+        self._discord_ctx = DiscordSignalContext()
 
         logger.info("[RLExecutor] Created executor for %s | model_path=%s", self.symbol, model_path)
 
@@ -273,14 +277,17 @@ class RLExecutor:
 
     def _compute_obs(self, df: pd.DataFrame) -> tuple[Optional[np.ndarray], Optional[pd.DataFrame]]:
         """
-        Run compute_all_indicators on *df* and build the 18-feature observation
+        Run compute_all_indicators on *df* and build the 23-feature observation
         vector for the most recent bar (last row), using the executor's current
         paper position state.
+
+        Features 0-17: base technical indicators (from extract_features)
+        Features 18-22: Discord signal context (from DiscordSignalContext)
 
         Returns
         -------
         (obs, df_indicators)
-            obs          : np.ndarray of shape (N_FEATURES,), or None on failure.
+            obs          : np.ndarray of shape (23,), or None on failure.
             df_indicators: Fully processed DataFrame with all indicator columns,
                            or None on failure.  Callers can read the last-bar
                            close price directly from this instead of re-running
@@ -295,7 +302,8 @@ class RLExecutor:
                 return None, None
 
             idx = len(df_ind) - 1
-            obs = extract_features(
+            last_row = df_ind.iloc[idx]
+            base_obs = extract_features(
                 df=df_ind,
                 idx=idx,
                 position=self._paper_position,
@@ -303,6 +311,28 @@ class RLExecutor:
                 bars_in_trade=self._bars_in_trade,
                 symbol=self.symbol,
             )
+
+            # Append Discord signal context features (indices 18-22)
+            try:
+                # After reset_index(drop=True) the index is an integer — fall back to now()
+                raw_name = last_row.name
+                if hasattr(raw_name, "to_pydatetime"):
+                    last_ts = raw_name.to_pydatetime()
+                else:
+                    last_ts = datetime.now(timezone.utc)
+                atr_val = float(last_row.get("atr", 1.0) or 1.0)
+                price_val = float(last_row.get("close", 0.0) or 0.0)
+                discord_feats = self._discord_ctx.get_feature_list(
+                    symbol=self.symbol,
+                    timestamp=last_ts,
+                    price=price_val,
+                    atr=atr_val,
+                )
+                discord_arr = np.array(discord_feats, dtype=np.float32)
+            except Exception:
+                discord_arr = np.array([0.0, 0.5, 0.0, 0.0, 0.0], dtype=np.float32)
+
+            obs = np.concatenate([base_obs, discord_arr])
             return obs, df_ind
 
         except KeyError as exc:

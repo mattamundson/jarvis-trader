@@ -28,6 +28,7 @@ class PipelineRunRequest(BaseModel):
 
     symbol: str = Field(..., description="Trading symbol (e.g., MCL, MNQ, SPY)")
     is_futures: bool = Field(True, description="True for futures, False for options")
+    interval: str = Field("1h", description="Bar timeframe (e.g., 1h, 4h, 1d)")
 
 
 class SchedulerJobInfo(BaseModel):
@@ -81,16 +82,18 @@ _safety_layer = None
 _db_manager = None
 _paper_tracker = None
 _telegram_notifier = None
+_sdk_pipeline = None
 
 
-def inject_dependencies(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker=None):
+def inject_dependencies(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker=None, sdk_pipeline=None):
     """Inject global dependencies from main.py"""
-    global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker
+    global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker, _sdk_pipeline
     _scheduler = scheduler
     _trading_pipeline = trading_pipeline
     _safety_layer = safety_layer
     _db_manager = db_manager
     _paper_tracker = paper_tracker
+    _sdk_pipeline = sdk_pipeline
 
 
 def set_notifier(notifier) -> None:
@@ -628,3 +631,38 @@ async def cost_summary() -> CostSummaryResponse:
             cost_per_trade_usd=0.0,
             top_expensive_stages=[],
         )
+
+
+@router.post("/run/sdk")
+async def run_sdk_pipeline(request: PipelineRunRequest):
+    """
+    Run the 5-stage trading pipeline via Claude Agent SDK (managed agents).
+
+    Additive parallel path alongside /pipeline/run. Uses the claude-agent-sdk
+    to orchestrate 10 specialist subagents with parallel Stage 1 analysis and
+    Stage 2 debate. Output format is compatible with /pipeline/run for dashboard
+    consumption. The existing /pipeline/run endpoint is unaffected.
+    """
+    from fastapi import HTTPException
+
+    if _sdk_pipeline is None:
+        raise HTTPException(
+            503,
+            "SDK pipeline not available — requires claude-agent-sdk and ANTHROPIC_API_KEY",
+        )
+
+    result = await _sdk_pipeline.analyze_and_decide(
+        symbol=request.symbol,
+        interval=request.interval,
+        is_futures=request.is_futures,
+    )
+
+    logger.info(
+        "[SDK-PIPELINE] %s %s → %s (confidence=%.0f%%)",
+        request.symbol,
+        request.interval,
+        result.get("final_action", "hold").upper(),
+        float(result.get("confidence", 0)) * 100,
+    )
+
+    return result
