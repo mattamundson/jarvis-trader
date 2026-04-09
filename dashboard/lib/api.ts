@@ -1209,3 +1209,71 @@ export interface HourlyStatsResponse {
   best_hour: HourlyStatItem | null;
   worst_hour: HourlyStatItem | null;
 }
+
+// ── Pipeline reasoning interfaces for LiveTradeReasoningWidget ───────────────
+
+export interface AgentAnalystReport {
+  regime?: string;
+  stc_val?: number;
+  signal?: string;
+  confidence?: number;
+  reasoning?: string;
+  sentiment?: string;
+  bias?: string;
+  summary?: string;
+  current_price?: number;
+}
+
+export interface DebateResult {
+  verdict?: string;
+  debate_score?: number;
+  bull_score?: number;
+  bear_score?: number;
+  bull_weakest_point?: string;
+  bear_weakest_point?: string;
+  rounds_completed?: number;
+}
+
+export interface TradeDecisionSnapshot {
+  action?: string;
+  limit_price?: number;
+  stop_price?: number;
+  target_price?: number;
+  confidence?: number;
+  reasoning?: string;
+}
+
+export interface PipelineDecisionSnapshot {
+  trade_decision?: TradeDecisionSnapshot;
+  risk_decision?: { approved?: boolean; reason?: string; checks_passed?: number };
+  fund_decision?: { approved?: boolean; final_conviction?: number; reasoning?: string };
+  debate_result?: DebateResult;
+  analyst_reports?: {
+    technical?: AgentAnalystReport;
+    news?: AgentAnalystReport;
+    social?: AgentAnalystReport;
+    fundamental?: AgentAnalystReport;
+  };
+  confidence?: number;
+  boosted_confidence?: number;
+  summary?: string;
+  errors?: string[];
+}
+
+export interface RecentPipelineDecision {
+  approval_id: string;
+  symbol: string;
+  action: string;
+  quantity?: number;
+  entry_price?: number;
+  stop_price?: number;
+  target_price?: number;
+  created_at: string;
+  status: string;
+  pipeline_snapshot?: PipelineDecisionSnapshot;
+}
+
+export interface RecentPipelineReasoningResponse {
+  decisions: RecentPipelineDecision[];
+  count: number;
+}

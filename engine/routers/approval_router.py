@@ -112,6 +112,19 @@ async def list_pending_approvals(limit: int = 50) -> dict[str, Any]:
     return {"pending": enriched_rows, "count": len(enriched_rows)}
 
 
+@router.get("/recent-with-reasoning")
+async def get_recent_pipeline_with_reasoning(limit: int = 10) -> dict[str, Any]:
+    """Return recent pipeline decisions (all statuses) with full snapshot for reasoning display."""
+    if _db_manager is None:
+        raise HTTPException(503, detail="Database not available")
+    try:
+        rows = _db_manager.get_recent_approvals_all_statuses(limit=min(max(1, limit), 50))
+        return {"decisions": rows, "count": len(rows)}
+    except Exception as exc:
+        logger.error("[ApprovalRouter] recent-with-reasoning failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/pending-approvals/{approval_id}")
 async def get_pending_approval(approval_id: str) -> dict[str, Any]:
     if _db_manager is None:

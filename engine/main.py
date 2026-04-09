@@ -33,6 +33,7 @@ from agents.fund_manager import FundManagerAgent
 from agents.fundamental_analyst import FundamentalistAgent
 from agents.news_analyst import NewsAnalystAgent
 from agents.pipeline import TradingPipeline
+from agents.sdk_pipeline import SDKTradingPipeline
 from agents.risk_manager import RiskManagerAgent
 from agents.social_analyst import SocialAnalystAgent
 from agents.technical_analyst import TechnicalAnalystAgent
@@ -189,6 +190,7 @@ data_manager: MarketDataManager | None = None
 safety_layer: SafetyLayer | None = None
 technical_analyst: TechnicalAnalystAgent | None = None
 trading_pipeline: TradingPipeline | None = None
+sdk_pipeline: SDKTradingPipeline | None = None
 scheduler: AsyncIOScheduler | None = None
 paper_tracker: PortfolioTracker | None = None
 db_manager: DatabaseManager | None = None
@@ -451,6 +453,16 @@ async def lifespan(app: FastAPI):
             logger.info("✅ PipelineProfiler wired into /pipeline/profiling endpoint")
 
         logger.info("✅ Trading Pipeline initialized — all 5 stages wired")
+
+        # SDK Pipeline — parallel Claude Agent SDK path (/pipeline/run/sdk)
+        try:
+            sdk_pipeline = SDKTradingPipeline(
+                data_manager=data_manager,
+                api_key=getattr(settings, "JARVIS_API_KEY", ""),
+            )
+            logger.info("✅ SDK Pipeline initialized — /pipeline/run/sdk available")
+        except Exception as _sdk_exc:
+            logger.warning("⚠️  SDK Pipeline init failed (non-fatal): %s", _sdk_exc)
     else:
         logger.warning("⚠️  No ANTHROPIC_API_KEY — LLM agents disabled. Add to .env to enable.")
 
@@ -1235,8 +1247,8 @@ async def lifespan(app: FastAPI):
                 run_morning_brief,
                 CronTrigger(
                     day_of_week="mon-fri",
-                    hour=8,
-                    minute=45,
+                    hour=7,
+                    minute=25,
                     timezone="America/Chicago",
                 ),
                 id="morning_brief",
@@ -1244,7 +1256,7 @@ async def lifespan(app: FastAPI):
                 max_instances=1,
                 replace_existing=True,
             )
-            logger.info("✅ Morning brief job registered — fires Mon–Fri at 08:45 CT")
+            logger.info("✅ Morning brief job registered — fires Mon–Fri at 07:25 CT")
     except Exception as _brief_err:
         logger.warning(f"Morning brief init failed (non-fatal): {_brief_err}")
 
@@ -2847,11 +2859,51 @@ async def run_pipeline(req: PipelineRequest):
     return result
 
 
+@app.post("/pipeline/run/sdk")
+async def run_sdk_pipeline(req: PipelineRequest):
+    """
+    Run the 5-stage trading pipeline via Claude Agent SDK (managed agents).
+
+    This is the additive SDK-powered path that runs alongside /pipeline/run.
+    Uses the claude-agent-sdk to orchestrate 10 specialist subagents with
+    parallel Stage 1 analysis and Stage 2 debate. Output format is compatible
+    with /pipeline/run for dashboard consumption.
+
+    The existing /pipeline/run endpoint is unaffected.
+    """
+    if not sdk_pipeline:
+        raise HTTPException(
+            503,
+            "SDK pipeline not available — requires claude-agent-sdk and ANTHROPIC_API_KEY",
+        )
+
+    result = await sdk_pipeline.analyze_and_decide(
+        symbol=req.symbol,
+        interval=req.interval,
+        is_futures=req.is_futures,
+    )
+
+    final_action = result.get("final_action", "hold")
+
+    # Log to decision feed (same as /pipeline/run)
+    _log_decision(
+        symbol=req.symbol,
+        action=final_action,
+        confidence=float(result.get("confidence", 0)),
+        source="sdk_pipeline",
+        summary=result.get("summary", ""),
+        reasoning=(result.get("trade_decision") or {}).get("reasoning", ""),
+    )
+
+    return result
+
+
 @app.get("/pipeline/status")
 async def pipeline_status():
     """Pipeline availability and last run info"""
     return {
         "available": trading_pipeline is not None,
+        "sdk_available": sdk_pipeline is not None,
         "last_run": _decision_log[-1] if _decision_log else None,
         "decision_count": len(_decision_log),
     }
