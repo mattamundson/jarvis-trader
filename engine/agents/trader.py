@@ -481,14 +481,86 @@ class TraderAgent:
                     position_size.contracts = _new_contracts
 
         if _confluence_hold:
-            return self._hold_decision(
-                symbol=symbol,
-                reasoning=(
-                    f"Confluence gate: debate verdict={_debate_verdict} but insufficient "
-                    "Stage 1 agent agreement. Forcing HOLD to avoid low-confluence trade."
-                ),
-                risk_notes="Less than 40% of analyst agents agreed with the debate direction.",
-            )
+            # Fix C (2026-04-10) — Advisor tiebreak on confluence-vetoed verdicts.
+            # Before forcing HOLD on a decisive-but-contrarian debate verdict,
+            # consult Claude Opus for a second opinion. The advisor sees the
+            # full bull/bear cases plus the Stage 1 disagreement and decides
+            # whether the debate's minority thesis is worth executing at
+            # minimum size. This is the "razor-thin decision with expensive
+            # consequences" case the Anthropic Advisor Strategy was designed for.
+            _advisor_override = False
+            _advisor_reasoning = ""
+            try:
+                _advisor = _get_advisor()
+                if _advisor is not None and _advisor.is_available():
+                    def _extract_thesis(report_obj, thesis_key):
+                        if report_obj is None:
+                            return ""
+                        if isinstance(report_obj, dict):
+                            return str(report_obj.get(thesis_key, "") or "")
+                        return str(getattr(report_obj, thesis_key, "") or "")
+
+                    _bull_report = (
+                        debate_result.get("bull_report")
+                        if isinstance(debate_result, dict)
+                        else getattr(debate_result, "bull_report", None)
+                    )
+                    _bear_report = (
+                        debate_result.get("bear_report")
+                        if isinstance(debate_result, dict)
+                        else getattr(debate_result, "bear_report", None)
+                    )
+                    _bull_case_text = _extract_thesis(_bull_report, "bull_thesis")
+                    _bear_case_text = _extract_thesis(_bear_report, "bear_thesis")
+                    _regime_str = (
+                        debate_result.get("regime", "unknown")
+                        if isinstance(debate_result, dict)
+                        else getattr(debate_result, "regime", "unknown")
+                    ) or "unknown"
+
+                    _verdict_obj = await _advisor.consult_debate_tiebreak(
+                        bull_case=_bull_case_text,
+                        bear_case=_bear_case_text,
+                        debate_score=_debate_score,
+                        regime=_regime_str,
+                        analyst_reports=analyst_reports,
+                    )
+                    if _verdict_obj.consulted and _verdict_obj.verdict in {"LONG", "SHORT"}:
+                        _expected_side = "LONG" if _debate_verdict == "BULL_WINS" else "SHORT"
+                        if _verdict_obj.verdict == _expected_side:
+                            _advisor_override = True
+                            _advisor_reasoning = _verdict_obj.reasoning or ""
+                            # Risk-bounded probe: cap at 1 contract regardless of sizing
+                            position_size.contracts = max(1, min(position_size.contracts, 1))
+                            logger.info(
+                                "[Trader] %s: advisor tiebreak OVERRIDES confluence hold "
+                                "(verdict=%s, confidence=%.2f) — executing at probe size (1 contract)",
+                                symbol, _verdict_obj.verdict, _verdict_obj.confidence,
+                            )
+                        else:
+                            logger.info(
+                                "[Trader] %s: advisor agrees with confluence hold "
+                                "(advisor=%s, debate=%s) — honouring HOLD",
+                                symbol, _verdict_obj.verdict, _debate_verdict,
+                            )
+            except Exception as _adv_err:
+                logger.warning(
+                    "[Trader] %s: confluence-advisor consult raised: %s",
+                    symbol, _adv_err,
+                )
+
+            if not _advisor_override:
+                return self._hold_decision(
+                    symbol=symbol,
+                    reasoning=(
+                        f"Confluence gate: debate verdict={_debate_verdict} but insufficient "
+                        "Stage 1 agent agreement. Forcing HOLD to avoid low-confluence trade."
+                        + (f" Advisor consulted: {_advisor_reasoning[:120]}" if _advisor_reasoning else "")
+                    ),
+                    risk_notes="Less than 40% of analyst agents agreed with the debate direction.",
+                )
+            # Advisor overrode the hold — fall through to build the LLM trader
+            # prompt at probe sizing. The downstream flow runs normally.
 
         # Build the analysis prompt from all upstream reports
         is_paper = not getattr(settings, "LIVE_TRADING_ENABLED", False)
