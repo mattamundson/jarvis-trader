@@ -127,17 +127,36 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         self._brave: Optional[object] = brave_client
 
     async def analyze(self, symbol: str) -> "NewsReport":
-        """Full news analysis pipeline for a symbol"""
+        """Full news analysis pipeline for a symbol.
 
-        # 1. Fetch headlines
+        For futures symbols with no direct Finnhub coverage, automatically
+        retries with an equity proxy and marks the report as data_quality="proxy".
+        """
+        # 1. Try direct fetch
         headlines = await self._fetch_headlines(symbol)
+        proxy_symbol = ""
 
         if not headlines:
-            logger.warning(f"No news found for {symbol}")
+            # Check for a futures proxy before giving up
+            proxy_info = self.FUTURES_NEWS_PROXY.get(symbol.upper())
+            if proxy_info:
+                proxy_ticker, proxy_label = proxy_info
+                logger.info(
+                    f"No direct news for {symbol} — retrying with proxy {proxy_ticker} ({proxy_label})"
+                )
+                headlines = await self._fetch_headlines(proxy_ticker)
+                if headlines:
+                    proxy_symbol = proxy_ticker
+                    logger.info(
+                        f"Proxy fetch returned {len(headlines)} headlines for {symbol} via {proxy_ticker}"
+                    )
+
+        if not headlines:
+            logger.warning(f"No news found for {symbol} (direct or proxy)")
             return self._neutral_report(symbol, headline_count=0)
 
-        # 2. LLM synthesis
-        report = await self._llm_synthesize(symbol, headlines)
+        # 2. LLM synthesis — pass proxy info so the prompt can note it
+        report = await self._llm_synthesize(symbol, headlines, proxy_symbol=proxy_symbol)
         return report
 
     async def _fetch_headlines(self, symbol: str) -> list[dict]:
@@ -230,9 +249,17 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 unique.append(h)
         return unique[:20]
 
-    async def _llm_synthesize(self, symbol: str, headlines: list[dict]) -> "NewsReport":
-        """Use LLM to synthesize news headlines into a structured signal"""
+    async def _llm_synthesize(
+        self, symbol: str, headlines: list[dict], proxy_symbol: str = ""
+    ) -> "NewsReport":
+        """Use LLM to synthesize news headlines into a structured signal.
 
+        Args:
+            symbol: The instrument being analyzed (e.g. "MES").
+            headlines: List of headline dicts.
+            proxy_symbol: When non-empty, headlines came from this proxy equity
+                          rather than the instrument directly.
+        """
         # Format headlines for the prompt
         headlines_text = ""
         for i, h in enumerate(headlines, 1):
@@ -245,7 +272,19 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             if h.get("summary"):
                 headlines_text += f"   {h['summary']}\n"
 
-        prompt = f"""Analyze these {len(headlines)} recent news items for {symbol}:
+        # Build optional proxy note for the LLM context
+        proxy_note = ""
+        if proxy_symbol:
+            proxy_info = self.FUTURES_NEWS_PROXY.get(symbol.upper())
+            proxy_label = proxy_info[1] if proxy_info else proxy_symbol
+            proxy_note = (
+                f"\nNote: Direct news for {symbol} was unavailable via Finnhub. "
+                f"The headlines below were sourced from {proxy_symbol} as a macro proxy "
+                f"for {proxy_label}. Interpret sentiment in the context of the underlying "
+                f"market rather than the ETF itself.\n"
+            )
+
+        prompt = f"""Analyze these {len(headlines)} recent news items for {symbol}:{proxy_note}
 
 {headlines_text}
 
@@ -318,6 +357,8 @@ Respond with JSON in exactly this format:
                 headline_count=len(headlines),
                 summary=result.get("summary", ""),
                 reasoning=result.get("reasoning", ""),
+                data_quality="proxy" if proxy_symbol else "direct",
+                proxy_symbol=proxy_symbol,
             )
 
         except Exception as e:
@@ -336,4 +377,6 @@ Respond with JSON in exactly this format:
             headline_count=headline_count,
             summary="No news data available",
             reasoning="Could not retrieve or analyze news — returning neutral signal",
+            data_quality="unavailable",
+            proxy_symbol="",
         )

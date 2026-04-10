@@ -31,6 +31,7 @@ import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidge
 import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
+import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -196,6 +197,9 @@ export default function DashboardPage() {
 
         {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
         <ProactiveValidationWidget />
+
+        {/* Signal Flow — per-instrument STC values and pipeline block stage */}
+        <SignalFlowWidget />
 
         {/* Walk-Forward / Paper Trading Status */}
         <WFEStatusCard />

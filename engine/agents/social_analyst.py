@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
@@ -105,10 +105,15 @@ Your task:
 2. Determine whether the trend is rising, falling, or stable
 3. Produce a signal score (-1.0 to +1.0) where positive means bullish retail sentiment
 4. Assign a confidence score (0.0 to 1.0) — lower if data is sparse or symbol is not trending
+5. Estimate contract_bias from any futures/options positioning language in the data
+   ("bullish" | "bearish" | "neutral" | "unknown")
 
 Important: High social buzz does NOT always mean bullish. Consider context.
 Meme/momentum tickers with very high ranks and rising mentions may indicate
 short-squeeze potential (bullish) OR overextension risk (bearish).
+
+For FUTURES instruments, note that equity Reddit sentiment is directionally
+relevant but position sizing norms differ from stock trading communities.
 
 Respond with valid JSON only. Do not add any explanation outside the JSON.
 """
@@ -124,6 +129,10 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 
     async def analyze(self, symbol: str) -> "SocialReport":
         """Full social sentiment analysis pipeline for a symbol"""
+
+        # Determine futures-specific subreddits for context annotation
+        subreddits = FUTURES_SUBREDDIT_MAP.get(symbol.upper(), DEFAULT_SUBREDDITS)
+        is_futures = symbol.upper() in FUTURES_SUBREDDIT_MAP
 
         # 1. Fetch trending data from ApeWisdom
         trending_data = await self._fetch_apewisdom()
@@ -150,6 +159,8 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             symbol, symbol_data, stocktwits_data, trending_data,
             engine_reddit_data=engine_reddit_data,
             news_sentiment=news_sentiment,
+            subreddits=subreddits,
+            is_futures=is_futures,
         )
         return report
 
@@ -183,7 +194,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         """
         Fetch JARVIS engine's processed Reddit sentiment (ApeWisdom via data_manager).
         Returns the top-20 trending tickers from the engine's /sentiment/reddit endpoint.
-        Falls back to empty dict on any error so the pipeline is never blocked.
+        Falls back gracefully on any error — including HTTP 500 — so the pipeline
+        is never blocked. Returns {"_unavailable": True} on server-side errors so
+        callers can set data_quality accordingly.
         """
         _api_key = os.environ.get("API_KEY", "")
         try:
@@ -194,6 +207,12 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 )
                 if resp.status_code == 200:
                     return resp.json()
+                if resp.status_code >= 500:
+                    logger.warning(
+                        f"Engine reddit sentiment returned HTTP {resp.status_code} — "
+                        "social API unavailable, returning neutral fallback"
+                    )
+                    return {"_unavailable": True}
                 logger.debug(f"Engine reddit sentiment returned {resp.status_code}")
         except Exception as e:
             logger.debug(f"Engine reddit sentiment fetch failed: {e}")
@@ -202,7 +221,8 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
     async def _fetch_engine_news_sentiment(self, symbol: str) -> dict:
         """
         Fetch news sentiment for the given symbol from the engine's news endpoint.
-        Returns sentiment dict or empty dict on any error.
+        Returns sentiment dict, {"_unavailable": True} on HTTP 5xx, or empty dict on
+        connection errors — never raises so the pipeline is always unblocked.
         """
         _api_key = os.environ.get("API_KEY", "")
         try:
@@ -213,6 +233,12 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 )
                 if resp.status_code == 200:
                     return resp.json()
+                if resp.status_code >= 500:
+                    logger.warning(
+                        f"Engine news sentiment for {symbol} returned HTTP "
+                        f"{resp.status_code} — marking unavailable"
+                    )
+                    return {"_unavailable": True}
                 logger.debug(
                     f"Engine news sentiment for {symbol} returned {resp.status_code}"
                 )
@@ -264,6 +290,8 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         all_trending: list[dict],
         engine_reddit_data: Optional[dict] = None,
         news_sentiment: Optional[dict] = None,
+        subreddits: Optional[list[str]] = None,
+        is_futures: bool = False,
     ) -> "SocialReport":
         """Use LLM to synthesize social metrics into a structured signal"""
 
@@ -282,8 +310,27 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         else:
             trend_hint = "stable"
 
+        # Track whether any source returned a server error
+        any_source_unavailable = False
+
+        # Futures instrument context header
+        instrument_header = ""
+        if is_futures:
+            description = FUTURES_DESCRIPTIONS.get(
+                symbol.upper(),
+                f"{symbol} futures instrument",
+            )
+            subreddit_list = ", ".join(f"r/{s}" for s in (subreddits or DEFAULT_SUBREDDITS))
+            instrument_header = (
+                f"INSTRUMENT TYPE: FUTURES\n"
+                f"{description}\n"
+                f"Social sentiment from equity Reddit is directionally relevant but "
+                f"position sizing norms differ from stock trading communities.\n"
+                f"Primary sentiment subreddits monitored: {subreddit_list}\n\n"
+            )
+
         # Build social context block
-        social_context = f"""Symbol: {symbol}
+        social_context = f"""{instrument_header}Symbol: {symbol}
 Total tickers tracked by ApeWisdom: {total_tickers}
 
 ApeWisdom Reddit Data:
@@ -306,9 +353,11 @@ StockTwits Data:
 """
 
         # Engine-processed Reddit sentiment (top trending list)
-        if engine_reddit_data and engine_reddit_data.get("tickers"):
+        if engine_reddit_data and engine_reddit_data.get("_unavailable"):
+            any_source_unavailable = True
+            social_context += "\nJARVIS Engine Reddit Data: service unavailable (HTTP 5xx)\n"
+        elif engine_reddit_data and engine_reddit_data.get("tickers"):
             engine_tickers = engine_reddit_data.get("tickers", [])
-            # Check if our symbol appears in the engine's processed list
             engine_match = next(
                 (t for t in engine_tickers if t.get("ticker", "").upper() == symbol.upper()),
                 None,
@@ -327,7 +376,10 @@ JARVIS Engine Reddit Data: {symbol} not in engine's top-{len(engine_tickers)} tr
             social_context += "\nJARVIS Engine Reddit Data: unavailable\n"
 
         # News sentiment
-        if news_sentiment and isinstance(news_sentiment, dict):
+        if news_sentiment and isinstance(news_sentiment, dict) and news_sentiment.get("_unavailable"):
+            any_source_unavailable = True
+            social_context += f"\nNews Sentiment for {symbol}: service unavailable (HTTP 5xx)\n"
+        elif news_sentiment and isinstance(news_sentiment, dict):
             news_signal = news_sentiment.get("signal") or news_sentiment.get("sentiment")
             news_summary = news_sentiment.get("summary") or news_sentiment.get("headline", "")
             if news_signal is not None or news_summary:
@@ -347,8 +399,11 @@ Respond with JSON in exactly this format:
   "confidence": <float 0.0 to 1.0>,
   "trend": "<rising|falling|stable>",
   "summary": "<one sentence social sentiment assessment>",
-  "reasoning": "<2-3 sentence analysis explaining the signal, mention volume context, and risk factors>"
+  "reasoning": "<2-3 sentence analysis explaining the signal, mention volume context, and risk factors>",
+  "contract_bias": "<bullish|bearish|neutral|unknown>"
 }}"""
+
+        data_quality = "partial" if any_source_unavailable else "ok"
 
         try:
             anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
@@ -407,6 +462,8 @@ Respond with JSON in exactly this format:
                 trend=result.get("trend", trend_hint),
                 summary=result.get("summary", ""),
                 reasoning=result.get("reasoning", ""),
+                contract_bias=result.get("contract_bias", "unknown"),
+                data_quality=data_quality,
             )
 
         except Exception as e:
@@ -421,10 +478,21 @@ Respond with JSON in exactly this format:
                 trend=trend_hint,
                 summary="LLM synthesis failed",
                 reasoning=f"Social data retrieved but LLM analysis failed: {e}",
+                contract_bias="unknown",
+                data_quality=data_quality,
             )
 
-    def _neutral_report(self, symbol: str) -> "SocialReport":
-        """Return a neutral low-confidence report when no social data is available"""
+    def _neutral_report(
+        self,
+        symbol: str,
+        data_quality: str = "ok",
+        reason: str = "No Reddit mentions or StockTwits data found. Low social presence; neutral signal assigned.",
+    ) -> "SocialReport":
+        """Return a neutral low-confidence report when no social data is available.
+
+        data_quality should be set to "unavailable" when the cause is a server error
+        (HTTP 5xx) rather than simply no trending data for the symbol.
+        """
         return SocialReport(
             symbol=symbol,
             timestamp=datetime.now(),
@@ -434,5 +502,7 @@ Respond with JSON in exactly this format:
             rank=0,
             trend="stable",
             summary=f"{symbol} not found in trending social data",
-            reasoning="No Reddit mentions or StockTwits data found. Low social presence; neutral signal assigned.",
+            reasoning=reason,
+            contract_bias="unknown",
+            data_quality=data_quality,
         )

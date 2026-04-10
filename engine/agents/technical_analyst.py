@@ -301,6 +301,80 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         ]
         return "\n".join(lines)
 
+    @staticmethod
+    def _build_stc_context(indicators: dict, symbol: str) -> str:
+        """
+        Build a human-readable STC signal context block for the LLM prompt.
+        Uses canonical JARVIS thresholds: OS=15, OB=83.
+        Also computes ATR stop distance (0.70x ATR) in dollar terms for MES (1 contract = $5/pt).
+
+        Returns a formatted string block; empty string if STC not available.
+        """
+        stc_val = indicators.get("stc")
+        if stc_val is None:
+            return ""
+
+        stc_prev = indicators.get("stc_prev")
+        atr = indicators.get("atr")
+        current_price = indicators.get("current_price", 0.0)
+
+        # STC signal state
+        STC_OS = 15
+        STC_OB = 83
+        stc_val_fmt = f"{stc_val:.1f}"
+
+        # Detect crossover events (prev bar on opposite side of threshold)
+        cross_below_ob = (stc_prev is not None and stc_prev > STC_OB and stc_val <= STC_OB)
+        cross_above_os = (stc_prev is not None and stc_prev < STC_OS and stc_val >= STC_OS)
+
+        if cross_below_ob:
+            stc_state = (
+                f"STC OVERBOUGHT CROSS-BELOW ({stc_val_fmt}) — EXIT TRIGGER ACTIVE: "
+                f"STC just crossed below {STC_OB} (was {stc_prev:.1f}); canonical exit signal for longs. "
+                f"Do NOT open new longs here."
+            )
+        elif cross_above_os:
+            stc_state = (
+                f"STC OVERSOLD CROSS-ABOVE ({stc_val_fmt}) — ENTRY TRIGGER ACTIVE: "
+                f"STC just crossed above {STC_OS} (was {stc_prev:.1f}); canonical long entry signal. "
+                f"Confirm regime alignment before executing."
+            )
+        elif stc_val > STC_OB:
+            stc_state = (
+                f"STC OVERBOUGHT ({stc_val_fmt} > {STC_OB}) — potential exit long / "
+                f"caution on new longs. Watch for cross below {STC_OB} as exit trigger."
+            )
+        elif stc_val < STC_OS:
+            stc_state = (
+                f"STC OVERSOLD ({stc_val_fmt} < {STC_OS}) — potential entry long. "
+                f"Watch for cross above {STC_OS} as entry trigger."
+            )
+        else:
+            stc_state = (
+                f"STC NEUTRAL ({stc_val_fmt}, between {STC_OS}–{STC_OB}) — "
+                f"mid-range, no actionable STC trigger. Await OS/OB threshold cross."
+            )
+
+        # ATR stop context
+        atr_lines = ""
+        if atr and atr > 0:
+            stop_distance = atr * 0.70
+            # MES-specific dollar value: $5 per point
+            sym_upper = symbol.upper()
+            point_values = {"MES": 5.0, "MNQ": 2.0, "MCL": 100.0, "MGC": 10.0}
+            pt_val = point_values.get(sym_upper, 0.0)
+            if pt_val > 0 and current_price > 0:
+                stop_dollar = stop_distance * pt_val
+                atr_lines = (
+                    f"\nATR CONTEXT: ATR(14)={atr:.2f} pts | "
+                    f"0.70x ATR stop = {stop_distance:.2f} pts "
+                    f"(${stop_dollar:.0f} per 1 {sym_upper} contract)"
+                )
+            else:
+                atr_lines = f"\nATR CONTEXT: ATR(14)={atr:.2f} | 0.70x ATR stop = {stop_distance:.2f}"
+
+        return f"\nSTC SIGNAL STATE: {stc_state}{atr_lines}\n"
+
     def _compute_indicators(self, df: pd.DataFrame) -> dict:
         """
         Compute technical indicators using pandas-ta.
@@ -526,10 +600,12 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             float(indicators.get("atr", 1.0) or 1.0),
         )
 
+        # Build deterministic STC context block (OS=15, OB=83 canonical thresholds)
+        stc_context_str = self._build_stc_context(indicators, symbol)
+
         prompt = f"""Analyze these technical indicators for {symbol} on {timeframe} timeframe:
 
-{learning_context}{discord_sentiment_line}{discord_signal_str}
-
+{learning_context}{discord_sentiment_line}{discord_signal_str}{stc_context_str}
 Current Price: ${indicators.get("current_price", "N/A")}
 Price Change (20 bars): {indicators.get("price_change_pct", "N/A"):.1f}%
 
@@ -561,6 +637,13 @@ KEY LEVELS:
 - Support: {indicators.get("support_levels", [])}
 - Resistance: {indicators.get("resistance_levels", [])}
 {self._format_composite_section(indicators)}{discord_sentiment_line}
+INSTRUCTIONS FOR RESPONSE:
+1. mtf_alignment: Provide a one-line MTF summary, e.g. "4h and 1h STC aligned bullish",
+   "MTF misaligned: 4h bearish / 1h overbought", or "insufficient MTF data".
+2. regime_readiness: Based on the 5-layer regime filter (trend, momentum, volatility,
+   volume, structure), output one of: READY (4-5 layers aligned), CAUTION (2-3 layers
+   aligned), or NOT_READY (0-1 layers aligned). Be strict — partial alignment = CAUTION.
+
 Respond with JSON in exactly this format:
 {{
   "signal": <float -1.0 to 1.0>,
@@ -574,7 +657,9 @@ Respond with JSON in exactly this format:
   "is_overbought": <bool>,
   "is_oversold": <bool>,
   "summary": "<one sentence summary>",
-  "reasoning": "<2-3 sentence technical analysis>"
+  "reasoning": "<2-3 sentence technical analysis>",
+  "mtf_alignment": "<one-line MTF summary>",
+  "regime_readiness": "<READY|CAUTION|NOT_READY>"
 }}"""
 
         try:
@@ -621,6 +706,10 @@ Respond with JSON in exactly this format:
                 is_oversold=result.get("is_oversold", False),
                 trend=result.get("trend", "neutral"),
                 regime=result.get("regime", "unknown"),
+                # Enhanced signal context fields
+                stc_context=stc_context_str.strip(),
+                mtf_alignment=result.get("mtf_alignment", ""),
+                regime_readiness=result.get("regime_readiness", "UNKNOWN"),
             )
 
         except Exception as e:
