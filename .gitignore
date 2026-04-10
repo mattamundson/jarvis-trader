@@ -158,3 +158,22 @@ engine/nul
 
 # Archive folder — session reports moved here manually
 Markdown FIles/
+
+# === 2026-04-10 HARDENING ===
+# Paper trading state and learning data (session-specific, never commit)
+engine/learning/data/session_memory.json
+engine/data/paper_trades.json
+
+# .env with negation for .env.example
+!engine/.env.example
+
+# Screenshots from TradingView MCP and manual testing
+screenshots/
+tradingview-mcp/screenshots/
+
+# Claude Code local artifacts (per-session, regenerated)
+.claude/task-manifest.json
+.claude/plans/
+
+# Pytest cache (explicit)
+.pytest_cache/
