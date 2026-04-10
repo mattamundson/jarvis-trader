@@ -1043,12 +1043,16 @@ class TradingPipeline:
         news_coro = self._call_agent_analyze("news", symbol)
         social_coro = self._call_agent_analyze("social", symbol)
         fundamental_coro = self._call_agent_analyze("fundamental", symbol)
+        corey_coro = self._call_agent_analyze(
+            "corey", symbol, current_price=0.0, atr=0.0
+        )
 
         results = await asyncio.gather(
             safe_analyze("technical", technical_coro),
             safe_analyze("news", news_coro),
             safe_analyze("social", social_coro),
             safe_analyze("fundamental", fundamental_coro),
+            safe_analyze("corey", corey_coro),
         )
 
         return {
@@ -1056,6 +1060,7 @@ class TradingPipeline:
             "news": results[1],
             "social": results[2],
             "fundamental": results[3],
+            "corey": results[4],
         }
 
     async def _call_agent_analyze(self, agent_name: str, symbol: str, **kwargs):
