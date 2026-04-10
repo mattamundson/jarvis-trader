@@ -340,6 +340,34 @@ async def notify_kill_switch_cleared(*, authorized_by: str = "") -> bool:
     return result
 
 
+async def notify_kill_switch_deactivated(
+    *,
+    authorized_by: str = "",
+    message: str = "",
+) -> bool:
+    """Send WhatsApp alert when kill switch is manually deactivated. No cooldown.
+
+    Alias for notify_kill_switch_cleared() with an optional extra message param.
+    Exists so callers can import notify_kill_switch_deactivated by name.
+    """
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw kill-switch deactivated notify suppressed in TESTING mode")
+        return False
+    ts = _ct_time()
+    by_str = f"\nAuthorized by: {authorized_by}" if authorized_by else ""
+    extra_str = f"\n{message[:120]}" if message else ""
+    msg = (
+        f"JARVIS KILL SWITCH DEACTIVATED — {ts}\n"
+        f"Trading RESUMED.{by_str}{extra_str}\n"
+        f"Review positions before new entries."
+    )
+    result = await _send(msg)
+    asyncio.ensure_future(
+        _discord.discord_kill_switch_deactivated()
+    )
+    return result
+
+
 async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) -> bool:
     """Send WhatsApp alert when regime changes. No cooldown (regimes change rarely)."""
     if os.getenv("TESTING"):

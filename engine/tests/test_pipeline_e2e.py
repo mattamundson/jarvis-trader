@@ -55,7 +55,7 @@ class MockNewsAnalyst(MockAgent):
 class MockDebateAgent(MockAgent):
     """Mock debate orchestrator."""
 
-    async def run_debate(self, symbol, analyst_reports, bull, bear):
+    async def run_debate(self, symbol, analyst_reports, bull, bear, **kwargs):
         self.call_count += 1
         return {
             "verdict": "bull",
