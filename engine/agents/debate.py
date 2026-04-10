@@ -77,6 +77,7 @@ class DebateResult:
     # Flags
     rounds_completed: int = 1
     scoring_failed: bool = False
+    credits_exhausted: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -105,6 +106,7 @@ class DebateResult:
             # Meta
             "rounds_completed": self.rounds_completed,
             "scoring_failed": self.scoring_failed,
+            "credits_exhausted": self.credits_exhausted,
         }
 
 
@@ -197,7 +199,22 @@ class DebateOrchestrator:
             result.bear_weakest_point = bear_weakest
             result.rounds_completed = 2
 
-            # Detect when scoring calls returned the failure default.
+            # Detect credit exhaustion first: sentinel takes priority over
+            # generic "Scoring unavailable".
+            bull_credits_exhausted = bull_weakest == _CREDIT_EXHAUSTED_SENTINEL
+            bear_credits_exhausted = bear_weakest == _CREDIT_EXHAUSTED_SENTINEL
+            if bull_credits_exhausted or bear_credits_exhausted:
+                logger.error(
+                    f"[Debate] {symbol} — Anthropic credit balance exhausted. "
+                    "Pipeline will use technical fallback."
+                )
+                result.credits_exhausted = True
+                result.scoring_failed = True
+                # Zero out scores so net_conviction is unambiguously 0
+                result.bull_score = 0
+                result.bear_score = 0
+
+            # Detect when scoring calls returned the generic failure default.
             # Dual failure: 5/5 is an artifact — set scoring_failed so pipeline
             # passes control to TraderAgent rather than forcing HOLD.
             # Single failure: one side defaulted to 5, producing an unreliable
@@ -250,16 +267,24 @@ class DebateOrchestrator:
                 if conviction_diff >= _CONVICTION_TIE_BREAK:
                     verdict = "BEAR_WINS"
                     result.scoring_failed = True
+                    # Nudge debate_score just past the bear threshold so downstream
+                    # consumers see a directional signal rather than a neutral 0.0.
+                    result.debate_score = -0.10
                     logger.info(
                         f"[Debate] {symbol} tie broken by conviction: "
-                        f"bear {bear_conv:.2f} vs bull {bull_conv:.2f} → BEAR_WINS"
+                        f"bear {bear_conv:.2f} vs bull {bull_conv:.2f} → BEAR_WINS "
+                        f"(debate_score overridden to -0.10)"
                     )
                 elif -conviction_diff >= _CONVICTION_TIE_BREAK:
                     verdict = "BULL_WINS"
                     result.scoring_failed = True
+                    # Nudge debate_score just past the bull threshold so downstream
+                    # consumers see a directional signal rather than a neutral 0.0.
+                    result.debate_score = 0.10
                     logger.info(
                         f"[Debate] {symbol} tie broken by conviction: "
-                        f"bull {bull_conv:.2f} vs bear {bear_conv:.2f} → BULL_WINS"
+                        f"bull {bull_conv:.2f} vs bear {bear_conv:.2f} → BULL_WINS "
+                        f"(debate_score overridden to +0.10)"
                     )
                 else:
                     verdict = "INCONCLUSIVE"
@@ -273,10 +298,17 @@ class DebateOrchestrator:
             )
 
         except Exception as exc:
-            logger.warning(
-                f"[Debate] {symbol} — Rounds 2+3 failed ({exc}); "
-                "falling back to 1-round conviction scoring"
-            )
+            if _is_credit_error(exc):
+                logger.error(
+                    f"[Debate] {symbol} — Anthropic credit balance exhausted. "
+                    "Pipeline will use technical fallback."
+                )
+                result.credits_exhausted = True
+            else:
+                logger.warning(
+                    f"[Debate] {symbol} — Rounds 2+3 failed ({exc}); "
+                    "falling back to 1-round conviction scoring"
+                )
             result.scoring_failed = True
             # verdict stays INCONCLUSIVE (safe default for fallback)
 
@@ -428,6 +460,24 @@ def _extract_case_text(report: object, role: str) -> str:
         return str(report)[:800]
 
 
+_CREDIT_EXHAUSTED_SENTINEL = "Credits exhausted"
+
+_CREDIT_ERROR_PHRASES = (
+    "credit balance too low",
+    "insufficient credits",
+    "your credit balance",
+    "billing",
+    "payment required",
+    "402",
+)
+
+
+def _is_credit_error(exc: Exception) -> bool:
+    """Return True when *exc* indicates Anthropic credit exhaustion (HTTP 400/402)."""
+    msg = str(exc).lower()
+    return any(phrase in msg for phrase in _CREDIT_ERROR_PHRASES)
+
+
 async def _score_argument(
     agent: object,
     opponent_role: str,
@@ -437,7 +487,12 @@ async def _score_argument(
     Ask *agent* to score the opponent's argument and name its weakest point.
 
     Returns (score: int 1-10, weakest_point: str).
-    Falls back to (5, "unknown") on any error.
+
+    On credit exhaustion returns (0, _CREDIT_EXHAUSTED_SENTINEL) so the caller
+    can detect and propagate credits_exhausted without treating it as a normal
+    scoring failure.
+
+    Falls back to (5, "Scoring unavailable") on any other error.
     """
     prompt = (
         f"You are scoring a trading debate. Rate the {opponent_role} argument "
@@ -454,6 +509,13 @@ async def _score_argument(
         weakest = str(data.get("weakest_point", "Not identified"))
         return score, weakest
     except Exception as exc:
+        if _is_credit_error(exc):
+            logger.error(
+                f"[Debate] _score_argument ({opponent_role}) — "
+                "Anthropic credit balance exhausted. "
+                "Returning credit-exhausted sentinel."
+            )
+            return 0, _CREDIT_EXHAUSTED_SENTINEL
         logger.warning(f"[Debate] _score_argument failed ({exc}); defaulting to 5")
         return 5, "Scoring unavailable"
 
@@ -480,6 +542,12 @@ async def _rebuttal(
     try:
         return await _call_agent_llm(agent, prompt)
     except Exception as exc:
+        if _is_credit_error(exc):
+            logger.error(
+                f"[Debate] _rebuttal ({side}) — "
+                "Anthropic credit balance exhausted."
+            )
+            return _CREDIT_EXHAUSTED_SENTINEL
         logger.warning(f"[Debate] _rebuttal ({side}) failed ({exc})")
         return ""
 

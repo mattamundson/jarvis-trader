@@ -295,8 +295,12 @@ class SignalScanner:
 
             # Also write to the decisions table so /decisions/recent shows scanner results.
             try:
-                _conf = float(result.get("confidence") or
-                              (result.get("fund_decision") or {}).get("final_conviction") or 0.0)
+                _conf = float(
+                    result.get("confidence")
+                    or (result.get("fund_decision") or {}).get("final_conviction")
+                    or (result.get("trade_decision") or {}).get("confidence")
+                    or 0.0
+                )
                 _summary = result.get("summary", "")
                 _reasoning = (result.get("trade_decision") or {}).get("reasoning", "")
                 _regime = (result.get("analyst_reports") or {}).get("technical", {}).get("regime") or None

@@ -1379,7 +1379,11 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
                 return_exceptions=True,
             )
             current_prices = [
-                (r.get("last_price") if isinstance(r, dict) else None)
+                (
+                    r.get("last_price")
+                    if isinstance(r, dict)
+                    else (float(r) if isinstance(r, (int, float)) else None)
+                )
                 if not isinstance(r, Exception) and r is not None
                 else None
                 for r in results

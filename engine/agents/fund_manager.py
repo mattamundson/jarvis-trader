@@ -8,8 +8,7 @@ A trade can be technically sound and pass the Risk Manager's review but still
 be wrong for the portfolio right now — wrong concentration, wrong timing
 relative to existing risk, or simply too much capital deployed at once.
 
-Model: Claude Opus 4.6 — portfolio-level judgment requires the most capable
-reasoning to weigh cross-instrument interactions and holistic portfolio health.
+Model: claude-sonnet-4-6 — portfolio-level judgment.
 
 Human approval gate:
   If REQUIRE_HUMAN_APPROVAL is True in config, OR the trade's estimated value
@@ -86,7 +85,7 @@ class FundManagerAgent:
     MODEL = "claude-sonnet-4-6"
     MAX_TOKENS = 1600
 
-    SYSTEM_PROMPT = (
+    SYSTEM_PROMPT_LIVE = (
         "You are the Fund Manager for JARVIS TRADER, an autonomous trading system. "
         "You make the final portfolio-level decision on whether to execute a trade. "
         "A trade can be technically sound and pass risk review but still be wrong for "
@@ -97,6 +96,23 @@ class FundManagerAgent:
         "Be the voice of discipline — protect the portfolio's long-term health. "
         "Respond with valid JSON only. Do not add any explanation outside the JSON."
     )
+
+    SYSTEM_PROMPT_PAPER = (
+        "You are the Fund Manager for JARVIS TRADER in PAPER TRADING mode. "
+        "This is a validation phase — the goal is to gather real trade data to assess "
+        "strategy performance. Your job is to be appropriately permissive: approve any "
+        "trade that passed the Risk Manager review, has positive R:R (reward:risk > 1.0), "
+        "and a confidence score above 0.35. Do NOT apply live-trading-level conservatism. "
+        "Reject only if there is a clear portfolio-level problem: margin would be exhausted, "
+        "the same instrument already has an open position in the same direction, or the "
+        "daily P&L halt is close to being triggered. "
+        "Think of each approved trade as a data point — we need volume to validate the strategy. "
+        "You may reduce quantity to 1 contract if capital is tight, but default to approving. "
+        "Respond with valid JSON only. Do not add any explanation outside the JSON."
+    )
+
+    # Use the live prompt as the default; _build_prompt injects paper context dynamically
+    SYSTEM_PROMPT = SYSTEM_PROMPT_LIVE
 
     def __init__(self, llm_client):
         """
@@ -207,7 +223,9 @@ class FundManagerAgent:
         portfolio: dict,
         open_positions: list,
     ) -> FundDecision:
-        prompt = self._build_prompt(trade, risk, portfolio, open_positions)
+        is_paper = not getattr(settings, "LIVE_TRADING_ENABLED", False)
+        system_prompt = self.SYSTEM_PROMPT_PAPER if is_paper else self.SYSTEM_PROMPT_LIVE
+        prompt = self._build_prompt(trade, risk, portfolio, open_positions, is_paper=is_paper)
 
         try:
             api_key = getattr(self._llm, "api_key", None) or os.getenv("ANTHROPIC_API_KEY", "")
@@ -224,7 +242,7 @@ class FundManagerAgent:
                     json={
                         "model": self.MODEL,
                         "max_tokens": self.MAX_TOKENS,
-                        "system": self.SYSTEM_PROMPT,
+                        "system": system_prompt,
                         "messages": [{"role": "user", "content": prompt}],
                     },
                 )
@@ -276,6 +294,7 @@ class FundManagerAgent:
         risk: dict,
         portfolio: dict,
         open_positions: list,
+        is_paper: bool = False,
     ) -> str:
         total_value = portfolio.get("total_value", 0.0)
         available_cash = portfolio.get("available_cash", 0.0)
@@ -311,7 +330,14 @@ class FundManagerAgent:
         effective_qty = risk.get("modified_quantity") or trade.get("quantity", 0)
         effective_limit = risk.get("modified_limit_price") or trade.get("limit_price")
 
-        return f"""Make the final portfolio-level decision on this trade.
+        paper_banner = (
+            "\n*** PAPER TRADING MODE — Validation Phase ***\n"
+            "Approve any trade with R:R > 1.0 and confidence > 0.35 that passed risk review.\n"
+            "Goal: accumulate data. Reject only on genuine portfolio-level blockers.\n"
+            if is_paper else ""
+        )
+
+        return f"""Make the final portfolio-level decision on this trade.{paper_banner}
 
 === PROPOSED TRADE (after Risk Manager review) ===
 Symbol: {trade.get("symbol")}
@@ -351,13 +377,17 @@ Consider:
 3. Overall portfolio health — is now the right time to add risk?
 4. Strategic fit — does this trade complement or conflict with existing positions?
 
+CRITICAL: Your response MUST be valid JSON containing ALL fields listed below. Missing any field will cause the trade to be silently rejected.
+- Set priority='immediate' when approving a trade to execute now. Use 'skip' ONLY to reject.
+- If approved=true, set final_quantity to the number from the risk manager (or the quantity in the trade decision).
+
 Respond with JSON in exactly this format:
 {{
-  "approved": <true|false>,
-  "final_quantity": <int: 0 if not approved, otherwise your approved quantity>,
-  "priority": "<immediate|wait_for_pullback|skip>",
-  "portfolio_impact": "<one sentence describing how this changes the overall portfolio>",
-  "reasoning": "<2-4 sentence portfolio-level analysis>"
+  "approved": true,
+  "final_quantity": 1,
+  "priority": "immediate",
+  "portfolio_impact": "...",
+  "reasoning": "..."
 }}"""
 
     def _parse_fund_decision(
@@ -368,13 +398,21 @@ Respond with JSON in exactly this format:
     ) -> FundDecision:
         approved = bool(result.get("approved", False))
 
-        priority = result.get("priority", "skip").lower()
-        if priority not in ("immediate", "wait_for_pullback", "skip"):
-            priority = "skip"
+        priority_raw = result.get("priority")
+        if priority_raw is None:
+            # LLM omitted priority — infer from approval status
+            priority = "immediate" if approved else "skip"
+        else:
+            priority = str(priority_raw).lower()
+            if priority not in ("immediate", "wait_for_pullback", "skip"):
+                priority = "immediate" if approved else "skip"
 
         final_quantity = int(result.get("final_quantity", 0))
         if not approved:
             final_quantity = 0
+        elif final_quantity == 0:
+            # LLM approved but omitted final_quantity — use risk manager's quantity
+            final_quantity = int(risk.get("modified_quantity") or trade.get("quantity", 1) or 1)
 
         return FundDecision(
             approved=approved,

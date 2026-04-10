@@ -123,6 +123,7 @@ from routers.hidden_pivots_router import router as hidden_pivots_router
 from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
 from routers.decisions_router import router as decisions_router
 from routers.decisions_router import set_db_manager as set_decisions_db
+from routers.cache_router import router as cache_router
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -1579,6 +1580,7 @@ app.include_router(wfe_router)
 app.include_router(discovery_router)
 app.include_router(hidden_pivots_router)
 app.include_router(decisions_router)
+app.include_router(cache_router)
 app.include_router(v1_router)
 
 

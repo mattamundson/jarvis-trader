@@ -493,6 +493,25 @@ class TradingPipeline:
             await self.profiler.end_stage("analysts")
         pipeline_result["analyst_reports"] = analyst_reports
 
+        # ── Technical-Only Fallback: LLM credits exhausted ────────────────
+        # If all three LLM analysts (news, social, fundamental) failed with
+        # Anthropic 400 errors AND technical has a clear STC signal, skip the
+        # LLM debate/trader and synthesize directly from technicals.
+        _tech_fallback = self._check_technical_only_fallback(
+            symbol, analyst_reports, errors
+        )
+        if _tech_fallback is not None:
+            pipeline_result.update(_tech_fallback)
+            pipeline_result["completed_at"] = datetime.now().isoformat()
+            pipeline_result["errors"] = errors
+            logger.info(
+                "[Pipeline] %s — technical-only fallback complete: action=%s conviction=%s",
+                symbol,
+                _tech_fallback.get("final_action"),
+                _tech_fallback.get("final_conviction", 3),
+            )
+            return pipeline_result
+
         # ── Stage 2: Bull/Bear Debate ──────────────────────────────────────
 
         if self.profiler:
@@ -766,6 +785,198 @@ class TradingPipeline:
 
         return pipeline_result
 
+    # ── Technical-Only Fallback Helpers ───────────────────────────────────
+
+    @staticmethod
+    def _is_anthropic_400_error(err_str: str) -> bool:
+        """
+        Return True if the error string suggests an Anthropic HTTP 400 (credits / billing).
+
+        Anthropic credit exhaustion surfaces as HTTP 400 with body mentioning
+        "credit_balance_too_low" or similar.  httpx raises it as:
+          "Client error '400 Bad Request' for url 'https://api.anthropic.com/...'"
+        """
+        low = err_str.lower()
+        # Explicit Anthropic 400: URL references api.anthropic.com + 4xx indicator
+        has_anthropic_url = "api.anthropic.com" in low or "anthropic" in low
+        has_4xx = "400" in low or "bad request" in low or "client error" in low
+        # Explicit credit/billing mention regardless of status code
+        has_credit_ref = any(kw in low for kw in ("credit", "billing", "credit_balance", "insufficient"))
+        return (has_anthropic_url and has_4xx) or (has_anthropic_url and has_credit_ref)
+
+    @staticmethod
+    def _extract_technical_stc(analyst_reports: dict) -> Optional[float]:
+        """
+        Pull the latest STC value from the technical analyst report.
+        Returns None if unavailable or NaN.
+        """
+        try:
+            stc = analyst_reports.get("technical", {}).get("indicators", {}).get("stc")
+            if stc is None:
+                return None
+            val = float(stc)
+            if val != val:  # NaN check
+                return None
+            return val
+        except Exception:
+            return None
+
+    @staticmethod
+    def _stc_to_action(stc_val: float) -> tuple[str, str]:
+        """
+        Map STC value to a directional action using canonical JARVIS thresholds (OS=15, OB=83).
+
+        Returns: (action, signal_description)
+          action is "buy" | "sell" | "hold"
+        """
+        STC_OS = 15
+        STC_OB = 83
+        if stc_val < STC_OS:
+            return "buy", "OVERSOLD"
+        elif stc_val > STC_OB:
+            return "sell", "OVERBOUGHT"
+        else:
+            return "hold", "NEUTRAL"
+
+    def _check_technical_only_fallback(
+        self,
+        symbol: str,
+        analyst_reports: dict,
+        errors: list,
+    ) -> Optional[dict]:
+        """
+        Check whether to activate technical-only mode.
+
+        Conditions:
+          - All three LLM analysts (news, social, fundamental) failed with errors
+            that match Anthropic 400 patterns (credits exhausted / billing)
+          - Technical analyst has a valid STC in oversold (<15) or overbought (>83) territory
+
+        Returns a partial pipeline_result update dict if fallback fires, or None to continue.
+        """
+        # Count how many of the three LLM analyst errors look like Anthropic 400s
+        llm_agent_names = ("news analyst failed", "social analyst failed", "fundamental analyst failed")
+        llm_400_errors = [
+            e for e in errors
+            if any(name in e.lower() for name in llm_agent_names)
+            and self._is_anthropic_400_error(e)
+        ]
+
+        # Need all three LLM analysts to have failed with 400 to activate fallback
+        if len(llm_400_errors) < 3:
+            return None
+
+        stc_val = self._extract_technical_stc(analyst_reports)
+        if stc_val is None:
+            logger.warning(
+                "[Pipeline] %s — all LLM analysts failed (Anthropic 400) but STC unavailable; "
+                "cannot use technical-only fallback → HOLD",
+                symbol,
+            )
+            return None
+
+        stc_action, stc_signal = self._stc_to_action(stc_val)
+
+        logger.warning(
+            "[Pipeline] %s — LLM credits exhausted, using technical-only fallback. "
+            "STC=%.1f, signal=%s, conviction=3/10",
+            symbol, stc_val, stc_signal,
+        )
+
+        if stc_action == "hold":
+            logger.info(
+                "[Pipeline] %s — technical-only fallback: STC=%.1f is NEUTRAL → HOLD",
+                symbol, stc_val,
+            )
+            return {
+                "final_action": "hold",
+                "final_quantity": 0,
+                "requires_human": False,
+                "technical_only_mode": True,
+                "technical_only_stc": round(stc_val, 2),
+                "technical_only_signal": stc_signal,
+                "trade_decision": {
+                    "symbol": symbol,
+                    "action": "hold",
+                    "quantity": 0,
+                    "signal_score": 0.0,
+                    "confidence": 0.0,
+                    "reasoning": (
+                        f"LLM credits exhausted — technical-only mode. "
+                        f"STC={stc_val:.1f} (NEUTRAL — no actionable signal). HOLD."
+                    ),
+                    "risk_notes": "Technical-only mode — STC mid-range, no edge",
+                    "technical_only_mode": True,
+                    "timestamp": datetime.now().isoformat(),
+                },
+                "risk_decision": {"approved": False, "reason": "Technical-only NEUTRAL → HOLD"},
+                "fund_decision": None,
+                "summary": (
+                    f"{symbol} | technical-only mode | STC={stc_val:.1f} NEUTRAL | "
+                    "action=HOLD conviction=3/10"
+                ),
+            }
+
+        # Directional signal — build minimal trade/risk/fund decisions
+        conviction = 3
+        quantity = 1
+        trade_decision = {
+            "symbol": symbol,
+            "action": stc_action,
+            "quantity": quantity,
+            "order_type": "market",
+            "limit_price": None,
+            "stop_price": None,
+            "time_in_force": "day",
+            "signal_score": 0.3 if stc_action == "buy" else -0.3,
+            "confidence": 0.3,
+            "reasoning": (
+                f"LLM credits exhausted — technical-only mode. "
+                f"STC={stc_val:.1f} ({stc_signal}). "
+                f"Conviction={conviction}/10 (pure technical, no LLM synthesis)."
+            ),
+            "risk_notes": "Technical-only mode — reduced conviction",
+            "technical_only_mode": True,
+            "technical_only_stc": round(stc_val, 2),
+            "technical_only_signal": stc_signal,
+            "timestamp": datetime.now().isoformat(),
+        }
+        risk_decision = {
+            "approved": True,
+            "veto_reason": None,
+            "modified_quantity": quantity,
+            "modified_limit_price": None,
+            "risk_score": 0.5,
+            "reasoning": "Technical-only fallback — risk auto-approved at minimum size",
+            "timestamp": datetime.now().isoformat(),
+        }
+        fund_decision = {
+            "approved": True,
+            "final_quantity": quantity,
+            "priority": "immediate",
+            "portfolio_impact": "Technical-only fallback — minimum size, requires human approval",
+            "reasoning": f"Technical-only mode: STC={stc_val:.1f} {stc_signal} conviction={conviction}/10",
+            "requires_human_approval": True,
+            "timestamp": datetime.now().isoformat(),
+        }
+        return {
+            "final_action": stc_action,
+            "final_quantity": quantity,
+            "requires_human": True,
+            "technical_only_mode": True,
+            "technical_only_stc": round(stc_val, 2),
+            "technical_only_signal": stc_signal,
+            "final_conviction": conviction / 10.0,
+            "trade_decision": trade_decision,
+            "risk_decision": risk_decision,
+            "fund_decision": fund_decision,
+            "summary": (
+                f"{symbol} | technical-only mode | STC={stc_val:.1f} {stc_signal} | "
+                f"action={stc_action.upper()} qty={quantity} | conviction={conviction}/10 "
+                f"human=True"
+            ),
+        }
+
     # ── Stage Runners ──────────────────────────────────────────────────────
 
     async def _run_analysts(
@@ -941,6 +1152,42 @@ class TradingPipeline:
             err = f"Trader stage failed: {e}"
             logger.error(f"[Pipeline] {err}")
             errors.append(err)
+
+            # ── Last-resort STC fallback: TraderAgent also hit LLM 400 ───────
+            # If this is an Anthropic 400 (credits exhausted), try to act on
+            # the raw STC value from the technical analyst report.
+            if self._is_anthropic_400_error(str(e)):
+                stc_val = self._extract_technical_stc(analyst_reports)
+                if stc_val is not None:
+                    stc_action, stc_signal = self._stc_to_action(stc_val)
+                    if stc_action != "hold":
+                        logger.warning(
+                            "[Pipeline] %s — LLM credits exhausted, using technical-only "
+                            "fallback (TraderAgent). STC=%.1f, signal=%s, conviction=3/10",
+                            symbol, stc_val, stc_signal,
+                        )
+                        return {
+                            "symbol": symbol,
+                            "action": stc_action,
+                            "quantity": 1,
+                            "order_type": "market",
+                            "limit_price": None,
+                            "stop_price": None,
+                            "time_in_force": "day",
+                            "signal_score": 0.3 if stc_action == "buy" else -0.3,
+                            "confidence": 0.3,
+                            "reasoning": (
+                                f"LLM credits exhausted — TraderAgent offline. "
+                                f"Last-resort STC fallback: STC={stc_val:.1f} ({stc_signal}). "
+                                f"Conviction=3/10 (technical-only)."
+                            ),
+                            "risk_notes": "Technical-only last-resort — no LLM synthesis",
+                            "technical_only_mode": True,
+                            "technical_only_stc": round(stc_val, 2),
+                            "technical_only_signal": stc_signal,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+
             return {
                 "symbol": symbol,
                 "action": "hold",
