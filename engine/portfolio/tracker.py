@@ -793,18 +793,13 @@ class PortfolioTracker:
         """
         # get_open_positions() reads from _open (add_paper_trade / open_trade path)
         open_trades = self.get_open_positions()
-        # get_positions() reads from _positions (update_position / DB path)
+        # get_positions() reads from _positions (update_position / DB path — live broker)
         live_positions = self.get_positions()
-        # Merge: open trades keyed by symbol take priority; supplement with live_positions
-        by_symbol: dict = {p["symbol"]: p for p in live_positions}
-        for trade in open_trades:
-            sym = trade.get("symbol", "").upper()
-            if sym and sym not in by_symbol:
-                by_symbol[sym] = trade
-            elif sym:
-                # Prefer the more detailed open_trade record
-                by_symbol[sym] = trade
-        positions = list(by_symbol.values())
+        # Paper trades: keep all open trades (multiple per symbol allowed in paper mode).
+        # Live positions: symbol-keyed, supplement where no paper trade exists.
+        open_symbols = {t.get("symbol", "").upper() for t in open_trades}
+        extra_live = [p for p in live_positions if p.get("symbol", "").upper() not in open_symbols]
+        positions = open_trades + extra_live
         perf = self.get_performance()
         equity = getattr(self, "_equity", None)
         if equity is None:

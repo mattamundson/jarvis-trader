@@ -631,6 +631,42 @@ Respond with JSON in exactly this format:
         raw_rr = result.get("rr_ratio")
         rr_ratio = float(raw_rr) if raw_rr is not None else None
 
+        # Validate stop is on the correct side of entry — LLMs occasionally return
+        # the wrong-direction stop (e.g. short_stop for a buy).  Correct server-side.
+        if action in ("buy", "sell") and stop_price is not None and entry_price is not None:
+            stop_correct = (action == "buy" and stop_price < entry_price) or (
+                action == "sell" and stop_price > entry_price
+            )
+            if not stop_correct:
+                if atr_used is not None and atr_used > 0:
+                    stop_mult, _, _ = self._SYMBOL_ATR_PARAMS.get(
+                        symbol.upper(), self._DEFAULT_ATR_PARAMS
+                    )
+                    stop_dist = round(stop_mult * atr_used, 4)
+                    corrected = (
+                        round(entry_price - stop_dist, 4)
+                        if action == "buy"
+                        else round(entry_price + stop_dist, 4)
+                    )
+                    logger.warning(
+                        "[TraderAgent] corrected inverted stop for %s %s: %.4f → %.4f",
+                        action,
+                        symbol,
+                        stop_price,
+                        corrected,
+                    )
+                    stop_price = corrected
+                else:
+                    logger.warning(
+                        "[TraderAgent] stop %.4f is on wrong side of entry %.4f for %s %s"
+                        " — nulled (ATR unavailable for correction)",
+                        stop_price,
+                        entry_price,
+                        action,
+                        symbol,
+                    )
+                    stop_price = None
+
         # Recompute R:R server-side for auditability when all price fields are present
         if action in ("buy", "sell") and entry_price and stop_price and target_1:
             risk = abs(entry_price - stop_price)
