@@ -27,7 +27,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("jarvis_trader.portfolio")
 
@@ -356,14 +356,49 @@ class PortfolioTracker:
         return trade
 
     def get_open_positions(self) -> List[dict]:
-        """Return all currently open trades as dicts, newest first."""
+        """Return all currently open trades as dicts, newest first.
+
+        Applies defensive filters to prevent phantom positions from leaking into
+        RiskManager/FundManager portfolio context (Apr 2026 fix):
+          - exit_time must be None (closed trades should never be in _open, but
+            a crash during close_trade can leave stale entries)
+          - is_open must be True
+          - entry_price must be a positive finite number (guards against
+            0/NaN/None rows loaded from a corrupted DB)
+        Any trade failing these checks is removed from _open in-place so the
+        ledger self-heals without requiring a restart.
+        """
+        import math
+
+        valid: List[PaperTrade] = []
+        drop: List[str] = []
+        for tid, t in self._open.items():
+            exit_time = getattr(t, "exit_time", None)
+            is_open = getattr(t, "is_open", True)
+            entry_price = getattr(t, "entry_price", None)
+            try:
+                ep = float(entry_price) if entry_price is not None else 0.0
+            except (TypeError, ValueError):
+                ep = 0.0
+            is_valid_price = ep > 0.0 and math.isfinite(ep)
+            if exit_time is None and is_open and is_valid_price:
+                valid.append(t)
+            else:
+                drop.append(tid)
+                logger.warning(
+                    "[TRACKER] Dropping phantom open position %s (exit_time=%s, is_open=%s, entry_price=%s)",
+                    tid[:8] if tid else "?",
+                    exit_time,
+                    is_open,
+                    entry_price,
+                )
+
+        for tid in drop:
+            self._open.pop(tid, None)
+
         return [
             t.to_dict()
-            for t in sorted(
-                self._open.values(),
-                key=lambda t: t.entry_time,
-                reverse=True,
-            )
+            for t in sorted(valid, key=lambda t: t.entry_time, reverse=True)
         ]
 
     def get_performance(self) -> dict:
@@ -792,14 +827,44 @@ class PortfolioTracker:
         so the risk manager sees all correlated positions.
         """
         # get_open_positions() reads from _open (add_paper_trade / open_trade path)
+        # Defensive filters in get_open_positions() drop phantoms in-place.
         open_trades = self.get_open_positions()
         # get_positions() reads from _positions (update_position / DB path — live broker)
         live_positions = self.get_positions()
-        # Paper trades: keep all open trades (multiple per symbol allowed in paper mode).
-        # Live positions: symbol-keyed, supplement where no paper trade exists.
-        open_symbols = {t.get("symbol", "").upper() for t in open_trades}
+
+        # Apr 2026 fix — aggregate multiple same-symbol+direction paper trades
+        # into one logical position per (symbol, action) pair. Previously the
+        # Fund Manager saw e.g. 5 separate MCL LONGs and rejected new signals
+        # as "overexposed" when they were really just repeated entries from
+        # prior pipeline runs. Aggregation sums quantity and takes the
+        # weighted-average entry price so downstream agents see a realistic
+        # concentration figure.
+        aggregated: Dict[Tuple[str, str], dict] = {}
+        for t in open_trades:
+            sym = str(t.get("symbol", "")).upper()
+            act = str(t.get("action", "")).lower()
+            key = (sym, act)
+            ep = float(t.get("entry_price", 0.0) or 0.0)
+            qty = float(t.get("quantity", 0.0) or 0.0)
+            if key not in aggregated:
+                aggregated[key] = dict(t)
+                aggregated[key]["symbol"] = sym
+                aggregated[key]["action"] = act
+                aggregated[key]["position_count"] = 1
+            else:
+                cur = aggregated[key]
+                cur_qty = float(cur.get("quantity", 0.0) or 0.0)
+                cur_ep = float(cur.get("entry_price", 0.0) or 0.0)
+                new_qty = cur_qty + qty
+                if new_qty > 0:
+                    cur["entry_price"] = (cur_ep * cur_qty + ep * qty) / new_qty
+                cur["quantity"] = new_qty
+                cur["position_count"] = int(cur.get("position_count", 1)) + 1
+        open_trades_dedup = list(aggregated.values())
+
+        open_symbols = {k[0] for k in aggregated.keys()}
         extra_live = [p for p in live_positions if p.get("symbol", "").upper() not in open_symbols]
-        positions = open_trades + extra_live
+        positions = open_trades_dedup + extra_live
         perf = self.get_performance()
         equity = getattr(self, "_equity", None)
         if equity is None:
