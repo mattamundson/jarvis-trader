@@ -95,6 +95,11 @@ def inject_dependencies(scheduler, trading_pipeline, safety_layer, db_manager, p
     _paper_tracker = paper_tracker
     _sdk_pipeline = sdk_pipeline
 
+    # Wire paper tracker as portfolio provider so the risk manager sees real positions
+    if trading_pipeline is not None and paper_tracker is not None:
+        trading_pipeline._agents["portfolio"] = paper_tracker
+        logger.info("[Pipeline] paper_tracker injected as portfolio provider")
+
 
 def set_notifier(notifier) -> None:
     """Inject the Telegram notifier (called from main.py lifespan startup)."""

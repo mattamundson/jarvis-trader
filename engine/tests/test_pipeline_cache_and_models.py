@@ -184,3 +184,56 @@ def test_fund_manager_model_is_not_opus():
     from agents.fund_manager import FundManagerAgent
 
     assert "opus" not in FundManagerAgent.MODEL.lower()
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 — TraderAgent conviction formula (abs(bull - bear) / 10.0)
+# ---------------------------------------------------------------------------
+
+
+def test_trader_conviction_tie_gives_zero():
+    """6/6 debate tie should produce conviction=0.0, not 6.0"""
+    bull_s = 6.0
+    bear_s = 6.0
+    conviction = abs(bull_s - bear_s) / 10.0
+    assert conviction == 0.0
+
+
+def test_trader_conviction_clear_bear_win():
+    """10/4 bear win should give conviction=0.6"""
+    bull_s = 4.0
+    bear_s = 10.0
+    conviction = abs(bull_s - bear_s) / 10.0
+    assert conviction == 0.6
+
+
+# ---------------------------------------------------------------------------
+# Fix 2 — FundManagerAgent priority inference when LLM omits the field
+# ---------------------------------------------------------------------------
+
+
+def test_fund_manager_priority_inferred_when_approved():
+    """LLM approving but omitting priority should default to 'immediate', not 'skip'"""
+    from agents.fund_manager import FundManagerAgent
+
+    agent = FundManagerAgent(llm_client=None)
+    result = {"approved": True, "reasoning": "looks good"}
+    trade = {"quantity": 1}
+    risk = {"modified_quantity": 1}
+    decision = agent._parse_fund_decision(result, trade, risk)
+    assert decision.approved is True
+    assert decision.priority == "immediate"
+    assert decision.final_quantity == 1
+
+
+def test_fund_manager_priority_skip_when_not_approved():
+    """Rejected trade should have priority='skip'"""
+    from agents.fund_manager import FundManagerAgent
+
+    agent = FundManagerAgent(llm_client=None)
+    result = {"approved": False, "reasoning": "too risky"}
+    trade = {"quantity": 1}
+    risk = {"modified_quantity": 1}
+    decision = agent._parse_fund_decision(result, trade, risk)
+    assert decision.approved is False
+    assert decision.priority == "skip"
