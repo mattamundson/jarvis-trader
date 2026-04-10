@@ -1,0 +1,123 @@
+// JARVIS_Gap_Finder.pine
+// Port of AA_CoreyGapfinderv1STUDY.ts + GAPS_Chetan1STUDY.ts
+// Outputs labels readable by data_get_pine_labels() and lines by data_get_pine_lines()
+// MCP tools: study_filter="JARVIS Gap Finder"
+
+//@version=5
+indicator(title="JARVIS Gap Finder", shorttitle="JARVIS Gap Finder", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+gap_color_up    = input.color(color.new(color.green, 70), title="Gap Up Fill Color")
+gap_color_down  = input.color(color.new(color.red,   70), title="Gap Down Fill Color")
+show_gap_lines  = input.bool(true,  title="Show Gap Zone Lines")
+show_filled     = input.bool(false, title="Show Filled Gaps")
+
+// ─── Daily security data ──────────────────────────────────────────────────────
+prev_high_d  = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_on)
+prev_low_d   = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_on)
+prev_close_d = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+today_open_d = request.security(syminfo.tickerid, "D", open,     lookahead=barmerge.lookahead_on)
+today_high_d = request.security(syminfo.tickerid, "D", high,     lookahead=barmerge.lookahead_on)
+today_low_d  = request.security(syminfo.tickerid, "D", low,      lookahead=barmerge.lookahead_on)
+
+// ─── Gap detection ────────────────────────────────────────────────────────────
+gap_up    = today_open_d > prev_high_d
+gap_down  = today_open_d < prev_low_d
+gap_exists = gap_up or gap_down
+
+// Gap zone boundaries
+gap_high = gap_up   ? today_open_d : gap_down ? prev_low_d  : na
+gap_low  = gap_up   ? prev_high_d  : gap_down ? today_open_d : na
+
+gap_size = gap_exists and not na(gap_high) and not na(gap_low)
+           ? math.abs(gap_high - gap_low)
+           : 0.0
+
+gap_direction_str = gap_up ? "UP" : gap_down ? "DOWN" : "NONE"
+
+// ─── Gap fill detection ───────────────────────────────────────────────────────
+// Gap is filled if current session's price range has overlapped the gap zone
+var bool gap_filled_state = false
+
+if gap_exists and not na(gap_high) and not na(gap_low)
+    // Price enters the gap zone during the session
+    if today_low_d <= gap_high and today_high_d >= gap_low
+        gap_filled_state := true
+else
+    gap_filled_state := false
+
+gap_filled = gap_filled_state
+gap_filled_str = gap_filled ? "true" : "false"
+gap_exists_str = gap_exists ? "true" : "false"
+
+// ─── Persistent line handles ──────────────────────────────────────────────────
+var line ln_gap_high = na
+var line ln_gap_low  = na
+
+// ─── Draw gap zone lines ──────────────────────────────────────────────────────
+if show_gap_lines and gap_exists and not na(gap_high) and not na(gap_low)
+    // Delete previous lines
+    if not na(ln_gap_high)
+        line.delete(ln_gap_high)
+    if not na(ln_gap_low)
+        line.delete(ln_gap_low)
+
+    gap_col = gap_up ? color.new(color.green, 30) : color.new(color.red, 30)
+
+    ln_gap_high := line.new(bar_index - 1, gap_high,
+                             bar_index,     gap_high,
+                             extend=extend.both, color=gap_col, width=2, style=line.style_dashed)
+    ln_gap_low  := line.new(bar_index - 1, gap_low,
+                             bar_index,     gap_low,
+                             extend=extend.both, color=gap_col, width=2, style=line.style_dashed)
+
+// ─── Background shading for gap zone ─────────────────────────────────────────
+in_gap_zone = gap_exists and not na(gap_high) and not na(gap_low)
+              and close <= gap_high and close >= gap_low
+
+bgcolor(in_gap_zone and not gap_filled ? (gap_up ? gap_color_up : gap_color_down) : na,
+        title="Gap Zone Background")
+
+// ─── Labels on last bar (MCP readable) ────────────────────────────────────────
+if barstate.islast
+    // Anchor label Y position — use mid of gap if exists, else close
+    label_y = gap_exists and not na(gap_high) and not na(gap_low)
+              ? (gap_high + gap_low) / 2.0
+              : close
+
+    label.new(bar_index, label_y,
+              "GAP_EXISTS: " + gap_exists_str,
+              style=label.style_none, textcolor=color.white, size=size.small)
+
+    label.new(bar_index, label_y,
+              "GAP_DIRECTION: " + gap_direction_str,
+              style=label.style_none, textcolor=gap_up ? color.green : gap_down ? color.red : color.gray,
+              size=size.small)
+
+    label.new(bar_index, gap_exists ? gap_high : close,
+              "GAP_HIGH: " + str.tostring(gap_exists ? gap_high : 0.0, "#.##"),
+              style=label.style_none, textcolor=color.green, size=size.small)
+
+    label.new(bar_index, gap_exists ? gap_low : close,
+              "GAP_LOW: " + str.tostring(gap_exists ? gap_low : 0.0, "#.##"),
+              style=label.style_none, textcolor=color.red, size=size.small)
+
+    label.new(bar_index, label_y,
+              "GAP_FILLED: " + gap_filled_str,
+              style=label.style_none, textcolor=gap_filled ? color.yellow : color.white, size=size.small)
+
+    label.new(bar_index, label_y,
+              "GAP_SIZE: " + str.tostring(gap_size, "#.##"),
+              style=label.style_none, textcolor=color.white, size=size.small)
+
+    label.new(bar_index, prev_high_d,
+              "PREV_HIGH: " + str.tostring(prev_high_d, "#.##"),
+              style=label.style_none, textcolor=color.gray, size=size.small)
+
+    label.new(bar_index, prev_low_d,
+              "PREV_LOW: " + str.tostring(prev_low_d, "#.##"),
+              style=label.style_none, textcolor=color.gray, size=size.small)
+
+    label.new(bar_index, today_open_d,
+              "TODAY_OPEN: " + str.tostring(today_open_d, "#.##"),
+              style=label.style_none, textcolor=color.white, size=size.small)
