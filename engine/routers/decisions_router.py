@@ -146,7 +146,8 @@ async def get_decision_detail(decision_id: int):
         },
         "stage5_fund": {
             "approved": fund_decision.get("approved") if fund_decision else None,
-            "final_conviction": fund_decision.get("final_conviction") if fund_decision else None,
+            "final_quantity": fund_decision.get("final_quantity") if fund_decision else None,
+            "priority": fund_decision.get("priority") if fund_decision else None,
             "reasoning": fund_decision.get("reasoning", "") if fund_decision else None,
         } if fund_decision else None,
         # ── Confidence gate ─────────────────────────────────────────────
