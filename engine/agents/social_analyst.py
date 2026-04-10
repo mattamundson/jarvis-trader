@@ -127,6 +127,17 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         self._llm = llm_client
         self._stocktwits_token = stocktwits_token or os.getenv("STOCKTWITS_TOKEN", "")
 
+        # PRAW (raw Reddit) credentials — read once at construction. Unset → PRAW
+        # source is silently skipped and analyze() falls back to ApeWisdom-only.
+        # Acquire at https://www.reddit.com/prefs/apps (create a "script" app).
+        self._reddit_client_id = os.getenv("REDDIT_CLIENT_ID", "")
+        self._reddit_client_secret = os.getenv("REDDIT_CLIENT_SECRET", "")
+        self._reddit_user_agent = os.getenv(
+            "REDDIT_USER_AGENT",
+            "jarvis-trader/1.0 (social_analyst; read-only)",
+        )
+        self._praw_instance = None  # lazy-init on first fetch
+
     async def analyze(self, symbol: str, current_price: float = None) -> "SocialReport":
         """Full social sentiment analysis pipeline for a symbol"""
 
@@ -161,16 +172,29 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # 6. Fetch news sentiment for this symbol
         news_sentiment = await self._fetch_engine_news_sentiment(symbol)
 
-        # 7. If no data found at all, return neutral
-        if symbol_data is None and stocktwits_data is None and not engine_reddit_data and not news_sentiment:
+        # 7. Raw PRAW fetch from futures-specific subreddits (additive — ApeWisdom
+        # aggregates equity-heavy boards but misses r/energy, r/oilandgas, etc.
+        # where MCL/MGC conversation actually lives). Silently skipped if
+        # REDDIT_CLIENT_ID/SECRET not configured or praw unavailable.
+        praw_data = await self._fetch_reddit_praw(symbol, subreddits)
+
+        # 8. If no data found at all, return neutral
+        if (
+            symbol_data is None
+            and stocktwits_data is None
+            and not engine_reddit_data
+            and not news_sentiment
+            and not praw_data
+        ):
             logger.info(f"{symbol} not found in social trending data — returning neutral")
             return self._neutral_report(symbol)
 
-        # 8. LLM synthesis (pass institutional flow context)
+        # 9. LLM synthesis (pass institutional flow context)
         report = await self._llm_synthesize(
             symbol, symbol_data, stocktwits_data, trending_data,
             engine_reddit_data=engine_reddit_data,
             news_sentiment=news_sentiment,
+            praw_data=praw_data,
             subreddits=subreddits,
             is_futures=is_futures,
             options_context=options_context,
@@ -295,6 +319,100 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             logger.debug(f"StockTwits fetch failed for {symbol}: {e}")
         return None
 
+    async def _fetch_reddit_praw(
+        self,
+        symbol: str,
+        subreddits: list[str],
+        hot_limit: int = 15,
+    ) -> Optional[dict]:
+        """
+        Pull hot posts directly from futures-specific subreddits via PRAW.
+
+        Unlike ApeWisdom (which aggregates r/wallstreetbets + a fixed stock list),
+        this reaches into ``FUTURES_SUBREDDIT_MAP`` targets like r/energy,
+        r/oilandgas, r/FuturesTrading — where the actual instrument-specific
+        conversation lives. Returns a dict with hot post titles, scores, and
+        a mention count, or None if credentials missing / PRAW unavailable
+        / any network failure.
+
+        Read-only operation — no OAuth user flow needed, just the client_id
+        and client_secret from a Reddit "script" app registration.
+        """
+        if not self._reddit_client_id or not self._reddit_client_secret:
+            # No credentials configured — silently skip this source
+            return None
+
+        try:
+            # Lazy import — praw is an optional dep; avoid import-time hard requirement
+            import praw  # type: ignore
+        except ImportError:
+            logger.debug("PRAW not installed — skipping raw Reddit fetch")
+            return None
+
+        try:
+            if self._praw_instance is None:
+                self._praw_instance = praw.Reddit(
+                    client_id=self._reddit_client_id,
+                    client_secret=self._reddit_client_secret,
+                    user_agent=self._reddit_user_agent,
+                    check_for_async=False,  # we're calling sync PRAW from async via loop offload
+                )
+
+            reddit = self._praw_instance
+            symbol_upper = symbol.upper()
+
+            import asyncio
+
+            def _sync_fetch() -> dict:
+                hot_posts: list[dict] = []
+                symbol_mentions = 0
+                total_seen = 0
+                for sub_name in subreddits:
+                    try:
+                        subreddit = reddit.subreddit(sub_name)
+                        for post in subreddit.hot(limit=hot_limit):
+                            total_seen += 1
+                            title = getattr(post, "title", "") or ""
+                            selftext = (getattr(post, "selftext", "") or "")[:200]
+                            score = int(getattr(post, "score", 0) or 0)
+                            num_comments = int(getattr(post, "num_comments", 0) or 0)
+
+                            if symbol_upper in title.upper() or symbol_upper in selftext.upper():
+                                symbol_mentions += 1
+
+                            hot_posts.append(
+                                {
+                                    "subreddit": sub_name,
+                                    "title": title[:140],
+                                    "score": score,
+                                    "num_comments": num_comments,
+                                }
+                            )
+                    except Exception as sub_err:
+                        logger.debug(
+                            f"PRAW fetch failed for r/{sub_name}: {sub_err}"
+                        )
+                        continue
+
+                # Keep top 10 by score for the LLM prompt (keeps token count bounded)
+                hot_posts.sort(key=lambda p: p["score"], reverse=True)
+                return {
+                    "subreddits_queried": subreddits,
+                    "posts_scanned": total_seen,
+                    "symbol_mentions": symbol_mentions,
+                    "top_posts": hot_posts[:10],
+                }
+
+            # PRAW is sync — run in a thread pool to stay async-friendly
+            result = await asyncio.to_thread(_sync_fetch)
+            if result.get("posts_scanned", 0) == 0:
+                return None
+            return result
+
+        except Exception as e:
+            logger.debug(f"PRAW Reddit fetch failed for {symbol}: {e}")
+            return None
+
     async def _llm_synthesize(
         self,
         symbol: str,
@@ -303,6 +421,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         all_trending: list[dict],
         engine_reddit_data: Optional[dict] = None,
         news_sentiment: Optional[dict] = None,
+        praw_data: Optional[dict] = None,
         subreddits: Optional[list[str]] = None,
         is_futures: bool = False,
         options_context: Optional[str] = None,
@@ -404,6 +523,25 @@ News Sentiment for {symbol}:
 """
         else:
             social_context += f"\nNews Sentiment for {symbol}: unavailable\n"
+
+        # Raw PRAW data (futures-specific subreddits)
+        if praw_data:
+            top_posts = praw_data.get("top_posts", [])
+            social_context += (
+                f"\nRaw Reddit (PRAW, futures-specific subreddits):\n"
+                f"- Subreddits queried: {', '.join('r/' + s for s in praw_data.get('subreddits_queried', []))}\n"
+                f"- Posts scanned: {praw_data.get('posts_scanned', 0)}\n"
+                f"- {symbol} direct mentions: {praw_data.get('symbol_mentions', 0)}\n"
+            )
+            if top_posts:
+                social_context += "- Top hot posts (by score):\n"
+                for p in top_posts[:5]:
+                    social_context += (
+                        f"  · r/{p['subreddit']} ({p['score']}↑ / {p['num_comments']}💬): "
+                        f"{p['title']}\n"
+                    )
+        else:
+            social_context += "\nRaw Reddit (PRAW): unavailable (credentials not set or source skipped)\n"
 
         # Institutional options flow (6-step analysis)
         if options_context:
