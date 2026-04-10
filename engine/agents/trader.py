@@ -904,8 +904,12 @@ Respond with JSON in exactly this format:
             return 1.0
         elif ratio >= 0.4:
             return 0.75
+        elif ratio >= 0.2:
+            return 0.5   # Fix A (2026-04-10) — minority support still permits a half-size trade
+        elif ratio > 0.0:
+            return 0.25  # Fix A (2026-04-10) — lone-voice support permits a quarter-size probe
         else:
-            return 0.0  # Force HOLD — insufficient agreement
+            return 0.0   # Zero agreement still forces HOLD (upstream Fix C may still override via advisor)
 
     def _hold_decision(self, symbol: str, reasoning: str, risk_notes: str) -> TradeDecision:
         return TradeDecision(
