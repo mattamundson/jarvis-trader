@@ -50,9 +50,13 @@ class DiscordSignalContext:
 
     def __init__(self, db_path: str = None, bar_minutes: int = 15):
         if db_path is None:
-            # Resolve relative to project root: engine/discord/ → engine/ → project root
-            base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            db_path = os.path.join(base, "data", "jarvis_trader.db")
+            # DB lives at engine/data/jarvis_trader.db.
+            # engine/discord/signal_context.py → parent = engine/discord/ → parent = engine/
+            # Then append /data/jarvis_trader.db. The previous 3-levels-up
+            # walked to the workspace root and caused a split-brain DB on
+            # 2026-04-10 (fix: anchor at engine/ root, not workspace root).
+            engine_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            db_path = os.path.join(engine_root, "data", "jarvis_trader.db")
         self.db_path = db_path
         self.bar_minutes = bar_minutes
         # Rolling stats cache: key = (discord_symbol, date_str) → (stats_dict, fetch_time)

@@ -108,15 +108,20 @@ CREATE TABLE IF NOT EXISTS discord_daily_sentiment (
 
 def _get_db_path() -> str:
     """
-    Resolve path to jarvis_trader.db by walking up from this file's location.
-    Looks for data/jarvis_trader.db in each parent directory.
+    Resolve path to jarvis_trader.db at engine/data/jarvis_trader.db.
+    Anchored at engine/ root (two levels up from this file), not walking
+    all parents — the previous walk-up-until-found strategy would match
+    the stray workspace-root data/jarvis_trader.db first on machines where
+    both exist, causing a split-brain DB (2026-04-10 fix).
     """
     here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / "data" / "jarvis_trader.db"
-        if candidate.exists():
-            return str(candidate)
-    raise FileNotFoundError("Cannot find jarvis_trader.db — searched all parents of " f"{here}")
+    engine_root = here.parent.parent  # engine/discord/sentiment_provider.py → engine/
+    canonical = engine_root / "data" / "jarvis_trader.db"
+    if canonical.exists():
+        return str(canonical)
+    raise FileNotFoundError(
+        f"Cannot find canonical DB at {canonical} — check engine/data/ directory"
+    )
 
 
 def score_message(content: str) -> float:
