@@ -500,6 +500,49 @@ def compute_roc(
     return ((close / close.shift(period)) - 1) * 100.0
 
 
+def compute_trin(advancing_issues: int, declining_issues: int,
+                 advancing_volume: float, declining_volume: float) -> Optional[float]:
+    """
+    Compute TRIN (Arms Index / Short-Term Trading Index).
+
+    TRIN = (Advancing Issues / Declining Issues) / (Advancing Volume / Declining Volume)
+
+    Interpretation:
+    - TRIN < 0.60: Blow-off top / extreme buying — caution for LONG entries
+    - TRIN 0.60-1.00: Bullish breadth
+    - TRIN 1.00-1.40: Bearish breadth
+    - TRIN > 2.00: Capitulation / extreme selling — potential reversal
+
+    Returns None if any input is zero (division guard).
+    """
+    if declining_issues == 0 or declining_volume == 0:
+        return None
+
+    advance_decline_ratio = advancing_issues / declining_issues
+    advance_decline_vol_ratio = advancing_volume / declining_volume
+
+    if advance_decline_vol_ratio == 0:
+        return None
+
+    return advance_decline_ratio / advance_decline_vol_ratio
+
+
+def classify_trin(trin_value: Optional[float]) -> str:
+    """Classify TRIN value into a regime signal."""
+    if trin_value is None:
+        return "UNAVAILABLE"
+    if trin_value < 0.60:
+        return "BLOWOFF_TOP"       # Extreme buying — caution for longs
+    elif trin_value < 1.00:
+        return "BULLISH"
+    elif trin_value < 1.40:
+        return "BEARISH"
+    elif trin_value < 2.00:
+        return "OVERSOLD"
+    else:
+        return "CAPITULATION"      # Extreme selling — potential reversal
+
+
 def compute_vwap_zscore(
     close: pd.Series,
     vwap: pd.Series,

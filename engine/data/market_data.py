@@ -20,6 +20,13 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Optional TradingView real-time feed — imported lazily so it never breaks startup
+try:
+    from data.tradingview_feed import TradingViewFeed as _TradingViewFeed
+    _tv_feed = _TradingViewFeed()
+except Exception:
+    _tv_feed = None  # type: ignore[assignment]
+
 # Continuous contract symbol mappings — single source of truth
 # Polygon.io confirmed working symbols (tested 2026-04-05):
 #   CL  = $85.41 ✅  (crude oil — proxy for MCL, same price different tick value)
@@ -694,6 +701,27 @@ class MarketDataManager:
                 logger.debug(f"Schwab Tier 2 failed for {symbol}: {_schwab_err}")
         elif self.schwab is not None and not self.schwab.is_connected:
             logger.debug(f"Schwab not connected — skipping Tier 2 for {symbol}")
+
+        # Tier 2.5: TradingView Desktop (optional — only when CDP connected)
+        if _tv_feed is not None and _tv_feed.is_available():
+            try:
+                # Map micro futures to TradingView continuous contract symbols
+                tv_symbol_map = {
+                    "MCL": "MCL1!", "MNQ": "MNQ1!", "MES": "MES1!", "MGC": "MGC1!",
+                    "CL": "CL1!", "NQ": "NQ1!", "ES": "ES1!", "GC": "GC1!",
+                }
+                tv_symbol = tv_symbol_map.get(symbol.upper(), symbol)
+                quote = _tv_feed.get_quote(tv_symbol)
+                if quote and quote.get("close"):
+                    logger.info(f"TradingView Tier 2.5 price for {symbol}: {quote['close']}")
+                    return {
+                        "last_price": float(quote["close"]),
+                        "prev_close": None,
+                        "change_pct": None,
+                        "source": "tradingview",
+                    }
+            except Exception as _tv_err:
+                logger.debug(f"TradingView Tier 2.5 failed for {symbol}: {_tv_err}")
 
         # Tier 3: Polygon
         if self.polygon:
