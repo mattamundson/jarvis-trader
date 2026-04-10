@@ -467,7 +467,8 @@ class RiskManagerAgent:
 
         trading_mode = "PAPER TRADING (signal validation)" if self.is_paper_mode else "LIVE TRADING"
         paper_guidance = (
-            "\nPAPER MODE GUIDANCE: Approve trades with R:R > 1.5:1 and confidence > 0.5. "
+            "\nPAPER MODE GUIDANCE: Approve trades with R:R > 1.5:1 and confidence >= 0.35. "
+            "The confidence floor in paper mode is 0.35 — do NOT block for confidence < 0.50. "
             "Veto only for: missing stop, correlated exposure breach, or extreme timing error.\n"
             if self.is_paper_mode
             else ""
