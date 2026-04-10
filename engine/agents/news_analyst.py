@@ -300,43 +300,51 @@ Respond with JSON in exactly this format:
 }}"""
 
         try:
-            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
-                "ANTHROPIC_API_KEY", ""
-            )
-            _t0 = time.time()
-
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": anthropic_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-sonnet-4-6",
-                        "max_tokens": 800,
-                        "system": self.SYSTEM_PROMPT,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                resp.raise_for_status()
-                payload = resp.json()
-
-            _latency_ms = int((time.time() - _t0) * 1000)
-
-            # Track cost via JarvisLLMClient if available
-            usage = payload.get("usage", {})
-            if hasattr(self._llm, "track_raw_call"):
-                await self._llm.track_raw_call(
-                    model="claude-sonnet-4-6",
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
-                    latency_ms=_latency_ms,
+            if hasattr(self._llm, "call"):
+                # Primary: use JarvisLLMClient (retry, fallback, cost tracking built-in)
+                llm_result = await self._llm.call(
+                    model="claude-haiku-4-5-20251001",
+                    system=self.SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=800,
                     agent_name="news_analyst",
                 )
-
-            response_text = payload["content"][0]["text"].strip()
+                if not llm_result.success:
+                    raise RuntimeError(llm_result.error or "LLM call failed")
+                response_text = llm_result.content.strip()
+            else:
+                # Fallback: raw httpx when LLM client is not JarvisLLMClient
+                anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
+                    "ANTHROPIC_API_KEY", ""
+                )
+                _t0 = time.time()
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": anthropic_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": "claude-haiku-4-5-20251001",
+                            "max_tokens": 800,
+                            "system": self.SYSTEM_PROMPT,
+                            "messages": [{"role": "user", "content": prompt}],
+                        },
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
+                _latency_ms = int((time.time() - _t0) * 1000)
+                if hasattr(self._llm, "track_raw_call"):
+                    await self._llm.track_raw_call(
+                        model="claude-haiku-4-5-20251001",
+                        input_tokens=payload.get("usage", {}).get("input_tokens", 0),
+                        output_tokens=payload.get("usage", {}).get("output_tokens", 0),
+                        latency_ms=_latency_ms,
+                        agent_name="news_analyst",
+                    )
+                response_text = payload["content"][0]["text"].strip()
 
             # Strip markdown code blocks if present
             if response_text.startswith("```"):

@@ -27,6 +27,7 @@ debate_score, and a verdict string.
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -38,8 +39,22 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["DebateResult", "DebateOrchestrator"]
 
-# Scoring verdict thresholds
-_VERDICT_THRESHOLD = 0.10
+# Regime-adaptive debate verdict thresholds.
+# Tighter thresholds for high-conviction regimes (less noise needed to call a winner);
+# looser thresholds for choppy/uncertain regimes (require stronger signal).
+REGIME_DEBATE_THRESHOLDS: dict[str, float] = {
+    "COMPRESSION":    0.15,
+    "TRENDING_BULL":  0.18,
+    "TRENDING_BEAR":  0.18,
+    "RANGE_BOUND":    0.22,
+    "EXHAUSTED":      0.25,
+    "RANGING":        0.22,  # alias for RANGE_BOUND
+    "CAUTION":        0.20,  # default for unknown regimes
+}
+DEFAULT_DEBATE_THRESHOLD = 0.20
+
+# Legacy fixed threshold (kept so existing callers that reference _VERDICT_THRESHOLD still compile)
+_VERDICT_THRESHOLD = DEFAULT_DEBATE_THRESHOLD
 
 
 @dataclass
@@ -79,6 +94,11 @@ class DebateResult:
     scoring_failed: bool = False
     credits_exhausted: bool = False
 
+    # IC-weighted alpha combination metadata (Track F1)
+    ir_score: float = 0.0       # IR = IC_avg × √N (Fundamental Law of Active Management)
+    ic_avg: float = 0.0         # mean Information Coefficient across active analysts
+    ic_n_analysts: int = 0      # number of analysts with IC > 0
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -107,6 +127,10 @@ class DebateResult:
             "rounds_completed": self.rounds_completed,
             "scoring_failed": self.scoring_failed,
             "credits_exhausted": self.credits_exhausted,
+            # IC/IR metadata (Track F1)
+            "ir_score": self.ir_score,
+            "ic_avg": self.ic_avg,
+            "ic_n_analysts": self.ic_n_analysts,
         }
 
 
@@ -150,6 +174,7 @@ class DebateOrchestrator:
         bull: BullResearcherAgent,
         bear: BearResearcherAgent,
         rounds: int = 3,  # kept for interface compat; 3 is the default
+        regime: Optional[str] = None,
     ) -> DebateResult:
         """
         Run the 3-round adversarial debate and return a scored DebateResult.
@@ -166,19 +191,105 @@ class DebateOrchestrator:
             Instantiated BearResearcherAgent.
         rounds:
             Ignored — always runs 3 rounds. Kept for backwards compat.
+        regime:
+            Optional market regime string from TechnicalAnalystAgent (e.g.
+            "TRENDING_BULL", "COMPRESSION").  When provided, the verdict
+            threshold is looked up from REGIME_DEBATE_THRESHOLDS; otherwise
+            DEFAULT_DEBATE_THRESHOLD (0.20) is used.
 
         Returns
         -------
         DebateResult
             Full 3-round result including debate_score and verdict.
         """
+        # Resolve the adaptive threshold for this regime
+        _threshold = REGIME_DEBATE_THRESHOLDS.get(
+            (regime or "").upper(), DEFAULT_DEBATE_THRESHOLD
+        )
+
+        # Load agent accuracy weights (pre-computed; no DB hit in hot path)
+        try:
+            from engine.analytics.agent_feedback import AgentFeedbackTracker
+            _tracker = AgentFeedbackTracker()
+            agent_weights = _tracker.load_weights()
+        except Exception:
+            _tracker = None
+            agent_weights = {}
+
+        # IC scores — Information Coefficients per analyst (Track F1)
+        # IC(i) = historical_accuracy(i) - 0.5  (random = 0, perfect = 0.5)
+        # Based on the Fundamental Law of Active Management: IR = IC × √N
+        _ic_analyst_names = ["technical", "news", "social", "fundamental", "corey"]
+        try:
+            if _tracker is not None:
+                ic_scores: dict[str, float] = {
+                    name: max(0.0, _tracker.compute_accuracy(name) - 0.5)
+                    for name in _ic_analyst_names
+                }
+            else:
+                ic_scores = {}
+        except Exception:
+            ic_scores = {}
+
+        # Compute IR (Information Ratio) for this debate run and log it
+        _ic_active = {k: v for k, v in ic_scores.items() if v > 0}
+        _n_analysts = len(_ic_active)
+        _avg_ic = sum(_ic_active.values()) / max(_n_analysts, 1) if _ic_active else 0.0
+        _ir_score = _avg_ic * (_n_analysts ** 0.5) if _n_analysts > 0 else 0.0
+        logger.info(
+            "[Debate] %s alpha combination: IC_avg=%.3f N=%d IR_score=%.3f",
+            symbol, _avg_ic, _n_analysts, _ir_score,
+        )
+
+        # Apply IC weights + accuracy weights to analyst_reports signals before
+        # passing to researchers.  Each analyst's signal is boosted by its IC
+        # quality (IC=0.2 → 1.2× multiplier) on top of the accuracy weight so
+        # that historically-accurate, high-IC analysts exert more influence.
+        weighted_reports = {}
+        for agent_name, report in analyst_reports.items():
+            weight = agent_weights.get(agent_name, 1.0)
+            if isinstance(report, dict) and "signal" in report:
+                report = dict(report)
+                # Apply accuracy weight (Track E)
+                if weight != 1.0:
+                    report["signal"] = report["signal"] * weight
+                    report["_weight_applied"] = round(weight, 3)
+                # Apply IC multiplier on top (Track F1): signal × (1 + IC)
+                report["signal"] = _ic_weighted_signal(
+                    report["signal"], agent_name, ic_scores
+                )
+                ic_val = ic_scores.get(agent_name, 0.0)
+                if ic_val > 0:
+                    report["_ic_applied"] = round(ic_val, 3)
+            weighted_reports[agent_name] = report
+
         logger.info(f"[Debate] {symbol} — Round 1: parallel opening statements")
         bull_report, bear_report = await asyncio.gather(
-            bull.analyze(symbol, analyst_reports),
-            bear.analyze(symbol, analyst_reports),
+            bull.analyze(symbol, weighted_reports),
+            bear.analyze(symbol, weighted_reports),
         )
 
         result = self._build_initial_result(symbol, bull_report, bear_report)
+
+        # Attach IC/IR metadata to result (Track F1)
+        result.ir_score = round(_ir_score, 4)
+        result.ic_avg = round(_avg_ic, 4)
+        result.ic_n_analysts = _n_analysts
+
+        # ── Short-circuit: skip Rounds 2+3 when Round 1 conviction is decisive ────
+        # If one researcher is clearly more confident, scoring rounds won't flip the
+        # verdict. Saves 2–4 Sonnet calls per high-conviction debate (~30% of runs).
+        _r1_delta = result.bull_conviction - result.bear_conviction
+        if abs(_r1_delta) >= 0.35:
+            result.debate_score = round(_r1_delta, 4)
+            result.verdict = "BULL_WINS" if _r1_delta > 0 else "BEAR_WINS"
+            result.scoring_failed = True
+            logger.info(
+                "[Debate] %s — conviction short-circuit: delta=%.2f ≥ 0.35 → %s "
+                "(Rounds 2+3 skipped)",
+                symbol, _r1_delta, result.verdict,
+            )
+            return result
 
         # ── Round 2 + 3: adversarial scoring + rebuttals (best-effort) ───────
         try:
@@ -198,6 +309,11 @@ class DebateOrchestrator:
             result.bull_weakest_point = bull_weakest
             result.bear_weakest_point = bear_weakest
             result.rounds_completed = 2
+
+            logger.info(
+                "[Debate] %s: bull=%.2f bear=%.2f spread=%.2f threshold=%.2f (regime=%s)",
+                symbol, bull_score, bear_score, abs(bull_score - bear_score), _threshold, regime or "default",
+            )
 
             # Detect credit exhaustion first: sentinel takes priority over
             # generic "Scoring unavailable".
@@ -256,9 +372,9 @@ class DebateOrchestrator:
             debate_score = round((bull_score - bear_score) / 10, 4)
             result.debate_score = debate_score
 
-            if debate_score >= _VERDICT_THRESHOLD:
+            if debate_score >= _threshold:
                 verdict = "BULL_WINS"
-            elif debate_score <= -_VERDICT_THRESHOLD:
+            elif debate_score <= -_threshold:
                 verdict = "BEAR_WINS"
             else:
                 # Tie-break: score is in dead zone — check conviction asymmetry
@@ -292,6 +408,8 @@ class DebateOrchestrator:
                     verdict = "INCONCLUSIVE"
 
             result.verdict = verdict
+            conviction = abs(debate_score)
+            logger.info("[Debate] %s: verdict=%s conviction=%.2f", symbol, verdict, conviction)
 
             logger.info(
                 f"[Debate] {symbol} scored: bull_score={bull_score}/10 "
@@ -480,6 +598,38 @@ def _is_credit_error(exc: Exception) -> bool:
     return any(phrase in msg for phrase in _CREDIT_ERROR_PHRASES)
 
 
+def _parse_evidence_fields(text: str) -> tuple[Optional[int], Optional[str]]:
+    """
+    Extract EVIDENCE_COUNT and EVIDENCE_QUALITY from a scoring response.
+
+    Looks for the pattern:
+        SCORE: X/10 | EVIDENCE_COUNT: N | EVIDENCE_QUALITY: low/medium/high
+
+    Returns (evidence_count, evidence_quality) — both None if not found.
+    """
+    count_match = re.search(r"EVIDENCE_COUNT:\s*(\d+)", text, re.IGNORECASE)
+    quality_match = re.search(r"EVIDENCE_QUALITY:\s*(low|medium|high)", text, re.IGNORECASE)
+    evidence_count = int(count_match.group(1)) if count_match else None
+    evidence_quality = quality_match.group(1).lower() if quality_match else None
+    return evidence_count, evidence_quality
+
+
+def _apply_evidence_weight(raw_score: int, evidence_count: Optional[int], evidence_quality: Optional[str]) -> float:
+    """
+    Apply evidence-count and quality multipliers to a raw 1-10 score.
+
+    Formula:
+        weighted = raw_score × (1 + 0.1 × min(evidence_count, 5)) × quality_mult
+    Falls back to raw_score if fields are absent.
+    """
+    if evidence_count is None and evidence_quality is None:
+        return float(raw_score)
+    ec = min(evidence_count or 3, 5)
+    quality_mult = {"low": 0.9, "medium": 1.0, "high": 1.1}.get(evidence_quality or "medium", 1.0)
+    weighted = raw_score * (1 + 0.1 * ec) * quality_mult
+    return round(weighted, 4)
+
+
 async def _score_argument(
     agent: object,
     opponent_role: str,
@@ -489,6 +639,11 @@ async def _score_argument(
     Ask *agent* to score the opponent's argument and name its weakest point.
 
     Returns (score: int 1-10, weakest_point: str).
+
+    The prompt asks the LLM to optionally include an evidence metadata line:
+        SCORE: X/10 | EVIDENCE_COUNT: N | EVIDENCE_QUALITY: low/medium/high
+    When present, the raw score is adjusted by _apply_evidence_weight() before
+    being cast to int.  When absent, the raw score is used as-is.
 
     On credit exhaustion returns (0, _CREDIT_EXHAUSTED_SENTINEL) so the caller
     can detect and propagate credits_exhausted without treating it as a normal
@@ -501,13 +656,29 @@ async def _score_argument(
         f"on a scale of 1-10 for logical coherence and identify its single "
         f"weakest point.\n\n"
         f"{opponent_role} argument:\n{opponent_case}\n\n"
+        f"When rating, optionally include an evidence metadata line in your response:\n"
+        f"SCORE: X/10 | EVIDENCE_COUNT: N | EVIDENCE_QUALITY: low/medium/high\n"
+        f"Evidence count = number of distinct data points cited (price levels, indicators, "
+        f"macro data, news events). Evidence quality = low (vague statements), medium "
+        f"(specific data cited), high (quantified data with source).\n\n"
         f'Respond in JSON only: {{"score": <int 1-10>, "weakest_point": "<one sentence>"}}'
     )
     try:
         raw: str = await _call_agent_llm(agent, prompt)
+        # Parse evidence metadata from the raw response BEFORE JSON extraction
+        evidence_count, evidence_quality = _parse_evidence_fields(raw)
         data = _parse_json_response(raw)
-        score = int(data.get("score", 5))
-        score = max(1, min(10, score))
+        raw_score = int(data.get("score", 5))
+        raw_score = max(1, min(10, raw_score))
+        # Apply evidence weighting (no-op when fields are absent)
+        weighted = _apply_evidence_weight(raw_score, evidence_count, evidence_quality)
+        # Clamp to [1, 10] and convert back to int for downstream compatibility
+        score = max(1, min(10, int(round(weighted))))
+        if evidence_count is not None or evidence_quality is not None:
+            logger.debug(
+                "[Debate] _score_argument (%s): raw=%d evidence_count=%s quality=%s weighted=%.2f→%d",
+                opponent_role, raw_score, evidence_count, evidence_quality, weighted, score,
+            )
         weakest = str(data.get("weakest_point", "Not identified"))
         return score, weakest
     except Exception as exc:
@@ -588,6 +759,27 @@ async def _call_agent_llm(agent: object, prompt: str) -> str:
         f"Agent {type(agent).__name__} exposes no callable LLM interface "
         "(_call_llm, call_llm, _client, client)."
     )
+
+
+def _ic_weighted_signal(signal: float, agent_name: str, ic_scores: dict) -> float:
+    """
+    Apply IC (Information Coefficient) weight to an analyst signal.
+
+    Formula (Track F1 — Fundamental Law of Active Management):
+        w(i) = IC(i) / 1.0   (simplified: η=1, σ assumed=1)
+        adjusted_signal = signal × (1 + IC(i))
+
+    IC(i) = historical_accuracy(i) - 0.5:
+        IC = 0.0  → random (no boost)
+        IC = 0.2  → 70% accurate analyst → 1.2× multiplier
+        IC = 0.5  → perfect analyst → 1.5× multiplier
+
+    When no IC data is available (IC ≤ 0) the raw signal is returned unchanged.
+    """
+    ic = ic_scores.get(agent_name, 0.0)
+    if ic <= 0:
+        return signal  # No IC data — use raw signal
+    return signal * (1.0 + ic)  # Boost proportional to IC quality
 
 
 def _parse_json_response(raw: str) -> dict:

@@ -215,6 +215,12 @@ class TraderAgent:
         indicators = technical_report.get("indicators", {})
         atr: Optional[float] = indicators.get("atr") if isinstance(indicators, dict) else None
 
+        if not atr or atr <= 0:
+            logger.warning(
+                "[Trader] %s: ATR is %s — cannot compute stop/target, defaulting to HOLD",
+                symbol, atr,
+            )
+
         from config import settings  # local import to avoid circular deps at module level
 
         max_contracts: int = settings.MAX_CONTRACTS_PER_INSTRUMENT
@@ -357,6 +363,84 @@ class TraderAgent:
                     symbol,
                     _hk_err,
                 )
+
+        # ── A2: VIX regime position-size multiplier ───────────────────────
+        # Extract VIX from fundamental report and apply regime-based scaling.
+        # Falls back silently — never blocks a trade.
+        try:
+            from analytics.vix_overlay import classify_vix
+
+            _fund_report = analyst_reports.get("fundamental", {})
+            _fund_vix = _fund_report.get("key_metrics", {}).get("vix")
+            if _fund_vix is not None and float(_fund_vix) > 0:
+                _vix_val = float(_fund_vix)
+                _vix_regime, _vix_size_pct, _vix_trading_allowed = classify_vix(_vix_val)
+                if not _vix_trading_allowed:
+                    # VIX EXTREME (≥ 40) — force HOLD immediately, no further sizing
+                    logger.warning(
+                        "[Trader] %s: VIX EXTREME (%.1f ≥ 40) — trading paused, returning HOLD",
+                        symbol, _vix_val,
+                    )
+                    return self._hold_decision(
+                        symbol=symbol,
+                        reasoning=f"VIX EXTREME regime (VIX={_vix_val:.1f} ≥ 40). Trading paused.",
+                        risk_notes="Extreme fear regime — no directional exposure until VIX normalises.",
+                    )
+                _vix_adjusted = max(1, round(position_size.contracts * _vix_size_pct))
+                logger.info(
+                    "[Trader] VIX regime %s (%.1f): position sizing multiplier %.2fx "
+                    "— contracts %d → %d",
+                    _vix_regime, _vix_val, _vix_size_pct,
+                    position_size.contracts, _vix_adjusted,
+                )
+                position_size.contracts = _vix_adjusted
+        except Exception as _vix_err:
+            logger.debug("[Trader] VIX size overlay failed (non-fatal): %s", _vix_err)
+
+        # ── Confluence-based position sizing override ─────────────────────
+        # Count how many Stage 1 agents agree with the debate verdict direction.
+        # Insufficient agreement (< 40%) forces a HOLD regardless of debate outcome.
+        _debate_verdict = (
+            debate_result.get("verdict", "INCONCLUSIVE")
+            if isinstance(debate_result, dict)
+            else getattr(debate_result, "verdict", "INCONCLUSIVE")
+        )
+        if _debate_verdict == "BULL_WINS":
+            _confluence_direction = "LONG"
+        elif _debate_verdict == "BEAR_WINS":
+            _confluence_direction = "SHORT"
+        else:
+            _confluence_direction = None
+
+        _confluence_hold = False
+        if _confluence_direction is not None:
+            confluence_mult = self._compute_confluence_multiplier(analyst_reports, _confluence_direction)
+            if confluence_mult == 0.0:
+                logger.warning(
+                    "[Trader] %s: insufficient confluence for %s verdict — overriding to HOLD",
+                    symbol, _debate_verdict,
+                )
+                _confluence_hold = True
+            else:
+                _base_contracts = position_size.contracts
+                _new_contracts = max(1, round(_base_contracts * confluence_mult))
+                _new_contracts = min(_new_contracts, max_contracts)
+                if _new_contracts != _base_contracts:
+                    logger.info(
+                        "[Trader] %s: confluence_mult=%.2f → contracts %d → %d",
+                        symbol, confluence_mult, _base_contracts, _new_contracts,
+                    )
+                    position_size.contracts = _new_contracts
+
+        if _confluence_hold:
+            return self._hold_decision(
+                symbol=symbol,
+                reasoning=(
+                    f"Confluence gate: debate verdict={_debate_verdict} but insufficient "
+                    "Stage 1 agent agreement. Forcing HOLD to avoid low-confluence trade."
+                ),
+                risk_notes="Less than 40% of analyst agents agreed with the debate direction.",
+            )
 
         # Build the analysis prompt from all upstream reports
         is_paper = not getattr(settings, "LIVE_TRADING_ENABLED", False)
@@ -700,6 +784,69 @@ Respond with JSON in exactly this format:
             timestamp=datetime.now(),
             sizing_method=sizing_method,
         )
+
+    def _compute_confluence_multiplier(self, analyst_reports: dict, verdict_direction: str) -> float:
+        """
+        Count how many Stage 1 agents agree with the verdict direction.
+
+        Each agent report is expected to carry a signal value accessible via
+        a ``signal``, ``bias``, or ``sentiment_score`` attribute/key.
+        Positive values are treated as bullish; negative as bearish.
+
+        Parameters
+        ----------
+        analyst_reports:
+            Dict of upstream agent reports (objects with attributes, or plain dicts).
+        verdict_direction:
+            "LONG" or "SHORT" (derived from the debate verdict).
+
+        Returns
+        -------
+        float
+            1.5  — 80%+ agreement  (4/5 or 5/5 agents aligned)
+            1.0  — 60% agreement   (3/5 agents aligned)
+            0.75 — 40% agreement   (2/5 agents aligned)
+            0.0  — < 40% agreement — caller should force HOLD
+        """
+        agreements = 0
+        total = 0
+        for agent_name, report in analyst_reports.items():
+            # hidden_pivots is supplemental — exclude from primary confluence vote
+            if agent_name == "hidden_pivots":
+                continue
+            # Try attribute access first (dataclass), then dict key access
+            signal = None
+            for field in ("signal", "bias", "sentiment_score"):
+                signal = getattr(report, field, None)
+                if signal is None and isinstance(report, dict):
+                    signal = report.get(field)
+                if signal is not None:
+                    break
+            if signal is None:
+                continue
+            try:
+                signal_val = float(signal)
+            except (TypeError, ValueError):
+                continue
+            total += 1
+            if verdict_direction == "LONG" and signal_val > 0:
+                agreements += 1
+            elif verdict_direction == "SHORT" and signal_val < 0:
+                agreements += 1
+
+        if total == 0:
+            # No signal data available — neutral, do not penalise
+            return 1.0
+
+        ratio = agreements / total
+        if ratio >= 0.8:
+            return 1.5
+        elif ratio >= 0.6:
+            return 1.0
+        elif ratio >= 0.4:
+            return 0.75
+        else:
+            return 0.0  # Force HOLD — insufficient agreement
 
     def _hold_decision(self, symbol: str, reasoning: str, risk_notes: str) -> TradeDecision:
         return TradeDecision(

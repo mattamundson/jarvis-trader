@@ -23,6 +23,7 @@ import datetime as _dt
 import logging
 import os
 import uuid
+import zoneinfo
 from datetime import datetime
 from typing import Any, Optional
 
@@ -53,7 +54,25 @@ try:
 except Exception:  # pragma: no cover — optional dependency
     _WA_AVAILABLE = False
 
+try:
+    from analysis.hidden_pivots import full_hidden_pivots_scan, HPScanResult
+
+    _HP_AVAILABLE = True
+except Exception:  # pragma: no cover — optional dependency
+    _HP_AVAILABLE = False
+
+try:
+    from analysis.discord_time_patterns import compute_time_patterns
+
+    _TIME_PATTERNS_AVAILABLE = True
+except Exception:  # pragma: no cover — optional dependency
+    _TIME_PATTERNS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+# ── Time-of-Day Filter Config ──────────────────────────────────────────────────
+TIME_OF_DAY_FILTER_ENABLED: bool = True
+_TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipped
 
 __all__ = ["TradingPipeline", "pre_filter_signal"]
 
@@ -326,7 +345,29 @@ async def pre_filter_signal(
                 symbol, is_futures, "MTF misalignment — 4h and 1h STC disagree on direction"
             )
 
-        # ── Check 4: STC mid-range ────────────────────────────────────────
+        # ── Check 4: Time-of-day conviction ──────────────────────────────
+        if TIME_OF_DAY_FILTER_ENABLED and _TIME_PATTERNS_AVAILABLE:
+            try:
+                _now_et = _dt.datetime.now(zoneinfo.ZoneInfo("America/New_York"))
+                _current_hour_et = _now_et.hour
+                _tod_patterns = compute_time_patterns(symbol)
+                _hour_data = _tod_patterns.get("by_hour", {}).get(_current_hour_et)
+                if _hour_data is not None:
+                    _hour_conviction = float(_hour_data.get("win_rate", 1.0))
+                    if _hour_conviction < _TIME_OF_DAY_MIN_CONVICTION:
+                        logger.info(
+                            "[pre_filter_signal] %s SKIP — low conviction hour %02d:00 ET "
+                            "(win_rate=%.2f < %.2f threshold)",
+                            symbol, _current_hour_et, _hour_conviction, _TIME_OF_DAY_MIN_CONVICTION,
+                        )
+                        return _make_hold_result(
+                            symbol, is_futures,
+                            f"low conviction hour — {_current_hour_et:02d}:00 ET win_rate={_hour_conviction:.2f}",
+                        )
+            except Exception as _tod_err:
+                logger.debug("[pre_filter_signal] time-of-day filter skipped: %s", _tod_err)
+
+        # ── Check 5: STC mid-range ────────────────────────────────────────
         if not _cfg.STC_MIDRANGE_SKIP_ENABLED or not (_mid_lo < _stc_val < _mid_hi):
             logger.debug(
                 "[pre_filter_signal] symbol=%s stc_val=%.1f range=(%.0f–%.0f) action=PASS",
@@ -491,6 +532,58 @@ class TradingPipeline:
         analyst_reports = await self._run_analysts(symbol, is_futures, errors, timeframe=timeframe)
         if self.profiler:
             await self.profiler.end_stage("analysts")
+
+        # ── A1: Hidden Pivots scan (post Stage-1, non-blocking) ───────────
+        if _HP_AVAILABLE:
+            try:
+                _hp_data_mgr = getattr(self._agents.get("technical"), "_data", None)
+                if _hp_data_mgr is not None:
+                    _hp_df = await _hp_data_mgr.get_bars(
+                        symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures
+                    )
+                    if _hp_df is not None and not _hp_df.empty and len(_hp_df) >= 20:
+                        hp_result: HPScanResult = full_hidden_pivots_scan(
+                            symbol=symbol, df=_hp_df, timeframe=timeframe
+                        )
+                        analyst_reports["hidden_pivots"] = {
+                            "bias": hp_result.bias,
+                            "pattern": hp_result.pattern,
+                            "trigger_price": hp_result.trigger_price,
+                            "ema_alignment": hp_result.ema_alignment,
+                            "confidence": hp_result.confidence,
+                            "oscillator_state": hp_result.oscillator_state,
+                            "soh": hp_result.soh,
+                            "notes": hp_result.notes,
+                            "targets": hp_result.targets,
+                        }
+                        logger.info(
+                            "[Pipeline] %s HiddenPivots: bias=%s pattern=%s ema=%s confidence=%.2f",
+                            symbol, hp_result.bias, hp_result.pattern,
+                            hp_result.ema_alignment, hp_result.confidence,
+                        )
+                    else:
+                        hp_result = None
+                else:
+                    hp_result = None
+            except Exception as _hp_err:
+                logger.debug("[Pipeline] HiddenPivots scan failed (non-fatal): %s", _hp_err)
+                hp_result = None
+        else:
+            hp_result = None
+
+        # ── A1: Inject Hidden Pivots summary into debate context ─────────────
+        # analyst_reports["hidden_pivots"] already contains the full dict;
+        # add a pre-formatted text line so bull/bear researchers get a clean signal.
+        if hp_result is not None and analyst_reports.get("hidden_pivots"):
+            _hp = analyst_reports["hidden_pivots"]
+            analyst_reports["hidden_pivots_context"] = (
+                f"Hidden Pivots Analysis: bias={_hp.get('bias', 0)} | "
+                f"pattern={_hp.get('pattern', 'none')} | "
+                f"targets={_hp.get('targets', [])} | "
+                f"confidence={_hp.get('confidence', 0.0):.2f} | "
+                f"ema_alignment={_hp.get('ema_alignment', 'MIXED')}"
+            )
+
         pipeline_result["analyst_reports"] = analyst_reports
 
         # ── Technical-Only Fallback: LLM credits exhausted ────────────────
@@ -700,6 +793,32 @@ class TradingPipeline:
         pipeline_result["final_action"] = final_action
         pipeline_result["final_quantity"] = final_quantity
         pipeline_result["requires_human"] = requires_human
+
+        # ── A1: Hidden Pivots conflict check ──────────────────────────────────
+        # If HP bias conflicts with the final verdict, log a warning and reduce
+        # confidence by ×0.85 (does NOT override — just notes the conflict).
+        if hp_result is not None and final_action not in ("hold", "HOLD"):
+            _hp_bias = hp_result.bias  # "LONG" | "SHORT" | "WATCH" | "SOH"
+            _action_is_long = final_action.lower() == "buy"
+            _action_is_short = final_action.lower() == "sell"
+            _hp_conflicts = (
+                (_hp_bias == "LONG" and _action_is_short)
+                or (_hp_bias == "SHORT" and _action_is_long)
+            )
+            if _hp_conflicts:
+                _old_boosted = pipeline_result.get("boosted_confidence", 0.0)
+                _new_boosted = max(0.0, _old_boosted * 0.85)
+                pipeline_result["boosted_confidence"] = round(_new_boosted, 4)
+                pipeline_result["hp_conflict"] = True
+                pipeline_result["hp_bias"] = _hp_bias
+                logger.warning(
+                    "[Pipeline] %s HiddenPivots CONFLICT: HP=%s but final_action=%s — "
+                    "reducing confidence %.2f → %.2f (×0.85, not overriding verdict)",
+                    symbol, _hp_bias, final_action.upper(), _old_boosted, _new_boosted,
+                )
+            else:
+                pipeline_result["hp_conflict"] = False
+                pipeline_result["hp_bias"] = _hp_bias
 
         completed_at = datetime.now()
         pipeline_result["completed_at"] = completed_at.isoformat()
@@ -1032,7 +1151,7 @@ class TradingPipeline:
         except Exception:
             pass  # learning context is optional — never block the pipeline
 
-        # Build coroutines — skip missing agents gracefully
+        # Stage 1a: Run technical analyst first to extract price+ATR for Corey proximity boost
         technical_coro = self._call_agent_analyze(
             "technical",
             symbol,
@@ -1040,15 +1159,21 @@ class TradingPipeline:
             timeframe=timeframe,
             historical_context=historical_context,
         )
+        technical_result = await safe_analyze("technical", technical_coro)
+
+        # Extract current_price and ATR from technical result for Corey proximity boost
+        current_price = float(technical_result.get("current_price") or 0.0)
+        atr = float((technical_result.get("indicators") or {}).get("atr") or 0.0)
+
+        # Stage 1b: Run remaining analysts in parallel with real price/ATR values
         news_coro = self._call_agent_analyze("news", symbol)
         social_coro = self._call_agent_analyze("social", symbol)
         fundamental_coro = self._call_agent_analyze("fundamental", symbol)
         corey_coro = self._call_agent_analyze(
-            "corey", symbol, current_price=0.0, atr=0.0
+            "corey", symbol, current_price=current_price, atr=atr
         )
 
         results = await asyncio.gather(
-            safe_analyze("technical", technical_coro),
             safe_analyze("news", news_coro),
             safe_analyze("social", social_coro),
             safe_analyze("fundamental", fundamental_coro),
@@ -1056,11 +1181,11 @@ class TradingPipeline:
         )
 
         return {
-            "technical": results[0],
-            "news": results[1],
-            "social": results[2],
-            "fundamental": results[3],
-            "corey": results[4],
+            "technical": technical_result,
+            "news": results[0],
+            "social": results[1],
+            "fundamental": results[2],
+            "corey": results[3],
         }
 
     async def _call_agent_analyze(self, agent_name: str, symbol: str, **kwargs):
@@ -1093,12 +1218,20 @@ class TradingPipeline:
                     "bear_arguments": [],
                 }
 
-            # Debate orchestrator runs bull + bear internally
+            # Debate orchestrator runs bull + bear internally.
+            # Pass the regime string from TechnicalAnalystAgent so the debate
+            # can use adaptive verdict thresholds (see REGIME_DEBATE_THRESHOLDS).
+            _regime_str: Optional[str] = (
+                analyst_reports.get("technical", {}).get("regime")
+                if isinstance(analyst_reports.get("technical"), dict)
+                else None
+            )
             debate_result = await debate_agent.run_debate(
                 symbol=symbol,
                 analyst_reports=analyst_reports,
                 bull=bull_agent,
                 bear=bear_agent,
+                regime=_regime_str,
             )
 
             # Normalise to dict

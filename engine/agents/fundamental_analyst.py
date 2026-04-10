@@ -36,6 +36,20 @@ from datetime import datetime
 import httpx
 
 try:
+    from data.cot_fetcher import CoTFetcher as _CoTFetcher
+    _COT_AVAILABLE = True
+except ImportError:
+    _CoTFetcher = None  # type: ignore[assignment,misc]
+    _COT_AVAILABLE = False
+
+try:
+    from data.sector_rotation import SectorRotationMonitor as _SectorRotationMonitor
+    _SECTOR_AVAILABLE = True
+except ImportError:
+    _SectorRotationMonitor = None  # type: ignore[assignment,misc]
+    _SECTOR_AVAILABLE = False
+
+try:
     import anthropic as _anthropic_sdk
 
     _ANTHROPIC_SDK_AVAILABLE = True
@@ -301,11 +315,34 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             f"spread={(key_metrics.get('us_10y_yield', 0) - key_metrics.get('fed_funds_rate', 0)):.2f})"
         )
 
-        # 6. LLM synthesis — passes symbol for instrument-specific prompt weighting
+        # 6. CoT positioning (optional — CFTC weekly data, graceful fallback)
+        cot_data = None
+        cot_bias = 0.0
+        if _COT_AVAILABLE:
+            try:
+                _cot = _CoTFetcher()
+                cot_data = _cot.get_positioning(symbol)
+                cot_bias = _cot.get_bias_adjustment(symbol)
+            except Exception as e:
+                logger.debug("CoT fetch failed for %s: %s", symbol, e)
+
+        # 7. Sector rotation context (optional — requires market_data_manager)
+        sector_ctx = None
+        if _SECTOR_AVAILABLE and self._data is not None:
+            try:
+                _sector = _SectorRotationMonitor(self._data)
+                sector_ctx = _sector.get_sector_context(symbol)
+            except Exception as e:
+                logger.debug("Sector rotation failed for %s: %s", symbol, e)
+
+        # 8. LLM synthesis — passes symbol for instrument-specific prompt weighting
         report = await self._llm_synthesize(
             symbol, company_name, key_metrics, is_futures,
             deterministic_regime=macro_regime,
             deterministic_tailwind=macro_tailwind,
+            cot_data=cot_data,
+            cot_bias=cot_bias,
+            sector_ctx=sector_ctx,
         )
         return report
 
@@ -534,6 +571,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         is_futures: bool,
         deterministic_regime: str = "NEUTRAL",
         deterministic_tailwind: bool = True,
+        cot_data: "dict | None" = None,
+        cot_bias: float = 0.0,
+        sector_ctx: "dict | None" = None,
     ) -> "FundamentalReport":
         """Use LLM to synthesize macro/fundamental data into a structured regime signal"""
 
@@ -590,6 +630,29 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 
         symbol_hint = self._symbol_class_hint(symbol)
 
+        # Build CoT block (optional)
+        cot_block = ""
+        if cot_data:
+            cot_block = (
+                f"\nCFTC Commitment of Traders (latest weekly):\n"
+                f"- Commercial net position: {cot_data['commercial_net']:,} ({cot_data['commercial_trend']})\n"
+                f"- Large speculator net: {cot_data['large_spec_net']:,}\n"
+                f"- CoT bias adjustment: {cot_bias:+.1f}\n"
+            )
+
+        # Build sector rotation block (optional)
+        sector_block = ""
+        if sector_ctx and sector_ctx.get("sector_momentum") != "NEUTRAL" or (
+            sector_ctx and sector_ctx.get("description", "").startswith("Sector data unavailable") is False
+            and sector_ctx.get("bias_adjustment", 0.0) != 0.0
+        ):
+            sector_block = (
+                f"\nSector Rotation Context:\n"
+                f"{sector_ctx['description']}\n"
+                f"Bias adjustment: {sector_ctx['bias_adjustment']:+.2f} "
+                f"(outperforming = +, underperforming = -)\n"
+            )
+
         prompt = f"""Analyze macro and fundamental conditions for {company_name} ({symbol}) — {instrument_type}.
 
 {symbol_hint}
@@ -601,8 +664,7 @@ Use these as a strong prior — override only if fundamental/LLM analysis provid
 
 MACRO CONDITIONS:
 {macro_block if macro_block else "No macro data available."}
-{equity_block}
-
+{equity_block}{cot_block}{sector_block}
 Respond with JSON in exactly this format:
 {{
   "signal": <float -1.0 to 1.0>,
@@ -708,10 +770,20 @@ Respond with JSON in exactly this format:
             else:
                 llm_tailwind = deterministic_tailwind
 
+            # Apply sector bias adjustment — clamp to ±1.0
+            raw_signal = float(result.get("signal", 0.0))
+            sector_bias = sector_ctx.get("bias_adjustment", 0.0) if sector_ctx else 0.0
+            adjusted_signal = max(-1.0, min(1.0, raw_signal + sector_bias))
+            if sector_bias != 0.0:
+                logger.debug(
+                    f"{symbol} sector bias {sector_bias:+.2f} applied: "
+                    f"signal {raw_signal:.2f} → {adjusted_signal:.2f}"
+                )
+
             return FundamentalReport(
                 symbol=symbol,
                 timestamp=datetime.now(),
-                signal=float(result.get("signal", 0.0)),
+                signal=adjusted_signal,
                 confidence=float(result.get("confidence", 0.5)),
                 macro_regime=llm_regime,
                 macro_tailwind=llm_tailwind,
