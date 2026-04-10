@@ -1280,6 +1280,41 @@ export interface RecentPipelineDecision {
   pipeline_snapshot?: PipelineDecisionSnapshot;
 }
 
+// ── TradingView Bridge ──────────────────────────────────────────────────
+export interface TVBridgeSnapshot {
+  symbol: string;
+  stc_value: number | null;
+  stc_state: string | null;
+  composite_score: number | null;
+  regime: string | null;
+  atr_value: number | null;
+  ib_high: number | null;
+  ib_low: number | null;
+  ib_range: number | null;
+  phase_oscillator: number | null;
+  is_compressed: boolean;
+  corey_score: number | null;
+  corey_bias: string | null;
+  vwap: number | null;
+  data_quality: "live" | "stale" | "unavailable";
+}
+
+export interface TVBridgeHealth {
+  available: boolean;
+  cli_found: boolean;
+  cdp_connected: boolean;
+}
+
+export async function fetchTVSnapshot(symbol: string): Promise<TVBridgeSnapshot> {
+  return fetchEngine<TVBridgeSnapshot>(
+    `/tv/snapshot?symbol=${encodeURIComponent(symbol)}`
+  );
+}
+
+export async function fetchTVHealth(): Promise<TVBridgeHealth> {
+  return fetchEngine<TVBridgeHealth>("/tv/health");
+}
+
 export interface RecentPipelineReasoningResponse {
   decisions: RecentPipelineDecision[];
   count: number;

@@ -357,26 +357,37 @@ class TVIndicatorBridge:
         snap.stc_ob = pf(labels, "STC_OB") or 83.0
         snap.stc_os = pf(labels, "STC_OS") or 15.0
 
-        # Composite
-        snap.composite_score = pf(labels, "COMPOSITE_SCORE")
-        snap.regime = ps(labels, "COMPOSITE_REGIME")
+        # Composite — JARVIS_MCP_Manifest.pine emits COMP_SCORE/COMP_REGIME
+        # (short form). Accept either prefix so older manifests still parse.
+        snap.composite_score = pf(labels, "COMP_SCORE")
+        if snap.composite_score is None:
+            snap.composite_score = pf(labels, "COMPOSITE_SCORE")
+        snap.regime = ps(labels, "COMP_REGIME")
+        if snap.regime is None:
+            snap.regime = ps(labels, "COMPOSITE_REGIME")
         snap.orb_high = pf(labels, "ORB_HIGH")
         snap.orb_low = pf(labels, "ORB_LOW")
         snap.vwap = pf(labels, "VWAP")
-        snap.vwap_upper = pf(labels, "VWAP_UPPER")
-        snap.vwap_lower = pf(labels, "VWAP_LOWER")
+        snap.vwap_upper = pf(labels, "VWAP_P1SD")
+        snap.vwap_lower = pf(labels, "VWAP_M1SD")
 
-        # ATR
+        # ATR — manifest emits ATR_TR_PCT, ATR_LO_TRIG, ATR_HI_TRIG
         snap.atr_value = pf(labels, "ATR_VALUE")
-        snap.tr_pct = pf(labels, "TR_PCT")
+        snap.tr_pct = pf(labels, "ATR_TR_PCT")
+        if snap.tr_pct is None:
+            snap.tr_pct = pf(labels, "TR_PCT")
         snap.atr_neg1 = pf(labels, "ATR_NEG1")
         snap.atr_pos1 = pf(labels, "ATR_POS1")
         snap.atr_neg2 = pf(labels, "ATR_NEG2")
         snap.atr_pos2 = pf(labels, "ATR_POS2")
         snap.atr_neg3 = pf(labels, "ATR_NEG3")
         snap.atr_pos3 = pf(labels, "ATR_POS3")
-        snap.lower_trig = pf(labels, "LOWER_TRIG")
-        snap.upper_trig = pf(labels, "UPPER_TRIG")
+        snap.lower_trig = pf(labels, "ATR_LO_TRIG")
+        if snap.lower_trig is None:
+            snap.lower_trig = pf(labels, "LOWER_TRIG")
+        snap.upper_trig = pf(labels, "ATR_HI_TRIG")
+        if snap.upper_trig is None:
+            snap.upper_trig = pf(labels, "UPPER_TRIG")
 
         # IB Levels
         snap.ib_high = pf(labels, "IB_HIGH")
@@ -389,9 +400,11 @@ class TVIndicatorBridge:
         snap.ibd100 = pf(labels, "IBD100")
         snap.ib_complete = pb(labels, "IB_COMPLETE")
 
-        # Phase Oscillator
-        snap.phase_oscillator = pf(labels, "PHASE_OSCILLATOR")
-        snap.is_compressed = pb(labels, "IS_COMPRESSED")
+        # Phase Oscillator — manifest emits PHASE_VALUE/PHASE_COMPRESSED
+        snap.phase_oscillator = pf(labels, "PHASE_VALUE")
+        if snap.phase_oscillator is None:
+            snap.phase_oscillator = pf(labels, "PHASE_OSCILLATOR")
+        snap.is_compressed = pb(labels, "PHASE_COMPRESSED")
         snap.phase_state = ps(labels, "PHASE_STATE")
 
         # Corey Score
@@ -403,19 +416,25 @@ class TVIndicatorBridge:
         snap.vol_bear_pct = pf(labels, "VOL_BEAR_PCT")
         snap.vol_bias = ps(labels, "VOL_BIAS")
 
-        # Pivot Points
-        snap.pivot_pp = pf(labels, "PIVOT_PP")
-        snap.pivot_r1 = pf(labels, "PIVOT_R1")
-        snap.pivot_r2 = pf(labels, "PIVOT_R2")
-        snap.pivot_r3 = pf(labels, "PIVOT_R3")
-        snap.pivot_s1 = pf(labels, "PIVOT_S1")
-        snap.pivot_s2 = pf(labels, "PIVOT_S2")
-        snap.pivot_s3 = pf(labels, "PIVOT_S3")
+        # Pivot Points — manifest emits PP, PP_R1..PP_S3
+        snap.pivot_pp = pf(labels, "PP")
+        snap.pivot_r1 = pf(labels, "PP_R1")
+        snap.pivot_r2 = pf(labels, "PP_R2")
+        snap.pivot_r3 = pf(labels, "PP_R3")
+        snap.pivot_s1 = pf(labels, "PP_S1")
+        snap.pivot_s2 = pf(labels, "PP_S2")
+        snap.pivot_s3 = pf(labels, "PP_S3")
 
-        # Keltner
-        snap.kc_upper = pf(labels, "KC_UPPER")
-        snap.kc_mid = pf(labels, "KC_MID")
-        snap.kc_lower = pf(labels, "KC_LOWER")
+        # Keltner — manifest emits KC_1H_UPPER/MID/LOWER
+        snap.kc_upper = pf(labels, "KC_1H_UPPER")
+        if snap.kc_upper is None:
+            snap.kc_upper = pf(labels, "KC_UPPER")
+        snap.kc_mid = pf(labels, "KC_1H_MID")
+        if snap.kc_mid is None:
+            snap.kc_mid = pf(labels, "KC_MID")
+        snap.kc_lower = pf(labels, "KC_1H_LOWER")
+        if snap.kc_lower is None:
+            snap.kc_lower = pf(labels, "KC_LOWER")
         snap.kc_alignment = ps(labels, "KC_ALIGNMENT")
 
         # Volume Profile
@@ -424,9 +443,11 @@ class TVIndicatorBridge:
         snap.vp_val = pf(labels, "VP_VAL")
         snap.vp_bias = ps(labels, "VP_BIAS")
 
-        # Gap
+        # Gap — manifest emits GAP_DIR (not GAP_DIRECTION)
         snap.gap_exists = pb(labels, "GAP_EXISTS")
-        snap.gap_direction = ps(labels, "GAP_DIRECTION")
+        snap.gap_direction = ps(labels, "GAP_DIR")
+        if snap.gap_direction is None:
+            snap.gap_direction = ps(labels, "GAP_DIRECTION")
         snap.gap_high = pf(labels, "GAP_HIGH")
         snap.gap_low = pf(labels, "GAP_LOW")
         snap.gap_filled = pb(labels, "GAP_FILLED")

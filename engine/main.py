@@ -113,8 +113,10 @@ from routers.approval_router import router as approval_router
 from routers.approval_router import inject_dependencies as inject_approval_deps
 from routers.pipeline_router import router as pipeline_router
 from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
+from routers.observability_router import router as observability_router
 from routers.scanner_router import router as scanner_router
 from routers.scanner_router import inject_dependencies as inject_scanner_deps
+from routers.tradingview_router import router as tradingview_router
 from routers.scheduler_router import router as scheduler_router
 from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
 from routers.trades_router import router as trades_router
@@ -1578,6 +1580,7 @@ app.include_router(options_router)
 app.include_router(approval_router)
 app.include_router(pipeline_router)
 app.include_router(scanner_router)
+app.include_router(tradingview_router)
 app.include_router(scheduler_router)
 app.include_router(wfe_router)
 app.include_router(discovery_router)
@@ -1585,6 +1588,7 @@ app.include_router(hidden_pivots_router)
 app.include_router(decisions_router)
 app.include_router(cache_router)
 app.include_router(v1_router)
+app.include_router(observability_router)
 
 
 # ── Strategy Lab endpoints ────────────────────────────────────────────────────

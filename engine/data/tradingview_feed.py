@@ -124,11 +124,13 @@ class TradingViewFeed:
     def get_all_indicators(self, symbol: str) -> dict:
         """
         Return all indicator values as a flat dict for injection into pipeline.
-        Returns {} if TradingView unavailable or snapshot missing.
+        When TradingView is unavailable or the snapshot is missing, returns
+        {"tv_data_quality": "unavailable"} so downstream consumers can branch
+        on the key without KeyError.
         """
         snap = self.get_snapshot(symbol)
         if snap is None:
-            return {}
+            return {"tv_data_quality": "unavailable"}
         return {
             "tv_stc": snap.stc_value,
             "tv_stc_state": snap.stc_state,

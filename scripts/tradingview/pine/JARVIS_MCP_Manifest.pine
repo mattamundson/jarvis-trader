@@ -54,9 +54,7 @@ f_stc(fast, slow, len, smth) =>
 
 stc_raw   = f_stc(i_stc_fast, i_stc_slow, i_stc_len, i_stc_smooth)
 stc_val   = math.max(0.0, math.min(100.0, stc_raw))
-stc_state = stc_val >= i_stc_ob ? "OVERBOUGHT" :
-            stc_val <= i_stc_os ? "OVERSOLD"   :
-            stc_val > 50.0      ? "BULLISH"     : "BEARISH"
+stc_state = stc_val >= i_stc_ob ? "OVERBOUGHT" : stc_val <= i_stc_os ? "OVERSOLD" : stc_val > 50.0 ? "BULLISH" : "BEARISH"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── ATR LEVELS (daily) ─────────────────────────────────────────────────────
@@ -124,11 +122,7 @@ bb_width       = bb_upper - bb_lower
 atr_band       = atr14_phase * i_comp_thresh * 2.0
 is_compressed  = bb_width < atr_band
 
-phase_state    = phase_val >  61.8 ? "DISTRIBUTION"   :
-                 phase_val >  23.6 ? "NEUTRAL_UP"     :
-                 phase_val >   0.0 ? "EXPANSION_UP"   :
-                 phase_val > -23.6 ? "EXPANSION_DOWN" :
-                 phase_val > -61.8 ? "NEUTRAL_DOWN"   : "ACCUMULATION"
+phase_state    = phase_val > 61.8 ? "DISTRIBUTION" : phase_val > 23.6 ? "NEUTRAL_UP" : phase_val > 0.0 ? "EXPANSION_UP" : phase_val > -23.6 ? "EXPANSION_DOWN" : phase_val > -61.8 ? "NEUTRAL_DOWN" : "ACCUMULATION"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── VWAP + STANDARD DEVIATION BANDS ────────────────────────────────────────
@@ -208,9 +202,7 @@ is_trending_bull = ema8_r > ema21_r and ema21_r > ema34_r and not is_volatile
 is_trending_bear = ema8_r < ema21_r and ema21_r < ema34_r and not is_volatile
 is_ranging       = not is_volatile and not is_trending_bull and not is_trending_bear
 
-comp_regime_str = is_volatile      ? "VOLATILE"      :
-                  is_trending_bull ? "TRENDING_BULL" :
-                  is_trending_bear ? "TRENDING_BEAR" : "RANGING"
+comp_regime_str = is_volatile ? "VOLATILE" : is_trending_bull ? "TRENDING_BULL" : is_trending_bear ? "TRENDING_BEAR" : "RANGING"
 
 w_stc_c  = is_volatile ? 0.0 : (is_trending_bull or is_trending_bear) ? 0.60 : 0.50
 w_orb_c  = is_volatile ? 0.0 : (is_trending_bull or is_trending_bear) ? 0.30 : 0.20
@@ -256,12 +248,8 @@ vwap_short_c = close >= vwap_p1sd  and close < close[1]
 orb_long_c   = orb_complete and close > orb_high_val and (is_trending_bull or is_ranging)
 orb_short_c  = orb_complete and close < orb_low_val  and (is_trending_bear or is_ranging)
 
-long_score  = w_stc_c  * (stc_long_active  ? 1.0 : 0.0) +
-              w_orb_c  * (orb_long_c        ? 1.0 : 0.0) +
-              w_vwap_c * (vwap_long_c       ? 1.0 : 0.0)
-short_score = w_stc_c  * (stc_short_active ? 1.0 : 0.0) +
-              w_orb_c  * (orb_short_c       ? 1.0 : 0.0) +
-              w_vwap_c * (vwap_short_c      ? 1.0 : 0.0)
+long_score  = w_stc_c * (stc_long_active ? 1.0 : 0.0) + w_orb_c * (orb_long_c ? 1.0 : 0.0) + w_vwap_c * (vwap_long_c ? 1.0 : 0.0)
+short_score = w_stc_c * (stc_short_active ? 1.0 : 0.0) + w_orb_c * (orb_short_c ? 1.0 : 0.0) + w_vwap_c * (vwap_short_c ? 1.0 : 0.0)
 composite_score = long_score - short_score
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -272,30 +260,26 @@ prev_close_corey = request.security(syminfo.tickerid, "D", close[1], lookahead=b
 session_ema5     = ta.ema(close, 5)
 
 corey_vwap_score    = close > vwap_val ? 1.0 : close < vwap_val ? -1.0 : 0.0
-corey_close_score   = na(prev_close_corey) ? 0.0 :
-                      close > prev_close_corey ?  1.0 :
-                      close < prev_close_corey ? -1.0 : 0.0
+corey_close_score   = na(prev_close_corey) ? 0.0 : close > prev_close_corey ? 1.0 : close < prev_close_corey ? -1.0 : 0.0
 corey_session_score = close > session_ema5 ? 1.0 : -1.0
-corey_stc_score     = stc_val <= i_stc_os ?  1.0 :
-                      stc_val >= i_stc_ob ? -1.0 :
-                      (stc_val - 49.0) / 49.0
+corey_stc_score     = stc_val <= i_stc_os ? 1.0 : stc_val >= i_stc_ob ? -1.0 : (stc_val - 49.0) / 49.0
 
-corey_raw   = corey_vwap_score   * 0.40 +
-              corey_close_score  * 0.20 +
-              corey_session_score * 0.20 +
-              corey_stc_score    * 0.20
+corey_raw   = corey_vwap_score * 0.40 + corey_close_score * 0.20 + corey_session_score * 0.20 + corey_stc_score * 0.20
 corey_score = math.max(-1.0, math.min(1.0, corey_raw))
-corey_bias  = corey_score > 0.05  ? "BULL" :
-              corey_score < -0.05 ? "BEAR" : "NEUTRAL"
+corey_bias  = corey_score > 0.05 ? "BULL" : corey_score < -0.05 ? "BEAR" : "NEUTRAL"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── LIGHT CHART PLOTS (so indicator is visible on chart) ────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-plot(vwap_val,   "VWAP",       color=color.new(color.cyan,  20), linewidth=1)
-plot(vwap_p1sd,  "VWAP +1SD", color=color.new(color.teal,  50), linewidth=1, style=plot.style_circles)
-plot(vwap_m1sd,  "VWAP -1SD", color=color.new(color.teal,  50), linewidth=1, style=plot.style_circles)
-plot(kc_1h_upper,"KC 1H Up",  color=color.new(color.blue,  60), linewidth=1)
-plot(kc_1h_lower,"KC 1H Lo",  color=color.new(color.red,   60), linewidth=1)
+c_vwap_line = color.new(color.cyan, 20)
+c_vwap_sd   = color.new(color.teal, 50)
+c_kc_up     = color.new(color.blue, 60)
+c_kc_lo     = color.new(color.red, 60)
+plot(vwap_val,    "VWAP",      color=c_vwap_line, linewidth=1)
+plot(vwap_p1sd,   "VWAP +1SD", color=c_vwap_sd,   linewidth=1, style=plot.style_circles)
+plot(vwap_m1sd,   "VWAP -1SD", color=c_vwap_sd,   linewidth=1, style=plot.style_circles)
+plot(kc_1h_upper, "KC 1H Up",  color=c_kc_up,     linewidth=1)
+plot(kc_1h_lower, "KC 1H Lo",  color=c_kc_lo,     linewidth=1)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── TABLE OUTPUT (data_get_pine_tables) ────────────────────────────────────
@@ -539,13 +523,12 @@ if barstate.islast
 // Format: "KEY: value"   — one label per datum, all at barstate.islast.
 // Y positions staggered around close to avoid exact overlap.
 // ═══════════════════════════════════════════════════════════════════════════
-if barstate.islast
-    _lbl(txt, yoff) =>
-        label.new(bar_index + 1, close + yoff, txt,
-             style    = label.style_none,
-             textcolor= color.new(color.white, 15),
-             size     = size.tiny)
+_lbl_color = color.new(color.white, 15)
 
+_lbl(txt, yoff) =>
+    label.new(bar_index + 1, close + yoff, txt, style=label.style_none, textcolor=_lbl_color, size=size.tiny)
+
+if barstate.islast
     // STC
     _lbl("STC_VALUE: "    + str.tostring(stc_val, "#.##"),        0.0)
     _lbl("STC_STATE: "    + stc_state,                            0.0)
