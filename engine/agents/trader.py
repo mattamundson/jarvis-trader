@@ -433,8 +433,35 @@ class TraderAgent:
         else:
             _confluence_direction = None
 
+        # Fix B (2026-04-10) — High-conviction bypass: when the debate produces
+        # a decisively strong verdict (|debate_score| > 0.30, above the highest
+        # regime threshold of 0.25), skip the Stage 1 confluence gate entirely.
+        # The adversarial bull/bear debate design intentionally permits minority
+        # theses to overrule the majority; a strong numerical verdict is the
+        # debate earning that right. Any Round 1 conviction short-circuit
+        # (|delta|≥0.35 in debate.py:283) automatically qualifies.
+        _debate_score_raw = (
+            debate_result.get("debate_score", 0.0)
+            if isinstance(debate_result, dict)
+            else getattr(debate_result, "debate_score", 0.0)
+        )
+        try:
+            _debate_score = float(_debate_score_raw)
+        except (TypeError, ValueError):
+            _debate_score = 0.0
+
+        _high_conviction_bypass = (
+            abs(_debate_score) > 0.30 and _confluence_direction is not None
+        )
+        if _high_conviction_bypass:
+            logger.info(
+                "[Trader] %s: high-conviction bypass — |debate_score|=%.3f > 0.30, "
+                "skipping confluence gate for %s verdict",
+                symbol, abs(_debate_score), _debate_verdict,
+            )
+
         _confluence_hold = False
-        if _confluence_direction is not None:
+        if _confluence_direction is not None and not _high_conviction_bypass:
             confluence_mult = self._compute_confluence_multiplier(analyst_reports, _confluence_direction)
             if confluence_mult == 0.0:
                 logger.warning(
