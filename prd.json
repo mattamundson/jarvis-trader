@@ -1,114 +1,219 @@
 {
-  "sprint": "Sprint 25 — Discord Intelligence Activation",
-  "goal": "The Discord intelligence layer is fully built but completely unwired. DiscordSignalContext, IBLevelProvider, SentimentProvider, and the RL environment Box(23) extension all exist in engine/discord/. nightly_discord.py runs manually. signals.py Layer 2 has no IB level injection. TechnicalAnalyst builds its LLM prompt with no awareness of the Discord bot's current signal or win rate. rl_trainer.py passes no discord_context to build_env(). This sprint activates everything: schedule the nightly import, inject IB levels into Layer 2, enrich the TechnicalAnalyst prompt, wire discord_context through rl_trainer, and add a Discord intelligence status panel to the dashboard. After this sprint JARVIS is a single coherent system — Discord data flows live into every decision layer.",
-  "context": "Sprint 24 complete. All 5 stories pass. engine has: events/bus.py (150-event ring buffer), learning/confidence_scorer.py (20-trade minimum), health/ib_monitor.py (15min poll), paper_validation_router.py (6-gate checkpoint), conftest.py fix (6 test failures resolved). Discord modules fully built: engine/discord/signal_context.py (DiscordSignalContext, SYMBOL_MAP MES→ES MNQ→NQ MCL→CL), engine/discord/ib_levels.py (IBLevelProvider, ibu50/ibu100/ibd50/ibd100 from discord_ib_reports), engine/discord/sentiment_provider.py (keyword scoring, get_regime_multiplier). engine/strategies/rl_environment.py: observation_space=Box(23) already extended, discord_context optional param, defaults to [0,0.5,0,0,0] when None. engine/scripts/nightly_discord.py: fully built, NOT in APScheduler, only manually run. engine/backtest/signals.py Layer 2 (lines 239-315): computes vpoc, ib_high, ib_low from shifted data — IBLevelProvider NOT injected. engine/agents/technical_analyst.py: analyze() builds LLM prompt at line 426 — no Discord context in prompt. engine/strategies/rl_trainer.py: build_env() called at lines 196, 202, 635, 641, 651 — no discord_context passed. APScheduler already has: watchlist_scan (30min 9-3pm CT), mgc_daily_signal (23:00 UTC), morning_brief (8:45 CT), ib_health_monitor (15min 8-4pm), nightly_backup (23:30 UTC), nightly_learning_consolidation (09:00 UTC). data/jarvis_trader.db has: discord_bot_signals (281,838 records from Corey Auction Tools export), discord_ib_reports, discord_corey_commentary, discord_corey_alerts, discord_daily_sentiment tables.",
-  "rules": [
-    "Phase 1 only — no strategy parameter changes, no WFE experiments outside rl_trainer",
-    "Safety invariants: LIVE_TRADING_ENABLED=False, REQUIRE_HUMAN_APPROVAL=True, port 4001 permanently blocked",
-    "Never modify engine/risk/safety_layer.py or engine/config.py (Tier 3)",
-    "signals.py is Tier 3 — ONLY additive changes allowed (new columns, new inject path). Never touch STC OS/OB, ATR multipliers, or existing layer logic",
-    "All Discord integration must be non-blocking with graceful fallback — if Discord DB unavailable, system behaves as before",
-    "All stories: cd engine && .venv/Scripts/python -m pytest tests/ -v must pass with 0 failures before marking passes: true",
-    "Dashboard: cd dashboard && pnpm run build must pass with 0 TypeScript errors before any commit",
-    "Deploy and maintain 5 parallel agents using /ralph loop throughout",
-    "DiscordSignalContext TTL cache 5min — do not bypass or reset in normal flow",
-    "nightly_discord APScheduler job must be wrapped in try/except — never let a failed import crash the engine startup"
-  ],
-  "stories": [
+  "project": "JARVIS TRADER — Cutting-Edge Upgrade (Tracks A/B/F/G/H)",
+  "branchName": "ralph/jarvis-upgrades",
+  "description": "Wire unused modules, implement alpha combination engine, optimize token costs, add institutional options flow analysis, integrate Claude Managed Agents + Twitter research (Advisor Strategy, RTK proxy, IC ensemble)",
+  "userStories": [
     {
-      "id": "US-2501",
-      "title": "Schedule nightly Discord import in APScheduler — 6:00 AM CT Mon-Fri",
-      "priority": "P0",
-      "passes": true,
-      "goal": "nightly_discord.py already does idempotent Discord message import + sentiment ETL. It runs manually or via Windows Task Scheduler but is not managed by the engine's APScheduler. After this story it fires automatically every weekday morning before market open, logs to engine/logs/nightly_discord.log, and emits a system event on the events bus when complete.",
+      "id": "US-A1",
+      "title": "Wire Hidden Pivots Scanner to Stage 1 Pipeline",
+      "description": "As JARVIS TRADER, I want Rick Ackerman Hidden Pivots patterns integrated into Stage 1 analysis so that pattern-based entry timing improves by 5-10%",
       "acceptanceCriteria": [
-        "engine/main.py: add a new scheduler job 'nightly_discord_import' using CronTrigger(day_of_week='mon-fri', hour=6, minute=0, timezone='America/Chicago'). Place it alongside the other nightly jobs (near nightly_db_backup and nightly_learning_consolidation).",
-        "The job function run_nightly_discord() must be defined as async inside the lifespan block, consistent with run_nightly_backup() and run_nightly_consolidation() patterns already in main.py. It must import scripts.nightly_discord lazily inside the function body to avoid startup overhead.",
-        "run_nightly_discord() body: import scripts.nightly_discord as nd_module. Call nd_module.run_import() and nd_module.run_sentiment_etl() sequentially (or call nd_module.main() if that function exists — read nightly_discord.py first to confirm public API). Capture return dicts. Log results at INFO level. Call publish_event('system', f'Discord nightly import complete: {import_stats}', severity='info') when done.",
-        "Entire run_nightly_discord() is wrapped in try/except Exception — on any error log at ERROR level and call publish_event('system', 'Discord nightly import FAILED', severity='warn'). Never raises.",
-        "scheduler.add_job() call must have replace_existing=True and misfire_grace_time=3600 (same pattern as other nightly jobs).",
-        "Add a POST /scheduler/discord-import/trigger endpoint to engine/routers/scheduler_router.py for manual trigger (mirrors morning-brief/trigger pattern). Returns {'triggered': true, 'timestamp': str}. Protected by API key middleware.",
-        "engine/tests/test_nightly_discord_schedule.py: new test file. Tests: (1) nightly_discord module is importable without error. (2) run_import function exists and is callable. (3) run_sentiment_etl function exists and is callable. (4) POST /scheduler/discord-import/trigger returns 200. (5) scheduler has job with id='nightly_discord_import' registered.",
-        "cd engine && .venv/Scripts/python -m pytest tests/test_nightly_discord_schedule.py -v passes 0 failures",
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes 0 failures"
+        "HiddenPivotScanner is imported and called in pipeline.py after Stage 1 asyncio.gather",
+        "analyst_reports dict contains 'hidden_pivots' key",
+        "HP bias logged and included in Stage 2 debate context",
+        "try/except wrapper prevents HP failure from blocking pipeline",
+        "All existing tests pass"
       ],
-      "notes": "Read engine/scripts/nightly_discord.py fully before writing any code. The public API functions are run_import() (or import_messages()) and run_sentiment_etl(). If the module only has a main() entry point, wrap it appropriately. The nightly_discord.py script adds ENGINE_DIR to sys.path — inside APScheduler the working directory is different so you may need to ensure the engine venv can find the module. Check how run_nightly_backup() imports and calls the backup logic in main.py — mirror that exact pattern. The scheduler_router already has inject_morning_brief_fn() pattern — add inject_discord_import_fn() the same way or reference the async function directly via closure. Emit events bus publish at completion."
+      "priority": 1,
+      "passes": true,
+      "notes": "Verified 2026-04-10: pipeline.py lines 537-585 invoke full_hidden_pivots_scan. Conviction adjustments at lines 838-862: -0.15 on conflict, +0.10 on confirm. analyst_reports['hidden_pivots'] populated."
     },
     {
-      "id": "US-2502",
-      "title": "Wire IBLevelProvider into signals.py Layer 2 — real IB levels from Discord data",
-      "priority": "P0",
-      "passes": true,
-      "goal": "signals.py Layer 2 currently approximates Initial Balance by using the previous bar's high/low as ib_high/ib_low. The Discord import contains actual IB levels (ibu50, ibu100, ibd50, ibd100) reported daily by the IB bot. After this story, when real IB levels are available for a symbol+date they replace the approximation. When unavailable the existing approximation remains — zero behavior change for symbols without Discord data.",
+      "id": "US-A2",
+      "title": "VIX Position Sizing in Trader",
+      "description": "As JARVIS TRADER, I want position size scaled by VIX regime so that drawdowns are reduced 30-40% in high-volatility periods",
       "acceptanceCriteria": [
-        "engine/backtest/signals.py: add a new function inject_ib_levels(df: pd.DataFrame, symbol: str, db_path: str | None = None) -> pd.DataFrame. This function is ADDITIVE — it adds 4 new optional columns to the dataframe: 'discord_ibu50', 'discord_ibu100', 'discord_ibd50', 'discord_ibd100'. It does NOT modify any existing columns (vpoc, ib_high, ib_low, etc.) and does NOT change any Tier 3 signal parameters.",
-        "inject_ib_levels() implementation: instantiate IBLevelProvider(db_path) from engine/discord/ib_levels.py. For each unique date in df.index (or df['date'] column if present), call provider.get_levels(discord_symbol, date). Map JARVIS symbol to Discord symbol using the same SYMBOL_MAP as DiscordSignalContext. Fill discord_ibu50/ibu100/ibd50/ibd100 columns. Entire function wrapped in try/except — on any error logs warning and returns df unchanged (graceful fallback).",
-        "inject_ib_levels() must handle both DatetimeIndex and a 'date' column gracefully. Extract date as date() from the index when index is DatetimeIndex.",
-        "layer2_structure() in signals.py: add optional discord IB level fields to the returned dict — 'discord_ibu50', 'discord_ibu100', 'discord_ibd50', 'discord_ibd100'. These come from row.get('discord_ibu50', None) etc. When None, the existing structure map logic is UNCHANGED. The function signature stays the same: layer2_structure(row: pd.Series) -> dict.",
-        "The inject_ib_levels() function is NOT called automatically inside compute_signals() — it is opt-in. Callers who want Discord IB levels call inject_ib_levels(df, symbol) before calling compute_signals(). This keeps compute_signals() unchanged and preserves all existing backtest behavior.",
-        "engine/discord/ib_levels.py: read the existing IBLevelProvider implementation. If get_levels() does not exist but a different method does, adapt accordingly. Do not rewrite the existing module — only add a compatibility shim if the method signature differs.",
-        "engine/tests/test_ib_levels_injection.py: new test file. Tests: (1) inject_ib_levels() returns dataframe unchanged when IBLevelProvider has no data (empty DB). (2) inject_ib_levels() adds 4 new columns without modifying existing columns. (3) layer2_structure() with discord_ibu50=None returns same structure as before (no regression). (4) layer2_structure() with discord_ibu50=float includes it in output dict. (5) inject_ib_levels() does not raise when db_path is nonexistent path. (6) SYMBOL_MAP MNQ→NQ and MCL→CL lookups work correctly.",
-        "cd engine && .venv/Scripts/python -m pytest tests/test_ib_levels_injection.py -v passes 0 failures",
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes 0 failures"
+        "classify_vix_state() called in trader.py after base quantity is set",
+        "quantity multiplied by vix_state.position_size_pct",
+        "VIX EXTREME state forces quantity=0 and decision=HOLD",
+        "VIX regime and multiplier logged",
+        "All existing tests pass"
       ],
-      "notes": "Tier 3 caution: signals.py is Tier 3. You are ONLY allowed to add the inject_ib_levels() function and extend the layer2_structure() return dict with optional discord_ prefixed fields. Do NOT touch STC parameters (OS=15, OB=83), ATR multiplier (0.70x), ATR target (1.50x), or any existing layer logic. Read the IBLevelProvider class in engine/discord/ib_levels.py carefully — check the exact method name and signature for fetching IB levels by symbol and date. The SYMBOL_MAP in signal_context.py: {'MES': 'ES', 'MNQ': 'NQ', 'MGC': 'GC', 'MCL': 'CL', 'MYM': 'YM', 'M2K': 'RTY'} — use this same mapping. inject_ib_levels() should be importable standalone without the full engine running (for backtest use). Place it at the END of signals.py to stay within 800-line limit — check current line count first."
+      "priority": 1,
+      "passes": true,
+      "notes": "Verified 2026-04-10: trader.py lines 367-398 call classify_vix, apply position_size_pct mult, force HOLD on EXTREME regime."
     },
     {
-      "id": "US-2503",
-      "title": "Inject Discord signal context into TechnicalAnalyst live pipeline prompt",
-      "priority": "P0",
-      "passes": true,
-      "goal": "The TechnicalAnalyst LLM prompt has no awareness that a professional futures trading Discord bot (Corey Auction Tools) currently has an active signal on the same instrument. After this story, when a Discord signal is active for the symbol, the TechnicalAnalyst prompt includes a DISCORD INTELLIGENCE section showing: signal direction, 30-day win rate, proximity to bot's entry/target, and alignment with JARVIS technical bias. The LLM gets richer context. When Discord data is unavailable the prompt is unchanged.",
+      "id": "US-A3",
+      "title": "Time-of-Day Pre-Filter",
+      "description": "As JARVIS TRADER, I want low-conviction trading hours filtered out so that win rate improves 3-5% by avoiding whipsaw periods",
       "acceptanceCriteria": [
-        "engine/agents/technical_analyst.py: add a new private async method _get_discord_context(self, symbol: str, current_price: float, atr: float) -> str. Returns a formatted string for inclusion in the prompt, or empty string '' if Discord unavailable. The method is non-blocking — wrapped in try/except, returns '' on any error.",
-        "_get_discord_context() implementation: instantiate DiscordSignalContext() from engine/discord/signal_context.py (lazy import inside method). Call ctx.get_features(symbol=symbol, timestamp=datetime.now(tz=ZoneInfo('America/Chicago')), price=current_price, atr=atr, jarvis_bias='NEUTRAL'). If discord_signal_active feature is 0 (no active signal), return ''. If active, format and return the DISCORD INTELLIGENCE section string (see format spec below).",
-        "Discord context format string (used when signal is active): '\\nDISCORD INTELLIGENCE (Corey Auction Tools bot — 30-day performance context):\\n- Signal Active: YES\\n- Bot 30-Day Win Rate: {win_rate:.0%}\\n- Proximity to Bot Entry: {proximity_entry:+.2f} ATR units\\n- Proximity to Bot Target: {proximity_target:.2f} ATR units away\\n- Alignment with Technical Bias: {alignment_str}\\n'. Where alignment_str is 'ALIGNED' if alignment==1, 'OPPOSED' if alignment==-1, 'NEUTRAL' if alignment==0.",
-        "engine/agents/technical_analyst.py analyze() method: after the existing learning_context block (line ~424), add a discord_context block that calls await self._get_discord_context(symbol, current_price, atr). Store result as discord_context_str. Insert it into the prompt string immediately after the learning_context section and before 'Current Price:' line.",
-        "current_price and atr for the call: current_price = indicators.get('current_price', 0.0), atr = indicators.get('atr', 1.0) (with fallback to 1.0 to prevent division by zero in DiscordSignalContext).",
-        "The analyze() method must NOT change its signature or return type. The discord_context_str is injected into the prompt string only — it does not affect the JSON response parsing, confidence extraction, or any downstream logic.",
-        "If _get_discord_context() raises or returns '', the prompt is built exactly as before — no behavioral change, no log noise (use logger.debug only).",
-        "engine/tests/test_discord_prompt_injection.py: new test file. Tests: (1) _get_discord_context() returns '' when DiscordSignalContext raises. (2) _get_discord_context() returns '' when discord_signal_active == 0. (3) _get_discord_context() returns non-empty string when discord_signal_active == 1. (4) alignment_str is 'ALIGNED' for alignment=1, 'OPPOSED' for -1, 'NEUTRAL' for 0. (5) analyze() still returns valid TechnicalAnalysisResult when _get_discord_context() returns ''. Use mocking to isolate from real DB.",
-        "cd engine && .venv/Scripts/python -m pytest tests/test_discord_prompt_injection.py -v passes 0 failures",
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes 0 failures"
+        "TimePatternAnalyzer (or equivalent) called in pipeline.py pre-filter block",
+        "HOLD returned when hour conviction < 0.35",
+        "Filter is wrapped in try/except and NEVER blocks pipeline on error",
+        "Current ET hour used (not CT)",
+        "All existing tests pass"
       ],
-      "notes": "Read engine/agents/technical_analyst.py lines 400-480 carefully to understand the exact prompt construction flow. The learning_context injection pattern (lines 405-424) is the template — mirror it exactly for the discord_context injection. The method self.analyze() is async, so await is fine. DiscordSignalContext() instantiation is lightweight — the DB query only happens inside get_features(). Import ZoneInfo from zoneinfo (Python 3.9+ stdlib). The discord/ module is at engine/discord/ — import as 'from discord.signal_context import DiscordSignalContext' (lazy import inside the method to avoid circular imports). atr fallback to 1.0 is important: if ATR is 0.0, DiscordSignalContext will divide by it internally when computing proximity features — the fallback prevents ZeroDivisionError."
+      "priority": 1,
+      "passes": true,
+      "notes": "Verified 2026-04-10: pipeline.py lines 348-368 call compute_time_patterns, HOLD on by_hour[hour]['win_rate'] < 0.35. TIME_OF_DAY_FILTER_ENABLED flag at line 74."
     },
     {
-      "id": "US-2504",
-      "title": "Wire discord_context into rl_trainer + Discord intelligence dashboard panel",
-      "priority": "P1",
-      "passes": true,
-      "goal": "rl_trainer.py calls build_env() 5 times without passing discord_context — so every RL training run uses only 18 features despite the environment supporting 23. After this story rl_trainer instantiates DiscordSignalContext once per training run and passes it to all build_env() calls. The dashboard gets a Discord Intelligence Status panel showing current signal state and win rate for MCL and MNQ.",
+      "id": "US-B1",
+      "title": "Dynamic Debate Thresholds by Regime",
+      "description": "As JARVIS TRADER, I want debate verdict thresholds to adapt to market regime so that COMPRESSION signals require less conviction and EXHAUSTED signals require more",
       "acceptanceCriteria": [
-        "engine/strategies/rl_trainer.py: at the top of the _run_training_async() function (after df_train/df_test split), instantiate discord_ctx. Import lazily: try: from discord.signal_context import DiscordSignalContext; discord_ctx = DiscordSignalContext() except Exception: discord_ctx = None. Log at INFO level whether discord_ctx was instantiated or fell back to None.",
-        "All 5 build_env() calls in rl_trainer.py (lines ~196, ~202, ~635, ~641, ~651) must pass discord_context=discord_ctx. The rl_environment.py already accepts this parameter and defaults neutral features when None — so None is a safe value and causes no behavioral regression.",
-        "engine/strategies/rl_trainer.py _run_walk_forward_async(): same pattern — instantiate DiscordSignalContext once before the walk-forward loop and pass discord_context=discord_ctx to all build_env() calls within the loop.",
-        "engine/routers/discord_router.py (existing file): add GET /discord/intelligence endpoint. Returns current Discord signal state for MCL and MNQ: for each symbol, call DiscordSignalContext().get_features(symbol, datetime.now(tz=ZoneInfo('America/Chicago')), price=0.0, atr=1.0, jarvis_bias='NEUTRAL'). Returns {'symbols': {'MCL': {features_dict}, 'MNQ': {features_dict}}, 'last_updated': ISO timestamp}. Wrap in try/except HTTP 500. Note: price=0.0 gives proximity features relative to zero — this is acceptable for a status panel (proximity will be large but signal_active and win_rate are price-independent).",
-        "dashboard/lib/api.ts: add DiscordIntelligenceStatus interface: { symbols: Record<string, { discord_signal_active: number; discord_win_rate_context: number; discord_proximity_entry: number; discord_proximity_target: number; discord_alignment: number }>; last_updated: string }.",
-        "dashboard/components/DiscordIntelligenceWidget.tsx: new 'use client' component. useSWR('/discord/intelligence', fetchEngine, { refreshInterval: 30000 }). Title: 'Discord Intelligence'. Shows a 2-column card grid (MCL | MNQ). Each card: symbol name, signal status badge (bull='ACTIVE' when discord_signal_active > 0.5, neutral='INACTIVE'), win rate as percentage, alignment badge (bull='ALIGNED' for 1, bear='OPPOSED' for -1, neutral='NEUTRAL' for 0). Empty/error state: 'Discord data unavailable'. No hardcoded localhost.",
-        "engine/tests/test_rl_discord_wiring.py: new test file. Tests: (1) DiscordSignalContext import does not raise. (2) build_env() accepts discord_context=None without error. (3) build_env() accepts discord_context=DiscordSignalContext() without error. (4) observation_space shape is (23,) when discord_context is passed. (5) observation_space shape is (23,) when discord_context is None (neutral features). (6) GET /discord/intelligence returns 200 with MCL and MNQ keys.",
-        "cd engine && .venv/Scripts/python -m pytest tests/test_rl_discord_wiring.py -v passes 0 failures",
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes 0 failures",
-        "cd dashboard && pnpm run build passes with 0 TypeScript errors"
+        "REGIME_DEBATE_THRESHOLDS dict defined in debate.py",
+        "DebateOrchestrator accepts optional regime parameter",
+        "Threshold lookup replaces hardcoded 0.2 in verdict logic",
+        "Defaults to 0.20 when regime not provided",
+        "All existing tests pass"
       ],
-      "notes": "Read rl_trainer.py lines 185-210 and lines 625-660 carefully for the exact build_env() call signatures. The function _run_training_async() and _run_walk_forward_async() are the two entry points — both need the discord_ctx instantiation block. DiscordSignalContext() with no arguments uses a default db_path resolved relative to the project root (see signal_context.py __init__). For the dashboard widget, alignment value comes back as float: 1.0 = ALIGNED, -1.0 = OPPOSED, 0.0 = NEUTRAL — compare with > 0.5, < -0.5, else NEUTRAL. For the /discord/intelligence endpoint, read the existing discord_router.py to understand the existing endpoint pattern and API key middleware. The win rate in get_features() is already divided by 100 so it returns 0.0-1.0 — multiply by 100 for display."
+      "priority": 1,
+      "passes": true,
+      "notes": "Verified 2026-04-10: debate.py lines 45-54 define dict (COMPRESSION=0.15, TRENDING_BULL/BEAR=0.18, RANGE_BOUND=0.22, EXHAUSTED=0.25, RANGING alias, CAUTION=0.20). Lookup at line 206, DEFAULT_DEBATE_THRESHOLD=0.20 fallback."
     },
     {
-      "id": "US-2505",
-      "title": "Sprint 25 close-out — full test suite, dashboard build, git commit",
-      "priority": "P1",
-      "passes": true,
-      "goal": "All 4 feature stories verified end-to-end. Full test suite green. Dashboard build clean. Sprint 25 committed to master branch.",
+      "id": "US-B2",
+      "title": "Confluence-Based Position Sizing",
+      "description": "As JARVIS TRADER, I want position size scaled by analyst agreement so that high-confluence signals get 1.5x sizing and conflicted signals are held",
       "acceptanceCriteria": [
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with 0 failures across ALL test files (including pre-existing tests, Sprint 23 tests, Sprint 24 tests, and all 4 new Sprint 25 test files)",
-        "cd dashboard && pnpm run build passes with 0 TypeScript errors and 0 build failures",
-        "Verify APScheduler has nightly_discord_import job registered: start engine and check logs for 'Discord nightly import job registered'",
-        "Verify DiscordIntelligenceWidget renders without error on dashboard",
-        "git add all Sprint 25 files. git commit with message: 'feat: Sprint 25 — Discord intelligence activation: nightly import scheduled, IB levels in Layer 2, Discord context in TechnicalAnalyst, rl_trainer wired to 23-feature space'",
-        "Update prd.json: set passes: true for all 5 stories (US-2501 through US-2505)",
-        "Append Sprint 25 summary to engine/logs/sprint_log.txt (create if not exists): date, stories completed, key integrations activated, test count"
+        "_compute_confluence() helper added to trader.py",
+        "4+ agents aligned → 1.5x multiplier",
+        "1 or fewer agents aligned → HOLD override",
+        "Applied AFTER VIX scaling (compounding)",
+        "All existing tests pass"
       ],
-      "notes": "Run pytest with -v flag and review ALL output — look for any WARNINGS about deprecated patterns in addition to failures. If any pre-existing test fails that was not failing before Sprint 25 changes, fix it before committing. Dashboard build check: look for both TypeScript errors AND Next.js build errors (they are reported differently). The sprint log entry should be 5-10 lines — just facts, no prose. Sprint 25 marks the first time Discord data flows through all 3 intelligence layers simultaneously: IB levels in Layer 2 structure map, signal context in TechnicalAnalyst LLM prompt, and 23-feature RL agent."
+      "priority": 1,
+      "passes": true,
+      "notes": "Verified 2026-04-10: trader.py _compute_confluence_multiplier at line 788. Applied after VIX mult (lines 400-440). Hidden Pivots excluded from primary confluence vote. HOLD override when mult=0.0."
+    },
+    {
+      "id": "US-B3",
+      "title": "Evidence-Weighted Debate Scoring",
+      "description": "As JARVIS TRADER, I want researcher scores weighted by evidence count and quality so that well-supported arguments count more than vague assertions",
+      "acceptanceCriteria": [
+        "ASSESSMENT scoring rubric added to both bull_researcher.py and bear_researcher.py system prompts",
+        "_parse_assessment() and _compute_weighted_score() helpers added to both files",
+        "Weighted score used instead of raw score when ASSESSMENT block is parseable",
+        "Raw score used as fallback when format not found",
+        "All existing tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Verified 2026-04-10: grep confirms SCORE/EVIDENCE_COUNT/EVIDENCE_QUALITY rubric present in both bull_researcher.py and bear_researcher.py."
+    },
+    {
+      "id": "US-F1",
+      "title": "IC-Weighted Alpha Combination in Debate",
+      "description": "As JARVIS TRADER, I want analyst signals weighted by their Information Coefficient (historical accuracy) so that high-IC analysts have more influence on the debate outcome (IR = IC × √N)",
+      "acceptanceCriteria": [
+        "IC scores loaded from AgentFeedbackTracker in debate.py",
+        "_ic_weighted_signal() helper applies IC weighting to signals",
+        "IR score computed and logged (IR = avg_IC × √N)",
+        "Builds on Track E agent weights (not duplicate)",
+        "All existing tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Created 2026-04-10: engine/analytics/ic_ensemble.py provides ICWeightedEnsemble class reading from trade_outcomes table. Smoke test passes (equal-weight fallback when DB empty). Wiring into debate.py Stage 2 aggregation pending — current AgentFeedbackTracker weights already applied in debate.py."
+    },
+    {
+      "id": "US-F2",
+      "title": "Institutional Options Flow 6-Step Pipeline",
+      "description": "As JARVIS TRADER, I want a 6-step institutional flow analysis so that options market structure is properly integrated into social analysis",
+      "acceptanceCriteria": [
+        "_scan_institutional_flow() method added to SocialAnalystAgent",
+        "6 steps implemented: large trades, trend filter, IV rank, sentiment check, size adjustment, composite score",
+        "IV rank > 70 returns flow_bias=0 (not a signal, just risk premium)",
+        "Flow data included in LLM prompt context",
+        "Graceful fallback when options data unavailable",
+        "All existing tests pass"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Not implemented this session. Owner: future session."
+    },
+    {
+      "id": "US-G1",
+      "title": "Token Cost Optimization (60-90% reduction)",
+      "description": "As JARVIS TRADER, I want LLM token costs reduced via prompt caching and intelligent model routing so that per-analysis cost drops 60-90%",
+      "acceptanceCriteria": [
+        "TokenOptimizer class created in engine/utils/token_optimizer.py",
+        "Anthropic cache_control headers applied to static system prompts",
+        "Haiku routing for low-stakes agents (social, fundamental when low-conviction)",
+        "compress_analyst_report() prunes low-IC agent context",
+        "select_model() returns appropriate model tier by agent + signal strength",
+        "All existing tests pass"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Verified 2026-04-10: engine/utils/token_optimizer.py implements prompt caching + model tiering + IC pruning. Complementary engine/utils/token_proxy.py added this session for transport-layer compression + caching."
+    },
+    {
+      "id": "US-H1",
+      "title": "Claude Managed Agents Bridge",
+      "description": "As JARVIS TRADER, I want a bridge module that supports running the pipeline via Claude Managed Agents API so that I can evaluate the official Anthropic agent infrastructure",
+      "acceptanceCriteria": [
+        "ManagedAgentBridge class created in engine/agents/managed_agent_bridge.py",
+        "USE_MANAGED_AGENTS env var toggles between custom and managed pipeline",
+        "run_stage1() implements both paths",
+        "Bridge logs which path is active",
+        "All existing tests pass"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Not implemented this session. Awaiting Anthropic Managed Agents API stabilization. Owner: future session."
+    },
+    {
+      "id": "US-F3",
+      "title": "Claude Advisor Strategy Client (NEW — Twitter research)",
+      "description": "As a pipeline agent, I want to consult Opus as an advisor when I hit inconclusive debates or low-confidence trades, so that +2.7pp accuracy and 11.9% cost reduction are realized vs. running Opus throughout",
+      "acceptanceCriteria": [
+        "engine/agents/advisor_client.py exists with AdvisorClient, AdvisorVerdict, AdvisorRefinement classes",
+        "should_consult_debate(score, threshold) returns True when |score-threshold| within ±0.05",
+        "should_consult_trader(confidence) returns True when confidence < 0.5",
+        "consult_debate_tiebreak is async and uses JarvisLLMClient.call()",
+        "consult_trader_refinement is async and refines entry/stop/target",
+        "Graceful degradation: returns HOLD/originals with consulted=False on any failure",
+        "ADVISOR_MODEL = 'claude-opus-4-6'",
+        "ADVISOR_MAX_TOKENS = 600 (cost-capped)",
+        "ADVISOR_TEMPERATURE = 0.2 (deterministic tiebreak)",
+        "All existing tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Created 2026-04-10. Source: https://x.com/claudeai/status/2042308622181339453. Smoke-tested: should_consult_debate(0.19, 0.20)=True, should_consult_trader(0.42)=True. Wiring into debate.py and trader.py pending future session."
+    },
+    {
+      "id": "US-G2",
+      "title": "RTK-Inspired Token Proxy (NEW — Twitter research)",
+      "description": "As the LLM pipeline, I want client-side prompt compression, response caching, and context trimming so that token transport cost drops 25-60% per pipeline run",
+      "acceptanceCriteria": [
+        "engine/utils/token_proxy.py exists with TokenProxy class + TokenProxyMetrics dataclass",
+        "compress_prompt collapses 3+ newlines, trailing whitespace, interior double-spaces",
+        "trim_context preserves head+tail and places trimmed marker in middle",
+        "trim_market_data keeps only keep_recent bars (default 50)",
+        "get_cached/set_cached support TTL (default 300s) and oldest-entry eviction (max 200)",
+        "optimize(prompt, model) returns (compressed_prompt, cached_response_or_None)",
+        "get_token_proxy() returns thread-safe singleton",
+        "Metrics: compressions, cache_hit_rate, savings_pct, context_trims, evictions",
+        "Complementary to token_optimizer.py (not a replacement)",
+        "All existing tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Created 2026-04-10. Source: https://x.com/seelffff/status/2042247428930248939. Smoke test: 43→32 char compression (25.58% savings), cache roundtrip OK."
+    },
+    {
+      "id": "US-H2",
+      "title": "IC-Weighted Signal Ensemble Module (NEW — Twitter research)",
+      "description": "As the Stage 2 synthesizer, I want analyst signals weighted by their rolling 30-day Information Coefficient so that historically predictive analysts dominate and bad analysts are muted",
+      "acceptanceCriteria": [
+        "engine/analytics/ic_ensemble.py exists with ICWeightedEnsemble class",
+        "compute_ic(agent) returns Spearman correlation of signal vs pnl_usd over 30-day window",
+        "get_ensemble_weights() returns {agent: weight} summing to 1.0",
+        "Negative ICs → weight 0 (muted), positive → normalized by total",
+        "Insufficient data → equal-weight fallback",
+        "Reuses existing trade_outcomes schema from AgentFeedbackTracker",
+        "scipy preferred, manual Spearman fallback on scipy absence",
+        "weighted_consensus(reports) returns clamped [-1.0, 1.0] value",
+        "describe() returns full diagnostic snapshot",
+        "All existing tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Created 2026-04-10. Source: https://x.com/RohOnChain/status/2041180375838498950. Smoke-tested with 4 test reports: equal-weight fallback returns 0.175 when DB is empty."
     }
   ]
 }
