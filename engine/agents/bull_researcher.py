@@ -149,6 +149,26 @@ class BullResearcherAgent:
             logger.error(f"BullResearcherAgent failed for {symbol}: {e}")
             return self._empty_report(symbol)
 
+    async def call_llm(self, prompt: str) -> str:
+        """Direct LLM call for debate scoring — returns raw text response."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                self.ANTHROPIC_API_URL,
+                headers={
+                    "x-api-key": self._api_key,
+                    "anthropic-version": self.ANTHROPIC_VERSION,
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": self.MODEL,
+                    "max_tokens": 256,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+        return data["content"][0]["text"].strip()
+
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _build_prompt(self, symbol: str, analyst_reports: dict) -> str:
