@@ -133,3 +133,24 @@ agent-reach*.zip
 
 # Windows NUL artifact (accidental file)
 engine/nul
+
+# -----------------------------------------------------------------------------
+# Root-level AI session exports & scratch (keep `git status` usable; move under docs/ if permanent)
+# -----------------------------------------------------------------------------
+/Jarvis-Trader_analysis*.md
+/Jarvis-Trader-Update*.md
+/Jarvis-Trader_stuff*.md
+/Jarvis_trade_stuff*.md
+/Jarvis_trader_review*.md
+/Jarvis_Alerts*.md
+/Jarvis_Engine*.md
+/Jarvis_Trader_*.md
+/HANDOFF_*.md
+/Handoff_*.md
+/Career_Ops*.md
+/Obsidian*.md
+/Open_Claw*.md
+/SCHWAB_SETUP.md
+/TOS_ANalysis*.md
+/151-*.pdf
+/discord-charts/
