@@ -65,6 +65,11 @@ class TechnicalReport:
     trend: str = "neutral"  # "uptrend", "downtrend", "neutral", "ranging"
     regime: str = "unknown"  # "trending", "mean_reverting", "volatile"
 
+    # Enhanced signal context (added for pipeline quality)
+    stc_context: str = ""  # Human-readable STC signal state with actionable guidance
+    mtf_alignment: str = ""  # One-line MTF summary: "4h and 1h STC aligned bullish" etc.
+    regime_readiness: str = "UNKNOWN"  # READY | CAUTION | NOT_READY based on 5-layer alignment
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -86,6 +91,9 @@ class TechnicalReport:
             "is_oversold": self.is_oversold,
             "trend": self.trend,
             "regime": self.regime,
+            "stc_context": self.stc_context,
+            "mtf_alignment": self.mtf_alignment,
+            "regime_readiness": self.regime_readiness,
         }
 
 
@@ -385,6 +393,19 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # Volume vs 20-period average
         vol_avg = float(df["volume"].rolling(20).mean().iloc[-1])
         indicators["volume_ratio"] = float(current["volume"]) / vol_avg if vol_avg > 0 else 1.0
+
+        # ── STC (Schaff Trend Cycle) ─────────────────────────────────────
+        # Compute STC using pandas_ta. Canonical JARVIS thresholds: OS=15, OB=83.
+        try:
+            df.ta.stc(append=True)
+            stc_col = next((c for c in df.columns if c.startswith("STC_")), None)
+            if stc_col:
+                indicators["stc"] = float(df[stc_col].iloc[-1])
+                # Previous bar value to detect crossovers
+                if len(df) >= 2:
+                    indicators["stc_prev"] = float(df[stc_col].iloc[-2])
+        except Exception:
+            pass  # STC is enrichment — never block analysis
 
         # ── Price Context ────────────────────────────────────────────────
         indicators["current_price"] = float(current["close"])

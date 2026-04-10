@@ -59,6 +59,10 @@ class RiskDecision:
     # 0.0 = minimal risk, 1.0 = extreme risk
     risk_score: float = 0.0
 
+    # Hard-check audit trail — visible in pipeline detail endpoint
+    hard_checks_passed: bool = True
+    hard_checks_detail: list = field(default_factory=list)
+
     timestamp: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> dict:
@@ -69,6 +73,8 @@ class RiskDecision:
             "modified_limit_price": self.modified_limit_price,
             "risk_score": self.risk_score,
             "reasoning": self.reasoning,
+            "hard_checks_passed": self.hard_checks_passed,
+            "hard_checks_detail": self.hard_checks_detail,
             "timestamp": self.timestamp.isoformat(),
         }
 
@@ -87,7 +93,22 @@ class RiskManagerAgent:
     # Hard-coded ceiling regardless of config — last line of defence
     ABSOLUTE_MAX_ORDER_VALUE = 5_000.0
 
-    SYSTEM_PROMPT = (
+    SYSTEM_PROMPT_PAPER = (
+        "You are the Risk Manager for JARVIS TRADER, an autonomous trading system. "
+        "THIS IS PAPER TRADING MODE. The purpose is to validate signal quality across real "
+        "market conditions — not to protect real capital. "
+        "A trade has already passed all hard Python safety checks (kill switch, daily loss limit, "
+        "drawdown limit, order value cap). Your soft review evaluates qualitative risk only: "
+        "correlation with existing positions, timing (chasing a move?), and size appropriateness. "
+        "APPROVAL BIAS: Approve trades that have good risk/reward (R:R > 1.5:1) and moderate "
+        "confidence (> 0.5). We need signal data — blocking valid signals defeats the purpose. "
+        "Reserve veto strictly for: no stop loss set, correlated positions exceeding limits, "
+        "or clear timing errors (entering after a 3x ATR gap). "
+        "Do not veto solely for 'could be better' reasoning in paper mode. "
+        "Respond with valid JSON only. Do not add any explanation outside the JSON."
+    )
+
+    SYSTEM_PROMPT_LIVE = (
         "You are the Risk Manager for JARVIS TRADER, an autonomous trading system. "
         "A trade has already passed hard Python safety checks. Your job is to evaluate "
         "the qualitative risk: correlation with existing positions, whether the trade is "
@@ -97,6 +118,9 @@ class RiskManagerAgent:
         "large losses are not. "
         "Respond with valid JSON only. Do not add any explanation outside the JSON."
     )
+
+    # Resolved at runtime based on LIVE_TRADING_ENABLED
+    SYSTEM_PROMPT = SYSTEM_PROMPT_PAPER  # default; overridden in __init__
 
     def __init__(self, llm_client):
         """

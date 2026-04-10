@@ -47,6 +47,11 @@ class NewsReport:
     summary: str = ""
     reasoning: str = ""
 
+    # Data quality: "direct" = news from symbol itself, "proxy" = news from proxy equity,
+    # "unavailable" = no news found from any source
+    data_quality: str = "unavailable"
+    proxy_symbol: str = ""  # Populated when data_quality == "proxy"
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -59,6 +64,8 @@ class NewsReport:
             "headline_count": self.headline_count,
             "summary": self.summary,
             "reasoning": self.reasoning,
+            "data_quality": self.data_quality,
+            "proxy_symbol": self.proxy_symbol,
         }
 
 
@@ -70,9 +77,27 @@ class NewsAnalystAgent:
     Two-stage approach:
     1. Fetch 10-20 recent headlines from Finnhub (and optional data manager feed)
     2. LLM identifies per-headline sentiment, material events, and overall signal
+
+    Futures coverage: Finnhub does not carry news for micro-futures tickers (MCL,
+    MNQ, MES, MGC). When a direct fetch returns 0 results the agent automatically
+    retries with an equity proxy (e.g. MES → SPY) and marks the report as
+    data_quality="proxy" so downstream agents can weight accordingly.
     """
 
     FINNHUB_BASE = "https://finnhub.io/api/v1"
+
+    # Equity proxies for futures tickers that Finnhub cannot resolve directly.
+    # Values are (proxy_symbol, human_label) used in the LLM prompt note.
+    FUTURES_NEWS_PROXY: dict[str, tuple[str, str]] = {
+        "MCL": ("USO", "crude oil / MCL futures"),
+        "CL": ("USO", "crude oil / CL futures"),
+        "MNQ": ("QQQ", "Nasdaq-100 tech sector / MNQ futures"),
+        "NQ": ("QQQ", "Nasdaq-100 tech sector / NQ futures"),
+        "MES": ("SPY", "S&P 500 / MES futures"),
+        "ES": ("SPY", "S&P 500 / ES futures"),
+        "MGC": ("GLD", "gold / MGC futures"),
+        "GC": ("GLD", "gold / GC futures"),
+    }
 
     SYSTEM_PROMPT = """You are a professional financial news analyst for JARVIS TRADER,
 an autonomous trading system.
