@@ -406,6 +406,10 @@ Respond with JSON in exactly this format:
             priority = str(priority_raw).lower()
             if priority not in ("immediate", "wait_for_pullback", "skip"):
                 priority = "immediate" if approved else "skip"
+            elif approved and priority == "skip":
+                # LLM returned contradictory approved=True + priority=skip;
+                # approval wins — treat as immediate
+                priority = "immediate"
 
         final_quantity = int(result.get("final_quantity", 0))
         if not approved:

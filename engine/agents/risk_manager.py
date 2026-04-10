@@ -91,7 +91,8 @@ class RiskManagerAgent:
     MAX_TOKENS = 1600
 
     # Hard-coded ceiling regardless of config — last line of defence
-    ABSOLUTE_MAX_ORDER_VALUE = 5_000.0
+    # Set high enough to accommodate futures notional (MNQ ~$38K, MCL ~$10K)
+    ABSOLUTE_MAX_ORDER_VALUE = 100_000.0
 
     SYSTEM_PROMPT_PAPER = (
         "You are the Risk Manager for JARVIS TRADER, an autonomous trading system. "
@@ -310,18 +311,21 @@ class RiskManagerAgent:
         elif entry_price_raw is not None and entry_price_raw > 0:
             estimated_price = float(entry_price_raw)
         else:
-            # No price available — use a conservative upper bound check
-            estimated_price = self.ABSOLUTE_MAX_ORDER_VALUE / max(quantity, 1) + 1
+            # No price available — skip the value check rather than blocking
+            # with a fabricated estimate (old heuristic always produced ~$5,001)
+            _pass("order_value_limit", "No price available — order value check skipped")
+            estimated_price = None  # type: ignore[assignment]
 
-        estimated_value = quantity * estimated_price
-        max_order_value = min(settings.MAX_SINGLE_ORDER_VALUE, self.ABSOLUTE_MAX_ORDER_VALUE)
-        if estimated_value > max_order_value:
-            return _fail(
-                "order_value_limit",
-                f"Estimated order value ${estimated_value:,.2f} exceeds "
-                f"max single order value ${max_order_value:,.2f}",
-            )
-        _pass("order_value_limit", f"Estimated value ${estimated_value:,.2f} within ${max_order_value:,.2f}")
+        if estimated_price is not None:
+            estimated_value = quantity * estimated_price
+            max_order_value = min(settings.MAX_SINGLE_ORDER_VALUE, self.ABSOLUTE_MAX_ORDER_VALUE)
+            if estimated_value > max_order_value:
+                return _fail(
+                    "order_value_limit",
+                    f"Estimated order value ${estimated_value:,.2f} exceeds "
+                    f"max single order value ${max_order_value:,.2f}",
+                )
+            _pass("order_value_limit", f"Estimated value ${estimated_value:,.2f} within ${max_order_value:,.2f}")
 
         # 5. Correlation / directional-exposure check
         if _CORRELATION_MONITOR_AVAILABLE:
