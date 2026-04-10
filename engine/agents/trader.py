@@ -286,6 +286,10 @@ class TraderAgent:
                 bull_s = float(debate_result.get("bull_score", 5.0))
                 bear_s = float(debate_result.get("bear_score", 5.0))
                 conviction = abs(bull_s - bear_s) / 10.0  # 0=no edge, 1=max conviction
+                # PositionSizer.signal_strength_scaling maps conviction [0,1] → scale (0.5 + conviction)
+                # i.e. 0.5x at conviction=0, 1.0x at 0.5, 1.5x at 1.0 — then integer-clamped to
+                # [1, max_contracts]. Effective range here is thus 0.5x–1.5x base, hard-capped at
+                # max_contracts=2 for micro futures.
                 scaled_contracts = sizer.signal_strength_scaling(atr_sized_contracts, conviction)
                 # Override only if the scaled value differs from fixed-fractional
                 if scaled_contracts != position_size.contracts:

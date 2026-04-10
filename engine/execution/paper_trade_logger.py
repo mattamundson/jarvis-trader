@@ -42,6 +42,7 @@ SCHEMA (data/paper_trades.json):
 
 import json
 import logging
+import warnings
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
@@ -75,6 +76,13 @@ class PaperTradeLogger:
             mirror_to_tracker: If False, only writes ``data/paper_trades.json``.
             trades_file: Override JSON path (tests); default ``data/paper_trades.json`` under repo.
         """
+        warnings.warn(
+            "PaperTradeLogger JSON path (data/paper_trades.json) is deprecated; "
+            "SQLite (engine/data/jarvis_trader.db paper_trades table) is the source of truth. "
+            "This logger is retained for historical audit only.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._settings = settings
         self._portfolio_tracker = portfolio_tracker
         self._mirror_to_tracker = bool(portfolio_tracker is not None and mirror_to_tracker)
