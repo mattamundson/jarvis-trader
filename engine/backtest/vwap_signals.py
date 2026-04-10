@@ -81,6 +81,8 @@ def _get_eastern_hour(df: pd.DataFrame) -> pd.Series:
     convert to America/New_York so that the RTH session boundary
     (reset at 09:30 ET each day) is identified correctly.
     """
+    # Sprint A / B3 fix: defensive DatetimeIndex normalization prevents crash
+    # when merging tz-aware IB bars with tz-naive backtest frames.
     if not isinstance(df.index, pd.DatetimeIndex):
         df.index = pd.to_datetime(df.index)
 

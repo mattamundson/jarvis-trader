@@ -22,6 +22,19 @@ def tracker(tmp_path: Path) -> PortfolioTracker:
     return PortfolioTracker(store_path=store)
 
 
+def test_constructor_emits_deprecation_warning(
+    tmp_trades_file: Path,
+) -> None:
+    """PaperTradeLogger should emit a DeprecationWarning on init — SQLite is source of truth."""
+    settings = SimpleNamespace()
+    with pytest.warns(DeprecationWarning, match="source of truth"):
+        PaperTradeLogger(
+            settings,
+            portfolio_tracker=None,
+            trades_file=tmp_trades_file,
+        )
+
+
 @pytest.mark.asyncio
 async def test_mirror_open_close_long_round_trip(
     tmp_trades_file: Path,
