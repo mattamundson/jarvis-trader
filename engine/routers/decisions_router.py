@@ -29,17 +29,17 @@ def set_db_manager(db) -> None:
 
 @router.get("/decisions/recent")
 async def get_recent_decisions(limit: int = 20, symbol: str = None, agent: str = None):
-    """Return most recent agent decisions from PostgreSQL, falling back to in-memory log"""
-    try:
-        rows = await db_repository.get_recent_decisions(
-            agent_name=agent,
-            symbol=symbol.upper() if symbol else None,
-            limit=limit,
-        )
-        if rows:
-            return rows
-    except Exception as exc:
-        logger.warning(f"[DB] get_recent_decisions from PostgreSQL failed: {exc}")
+    """Return most recent agent decisions from SQLite, falling back to in-memory log"""
+    if _db_manager is not None:
+        try:
+            rows = _db_manager.get_decisions(
+                symbol=symbol.upper() if symbol else None,
+                limit=limit,
+            )
+            if rows is not None:
+                return rows
+        except Exception as exc:
+            logger.warning(f"[DB] get_decisions from SQLite failed: {exc}")
     # Fallback: return in-memory ring buffer
     return _decision_log[-limit:]
 

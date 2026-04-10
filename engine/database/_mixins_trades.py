@@ -338,7 +338,7 @@ class TradesMixin:
         params: list = []
 
         if status != "all":
-            clauses.append("status = ?")
+            clauses.append("LOWER(status) = LOWER(?)")
             params.append(status)
         if symbol:
             clauses.append("symbol = ?")
@@ -362,3 +362,23 @@ class TradesMixin:
                 return result
             finally:
                 conn.close()
+
+    def get_paper_trades(
+        self,
+        limit: int = 50,
+        status: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Return paper trades from ``paper_trades``, newest-first.
+
+        Parameters
+        ----------
+        limit:  Maximum rows to return (default 50, capped at 500).
+        status: Optional status filter ('open', 'closed'). None returns all.
+                Comparison is case-insensitive.
+        """
+        effective_status = "all" if status is None else status
+        return self.get_trade_history(
+            limit=min(max(limit, 1), 500),
+            status=effective_status,
+        )

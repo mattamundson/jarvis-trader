@@ -323,17 +323,64 @@ async def paper_positions():
     return {"positions": raw, "count": len(raw)}
 
 
+@router.get("/paper/trades", description="Paper trade history from SQLite. Optional status filter: 'open' or 'closed'.")
+async def get_paper_trades(limit: int = 50, status: str = None):
+    """Get paper trade history from SQLite."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        trades = db_manager.get_paper_trades(limit=limit, status=status)
+        return {"trades": trades, "count": len(trades)}
+    except Exception as exc:
+        logger.error("get_paper_trades failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/paper/performance")
 async def paper_performance():
     """
-    Closed-trade performance summary.
+    Closed-trade performance summary with mark-to-market unrealized P&L.
 
     Computes metrics from SQLite when db_manager is available (single source of truth).
     Falls back to in-memory tracker on DB error.
+    Includes unrealized_pnl for all open positions via current market prices.
     """
     if not paper_tracker:
         return {"performance": {}}
 
+    # ── Mark-to-market unrealized P&L ────────────────────────────────────────
+    unrealized_pnl = 0.0
+    open_positions_detail: list[dict] = []
+    open_positions: list[dict] = paper_tracker.get_open_positions()
+    if open_positions and _data_manager is not None:
+        try:
+            symbols = [str(p.get("symbol", "")) for p in open_positions]
+            price_results = await asyncio.gather(
+                *[_data_manager.get_current_price(sym) for sym in symbols],
+                return_exceptions=True,
+            )
+            for pos, price_result in zip(open_positions, price_results):
+                current_price = (
+                    price_result.get("last_price")
+                    if isinstance(price_result, dict)
+                    else None
+                )
+                computed = _compute_unrealized(pos, current_price, INSTRUMENT_POINT_VALUES)
+                upnl = computed.get("unrealized_pnl") or 0.0
+                unrealized_pnl += upnl
+                open_positions_detail.append(
+                    {
+                        "symbol": computed["symbol"],
+                        "direction": computed["direction"],
+                        "entry_price": computed["entry_price"],
+                        "current_price": computed["current_price"],
+                        "unrealized_pnl": round(upnl, 4),
+                    }
+                )
+        except Exception as exc:
+            logger.warning("paper_performance: unrealized P&L fetch failed: %s", exc)
+
+    # ── Closed-trade metrics ──────────────────────────────────────────────────
     # SQLite-first approach: query DB for closed trades if available (Bug B9 / US-2004)
     if db_manager:
         try:
@@ -361,26 +408,38 @@ async def paper_performance():
                         if dd < max_dd:
                             max_dd = dd
 
+                    total_closed_pnl = round(sum(pnls), 4)
                     performance = {
-                        "total_pnl": round(sum(pnls), 4),
+                        "total_pnl": total_closed_pnl,
                         "win_rate": round(len(wins) / len(pnls), 4) if pnls else 0.0,
                         "profit_factor": round(profit_factor, 4)
                         if profit_factor is not None
                         else None,
                         "num_trades": len(pnls),
-                        "num_open": len(paper_tracker.get_open_positions()),
+                        "num_open": len(open_positions),
                         "avg_win": round(sum(wins) / len(wins), 4) if wins else 0.0,
                         "avg_loss": round(sum(losses) / len(losses), 4) if losses else 0.0,
                         "max_dd": round(max_dd, 4),
                         "best_trade": round(max(pnls), 4) if pnls else None,
                         "worst_trade": round(min(pnls), 4) if pnls else None,
+                        "unrealized_pnl": round(unrealized_pnl, 4),
+                        "total_pnl_including_open": round(
+                            total_closed_pnl + unrealized_pnl, 4
+                        ),
+                        "open_positions": open_positions_detail,
                     }
                     return {"performance": performance}
         except Exception as exc:
             logger.warning("paper_performance: SQLite query failed, using in-memory: %s", exc)
 
-    # Fallback to in-memory tracker
-    return {"performance": paper_tracker.get_performance()}
+    # Fallback to in-memory tracker — augment with unrealized
+    perf = paper_tracker.get_performance()
+    perf["unrealized_pnl"] = round(unrealized_pnl, 4)
+    perf["total_pnl_including_open"] = round(
+        (perf.get("total_pnl") or 0.0) + unrealized_pnl, 4
+    )
+    perf["open_positions"] = open_positions_detail
+    return {"performance": perf}
 
 
 @router.post("/paper/trade")
@@ -1275,7 +1334,9 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
                 return_exceptions=True,
             )
             current_prices = [
-                float(r) if not isinstance(r, Exception) and r is not None else None
+                (r.get("last_price") if isinstance(r, dict) else None)
+                if not isinstance(r, Exception) and r is not None
+                else None
                 for r in results
             ]
         else:

@@ -342,12 +342,52 @@ async def _send_signal_alert(symbol: str, final_action: str, result: dict) -> No
         logger.error("[PIPELINE] Telegram send failed for %s: %s", symbol, exc)
 
 
+def _log_decision_to_db(
+    symbol: str,
+    action: str,
+    confidence: float,
+    source: str,
+    summary: str,
+    reasoning: str,
+    regime: str | None,
+    signal_data: dict | None,
+    full_pipeline_data: dict | None,
+) -> None:
+    """Persist a pipeline decision to SQLite via the injected db_manager.
+
+    Best-effort — never raises; failures are logged and swallowed.
+    """
+    if _db_manager is None:
+        logger.warning("[DECISION] db_manager not injected — decision for %s not persisted", symbol)
+        return
+    try:
+        _db_manager.insert_decision(
+            symbol=symbol,
+            action=action,
+            confidence=confidence,
+            regime=regime,
+            signal_data=signal_data or {"source": source, "summary": summary},
+            reasoning=reasoning or summary,
+            full_pipeline_data=full_pipeline_data,
+        )
+        logger.info(
+            "[DECISION] Persisted %s %s (confidence=%.0f%%) source=%s",
+            symbol,
+            action.upper(),
+            confidence * 100,
+            source,
+        )
+    except Exception as exc:
+        logger.warning("[DECISION] Failed to persist decision for %s: %s", symbol, exc)
+
+
 async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
     """
-    Internal coroutine: runs the pipeline and auto-logs paper trades for LONG/SHORT decisions.
+    Internal coroutine: runs the pipeline, logs the decision to SQLite, and
+    auto-logs paper trades for LONG/SHORT decisions.
 
     Called as a background task from run_pipeline() so the HTTP response is immediate.
-    Paper trade logging is best-effort — failures are caught and logged.
+    Decision logging and paper trade logging are best-effort — failures are caught and logged.
     """
     try:
         result = await _trading_pipeline.analyze_and_decide(symbol=symbol, is_futures=is_futures)
@@ -362,6 +402,36 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
         final_action,
         result.get("requires_human"),
     )
+
+    # ── Log decision to SQLite (ALL actions including HOLD) ──────────────────
+    try:
+        _fund = result.get("fund_decision") or {}
+        _trade = result.get("trade_decision") or {}
+        _analysts = result.get("analyst_reports") or {}
+        _tech = _analysts.get("technical") or {}
+        _confidence = float(_fund.get("final_conviction") or _trade.get("confidence") or 0.0)
+        _summary = result.get("summary") or _fund.get("reasoning") or ""
+        _reasoning = _fund.get("reasoning") or _trade.get("reasoning") or _summary
+        _regime = _tech.get("regime") or None
+        _signal_data = {
+            "source": "manual",
+            "symbol": symbol,
+            "action": final_action,
+            "summary": _summary,
+        }
+        _log_decision_to_db(
+            symbol=symbol,
+            action=final_action,
+            confidence=_confidence,
+            source="manual",
+            summary=_summary,
+            reasoning=_reasoning,
+            regime=_regime,
+            signal_data=_signal_data,
+            full_pipeline_data=result,
+        )
+    except Exception as _dec_exc:
+        logger.warning("[DECISION] Decision logging block failed for %s: %s", symbol, _dec_exc)
 
     # Route directional decisions: queue for human approval OR auto-log as paper trade
     is_directional = final_action not in ("hold", "HOLD")

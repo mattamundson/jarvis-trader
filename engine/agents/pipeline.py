@@ -26,6 +26,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
+import pandas as pd
+
 from database import repository
 
 try:
@@ -189,6 +191,20 @@ async def _check_mtf_misalignment(
         )
         if df_4h is None or df_4h.empty or len(df_4h) < 10:
             return False
+
+        # Staleness guard: if 4h bars end more than 48h ago, skip MTF check (fail open)
+        if "timestamp" in df_4h.columns:
+            last_4h = pd.Timestamp(df_4h["timestamp"].iloc[-1])
+            if last_4h.tzinfo is None:
+                last_4h = last_4h.tz_localize("UTC")
+            age_hours = (pd.Timestamp.now(tz="UTC") - last_4h).total_seconds() / 3600
+            if age_hours > 48:
+                logger.warning(
+                    "[MTF] %s 4h data is %.0fh stale — skipping MTF check (fail open)",
+                    symbol,
+                    age_hours,
+                )
+                return False  # False = no misalignment = signal passes
 
         df_1h_sig = generate_instrument_signals(df_1h.copy(), symbol)
         df_4h_ind = compute_all_indicators(df_4h.copy())
