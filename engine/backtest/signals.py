@@ -30,6 +30,7 @@ except Exception:
 
 from .indicators import (
     cci,
+    classify_trin,
     compute_adx,
     compute_vwap,
     ema_ribbon,
@@ -317,8 +318,15 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def layer1_regime(row: pd.Series) -> str:
-    """Determine market regime from Layer 1 indicators."""
+def layer1_regime(row: pd.Series, trin_value: Optional[float] = None) -> str:
+    """
+    Determine market regime from Layer 1 indicators.
+
+    Args:
+        row: DataFrame row with indicator values.
+        trin_value: Optional TRIN (Arms Index) value from IB Gateway RTH data.
+                    Only available during regular trading hours — pass None otherwise.
+    """
     consumed = row.get("atr_consumed_pct", 0)
     phase = row.get("phase_val", 0)
     compression = row.get("phase_compression", False)
@@ -329,10 +337,21 @@ def layer1_regime(row: pd.Series) -> str:
     if compression and consumed < 50:
         return "COMPRESSION"
     if ema_trend == "bullish" and consumed < 70 and phase > 0:
-        return "TRENDING_BULL"
-    if ema_trend == "bearish" and consumed < 70 and phase < 0:
-        return "TRENDING_BEAR"
-    return "RANGE_BOUND"
+        regime = "TRENDING_BULL"
+    elif ema_trend == "bearish" and consumed < 70 and phase < 0:
+        regime = "TRENDING_BEAR"
+    else:
+        regime = "RANGE_BOUND"
+
+    # Apply TRIN modifier — only when TRIN data is available (RTH hours)
+    if trin_value is not None:
+        trin_class = classify_trin(trin_value)
+        if trin_class == "BLOWOFF_TOP" and regime == "TRENDING_BULL":
+            regime = "EXHAUSTED"  # Downgrade — extreme buying often precedes reversal
+        elif trin_class == "CAPITULATION" and regime == "TRENDING_BEAR":
+            regime = "EXHAUSTED"  # Downgrade — potential reversal zone
+
+    return regime
 
 
 def layer2_structure(row: pd.Series) -> dict:

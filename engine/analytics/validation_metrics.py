@@ -265,3 +265,56 @@ class ValidationMetrics:
             return (date.today() - dt.date()).days
         except (ValueError, TypeError):
             return 0
+
+
+# ── Module-level composite scoring functions ─────────────────────────────────
+
+
+def composite_score(
+    profit_factor: float,
+    sharpe: float,
+    wfe: float,
+    max_drawdown_pct: float,
+) -> float:
+    """
+    Composite strategy performance score for optimization target.
+
+    Modeled after n-autoresearch's val_bpb (lower=better) but inverted:
+    Higher composite_score = better strategy.
+
+    Weights:
+    - Profit Factor: 35% (primary edge indicator, capped at 6x)
+    - Sharpe Ratio:  35% (risk-adjusted return quality, capped at 5.0)
+    - WFE:           20% (walk-forward robustness, 0-1)
+    - Drawdown:      10% (stability; 0% DD = full score, 20% DD = 0)
+
+    Returns:
+        float in range [0.0, 1.0]
+    """
+    pf_score = min(profit_factor, 6.0) / 6.0
+    sharpe_score = min(max(sharpe, 0.0), 5.0) / 5.0
+    wfe_score = max(0.0, min(wfe, 1.0))
+    dd_score = 1.0 - min(max_drawdown_pct, 0.20) / 0.20
+
+    return (
+        pf_score * 0.35
+        + sharpe_score * 0.35
+        + wfe_score * 0.20
+        + dd_score * 0.10
+    )
+
+
+def composite_score_from_results(backtest_results: dict) -> float:
+    """
+    Convenience wrapper — extract metrics from backtest result dict and compute score.
+
+    Args:
+        backtest_results: Dict with keys profit_factor, sharpe_ratio,
+                          walk_forward_efficiency, max_drawdown_pct
+    """
+    return composite_score(
+        profit_factor=backtest_results.get("profit_factor", 1.0),
+        sharpe=backtest_results.get("sharpe_ratio", 0.0),
+        wfe=backtest_results.get("walk_forward_efficiency", 0.0),
+        max_drawdown_pct=backtest_results.get("max_drawdown_pct", 0.0),
+    )
