@@ -347,10 +347,16 @@ async def update_position(trade_id: str, req: UpdatePositionRequest):
     # Persist to SQLite
     try:
         if db_manager is not None:
-            db_manager._execute(
-                "UPDATE paper_trades SET stop_loss=?, take_profit=? WHERE trade_id=?",
-                (trade.stop_loss, trade.take_profit, trade_id),
-            )
+            with db_manager._lock:
+                conn = db_manager._connect()
+                try:
+                    conn.execute(
+                        "UPDATE paper_trades SET stop_loss=?, take_profit=? WHERE trade_id=?",
+                        (trade.stop_loss, trade.take_profit, trade_id),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
     except Exception as exc:
         logger.warning("update_position: SQLite write failed for %s: %s", trade_id[:8], exc)
 
