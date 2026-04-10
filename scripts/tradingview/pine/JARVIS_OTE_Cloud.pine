@@ -1,0 +1,149 @@
+//@version=5
+indicator("JARVIS OTE Cloud", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_swing_len   = input.int(20,  "Swing Detection Length", minval=3)
+i_kc_ema_len  = input.int(20,  "Keltner EMA Length",     minval=1)
+i_kc_atr_len  = input.int(14,  "Keltner ATR Length",     minval=1)
+i_kc_mult     = input.float(2.0, "Keltner ATR Multiplier", minval=0.1, step=0.1)
+i_show_cloud  = input.bool(true, "Show OTE Cloud Zones")
+
+// ─── OTE Fibonacci Levels ────────────────────────────────────────────────────
+float OTE_HIGH_FIBO = 0.786
+float OTE_LOW_FIBO  = 0.618
+
+// ─── Swing High / Low Detection ──────────────────────────────────────────────
+swing_high  = ta.highest(high, i_swing_len)
+swing_low   = ta.lowest(low,   i_swing_len)
+swing_range = swing_high - swing_low
+
+// ─── OTE Zones ───────────────────────────────────────────────────────────────
+// Bull OTE: price retraced from swing high back toward swing low;
+//   golden pocket is 61.8-78.6% of the range measured up from swing_low
+bull_ote_high = swing_low + OTE_HIGH_FIBO * swing_range
+bull_ote_low  = swing_low + OTE_LOW_FIBO  * swing_range
+
+// Bear OTE: price retraced from swing low back toward swing high;
+//   golden pocket is 61.8-78.6% measured down from swing_high
+bear_ote_high = swing_high - OTE_LOW_FIBO  * swing_range
+bear_ote_low  = swing_high - OTE_HIGH_FIBO * swing_range
+
+// ─── Mid Cloud (Keltner midline = trend reference) ────────────────────────────
+kc_mid    = ta.ema(close, i_kc_ema_len)
+kc_atr    = ta.atr(i_kc_atr_len)
+kc_upper  = kc_mid + i_kc_mult * kc_atr
+kc_lower  = kc_mid - i_kc_mult * kc_atr
+mid_cloud = (kc_upper + kc_lower) / 2  // resolves to kc_mid by algebra
+
+// ─── Zone Status ─────────────────────────────────────────────────────────────
+in_bull_ote = close >= bull_ote_low  and close <= bull_ote_high
+in_bear_ote = close >= bear_ote_low  and close <= bear_ote_high
+
+// ─── OTE Cloud Fills ─────────────────────────────────────────────────────────
+bull_ote_high_plot = plot(i_show_cloud ? bull_ote_high : na, "Bull OTE High",
+     color=color.new(color.green, 100), display=display.none)
+bull_ote_low_plot  = plot(i_show_cloud ? bull_ote_low  : na, "Bull OTE Low",
+     color=color.new(color.green, 100), display=display.none)
+bear_ote_high_plot = plot(i_show_cloud ? bear_ote_high : na, "Bear OTE High",
+     color=color.new(color.red, 100), display=display.none)
+bear_ote_low_plot  = plot(i_show_cloud ? bear_ote_low  : na, "Bear OTE Low",
+     color=color.new(color.red, 100), display=display.none)
+
+fill(bull_ote_high_plot, bull_ote_low_plot,
+     color=color.new(color.green, in_bull_ote ? 55 : 80),
+     title="Bull OTE Zone")
+fill(bear_ote_high_plot, bear_ote_low_plot,
+     color=color.new(color.red, in_bear_ote ? 55 : 80),
+     title="Bear OTE Zone")
+
+// ─── Mid Cloud Line ───────────────────────────────────────────────────────────
+plot(mid_cloud, "Mid Cloud", color=color.new(color.white, 40),
+     linewidth=1, style=plot.style_circles)
+
+// ─── Swing Levels (reference) ────────────────────────────────────────────────
+plot(swing_high, "Swing High", color=color.new(color.yellow, 60),
+     linewidth=1, style=plot.style_stepline)
+plot(swing_low,  "Swing Low",  color=color.new(color.yellow, 60),
+     linewidth=1, style=plot.style_stepline)
+
+// ─── MCP Readback Labels (barstate.islast only) ───────────────────────────────
+var label lbl_bull_high   = na
+var label lbl_bull_low    = na
+var label lbl_bear_high   = na
+var label lbl_bear_low    = na
+var label lbl_mid_cloud   = na
+var label lbl_in_bull_ote = na
+var label lbl_in_bear_ote = na
+var label lbl_swing_high  = na
+var label lbl_swing_low   = na
+var label lbl_swing_range = na
+
+if barstate.islast
+    in_bull_str = in_bull_ote ? "true" : "false"
+    in_bear_str = in_bear_ote ? "true" : "false"
+
+    label.delete(lbl_bull_high)
+    label.delete(lbl_bull_low)
+    label.delete(lbl_bear_high)
+    label.delete(lbl_bear_low)
+    label.delete(lbl_mid_cloud)
+    label.delete(lbl_in_bull_ote)
+    label.delete(lbl_in_bear_ote)
+    label.delete(lbl_swing_high)
+    label.delete(lbl_swing_low)
+    label.delete(lbl_swing_range)
+
+    _x = bar_index + 2
+    _tick = syminfo.mintick
+
+    lbl_bull_high := label.new(_x, bull_ote_high + 8 * _tick,
+         "OTE_BULL_HIGH: " + str.tostring(bull_ote_high, format.mintick),
+         style=label.style_label_left, color=color.new(color.green, 75),
+         textcolor=color.white, size=size.small)
+
+    lbl_bull_low := label.new(_x, bull_ote_low + 2 * _tick,
+         "OTE_BULL_LOW: " + str.tostring(bull_ote_low, format.mintick),
+         style=label.style_label_left, color=color.new(color.green, 75),
+         textcolor=color.white, size=size.small)
+
+    lbl_bear_high := label.new(_x, bear_ote_high - 2 * _tick,
+         "OTE_BEAR_HIGH: " + str.tostring(bear_ote_high, format.mintick),
+         style=label.style_label_left, color=color.new(color.red, 75),
+         textcolor=color.white, size=size.small)
+
+    lbl_bear_low := label.new(_x, bear_ote_low - 8 * _tick,
+         "OTE_BEAR_LOW: " + str.tostring(bear_ote_low, format.mintick),
+         style=label.style_label_left, color=color.new(color.red, 75),
+         textcolor=color.white, size=size.small)
+
+    lbl_mid_cloud := label.new(_x, mid_cloud,
+         "MID_CLOUD: " + str.tostring(mid_cloud, format.mintick),
+         style=label.style_label_left, color=color.new(color.white, 75),
+         textcolor=color.black, size=size.small)
+
+    lbl_in_bull_ote := label.new(_x, bull_ote_low - 14 * _tick,
+         "IN_BULL_OTE: " + in_bull_str,
+         style=label.style_label_left,
+         color=in_bull_ote ? color.new(color.green, 60) : color.new(color.gray, 80),
+         textcolor=color.white, size=size.small)
+
+    lbl_in_bear_ote := label.new(_x, bear_ote_low - 14 * _tick,
+         "IN_BEAR_OTE: " + in_bear_str,
+         style=label.style_label_left,
+         color=in_bear_ote ? color.new(color.red, 60) : color.new(color.gray, 80),
+         textcolor=color.white, size=size.small)
+
+    lbl_swing_high := label.new(_x, swing_high + 16 * _tick,
+         "SWING_HIGH: " + str.tostring(swing_high, format.mintick),
+         style=label.style_label_left, color=color.new(color.yellow, 75),
+         textcolor=color.black, size=size.small)
+
+    lbl_swing_low := label.new(_x, swing_low - 16 * _tick,
+         "SWING_LOW: " + str.tostring(swing_low, format.mintick),
+         style=label.style_label_left, color=color.new(color.yellow, 75),
+         textcolor=color.black, size=size.small)
+
+    lbl_swing_range := label.new(_x, (swing_high + swing_low) / 2,
+         "SWING_RANGE: " + str.tostring(swing_range, format.mintick),
+         style=label.style_label_left, color=color.new(color.purple, 75),
+         textcolor=color.white, size=size.small)

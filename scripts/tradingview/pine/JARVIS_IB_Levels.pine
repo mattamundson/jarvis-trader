@@ -1,0 +1,139 @@
+//@version=5
+indicator("JARVIS IB Levels", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+color col_ib_boundary  = input.color(color.new(color.yellow, 0),   "IB High/Low Color")
+color col_ib_mid       = input.color(color.new(color.white, 30),   "IB Mid Color")
+color col_ib_inner     = input.color(color.new(color.teal, 30),    "IB Inner Levels Color")
+color col_ib_ext_up    = input.color(color.new(color.green, 30),   "IB Extension Up Color")
+color col_ib_ext_dn    = input.color(color.new(color.red, 30),     "IB Extension Down Color")
+
+// ─── Session Logic ────────────────────────────────────────────────────────────
+// IB = first 60 min of RTH: 09:30–10:30 ET
+ib_start = timestamp("America/New_York", year, month, dayofmonth, 9, 30)
+ib_end   = timestamp("America/New_York", year, month, dayofmonth, 10, 30)
+in_ib    = time >= ib_start and time < ib_end
+after_ib = time >= ib_end
+
+// ─── IB State ─────────────────────────────────────────────────────────────────
+var float ib_high    = na
+var float ib_low     = na
+var bool  ib_done    = false
+var int   ib_day_tag = na  // track which calendar day IB belongs to
+
+// Day change resets IB
+day_changed = dayofmonth != dayofmonth[1] or month != month[1]
+if day_changed
+    ib_high    := na
+    ib_low     := na
+    ib_done    := false
+    ib_day_tag := dayofmonth
+
+// Accumulate IB high/low during IB period
+if in_ib
+    ib_high := na(ib_high) ? high : math.max(ib_high, high)
+    ib_low  := na(ib_low)  ? low  : math.min(ib_low,  low)
+
+// Mark IB complete once we exit the window
+if after_ib and not ib_done and not na(ib_high)
+    ib_done := true
+
+// ─── Derived Levels ───────────────────────────────────────────────────────────
+ib_range = na(ib_high) or na(ib_low) ? na : ib_high - ib_low
+
+ib25   = na(ib_low)  or na(ib_range) ? na : ib_low  + ib_range * 0.25
+ib50   = na(ib_low)  or na(ib_range) ? na : ib_low  + ib_range * 0.50
+ib75   = na(ib_low)  or na(ib_range) ? na : ib_low  + ib_range * 0.75
+ibu50  = na(ib_high) or na(ib_range) ? na : ib_high + ib_range * 0.50
+ibu100 = na(ib_high) or na(ib_range) ? na : ib_high + ib_range * 1.00
+ibd50  = na(ib_low)  or na(ib_range) ? na : ib_low  - ib_range * 0.50
+ibd100 = na(ib_low)  or na(ib_range) ? na : ib_low  - ib_range * 1.00
+
+// ─── Line Drawing ─────────────────────────────────────────────────────────────
+// Store persistent lines so we can update price each bar
+var line ln_ib_high  = na
+var line ln_ib_low   = na
+var line ln_ib25     = na
+var line ln_ib50     = na
+var line ln_ib75     = na
+var line ln_ibu50    = na
+var line ln_ibu100   = na
+var line ln_ibd50    = na
+var line ln_ibd100   = na
+
+// Helper: create or update a horizontal line at given price
+_update_line(ln, price, col, lw, lstyle) =>
+    if na(price)
+        na(line)
+    else if na(ln)
+        line.new(bar_index - 1, price, bar_index, price,
+                 extend=extend.right, color=col,
+                 width=lw, style=lstyle)
+    else
+        line.set_y1(ln, price)
+        line.set_y2(ln, price)
+        line.set_x2(ln, bar_index)
+        ln
+
+// Delete all lines on day change
+if day_changed
+    line.delete(ln_ib_high)
+    line.delete(ln_ib_low)
+    line.delete(ln_ib25)
+    line.delete(ln_ib50)
+    line.delete(ln_ib75)
+    line.delete(ln_ibu50)
+    line.delete(ln_ibu100)
+    line.delete(ln_ibd50)
+    line.delete(ln_ibd100)
+    ln_ib_high  := na
+    ln_ib_low   := na
+    ln_ib25     := na
+    ln_ib50     := na
+    ln_ib75     := na
+    ln_ibu50    := na
+    ln_ibu100   := na
+    ln_ibd50    := na
+    ln_ibd100   := na
+
+// Only draw once we have IB data
+if not na(ib_high)
+    ln_ib_high  := _update_line(ln_ib_high,  ib_high,  col_ib_boundary, 2, line.style_solid)
+    ln_ib_low   := _update_line(ln_ib_low,   ib_low,   col_ib_boundary, 2, line.style_solid)
+    ln_ib25     := _update_line(ln_ib25,     ib25,     col_ib_inner,    1, line.style_dashed)
+    ln_ib50     := _update_line(ln_ib50,     ib50,     col_ib_mid,      1, line.style_dashed)
+    ln_ib75     := _update_line(ln_ib75,     ib75,     col_ib_inner,    1, line.style_dashed)
+    ln_ibu50    := _update_line(ln_ibu50,    ibu50,    col_ib_ext_up,   1, line.style_dotted)
+    ln_ibu100   := _update_line(ln_ibu100,   ibu100,   col_ib_ext_up,   2, line.style_dotted)
+    ln_ibd50    := _update_line(ln_ibd50,    ibd50,    col_ib_ext_dn,   1, line.style_dotted)
+    ln_ibd100   := _update_line(ln_ibd100,   ibd100,   col_ib_ext_dn,   2, line.style_dotted)
+
+// ─── MCP Output Labels (barstate.islast only) ─────────────────────────────────
+// All labels are written on the last bar so data_get_pine_labels returns one value per key.
+var label lbl_ib_high     = na
+var label lbl_ib_low      = na
+var label lbl_ib_range    = na
+var label lbl_ib_mid      = na
+var label lbl_ibu50       = na
+var label lbl_ibu100      = na
+var label lbl_ibd50       = na
+var label lbl_ibd100      = na
+var label lbl_ib_complete = na
+
+_make_label(lbl, txt, price) =>
+    label.delete(lbl)
+    label.new(bar_index, price, txt,
+              style=label.style_none,
+              textcolor=color.new(color.white, 20),
+              size=size.small)
+
+if barstate.islast and not na(ib_high)
+    lbl_ib_high     := _make_label(lbl_ib_high,     "IB_HIGH: "     + str.tostring(ib_high,  "#.##"),  ib_high)
+    lbl_ib_low      := _make_label(lbl_ib_low,      "IB_LOW: "      + str.tostring(ib_low,   "#.##"),  ib_low)
+    lbl_ib_range    := _make_label(lbl_ib_range,    "IB_RANGE: "    + str.tostring(ib_range, "#.##"),  ib_low - ib_range * 0.20)
+    lbl_ib_mid      := _make_label(lbl_ib_mid,      "IB_MID: "      + str.tostring(ib50,     "#.##"),  ib50)
+    lbl_ibu50       := _make_label(lbl_ibu50,       "IBU50: "       + str.tostring(ibu50,    "#.##"),  ibu50)
+    lbl_ibu100      := _make_label(lbl_ibu100,      "IBU100: "      + str.tostring(ibu100,   "#.##"),  ibu100)
+    lbl_ibd50       := _make_label(lbl_ibd50,       "IBD50: "       + str.tostring(ibd50,    "#.##"),  ibd50)
+    lbl_ibd100      := _make_label(lbl_ibd100,      "IBD100: "      + str.tostring(ibd100,   "#.##"),  ibd100)
+    lbl_ib_complete := _make_label(lbl_ib_complete, "IB_COMPLETE: " + (ib_done ? "true" : "false"),    ib_low - ib_range * 0.35)
