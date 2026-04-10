@@ -323,6 +323,45 @@ async def paper_positions():
     return {"positions": raw, "count": len(raw)}
 
 
+class UpdatePositionRequest(BaseModel):
+    stop_loss: float | None = None
+    take_profit: float | None = None
+
+
+@router.patch("/paper/positions/{trade_id}")
+async def update_position(trade_id: str, req: UpdatePositionRequest):
+    """Update stop_loss / take_profit on an open position (in-memory + SQLite)."""
+    if not paper_tracker:
+        raise HTTPException(status_code=503, detail="Paper tracker not available")
+
+    # Update in-memory trade
+    trade = paper_tracker._open.get(trade_id)
+    if trade is None:
+        raise HTTPException(status_code=404, detail=f"No open position with trade_id={trade_id!r}")
+
+    if req.stop_loss is not None:
+        trade.stop_loss = req.stop_loss
+    if req.take_profit is not None:
+        trade.take_profit = req.take_profit
+
+    # Persist to SQLite
+    try:
+        if db_manager is not None:
+            db_manager._execute(
+                "UPDATE paper_trades SET stop_loss=?, take_profit=? WHERE trade_id=?",
+                (trade.stop_loss, trade.take_profit, trade_id),
+            )
+    except Exception as exc:
+        logger.warning("update_position: SQLite write failed for %s: %s", trade_id[:8], exc)
+
+    return {
+        "trade_id": trade_id,
+        "stop_loss": trade.stop_loss,
+        "take_profit": trade.take_profit,
+        "status": "updated",
+    }
+
+
 @router.get("/paper/trades", description="Paper trade history from SQLite. Optional status filter: 'open' or 'closed'.")
 async def get_paper_trades(limit: int = 50, status: str = None):
     """Get paper trade history from SQLite."""
