@@ -302,6 +302,40 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         return "\n".join(lines)
 
     @staticmethod
+    def _format_hp_context(hp_result) -> str:
+        """Format a Hidden Pivots scan result as a compact LLM prompt block."""
+        if hp_result is None:
+            return ""
+        lines = [
+            "",
+            "HIDDEN PIVOTS SCAN (Rick Ackerman structural methodology):",
+        ]
+        if hp_result.pattern:
+            lines.append(
+                f"- Pattern: {hp_result.pattern} (conf {hp_result.confidence:.0%}) | Bias: {hp_result.bias}"
+            )
+        else:
+            lines.append(f"- Pattern: none detected | Bias: {hp_result.bias}")
+
+        if hp_result.trigger_price:
+            lines.append(f"- Trigger level: ${hp_result.trigger_price:.2f}")
+        if hp_result.hp_ou_level:
+            lines.append(f"- HP o/u inflection: ${hp_result.hp_ou_level:.2f}")
+        if hp_result.tight_stop:
+            lines.append(f"- Tight stop: ${hp_result.tight_stop:.2f}")
+        if hp_result.targets:
+            targets_str = " / ".join(f"${t:.2f}" for t in hp_result.targets[:3])
+            lines.append(f"- Targets: {targets_str}")
+
+        lines.append(f"- EMA alignment: {hp_result.ema_alignment}")
+        lines.append(f"- Oscillator state: {hp_result.oscillator_state}")
+        lines.append(f"- RS/RW: {hp_result.rs_rw_label} ({hp_result.rs_rw_score:+.2f})")
+        if hp_result.soh:
+            lines.append("- SOH (Sit On Hands): TRUE — structural warning, avoid new entries")
+        lines.append("")
+        return "\n".join(lines)
+
+    @staticmethod
     def _build_stc_context(indicators: dict, symbol: str) -> str:
         """
         Build a human-readable STC signal context block for the LLM prompt.
@@ -603,6 +637,16 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # Build deterministic STC context block (OS=15, OB=83 canonical thresholds)
         stc_context_str = self._build_stc_context(indicators, symbol)
 
+        # Run Hidden Pivots scan (deterministic, no LLM, no I/O — fast)
+        hp_context_str = ""
+        try:
+            from analysis.hidden_pivots import full_hidden_pivots_scan
+
+            hp_result = full_hidden_pivots_scan(symbol=symbol, df=df, timeframe=timeframe)
+            hp_context_str = self._format_hp_context(hp_result)
+        except Exception as hp_err:
+            logger.debug("[TechnicalAnalyst] Hidden Pivots scan skipped: %s", hp_err)
+
         prompt = f"""Analyze these technical indicators for {symbol} on {timeframe} timeframe:
 
 {learning_context}{discord_sentiment_line}{discord_signal_str}{stc_context_str}
@@ -636,7 +680,7 @@ VOLUME:
 KEY LEVELS:
 - Support: {indicators.get("support_levels", [])}
 - Resistance: {indicators.get("resistance_levels", [])}
-{self._format_composite_section(indicators)}{discord_sentiment_line}
+{self._format_composite_section(indicators)}{discord_sentiment_line}{hp_context_str}
 INSTRUCTIONS FOR RESPONSE:
 1. mtf_alignment: Provide a one-line MTF summary, e.g. "4h and 1h STC aligned bullish",
    "MTF misaligned: 4h bearish / 1h overbought", or "insufficient MTF data".
