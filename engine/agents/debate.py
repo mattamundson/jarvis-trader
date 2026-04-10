@@ -197,12 +197,21 @@ class DebateOrchestrator:
             result.bear_weakest_point = bear_weakest
             result.rounds_completed = 2
 
-            # Detect when BOTH scoring calls returned the failure default.
-            # In this case the 5/5 split is an artifact, not a real tie — set
-            # scoring_failed so the pipeline passes control to TraderAgent.
-            if bull_weakest == "Scoring unavailable" and bear_weakest == "Scoring unavailable":
+            # Detect when scoring calls returned the failure default.
+            # Dual failure: 5/5 is an artifact — set scoring_failed so pipeline
+            # passes control to TraderAgent rather than forcing HOLD.
+            # Single failure: one side defaulted to 5, producing an unreliable
+            # directional score — also flag as scoring_failed.
+            bull_score_failed = bull_weakest == "Scoring unavailable"
+            bear_score_failed = bear_weakest == "Scoring unavailable"
+            if bull_score_failed or bear_score_failed:
+                failure_side = (
+                    "both sides"
+                    if bull_score_failed and bear_score_failed
+                    else ("bull scoring" if bull_score_failed else "bear scoring")
+                )
                 logger.warning(
-                    f"[Debate] {symbol} — both _score_argument calls failed; "
+                    f"[Debate] {symbol} — {failure_side} _score_argument failed; "
                     "treating as scoring failure (will not force HOLD)"
                 )
                 result.scoring_failed = True
@@ -228,9 +237,9 @@ class DebateOrchestrator:
             debate_score = round((bear_score - bull_score) / 10, 4)
             result.debate_score = debate_score
 
-            if debate_score > _VERDICT_THRESHOLD:
+            if debate_score >= _VERDICT_THRESHOLD:
                 verdict = "BULL_WINS"
-            elif debate_score < -_VERDICT_THRESHOLD:
+            elif debate_score <= -_VERDICT_THRESHOLD:
                 verdict = "BEAR_WINS"
             else:
                 verdict = "INCONCLUSIVE"

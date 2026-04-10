@@ -850,6 +850,22 @@ def migration_018(conn: sqlite3.Connection) -> None:
     logger.info("Migration 018 applied — pnl_snapshots table created.")
 
 
+def migration_019(conn: sqlite3.Connection) -> None:
+    """
+    019 — Full pipeline JSON column on decisions table.
+
+    Adds full_pipeline_json TEXT column so that the complete stage-by-stage
+    pipeline result (analyst_reports, debate_result, trade_decision,
+    risk_decision, fund_decision, confidence gate, etc.) is persisted
+    alongside each decision row.  Existing rows get NULL for the new column.
+    """
+    conn.execute(
+        "ALTER TABLE decisions ADD COLUMN full_pipeline_json TEXT"
+    )
+    conn.commit()
+    logger.info("Migration 019 applied — full_pipeline_json column added to decisions.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -872,6 +888,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_016,  # version 16
     migration_017,  # version 17
     migration_018,  # version 18
+    migration_019,  # version 19
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -893,6 +910,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "WFE divergence flag: divergence_flag column for wfe_snapshots table to track performance divergence",
     "System state persistence: system_state key/value table for kill switch and engine state across restarts",
     "P&L snapshots: pnl_snapshots table for safety layer daily P&L persistence across engine restarts",
+    "Full pipeline JSON: full_pipeline_json column on decisions for stage-by-stage reasoning storage",
 ]
 
 
