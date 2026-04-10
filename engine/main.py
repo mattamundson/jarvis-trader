@@ -121,6 +121,8 @@ from routers.wfe_router import router as wfe_router
 from routers.discovery_router import router as discovery_router
 from routers.hidden_pivots_router import router as hidden_pivots_router
 from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
+from routers.decisions_router import router as decisions_router
+from routers.decisions_router import set_db_manager as set_decisions_db
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -270,6 +272,7 @@ async def lifespan(app: FastAPI):
     db_manager.initialize()
     set_journal_db(db_manager)
     set_analytics_db(db_manager)
+    set_decisions_db(db_manager)
     logger.info("✅ SQLite database initialized at data/jarvis_trader.db")
 
     # Feature Flags — two-layer flag system (config defaults + runtime SQLite overrides)
@@ -481,12 +484,17 @@ async def lifespan(app: FastAPI):
             logger.info("Scheduler: skipping — kill switch active")
             return
 
-        # Only scan active futures symbols — equities removed to reduce memory pressure
-        # Running 6 parallel 10-agent LLM pipelines causes OOM kills on this host
-        symbols_to_scan = [
-            (sym, True)
-            for sym in settings.FUTURES_WATCHLIST  # MCL, MNQ (active paper instruments)
-        ]
+        # Futures + equities — sequential to avoid OOM from parallel 10-agent LLM pipelines
+        symbols_to_scan = (
+            [
+                (sym, True)
+                for sym in settings.FUTURES_WATCHLIST  # MES, MNQ, MCL
+            ]
+            + [
+                (sym, False)
+                for sym in settings.OPTIONS_WATCHLIST[:3]  # SPY, QQQ, AAPL
+            ]
+        )
 
         logger.info(f"Scheduled scan: {[s[0] for s in symbols_to_scan]}")
         from notifications.whatsapp import get_notifier
@@ -518,6 +526,7 @@ async def lifespan(app: FastAPI):
                     source="scheduler",
                     summary=result.get("summary", ""),
                     reasoning=reasoning,
+                    full_pipeline_data=result,
                 )
 
                 # Persist pipeline run to pipeline_runs for audit trail.
@@ -1569,6 +1578,7 @@ app.include_router(scheduler_router)
 app.include_router(wfe_router)
 app.include_router(discovery_router)
 app.include_router(hidden_pivots_router)
+app.include_router(decisions_router)
 app.include_router(v1_router)
 
 
@@ -2567,6 +2577,7 @@ def _log_decision(
     reasoning: str = "",
     regime: str | None = None,
     signal_data: dict | None = None,
+    full_pipeline_data: dict | None = None,
 ) -> None:
     """Append a decision to the in-memory ring buffer AND persist to SQLite."""
     entry: dict = {
@@ -2592,6 +2603,7 @@ def _log_decision(
                 regime=regime,
                 signal_data=signal_data or {"source": source, "summary": summary},
                 reasoning=reasoning or summary,
+                full_pipeline_data=full_pipeline_data,
             )
         except Exception as _db_err:
             logger.warning(f"[DB] Failed to persist decision for {symbol}: {_db_err}")
@@ -2852,6 +2864,7 @@ async def run_pipeline(req: PipelineRequest):
         source="pipeline",
         summary=result.get("summary", ""),
         reasoning=(result.get("trade_decision") or {}).get("reasoning", ""),
+        full_pipeline_data=result,
     )
 
     # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
@@ -2985,6 +2998,7 @@ async def run_sdk_pipeline(req: PipelineRequest):
         source="sdk_pipeline",
         summary=result.get("summary", ""),
         reasoning=(result.get("trade_decision") or {}).get("reasoning", ""),
+        full_pipeline_data=result,
     )
 
     return result
@@ -3083,6 +3097,7 @@ async def trigger_scan_now():
                 source="manual_scan",
                 summary=result.get("summary", ""),
                 reasoning=reasoning,
+                full_pipeline_data=result,
             )
 
             alert_sent = False
