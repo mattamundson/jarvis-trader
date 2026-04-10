@@ -25,7 +25,7 @@ def inject_dependencies(cache: PriceCache, data_manager=None):
 
 
 @router.get("/prices/snapshot")
-async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
+async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
     """
     Get current prices and daily change % for comma-separated symbols.
     Futures micro contracts (MES, MNQ, MCL etc) are mapped to continuous contracts.

@@ -242,7 +242,27 @@ class DebateOrchestrator:
             elif debate_score <= -_VERDICT_THRESHOLD:
                 verdict = "BEAR_WINS"
             else:
-                verdict = "INCONCLUSIVE"
+                # Tie-break: score is in dead zone — check conviction asymmetry
+                _CONVICTION_TIE_BREAK = 0.35  # require 35% asymmetry to break tie
+                bear_conv = result.bear_conviction
+                bull_conv = result.bull_conviction
+                conviction_diff = bear_conv - bull_conv  # positive = bear dominant
+                if conviction_diff >= _CONVICTION_TIE_BREAK:
+                    verdict = "BEAR_WINS"
+                    result.scoring_failed = True
+                    logger.info(
+                        f"[Debate] {symbol} tie broken by conviction: "
+                        f"bear {bear_conv:.2f} vs bull {bull_conv:.2f} → BEAR_WINS"
+                    )
+                elif -conviction_diff >= _CONVICTION_TIE_BREAK:
+                    verdict = "BULL_WINS"
+                    result.scoring_failed = True
+                    logger.info(
+                        f"[Debate] {symbol} tie broken by conviction: "
+                        f"bull {bull_conv:.2f} vs bear {bear_conv:.2f} → BULL_WINS"
+                    )
+                else:
+                    verdict = "INCONCLUSIVE"
 
             result.verdict = verdict
 

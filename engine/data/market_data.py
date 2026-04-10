@@ -607,6 +607,7 @@ class MarketDataManager:
                 "5m": "5 mins",
                 "15m": "15 mins",
                 "1h": "1 hour",
+                "4h": "4 hours",
                 "1d": "1 day",
             }
             bar_size = bar_size_map.get(timeframe, "5 mins")
@@ -624,6 +625,7 @@ class MarketDataManager:
                 "5m": ("minute", 5),
                 "15m": ("minute", 15),
                 "1h": ("hour", 1),
+                "4h": ("hour", 4),
                 "1d": ("day", 1),
             }
             timespan, multiplier = tf_map.get(timeframe, ("minute", 5))
@@ -638,10 +640,20 @@ class MarketDataManager:
                 return df
             logger.warning(f"Polygon returned no data for {symbol} ({timespan}/{multiplier})")
 
-        # Tier 3: CSV backtest cache
+        # Tier 3: CSV backtest cache — staleness guard: reject if last bar > 2 days old
         df = self._load_csv_cache(symbol, timeframe, lookback_days)
         if not df.empty:
-            return df
+            if "timestamp" in df.columns:
+                last_ts = pd.to_datetime(df["timestamp"].iloc[-1])
+                staleness_days = (datetime.now() - last_ts.replace(tzinfo=None)).days
+                if staleness_days > 2:
+                    logger.warning(
+                        f"[{symbol}] CSV cache for {timeframe} is {staleness_days}d stale "
+                        f"(last bar: {last_ts.date()}) — skipping to avoid stale signal contamination"
+                    )
+                    df = pd.DataFrame()
+            if not df.empty:
+                return df
 
         logger.error(
             f"All data sources failed for {symbol} — IBKR offline and Polygon unavailable."
@@ -779,7 +791,7 @@ class MarketDataManager:
             if "timestamp" in df.columns:
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
                 df = df.sort_values("timestamp")
-            bars_per_day = {"1m": 390, "5m": 78, "15m": 26, "1h": 24, "1d": 1}.get(timeframe, 24)
+            bars_per_day = {"1m": 390, "5m": 78, "15m": 26, "1h": 24, "4h": 6, "1d": 1}.get(timeframe, 24)
             df = df.tail(lookback_days * bars_per_day).copy()
             if not df.empty:
                 logger.warning(f"[{symbol}] Using CSV cache: {matches[-1].name} ({len(df)} bars)")
