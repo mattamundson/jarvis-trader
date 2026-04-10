@@ -1017,6 +1017,9 @@ class PortfolioTracker:
                             pnl=row.get("pnl"),
                             notes=str(row.get("notes") or ""),
                             is_open=bool(row.get("is_open", row.get("exit_price") is None)),
+                            stop_loss=row.get("stop_loss"),
+                            take_profit=row.get("take_profit"),
+                            atr_value=row.get("atr_value"),
                         )
                         if trade.is_open:
                             self._open[trade.trade_id] = trade

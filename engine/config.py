@@ -22,10 +22,11 @@ def _validate_required_env_vars():
     os.environ. We load dotenv explicitly here so os.environ.get() sees the .env values.
     """
     # Load .env into os.environ so the checks below see file-based values
+    # Use override=True to ensure .env values take precedence over system env vars (e.g., ANTHROPIC_API_KEY=test from system)
     try:
         from dotenv import load_dotenv as _load_dotenv
 
-        _load_dotenv(dotenv_path=".env", override=False)
+        _load_dotenv(dotenv_path=".env", override=True)
     except ImportError:
         pass  # python-dotenv not installed — fall back to os.environ only
 

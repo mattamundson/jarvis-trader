@@ -1,0 +1,202 @@
+# smart_handoff.ps1
+# Generates a fully populated AI handoff document for JARVIS TRADER.
+# Usage: .\smart_handoff.ps1 [-Target chatgpt|claude|gemini] [-ZipFiles]
+#
+# Unlike generate_handoff.ps1, this auto-populates narrative sections from
+# real project files. You only need to fill in the session summary.
+
+param(
+    [string]$Target = "chatgpt",
+    [switch]$ZipFiles,
+    [string]$RepoPath = (Get-Location).Path,
+    [string]$OutputPath = "HANDOFF_AI_SESSION.md"
+)
+
+$ErrorActionPreference = "Stop"
+$timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm")
+$branch = (git rev-parse --abbrev-ref HEAD 2>&1)
+$gitStatus = (git status 2>&1 | Out-String).TrimEnd()
+$gitLog = (git log --oneline -20 2>&1 | Out-String).TrimEnd()
+$gitDiff = (git diff --stat 2>&1 | Out-String).TrimEnd()
+
+# Auto-read key project files
+function Read-ProjectFile {
+    param([string]$RelPath, [int]$MaxLines = 9999)
+    $full = Join-Path $RepoPath $RelPath
+    if (Test-Path $full) {
+        return (Get-Content $full -Raw -ErrorAction SilentlyContinue)
+    }
+    return "(file not found: $RelPath)"
+}
+
+$nextSteps     = Read-ProjectFile "NEXT_STEPS.md"
+$currentState  = Read-ProjectFile "docs\CURRENT_STATE.md"
+$progressTxt   = Read-ProjectFile "progress.txt"
+
+# Find the most recent sprint/completion report
+$latestReport = Get-ChildItem $RepoPath -Filter "*COMPLETION_REPORT*" |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$sprintReport = if ($latestReport) {
+    Get-Content $latestReport.FullName -Raw -ErrorAction SilentlyContinue
+} else { "(no sprint completion report found)" }
+$sprintReportName = if ($latestReport) { $latestReport.Name } else { "none" }
+
+# Find recently modified source files (last 48 hours, exclude noise)
+$recentFiles = Get-ChildItem $RepoPath -Recurse -File |
+    Where-Object {
+        $_.LastWriteTime -gt (Get-Date).AddHours(-48) -and
+        $_.Extension -in @('.py','.ts','.tsx','.json','.md','.ps1','.sh') -and
+        $_.FullName -notmatch '(node_modules|\.venv|\.git|__pycache__|\.mypy_cache|\.next|\.ruff_cache)'
+    } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 30
+
+$recentFilesList = ($recentFiles | ForEach-Object {
+    "  $($_.LastWriteTime.ToString('MM-dd HH:mm'))  $($_.FullName.Replace($RepoPath,''))"
+}) -join "`n"
+
+# Build the handoff document
+$content = @"
+# JARVIS TRADER — AI Handoff Document
+# Target: $Target | Generated: $timestamp | Branch: $branch
+
+---
+
+## HOW TO USE THIS DOCUMENT (for the AI receiving it)
+
+1. Read the **Project Context** section to understand what you're working on.
+2. Read **Current Sprint State** to understand what just shipped.
+3. Read **Next Steps** to understand exactly what to do next.
+4. Read **Git State** to understand the repo status.
+5. **DO NOT start coding until you've read all four sections.**
+6. The Python venv is at ``engine/.venv/Scripts/python`` — never use system Python.
+7. Dashboard uses ``pnpm`` — system npm is broken.
+
+---
+
+## 1) SESSION SUMMARY — FILL THIS IN BEFORE SWITCHING AIs
+
+> Describe what you worked on in this session, in chronological order.
+> Be specific: which files, which decisions, what broke, what you fixed.
+
+(TODO: Fill this in manually before handing off)
+
+---
+
+## 2) PROJECT CONTEXT
+
+**Engine**: FastAPI, Python 3.12, port 8010 (engine/)
+**Dashboard**: Next.js 15, TypeScript, port 3010 (dashboard/)
+**Strategy**: STC oscillator (OS=15, OB=83) + ATR stops (0.70x) + 5-layer regime filter
+**Mode**: Paper trading validation — April 2 to May 2, 2026
+**Approved instruments**: MCL (1h, WFE 0.82), MNQ (1h, WFE 0.57)
+**Safety**: LIVE_TRADING_ENABLED=False | REQUIRE_HUMAN_APPROVAL=True | Kill: -2% daily / -10% drawdown
+
+### Key commands
+``````bash
+cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010
+cd dashboard && pnpm dev
+.\restart_engine.ps1        # kills port 8010 and restarts
+.\start_jarvis.bat          # both engine + dashboard
+cd engine && .venv/Scripts/python -m pytest tests/ -v
+cd dashboard && pnpm run build
+``````
+
+---
+
+## 3) CURRENT SPRINT STATE
+### Latest report: $sprintReportName
+
+$sprintReport
+
+---
+
+## 4) NEXT STEPS (from NEXT_STEPS.md)
+
+$nextSteps
+
+---
+
+## 5) RECENTLY MODIFIED FILES (last 48 hours)
+
+$recentFilesList
+
+---
+
+## 6) GIT STATE
+
+### git status
+``````
+$gitStatus
+``````
+
+### git log --oneline -20
+``````
+$gitLog
+``````
+
+### git diff --stat
+``````
+$gitDiff
+``````
+
+---
+
+## 7) PROGRESS LOG (last 20 lines of progress.txt)
+
+$(($progressTxt -split "`n" | Select-Object -Last 20) -join "`n")
+
+---
+
+## 8) IN-PROGRESS / UNFINISHED WORK
+
+> Fill this in: anything started but not committed, half-done features, temp hacks.
+
+(TODO: Fill this in manually)
+
+---
+
+## 9) BLOCKERS
+
+> Fill this in: anything that stopped progress, needs a decision, or is waiting on something.
+
+(TODO: Fill this in manually — or see NEXT_STEPS.md > Blockers above)
+
+---
+
+*Generated by smart_handoff.ps1 | JARVIS TRADER*
+"@
+
+Set-Content -Path $OutputPath -Value $content -Encoding UTF8
+Write-Host ""
+Write-Host "✓ Handoff written to: $OutputPath" -ForegroundColor Green
+Write-Host "  → Open it and fill in sections 1, 8, and 9 before switching AIs." -ForegroundColor Yellow
+
+# Optionally zip recently modified source files for ChatGPT upload
+if ($ZipFiles) {
+    $zipPath = "handoff_context_$(Get-Date -Format 'yyyyMMdd_HHmm').zip"
+    $filesToZip = @($OutputPath)
+
+    # Always include the key orientation files
+    @("CLAUDE.md","NEXT_STEPS.md","docs\CURRENT_STATE.md") | ForEach-Object {
+        $f = Join-Path $RepoPath $_
+        if (Test-Path $f) { $filesToZip += $f }
+    }
+
+    # Add the latest sprint report
+    if ($latestReport) { $filesToZip += $latestReport.FullName }
+
+    # Add recently modified source files
+    $recentFiles | ForEach-Object { $filesToZip += $_.FullName }
+
+    Compress-Archive -Path $filesToZip -DestinationPath $zipPath -Force
+    Write-Host "✓ Context zip created: $zipPath" -ForegroundColor Green
+    Write-Host "  → Upload this zip to ChatGPT or Gemini along with the handoff doc." -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "SWITCHING AI GUIDE:" -ForegroundColor Cyan
+Write-Host "  ChatGPT : Upload $zipPath + paste the handoff doc. Use o3 or GPT-4o." -ForegroundColor White
+Write-Host "  Gemini  : Use gemini.google.com with 1M context — paste entire handoff." -ForegroundColor White
+Write-Host "  Claude  : New session — paste handoff doc, it'll orient itself via CLAUDE.md." -ForegroundColor White
+Write-Host "  Claude Code: Separate rate limits from Cowork — use CLI for heavy coding." -ForegroundColor White

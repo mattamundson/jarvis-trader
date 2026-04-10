@@ -116,17 +116,64 @@ def _row_pnl(row: Any) -> float:
     description="Unified multi-market P&L summary with total daily P&L, market breakdown, and daily target progress.",
 )
 async def portfolio_summary():
-    """Unified multi-market P&L summary."""
+    """Unified multi-market P&L summary including unrealized P&L from open positions."""
     orch = _get_orchestrator()
+
+    # ── Unrealized P&L from open positions ───────────────────────────────────
+    unrealized_pnl = 0.0
+    if paper_tracker is not None:
+        try:
+            open_positions: list[dict] = paper_tracker.get_open_positions()
+            if open_positions:
+                symbols = [str(p.get("symbol", "")) for p in open_positions]
+                if _data_manager is not None:
+                    results = await asyncio.gather(
+                        *[_data_manager.get_current_price(sym) for sym in symbols],
+                        return_exceptions=True,
+                    )
+                    current_prices = [
+                        (
+                            r.get("last_price")
+                            if isinstance(r, dict)
+                            else (float(r) if isinstance(r, (int, float)) else None)
+                        )
+                        if not isinstance(r, Exception) and r is not None
+                        else None
+                        for r in results
+                    ]
+                else:
+                    current_prices = [None] * len(open_positions)
+
+                for pos, current_price in zip(open_positions, current_prices, strict=True):
+                    computed = _compute_unrealized(pos, current_price, INSTRUMENT_POINT_VALUES)
+                    upnl = computed.get("unrealized_pnl") or 0.0
+                    unrealized_pnl += upnl
+        except Exception as exc:
+            logger.warning("portfolio_summary: unrealized P&L fetch failed: %s", exc)
+
     if not orch:
         return {
-            "total_daily_pnl": 0.0,
+            "total_daily_pnl": round(unrealized_pnl, 4),
+            "realized_pnl": 0.0,
+            "unrealized_pnl": round(unrealized_pnl, 4),
+            "total_pnl": round(unrealized_pnl, 4),
             "daily_target": 500.0,
             "target_progress_pct": 0.0,
             "markets": {},
             "message": "Orchestrator not initialized",
         }
+
     summary = await orch.get_portfolio_summary()
+    realized_pnl: float = summary.get("total_daily_pnl", 0.0)
+    total_pnl = realized_pnl + unrealized_pnl
+    daily_target: float = summary.get("daily_target") or 500.0
+
+    summary["realized_pnl"] = round(realized_pnl, 4)
+    summary["unrealized_pnl"] = round(unrealized_pnl, 4)
+    summary["total_pnl"] = round(total_pnl, 4)
+    summary["total_daily_pnl"] = round(total_pnl, 4)
+    if daily_target:
+        summary["target_progress_pct"] = round(total_pnl / daily_target * 100, 2)
     return summary
 
 

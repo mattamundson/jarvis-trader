@@ -1194,6 +1194,8 @@ export interface UnrealizedPosition {
   entry_price: number;
   current_price: number | null;
   unrealized_pnl: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
   stop_distance: number | null;
   target_distance: number | null;
 }
