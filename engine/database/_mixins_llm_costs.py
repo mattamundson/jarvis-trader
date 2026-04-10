@@ -20,8 +20,8 @@ MODEL_RATES: Dict[str, Dict[str, float]] = {
         "output": 15.0,  # $15 per million output tokens
     },
     "claude-haiku-4-5": {
-        "input": 0.25,  # $0.25 per million input tokens
-        "output": 1.25,  # $1.25 per million output tokens
+        "input": 0.80,  # $0.80 per million input tokens
+        "output": 4.00,  # $4.00 per million output tokens
     },
 }
 
