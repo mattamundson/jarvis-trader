@@ -112,7 +112,7 @@ class TraderAgent:
     without consulting the LLM — no reasoning needed when trading is halted.
     """
 
-    MODEL = "claude-opus-4-6"
+    MODEL = "claude-sonnet-4-6"
     MAX_TOKENS = 1200
 
     SYSTEM_PROMPT = (

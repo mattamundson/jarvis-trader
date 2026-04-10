@@ -97,7 +97,9 @@ class WhatsAppNotifier:
         if action == "hold":
             return False
 
-        action_text = action.upper().replace("_", " ")
+        # Map action to display label — sell shows as SHORT for clarity
+        _ACTION_LABELS = {"buy": "LONG", "sell": "SHORT", "long": "LONG", "short": "SHORT"}
+        action_text = _ACTION_LABELS.get(action, action.upper().replace("_", " "))
 
         # Confidence — prefer boosted_confidence (post-futures-boost), fall back to
         # raw_confidence then trade_decision conviction, then 0
@@ -127,7 +129,8 @@ class WhatsAppNotifier:
         trade = result.get("trade_decision") or {}
         entry_price = trade.get("entry_price", 0.0)
         stop_price = trade.get("stop_price", 0.0)
-        rr = trade.get("risk_reward", 0.0)
+        # TradeDecision.to_dict() emits "rr_ratio"; fall back to legacy "risk_reward"
+        rr = trade.get("rr_ratio") or trade.get("risk_reward", 0.0)
         notes = trade.get("notes", "")
 
         if entry_price:

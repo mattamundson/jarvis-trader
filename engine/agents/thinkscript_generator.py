@@ -163,7 +163,7 @@ Return ONLY the ThinkScript code — no explanation, no markdown fences, just ra
 
         try:
             response = client.messages.create(
-                model="claude-opus-4-6",
+                model="claude-sonnet-4-6",
                 max_tokens=2000,
                 system=self._system_prompt,
                 messages=[{"role": "user", "content": prompt}],

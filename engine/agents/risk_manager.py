@@ -299,10 +299,15 @@ class RiskManagerAgent:
         # 4. Single order value limit
         quantity = abs(int(trade.get("quantity", 0)))
         limit_price = trade.get("limit_price")
-        # Estimate order value: use limit_price if available, else fall back to
-        # technical current_price if it was threaded through, else use equity heuristic
+        entry_price_raw = trade.get("entry_price")
+        # Estimate order value: limit_price > entry_price > equity heuristic
+        # For market orders, TraderAgent sets entry_price but limit_price=None.
+        # The equity heuristic (5000/qty+1) always produces ~$5,001 and would
+        # incorrectly block every single-contract market order.
         if limit_price is not None and limit_price > 0:
             estimated_price = float(limit_price)
+        elif entry_price_raw is not None and entry_price_raw > 0:
+            estimated_price = float(entry_price_raw)
         else:
             # No price available — use a conservative upper bound check
             estimated_price = self.ABSOLUTE_MAX_ORDER_VALUE / max(quantity, 1) + 1
