@@ -510,9 +510,91 @@ async def lifespan(app: FastAPI):
         async def _analyze_and_alert(symbol: str, is_futures: bool) -> None:
             import time as _time_mod
 
+            # ── Scanner guards (added 2026-04-10) ────────────────────────
+            # Guard 1: Already-open position check. Prevents duplicate trades
+            # like the 2026-04-10 incident where MES shorts #108/#109/#110 were
+            # created on consecutive hourly scans against identical bogus prices.
+            try:
+                import sqlite3 as _sqlite3
+
+                with _sqlite3.connect(settings.SQLITE_DB_PATH) as _conn:
+                    _existing = _conn.execute(
+                        "SELECT id, side FROM paper_trades WHERE symbol=? AND status='open' LIMIT 1",
+                        (symbol,),
+                    ).fetchone()
+                if _existing is not None:
+                    logger.info(
+                        "[Scanner guard] %s already has open position id=%s side=%s — skipping scan",
+                        symbol,
+                        _existing[0],
+                        _existing[1],
+                    )
+                    return
+            except Exception as _guard_exc:
+                logger.warning(
+                    "[Scanner guard] already-open check failed for %s: %s (allowing scan)",
+                    symbol,
+                    _guard_exc,
+                )
+
             try:
                 _t0 = _time_mod.monotonic()
                 result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
+
+                # Guard 2: Price sanity check. Reject the decision if the
+                # pipeline operated on a price outside the hard-coded "plausible
+                # range" for the instrument. This is a last-line defense against
+                # stale-cache contamination like the 2026-04-10 incident where
+                # MES shorts were entered at $70.57 (real MES ~$6000).
+                # Ranges are deliberately wide — only catch obvious absurdities.
+                _PLAUSIBLE_PRICE_RANGE = {
+                    "MCL": (40.0, 130.0),   # WTI crude: ~$60-100 typical
+                    "MES": (3000.0, 8000.0),  # S&P 500 mini: ~$4000-7000
+                    "MNQ": (10000.0, 30000.0),  # Nasdaq mini
+                    "MGC": (1500.0, 5000.0),  # Gold
+                    "MYM": (25000.0, 50000.0),  # Dow mini
+                }
+                _trade_dec_for_guard = result.get("trade_decision") or {}
+                _px_candidate = (
+                    _trade_dec_for_guard.get("limit_price")
+                    or _trade_dec_for_guard.get("stop_price")
+                    or _trade_dec_for_guard.get("entry_price")
+                )
+                _range = _PLAUSIBLE_PRICE_RANGE.get(symbol.upper())
+                if (
+                    _range is not None
+                    and _px_candidate is not None
+                    and result.get("final_action", "hold") not in ("hold",)
+                ):
+                    try:
+                        _px = float(_px_candidate)
+                        if _px < _range[0] or _px > _range[1]:
+                            logger.error(
+                                "[Scanner guard] %s price sanity FAILED: px=%.2f outside plausible range %s — "
+                                "forcing HOLD. Likely stale-cache contamination.",
+                                symbol,
+                                _px,
+                                _range,
+                            )
+                            # Rewrite the result to HOLD and log to decision feed, then return
+                            result["final_action"] = "hold"
+                            result["sanity_override"] = {
+                                "price_rejected": _px,
+                                "plausible_range": list(_range),
+                                "reason": "price outside hardcoded plausible range — refusing to trade",
+                            }
+                            _log_decision(
+                                symbol=symbol,
+                                action="hold",
+                                confidence=0.0,
+                                source="scanner_guard_sanity_failed",
+                                summary=f"Price sanity guard rejected px={_px:.2f} outside {_range}",
+                                reasoning="Scanner guard: price outside plausible range (stale cache?)",
+                                full_pipeline_data=result,
+                            )
+                            return
+                    except (TypeError, ValueError):
+                        pass
                 _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
                 action = result.get("final_action", "hold")
 
@@ -595,19 +677,29 @@ async def lifespan(app: FastAPI):
             await _analyze_and_alert(sym, fut)
 
     # Run every 30 minutes on weekdays, 9:30am-4:00pm Chicago time
+    # WATCHLIST_SCAN_ENABLED added 2026-04-10 as an emergency kill switch — when False,
+    # the scheduler still starts (other jobs below depend on it) but the watchlist scan
+    # job is not registered, preventing contaminated-data pipeline runs from landing trades.
     if settings.ANTHROPIC_API_KEY:
-        scheduler.add_job(
-            run_watchlist_analysis,
-            CronTrigger(
-                day_of_week="mon-fri", hour="9-15", minute="0,30", timezone="America/Chicago"
-            ),
-            id="watchlist_scan",
-            name="Watchlist Auto-Scan",
-            max_instances=1,
-            misfire_grace_time=300,
-        )
+        if settings.WATCHLIST_SCAN_ENABLED:
+            scheduler.add_job(
+                run_watchlist_analysis,
+                CronTrigger(
+                    day_of_week="mon-fri", hour="9-15", minute="0,30", timezone="America/Chicago"
+                ),
+                id="watchlist_scan",
+                name="Watchlist Auto-Scan",
+                max_instances=1,
+                misfire_grace_time=300,
+            )
+            logger.info("⏰ Watchlist auto-scan registered — every 30min (9:30am-4pm CT weekdays)")
+        else:
+            logger.warning(
+                "⛔ WATCHLIST_SCAN_ENABLED=false — hourly watchlist auto-scan is DISABLED. "
+                "Re-enable in .env after data layer + scanner guards are verified."
+            )
         scheduler.start()
-        logger.info("⏰ Scheduler started — watchlist scan every 30min (9:30am-4pm CT weekdays)")
+        logger.info("⏰ Scheduler started")
 
     # ── Daily MGC signal scanner (runs 18:00 ET / 23:00 UTC) ────────────
     async def run_daily_mgc_signal():

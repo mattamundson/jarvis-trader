@@ -34,8 +34,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _default_db_path() -> str:
-    base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    return os.path.join(base, "data", "jarvis_trader.db")
+    # DB lives at engine/data/jarvis_trader.db. Anchor at engine/ root, not
+    # workspace root — the previous 3-levels-up walked past engine/ and
+    # caused a split-brain DB on 2026-04-10.
+    engine_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(engine_root, "data", "jarvis_trader.db")
 
 
 # ---------------------------------------------------------------------------

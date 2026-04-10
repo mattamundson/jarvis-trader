@@ -38,9 +38,11 @@ class IBLevelProvider:
 
     def __init__(self, db_path: str = None):
         if db_path is None:
-            # Resolve relative to project root: engine/discord/ → engine/ → project root
-            base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            db_path = os.path.join(base, "data", "jarvis_trader.db")
+            # DB lives at engine/data/jarvis_trader.db (not workspace root).
+            # Previous 3-levels-up walked past engine/ to the workspace root,
+            # causing a split-brain DB on 2026-04-10.
+            engine_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            db_path = os.path.join(engine_root, "data", "jarvis_trader.db")
         self.db_path = db_path
         self._cache: dict = {}  # key: (discord_symbol, date_str) → dict | None
 

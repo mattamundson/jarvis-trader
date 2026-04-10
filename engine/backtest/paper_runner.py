@@ -91,23 +91,65 @@ def _import_signal_deps():
 # ── Position State I/O ────────────────────────────────────────────────────────
 
 
+def _adapt_trade_row_to_position(trade: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Translate a SQLite paper_trades row into the dict shape that
+    manage_open_position() / _print_summary() / _cmd_status() expect.
+
+    The DB schema uses column names (stop_loss, entry_time, quantity), while
+    the runner's legacy in-memory shape uses (stop, entry_date, contracts,
+    targets, contracts_remaining, t{1,2,3}_hit). Targets and per-target hit
+    flags live inside the JSON-serialised strategy_params column.
+
+    This adapter is what Stage 5 (2026-04-10) added to fix a hourly
+    KeyError: 'stop' crash in the paper runner when the DB-sourced trade
+    dict did not match the legacy key names.
+    """
+    pos: Dict[str, Any] = dict(trade)
+
+    # Field-name translation (copy, don't mutate original column values)
+    pos["stop"] = trade.get("stop_loss")
+    pos["entry_date"] = trade.get("entry_time")
+
+    quantity = int(float(trade.get("quantity") or 1))
+    pos["contracts"] = quantity
+
+    # Parse strategy_params for per-target hit state + target list + dynamic state
+    raw_params = trade.get("strategy_params") or "{}"
+    try:
+        params = json.loads(raw_params) if isinstance(raw_params, str) else (raw_params or {})
+    except (json.JSONDecodeError, TypeError):
+        params = {}
+
+    raw_targets = params.get("targets") or []
+    pos["targets"] = list(raw_targets) if isinstance(raw_targets, (list, tuple)) else []
+    pos["contracts_remaining"] = int(params.get("contracts_remaining", quantity))
+    pos["t1_hit"] = bool(params.get("t1_hit", False))
+    pos["t2_hit"] = bool(params.get("t2_hit", False))
+    pos["t3_hit"] = bool(params.get("t3_hit", False))
+    pos["risk_pct_used"] = params.get("risk_pct_used", trade.get("risk_pct_used"))
+
+    return pos
+
+
 def load_positions() -> Dict[str, Any]:
     """
     Load open paper positions from SQLite via database manager.
 
-    Returns dict mapping symbol -> position record.
+    Returns dict mapping symbol -> position record, adapted to the
+    legacy in-memory shape expected by manage_open_position().
     """
     try:
         from database.manager import get_db
 
         db = get_db()
         open_trades = db.get_open_trades()
-        # Convert to position format: {symbol: position_dict}
-        positions = {}
+        positions: Dict[str, Any] = {}
         for trade in open_trades:
             symbol = trade.get("symbol", "")
-            if symbol:
-                positions[symbol] = trade
+            if not symbol:
+                continue
+            positions[symbol] = _adapt_trade_row_to_position(trade)
         return positions
     except Exception as exc:
         logging.getLogger("paper_runner").warning(

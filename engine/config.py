@@ -138,7 +138,16 @@ class TradingConfig(BaseSettings):
     MAX_MARGIN_UTILIZATION: float = Field(0.40, description="Never exceed 40% of available margin")
 
     # ── Futures-Specific ─────────────────────────────────────────────────
-    MAX_CONTRACTS_PER_INSTRUMENT: int = Field(2, description="Max micro contracts per instrument")
+    # MAX_CONTRACTS_PER_INSTRUMENT has a HARD CAP of 2 enforced by the
+    # `_enforce_max_contracts_hard_cap` validator below. The .env file cannot
+    # raise this limit — any value > 2 is clamped to 2 with a warning. This
+    # was added 2026-04-10 after a runaway scanner created multiple
+    # 3-contract MES shorts on stale price data; root cause was .env:95
+    # silently overriding the config default.
+    MAX_CONTRACTS_PER_INSTRUMENT: int = Field(
+        2,
+        description="Max micro contracts per instrument (HARD CAP: cannot exceed 2)",
+    )
     MAX_OVERNIGHT_CONTRACTS: int = Field(1, description="Max contracts to hold overnight")
 
     # ── Execution Cost Modeling (Backtests) ──────────────────────────────
@@ -180,7 +189,15 @@ class TradingConfig(BaseSettings):
     # ── Infrastructure ────────────────────────────────────────────────────
     SQLITE_DB_PATH: str = Field(
         "data/jarvis_trader.db",
-        description="Canonical SQLite database path (relative to engine root)",
+        description=(
+            "Canonical SQLite database path. At runtime this is resolved to an "
+            "absolute path anchored on engine/ by the _resolve_sqlite_db_path "
+            "validator below, regardless of the working directory of the "
+            "importing process. Added 2026-04-10 to fix a split-brain DB bug "
+            "where processes running from workspace root wrote to "
+            "data/jarvis_trader.db while the engine wrote to "
+            "engine/data/jarvis_trader.db."
+        ),
     )
 
     # ── STC Mid-Range Pre-Filter ──────────────────────────────────────────
@@ -201,6 +218,14 @@ class TradingConfig(BaseSettings):
         description=(
             "Enable MTF (multi-timeframe) 4h vs 1h STC alignment pre-filter. "
             "Set to False to bypass when market data is stale or IB Gateway is offline."
+        ),
+    )
+    WATCHLIST_SCAN_ENABLED: bool = Field(
+        True,
+        description=(
+            "Enable hourly watchlist auto-scanner. Set to False to halt the scheduled "
+            "pipeline scans without restarting the engine (emergency kill for contaminated "
+            "data conditions). Introduced 2026-04-10 after stale-cache trades contaminated paper_trades."
         ),
     )
 
@@ -362,6 +387,55 @@ class TradingConfig(BaseSettings):
                     pass
             return [item.strip().strip("\"'") for item in v.split(",") if item.strip()]
         return v
+
+    @field_validator("SQLITE_DB_PATH")
+    @classmethod
+    def _resolve_sqlite_db_path(cls, v: str) -> str:
+        """
+        Resolve SQLITE_DB_PATH to an absolute path anchored on the engine/
+        directory, regardless of the caller's working directory.
+
+        Rationale: the previous default "data/jarvis_trader.db" was a
+        *relative* path. When the engine ran with cwd=engine/, it resolved
+        to engine/data/jarvis_trader.db (correct). When other tools or
+        subprocesses ran with cwd=workspace-root, the same string resolved
+        to workspace-root/data/jarvis_trader.db (a different DB file),
+        producing a split-brain where Discord data and paper trades
+        landed in different databases. 2026-04-10 fix.
+        """
+        from pathlib import Path as _Path
+
+        p = _Path(v)
+        if p.is_absolute():
+            return str(p)
+
+        # Anchor at engine/ regardless of cwd:
+        # config.py lives at engine/config.py → parent = engine/
+        engine_root = _Path(__file__).resolve().parent
+        return str(engine_root / v)
+
+    @field_validator("MAX_CONTRACTS_PER_INSTRUMENT")
+    @classmethod
+    def _enforce_max_contracts_hard_cap(cls, v: int) -> int:
+        """
+        Enforce a hard ceiling of 2 micro contracts per instrument. The .env
+        file cannot raise this limit. Added 2026-04-10 after a runaway
+        scanner created 3-contract MES shorts despite the config default
+        being 2 — root cause was .env override silently winning.
+        """
+        import logging as _logging
+
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            n = 2
+        if n > 2:
+            _logging.getLogger(__name__).warning(
+                "MAX_CONTRACTS_PER_INSTRUMENT=%s from env exceeds hard cap of 2 — clamping to 2",
+                n,
+            )
+            return 2
+        return max(1, n)
 
     @field_validator("API_KEY", mode="after")
     @classmethod
