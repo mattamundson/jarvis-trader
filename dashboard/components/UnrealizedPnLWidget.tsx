@@ -61,11 +61,21 @@ function PositionRow({ pos }: { pos: UnrealizedPosition }) {
           </span>
         </div>
         <div className="flex gap-2 text-xs text-zinc-500 mt-0.5">
-          {pos.stop_distance !== null && (
-            <span>Stop: ${pos.stop_distance.toFixed(2)} away</span>
+          {pos.stop_loss !== null && (
+            <span className="text-red-500/70">
+              SL: ${pos.stop_loss.toFixed(2)}
+              {pos.stop_distance !== null && (
+                <span className="text-zinc-600"> ({pos.stop_distance.toFixed(2)} away)</span>
+              )}
+            </span>
           )}
-          {pos.target_distance !== null && (
-            <span>Target: ${pos.target_distance.toFixed(2)} away</span>
+          {pos.take_profit !== null && (
+            <span className="text-emerald-500/70">
+              TP: ${pos.take_profit.toFixed(2)}
+              {pos.target_distance !== null && (
+                <span className="text-zinc-600"> ({pos.target_distance.toFixed(2)} away)</span>
+              )}
+            </span>
           )}
         </div>
       </div>
