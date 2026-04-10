@@ -734,6 +734,20 @@ class TradingPipeline:
         except Exception as e:
             logger.warning(f"Failed to publish pipeline event: {e}")
 
+        # ── WhatsApp alert on LONG / SHORT signals ─────────────────────────────
+        if final_action.lower() not in ("hold", "pending_human_approval"):
+            try:
+                from notifications.whatsapp import get_notifier
+
+                asyncio.create_task(
+                    get_notifier().alert_pipeline_result(symbol, pipeline_result)
+                )
+                logger.info(
+                    f"[Pipeline] WhatsApp alert queued for {symbol} {final_action.upper()}"
+                )
+            except Exception as _wa_err:
+                logger.warning(f"[Pipeline] WhatsApp alert failed (non-fatal): {_wa_err}")
+
         return pipeline_result
 
     # ── Stage Runners ──────────────────────────────────────────────────────

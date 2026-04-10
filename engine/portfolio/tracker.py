@@ -1049,7 +1049,7 @@ class PortfolioTracker:
             return
 
         try:
-            rows = self._db.get_trade_history(limit=5000)
+            rows = self._db.get_trade_history(limit=5000, status="open")
             if not rows:
                 self._open = {}
                 logger.info(

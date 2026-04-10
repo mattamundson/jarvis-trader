@@ -307,6 +307,7 @@ class SignalScanner:
                     regime=_regime,
                     signal_data={"source": "scanner", "summary": _summary},
                     reasoning=_reasoning or _summary,
+                    full_pipeline_data=result,
                 )
             except Exception as _dec_exc:
                 logger.warning("[Scanner] Failed to log decision for %s: %s", symbol, _dec_exc)
