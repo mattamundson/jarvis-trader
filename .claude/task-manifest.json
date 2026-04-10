@@ -1,65 +1,130 @@
 {
-  "session": "2026-04-09",
+  "session": "2026-04-10-upgrades",
+  "project": "JARVIS TRADER cutting-edge upgrade",
   "tasks": [
     {
-      "id": "task-1",
-      "area": "requirements-versions",
-      "status": "unowned",
+      "id": "T01",
+      "area": "pipeline.py — Hidden Pivots + time-of-day filter",
+      "files": [
+        "engine/agents/pipeline.py"
+      ],
+      "tracks": [
+        "A1",
+        "A3"
+      ],
+      "status": "done",
       "owner": null
     },
     {
-      "id": "task-2",
-      "area": "dashboard-localhost-fix",
-      "status": "unowned",
+      "id": "T02",
+      "area": "trader.py — VIX sizing + confluence sizing",
+      "files": [
+        "engine/agents/trader.py"
+      ],
+      "tracks": [
+        "A2",
+        "B2"
+      ],
+      "status": "done",
       "owner": null
     },
     {
-      "id": "task-3",
-      "area": "comprehensive-report",
-      "status": "unowned",
+      "id": "T03",
+      "area": "debate.py — dynamic thresholds + IC alpha weighting",
+      "files": [
+        "engine/agents/debate.py"
+      ],
+      "tracks": [
+        "B1",
+        "F1"
+      ],
+      "status": "done",
       "owner": null
     },
     {
-      "id": "task-4",
-      "area": "sprint12-prd",
-      "status": "unowned",
+      "id": "T04",
+      "area": "researchers — evidence-weighted scoring prompts",
+      "files": [
+        "engine/agents/bull_researcher.py",
+        "engine/agents/bear_researcher.py"
+      ],
+      "tracks": [
+        "B3"
+      ],
+      "status": "done",
+      "owner": "agent-4"
+    },
+    {
+      "id": "T05",
+      "area": "social_analyst.py — institutional options flow pipeline",
+      "files": [
+        "engine/agents/social_analyst.py"
+      ],
+      "tracks": [
+        "F2"
+      ],
+      "status": "done",
       "owner": null
     },
     {
-      "id": "task-5",
-      "area": "signal-feed-component",
-      "status": "unowned",
+      "id": "T06",
+      "area": "prd.json — ralph user stories",
+      "files": [
+        "prd.json"
+      ],
+      "tracks": [
+        "setup"
+      ],
+      "status": "done",
       "owner": null
     },
     {
-      "id": "task-6",
-      "area": "wfe-monitor-endpoint",
-      "status": "unowned",
+      "id": "T07",
+      "area": "token_optimizer.py — 60-90% cost reduction",
+      "files": [
+        "engine/utils/token_optimizer.py"
+      ],
+      "tracks": [
+        "G1"
+      ],
+      "status": "done",
       "owner": null
     },
     {
-      "id": "task-7",
-      "area": "memory-tasks-cleanup",
-      "status": "unowned",
+      "id": "T08",
+      "area": "managed_agent_bridge.py — Claude Managed Agents",
+      "files": [
+        "engine/agents/managed_agent_bridge.py"
+      ],
+      "tracks": [
+        "H1"
+      ],
+      "status": "done",
       "owner": null
     },
     {
-      "id": "task-8",
-      "area": "options-audit",
-      "status": "unowned",
-      "owner": null
+      "id": "T09",
+      "area": "verification — full test suite",
+      "files": [
+        "engine/tests/"
+      ],
+      "tracks": [
+        "verify"
+      ],
+      "status": "in_progress",
+      "owner": "agent-9"
     },
     {
-      "id": "task-9",
-      "area": "security-remediation-guide",
-      "status": "unowned",
-      "owner": null
-    },
-    {
-      "id": "task-10",
-      "area": "build-verification",
-      "status": "unowned",
-      "owner": null
+      "id": "T10",
+      "area": "test_new_features.py — unit tests for new tracks",
+      "files": [
+        "engine/tests/test_new_features.py"
+      ],
+      "tracks": [
+        "tests"
+      ],
+      "status": "done",
+      "owner": "agent-10"
     }
   ]
 }
