@@ -32,6 +32,12 @@ from tenacity import (
 
 from .cost_tracker import CostTracker
 
+try:
+    from utils.token_proxy import get_token_proxy
+    _TOKEN_PROXY_AVAILABLE = True
+except Exception as _tp_err:
+    _TOKEN_PROXY_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,6 +106,9 @@ class JarvisLLMClient:
         start_time: float,
         retries: int,
         agent_name: str,
+        proxy=None,
+        compressed_key=None,
+        cache_salt: str = "",
     ) -> LLMCallResult:
         """Handle successful API call."""
         latency_ms = int((time.time() - start_time) * 1000)
@@ -126,7 +135,7 @@ class JarvisLLMClient:
             f"cost:${cost:.4f} | latency:{latency_ms}ms | retries:{retries}"
         )
 
-        return LLMCallResult(
+        result_obj = LLMCallResult(
             success=True,
             model=current_model,
             input_tokens=input_tokens,
@@ -136,6 +145,15 @@ class JarvisLLMClient:
             retries=retries,
             content=result.content[0].text,
         )
+
+        # TokenProxy — cache successful result
+        if proxy is not None and compressed_key is not None:
+            try:
+                proxy.set_cached(compressed_key, result_obj, model=str(current_model), salt=cache_salt)
+            except Exception:
+                pass  # graceful — cache write failure never breaks API call
+
+        return result_obj
 
     async def _handle_failure(
         self,
@@ -212,6 +230,25 @@ class JarvisLLMClient:
         Returns:
             LLMCallResult with success, tokens, cost, latency, retries
         """
+        # TokenProxy — compress + cache check
+        proxy = None
+        compressed_key = None
+        cache_salt = f"{model}::{agent_name}"
+        if _TOKEN_PROXY_AVAILABLE and messages:
+            try:
+                proxy = get_token_proxy()
+                last_msg = messages[-1]
+                if isinstance(last_msg, dict) and "content" in last_msg and isinstance(last_msg["content"], str):
+                    compressed, cached = proxy.optimize(last_msg["content"], model=str(model), salt=cache_salt)
+                    if cached is not None:
+                        return cached  # cache hit — skip API call entirely
+                    last_msg["content"] = compressed
+                    compressed_key = compressed
+            except Exception as _tp_run_err:
+                # graceful — never let token proxy break API calls
+                proxy = None
+                compressed_key = None
+
         start_time = time.time()
         retries = 0
         last_error = None
@@ -228,7 +265,8 @@ class JarvisLLMClient:
                     temperature=temperature,
                 )
                 return await self._handle_success(
-                    result, current_model, start_time, retries, agent_name
+                    result, current_model, start_time, retries, agent_name,
+                    proxy=proxy, compressed_key=compressed_key, cache_salt=cache_salt
                 )
 
             except RateLimitError as e:

@@ -39,6 +39,39 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["DebateResult", "DebateOrchestrator"]
 
+# ── Lazy-init Advisor + IC Ensemble (Tracks F + H, wired 2026-04-10) ──────
+# Module-level singletons so we don't pay construction cost per debate run.
+# Both gracefully degrade when their dependencies are missing — see the
+# AdvisorClient + ICWeightedEnsemble docstrings for failure semantics.
+_advisor_instance = None
+_ic_ensemble_instance = None
+
+
+def _get_advisor():
+    """Lazy-construct AdvisorClient. Returns None on import/init failure."""
+    global _advisor_instance
+    if _advisor_instance is None:
+        try:
+            from engine.agents.advisor_client import AdvisorClient
+            _advisor_instance = AdvisorClient()
+        except Exception as _err:  # pragma: no cover — defensive
+            logger.info("AdvisorClient unavailable in debate: %s", _err)
+            _advisor_instance = False  # sentinel: tried and failed
+    return _advisor_instance if _advisor_instance is not False else None
+
+
+def _get_ic_ensemble(agents):
+    """Lazy-construct ICWeightedEnsemble. Returns None on import/init failure."""
+    global _ic_ensemble_instance
+    if _ic_ensemble_instance is None:
+        try:
+            from engine.analytics.ic_ensemble import ICWeightedEnsemble
+            _ic_ensemble_instance = ICWeightedEnsemble(agents=list(agents))
+        except Exception as _err:  # pragma: no cover — defensive
+            logger.info("ICWeightedEnsemble unavailable in debate: %s", _err)
+            _ic_ensemble_instance = False  # sentinel
+    return _ic_ensemble_instance if _ic_ensemble_instance is not False else None
+
 # Regime-adaptive debate verdict thresholds.
 # Tighter thresholds for high-conviction regimes (less noise needed to call a winner);
 # looser thresholds for choppy/uncertain regimes (require stronger signal).
@@ -216,20 +249,44 @@ class DebateOrchestrator:
             _tracker = None
             agent_weights = {}
 
-        # IC scores — Information Coefficients per analyst (Track F1)
-        # IC(i) = historical_accuracy(i) - 0.5  (random = 0, perfect = 0.5)
-        # Based on the Fundamental Law of Active Management: IR = IC × √N
+        # IC scores — Information Coefficients per analyst.
+        # Track H upgrade (2026-04-10): prefer Spearman rank correlation from
+        # ICWeightedEnsemble when its underlying trade_outcomes table has
+        # enough rows; fall back to the existing accuracy-based formulation
+        # (Track F1) when the new ensemble is empty or unavailable. The two
+        # produce different magnitudes but the downstream `signal × (1 + IC)`
+        # formula handles both — Spearman just yields stronger boosts for
+        # genuinely-skilled analysts because it captures rank ordering, not
+        # binary correctness.
         _ic_analyst_names = ["technical", "news", "social", "fundamental", "corey"]
-        try:
-            if _tracker is not None:
-                ic_scores: dict[str, float] = {
-                    name: max(0.0, _tracker.compute_accuracy(name) - 0.5)
+        ic_scores: dict[str, float] = {}
+        _ic_source = "none"
+
+        _spearman_ensemble = _get_ic_ensemble(_ic_analyst_names)
+        if _spearman_ensemble is not None:
+            try:
+                _spearman_ics = {
+                    name: _spearman_ensemble.compute_ic(name)
                     for name in _ic_analyst_names
                 }
-            else:
+                if any(v > 0 for v in _spearman_ics.values()):
+                    ic_scores = {name: max(0.0, v) for name, v in _spearman_ics.items()}
+                    _ic_source = "spearman"
+            except Exception as _ic_err:
+                logger.debug("ICWeightedEnsemble.compute_ic failed: %s", _ic_err)
+
+        if not ic_scores:
+            try:
+                if _tracker is not None:
+                    ic_scores = {
+                        name: max(0.0, _tracker.compute_accuracy(name) - 0.5)
+                        for name in _ic_analyst_names
+                    }
+                    _ic_source = "accuracy"
+                else:
+                    ic_scores = {}
+            except Exception:
                 ic_scores = {}
-        except Exception:
-            ic_scores = {}
 
         # Compute IR (Information Ratio) for this debate run and log it
         _ic_active = {k: v for k, v in ic_scores.items() if v > 0}
@@ -237,8 +294,8 @@ class DebateOrchestrator:
         _avg_ic = sum(_ic_active.values()) / max(_n_analysts, 1) if _ic_active else 0.0
         _ir_score = _avg_ic * (_n_analysts ** 0.5) if _n_analysts > 0 else 0.0
         logger.info(
-            "[Debate] %s alpha combination: IC_avg=%.3f N=%d IR_score=%.3f",
-            symbol, _avg_ic, _n_analysts, _ir_score,
+            "[Debate] %s alpha combination: IC_avg=%.3f N=%d IR_score=%.3f source=%s",
+            symbol, _avg_ic, _n_analysts, _ir_score, _ic_source,
         )
 
         # Apply IC weights + accuracy weights to analyst_reports signals before
@@ -372,6 +429,23 @@ class DebateOrchestrator:
             debate_score = round((bull_score - bear_score) / 10, 4)
             result.debate_score = debate_score
 
+            # B1 defensive belt (2026-04-10): if both scores collapsed to zero
+            # without an upstream failure path setting scoring_failed, the
+            # debate is silently producing INCONCLUSIVE → forced HOLD downstream
+            # at pipeline.py:662. Catch the regression and flag it so the
+            # pipeline gate falls through to the trader instead of forcing HOLD.
+            if (
+                bull_score == 0
+                and bear_score == 0
+                and not result.scoring_failed
+            ):
+                logger.warning(
+                    "[Debate] %s — both scores zero with no upstream failure flag; "
+                    "marking scoring_failed to bypass forced HOLD at pipeline gate",
+                    symbol,
+                )
+                result.scoring_failed = True
+
             if debate_score >= _threshold:
                 verdict = "BULL_WINS"
             elif debate_score <= -_threshold:
@@ -431,6 +505,81 @@ class DebateOrchestrator:
                 )
             result.scoring_failed = True
             # verdict stays INCONCLUSIVE (safe default for fallback)
+
+        # ── Advisor consultation (Track F, wired 2026-04-10) ─────────────
+        # Consult Claude Opus as a tiebreaker when:
+        #   • the verdict is INCONCLUSIVE (regardless of scoring_failed), OR
+        #   • |debate_score| is within tiebreak tolerance of the regime
+        #     threshold (razor-thin BULL_WINS / BEAR_WINS calls).
+        # The advisor never raises — graceful no-op when unavailable. On a
+        # decisive verdict it overrides the result and nudges debate_score
+        # past the threshold so downstream consumers see a directional signal.
+        try:
+            _advisor = _get_advisor()
+            if _advisor is not None and _advisor.is_available():
+                _should_consult = (
+                    result.verdict == "INCONCLUSIVE"
+                    or _advisor.should_consult_debate(
+                        result.debate_score, _threshold
+                    )
+                )
+                if _should_consult:
+                    bull_case_text = (
+                        _extract_case_text(bull_report, role="bull")
+                        if bull_report
+                        else ""
+                    )
+                    bear_case_text = (
+                        _extract_case_text(bear_report, role="bear")
+                        if bear_report
+                        else ""
+                    )
+                    verdict_obj = await _advisor.consult_debate_tiebreak(
+                        bull_case=bull_case_text,
+                        bear_case=bear_case_text,
+                        debate_score=result.debate_score,
+                        regime=(regime or "UNKNOWN"),
+                        analyst_reports=weighted_reports,
+                    )
+                    if verdict_obj.consulted and verdict_obj.verdict in {
+                        "LONG",
+                        "SHORT",
+                    }:
+                        translated = (
+                            "BULL_WINS"
+                            if verdict_obj.verdict == "LONG"
+                            else "BEAR_WINS"
+                        )
+                        logger.info(
+                            "[Debate] %s — advisor tiebreak: %s "
+                            "(was %s, conf=%.2f) reasoning=%s",
+                            symbol,
+                            translated,
+                            result.verdict,
+                            verdict_obj.confidence,
+                            (verdict_obj.reasoning or "")[:80],
+                        )
+                        result.verdict = translated
+                        # The advisor produced a decisive call — clear the
+                        # failure flag so pipeline.py:662 honors the new
+                        # verdict instead of treating it as a fallback.
+                        result.scoring_failed = False
+                        # Nudge debate_score past the threshold so downstream
+                        # consumers see a directional, post-advisor signal.
+                        if (
+                            translated == "BULL_WINS"
+                            and result.debate_score < _threshold
+                        ):
+                            result.debate_score = round(_threshold + 0.01, 4)
+                        elif (
+                            translated == "BEAR_WINS"
+                            and result.debate_score > -_threshold
+                        ):
+                            result.debate_score = round(-_threshold - 0.01, 4)
+        except Exception as _adv_err:  # pragma: no cover — defensive
+            logger.warning(
+                "[Debate] %s — advisor consult raised: %s", symbol, _adv_err
+            )
 
         return result
 

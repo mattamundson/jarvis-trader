@@ -136,6 +136,7 @@ class CoreyAuctionAnalystAgent:
         symbol: str,
         current_price: float = 0.0,
         atr: float = 0.0,
+        hp_context: Optional[dict] = None,
         **kwargs,
     ) -> CoreyAuctionReport:
         """
@@ -145,6 +146,8 @@ class CoreyAuctionAnalystAgent:
             symbol:        JARVIS trading symbol (e.g. "MCL", "MNQ", "MES")
             current_price: Current market price (0.0 = skip proximity boost)
             atr:           Average True Range in price points (0.0 = skip proximity boost)
+            hp_context:    Optional Hidden Pivots dict with "direction"/"bias" key (bullish/bearish/long/short)
+                          When provided and direction matches Corey bias, alignment_score is boosted
 
         Returns:
             CoreyAuctionReport with signal, confidence, and full auction context
@@ -163,6 +166,23 @@ class CoreyAuctionAnalystAgent:
         bot_signal = self._get_active_bot_signal(discord_symbol)
         bot_win_rate = self._get_rolling_win_rate(discord_symbol)
 
+        # ── TV Live Data (optional enrichment) ────────────────────────────
+        tv_corey_score = None
+        tv_ib_high = None
+        tv_ib_low = None
+        tv_poc = None
+        try:
+            from data.tradingview_feed import TradingViewFeed
+            _tv = TradingViewFeed()
+            _tv_snap = _tv.get_snapshot(symbol)
+            if _tv_snap and _tv_snap.data_quality != "unavailable":
+                tv_corey_score = _tv_snap.corey_score
+                tv_ib_high = _tv_snap.ib_high
+                tv_ib_low = _tv_snap.ib_low
+                tv_poc = _tv_snap.vp_poc
+        except Exception:
+            pass
+
         # --- Step 3: Compute signal ----------------------------------------
         base_signal = {"bullish": 0.5, "bearish": -0.5, "neutral": 0.0}.get(
             session_bias.directional_bias, 0.0
@@ -175,7 +195,22 @@ class CoreyAuctionAnalystAgent:
             atr=atr,
         )
 
+        # Hidden Pivots cross-confirmation — boost alignment when HP pattern matches Corey bias
+        if hp_context is not None and isinstance(hp_context, dict):
+            try:
+                hp_direction = hp_context.get("direction") or hp_context.get("bias")
+                if hp_direction in ("bullish", "long") and alignment_score > 0.2:
+                    alignment_score = min(1.0, alignment_score + 0.15)
+                elif hp_direction in ("bearish", "short") and alignment_score < -0.2:
+                    alignment_score = max(-1.0, alignment_score - 0.15)
+            except Exception:
+                pass  # graceful: never let HP wiring break Corey scoring
+
         signal = float(max(-1.0, min(1.0, base_signal + bot_boost)))
+
+        # If TV Corey score available, blend it in as a strong anchor
+        if tv_corey_score is not None:
+            signal = signal * 0.70 + tv_corey_score * 0.30
 
         # --- Step 4: Compute confidence ------------------------------------
         win_rate_multiplier = 0.7 + 0.6 * max(0.0, (bot_win_rate - 0.5) / 0.5)
@@ -204,6 +239,10 @@ class CoreyAuctionAnalystAgent:
         reasoning = self._build_reasoning(
             session_bias, bot_signal, bot_win_rate, base_signal, bot_boost, alignment_score,
             current_price, atr,
+            tv_corey_score=tv_corey_score,
+            tv_ib_high=tv_ib_high,
+            tv_ib_low=tv_ib_low,
+            tv_poc=tv_poc,
         )
 
         logger.info(
@@ -388,6 +427,10 @@ class CoreyAuctionAnalystAgent:
         alignment_score: float,
         current_price: float,
         atr: float,
+        tv_corey_score: Optional[float] = None,
+        tv_ib_high: Optional[float] = None,
+        tv_ib_low: Optional[float] = None,
+        tv_poc: Optional[float] = None,
     ) -> str:
         lines = [
             f"Session type: {bias.session_type} | IB bias: {bias.ib_bias}",
@@ -421,6 +464,17 @@ class CoreyAuctionAnalystAgent:
                     )
         else:
             lines.append("Bot signals: none active in last 4h")
+        if tv_corey_score is not None:
+            lines.append(
+                "TRADINGVIEW COREY INDICATORS (live):"
+            )
+            lines.append(
+                f"- Corey Score (TV): {tv_corey_score:.2f} (direct numerical anchor from TradingView)"
+            )
+            lines.append(
+                f"- IB Levels (TV): High={tv_ib_high} Low={tv_ib_low}"
+            )
+            lines.append(f"- POC (TV): {tv_poc}")
         return "\n".join(lines)
 
     # ── Fallback ────────────────────────────────────────────────────────────

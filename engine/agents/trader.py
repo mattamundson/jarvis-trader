@@ -37,6 +37,27 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["TraderAgent", "TradeDecision"]
 
+# ---------------------------------------------------------------------------
+# AdvisorClient lazy-load — optional, gracefully degraded on failure
+# ---------------------------------------------------------------------------
+_advisor_instance = None
+
+
+def _get_advisor():
+    """
+    Lazy-construct AdvisorClient. Returns None on import/init failure.
+    Never raises — used to consult on low-confidence trades.
+    """
+    global _advisor_instance
+    if _advisor_instance is None:
+        try:
+            from agents.advisor_client import AdvisorClient
+            _advisor_instance = AdvisorClient()
+        except Exception as _err:  # pragma: no cover — defensive
+            logger.info("AdvisorClient unavailable in trader: %s", _err)
+            _advisor_instance = False  # sentinel: tried and failed
+    return _advisor_instance if _advisor_instance is not False else None
+
 
 @dataclass
 class TradeDecision:
@@ -494,6 +515,44 @@ class TraderAgent:
 
             result = json.loads(response_text)
             decision = self._parse_decision(symbol, result, position_size, sizing_method)
+
+            # Advisor consultation on low-confidence trades
+            advisor = _get_advisor()
+            if advisor is not None and decision.action != "hold":
+                try:
+                    # Extract regime from debate result for advisor context
+                    regime = "unknown"
+                    if isinstance(debate_result, dict):
+                        regime = debate_result.get("regime", "unknown")
+                    else:
+                        regime = getattr(debate_result, "regime", "unknown")
+
+                    if advisor.should_consult_trader(decision.confidence):
+                        refined = await advisor.consult_trader_refinement(
+                            direction=decision.action.upper(),
+                            entry=decision.entry_price or 0.0,
+                            stop=decision.stop_price or 0.0,
+                            target=decision.target_1 or 0.0,
+                            confidence=decision.confidence,
+                            regime=regime,
+                        )
+                        if refined.consulted:
+                            # Apply advisor refinements to the decision
+                            decision.entry_price = refined.entry
+                            decision.stop_price = refined.stop
+                            decision.target_1 = refined.target
+                            decision.confidence = refined.confidence
+                            # Append advisor notes to reasoning for auditability
+                            decision.reasoning += f"\n\n[Advisor Refinement] {refined.notes}"
+                            logger.info(
+                                "[Trader] %s: Advisor refined low-confidence trade. "
+                                "confidence: %.2f → %.2f",
+                                symbol, float(result.get("confidence", 0.5)), refined.confidence,
+                            )
+                except Exception as _adv_err:
+                    logger.warning("[Trader] Advisor consultation raised for %s: %s", symbol, _adv_err)
+                    # graceful: continue with original decision
+
             logger.info(
                 "[Trader] %s decision: action=%s confidence=%.2f signal_score=%.2f",
                 symbol, decision.action, decision.confidence, decision.signal_score,
