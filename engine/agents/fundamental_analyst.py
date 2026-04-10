@@ -65,6 +65,39 @@ FRED_DEFAULTS: dict[str, float] = {
     "vix": 20.0,  # Neutral VIX assumption when data unavailable
 }
 
+# ---------------------------------------------------------------------------
+# Macro regime thresholds (calibrated for April 2026 market environment)
+# ---------------------------------------------------------------------------
+# VIX buckets — tuned for futures trading regimes
+VIX_RISK_ON_MAX = 20.0      # VIX < 20 → RISK_ON (low fear, trend-friendly)
+VIX_NEUTRAL_MAX = 25.0      # VIX 20–25 → NEUTRAL
+VIX_RISK_OFF_MAX = 35.0     # VIX 25–35 → RISK_OFF (elevated volatility)
+VIX_CRISIS_MIN = 35.0       # VIX ≥ 35 → CRISIS (panic regime)
+
+# Yield curve spread (10Y minus Fed Funds) — inversion is recession signal
+YIELD_CURVE_INVERSION_THRESHOLD = 0.0   # spread < 0 → inverted → headwind
+YIELD_CURVE_STEEP_THRESHOLD = 0.5       # spread ≥ 0.5 → healthy steepener → tailwind
+
+# Fed Funds thresholds for late-cycle / easing inflection signals
+FED_FUNDS_LATE_CYCLE = 5.0   # > 5.0% → clearly restrictive (was 5.5% peak in 2023)
+FED_FUNDS_NEUTRAL = 3.5      # < 3.5% → accommodative / neutral
+
+# 10Y yield thresholds — compression above 4.5% hurts equity multiples
+YIELD_10Y_COMPRESSION = 4.5  # > 4.5% → yield compression risk for equities
+YIELD_10Y_FAVORABLE = 4.0    # < 4.0% → accommodative for equity index futures
+
+# Unemployment thresholds for labor market signal
+UNEMPLOYMENT_STRONG = 4.5   # < 4.5% → strong labor market (growth-supportive)
+UNEMPLOYMENT_WEAK = 5.5     # > 5.5% → weakening labor market (defensive signal)
+
+# ---------------------------------------------------------------------------
+# Symbol class routing — maps root symbols to asset class for prompt weighting
+# ---------------------------------------------------------------------------
+EQUITY_INDEX_FUTURES = {"MES", "MNQ", "ES", "NQ", "YM", "RTY", "M2K", "MYM"}
+ENERGY_FUTURES = {"MCL", "CL"}
+METALS_FUTURES = {"MGC", "GC", "SI", "HG"}
+BOND_FUTURES = {"ZB", "ZN"}
+
 # Futures symbols prefix map (for classification)
 FUTURES_PREFIXES = {
     "MES",
@@ -97,8 +130,14 @@ class FundamentalReport:
     signal: float
     confidence: float  # 0.0 to 1.0
 
-    # Macro regime classification
-    macro_regime: str  # "risk_on" | "risk_off" | "neutral"
+    # Macro regime classification — 4-tier
+    # "RISK_ON" | "NEUTRAL" | "RISK_OFF" | "CRISIS"
+    macro_regime: str
+
+    # True if macro environment supports taking a trend trade right now.
+    # Computed deterministically from raw metrics (not from LLM) so it is
+    # consistent and fast even when LLM synthesis is skipped.
+    macro_tailwind: bool = True
 
     # Raw metrics fetched
     key_metrics: dict[str, float] = field(default_factory=dict)
@@ -113,6 +152,7 @@ class FundamentalReport:
             "signal": self.signal,
             "confidence": self.confidence,
             "macro_regime": self.macro_regime,
+            "macro_tailwind": self.macro_tailwind,
             "key_metrics": self.key_metrics,
             "summary": self.summary,
             "reasoning": self.reasoning,
@@ -130,22 +170,51 @@ class FundamentalistAgent:
     FINNHUB_BASE = "https://finnhub.io/api/v1"
 
     SYSTEM_PROMPT = """You are a macroeconomic and fundamental analyst for JARVIS TRADER,
-an autonomous trading system.
+an autonomous futures trading system.
 
 Analyze the provided macro and/or fundamental data for the given instrument.
 Your task:
-1. Assess the current macro regime: risk_on (equities/growth favored), risk_off (defensive/cash favored), or neutral
+1. Assess the current macro regime using the 4-tier classification:
+   - RISK_ON:  VIX < 20 and yield curve normal (spread ≥ 0) — trend trades favored
+   - NEUTRAL:  VIX 20–25 or mixed signals — selective trend exposure
+   - RISK_OFF: VIX > 25 or yield curve inverted (spread < 0) — defensive posture
+   - CRISIS:   VIX > 35 — avoid directional exposure entirely
 2. Interpret the Fed Funds Rate, 10Y yield, and VIX in context
 3. For equities: consider valuation metrics, growth, and profitability
 4. Produce an overall signal (-1.0 = strongly risk-off/sell, +1.0 = strongly risk-on/buy)
 5. Assign a confidence score (0.0 to 1.0)
 
-Signal guidelines:
-- VIX > 30: strong risk-off pressure (-0.5 or lower)
-- VIX < 15: low fear environment, supportive of risk (+0.3 or higher)
-- Fed Funds Rate rising rapidly: tightening headwind (moderately bearish for growth)
-- 10Y yield inverted vs fed funds (yield curve inversion): recession risk signal
-- For futures: the signal reflects macro tailwind/headwind for the underlying
+UPDATED signal guidelines (calibrated April 2026, Fed Funds ~4.33%, 10Y ~4.3%):
+- VIX > 35: CRISIS — strong risk-off pressure (-0.6 or lower)
+- VIX 25–35: RISK_OFF — elevated fear (-0.2 to -0.5)
+- VIX 20–25: NEUTRAL — mixed (-0.1 to +0.1)
+- VIX < 20: supportive of trend exposure (+0.2 or higher)
+- VIX < 15: very low fear, strong risk-on (+0.4 or higher)
+- Fed Funds > 5.0%: clearly restrictive, late-cycle headwind for growth
+- Fed Funds 3.5–5.0%: mildly restrictive / neutral
+- 10Y yield > 4.5%: multiple compression risk for equity index futures
+- Yield curve inverted (10Y < Fed Funds): recession signal — moderately bearish
+- Yield curve spread ≥ 0.5%: healthy steepener — growth-supportive
+
+INSTRUMENT-SPECIFIC WEIGHTING:
+- MES / MNQ / ES / NQ / YM (equity index futures):
+  Primary factors: VIX level, yield curve spread, 10Y vs 4.5% compression threshold.
+  VIX < 20 + normal curve → tailwind. VIX > 25 or inverted curve → headwind.
+- MCL / CL (crude oil futures):
+  Primary factors: dollar strength signal (Fed trajectory), global growth proxy.
+  Rising Fed Funds + strong dollar → headwind for oil (demand destruction).
+  Falling Fed Funds + weak dollar → tailwind for oil (reflation).
+  Secondary: VIX as risk-appetite proxy (VIX > 30 → demand destruction fear).
+- MGC / GC / SI / HG (metals futures):
+  Primary factors: real yield (10Y yield - inflation proxy), dollar direction.
+  Rising real yields → headwind for gold/metals. Falling real yields → tailwind.
+  CRISIS regime (VIX > 35) → gold specifically benefits as safe haven.
+- ZB / ZN (bond futures):
+  Primary factors: Fed Funds trajectory, inflation expectations.
+  Falling rates → tailwind for bond futures. Rising rates → headwind.
+
+For futures: the signal reflects macro tailwind/headwind for the underlying contract.
+For equities: also consider valuation metrics, growth, and profitability.
 
 Respond with valid JSON only. Do not add any explanation outside the JSON.
 """
@@ -160,6 +229,41 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         """
         self._llm = llm_client
         self._data = data_manager
+
+    @staticmethod
+    def classify_macro_regime(metrics: dict[str, float]) -> tuple[str, bool]:
+        """
+        Deterministic macro regime classification from raw metrics.
+
+        Returns (macro_regime, macro_tailwind):
+          macro_regime: "RISK_ON" | "NEUTRAL" | "RISK_OFF" | "CRISIS"
+          macro_tailwind: True if macro supports taking trend trades
+
+        Logic (in priority order):
+          1. CRISIS if VIX ≥ VIX_CRISIS_MIN (35)
+          2. RISK_OFF if VIX > VIX_NEUTRAL_MAX (25)  OR yield curve inverted
+          3. RISK_ON if VIX < VIX_RISK_ON_MAX (20) AND yield curve not inverted
+          4. NEUTRAL otherwise (VIX 20-25, mixed signals)
+
+        macro_tailwind is True only in RISK_ON or NEUTRAL.
+        RISK_OFF and CRISIS are headwinds for directional trend trades.
+        """
+        vix = metrics.get("vix", FRED_DEFAULTS["vix"])
+        fed_funds = metrics.get("fed_funds_rate", FRED_DEFAULTS["fed_funds_rate"])
+        yield_10y = metrics.get("us_10y_yield", FRED_DEFAULTS["us_10y_yield"])
+        spread = yield_10y - fed_funds  # positive = normal, negative = inverted
+
+        if vix >= VIX_CRISIS_MIN:
+            return "CRISIS", False
+
+        if vix > VIX_NEUTRAL_MAX or spread < YIELD_CURVE_INVERSION_THRESHOLD:
+            return "RISK_OFF", False
+
+        if vix < VIX_RISK_ON_MAX and spread >= YIELD_CURVE_INVERSION_THRESHOLD:
+            return "RISK_ON", True
+
+        # VIX 20-25, curve not inverted — neutral / mixed signals
+        return "NEUTRAL", True
 
     async def analyze(self, symbol: str, is_futures: bool = True) -> "FundamentalReport":
         """Full fundamental/macro analysis pipeline for a symbol"""
@@ -189,8 +293,20 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             logger.warning(f"No fundamental data available for {symbol}")
             return self._neutral_report(symbol)
 
-        # 5. LLM synthesis
-        report = await self._llm_synthesize(symbol, company_name, key_metrics, is_futures)
+        # 5. Deterministic regime + tailwind classification (fast, no LLM cost)
+        macro_regime, macro_tailwind = self.classify_macro_regime(key_metrics)
+        logger.debug(
+            f"{symbol} deterministic regime: {macro_regime}, tailwind={macro_tailwind} "
+            f"(VIX={key_metrics.get('vix', 'n/a')}, "
+            f"spread={(key_metrics.get('us_10y_yield', 0) - key_metrics.get('fed_funds_rate', 0)):.2f})"
+        )
+
+        # 6. LLM synthesis — passes symbol for instrument-specific prompt weighting
+        report = await self._llm_synthesize(
+            symbol, company_name, key_metrics, is_futures,
+            deterministic_regime=macro_regime,
+            deterministic_tailwind=macro_tailwind,
+        )
         return report
 
     async def _fetch_fred_macro(self) -> dict[str, float]:
@@ -366,12 +482,58 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 
         return metrics, company_name
 
+    @staticmethod
+    def _symbol_class_hint(symbol: str) -> str:
+        """Return an instrument-class context string for injection into the LLM prompt."""
+        root = symbol.upper().rstrip("0123456789").rstrip("FGHJKMNQUVXZ")
+        sym_upper = symbol.upper()
+
+        if root in EQUITY_INDEX_FUTURES or sym_upper in EQUITY_INDEX_FUTURES:
+            return (
+                "INSTRUMENT CLASS: Equity index futures (MES/MNQ/ES/NQ family).\n"
+                "Weight VIX and yield curve spread most heavily.\n"
+                "VIX < 20 + normal yield curve = macro tailwind.\n"
+                "VIX > 25 or inverted curve = macro headwind for longs.\n"
+                "10Y yield > 4.5% creates multiple compression risk — moderate headwind."
+            )
+        if root in ENERGY_FUTURES or sym_upper in ENERGY_FUTURES:
+            return (
+                "INSTRUMENT CLASS: Crude oil futures (MCL/CL family).\n"
+                "Weight Fed policy trajectory and dollar strength most heavily.\n"
+                "Rising Fed Funds + strong dollar → demand destruction risk → headwind.\n"
+                "Falling/pausing Fed + weak dollar → reflation → tailwind.\n"
+                "VIX > 30 signals demand-destruction fear — bearish for oil price.\n"
+                "Geopolitical and supply-side factors are additive to this macro base."
+            )
+        if root in METALS_FUTURES or sym_upper in METALS_FUTURES:
+            return (
+                "INSTRUMENT CLASS: Metals futures (MGC/GC/SI/HG family).\n"
+                "Weight real yields (nominal 10Y minus inflation) and dollar direction.\n"
+                "Rising real yields → headwind for gold/silver. Falling real yields → tailwind.\n"
+                "CRISIS regime (VIX > 35) → gold specifically benefits as safe haven.\n"
+                "Copper (HG) follows global growth more than gold — weigh PMI/growth signals."
+            )
+        if root in BOND_FUTURES or sym_upper in BOND_FUTURES:
+            return (
+                "INSTRUMENT CLASS: Bond futures (ZB/ZN family).\n"
+                "Weight Fed Funds trajectory and inflation expectations most heavily.\n"
+                "Fed cutting rates → tailwind for bond futures (prices rise).\n"
+                "Fed holding/hiking → headwind. Curve steepening → mixed."
+            )
+        # Default — generic futures or equity
+        return (
+            "INSTRUMENT CLASS: Generic futures or equity.\n"
+            "Use standard macro framework: VIX, yield curve, and Fed trajectory."
+        )
+
     async def _llm_synthesize(
         self,
         symbol: str,
         company_name: str,
         key_metrics: dict[str, float],
         is_futures: bool,
+        deterministic_regime: str = "NEUTRAL",
+        deterministic_tailwind: bool = True,
     ) -> "FundamentalReport":
         """Use LLM to synthesize macro/fundamental data into a structured regime signal"""
 
@@ -426,7 +588,16 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 label = label_map.get(k, k)
                 equity_block += f"- {label}: {key_metrics[k]:.2f}\n"
 
+        symbol_hint = self._symbol_class_hint(symbol)
+
         prompt = f"""Analyze macro and fundamental conditions for {company_name} ({symbol}) — {instrument_type}.
+
+{symbol_hint}
+
+DETERMINISTIC PRE-CLASSIFICATION (computed from raw data before this call):
+  macro_regime: {deterministic_regime}
+  macro_tailwind: {deterministic_tailwind}
+Use these as a strong prior — override only if fundamental/LLM analysis provides compelling evidence.
 
 MACRO CONDITIONS:
 {macro_block if macro_block else "No macro data available."}
@@ -436,7 +607,8 @@ Respond with JSON in exactly this format:
 {{
   "signal": <float -1.0 to 1.0>,
   "confidence": <float 0.0 to 1.0>,
-  "macro_regime": "<risk_on|risk_off|neutral>",
+  "macro_regime": "<RISK_ON|NEUTRAL|RISK_OFF|CRISIS>",
+  "macro_tailwind": <true|false>,
   "summary": "<one sentence macro/fundamental assessment>",
   "reasoning": "<2-3 sentence analysis covering macro regime, key risks, and how this affects the instrument>"
 }}"""
@@ -508,12 +680,41 @@ Respond with JSON in exactly this format:
 
             result = json.loads(response_text)
 
+            # Normalise regime to uppercase; fall back to deterministic value if LLM
+            # returns something unrecognised.
+            _valid_regimes = {"RISK_ON", "NEUTRAL", "RISK_OFF", "CRISIS"}
+            llm_regime_raw = str(result.get("macro_regime", "")).upper()
+            # Accept legacy lowercase variants from older prompts
+            _legacy_map = {
+                "RISK_ON": "RISK_ON",
+                "RISK-ON": "RISK_ON",
+                "RISK_OFF": "RISK_OFF",
+                "RISK-OFF": "RISK_OFF",
+                "NEUTRAL": "NEUTRAL",
+                "CRISIS": "CRISIS",
+            }
+            llm_regime = _legacy_map.get(llm_regime_raw, llm_regime_raw)
+            if llm_regime not in _valid_regimes:
+                logger.warning(
+                    f"LLM returned unrecognised macro_regime '{llm_regime_raw}' for {symbol}"
+                    f" — using deterministic fallback '{deterministic_regime}'"
+                )
+                llm_regime = deterministic_regime
+
+            # LLM can override macro_tailwind; fall back to deterministic if absent/invalid
+            llm_tailwind_raw = result.get("macro_tailwind", None)
+            if isinstance(llm_tailwind_raw, bool):
+                llm_tailwind = llm_tailwind_raw
+            else:
+                llm_tailwind = deterministic_tailwind
+
             return FundamentalReport(
                 symbol=symbol,
                 timestamp=datetime.now(),
                 signal=float(result.get("signal", 0.0)),
                 confidence=float(result.get("confidence", 0.5)),
-                macro_regime=result.get("macro_regime", "neutral"),
+                macro_regime=llm_regime,
+                macro_tailwind=llm_tailwind,
                 key_metrics=key_metrics,
                 summary=result.get("summary", ""),
                 reasoning=result.get("reasoning", ""),
@@ -526,9 +727,10 @@ Respond with JSON in exactly this format:
                 timestamp=datetime.now(),
                 signal=0.0,
                 confidence=0.2,
-                macro_regime="neutral",
+                macro_regime=deterministic_regime,
+                macro_tailwind=deterministic_tailwind,
                 key_metrics=key_metrics,
-                summary="LLM synthesis failed",
+                summary="LLM synthesis failed — deterministic regime used",
                 reasoning=f"Macro data retrieved but LLM analysis failed: {e}",
             )
 
@@ -538,7 +740,8 @@ Respond with JSON in exactly this format:
             timestamp=datetime.now(),
             signal=0.0,
             confidence=0.1,
-            macro_regime="neutral",
+            macro_regime="NEUTRAL",
+            macro_tailwind=True,  # conservative: don't block trades on missing data
             key_metrics={},
             summary="No fundamental data available",
             reasoning="Could not retrieve macro or fundamental data — returning neutral signal",

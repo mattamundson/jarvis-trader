@@ -128,6 +128,10 @@ class RiskManagerAgent:
             llm_client: Object with .api_key attribute (Anthropic key).
         """
         self._llm = llm_client
+        self.is_paper_mode = not settings.LIVE_TRADING_ENABLED
+        self.SYSTEM_PROMPT = (
+            self.SYSTEM_PROMPT_PAPER if self.is_paper_mode else self.SYSTEM_PROMPT_LIVE
+        )
 
     async def review(
         self,
@@ -150,7 +154,7 @@ class RiskManagerAgent:
         """
         # ── Layer 1: Hard Rules (Python, no LLM) ──────────────────────────
 
-        veto = self._hard_rules_check(trade_decision, safety_status, portfolio)
+        veto, hard_checks_detail = self._hard_rules_check(trade_decision, safety_status, portfolio)
         if veto is not None:
             logger.warning(f"[RiskManager] Hard veto for {trade_decision.get('symbol')}: {veto}")
             return RiskDecision(
@@ -158,6 +162,8 @@ class RiskManagerAgent:
                 veto_reason=veto,
                 reasoning=f"Hard rule violation: {veto}",
                 risk_score=1.0,
+                hard_checks_passed=False,
+                hard_checks_detail=hard_checks_detail,
                 timestamp=datetime.now(),
             )
 
@@ -168,6 +174,8 @@ class RiskManagerAgent:
                 approved=True,
                 reasoning="Hold action — no position change, no risk review required.",
                 risk_score=0.0,
+                hard_checks_passed=True,
+                hard_checks_detail=hard_checks_detail,
                 timestamp=datetime.now(),
             )
 
@@ -180,17 +188,23 @@ class RiskManagerAgent:
                 trade_decision.get("symbol"),
                 vix_reason,
             )
+            vix_detail = hard_checks_detail + [{"check": "vix_limit", "passed": False, "detail": vix_reason}]
             return RiskDecision(
                 approved=False,
                 veto_reason=vix_reason,
                 reasoning=f"VIX extreme fear — force HOLD: {vix_reason}",
                 risk_score=1.0,
+                hard_checks_passed=False,
+                hard_checks_detail=vix_detail,
                 timestamp=datetime.now(),
             )
 
+        # VIX passed — record it in the audit trail
+        hard_checks_detail.append({"check": "vix_limit", "passed": True, "detail": "VIX within normal range"})
+
         # ── Layer 2: Soft Rules (LLM reasoning) ───────────────────────────
 
-        return await self._llm_review(trade_decision, safety_status, portfolio)
+        return await self._llm_review(trade_decision, safety_status, portfolio, hard_checks_detail)
 
     # ── VIX Risk Check ────────────────────────────────────────────────────
 
@@ -229,19 +243,32 @@ class RiskManagerAgent:
         trade: dict,
         safety: dict,
         portfolio: dict,
-    ) -> Optional[str]:
+    ) -> tuple[Optional[str], list]:
         """
-        Returns a veto reason string if any hard rule is violated, else None.
+        Returns (veto_reason, checks_detail).
+
+        veto_reason: non-None string if any hard rule is violated, else None.
+        checks_detail: list of dicts — {check, passed, detail} for each check run.
         Order matters — fail fast on the most critical checks first.
         """
+        checks: list[dict] = []
+
+        def _pass(check: str, detail: str = "") -> None:
+            checks.append({"check": check, "passed": True, "detail": detail})
+
+        def _fail(check: str, detail: str) -> tuple[str, list]:
+            checks.append({"check": check, "passed": False, "detail": detail})
+            return detail, checks
+
         # 1. Kill switch
         if safety.get("kill_switch_active", False):
             reason = safety.get("kill_switch_reason", "unknown")
-            return f"Kill switch is active: {reason}"
+            return _fail("kill_switch", f"Kill switch is active: {reason}")
+        _pass("kill_switch", "Inactive")
 
         action = trade.get("action", "hold")
         if action == "hold":
-            return None  # Hold always passes hard rules
+            return None, checks  # Hold always passes hard rules
 
         # 2. Daily loss limit — compare daily_pnl against max_daily_loss config
         daily_pnl = safety.get("daily_pnl", 0.0)
@@ -252,18 +279,22 @@ class RiskManagerAgent:
             else -(settings.MAX_DAILY_LOSS_PCT * 10_000)
         )
         if daily_pnl < max_daily_loss:
-            return (
+            return _fail(
+                "daily_loss_limit",
                 f"Daily P&L ${daily_pnl:,.2f} breaches max daily loss "
-                f"${max_daily_loss:,.2f} ({settings.MAX_DAILY_LOSS_PCT:.1%} of equity)"
+                f"${max_daily_loss:,.2f} ({settings.MAX_DAILY_LOSS_PCT:.1%} of equity)",
             )
+        _pass("daily_loss_limit", f"Daily P&L ${daily_pnl:,.2f} within limit ${max_daily_loss:,.2f}")
 
         # 3. Drawdown limit — use 0.09 as the pre-config-limit warning threshold
         current_drawdown = safety.get("drawdown_pct", 0.0)
         if current_drawdown > 0.09:
-            return (
+            return _fail(
+                "drawdown_limit",
                 f"Current drawdown {current_drawdown:.1%} exceeds 9% threshold "
-                f"(hard limit: {settings.MAX_DRAWDOWN_PCT:.1%})"
+                f"(hard limit: {settings.MAX_DRAWDOWN_PCT:.1%})",
             )
+        _pass("drawdown_limit", f"Drawdown {current_drawdown:.1%} within 9% threshold")
 
         # 4. Single order value limit
         quantity = abs(int(trade.get("quantity", 0)))
@@ -279,10 +310,12 @@ class RiskManagerAgent:
         estimated_value = quantity * estimated_price
         max_order_value = min(settings.MAX_SINGLE_ORDER_VALUE, self.ABSOLUTE_MAX_ORDER_VALUE)
         if estimated_value > max_order_value:
-            return (
+            return _fail(
+                "order_value_limit",
                 f"Estimated order value ${estimated_value:,.2f} exceeds "
-                f"max single order value ${max_order_value:,.2f}"
+                f"max single order value ${max_order_value:,.2f}",
             )
+        _pass("order_value_limit", f"Estimated value ${estimated_value:,.2f} within ${max_order_value:,.2f}")
 
         # 5. Correlation / directional-exposure check
         if _CORRELATION_MONITOR_AVAILABLE:
@@ -300,15 +333,20 @@ class RiskManagerAgent:
                         exposure = -abs(exposure)
                     monitor.update(sym, exposure)
                 if monitor.is_overexposed():
-                    return (
+                    return _fail(
+                        "correlation_exposure",
                         "Portfolio is overexposed — correlated directional risk too high "
                         f"({monitor.total_net_exposure_pct():.1%} of capital, "
-                        f"limit {monitor.max_directional_pct:.0%})"
+                        f"limit {monitor.max_directional_pct:.0%})",
                     )
+                _pass("correlation_exposure", f"Net exposure within limit ({monitor.max_directional_pct:.0%})")
             except Exception as _cm_err:
                 logger.warning("[RiskManager] CorrelationMonitor check failed (non-fatal): %s", _cm_err)
+                _pass("correlation_exposure", f"Check skipped (non-fatal): {_cm_err}")
+        else:
+            _pass("correlation_exposure", "CorrelationMonitor not available — skipped")
 
-        return None  # All hard rules passed
+        return None, checks  # All hard rules passed
 
     # ── LLM Soft Review ───────────────────────────────────────────────────
 
@@ -317,6 +355,7 @@ class RiskManagerAgent:
         trade: dict,
         safety: dict,
         portfolio: dict,
+        hard_checks_detail: Optional[list] = None,
     ) -> RiskDecision:
         prompt = self._build_prompt(trade, safety, portfolio)
 
@@ -364,7 +403,10 @@ class RiskManagerAgent:
                     response_text = response_text[4:]
 
             result = json.loads(response_text)
-            return self._parse_risk_decision(result)
+            decision = self._parse_risk_decision(result)
+            decision.hard_checks_passed = True
+            decision.hard_checks_detail = hard_checks_detail or []
+            return decision
 
         except Exception as e:
             logger.error(f"[RiskManager] LLM review failed: {e}")
@@ -374,6 +416,8 @@ class RiskManagerAgent:
                 approved=True,
                 reasoning=f"LLM risk review failed ({e}). Hard rules passed. Fund Manager should apply extra scrutiny.",
                 risk_score=0.8,
+                hard_checks_passed=True,
+                hard_checks_detail=hard_checks_detail or [],
                 timestamp=datetime.now(),
             )
 
@@ -405,8 +449,29 @@ class RiskManagerAgent:
             elif proposed_symbol == "MES" and "MNQ" in open_symbols:
                 correlation_warning = "\nWARNING: MES position proposed but MNQ already open. High correlation (0.95).\n  → If both open, max contracts reduced to 1 each.\n"
 
+        # Compute R:R ratio for the prompt if stop and limit are present
+        stop_price = trade.get("stop_price")
+        limit_price = trade.get("limit_price")
+        rr_text = "N/A"
+        if stop_price and limit_price and stop_price > 0 and limit_price > 0:
+            risk_pts = abs(float(limit_price) - float(stop_price))
+            # Use a 1:1 minimum target as proxy if no explicit target; show ratio from entry to stop
+            if risk_pts > 0:
+                rr_text = f"Risk: {risk_pts:.2f} pts from entry to stop"
+
+        trading_mode = "PAPER TRADING (signal validation)" if self.is_paper_mode else "LIVE TRADING"
+        paper_guidance = (
+            "\nPAPER MODE GUIDANCE: Approve trades with R:R > 1.5:1 and confidence > 0.5. "
+            "Veto only for: missing stop, correlated exposure breach, or extreme timing error.\n"
+            if self.is_paper_mode
+            else ""
+        )
+
         return f"""Review this trade for risk:
 
+=== TRADING MODE ===
+{trading_mode}
+{paper_guidance}
 === PROPOSED TRADE ===
 Symbol: {trade.get("symbol")}
 Action: {trade.get("action")}
@@ -414,6 +479,7 @@ Quantity: {trade.get("quantity")}
 Order type: {trade.get("order_type")}
 Limit price: {trade.get("limit_price")}
 Stop price: {trade.get("stop_price")}
+Risk/Reward: {rr_text}
 Signal score: {trade.get("signal_score")}
 Confidence: {trade.get("confidence")}
 Trader reasoning: {trade.get("reasoning", "N/A")}

@@ -113,7 +113,7 @@ class TraderAgent:
     """
 
     MODEL = "claude-opus-4-6"
-    MAX_TOKENS = 1000
+    MAX_TOKENS = 1200
 
     SYSTEM_PROMPT = (
         "You are the Trader for JARVIS TRADER, an autonomous trading system. "
@@ -122,8 +122,28 @@ class TraderAgent:
         "You must be decisive. Your job is to synthesize the bull/bear debate, technical signals, "
         "news, and sentiment into a clear BUY/SELL/HOLD decision with specific order parameters. "
         "When signals are mixed, size down or hold — never force a trade. "
+        "When the action is buy or sell, you MUST calculate ATR-based stop and target prices "
+        "using the multipliers provided in the prompt. "
         "Respond with valid JSON only. Do not add any explanation outside the JSON."
     )
+
+    # Per-symbol stop/target ATR multipliers — mirrors INSTRUMENT_PARAMS in backtest/signals.py
+    # Format: (stop_atr, t1_atr, t2_atr)
+    _SYMBOL_ATR_PARAMS: dict = {
+        "MNQ": (0.70, 1.00, 1.80),
+        "MCL": (0.50, 1.00, 2.618),
+        "MES": (1.00, 2.50, 4.00),   # Composite path params (COMP_STOP_ATR / COMP_T1_ATR / COMP_T2_ATR)
+        "MGC": (0.70, 2.00, 3.236),
+    }
+    _DEFAULT_ATR_PARAMS = (0.70, 1.50, 2.50)  # Generic fallback
+
+    # Dollar value per point per instrument
+    _POINT_VALUES: dict = {
+        "MES": 5.0,
+        "MNQ": 2.0,
+        "MCL": 100.0,
+        "MGC": 10.0,
+    }
 
     def __init__(self, llm_client, db_manager=None):
         """
@@ -397,6 +417,64 @@ class TraderAgent:
         live_enabled = safety_status.get("live_trading_enabled", False)
         current_equity = safety_status.get("current_equity", 0.0)
 
+        # ATR and per-symbol multipliers
+        indicators = technical.get("indicators", {})
+        atr_val: Optional[float] = indicators.get("atr") if isinstance(indicators, dict) else None
+        current_price: Optional[float] = technical.get("current_price")
+
+        stop_mult, t1_mult, t2_mult = self._SYMBOL_ATR_PARAMS.get(
+            symbol.upper(), self._DEFAULT_ATR_PARAMS
+        )
+        point_value = self._POINT_VALUES.get(symbol.upper(), 1.0)
+
+        # Pre-calculate concrete price levels when ATR and price are available
+        if atr_val and atr_val > 0 and current_price and current_price > 0:
+            stop_dist = round(stop_mult * atr_val, 4)
+            t1_dist = round(t1_mult * atr_val, 4)
+            t2_dist = round(t2_mult * atr_val, 4)
+            long_stop = round(current_price - stop_dist, 4)
+            long_t1 = round(current_price + t1_dist, 4)
+            long_t2 = round(current_price + t2_dist, 4)
+            short_stop = round(current_price + stop_dist, 4)
+            short_t1 = round(current_price - t1_dist, 4)
+            short_t2 = round(current_price - t2_dist, 4)
+            rr_long = round(t1_dist / stop_dist, 2) if stop_dist > 0 else 0.0
+            rr_short = rr_long  # symmetric
+
+            dollar_risk = round(stop_dist * point_value * position_size.contracts, 2)
+            dollar_t1 = round(t1_dist * point_value * position_size.contracts, 2)
+
+            atr_section = f"""
+=== ATR-BASED TRADE GEOMETRY (pre-calculated, use these values) ===
+Symbol: {symbol} | Point value: ${point_value}/pt | Contracts: {position_size.contracts}
+Current price: {current_price}
+ATR (14-bar Wilder): {atr_val:.4f} pts
+
+--- LONG scenario ---
+  Entry:    {current_price}
+  Stop:     {long_stop}  ({stop_mult}× ATR below entry)
+  Target 1: {long_t1}  ({t1_mult}× ATR above entry)  → R:R = {rr_long:.2f}
+  Target 2: {long_t2}  ({t2_mult}× ATR above entry)
+  Dollar risk (stop): ${dollar_risk:,.2f} | Dollar at T1: ${dollar_t1:,.2f}
+
+--- SHORT scenario ---
+  Entry:    {current_price}
+  Stop:     {short_stop}  ({stop_mult}× ATR above entry)
+  Target 1: {short_t1}  ({t1_mult}× ATR below entry)  → R:R = {rr_short:.2f}
+  Target 2: {short_t2}  ({t2_mult}× ATR below entry)
+  Dollar risk (stop): ${dollar_risk:,.2f} | Dollar at T1: ${dollar_t1:,.2f}
+
+INSTRUCTION: If action=buy, use long_stop as stop_price, long_t1 as target_1, long_t2 as target_2.
+             If action=sell, use short_stop as stop_price, short_t1 as target_1, short_t2 as target_2.
+             Only trade if R:R >= 1.0. Return null for all price fields if action=hold."""
+        else:
+            atr_section = f"""
+=== ATR-BASED TRADE GEOMETRY ===
+ATR not available for {symbol} — cannot pre-calculate stop/target levels.
+Stop multiplier: {stop_mult}× ATR | T1 multiplier: {t1_mult}× ATR | T2 multiplier: {t2_mult}× ATR
+If ATR becomes available, calculate: stop = entry ± ({stop_mult} × ATR), T1 = entry ± ({t1_mult} × ATR).
+Return null for entry_price, stop_price, target_1, target_2, atr_used, rr_ratio when ATR is unknown."""
+
         return f"""Make a trade decision for {symbol}.
 
 === BULL/BEAR DEBATE RESULT ===
@@ -444,6 +522,7 @@ Risk budget (1% of account): ${position_size.risk_per_trade:,.2f}
 ATR stop distance: {position_size.stop_distance:.4f} pts
 Dollar risk per contract: ${position_size.dollar_risk_per_contract:,.2f}
 Sizing detail: {position_size.reasoning}
+{atr_section}
 
 IMPORTANT: Use quantity={position_size.contracts} for buy/sell orders.
 Only set quantity=0 if action=hold. Do NOT increase quantity above {position_size.contracts}.
@@ -454,11 +533,16 @@ Respond with JSON in exactly this format:
   "quantity": <int: 0 if hold, otherwise use the pre-calculated sized contracts above>,
   "order_type": "<market|limit|stop_limit>",
   "limit_price": <float or null>,
-  "stop_price": <float or null>,
+  "stop_price": <float or null: ATR-based stop from the geometry section above>,
+  "entry_price": <float or null: current price for market orders, null for hold>,
+  "target_1": <float or null: T1 from geometry section above>,
+  "target_2": <float or null: T2 from geometry section above>,
+  "atr_used": <float or null: the ATR value used for calculations>,
+  "rr_ratio": <float or null: (T1 - entry) / abs(entry - stop), null for hold>,
   "time_in_force": "<day|gtc|ioc>",
   "signal_score": <float -1.0 to 1.0>,
   "confidence": <float 0.0 to 1.0>,
-  "reasoning": "<thorough explanation of why this action was chosen>",
+  "reasoning": "<thorough explanation of why this action was chosen, including R:R assessment>",
   "risk_notes": "<what could go wrong, key risks to monitor>"
 }}"""
 
@@ -501,10 +585,34 @@ Respond with JSON in exactly this format:
         raw_stop = result.get("stop_price")
         stop_price = float(raw_stop) if raw_stop is not None else None
 
+        # ATR geometry fields
+        raw_entry = result.get("entry_price")
+        entry_price = float(raw_entry) if raw_entry is not None else None
+
+        raw_t1 = result.get("target_1")
+        target_1 = float(raw_t1) if raw_t1 is not None else None
+
+        raw_t2 = result.get("target_2")
+        target_2 = float(raw_t2) if raw_t2 is not None else None
+
+        raw_atr = result.get("atr_used")
+        atr_used = float(raw_atr) if raw_atr is not None else None
+
+        raw_rr = result.get("rr_ratio")
+        rr_ratio = float(raw_rr) if raw_rr is not None else None
+
+        # Recompute R:R server-side for auditability when all price fields are present
+        if action in ("buy", "sell") and entry_price and stop_price and target_1:
+            risk = abs(entry_price - stop_price)
+            reward = abs(target_1 - entry_price)
+            if risk > 0:
+                rr_ratio = round(reward / risk, 2)
+
         # Append sizing detail to reasoning for auditability
         reasoning = result.get("reasoning", "")
         if position_size is not None and action != "hold":
-            reasoning = f"{reasoning}\n\n[Position Sizing] {position_size.reasoning}"
+            rr_str = f" | R:R={rr_ratio:.2f}" if rr_ratio else ""
+            reasoning = f"{reasoning}\n\n[Position Sizing] {position_size.reasoning}{rr_str}"
 
         return TradeDecision(
             symbol=symbol,
@@ -513,6 +621,11 @@ Respond with JSON in exactly this format:
             order_type=order_type,
             limit_price=limit_price,
             stop_price=stop_price,
+            entry_price=entry_price,
+            target_1=target_1,
+            target_2=target_2,
+            atr_used=atr_used,
+            rr_ratio=rr_ratio,
             time_in_force=time_in_force,
             signal_score=float(result.get("signal_score", 0.0)),
             confidence=float(result.get("confidence", 0.5)),
@@ -530,6 +643,11 @@ Respond with JSON in exactly this format:
             order_type="market",
             limit_price=None,
             stop_price=None,
+            entry_price=None,
+            target_1=None,
+            target_2=None,
+            atr_used=None,
+            rr_ratio=None,
             time_in_force="day",
             signal_score=0.0,
             confidence=0.0,
