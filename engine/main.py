@@ -2859,13 +2859,20 @@ async def run_pipeline(req: PipelineRequest):
     final_action = result.get("final_action", "hold")
 
     # Log to decision feed (in-memory + SQLite)
+    _fund_dec = result.get("fund_decision") or {}
+    _trade_dec = result.get("trade_decision") or {}
     _log_decision(
         symbol=req.symbol,
         action=final_action,
-        confidence=float(result.get("confidence", 0)),
+        confidence=float(
+            result.get("boosted_confidence")
+            or _fund_dec.get("final_conviction")
+            or _trade_dec.get("confidence")
+            or 0.0
+        ),
         source="pipeline",
         summary=result.get("summary", ""),
-        reasoning=(result.get("trade_decision") or {}).get("reasoning", ""),
+        reasoning=_trade_dec.get("reasoning", ""),
         full_pipeline_data=result,
     )
 
@@ -2993,13 +3000,20 @@ async def run_sdk_pipeline(req: PipelineRequest):
     final_action = result.get("final_action", "hold")
 
     # Log to decision feed (same as /pipeline/run)
+    _sdk_fund_dec = result.get("fund_decision") or {}
+    _sdk_trade_dec = result.get("trade_decision") or {}
     _log_decision(
         symbol=req.symbol,
         action=final_action,
-        confidence=float(result.get("confidence", 0)),
+        confidence=float(
+            result.get("boosted_confidence")
+            or _sdk_fund_dec.get("final_conviction")
+            or _sdk_trade_dec.get("confidence")
+            or 0.0
+        ),
         source="sdk_pipeline",
         summary=result.get("summary", ""),
-        reasoning=(result.get("trade_decision") or {}).get("reasoning", ""),
+        reasoning=_sdk_trade_dec.get("reasoning", ""),
         full_pipeline_data=result,
     )
 

@@ -1076,6 +1076,9 @@ class PortfolioTracker:
                         entry_time=str(row.get("entry_time", "")),
                         is_open=True,
                         notes=str(row.get("notes") or ""),
+                        stop_loss=row.get("stop_loss"),
+                        take_profit=row.get("take_profit"),
+                        atr_value=row.get("atr_value"),
                     )
                 except (TypeError, ValueError, KeyError) as exc:
                     logger.warning("[TRACKER] reload: skipping bad row: %s", exc)

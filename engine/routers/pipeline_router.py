@@ -409,7 +409,12 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
         _trade = result.get("trade_decision") or {}
         _analysts = result.get("analyst_reports") or {}
         _tech = _analysts.get("technical") or {}
-        _confidence = float(_fund.get("final_conviction") or _trade.get("confidence") or 0.0)
+        _confidence = float(
+            result.get("boosted_confidence")
+            or _fund.get("final_conviction")
+            or _trade.get("confidence")
+            or 0.0
+        )
         _summary = result.get("summary") or _fund.get("reasoning") or ""
         _reasoning = _fund.get("reasoning") or _trade.get("reasoning") or _summary
         _regime = _tech.get("regime") or None

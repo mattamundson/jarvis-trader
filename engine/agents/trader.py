@@ -236,8 +236,12 @@ class TraderAgent:
                     stop_mult=0.70,
                     multiplier=point_value,
                 )
-                # Use debate conviction as signal strength for scaling if available
-                conviction = float(debate_result.get("bull_score", 0.5))
+                # Use NET conviction (|bear - bull| / 10) as signal strength.
+                # Raw bull_score alone is wrong for short trades and inflates size
+                # on tie signals (both = 6 → conviction=0.6 → 3× base).
+                bull_s = float(debate_result.get("bull_score", 5.0))
+                bear_s = float(debate_result.get("bear_score", 5.0))
+                conviction = abs(bull_s - bear_s) / 10.0  # 0=no edge, 1=max conviction
                 scaled_contracts = sizer.signal_strength_scaling(atr_sized_contracts, conviction)
                 # Override only if the scaled value differs from fixed-fractional
                 if scaled_contracts != position_size.contracts:
