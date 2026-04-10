@@ -36,6 +36,7 @@ from agents.pipeline import TradingPipeline
 from agents.sdk_pipeline import SDKTradingPipeline
 from agents.risk_manager import RiskManagerAgent
 from agents.social_analyst import SocialAnalystAgent
+from agents.corey_auction_analyst import CoreyAuctionAnalystAgent
 from agents.technical_analyst import TechnicalAnalystAgent
 from agents.thinkscript_generator import ThinkScriptGeneratorAgent
 from agents.trader import TraderAgent
@@ -424,6 +425,7 @@ async def lifespan(app: FastAPI):
         news_agent = NewsAnalystAgent(llm_client, data_manager, brave_client=_brave_client)
         social_agent = SocialAnalystAgent(llm_client)
         fundamental_agent = FundamentalistAgent(llm_client, data_manager)
+        corey_agent = CoreyAuctionAnalystAgent(llm_client=llm_client)
 
         # Stage 2: Debate
         bull_agent = BullResearcherAgent(api_key=settings.ANTHROPIC_API_KEY)
@@ -435,7 +437,7 @@ async def lifespan(app: FastAPI):
         risk_agent = RiskManagerAgent(llm_client)
         fund_agent = FundManagerAgent(llm_client)
 
-        logger.info("✅ All 10 trading agents initialized")
+        logger.info("✅ All 11 trading agents initialized (incl. CoreyAuctionAnalyst)")
 
         # Trading Pipeline — all agents wired
         trading_pipeline = TradingPipeline(
@@ -444,6 +446,7 @@ async def lifespan(app: FastAPI):
                 "news": news_agent,
                 "social": social_agent,
                 "fundamental": fundamental_agent,
+                "corey": corey_agent,
                 "bull": bull_agent,
                 "bear": bear_agent,
                 "debate": debate_agent,
