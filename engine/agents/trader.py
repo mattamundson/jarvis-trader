@@ -55,6 +55,13 @@ class TradeDecision:
     limit_price: Optional[float]
     stop_price: Optional[float]
 
+    # ATR-based trade geometry (None if hold or ATR unavailable)
+    entry_price: Optional[float]   # Intended entry price
+    target_1: Optional[float]      # T1 exit level (1st scale-out ~1/3 position)
+    target_2: Optional[float]      # T2 exit level (stretch target)
+    atr_used: Optional[float]      # ATR value used for stop/target calculation
+    rr_ratio: Optional[float]      # R:R = (target_1 - entry) / abs(entry - stop)
+
     # Signal metadata
     signal_score: float  # -1.0 (strong sell) to +1.0 (strong buy)
     confidence: float  # 0.0 to 1.0
@@ -77,6 +84,11 @@ class TradeDecision:
             "order_type": self.order_type,
             "limit_price": self.limit_price,
             "stop_price": self.stop_price,
+            "entry_price": self.entry_price,
+            "target_1": self.target_1,
+            "target_2": self.target_2,
+            "atr_used": self.atr_used,
+            "rr_ratio": self.rr_ratio,
             "time_in_force": self.time_in_force,
             "signal_score": self.signal_score,
             "confidence": self.confidence,

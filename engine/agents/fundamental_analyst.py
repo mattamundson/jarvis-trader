@@ -8,6 +8,22 @@ basic financials before the same LLM regime assessment.
 
 Refresh interval: daily (macro data does not change intraday).
 Model: Claude Sonnet 4.6
+
+Macro regime classification (deterministic, pre-LLM):
+  RISK_ON  — VIX < 20, yield curve normal (≥ 0)
+  NEUTRAL  — VIX 20–25, or mixed signals
+  RISK_OFF — VIX > 25, or yield curve inverted (< 0)
+  CRISIS   — VIX > 35
+
+Symbol-class weighting:
+  Equity index futures (MES, MNQ, ES, NQ, YM, RTY, M2K, MYM):
+    Primary: VIX + yield curve spread
+  Energy futures (MCL, CL):
+    Primary: supply/demand proxy (Fed tightening pace), dollar strength signal
+  Metals (MGC, GC, SI, HG):
+    Primary: real yields (10Y - CPI proxy), dollar strength
+  Bonds (ZB, ZN):
+    Primary: Fed Funds trajectory, yield curve shape
 """
 
 import json

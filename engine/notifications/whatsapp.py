@@ -81,35 +81,83 @@ class WhatsAppNotifier:
             return False
 
     async def alert_pipeline_result(self, symbol: str, result: dict) -> bool:
-        """Send an alert for a pipeline result. Only sends for non-HOLD signals."""
+        """Send an alert for a pipeline result. Only sends for non-HOLD signals.
+
+        Field mapping (pipeline_result keys):
+          - boosted_confidence   → displayed confidence (0.0–1.0 float)
+          - debate_result        → nested dict with bull_score / bear_score
+          - trade_decision       → nested dict with entry_price, stop_price,
+                                   risk_reward, conviction, notes
+          - risk_decision        → nested dict with approved, rejection_reason
+          - fund_decision        → nested dict with human_approval_required,
+                                   final_conviction, entry_price, stop_price
+          - requires_human       → top-level bool fallback for human approval
+        """
         action = result.get("final_action", "hold").lower()
         if action == "hold":
             return False
 
-        confidence = result.get("confidence", 0)
-        bull_score = result.get("bull_score", 0)
-        bear_score = result.get("bear_score", 0)
         action_text = action.upper().replace("_", " ")
+
+        # Confidence — prefer boosted_confidence (post-futures-boost), fall back to
+        # raw_confidence then trade_decision conviction, then 0
+        confidence = (
+            result.get("boosted_confidence")
+            or result.get("raw_confidence")
+            or result.get("trade_decision", {}).get("conviction", 0.0)
+        )
+        if confidence is None:
+            confidence = 0.0
+
+        # Debate scores live inside the nested debate_result dict
+        debate = result.get("debate_result") or {}
+        bull_score = debate.get("bull_score", 0)
+        bear_score = debate.get("bear_score", 0)
 
         lines = [
             f"*JARVIS TRADER — {action_text}*",
             "",
             f"Symbol: {symbol}",
             f"Action: {action_text}",
-            f"Confidence: {confidence:.0%}",
-            f"Bull: {bull_score:.2f}  Bear: {bear_score:.2f}",
+            f"Confidence: {float(confidence):.0%}",
+            f"Bull: {float(bull_score):.2f}  Bear: {float(bear_score):.2f}",
         ]
 
-        trader = result.get("trader", {})
-        if trader and trader.get("reasoning"):
-            lines.extend(["", trader["reasoning"][:200]])
+        # Trade decision — key is "trade_decision", reasoning in "notes"
+        trade = result.get("trade_decision") or {}
+        entry_price = trade.get("entry_price", 0.0)
+        stop_price = trade.get("stop_price", 0.0)
+        rr = trade.get("risk_reward", 0.0)
+        notes = trade.get("notes", "")
 
-        risk = result.get("risk", {})
-        if risk and not risk.get("approved"):
-            lines.extend(["", f"RISK VETO: {risk.get('veto_reason', 'Risk check failed')}"])
+        if entry_price:
+            lines.append(f"Entry: {entry_price:.2f}  Stop: {stop_price:.2f}")
+        if rr:
+            lines.append(f"R:R  {rr:.2f}")
+        if notes:
+            lines.extend(["", notes[:200]])
 
-        fund = result.get("fund_manager", {})
-        if fund and fund.get("requires_human_approval"):
+        # Also pull entry/stop from fund_decision if available (may be more precise)
+        fund = result.get("fund_decision") or {}
+        if fund:
+            fd_entry = fund.get("entry_price", 0.0)
+            fd_stop = fund.get("stop_price", 0.0)
+            if fd_entry and fd_entry != entry_price:
+                lines.append(f"Fund entry: {fd_entry:.2f}  stop: {fd_stop:.2f}")
+
+        # Risk decision — key is "risk_decision", veto reason in "rejection_reason"
+        risk = result.get("risk_decision") or {}
+        if risk and not risk.get("approved", True):
+            veto = risk.get("rejection_reason") or "Risk check failed"
+            lines.extend(["", f"RISK VETO: {veto}"])
+
+        # Human approval — fund_decision uses "human_approval_required";
+        # fall back to top-level "requires_human"
+        human_required = (
+            fund.get("human_approval_required", False)
+            or result.get("requires_human", False)
+        )
+        if human_required:
             lines.extend(["", "HUMAN APPROVAL REQUIRED — check dashboard"])
 
         lines.extend(["", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])

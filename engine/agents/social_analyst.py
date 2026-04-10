@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
@@ -25,6 +25,23 @@ __all__ = ["SocialAnalystAgent", "SocialReport"]
 
 # ApeWisdom endpoint — no authentication required
 APEWISDOM_URL = "https://apewisdom.io/api/v1.0/filter/all-stocks"
+
+# Futures-specific subreddit routing
+FUTURES_SUBREDDIT_MAP: dict[str, list[str]] = {
+    "MES": ["FuturesTrading", "emini", "wallstreetbets"],
+    "MNQ": ["FuturesTrading", "emini", "wallstreetbets"],
+    "MCL": ["energy", "oilandgas"],
+    "MGC": ["investing", "Economics"],
+}
+DEFAULT_SUBREDDITS = ["investing", "Economics"]
+
+# Futures instrument descriptions for LLM context
+FUTURES_DESCRIPTIONS: dict[str, str] = {
+    "MES": "Micro E-mini S&P 500 futures (MES) — $5/point, tracks the S&P 500 index",
+    "MNQ": "Micro E-mini Nasdaq 100 futures (MNQ) — $2/point, tracks the Nasdaq 100 index",
+    "MCL": "Micro WTI Crude Oil futures (MCL) — $100/point, tracks crude oil spot price",
+    "MGC": "Micro Gold futures (MGC) — $10/point, tracks gold spot price",
+}
 
 
 @dataclass
@@ -48,6 +65,12 @@ class SocialReport:
     summary: str = ""
     reasoning: str = ""
 
+    # Futures/options positioning bias — "bullish" | "bearish" | "neutral" | "unknown"
+    contract_bias: str = "unknown"
+
+    # Data quality indicator — "ok" | "partial" | "unavailable"
+    data_quality: str = "ok"
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -59,6 +82,8 @@ class SocialReport:
             "trend": self.trend,
             "summary": self.summary,
             "reasoning": self.reasoning,
+            "contract_bias": self.contract_bias,
+            "data_quality": self.data_quality,
         }
 
 
