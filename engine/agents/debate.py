@@ -248,10 +248,12 @@ class DebateOrchestrator:
             result.rounds_completed = 3
 
             # ── Score ─────────────────────────────────────────────────────────
-            # bear_score_of_bull: how harshly bear rated bull (low = weak bull)
-            # bull_score_of_bear: how harshly bull rated bear (low = weak bear)
-            # A high bear_score_of_bull with low bull_score_of_bear → bull wins
-            debate_score = round((bear_score - bull_score) / 10, 4)
+            # bull_score: bear's rating of the bull argument (high = strong bull)
+            # bear_score: bull's rating of the bear argument (high = strong bear)
+            # Formula per module docstring: (bear_score_of_bull - bull_score_of_bear) / 10
+            #   = (bull_score - bear_score) / 10
+            # Positive → bull case stronger → BULL_WINS | Negative → bear → BEAR_WINS
+            debate_score = round((bull_score - bear_score) / 10, 4)
             result.debate_score = debate_score
 
             if debate_score >= _VERDICT_THRESHOLD:

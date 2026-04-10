@@ -115,7 +115,7 @@ class TraderAgent:
     MODEL = "claude-sonnet-4-6"
     MAX_TOKENS = 1200
 
-    SYSTEM_PROMPT = (
+    SYSTEM_PROMPT_LIVE = (
         "You are the Trader for JARVIS TRADER, an autonomous trading system. "
         "You receive analysis from multiple specialized agents (technical, news, social, fundamental) "
         "and a bull/bear debate, and you make the final trade recommendation. "
@@ -126,6 +126,23 @@ class TraderAgent:
         "using the multipliers provided in the prompt. "
         "Respond with valid JSON only. Do not add any explanation outside the JSON."
     )
+
+    SYSTEM_PROMPT_PAPER = (
+        "You are the Trader for JARVIS TRADER in PAPER TRADING mode. "
+        "This is a strategy validation phase — every executed trade is a data point. "
+        "Your job is to act decisively: if the debate verdict is non-INCONCLUSIVE (BULL_WINS or "
+        "BEAR_WINS), align your action with the verdict. BULL_WINS → buy. BEAR_WINS → sell. "
+        "Use the pre-calculated ATR stop and target levels from the prompt. "
+        "Only return HOLD if: (1) debate verdict is INCONCLUSIVE, OR (2) ATR data is missing so "
+        "you cannot calculate a valid stop/target, OR (3) R:R < 1.0 based on the pre-calculated "
+        "levels. Do NOT return HOLD due to mixed analyst signals or geopolitical uncertainty — "
+        "uncertainty is what we are testing. The max order value limit in the prompt is for "
+        "live trading; paper trades have no capital at risk, so do not let it block execution. "
+        "Respond with valid JSON only. Do not add any explanation outside the JSON."
+    )
+
+    # Default to live; _build_prompt selects paper dynamically
+    SYSTEM_PROMPT = SYSTEM_PROMPT_LIVE
 
     # Per-symbol stop/target ATR multipliers — mirrors INSTRUMENT_PARAMS in backtest/signals.py
     # Format: (stop_atr, t1_atr, t2_atr)
@@ -342,6 +359,8 @@ class TraderAgent:
                 )
 
         # Build the analysis prompt from all upstream reports
+        is_paper = not getattr(settings, "LIVE_TRADING_ENABLED", False)
+        system_prompt = self.SYSTEM_PROMPT_PAPER if is_paper else self.SYSTEM_PROMPT_LIVE
         prompt = self._build_prompt(
             symbol, debate_result, analyst_reports, safety_status, position_size
         )
@@ -361,7 +380,7 @@ class TraderAgent:
                     json={
                         "model": self.MODEL,
                         "max_tokens": self.MAX_TOKENS,
-                        "system": self.SYSTEM_PROMPT,
+                        "system": system_prompt,
                         "messages": [{"role": "user", "content": prompt}],
                     },
                 )
@@ -390,7 +409,12 @@ class TraderAgent:
                     response_text = response_text[4:]
 
             result = json.loads(response_text)
-            return self._parse_decision(symbol, result, position_size, sizing_method)
+            decision = self._parse_decision(symbol, result, position_size, sizing_method)
+            logger.info(
+                "[Trader] %s decision: action=%s confidence=%.2f signal_score=%.2f",
+                symbol, decision.action, decision.confidence, decision.signal_score,
+            )
+            return decision
 
         except Exception as e:
             logger.error(f"[Trader] LLM decision failed for {symbol}: {e}")
@@ -410,6 +434,8 @@ class TraderAgent:
         safety_status: dict,
         position_size: PositionSizeResult,
     ) -> str:
+        from config import settings  # local import to avoid circular deps
+
         technical = analyst_reports.get("technical", {})
         news = analyst_reports.get("news", {})
         social = analyst_reports.get("social", {})
@@ -517,7 +543,7 @@ Live trading enabled: {live_enabled}
 Current equity: ${current_equity:,.2f}
 Daily P&L: ${daily_pnl:,.2f}
 Current drawdown: {drawdown:.1%}
-Max single order value: $5,000
+Max single order value: ${settings.MAX_SINGLE_ORDER_VALUE:,.0f}
 Max contracts per instrument: {position_size.contracts}
 
 === FIXED-FRACTIONAL POSITION SIZING (pre-calculated) ===
