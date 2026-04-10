@@ -27,8 +27,9 @@ logger = logging.getLogger(__name__)
 
 # Minimum bars required for a full intraday analysis
 _MIN_INTRADAY_BARS = 50
-# Minimum daily bars needed for a degraded-but-useful daily fallback
-_MIN_DAILY_BARS = 5
+# Minimum daily bars needed for a degraded-but-useful daily fallback.
+# Must be >= 15 so pandas_ta can produce ATRr_14 (requires 14 + 1 warmup bars).
+_MIN_DAILY_BARS = 20
 
 
 @dataclass
@@ -478,7 +479,26 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         df.ta.atr(append=True)
         df.ta.bbands(append=True)
 
-        indicators["atr"] = float(df["ATRr_14"].iloc[-1]) if "ATRr_14" in df else None
+        if "ATRr_14" in df and not pd.isna(df["ATRr_14"].iloc[-1]):
+            indicators["atr"] = float(df["ATRr_14"].iloc[-1])
+        elif len(df) >= 2:
+            # Fallback: simple True Range average when pandas_ta needs more warmup bars.
+            # TR = max(H-L, |H-prev_C|, |L-prev_C|)
+            hi = df["high"]
+            lo = df["low"]
+            cl = df["close"]
+            tr = pd.concat(
+                [hi - lo, (hi - cl.shift(1)).abs(), (lo - cl.shift(1)).abs()], axis=1
+            ).max(axis=1)
+            period = min(14, len(tr) - 1)
+            indicators["atr"] = float(tr.iloc[-period:].mean()) if period > 0 else None
+            logger.debug(
+                "[TechnicalAnalyst] ATRr_14 unavailable (%d bars) — using %d-bar TR mean fallback",
+                len(df),
+                period,
+            )
+        else:
+            indicators["atr"] = None
         indicators["bb_upper"] = float(df["BBU_5_2.0"].iloc[-1]) if "BBU_5_2.0" in df else None
         indicators["bb_mid"] = float(df["BBM_5_2.0"].iloc[-1]) if "BBM_5_2.0" in df else None
         indicators["bb_lower"] = float(df["BBL_5_2.0"].iloc[-1]) if "BBL_5_2.0" in df else None

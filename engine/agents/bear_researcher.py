@@ -13,6 +13,7 @@ Model: Claude Sonnet 4.6
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -80,7 +81,21 @@ class BearResearcherAgent:
         "signal, or narrative that warns of downside risk. Minimise bullish data "
         "points; reframe them as false breakouts, overextension, or temporary noise "
         "where possible. Your output must be valid JSON only — no prose outside the "
-        "JSON object."
+        "JSON object.\n\n"
+        "SCORING RUBRIC:\n"
+        "When rating the opposing argument, provide your assessment in this EXACT "
+        "format on a new line:\n"
+        "ASSESSMENT: SCORE: X/10 | EVIDENCE_COUNT: N | EVIDENCE_QUALITY: low/medium/high\n\n"
+        "Definitions:\n"
+        "- SCORE (1-10): Your conviction that the opposing argument will lead to a "
+        "profitable trade\n"
+        "- EVIDENCE_COUNT: Number of distinct data points cited (price levels, "
+        "indicators, news events, macro data). Count: 0-10+\n"
+        "- EVIDENCE_QUALITY:\n"
+        "  - low = vague statements, no specific data (\"market seems uncertain\")\n"
+        "  - medium = specific indicators or events cited (\"STC at 45, above midline\")\n"
+        "  - high = quantified data with context (\"STC crossed above OS=15 with 1.8x "
+        "ATR expansion, VIX=17.2 confirming low-vol regime\")"
     )
 
     MODEL = "claude-sonnet-4-6"
@@ -150,7 +165,13 @@ class BearResearcherAgent:
             return self._empty_report(symbol)
 
     async def call_llm(self, prompt: str) -> str:
-        """Direct LLM call for debate scoring — returns raw text response."""
+        """Direct LLM call for debate scoring — returns raw text response.
+
+        If the response contains a structured ASSESSMENT block, appends a
+        WEIGHTED_SCORE line computed via _compute_weighted_score so that
+        callers (e.g. DebateOrchestrator) can use evidence-adjusted scores.
+        Falls back to raw text when no ASSESSMENT block is present.
+        """
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 self.ANTHROPIC_API_URL,
@@ -167,9 +188,52 @@ class BearResearcherAgent:
             )
             response.raise_for_status()
             data = response.json()
-        return data["content"][0]["text"].strip()
+        raw_text = data["content"][0]["text"].strip()
+
+        # Evidence-weighted score enhancement (backward-compatible)
+        assessment = self._parse_assessment(raw_text)
+        if assessment["score"] is not None:
+            weighted = self._compute_weighted_score(
+                raw_score=assessment["score"],
+                evidence_count=assessment["evidence_count"] or 3,
+                evidence_quality=assessment["evidence_quality"] or "medium",
+            )
+            raw_text = (
+                f"{raw_text}\n"
+                f"WEIGHTED_SCORE: {weighted:.2f}/10"
+            )
+        return raw_text
 
     # ── Internal helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_assessment(response_text: str) -> dict:
+        """Parse structured assessment from LLM response."""
+        result = {"score": None, "evidence_count": None, "evidence_quality": None}
+
+        # Try structured format first
+        pattern = (
+            r'ASSESSMENT:\s*SCORE:\s*(\d+(?:\.\d+)?)/10\s*\|\s*'
+            r'EVIDENCE_COUNT:\s*(\d+)\s*\|\s*'
+            r'EVIDENCE_QUALITY:\s*(low|medium|high)'
+        )
+        match = re.search(pattern, response_text, re.IGNORECASE)
+        if match:
+            result["score"] = float(match.group(1))
+            result["evidence_count"] = int(match.group(2))
+            result["evidence_quality"] = match.group(3).lower()
+
+        # Fallback: try existing score extraction pattern
+        # (keep whatever score extraction already exists as primary, this as enhancement)
+        return result
+
+    @staticmethod
+    def _compute_weighted_score(raw_score: float, evidence_count: int = 3,
+                                evidence_quality: str = "medium") -> float:
+        """Apply evidence weighting to raw score."""
+        count_boost = 1 + 0.1 * min(evidence_count, 5)  # max 1.5x boost at 5 pieces
+        quality_mult = {"low": 0.9, "medium": 1.0, "high": 1.1}.get(evidence_quality, 1.0)
+        return min(10.0, raw_score * count_boost * quality_mult)
 
     def _build_prompt(self, symbol: str, analyst_reports: dict) -> str:
         """Serialise analyst reports into a structured prompt."""

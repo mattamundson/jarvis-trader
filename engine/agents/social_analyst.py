@@ -127,40 +127,53 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         self._llm = llm_client
         self._stocktwits_token = stocktwits_token or os.getenv("STOCKTWITS_TOKEN", "")
 
-    async def analyze(self, symbol: str) -> "SocialReport":
+    async def analyze(self, symbol: str, current_price: float = None) -> "SocialReport":
         """Full social sentiment analysis pipeline for a symbol"""
 
         # Determine futures-specific subreddits for context annotation
         subreddits = FUTURES_SUBREDDIT_MAP.get(symbol.upper(), DEFAULT_SUBREDDITS)
         is_futures = symbol.upper() in FUTURES_SUBREDDIT_MAP
 
-        # 1. Fetch trending data from ApeWisdom
+        # 1. Run 6-step institutional options flow analysis early so it feeds the LLM prompt
+        flow_data = self._scan_institutional_flow(symbol, current_price)
+        if flow_data.get("flow_bias") != 0.0:
+            options_context = (
+                f"\nInstitutional Flow (6-step analysis): {flow_data.get('description', '')}"
+                f"\nFlow bias: {flow_data['flow_bias']:+.2f} | IV rank: {flow_data.get('iv_rank', 'N/A')}"
+            )
+        else:
+            options_context = (
+                f"\nInstitutional Flow: {flow_data.get('reason', 'no significant flow detected')}"
+            )
+
+        # 2. Fetch trending data from ApeWisdom
         trending_data = await self._fetch_apewisdom()
 
-        # 2. Find symbol in trending list
+        # 3. Find symbol in trending list
         symbol_data = self._find_symbol(symbol, trending_data)
 
-        # 3. Optionally enrich with StockTwits
+        # 4. Optionally enrich with StockTwits
         stocktwits_data = await self._fetch_stocktwits(symbol) if self._stocktwits_token else None
 
-        # 4. Enrich with JARVIS engine reddit sentiment (processed/cached)
+        # 5. Enrich with JARVIS engine reddit sentiment (processed/cached)
         engine_reddit_data = await self._fetch_engine_reddit_sentiment()
 
-        # 5. Fetch news sentiment for this symbol
+        # 6. Fetch news sentiment for this symbol
         news_sentiment = await self._fetch_engine_news_sentiment(symbol)
 
-        # 6. If no data found at all, return neutral
+        # 7. If no data found at all, return neutral
         if symbol_data is None and stocktwits_data is None and not engine_reddit_data and not news_sentiment:
             logger.info(f"{symbol} not found in social trending data — returning neutral")
             return self._neutral_report(symbol)
 
-        # 7. LLM synthesis
+        # 8. LLM synthesis (pass institutional flow context)
         report = await self._llm_synthesize(
             symbol, symbol_data, stocktwits_data, trending_data,
             engine_reddit_data=engine_reddit_data,
             news_sentiment=news_sentiment,
             subreddits=subreddits,
             is_futures=is_futures,
+            options_context=options_context,
         )
         return report
 
@@ -292,6 +305,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         news_sentiment: Optional[dict] = None,
         subreddits: Optional[list[str]] = None,
         is_futures: bool = False,
+        options_context: Optional[str] = None,
     ) -> "SocialReport":
         """Use LLM to synthesize social metrics into a structured signal"""
 
@@ -391,6 +405,10 @@ News Sentiment for {symbol}:
         else:
             social_context += f"\nNews Sentiment for {symbol}: unavailable\n"
 
+        # Institutional options flow (6-step analysis)
+        if options_context:
+            social_context += options_context + "\n"
+
         prompt = f"""{social_context}
 
 Respond with JSON in exactly this format:
@@ -406,43 +424,51 @@ Respond with JSON in exactly this format:
         data_quality = "partial" if any_source_unavailable else "ok"
 
         try:
-            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
-                "ANTHROPIC_API_KEY", ""
-            )
-            _t0 = time.time()
-
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": anthropic_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-haiku-4-5-20251001",
-                        "max_tokens": 500,
-                        "system": self.SYSTEM_PROMPT,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                resp.raise_for_status()
-                payload = resp.json()
-
-            _latency_ms = int((time.time() - _t0) * 1000)
-
-            # Track cost via JarvisLLMClient if available
-            usage = payload.get("usage", {})
-            if hasattr(self._llm, "track_raw_call"):
-                await self._llm.track_raw_call(
+            if hasattr(self._llm, "call"):
+                # Primary: use JarvisLLMClient (retry, fallback, cost tracking built-in)
+                llm_result = await self._llm.call(
                     model="claude-haiku-4-5-20251001",
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
-                    latency_ms=_latency_ms,
+                    system=self.SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=500,
                     agent_name="social_analyst",
                 )
-
-            response_text = payload["content"][0]["text"].strip()
+                if not llm_result.success:
+                    raise RuntimeError(llm_result.error or "LLM call failed")
+                response_text = llm_result.content.strip()
+            else:
+                # Fallback: raw httpx when LLM client is not JarvisLLMClient
+                anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
+                    "ANTHROPIC_API_KEY", ""
+                )
+                _t0 = time.time()
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": anthropic_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": "claude-haiku-4-5-20251001",
+                            "max_tokens": 500,
+                            "system": self.SYSTEM_PROMPT,
+                            "messages": [{"role": "user", "content": prompt}],
+                        },
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
+                _latency_ms = int((time.time() - _t0) * 1000)
+                if hasattr(self._llm, "track_raw_call"):
+                    await self._llm.track_raw_call(
+                        model="claude-haiku-4-5-20251001",
+                        input_tokens=payload.get("usage", {}).get("input_tokens", 0),
+                        output_tokens=payload.get("usage", {}).get("output_tokens", 0),
+                        latency_ms=_latency_ms,
+                        agent_name="social_analyst",
+                    )
+                response_text = payload["content"][0]["text"].strip()
 
             # Strip markdown code blocks if present
             if response_text.startswith("```"):
@@ -481,6 +507,111 @@ Respond with JSON in exactly this format:
                 contract_bias="unknown",
                 data_quality=data_quality,
             )
+
+    # ------------------------------------------------------------------
+    # Institutional Options Flow Pipeline (6-step — @xynth_m workflow)
+    # ------------------------------------------------------------------
+
+    def _scan_institutional_flow(self, symbol: str, current_price: float = None) -> dict:
+        """
+        6-step institutional options flow analysis.
+        Based on @xynth_m's institutional trading desk workflow.
+        Returns flow_bias (-1 to +1), iv_rank, trade_count, and description.
+        """
+        try:
+            # Step 1: Get large options trades (premium > $50K)
+            # Try IB Gateway options data first, fall back to whatever is available
+            large_trades = self._get_large_options_trades(symbol, min_premium=50000)
+            if not large_trades:
+                return {"flow_bias": 0.0, "reason": "no_large_trades_found", "iv_rank": None}
+
+            # Step 2: Filter by price trend alignment
+            # Align with current price momentum (calls above-price or puts below-price)
+            trend_aligned = [t for t in large_trades if self._trade_aligns_with_trend(t, current_price)]
+
+            # Step 3: IV rank check — reject high-IV entries (chasing premium)
+            iv_rank = self._get_iv_rank(symbol)
+            if iv_rank is not None and iv_rank > 70:
+                return {
+                    "flow_bias": 0.0,
+                    "reason": "iv_rank_too_high",
+                    "iv_rank": iv_rank,
+                    "description": f"IV rank {iv_rank:.0f} > 70 — elevated premium risk",
+                }
+
+            if not trend_aligned:
+                return {"flow_bias": 0.0, "reason": "no_trend_aligned_trades", "iv_rank": iv_rank}
+
+            # Step 4: Count bullish vs bearish flow
+            bullish_premium = sum(t.get("premium", 0) for t in trend_aligned if t.get("type") == "call")
+            bearish_premium = sum(t.get("premium", 0) for t in trend_aligned if t.get("type") == "put")
+            total_premium = bullish_premium + bearish_premium
+
+            if total_premium == 0:
+                return {"flow_bias": 0.0, "reason": "zero_premium", "iv_rank": iv_rank}
+
+            # Step 5: Compute directional bias (-1 to +1)
+            flow_bias = (bullish_premium - bearish_premium) / total_premium
+
+            # Step 6: Scale confidence by trade concentration (whale risk adjustment)
+            trade_count = len(trend_aligned)
+            concentration_penalty = 1.0 if trade_count >= 5 else 0.7  # Fewer trades = less confidence
+            flow_bias *= concentration_penalty
+
+            iv_display = f"{iv_rank:.0f}" if iv_rank is not None else "N/A"
+            return {
+                "flow_bias": round(flow_bias, 3),
+                "iv_rank": iv_rank,
+                "trade_count": trade_count,
+                "bullish_premium": bullish_premium,
+                "bearish_premium": bearish_premium,
+                "description": (
+                    f"Flow: {trade_count} aligned trades | "
+                    f"Bull ${bullish_premium:,.0f} vs Bear ${bearish_premium:,.0f} | "
+                    f"IV rank {iv_display}"
+                ),
+            }
+
+        except Exception as e:
+            logger.debug(f"Institutional flow scan error for {symbol}: {e}")
+            return {"flow_bias": 0.0, "reason": f"error: {e}"}
+
+    def _get_large_options_trades(self, symbol: str, min_premium: float = 50000) -> list:
+        """Fetch options trades above minimum premium threshold."""
+        try:
+            # Try IB Gateway options data if available via market data manager
+            mdm = getattr(self, "market_data", None) or getattr(self, "mdm", None)
+            if mdm and hasattr(mdm, "get_options_flow"):
+                return mdm.get_options_flow(symbol, min_premium=min_premium) or []
+            # No options data source available — graceful degradation
+            return []
+        except Exception:
+            return []
+
+    def _trade_aligns_with_trend(self, trade: dict, current_price: float) -> bool:
+        """Check if an options trade direction aligns with price trend."""
+        trade_type = trade.get("type", "").lower()
+        strike = trade.get("strike", 0)
+        if not strike or not current_price:
+            return True  # Can't determine — include by default
+        # Calls near/above price = bullish bets; puts near/below price = bearish bets
+        if trade_type == "call" and strike >= current_price * 0.98:  # Near-ATM or OTM calls
+            return True
+        if trade_type == "put" and strike <= current_price * 1.02:  # Near-ATM or OTM puts
+            return True
+        return False  # Deep ITM — likely hedges, exclude
+
+    def _get_iv_rank(self, symbol: str) -> Optional[float]:
+        """Get IV rank (0-100) from available data source."""
+        try:
+            mdm = getattr(self, "market_data", None) or getattr(self, "mdm", None)
+            if mdm and hasattr(mdm, "get_iv_rank"):
+                return mdm.get_iv_rank(symbol)
+            return None  # Not available — skip IV rank filter
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
 
     def _neutral_report(
         self,
