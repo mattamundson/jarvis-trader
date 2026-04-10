@@ -1,5 +1,5 @@
 {
-  "session": "2026-04-02",
+  "session": "2026-04-09",
   "tasks": [
     {
       "id": "task-1",
@@ -22,38 +22,38 @@
     {
       "id": "task-4",
       "area": "sprint12-prd",
-      "status": "done",
-      "owner": "agent-4"
+      "status": "unowned",
+      "owner": null
     },
     {
       "id": "task-5",
       "area": "signal-feed-component",
-      "status": "done",
-      "owner": "agent-5"
+      "status": "unowned",
+      "owner": null
     },
     {
       "id": "task-6",
       "area": "wfe-monitor-endpoint",
-      "status": "done",
-      "owner": "agent-6"
+      "status": "unowned",
+      "owner": null
     },
     {
       "id": "task-7",
       "area": "memory-tasks-cleanup",
-      "status": "done",
-      "owner": "agent-7"
+      "status": "unowned",
+      "owner": null
     },
     {
       "id": "task-8",
       "area": "options-audit",
-      "status": "done",
-      "owner": "agent-8"
+      "status": "unowned",
+      "owner": null
     },
     {
       "id": "task-9",
       "area": "security-remediation-guide",
-      "status": "done",
-      "owner": "agent-9"
+      "status": "unowned",
+      "owner": null
     },
     {
       "id": "task-10",
