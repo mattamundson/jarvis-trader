@@ -2777,7 +2777,7 @@ async def remove_from_watchlist(symbol: str):
 
 
 @app.get("/prices/snapshot")
-async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
+async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
     """
     Get current prices and daily change % for comma-separated symbols.
     Futures micro contracts (MES, MNQ, MCL etc) are mapped via data_manager.
