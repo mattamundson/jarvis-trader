@@ -783,6 +783,46 @@ class PortfolioTracker:
 
         return base
 
+    def get_portfolio(self) -> dict:
+        """
+        Return portfolio state in the format expected by the pipeline's _get_portfolio().
+
+        Used when this tracker is injected into pipeline._agents["portfolio"].
+        Merges both open paper trades (_open) and live position records (_positions)
+        so the risk manager sees all correlated positions.
+        """
+        # get_open_positions() reads from _open (add_paper_trade / open_trade path)
+        open_trades = self.get_open_positions()
+        # get_positions() reads from _positions (update_position / DB path)
+        live_positions = self.get_positions()
+        # Merge: open trades keyed by symbol take priority; supplement with live_positions
+        by_symbol: dict = {p["symbol"]: p for p in live_positions}
+        for trade in open_trades:
+            sym = trade.get("symbol", "").upper()
+            if sym and sym not in by_symbol:
+                by_symbol[sym] = trade
+            elif sym:
+                # Prefer the more detailed open_trade record
+                by_symbol[sym] = trade
+        positions = list(by_symbol.values())
+        perf = self.get_performance()
+        equity = getattr(self, "_equity", None)
+        if equity is None:
+            try:
+                equity = self._get_starting_balance()
+            except Exception:
+                equity = 10_000.0
+        total_pnl = perf.get("total_pnl", 0.0) or 0.0
+        total_value = equity + total_pnl
+        return {
+            "total_value": total_value,
+            "available_cash": total_value * 0.5,
+            "margin_used_pct": 0.0,
+            "daily_pnl": perf.get("total_pnl", 0.0),
+            "open_position_count": len(positions),
+            "positions": positions,
+        }
+
     # ── Session management helpers ────────────────────────────────────────────
 
     def flatten_all_positions(self, exit_price: Optional[float] = None) -> List[dict]:

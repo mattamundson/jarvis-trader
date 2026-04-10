@@ -196,16 +196,16 @@ class TradesMixin:
         Insert a new paper trade record with status='open'.
 
         This is a positional-argument alias for ``insert_trade`` used by
-        ``PortfolioTracker``.  ``stop_loss`` and ``take_profit`` are stored
-        inside the ``strategy_params`` JSON blob because the ``paper_trades``
-        table does not have dedicated columns for them.
+        ``PortfolioTracker``.  ``stop_loss`` and ``take_profit`` are written to
+        their dedicated columns AND mirrored into ``strategy_params`` for
+        backwards-compatible JSON reads.
 
         Returns the auto-incremented ``id`` primary key (SQLite rowid).
         """
         entry_time = entry_time or _utcnow()
 
-        # Merge stop_loss / take_profit into strategy_params so they survive
-        # the round-trip even though the table has no dedicated columns.
+        # Mirror stop_loss / take_profit into strategy_params for backwards
+        # compatibility, while also writing them to their dedicated columns.
         merged_params: dict = {}
         if isinstance(strategy_params, dict):
             merged_params.update(strategy_params)
@@ -219,8 +219,8 @@ class TradesMixin:
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, strategy_params, notes)
-            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, '')
+                 status, stop_loss, strategy_params, notes)
+            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, '')
         """
         params = (
             trade_id,
@@ -229,6 +229,7 @@ class TradesMixin:
             quantity,
             entry_price,
             entry_time,
+            stop_loss,
             _to_json(merged_params) if merged_params else None,
         )
         with self._lock:
