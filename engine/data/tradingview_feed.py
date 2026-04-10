@@ -104,6 +104,75 @@ class TradingViewFeed:
             self._available = False  # Mark unavailable on error
             return None
 
+    def get_snapshot(self, symbol: str) -> Optional[Any]:
+        """
+        Get full indicator snapshot via TVIndicatorBridge.
+        Returns TVIndicatorSnapshot (data_quality != 'unavailable') or None.
+        Delegates all logic to TVIndicatorBridge — this method is the public API.
+        """
+        if not self.is_available():
+            return None
+        try:
+            from data.tv_indicator_bridge import get_tv_bridge  # lazy import
+            bridge = get_tv_bridge()
+            snap = bridge.get_snapshot(symbol)
+            return snap if snap.data_quality != "unavailable" else None
+        except Exception as e:
+            logger.debug("TV bridge snapshot error: %s", e)
+            return None
+
+    def get_all_indicators(self, symbol: str) -> dict:
+        """
+        Return all indicator values as a flat dict for injection into pipeline.
+        Returns {} if TradingView unavailable or snapshot missing.
+        """
+        snap = self.get_snapshot(symbol)
+        if snap is None:
+            return {}
+        return {
+            "tv_stc": snap.stc_value,
+            "tv_stc_state": snap.stc_state,
+            "tv_composite": snap.composite_score,
+            "tv_regime": snap.regime,
+            "tv_orb_high": snap.orb_high,
+            "tv_orb_low": snap.orb_low,
+            "tv_vwap": snap.vwap,
+            "tv_atr": snap.atr_value,
+            "tv_atr_neg1": snap.atr_neg1,
+            "tv_atr_pos1": snap.atr_pos1,
+            "tv_atr_neg2": snap.atr_neg2,
+            "tv_atr_pos2": snap.atr_pos2,
+            "tv_ib_high": snap.ib_high,
+            "tv_ib_low": snap.ib_low,
+            "tv_ib_range": snap.ib_range,
+            "tv_ibu50": snap.ibu50,
+            "tv_ibu100": snap.ibu100,
+            "tv_ibd50": snap.ibd50,
+            "tv_ibd100": snap.ibd100,
+            "tv_phase": snap.phase_oscillator,
+            "tv_compressed": snap.is_compressed,
+            "tv_corey_score": snap.corey_score,
+            "tv_poc": snap.vp_poc,
+            "tv_vah": snap.vp_vah,
+            "tv_val": snap.vp_val,
+            "tv_pp": snap.pivot_pp,
+            "tv_r1": snap.pivot_r1,
+            "tv_s1": snap.pivot_s1,
+            "tv_kc_upper": snap.kc_upper,
+            "tv_kc_mid": snap.kc_mid,
+            "tv_kc_lower": snap.kc_lower,
+            "tv_kc_alignment": snap.kc_alignment,
+            "tv_gap_exists": snap.gap_exists,
+            "tv_gap_direction": snap.gap_direction,
+            "tv_cycle_phase": snap.cycle_phase,
+            "tv_ote_bull_high": snap.ote_bull_high,
+            "tv_ote_bull_low": snap.ote_bull_low,
+            "tv_in_bull_ote": snap.in_bull_ote,
+            "tv_in_bear_ote": snap.in_bear_ote,
+            "tv_vpoc_today": snap.vpoc_today,
+            "tv_data_quality": snap.data_quality,
+        }
+
     def get_regime_context(self, study_filter: str = "Regime") -> Optional[Dict[str, Any]]:
         """
         Extract regime filter outputs from a custom Pine indicator via MCP.
@@ -117,6 +186,20 @@ class TradingViewFeed:
         Returns:
             Dict with {regime, layer_votes, stc_value} or None
         """
+        # Try the bridge first for richer structured data
+        snap = self.get_snapshot("")
+        if snap is not None and snap.data_quality != "unavailable":
+            return {
+                "regime": snap.regime or "RANGING",
+                "composite_score": snap.composite_score,
+                "stc_value": snap.stc_value,
+                "stc_state": snap.stc_state,
+                "is_compressed": snap.is_compressed,
+                "data_quality": snap.data_quality,
+                "source": "tradingview_bridge",
+            }
+
+        # Fall back to original pine tables method
         if not self.is_available():
             return None
 

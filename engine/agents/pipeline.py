@@ -584,6 +584,47 @@ class TradingPipeline:
                 f"ema_alignment={_hp.get('ema_alignment', 'MIXED')}"
             )
 
+        # ── A1: Wire IBLevelProvider — Discord IB report levels ──────────────
+        try:
+            from discord.ib_levels import IBLevelProvider
+            from datetime import date as _date
+            _ib_provider = IBLevelProvider()
+            _ib_data = _ib_provider.get_levels(symbol, _date.today())
+            if _ib_data:
+                analyst_reports["ib_levels"] = {
+                    "ib_high": _ib_data.get("ib_high"),
+                    "ib_low": _ib_data.get("ib_low"),
+                    "ib_range": _ib_data.get("ib_range"),
+                    "ibu50": _ib_data.get("ibu50"),
+                    "ibu100": _ib_data.get("ibu100"),
+                    "ibd50": _ib_data.get("ibd50"),
+                    "ibd100": _ib_data.get("ibd100"),
+                    "auction_context": _ib_data.get("auction_context"),
+                    "source": "discord_ib_report",
+                }
+                # Cross-validate with TV IB if available
+                _tv_ib_high = (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_high")
+                _tv_ib_low = (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_low")
+                if _tv_ib_high and _ib_data.get("ib_high"):
+                    _discord_ib = float(_ib_data["ib_high"])
+                    _tv_ib = float(_tv_ib_high)
+                    _pct_diff = abs(_discord_ib - _tv_ib) / max(_discord_ib, 0.001) * 100
+                    if _pct_diff > 0.5:
+                        logger.warning(
+                            "[Pipeline] %s IB cross-validation: Discord=%.2f vs TV=%.2f (%.1f%% diff)",
+                            symbol, _discord_ib, _tv_ib, _pct_diff
+                        )
+                        analyst_reports["ib_levels"]["cross_validation"] = f"Discord/TV diff={_pct_diff:.1f}%"
+                logger.info(
+                    "[Pipeline] %s IBLevels: H=%.2f L=%.2f range=%.2f",
+                    symbol,
+                    _ib_data.get("ib_high", 0),
+                    _ib_data.get("ib_low", 0),
+                    _ib_data.get("ib_range", 0),
+                )
+        except Exception as _ib_err:
+            logger.debug("[Pipeline] IBLevelProvider failed (non-fatal): %s", _ib_err)
+
         pipeline_result["analyst_reports"] = analyst_reports
 
         # ── Technical-Only Fallback: LLM credits exhausted ────────────────
@@ -794,9 +835,10 @@ class TradingPipeline:
         pipeline_result["final_quantity"] = final_quantity
         pipeline_result["requires_human"] = requires_human
 
-        # ── A1: Hidden Pivots conflict check ──────────────────────────────────
-        # If HP bias conflicts with the final verdict, log a warning and reduce
-        # confidence by ×0.85 (does NOT override — just notes the conflict).
+        # ── A1: Hidden Pivots conviction adjustment ───────────────────────────
+        # CONFLICT: HP bias opposes final verdict → reduce boosted_confidence -0.15
+        # CONFIRMS: HP bias aligns with final verdict → boost boosted_confidence +0.10
+        # Never overrides verdict — only adjusts confidence score.
         if hp_result is not None and final_action not in ("hold", "HOLD"):
             _hp_bias = hp_result.bias  # "LONG" | "SHORT" | "WATCH" | "SOH"
             _action_is_long = final_action.lower() == "buy"
@@ -805,19 +847,37 @@ class TradingPipeline:
                 (_hp_bias == "LONG" and _action_is_short)
                 or (_hp_bias == "SHORT" and _action_is_long)
             )
+            _hp_confirms = (
+                (_hp_bias == "LONG" and _action_is_long)
+                or (_hp_bias == "SHORT" and _action_is_short)
+            )
+            _old_boosted = pipeline_result.get("boosted_confidence", 0.0)
             if _hp_conflicts:
-                _old_boosted = pipeline_result.get("boosted_confidence", 0.0)
-                _new_boosted = max(0.0, _old_boosted * 0.85)
+                _new_boosted = max(0.0, _old_boosted - 0.15)
                 pipeline_result["boosted_confidence"] = round(_new_boosted, 4)
                 pipeline_result["hp_conflict"] = True
+                pipeline_result["hp_confirms"] = False
                 pipeline_result["hp_bias"] = _hp_bias
                 logger.warning(
                     "[Pipeline] %s HiddenPivots CONFLICT: HP=%s but final_action=%s — "
-                    "reducing confidence %.2f → %.2f (×0.85, not overriding verdict)",
+                    "reducing conviction %.2f → %.2f (-0.15, not overriding verdict)",
+                    symbol, _hp_bias, final_action.upper(), _old_boosted, _new_boosted,
+                )
+            elif _hp_confirms:
+                _new_boosted = min(1.0, _old_boosted + 0.10)
+                pipeline_result["boosted_confidence"] = round(_new_boosted, 4)
+                pipeline_result["hp_conflict"] = False
+                pipeline_result["hp_confirms"] = True
+                pipeline_result["hp_bias"] = _hp_bias
+                logger.info(
+                    "[Pipeline] %s HiddenPivots CONFIRMS: HP=%s aligns with final_action=%s — "
+                    "boosting conviction %.2f → %.2f (+0.10)",
                     symbol, _hp_bias, final_action.upper(), _old_boosted, _new_boosted,
                 )
             else:
+                # WATCH / SOH — neutral, no adjustment
                 pipeline_result["hp_conflict"] = False
+                pipeline_result["hp_confirms"] = False
                 pipeline_result["hp_bias"] = _hp_bias
 
         completed_at = datetime.now()
