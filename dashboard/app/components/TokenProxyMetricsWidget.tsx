@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchEngine } from "@/lib/api";
 
 type BadgeVariant = "bull" | "bear" | "warn" | "info" | "neutral";
 
@@ -17,8 +18,6 @@ interface TokenProxyMetrics {
   error?: string;
 }
 
-const API_BASE = "http://localhost:8010";
-const API_KEY = "xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc";
 const POLL_INTERVAL_MS = 5000;
 
 function variantClass(v: BadgeVariant): string {
@@ -63,12 +62,7 @@ export default function TokenProxyMetricsWidget() {
 
     async function fetchMetrics() {
       try {
-        const res = await fetch(`${API_BASE}/token-proxy/metrics`, {
-          headers: { "X-API-Key": API_KEY },
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await fetchEngine<TokenProxyMetrics>("/obs/token-proxy/metrics");
         if (!cancelled) {
           setMetrics(data);
           setError(null);
