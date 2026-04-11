@@ -94,10 +94,13 @@ export default function DashboardPage() {
     { refreshInterval: 60_000, shouldRetryOnError: false }
   );
 
-  const engineOnline = !healthErr && !!health;
+  const engineReachable = !healthErr && !!health;
+  const engineHealthy =
+    health?.status === "ok" || health?.status === "healthy";
+  const engineDegraded = engineReachable && !engineHealthy;
 
   const { data: pendingApprovals } = useSWR(
-    engineOnline ? "pending-approvals-count" : null,
+    engineReachable ? "pending-approvals-count" : null,
     () => getPendingApprovals(50),
     { refreshInterval: 25_000, shouldRetryOnError: false }
   );
@@ -108,7 +111,7 @@ export default function DashboardPage() {
   const [lastResult, setLastResult] = React.useState<Record<string, unknown> | null>(null);
 
   const runAnalysis = useCallback(async () => {
-    if (!engineOnline || isRunning) return;
+    if (!engineReachable || isRunning) return;
     setIsRunning(true);
     try {
       const res = await fetchEngine("/pipeline/run", {
@@ -122,7 +125,7 @@ export default function DashboardPage() {
     } finally {
       setIsRunning(false);
     }
-  }, [engineOnline, isRunning, analysisSymbol]);
+  }, [engineReachable, isRunning, analysisSymbol]);
 
   const onKillSwitchToggle = useCallback(() => {
     mutateSafety();
@@ -154,10 +157,12 @@ export default function DashboardPage() {
             <IBGatewayStatus />
 
             {/* Engine connection status */}
-            {engineOnline ? (
+            {engineReachable ? (
               <div className="flex items-center gap-1.5 text-xs text-bull">
                 <Wifi className="h-3.5 w-3.5" />
-                <span>Engine connected</span>
+                <span>
+                  {engineDegraded ? "Engine connected (degraded)" : "Engine connected"}
+                </span>
                 {health?.schwab_connected && <Badge variant="info">Schwab</Badge>}
               </div>
             ) : (
@@ -305,7 +310,7 @@ export default function DashboardPage() {
                 />
                 <button
                   onClick={runAnalysis}
-                  disabled={!engineOnline || isRunning}
+                  disabled={!engineReachable || isRunning}
                   className="rounded-lg bg-accent/20 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {isRunning ? "Running…" : "Analyze"}

@@ -26,6 +26,17 @@ export interface EngineWebSocketContextValue {
 export const EngineWebSocketContext =
   createContext<EngineWebSocketContextValue | null>(null);
 
+function resolveEngineHttpUrl(url?: string): string {
+  if (url) return url;
+  if (process.env.NEXT_PUBLIC_ENGINE_URL) return process.env.NEXT_PUBLIC_ENGINE_URL;
+  if (typeof window !== "undefined") {
+    // In the browser we connect back to the dashboard origin and let the
+    // Next.js /ws rewrite proxy the upgrade to the engine.
+    return window.location.origin;
+  }
+  return "http://localhost:8010";
+}
+
 /**
  * Single shared WebSocket to the engine `/ws/events` stream.
  * Mount once near the root (inside client tree) so all `useWebSocket` hooks share one connection.
@@ -70,12 +81,7 @@ export function EngineWebSocketProvider({
     const connect = () => {
       if (wsRef.current?.readyState === WebSocket.OPEN) return;
       try {
-        const engineHttp =
-          url ||
-          process.env.NEXT_PUBLIC_ENGINE_URL ||
-          (typeof window !== "undefined"
-            ? `${window.location.protocol}//${window.location.hostname}:8010`
-            : "http://localhost:8010");
+        const engineHttp = resolveEngineHttpUrl(url);
         const engineWs = engineHttp.replace(/^http/, "ws");
         const ws = new WebSocket(`${engineWs}/ws/events`);
         ws.onopen = () => {

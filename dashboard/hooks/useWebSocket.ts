@@ -14,6 +14,17 @@ export type { WsEvent } from "./ws-types";
 
 type WsEventHandler = (event: WsEvent) => void;
 
+function resolveEngineHttpUrl(url?: string): string {
+  if (url) return url;
+  if (process.env.NEXT_PUBLIC_ENGINE_URL) return process.env.NEXT_PUBLIC_ENGINE_URL;
+  if (typeof window !== "undefined") {
+    // In the browser we connect back to the dashboard origin and let the
+    // Next.js /ws rewrite proxy the upgrade to the engine.
+    return window.location.origin;
+  }
+  return "http://localhost:8010";
+}
+
 /**
  * Subscribe to the shared engine WebSocket (when `EngineWebSocketProvider` is mounted)
  * or open a dedicated connection as a fallback when the provider is absent.
@@ -42,8 +53,7 @@ export function useWebSocket(url?: string, onEvent?: WsEventHandler) {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     try {
-      const engineHttp =
-        url || process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+      const engineHttp = resolveEngineHttpUrl(url);
       const engineWs = engineHttp.replace(/^http/, "ws");
       const ws = new WebSocket(`${engineWs}/ws/events`);
 
