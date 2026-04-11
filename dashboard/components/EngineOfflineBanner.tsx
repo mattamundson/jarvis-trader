@@ -60,7 +60,7 @@ export function EngineOfflineBanner() {
           ENGINE OFFLINE{" "}
           <span className="font-normal opacity-70">—</span>{" "}
           <span className="font-normal" style={{ color: "#3d2800" }}>
-            {process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8010"} not responding. Start engine to resume live data.
+            Engine API not responding (dashboard uses the /api/engine proxy). Start the FastAPI engine and see docs/troubleshooting.md.
           </span>
         </p>
 
