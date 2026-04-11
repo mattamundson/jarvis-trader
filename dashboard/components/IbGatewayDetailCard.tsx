@@ -163,7 +163,7 @@ export function IbGatewayDetailCard() {
           <div className="flex items-start gap-2 rounded-lg border border-bear/30 bg-bear/5 p-3">
             <AlertCircle className="h-4 w-4 text-bear shrink-0 mt-0.5" />
             <p className="text-xs text-bear">
-              Engine unreachable — verify the engine is running on port 8010.
+              Engine unreachable — verify the engine is running and reachable through the dashboard proxy.
             </p>
           </div>
         )}

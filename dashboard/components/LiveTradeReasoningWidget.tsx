@@ -322,7 +322,7 @@ export default function LiveTradeReasoningWidget() {
       {/* Error state */}
       {!isLoading && error && (
         <div className="border border-red-900/40 rounded-lg p-3 text-xs text-red-400">
-          Cannot fetch pipeline decisions — engine not responding on port 8010
+          Cannot fetch pipeline decisions — engine not responding through the dashboard proxy
         </div>
       )}
 

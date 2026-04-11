@@ -1,6 +1,6 @@
 // All dashboard calls MUST use fetchEngine() or postEngine() below.
 // These functions proxy through Next.js rewrites to the engine backend.
-// NEVER hardcode localhost:8010 or make fetch calls directly.
+// NEVER hardcode an absolute engine URL or make fetch calls directly.
 const ENGINE = "/api/engine";
 const FETCH_TIMEOUT_MS = 30000; // 30 seconds
 const RETRY_DELAY_MS = 2000; // 2 seconds
@@ -140,6 +140,36 @@ export interface TechnicalReport {
   resistance_levels: number[];
   reasoning: string;
   timestamp: string;
+}
+
+export const JARVIS_QUICK_ANALYSIS_PERIODS = ["5d", "1mo", "3mo", "6mo"] as const;
+
+export type JarvisQuickAnalysisPeriod = (typeof JARVIS_QUICK_ANALYSIS_PERIODS)[number];
+
+export interface JarvisQuickAnalysisRequest {
+  symbol: string;
+  period?: JarvisQuickAnalysisPeriod;
+}
+
+export interface JarvisQuickAnalysisResponse {
+  symbol: string;
+  period: string;
+  analysis: string;
+  model: string;
+  generated_at: string;
+}
+
+export function normalizeJarvisSymbolInput(symbol: string): string {
+  return symbol.trim().toUpperCase();
+}
+
+export async function analyzeJarvisSymbol(
+  body: JarvisQuickAnalysisRequest
+): Promise<JarvisQuickAnalysisResponse> {
+  return postEngine<JarvisQuickAnalysisResponse>("/jarvis/analyze", {
+    symbol: normalizeJarvisSymbolInput(body.symbol),
+    period: body.period,
+  });
 }
 
 /** OHLCV bar for charts (`time` = unix seconds; engine may send ISO strings — normalize in hooks). */

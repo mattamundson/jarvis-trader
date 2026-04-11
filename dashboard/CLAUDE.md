@@ -14,7 +14,9 @@
 ## Critical Rule: Never Hardcode URLs
 
 **ALL engine API calls must use `fetchEngine` / `postEngine` from `lib/api.ts`.**
-Never write `fetch('http://localhost:8010/...')` directly.
+Never write direct absolute engine URLs in dashboard code.
+Use the dashboard proxy and environment-aware helpers instead of assuming a direct
+engine host or port.
 
 ## TypeScript Conventions
 
@@ -43,4 +45,6 @@ Never write `fetch('http://localhost:8010/...')` directly.
 
 ## WebSocket
 
-Real-time data via `hooks/useWebSocket.ts` — connects to engine ws://localhost:8010/ws
+Real-time data via `hooks/useWebSocket.ts` — resolves through
+`NEXT_PUBLIC_ENGINE_URL` when set, otherwise falls back to the current dashboard
+origin so Next.js proxying can handle the engine connection.

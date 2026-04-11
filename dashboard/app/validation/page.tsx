@@ -1500,7 +1500,7 @@ export default function ValidationPage() {
             <div>
               <p className="text-sm font-semibold text-bear">Engine offline or analytics unavailable</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Ensure the JARVIS engine is running on port 8010 and{" "}
+                Ensure the JARVIS engine is running and reachable through the dashboard proxy, and{" "}
                 <code className="font-mono">/analytics/performance</code> is responding.
                 Backtest baseline pills need <code className="font-mono">/backtest/results</code> when the engine is up.
               </p>

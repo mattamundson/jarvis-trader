@@ -515,7 +515,7 @@ export default function HealthPage() {
             <XCircle className="h-8 w-8 text-bear mx-auto" />
             <p className="text-sm font-semibold text-bear">Engine unreachable</p>
             <p className="text-xs text-muted-foreground">
-              Could not fetch /health/full — verify the engine is running on port 8010
+              Could not fetch /health/full — verify the engine is running and the dashboard proxy can reach it.
             </p>
           </div>
         )}

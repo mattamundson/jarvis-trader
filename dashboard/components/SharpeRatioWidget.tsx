@@ -231,7 +231,7 @@ export function SharpeRatioWidget() {
               <p className="text-sm font-semibold text-bear">Engine unavailable</p>
               <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Ensure JARVIS engine is running on port 8010. Retrying every 30s.
+                Ensure the JARVIS engine is running and reachable through the dashboard proxy. Retrying every 30s.
               </p>
             </div>
           </div>

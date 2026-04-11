@@ -122,7 +122,7 @@ export default function StatsPage() {
 
         {/* Footer */}
         <p className="text-[11px] text-muted-foreground text-center pb-4">
-          JARVIS TRADER Statistics — All data from paper trading engine on port 8010 — Auto-refresh per widget
+          JARVIS TRADER Statistics — All data from the paper trading engine via the dashboard proxy — Auto-refresh per widget
         </p>
       </main>
     </div>

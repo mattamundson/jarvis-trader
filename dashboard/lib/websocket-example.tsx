@@ -9,7 +9,7 @@
  *
  * The hook automatically:
  * - Connects to the engine WebSocket via NEXT_PUBLIC_ENGINE_URL env var
- * - Falls back to ws://localhost:8010/ws/events if env var is not set
+ * - Falls back to the current dashboard origin and relies on the proxy if env var is not set
  * - Reconnects with exponential backoff on disconnect
  * - Buffers the last 100 events
  * - Sends ping/pong keep-alive every 30 seconds
