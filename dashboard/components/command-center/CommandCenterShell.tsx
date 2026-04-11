@@ -57,7 +57,9 @@ export function CommandCenterShell({
     }
   }
 
-  const isOnline = health?.status === "ok" || health?.status === "healthy";
+  const isReachable = !!health;
+  const isHealthy = health?.status === "ok" || health?.status === "healthy";
+  const isDegraded = isReachable && !isHealthy;
   const isPaper = health?.paper_mode !== false;
   const killActive = health?.kill_switch_active ?? false;
 
@@ -100,9 +102,9 @@ export function CommandCenterShell({
           </span>
         )}
 
-        {isOnline ? (
+        {isReachable ? (
           <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-800 bg-emerald-950/40 text-emerald-400 tracking-wider">
-            ENGINE ONLINE
+            {isDegraded ? "ENGINE DEGRADED" : "ENGINE ONLINE"}
           </span>
         ) : (
           <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-red-800 bg-red-950/40 text-red-400 tracking-wider">

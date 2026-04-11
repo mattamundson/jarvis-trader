@@ -37,7 +37,7 @@ interface WebSocketManagerConfig {
  * Usage:
  * ```typescript
  * const { isConnected, lastEvent, events } = useWebSocket({
- *   url: 'ws://localhost:8010/ws/events',
+ *   url: `${window.location.origin.replace(/^http/, "ws")}/ws/events`,
  *   autoConnect: true,
  * });
  *
@@ -48,8 +48,18 @@ interface WebSocketManagerConfig {
  * }, [lastEvent]);
  * ```
  */
+function resolveEngineHttpUrl(): string {
+  if (process.env.NEXT_PUBLIC_ENGINE_URL) return process.env.NEXT_PUBLIC_ENGINE_URL;
+  if (typeof window !== "undefined") {
+    // In the browser we connect back to the dashboard origin and let the
+    // Next.js /ws rewrite proxy the upgrade to the engine.
+    return window.location.origin;
+  }
+  return "http://localhost:8010";
+}
+
 function defaultWsUrl(): string {
-  const engineHttp = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8010";
+  const engineHttp = resolveEngineHttpUrl();
   return engineHttp.replace(/^http/, "ws") + "/ws/events";
 }
 
