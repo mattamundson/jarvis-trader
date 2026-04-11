@@ -1956,7 +1956,7 @@ export default function StrategiesPage() {
       }
       setError(null);
     } catch {
-      setError("Engine offline — start with: cd engine && uvicorn main:app --port 8010");
+      setError("Engine offline — start the FastAPI engine and confirm the dashboard proxy can reach it.");
     }
   }, []);
 

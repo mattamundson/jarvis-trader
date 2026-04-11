@@ -181,7 +181,7 @@ export function PerformanceSummaryWidget() {
           Performance Summary
         </p>
         <p className="text-sm text-muted-foreground">
-          Unable to load performance data. Ensure the engine is running on port 8010.
+          Unable to load performance data. Ensure the engine is running and reachable through the dashboard proxy.
         </p>
       </div>
     );

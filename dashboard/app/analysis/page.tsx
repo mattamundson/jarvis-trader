@@ -3,7 +3,14 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Activity, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
+import {
+  analyzeJarvisSymbol,
+  JARVIS_QUICK_ANALYSIS_PERIODS,
+  normalizeJarvisSymbolInput,
+  postEngine,
+  type JarvisQuickAnalysisPeriod,
+  type JarvisQuickAnalysisResponse,
+} from "@/lib/api";
 
 interface PipelineResult {
   symbol: string;
@@ -27,29 +34,52 @@ interface PipelineResult {
 export default function AnalysisPage() {
   const [symbol, setSymbol] = useState("SPY");
   const [isFutures, setIsFutures] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<PipelineResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<PipelineResult | null>(null);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [quickPeriod, setQuickPeriod] = useState<JarvisQuickAnalysisPeriod>("5d");
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
+  const [quickResult, setQuickResult] = useState<JarvisQuickAnalysisResponse | null>(null);
+
+  const normalizedSymbol = normalizeJarvisSymbolInput(symbol);
 
   const runAnalysis = async () => {
-    if (!symbol.trim() || loading) return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
+    if (!normalizedSymbol || pipelineLoading) return;
+    setPipelineLoading(true);
+    setPipelineError(null);
+    setPipelineResult(null);
     try {
-      const data = await fetchEngine<PipelineResult>("/pipeline/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol: symbol.toUpperCase(), is_futures: isFutures }),
+      const data = await postEngine<PipelineResult>("/pipeline/run", {
+        symbol: normalizedSymbol,
+        is_futures: isFutures,
       });
-      setResult(data);
+      setPipelineResult(data);
       // Auto-expand top sections
       setExpanded({ technical: true, debate: true, trader: true });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Pipeline failed");
+      setPipelineError(e instanceof Error ? e.message : "Pipeline failed");
     } finally {
-      setLoading(false);
+      setPipelineLoading(false);
+    }
+  };
+
+  const runQuickAnalysis = async () => {
+    if (!normalizedSymbol || quickLoading) return;
+    setQuickLoading(true);
+    setQuickError(null);
+    setQuickResult(null);
+    try {
+      const data = await analyzeJarvisSymbol({
+        symbol: normalizedSymbol,
+        period: quickPeriod,
+      });
+      setQuickResult(data);
+    } catch (e) {
+      setQuickError(e instanceof Error ? e.message : "Quick analysis failed");
+    } finally {
+      setQuickLoading(false);
     }
   };
 
@@ -89,6 +119,56 @@ export default function AnalysisPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-6 space-y-6">
+        <div className="rounded-xl border border-border bg-card p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+            Quick Gemini Snapshot
+          </p>
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Lookback</label>
+              <select
+                className="rounded-lg border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                value={quickPeriod}
+                onChange={(e) => setQuickPeriod(e.target.value as JarvisQuickAnalysisPeriod)}
+              >
+                {JARVIS_QUICK_ANALYSIS_PERIODS.map((period) => (
+                  <option key={period} value={period}>
+                    {period}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={runQuickAnalysis}
+              disabled={quickLoading}
+              className="px-6 py-2.5 rounded-lg bg-emerald-500/15 text-emerald-300 font-semibold hover:bg-emerald-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2 text-sm"
+            >
+              {quickLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+              {quickLoading ? "Running Gemini snapshot…" : "Run Quick Analysis"}
+            </button>
+          </div>
+
+          {quickError && (
+            <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+              {quickError}
+            </div>
+          )}
+
+          {quickResult && (
+            <div className="mt-4 rounded-lg border border-border bg-background/60 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="font-mono">
+                  {quickResult.symbol} · {quickResult.period}
+                </span>
+                <span>
+                  {quickResult.model} · {new Date(quickResult.generated_at).toLocaleString()}
+                </span>
+              </div>
+              <p className="text-sm leading-6 text-foreground">{quickResult.analysis}</p>
+            </div>
+          )}
+        </div>
+
         {/* Symbol Input */}
         <div className="rounded-xl border border-border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
@@ -100,8 +180,13 @@ export default function AnalysisPage() {
               <input
                 className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-base font-mono uppercase focus:outline-none focus:ring-1 focus:ring-accent"
                 value={symbol}
-                onChange={e => setSymbol(e.target.value.toUpperCase())}
-                onKeyDown={e => e.key === "Enter" && runAnalysis()}
+                onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void runQuickAnalysis();
+                  }
+                }}
                 placeholder="SPY"
                 maxLength={10}
               />
@@ -133,14 +218,14 @@ export default function AnalysisPage() {
             </div>
             <button
               onClick={runAnalysis}
-              disabled={loading}
+              disabled={pipelineLoading}
               className="px-6 py-2.5 rounded-lg bg-accent/20 text-accent font-semibold hover:bg-accent/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2 text-sm"
             >
-              {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-              {loading ? "Running 5-stage pipeline…" : "Analyze"}
+              {pipelineLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+              {pipelineLoading ? "Running 5-stage pipeline…" : "Analyze"}
             </button>
           </div>
-          {loading && (
+          {pipelineLoading && (
             <div className="mt-4 text-xs text-muted-foreground space-y-1 animate-pulse">
               <p>Stage 1: Technical + News + Social + Fundamental analysts running in parallel…</p>
               <p>Stage 2: Bull/Bear debate…</p>
@@ -150,30 +235,30 @@ export default function AnalysisPage() {
         </div>
 
         {/* Error */}
-        {error && (
+        {pipelineError && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
-            {error}
+            {pipelineError}
           </div>
         )}
 
         {/* Results */}
-        {result && (
+        {pipelineResult && (
           <div className="space-y-4">
             {/* Summary Card */}
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-2xl font-mono font-bold">{result.symbol}</h2>
+                  <h2 className="text-2xl font-mono font-bold">{pipelineResult.symbol}</h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {isFutures ? "Futures" : "Equity/ETF"} · 5-stage pipeline complete
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className={`text-3xl font-bold ${actionColor(result.final_action)}`}>
-                    {result.final_action?.toUpperCase() ?? "—"}
+                  <p className={`text-3xl font-bold ${actionColor(pipelineResult.final_action)}`}>
+                    {pipelineResult.final_action?.toUpperCase() ?? "—"}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {((result.confidence ?? 0) * 100).toFixed(0)}% confidence
+                    {((pipelineResult.confidence ?? 0) * 100).toFixed(0)}% confidence
                   </p>
                 </div>
               </div>
@@ -182,22 +267,22 @@ export default function AnalysisPage() {
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Bull Score</span>
-                    <span className="tabular-nums text-green-400">{(result.bull_score ?? 0).toFixed(2)}</span>
+                    <span className="tabular-nums text-green-400">{(pipelineResult.bull_score ?? 0).toFixed(2)}</span>
                   </div>
-                  {scoreBar(result.bull_score ?? 0, "bg-green-500")}
+                  {scoreBar(pipelineResult.bull_score ?? 0, "bg-green-500")}
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Bear Score</span>
-                    <span className="tabular-nums text-red-400">{(result.bear_score ?? 0).toFixed(2)}</span>
+                    <span className="tabular-nums text-red-400">{(pipelineResult.bear_score ?? 0).toFixed(2)}</span>
                   </div>
-                  {scoreBar(result.bear_score ?? 0, "bg-red-500")}
+                  {scoreBar(pipelineResult.bear_score ?? 0, "bg-red-500")}
                 </div>
               </div>
 
-              {result.summary && (
+              {pipelineResult.summary && (
                 <p className="mt-3 text-sm text-muted-foreground border-t border-border pt-3">
-                  {result.summary}
+                  {pipelineResult.summary}
                 </p>
               )}
             </div>
@@ -215,7 +300,7 @@ export default function AnalysisPage() {
                 { key: "fund_manager", label: "Stage 5 — Fund Manager" },
               ] as const
             ).map(({ key, label }) => {
-              const stage = result[key as keyof PipelineResult] as Record<string, unknown> | undefined;
+              const stage = pipelineResult[key as keyof PipelineResult] as Record<string, unknown> | undefined;
               if (!stage) return null;
               const isOpen = expanded[key];
               return (

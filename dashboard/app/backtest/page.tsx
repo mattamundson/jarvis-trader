@@ -523,7 +523,7 @@ export default function BacktestPage() {
         )}
         {error && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
-            Engine offline or no backtest results found. Start engine on port 8010.
+            Engine offline or no backtest results found. Start the FastAPI engine and verify the dashboard proxy is configured.
           </div>
         )}
 

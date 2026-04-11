@@ -263,7 +263,7 @@ export function BacktestMetricsWidget() {
             <div>
               <p className="text-sm font-medium text-red-400">Engine offline</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Start the engine on port 8010 to see backtest metrics.
+                Start the FastAPI engine to see backtest metrics.
               </p>
             </div>
           </div>

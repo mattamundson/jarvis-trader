@@ -22,7 +22,7 @@ export function EngineAvailabilityHint() {
         setHint(null);
       } catch {
         if (!cancelled) {
-          setHint("Cannot reach the engine — confirm uvicorn on port 8010 and Next rewrites.");
+          setHint("Cannot reach the engine — confirm the FastAPI service is up and Next.js rewrites are configured.");
         }
       }
     })();

@@ -1,6 +1,6 @@
 // Settings API — kill switch, risk config, IB gateway controls
 // All calls proxy through fetchEngine/postEngine in @/lib/api.ts
-// NEVER hardcode localhost:8010 or make fetch calls directly.
+// NEVER hardcode an absolute engine URL or make fetch calls directly.
 
 import { fetchEngine, postEngine } from "@/lib/api";
 

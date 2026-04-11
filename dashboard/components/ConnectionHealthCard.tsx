@@ -120,7 +120,7 @@ export function ConnectionHealthCard() {
           <div className="flex items-center justify-between py-1.5 border-b border-border">
             <div>
               <p className="text-sm font-medium">Trading Engine</p>
-              <p className="text-xs text-muted-foreground">FastAPI • Port 8010</p>
+              <p className="text-xs text-muted-foreground">FastAPI • via dashboard proxy</p>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant={engineBadgeVariant}>{engineLabel}</Badge>
