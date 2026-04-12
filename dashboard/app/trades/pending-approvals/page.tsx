@@ -166,7 +166,7 @@ export default function PendingApprovalsPage() {
               <div>
                 <p className="text-sm font-medium text-bear">Could not load approvals</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Is the engine running on port 8010? Check your connection and try refreshing.
+                  Is the engine running and reachable through the dashboard proxy? Check your connection and try refreshing.
                 </p>
               </div>
             </CardContent>
@@ -425,4 +425,4 @@ export default function PendingApprovalsPage() {
       )}
     </div>
   );
-}
+}
