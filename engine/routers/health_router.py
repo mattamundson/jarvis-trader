@@ -48,6 +48,40 @@ def inject_dependencies(start_time, dm, sl, dbm, pt, pm, tp, schwab=None):
     schwab_connector = schwab
 
 
+async def _get_ib_gateway_health() -> dict:
+    """
+    Return IB gateway health for the broker path that matters operationally.
+
+    In paper mode, execution is routed through the connector attached to the
+    SafetyLayer. The market-data layer may have its own IB object or none at all.
+    Prefer the execution connector so `/health` and `/health/full` reflect the
+    broker truth path used for paper orders.
+    """
+    execution_ib = getattr(safety_layer, "_ib_gateway", None) if safety_layer else None
+    data_ib = data_manager.ibkr if data_manager else None
+    ib_gw = execution_ib or data_ib
+
+    if not ib_gw:
+        return {"status": "not_configured", "mode": "paper_only"}
+
+    if hasattr(ib_gw, "health_check"):
+        health = await ib_gw.health_check()
+    else:
+        is_connected_attr = getattr(ib_gw, "is_connected", False)
+        is_connected = is_connected_attr() if callable(is_connected_attr) else bool(is_connected_attr)
+        health = {
+            "status": "connected" if is_connected else "disconnected",
+        }
+
+    health = dict(health)
+    if execution_ib is not None and ib_gw is execution_ib:
+        health.setdefault("source", "execution_connector")
+    elif data_ib is not None and ib_gw is data_ib:
+        health.setdefault("source", "market_data_connector")
+
+    return health
+
+
 @router.get(
     "/health",
     response_model=HealthResponse,
@@ -75,6 +109,7 @@ async def _health_inner() -> dict:
 
     now = datetime.now(timezone.utc)
     status = "ok" if db_ok else "degraded"
+    ib_health = await _get_ib_gateway_health()
 
     return {
         "status": status,
@@ -84,9 +119,7 @@ async def _health_inner() -> dict:
         "kill_switch_active": safety.get("kill_switch_active", False),
         "paper_mode": not settings.LIVE_TRADING_ENABLED,
         "database": "connected" if db_ok else "error",
-        "ibkr_connected": bool(getattr(data_manager.ibkr, "is_connected", False))
-        if data_manager and data_manager.ibkr
-        else False,
+        "ibkr_connected": ib_health.get("status") == "connected",
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
         "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,
@@ -144,12 +177,7 @@ async def _full_health_inner() -> dict:
 
     # 3. IB Gateway (optional)
     try:
-        ib_gw = data_manager.ibkr if data_manager else None
-        if ib_gw:
-            ib_health = await ib_gw.health_check()
-            status["ib_gateway"] = ib_health
-        else:
-            status["ib_gateway"] = {"status": "not_configured", "mode": "paper_only"}
+        status["ib_gateway"] = await _get_ib_gateway_health()
     except Exception as e:
         status["ib_gateway"] = {"status": "error", "error": str(e)}
 
