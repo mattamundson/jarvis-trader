@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import sys
 import unittest.mock as mock
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -31,6 +32,8 @@ _MODULES_TO_MOCK = [
     "data.market_data",
     "risk.safety_layer",
     "risk.pnl_monitor",
+    "google",
+    "google.genai",
     "agents.bear_researcher",
     "agents.bull_researcher",
     "agents.debate",
@@ -47,6 +50,7 @@ _MODULES_TO_MOCK = [
     "schedulers.eod_scheduler",
     "routers.journal_router",
     "routers.webhook_router",
+    "services.jarvis_analysis",
     "execution.ib_order_manager",
     "notifications.whatsapp",
     "apscheduler",
@@ -230,3 +234,45 @@ class TestPnLMonitorOffline:
             f"daily_pnl should be > 0 when pnl_monitor is initialised, "
             f"got: {pnl.get('daily_pnl')}. Full pnl subsystem: {pnl}"
         )
+
+
+class TestIBGatewayHealthOffline:
+    """Targeted health-router regressions for broker connectivity reporting."""
+
+    @pytest.mark.asyncio
+    async def test_health_prefers_safety_layer_execution_connector(self):
+        """
+        /health and /health/full should reflect the execution connector attached
+        to SafetyLayer in paper mode, even if the market-data IB object is absent
+        or disconnected.
+        """
+        import routers.health_router as health_router_mod
+
+        class _ExecIB:
+            def is_connected(self):
+                return True
+
+            async def health_check(self):
+                return {"status": "connected", "mode": "paper"}
+
+        class _FakeSafety:
+            _ib_gateway = _ExecIB()
+
+            def get_status(self):
+                return {"kill_switch_active": False}
+
+        disconnected_market_data_dm = SimpleNamespace(
+            ibkr=SimpleNamespace(is_connected=False)
+        )
+        fake_safety = _FakeSafety()
+
+        with patch.object(health_router_mod, "data_manager", disconnected_market_data_dm), patch.object(
+            health_router_mod, "safety_layer", fake_safety
+        ):
+            basic = await health_router_mod._health_inner()
+            full = await health_router_mod._full_health_inner()
+
+        assert basic["ibkr_connected"] is True
+        ib = full.get("subsystems", {}).get("ib_gateway", {})
+        assert ib.get("status") == "connected", ib
+        assert ib.get("source") == "execution_connector", ib
