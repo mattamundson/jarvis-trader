@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 function getEngineBaseUrl(): string {
-  const url = process.env.ENGINE_URL ?? process.env.NEXT_PUBLIC_ENGINE_URL;
-  if (!url) {
-    throw new Error(
-      "Engine URL not configured. Set ENGINE_URL or NEXT_PUBLIC_ENGINE_URL environment variable."
-    );
-  }
-  return url;
+  return (
+    process.env.ENGINE_INTERNAL_URL ??
+    process.env.ENGINE_URL_INTERNAL ??
+    "http://localhost:8010"
+  );
 }
 
 function getEngineApiKey(): string | undefined {
@@ -40,7 +39,29 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
     init.body = await request.arrayBuffer();
   }
 
-  const upstream = await fetch(target, init);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, {
+      ...init,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: "engine_proxy_failed",
+        target: target.toString(),
+        message: error instanceof Error ? error.message : "Unknown proxy error",
+      },
+      { status: 502 },
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
   const responseHeaders = new Headers(upstream.headers);
   responseHeaders.delete("content-encoding");
   responseHeaders.delete("content-length");
