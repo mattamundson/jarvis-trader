@@ -177,3 +177,4 @@ tradingview-mcp/screenshots/
 
 # Pytest cache (explicit)
 .pytest_cache/
+.aider*
