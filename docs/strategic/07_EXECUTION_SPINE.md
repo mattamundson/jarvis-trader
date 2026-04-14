@@ -84,13 +84,13 @@
 
 **Short term**
 
-- [ ] P0-1 checklist executed once  
+- [ ] P0-1 checklist executed once — runbook [P0_PAPER_IB_VERIFICATION.md](../runbooks/P0_PAPER_IB_VERIFICATION.md); evidence template [p0-paper-ib-verification-template.md](../session-logs/p0-paper-ib-verification-template.md); helper `engine/scripts/verify_p0_paper_ib.py` (default IB TCP check port **4002** when `CHECK_IB_PORT=1`)  
 - [ ] Billing active; at least one full pipeline run recorded  
 - [x] Paper state story documented — [PAPER_SOURCE_OF_TRUTH.md](../runbooks/PAPER_SOURCE_OF_TRUTH.md) (default DB path + backup link)
 
 **Medium term**
 
-- [ ] Contract tests for top dashboard→engine paths  
+- [x] Contract tests for top dashboard→engine paths — `engine/tests/test_routes_wired.py` (`critical_routes`), `engine/tests/test_api_contract_minimal.py` (`/health`, `/safety/*`), `engine/tests/test_market_data_waterfall.py`, `engine/tests/test_pipeline_alert_cooldown.py`, `engine/tests/test_paper_ledger_pnl_consistency.py`, `engine/tests/test_ib_reconnect_contract.py`  
 - [ ] No critical health/safety 500s on cold start with minimal env  
 
 **Research**

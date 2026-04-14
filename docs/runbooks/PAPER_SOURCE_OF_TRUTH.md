@@ -24,9 +24,17 @@ Backups: see [SQLITE_BACKUP.md](SQLITE_BACKUP.md).
 
 ## Definition of Done (P0-2)
 
-- [ ] Default SoT named in this file or a one-line pointer in [docs/CURRENT_STATE.md](../CURRENT_STATE.md).
-- [ ] Dashboard widgets that show paper P&amp;L / positions use that SoT only.
-- [ ] Runbook note for “when `paper_runner` only” vs “engine only” vs “synced”.
+- [x] Default SoT named in this file (**engine/data/jarvis_trader.db**).
+- [ ] Dashboard widgets that show paper P&L / positions use that SoT only (audit per release).
+- [x] Runbook note: **Engine-only** = default; **paper_runner JSON** = optional hourly loop without FastAPI; **synced** = set `JARVIS_ENGINE_URL` + API key on the paper_runner host so POSTs hit `/portfolio/paper/trade` ([P0_PAPER_IB_VERIFICATION.md](P0_PAPER_IB_VERIFICATION.md) §3).
+
+**Reconciliation helper (operator / CI):** from repo root,
+
+```bash
+python scripts/reconcile_paper_sources.py
+```
+
+Emits JSON comparing SQLite `paper_trades` counts vs `engine/backtest/results/paper_trades_live.json` length. Exit `1` if SQLite file missing.
 
 ## Related
 

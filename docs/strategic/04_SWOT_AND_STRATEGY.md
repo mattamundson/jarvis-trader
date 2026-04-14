@@ -1,3 +1,4 @@
+
 # SWOT and strategy (TOWS)
 
 **Sources:** Condensed from [INTEGRATED_ROADMAP_2026-04.md §6](../plans/INTEGRATED_ROADMAP_2026-04.md) and [MASTER_PROJECT_AUDIT_2026-04-04 §18](../reports/MASTER_PROJECT_AUDIT_2026-04-04.md).  
@@ -45,7 +46,7 @@
 | T2 | Secrets in history/logs/transcripts — repeat of past incidents if discipline slips. |
 | T3 | Regime change degrading parameters validated on historical windows. |
 | T4 | Vendor/API drift (data, broker, model providers). |
-| T5 | Overfitting spend on MES/MGC or unapproved symbols. |
+| T5 | Overfitting spend on MES/MGC or symbols outside [.claude/imports/validated-instruments.md](../../.claude/imports/validated-instruments.md) policy. |
 
 ---
 

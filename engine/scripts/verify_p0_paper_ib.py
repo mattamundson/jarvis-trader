@@ -9,7 +9,7 @@ Usage (engine running on BASE, with API key in env):
 Env:
   JARVIS_VERIFY_BASE   — default http://127.0.0.1:8010
   JARVIS_API_KEY / X_API_KEY / API_KEY — must match engine API_KEY for protected routes
-  CHECK_IB_PORT        — if set to 1, try TCP connect to IBKR_HOST:IBKR_PORT (default 127.0.0.1:7497)
+  CHECK_IB_PORT        — if set to 1, try TCP connect to IBKR_HOST:IBKR_PORT (default 127.0.0.1:4002 paper Gateway)
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def main() -> int:
 
     if os.environ.get("CHECK_IB_PORT", "").strip() in ("1", "true", "yes"):
         host = os.environ.get("IBKR_HOST", "127.0.0.1")
-        port = int(os.environ.get("IBKR_PORT", "7497"))
+        port = int(os.environ.get("IBKR_PORT", "4002"))
         ok, msg = _check_tcp(host, port)
         results["checks"].append({"name": "ib_tcp_port", "ok": ok, "detail": msg})
         print(msg)

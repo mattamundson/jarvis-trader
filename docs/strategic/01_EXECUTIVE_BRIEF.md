@@ -20,7 +20,8 @@ JARVIS TRADER is a **paper-first** AI-assisted futures and options platform: **F
 | **`LIVE_TRADING_ENABLED`** | `False` until explicit Tier 3 approval |
 | **`REQUIRE_HUMAN_APPROVAL`** | `True` — non-negotiable |
 | **Approved paper symbols** | **MCL 1h**, **MNQ 1h** (WFE and gates per validated-instruments) |
-| **Halted / research-only** | MGC (halted), MES (do not trade — WFE failure) |
+| **Paper-authorized / WFE-poor** | **MES 1h** — paper trading allowed per canon; **not** treated as production-grade until WFE improves (see validated-instruments) |
+| **Halted / research-only** | MGC (halted) |
 
 ---
 
@@ -51,7 +52,7 @@ These align with [05_RISK_REGISTER.md](05_RISK_REGISTER.md). Verify mitigations 
 - Enabling **live** trading or **`LIVE_TRADING_ENABLED=True`** without Phase 3 runbook completion and Tier 3 sign-off.
 - Using **LLM output** to override or replace **safety_layer** or kill-switch logic.
 - **Production tuning** of STC/regime parameters in [engine/backtest/signals.py](../../engine/backtest/signals.py) without Tier 3 approval.
-- Treating **in-sample** backtest excellence on **MES** as justification to trade it (WFE gate failed).
+- Treating **in-sample** backtest excellence on **MES** as justification to treat it as **production-grade** while WFE remains poor (paper-only per canon).
 
 ---
 

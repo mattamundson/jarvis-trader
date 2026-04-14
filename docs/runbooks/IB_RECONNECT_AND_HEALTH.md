@@ -18,3 +18,16 @@
 ## Health endpoints
 
 See [HEALTH_API_CONTRACT.md](HEALTH_API_CONTRACT.md) for JSON fields the dashboard and scripts should rely on.
+
+## §4 — Operator verification drill (RISK-004)
+
+Use a **paper** session only (Gateway **4002**). Goal: confirm engine observes disconnect and either reconnects within backoff or surfaces a failed health state deterministically.
+
+1. Start IB Gateway (paper) and the engine; confirm `GET /health` shows `ibkr_connected: true` (or full health `ib_gateway` subsystem OK).
+2. Note baseline: `GET /health/full` and optionally engine logs (`logs/jarvis.log`).
+3. **Controlled disconnect:** log out or stop Gateway (or pull network) for 30–60 seconds.
+4. **Observe:** engine logs should show reconnect attempts (`RECONNECTING`, backoff 2s / 4s / 8s). `GET /health` may show `ibkr_connected: false` during the window.
+5. **Restore:** bring Gateway back; within one backoff cycle or manual `restart_engine.ps1`, confirm `ibkr_connected` returns true and market data resumes (see [MARKET_DATA_WATERFALL.md](MARKET_DATA_WATERFALL.md)).
+6. **Record:** paste log excerpts + timestamps into `docs/session-logs/` (or PR) and add a one-line note to the RISK-004 changelog row when verified.
+
+**Automated stub:** `engine/tests/test_ib_reconnect_contract.py` asserts the connector exposes `_reconnect` and a bounded retry constant (no live Gateway required).
