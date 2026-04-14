@@ -85,6 +85,27 @@ _telegram_notifier = None
 _sdk_pipeline = None
 
 
+def _guard_background_paper_open(symbol: str) -> None:
+    """
+    Apply the same direct-open policy to background auto-logging.
+
+    Background pipeline runs must not write trades that would be rejected by the
+    live/paper safety posture elsewhere in the system.
+    """
+    from approval.service import approved_watchlist_symbols
+    from config import settings
+    from execution.order_router import FUTURES_SYMBOLS
+
+    if settings.LIVE_TRADING_ENABLED:
+        raise RuntimeError("Direct paper-trade open disabled in live mode")
+
+    if _safety_layer is not None and _safety_layer.get_status().get("kill_switch_active"):
+        raise RuntimeError("Kill switch active - cannot open direct paper trade")
+
+    if symbol.upper() in FUTURES_SYMBOLS and symbol.upper() not in approved_watchlist_symbols():
+        raise RuntimeError(f"Symbol {symbol.upper()} not on approved futures watchlist")
+
+
 def inject_dependencies(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker=None, sdk_pipeline=None):
     """Inject global dependencies from main.py"""
     global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker, _sdk_pipeline
@@ -447,23 +468,12 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
     is_directional = final_action not in ("hold", "HOLD")
     requires_human = bool(result.get("requires_human", True))
 
-    # ── Paper mode bypass: never block paper trades behind human approval ──
-    # When LIVE_TRADING_ENABLED=False we are in pure paper simulation.
-    # REQUIRE_HUMAN_APPROVAL is a live-trading safeguard; it must not prevent
-    # paper trades from being written to the DB (that defeats validation).
     try:
         from config import settings as _cfg
+
         _paper_mode = not _cfg.LIVE_TRADING_ENABLED
     except Exception:
         _paper_mode = True  # default safe: treat as paper if config unavailable
-
-    if _paper_mode and is_directional and requires_human:
-        logger.warning(
-            "[EXECUTION] symbol=%s action=%s — requires_human=True overridden for paper mode; "
-            "trade will be auto-logged to DB without human gate",
-            symbol, final_action.upper()
-        )
-        requires_human = False
 
     # Execution audit log — fires for every directional decision regardless of outcome
     _confidence = float((result.get("fund_decision") or {}).get("final_conviction") or 0.0)
@@ -475,7 +485,7 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
         _confidence,
         _threshold,
         str(is_directional and not requires_human),
-        "paper_mode_bypass" if (_paper_mode and is_directional) else ("hold" if not is_directional else "requires_human"),
+        "hold" if not is_directional else ("queued_for_approval" if requires_human else "auto_logged"),
     )
 
     if is_directional and requires_human and _db_manager is not None:
@@ -534,6 +544,8 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
     elif is_directional and not requires_human and _paper_tracker is not None:
         # No human approval required — auto-log paper trade immediately
         try:
+            _guard_background_paper_open(symbol)
+
             trade_dec = result.get("trade_decision") or {}
             analyst_reports = result.get("analyst_reports") or {}
             technical_report = analyst_reports.get("technical") or {}
@@ -621,7 +633,7 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
             logger.error("[PIPELINE] Telegram alert failed for %s: %s", symbol, exc)
 
 
-@router.post("/run")
+@router.post("/run/background")
 async def run_pipeline(request: PipelineRunRequest):
     """
     Execute the full 5-stage trading pipeline for a symbol.
@@ -768,3 +780,5 @@ async def run_sdk_pipeline(request: PipelineRunRequest):
     )
 
     return result
+
+
