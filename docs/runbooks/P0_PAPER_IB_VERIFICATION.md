@@ -12,7 +12,7 @@
 |------|----------|
 | Engine | `LIVE_TRADING_ENABLED = False`, paper mode |
 | API key | Dashboard `NEXT_PUBLIC_ENGINE_API_KEY` matches engine `API_KEY` |
-| Approved symbols | MCL 1h, MNQ 1h only for production paper attention per [CLAUDE.md](../../CLAUDE.md) |
+| Approved paper symbols | **MCL 1h**, **MNQ 1h**, **MES 1h** per [.claude/imports/validated-instruments.md](../../.claude/imports/validated-instruments.md) (MES: paper authorized, WFE improvement pending) |
 
 ---
 
@@ -35,7 +35,8 @@
 
    Note `ibkr_connected` (or full health payload). If disconnected, fix Gateway/login/API settings before trusting any “live” position data from IB paths.
 
-**Deep setup:** use [PAPER_TRADING.md](PAPER_TRADING.md) Section 1–2.
+**Deep setup:** use [PAPER_TRADING.md](PAPER_TRADING.md) Section 1–2.  
+**Data tiering:** [MARKET_DATA_WATERFALL.md](MARKET_DATA_WATERFALL.md) — why IBKR on port 4002 matters for fresh bars.
 
 ---
 
@@ -89,7 +90,7 @@ $env:JARVIS_API_KEY = "your-key"
 ```
 
 The script prints JSON with per-route results. Use it before filling the sign-off table.  
-**Paper source-of-truth** (A / B / A+B) is documented in [PAPER_DATA_SOURCES.md](PAPER_DATA_SOURCES.md).  
+**Paper source-of-truth** (A / B / A+B): [PAPER_SOURCE_OF_TRUTH.md](PAPER_SOURCE_OF_TRUTH.md) and [PAPER_DATA_SOURCES.md](PAPER_DATA_SOURCES.md).  
 IB connector behavior summary: [IB_CONNECTOR_OVERVIEW.md](IB_CONNECTOR_OVERVIEW.md).
 
 ---
@@ -102,4 +103,18 @@ IB connector behavior summary: [IB_CONNECTOR_OVERVIEW.md](IB_CONNECTOR_OVERVIEW.
 2. Use the smallest contract size your test plan allows; confirm human-approval gates if enabled.
 3. Verify position appears in IB paper account **and** in engine portfolio/health surfaces you use.
 
-If you are **not** sending orders yet, mark this section **N/A** and still comple
+If you are **not** sending orders yet, mark this section **N/A** and still complete sections 1–4 and §4.5 (automated script).
+
+---
+
+## 6. Operator sign-off (append to session log when done)
+
+Copy [docs/session-logs/p0-paper-ib-verification-template.md](../session-logs/p0-paper-ib-verification-template.md) to a dated file, fill the table, and link it from [docs/strategic/07_EXECUTION_SPINE.md](../strategic/07_EXECUTION_SPINE.md) P0-1 evidence row when you close the checklist.
+
+| Check | Pass |
+|-------|------|
+| `Test-NetConnection` port **4002** (paper Gateway) | |
+| `GET /health` shows expected `ibkr_connected` for your intent | |
+| Authenticated routes (§4.5) all HTTP 200 | |
+| SoT choice (A/B/A+B) documented | |
+| Dashboard `/api/engine/*` without 401 | |
