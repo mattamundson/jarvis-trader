@@ -42,10 +42,14 @@ const PYTHON = path.join(ENGINE_DIR, ".venv", "Scripts", "python.exe");
 module.exports = {
   apps: [
     // ── FastAPI Engine ─────────────────────────────────────────────────────────
+    // NOTE: launched via scripts/port_guardian.py instead of uvicorn directly.
+    // Guardian kills any orphaned python/uvicorn process holding port 8010 before
+    // exec'ing uvicorn. Prevents the 2026-04-14 crash-loop class of bug where a
+    // PowerShell-launched orphan blocks PM2 restarts. See docs/troubleshooting.md.
     {
       name: "jarvis-engine",
       script: PYTHON,
-      args: "-m uvicorn main:app --host 0.0.0.0 --port 8010",
+      args: "scripts/port_guardian.py",
       cwd: ENGINE_DIR,
       interpreter: "none",
 

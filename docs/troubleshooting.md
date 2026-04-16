@@ -104,20 +104,45 @@ Installs to `~/.bun/bin/bun.exe`. The `bun-runner.js` checks this path automatic
 
 ## Duplicate Process Accumulation on Port 8010
 
-**Symptom**: `netstat -ano | findstr ':8010'` shows 5+ LISTEN entries with phantom PIDs.
+**Symptom**: `netstat -ano | findstr ':8010'` shows 2+ LISTEN entries with different PIDs.
 
-**Root cause**: Multiple orphaned uvicorn restarts. Each failed kill attempt in `restart_engine.ps1` leaves the old process running, then starts a new one. After N restart attempts, N uvicorn instances are running.
+**Root cause**: Multiple orphaned uvicorn processes. Two common origins:
+1. Failed `restart_engine.ps1` kills (legacy) — described below.
+2. Mixing PM2 + manual `python -m uvicorn` launches — the manual one survives PM2 restarts and blocks future PM2 binds.
 
-**Diagnosis**:
-```powershell
-# Count listeners
-(netstat -ano | Select-String ':8010.*LISTEN').Count
+### 2026-04-14 incident (worst case observed)
+A PowerShell-launched uvicorn from morning held port 8010. PM2's `jarvis-engine` could not bind, exited every ~30 seconds, restarted, exited again — **1,248 restart loops** with cmd windows flashing. Diagnosis chain:
 
-# Find real python processes (sorted oldest first = engine)
-Get-Process python,python3 -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object Id,StartTime
+```bash
+pm2 list                                                           # ↺ counter climbing fast
+netstat -ano | grep ":8010 "                                       # find owner PIDs
+powershell "Get-CimInstance Win32_Process -Filter 'ProcessId=<X>' | Select CommandLine"
+                                                                   # confirm it's a stray uvicorn
+taskkill //PID <X> //F                                             # kill orphan
+pm2 restart jarvis-engine                                          # clean start
 ```
 
-**Fix**: Kill the oldest python.exe (started at session-start time) via Task Manager as Admin. The phantom PIDs in netstat are OS artifacts from elevated processes — they'll clear when the real process is killed.
+### Defense in code (2026-04-16)
+PM2 now launches the engine via `engine/scripts/port_guardian.py`, not uvicorn directly. The guardian runs a pre-flight: if port 8010 is held by a python/uvicorn process, it kills it before exec'ing uvicorn. Refuses to kill non-python processes (safety belt). See `engine/ecosystem.config.js`.
+
+### Diagnosis (always-applicable)
+```powershell
+# Count listeners — should be 1
+(netstat -ano | Select-String ':8010.*LISTEN').Count
+
+# Find python processes by start time (oldest = original engine, others = orphans)
+Get-Process python,python3,python3.12 -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object Id,ProcessName,StartTime
+
+# Map PID → command line (identify each instance's launch source)
+Get-CimInstance Win32_Process -Filter "Name='python3.12.exe' OR Name='python.exe'" | Select-Object ProcessId,ParentProcessId,CommandLine | Format-List
+```
+
+### Manual fix (if guardian is bypassed)
+1. `pm2 stop jarvis-engine`
+2. `taskkill //PID <orphan> //F` for each non-PM2 listener
+3. `pm2 start jarvis-engine`
+
+**Note**: `python3.12.exe` from `WindowsApps\PythonSoftwareFoundation.Python.3.12_*` is the Microsoft Store Python. Even venv launches show this name because the venv `python.exe` is a thin launcher that exec's the base Python — the *packages* still come from the venv. Don't be alarmed by the Store path; the bug is duplicate processes, not which Python they use.
 
 ---
 
