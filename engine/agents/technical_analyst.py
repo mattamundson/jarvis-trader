@@ -166,6 +166,30 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # 2. Compute all indicators (deterministic Python — no LLM)
         indicators = self._compute_indicators(df)
 
+        # 2a. TradingView Live Indicator Injection (non-blocking)
+        # Reads all JARVIS Pine Script indicators from TradingView Desktop
+        # via MCP bridge. Falls back gracefully when TV is not running.
+        try:
+            from data.tradingview_feed import TradingViewFeed
+
+            _tv_feed = TradingViewFeed()
+            _tv_indicators = _tv_feed.get_all_indicators(symbol)
+            if _tv_indicators:
+                indicators.update(_tv_indicators)
+                logger.info(
+                    "[TechnicalAnalyst] %s — TV live data injected: "
+                    "stc=%.1f composite=%.2f regime=%s",
+                    symbol,
+                    _tv_indicators.get("tv_stc") or 0,
+                    _tv_indicators.get("tv_composite") or 0,
+                    _tv_indicators.get("tv_regime") or "n/a",
+                )
+            else:
+                indicators["tv_data_quality"] = "unavailable"
+        except Exception as _tv_err:
+            logger.debug("[TechnicalAnalyst] TV bridge error (non-fatal): %s", _tv_err)
+            indicators["tv_data_quality"] = "unavailable"
+
         # 2b. Composite signal enrichment for MES (and future composite instruments)
         try:
             from backtest.signals import COMPOSITE_INSTRUMENTS
@@ -513,7 +537,16 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 
         # ── Volume Indicators ────────────────────────────────────────────
         df.ta.obv(append=True)
-        df.ta.vwap(append=True)
+        # pandas_ta's vwap() emits `print("[!] VWAP requires an ordered DatetimeIndex.")`
+        # straight to stdout when the index isn't a DatetimeIndex (it falls back to a
+        # numeric index in that case — no actual computation harm). Pre-check the
+        # index ourselves so the library never reaches its print path; if the index
+        # is wrong we just skip VWAP rather than spamming logs every ~5 minutes.
+        # Background: 2026-04-16 log-noise audit (Roadmap T1.3).
+        import pandas as _pd
+        if isinstance(df.index, _pd.DatetimeIndex):
+            df.ta.vwap(append=True)
+        # else: VWAP unavailable for this frame — leave indicators["vwap"] as None below
 
         indicators["obv"] = float(df["OBV"].iloc[-1]) if "OBV" in df else None
         indicators["vwap"] = float(df["VWAP_D"].iloc[-1]) if "VWAP_D" in df else None
@@ -667,9 +700,35 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         except Exception as hp_err:
             logger.debug("[TechnicalAnalyst] Hidden Pivots scan skipped: %s", hp_err)
 
+        # Build TradingView live data context block for prompt
+        tv_data_quality = indicators.get("tv_data_quality", "live")
+        if tv_data_quality == "live":
+            tv_context = f"""
+TRADINGVIEW LIVE DATA (real-time from TradingView Desktop):
+- Composite Score: {indicators.get('tv_composite', 'n/a')} (range -1 to +1)
+- Regime: {indicators.get('tv_regime', 'n/a')}
+- STC (TV): {indicators.get('tv_stc', 'n/a')} — {indicators.get('tv_stc_state', 'n/a')}
+- Phase Oscillator: {indicators.get('tv_phase', 'n/a')} ({'COMPRESSED' if indicators.get('tv_compressed') else 'normal'})
+- Corey Auction Score: {indicators.get('tv_corey_score', 'n/a')}
+- IB Levels: High={indicators.get('tv_ib_high', 'n/a')} Low={indicators.get('tv_ib_low', 'n/a')}
+  Extensions: IBU50={indicators.get('tv_ibu50', 'n/a')} IBU100={indicators.get('tv_ibu100', 'n/a')} IBD50={indicators.get('tv_ibd50', 'n/a')} IBD100={indicators.get('tv_ibd100', 'n/a')}
+- ATR (TV): {indicators.get('tv_atr', 'n/a')} | Bands: -{indicators.get('tv_atr_neg1','n/a')} / +{indicators.get('tv_atr_pos1','n/a')}
+- POC: {indicators.get('tv_poc', 'n/a')} | VAH: {indicators.get('tv_vah', 'n/a')} | VAL: {indicators.get('tv_val', 'n/a')}
+- VWAP: {indicators.get('tv_vwap', 'n/a')}
+- ORB: High={indicators.get('tv_orb_high', 'n/a')} Low={indicators.get('tv_orb_low', 'n/a')}
+- Keltner (1h): Upper={indicators.get('tv_kc_upper', 'n/a')} Mid={indicators.get('tv_kc_mid', 'n/a')} Lower={indicators.get('tv_kc_lower', 'n/a')} Alignment={indicators.get('tv_kc_alignment', 'n/a')}
+- Pivot Points: PP={indicators.get('tv_pp', 'n/a')} R1={indicators.get('tv_r1', 'n/a')} S1={indicators.get('tv_s1', 'n/a')}
+- OTE Zone: Bull={indicators.get('tv_ote_bull_low', 'n/a')}-{indicators.get('tv_ote_bull_high', 'n/a')} {'(IN ZONE)' if indicators.get('tv_in_bull_ote') else ''}
+- Market Cycle: {indicators.get('tv_cycle_phase', 'n/a')}
+- Gap: {indicators.get('tv_gap_direction', 'none')} {'(FILLED)' if not indicators.get('tv_gap_exists') else '(OPEN)'}
+- VPOC Today: {indicators.get('tv_vpoc_today', 'n/a')}
+"""
+        else:
+            tv_context = "TRADINGVIEW LIVE DATA: Not available (TradingView Desktop not running)\n"
+
         prompt = f"""Analyze these technical indicators for {symbol} on {timeframe} timeframe:
 
-{learning_context}{discord_sentiment_line}{discord_signal_str}{stc_context_str}
+{learning_context}{discord_sentiment_line}{discord_signal_str}{stc_context_str}{tv_context}
 Current Price: ${indicators.get("current_price", "N/A")}
 Price Change (20 bars): {indicators.get("price_change_pct", "N/A"):.1f}%
 

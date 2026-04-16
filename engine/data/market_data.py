@@ -43,20 +43,34 @@ FUTURES_MAP = {
     "GC": "GC",
 }
 
-# Polygon.io only carries standard (non-micro) futures contracts.
-# Micro contracts (MCL, MNQ, MES, MGC) are mapped to their standard
-# equivalents so we get non-zero prices.  Prices are the same dollar
-# value — the micro contract just has a smaller tick/notional.
-POLYGON_FUTURES_MAP = {
-    "MCL": "CL",   # Micro Crude Oil  → Crude Oil futures (verified working)
-    "MNQ": "NQ",   # Micro Nasdaq-100 → Nasdaq-100 futures
-    "MES": "ES",   # Micro E-mini S&P → E-mini S&P futures
-    "MGC": "GC",   # Micro Gold       → Gold futures
-    "CL": "CL",
-    "NQ": "NQ",
-    "ES": "ES",
-    "GC": "GC",
+# ── Polygon Futures Map ─────────────────────────────────────────────────────
+# DISABLED 2026-04-16 — incident: Polygon's `CL` ticker is Colgate-Palmolive
+# Company stock (NYSE: CL, type=CS), NOT crude oil futures. Same trap exists
+# for `NQ`, `ES`, `GC` (different stocks each, all NOT the futures you'd expect).
+# The 2026-04-05 audit comment ("CL = $85.41 ✅ crude oil") was wrong — that
+# $85.41 was Colgate-Palmolive's stock price, not crude.
+#
+# Polygon's free plan does NOT include futures data at all (only stocks/ETFs).
+# To prevent silent data corruption (consumer-goods stock prices treated as
+# crude oil ticks), this map is intentionally empty and callers MUST check
+# POLYGON_FUTURES_BLOCKLIST before hitting Polygon.
+#
+# Re-enable only after subscribing to a Polygon plan that includes futures
+# AND verifying the correct ticker format (e.g. `I:CL`, `C:CLF26`).
+# See `docs/data-source-audit-2026-04-16.md` for the incident report and
+# Task #15 (T1.5) for the backtest-metric contamination audit.
+POLYGON_FUTURES_MAP: dict[str, str] = {
+    # Empty by design. Adding a futures symbol here without verifying it
+    # returns the correct underlying is a CRITICAL safety violation.
 }
+
+# Symbols Polygon free plan returns the WRONG asset for.
+# Callers MUST check this set and skip Polygon for any match — empty result
+# is preferred over silent stock-vs-futures data substitution.
+POLYGON_FUTURES_BLOCKLIST: frozenset[str] = frozenset({
+    "MCL", "MNQ", "MES", "MGC", "M2K", "MYM",
+    "CL",  "NQ",  "ES",  "GC",  "RTY", "YM", "SI", "ZB", "ZN",
+})
 
 # Scale factors: micro price == standard price (same underlying price,
 # just different notional/tick size), so factor is 1.0 for all.
@@ -623,8 +637,10 @@ class MarketDataManager:
                 logger.info(f"IBKR returned {len(df)} bars for {symbol}")
                 return df
 
-        # Tier 2: Polygon
-        if self.polygon:
+        # Tier 2: Polygon — SKIPPED for futures (Polygon free plan returns
+        # the wrong asset, e.g. `CL` = Colgate-Palmolive stock, not crude oil).
+        # See POLYGON_FUTURES_BLOCKLIST docstring for incident details.
+        if self.polygon and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
             from_date = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
             to_date = datetime.now().strftime("%Y-%m-%d")
             tf_map = {
@@ -636,8 +652,6 @@ class MarketDataManager:
                 "1d": ("day", 1),
             }
             timespan, multiplier = tf_map.get(timeframe, ("minute", 5))
-            # Use POLYGON_FUTURES_MAP: micros (MCL/MNQ/MES) fall back to
-            # standard contracts (CL/NQ/ES) since Polygon has no micro data.
             polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
             df = self.polygon.get_historical_bars(
                 polygon_symbol, from_date, to_date, timespan, multiplier
@@ -646,6 +660,10 @@ class MarketDataManager:
                 logger.info(f"Polygon returned {len(df)} bars for {symbol}")
                 return df
             logger.warning(f"Polygon returned no data for {symbol} ({timespan}/{multiplier})")
+        elif self.polygon and symbol.upper() in POLYGON_FUTURES_BLOCKLIST:
+            logger.debug(
+                f"[market_data] Polygon SKIPPED for {symbol} (futures — see incident 2026-04-16)"
+            )
 
         # Tier 3: CSV backtest cache — staleness guard: reject if last bar > 2 days old
         df = self._load_csv_cache(symbol, timeframe, lookback_days)
@@ -723,14 +741,18 @@ class MarketDataManager:
             except Exception as _tv_err:
                 logger.debug(f"TradingView Tier 2.5 failed for {symbol}: {_tv_err}")
 
-        # Tier 3: Polygon
-        if self.polygon:
-            # Use POLYGON_FUTURES_MAP so micros (MCL/MNQ/MES) resolve to
-            # standard contracts (CL/NQ/ES) that Polygon actually carries.
+        # Tier 3: Polygon — SKIPPED for futures (returns wrong asset on free plan).
+        # See POLYGON_FUTURES_BLOCKLIST. Stocks/ETFs still flow through.
+        if self.polygon and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
             polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
             result = self.polygon.get_last_price(polygon_symbol)
             if result.get("last_price"):
                 return result
+        elif self.polygon and symbol.upper() in POLYGON_FUTURES_BLOCKLIST:
+            logger.debug(
+                f"[market_data] Polygon last_price SKIPPED for {symbol} "
+                f"(futures — see incident 2026-04-16)"
+            )
 
         # Tier 4: CSV cache last close
         df = self._load_csv_cache(symbol, "1d", 2)

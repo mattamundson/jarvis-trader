@@ -215,6 +215,22 @@ class BacktestDataLoader:
 
         ticker = FUTURES_MAP.get(symbol.upper(), symbol)
 
+        # Polygon free plan returns the WRONG asset for futures tickers
+        # (e.g. CL = Colgate-Palmolive stock, not crude oil). Block the call
+        # entirely for known-bad symbols. See market_data.POLYGON_FUTURES_BLOCKLIST
+        # and docs/data-source-audit-2026-04-16.md (incident T1.1 / T1.5).
+        try:
+            from data.market_data import POLYGON_FUTURES_BLOCKLIST
+        except ImportError:
+            POLYGON_FUTURES_BLOCKLIST = frozenset()
+        if symbol.upper() in POLYGON_FUTURES_BLOCKLIST or ticker.upper() in POLYGON_FUTURES_BLOCKLIST:
+            print(
+                f"[DataLoader] Polygon SKIPPED for {symbol} (futures, blocklisted "
+                "since 2026-04-16 incident — Polygon free plan has no futures data). "
+                "Use IBKR-sourced cache or upgrade plan."
+            )
+            return None
+
         raw = self._fetch_via_polygon(ticker, start, end, interval)
 
         if raw is None or raw.empty:
