@@ -5,7 +5,7 @@ The final decision maker before the risk/fund review pipeline.
 Receives all upstream analyst reports and the bull/bear debate result,
 then produces a concrete, order-ready TradeDecision.
 
-Model: Claude Opus 4.6 — most capable model, used here because this is the
+Model: Claude Opus 4.7 — most capable model, used here because this is the
 critical decision point where all analysis converges into an actionable order.
 """
 
@@ -41,6 +41,7 @@ __all__ = ["TraderAgent", "TradeDecision"]
 # AdvisorClient lazy-load — optional, gracefully degraded on failure
 # ---------------------------------------------------------------------------
 _advisor_instance = None
+_tool_inspection_manager = None
 
 
 def _get_advisor():
@@ -57,6 +58,39 @@ def _get_advisor():
             logger.info("AdvisorClient unavailable in trader: %s", _err)
             _advisor_instance = False  # sentinel: tried and failed
     return _advisor_instance if _advisor_instance is not False else None
+
+
+def _get_tool_inspection_manager():
+    """Lazy-construct the tool inspection manager. Returns None on import/init failure."""
+    global _tool_inspection_manager
+    if _tool_inspection_manager is None:
+        try:
+            from config import settings as _settings
+            from risk.tool_inspector import (
+                KillSwitchInspector,
+                LiquidityInspector,
+                RiskInspector,
+                ToolInspectionManager,
+                VolatilityInspector,
+            )
+
+            max_contracts = getattr(_settings, "MAX_CONTRACTS_PER_INSTRUMENT", 2)
+            _tool_inspection_manager = ToolInspectionManager(
+                [
+                    LiquidityInspector(min_recent_volume=1000.0),
+                    VolatilityInspector(require_approval_vix=35.0, deny_vix=50.0),
+                    RiskInspector(
+                        min_size_mult=0.5,
+                        max_size_mult=1.5,
+                        max_contracts=max_contracts,
+                    ),
+                    KillSwitchInspector(),
+                ]
+            )
+        except Exception as _err:  # pragma: no cover - defensive lazy import
+            logger.info("ToolInspectionManager unavailable in trader: %s", _err)
+            _tool_inspection_manager = False
+    return _tool_inspection_manager if _tool_inspection_manager is not False else None
 
 
 @dataclass
@@ -618,10 +652,17 @@ class TraderAgent:
 
             result = json.loads(response_text)
             decision = self._parse_decision(symbol, result, position_size, sizing_method)
+            decision, inspection_used_advisor = await self._apply_tool_inspection(
+                symbol=symbol,
+                decision=decision,
+                analyst_reports=analyst_reports,
+                safety_status=safety_status,
+                position_size=position_size,
+            )
 
             # Advisor consultation on low-confidence trades
             advisor = _get_advisor()
-            if advisor is not None and decision.action != "hold":
+            if not inspection_used_advisor and advisor is not None and decision.action != "hold":
                 try:
                     # Extract regime from debate result for advisor context
                     regime = "unknown"
@@ -669,6 +710,158 @@ class TraderAgent:
                 reasoning=f"Trader LLM call failed: {e}. Defaulting to HOLD.",
                 risk_notes="LLM failure — no trade decision made. Investigate before retrying.",
             )
+
+    def _build_tool_inspection_context(
+        self,
+        analyst_reports: dict,
+        safety_status: dict,
+        position_size: Optional[PositionSizeResult],
+    ) -> dict:
+        """Build a context payload for the tool inspection manager from existing trader inputs."""
+        technical_report = analyst_reports.get("technical", {})
+        fundamental_report = analyst_reports.get("fundamental", {})
+        indicators = technical_report.get("indicators", {}) if isinstance(technical_report, dict) else {}
+
+        recent_volume = None
+        if isinstance(technical_report, dict):
+            for key in ("recent_volume", "current_volume", "volume"):
+                if technical_report.get(key) is not None:
+                    recent_volume = technical_report.get(key)
+                    break
+        if recent_volume is None and isinstance(indicators, dict):
+            for key in ("recent_volume", "volume"):
+                if indicators.get(key) is not None:
+                    recent_volume = indicators.get(key)
+                    break
+
+        vix = None
+        if isinstance(fundamental_report, dict):
+            key_metrics = fundamental_report.get("key_metrics", {})
+            if isinstance(key_metrics, dict):
+                vix = key_metrics.get("vix")
+
+        from config import settings  # local import to avoid circular deps
+
+        return {
+            "recent_volume": recent_volume,
+            "vix": vix,
+            "kill_switch_active": safety_status.get("kill_switch_active", False),
+            "base_size": position_size.contracts if position_size is not None else 0,
+            "max_contracts": getattr(settings, "MAX_CONTRACTS_PER_INSTRUMENT", 2),
+        }
+
+    async def _apply_tool_inspection(
+        self,
+        symbol: str,
+        decision: TradeDecision,
+        analyst_reports: dict,
+        safety_status: dict,
+        position_size: Optional[PositionSizeResult],
+    ) -> tuple[TradeDecision, bool]:
+        """Apply the tool inspection chain to the generated trade decision."""
+        if decision.action == "hold":
+            return decision, False
+
+        manager = _get_tool_inspection_manager()
+        if manager is None:
+            return decision, False
+
+        context = self._build_tool_inspection_context(
+            analyst_reports=analyst_reports,
+            safety_status=safety_status,
+            position_size=position_size,
+        )
+        args = {
+            "symbol": symbol,
+            "action": decision.action,
+            "quantity": decision.quantity,
+        }
+        inspection_result, messages = manager.inspect_all("ib_order", args, context)
+        message_text = "; ".join(message for message in messages if message) or "tool inspection triggered"
+
+        if inspection_result.value == "allow":
+            return decision, False
+
+        if inspection_result.value == "deny":
+            logger.warning("[Trader] %s: tool inspection denied execution — %s", symbol, message_text)
+            return (
+                self._hold_decision(
+                    symbol=symbol,
+                    reasoning=f"Tool inspection blocked trade: {message_text}",
+                    risk_notes=message_text,
+                ),
+                False,
+            )
+
+        advisor = _get_advisor()
+        if advisor is None or not advisor.is_available():
+            logger.warning(
+                "[Trader] %s: tool inspection requires approval but advisor unavailable — %s",
+                symbol,
+                message_text,
+            )
+            return (
+                self._hold_decision(
+                    symbol=symbol,
+                    reasoning=f"Tool inspection requires approval: {message_text}",
+                    risk_notes=f"Approval required before execution. {message_text}",
+                ),
+                False,
+            )
+
+        regime = "unknown"
+        if isinstance(debate_result := analyst_reports.get("debate_result"), dict):
+            regime = debate_result.get("regime", "unknown")
+
+        try:
+            refined = await advisor.consult_trader_refinement(
+                direction=decision.action.upper(),
+                entry=decision.entry_price or 0.0,
+                stop=decision.stop_price or 0.0,
+                target=decision.target_1 or 0.0,
+                confidence=decision.confidence,
+                regime=regime,
+                notes=message_text,
+            )
+        except Exception as _inspect_err:
+            logger.warning(
+                "[Trader] %s: tool inspection advisor consult raised — %s",
+                symbol,
+                _inspect_err,
+            )
+            return (
+                self._hold_decision(
+                    symbol=symbol,
+                    reasoning=f"Tool inspection approval failed: {message_text}",
+                    risk_notes=f"Approval path raised error: {_inspect_err}",
+                ),
+                False,
+            )
+
+        if not getattr(refined, "consulted", False):
+            logger.warning(
+                "[Trader] %s: tool inspection approval unavailable — %s",
+                symbol,
+                message_text,
+            )
+            return (
+                self._hold_decision(
+                    symbol=symbol,
+                    reasoning=f"Tool inspection requires approval: {message_text}",
+                    risk_notes="Advisor approval was unavailable; execution blocked.",
+                ),
+                False,
+            )
+
+        decision.entry_price = refined.entry
+        decision.stop_price = refined.stop
+        decision.target_1 = refined.target
+        decision.confidence = refined.confidence
+        decision.reasoning += f"\n\n[Tool Inspection] {message_text}"
+        if refined.notes:
+            decision.reasoning += f"\n[Advisor Approval] {refined.notes}"
+        logger.info("[Trader] %s: tool inspection required approval and advisor allowed continuation", symbol)
+        return decision, True
 
     # ── Prompt Construction ────────────────────────────────────────────────
 
