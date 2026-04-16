@@ -38,6 +38,16 @@ INSTRUMENT_MULTIPLIERS: dict[str, float] = {
 # Default multiplier when symbol is unknown — conservative $5 (same as MES)
 _DEFAULT_MULTIPLIER = 5.0
 
+# Spot crypto symbols sized by price, not per-point multiplier. See
+# `calculate_crypto_position_size` below. This set is consulted by the order
+# router as well to choose between futures-style and crypto-style sizing.
+CRYPTO_SPOT_SYMBOLS: set[str] = {
+    "BTCUSD",
+    "ETHUSD",
+    "SOLUSD",
+    "XBTUSD",  # Kraken's alias for BTCUSD
+}
+
 
 # ---------------------------------------------------------------------------
 # Result dataclass
@@ -193,6 +203,109 @@ def calculate_position_size(
         risk_per_trade=risk_per_trade,
         stop_distance=stop_distance,
         dollar_risk_per_contract=dollar_risk_per_contract,
+        account_value=account_value,
+        symbol=symbol,
+        reasoning=reasoning,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Spot crypto sizing — fractional quantity instead of per-point multipliers
+# ---------------------------------------------------------------------------
+@dataclass
+class CryptoPositionSizeResult:
+    """Parallel to PositionSizeResult for crypto — quantity is fractional."""
+
+    quantity: float           # fractional units (e.g. 0.012 BTC)
+    risk_per_trade: float
+    stop_distance: float      # absolute $ distance used as stop
+    dollar_risk_per_unit: float
+    account_value: float
+    symbol: str
+    reasoning: str
+
+
+def calculate_crypto_position_size(
+    symbol: str,
+    account_value: float,
+    spot_price: float,
+    atr_pct: float,
+    risk_pct: float = 0.01,
+    atr_stop_multiplier: float = 0.70,
+    max_notional_pct: float = 0.25,
+    min_quantity: float = 0.0,
+) -> CryptoPositionSizeResult:
+    """
+    Price-based fractional sizing for spot crypto (no per-point multiplier).
+
+        risk_budget       = account_value * risk_pct
+        stop_distance     = spot_price * atr_pct * atr_stop_multiplier
+        qty               = risk_budget / stop_distance
+
+    Then cap notional at `max_notional_pct` of account to prevent a single
+    crypto position from dominating the book. Divergence from futures sizing:
+
+      - Futures use INSTRUMENT_MULTIPLIERS ($/pt) and integer contracts
+        clamped to MAX_CONTRACTS_PER_INSTRUMENT.
+      - Crypto uses spot price as its own multiplier and returns a float
+        quantity (e.g. 0.012 BTC). A quantity floor of `min_quantity` (0.0
+        by default) can be raised by callers to enforce exchange minimums
+        — Kraken's BTC minimum is 0.0001, ETH 0.01.
+
+    Edge cases: non-positive price/atr → qty=0.0 (caller should abstain).
+    """
+    if spot_price is None or spot_price <= 0:
+        return CryptoPositionSizeResult(
+            quantity=0.0,
+            risk_per_trade=0.0,
+            stop_distance=0.0,
+            dollar_risk_per_unit=0.0,
+            account_value=account_value,
+            symbol=symbol,
+            reasoning="spot_price missing or non-positive — abstaining",
+        )
+    if atr_pct is None or atr_pct <= 0:
+        return CryptoPositionSizeResult(
+            quantity=0.0,
+            risk_per_trade=0.0,
+            stop_distance=0.0,
+            dollar_risk_per_unit=0.0,
+            account_value=account_value,
+            symbol=symbol,
+            reasoning="atr_pct missing or non-positive — abstaining",
+        )
+
+    risk_per_trade = account_value * risk_pct
+    stop_distance = spot_price * atr_pct * atr_stop_multiplier
+    dollar_risk_per_unit = stop_distance  # 1 unit = 1 coin = 1 * stop_distance $
+
+    if dollar_risk_per_unit <= 0:
+        qty = 0.0
+    else:
+        qty = risk_per_trade / dollar_risk_per_unit
+
+    # Notional cap: qty * spot_price must not exceed max_notional_pct of account
+    notional_cap = account_value * max_notional_pct
+    if qty * spot_price > notional_cap:
+        qty = notional_cap / spot_price
+
+    if qty < min_quantity:
+        qty = 0.0  # below exchange minimum — abstain rather than round up
+
+    reasoning = (
+        f"Symbol={symbol} | Account=${account_value:,.2f} | "
+        f"Risk={risk_pct:.1%} => ${risk_per_trade:,.2f} | "
+        f"Spot=${spot_price:,.2f} ATR%={atr_pct:.2%} x {atr_stop_multiplier:.0%} "
+        f"=> stop=${stop_distance:,.2f} | Qty=${risk_per_trade:,.2f}/${stop_distance:,.2f}"
+        f"={qty:.6f} | Notional cap={max_notional_pct:.0%} => ${notional_cap:,.2f}"
+    )
+    logger.info(f"[CryptoSizing] {reasoning}")
+
+    return CryptoPositionSizeResult(
+        quantity=round(qty, 8),
+        risk_per_trade=risk_per_trade,
+        stop_distance=stop_distance,
+        dollar_risk_per_unit=dollar_risk_per_unit,
         account_value=account_value,
         symbol=symbol,
         reasoning=reasoning,

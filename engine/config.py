@@ -281,6 +281,18 @@ class TradingConfig(BaseSettings):
         description="Public dashboard base URL for links in WhatsApp / Discord approval alerts.",
     )
 
+    # ── Pipeline alert rate limit (WhatsApp / Twilio) ───────────────────────
+    # Separate from risk kill-switch params — caps notification spam per symbol.
+    ALERT_COOLDOWN_MINUTES: int = Field(
+        15,
+        ge=1,
+        le=10080,
+        description=(
+            "Minimum minutes between WhatsApp alerts for the same symbol when the "
+            "watchlist scheduler or manual scan emits a non-HOLD pipeline decision."
+        ),
+    )
+
     # ── Paper Trading Mode ─────────────────────────────────────────────────
     PAPER_TRADING: bool = Field(
         True,
@@ -317,6 +329,39 @@ class TradingConfig(BaseSettings):
     ALPACA_SECRET_KEY: Optional[str] = Field(default=None, description="Alpaca Markets secret key")
     ALPACA_PAPER: bool = Field(default=True, description="Use Alpaca paper trading")
 
+    # ── Crypto (Kraken or Freqtrade) ─────────────────────────────────────
+    CRYPTO_BACKEND: str = Field(
+        default="freqtrade",
+        description=(
+            "Crypto module backend: 'freqtrade' (default, delegates to a "
+            "running Freqtrade instance) or 'kraken' (drives kraken-cli "
+            "directly with built-in paper engine)."
+        ),
+    )
+    KRAKEN_SPOT_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Kraken spot API key; only required when CRYPTO_BACKEND=kraken and KRAKEN_LIVE_ENABLED=True",
+    )
+    KRAKEN_SPOT_API_SECRET: Optional[str] = Field(
+        default=None, description="Kraken spot API secret"
+    )
+    KRAKEN_FUTURES_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Kraken futures API key (separate from spot); only required when trading futures live",
+    )
+    KRAKEN_FUTURES_API_SECRET: Optional[str] = Field(
+        default=None, description="Kraken futures API secret"
+    )
+    KRAKEN_LIVE_ENABLED: bool = Field(
+        default=False,
+        description=(
+            "When False, all Kraken trade submissions are routed through "
+            "kraken-cli's paper engine regardless of API keys. Mirrors the "
+            "IBKR live-gating pattern — flip to True ONLY after paper-phase "
+            "validation and ensure WhatsApp approval flow is wired."
+        ),
+    )
+
     # ── Logging ───────────────────────────────────────────────────────────────
     LOG_LEVEL: str = Field(
         "INFO", description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL"
@@ -346,11 +391,63 @@ class TradingConfig(BaseSettings):
     QUESTDB_HOST: str = Field("localhost")
     QUESTDB_PORT: int = Field(9000)
 
-    # ── Notifications (WhatsApp via Twilio) ───────────────────────────────
+    # ── Notifications (WhatsApp via Twilio / Telegram) ───────────────────
     TWILIO_ACCOUNT_SID: Optional[str] = Field(default=None, description="Twilio account SID")
     TWILIO_AUTH_TOKEN: Optional[str] = Field(default=None, description="Twilio auth token")
     TWILIO_WHATSAPP_FROM: Optional[str] = Field(default=None, description="Twilio WhatsApp sender")
     WHATSAPP_TO: Optional[str] = Field(default=None, description="WhatsApp recipient number")
+    TELEGRAM_BOT_TOKEN: Optional[str] = Field(default=None, description="Telegram bot token")
+    TELEGRAM_CHAT_ID: Optional[str] = Field(default=None, description="Default Telegram chat id")
+
+    # ── Shared Messaging Gateway ──────────────────────────────────────────
+    MESSAGING_DEFAULT_AGENT: str = Field(
+        default="openclaw",
+        description="Default shared gateway agent for Telegram/WhatsApp conversations",
+    )
+    MESSAGING_MAX_HISTORY_MESSAGES: int = Field(
+        default=10,
+        description="Number of prior messages kept per channel/user/agent session",
+    )
+    MESSAGING_ALLOWED_TELEGRAM_CHAT_IDS: str = Field(
+        default="",
+        description="Comma-separated Telegram chat IDs allowed to use the shared gateway",
+    )
+    MESSAGING_ALLOWED_WHATSAPP_NUMBERS: str = Field(
+        default="",
+        description="Comma-separated WhatsApp numbers allowed to use the shared gateway",
+    )
+    OLLAMA_BASE_URL: str = Field(
+        default="http://127.0.0.1:11434",
+        description="Base URL for the local Ollama runtime used by Hermes fallback/local-first flows",
+    )
+    OPENCLAW_LOCAL_MODEL: str = Field(
+        default="ollama/qwen2.5:7b",
+        description="Status/model label for the OpenClaw local-first path",
+    )
+    OPENCLAW_AGENT_COMMAND_TEMPLATE: str = Field(
+        default="openclaw agent --agent main --message {message} --json",
+        description="WSL command template used to invoke the OpenClaw agent from the shared gateway",
+    )
+    OPENCLAW_STATUS_COMMAND: str = Field(
+        default="openclaw gateway status",
+        description="WSL command used for OpenClaw health/status checks",
+    )
+    HERMES_LOCAL_MODEL: str = Field(
+        default="hermes3",
+        description="Local Ollama model used for Hermes local-first messaging",
+    )
+    HERMES_CLOUD_BASE_URL: Optional[str] = Field(
+        default=None,
+        description="Optional OpenAI-compatible fallback base URL for Hermes",
+    )
+    HERMES_CLOUD_MODEL: Optional[str] = Field(
+        default=None,
+        description="Optional fallback model name for Hermes when local Ollama is unavailable",
+    )
+    HERMES_CLOUD_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Optional bearer token for the Hermes cloud fallback endpoint",
+    )
 
     # ── Instruments to Trade ─────────────────────────────────────────────
     FUTURES_WATCHLIST: Union[str, list[str]] = Field(
@@ -464,3 +561,4 @@ settings = TradingConfig()
 
 # Validate required environment variables on module load
 _validate_required_env_vars()
+

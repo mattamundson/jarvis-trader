@@ -5,6 +5,11 @@ Routing rules:
   Futures (MES, MNQ, MCL, MGC, ES, NQ, GC, CL, etc.) -> IBKR
   Equities (SPY, QQQ, AAPL, etc.) -> Schwab
   Options -> Schwab (preferred), fallback IBKR
+  Spot crypto (BTCUSD, ETHUSD, ...) -> CryptoMarketModule (Kraken or Freqtrade)
+
+Note: CME micro crypto futures tickers `BTC` / `ETH` (→ MBT/MET contracts) stay
+in FUTURES_SYMBOLS because they ARE futures. Only the USD-suffixed spot
+symbols are routed to the crypto module.
 """
 
 import logging
@@ -13,8 +18,19 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from execution.ib_gateway_connector import IBGatewayConnector
     from execution.schwab_connector import SchwabConnector
+    from markets.crypto.module import CryptoMarketModule
 
 logger = logging.getLogger(__name__)
+
+# Spot crypto tickers routed to the crypto module rather than any broker.
+# Kept in sync with utils.position_sizing.CRYPTO_SPOT_SYMBOLS (duplicated here
+# to avoid a circular import at module load).
+CRYPTO_SPOT_SYMBOLS = {
+    "BTCUSD",
+    "ETHUSD",
+    "SOLUSD",
+    "XBTUSD",  # Kraken alias for BTCUSD
+}
 
 # Futures symbols that must go to IBKR
 FUTURES_SYMBOLS = {
@@ -51,9 +67,11 @@ class OrderRouter:
         self,
         ibkr: Optional["IBGatewayConnector"] = None,
         schwab: Optional["SchwabConnector"] = None,
+        crypto_module: Optional["CryptoMarketModule"] = None,
     ):
         self.ibkr = ibkr
         self.schwab = schwab
+        self.crypto_module = crypto_module
 
     def attach_ibkr(self, connector: "IBGatewayConnector") -> None:
         self.ibkr = connector
@@ -61,8 +79,14 @@ class OrderRouter:
     def attach_schwab(self, connector: "SchwabConnector") -> None:
         self.schwab = connector
 
+    def attach_crypto(self, module: "CryptoMarketModule") -> None:
+        self.crypto_module = module
+
     def is_futures(self, symbol: str) -> bool:
         return symbol.upper() in FUTURES_SYMBOLS
+
+    def is_crypto_spot(self, symbol: str) -> bool:
+        return symbol.upper() in CRYPTO_SPOT_SYMBOLS
 
     def is_options(self, order: dict) -> bool:
         return order.get("asset_type", "").upper() in ("OPT", "OPTION", "OPTIONS")
@@ -83,6 +107,38 @@ class OrderRouter:
             RuntimeError if the required broker is not connected.
         """
         symbol = order.get("symbol", "").upper()
+
+        if self.is_crypto_spot(symbol):
+            if self.crypto_module is None:
+                raise RuntimeError(
+                    f"Crypto module not attached — cannot route spot order for {symbol}. "
+                    "Set CRYPTO_ENABLED=True and attach CryptoMarketModule to the router."
+                )
+            from markets.base import TradeSignal  # lazy import to avoid cycles
+            signal = TradeSignal(
+                symbol=symbol,
+                action=order.get("action", "buy").lower(),
+                quantity=float(order.get("quantity", 0)),
+                confidence=float(order.get("confidence", 1.0)),
+                strategy=order.get("strategy", "manual"),
+                market="crypto",
+                reason=order.get("reason", ""),
+                params={
+                    "order_type": order.get("order_type"),
+                    "limit_price": order.get("limit_price"),
+                },
+            )
+            logger.info("Routing %s order to CryptoMarketModule", symbol)
+            result = await self.crypto_module.execute_signal(signal)
+            return {
+                "status": "placed" if result.executed else "error",
+                "fill_id": result.order_id,
+                "symbol": symbol,
+                "action": signal.action,
+                "quantity": signal.quantity,
+                "broker": "crypto",
+                "error": result.error,
+            }
 
         if self.is_futures(symbol):
             if not self.ibkr or not self.ibkr.is_connected():
