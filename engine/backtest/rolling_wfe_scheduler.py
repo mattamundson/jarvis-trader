@@ -182,8 +182,8 @@ def run_wfe_for_instrument(
         return None
 
     try:
-        loader = BacktestDataLoader(symbol=symbol, interval=cfg["interval"])
-        df = loader.load(start=cfg["start"], end=end_date)
+        loader = BacktestDataLoader()
+        df = loader.load(symbol=symbol, start=cfg["start"], end=end_date, interval=cfg["interval"])
         if df is None or len(df) < 200:
             logger.error(
                 f"  [{symbol}] Insufficient data: {len(df) if df is not None else 0} bars."
