@@ -190,6 +190,19 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             logger.debug("[TechnicalAnalyst] TV bridge error (non-fatal): %s", _tv_err)
             indicators["tv_data_quality"] = "unavailable"
 
+        # 2a-gamma. Derive gamma-regime hints from the overlay levels. Additive:
+        # when gamma fields are None (overlay not loaded), the hints stay None.
+        _gamma_hints = _compute_gamma_regime_hints(indicators)
+        indicators.update(_gamma_hints)
+        if _gamma_hints.get("gex_regime"):
+            logger.info(
+                "[TechnicalAnalyst] %s — gamma regime=%s nearest_wall=%s@%.2f",
+                symbol,
+                _gamma_hints["gex_regime"],
+                _gamma_hints.get("nearest_wall_side") or "n/a",
+                _gamma_hints.get("nearest_wall") or 0.0,
+            )
+
         # 2b. Composite signal enrichment for MES (and future composite instruments)
         try:
             from backtest.signals import COMPOSITE_INSTRUMENTS
@@ -883,3 +896,65 @@ Respond with JSON in exactly this format:
                       "ignore this report when computing confidence.",
             indicators={"weight": 0.0, "reason": "no_price_data", "current_price": 0.0},
         )
+
+
+# ---------------------------------------------------------------------------
+# Gamma-regime hints — derived from "MY FREE GAMMA LEVELS" overlay
+# ---------------------------------------------------------------------------
+def _compute_gamma_regime_hints(indicators: dict) -> dict:
+    """
+    Derive regime/stop hints from gamma levels plotted on the chart.
+
+    Bias we encode:
+      - Below GEX flip ("negative gamma") → dealers short gamma, hedging
+        amplifies moves → vol expansion → use wider stops, expect
+        trend-continuation behavior.
+      - Above GEX flip ("positive gamma") → dealers long gamma, hedging
+        dampens moves → vol compression → tighter stops, mean-reverting
+        behavior near call/put walls.
+
+    All returned keys are None when the gamma overlay isn't loaded, so the
+    LLM synthesis stage can safely branch on any key. Keys are namespaced
+    under `gamma_*` to keep them distinct from raw `tv_gex_*` inputs.
+    """
+    price = indicators.get("current_price")
+    gex_flip = indicators.get("tv_gex_flip")
+    call_wall = indicators.get("tv_call_wall")
+    put_wall = indicators.get("tv_put_wall")
+    hvl = indicators.get("tv_hvl")
+
+    out = {
+        "gex_regime": None,
+        "nearest_wall": None,
+        "nearest_wall_side": None,
+        "nearest_wall_distance_pct": None,
+        "above_hvl": None,
+        "suggested_stop_policy": None,
+    }
+
+    if price is None or price <= 0:
+        return out
+
+    if gex_flip is not None:
+        if price >= gex_flip:
+            out["gex_regime"] = "positive"
+            out["suggested_stop_policy"] = "tight"
+        else:
+            out["gex_regime"] = "negative"
+            out["suggested_stop_policy"] = "wide"
+
+    candidates = []
+    if call_wall is not None:
+        candidates.append(("call_wall", call_wall))
+    if put_wall is not None:
+        candidates.append(("put_wall", put_wall))
+    if candidates:
+        side, level = min(candidates, key=lambda kv: abs(kv[1] - price))
+        out["nearest_wall"] = level
+        out["nearest_wall_side"] = side
+        out["nearest_wall_distance_pct"] = abs(level - price) / price if price else None
+
+    if hvl is not None:
+        out["above_hvl"] = price > hvl
+
+    return out
