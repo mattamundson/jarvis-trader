@@ -172,6 +172,15 @@ class TradingViewFeed:
             "tv_in_bull_ote": snap.in_bull_ote,
             "tv_in_bear_ote": snap.in_bear_ote,
             "tv_vpoc_today": snap.vpoc_today,
+            # Gamma levels — populated only when "MY FREE GAMMA LEVELS" overlay
+            # is loaded on the chart. Consumers must treat None as "no signal".
+            "tv_gex_flip": snap.gex_flip,
+            "tv_call_wall": snap.call_wall,
+            "tv_put_wall": snap.put_wall,
+            "tv_hvl": snap.hvl,
+            "tv_vol_trigger_up": snap.vol_trigger_up,
+            "tv_vol_trigger_down": snap.vol_trigger_down,
+            "tv_max_pain": snap.max_pain,
             "tv_data_quality": snap.data_quality,
         }
 

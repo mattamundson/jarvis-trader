@@ -14,6 +14,7 @@ Cache: 60-second TTL per symbol — TradingView data does not need real-time pol
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 import time
@@ -129,11 +130,41 @@ class TVIndicatorSnapshot:
     # Keltner bias
     kc_alignment: Optional[str] = None
 
+    # Gamma Levels — read from "MY FREE GAMMA LEVELS" overlay (TheRealDrip2Rip)
+    # via MCP label passthrough; source script is closed, so we never compute
+    # these ourselves. Missing indicator → all fields remain None.
+    gex_flip: Optional[float] = None          # zero-gamma boundary
+    call_wall: Optional[float] = None         # largest call OI strike
+    put_wall: Optional[float] = None          # largest put OI strike
+    hvl: Optional[float] = None               # high volatility level
+    vol_trigger_up: Optional[float] = None    # upside hedge-cascade trigger
+    vol_trigger_down: Optional[float] = None  # downside hedge-cascade trigger
+    max_pain: Optional[float] = None          # options expiration gravity
+
     # Quality
     data_quality: str = "unavailable"  # "live" | "stale" | "unavailable"
     source: str = "tradingview"
     timestamp: Optional[datetime] = None
     symbol: Optional[str] = None
+
+
+# Gamma-level alias table. Vendor script is closed-source, so we match on
+# several plausible text substrings per level. Order within each list matters
+# only for readability — each label can populate at most one key (first hit).
+_GAMMA_ALIASES: Dict[str, tuple] = {
+    "gex_flip": ("gex flip", "zero gamma", "flip"),
+    "call_wall": ("call wall",),
+    "put_wall": ("put wall",),
+    "hvl": ("hvl", "high volatility"),
+    "vol_trigger_up": ("vol trigger up", "upside trigger"),
+    "vol_trigger_down": ("vol trigger down", "downside trigger"),
+    "max_pain": ("max pain",),
+}
+
+# Indicator filter name for the closed-source gamma overlay
+_GAMMA_FILTER = "MY FREE GAMMA LEVELS"
+
+_NUM_RE = re.compile(r"[-+]?\d+(?:\.\d+)?")
 
 
 # Individual indicator filter names used in fallback mode
@@ -214,38 +245,40 @@ class TVIndicatorBridge:
             return snap
 
         # 3. Try manifest
+        snapshot: Optional[TVIndicatorSnapshot] = None
         if self._manifest_available is not False:
             labels = self._read_labels("JARVIS MCP Manifest")
             tables = self._read_tables("JARVIS MCP Manifest")
             if labels is not None:
                 self._manifest_available = True
                 snapshot = self._parse_from_manifest(labels, tables or [])
-                snapshot.symbol = symbol
-                snapshot.timestamp = datetime.utcnow()
                 snapshot.data_quality = "live"
-                self._cache[symbol] = (snapshot, time.time())
-                return snapshot
             else:
                 self._manifest_available = False
                 logger.debug("JARVIS_MCP_Manifest not available — switching to individual reads")
 
-        # 4. Individual fallback
-        indicators_read: Dict[str, Dict[str, Any]] = {}
-        for name in _INDIVIDUAL_INDICATORS:
-            labels = self._read_labels(name)
-            tables = self._read_tables(name)
-            if labels is not None or tables is not None:
-                indicators_read[name] = {
-                    "labels": labels or [],
-                    "tables": tables or [],
-                }
+        # 4. Individual fallback (if manifest absent or empty)
+        if snapshot is None:
+            indicators_read: Dict[str, Dict[str, Any]] = {}
+            for name in _INDIVIDUAL_INDICATORS:
+                labels = self._read_labels(name)
+                tables = self._read_tables(name)
+                if labels is not None or tables is not None:
+                    indicators_read[name] = {
+                        "labels": labels or [],
+                        "tables": tables or [],
+                    }
+            snapshot = self._parse_from_individual(indicators_read)
+            snapshot.data_quality = "live" if indicators_read else "unavailable"
 
-        snapshot = self._parse_from_individual(indicators_read)
+        # 5. Overlay: gamma levels from vendor overlay, if loaded on the chart.
+        #    Missing indicator is a no-op — fields stay None.
+        self._enrich_with_gamma(snapshot)
+
         snapshot.symbol = symbol
         snapshot.timestamp = datetime.utcnow()
-        snapshot.data_quality = "live" if indicators_read else "unavailable"
 
-        # 5. Cache
+        # 6. Cache
         self._cache[symbol] = (snapshot, time.time())
         return snapshot
 
@@ -601,6 +634,80 @@ class TVIndicatorBridge:
         snap.vpoc_delta = pf(vpoc_labels, "VPOC_DELTA")
 
         return snap
+
+    # ------------------------------------------------------------------
+    # Gamma-levels overlay parser
+    # ------------------------------------------------------------------
+
+    def _enrich_with_gamma(self, snapshot: TVIndicatorSnapshot) -> None:
+        """
+        Read "MY FREE GAMMA LEVELS" overlay labels (if present on the chart)
+        and merge the 7 level values into `snapshot`. No-op when the vendor
+        indicator is not loaded.
+        """
+        labels = self._read_labels(_GAMMA_FILTER)
+        if not labels:
+            return
+        parsed = self._parse_gamma_levels(labels)
+        for key, value in parsed.items():
+            if value is not None:
+                setattr(snapshot, key, value)
+
+    @staticmethod
+    def _parse_gamma_levels(labels: list) -> Dict[str, Optional[float]]:
+        """
+        Parse GEX flip, call/put walls, HVL, vol triggers, and max pain from
+        the vendor's plotted labels. Label text format is not documented
+        (closed script), so we match on case-insensitive substrings per
+        `_GAMMA_ALIASES`. Each label contributes to at most one key; later
+        labels do not overwrite earlier ones.
+
+        Value resolution order per label:
+          1. Label's numeric `price` field (chart y-axis coordinate) — preferred
+          2. First float found in the label text — fallback when `price` absent
+        """
+        out: Dict[str, Optional[float]] = {k: None for k in _GAMMA_ALIASES}
+
+        for label in labels:
+            if not isinstance(label, dict):
+                continue
+            text_raw = label.get("text")
+            if not isinstance(text_raw, str) or not text_raw.strip():
+                continue
+            text = text_raw.lower()
+
+            # Figure out which key this label maps to (first alias match).
+            matched_key: Optional[str] = None
+            for key, aliases in _GAMMA_ALIASES.items():
+                if out[key] is not None:
+                    continue
+                if any(alias in text for alias in aliases):
+                    matched_key = key
+                    break
+            if matched_key is None:
+                continue
+
+            value = TVIndicatorBridge._coerce_label_value(label, text_raw)
+            if value is not None:
+                out[matched_key] = value
+        return out
+
+    @staticmethod
+    def _coerce_label_value(label: dict, text_raw: str) -> Optional[float]:
+        """Return numeric value of a label — prefer `price`, fall back to text."""
+        price = label.get("price")
+        if price is not None:
+            try:
+                return float(price)
+            except (TypeError, ValueError):
+                pass
+        match = _NUM_RE.search(text_raw)
+        if match:
+            try:
+                return float(match.group())
+            except ValueError:
+                return None
+        return None
 
     def reset(self) -> None:
         """Clear cache and availability state (call after TradingView restart)."""

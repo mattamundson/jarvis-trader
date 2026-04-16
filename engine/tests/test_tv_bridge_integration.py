@@ -165,8 +165,12 @@ def test_cache_60s_returns_same_instance():
     # Second call within TTL should return the SAME object (cache hit)
     second = bridge.get_snapshot("MES")
     assert first is second
-    # The mocked reader should have been called only ONCE for the first fetch
-    assert bridge._read_labels.call_count == 1
+    # Cache invariant: miss → fetch, hit → no fetch. Each miss does one
+    # manifest read + one gamma-overlay read, so call_count is 2 per miss.
+    first_miss_count = bridge._read_labels.call_count
+    assert first_miss_count == 2  # exactly one miss happened
+    # Second call was a cache hit and must not have fetched again
+    assert first_miss_count == 2  # unchanged after the hit
 
 
 def test_cache_expires_after_ttl():
@@ -176,8 +180,8 @@ def test_cache_expires_after_ttl():
     snap, _ts = bridge._cache["MES"]
     bridge._cache["MES"] = (snap, time.time() - 3600)  # 1h ago
     _ = bridge.get_snapshot("MES")
-    # Should have fetched again — reader called twice total
-    assert bridge._read_labels.call_count == 2
+    # Two misses × (manifest + gamma) = 4 reader calls total
+    assert bridge._read_labels.call_count == 4
 
 
 # ──────────────────────────────────────────────────────────────────────────
