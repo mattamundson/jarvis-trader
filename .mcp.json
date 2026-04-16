@@ -4,6 +4,11 @@
       "command": "node",
       "args": ["C:/Users/mattm/ThinkorSwim/jarvis-trader/tradingview-mcp/src/server.js"],
       "env": {}
+    },
+    "kraken": {
+      "command": "kraken",
+      "args": ["mcp", "serve"],
+      "env": {}
     }
   }
 }
