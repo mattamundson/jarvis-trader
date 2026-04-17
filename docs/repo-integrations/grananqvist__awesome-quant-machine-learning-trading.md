@@ -9,6 +9,14 @@ pushed_at: 2025-05-21
 analyzed_at: 2026-04-17
 recommendation: partial-integrate
 surfaces_with_value: [engine-code, docs, project-rules]
+shipped:
+  - file: .claude/rules/ml-pitfalls-defense.md
+    surface: project-rules
+    date: 2026-04-17
+    what: "9-pitfall defensive checklist synthesizing López de Prado + Aronson; cites SSRN/Wiley primary sources rather than curated list since curated list has no LICENSE"
+deferred:
+  - what: "research-corpus doc at docs/strategy/ml-trading-research-corpus.md annotating 20-25 key papers for post-paper-trading roadmap"
+    reason: "lower urgency than rule — rule is actionable on every optimizer PR; corpus is background reading"
 ---
 
 # grananqvist/Awesome-Quant-Machine-Learning-Trading
