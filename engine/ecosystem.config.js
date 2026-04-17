@@ -210,6 +210,43 @@ module.exports = {
       exec_mode: "fork",
     },
 
+    // ── Nightly Discord Export + Ingest ────────────────────────────────────────
+    // Runs DiscordChatExporter on the two live Corey channels (general,
+    // market-updates), then chains into nightly_discord.py to ingest the fresh
+    // JSON into SQLite + run sentiment ETL. Closes T2.1 staleness (agents were
+    // reading discord_corey_commentary that was 15 days stale).
+    //
+    // Prereqs (user action): install DiscordChatExporter.Cli to
+    // C:\Users\mattm\tools\DiscordChatExporter.Cli\ (or set DCE_CLI_PATH env).
+    //
+    // Runs nightly at 02:00 America/Chicago — after all US sessions close,
+    // before morning-brief at 06:30. --after=7d keeps per-run payload <5 MB.
+    {
+      name: "jarvis-discord-export",
+      script: PYTHON,
+      args: "-m scripts.nightly_discord_export",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+
+      cron_restart: "0 2 * * *",
+      autorestart: false,
+
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "discord-export-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "discord-export-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
     // ── Next.js Dashboard ─────────────────────────────────────────────────────
     // Serves the React dashboard at http://localhost:3010
     // Uses pnpm start (production build) — run `pnpm build` in dashboard/ first.
