@@ -148,6 +148,25 @@ async def notify_signal(
         return False
     if action.upper() == "HOLD":
         return False
+    # Supervisor gate (Hermes pattern) — ACK clean signals, escalate only noisy ones.
+    try:
+        from .supervisor import get_supervisor, SupervisorEvent, SupervisorMarker
+        _sup = get_supervisor()
+        if _sup.enabled:
+            _decision = await _sup.review(SupervisorEvent(
+                event_type="signal",
+                payload={
+                    "symbol": symbol, "action": action, "confidence": confidence,
+                    "reason": reason, "market": market,
+                },
+            ))
+            if not _decision.pass_through:
+                logger.info("Supervisor ACK'd signal %s: %s", symbol, _decision.reason)
+                return False
+            if _decision.marker == SupervisorMarker.REVIEW:
+                reason = f"[REVIEW: {_decision.reason}] {reason}"
+    except Exception as _sup_exc:
+        logger.warning("Supervisor gate failed (fail-open pass-through): %s", _sup_exc)
     if not _is_globex_open():
         logger.debug("OpenClaw signal suppressed — CME Globex closed for %s", symbol)
         return False
@@ -184,6 +203,17 @@ async def notify_kill_switch(
     if os.getenv("TESTING"):
         logger.debug("OpenClaw kill-switch notify suppressed in TESTING mode")
         return False
+    # Supervisor gate — ALWAYS_ESCALATE event, logs decision but never swallows.
+    try:
+        from .supervisor import get_supervisor, SupervisorEvent
+        _sup = get_supervisor()
+        if _sup.enabled:
+            await _sup.review(SupervisorEvent(
+                event_type="kill_switch",
+                payload={"reason": reason, "message": message, "market": market},
+            ))
+    except Exception as _sup_exc:
+        logger.warning("Supervisor kill_switch gate failed (fail-open): %s", _sup_exc)
     ts = _ct_time()
     reason_str = reason.replace("_", " ").upper() if reason else "MANUAL"
     msg = (
@@ -210,6 +240,23 @@ async def notify_approval_required(
     if os.getenv("TESTING"):
         logger.debug("OpenClaw approval notify suppressed in TESTING mode")
         return False
+    # Supervisor gate — ACK clean approvals (high confidence, in-regime, in size band).
+    try:
+        from .supervisor import get_supervisor, SupervisorEvent, SupervisorMarker
+        _sup = get_supervisor()
+        if _sup.enabled:
+            _decision = await _sup.review(SupervisorEvent(
+                event_type="approval",
+                payload={
+                    "symbol": symbol, "action": action,
+                    "quantity": quantity, "entry_price": entry_price,
+                },
+            ))
+            if not _decision.pass_through:
+                logger.info("Supervisor ACK'd approval %s: %s", symbol, _decision.reason)
+                return False
+    except Exception as _sup_exc:
+        logger.warning("Supervisor approval gate failed (fail-open): %s", _sup_exc)
     if not _is_globex_open():
         logger.debug("OpenClaw approval notify suppressed — CME Globex closed for %s", symbol)
         return False
@@ -244,6 +291,23 @@ async def notify_trade_closed(
     if os.getenv("TESTING"):
         logger.debug("OpenClaw trade-close notify suppressed in TESTING mode")
         return False
+    # Supervisor gate — trade closes are FYI; supervisor can ACK small wins and only escalate losses.
+    try:
+        from .supervisor import get_supervisor, SupervisorEvent
+        _sup = get_supervisor()
+        if _sup.enabled:
+            _decision = await _sup.review(SupervisorEvent(
+                event_type="trade_closed",
+                payload={
+                    "symbol": symbol, "action": action, "entry_price": entry_price,
+                    "exit_price": exit_price, "pnl": pnl, "quantity": quantity,
+                },
+            ))
+            if not _decision.pass_through:
+                logger.info("Supervisor ACK'd trade_closed %s: %s", symbol, _decision.reason)
+                return False
+    except Exception as _sup_exc:
+        logger.warning("Supervisor trade_closed gate failed (fail-open): %s", _sup_exc)
     cooldown_key = f"close:{symbol}"
     if _is_cooldown(cooldown_key):
         logger.debug("OpenClaw trade-close cooldown active for %s", symbol)
@@ -279,6 +343,20 @@ async def notify_target(
     if os.getenv("TESTING"):
         logger.debug("OpenClaw target notify suppressed in TESTING mode")
         return False
+    # Supervisor gate — route target vs drawdown distinctly so the classifier sees both.
+    try:
+        from .supervisor import get_supervisor, SupervisorEvent
+        _sup = get_supervisor()
+        if _sup.enabled:
+            _decision = await _sup.review(SupervisorEvent(
+                event_type="drawdown" if message else "target",
+                payload={"market": market, "pnl": pnl, "target": target, "message": message},
+            ))
+            if not _decision.pass_through:
+                logger.info("Supervisor ACK'd target/drawdown %s: %s", market, _decision.reason)
+                return False
+    except Exception as _sup_exc:
+        logger.warning("Supervisor target gate failed (fail-open): %s", _sup_exc)
     cooldown_key = f"drawdown:{market}" if message else f"target:{market}"
     if _is_cooldown(cooldown_key):
         return False
@@ -305,6 +383,17 @@ async def notify_ib_disconnect(last_connected_at: str = "") -> bool:
     if os.getenv("TESTING"):
         logger.debug("OpenClaw IB disconnect notify suppressed in TESTING mode")
         return False
+    # Supervisor gate — ALWAYS_ESCALATE event, logs decision but never swallows.
+    try:
+        from .supervisor import get_supervisor, SupervisorEvent
+        _sup = get_supervisor()
+        if _sup.enabled:
+            await _sup.review(SupervisorEvent(
+                event_type="ib_disconnect",
+                payload={"last_connected_at": last_connected_at},
+            ))
+    except Exception as _sup_exc:
+        logger.warning("Supervisor ib_disconnect gate failed (fail-open): %s", _sup_exc)
     ts = _ct_time()
     last_conn_str = last_connected_at or "unknown"
     msg = (
@@ -382,3 +471,9 @@ async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) ->
         )
     )
     return result
+
+
+async def send_whatsapp_message(message: str, phone: str = _PHONE_TO) -> bool:
+    """Backward-compatible alias for inbound reply paths."""
+    return await send_raw(message, phone=phone)
+
