@@ -75,6 +75,15 @@ async def test_get_bars_uses_ibkr_when_connected_non_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_get_current_price_falls_back_to_polygon_when_ibkr_no_price() -> None:
+    """
+    Polygon is now BLOCKLISTED for futures symbols (MCL, MNQ, MES, etc.)
+    since 2026-04-16 incident — Polygon's `CL` is Colgate-Palmolive stock,
+    not crude oil. For futures, the waterfall skips Polygon entirely and
+    falls through to CSV cache (or unavailable). This test validates the
+    blocklist behavior: Polygon should NOT be called for MCL.
+
+    See docs/data-source-audit-2026-04-16.md for the full incident report.
+    """
     mgr = MarketDataManager(_MinimalConfig())
     mock_ib = MagicMock()
     mock_ib.is_connected = True
@@ -96,6 +105,7 @@ async def test_get_current_price_falls_back_to_polygon_when_ibkr_no_price() -> N
 
     out = await mgr.get_current_price("MCL", is_futures=True)
 
-    assert out["source"] == "polygon"
-    assert out["last_price"] == 80.0
-    mock_poly.get_last_price.assert_called_once()
+    # MCL is in POLYGON_FUTURES_BLOCKLIST — Polygon must NOT be called.
+    # Waterfall falls through to CSV cache or unavailable.
+    mock_poly.get_last_price.assert_not_called()
+    assert out["source"] in ("csv_cache", "unavailable")
