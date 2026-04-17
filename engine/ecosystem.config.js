@@ -209,5 +209,33 @@ module.exports = {
       exec_interpreter: "none",
       exec_mode: "fork",
     },
+
+    // ── Next.js Dashboard ─────────────────────────────────────────────────────
+    // Serves the React dashboard at http://localhost:3010
+    // Uses pnpm start (production build) — run `pnpm build` in dashboard/ first.
+    {
+      name: "jarvis-dashboard",
+      script: "pnpm",
+      args: "run start",
+      cwd: path.join(ENGINE_DIR, "..", "dashboard"),
+      interpreter: "none",
+
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      min_uptime: "10s",
+      restart_delay: 3000,
+
+      env: {
+        NODE_ENV: "production",
+        PORT: "3010",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "dashboard-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "dashboard-out.log"),
+      merge_logs: true,
+      exec_mode: "fork",
+    },
   ],
 };
