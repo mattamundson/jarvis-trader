@@ -7,8 +7,10 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from pydantic import ValidationError
 
 from database import repository as db_repository
+from schemas.decision_log import DecisionRecord, parse_decision_row
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,18 @@ async def get_decision_detail(decision_id: int):
     if row is None:
         raise HTTPException(status_code=404, detail=f"Decision {decision_id} not found")
 
+    # Prefer the typed DecisionRecord path. On schema validation failure
+    # (historical rows with shapes the model rejects), fall through to the
+    # raw dict path — never break /detail on a schema-evolution edge case.
+    record: Optional[DecisionRecord] = None
+    try:
+        record = parse_decision_row(row)
+    except ValidationError as exc:
+        logger.warning(
+            "[decisions/detail] schema validation failed for id=%s — falling back to raw dict (%s)",
+            decision_id, exc.error_count(),
+        )
+
     full_pipeline = row.get("full_pipeline_json")
     if not full_pipeline:
         # Row exists but predates migration 019 — return what we have with a note
@@ -92,14 +106,94 @@ async def get_decision_detail(decision_id: int):
             ),
         }
 
-    # Parse out key stage summaries for top-level convenience fields
+    # Typed path — record is the validated DecisionRecord from above.
+    if record is not None and record.full_pipeline is not None:
+        fp = record.full_pipeline
+
+        stage1_summary: dict = {}
+        for agent_name in ("technical", "news", "social", "fundamental"):
+            report = fp.analyst_reports.get(agent_name)
+            if report is not None:
+                stage1_summary[agent_name] = {
+                    "signal": report.signal,
+                    "confidence": report.confidence,
+                    "summary": report.summary,
+                    "regime": report.regime,
+                    "trend": report.trend,
+                }
+
+        stage2 = {
+            "verdict": fp.debate_result.verdict if fp.debate_result else None,
+            "debate_score": fp.debate_result.debate_score if fp.debate_result else None,
+            "bull_score": fp.debate_result.bull_score if fp.debate_result else None,
+            "bear_score": fp.debate_result.bear_score if fp.debate_result else None,
+            "summary": (fp.debate_result.summary if fp.debate_result else ""),
+            "scoring_failed": fp.debate_result.scoring_failed if fp.debate_result else False,
+        }
+        stage3 = {
+            "action": fp.trade_decision.action if fp.trade_decision else None,
+            "confidence": fp.trade_decision.confidence if fp.trade_decision else None,
+            "reasoning": fp.trade_decision.reasoning if fp.trade_decision else "",
+            "entry_price": fp.trade_decision.entry_price if fp.trade_decision else None,
+            "stop_price": fp.trade_decision.stop_price if fp.trade_decision else None,
+            "limit_price": fp.trade_decision.limit_price if fp.trade_decision else None,
+            "forced_hold": fp.trade_decision.forced_hold if fp.trade_decision else False,
+        }
+        stage4 = {
+            "approved": fp.risk_decision.approved if fp.risk_decision else None,
+            "risk_score": fp.risk_decision.risk_score if fp.risk_decision else None,
+            "reasoning": fp.risk_decision.reasoning if fp.risk_decision else "",
+            "forced_hold": fp.risk_decision.forced_hold if fp.risk_decision else False,
+        }
+        stage5 = (
+            {
+                "approved": fp.fund_decision.approved,
+                "final_quantity": fp.fund_decision.final_quantity,
+                "priority": fp.fund_decision.priority,
+                "reasoning": fp.fund_decision.reasoning or "",
+            }
+            if fp.fund_decision is not None
+            else None
+        )
+        gate = fp.confidence_gate()
+
+        return {
+            "id": record.id,
+            "symbol": record.symbol,
+            "timestamp": record.timestamp,
+            "action": record.action,
+            "confidence": record.confidence,
+            "regime": record.regime,
+            "stage1_analysts": stage1_summary,
+            "stage2_debate": stage2,
+            "stage3_trader": stage3,
+            "stage4_risk": stage4,
+            "stage5_fund": stage5,
+            "confidence_gate": {
+                "triggered": gate.triggered,
+                "raw_confidence": gate.raw_confidence,
+                "boosted_confidence": gate.boosted_confidence,
+                "threshold": gate.threshold,
+                "reason": gate.reason,
+                "scorer_adjustment": gate.scorer_adjustment,
+            },
+            "final_action": fp.final_action,
+            "final_quantity": fp.final_quantity,
+            "requires_human": fp.requires_human,
+            "summary": fp.summary,
+            "errors": fp.errors,
+            "completed_at": fp.completed_at,
+            "full_pipeline": full_pipeline,
+        }
+
+    # Fallback raw-dict path — reached when schema validation failed above.
+    # Preserves the pre-refactor behavior for historical rows with odd shapes.
     analyst_reports = full_pipeline.get("analyst_reports", {})
     debate_result = full_pipeline.get("debate_result", {})
     trade_decision = full_pipeline.get("trade_decision", {})
     risk_decision = full_pipeline.get("risk_decision", {})
     fund_decision = full_pipeline.get("fund_decision")
 
-    # Build analyst summary table
     stage1_summary: dict = {}
     for agent_name in ("technical", "news", "social", "fundamental"):
         report = analyst_reports.get(agent_name, {})
