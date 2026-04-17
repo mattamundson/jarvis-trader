@@ -213,10 +213,15 @@ module.exports = {
     // ── Next.js Dashboard ─────────────────────────────────────────────────────
     // Serves the React dashboard at http://localhost:3010
     // Uses pnpm start (production build) — run `pnpm build` in dashboard/ first.
+    //
+    // NOTE: script must be ``cmd /c pnpm run start`` on Windows, NOT ``pnpm`` directly.
+    // PM2 on Node 24 tries to ``require("pnpm.cmd")`` as a JS module and hits
+    // ``SyntaxError: Invalid or unexpected token`` on the ``@ECHO off`` line.
+    // Wrapping through ``cmd.exe`` lets the .cmd shim run normally.
     {
       name: "jarvis-dashboard",
-      script: "pnpm",
-      args: "run start",
+      script: "cmd",
+      args: "/c pnpm run start",
       cwd: path.join(ENGINE_DIR, "..", "dashboard"),
       interpreter: "none",
 
