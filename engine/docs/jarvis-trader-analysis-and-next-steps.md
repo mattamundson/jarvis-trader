@@ -11,7 +11,7 @@ JARVIS Trader is a fully-functional autonomous AI trading engine built to trade 
 ### 1.1 Core Infrastructure (Complete)
 
 - **FastAPI server** on port 8010 — 659 lines, all endpoints functional, health check, analyze, trade, and status routes verified
-- **10 LLM agents** initialized and responding — claude-opus-4-6 for high-stakes decisions, claude-sonnet-4-6 for analyst work
+- **10 LLM agents** initialized and responding — claude-opus-4-7 for high-stakes decisions, claude-sonnet-4-6 for analyst work
 - **5-layer Tony Stark framework** fully implemented in `backtest/signals.py` (424 lines)
 - **15 dataclasses + 5 enums** for typed inter-agent communication (`agents/schemas.py`, 553 lines)
 - **All TOS indicators** translated from ThinkScript to Python (`backtest/indicators.py`, 300 lines):
@@ -543,7 +543,7 @@ Using a single "mega-prompt" that asks one LLM to simultaneously be a technical 
 
 4. **Parallel processing**: Stage 1 runs 4 analysts simultaneously (Technical, News, Social, Fundamental). This reduces total pipeline latency from ~20 seconds serial to ~5 seconds parallel.
 
-5. **Model assignment flexibility**: Analyst stages use claude-sonnet-4-6 (fast, cost-effective). The high-stakes Trader/Risk/Fund stages use claude-opus-4-6. This optimizes the cost/quality tradeoff — cheap models for pattern recognition, expensive models for final decisions.
+5. **Model assignment flexibility**: Analyst stages use claude-sonnet-4-6 (fast, cost-effective). The high-stakes Trader/Risk/Fund stages use claude-opus-4-7. This optimizes the cost/quality tradeoff — cheap models for pattern recognition, expensive models for final decisions.
 
 ### 6.2 Stage Flow
 
@@ -594,13 +594,13 @@ Pattern recognition tasks (identify EMA crossovers, interpret STC value, score n
 **Stage 2 Researchers — claude-sonnet-4-6:**
 The bull/bear researcher role is structured synthesis — gathering evidence and building an argument. This is sophisticated reasoning but follows a clear template. Sonnet handles this well.
 
-**Stage 3 Debate Moderator — claude-opus-4-6:**
+**Stage 3 Debate Moderator — claude-opus-4-7:**
 Rendering a verdict between two competing arguments and scoring each on a 0–10 scale requires genuine comparative reasoning. Opus produces more calibrated conviction scores and better-articulated rationales here.
 
-**Stage 4 Trader — claude-opus-4-6:**
+**Stage 4 Trader — claude-opus-4-7:**
 Converting a debate verdict into precise executable order parameters (entry price, stop, targets) requires exact number work and adherence to the Layer 5 sizing rules. Errors here cost money — Opus is justified.
 
-**Stage 5 Risk/Fund — claude-opus-4-6:**
+**Stage 5 Risk/Fund — claude-opus-4-7:**
 Final authorization decisions where an error is directly catastrophic. No cost-cutting here.
 
 ---
@@ -1008,9 +1008,9 @@ DATA SOURCES (three-tier hierarchy):
 LLM MODEL ASSIGNMENT:
   Stage 1 Analysts (x4):   claude-sonnet-4-6   (fast, cost-effective)
   Stage 2 Researchers (x2): claude-sonnet-4-6  (structured synthesis)
-  Stage 3 Debate:           claude-opus-4-6     (comparative reasoning)
-  Stage 4 Trader:           claude-opus-4-6     (precise order params)
-  Stage 5 Risk + Fund:      claude-opus-4-6     (final authorization)
+  Stage 3 Debate:           claude-opus-4-7     (comparative reasoning)
+  Stage 4 Trader:           claude-opus-4-7     (precise order params)
+  Stage 5 Risk + Fund:      claude-opus-4-7     (final authorization)
 
 KILL SWITCH HIERARCHY (cannot be overridden by any LLM):
   Level 1: Daily P&L < -2% -> kill_switch = True -> no new entries

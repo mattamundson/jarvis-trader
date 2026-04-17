@@ -63,7 +63,7 @@ Response:
   "success_rate": 0.976,
   "avg_latency_ms": 1250,
   "per_model": {
-    "claude-opus-4-6": {
+    "claude-opus-4-7": {
       "calls": 20,
       "input_tokens": 45000,
       "output_tokens": 12000,
@@ -103,7 +103,7 @@ Response:
     ...
   ],
   "per_model": {
-    "claude-opus-4-6": {"calls": 600, "cost_usd": 285.00},
+    "claude-opus-4-7": {"calls": 600, "cost_usd": 285.00},
     "claude-sonnet-4-6": {"calls": 650, "cost_usd": 100.47}
   }
 }
@@ -212,7 +212,7 @@ total = $0.03326
 CREATE TABLE llm_calls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT NOT NULL,                -- ISO 8601 UTC, e.g. "2026-03-29T14:23:45.123456+00:00"
-    model TEXT NOT NULL,                    -- e.g. "claude-opus-4-6", "claude-sonnet-4-6"
+    model TEXT NOT NULL,                    -- e.g. "claude-opus-4-7", "claude-sonnet-4-6"
     input_tokens INTEGER DEFAULT 0,         -- Input token count
     output_tokens INTEGER DEFAULT 0,        -- Output token count
     cost_usd REAL DEFAULT 0.0,              -- Cost in USD (calculated per call)
@@ -251,7 +251,7 @@ SELECT
     SUM(output_tokens) as output_total,
     SUM(cost_usd) as cost_daily
 FROM llm_calls
-WHERE model = 'claude-opus-4-6'
+WHERE model = 'claude-opus-4-7'
 AND strftime('%Y-%m', timestamp) = strftime('%Y-%m', 'now')
 GROUP BY DATE(timestamp);
 ```
@@ -263,7 +263,7 @@ GROUP BY DATE(timestamp);
 Every LLM call produces a log entry:
 
 ```
-[2026-03-29 14:23:45,123] INFO [claude-opus-4-6] technical_analyst | in:512 out:341 | cost:$0.0333 | latency:1250ms | retries:0
+[2026-03-29 14:23:45,123] INFO [claude-opus-4-7] technical_analyst | in:512 out:341 | cost:$0.0333 | latency:1250ms | retries:0
 ```
 
 Format:
@@ -276,10 +276,10 @@ Format:
 When retries occur:
 
 ```
-[2026-03-29 14:24:12,456] WARNING [claude-opus-4-6] Rate limit (429) for news_analyst — attempt 1/3
-[2026-03-29 14:24:13,789] WARNING [claude-opus-4-6] Rate limit (429) for news_analyst — attempt 2/3
-[2026-03-29 14:24:15,012] WARNING [claude-opus-4-6] Rate limit (429) for news_analyst — attempt 3/3
-[2026-03-29 14:24:15,345] WARNING [claude-opus-4-6] Max retries exhausted. Falling back to claude-sonnet-4-6 for news_analyst
+[2026-03-29 14:24:12,456] WARNING [claude-opus-4-7] Rate limit (429) for news_analyst — attempt 1/3
+[2026-03-29 14:24:13,789] WARNING [claude-opus-4-7] Rate limit (429) for news_analyst — attempt 2/3
+[2026-03-29 14:24:15,012] WARNING [claude-opus-4-7] Rate limit (429) for news_analyst — attempt 3/3
+[2026-03-29 14:24:15,345] WARNING [claude-opus-4-7] Max retries exhausted. Falling back to claude-sonnet-4-6 for news_analyst
 [2026-03-29 14:24:15,678] INFO [claude-sonnet-4-6] news_analyst | in:512 out:280 | cost:$0.0081 | latency:800ms | retries:0
 ```
 
@@ -316,13 +316,13 @@ If the primary model is overloaded (max retries exhausted), the client automatic
 
 Example log:
 ```
-[...] WARNING [claude-opus-4-6] Max retries exhausted. Falling back to claude-sonnet-4-6 for trader
+[...] WARNING [claude-opus-4-7] Max retries exhausted. Falling back to claude-sonnet-4-6 for trader
 [...] INFO [claude-sonnet-4-6] trader | in:1024 out:512 | cost:$0.0072 | latency:950ms | retries:0
 ```
 
 Check which model was used:
 ```python
-result = await client.call(model="claude-opus-4-6", ...)
+result = await client.call(model="claude-opus-4-7", ...)
 print(f"Actually used: {result.model}")  # May be Sonnet or Haiku if Opus failed
 ```
 
@@ -429,8 +429,8 @@ Tests cover:
 AGENT_MODEL = {
     "technical_analyst": "claude-sonnet-4-6",   # Balanced
     "news_analyst": "claude-sonnet-4-6",        # Balanced
-    "trader": "claude-opus-4-6",                # Complex reasoning
-    "risk_manager": "claude-opus-4-6",          # Critical decisions
+    "trader": "claude-opus-4-7",                # Complex reasoning
+    "risk_manager": "claude-opus-4-7",          # Critical decisions
     "fund_manager": "claude-sonnet-4-6",        # Balanced
 }
 ```
