@@ -23,6 +23,7 @@ import datetime as _dt
 import logging
 import os
 import uuid
+from pathlib import Path
 import zoneinfo
 from datetime import datetime
 from typing import Any, Optional
@@ -67,6 +68,12 @@ try:
     _TIME_PATTERNS_AVAILABLE = True
 except Exception:  # pragma: no cover — optional dependency
     _TIME_PATTERNS_AVAILABLE = False
+
+try:
+    from services.recipe_loader import RecipeLoader
+    _RECIPE_LOADER_AVAILABLE = True
+except Exception:  # pragma: no cover — optional dependency
+    _RECIPE_LOADER_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +139,7 @@ def _make_hold_result(symbol: str, is_futures: bool, reason: str, **extra: Any) 
     }
 
 
-async def _check_vix_extreme() -> bool:
+async def _check_vix_extreme(vix_extreme_threshold: float = 35.0) -> bool:
     """
     Return True if VIX > 35 (fear extreme — no directional edge).
     Fetches from local macro snapshot endpoint.
@@ -154,7 +161,7 @@ async def _check_vix_extreme() -> bool:
                 vix_val = data.get("vix") or data.get("VIX")
                 if vix_val is None:
                     return False
-                return float(vix_val) > 35.0
+                return float(vix_val) > float(vix_extreme_threshold)
     except Exception:
         return False  # fail open
 
@@ -253,6 +260,7 @@ async def pre_filter_signal(
     timeframe: str,
     is_futures: bool,
     agents: dict,
+    vix_extreme_threshold: float = 35.0,
 ) -> dict | None:
     """
     Pre-filter gate — runs before the LLM pipeline.
@@ -296,7 +304,7 @@ async def pre_filter_signal(
         _mid_hi = float(_cfg.STC_MIDRANGE_SKIP_HIGH)
 
         # ── Check 1: VIX extreme ───────────────────────────────────────────
-        if await _check_vix_extreme():
+        if await _check_vix_extreme(vix_extreme_threshold=vix_extreme_threshold):
             logger.info("[pre_filter_signal] %s SKIP — VIX > 35 (fear extreme)", symbol)
             record_signal_debug(
                 {
@@ -304,11 +312,11 @@ async def pre_filter_signal(
                     "symbol": symbol,
                     "stc_val": round(_stc_val, 2),
                     "stage_blocked": "pre_filter",
-                    "reason": "VIX > 35 — fear extreme, no directional edge",
+                    "reason": f"VIX > {float(vix_extreme_threshold):g} — fear extreme, no directional edge",
                 }
             )
             return _make_hold_result(
-                symbol, is_futures, "VIX > 35 — fear extreme, no directional edge"
+                symbol, is_futures, f"VIX > {float(vix_extreme_threshold):g} — fear extreme, no directional edge"
             )
 
         # ── Check 2: ATR spike ────────────────────────────────────────────
@@ -464,6 +472,7 @@ class TradingPipeline:
         symbol: str,
         is_futures: bool = True,
         timeframe: str = "1h",
+        active_recipe_name: str | None = None,
     ) -> dict:
         """
         Run the full pipeline for a symbol.
@@ -495,6 +504,29 @@ class TradingPipeline:
 
         logger.info(f"[Pipeline] Starting analysis for {symbol} (futures={is_futures})")
 
+        active_recipe = None
+        if active_recipe_name and _RECIPE_LOADER_AVAILABLE:
+            try:
+                recipes_dir = Path(__file__).resolve().parent.parent / "recipes"
+                active_recipe = RecipeLoader(recipes_dir).load(active_recipe_name)
+                pipeline_result["active_recipe"] = {
+                    "name": active_recipe.name,
+                    "version": active_recipe.version,
+                    "parameters": {
+                        "entry_max_vix": active_recipe.parameters.entry_max_vix,
+                        "min_confluence": active_recipe.parameters.min_confluence,
+                        "size_mult": active_recipe.parameters.size_mult,
+                    },
+                    "required_tools": list(active_recipe.required_tools),
+                    "steps": list(active_recipe.steps),
+                }
+                logger.info("[Pipeline] %s using active recipe %s", symbol, active_recipe.name)
+            except Exception as exc:
+                err = f"Recipe load failed for {active_recipe_name}: {exc}"
+                logger.warning("[Pipeline] %s", err)
+                errors.append(err)
+                pipeline_result["active_recipe_error"] = err
+
         # ── Cache Check: Return early if valid cached signal exists ────────────────
         if _CACHE_AVAILABLE:
             # Check if cached signal should be used (regime hasn't changed)
@@ -521,7 +553,14 @@ class TradingPipeline:
             )
 
         # ── Pre-Filter Gate (STC, VIX, ATR spike, MTF) ────────────────────────
-        pre_filter_result = await pre_filter_signal(symbol, timeframe, is_futures, self._agents)
+        recipe_vix_threshold = (
+            float(active_recipe.parameters.entry_max_vix)
+            if active_recipe is not None else 35.0
+        )
+        pre_filter_result = await pre_filter_signal(
+            symbol, timeframe, is_futures, self._agents,
+            vix_extreme_threshold=recipe_vix_threshold,
+        )
         if pre_filter_result is not None:
             return pre_filter_result
 
@@ -707,6 +746,40 @@ class TradingPipeline:
         )
         if self.profiler:
             await self.profiler.end_stage("trader")
+        if active_recipe is not None and trade_decision.get("action") not in ("hold", "HOLD"):
+            size_mult = float(active_recipe.parameters.size_mult)
+            original_qty = int(trade_decision.get("quantity", 0) or 0)
+            if original_qty > 0 and size_mult != 1.0:
+                scaled_qty = max(1, round(original_qty * size_mult))
+                trade_decision["quantity"] = scaled_qty
+                trade_decision["reasoning"] = (
+                    f"{trade_decision.get('reasoning', '')}\n\n[Recipe] size_mult={size_mult:.2f} scaled quantity {original_qty} -> {scaled_qty}"
+                ).strip()
+                pipeline_result["recipe_size_adjustment"] = {
+                    "size_mult": size_mult,
+                    "original_quantity": original_qty,
+                    "adjusted_quantity": scaled_qty,
+                }
+
+            min_confluence = float(active_recipe.parameters.min_confluence)
+            if float(trade_decision.get("confidence", 0.0) or 0.0) < min_confluence:
+                trade_decision.update({
+                    "action": "hold",
+                    "quantity": 0,
+                    "reasoning": (
+                        f"{trade_decision.get('reasoning', '')}\n\n[Recipe] confidence below min_confluence "
+                        f"({float(trade_decision.get('confidence', 0.0) or 0.0):.2f} < {min_confluence:.2f}); forcing HOLD."
+                    ).strip(),
+                    "risk_notes": (
+                        f"{trade_decision.get('risk_notes', '')} | Recipe confluence floor triggered"
+                    ).strip(" |"),
+                })
+                pipeline_result["recipe_confluence_gate"] = {
+                    "min_confluence": min_confluence,
+                    "trade_confidence": float(trade_decision.get("confidence", 0.0) or 0.0),
+                    "forced_hold": True,
+                }
+
         pipeline_result["trade_decision"] = trade_decision
 
         # ── Stage 4: Risk Manager Review ──────────────────────────────────

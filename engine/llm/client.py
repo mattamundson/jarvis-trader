@@ -19,7 +19,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 import anthropic
 from anthropic import APIConnectionError, APIStatusError, RateLimitError
@@ -37,6 +37,12 @@ try:
     _TOKEN_PROXY_AVAILABLE = True
 except Exception as _tp_err:
     _TOKEN_PROXY_AVAILABLE = False
+
+try:
+    from utils.context_mgmt import drop_tool_responses, needs_compaction
+    _CONTEXT_MGMT_AVAILABLE = True
+except Exception:
+    _CONTEXT_MGMT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +78,9 @@ class JarvisLLMClient:
     - get_daily_stats() method
     """
 
-    # Cost per million tokens (as of 2026-03-29)
+    # Cost per million tokens (as of 2026-03-29; Opus 4.7 added 2026-04-16, same tier as 4.6)
     COST_PER_MTOK = {
+        "claude-opus-4-7": {"input": 15.0, "output": 75.0},
         "claude-opus-4-6": {"input": 15.0, "output": 75.0},
         "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
         "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
@@ -81,9 +88,17 @@ class JarvisLLMClient:
 
     # Model fallback chain when overloaded
     FALLBACK_CHAIN = {
+        "claude-opus-4-7": "claude-sonnet-4-6",
         "claude-opus-4-6": "claude-sonnet-4-6",
         "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
         "claude-haiku-4-5-20251001": None,  # No fallback from Haiku
+    }
+
+    MODEL_CONTEXT_LIMITS = {
+        "claude-opus-4-7": 200_000,
+        "claude-opus-4-6": 200_000,
+        "claude-sonnet-4-6": 200_000,
+        "claude-haiku-4-5-20251001": 200_000,
     }
 
     def __init__(self, api_key: str, db_path: str = "data/llm_costs.db"):
@@ -97,6 +112,9 @@ class JarvisLLMClient:
         self.api_key = api_key
         self.client = anthropic.AsyncAnthropic(api_key=api_key)
         self.cost_tracker = CostTracker(db_path=db_path)
+        self.default_model = "claude-sonnet-4-6"
+        self.fast_model = "claude-haiku-4-5-20251001"
+        self.compaction_count = 0
         logger.info(f"✅ JarvisLLMClient initialized with cost tracking at {db_path}")
 
     async def _handle_success(
@@ -106,6 +124,7 @@ class JarvisLLMClient:
         start_time: float,
         retries: int,
         agent_name: str,
+        tier: str = "default",
         proxy=None,
         compressed_key=None,
         cache_salt: str = "",
@@ -130,7 +149,7 @@ class JarvisLLMClient:
 
         # Log to console
         logger.info(
-            f"[{current_model}] {agent_name} | "
+            f"[{current_model}] {agent_name} | tier:{tier} | "
             f"in:{input_tokens} out:{output_tokens} | "
             f"cost:${cost:.4f} | latency:{latency_ms}ms | retries:{retries}"
         )
@@ -162,6 +181,7 @@ class JarvisLLMClient:
         start_time: float,
         retries: int,
         agent_name: str,
+        tier: str = "default",
     ) -> LLMCallResult:
         """Handle failed API call after retries exhausted."""
         latency_ms = int((time.time() - start_time) * 1000)
@@ -180,7 +200,7 @@ class JarvisLLMClient:
         )
 
         logger.error(
-            f"[{current_model}] ❌ {agent_name} failed after {retries} retries | "
+            f"[{current_model}] ❌ {agent_name} failed after {retries} retries | tier:{tier} | "
             f"latency:{latency_ms}ms | error:{error_msg}"
         )
 
@@ -205,6 +225,104 @@ class JarvisLLMClient:
             return None
         return self.FALLBACK_CHAIN[current_model]
 
+    def _resolve_model_for_tier(self, model: str, tier: Literal["fast", "default", "advisor"]) -> str:
+        if tier == "fast":
+            return self.fast_model
+        if model:
+            return model
+        return self.default_model
+
+    def _estimate_tokens(self, system: str, messages: list[dict]) -> int:
+        total_chars = len(system or "")
+        for message in messages:
+            content = message.get("content", "")
+            if isinstance(content, str):
+                total_chars += len(content)
+            elif isinstance(content, dict):
+                total_chars += len(str(content))
+            else:
+                total_chars += len(str(content))
+        return max(1, total_chars // 4)
+
+    async def _summarize_for_compaction(self, middle_messages: list[dict], agent_name: str) -> str:
+        if not middle_messages:
+            return "No prior context."
+
+        middle_text = "\n".join(
+            f"{msg.get('role', 'unknown')}: {msg.get('content', '')}"
+            for msg in middle_messages
+        )
+        middle_text = middle_text[:12000]
+
+        if not middle_text.strip():
+            return "Prior context omitted."
+
+        if not _CONTEXT_MGMT_AVAILABLE:
+            return f"{len(middle_messages)} messages summarized for context compaction."
+
+        try:
+            summary_result = await self._call_with_retry(
+                model=self.fast_model,
+                system=(
+                    "Summarize the prior conversation context for a trading agent. "
+                    "Preserve the important decisions, constraints, market state, and unresolved risks. "
+                    "Return plain text only in under 120 words."
+                ),
+                messages=[{"role": "user", "content": middle_text}],
+                max_tokens=220,
+                temperature=0.2,
+            )
+            return summary_result.content[0].text.strip()
+        except Exception as exc:
+            logger.debug("[%s] fast compaction summary failed: %s", agent_name, exc)
+            return f"{len(middle_messages)} prior messages summarized for context compaction."
+
+    async def _maybe_compact_messages(
+        self,
+        system: str,
+        messages: list[dict],
+        model: str,
+        agent_name: str,
+    ) -> list[dict]:
+        if not messages or not _CONTEXT_MGMT_AVAILABLE:
+            return messages
+
+        context_limit = self.MODEL_CONTEXT_LIMITS.get(model, 200_000)
+        current_tokens = self._estimate_tokens(system, messages)
+        if not needs_compaction(current_tokens, context_limit):
+            return messages
+
+        user_assistant_indices = [
+            i for i, message in enumerate(messages) if message.get("role") in ("user", "assistant")
+        ]
+        if len(user_assistant_indices) <= 4:
+            return messages
+
+        tail_start = len(messages)
+        count = 0
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") in ("user", "assistant"):
+                count += 1
+                if count >= 4:
+                    tail_start = i
+                    break
+
+        middle_messages = messages[:tail_start]
+        tail_messages = messages[tail_start:]
+        summary = await self._summarize_for_compaction(middle_messages, agent_name)
+
+        compacted = [{"role": "user", "content": f"Prior context summary: {summary}"}]
+        compacted.extend(tail_messages)
+
+        for drop_ratio in (0.1, 0.2, 0.5, 1.0):
+            if not needs_compaction(self._estimate_tokens(system, compacted), context_limit):
+                break
+            compacted = drop_tool_responses(compacted, drop_ratio)
+
+        self.compaction_count += 1
+        logger.info("[%s] context compaction triggered for %s (count=%d)", model, agent_name, self.compaction_count)
+        return compacted
+
     async def call(
         self,
         model: str,
@@ -214,12 +332,14 @@ class JarvisLLMClient:
         agent_name: str = "unknown",
         temperature: float = 0.7,
         allow_fallback: bool = True,
+        tier: Literal["fast", "default", "advisor"] = "default",
+        compact: bool = True,
     ) -> LLMCallResult:
         """
         Make an async API call to Claude with retry logic and instrumentation.
 
         Args:
-            model: Model name (e.g. "claude-opus-4-6")
+            model: Model name (e.g. "claude-opus-4-7")
             system: System prompt
             messages: List of message dicts with "role" and "content"
             max_tokens: Max tokens in response
@@ -230,21 +350,35 @@ class JarvisLLMClient:
         Returns:
             LLMCallResult with success, tokens, cost, latency, retries
         """
+        working_messages = [dict(message) for message in messages]
+        current_model = self._resolve_model_for_tier(model, tier)
+
+        if compact:
+            try:
+                working_messages = await self._maybe_compact_messages(
+                    system=system,
+                    messages=working_messages,
+                    model=current_model,
+                    agent_name=agent_name,
+                )
+            except Exception as exc:
+                logger.debug("[%s] context compaction skipped for %s: %s", current_model, agent_name, exc)
+
         # TokenProxy — compress + cache check
         proxy = None
         compressed_key = None
-        cache_salt = f"{model}::{agent_name}"
-        if _TOKEN_PROXY_AVAILABLE and messages:
+        cache_salt = f"{current_model}::{tier}::{agent_name}"
+        if _TOKEN_PROXY_AVAILABLE and working_messages:
             try:
                 proxy = get_token_proxy()
-                last_msg = messages[-1]
+                last_msg = working_messages[-1]
                 if isinstance(last_msg, dict) and "content" in last_msg and isinstance(last_msg["content"], str):
-                    compressed, cached = proxy.optimize(last_msg["content"], model=str(model), salt=cache_salt)
+                    compressed, cached = proxy.optimize(last_msg["content"], model=str(current_model), salt=cache_salt)
                     if cached is not None:
                         return cached  # cache hit — skip API call entirely
                     last_msg["content"] = compressed
                     compressed_key = compressed
-            except Exception as _tp_run_err:
+            except Exception:
                 # graceful — never let token proxy break API calls
                 proxy = None
                 compressed_key = None
@@ -252,7 +386,6 @@ class JarvisLLMClient:
         start_time = time.time()
         retries = 0
         last_error = None
-        current_model = model
 
         # Retry loop with exponential backoff
         while True:
@@ -260,13 +393,13 @@ class JarvisLLMClient:
                 result = await self._call_with_retry(
                     model=current_model,
                     system=system,
-                    messages=messages,
+                    messages=working_messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )
                 return await self._handle_success(
                     result, current_model, start_time, retries, agent_name,
-                    proxy=proxy, compressed_key=compressed_key, cache_salt=cache_salt
+                    tier=tier, proxy=proxy, compressed_key=compressed_key, cache_salt=cache_salt
                 )
 
             except RateLimitError as e:
@@ -322,7 +455,7 @@ class JarvisLLMClient:
                 break
 
         return await self._handle_failure(
-            last_error, current_model, start_time, retries, agent_name
+            last_error, current_model, start_time, retries, agent_name, tier=tier
         )
 
     @retry(
@@ -429,3 +562,4 @@ def set_billing_error_active(active: bool) -> None:
 def is_billing_error_active() -> bool:
     """Return True if a billing/credit error has been detected."""
     return _billing_error_active
+

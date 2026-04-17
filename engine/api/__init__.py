@@ -49,6 +49,8 @@ from .models import (
     StatusEnum,
     # Analysis
     TechnicalAnalysisResponse,
+    JarvisQuickAnalysisRequest,
+    JarvisQuickAnalysisResponse,
     # Historical
     TradeHistoryResponse,
     # WebSocket
@@ -80,6 +82,8 @@ __all__ = [
     "KillSwitchToggleResponse",
     # Analysis
     "TechnicalAnalysisResponse",
+    "JarvisQuickAnalysisRequest",
+    "JarvisQuickAnalysisResponse",
     "BarsResponse",
     "RedditSentimentResponse",
     "NewsSentimentResponse",
