@@ -9,6 +9,13 @@ pushed_at: 2026-04-16T03:07:05Z
 analyzed_at: 2026-04-17
 recommendation: partial-integrate
 surfaces_with_value: [project rules, project skills, dev tooling]
+shipped:
+  - skill: .claude/skills/jarvis-search-discipline/SKILL.md (adapted from search-first)
+  - skill: .claude/skills/jarvis-cost-routing/SKILL.md (adapted from cost-aware-llm-pipeline)
+deferred:
+  - hook profile gating (ECC v1.8.0 pattern) — follow-up
+  - continuous learning skill extraction — blocked on patterns.py refactor
+  - verification eval grader architecture — blocked on oracle choice
 ---
 
 # affaan-m/everything-claude-code
