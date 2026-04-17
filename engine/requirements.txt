@@ -6,6 +6,7 @@ pydantic-settings==2.8.1
 
 # LLM & AI
 anthropic==0.50.0
+google-genai==1.72.0
 langchain==0.3.23
 langchain-anthropic==0.3.10
 langgraph==0.3.21
