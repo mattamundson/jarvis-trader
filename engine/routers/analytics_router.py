@@ -873,3 +873,144 @@ async def get_pipeline_confidence_stats() -> PipelineConfidenceStatsResponse:
     except Exception as exc:
         logger.error(f"[PipelineConfidenceStats] Error: {exc}")
         raise HTTPException(status_code=500, detail=f"Pipeline stats error: {exc}") from exc
+
+
+# ─── Brier / IC calibration diagnostics (Novel #2 observability) ─────────────
+
+
+class CalibrationAgentEntry(BaseModel):
+    """Per-agent calibration state."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    brier_score: float              # Mean Brier over window; lower is better
+    brier_weight: float             # Normalized inverse-Brier weight (sums to 1.0)
+    ic_score: float                 # Spearman IC over window
+    sample_count: int               # Non-zero-signal trade count in window
+    ready: bool                     # True when sample_count >= min_trades
+
+
+class CalibrationDiagnosticsResponse(BaseModel):
+    """Full calibration snapshot — Brier + IC across all tracked analysts."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    brier_enabled: bool             # Reflects BRIER_CALIBRATION_ENABLED env var
+    brier_blend_alpha: float        # Current blend alpha (debate.BRIER_BLEND_ALPHA)
+    min_trades_threshold: int       # Minimum sample size before calibration activates
+    window_days: int                # Rolling window length
+    agents: list[str]               # Tracked analyst names
+    per_agent: dict[str, CalibrationAgentEntry]
+    total_outcomes: int             # Total rows in trade_outcomes within window
+    ready_to_activate: bool         # All agents have >= min_trades
+    neutral_sentinel: float         # Brier value returned when insufficient data
+    timestamp: str
+
+
+@router.get(
+    "/calibration",
+    response_model=CalibrationDiagnosticsResponse,
+    description=(
+        "Expose per-agent Brier + IC calibration diagnostics. Useful for deciding "
+        "when to flip BRIER_CALIBRATION_ENABLED=true — activate once every agent "
+        "has sample_count >= min_trades_threshold."
+    ),
+)
+async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
+    """Return the current state of the Brier/IC calibration pipeline.
+
+    Reads from the shared ``trade_outcomes`` table via BrierCalibrationTracker
+    and ICWeightedEnsemble. Both trackers degrade gracefully when the table
+    is missing or empty — the endpoint never returns 500 on cold-start.
+    """
+    import os as _os
+    import sqlite3 as _sqlite
+
+    try:
+        from analytics.agent_feedback import AGENT_NAMES, DB_PATH as FB_DB_PATH
+        from analytics.ic_ensemble import (
+            BRIER_NEUTRAL,
+            BrierCalibrationTracker,
+            ICWeightedEnsemble,
+            DEFAULT_WINDOW_DAYS,
+            MIN_TRADES_FOR_IC,
+        )
+        # Pull live blend alpha from debate module so the endpoint tracks the
+        # constant if it's ever tuned per-regime.
+        from agents.debate import BRIER_BLEND_ALPHA, _is_brier_enabled
+    except Exception as exc:
+        logger.error("[Calibration] import failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"calibration deps unavailable: {exc}") from exc
+
+    agents = list(AGENT_NAMES)
+    brier = BrierCalibrationTracker(agents=agents)
+    ic = ICWeightedEnsemble(agents=agents)
+
+    # Brier scores + normalized weights (single DB pass per agent per tracker)
+    try:
+        brier_scores = {a: brier.compute_brier(a) for a in agents}
+        brier_weights = brier.get_calibration_weights(agents)
+    except Exception as exc:
+        logger.warning("[Calibration] Brier compute failed: %s", exc)
+        brier_scores = {a: BRIER_NEUTRAL for a in agents}
+        brier_weights = {a: 1.0 / len(agents) for a in agents}
+
+    try:
+        ic_scores = {a: ic.compute_ic(a) for a in agents}
+    except Exception as exc:
+        logger.warning("[Calibration] IC compute failed: %s", exc)
+        ic_scores = {a: 0.0 for a in agents}
+
+    # Per-agent sample count — direct SQL so it stays cheap.
+    sample_counts: dict[str, int] = {a: 0 for a in agents}
+    total_outcomes = 0
+    try:
+        if FB_DB_PATH.exists():
+            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+            cutoff = (_dt.now(_tz.utc) - _td(days=DEFAULT_WINDOW_DAYS)).isoformat()
+            with _sqlite.connect(str(FB_DB_PATH)) as conn:
+                total_outcomes = conn.execute(
+                    "SELECT COUNT(*) FROM trade_outcomes WHERE timestamp >= ?",
+                    (cutoff,),
+                ).fetchone()[0] or 0
+                for a in agents:
+                    sig_col = f"{a}_signal"
+                    try:
+                        n = conn.execute(
+                            f"SELECT COUNT(*) FROM trade_outcomes "
+                            f"WHERE timestamp >= ? AND {sig_col} IS NOT NULL AND {sig_col} != 0",
+                            (cutoff,),
+                        ).fetchone()[0] or 0
+                        sample_counts[a] = int(n)
+                    except _sqlite.DatabaseError:
+                        # Column missing on a newly-created DB → leave 0
+                        pass
+    except Exception as exc:
+        logger.warning("[Calibration] sample-count query failed: %s", exc)
+
+    per_agent: dict[str, CalibrationAgentEntry] = {}
+    all_ready = True
+    for a in agents:
+        ready = sample_counts[a] >= MIN_TRADES_FOR_IC
+        all_ready = all_ready and ready
+        per_agent[a] = CalibrationAgentEntry(
+            brier_score=round(float(brier_scores[a]), 6),
+            brier_weight=round(float(brier_weights.get(a, 0.0)), 6),
+            ic_score=round(float(ic_scores[a]), 6),
+            sample_count=sample_counts[a],
+            ready=ready,
+        )
+
+    from datetime import timezone as _tz_iso
+    return CalibrationDiagnosticsResponse(
+        brier_enabled=_is_brier_enabled(),
+        brier_blend_alpha=float(BRIER_BLEND_ALPHA),
+        min_trades_threshold=int(MIN_TRADES_FOR_IC),
+        window_days=int(DEFAULT_WINDOW_DAYS),
+        agents=agents,
+        per_agent=per_agent,
+        total_outcomes=int(total_outcomes),
+        ready_to_activate=all_ready,
+        neutral_sentinel=float(BRIER_NEUTRAL),
+        timestamp=datetime.now(_tz_iso.utc).isoformat(),
+    )
