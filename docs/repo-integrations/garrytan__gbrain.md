@@ -9,6 +9,22 @@ pushed_at: 2026-04-16T19:35:02Z
 analyzed_at: 2026-04-17
 recommendation: partial-integrate
 surfaces_with_value: [skills, ops, dev-tooling]
+shipped:
+  - file: engine/utils/scheduler_safety.py
+    surface: dev-tooling
+    date: 2026-04-17
+    what: "StaggeredCronRunner — deterministic per-job-id minute stagger, quiet-hours gate with wrap-around midnight support, dedupe window. Wraps async callables before APScheduler registration; no scheduler replacement. 18 passing tests."
+  - file: engine/notifications/supervisor_fallback.py
+    surface: ops-messaging
+    date: 2026-04-17
+    what: "Cross-modal refusal fallback — detect_refusal() regex-based classifier and try_with_fallback() async helper that routes to a secondary model on primary refusal OR exception. Designed to compose with SupervisorAgent (which already fail-opens on HTTP errors) for the distinct case of a successful-but-refusal primary response. 25 passing tests."
+deferred:
+  - what: "signal-detector skill + brain-ops skill"
+    reason: "blocked on persistent agent memory decision — would require embeddings table + vector search in jarvis_trader.db"
+  - what: "tiered entity enrichment (Tier 1/2/3 for counterparties and symbols)"
+    reason: "M-effort (8hr) with schema migration; not blocking paper-trading validation"
+  - what: "hybrid query search in dashboard"
+    reason: "blocked on persistent-memory decision; extends tiered enrichment"
 ---
 
 # garrytan/gbrain
