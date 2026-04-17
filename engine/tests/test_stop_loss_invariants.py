@@ -10,16 +10,16 @@ stop_loss above entry on a long trade — guaranteed loss on any normal tick.
 JSONL (45 trades) records, so no live data fix is needed. These tests act as
 a regression net so the bug can't silently return.
 
-If these tests fail on real data, investigate the upstream stop-calculation
-path immediately — likely a missing direction sign in
-`composite_signals.py` or `paper_runner.py`.
+The invariant itself now lives in ``engine/utils/trade_invariants.py`` so
+production DB-write guards and these tests share one definition. See
+``docs/incident-notes/2026-04-09-mcl-inverted-stop.md`` for the full audit.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -29,20 +29,11 @@ ENGINE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = ENGINE_DIR / "data" / "jarvis_trader.db"
 JSONL_PATH = ENGINE_DIR / "portfolio" / "trades.jsonl"
 
-LONG_SIDES = frozenset({"buy", "long", "buy_to_open"})
-SHORT_SIDES = frozenset({"sell", "short", "sell_short", "sell_to_open"})
+# Make ``engine`` imports resolvable when tests are run with pytest from repo root
+if str(ENGINE_DIR) not in sys.path:
+    sys.path.insert(0, str(ENGINE_DIR))
 
-
-def _is_inverted(side: str | None, entry: float | None, stop: float | None) -> bool:
-    """True iff the stop is on the wrong side of entry for the given direction."""
-    if side is None or entry is None or stop is None:
-        return False
-    s = side.lower()
-    if s in LONG_SIDES and stop > entry:
-        return True
-    if s in SHORT_SIDES and stop < entry:
-        return True
-    return False
+from utils.trade_invariants import is_inverted_stop as _is_inverted  # noqa: E402
 
 
 @pytest.mark.skipif(not DB_PATH.exists(), reason="paper_trades DB not present in CI env")
@@ -115,3 +106,157 @@ class TestStopLossInvariantHelper:
     ])
     def test_helper_flags_inverted(self, side, entry, stop):
         assert _is_inverted(side, entry, stop)
+
+
+# ── Guard tests: production write paths must reject inverted stops ──────────
+
+
+class TestInsertPaperTradeGuard:
+    """DatabaseManager.insert_paper_trade must refuse inverted stops."""
+
+    def _fresh_db(self, tmp_path):
+        from database.manager import DatabaseManager
+        db_file = tmp_path / "guard.db"
+        return DatabaseManager(db_path=str(db_file))
+
+    def test_insert_paper_trade_rejects_inverted_long_stop(self, tmp_path):
+        db = self._fresh_db(tmp_path)
+        with pytest.raises(ValueError, match="inverted stop"):
+            db.insert_paper_trade(
+                trade_id="test-long-inverted",
+                symbol="MCL",
+                side="buy",
+                quantity=1,
+                entry_price=84.20,
+                stop_loss=86.00,  # ABOVE entry on a long — the 2026-04-09 shape
+            )
+
+    def test_insert_paper_trade_rejects_inverted_short_stop(self, tmp_path):
+        db = self._fresh_db(tmp_path)
+        with pytest.raises(ValueError, match="inverted stop"):
+            db.insert_paper_trade(
+                trade_id="test-short-inverted",
+                symbol="MCL",
+                side="sell",
+                quantity=1,
+                entry_price=84.20,
+                stop_loss=82.00,  # BELOW entry on a short — same class of bug
+            )
+
+    # Positive-control ("accepts correct stop") deliberately omitted:
+    # test_no_inverted_stops_in_sqlite already scans the live DB's valid
+    # stops on every run, so a synthetic happy-path case would be redundant
+    # and require schema bootstrapping that the real DB provides for free.
+
+
+class TestPatchPositionGuard:
+    """update_position must raise HTTP 422 on an inverted stop update."""
+
+    def test_patch_paper_position_rejects_inverted_stop(self):
+        import asyncio
+
+        from fastapi import HTTPException
+
+        from routers import portfolio_router as pr
+        from routers.portfolio_router import UpdatePositionRequest, update_position
+
+        class _FakeTrade:
+            side = "buy"
+            entry_price = 84.20
+            stop_loss = 82.40
+            take_profit = None
+
+        class _FakeTracker:
+            _open = {"mcl-1": _FakeTrade()}
+
+        prev_tracker = pr.paper_tracker
+        pr.paper_tracker = _FakeTracker()
+        try:
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(
+                    update_position(
+                        "mcl-1",
+                        UpdatePositionRequest(stop_loss=86.00),  # inverted for long
+                    )
+                )
+        finally:
+            pr.paper_tracker = prev_tracker
+
+        assert exc_info.value.status_code == 422
+        assert "Inverted stop_loss rejected" in exc_info.value.detail
+
+    def test_patch_paper_position_rejects_inverted_stop_with_action_attr(self):
+        """Regression: real Trade dataclass uses ``action`` not ``side``.
+
+        Caught live 2026-04-16 after the initial guard shipped reading
+        ``getattr(trade, "side")`` which returned None against the real
+        PortfolioTracker Trade object (which stores the direction as
+        ``action``). The guard silently skipped and the live PATCH returned
+        HTTP 200 for an inverted stop. This test locks in the ``action``
+        path explicitly.
+        """
+        import asyncio
+
+        from fastapi import HTTPException
+
+        from routers import portfolio_router as pr
+        from routers.portfolio_router import UpdatePositionRequest, update_position
+
+        class _ActionOnlyTrade:
+            action = "buy"
+            entry_price = 84.20
+            stop_loss = 82.40
+            take_profit = None
+
+        class _FakeTracker:
+            _open = {"mcl-action": _ActionOnlyTrade()}
+
+        prev_tracker = pr.paper_tracker
+        pr.paper_tracker = _FakeTracker()
+        try:
+            with pytest.raises(HTTPException) as exc_info:
+                asyncio.run(
+                    update_position(
+                        "mcl-action",
+                        UpdatePositionRequest(stop_loss=86.00),
+                    )
+                )
+        finally:
+            pr.paper_tracker = prev_tracker
+
+        assert exc_info.value.status_code == 422
+        assert "Inverted stop_loss rejected" in exc_info.value.detail
+
+    def test_patch_paper_position_accepts_correct_stop(self):
+        """Control: a below-entry stop on a long must pass the guard."""
+        import asyncio
+
+        from routers import portfolio_router as pr
+        from routers.portfolio_router import UpdatePositionRequest, update_position
+
+        class _FakeTrade:
+            side = "buy"
+            entry_price = 84.20
+            stop_loss = 82.40
+            take_profit = None
+
+        class _FakeTracker:
+            _open = {"mcl-1": _FakeTrade()}
+
+        prev_tracker = pr.paper_tracker
+        prev_db = pr.db_manager
+        pr.paper_tracker = _FakeTracker()
+        pr.db_manager = None  # Skip SQLite persistence in this unit test
+        try:
+            result = asyncio.run(
+                update_position(
+                    "mcl-1",
+                    UpdatePositionRequest(stop_loss=82.00),  # correct: below entry
+                )
+            )
+        finally:
+            pr.paper_tracker = prev_tracker
+            pr.db_manager = prev_db
+
+        assert result["stop_loss"] == 82.00
+        assert result["status"] == "updated"
