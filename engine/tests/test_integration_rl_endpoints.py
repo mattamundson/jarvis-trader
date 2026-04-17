@@ -122,7 +122,7 @@ def require_engine():
     import urllib.request
 
     try:
-        with urllib.request.urlopen(f"{BASE_URL}/health", timeout=3) as resp:
+        with urllib.request.urlopen(f"{BASE_URL}/health", timeout=15) as resp:
             if not (200 <= resp.status < 300):
                 pytest.skip(
                     f"Engine at {BASE_URL} returned non-2xx on /health — skipping all RL endpoint tests"

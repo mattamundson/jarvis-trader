@@ -126,12 +126,17 @@ def live_analytics_contract_ready(base: str = DEFAULT_BASE) -> bool:
 
 def jarvis_rl_integration_ready(base: str = DEFAULT_BASE) -> bool:
     """
-    True when RL training endpoints (/rl/train, /rl/health) are available.
+    True when RL training endpoints are available.
     Guards RL-specific integration tests.
+
+    RL routes live under the ``/strategies`` router prefix — see
+    routers/strategies_router.py: APIRouter(prefix="/strategies"). Earlier
+    probe versions hit ``/rl/health`` directly and always got 404, silently
+    skipping all 12 RL integration tests even on a healthy engine.
     """
     if not jarvis_engine_ready(base):
         return False
-    st, data = _get_json(base, "/rl/health", timeout=3.0)
+    st, data = _get_json(base, "/strategies/rl/health", timeout=3.0)
     return st == 200 and isinstance(data, dict)
 
 
@@ -139,8 +144,11 @@ def rl_evaluate_contract_ready(base: str = DEFAULT_BASE) -> bool:
     """
     True when RL evaluation endpoint is ready.
     Guards contract validation for RL endpoints.
+
+    ``/strategies/rl/evaluate`` is POST-only, so a GET returns 405 when the
+    route is mounted — 405 counts as "routed" for this probe.
     """
     if not jarvis_rl_integration_ready(base):
         return False
-    st, data = _get_json(base, "/rl/evaluate", timeout=3.0)
-    return st in (200, 400, 422)  # Endpoint exists if it routes (even with bad input)
+    st, data = _get_json(base, "/strategies/rl/evaluate", timeout=3.0)
+    return st in (200, 400, 405, 422)  # Routed if method-allowed OR method-not-allowed
