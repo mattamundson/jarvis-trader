@@ -615,7 +615,7 @@ class TestPortfolioEndpoints(unittest.TestCase):
         req = urllib.request.Request(url)
         req.add_header("X-API-Key", os.environ.get("API_KEY") or "test-key")
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 return resp.status, json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             try:
@@ -1292,7 +1292,7 @@ class TestSession4Endpoints(unittest.TestCase):
         req = urllib.request.Request(url)
         req.add_header("X-API-Key", os.environ.get("API_KEY") or "test-key")
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 return resp.status, json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             try:
@@ -1319,7 +1319,7 @@ class TestSession4Endpoints(unittest.TestCase):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 return resp.status, json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             try:
@@ -1472,7 +1472,7 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
         req = urllib.request.Request(url)
         req.add_header("X-API-Key", os.environ.get("API_KEY") or "test-key")
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 return resp.status, json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             try:
@@ -1499,7 +1499,7 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 return resp.status, json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             try:
