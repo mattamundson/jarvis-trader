@@ -72,6 +72,7 @@ def test_approval_router_approve_flow(tmp_db: Path):
     mock_pt.open_trade.return_value = "paper-uuid-123"
     cfg = TradingConfig()
     cfg.FUTURES_WATCHLIST = ["MCL", "MNQ"]
+    cfg.ALLOW_PAPER_SIMULATED_ORDERS = True
     safety = SafetyLayer(cfg)
 
     inject_dependencies(safety, mock_pt, dbm)

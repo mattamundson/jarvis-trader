@@ -355,6 +355,23 @@ class _FakeSafetyLayer:
     def get_lockout_status(self, symbol: str) -> dict:
         return {"locked": False}
 
+    async def submit_paper_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        price: float,
+        order_type: str = "MKT",
+        limit_price: float | None = None,
+    ) -> dict:
+        """Mock paper order submission — always approves."""
+        return {
+            "approved": True,
+            "reason": "Fake safety layer — approved for testing",
+            "order_id": None,
+            "routed_to_ib": False,
+        }
+
 
 class _KillSwitchSafetyLayer(_FakeSafetyLayer):
     """Safety layer with kill switch ON — should block approvals."""
@@ -536,12 +553,12 @@ class TestApprovalToOrderE2E:
         assert r.status_code == 200, f"Approve returned {r.status_code}: {r.text}"
         body = r.json()
 
-        # execution block must be present and show the mocked result
+        # execution block must be present — routed through submit_paper_order
+        # (post-refactor 7f1f0e0: approval flow calls SafetyLayer.submit_paper_order
+        # instead of OrderRouter.route_order directly)
         execution = body.get("execution")
         assert execution is not None, f"No 'execution' field in response: {body}"
-        assert execution.get("status") == "submitted", f"Expected submitted, got: {execution}"
-        # route_order must have been called once
-        or_.route_order.assert_called_once()
+        assert execution.get("approved") is True, f"Expected approved=True, got: {execution}"
 
     # ── Test 4: reject endpoint resolves the DB row ────────────────────────
 
