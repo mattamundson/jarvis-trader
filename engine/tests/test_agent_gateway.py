@@ -122,3 +122,85 @@ async def test_reset_starts_new_session(tmp_path) -> None:
 
     assert first.session_id != reset.session_id
     assert second.session_id == reset.session_id
+
+
+@dataclass
+class RaisingAdapter:
+    agent_name: str
+    exc: Exception
+
+    async def send(self, history: list[dict], message: str, session_id: str) -> AdapterResponse:
+        raise self.exc
+
+    async def health(self) -> AdapterHealth:
+        return AdapterHealth(
+            backend=f"{self.agent_name}-backend",
+            model=f"{self.agent_name}-model",
+            state="error",
+        )
+
+
+async def test_both_command_dispatches_to_each_adapter(tmp_path) -> None:
+    gateway, _ = build_gateway(tmp_path)
+
+    reply = await gateway.handle(
+        InboundMessage(channel="api", user_id="u1", text="/both What is 2+2?", reply_target="u1")
+    )
+
+    assert reply.backend == "gateway-both"
+    assert reply.health_state == "ok"
+    assert "**Openclaw:** openclaw:What is 2+2?" in reply.reply_text
+    assert "**Hermes:** hermes:What is 2+2?" in reply.reply_text
+
+
+async def test_both_command_appends_to_both_agent_threads(tmp_path) -> None:
+    gateway, store = build_gateway(tmp_path)
+
+    await gateway.handle(
+        InboundMessage(channel="telegram", user_id="u42", text="/both same prompt", reply_target="u42")
+    )
+
+    openclaw_history = store.get_history("telegram", "u42", "openclaw")
+    hermes_history = store.get_history("telegram", "u42", "hermes")
+
+    assert [msg["content"] for msg in openclaw_history] == ["same prompt", "openclaw:same prompt:0"]
+    assert [msg["content"] for msg in hermes_history] == ["same prompt", "hermes:same prompt:0"]
+
+
+async def test_both_command_tolerates_one_adapter_failure(tmp_path) -> None:
+    db_path = tmp_path / "gateway.db"
+    store = GatewaySessionStore(db_path)
+    config = GatewayConfig()
+    gateway = SharedAgentGateway(
+        store=store,
+        config=config,
+        adapters={
+            "openclaw": StubAdapter("openclaw"),
+            "hermes": RaisingAdapter("hermes", RuntimeError("ollama down")),
+        },
+    )
+
+    reply = await gateway.handle(
+        InboundMessage(channel="api", user_id="u1", text="/both check", reply_target="u1")
+    )
+
+    assert reply.health_state == "degraded"
+    assert "**Openclaw:** openclaw:check" in reply.reply_text
+    assert "**Hermes:** ERROR — RuntimeError: ollama down" in reply.reply_text
+
+    # Successful agent's reply is persisted; failed agent's thread only has the user message
+    openclaw_history = store.get_history("api", "u1", "openclaw")
+    hermes_history = store.get_history("api", "u1", "hermes")
+    assert [m["content"] for m in openclaw_history] == ["check", "openclaw:check:0"]
+    assert [m["content"] for m in hermes_history] == ["check"]
+
+
+async def test_both_command_with_empty_prompt_returns_help(tmp_path) -> None:
+    gateway, _ = build_gateway(tmp_path)
+
+    reply = await gateway.handle(
+        InboundMessage(channel="api", user_id="u1", text="/both", reply_target="u1")
+    )
+
+    assert reply.backend == "gateway"
+    assert "Send a prompt after /both" in reply.reply_text
