@@ -736,7 +736,14 @@ async def run_executor_now(request: Request, symbol: str = None) -> dict:
     description="Health check for the RL strategy module dependencies including stable-baselines3 and PyTorch.",
 )
 async def rl_strategy_health() -> dict:
-    """Health check for the RL strategy module dependencies."""
+    """Health check for the RL strategy module dependencies.
+
+    Schema matches dashboard/app/strategies/page.tsx (uses ``*_available``)
+    and tests/test_integration_rl_endpoints.py::TestRLHealth. Older bare
+    ``gymnasium`` / ``stable_baselines3`` keys were dropped — they had no
+    remaining callers and every consumer expects the ``_available`` suffix
+    plus a roll-up ``ready`` boolean.
+    """
     try:
         import gymnasium  # noqa
 
@@ -752,8 +759,9 @@ async def rl_strategy_health() -> dict:
         sb3_ok = False
 
     return {
-        "gymnasium": gym_ok,
-        "stable_baselines3": sb3_ok,
+        "gymnasium_available": gym_ok,
+        "stable_baselines3_available": sb3_ok,
+        "ready": gym_ok and sb3_ok,
     }
 
 
