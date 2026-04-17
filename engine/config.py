@@ -329,6 +329,26 @@ class TradingConfig(BaseSettings):
     ALPACA_SECRET_KEY: Optional[str] = Field(default=None, description="Alpaca Markets secret key")
     ALPACA_PAPER: bool = Field(default=True, description="Use Alpaca paper trading")
 
+    # ── Multi-Market Activation ──────────────────────────────────────────
+    # Consumed by MarketModule.is_enabled() on crypto, options, polymarket.
+    # Fields were missing before 2026-04-16 which silently disabled all
+    # three modules at runtime (AttributeError swallowed by try/except).
+    ENABLED_MARKETS: str = Field(
+        default="",
+        description=(
+            "Comma-separated list of market modules to activate, e.g. "
+            "'futures,crypto'. Empty string keeps all non-futures modules "
+            "dormant — matches historical behavior."
+        ),
+    )
+    CRYPTO_ENABLED: bool = Field(
+        default=False,
+        description=(
+            "Enable the crypto market module. Also requires CRYPTO_BACKEND "
+            "to be set and 'crypto' to appear in ENABLED_MARKETS."
+        ),
+    )
+
     # ── Crypto (Kraken or Freqtrade) ─────────────────────────────────────
     CRYPTO_BACKEND: str = Field(
         default="freqtrade",
@@ -533,6 +553,18 @@ class TradingConfig(BaseSettings):
             )
             return 2
         return max(1, n)
+
+    def get_enabled_markets(self) -> list[str]:
+        """
+        Parse ENABLED_MARKETS into a list of lowercase module names.
+
+        Returns an empty list when the env var is unset or blank — which
+        keeps crypto/options/polymarket dormant unless explicitly opted in.
+        """
+        raw = (self.ENABLED_MARKETS or "").strip()
+        if not raw:
+            return []
+        return [m.strip().lower() for m in raw.split(",") if m.strip()]
 
     @field_validator("API_KEY", mode="after")
     @classmethod
