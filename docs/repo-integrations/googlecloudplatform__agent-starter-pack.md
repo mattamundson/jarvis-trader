@@ -9,6 +9,20 @@ pushed_at: 2026-04-16T15:56:59Z
 analyzed_at: 2026-04-17
 recommendation: partial-integrate
 surfaces_with_value: [dev-tooling, ops-messaging, docs]
+shipped:
+  - file: engine/schemas/decision_log.py
+    surface: engine-code
+    date: 2026-04-17
+    what: "Typed Pydantic v2 models for the existing decisions table and full_pipeline_json embedded payload (5 stages + confidence gate + final outcome). Adapts ASP's Vertex AI Evaluation logging pattern (Apache-2.0) to the already-built 5-stage debate pipeline. 20 passing tests lock the contract against real row shapes."
+audit_correction:
+  - original_claim: "Current AgentFeedbackTracker in agent_feedback.py logs outcomes, not *decisions*"
+    actual_state: "decisions_router.py + _mixins_decisions.py + migration 019 already provide decision logging with stage-by-stage full_pipeline_json. The real gap was the TYPED CONTRACT — everything passed around raw dict objects."
+    caught_by: "verify-before-reporting before writing decision_log.py"
+deferred:
+  - what: "Multi-stage CI/CD gate doc (dev -> staging -> prod) — Action 1 in the original integration plan"
+    reason: "doc-only, lower leverage than the typed schema which actively benefits existing code"
+  - what: "Terraform pattern doc for future cloud deployment — Action 3"
+    reason: "jarvis-trader runs local + IB Gateway; Terraform is post-paper-trading consideration"
 ---
 
 # GoogleCloudPlatform/agent-starter-pack
