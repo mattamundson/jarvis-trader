@@ -1,6 +1,35 @@
 # Data Source Incident — 2026-04-16
 
-> **Status**: Defensive fix shipped 2026-04-16. Backtest contamination audit pending (Task #15 / T1.5).
+> **Status**: Defensive fix shipped 2026-04-16. Backtest contamination audit complete 2026-04-16 (T1.5 closed).
+
+## T1.5 Audit result (2026-04-16, 23:40 CT)
+
+All 78 CSV files in `engine/backtest/cache/` scanned via
+`engine/scripts/audit_polygon_contamination.py`. Every file's min/max
+close prices fall inside the plausible band for the futures instrument
+named in the filename. **No contaminated files detected**.
+
+Concretely — for each symbol, the cached price range matched the
+futures range with no overlap into the equity range:
+
+| Symbol | Cached range | Futures band | Equity price (for reference) |
+|---|---|---|---|
+| MCL / CL | 55-124 | 25-150 | Colgate-Palmolive ~$85 (overlaps — volatility check also passed) |
+| MES / ES / ES_F | 3589-7036 | 3000-8500 | ESSA Pharma ~$1-$15 |
+| MNQ / NQ_F | 10728-26371 | 8000-32000 | Nasdaq Inc. ~$50-$75 |
+| MGC / GC | 1623-5591 | 1400-6500 | GC equity ~$60-$80 |
+| M2K / RTY | 1645-2746 | 1000-3500 | — |
+| SPY | 496-695 | 250-800 | (is an equity ETF; correctly sourced) |
+
+**Implication**: prior backtest validation numbers
+(MCL: WFE 0.82 / Sharpe 4.16 / PF 5.27, etc.) are **not contaminated by
+the Polygon equity-ticker bug**. They may still be affected by other
+issues (regime shift, overfit, etc. — see rolling WFE monitoring), but
+not by stock-price-as-futures-price corruption.
+
+**Regression protection**: `engine/tests/test_cache_contamination_audit.py`
+re-runs the audit on every test invocation. A contaminated file cannot
+silently sneak back in (e.g. if Polygon is partially re-enabled later).
 
 ## What happened
 
