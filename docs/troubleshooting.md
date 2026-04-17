@@ -206,3 +206,55 @@ wsl -d Ubuntu -e journalctl --user -u openclaw-gateway --since "5 min ago" | gre
 ```
 
 **Permanent fix** if 300s still isn't enough: drop `agents.defaults.maxConcurrent` from 2 → 1 (less CPU contention), or switch OpenClaw's default model to a smaller quant (e.g. `qwen2.5:3b` or `phi3:mini`). The engine-side `/messaging/chat` path already uses direct Ollama and is not affected by this watchdog.
+
+---
+
+## OpenClaw secret-storage convention (2026-04-17)
+
+**Principle**: API keys live in `/root/.openclaw/gateway.systemd.env` (mode 600), NOT inline in `models.json`. OpenClaw's schema supports env-var references for every provider's `apiKey` field:
+
+```json
+"apiKey": {
+  "source": "env",
+  "provider": "openai",
+  "id": "OPENAI_API_KEY"
+}
+```
+
+Current wiring (as of 2026-04-17):
+- `models.providers.openai.apiKey` → env-ref, resolves `OPENAI_API_KEY`
+- `models.providers.codex.apiKey` → env-ref, resolves `CODEX_API_KEY`
+- `models.providers.anthropic.apiKey` → still plaintext (Anthropic key is provisioned differently via Claude Code; defer unless rotation becomes needed)
+- `models.providers.ollama.apiKey` → plaintext dummy (Ollama has no real auth)
+
+**Systemd wiring**:
+- `EnvironmentFile=/root/.openclaw/gateway.systemd.env` on the `openclaw-gateway.service`
+- `OPENCLAW_SERVICE_MANAGED_ENV_KEYS` includes `OPENAI_API_KEY,CODEX_API_KEY,OLLAMA_API_KEY,BRAVE_API_KEY,BRAVE_SEARCH_API_KEY` so OpenClaw merges them into provider resolution
+- All three sensitive files (`gateway.systemd.env`, `models.json`, `auth-profiles.json`) are mode 600
+
+**Rotating a key** (the part that has to be done manually):
+1. Generate a new key on the provider's dashboard (e.g., platform.openai.com → API keys → Create new secret key)
+2. Update the env file in place:
+   ```bash
+   wsl -d Ubuntu -e bash -c 'sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=<new-key>|" /root/.openclaw/gateway.systemd.env'
+   wsl -d Ubuntu -e systemctl --user restart openclaw-gateway
+   ```
+3. Verify the new key is live:
+   ```bash
+   wsl -d Ubuntu -e bash -c 'GID=$(systemctl --user show openclaw-gateway -p MainPID --value); tr "\0" "\n" < /proc/$GID/environ | grep OPENAI_API_KEY | head -c 25'
+   ```
+4. Revoke the old key on the provider's dashboard
+
+No need to touch `models.json` on rotation — env-ref indirection means the config is stable.
+
+**Verification** the env-ref is working:
+```bash
+wsl -d Ubuntu -e bash -c 'python3 -c "
+import json
+m = json.load(open(\"/root/.openclaw/agents/main/agent/models.json\"))
+for p in (\"openai\", \"codex\"):
+    k = m[\"providers\"][p][\"apiKey\"]
+    assert isinstance(k, dict) and k.get(\"source\") == \"env\", f\"{p} not env-ref: {k}\"
+    print(f\"{p}: ok, env id={k[\"id\"]}\")
+"'
+```
