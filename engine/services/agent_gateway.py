@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import shlex
@@ -442,7 +443,7 @@ class SharedAgentGateway:
                 backend="gateway",
                 model="n/a",
                 session_id="empty",
-                reply_text="Send a message or use /status, /model, /openclaw, /hermes, /agent, or /reset.",
+                reply_text="Send a message or use /status, /model, /openclaw, /hermes, /both, /agent, or /reset.",
                 latency_ms=0,
                 health_state="ok",
             )
@@ -482,6 +483,10 @@ class SharedAgentGateway:
                 health_state="ok",
             )
 
+        if lower.startswith("/both"):
+            message_text = text[len("/both"):].strip()
+            return await self._dispatch_both(inbound, message_text)
+
         target_agent = active_agent
         message_text = text
         if lower.startswith("/openclaw"):
@@ -514,6 +519,74 @@ class SharedAgentGateway:
         reply = await self.adapters[target_agent].send(history[:-1], message_text, session_id)
         self.store.append_assistant_message(inbound.channel, inbound.user_id, target_agent, reply.reply_text)
         return reply
+
+    async def _dispatch_both(self, inbound: InboundMessage, message_text: str) -> AdapterResponse:
+        """Fan out one prompt to BOTH adapters in parallel, merge replies.
+
+        Contract: preserves the single-AdapterResponse return type so the
+        Telegram/WhatsApp reply paths don't need a new code path. The merged
+        reply_text carries both agents' output under **OpenClaw:** / **Hermes:**
+        headers. Per-agent session threads each receive the user message and
+        their own assistant reply so subsequent targeted prompts still have
+        coherent history."""
+        if not message_text:
+            return AdapterResponse(
+                agent=self.config.default_agent,
+                backend="gateway",
+                model="n/a",
+                session_id=f"{inbound.channel}:{inbound.user_id}:both",
+                reply_text="Send a prompt after /both — e.g. /both What's the MCL regime?",
+                latency_ms=0,
+                health_state="ok",
+            )
+
+        agents: tuple[AgentName, AgentName] = ("openclaw", "hermes")
+        session_ids: dict[AgentName, str] = {}
+        histories: dict[AgentName, list] = {}
+        for agent in agents:
+            session_ids[agent] = self.store.append_user_message(
+                inbound.channel, inbound.user_id, agent, message_text
+            )
+            histories[agent] = self.store.get_history(
+                inbound.channel,
+                inbound.user_id,
+                agent,
+                limit=self.config.max_history_messages,
+            )
+
+        async def _call(agent: AgentName):
+            return await self.adapters[agent].send(
+                histories[agent][:-1], message_text, session_ids[agent]
+            )
+
+        start = time.monotonic()
+        results = await asyncio.gather(
+            *(_call(a) for a in agents), return_exceptions=True
+        )
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+
+        sections: list[str] = []
+        any_error = False
+        for agent, result in zip(agents, results):
+            header = f"**{agent.capitalize()}:**"
+            if isinstance(result, BaseException):
+                any_error = True
+                sections.append(f"{header} ERROR — {type(result).__name__}: {result}")
+                continue
+            sections.append(f"{header} {result.reply_text}")
+            self.store.append_assistant_message(
+                inbound.channel, inbound.user_id, agent, result.reply_text
+            )
+
+        return AdapterResponse(
+            agent=self.config.default_agent,
+            backend="gateway-both",
+            model="n/a",
+            session_id=f"{inbound.channel}:{inbound.user_id}:both",
+            reply_text="\n\n".join(sections),
+            latency_ms=elapsed_ms,
+            health_state="degraded" if any_error else "ok",
+        )
 
     async def _status_response(self, inbound: InboundMessage, active_agent: AgentName) -> AdapterResponse:
         openclaw_health = await self.adapters["openclaw"].health()
