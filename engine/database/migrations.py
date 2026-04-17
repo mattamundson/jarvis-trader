@@ -866,6 +866,66 @@ def migration_019(conn: sqlite3.Connection) -> None:
     logger.info("Migration 019 applied — full_pipeline_json column added to decisions.")
 
 
+def migration_020(conn: sqlite3.Connection) -> None:
+    """
+    020 — Supervisor decisions table for Hermes-pattern supervisor agent.
+
+    Records every ACK / REVIEW / ESCALATE / HOLD_FOR_INFO decision made by
+    the in-process SupervisorAgent that gates openclaw_notifier outputs.
+    Enables noise-reduction metrics (via /supervisor/stats) and decision
+    replay for prompt tuning (via POST /supervisor/replay/{id}).
+
+    Source pattern: https://x.com/gkisokay/status/2037902655016804496
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS supervisor_decisions (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts              TEXT    NOT NULL,              -- ISO-8601 UTC
+            event_type      TEXT    NOT NULL,              -- signal|approval|kill_switch|morning_brief|target|drawdown|cron_failure|trade_closed|ib_disconnect
+            marker          TEXT    NOT NULL,              -- ACK|REVIEW|ESCALATE|HOLD_FOR_INFO
+            reason          TEXT,                          -- <=200 chars
+            payload_json    TEXT,                          -- serialized event payload
+            latency_ms      INTEGER NOT NULL DEFAULT 0,
+            pass_through    INTEGER NOT NULL DEFAULT 1,    -- 0=swallowed, 1=fired
+            correlation_id  TEXT,
+            cost_usd        REAL    NOT NULL DEFAULT 0.0
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_supervisor_decisions_ts "
+        "ON supervisor_decisions(ts DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_supervisor_decisions_event_type "
+        "ON supervisor_decisions(event_type)"
+    )
+    conn.commit()
+    logger.info("Migration 020 applied — supervisor_decisions table created.")
+
+
+def migration_021(conn: sqlite3.Connection) -> None:
+    """
+    021 — paper_trades stop_loss / take_profit columns.
+
+    ``insert_paper_trade`` always referenced these columns; migration 001's
+    initial ``paper_trades`` DDL did not create them, breaking **fresh** DBs.
+    Idempotent: skips if columns already exist (e.g. manually altered DBs).
+    """
+    for stmt in (
+        "ALTER TABLE paper_trades ADD COLUMN stop_loss REAL",
+        "ALTER TABLE paper_trades ADD COLUMN take_profit REAL",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+    conn.commit()
+    logger.info("Migration 021 applied — paper_trades stop_loss/take_profit columns.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -889,6 +949,8 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_017,  # version 17
     migration_018,  # version 18
     migration_019,  # version 19
+    migration_020,  # version 20
+    migration_021,  # version 21
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -911,6 +973,8 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "System state persistence: system_state key/value table for kill switch and engine state across restarts",
     "P&L snapshots: pnl_snapshots table for safety layer daily P&L persistence across engine restarts",
     "Full pipeline JSON: full_pipeline_json column on decisions for stage-by-stage reasoning storage",
+    "Supervisor decisions: supervisor_decisions table for Hermes-pattern notifier gating (ACK/REVIEW/ESCALATE/HOLD audit log)",
+    "Paper trades: stop_loss and take_profit columns for insert_paper_trade / fresh DB compatibility",
 ]
 
 
