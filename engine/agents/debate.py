@@ -48,12 +48,20 @@ __all__ = ["DebateResult", "DebateOrchestrator"]
 _advisor_instance = None
 _ic_ensemble_instance = None
 _tail_risk_instance = None
+_brier_tracker_instance = None
 
 
 def _is_tail_risk_enabled() -> bool:
     """Tail-risk researcher (Novel #1) is opt-in via env. Defaults False so the
     pipeline ships dark; flip to "true"/"1" to enable parallel scoring."""
     flag = os.environ.get("TAIL_RISK_RESEARCHER_ENABLED", "false").strip().lower()
+    return flag in ("1", "true", "yes", "on")
+
+
+def _is_brier_enabled() -> bool:
+    """Brier calibration blend (Novel #2) is opt-in via env. Defaults False so the
+    pipeline ships dark; flip to "true"/"1" after trade_outcomes has N>=5 per agent."""
+    flag = os.environ.get("BRIER_CALIBRATION_ENABLED", "false").strip().lower()
     return flag in ("1", "true", "yes", "on")
 
 
@@ -96,6 +104,25 @@ def _get_ic_ensemble(agents):
             _ic_ensemble_instance = False  # sentinel
     return _ic_ensemble_instance if _ic_ensemble_instance is not False else None
 
+
+def _get_brier_tracker(agents):
+    """Lazy-construct BrierCalibrationTracker. Returns None when env-gate is off or init fails.
+
+    Singleton so we don't re-open the agent_feedback.db connection per debate run.
+    Failures cache to a False sentinel so retries don't stampede.
+    """
+    global _brier_tracker_instance
+    if not _is_brier_enabled():
+        return None
+    if _brier_tracker_instance is None:
+        try:
+            from engine.analytics.ic_ensemble import BrierCalibrationTracker
+            _brier_tracker_instance = BrierCalibrationTracker(agents=list(agents))
+        except Exception as _err:  # pragma: no cover — defensive
+            logger.info("BrierCalibrationTracker unavailable in debate: %s", _err)
+            _brier_tracker_instance = False  # sentinel
+    return _brier_tracker_instance if _brier_tracker_instance is not False else None
+
 # Regime-adaptive debate verdict thresholds.
 # Tighter thresholds for high-conviction regimes (less noise needed to call a winner);
 # looser thresholds for choppy/uncertain regimes (require stronger signal).
@@ -112,6 +139,12 @@ DEFAULT_DEBATE_THRESHOLD = 0.20
 
 # Legacy fixed threshold (kept so existing callers that reference _VERDICT_THRESHOLD still compile)
 _VERDICT_THRESHOLD = DEFAULT_DEBATE_THRESHOLD
+
+# Brier calibration blend weight (Novel #2).
+#   final_mult = alpha * (1 + IC) + (1 - alpha) * brier_mult_centered
+# alpha=1.0 preserves pure IC behavior (the dark-ship baseline), alpha=0.0
+# is pure Brier. 0.5 is a symmetric starting point; tune per regime in a follow-up.
+BRIER_BLEND_ALPHA: float = 0.5
 
 
 @dataclass
@@ -317,14 +350,27 @@ class DebateOrchestrator:
             except Exception:
                 ic_scores = {}
 
+        # Brier calibration weights (Novel #2). Gated by BRIER_CALIBRATION_ENABLED.
+        # Returns normalized inverse-Brier weights summing to 1.0 (neutral=1/N per agent).
+        # Cold-start is self-protecting: agents with < min_trades=5 rows get the
+        # neutral sentinel which collapses the blend to pure IC.
+        _brier_tracker = _get_brier_tracker(_ic_analyst_names)
+        brier_weights: dict[str, float] = {}
+        if _brier_tracker is not None:
+            try:
+                brier_weights = _brier_tracker.get_calibration_weights(_ic_analyst_names)
+                logger.debug("[Debate] %s brier_weights=%s", symbol, brier_weights)
+            except Exception as _b_err:
+                logger.debug("BrierCalibrationTracker.get_calibration_weights failed: %s", _b_err)
+
         # Compute IR (Information Ratio) for this debate run and log it
         _ic_active = {k: v for k, v in ic_scores.items() if v > 0}
         _n_analysts = len(_ic_active)
         _avg_ic = sum(_ic_active.values()) / max(_n_analysts, 1) if _ic_active else 0.0
         _ir_score = _avg_ic * (_n_analysts ** 0.5) if _n_analysts > 0 else 0.0
         logger.info(
-            "[Debate] %s alpha combination: IC_avg=%.3f N=%d IR_score=%.3f source=%s",
-            symbol, _avg_ic, _n_analysts, _ir_score, _ic_source,
+            "[Debate] %s alpha combination: IC_avg=%.3f N=%d IR_score=%.3f source=%s brier_on=%s",
+            symbol, _avg_ic, _n_analysts, _ir_score, _ic_source, bool(brier_weights),
         )
 
         # Apply IC weights + accuracy weights to analyst_reports signals before
@@ -340,10 +386,22 @@ class DebateOrchestrator:
                 if weight != 1.0:
                     report["signal"] = report["signal"] * weight
                     report["_weight_applied"] = round(weight, 3)
-                # Apply IC multiplier on top (Track F1): signal × (1 + IC)
-                report["signal"] = _ic_weighted_signal(
-                    report["signal"], agent_name, ic_scores
-                )
+                # Apply IC multiplier on top (Track F1): signal × (1 + IC).
+                # When Brier weights are available (Novel #2), blend them into the
+                # multiplier via `_brier_blended_signal` instead.
+                if brier_weights:
+                    report["signal"] = _brier_blended_signal(
+                        report["signal"],
+                        agent_name,
+                        ic_scores,
+                        brier_weights,
+                        BRIER_BLEND_ALPHA,
+                    )
+                    report["_brier_applied"] = round(brier_weights.get(agent_name, 0.0), 4)
+                else:
+                    report["signal"] = _ic_weighted_signal(
+                        report["signal"], agent_name, ic_scores
+                    )
                 ic_val = ic_scores.get(agent_name, 0.0)
                 if ic_val > 0:
                     report["_ic_applied"] = round(ic_val, 3)
@@ -977,6 +1035,46 @@ def _ic_weighted_signal(signal: float, agent_name: str, ic_scores: dict) -> floa
     if ic <= 0:
         return signal  # No IC data — use raw signal
     return signal * (1.0 + ic)  # Boost proportional to IC quality
+
+
+def _brier_blended_signal(
+    signal: float,
+    agent_name: str,
+    ic_scores: dict,
+    brier_weights: dict,
+    alpha: float,
+) -> float:
+    """
+    Blend IC-based multiplier with Brier-calibration weight (Novel #2).
+
+    Formula:
+        ic_mult             = 1 + max(0, IC(agent))
+        brier_mult_centered = brier_weights[agent] * N    # neutral (1/N) → 1.0
+        final_mult          = alpha * ic_mult + (1 - alpha) * brier_mult_centered
+
+    Rationale:
+        * Normalized inverse-Brier weights sum to 1.0 across N agents, so the
+          neutral per-agent weight is 1/N. Multiplying by N re-centers on 1.0
+          so a well-calibrated agent gets >1.0 and a confidently-wrong agent
+          gets <1.0 — matching the `ic_mult` scale.
+        * alpha=1.0 exactly preserves the pure-IC path (regression-safe).
+        * alpha=0.0 is pure Brier re-weighting.
+        * Default alpha=0.5 starts symmetric.
+
+    Cold-start: when an agent has < min_trades=5 outcomes, BrierCalibrationTracker
+    returns the neutral sentinel (0.25), which normalizes to the uniform 1/N
+    weight — so `brier_mult_centered == 1.0` and the blend collapses to
+    `alpha * (1 + IC) + (1 - alpha)` ≈ IC behavior. No destabilization.
+    """
+    ic = max(0.0, ic_scores.get(agent_name, 0.0))
+    ic_mult = 1.0 + ic
+
+    n = max(1, len(brier_weights))
+    neutral = 1.0 / n
+    brier_w = brier_weights.get(agent_name, neutral)
+    brier_mult_centered = brier_w * n
+
+    return signal * (alpha * ic_mult + (1.0 - alpha) * brier_mult_centered)
 
 
 def _parse_json_response(raw: str) -> dict:

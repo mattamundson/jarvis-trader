@@ -317,6 +317,11 @@ class PortfolioTracker:
         except Exception as _fb_exc:
             logger.debug("[LEARNING] Feedback generation skipped: %s", _fb_exc)
 
+        # Record outcome for Brier/IC calibration (Novel #2, Tracks F+H).
+        # Reads analyst_signals persisted into strategy_params at open time and
+        # writes a trade_outcomes row the debate loop can calibrate against.
+        self._record_agent_feedback(trade_id, trade)
+
         # OpenClaw WhatsApp alert on trade close (non-blocking, best-effort)
         try:
             import asyncio as _asyncio
@@ -676,7 +681,59 @@ class PortfolioTracker:
             trade.pnl,
             trade_id[:8],
         )
+
+        # Record outcome for Brier/IC calibration (Novel #2, Tracks F+H).
+        self._record_agent_feedback(trade_id, trade)
+
         return trade
+
+    def _record_agent_feedback(self, trade_id: str, trade: PaperTrade) -> None:
+        """Write a trade_outcomes row so BrierCalibrationTracker / ICWeightedEnsemble
+        / AgentFeedbackTracker.compute_accuracy can calibrate off real closed trades.
+
+        Reads the ``analyst_signals`` sub-dict that pipeline/main persisted into
+        ``strategy_params`` at open time. Silent-skips when:
+          * ``TESTING`` env var is set (match existing hook convention)
+          * DB row doesn't exist or has no ``analyst_signals`` (legacy trades)
+          * AgentFeedbackTracker import or write fails (best-effort, never blocks close)
+        """
+        import os as _os_af
+        if _os_af.getenv("TESTING"):
+            return
+        try:
+            from engine.analytics.agent_feedback import AgentFeedbackTracker
+            analyst_signals: dict = {}
+            if self._db is not None:
+                row = self._db.get_trade_by_id(trade_id) or {}
+                sp = row.get("strategy_params")
+                # strategy_params is stored as JSON TEXT; get_trade_by_id returns it raw
+                if isinstance(sp, str) and sp:
+                    try:
+                        import json as _json_af
+                        sp = _json_af.loads(sp)
+                    except Exception:
+                        sp = None
+                if isinstance(sp, dict):
+                    analyst_signals = sp.get("analyst_signals") or {}
+            if not analyst_signals:
+                return  # Legacy trades without signals — safe no-op
+            action_lower = (trade.action or "").lower()
+            direction = "SHORT" if ("sell" in action_lower or "short" in action_lower) else "LONG"
+            AgentFeedbackTracker().record_outcome(
+                trade_id=trade_id,
+                symbol=trade.symbol,
+                direction=direction,
+                pnl_usd=float(trade.pnl or 0.0),
+                analyst_signals={k: float(v) for k, v in analyst_signals.items()},
+            )
+            logger.info(
+                "[FEEDBACK] Recorded outcome for %s pnl=%+.2f signals=%s",
+                trade_id[:8],
+                trade.pnl or 0.0,
+                list(analyst_signals.keys()),
+            )
+        except Exception as _af_exc:
+            logger.debug("[FEEDBACK] record_outcome skipped: %s", _af_exc)
 
     def update_position(
         self,

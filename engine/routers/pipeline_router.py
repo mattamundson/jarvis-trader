@@ -575,6 +575,14 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                 ) or technical_report.get("layers_aligned")
                 stc_val = (technical_report.get("indicators") or {}).get("stc_value")
 
+                # Persist per-analyst signals so AgentFeedbackTracker.record_outcome
+                # can compute Brier/IC calibration when this trade closes (Novel #2).
+                _analyst_signals = {
+                    name: float(rep.get("signal", 0.0))
+                    for name, rep in (analyst_reports or {}).items()
+                    if isinstance(rep, dict)
+                    and name in ("technical", "news", "social", "fundamental", "corey")
+                }
                 trade_id = _paper_tracker.add_paper_trade(
                     symbol=symbol,
                     side=final_action,
@@ -595,6 +603,7 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                         else None,
                         "pipeline_conviction": round(float(conviction), 4),
                         "predicted_direction": final_action.upper(),
+                        "analyst_signals": _analyst_signals,
                     },
                 )
                 logger.info(

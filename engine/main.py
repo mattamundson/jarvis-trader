@@ -3182,12 +3182,28 @@ async def run_pipeline(req: PipelineRequest):
                 except Exception as _oc_exc:
                     logger.warning("[PAPER] OpenClaw approval notify failed: %s", _oc_exc)
             elif paper_tracker and entry_price:
-                trade_id = paper_tracker.open_trade(
+                # Persist per-analyst signals so AgentFeedbackTracker.record_outcome
+                # can compute Brier/IC calibration when this trade closes (Novel #2).
+                _analyst_reports = result.get("analyst_reports") or {}
+                _analyst_signals = {
+                    name: float(rep.get("signal", 0.0))
+                    for name, rep in _analyst_reports.items()
+                    if isinstance(rep, dict)
+                    and name in ("technical", "news", "social", "fundamental", "corey")
+                }
+                trade_id = paper_tracker.add_paper_trade(
                     symbol=req.symbol,
-                    action=final_action,
+                    side=final_action,
                     quantity=float(final_qty),
-                    price=float(entry_price),
-                    notes=result.get("summary", ""),
+                    entry_price=float(entry_price),
+                    stop_loss=float(trade_dec.get("stop_price")) if trade_dec.get("stop_price") else None,
+                    take_profit=float(trade_dec.get("target_price") or trade_dec.get("take_profit") or 0) or None,
+                    strategy_params={
+                        "source": "pipeline",
+                        "summary": result.get("summary", ""),
+                        "predicted_direction": final_action.upper(),
+                        "analyst_signals": _analyst_signals,
+                    },
                 )
                 result["paper_trade_id"] = trade_id
                 logger.info(
