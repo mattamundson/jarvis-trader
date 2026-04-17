@@ -178,15 +178,29 @@ def main() -> int:
             return 2
         print(f"[port_guardian] port {PORT} released", flush=True)
 
-    # All clear — exec uvicorn
-    print("[port_guardian] launching uvicorn", flush=True)
+    # All clear — launch uvicorn IN-PROCESS so PM2 tracks a single stable PID.
+    #
+    # Why not os.execvp? On POSIX, execvp replaces the calling process with
+    # uvicorn and the PID is preserved. On Windows, execvp spawns a NEW process
+    # with a NEW PID and the guardian process exits — PM2 then sees the tracked
+    # PID vanish, marks the app as crashed, and restarts the guardian. Worse,
+    # the spawned uvicorn child is often orphaned and accumulates. That's the
+    # class of bug behind the 2026-04-16 thirty-orphan cleanup.
+    #
+    # Calling ``uvicorn.run()`` keeps the guardian process alive as the uvicorn
+    # server (guardian does ``import uvicorn`` then hands control over). PM2
+    # sees one long-lived PID; shutdown signals propagate normally.
+    print("[port_guardian] launching uvicorn in-process", flush=True)
     os.chdir(ENGINE_DIR)
-    os.execvp(
-        sys.executable,
-        [sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", str(PORT)],
+    import uvicorn  # noqa: PLC0415 — deferred import so the cleanup phase above stays cheap
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=PORT,
+        log_level="info",
     )
-    # execvp does not return on success
-    return 99
+    # uvicorn.run blocks until the server is shut down; 0 is the normal exit.
+    return 0
 
 
 if __name__ == "__main__":
