@@ -25,6 +25,7 @@ slowapi==0.1.9            # Rate limiting for FastAPI
 
 # ── LLM ────────────────────────────────────────────────────────────────────
 anthropic==0.50.0
+google-genai==1.72.0      # Gemini / Vertex AI via the current Google Gen AI SDK
 claude-agent-sdk==0.1.57  # Claude Managed Agents SDK (public beta, 2026-04-08)
 
 # ── IB Gateway ─────────────────────────────────────────────────────────────
