@@ -9,6 +9,18 @@ pushed_at: 2026-04-17
 analyzed_at: 2026-04-17
 recommendation: partial-integrate
 surfaces_with_value: [engine-code, dev-tooling, docs]
+deferred:
+  - what: "Multi-version Python CI matrix (3.11, 3.12, 3.13)"
+    reason: "jarvis-trader explicitly targets 3.12 only per project rules; running the suite against 3.11/3.13 would ~3x CI wall-clock for zero production benefit. Revisit only if the deployment target shifts."
+    evaluated_at: 2026-04-17
+  - what: "Hyperopt loss function library (Sharpe, Sortino, MaxDrawDown)"
+    reason: "M effort + futures-specific calibration. Orthogonal to current single-composite-score optimizer at engine/backtest/bayesian_optimizer.py. Gate on strategy-discovery roadmap review."
+  - what: "Lookahead bias detection"
+    reason: "already implemented at engine/backtest/walk_forward.py:validate_no_lookahead()"
+audit_correction:
+  - original_claim: "multi-Python CI matrix is a quick win"
+    actual_state: "Jarvis-trader pins 3.12. Adding 3.11+3.13 would test versions the project doesn't deploy to — CI cost without corresponding reliability gain. Declined rather than shipped."
+    caught_by: "verify-before-reporting against engine/.venv + project rules before modifying .github/workflows/ci.yml"
 ---
 
 # freqtrade/freqtrade
