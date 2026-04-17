@@ -19,6 +19,13 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from approval.service import (
+    ApprovalFlowError,
+    approve_pending_trade,
+    get_latest_pending_approval_row,
+    reject_pending_trade,
+)
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/openclaw", tags=["openclaw"])
 
@@ -103,134 +110,67 @@ async def openclaw_webhook(request: Request) -> dict[str, Any]:
 
 async def _approve_latest_pending() -> dict[str, Any]:
     """Find the most recent pending approval and approve it via the standard flow."""
-    if _db_manager is None:
-        raise HTTPException(503, detail="Database not available")
-    if _paper_tracker is None:
-        raise HTTPException(503, detail="Paper tracker not available")
-
-    # Kill switch check
-    if _safety_layer is not None and _safety_layer.get_status().get("kill_switch_active"):
-        msg = "JARVIS: Kill switch active — cannot approve trade"
-        _send_reply(msg)
-        raise HTTPException(409, detail=msg)
-
-    rows = _db_manager.list_pending_approvals(limit=1)
-    if not rows:
-        msg = "JARVIS: No pending trades to approve"
-        logger.info("[OPENCLAW] Approve command: no pending trades found")
-        _send_reply(msg)
-        return {"status": "no_pending", "message": msg}
-
-    row = rows[0]
-    approval_id: str = row["approval_id"]
-    symbol: str = row["symbol"]
-    action: str = row["action"]
-    quantity: float = float(row["quantity"])
-    entry_price: Optional[float] = row.get("entry_price")
-    snap: dict = row.get("pipeline_snapshot") or {}
-
-    # Resolve entry price from snapshot if not stored directly
-    if entry_price is None:
-        try:
-            from approval.snapshot import entry_price_from_snapshot
-
-            entry_price = entry_price_from_snapshot(snap)
-        except Exception:
-            pass
-
-    if entry_price is None:
-        msg = f"JARVIS: Cannot approve {symbol} — no entry price available"
-        _send_reply(msg)
-        raise HTTPException(400, detail=msg)
-
-    notes = str(snap.get("summary") or "")[:2000]
-
     try:
-        trade_id = _paper_tracker.open_trade(
-            symbol=symbol,
-            action=action,
-            quantity=quantity,
-            price=float(entry_price),
-            notes=notes,
-        )
-    except Exception as exc:
-        logger.exception("[OPENCLAW] open_trade failed for %s", approval_id[:8])
-        raise HTTPException(500, detail=str(exc)) from exc
+        row = get_latest_pending_approval_row(_db_manager)
+    except ApprovalFlowError as exc:
+        if exc.status_code == 404:
+            msg = "JARVIS: No pending trades to approve"
+            logger.info("[OPENCLAW] Approve command: no pending trades found")
+            _send_reply(msg)
+            return {"status": "no_pending", "message": msg}
+        msg = f"JARVIS: {exc.detail}"
+        _send_reply(msg)
+        raise HTTPException(exc.status_code, detail=msg) from exc
 
-    ok = _db_manager.resolve_pending_approval(
-        approval_id,
-        new_status="approved",
-        resolved_by="whatsapp",
-        paper_trade_id=trade_id,
-    )
-    if not ok:
-        logger.error(
-            "[OPENCLAW] resolve_pending_approval failed after open_trade id=%s", trade_id[:8]
+    approval_id: str = row["approval_id"]
+    try:
+        result = await approve_pending_trade(
+            approval_id=approval_id,
+            db_manager=_db_manager,
+            paper_tracker=_paper_tracker,
+            safety_layer=_safety_layer,
+            resolved_by="whatsapp",
         )
-        raise HTTPException(409, detail="Could not mark approval resolved (race condition?)")
-
-    logger.info(
-        "[OPENCLAW] Trade approved via WhatsApp: approval_id=%s %s %s @ %.2f",
-        approval_id[:8],
-        symbol,
-        action.upper(),
-        entry_price,
-    )
+    except ApprovalFlowError as exc:
+        msg = f"JARVIS: {exc.detail}"
+        _send_reply(msg)
+        raise HTTPException(exc.status_code, detail=msg) from exc
 
     confirm_msg = (
-        f"JARVIS: Approved — {symbol.upper()} {action.upper()} @ ${entry_price:.2f} opened"
+        f"JARVIS: Approved — {result['symbol'].upper()} {result['action'].upper()} "
+        f"@ ${result['entry_price']:.2f} opened"
     )
     _send_reply(confirm_msg)
-
-    return {
-        "status": "approved",
-        "approval_id": approval_id,
-        "paper_trade_id": trade_id,
-        "symbol": symbol,
-        "action": action,
-        "quantity": quantity,
-        "entry_price": float(entry_price),
-        "message": confirm_msg,
-    }
+    result["message"] = confirm_msg
+    return result
 
 
 async def _reject_latest_pending() -> dict[str, Any]:
     """Find the most recent pending approval and reject it via the standard flow."""
-    if _db_manager is None:
-        raise HTTPException(503, detail="Database not available")
-
-    rows = _db_manager.list_pending_approvals(limit=1)
-    if not rows:
-        msg = "JARVIS: No pending trades to reject"
+    try:
+        row = get_latest_pending_approval_row(_db_manager)
+    except ApprovalFlowError as exc:
+        if exc.status_code == 404:
+            msg = "JARVIS: No pending trades to reject"
+            _send_reply(msg)
+            return {"status": "no_pending", "message": msg}
+        msg = f"JARVIS: {exc.detail}"
         _send_reply(msg)
-        return {"status": "no_pending", "message": msg}
+        raise HTTPException(exc.status_code, detail=msg) from exc
 
-    row = rows[0]
-    approval_id: str = row["approval_id"]
-    symbol: str = row["symbol"]
-
-    ok = _db_manager.resolve_pending_approval(
-        approval_id,
-        new_status="rejected",
-        resolved_by="whatsapp",
-        rejection_reason="rejected_via_whatsapp",
-    )
-    if not ok:
-        logger.error(
-            "[OPENCLAW] resolve_pending_approval failed for rejection id=%s", approval_id[:8]
+    try:
+        result = reject_pending_trade(
+            approval_id=row["approval_id"],
+            db_manager=_db_manager,
+            resolved_by="whatsapp",
+            reason="rejected_via_whatsapp",
         )
-        raise HTTPException(409, detail="Could not mark approval resolved (race condition?)")
+    except ApprovalFlowError as exc:
+        msg = f"JARVIS: {exc.detail}"
+        _send_reply(msg)
+        raise HTTPException(exc.status_code, detail=msg) from exc
 
-    logger.info(
-        "[OPENCLAW] Trade rejected via WhatsApp: approval_id=%s %s", approval_id[:8], symbol
-    )
-
-    msg = f"JARVIS: {symbol.upper()} trade rejected"
+    msg = f"JARVIS: {row['symbol'].upper()} trade rejected"
     _send_reply(msg)
-
-    return {
-        "status": "rejected",
-        "approval_id": approval_id,
-        "symbol": symbol,
-        "message": msg,
-    }
+    result["message"] = msg
+    return result

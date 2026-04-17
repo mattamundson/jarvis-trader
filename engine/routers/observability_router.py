@@ -34,7 +34,7 @@ def advisor_status(_=Depends(_require_key)):
             "available": getattr(client, "llm", None) is not None,
             "llm_constructed": getattr(client, "llm", None) is not None,
             "api_key_set": bool(os.getenv("ANTHROPIC_API_KEY")),
-            "model": "claude-opus-4-6",
+            "model": "claude-opus-4-7",
             "tiebreak_tolerance": 0.05,
             "low_confidence_threshold": 0.5,
         }

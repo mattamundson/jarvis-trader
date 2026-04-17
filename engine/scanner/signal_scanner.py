@@ -160,7 +160,16 @@ class SignalScanner:
         }
 
     async def _run(self) -> None:
-        """Background loop — runs until stop() is called."""
+        """
+        Background loop — runs until stop() is called.
+
+        Pause-responsiveness (fix 2026-04-10 D2): the inter-scan sleep is
+        chunked into 1-minute intervals with an _active check between each.
+        This ensures that calling pause() honors the pause within 60 seconds
+        instead of the previous behavior where the 60-minute blocking sleep
+        would let one extra scan fire after pause() was called. See
+        docs/session-logs/diag-2026-04-10-D2-scanner-pause-leak.md.
+        """
         logger.info("[Scanner] Background loop started")
 
         while True:
@@ -181,8 +190,20 @@ class SignalScanner:
 
                 await self._run_scan()
 
-                # Sleep until next interval
-                await asyncio.sleep(self.scan_interval_minutes * 60)
+                # Pause-responsive inter-scan sleep: chunk the long sleep
+                # into 1-minute slices so pause() is honored within 60s.
+                _sleep_remaining = self.scan_interval_minutes * 60
+                while _sleep_remaining > 0:
+                    _chunk = min(60, _sleep_remaining)
+                    await asyncio.sleep(_chunk)
+                    _sleep_remaining -= _chunk
+                    if not self._active:
+                        logger.info(
+                            "[Scanner] Pause detected mid-sleep; exiting "
+                            "inter-scan wait with %ds remaining",
+                            _sleep_remaining,
+                        )
+                        break
 
             except asyncio.CancelledError:
                 logger.info("[Scanner] Task cancelled")
