@@ -17,7 +17,7 @@ import signal
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -33,7 +33,6 @@ from agents.fund_manager import FundManagerAgent
 from agents.fundamental_analyst import FundamentalistAgent
 from agents.news_analyst import NewsAnalystAgent
 from agents.pipeline import TradingPipeline
-from agents.sdk_pipeline import SDKTradingPipeline
 from agents.risk_manager import RiskManagerAgent
 from agents.social_analyst import SocialAnalystAgent
 from agents.corey_auction_analyst import CoreyAuctionAnalystAgent
@@ -84,6 +83,7 @@ from routers.health_router import inject_dependencies as inject_health_router_de
 from routers.health_router import router as health_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
+from routers.jarvis_router import router as jarvis_router
 from routers.kairos_router import router as kairos_router
 from routers.learning_router import router as learning_router
 from routers.events_router import router as events_router
@@ -113,6 +113,8 @@ from routers.approval_router import router as approval_router
 from routers.approval_router import inject_dependencies as inject_approval_deps
 from routers.pipeline_router import router as pipeline_router
 from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
+from routers.messaging_router import router as messaging_router
+from routers.messaging_router import inject_dependencies as inject_messaging_deps
 from routers.observability_router import router as observability_router
 from routers.scanner_router import router as scanner_router
 from routers.scanner_router import inject_dependencies as inject_scanner_deps
@@ -132,6 +134,13 @@ from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
 from websocket.events import set_ws_manager
 from websocket.manager import WebSocketManager
+
+try:
+    from agents.sdk_pipeline import SDKTradingPipeline
+except ModuleNotFoundError as exc:
+    if exc.name != "claude_agent_sdk":
+        raise
+    SDKTradingPipeline = None
 
 # ── Logging (initialized in lifespan) ────────────────────────────────────
 logger = logging.getLogger("jarvis_trader")
@@ -198,7 +207,7 @@ data_manager: MarketDataManager | None = None
 safety_layer: SafetyLayer | None = None
 technical_analyst: TechnicalAnalystAgent | None = None
 trading_pipeline: TradingPipeline | None = None
-sdk_pipeline: SDKTradingPipeline | None = None
+sdk_pipeline: "SDKTradingPipeline | None" = None
 scheduler: AsyncIOScheduler | None = None
 paper_tracker: PortfolioTracker | None = None
 db_manager: DatabaseManager | None = None
@@ -213,9 +222,103 @@ cost_tracker: "CostTracker | None" = None
 loss_tracker: "ConsecutiveLossTracker | None" = None
 validation_alert_manager: "ValidationAlertManager | None" = None
 
-# Rate limit: track last alert time per symbol to avoid flooding (2-hour cooldown)
-_last_alert_time: Dict[str, datetime] = {}
-ALERT_COOLDOWN_HOURS = 2
+
+def _log_pipeline_whatsapp_to_alert_log(
+    symbol: str,
+    message: str,
+    status: str,
+    error: Optional[str] = None,
+) -> None:
+    """Persist pipeline WhatsApp outcomes (sent, failed, suppressed) for audit."""
+    if db_manager is None:
+        return
+    try:
+        db_manager.insert_alert_log(
+            alert_type="pipeline_signal",
+            message=message,
+            channel="whatsapp",
+            symbol=symbol,
+            status=status,
+            error=error,
+        )
+    except Exception as exc:
+        logger.warning("alert_log pipeline_signal insert failed (non-fatal): %s", exc)
+
+
+async def _deliver_pipeline_whatsapp_if_eligible(
+    symbol: str,
+    action: str,
+    qty: int,
+    price_info,
+    reasoning: str,
+    confidence: float,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Send Twilio WhatsApp for a non-HOLD pipeline result when cooldown allows.
+
+    Returns (delivered_to_twilio, suppressed_reason). ``suppressed_reason`` is None
+    on successful send; ``send_failed`` when Twilio returns false; otherwise a
+    short code for API responses (manual scan).
+    """
+    from notifications.pipeline_alert_cooldown import (
+        get_last_pipeline_alert_sent,
+        mark_pipeline_alert_sent,
+        pipeline_alert_decision,
+    )
+    from notifications.whatsapp import get_notifier
+
+    notifier = get_notifier()
+    now = datetime.now()
+    last_sent = get_last_pipeline_alert_sent(symbol)
+    decision = pipeline_alert_decision(
+        last_sent=last_sent,
+        now=now,
+        cooldown_minutes=settings.ALERT_COOLDOWN_MINUTES,
+        notifier_enabled=notifier.enabled,
+    )
+    price_str = f" @ {price_info:.2f}" if price_info else ""
+    pct = int(confidence * 100)
+    short_reason = (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
+    msg = (
+        f"JARVIS: {symbol} -> {action.upper()} {qty}{price_str}\n"
+        f"Confidence: {pct}%\n"
+        f"Reason: {short_reason}"
+    )
+
+    if decision == "send":
+        sent = await notifier.send(msg)
+        if sent:
+            mark_pipeline_alert_sent(symbol, now)
+            _log_pipeline_whatsapp_to_alert_log(symbol, msg, "sent")
+            logger.info("WhatsApp alert sent for %s (%s)", symbol, action.upper())
+            return True, None
+        _log_pipeline_whatsapp_to_alert_log(
+            symbol, msg, "failed", error="twilio_send_returned_false"
+        )
+        logger.warning("WhatsApp alert failed for %s", symbol)
+        return False, "send_failed"
+
+    if decision == "suppressed_cooldown":
+        tail = last_sent.strftime("%H:%M") if last_sent else "unknown"
+        logger.info(
+            "WhatsApp alert for %s suppressed — cooldown active (last sent %s)",
+            symbol,
+            tail,
+        )
+        _log_pipeline_whatsapp_to_alert_log(
+            symbol,
+            msg,
+            "suppressed_cooldown",
+            error=(f"last_sent={last_sent.isoformat()}" if last_sent else "last_sent=n/a"),
+        )
+        return False, f"cooldown_active_since_{tail}"
+
+    logger.info("WhatsApp alert for %s suppressed — WhatsApp not configured", symbol)
+    _log_pipeline_whatsapp_to_alert_log(
+        symbol, msg, "suppressed", error="whatsapp_not_configured"
+    )
+    return False, "whatsapp_not_configured"
+
 
 # 5-minute macro snapshot cache (keyed by "snapshot", stores flattened dict + "_ts")
 _macro_cache: Dict[str, dict] = {}
@@ -503,9 +606,6 @@ async def lifespan(app: FastAPI):
         )
 
         logger.info(f"Scheduled scan: {[s[0] for s in symbols_to_scan]}")
-        from notifications.whatsapp import get_notifier
-
-        notifier = get_notifier()
 
         async def _analyze_and_alert(symbol: str, is_futures: bool) -> None:
             import time as _time_mod
@@ -636,36 +736,14 @@ async def lifespan(app: FastAPI):
 
                 if action not in ("hold",):
                     logger.info(f"{symbol}: {action.upper()} qty={qty} confidence={confidence:.0%}")
-
-                    # Rate limit: skip alert if we sent one for this symbol within cooldown window
-                    now = datetime.now()
-                    last_sent = _last_alert_time.get(symbol)
-                    cooldown_expired = last_sent is None or (now - last_sent) >= timedelta(
-                        hours=ALERT_COOLDOWN_HOURS
+                    await _deliver_pipeline_whatsapp_if_eligible(
+                        symbol=symbol,
+                        action=action,
+                        qty=qty,
+                        price_info=price_info,
+                        reasoning=reasoning,
+                        confidence=float(confidence),
                     )
-
-                    if notifier.enabled and cooldown_expired:
-                        price_str = f" @ {price_info:.2f}" if price_info else ""
-                        pct = int(confidence * 100)
-                        short_reason = (
-                            (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
-                        )
-                        msg = (
-                            f"JARVIS: {symbol} -> {action.upper()} {qty}{price_str}\n"
-                            f"Confidence: {pct}%\n"
-                            f"Reason: {short_reason}"
-                        )
-                        sent = await notifier.send(msg)
-                        if sent:
-                            _last_alert_time[symbol] = now
-                            logger.info(f"WhatsApp alert sent for {symbol} ({action.upper()})")
-                        else:
-                            logger.warning(f"WhatsApp alert failed for {symbol}")
-                    elif not cooldown_expired:
-                        logger.info(
-                            f"WhatsApp alert for {symbol} suppressed — cooldown active "
-                            f"(last sent {last_sent.strftime('%H:%M')})"
-                        )
                 else:
                     logger.debug(f"{symbol}: hold — no alert sent")
 
@@ -789,6 +867,22 @@ async def lifespan(app: FastAPI):
         max_instances=1,
         misfire_grace_time=600,
     )
+    # Messaging health monitor — check Ollama every 60s
+    try:
+        from services.messaging_health import run_health_check
+        scheduler.add_job(
+            run_health_check,
+            "interval",
+            seconds=60,
+            id="messaging_health_check",
+            name="Messaging Health Monitor",
+            max_instances=1,
+            misfire_grace_time=30,
+        )
+        logger.info("✅ Messaging health monitor registered (60s interval)")
+    except Exception as _mhc_err:
+        logger.warning("Messaging health monitor init failed (non-fatal): %s", _mhc_err)
+
     if not scheduler.running:
         scheduler.start()
     logger.info("⏰ MGC daily signal job registered — 18:00 ET (23:00 UTC) weekdays")
@@ -1101,7 +1195,7 @@ async def lifespan(app: FastAPI):
         logger.warning("AlertManager init failed (non-fatal — no P&L push alerts): %s", _am_err)
 
     # Wire router dependencies now that all singletons are ready
-    inject_portfolio_deps(paper_tracker, db_manager, data_manager)
+    inject_portfolio_deps(paper_tracker, db_manager, data_manager, safety_layer)
     inject_safety_router_deps(safety_layer, loss_tracker)
     # Inject AlertManager into safety router for /safety/alerts/history
     try:
@@ -1126,6 +1220,7 @@ async def lifespan(app: FastAPI):
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_scheduler_router_scheduler(scheduler)
     inject_pipeline_deps(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline)
+    inject_messaging_deps(str(db_manager._db_path))
     # Morning brief deps
     inject_morning_brief_deps(data_manager, paper_tracker, safety_layer)
     inject_hp_deps(data_manager, settings)
@@ -1346,8 +1441,24 @@ async def lifespan(app: FastAPI):
 
                 brief_text = await assemble_morning_brief()
                 logger.info("[MorningBrief] Assembled: %s chars", len(brief_text))
-                await send_raw(brief_text)
-                await discord_morning_brief(brief_text)
+                # Supervisor gate (Hermes pattern) — review brief before sending.
+                _send_brief = True
+                try:
+                    from notifications.supervisor import get_supervisor, SupervisorEvent
+                    _sup = get_supervisor()
+                    if _sup.enabled:
+                        _decision = await _sup.review(SupervisorEvent(
+                            event_type="morning_brief",
+                            payload={"length": len(brief_text), "preview": brief_text[:500]},
+                        ))
+                        _send_brief = _decision.pass_through
+                        if not _send_brief:
+                            logger.info("Supervisor ACK'd morning brief: %s", _decision.reason)
+                except Exception as _sup_exc:
+                    logger.warning("Supervisor morning_brief gate failed (fail-open): %s", _sup_exc)
+                if _send_brief:
+                    await send_raw(brief_text)
+                    await discord_morning_brief(brief_text)
             except Exception as exc:
                 logger.error("[MorningBrief] run_morning_brief failed: %s", exc)
 
@@ -1546,6 +1657,14 @@ async def lifespan(app: FastAPI):
     except Exception as _weekly_err:
         logger.warning(f"Weekly discovery job init failed (non-fatal): {_weekly_err}")
 
+    # ── Telegram long-polling service ──────────────────────────────────────────
+    try:
+        from routers.messaging_router import start_messaging_services
+        await start_messaging_services()
+        logger.info("✅ Messaging services started (Telegram poller)")
+    except Exception as _msg_err:
+        logger.warning("Messaging services init failed (non-fatal): %s", _msg_err)
+
     logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
 
@@ -1612,6 +1731,12 @@ async def lifespan(app: FastAPI):
             await _brave_client.close()
     except Exception:
         pass
+    # Stop Telegram poller
+    try:
+        from routers.messaging_router import stop_messaging_services
+        await stop_messaging_services()
+    except Exception:
+        pass
     logger.info("JARVIS TRADER shutdown complete")
 
 
@@ -1649,6 +1774,7 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 app.include_router(health_router)
 app.include_router(phase3_readiness_router)
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(jarvis_router)
 app.include_router(trades_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
@@ -1671,6 +1797,7 @@ app.include_router(brokers_router)
 app.include_router(options_router)
 app.include_router(approval_router)
 app.include_router(pipeline_router)
+app.include_router(messaging_router)
 app.include_router(scanner_router)
 app.include_router(tradingview_router)
 app.include_router(scheduler_router)
@@ -2207,7 +2334,7 @@ async def get_paper_positions():
     }
 
 
-@app.post("/portfolio/paper/trade", response_model=PaperTradeResponse)
+@app.post("/portfolio/paper/trade/manual", response_model=PaperTradeResponse)
 async def submit_paper_trade(req: PaperTradeRequest):
     """
     Open or close a paper trade.
@@ -2266,6 +2393,18 @@ async def submit_paper_trade(req: PaperTradeRequest):
             "trade": trade.to_dict(),
         }
     else:
+        from approval.service import approved_watchlist_symbols
+        from execution.order_router import FUTURES_SYMBOLS
+
+        if settings.LIVE_TRADING_ENABLED:
+            raise HTTPException(409, "Direct paper-trade open disabled in live mode")
+        if safety_layer and safety_layer.get_status().get("kill_switch_active"):
+            raise HTTPException(409, "Kill switch active — cannot open direct paper trade")
+        if req.symbol.upper() in FUTURES_SYMBOLS and req.symbol.upper() not in approved_watchlist_symbols():
+            raise HTTPException(
+                400,
+                f"Symbol {req.symbol.upper()} not on approved futures watchlist",
+            )
         trade_id = paper_tracker.open_trade(
             symbol=req.symbol,
             action=req.action,
@@ -3187,10 +3326,6 @@ async def trigger_scan_now():
 
     logger.info(f"Manual scan triggered: {[s[0] for s in symbols_to_scan]}")
 
-    from notifications.whatsapp import get_notifier
-
-    notifier = get_notifier()
-
     scan_results = []
     for symbol, is_futures in symbols_to_scan:
         try:
@@ -3219,27 +3354,14 @@ async def trigger_scan_now():
             alert_suppressed_reason = None
 
             if action not in ("hold",):
-                now = datetime.now()
-                last_sent = _last_alert_time.get(symbol)
-                cooldown_expired = last_sent is None or (now - last_sent) >= timedelta(
-                    hours=ALERT_COOLDOWN_HOURS
+                alert_sent, alert_suppressed_reason = await _deliver_pipeline_whatsapp_if_eligible(
+                    symbol=symbol,
+                    action=action,
+                    qty=qty,
+                    price_info=price_info,
+                    reasoning=reasoning,
+                    confidence=float(confidence),
                 )
-                if notifier.enabled and cooldown_expired:
-                    price_str = f" @ {price_info:.2f}" if price_info else ""
-                    pct = int(confidence * 100)
-                    short_reason = (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
-                    msg = (
-                        f"JARVIS: {symbol} -> {action.upper()} {qty}{price_str}\n"
-                        f"Confidence: {pct}%\n"
-                        f"Reason: {short_reason}"
-                    )
-                    alert_sent = await notifier.send(msg)
-                    if alert_sent:
-                        _last_alert_time[symbol] = now
-                elif not cooldown_expired:
-                    alert_suppressed_reason = f"cooldown_active_since_{last_sent.strftime('%H:%M')}"
-                elif not notifier.enabled:
-                    alert_suppressed_reason = "whatsapp_not_configured"
 
             scan_results.append(
                 {
@@ -4901,3 +5023,6 @@ async def import_paper_trades(request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
+
+
+
