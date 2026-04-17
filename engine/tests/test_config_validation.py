@@ -116,11 +116,11 @@ class TestFuturesLimits:
 
     @patch.dict(os.environ, {"API_KEY": "test-key", "MAX_CONTRACTS_PER_INSTRUMENT": "3"})
     def test_max_contracts_per_instrument(self):
-        """MAX_CONTRACTS_PER_INSTRUMENT set to 3 for paper trading validation."""
+        """Env may request >2, but TradingConfig hard-caps at 2 (stale-data incident guard)."""
         from config import TradingConfig
 
         config = TradingConfig()
-        assert config.MAX_CONTRACTS_PER_INSTRUMENT == 3
+        assert config.MAX_CONTRACTS_PER_INSTRUMENT == 2
 
     @patch.dict(os.environ, {"API_KEY": "test-key", "MAX_OVERNIGHT_CONTRACTS": "2"})
     def test_max_overnight_contracts(self):
