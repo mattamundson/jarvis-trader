@@ -530,6 +530,19 @@ class TradingEnvironment(_GymBase):
     ) -> float:
         cfg = self._reward_cfg
 
+        # PBR (TensorTrade ML/AI Novel #3): subtract real broker commission from
+        # realized_pnl in dollars BEFORE the ATR-normalised reward calculation,
+        # so the agent learns to clear the commission floor (~$1.30/contract MCL).
+        # Charged only on closing trades (realized_pnl != 0); is_new_entry trades
+        # have realized_pnl == 0 and pay nothing here. Defaults to 0.0 to keep
+        # legacy training runs reproducible (see rl_config.REWARD_CONFIG).
+        commission = (
+            cfg.get("commission_usd_per_contract", 0.0)
+            * cfg.get("contracts_per_trade", 1)
+        )
+        if realized_pnl != 0.0 and commission > 0.0:
+            realized_pnl = realized_pnl - commission
+
         # Primary: P&L in ATR units (scale-invariant across instruments)
         pnl_reward = (realized_pnl / atr * cfg["pnl_atr_weight"]) if atr > 0 else 0.0
 

@@ -136,6 +136,22 @@ REWARD_CONFIG = {
     "t1_bonus": 0.50,
     # No flat reward — pure P&L signal (unchanged from Runs 7-11).
     "flat_hold_reward": 0.000,
+    # ── Commission-aware reward (TensorTrade PBR-inspired, ML/AI Novel #3) ──
+    # Real broker commission deducted from realized_pnl in DOLLARS before ATR
+    # normalisation. Default 0.0 preserves the existing behaviour (Runs 1-11
+    # were commission-blind). Set per-instrument when running paper-eligible
+    # discovery (MCL≈$1.30, MNQ≈$0.45, MES≈$0.50 round-trip on IBKR micros).
+    # Source: docs/digest/ml-ai-synthesis.md Novel #3 (tensortrade-org).
+    "commission_usd_per_contract": 0.0,
+    "contracts_per_trade": 1,
+}
+
+# Per-instrument commission overrides (round-trip on IBKR micros).
+# Apply via REWARD_CONFIG.update(COMMISSION_BY_INSTRUMENT[symbol]) before training.
+COMMISSION_BY_INSTRUMENT = {
+    "MCL": {"commission_usd_per_contract": 1.30, "contracts_per_trade": 1},
+    "MNQ": {"commission_usd_per_contract": 0.45, "contracts_per_trade": 1},
+    "MES": {"commission_usd_per_contract": 0.50, "contracts_per_trade": 1},
 }
 
 # ── Run History Summary ───────────────────────────────────────────────────────
