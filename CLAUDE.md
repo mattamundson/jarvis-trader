@@ -1,47 +1,57 @@
-# Paperclip — project memory
+# jarvis-trader — project memory
 
-This is `paperclipai/paperclip`: an open-source control plane for autonomous AI companies.
+AI-powered futures & options trading engine for Matt Morrison.
+Capital $10K total, $5K/instrument (MCL + MNQ). Paper mode on IB Gateway port 4002.
 
-Before any non-trivial work, read in this order:
-1. `AGENTS.md` — contributor rules and V1 contract
-2. `doc/GOAL.md` — product vision
-3. `doc/PRODUCT.md` — what Paperclip is and is not
-4. `doc/SPEC-implementation.md` — concrete V1 build contract
-5. `doc/DEVELOPING.md` — dev setup and commands
-6. `doc/DATABASE.md` — DB modes, storage, secrets
+## Read first (in order)
+
+1. `docs/CURRENT_STATE.md` — latest P0/P1/P2 status
+2. `docs/JARVIS_TRADER_UNIFIED_CANON.md` — canonical architecture
+3. `docs/runbooks/` — operational playbooks
+4. `engine/config.py` — hardcoded safety limits (DO NOT modify without `[safety-review]` PR tag)
+5. `docs/troubleshooting.md` — engine/OpenClaw/WhatsApp/Bun/port-8010 incidents
 
 ## Non-negotiable rules
 
-- Company is the first-order boundary. All domain entities are company-scoped.
-- Keep contracts synchronized: `packages/db`, `packages/shared`, `server`, `ui`.
-- Preserve: single-assignee task model, atomic issue checkout, approval gates, budget hard-stops, activity logging for mutating actions.
-- Do not replace strategic docs wholesale. Prefer additive updates.
-- Plan docs belong in `doc/plans/YYYY-MM-DD-slug.md`.
+- `.env` files NEVER committed. Real keys live in `engine/.env` (gitignored).
+- `pnpm` for all Node. System `npm` is broken.
+- Python: `engine/.venv/Scripts/python` only. Never system Python 3.14 or Store Python.
+- TS check: `./node_modules/.bin/tsc --noEmit` (not `npx tsc`).
+- Dashboard badge variants (strict): `"bull" | "bear" | "warn" | "info" | "neutral"`.
+- No bare `await fetch(...)` in `dashboard/` — use `fetchEngine` / `postEngine` from `dashboard/lib/api.ts`.
+- Engine restart: `.\restart_engine.ps1`. Never use `--reload` (causes duplicate IB connections).
+- Live IB Gateway port 4001 is permanently blocked — paper only (port 4002, account DUP662235).
+- Any change to `engine/config.py`, `engine/risk/`, or kill-switch code requires `[safety-review]` PR tag.
+- `LIVE_TRADING_ENABLED = False` and `REQUIRE_HUMAN_APPROVAL = True` are invariants. Kill switch: -2% daily P&L / -10% drawdown. Hardcoded, no LLM route.
+- API auth header: `X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc` (from `engine/.env`). Port 8010.
 
 ## Dev quick-start
 
-```sh
-pnpm install
-pnpm dev
-# API + UI: http://localhost:3100
+```bash
+# Engine (http://localhost:8010)
+cd engine && .venv/Scripts/activate && python main.py
+
+# Dashboard (http://localhost:3010)
+cd dashboard && pnpm install && pnpm dev
+
+# Tests
+cd engine && .venv/Scripts/python -m pytest tests/ -m "not slow"
+cd dashboard && pnpm run build
 ```
 
 ## Subagents available
 
-Use `/paperclip-orient` or invoke by name:
-- `paperclip-repo` — cross-package routing and orientation
-- `paperclip-core` — domain model reasoning
-- `paperclip-db` — schema and migrations
-- `paperclip-api` — Express routes and auth
-- `paperclip-ui` — React/Vite board UI
-- `paperclip-adapters` — runtime integrations
-- `paperclip-plugins` — plugin system
-- `paperclip-release` — build, test, release
+Use `/jarvis-*` commands or invoke subagents by name from `.claude/agents/`:
 
-## Extended reference
+- `pipeline-debugger` — debate scoring, signal aggregation, IC weights
+- `backtest-runner` — WFE / PF / Sharpe validation + Monte Carlo
+- `safety-reviewer` — kill switch, stop-loss direction invariants, safety layer
 
-@.claude/paperclip/docs/root-memory.md
+## Imports
 
-<!-- paperclip-pack-v5 -->
-@.claude/paperclip/docs/root-memory.md
-<!-- /paperclip-pack-v5 -->
+@.claude/rules/safety.md
+@.claude/rules/testing.md
+@.claude/rules/commits.md
+
+---
+*Last updated 2026-04-16 — replaces prior stale Paperclip memory.*
