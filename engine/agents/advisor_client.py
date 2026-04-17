@@ -102,7 +102,7 @@ class AdvisorClient:
     # Escalate when trader confidence is below this value.
     LOW_CONFIDENCE_THRESHOLD = 0.5
     # Advisor always uses the most capable model.
-    ADVISOR_MODEL = "claude-opus-4-6"
+    ADVISOR_MODEL = "claude-opus-4-7"
     # Cap advisor response to contain cost; verdicts/refinements are short.
     ADVISOR_MAX_TOKENS = 600
     # Deterministic-ish — advisor should not free-associate.

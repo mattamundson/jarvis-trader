@@ -7,7 +7,7 @@ Layer 1 — Hard rules (Python, non-LLM):
   Fast, deterministic checks against the safety parameters from config.
   If any hard rule fails the trade is vetoed immediately. No LLM call is made.
 
-Layer 2 — Soft rules (LLM reasoning, Claude Opus 4.6):
+Layer 2 — Soft rules (LLM reasoning, Claude Opus 4.7):
   If hard rules pass, Claude reviews the trade for:
   - Correlation risk (sector concentration)
   - Timing risk (chasing a move?)

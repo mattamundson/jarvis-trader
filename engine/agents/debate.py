@@ -27,6 +27,7 @@ debate_score, and a verdict string.
 import asyncio
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,6 +35,7 @@ from typing import Optional
 
 from .bear_researcher import BearReport, BearResearcherAgent
 from .bull_researcher import BullReport, BullResearcherAgent
+from .tail_risk_researcher import TailRiskReport, TailRiskResearcherAgent
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,28 @@ __all__ = ["DebateResult", "DebateOrchestrator"]
 # AdvisorClient + ICWeightedEnsemble docstrings for failure semantics.
 _advisor_instance = None
 _ic_ensemble_instance = None
+_tail_risk_instance = None
+
+
+def _is_tail_risk_enabled() -> bool:
+    """Tail-risk researcher (Novel #1) is opt-in via env. Defaults False so the
+    pipeline ships dark; flip to "true"/"1" to enable parallel scoring."""
+    flag = os.environ.get("TAIL_RISK_RESEARCHER_ENABLED", "false").strip().lower()
+    return flag in ("1", "true", "yes", "on")
+
+
+def _get_tail_risk_agent() -> Optional[TailRiskResearcherAgent]:
+    """Lazy-construct TailRiskResearcherAgent. Returns None if disabled or init fails."""
+    global _tail_risk_instance
+    if not _is_tail_risk_enabled():
+        return None
+    if _tail_risk_instance is None:
+        try:
+            _tail_risk_instance = TailRiskResearcherAgent()
+        except Exception as _err:  # pragma: no cover — defensive
+            logger.info("TailRiskResearcherAgent unavailable: %s", _err)
+            _tail_risk_instance = False
+    return _tail_risk_instance if _tail_risk_instance is not False else None
 
 
 def _get_advisor():
@@ -132,6 +156,9 @@ class DebateResult:
     ic_avg: float = 0.0         # mean Information Coefficient across active analysts
     ic_n_analysts: int = 0      # number of analysts with IC > 0
 
+    # Tail-risk researcher output (Novel #1, opt-in via TAIL_RISK_RESEARCHER_ENABLED)
+    tail_risk_report: Optional[TailRiskReport] = None
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -164,6 +191,8 @@ class DebateResult:
             "ir_score": self.ir_score,
             "ic_avg": self.ic_avg,
             "ic_n_analysts": self.ic_n_analysts,
+            # Tail-risk (Novel #1, opt-in)
+            "tail_risk_report": self.tail_risk_report.to_dict() if self.tail_risk_report else None,
         }
 
 
@@ -321,12 +350,31 @@ class DebateOrchestrator:
             weighted_reports[agent_name] = report
 
         logger.info(f"[Debate] {symbol} — Round 1: parallel opening statements")
-        bull_report, bear_report = await asyncio.gather(
-            bull.analyze(symbol, weighted_reports),
-            bear.analyze(symbol, weighted_reports),
-        )
+        _tail_risk_agent = _get_tail_risk_agent()
+        if _tail_risk_agent is not None:
+            bull_report, bear_report, tail_risk_report = await asyncio.gather(
+                bull.analyze(symbol, weighted_reports),
+                bear.analyze(symbol, weighted_reports),
+                _tail_risk_agent.analyze(symbol, weighted_reports),
+            )
+        else:
+            bull_report, bear_report = await asyncio.gather(
+                bull.analyze(symbol, weighted_reports),
+                bear.analyze(symbol, weighted_reports),
+            )
+            tail_risk_report = None
 
         result = self._build_initial_result(symbol, bull_report, bear_report)
+        result.tail_risk_report = tail_risk_report
+        if tail_risk_report is not None:
+            logger.info(
+                "[Debate] %s tail-risk: score=%.2f size_mult=%.2f veto=%s rec=%s",
+                symbol,
+                tail_risk_report.tail_risk_score,
+                tail_risk_report.size_multiplier,
+                tail_risk_report.veto,
+                tail_risk_report.recommendation,
+            )
 
         # Attach IC/IR metadata to result (Track F1)
         result.ir_score = round(_ir_score, 4)

@@ -58,7 +58,7 @@ except Exception:  # pragma: no cover — scipy optional
     _HAS_SCIPY = False
     logger.info("scipy not available; ICWeightedEnsemble will use manual Spearman.")
 
-__all__ = ["ICWeightedEnsemble"]
+__all__ = ["ICWeightedEnsemble", "BrierCalibrationTracker"]
 
 
 # ---------------------------------------------------------------------------
@@ -320,4 +320,160 @@ class ICWeightedEnsemble:
             "ics": ics,
             "weights": weights,
             "muted_agents": muted,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Brier-score calibration — complements IC by penalizing mis-calibrated
+# confidence (IC measures direction; Brier measures whether confidence is
+# earned). Source: runesleo/polymarket-toolkit Brier methodology, adapted
+# for signal ∈ [-1, 1] interpretation.
+# ---------------------------------------------------------------------------
+
+# Neutral sentinel returned when an agent has insufficient history.
+# 0.25 corresponds to a coin-flip predictor (p=0.5, outcome∈{0,1}): the
+# best a completely uninformed agent can expect. Using this (instead of 0.0
+# which means "perfect") makes "no data" and "perfect calibration" distinct.
+BRIER_NEUTRAL = 0.25
+
+
+class BrierCalibrationTracker:
+    """
+    Rolling Brier-score calibration per agent.
+
+    For each trade row in ``trade_outcomes``:
+
+        confidence_i = |agent_signal_i|            ∈ [0, 1]
+        correct_i    = 1 if sign(agent_signal_i) == sign(pnl_usd) else 0
+        brier_i      = (confidence_i - correct_i)² ∈ [0, 1]
+
+    The per-agent Brier is the mean over the rolling window. Lower = better.
+    Zero-magnitude signals are excluded (the agent had no opinion).
+
+    Weights for re-weighting the debate are derived as::
+
+        w_i ∝ 1 / (brier_i + ε)
+
+    normalized across agents so they sum to 1.0. Well-calibrated agents
+    receive more weight; confidently-wrong agents are down-weighted.
+    """
+
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        agents: Optional[List[str]] = None,
+        window_days: int = DEFAULT_WINDOW_DAYS,
+        min_trades: int = MIN_TRADES_FOR_IC,
+        epsilon: float = 0.01,
+    ):
+        self.db_path = Path(db_path) if db_path else _DEFAULT_DB_PATH
+        self.agents: List[str] = list(agents) if agents else list(DEFAULT_AGENTS)
+        self.window_days = window_days
+        self.min_trades = min_trades
+        self.epsilon = epsilon
+
+    def _fetch_pairs(self, agent_name: str) -> List[Tuple[float, float]]:
+        """
+        Return (signal, pnl_usd) pairs within the window, skipping zero-signals.
+
+        Mirrors ICWeightedEnsemble._fetch_signals_and_pnl but filters out the
+        agent's no-opinion trades so they don't dilute the Brier mean.
+        """
+        if not self.db_path.exists():
+            return []
+
+        signal_col = f"{agent_name}_signal"
+        cutoff_iso = (
+            datetime.now(timezone.utc) - timedelta(days=self.window_days)
+        ).isoformat()
+
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                cur = conn.execute("PRAGMA table_info(trade_outcomes)")
+                columns = {row[1] for row in cur.fetchall()}
+                if signal_col not in columns or "pnl_usd" not in columns:
+                    return []
+
+                cur = conn.execute(
+                    f"""
+                    SELECT {signal_col}, pnl_usd
+                    FROM trade_outcomes
+                    WHERE timestamp >= ?
+                      AND {signal_col} IS NOT NULL
+                      AND {signal_col} != 0
+                      AND pnl_usd IS NOT NULL
+                      AND pnl_usd != 0
+                    """,
+                    (cutoff_iso,),
+                )
+                pairs: List[Tuple[float, float]] = []
+                for signal, pnl in cur.fetchall():
+                    try:
+                        pairs.append((float(signal), float(pnl)))
+                    except (TypeError, ValueError):
+                        continue
+                return pairs
+        except sqlite3.DatabaseError as e:
+            logger.warning("BrierCalibrationTracker DB error for %s: %s", agent_name, e)
+            return []
+
+    def compute_brier(self, agent_name: str) -> float:
+        """
+        Return the mean Brier score for one agent over the window.
+
+        Returns BRIER_NEUTRAL (0.25) when fewer than ``min_trades`` non-zero
+        signal rows exist. This sentinel is explicitly distinct from a
+        perfect-calibration Brier of 0.0.
+        """
+        pairs = self._fetch_pairs(agent_name)
+        if len(pairs) < self.min_trades:
+            return BRIER_NEUTRAL
+
+        total = 0.0
+        for signal, pnl in pairs:
+            confidence = min(1.0, abs(signal))
+            correct = 1.0 if (signal > 0) == (pnl > 0) else 0.0
+            total += (confidence - correct) ** 2
+
+        return total / len(pairs)
+
+    def get_calibration_weights(
+        self,
+        agents: Optional[List[str]] = None,
+    ) -> Dict[str, float]:
+        """
+        Return normalized weights where ``w_i ∝ 1 / (brier_i + ε)``.
+
+        Agents with neutral Brier (insufficient data) receive the neutral
+        inverse weight — neither boosted nor penalized.
+        """
+        agent_list = list(agents) if agents else list(self.agents)
+        if not agent_list:
+            return {}
+
+        briers = {agent: self.compute_brier(agent) for agent in agent_list}
+        inverse = {a: 1.0 / (b + self.epsilon) for a, b in briers.items()}
+        total = sum(inverse.values())
+        if total <= 0.0:
+            n = len(agent_list)
+            return {a: 1.0 / n for a in agent_list}
+        return {a: v / total for a, v in inverse.items()}
+
+    def get_brier_summary(self) -> Dict[str, float]:
+        """Diagnostic — per-agent Brier across the window."""
+        return {agent: self.compute_brier(agent) for agent in self.agents}
+
+    def describe(self) -> Dict[str, object]:
+        """Full snapshot for logging / dashboard."""
+        briers = self.get_brier_summary()
+        weights = self.get_calibration_weights()
+        return {
+            "db_path": str(self.db_path),
+            "db_exists": self.db_path.exists(),
+            "window_days": self.window_days,
+            "min_trades": self.min_trades,
+            "epsilon": self.epsilon,
+            "briers": briers,
+            "weights": weights,
+            "neutral_sentinel": BRIER_NEUTRAL,
         }

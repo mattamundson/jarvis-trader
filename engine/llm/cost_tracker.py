@@ -7,7 +7,7 @@ Schema:
   llm_calls(
     id INTEGER PRIMARY KEY,
     timestamp TEXT,           -- ISO 8601 UTC timestamp
-    model TEXT,               -- e.g. "claude-opus-4-6"
+    model TEXT,               -- e.g. "claude-opus-4-7"
     input_tokens INTEGER,     -- Input token count
     output_tokens INTEGER,    -- Output token count
     cost_usd REAL,            -- Cost in USD
