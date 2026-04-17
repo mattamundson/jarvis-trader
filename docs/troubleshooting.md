@@ -178,3 +178,31 @@ wsl -d Ubuntu -e bash -c "openclaw agent --agent main -m 'say ONLINE' --json 2>&
 # 5. WhatsApp test
 curl -s -X POST http://localhost:8010/notifications/whatsapp/test -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc"
 ```
+
+---
+
+## OpenClaw "Headers Timeout Error" / no-reply on WhatsApp
+
+**Symptom (gateway logs, WSL)**:
+```
+[agent/embedded] [llm-idle-timeout] ollama/qwen2.5:7b produced no reply before the idle watchdog; retrying same model
+[agent/embedded] embedded run failover decision: ... stage=assistant decision=surface_error reason=timeout
+```
+
+**What it is NOT**: a network problem. `curl http://127.0.0.1:11434/api/tags` from WSL returns 200 OK. The 2026-04-16 handoff memo called it a "Headers Timeout Error" but that was mis-classification — it's OpenClaw's **internal LLM idle watchdog** firing before qwen2.5:7b streams its first token. On CPU-only Ollama, the model can take >120s to reach first-token for a large (35K-char OpenClaw) system prompt.
+
+**Root cause**: `agents.defaults.llm.idleTimeoutSeconds` defaults to 120. Qwen2.5:7b on CPU routinely blows past that for WhatsApp-approval-sized prompts, so the watchdog aborts and OpenClaw falls back to surface_error.
+
+**Fix** (WSL):
+```bash
+wsl -d Ubuntu -e openclaw config set agents.defaults.llm.idleTimeoutSeconds 300
+wsl -d Ubuntu -e systemctl --user restart openclaw-gateway
+```
+
+**Verification**:
+```bash
+wsl -d Ubuntu -e openclaw config get agents.defaults.llm.idleTimeoutSeconds   # expect 300
+wsl -d Ubuntu -e journalctl --user -u openclaw-gateway --since "5 min ago" | grep idle-timeout
+```
+
+**Permanent fix** if 300s still isn't enough: drop `agents.defaults.maxConcurrent` from 2 → 1 (less CPU contention), or switch OpenClaw's default model to a smaller quant (e.g. `qwen2.5:3b` or `phi3:mini`). The engine-side `/messaging/chat` path already uses direct Ollama and is not affected by this watchdog.
