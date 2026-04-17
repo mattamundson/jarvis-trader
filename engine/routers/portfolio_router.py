@@ -21,7 +21,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from approval.service import approved_watchlist_symbols
 from config import settings
+from execution.order_router import FUTURES_SYMBOLS
+from utils.trade_invariants import is_inverted_stop
 
 logger = logging.getLogger("jarvis_trader.routers.portfolio")
 
@@ -33,14 +36,40 @@ TARGET_TRADING_DAYS = 30
 paper_tracker = None
 db_manager = None
 _data_manager = None
+_safety_layer = None
 
 
-def inject_dependencies(pt, dbm, dm=None):
+def inject_dependencies(pt, dbm, dm=None, safety_layer=None):
     """Inject dependencies from main.py"""
-    global paper_tracker, db_manager, _data_manager
+    global paper_tracker, db_manager, _data_manager, _safety_layer
     paper_tracker = pt
     db_manager = dbm
     _data_manager = dm
+    _safety_layer = safety_layer
+
+
+def _is_futures_symbol(symbol: str) -> bool:
+    return symbol.upper() in FUTURES_SYMBOLS
+
+
+def _guard_direct_paper_open(symbol: str) -> None:
+    """
+    Constrain direct paper-sync opens so they cannot bypass the core safety posture.
+
+    Close operations remain allowed so operators and sync jobs can flatten state
+    even during a halt.
+    """
+    if settings.LIVE_TRADING_ENABLED:
+        raise HTTPException(status_code=409, detail="Direct paper-trade open disabled in live mode")
+
+    if _safety_layer is not None and _safety_layer.get_status().get("kill_switch_active"):
+        raise HTTPException(status_code=409, detail="Kill switch active — cannot open direct paper trade")
+
+    if _is_futures_symbol(symbol) and symbol.upper() not in approved_watchlist_symbols():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Symbol {symbol.upper()} not on approved futures watchlist",
+        )
 
 
 def _get_orchestrator():
@@ -386,6 +415,24 @@ async def update_position(trade_id: str, req: UpdatePositionRequest):
     if trade is None:
         raise HTTPException(status_code=404, detail=f"No open position with trade_id={trade_id!r}")
 
+    # In-memory Trade uses ``action``; falling back to ``side`` keeps the
+    # guard robust if the attribute is ever renamed or a test fake uses ``side``.
+    trade_side = getattr(trade, "action", None) or getattr(trade, "side", None)
+    if req.stop_loss is not None and is_inverted_stop(
+        trade_side,
+        getattr(trade, "entry_price", None),
+        req.stop_loss,
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Inverted stop_loss rejected: side={trade_side} "
+                f"entry_price={trade.entry_price} stop_loss={req.stop_loss}. "
+                "For longs the stop must be below entry; for shorts, above. "
+                "See docs/incident-notes/2026-04-09-mcl-inverted-stop.md"
+            ),
+        )
+
     if req.stop_loss is not None:
         trade.stop_loss = req.stop_loss
     if req.take_profit is not None:
@@ -549,6 +596,7 @@ async def paper_trade(req: PaperTradeSyncRequest):
         side = (req.side or "long").lower()
         if side not in ("long", "short"):
             raise HTTPException(status_code=422, detail="side must be long or short")
+        _guard_direct_paper_open(sym)
         action = "buy" if side == "long" else "sell"
         tid = paper_tracker.open_trade(
             sym,

@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from utils.trade_invariants import is_inverted_stop
+
 from ._helpers import _from_json, _to_json, _utcnow
 
 logger = logging.getLogger("jarvis_trader.database")
@@ -203,6 +205,13 @@ class TradesMixin:
         Returns the auto-incremented ``id`` primary key (SQLite rowid).
         """
         entry_time = entry_time or _utcnow()
+
+        if is_inverted_stop(side, entry_price, stop_loss):
+            raise ValueError(
+                f"Refusing to insert inverted stop: side={side} "
+                f"entry_price={entry_price} stop_loss={stop_loss}. "
+                "See docs/incident-notes/2026-04-09-mcl-inverted-stop.md"
+            )
 
         # Mirror stop_loss / take_profit into strategy_params for backwards
         # compatibility, while also writing them to their dedicated columns.
