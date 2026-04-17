@@ -8,6 +8,7 @@ Data waterfall: IBKR → Polygon → CSV cache → structured None (no silent ze
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
@@ -375,9 +376,43 @@ class PolygonDataConnector:
     Requires POLYGON_API_KEY in .env. Free tier: 5 API calls/min.
     """
 
+    # Class-level rate limiter shared across all instances
+    _call_timestamps: list[float] = []
+    _RATE_LIMIT = 4          # conservative (free tier = 5/min)
+    _RATE_WINDOW = 60.0
+    # Simple sync cache: {key: {"data": ..., "ts": float}}
+    _cache: dict[str, dict] = {}
+    _CACHE_TTL = 60.0
+
     def __init__(self, api_key: str):
         self._api_key = api_key
         self._client = None
+
+    def _check_rate_limit(self) -> bool:
+        """Return True if we can make a call. Logs and returns False if throttled."""
+        now = time.time()
+        self._call_timestamps[:] = [t for t in self._call_timestamps if now - t < self._RATE_WINDOW]
+        if len(self._call_timestamps) >= self._RATE_LIMIT:
+            wait = self._RATE_WINDOW - (now - self._call_timestamps[0])
+            logger.warning(f"[polygon] Rate guard: {len(self._call_timestamps)} calls in 60s, next slot in {wait:.0f}s")
+            return False
+        self._call_timestamps.append(now)
+        return True
+
+    def _cache_get(self, key: str) -> dict | None:
+        """Return cached data if within TTL, else None."""
+        entry = self._cache.get(key)
+        if entry and (time.time() - entry["ts"]) < self._CACHE_TTL:
+            return entry["data"]
+        return None
+
+    def _cache_get_expired(self, key: str) -> dict | None:
+        """Return cached data even if expired (429 fallback)."""
+        entry = self._cache.get(key)
+        return entry["data"] if entry else None
+
+    def _cache_set(self, key: str, data) -> None:
+        self._cache[key] = {"data": data, "ts": time.time()}
 
     def connect(self):
         try:
@@ -403,6 +438,19 @@ class PolygonDataConnector:
         """Fetch OHLCV bars. timespan: minute/hour/day. multiplier: 1/5/15/60."""
         if not self._client:
             return pd.DataFrame()
+
+        cache_key = f"bars:{symbol}:{multiplier}:{timespan}:{from_date}:{to_date}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        if not self._check_rate_limit():
+            expired = self._cache_get_expired(cache_key)
+            if expired is not None:
+                logger.info(f"[polygon] Returning expired cache for {symbol} bars (rate limited)")
+                return expired
+            return pd.DataFrame()
+
         bars = []
         try:
             for agg in self._client.list_aggs(
@@ -419,59 +467,65 @@ class PolygonDataConnector:
                     }
                 )
         except Exception as e:
+            error_str = str(e).lower()
+            if "429" in str(e) or "too many" in error_str:
+                logger.warning(f"[polygon] 429 rate limit for {symbol} bars — returning expired cache")
+                expired = self._cache_get_expired(cache_key)
+                return expired if expired is not None else pd.DataFrame()
             logger.warning(f"Polygon get_historical_bars failed for {symbol}: {e}")
             return pd.DataFrame()
-        return pd.DataFrame(bars)
+        result = pd.DataFrame(bars)
+        if not result.empty:
+            self._cache_set(cache_key, result)
+        return result
 
     def get_last_price(self, symbol: str) -> dict:
         """Get latest price via most recent 1-minute bar. Works for equities and futures."""
         if not self._client:
-            return {
-                "last_price": None,
-                "prev_close": None,
-                "change_pct": None,
-                "source": "polygon_unavailable",
-            }
+            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_unavailable"}
+
+        cache_key = f"price:{symbol}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return {**cached, "source": "polygon_cache"}
+
+        if not self._check_rate_limit():
+            expired = self._cache_get_expired(cache_key)
+            if expired:
+                return {**expired, "source": "polygon_cache_expired"}
+            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_rate_limited"}
+
         try:
             today = datetime.now().strftime("%Y-%m-%d")
             two_days_ago = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
             three_days_ago = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
 
-            # Latest minute bar for current price
             recent_bars = list(
                 self._client.list_aggs(symbol, 1, "minute", two_days_ago, today, limit=10)
             )
             if not recent_bars:
-                return {
-                    "last_price": None,
-                    "prev_close": None,
-                    "change_pct": None,
-                    "source": "polygon_empty",
-                }
+                return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_empty"}
 
             last_price = float(recent_bars[-1].close)
-
-            # Previous day's close for change calculation
             prev_bars = list(
                 self._client.list_aggs(symbol, 1, "day", three_days_ago, two_days_ago, limit=2)
             )
             prev_close = float(prev_bars[-1].close) if prev_bars else None
             change_pct = ((last_price - prev_close) / prev_close * 100) if prev_close else None
 
-            return {
-                "last_price": last_price,
-                "prev_close": prev_close,
-                "change_pct": change_pct,
-                "source": "polygon",
-            }
+            result = {"last_price": last_price, "prev_close": prev_close, "change_pct": change_pct, "source": "polygon"}
+            self._cache_set(cache_key, result)
+            return result
         except Exception as e:
+            error_str = str(e).lower()
+            if "429" in str(e) or "too many" in error_str:
+                logger.warning(f"[polygon] 429 rate limit for {symbol} price — returning expired cache")
+                expired = self._cache_get_expired(cache_key)
+                if expired:
+                    return {**expired, "source": "polygon_cache_expired"}
+                return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_rate_limited"}
             logger.warning(f"Polygon get_last_price failed for {symbol}: {e}")
-            return {
-                "last_price": None,
-                "prev_close": None,
-                "change_pct": None,
-                "source": "polygon_error",
-            }
+            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_error"}
 
     def get_vix_value(self) -> dict:
         """Get VIX index value. Polygon indices use 'I:VIX' ticker."""
