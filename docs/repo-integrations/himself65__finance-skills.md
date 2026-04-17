@@ -1,3 +1,25 @@
+---
+repo: himself65/finance-skills
+url: https://github.com/himself65/finance-skills
+language: TypeScript
+license: MIT
+analyzed_at: 2026-04-17
+recommendation: partial-integrate
+surfaces_with_value: [engine-code, skills]
+shipped:
+  - file: engine/analytics/sepa_trend_template.py
+    surface: engine-code
+    date: 2026-04-17
+    what: "SEPA 8-criterion Stage 2 uptrend classifier (Minervini). Per-criterion pass/fail breakdown with reason strings, score in [0,1], optional benchmark-based relative-strength criterion with calibrated percentile mapping. Adapted for futures (benchmark becomes optional, 50/150/200 SMA structure unchanged). 13 passing tests."
+deferred:
+  - what: "finance-sentiment multi-source aggregator (X + Reddit + news + Polymarket)"
+    reason: "duplicates existing SocialAnalyst scope; ROI is adding Polymarket feed — standalone task"
+  - what: "funda-data 60+ endpoint wrapper"
+    reason: "futures-only instruments don't benefit from equity fundamentals; defer to post-equities expansion"
+  - what: "options-payoff widget"
+    reason: "jarvis-trader trades futures, not options; deferred until options strategy approved"
+---
+
 # himself65/finance-skills Integration Analysis
 
 **Status**: TRADING-RELEVANT | MIT License | TypeScript Skills Pack  
