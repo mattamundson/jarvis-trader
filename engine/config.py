@@ -308,6 +308,14 @@ class TradingConfig(BaseSettings):
     IBKR_PORT: int = Field(4002, description="4001=live, 4002=paper")
     IBKR_CLIENT_ID: int = Field(1, description="Client ID for IB Gateway connection")
     IBKR_PAPER_MODE: bool = Field(True, description="Always start in paper mode")
+    IBKR_CONNECT_TIMEOUT_SECONDS: float = Field(
+        5.0,
+        description=(
+            "Cap on ib_async TCP handshake during startup. Default 5s keeps "
+            "FastAPI lifespan fast when IB Gateway is stopped (dev restarts, "
+            "tests). Bump to 10-15s if launching Gateway races engine startup."
+        ),
+    )
 
     # ── Broker: Charles Schwab ────────────────────────────────────────────
     SCHWAB_APP_KEY: Optional[str] = Field(default=None, description="Charles Schwab app key")
