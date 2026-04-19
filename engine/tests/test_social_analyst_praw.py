@@ -166,3 +166,33 @@ async def test_praw_per_subreddit_failure_is_isolated(
     assert result is not None
     assert result["posts_scanned"] == 1
     assert result["symbol_mentions"] == 1
+
+
+def test_missing_creds_emits_startup_warning(llm_stub, monkeypatch, caplog) -> None:
+    """Constructing the agent without creds must log a WARNING (not debug) so the
+    operator sees that futures-specific sentiment is degraded."""
+    monkeypatch.delenv("REDDIT_CLIENT_ID", raising=False)
+    monkeypatch.delenv("REDDIT_CLIENT_SECRET", raising=False)
+
+    with caplog.at_level("WARNING", logger="agents.social_analyst"):
+        SocialAnalystAgent(llm_client=llm_stub)
+
+    warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert any("PRAW Reddit credentials missing" in m for m in warning_msgs), (
+        f"Expected PRAW-missing warning, got: {warning_msgs}"
+    )
+
+
+def test_present_creds_emits_no_warning(llm_stub, monkeypatch, caplog) -> None:
+    """Constructing the agent WITH creds must not spam the warning log."""
+    monkeypatch.setenv("REDDIT_CLIENT_ID", "fake-id")
+    monkeypatch.setenv("REDDIT_CLIENT_SECRET", "fake-secret")
+
+    with caplog.at_level("WARNING", logger="agents.social_analyst"):
+        SocialAnalystAgent(llm_client=llm_stub)
+
+    warning_msgs = [
+        r.message for r in caplog.records
+        if r.levelname == "WARNING" and "PRAW Reddit credentials missing" in r.message
+    ]
+    assert warning_msgs == [], f"Unexpected warning when creds present: {warning_msgs}"
