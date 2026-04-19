@@ -113,11 +113,7 @@ async def _probe(calls: list, value: int = 0) -> int:
     return value
 
 
-def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
-
-
-def test_wrap_runs_job_when_no_gate_fires():
+async def test_wrap_runs_job_when_no_gate_fires():
     runner = StaggeredCronRunner(
         job_id="test_job",
         respect_quiet_hours=False,
@@ -125,12 +121,12 @@ def test_wrap_runs_job_when_no_gate_fires():
     )
     calls: list = []
     wrapped = runner.wrap(lambda: _probe(calls, 42))
-    result = _run(wrapped())
+    result = await wrapped()
     assert result == 42
     assert calls == [42]
 
 
-def test_wrap_skips_in_quiet_hours():
+async def test_wrap_skips_in_quiet_hours():
     # Force "always in quiet hours" by widening the window to the full day.
     runner = StaggeredCronRunner(
         job_id="quiet_job",
@@ -142,12 +138,12 @@ def test_wrap_skips_in_quiet_hours():
     )
     calls: list = []
     wrapped = runner.wrap(lambda: _probe(calls, 1))
-    result = _run(wrapped())
+    result = await wrapped()
     assert result is None
     assert calls == []
 
 
-def test_wrap_ignores_quiet_hours_when_opted_out():
+async def test_wrap_ignores_quiet_hours_when_opted_out():
     runner = StaggeredCronRunner(
         job_id="critical_job",
         respect_quiet_hours=False,
@@ -158,11 +154,11 @@ def test_wrap_ignores_quiet_hours_when_opted_out():
     )
     calls: list = []
     wrapped = runner.wrap(lambda: _probe(calls, 7))
-    assert _run(wrapped()) == 7
+    assert await wrapped() == 7
     assert calls == [7]
 
 
-def test_wrap_dedupes_rapid_reentry():
+async def test_wrap_dedupes_rapid_reentry():
     runner = StaggeredCronRunner(
         job_id="dedup_job",
         respect_quiet_hours=False,
@@ -170,13 +166,13 @@ def test_wrap_dedupes_rapid_reentry():
     )
     calls: list = []
     wrapped = runner.wrap(lambda: _probe(calls, 1))
-    assert _run(wrapped()) == 1
+    assert await wrapped() == 1
     # Second call inside dedupe window is skipped.
-    assert _run(wrapped()) is None
+    assert await wrapped() is None
     assert calls == [1]
 
 
-def test_wrap_allows_reentry_after_dedupe_window():
+async def test_wrap_allows_reentry_after_dedupe_window():
     runner = StaggeredCronRunner(
         job_id="dedup_window_job",
         respect_quiet_hours=False,
@@ -184,16 +180,14 @@ def test_wrap_allows_reentry_after_dedupe_window():
     )
     calls: list = []
     wrapped = runner.wrap(lambda: _probe(calls, 2))
-    assert _run(wrapped()) == 2
+    assert await wrapped() == 2
     # Sleep past the dedupe window, then re-run.
-    import time as _time
-
-    _time.sleep(0.02)
-    assert _run(wrapped()) == 2
+    await asyncio.sleep(0.02)
+    assert await wrapped() == 2
     assert calls == [2, 2]
 
 
-def test_wrap_propagates_exceptions():
+async def test_wrap_propagates_exceptions():
     runner = StaggeredCronRunner(
         job_id="throwing_job", respect_quiet_hours=False, dedupe_seconds=0.0
     )
@@ -203,7 +197,7 @@ def test_wrap_propagates_exceptions():
 
     wrapped = runner.wrap(_boom)
     with pytest.raises(RuntimeError, match="boom"):
-        _run(wrapped())
+        await wrapped()
 
 
 def test_wrap_preserves_callable_name():
