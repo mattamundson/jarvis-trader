@@ -48,8 +48,11 @@ CHANNEL_MAP = {
 
 
 def extract_channel_id(filename: str) -> Optional[str]:
-    """Extract channel ID from filename like 'Server - Channel - name [ID].json'."""
-    match = re.search(r"\[(\d+)\]\.json$", filename)
+    """Extract channel ID from filename like 'Server - Channel - name [ID].json'.
+
+    Also handles DCE's --after suffix form: 'name [ID] (after YYYY-MM-DD).json'.
+    """
+    match = re.search(r"\[(\d+)\](?:\s*\([^)]*\))?\.json$", filename)
     return match.group(1) if match else None
 
 
