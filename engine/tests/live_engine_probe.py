@@ -136,7 +136,10 @@ def jarvis_rl_integration_ready(base: str = DEFAULT_BASE) -> bool:
     """
     if not jarvis_engine_ready(base):
         return False
-    st, data = _get_json(base, "/strategies/rl/health", timeout=3.0)
+    # timeout=10 (was 3) — under full-suite load the engine can take several
+    # seconds to answer even a cheap dep-probe. 3s was causing ~54 RL tests
+    # to skip en masse in full-suite runs while passing in isolation.
+    st, data = _get_json(base, "/strategies/rl/health", timeout=10.0)
     return st == 200 and isinstance(data, dict)
 
 
