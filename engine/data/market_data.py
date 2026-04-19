@@ -7,6 +7,7 @@ Data waterfall: IBKR → Polygon → CSV cache → structured None (no silent ze
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
@@ -138,24 +139,44 @@ class IBKRDataConnector:
     Download IB Gateway: https://www.interactivebrokers.com/en/trading/ibgateway.php
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 4002, client_id: int = 1):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 4002,
+        client_id: int = 1,
+        connect_timeout: float = 5.0,
+    ):
         self._host = host
         self._port = port
         self._client_id = client_id
+        self._connect_timeout = connect_timeout
         self._ib = None
         self._connected = False
 
     async def connect(self) -> bool:
+        # ib_async's connectAsync has no built-in timeout on the TCP handshake
+        # and will block the FastAPI lifespan 30-120s when IB Gateway isn't
+        # listening. Wrap in asyncio.wait_for so dev-mode restarts (paper mode
+        # with Gateway stopped) bind port 8010 within seconds instead of minutes.
         try:
             from ib_async import IB
 
             self._ib = IB()
-            await self._ib.connectAsync(self._host, self._port, clientId=self._client_id)
+            await asyncio.wait_for(
+                self._ib.connectAsync(self._host, self._port, clientId=self._client_id),
+                timeout=self._connect_timeout,
+            )
             self._connected = True
             logger.info(f"IBKR connected {self._host}:{self._port} (paper={self._port == 4002})")
             return True
         except ImportError:
             logger.warning("ib_async not installed. Run: pip install ib_async")
+            return False
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"IBKR connection timed out after {self._connect_timeout}s "
+                f"({self._host}:{self._port}) — start IB Gateway or bump IBKR_CONNECT_TIMEOUT_SECONDS."
+            )
             return False
         except Exception as e:
             logger.warning(f"IBKR connection failed: {e} — start IB Gateway on port {self._port}")
@@ -637,6 +658,7 @@ class MarketDataManager:
             host=self._config.IBKR_HOST,
             port=self._config.IBKR_PORT,
             client_id=self._config.IBKR_CLIENT_ID,
+            connect_timeout=getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0),
         )
         ibkr_connected = await self.ibkr.connect()
         if not ibkr_connected:

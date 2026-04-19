@@ -69,7 +69,7 @@ def _get(path: str, **kwargs) -> requests.Response:
     """Issue an authenticated GET request with the engine API key header."""
     kwargs.setdefault("headers", _AUTH_HEADERS)
     try:
-        return requests.get(f"{BASE_URL}{path}", timeout=20, **kwargs)
+        return requests.get(f"{BASE_URL}{path}", timeout=10, **kwargs)
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         pytest.skip(f"Engine unreachable at {BASE_URL} — skipping (engine not running)")
 
@@ -81,7 +81,7 @@ def _post(path: str, json: dict | None = None, **kwargs) -> requests.Response:
             f"{BASE_URL}{path}",
             json=json,
             headers=_AUTH_HEADERS,
-            timeout=20,
+            timeout=10,
             **kwargs,
         )
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
