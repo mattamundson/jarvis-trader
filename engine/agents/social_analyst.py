@@ -5,6 +5,17 @@ Fetches retail sentiment data from ApeWisdom (Reddit trending tickers) and
 optional StockTwits data, then uses an LLM to produce a structured social
 sentiment signal.
 
+POLICY — futures sentiment source (verbatim owner directive, 2026-04-19):
+  "Futures-specific Reddit sentiment is not a signal I trust — the only
+   futures information I trust should be from the Corey Sures auction-theory
+   tools Discord in the channel #market-updates."
+
+Implementation: `_fetch_reddit_praw` returns None for any symbol in
+FUTURES_SUBREDDIT_MAP. PRAW is only ever queried for equity tickers that
+happen to use DEFAULT_SUBREDDITS. Corey's #market-updates → corey_session_bias
+pipeline (engine/discord/commentary_processor.py → corey_auction_analyst.py)
+remains the SOLE authoritative futures sentiment source.
+
 Refresh interval: every 30 minutes.
 Model: Claude Haiku (claude-haiku-4-5-20251001) — lightweight task
 """
@@ -128,7 +139,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         self._stocktwits_token = stocktwits_token or os.getenv("STOCKTWITS_TOKEN", "")
 
         # PRAW (raw Reddit) credentials — read once at construction. Unset → PRAW
-        # source is silently skipped and analyze() falls back to ApeWisdom-only.
+        # source is skipped and analyze() falls back to ApeWisdom-only (equities).
         # Acquire at https://www.reddit.com/prefs/apps (create a "script" app).
         self._reddit_client_id = os.getenv("REDDIT_CLIENT_ID", "")
         self._reddit_client_secret = os.getenv("REDDIT_CLIENT_SECRET", "")
@@ -137,6 +148,12 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             "jarvis-trader/1.0 (social_analyst; read-only)",
         )
         self._praw_instance = None  # lazy-init on first fetch
+
+        # NOTE: PRAW creds are optional BY POLICY — retail Reddit chatter is
+        # explicitly not trusted as a futures sentiment signal. Corey Sures'
+        # auction-theory Discord (channel #market-updates) is the sole
+        # authoritative futures sentiment source; see the module docstring
+        # and the FUTURES_SUBREDDIT_MAP guard in _fetch_reddit_praw().
 
     async def analyze(self, symbol: str, current_price: float = None) -> "SocialReport":
         """Full social sentiment analysis pipeline for a symbol"""
@@ -326,18 +343,25 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         hot_limit: int = 15,
     ) -> Optional[dict]:
         """
-        Pull hot posts directly from futures-specific subreddits via PRAW.
+        Optional PRAW fetch for EQUITIES ONLY. Futures symbols are gated off
+        by policy — retail Reddit chatter is untrusted for futures. Corey
+        Sures' Discord #market-updates is the sole futures sentiment source
+        (see engine/discord/commentary_processor.py + corey_auction_analyst).
 
-        Unlike ApeWisdom (which aggregates r/wallstreetbets + a fixed stock list),
-        this reaches into ``FUTURES_SUBREDDIT_MAP`` targets like r/energy,
-        r/oilandgas, r/FuturesTrading — where the actual instrument-specific
-        conversation lives. Returns a dict with hot post titles, scores, and
-        a mention count, or None if credentials missing / PRAW unavailable
-        / any network failure.
-
-        Read-only operation — no OAuth user flow needed, just the client_id
-        and client_secret from a Reddit "script" app registration.
+        Returns a dict with hot post titles / scores / mention count for
+        equity symbols when credentials are present, or None if the symbol
+        is futures, credentials are missing, PRAW isn't installed, or the
+        fetch fails.
         """
+        # Futures policy gate — never query Reddit for futures tickers.
+        if symbol.upper() in FUTURES_SUBREDDIT_MAP:
+            logger.debug(
+                "[policy] PRAW skipped for %s — futures sentiment sourced from "
+                "Corey Discord #market-updates only",
+                symbol,
+            )
+            return None
+
         if not self._reddit_client_id or not self._reddit_client_secret:
             # No credentials configured — silently skip this source
             return None
