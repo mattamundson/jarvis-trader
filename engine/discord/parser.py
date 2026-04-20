@@ -22,6 +22,7 @@ from .storage import (
     insert_corey_alert,
     insert_corey_commentary,
     insert_ib_report,
+    update_bookmark_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,14 @@ def process_file(
             elif data_type == "bookmark":
                 bm = Bookmark(**item)
                 inserted = insert_bookmark(conn, bm)
+                # Whether new or duplicate, refresh content/author from the
+                # current parse. Pre-Workstream-A rows have NULL for these;
+                # edited Discord messages may have updated text. UPDATE is
+                # cheap and idempotent on already-correct rows.
+                if not inserted:
+                    update_bookmark_context(
+                        conn, bm.message_id, bm.content, bm.author_id, bm.author_name
+                    )
 
             if inserted:
                 stats["inserted"] += 1
