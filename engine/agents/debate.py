@@ -83,6 +83,34 @@ _SEPA_NUDGE_MAGNITUDE: float = 0.03
 _SEPA_MIN_EVALUATED: int = 5
 
 
+# Symbol-scoped Corey weight floor for futures (Phase 4 D4).
+# Per owner directive 2026-04-19 (feedback_futures_sentiment_source.md), Corey's
+# #market-updates channel is the authoritative futures sentiment source; equities
+# use the normal accuracy-weighted path unchanged. The floor (1.20) is near the
+# MAX_WEIGHT cap (1.30) from AgentFeedbackTracker so it meaningfully amplifies
+# Corey's signal during cold-start when few organic trade_outcomes rows exist.
+COREY_FUTURES_SYMBOLS: frozenset[str] = frozenset({"MCL", "MNQ", "MES", "MGC"})
+COREY_FUTURES_WEIGHT_FLOOR: float = 1.20
+
+
+def _apply_corey_futures_elevation(
+    agent_weights: dict, symbol: str
+) -> dict:
+    """Return a copy of *agent_weights* with Corey's weight floored for futures.
+
+    No-op for non-futures symbols. Takes max(historical_weight, floor) so a
+    historically-accurate Corey above the floor is not regressed downward.
+    """
+    if not isinstance(symbol, str):
+        return agent_weights
+    if symbol.upper() not in COREY_FUTURES_SYMBOLS:
+        return agent_weights
+    elevated = dict(agent_weights)
+    current = elevated.get("corey", 1.0)
+    elevated["corey"] = max(current, COREY_FUTURES_WEIGHT_FLOOR)
+    return elevated
+
+
 def _corey_tiebreak(analyst_reports: Optional[dict]) -> Optional[str]:
     """Return a verdict based on Corey's session bias, or None.
 
@@ -457,6 +485,11 @@ class DebateOrchestrator:
         except Exception:
             _tracker = None
             agent_weights = {}
+
+        # Phase 4 D4: floor Corey's weight for futures symbols so his
+        # authoritative sentiment signal is not down-weighted during the
+        # cold-start period while trade_outcomes is still accumulating.
+        agent_weights = _apply_corey_futures_elevation(agent_weights, symbol)
 
         # IC scores — Information Coefficients per analyst.
         # Track H upgrade (2026-04-10): prefer Spearman rank correlation from
