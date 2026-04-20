@@ -11,8 +11,8 @@ def test_half_kelly_positive_edge():
         capital=10000,
         win_rate=0.36,
         avg_win_loss_ratio=3.5,  # MES historical (avg win ~$430, avg loss ~$123)
-        tick_value=12.50,        # MES: $12.50/tick
-        atr_ticks=60.0,          # ~15 pts * 4 ticks/pt
+        tick_value=1.25,         # MES: $5/pt × 0.25 tick = $1.25/tick (CME spec)
+        atr_ticks=60.0,          # ~15 pts × 4 ticks/pt
     )
     assert result['contracts'] >= 1
     assert result['method'] == 'half_kelly'
@@ -25,7 +25,7 @@ def test_half_kelly_no_edge_returns_minimum():
         capital=10000,
         win_rate=0.30,
         avg_win_loss_ratio=1.0,  # break-even: no edge
-        tick_value=12.50,
+        tick_value=1.25,
         atr_ticks=60.0,
     )
     assert result['contracts'] == 1
@@ -37,7 +37,7 @@ def test_half_kelly_zero_win_loss_ratio_returns_fallback():
         capital=10000,
         win_rate=0.50,
         avg_win_loss_ratio=0.0,  # degenerate input
-        tick_value=12.50,
+        tick_value=1.25,
         atr_ticks=60.0,
     )
     assert result['contracts'] == 1

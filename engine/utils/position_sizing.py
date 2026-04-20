@@ -29,10 +29,12 @@ INSTRUMENT_MULTIPLIERS: dict[str, float] = {
     "MES": 5.0,
     "MNQ": 2.0,
     "MCL": 100.0,
+    "MGC": 10.0,
     # Continuous / front-month futures tickers (Yahoo / ib_insync style)
     "MES=F": 5.0,
     "NQ=F": 2.0,
     "CL=F": 100.0,
+    "GC=F": 10.0,
 }
 
 # Default multiplier when symbol is unknown — conservative $5 (same as MES)

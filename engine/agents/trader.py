@@ -365,9 +365,11 @@ class TraderAgent:
                 edge = compute_rolling_edge(recent_trades)
 
                 if edge.get('sufficient_data'):
-                    # Dollar value of one tick per instrument
-                    tick_value_map = {'MES': 12.50, 'MNQ': 5.00, 'MCL': 10.00, 'MGC': 10.00}
-                    tick_value = tick_value_map.get(symbol, 12.50)
+                    # Dollar value of one tick per instrument = $/point × tick_size
+                    # MES: $5/pt × 0.25 = $1.25   MNQ: $2/pt × 0.25 = $0.50
+                    # MCL: $100/pt × 0.01 = $1.00  MGC: $10/pt × 0.10 = $1.00
+                    tick_value_map = {'MES': 1.25, 'MNQ': 0.50, 'MCL': 1.00, 'MGC': 1.00}
+                    tick_value = tick_value_map.get(symbol, 1.25)
 
                     # ATR in ticks (atr in points / tick_size in points)
                     tick_size_map = {'MES': 0.25, 'MNQ': 0.25, 'MCL': 0.01, 'MGC': 0.10}
