@@ -323,7 +323,7 @@ from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from routers.hidden_pivots_router import router as hp_router, inject_dependencies
 
-API_KEY = "xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc"
+API_KEY = "${JARVIS_API_KEY}"
 HEADERS = {"X-API-Key": API_KEY}
 
 
@@ -602,10 +602,10 @@ engine\.venv\Scripts\python.exe -m pytest tests/ -q 2>&1 | tail -5
 # Expected: 235+ passing, 0 failing
 
 # 3. HP endpoints live
-curl -s "http://localhost:8010/hidden-pivots/analyze/MCL" -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" | python -m json.tool | head -20
+curl -s "http://localhost:8010/hidden-pivots/analyze/MCL" -H "X-API-Key: ${JARVIS_API_KEY}" | python -m json.tool | head -20
 
 # 4. Proactive validation still live
-curl -s "http://localhost:8010/validate/proactive-suite?symbol=MCL" -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" | python -m json.tool
+curl -s "http://localhost:8010/validate/proactive-suite?symbol=MCL" -H "X-API-Key: ${JARVIS_API_KEY}" | python -m json.tool
 
 # 5. Engine restart clean
 .\restart_engine.ps1

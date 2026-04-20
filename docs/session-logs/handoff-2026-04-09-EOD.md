@@ -242,7 +242,7 @@ files_changed_today:
   - scripts/fix-openclaw-lockout.py
 
 key_constants:
-  API_KEY: "xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc"
+  API_KEY: "${JARVIS_API_KEY}"
   ENGINE_PORT: 8010
   DASHBOARD_PORT: 3010
   IBKR_PAPER_PORT: 4002

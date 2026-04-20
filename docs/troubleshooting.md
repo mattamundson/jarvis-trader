@@ -167,7 +167,7 @@ Get-CimInstance Win32_Process -Filter "Name='python3.12.exe' OR Name='python.exe
 curl -s http://localhost:8010/health | python3 -c "import sys,json; d=json.load(sys.stdin); print('UP, uptime:', round(d['uptime_seconds']/3600,1), 'hrs')"
 
 # 2. Kill switch?
-curl -s http://localhost:8010/safety/status -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" | python3 -c "import sys,json; d=json.load(sys.stdin); print('Kill switch:', d.get('kill_switch_active'))"
+curl -s http://localhost:8010/safety/status -H "X-API-Key: ${JARVIS_API_KEY}" | python3 -c "import sys,json; d=json.load(sys.stdin); print('Kill switch:', d.get('kill_switch_active'))"
 
 # 3. OpenClaw gateway alive?
 wsl -d Ubuntu -e bash -c "openclaw gateway status 2>&1 | grep 'RPC probe'"
@@ -176,7 +176,7 @@ wsl -d Ubuntu -e bash -c "openclaw gateway status 2>&1 | grep 'RPC probe'"
 wsl -d Ubuntu -e bash -c "openclaw agent --agent main -m 'say ONLINE' --json 2>&1 | grep -o 'ONLINE'"
 
 # 5. WhatsApp test
-curl -s -X POST http://localhost:8010/notifications/whatsapp/test -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc"
+curl -s -X POST http://localhost:8010/notifications/whatsapp/test -H "X-API-Key: ${JARVIS_API_KEY}"
 ```
 
 ---

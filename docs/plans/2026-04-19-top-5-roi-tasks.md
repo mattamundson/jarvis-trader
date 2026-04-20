@@ -38,7 +38,7 @@
 - [ ] **1.6** Smoke-test endpoint for MCL 1h (the paper-approved symbol with highest WFE=0.82):
   ```bash
   curl -X POST http://localhost:8010/wfe/optimize-bayesian \
-    -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+    -H "X-API-Key: ${JARVIS_API_KEY}" \
     -H "Content-Type: application/json" \
     -d '{"symbol":"MCL","timeframe":"1h","start":"2025-01-01","end":"2025-06-01","n_calls":30}'
   ```
@@ -201,7 +201,7 @@ pytest engine/tests/integration/test_ib_paper_e2e.py -v
 pytest engine/tests/test_market_data_fallback.py -v
 pytest engine/tests/test_corey_staleness_alert.py -v
 curl -s -X POST http://localhost:8010/wfe/optimize-bayesian \
-  -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+  -H "X-API-Key: ${JARVIS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"symbol":"MCL","timeframe":"1h","start":"2025-01-01","end":"2025-06-01","n_calls":10}' \
   | jq .method   # should print "bayesian"
