@@ -1652,13 +1652,18 @@ async def lifespan(app: FastAPI):
             """Pull current equity + daily P&L from PnLMonitor and push to SafetyLayer."""
             try:
                 if safety_layer is None or pnl_monitor is None:
+                    logger.warning(
+                        "[sync_safety_equity] early-return: safety_layer=%s pnl_monitor=%s",
+                        safety_layer is not None,
+                        pnl_monitor is not None,
+                    )
                     return
                 state = pnl_monitor.get_current_pnl_state()
                 equity = state.current_balance if state.current_balance > 0 else safety_layer._current_equity
                 daily_pnl = pnl_monitor.get_daily_pnl()
                 safety_layer.sync_from_broker(equity, daily_pnl)
             except Exception as exc:
-                logger.debug("[sync_safety_equity] error: %s", exc)
+                logger.warning("[sync_safety_equity] error: %s", exc, exc_info=True)
 
         if scheduler is not None:
             scheduler.add_job(
