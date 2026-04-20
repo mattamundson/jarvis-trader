@@ -191,6 +191,99 @@ Pipe through `python -m json.tool` to pretty-print, or diff against a future win
 
 ---
 
+## CORRECTION 2 (2026-04-19 20:10) — multi-DB architecture was missed
+
+**Scope**: this correction retracts and replaces the ADDENDUM section's "2.5E Critical finding: `trade_outcomes` table mismatch" conclusion below. Kept for historical context but superseded.
+
+### What I got wrong in the original report AND the first addendum
+
+I analyzed only `engine/data/jarvis_trader.db` and concluded:
+- "`pipeline_llm_costs`: 0 rows" — *technically true, but misleading*
+- "`trade_outcomes` table doesn't exist in schema v21 — kills Track H" — *true for jarvis_trader.db, FALSE for the actual production architecture*
+
+Reality: the engine uses **4 separate SQLite databases** by design. Each subsystem owns its storage:
+
+| DB file | Size | Key tables | Active? |
+|---|---:|---|---|
+| `engine/data/jarvis_trader.db` | 132 MB | 29 tables (pipeline_runs, decisions, paper_trades, etc.) | Yes |
+| `engine/data/agent_feedback.db` | 12 KB | `trade_outcomes` (3 rows) | Yes — used by AgentFeedbackTracker + ICWeightedEnsemble |
+| `engine/data/llm_costs.db` | 569 KB | `llm_calls` (2,755 rows) | Yes — real LLM cost tracking |
+| `engine/data/cot_cache.db` | 12 KB | `cot_data` (0 rows) | Table created, data fetch not running |
+
+`engine/analytics/agent_feedback.py:26` and `engine/analytics/ic_ensemble.py:69` BOTH correctly point to `agent_feedback.db`. The code is wired right. My analyzer was wrong.
+
+### Corrected data inventory for 2026-04-10 → 2026-04-19
+
+| Table (with DB) | Rows in window | Interpretation |
+|---|---:|---|
+| `paper_trades` (main) | 13 | Unchanged — all sync/guard/contaminated/unknown, 0 organic |
+| `pipeline_runs` (main) | 2,632 | Unchanged — 97% HOLD |
+| `decisions` (main) | 2,712 | Unchanged |
+| `pipeline_llm_costs` (main) | 0 | **Dead/unused table** — cost tracking happens in `llm_costs.db.llm_calls` instead. Was likely a proposed schema that never got wired. |
+| `learning_events` (main) | 0 | Still a real finding — no writer exists anywhere in engine/ for this table. |
+| `supervisor_decisions` (main) | 0 | Still a real finding. |
+| `trading_patterns` (main) | 0 | Still a real finding — consolidator nightly job likely not firing. |
+| `trade_journal` / `journal_notes` (main) | 0 / 0 | UI-dependent; expected. |
+| `pnl_snapshots` (main) | 0 | Still a real finding — writer exists (safety_layer:315), caller never fires. |
+| `capital_allocation` (main) | 0 | Bootstrap script never run; expected. |
+| **`trade_outcomes`** (agent_feedback.db) | **1 real + 0 test** | **1 real row**: MCL LONG, +$250, 2026-04-17 06:01 UTC, technical_signal=0.8, news_signal=-0.6. This is a REAL trade outcome fed to AgentFeedbackTracker → Track H gets 1 data point (below min_trades threshold of 5, but still non-zero). |
+| **`llm_calls`** (llm_costs.db) | **1,687 rows / $10.12** | LLM cost tracking IS working. 1,687 calls in window. $8.51 on 2026-04-10 alone (Tracks A-H wiring day; sonnet=1050 + haiku=317 + opus=22). |
+| `cot_data` (cot_cache.db) | 0 | COT data fetch not running. Track D signal missing. |
+
+### Critical secondary finding: LLM token tracking broke after 2026-04-10
+
+`llm_calls` has **1,387 rows on 2026-04-10 with real `input_tokens`/`output_tokens`/`cost_usd`** ($10.12 total). But **every row from 2026-04-11 through 2026-04-19** has `input_tokens=0`, `output_tokens=0`, `cost_usd=0.0` — only the `timestamp` + `model` + `agent_name` fields are populated.
+
+| Date | Model | Calls | Input tokens | Output tokens | Cost |
+|---|---|---:|---:|---:|---:|
+| 2026-04-10 | sonnet-4-6 | 1,050 | 1,047,749 | 357,687 | $8.509 |
+| 2026-04-10 | haiku-4-5 | 317 | 183,486 | 61,611 | $0.393 |
+| 2026-04-10 | opus-4-6 | 22 | 30,992 | 10,007 | $1.215 |
+| 2026-04-11 | haiku-4-5 | 4 | 0 | 0 | $0.000 |
+| 2026-04-12 | haiku-4-5 | 6 | 0 | 0 | $0.000 |
+| 2026-04-14 | haiku-4-5 | 83 | 0 | 0 | $0.000 |
+| 2026-04-15 | sonnet + haiku | 3 | 0 | 0 | $0.000 |
+| 2026-04-16 | sonnet + haiku | 80 | 0 | 0 | $0.000 |
+| 2026-04-17 | haiku-4-5 | 116 | 0 | 0 | $0.000 |
+| 2026-04-19 | haiku-4-5 | 6 | 0 | 0 | $0.000 |
+
+**298 of 1,687 (17.6%) zero-token rows in window, but 100% of rows AFTER 2026-04-10 have zero tokens.** The cost-tracker was updated or broken on/around 2026-04-11 such that input/output/cost fields stopped being populated. Call volume also dropped precipitously (1,389 → 4 next day).
+
+**Two scenarios**:
+- **Broken**: code path that writes token counts was removed or short-circuited; the call is logged but the accounting is gone. Needs trace of the logging callsite.
+- **Intentional**: cost tracking moved to a different store (the main DB's `pipeline_llm_costs`?) — but `pipeline_llm_costs` is empty, so even if intended, it didn't land.
+
+Either way, cost-per-decision analysis post-2026-04-10 is not possible with current data.
+
+### Track H status — corrected
+
+Track H (ICWeightedEnsemble) is **structurally wired correctly** but has **insufficient real data**:
+- Code reads from `agent_feedback.db.trade_outcomes` (correct path, existing table)
+- Real outcomes in DB: **1** (MCL LONG win on 2026-04-17)
+- `MIN_TRADES_FOR_IC` in `ic_ensemble.py` is likely 5+ (need to verify)
+- At 1 real row, Track H falls back to equal-weight — the fallback path IS the observed behavior, not a wiring bug
+
+### Updated next-actions priority
+
+| Priority | Action | Effort | Notes |
+|---|---|---|---|
+| 1 | **Fix LLM cost tracker** — find the callsite that writes `llm_calls` and determine why tokens stopped being populated 2026-04-11 | 1 h | Without this, cost-per-decision is invisible; unblocks future Task 5 autoresearch cost budgeting |
+| 2 | **Diagnose low organic trade rate** — 97% HOLD on MCL/MNQ is the same puzzle from the original report; 1 trade_outcome in 9 days confirms execution side is mostly silent | 2 h | Combined with finding #1, this becomes "run engine in verbose-log mode, trace one pipeline cycle end-to-end" |
+| 3 | **Populate `pnl_snapshots`** — writer exists + caller exists at `safety_layer.py:315`, trigger never fires | 30 m | Safety layer probably isn't running or its `check()` path has a guard condition that's always false |
+| 4 | **Write `learning_events`** OR delete the unused table from schema | 30 m | No writer anywhere; if the table is intentional and should fill alongside `trade_outcomes`, add parallel writes from `record_outcome()`. If not, migration to drop it |
+| 5 | ~~Task 2.5E1 (trade_outcomes rename)~~ — **CANCELLED**. Was based on misdiagnosis. |
+
+### Analyzer script update
+
+`engine/scripts/analyze_paper_results.py` updated to walk all 4 DB files (`jarvis_trader.db` + `agent_feedback.db` + `llm_costs.db` + `cot_cache.db`). New sections in output: `sibling_dbs`, `agent_feedback`, `llm_costs`. Re-run for current state with no args change:
+
+```bash
+./engine/.venv/Scripts/python engine/scripts/analyze_paper_results.py \
+    --db engine/data/jarvis_trader.db --start 2026-04-10 --end 2026-04-19
+```
+
+---
+
 ## Addendum: Task 2.5 audit (2026-04-19 19:40)
 
 Ran 2.5A (blocklist verification) and 2.5E (empty-table writer audit) before touching any production code. Results below — **no code changes yet**; this is observation only.
