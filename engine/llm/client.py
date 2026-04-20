@@ -451,7 +451,21 @@ class JarvisLLMClient:
 
             except Exception as e:
                 last_error = e
-                logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
+                raw = getattr(e, "last_attempt", None)
+                if raw is not None:
+                    try:
+                        underlying = raw.exception()
+                        body = getattr(underlying, "body", None) or getattr(
+                            getattr(underlying, "response", None), "text", None
+                        )
+                        logger.error(
+                            f"[{current_model}] {agent_name} final failure: "
+                            f"{type(underlying).__name__}: {body or underlying}"
+                        )
+                    except Exception:
+                        logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
+                else:
+                    logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
                 break
 
         return await self._handle_failure(
