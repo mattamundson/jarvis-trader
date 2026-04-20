@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backtest.bayesian_optimizer import (  # noqa: E402
     MIN_TRADES_FOR_SCORE,
     _LOSING_STRATEGY_PENALTY,
+    _NO_TRADE_PENALTY,
     _score_result,
 )
 
@@ -34,13 +35,18 @@ class FakeResult:
     win_rate: float = 0.5
 
 
-def test_score_result_none_returns_zero():
-    assert _score_result(None) == 0.0
+def test_score_result_none_returns_no_trade_penalty():
+    assert _score_result(None) == _NO_TRADE_PENALTY
 
 
-def test_score_result_insufficient_trades_returns_zero():
+def test_score_result_insufficient_trades_returns_no_trade_penalty():
     result = FakeResult(profit_factor=5.0, sharpe_ratio=3.0, total_trades=MIN_TRADES_FOR_SCORE - 1)
-    assert _score_result(result) == 0.0
+    assert _score_result(result) == _NO_TRADE_PENALTY
+
+
+def test_no_trade_penalty_worse_than_losing_strategy():
+    """Key invariant: zero-trade regions must score below any PF<1 run (closes escape hatch)."""
+    assert _NO_TRADE_PENALTY < _LOSING_STRATEGY_PENALTY
 
 
 def test_score_result_profitable_strategy_scores_positive():

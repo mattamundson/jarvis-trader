@@ -54,27 +54,23 @@ SEARCH_SPACE = {
 
 MIN_TRADES_FOR_SCORE = 3
 
-# Hard penalty for net-losing strategies. Large finite negative (not -inf) so
-# scikit-optimize's GP surrogate stays numerically stable. Any realistic
-# winning score is bounded by sharpe_cap * pf_cap ≈ 20 × 20 = 400, so -1e6
-# is unambiguously worse and the optimizer steers away from PF<1 regions.
-_LOSING_STRATEGY_PENALTY = -1e6
+# Two-tier penalty keeps the optimizer from escaping to zero-trade extremes:
+#   _NO_TRADE_PENALTY   < _LOSING_STRATEGY_PENALTY < 0 < profitable score
+# The GP therefore prefers "lose a little" over "produce no trades" — which is
+# the correct ordering: a losing run gives gradient information; zero trades do not.
+_LOSING_STRATEGY_PENALTY = -500.0   # hard gate for PF < 1.0
+_NO_TRADE_PENALTY = -501.0          # one step worse than any losing run
 
 
 def _score_result(result: Optional[BacktestResult]) -> float:
     """
-    Objective value: sharpe * profit_factor (higher = better).
-
-    Returns 0.0 for None / insufficient trades. Returns _LOSING_STRATEGY_PENALTY
-    for strategies with profit_factor < 1.0 — a PF below 1 means the strategy
-    is net-losing regardless of sharpe, so it must never be optimizer-preferred.
+    Scoring tiers (higher = better):
+      - No result / < MIN_TRADES: -501  (below any real run — closes zero-trade escape hatch)
+      - PF < 1.0:                  -500  (hard gate — losing strategy, but above no-trades)
+      - PF >= 1.0:                  max(sharpe, 0) × min(pf, 20)   [always ≥ 0]
     """
     if result is None or result.total_trades < MIN_TRADES_FOR_SCORE:
-        return 0.0
-    # Hard PF gate: net-losing strategies are rejected before multiplication.
-    # Without this, sr * pf can emit positive scores when sharpe is positive on
-    # per-period returns but PF<1 on per-trade basis (possible when a few large
-    # losing trades coexist with many small winning bars).
+        return _NO_TRADE_PENALTY
     if result.profit_factor < 1.0:
         return _LOSING_STRATEGY_PENALTY
     pf = min(result.profit_factor, 20.0)
