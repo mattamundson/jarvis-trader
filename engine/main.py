@@ -1579,6 +1579,54 @@ async def lifespan(app: FastAPI):
     except Exception as _bm_err:
         logger.warning(f"Bookmark clusterer init failed (non-fatal): {_bm_err}")
 
+    # Daily bookmark vault render — writes any missing Discord bookmarks to
+    # second-brain/wiki/discord-bookmarks/ so agents and the human both have
+    # an Obsidian-linkable page for every URL dropped in #general. Catch-up
+    # mode: existing files are skipped (preserves 2026-04-17 manual triage).
+    try:
+        from scripts.render_bookmarks_to_vault import render_vault as _render_vault
+
+        _BOOKMARK_DB_PATH = os.environ.get(
+            "JARVIS_TRADER_DB_PATH", "engine/data/jarvis_trader.db"
+        )
+        _BOOKMARK_VAULT_DIR = os.environ.get(
+            "BOOKMARK_VAULT_DIR",
+            r"C:\Users\mattm\second-brain\wiki\discord-bookmarks",
+        )
+
+        async def run_bookmark_vault_render() -> None:
+            try:
+                stats = _render_vault(_BOOKMARK_DB_PATH, _BOOKMARK_VAULT_DIR)
+                logger.info(
+                    "[BookmarkVaultRender] created=%d skipped=%d failed=%d by_kind=%s",
+                    stats.get("created", 0),
+                    stats.get("skipped_existing", 0),
+                    stats.get("failed", 0),
+                    stats.get("by_kind", {}),
+                )
+            except Exception as exc:
+                logger.error(
+                    "[BookmarkVaultRender] daily render failed: %s", exc, exc_info=True
+                )
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_bookmark_vault_render,
+                CronTrigger(hour=3, minute=0, timezone="America/Chicago"),
+                id="bookmark_vault_render",
+                name="Daily Bookmark Vault Render",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info(
+                "✅ Bookmark vault renderer registered — fires daily 03:00 CT"
+            )
+    except Exception as _bvr_err:
+        logger.warning(
+            f"Bookmark vault renderer init failed (non-fatal): {_bvr_err}"
+        )
+
     # Corey staleness watchdog (hourly, weekdays 9-17 CT) — alerts if
     # discord_corey_commentary stops refreshing. Agents consume corey_session_bias
     # derived from this table; silent staleness = silent signal drift.
