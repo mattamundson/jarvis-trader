@@ -9,9 +9,9 @@
 
 ---
 
-## Ship manifest — 2026-04-19 → 2026-04-20 continuation (15 commits on `feat/tradingview-mcp-gamma-kraken`)
+## Ship manifest — 2026-04-19 → 2026-04-20 continuation (21 commits on `feat/tradingview-mcp-gamma-kraken`)
 
-Phases 1, 4, 7 (partial), 8 (partial) shipped. All on the feature branch; not yet pushed or merged.
+Phases 1, 4, 7 (partial), 8 (partial) shipped and pushed. Engine has been restarted; all batched fixes are now ACTIVE (not just on disk).
 
 | Phase/Task | Commit | Summary |
 | --- | --- | --- |
@@ -30,9 +30,15 @@ Phases 1, 4, 7 (partial), 8 (partial) shipped. All on the feature branch; not ye
 | **Phase 8 Q1.2b** | `c468fa4` | `ci`: Claude PR review + safety-invariant-check workflows |
 | **Phase 8 Q1.4** | `9597ee1` | `chore(bucket4)`: 35 files — `.claude/*`, `.devcontainer/`, SessionHighlights archive, handoff bundle |
 | **Phase 8 Q4** | `9edd5d0` | `fix(safety)`: wire `db_manager` into SafetyLayer — `pnl_snapshots` no longer silently disabled |
+| **Phase 8 (obs)** | `f23195c` | `chore(safety)`: `_sync_safety_equity` scheduler DEBUG→WARNING + traceback; silent failure class closed |
+| **Phase 8 (infra)** | `b9b398a` | `fix(restart)`: PM2-aware `restart_engine.ps1` with `pm_uptime` verification; closes the silent-no-op class that masked Q4 activation |
+| **Phase B feature** | `7493753` | `feat(discord)`: bookmark pipeline for #general channel (6 files, 12 new tests, 172 Discord pass) |
+| **Docs sync** | `ba684d5` | `docs`: DCE flag correction + concurrent-session plan refresh + gbrain v0.13 upstream issue body |
+| **Phase B dashboard** | `584efb7` | `feat(scripts)`: zero-dep `overnight_status.py` HTML renderer covering Discord + pnl_snapshots + /health |
+| **Phase 8 I1** | _pending this commit_ | `feat(git-hooks)`: per-session Claude identity injection in `Co-Authored-By` trailer; Task Scheduler wiring for overnight_status |
 
 **Deferred / blocked**:
-- I1 (per-session git author) — mechanism uncertain; revisit with prepare-commit-msg hook approach
+- ~~I1 (per-session git author)~~ — DONE this round via `.githooks/prepare-commit-msg`
 - I2 (git worktree adoption) — docs-only; low urgency since concurrent sessions aren't currently overlapping
 - I5 (TradingView lightweight-charts swap) — risky mid-R3 window; revisit after 2026-04-22 R4 analyzer run
 - Q2 (analyzer cross-validation) — blocked on R4 data
@@ -40,7 +46,7 @@ Phases 1, 4, 7 (partial), 8 (partial) shipped. All on the feature branch; not ye
 - Phase 5 (MES refactor) — blocked on R4 baseline
 - Phase 6 (new markets: ETH, GC, BTC, ZB) — blocked on external connector work
 
-**Next engine restart** activates: I3 health-flag + WhatsApp, I4 error-body log surfacing, Q4 `pnl_snapshots` writes, and the pre-shipped Phase 1 S1/S2 fixes. The owner has been holding restart to preserve R3 uptime for the 2026-04-22 R4 comparison.
+**Engine restart status**: Cycled via `pm2 restart jarvis-engine` at 2026-04-20 01:54 CT. All five batched fixes (Phase 1 S1/S2, Phase 7 I3/I4, Phase 8 Q4) are active. `pnl_snapshots` confirmed advancing at 1 tick/60s. `restart_engine.ps1` (b9b398a) verified end-to-end across three consecutive test cycles.
 
 ---
 
