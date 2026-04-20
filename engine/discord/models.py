@@ -73,3 +73,21 @@ class CoreyCommentary(BaseModel):
     content: str
     channel: str  # "market-updates" or "general"
     author_id: str = "564449478174703646"
+
+
+class Bookmark(BaseModel):
+    """Bookmark dropped into Matt's personal Jarvis-Trader #general channel.
+
+    Source signal: an X.com / GitHub / news URL shared for future research.
+    `embed_description` often carries richer signal than the URL itself
+    (Discord scrapes the target page and caches its <meta> description).
+    """
+
+    message_id: str
+    channel_id: str  # "1490851279180660819" for jarvis-trader-general
+    posted_at: str  # ISO 8601 UTC (mirrors timestamp field elsewhere)
+    url: str
+    domain: Optional[str] = None  # e.g. "x.com", "github.com", "twitter.com"
+    source_type: Optional[str] = None  # "x_post" | "github" | "video" | "other"
+    embed_title: Optional[str] = None
+    embed_description: Optional[str] = None
