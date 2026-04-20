@@ -40,27 +40,45 @@ If any step fails: tail the wrapper log, diagnose, patch `discord_weekly_export.
    CREATE INDEX IF NOT EXISTS idx_bookmarks_domain ON discord_bookmarks(domain);
    ```
 
-2. **Dataclass** — mirror the pattern at `engine/discord/storage.py:171` (`CoreyAlert`) / `:196` (`CoreyCommentary`). Add `Bookmark` with fields matching columns.
+2. **Pydantic model** (NOT dataclass; plan originally wrong) — add `Bookmark(BaseModel)` to `engine/discord/models.py` alongside existing `BotSignal`/`IBReport`/`CoreyAlert`/`CoreyCommentary` (all four are `BaseModel`, see `models.py:6,34,56,68`). Fields match columns above.
 
-3. **Insert function** — mirror `insert_corey_commentary` (`storage.py:196-215`). Use `INSERT OR IGNORE` for idempotent reimport (already the pattern).
+3. **Insert function** — add `insert_bookmark` to `engine/discord/storage.py`, mirror `insert_corey_commentary` at `storage.py:196-216` (uses `INSERT OR IGNORE` + `SELECT changes()` idempotency check). Add `from .models import ... Bookmark` to import list at `storage.py:4`. Extend `CREATE_TABLES_SQL` at `storage.py:8-80` with the new table.
 
-4. **Parser branch** — at `engine/discord/parser.py:172` (`source_path.glob("*.json")` loop), branch on channel_id extracted from filename (regex at `parser.py:55`). If channel_id == `1490851279180660819`, dispatch to new `parse_bookmark_messages` that extracts first URL from `m["content"]`, derives `domain` from `urllib.parse.urlparse`, classifies `source_type` via a small dict lookup (no ML), pulls `embed_title`/`description` if `m["embeds"]` non-empty.
+4. **Channel parser module** — create `engine/discord/channel_parsers/bookmark.py` mirroring the sibling modules (`bot_alerts.py`, `general.py`, `market_updates.py`, etc. — each exposes `parse_channel(messages, channel_name) -> List[dict]`). Extract first URL from `m["content"]` via regex, derive `domain` with `urllib.parse.urlparse`, classify `source_type` via dict lookup, pull `embed_title` + `embed_description` from `m["embeds"][0]` if non-empty.
 
-5. **Test fixture** — use the actual `(after 2026-04-16).json` that just landed at 148 KB as the golden fixture. Check it has 3 messages = 3 bookmarks inserted, correct domains.
+5. **Wire into dispatch** — `engine/discord/parser.py` needs three edits:
+   - Import: add `bookmark` to the `from .channel_parsers import ...` line at `parser.py:9`
+   - Model import: add `Bookmark` to `from .models import ...` at `parser.py:10`
+   - Storage import: add `insert_bookmark` to `from .storage import ...` block at `parser.py:11-17`
+   - `CHANNEL_MAP` at `parser.py:22-47`: add `"1490851279180660819": {"parser": "bookmark", "type": "bookmark"}`
+   - Dispatch branch at `parser.py:102-114`: add `elif parser_name == "bookmark": parsed_list = bookmark.parse_channel(messages, "jarvis-trader-general")`
+   - Insert branch at `parser.py:125-136`: add `elif data_type == "bookmark": bookmark_obj = Bookmark(**item); inserted = insert_bookmark(conn, bookmark_obj)`
 
-6. **Agent consumer** (optional, follow-up) — a research agent that queries `SELECT url FROM discord_bookmarks WHERE posted_at > date('now', '-7 days') AND source_type='x_post'` and summarizes thematic clusters for the morning brief. Out of scope for this plan; the data existing is sufficient value.
+6. **Test fixture** — real data confirmed via this scouting pass: `C:\Users\mattm\discord-export\Jarvis-Trader - Text Channels - general [1490851279180660819] (after 2026-04-16).json` has **63 messages** (4-day window → ~15/day density, ~450/month). Use as golden fixture. First message shape verified:
+   ```
+   content: "https://x.com/noisyb0y1/status/2044692412061425748?s=12"
+   embeds[0].title: ""                  # often empty for x.com
+   embeds[0].description: "Anthropic hackathon winner automated his entire Workflow..."  # TWEET BODY — signal text
+   embeds[0].url: "https://twitter.com/noisyb0y1/..."  # canonical redirect
+   author.name: "amoszn"                # Matt's handle; only poster in this channel
+   ```
+   Note: `embed_description` contains actual tweet text — more signal-rich than just URLs. Agent consumers can cluster on description semantics. Domain normalization: treat `x.com` and `twitter.com` as the same `source_type='x_post'` (Discord's embed scraper converts x.com URLs to twitter.com in the embed.url field).
 
-### Files to touch
-- `engine/discord/schema.sql` (or equivalent) — new table
-- `engine/discord/storage.py` — add `Bookmark` class + `insert_bookmark`
-- `engine/discord/parser.py` — add channel-ID branch + `parse_bookmark_messages`
-- `engine/tests/test_discord_parser.py` (or similar) — add fixture-based test
+7. **Agent consumer** (optional, follow-up) — a research agent that queries `SELECT url, embed_description FROM discord_bookmarks WHERE posted_at > date('now', '-7 days') AND source_type='x_post'` and summarizes thematic clusters for the morning brief. Out of scope for this plan; data + embed_description existing is sufficient value.
+
+### Files to touch (corrected from scouting 2026-04-20 00:15 CT)
+- `engine/discord/models.py` — add `Bookmark(BaseModel)` class (not storage.py — original plan had the wrong file)
+- `engine/discord/storage.py` — extend `CREATE_TABLES_SQL`, add `insert_bookmark` function, update `.models` import
+- `engine/discord/channel_parsers/bookmark.py` — **NEW FILE** implementing `parse_channel(messages, channel_name)`
+- `engine/discord/channel_parsers/__init__.py` — (check whether it exports anything; may or may not need update)
+- `engine/discord/parser.py` — update 3 import lines + CHANNEL_MAP + 2 dispatch elifs (see step 5 above)
+- Test file — check existing test conventions in `engine/tests/test_discord_*.py` first; if there's a per-channel pattern, mirror it. Fixture: copy or reference the real `(after 2026-04-16).json` into `engine/tests/fixtures/` if that dir exists.
 
 ### Verification
 ```bash
 cd C:\Users\mattm\ThinkorSwim\jarvis-trader\engine
 .\.venv\Scripts\python.exe -m scripts.nightly_discord --import-only
-.\.venv\Scripts\python.exe -c "import sqlite3; c=sqlite3.connect('data/jarvis_trader.db'); print(c.execute('SELECT COUNT(*), MAX(posted_at) FROM discord_bookmarks').fetchone())"
+.\.venv\Scripts\python.exe -c "import sqlite3; c=sqlite3.connect('engine/data/jarvis_trader.db'); print(c.execute('SELECT COUNT(*), MAX(posted_at) FROM discord_bookmarks').fetchone())"
 ```
 Expected: count matches number of Matt-authored messages in the newest Jarvis-Trader JSON; `MAX(posted_at)` is within the last 3 days.
 
