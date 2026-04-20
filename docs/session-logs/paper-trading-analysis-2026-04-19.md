@@ -284,6 +284,76 @@ Track H (ICWeightedEnsemble) is **structurally wired correctly** but has **insuf
 
 ---
 
+## CORRECTION 3 (2026-04-20 01:00) — TRUE root cause: Anthropic credits exhausted
+
+Priority-1 from CORRECTION 2 ("fix LLM cost tracker callsite") turned up a DEEPER truth: **the tracker isn't broken. Every LLM call has been returning HTTP 400 since 2026-04-11 because the Anthropic account ran out of credits.**
+
+### Evidence chain
+
+Live log `engine/logs/jarvis.log` at 2026-04-19T22:01:24Z (30 minutes before this correction was written):
+
+```
+[fundamental_analyst] LLM fundamental synthesis failed for MES:
+  Error code: 400 - {'type': 'error',
+                     'error': {'type': 'invalid_request_error',
+                               'message': 'Your credit balance is too low
+                                           to access the Anthropic API.
+                                           Please go to Plans & Billing
+                                           to upgrade or purchase credits.'},
+                     'request_id': 'req_011CaDtBU5TZTVs3DYey1w1d'}
+```
+
+Same message repeats for news_analyst, social_analyst, bull_researcher, bear_researcher, corey commentary_processor, and trader — i.e. **every LLM-calling agent in the pipeline**.
+
+`/llm/stats` endpoint confirms the symptom:
+```
+GET http://localhost:8010/llm/stats
+→ {"date":"2026-04-20","total_calls":0,"total_cost_usd":0.0,"success_rate":0.0,...}
+```
+
+### Why the tracker APPEARED broken
+
+`client.py:191` (`_handle_failure`) logs `input_tokens=0, output_tokens=0, cost_usd=0.0` on any failure. When credits ran out 2026-04-11, 100% of calls flipped to the failure path, and every row written after that date has zeros.
+
+Secondary issue (real bug, low priority): `BadRequestError` gets wrapped in tenacity's `RetryError` (tenacity re-raises wrapped even when `stop_after_attempt(1)`), so it bypasses the `except (APIConnectionError, APIStatusError)` handler at `client.py:428` and falls through to the generic `except Exception` at `:452`, which breaks out of the retry loop with `retries=0`. The raw Anthropic error body never surfaces into a structured log — that's why earlier analysis never spotted the credit-exhaustion message.
+
+### This single root cause unifies three separate findings
+
+| Symptom (from original report) | Root cause |
+|---|---|
+| 0 organic paper trades in 9-day window | Every LLM call fails → debate resolves inconclusive → Fund Manager rejects → HOLD |
+| 97% HOLD rate on MCL/MNQ | Same — no agent signals means no directional edge |
+| `trade_outcomes` has only 1 real row | No organic trades means no outcomes to record |
+
+The single fact that credits were exhausted 2026-04-11 **fully explains the paper-trading emptiness**. There is no pipeline correctness bug to fix.
+
+### Action required (user-side, not code-side)
+
+1. **Top up Anthropic API credits** at https://console.anthropic.com/settings/billing — this is the entire P0 fix. Once credits return, the pipeline will resume producing agent signals, debates will resolve, and paper trades should start flowing within the next pipeline cycle.
+2. Retain the original 9-day window analysis as baseline-in-degraded-mode.
+3. After credits return and the engine has run for ~48 hours, **re-run the analyzer** on a fresh window (e.g. 2026-04-20 → 2026-04-22) to get organic data. That becomes the real paper-trading baseline.
+
+### Deferred correctness improvements (P3)
+
+These are genuine code issues surfaced by this investigation but **none are urgent**:
+
+- `client.py:452` — the generic `except Exception` swallows the structured Anthropic error body. When tenacity wraps `BadRequestError` in `RetryError`, the actual `invalid_request_error.message` is not logged. Fix: `except RetryError as e: raise e.last_attempt.exception() from None` OR add a `last_error_body` field that captures `json.loads(e.response.text)` for visibility. This would have surfaced "credit balance too low" to the daily operator brief instead of requiring manual log spelunking.
+- Consider a periodic health probe that hits Anthropic with a 10-token ping and alerts OpenClaw/WhatsApp if it 400s on `invalid_request_error`. The engine reports `status:ok` at `/health` while 100% of its LLM work is silently failing.
+
+### Priority action list — FINAL (supersedes CORRECTION 2's list)
+
+| Priority | Action | Owner | Effort |
+|---|---|---|---|
+| **1** | **Top up Anthropic credits** | Matt (user) | 2 min |
+| 2 | Let engine run 48h, then re-run analyzer on fresh window for real baseline | Claude | 10 min after (1) |
+| 3 | Add credit-exhaustion probe + OpenClaw alert | Claude (when scheduled) | ~1 h |
+| 4 | Surface raw Anthropic error body on 400 (`client.py:452` fix) | Claude (when scheduled) | 30 m |
+| 5 | Populate `pnl_snapshots` (from CORRECTION 2 — still valid, unrelated to credits) | Claude | 30 m |
+| 6 | `learning_events` decide-or-drop (from CORRECTION 2 — still valid) | Claude | 30 m |
+| — | ~~CORRECTION 2's #1 "fix LLM cost tracker"~~ | — | **CANCELLED** — tracker works fine; upstream calls fail |
+
+---
+
 ## Addendum: Task 2.5 audit (2026-04-19 19:40)
 
 Ran 2.5A (blocklist verification) and 2.5E (empty-table writer audit) before touching any production code. Results below — **no code changes yet**; this is observation only.
