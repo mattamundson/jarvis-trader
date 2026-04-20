@@ -270,3 +270,37 @@ async def get_discord_intelligence(
         "symbols": symbols,
         "last_updated": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.get("/briefing")
+async def get_briefing(
+    symbol: str = Query(..., description="JARVIS or Discord symbol (MCL, CL, MES, ES, ...)"),
+    lookback_hours: int = Query(24, ge=1, le=168),
+    for_date: Optional[str] = Query(None, description="YYYY-MM-DD (defaults to today)"),
+):
+    """
+    Unified Discord briefing: Corey session bias + IB levels + keyword sentiment
+    + most-recent bot signal, aggregated through discord.briefing.get_discord_briefing.
+
+    5-minute TTL cache at the facade layer.
+    """
+    from datetime import date as _date
+    from discord.briefing import get_discord_briefing
+
+    parsed_date = None
+    if for_date:
+        try:
+            parsed_date = _date.fromisoformat(for_date)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"for_date must be YYYY-MM-DD: {exc}"
+            ) from exc
+
+    try:
+        briefing = await get_discord_briefing(
+            symbol=symbol, lookback_hours=lookback_hours, for_date=parsed_date
+        )
+        return briefing.to_dict()
+    except Exception as exc:
+        logger.exception("discord briefing failed for %s", symbol)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

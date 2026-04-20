@@ -1,0 +1,270 @@
+"""
+DiscordBriefing — unified read-through facade over the four Discord consumers.
+
+Why this exists
+---------------
+Four separate Discord consumer modules exist (commentary_processor, ib_levels,
+signal_context, sentiment_provider), each with its own DB path helper, its own
+cache, and its own shape. Agents that want a "what does Discord say about MCL
+right now?" view currently have to wire all four themselves.
+
+This module offers one stable surface:
+
+    from discord.briefing import get_discord_briefing
+    briefing = await get_discord_briefing("MCL")
+
+Returns a DiscordBriefing dataclass with Corey's structured session bias,
+today's IB levels (if reported), the keyword sentiment score + regime
+multiplier, and the most-recent bot signal within the lookback window.
+
+Caching
+-------
+Module-level 5-minute TTL dict keyed by (symbol.upper(), for_date_iso,
+lookback_hours). The underlying providers keep their own caches too; this
+wrapper avoids the coordination cost when the same briefing is requested
+repeatedly within a bar (e.g. debate + trader + fundamental_analyst).
+
+Policy
+------
+Per owner directive 2026-04-19, Corey #market-updates is the ONLY trusted
+futures sentiment source. `corey_bias.directional_bias` and `ib_levels` are
+authoritative for futures agents; `keyword_sentiment` is a weaker auxiliary
+signal (keyword-matched, lossy). Reddit/Twitter/news are NOT consulted here.
+"""
+
+from __future__ import annotations
+
+import logging
+import sqlite3
+import time
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+from typing import Optional
+
+from discord.commentary_processor import CoreyCommentaryProcessor, CoreySessionBias
+from discord.ib_levels import IBLevelProvider
+from discord.sentiment_provider import SentimentProvider
+from discord.signal_context import DiscordSignalContext
+
+logger = logging.getLogger(__name__)
+
+CACHE_TTL_SECONDS = 300  # 5-minute TTL — matches DiscordSignalContext.STATS_TTL_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# Result dataclass
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DiscordBriefing:
+    """One-shot Discord intelligence summary for a symbol."""
+
+    symbol: str                              # normalized uppercase JARVIS symbol (e.g. "MCL")
+    discord_symbol: str                      # mapped Discord full symbol (e.g. "CL")
+    as_of: datetime                          # when this briefing was assembled (UTC)
+    corey_bias: CoreySessionBias             # structured session bias from commentary_processor
+    ib_levels: Optional[dict]                # ib_high/low/ibu50/ibu100/ibd50/ibd100/auction_context, or None
+    keyword_sentiment: float                 # -1.0..+1.0 from sentiment_provider
+    regime_multiplier: float                 # 0.7..1.3 from sentiment_provider
+    recent_signal: Optional[dict]            # most recent discord_bot_signals row within lookback, or None
+    lookback_hours: int                      # window used for recent_signal
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def headline(self) -> str:
+        """Short human-readable one-liner (e.g. 'MCL range_day, neutral, inside_ib, conv 0.30')."""
+        return (
+            f"{self.symbol} {self.corey_bias.session_type}, "
+            f"{self.corey_bias.directional_bias}, "
+            f"{self.corey_bias.ib_bias}, conv {self.corey_bias.conviction:.2f}"
+        )
+
+    @property
+    def actionable(self) -> bool:
+        """True iff Corey's commentary is fresh, directional, and high-conviction."""
+        return (
+            self.corey_bias.data_quality == "fresh"
+            and self.corey_bias.directional_bias != "neutral"
+            and self.corey_bias.conviction >= 0.5
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "symbol": self.symbol,
+            "discord_symbol": self.discord_symbol,
+            "as_of": self.as_of.isoformat(),
+            "corey_bias": self.corey_bias.to_dict(),
+            "ib_levels": self.ib_levels,
+            "keyword_sentiment": self.keyword_sentiment,
+            "regime_multiplier": self.regime_multiplier,
+            "recent_signal": self.recent_signal,
+            "lookback_hours": self.lookback_hours,
+            "headline": self.headline,
+            "actionable": self.actionable,
+            "warnings": list(self.warnings),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Singletons + cache
+# ---------------------------------------------------------------------------
+
+_processor: Optional[CoreyCommentaryProcessor] = None
+_ib_provider: Optional[IBLevelProvider] = None
+_sentiment: Optional[SentimentProvider] = None
+_signal_ctx: Optional[DiscordSignalContext] = None
+
+# (symbol_upper, for_date_iso, lookback_hours) -> (briefing, fetch_time_monotonic)
+_cache: dict[tuple[str, str, int], tuple[DiscordBriefing, float]] = {}
+
+
+def _get_processor() -> CoreyCommentaryProcessor:
+    global _processor
+    if _processor is None:
+        _processor = CoreyCommentaryProcessor()
+    return _processor
+
+
+def _get_ib_provider() -> IBLevelProvider:
+    global _ib_provider
+    if _ib_provider is None:
+        _ib_provider = IBLevelProvider()
+    return _ib_provider
+
+
+def _get_sentiment() -> SentimentProvider:
+    global _sentiment
+    if _sentiment is None:
+        _sentiment = SentimentProvider()
+    return _sentiment
+
+
+def _get_signal_ctx() -> DiscordSignalContext:
+    global _signal_ctx
+    if _signal_ctx is None:
+        _signal_ctx = DiscordSignalContext()
+    return _signal_ctx
+
+
+def clear_cache() -> None:
+    """Drop the module-level briefing cache. Tests + force-refresh flows use this."""
+    _cache.clear()
+
+
+# ---------------------------------------------------------------------------
+# Main entrypoint
+# ---------------------------------------------------------------------------
+
+async def get_discord_briefing(
+    symbol: str,
+    lookback_hours: int = 24,
+    for_date: Optional[date] = None,
+) -> DiscordBriefing:
+    """
+    Return the unified Discord briefing for `symbol`.
+
+    Args:
+        symbol:          JARVIS micro or Discord full symbol (MCL/CL, MES/ES, etc.)
+        lookback_hours:  window for `recent_signal` probe (default 24h)
+        for_date:        trading date to brief on (default today, useful for backtests)
+
+    Returns:
+        DiscordBriefing. Never raises for missing data — falls back to neutral
+        dataclasses with a string in `warnings` describing the degraded source.
+    """
+    symbol = symbol.upper()
+    if for_date is None:
+        for_date = date.today()
+
+    cache_key = (symbol, for_date.isoformat(), lookback_hours)
+    cached = _cache.get(cache_key)
+    if cached is not None:
+        briefing, fetched_at = cached
+        if time.monotonic() - fetched_at < CACHE_TTL_SECONDS:
+            return briefing
+
+    warnings: list[str] = []
+
+    # Corey session bias (async — LLM extraction)
+    try:
+        corey_bias = await _get_processor().get_session_bias(for_date)
+    except Exception as exc:
+        logger.warning("[DiscordBriefing] Corey bias fetch failed for %s: %s", symbol, exc)
+        from discord.commentary_processor import _neutral_bias
+        corey_bias = _neutral_bias(for_date, message_count=0)
+        warnings.append(f"corey_bias_failed:{type(exc).__name__}")
+
+    # IB levels (sync, date-indexed, Discord-symbol keyed)
+    ib_provider = _get_ib_provider()
+    discord_symbol = ib_provider._map_symbol(symbol)
+    try:
+        ib_levels = ib_provider.get_levels(symbol, for_date)
+    except Exception as exc:
+        logger.warning("[DiscordBriefing] IB levels fetch failed for %s: %s", symbol, exc)
+        ib_levels = None
+        warnings.append(f"ib_levels_failed:{type(exc).__name__}")
+
+    # Keyword sentiment + regime multiplier (sync, cached in discord_daily_sentiment)
+    try:
+        sentiment_provider = _get_sentiment()
+        keyword_sentiment = sentiment_provider.get_sentiment(for_date)
+        regime_multiplier = sentiment_provider.get_regime_multiplier(for_date)
+    except Exception as exc:
+        logger.warning("[DiscordBriefing] Keyword sentiment failed for %s: %s", symbol, exc)
+        keyword_sentiment = 0.0
+        regime_multiplier = 1.0
+        warnings.append(f"keyword_sentiment_failed:{type(exc).__name__}")
+
+    # Recent signal (sync) — use raw DB query instead of get_features (which needs ATR/price)
+    recent_signal = _fetch_recent_signal(discord_symbol, lookback_hours, warnings)
+
+    briefing = DiscordBriefing(
+        symbol=symbol,
+        discord_symbol=discord_symbol,
+        as_of=datetime.utcnow(),
+        corey_bias=corey_bias,
+        ib_levels=ib_levels,
+        keyword_sentiment=keyword_sentiment,
+        regime_multiplier=regime_multiplier,
+        recent_signal=recent_signal,
+        lookback_hours=lookback_hours,
+        warnings=warnings,
+    )
+    _cache[cache_key] = (briefing, time.monotonic())
+    return briefing
+
+
+def _fetch_recent_signal(
+    discord_symbol: str,
+    lookback_hours: int,
+    warnings: list[str],
+) -> Optional[dict]:
+    """Fetch most-recent discord_bot_signals row within lookback_hours window."""
+    signal_ctx = _get_signal_ctx()
+    since = datetime.utcnow() - timedelta(hours=lookback_hours)
+    since_str = since.strftime("%Y-%m-%dT%H:%M:%S")
+    try:
+        conn = sqlite3.connect(signal_ctx.db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT symbol, direction, signal_type, entry_price,
+                   target1, target2, stop1, win_rate, timestamp
+            FROM discord_bot_signals
+            WHERE symbol = ?
+              AND timestamp >= ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+            """,
+            (discord_symbol, since_str),
+        )
+        row = cur.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as exc:
+        logger.warning(
+            "[DiscordBriefing] Recent-signal fetch failed for %s: %s", discord_symbol, exc
+        )
+        warnings.append(f"recent_signal_failed:{type(exc).__name__}")
+        return None
