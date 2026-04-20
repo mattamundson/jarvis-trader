@@ -48,6 +48,20 @@ Phases 1, 4, 7 (partial), 8 (partial) shipped and pushed. Engine has been restar
 
 **Engine restart status**: Cycled via `pm2 restart jarvis-engine` at 2026-04-20 01:54 CT. All five batched fixes (Phase 1 S1/S2, Phase 7 I3/I4, Phase 8 Q4) are active. `pnl_snapshots` confirmed advancing at 1 tick/60s. `restart_engine.ps1` (b9b398a) verified end-to-end across three consecutive test cycles.
 
+## ⚠️ STRIKE — MES "PF 5.27 baseline" is a documentation artifact (forensic 2026-04-20 02:40 CT)
+
+The PF 5.27 / Sharpe 4.16 / +47.2% claim propagated across this doc, `JARVIS-TRADER-MASTER-REPORT.md`, `JARVIS_TRADER_UNIFIED_CANON.md`, and MEMORY.md is a **look-ahead bias artifact** from a bugged backtester that was already fixed on 2026-03-29 in commit `c94aabf`. The bugged result lives in `engine/backtest/results/old_bugged/MES_1h_2024-06-01_2026-03-27.json` with the telltale `old_bugged/` parent dir. The commit message literally states: *"MES 1h: PF 5.27→0.82, Return +47.2%→-1.2% (was entirely look-ahead bias)"*.
+
+**Honest post-fix MES 1h baseline** (from `engine/backtest/results/MES_1h_backtest_corrected.json`):
+- PF **0.82**, Sharpe **-0.12**, Return **-1.25%**, Trades **9** over 2024-06-01 → 2026-03-27.
+- Net-negative. Only 9 trades in 22 months — below statistical significance.
+
+**Current composite runner** (STC+ORB+VWAP, threshold 0.35) is a DIFFERENT strategy family producing PF 0.13 with 413 trades — also net-negative, but via overtrading rather than under-firing.
+
+**Directive (owner, 2026-04-20 02:36 CT)**: MES must be reproduced OR re-derived "over and over again until we find a trading strategy that is profitable. Nothing else matters until then." Since reproduction is conclusively impossible (the "baseline" was never real on corrected code), re-derivation is the only remaining path. Parallel Bayesian / grid search in progress.
+
+**Phases currently suspended pending MES profitability resolution**: Phase 5 (MES refactor), Phase 6 (new markets), Q2 analyzer cross-validation, R4 pipeline analyzer, I2 worktree, I5 chart swap.
+
 ---
 
 ## Part 0 — Ground truth as of 2026-04-19 20:25 CT / 2026-04-20 01:25Z

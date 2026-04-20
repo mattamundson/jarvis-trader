@@ -1,0 +1,270 @@
+{
+  "symbol": "MES",
+  "interval": "1h",
+  "start": "2024-06-01",
+  "end": "2026-03-27",
+  "n_combos": 20,
+  "elapsed_sec": 181.6,
+  "results": [
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": true,
+        "min_or_range_pct": 0.002
+      },
+      "pf": 0.617,
+      "wr": 52.69,
+      "trades": 186,
+      "net_pnl": -4475.64,
+      "sharpe": -2.44,
+      "max_dd": 4922.01
+    },
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": false,
+        "min_or_range_pct": 0.002
+      },
+      "pf": 0.617,
+      "wr": 52.69,
+      "trades": 186,
+      "net_pnl": -4475.64,
+      "sharpe": -2.44,
+      "max_dd": 4922.01
+    },
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": true,
+        "min_or_range_pct": 0.003
+      },
+      "pf": 0.52,
+      "wr": 48.0,
+      "trades": 75,
+      "net_pnl": -3570.5,
+      "sharpe": -3.461,
+      "max_dd": 3969.37
+    },
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": false,
+        "min_or_range_pct": 0.003
+      },
+      "pf": 0.52,
+      "wr": 48.0,
+      "trades": 75,
+      "net_pnl": -3570.5,
+      "sharpe": -3.461,
+      "max_dd": 3969.37
+    },
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": true,
+        "min_or_range_pct": 0.0012
+      },
+      "pf": 0.435,
+      "wr": 46.9,
+      "trades": 371,
+      "net_pnl": -11833.79,
+      "sharpe": -3.801,
+      "max_dd": 11811.33
+    },
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": false,
+        "min_or_range_pct": 0.0012
+      },
+      "pf": 0.435,
+      "wr": 46.9,
+      "trades": 371,
+      "net_pnl": -11833.79,
+      "sharpe": -3.801,
+      "max_dd": 11811.33
+    },
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": true,
+        "min_or_range_pct": 0.0008
+      },
+      "pf": 0.422,
+      "wr": 44.81,
+      "trades": 520,
+      "net_pnl": -14008.55,
+      "sharpe": -3.919,
+      "max_dd": 13988.6
+    },
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": false,
+        "min_or_range_pct": 0.0008
+      },
+      "pf": 0.422,
+      "wr": 44.81,
+      "trades": 520,
+      "net_pnl": -14008.55,
+      "sharpe": -3.919,
+      "max_dd": 13988.6
+    },
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": true,
+        "min_or_range_pct": 0.0004
+      },
+      "pf": 0.413,
+      "wr": 44.39,
+      "trades": 615,
+      "net_pnl": -15363.85,
+      "sharpe": -3.91,
+      "max_dd": 15325.14
+    },
+    {
+      "params": {
+        "volume_filter": false,
+        "regime_filter": false,
+        "min_or_range_pct": 0.0004
+      },
+      "pf": 0.413,
+      "wr": 44.39,
+      "trades": 615,
+      "net_pnl": -15363.85,
+      "sharpe": -3.91,
+      "max_dd": 15325.14
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": true,
+        "min_or_range_pct": 0.002
+      },
+      "pf": 0.399,
+      "wr": 40.74,
+      "trades": 135,
+      "net_pnl": -5699.9,
+      "sharpe": -5.191,
+      "max_dd": 5811.18
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": false,
+        "min_or_range_pct": 0.002
+      },
+      "pf": 0.399,
+      "wr": 40.74,
+      "trades": 135,
+      "net_pnl": -5699.9,
+      "sharpe": -5.191,
+      "max_dd": 5811.18
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": true,
+        "min_or_range_pct": 0.0012
+      },
+      "pf": 0.36,
+      "wr": 39.77,
+      "trades": 264,
+      "net_pnl": -10282.36,
+      "sharpe": -5.569,
+      "max_dd": 10242.4
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": false,
+        "min_or_range_pct": 0.0012
+      },
+      "pf": 0.36,
+      "wr": 39.77,
+      "trades": 264,
+      "net_pnl": -10282.36,
+      "sharpe": -5.569,
+      "max_dd": 10242.4
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": true,
+        "min_or_range_pct": 0.0008
+      },
+      "pf": 0.321,
+      "wr": 35.12,
+      "trades": 373,
+      "net_pnl": -14637.52,
+      "sharpe": -5.928,
+      "max_dd": 14588.78
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": false,
+        "min_or_range_pct": 0.0008
+      },
+      "pf": 0.321,
+      "wr": 35.12,
+      "trades": 373,
+      "net_pnl": -14637.52,
+      "sharpe": -5.928,
+      "max_dd": 14588.78
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": true,
+        "min_or_range_pct": 0.0004
+      },
+      "pf": 0.308,
+      "wr": 33.64,
+      "trades": 440,
+      "net_pnl": -16345.6,
+      "sharpe": -6.007,
+      "max_dd": 16296.86
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": false,
+        "min_or_range_pct": 0.0004
+      },
+      "pf": 0.308,
+      "wr": 33.64,
+      "trades": 440,
+      "net_pnl": -16345.6,
+      "sharpe": -6.007,
+      "max_dd": 16296.86
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": true,
+        "min_or_range_pct": 0.003
+      },
+      "pf": 0.29,
+      "wr": 41.18,
+      "trades": 51,
+      "net_pnl": -3763.24,
+      "sharpe": -6.991,
+      "max_dd": 3637.0
+    },
+    {
+      "params": {
+        "volume_filter": true,
+        "regime_filter": false,
+        "min_or_range_pct": 0.003
+      },
+      "pf": 0.29,
+      "wr": 41.18,
+      "trades": 51,
+      "net_pnl": -3763.24,
+      "sharpe": -6.991,
+      "max_dd": 3637.0
+    }
+  ]
+}
