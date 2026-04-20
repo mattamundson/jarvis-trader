@@ -272,6 +272,79 @@ async def get_discord_intelligence(
     }
 
 
+@router.get("/bookmarks/stats")
+async def get_bookmark_stats(
+    lookback_days: int = Query(7, ge=1, le=90),
+    db_path: str = Depends(get_db_path),
+):
+    """Quick counts for the #general bookmark dump (Phase B pipeline)."""
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            total = conn.execute(
+                "SELECT COUNT(*) as cnt FROM discord_bookmarks"
+            ).fetchone()["cnt"]
+            recent = conn.execute(
+                "SELECT COUNT(*) as cnt FROM discord_bookmarks "
+                "WHERE posted_at >= datetime('now', ?)",
+                (f"-{lookback_days} days",),
+            ).fetchone()["cnt"]
+            by_type = conn.execute(
+                "SELECT source_type, COUNT(*) as cnt FROM discord_bookmarks "
+                "WHERE posted_at >= datetime('now', ?) "
+                "GROUP BY source_type ORDER BY cnt DESC",
+                (f"-{lookback_days} days",),
+            ).fetchall()
+            latest = conn.execute(
+                "SELECT posted_at FROM discord_bookmarks "
+                "ORDER BY posted_at DESC LIMIT 1"
+            ).fetchone()
+        return {
+            "total": total,
+            "recent_count": recent,
+            "lookback_days": lookback_days,
+            "source_type_breakdown": [dict(row) for row in by_type],
+            "latest_posted_at": latest["posted_at"] if latest else None,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# Module-level singleton — preserves the clusterer's 6-hour in-memory cache
+# across requests so dashboard reloads don't burn LLM budget.
+_bookmark_clusterer_singleton = None
+
+
+def _get_bookmark_clusterer():
+    global _bookmark_clusterer_singleton
+    if _bookmark_clusterer_singleton is None:
+        from agents.bookmark_clusterer import BookmarkClusterer
+        _bookmark_clusterer_singleton = BookmarkClusterer()
+    return _bookmark_clusterer_singleton
+
+
+@router.get("/bookmarks/weekly-themes")
+async def get_bookmark_weekly_themes(
+    lookback_days: int = Query(7, ge=1, le=30),
+    max_rows: int = Query(200, ge=10, le=500),
+    refresh: bool = Query(False, description="Bypass the 6h cache and re-call the LLM"),
+    db_path: str = Depends(get_db_path),
+):
+    """Claude-clustered themes across the rolling #general bookmark dump.
+
+    Served from an in-memory 6h cache after the first call; pass
+    `?refresh=true` to force a fresh LLM call (costs ~$0.02 per run at Haiku).
+    """
+    clusterer = _get_bookmark_clusterer()
+    result = await clusterer.cluster_recent(
+        lookback_days=lookback_days,
+        max_rows=max_rows,
+        db_path=db_path,
+        force_refresh=refresh,
+    )
+    return result.to_dict()
+
+
 @router.get("/briefing")
 async def get_briefing(
     symbol: str = Query(..., description="JARVIS or Discord symbol (MCL, CL, MES, ES, ...)"),
