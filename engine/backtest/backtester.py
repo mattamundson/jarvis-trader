@@ -503,11 +503,16 @@ class Backtester:
                     targets_hit,
                 )
             )
+            # Always credit stop PnL to capital, whether trade closed or not.
+            # BUG (pre-2026-04-20): capital_from_stop was only added inside the "else" below,
+            # so every stop-out loss was recorded on t.pnl but NEVER subtracted from capital.
+            # Result: final_capital drifted wildly positive while sum(t.pnl) was deeply negative,
+            # producing the observed "-$199K trade ledger alongside +$184K final capital" bug.
+            capital_change += capital_from_stop
             if open_trade is None:
                 completed.append(trade_before_stop)
             else:
                 open_contracts_t1, open_contracts_t2, open_contracts_t3 = new_t1, new_t2, new_t3
-                capital_change += capital_from_stop
                 open_contracts_t1, open_contracts_t2, capital_from_targets, new_targets = (
                     self._check_targets_exit(
                         open_trade,

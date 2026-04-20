@@ -205,13 +205,14 @@ def _run_single_instrument(args):
     print(result.summary())
     print("=" * 60)
 
-    # Key metrics
+    # Key metrics — win_rate, total_return_pct, max_drawdown_pct are FRACTIONS
+    # (0.199 == 19.9%). Use {:.1%} to format, not {:.1f}% which would miss the ×100.
     r = result.to_dict()
     sharpe = r.get("sharpe_ratio", 0.0)
     pf = r.get("profit_factor", 0.0)
     wr = r.get("win_rate", 0.0)
     ret = r.get("total_return_pct", 0.0)
-    max_dd = r.get("max_drawdown", 0.0)
+    max_dd = r.get("max_drawdown_pct", 0.0)  # FIX: was "max_drawdown" which never existed → always 0
     n_trades = r.get("total_trades", 0)
 
     print("\nKEY METRICS (COHEN-MES Composite):")
@@ -220,7 +221,7 @@ def _run_single_instrument(args):
     )
     print(f"  Profit Factor : {pf:.2f}  {'✓' if pf >= 2.0 else '✗ Target: ≥2.0'}")
     print(f"  Win Rate      : {wr:.1%}")
-    print(f"  Total Return  : {ret:+.1f}%")
+    print(f"  Total Return  : {ret:+.1%}")
     print(f"  Max Drawdown  : {max_dd:.1%}")
     print(f"  Total Trades  : {n_trades}")
 
@@ -458,7 +459,7 @@ def _write_composite_report(results, instruments, args):
         sharpe = result.get("sharpe", 0.0)
         wr = result.get("win_rate", 0.0)
         n_trades = result.get("n_trades", 0)
-        max_dd = result.get("max_drawdown", 0.0)
+        max_dd = result.get("max_drawdown", 0.0)  # from json_payload line 272 — writer-side key is "max_drawdown"
 
         if wfe is None:
             recommendation = "INSUFFICIENT_DATA"
