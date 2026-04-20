@@ -417,11 +417,15 @@ async def lifespan(app: FastAPI):
     )
     logger.info("✅ PnL Monitor initialised (SQLite + paper tracker sources active)")
 
-    # Safety layer — always first; PnLMonitor feeds circuit breakers with live data
+    # Safety layer — always first; PnLMonitor feeds circuit breakers with live data.
+    # Both db_path (for kill-switch state via raw sqlite3) and db_manager (for typed
+    # upsert_pnl_snapshot calls) must be passed — they're separate code paths inside
+    # SafetyLayer. Omitting db_manager silently disables pnl_snapshots writes.
     safety_layer = SafetyLayer(
         settings,
         pnl_monitor=pnl_monitor,
         db_path=str(db_manager._db_path),
+        db_manager=db_manager,
     )
 
     # Paper IB connector — JSON audit + optional PortfolioTracker mirror; wired into SafetyLayer

@@ -306,6 +306,14 @@ class SafetyLayer:
         DB failure is non-fatal - logged as a warning.
         """
         if self._db_manager is None:
+            if not getattr(self, "_db_manager_warned", False):
+                logger.warning(
+                    "SafetyLayer: pnl_snapshots writes DISABLED — db_manager was not "
+                    "passed to __init__. Kill-switch state will still persist via "
+                    "db_path, but upsert_pnl_snapshot() will silently no-op every "
+                    "60s sync. Pass db_manager=<DatabaseManager> to restore writes."
+                )
+                self._db_manager_warned = True
             return
         try:
             today = date.today().isoformat()
