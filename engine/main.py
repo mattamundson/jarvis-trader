@@ -1534,6 +1534,51 @@ async def lifespan(app: FastAPI):
     except Exception as _discord_err:
         logger.warning(f"Discord nightly import init failed (non-fatal): {_discord_err}")
 
+    # Weekly bookmark thematic clustering — Sunday 18:00 CT pre-warms the
+    # 6h cache so Monday-morning dashboard/API reads are instant (no LLM wait).
+    try:
+
+        async def run_bookmark_clusterer() -> None:
+            try:
+                from routers.discord_router import _get_bookmark_clusterer
+
+                clusterer = _get_bookmark_clusterer()
+                result = await clusterer.cluster_recent(
+                    lookback_days=7, force_refresh=True
+                )
+                logger.info(
+                    "[BookmarkClusterer] refreshed: %d themes, %d bookmarks, "
+                    "actionable=%s, cost=$%.4f, error=%s",
+                    len(result.themes),
+                    result.bookmark_count,
+                    result.actionable,
+                    result.cost_usd,
+                    result.error,
+                )
+            except Exception as exc:
+                logger.error("[BookmarkClusterer] weekly refresh failed: %s", exc)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_bookmark_clusterer,
+                CronTrigger(
+                    day_of_week="sun",
+                    hour=18,
+                    minute=0,
+                    timezone="America/Chicago",
+                ),
+                id="bookmark_weekly_cluster",
+                name="Weekly Bookmark Thematic Clustering",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info(
+                "✅ Bookmark clusterer registered — fires Sun at 18:00 CT"
+            )
+    except Exception as _bm_err:
+        logger.warning(f"Bookmark clusterer init failed (non-fatal): {_bm_err}")
+
     # Corey staleness watchdog (hourly, weekdays 9-17 CT) — alerts if
     # discord_corey_commentary stops refreshing. Agents consume corey_session_bias
     # derived from this table; silent staleness = silent signal drift.
