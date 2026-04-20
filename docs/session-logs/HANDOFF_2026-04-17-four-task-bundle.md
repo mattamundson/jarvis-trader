@@ -135,12 +135,12 @@ Backup saved to `/root/.openclaw/openclaw.json.bak-<timestamp>`. Documented in `
 # Health sweep
 curl -s http://localhost:8010/health | python -m json.tool
 curl -s -o /dev/null -w "Dashboard: %{http_code}\n" http://localhost:3010
-curl -s -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+curl -s -H "X-API-Key: ${JARVIS_API_KEY}" \
   http://localhost:8010/messaging/health
 
 # Test /both live
 curl -s --max-time 180 -X POST \
-  -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+  -H "X-API-Key: ${JARVIS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"channel":"api","user_id":"matt","message":"/both What is the MCL regime?"}' \
   http://localhost:8010/messaging/chat | python -m json.tool

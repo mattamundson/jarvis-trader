@@ -80,7 +80,7 @@ tv data get-quote -s ES1!     # snapshot quote JSON
 From Python side:
 
 ```bash
-curl -H "X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc" \
+curl -H "X-API-Key: ${JARVIS_API_KEY}" \
   http://localhost:8010/tv/snapshot?symbol=MES
 ```
 
