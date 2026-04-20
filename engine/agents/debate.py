@@ -83,6 +83,40 @@ _SEPA_NUDGE_MAGNITUDE: float = 0.03
 _SEPA_MIN_EVALUATED: int = 5
 
 
+def _corey_tiebreak(analyst_reports: Optional[dict]) -> Optional[str]:
+    """Return a verdict based on Corey's session bias, or None.
+
+    Used as a last-resort tie-break when debate_score is in the dead zone AND
+    the existing conviction-asymmetry tie-break failed to break the tie.
+    Corey is the authoritative futures sentiment source per owner directive
+    (2026-04-19); if he's committed enough to the session direction
+    (conviction >= 0.5) and bias is not neutral, follow him.
+
+    Threshold matches the researcher-evidence boost threshold (0.5) from
+    BullResearcherAgent._apply_discord_evidence for consistency.
+
+    Returns "BULL_WINS" | "BEAR_WINS" | None.
+    """
+    if not isinstance(analyst_reports, dict):
+        return None
+    briefing = analyst_reports.get("discord_briefing")
+    if not isinstance(briefing, dict):
+        return None
+    corey = briefing.get("corey_bias") or {}
+    bias = str(corey.get("directional_bias") or "").lower()
+    try:
+        conv = float(corey.get("conviction") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    if conv < 0.5:
+        return None
+    if bias == "bullish":
+        return "BULL_WINS"
+    if bias == "bearish":
+        return "BEAR_WINS"
+    return None
+
+
 def _apply_sepa_nudge(debate_score: float, raw_nudge: float) -> tuple[float, float]:
     """Apply a SEPA nudge only when it agrees with the debate direction.
 
@@ -730,7 +764,22 @@ class DebateOrchestrator:
                         f"(debate_score overridden to +0.10)"
                     )
                 else:
-                    verdict = "INCONCLUSIVE"
+                    # Final tilt: consult Corey's session bias before giving up.
+                    # Only fires when bias != neutral AND conviction >= 0.5.
+                    corey_verdict = _corey_tiebreak(analyst_reports)
+                    if corey_verdict is not None:
+                        verdict = corey_verdict
+                        result.scoring_failed = True
+                        result.debate_score = 0.10 if corey_verdict == "BULL_WINS" else -0.10
+                        _corey = (analyst_reports.get("discord_briefing") or {}).get("corey_bias") or {}
+                        logger.info(
+                            f"[Debate] {symbol} tie broken by Corey bias: "
+                            f"directional_bias={_corey.get('directional_bias')} "
+                            f"conviction={_corey.get('conviction', 0.0):.2f} → {corey_verdict} "
+                            f"(debate_score overridden to {result.debate_score:+.2f})"
+                        )
+                    else:
+                        verdict = "INCONCLUSIVE"
 
             result.verdict = verdict
             conviction = abs(debate_score)
