@@ -9,6 +9,41 @@
 
 ---
 
+## Ship manifest — 2026-04-19 → 2026-04-20 continuation (15 commits on `feat/tradingview-mcp-gamma-kraken`)
+
+Phases 1, 4, 7 (partial), 8 (partial) shipped. All on the feature branch; not yet pushed or merged.
+
+| Phase/Task | Commit | Summary |
+| --- | --- | --- |
+| **Phase 1 S1** | `980b048` | `fix(contract-specs)`: MES tick_value 10× error ($5/pt not $50/pt); MGC added to multipliers |
+| **Phase 1 S2** | `c1b59be` | `fix(bayes-opt)`: hard PF<1 gate with −1e6 penalty; 101-assertion fuzz test |
+| **Phase 4 D1** | `6c4d4c3` | `feat(research)`: Discord briefing as evidence input for bull/bear researchers |
+| **Phase 4 D2** | `e3fb84c` | `feat(debate)`: Corey tie-break for INCONCLUSIVE low-confidence verdicts |
+| **Phase 4 D3** | `978f853` | `feat(trader)`: Corey-contradiction triggers Advisor review + half-size on agreement |
+| **Phase 4 D4** | `265f8a8` | `feat(debate)`: CoreyAuctionAnalyst Stage-1 weight floor for futures (MCL/MNQ/MES/MGC) |
+| **Phase 7 I4** | `daee1ac` | `fix(llm)`: unwrap `tenacity.RetryError` at `client.py:452` to surface Anthropic body |
+| **Phase 7 I3** | `5e37d24` | `feat(health)`: `llm_path_healthy` flag + WhatsApp alert on credit errors |
+| **Phase 8 Q3** | `7560e36` | `refactor(learning)`: ghost-table reader redirected to `trade_outcomes` |
+| **Phase 8 Q1.1** | `1ae121c` | `docs(session-logs)`: 64-file archive + engine X-API-Key redacted in 20 files |
+| **Phase 8 Q1.2a** | `413b184` | `chore(orphans)`: 15 untracked production modules + 34 tests |
+| **Phase 8 Q1.3** | `237a64b` | `chore(gitignore)`: exclude runtime state + test/scan output artifacts |
+| **Phase 8 Q1.2b** | `c468fa4` | `ci`: Claude PR review + safety-invariant-check workflows |
+| **Phase 8 Q1.4** | `9597ee1` | `chore(bucket4)`: 35 files — `.claude/*`, `.devcontainer/`, SessionHighlights archive, handoff bundle |
+| **Phase 8 Q4** | `9edd5d0` | `fix(safety)`: wire `db_manager` into SafetyLayer — `pnl_snapshots` no longer silently disabled |
+
+**Deferred / blocked**:
+- I1 (per-session git author) — mechanism uncertain; revisit with prepare-commit-msg hook approach
+- I2 (git worktree adoption) — docs-only; low urgency since concurrent sessions aren't currently overlapping
+- I5 (TradingView lightweight-charts swap) — risky mid-R3 window; revisit after 2026-04-22 R4 analyzer run
+- Q2 (analyzer cross-validation) — blocked on R4 data
+- R4 (analyzer re-run + diff vs. Task 2 baseline) — scheduled 2026-04-22 evening per Phase 2 passive-accumulation plan
+- Phase 5 (MES refactor) — blocked on R4 baseline
+- Phase 6 (new markets: ETH, GC, BTC, ZB) — blocked on external connector work
+
+**Next engine restart** activates: I3 health-flag + WhatsApp, I4 error-body log surfacing, Q4 `pnl_snapshots` writes, and the pre-shipped Phase 1 S1/S2 fixes. The owner has been holding restart to preserve R3 uptime for the 2026-04-22 R4 comparison.
+
+---
+
 ## Part 0 — Ground truth as of 2026-04-19 20:25 CT / 2026-04-20 01:25Z
 
 ### What's verified working (live-probed this session)
