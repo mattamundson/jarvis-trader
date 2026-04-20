@@ -149,7 +149,7 @@ class BullResearcherAgent:
             response_text = data["content"][0]["text"].strip()
             result = self._parse_json(response_text)
 
-            return BullReport(
+            report = BullReport(
                 symbol=symbol,
                 timestamp=datetime.now(),
                 bull_thesis=result.get("bull_thesis", ""),
@@ -159,10 +159,61 @@ class BullResearcherAgent:
                 conviction=float(result.get("conviction", 0.0)),
                 counterargument_response=result.get("counterargument_response", ""),
             )
+            self._apply_discord_evidence(report, analyst_reports)
+            return report
 
         except Exception as e:
             logger.error(f"BullResearcherAgent failed for {symbol}: {e}")
             return self._empty_report(symbol)
+
+    @staticmethod
+    def _apply_discord_evidence(report: "BullReport", analyst_reports: dict) -> None:
+        """Post-LLM adjustment using Discord briefing (Corey bias + IB levels).
+
+        - Bullish session bias with conviction>=0.5 boosts report conviction by 0.1 (cap 1.0).
+        - Bearish session bias with conviction>=0.5 dampens report conviction by 0.1 (floor 0.0).
+        - Price target above IB 100%-upside extension (ibu100) is cleared — bulls
+          already in the upper-extension range lack a defensible target above it.
+
+        Silent no-op if the briefing is absent or malformed. This is additive
+        evidence, not a hard gate; the debate layer owns any hard rejection.
+        """
+        briefing = analyst_reports.get("discord_briefing")
+        if not isinstance(briefing, dict):
+            return
+
+        corey = briefing.get("corey_bias") or {}
+        bias = str(corey.get("directional_bias") or "").lower()
+        try:
+            conv = float(corey.get("conviction") or 0.0)
+        except (TypeError, ValueError):
+            conv = 0.0
+
+        if conv >= 0.5:
+            if bias == "bullish":
+                report.conviction = min(1.0, report.conviction + 0.1)
+                report.key_evidence.append(
+                    f"Corey session bias BULLISH (conv={conv:.2f}) confirms bull thesis"
+                )
+            elif bias == "bearish":
+                report.conviction = max(0.0, report.conviction - 0.1)
+                report.key_evidence.append(
+                    f"Corey session bias BEARISH (conv={conv:.2f}) contradicts bull thesis"
+                )
+
+        ib_levels = briefing.get("ib_levels")
+        if isinstance(ib_levels, dict) and report.price_target is not None:
+            ibu100 = ib_levels.get("ibu100")
+            if isinstance(ibu100, (int, float)) and report.price_target > ibu100:
+                cleared = report.price_target
+                note = (
+                    f"[price_target ${cleared:.2f} exceeded IB ibu100 "
+                    f"${ibu100:.2f}, cleared]"
+                )
+                report.counterargument_response = (
+                    f"{report.counterargument_response} {note}".strip()
+                )
+                report.price_target = None
 
     async def call_llm(self, prompt: str) -> str:
         """Direct LLM call for debate scoring — returns raw text response.
