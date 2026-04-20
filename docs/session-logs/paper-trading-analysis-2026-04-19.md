@@ -130,7 +130,7 @@ Advisor invocation being invisible in the blob could be a serialization bug or i
 
 ### 3 biggest problems
 
-1. **MES Polygon contamination is unfixed.** The 2026-04-16 futures blocklist audit fixed MCL but missed MES (and likely MNQ, MGC, ES, NQ, GC). The `FUTURES_EQUITY_CONTAMINATION_RANGES` check in this script catches it at the analysis layer, but the engine itself is still letting Polygon return equity prices for futures symbols. → **Immediate fix**: extend `POLYGON_FUTURES_BLOCKLIST` to all CME futures tickers, not just MCL. (Task 3.B or new T2.5.)
+1. **~~MES Polygon contamination is unfixed~~ MES contamination is *historical*, pre-blocklist (CORRECTION 2026-04-19 19:40).** Verified during Task 2.5A: `POLYGON_FUTURES_BLOCKLIST` in `engine/data/market_data.py:72` already contains `{MCL, MNQ, MES, MGC, M2K, MYM, CL, NQ, ES, GC, RTY, YM, SI, ZB, ZN}` (15 symbols — comprehensive for our universe, added 2026-04-16 per MEMORY.md `data-source-audit`). The 3 MES contaminated paper_trades are all dated 2026-04-10, **before the blocklist was added on 2026-04-16**. The blocklist correctly prevents recurrence today. **Remaining action is cosmetic**: optionally clean up the 3 historical rows (trade_ids `897bb7bc`, `377f0205`, `7acdf9b8` at entry_price=$70.57) — not urgent for forward correctness.
 2. **MCL and MNQ produced zero BUY signals across 642 runs, 9 days.** Whether this is correct (choppy tape, pipeline holding appropriately) or over-filtering (thresholds too tight) cannot be determined from this data alone. Next step: run the same backtest windows used for the 0.8537 composite score on LIVE data and compare decision distributions. (Task 2.6 or rolled into Task 5's baseline pin.)
 3. **9 analytics tables are empty (`pipeline_llm_costs`, `learning_events`, `supervisor_decisions`, `trading_patterns`, `trade_journal`, `journal_notes`, `pnl_snapshots`, `capital_allocation`, `positions`)** despite weeks of uptime. Write paths are either (a) not invoked because no real trades flow, (b) writing to a different DB, or (c) gated behind inactive flags. This kills the ability to verify Track H (IC weights) and compute cost-per-decision. → **Fix**: find each write-path call site and either verify it's pathologically unreachable without real trades, or wire it. Priority: `pipeline_llm_costs` (cost visibility) and `learning_events` (AgentFeedbackTracker is blind without it).
 
@@ -188,6 +188,53 @@ cd engine
 ```
 
 Pipe through `python -m json.tool` to pretty-print, or diff against a future window to track drift. Script is read-only — safe to run while engine is live.
+
+---
+
+## Addendum: Task 2.5 audit (2026-04-19 19:40)
+
+Ran 2.5A (blocklist verification) and 2.5E (empty-table writer audit) before touching any production code. Results below — **no code changes yet**; this is observation only.
+
+### 2.5A — Blocklist already comprehensive (NO-OP)
+
+`POLYGON_FUTURES_BLOCKLIST` is a 15-symbol frozenset covering all micros (MCL, MNQ, MES, MGC, M2K, MYM) and standard (CL, NQ, ES, GC, RTY, YM, SI, ZB, ZN) CME futures currently in the trading universe. `test_polygon_futures_blocklist.py` already asserts coverage. **No extension needed.**
+
+Defense-in-depth additions for future expansion (BTC, 6E, 6B, 6J, ZC, ZS) are deferred — they're not in our symbol universe and would be scope creep on this task.
+
+### 2.5E — Empty-table writer classification
+
+For each of the 8 empty analytics tables, located writer + assessed classification:
+
+| Table | Writer location | Classification | Explanation |
+|---|---|---|---|
+| `learning_events` | **none found** | (c) silent bug | Migration 013 created the table + indexes. `learning_router.py:677` reads it. No `INSERT INTO learning_events` anywhere in `engine/`. AgentFeedbackTracker was supposed to write here but doesn't. |
+| `pnl_snapshots` | `engine/database/_mixins_pnl.py:132` (`upsert_pnl_snapshot`), called from `engine/risk/safety_layer.py:315` | (c) silent bug | Writer exists + is called. Empty means SafetyLayer's trigger condition never fires. Needs trace: is `SafetyLayer.check()` running? Is `self._db_manager` set? |
+| `pipeline_llm_costs` | `engine/database/_mixins_llm_costs.py:67` | TBD (call sites not yet traced) | Writer exists. Need to locate caller — probably a pipeline-completion hook. |
+| `supervisor_decisions` | `engine/notifications/supervisor.py:404` | TBD | Writer exists in Hermes supervisor. Empty means either supervisor never runs or every event is swallowed before reaching the INSERT. |
+| `trading_patterns` | `engine/learning/consolidator.py:215` + `engine/learning/patterns.py:401` | (a) nightly job never ran | Consolidator is a scheduled nightly task per MEMORY.md. If the cron job isn't registered / doesn't fire / errors silently, table stays empty. |
+| `trade_journal` | `engine/database/_mixins_journal.py:61` | (a) UI-dependent | Journal is a user-surface feature. Empty = no user ever wrote a journal entry. Expected. |
+| `journal_notes` | `engine/database/_mixins_journal.py:243` | (a) UI-dependent | Same as trade_journal. |
+| `capital_allocation` | `engine/scripts/init_capital.py:115` | (a) bootstrap script never run | This is a one-time script. Empty = bootstrap never executed. Needs `python engine/scripts/init_capital.py` run once. |
+
+### Critical 2.5E finding: `trade_outcomes` table mismatch
+
+`engine/analytics/agent_feedback.py` (AgentFeedbackTracker) and `engine/analytics/ic_ensemble.py` both reference a table called **`trade_outcomes`** for storing per-agent signal/P&L pairs (see `ic_ensemble.py:92, 119`). This table **does not exist in the current schema** (v21 has `learning_events` but not `trade_outcomes`). So either:
+- `AgentFeedbackTracker._init_db()` is creating `trade_outcomes` on-the-fly in a separate path (auxiliary DB?), OR
+- Every `record_outcome()` call is silently failing with `sqlite3.OperationalError: no such table`.
+
+This directly kills **Track H (ICWeightedEnsemble)** wiring — without `trade_outcomes` populated, Spearman rank correlation over per-agent signals vs P&L cannot be computed. MEMORY.md's claim that Track H is "wired" needs an asterisk: the code is in the pipeline, but the data it depends on isn't there.
+
+Next step for Task 2.5D/E to resolve: grep `AgentFeedbackTracker._init_db` for the table creation SQL, determine whether it's writing to a separate `.db` file (e.g. `agent_feedback.db`) or intended to share the main DB. If separate: confirm that DB exists and has rows. If same DB: migration to add `trade_outcomes` column equivalents to `learning_events` (or rename+merge).
+
+### 2.5A + 2.5E decision matrix for next work
+
+| Task | Action | Confidence |
+|---|---|---|
+| 2.5A (blocklist) | Mark DONE — no-op, already comprehensive | High |
+| 2.5B (daily_pnl fix) | Unchanged — still a dashboard bug | High |
+| 2.5C (JSON validation) | Unchanged — still 1 malformed row | High |
+| 2.5D (pipeline_runs dead cols) | Unchanged — 0/2632 still needs wiring | High |
+| 2.5E (empty tables) | **Split into 2.5E1 (trade_outcomes mismatch) + 2.5E2 (per-table writer trace)**. 2.5E1 is the highest-impact item — it directly unblocks Track H. | High |
 
 ---
 
