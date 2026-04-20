@@ -71,6 +71,17 @@ def parse_channel(messages: list, source_channel: str = "jarvis-trader-general")
             embed_title = (first.get("title") or "").strip() or None
             embed_description = (first.get("description") or "").strip() or None
 
+        author = msg.get("author") or {}
+        author_id = str(author.get("id")) if author.get("id") else None
+        # Real DiscordChatExporter shape uses `username` + `global_name`;
+        # fixtures/legacy callers use `name`. Prefer the display form.
+        author_name = (
+            (author.get("global_name") or "").strip()
+            or (author.get("username") or "").strip()
+            or (author.get("name") or "").strip()
+            or None
+        )
+
         result = {
             "message_id": str(msg.get("id", "")),
             "channel_id": JARVIS_TRADER_GENERAL_ID,
@@ -80,6 +91,9 @@ def parse_channel(messages: list, source_channel: str = "jarvis-trader-general")
             "source_type": source_type,
             "embed_title": embed_title[:500] if embed_title else None,
             "embed_description": embed_description[:5000] if embed_description else None,
+            "content": content[:5000],
+            "author_id": author_id,
+            "author_name": author_name,
         }
         results.append(result)
 

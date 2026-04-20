@@ -91,3 +91,6 @@ class Bookmark(BaseModel):
     source_type: Optional[str] = None  # "x_post" | "github" | "video" | "other"
     embed_title: Optional[str] = None
     embed_description: Optional[str] = None
+    content: Optional[str] = None  # message body around the URL (commentary)
+    author_id: Optional[str] = None
+    author_name: Optional[str] = None

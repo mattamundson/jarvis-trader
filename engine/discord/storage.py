@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+from typing import Optional
 
 from .models import Bookmark, BotSignal, CoreyAlert, CoreyCommentary, IBReport
 
@@ -87,6 +88,9 @@ CREATE TABLE IF NOT EXISTS discord_bookmarks (
     source_type TEXT,
     embed_title TEXT,
     embed_description TEXT,
+    content TEXT,
+    author_id TEXT,
+    author_name TEXT,
     imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_bookmarks_posted ON discord_bookmarks(posted_at DESC);
@@ -94,12 +98,36 @@ CREATE INDEX IF NOT EXISTS idx_bookmarks_domain ON discord_bookmarks(domain);
 CREATE INDEX IF NOT EXISTS idx_bookmarks_source_type ON discord_bookmarks(source_type);
 """
 
+# Columns added post-Phase-B (Workstream A, 2026-04-20). ALTER handles pre-existing DBs;
+# CREATE TABLE above handles fresh ones. Both paths converge on the same shape.
+_BOOKMARK_MIGRATION_COLUMNS = [
+    ("content", "TEXT"),
+    ("author_id", "TEXT"),
+    ("author_name", "TEXT"),
+]
+
 
 def init_tables(db_path: str) -> None:
-    """Create Discord tables if they don't exist."""
+    """Create Discord tables if they don't exist, then run in-place migrations.
+
+    Migration path for `discord_bookmarks`: CREATE TABLE IF NOT EXISTS leaves pre-Phase-B
+    tables alone, so new columns (content, author_id, author_name) must be ADDed. We
+    catch OperationalError per column so a fully-migrated DB is a no-op.
+    """
     conn = sqlite3.connect(db_path)
     try:
         conn.executescript(CREATE_TABLES_SQL)
+        existing_cols = {
+            row[1] for row in conn.execute("PRAGMA table_info(discord_bookmarks)").fetchall()
+        }
+        for col, coltype in _BOOKMARK_MIGRATION_COLUMNS:
+            if col not in existing_cols:
+                try:
+                    conn.execute(f"ALTER TABLE discord_bookmarks ADD COLUMN {col} {coltype}")
+                except sqlite3.OperationalError as e:
+                    # Racing a concurrent init is fine — the column now exists.
+                    if "duplicate column name" not in str(e).lower():
+                        raise
         conn.commit()
     finally:
         conn.close()  # `with sqlite3.connect(...)` only commits, never closes — Windows holds file lock otherwise
@@ -240,8 +268,9 @@ def insert_bookmark(conn: sqlite3.Connection, bookmark: Bookmark) -> bool:
         conn.execute(
             """
             INSERT OR IGNORE INTO discord_bookmarks
-            (message_id, channel_id, posted_at, url, domain, source_type, embed_title, embed_description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (message_id, channel_id, posted_at, url, domain, source_type,
+             embed_title, embed_description, content, author_id, author_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 bookmark.message_id,
@@ -252,11 +281,43 @@ def insert_bookmark(conn: sqlite3.Connection, bookmark: Bookmark) -> bool:
                 bookmark.source_type,
                 bookmark.embed_title,
                 bookmark.embed_description,
+                bookmark.content,
+                bookmark.author_id,
+                bookmark.author_name,
             ),
         )
         return conn.execute("SELECT changes()").fetchone()[0] > 0
     except sqlite3.Error as e:
         logger.error(f"Error inserting bookmark {bookmark.message_id}: {e}")
+        return False
+
+
+def update_bookmark_context(
+    conn: sqlite3.Connection,
+    message_id: str,
+    content: Optional[str],
+    author_id: Optional[str],
+    author_name: Optional[str],
+) -> bool:
+    """Backfill content/author on a row that was inserted pre-Workstream-A.
+
+    Returns True if the row existed and was updated, False if no such message_id.
+    INSERT OR IGNORE in the import path cannot overwrite existing rows, so this
+    helper is called separately by the CLI to populate the new columns on the
+    371 pre-existing bookmarks.
+    """
+    try:
+        conn.execute(
+            """
+            UPDATE discord_bookmarks
+               SET content = ?, author_id = ?, author_name = ?
+             WHERE message_id = ?
+            """,
+            (content, author_id, author_name, message_id),
+        )
+        return conn.execute("SELECT changes()").fetchone()[0] > 0
+    except sqlite3.Error as e:
+        logger.error(f"Error updating bookmark context {message_id}: {e}")
         return False
 
 
