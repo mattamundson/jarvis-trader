@@ -1,0 +1,218 @@
+"""
+MES trend-following search — throwaway scratch (2026-04-20).
+
+Motivation: composite + ORB both returned best PF < 1.0 on MES 1h
+2024-06-01 → 2026-03-27, while buy-and-hold returned +23.4%. The
+entries are actively destructive. Pivot: stay LONG during uptrends
+via SMA crossover, exit on trend reversal.
+
+Strategy: when fast SMA > slow SMA, go long. Exit when fast <= slow.
+No shorts. ATR trailing stop optional. EOD stays open (trend trade).
+Tests a grid of (fast, slow, atr_stop) combos.
+
+Run from engine/:
+    .venv/Scripts/python -u -m scripts.mes_trend_search
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import time
+from itertools import product
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+_HERE = Path(__file__).resolve().parent
+_ENGINE = _HERE.parent
+if str(_ENGINE) not in sys.path:
+    sys.path.insert(0, str(_ENGINE))
+
+from backtest.data_loader import BacktestDataLoader  # noqa: E402
+
+SYMBOL = "MES"
+INTERVAL = "1h"
+START = "2024-06-01"
+END = "2026-03-27"
+MULTIPLIER = 5.0  # MES point value
+COMMISSION = 0.62  # per contract per leg
+SLIPPAGE_TICKS = 1
+TICK_SIZE = 0.25
+CONTRACTS = 1
+INITIAL_CAPITAL = 10_000.0
+
+GRID = {
+    "fast": [5, 10, 20, 50],
+    "slow": [20, 50, 100, 200],
+    "atr_trail_mult": [0.0, 2.0, 3.0, 5.0],  # 0.0 = no trail stop
+}
+
+
+def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    h, l, c = df["high"], df["low"], df["close"]
+    prev_c = c.shift(1)
+    tr = pd.concat([(h - l), (h - prev_c).abs(), (l - prev_c).abs()], axis=1).max(axis=1)
+    return tr.rolling(period).mean()
+
+
+def _run(df: pd.DataFrame, fast: int, slow: int, atr_trail_mult: float) -> dict:
+    if fast >= slow:
+        return {"skipped": "fast>=slow"}
+    sma_fast = df["close"].rolling(fast).mean()
+    sma_slow = df["close"].rolling(slow).mean()
+    atr = _atr(df, 14)
+
+    in_pos = False
+    entry = 0.0
+    trail_stop = 0.0
+    peak = 0.0
+    entry_time = None
+    trades = []
+
+    slip_usd = SLIPPAGE_TICKS * TICK_SIZE * MULTIPLIER * CONTRACTS  # one leg
+    commission_round = COMMISSION * 2 * CONTRACTS
+
+    for i in range(len(df)):
+        if pd.isna(sma_slow.iloc[i]):
+            continue
+        price = float(df["close"].iloc[i])
+        bar_time = df.index[i]
+
+        if in_pos:
+            # Update trail stop
+            if atr_trail_mult > 0 and not pd.isna(atr.iloc[i]):
+                new_stop = price - atr_trail_mult * float(atr.iloc[i])
+                if new_stop > trail_stop:
+                    trail_stop = new_stop
+
+            # Check exit: trail stop OR SMA crossover back
+            stop_hit = atr_trail_mult > 0 and float(df["low"].iloc[i]) <= trail_stop
+            cross_down = sma_fast.iloc[i] <= sma_slow.iloc[i]
+
+            if stop_hit or cross_down:
+                exit_price = trail_stop if stop_hit else price
+                # Slippage: +1 tick on entry, -1 tick on exit
+                pnl = (exit_price - entry) * MULTIPLIER * CONTRACTS - 2 * slip_usd - commission_round
+                trades.append({
+                    "entry_time": str(entry_time),
+                    "exit_time": str(bar_time),
+                    "entry": entry,
+                    "exit": exit_price,
+                    "pnl": pnl,
+                    "reason": "trail_stop" if stop_hit else "cross_down",
+                })
+                in_pos = False
+        else:
+            # Entry: cross up
+            if sma_fast.iloc[i] > sma_slow.iloc[i] and i > 0 and sma_fast.iloc[i-1] <= sma_slow.iloc[i-1]:
+                entry = price
+                entry_time = bar_time
+                if atr_trail_mult > 0 and not pd.isna(atr.iloc[i]):
+                    trail_stop = price - atr_trail_mult * float(atr.iloc[i])
+                else:
+                    trail_stop = 0.0
+                peak = price
+                in_pos = True
+
+    # Force-close any open position at the last bar
+    if in_pos:
+        exit_price = float(df["close"].iloc[-1])
+        pnl = (exit_price - entry) * MULTIPLIER * CONTRACTS - 2 * slip_usd - commission_round
+        trades.append({
+            "entry_time": str(entry_time),
+            "exit_time": str(df.index[-1]),
+            "entry": entry,
+            "exit": exit_price,
+            "pnl": pnl,
+            "reason": "end_of_data",
+        })
+
+    if not trades:
+        return {"total_trades": 0, "pf": 0.0, "wr": 0.0, "net_pnl": 0.0}
+
+    pnls = [t["pnl"] for t in trades]
+    wins = [p for p in pnls if p > 0]
+    losses = [p for p in pnls if p <= 0]
+    gross_profit = sum(wins)
+    gross_loss = abs(sum(losses))
+    pf = gross_profit / gross_loss if gross_loss > 0 else float("inf")
+    wr = len(wins) / len(pnls)
+    net_pnl = sum(pnls)
+    ret_pct = net_pnl / INITIAL_CAPITAL * 100
+
+    return {
+        "total_trades": len(trades),
+        "pf": round(pf, 3) if pf != float("inf") else 999.0,
+        "wr": round(wr * 100, 2),
+        "net_pnl": round(net_pnl, 2),
+        "ret_pct": round(ret_pct, 2),
+        "avg_win": round(np.mean(wins), 2) if wins else 0.0,
+        "avg_loss": round(np.mean(losses), 2) if losses else 0.0,
+    }
+
+
+def main():
+    t0 = time.time()
+    loader = BacktestDataLoader()
+    df = loader.load(SYMBOL, START, END, INTERVAL)
+    if df is None or df.empty:
+        print("[ERROR] No data loaded", flush=True)
+        return 1
+    print(f"Loaded {len(df)} bars for {SYMBOL} {INTERVAL} {START}->{END}", flush=True)
+
+    combos = [dict(zip(GRID.keys(), vals)) for vals in product(*GRID.values())]
+    combos = [c for c in combos if c["fast"] < c["slow"]]
+    print(f"Trend grid: {len(combos)} valid combos", flush=True)
+
+    results = []
+    for i, params in enumerate(combos, 1):
+        r = _run(df, params["fast"], params["slow"], params["atr_trail_mult"])
+        if r.get("skipped"):
+            continue
+        results.append({"params": params, **r})
+        flag = ""
+        if r["pf"] >= 2.0 and r["total_trades"] >= 10:
+            flag = "  <- WINNER PF>=2.0"
+        elif r["pf"] >= 1.5 and r["total_trades"] >= 10:
+            flag = "  <- backup PF>=1.5"
+        elif r["ret_pct"] >= 10.0:
+            flag = "  <- ret>=10%"
+        print(
+            f"[{i:2d}/{len(combos)}] fast={params['fast']:3d} slow={params['slow']:3d} "
+            f"trail={params['atr_trail_mult']:.1f}  "
+            f"PF={r['pf']:6.2f}  WR={r['wr']:5.1f}%  n={r['total_trades']:3d}  "
+            f"ret={r['ret_pct']:+6.2f}%{flag}",
+            flush=True,
+        )
+
+    results.sort(key=lambda x: x["pf"], reverse=True)
+    out_path = Path(__file__).parent / "mes_trend_search_results.json"
+    with open(out_path, "w") as f:
+        json.dump({
+            "symbol": SYMBOL,
+            "interval": INTERVAL,
+            "start": START,
+            "end": END,
+            "n_combos": len(combos),
+            "elapsed_sec": round(time.time() - t0, 1),
+            "buy_hold_return_pct": 23.42,
+            "results": results,
+        }, f, indent=2)
+
+    print(f"\nSaved {len(results)} results to {out_path}", flush=True)
+    print(f"\nTOP 10 by PF (buy-hold baseline: +23.42%):", flush=True)
+    print(f"{'rank':>4} {'PF':>7} {'WR%':>6} {'n':>4} {'ret%':>7}  params", flush=True)
+    for i, r in enumerate(results[:10], 1):
+        p = r["params"]
+        print(
+            f"{i:>4} {r['pf']:>7.2f} {r['wr']:>6.1f} {r['total_trades']:>4d} {r['ret_pct']:>+7.2f}  "
+            f"fast={p['fast']} slow={p['slow']} trail={p['atr_trail_mult']}",
+            flush=True,
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
