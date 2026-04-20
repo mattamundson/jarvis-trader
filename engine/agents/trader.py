@@ -60,6 +60,40 @@ def _get_advisor():
     return _advisor_instance if _advisor_instance is not False else None
 
 
+def _detect_corey_contradiction(
+    action: str, analyst_reports: Optional[dict]
+) -> Optional[dict]:
+    """Detect a high-conviction Corey session bias that contradicts the trader action.
+
+    Returns {"bias": str, "conviction": float} when Corey's directional_bias is
+    opposite to *action* and conviction > 0.7. Returns None otherwise (including
+    agreement, neutral bias, low conviction, missing briefing).
+
+    Threshold 0.7 (vs. 0.5 used by researcher evidence + debate tie-break): we're
+    gating an expensive Opus consultation, so require stronger disagreement signal.
+    """
+    if action not in ("buy", "sell"):
+        return None
+    if not isinstance(analyst_reports, dict):
+        return None
+    briefing = analyst_reports.get("discord_briefing")
+    if not isinstance(briefing, dict):
+        return None
+    corey = briefing.get("corey_bias") or {}
+    bias = str(corey.get("directional_bias") or "").lower()
+    try:
+        conv = float(corey.get("conviction") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    if conv <= 0.7:
+        return None
+    if action == "buy" and bias == "bearish":
+        return {"bias": bias, "conviction": conv}
+    if action == "sell" and bias == "bullish":
+        return {"bias": bias, "conviction": conv}
+    return None
+
+
 def _get_tool_inspection_manager():
     """Lazy-construct the tool inspection manager. Returns None on import/init failure."""
     global _tool_inspection_manager
@@ -697,6 +731,81 @@ class TraderAgent:
                             )
                 except Exception as _adv_err:
                     logger.warning("[Trader] Advisor consultation raised for %s: %s", symbol, _adv_err)
+                    # graceful: continue with original decision
+
+            # Corey-contradiction override (Phase 4 D3):
+            # If Corey has a high-conviction session bias opposite to the trader's
+            # proposed direction, escalate to Opus. Opus-HOLD or opposite verdict
+            # overrides to HOLD; Opus-same-direction halves size (risk-adjusted
+            # for the signal conflict, floor 1 contract).
+            contradiction = _detect_corey_contradiction(decision.action, analyst_reports)
+            if contradiction is not None and advisor is not None and decision.action != "hold":
+                try:
+                    regime = "unknown"
+                    if isinstance(debate_result, dict):
+                        regime = debate_result.get("regime", "unknown")
+                    else:
+                        regime = getattr(debate_result, "regime", "unknown")
+
+                    trader_side = "LONG" if decision.action == "buy" else "SHORT"
+                    opposite_side = "SHORT" if trader_side == "LONG" else "LONG"
+                    consult = await advisor.consult_debate_tiebreak(
+                        bull_case=(
+                            f"Trader proposes {trader_side} on {symbol} at "
+                            f"{decision.entry_price} with confidence={decision.confidence:.2f}."
+                        ),
+                        bear_case=(
+                            f"Corey session bias is {contradiction['bias'].upper()} "
+                            f"(conviction {contradiction['conviction']:.2f}) — "
+                            f"contradicts the proposed {trader_side}."
+                        ),
+                        debate_score=0.0,
+                        regime=regime,
+                        analyst_reports=analyst_reports,
+                    )
+                    if consult.consulted:
+                        opus_verdict = (consult.verdict or "").upper()
+                        audit = (
+                            f"\n\n[Corey-Contradiction Advisor] bias={contradiction['bias']} "
+                            f"conv={contradiction['conviction']:.2f} | opus_verdict={opus_verdict} "
+                            f"(conf={consult.confidence:.2f}): {consult.reasoning}"
+                        )
+                        if opus_verdict == "HOLD" or opus_verdict == opposite_side:
+                            logger.info(
+                                "[Trader] %s Corey contradiction → Opus override to HOLD "
+                                "(opus=%s, trader=%s)", symbol, opus_verdict, trader_side,
+                            )
+                            decision = self._hold_decision(
+                                symbol=symbol,
+                                reasoning=(
+                                    f"Opus overrode {trader_side} to HOLD on Corey contradiction. "
+                                    f"Corey bias={contradiction['bias']} "
+                                    f"conv={contradiction['conviction']:.2f}. "
+                                    f"Opus verdict={opus_verdict}: {consult.reasoning}"
+                                ),
+                                risk_notes=(
+                                    "Corey session bias contradicted trader direction with "
+                                    "high conviction; Opus confirmed HOLD."
+                                ),
+                            )
+                        else:
+                            # Opus agreed with trader — halve size as risk adjustment.
+                            original_qty = decision.quantity
+                            decision.quantity = max(1, decision.quantity // 2)
+                            decision.reasoning += audit + (
+                                f" | size adjusted {original_qty} → {decision.quantity} "
+                                f"(50% conflict haircut)"
+                            )
+                            logger.info(
+                                "[Trader] %s Corey contradiction → Opus proceed, "
+                                "quantity %d → %d",
+                                symbol, original_qty, decision.quantity,
+                            )
+                except Exception as _contra_err:
+                    logger.warning(
+                        "[Trader] Corey-contradiction advisor raised for %s: %s",
+                        symbol, _contra_err,
+                    )
                     # graceful: continue with original decision
 
             logger.info(
