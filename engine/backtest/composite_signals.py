@@ -64,11 +64,15 @@ def generate_composite_signals(
     df: pd.DataFrame,
     symbol: str = "MES",
     band_mult: float = 2.5,
-    stop_mult: float = 0.5,
+    stop_mult: float = 0.5,  # legacy: ignored here; kept for call-site compat
     atr_period: int = 14,
     entry_threshold: float = ENTRY_THRESHOLD,
     stc_oversold: float | None = None,
     stc_overbought: float | None = None,
+    stop_atr_mult: float = 1.00,
+    t1_atr_mult: float = 2.50,
+    t2_atr_mult: float = 4.00,
+    t3_atr_mult: float = 6.00,
 ) -> pd.DataFrame:
     """
     Generate composite MES signals combining STC + ORB + VWAP with
@@ -263,13 +267,14 @@ def generate_composite_signals(
     result["bias"] = result.get("bias", pd.Series("NEUTRAL", index=result.index))
 
     # ── Composite stop/target ATR multiples ──────────────────────────────
-    # OPTION A + B: STC gate with moderate stop (1.0 ATR) and wide target (2.5 ATR).
-    # R:R = 2.5/1.0 = 2.5:1  →  breakeven WR = 29%  (we achieve ~35%)
-    # Expected value: 0.35*(2.5) - 0.65*(1.0) = 0.875 - 0.65 = +0.225 (POSITIVE)
-    COMP_STOP_ATR = 1.00
-    COMP_T1_ATR = 2.50
-    COMP_T2_ATR = 4.00
-    COMP_T3_ATR = 6.00  # Sprint 16: fixes exit_date=None (target_3 was always NaN)
+    # Defaults (stop=1.00, T1=2.50, T2=4.00, T3=6.00) come from the Sprint-16
+    # STC-gate tuning. Now honored from caller params so Bayesian / grid
+    # search across these axes is actually effective. Pre-2026-04-20 these
+    # were hardcoded, silently defeating 4 of 6 search dimensions.
+    COMP_STOP_ATR = stop_atr_mult
+    COMP_T1_ATR = t1_atr_mult
+    COMP_T2_ATR = t2_atr_mult
+    COMP_T3_ATR = t3_atr_mult
 
     # LONG entries
     long_idx = result.index[is_long_entry]
