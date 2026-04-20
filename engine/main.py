@@ -1627,6 +1627,76 @@ async def lifespan(app: FastAPI):
             f"Bookmark vault renderer init failed (non-fatal): {_bvr_err}"
         )
 
+    # MES session forward-recorder — observational experiment that accumulates
+    # (Corey bias + gamma levels + IB levels → hypothesis → session outcome)
+    # rows for post-hoc evaluation once ~8-12 weeks of data exist. Does NOT
+    # trade. See memory/project_mes_forward_recorder.md for experiment design.
+    try:
+        from experiments.mes_session_recorder import record_session as _mes_record
+        from experiments.mes_session_outcome import fill_outcomes as _mes_fill_outcomes
+
+        async def run_mes_session_recorder() -> None:
+            try:
+                result = await _mes_record(data_manager=data_manager)
+                logger.info(
+                    "[MESRecorder] inserted=%s side=%s reason=%s warnings=%s",
+                    result.inserted,
+                    result.hypothesis_side,
+                    result.hypothesis_reason,
+                    result.warnings,
+                )
+            except Exception as exc:
+                logger.error("[MESRecorder] morning pass failed: %s", exc, exc_info=True)
+
+        async def run_mes_session_outcome() -> None:
+            try:
+                result = await _mes_fill_outcomes(data_manager=data_manager)
+                logger.info(
+                    "[MESOutcome] filled=%d skipped_existing=%d skipped_no_data=%d errors=%s",
+                    result.updated_rows,
+                    result.skipped_existing,
+                    result.skipped_no_data,
+                    result.errors,
+                )
+            except Exception as exc:
+                logger.error("[MESOutcome] afternoon pass failed: %s", exc, exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_mes_session_recorder,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=8,
+                    minute=30,
+                    timezone="America/Chicago",
+                ),
+                id="mes_session_recorder",
+                name="MES Session Hypothesis Recorder (morning)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=1800,
+            )
+            scheduler.add_job(
+                run_mes_session_outcome,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=15,
+                    minute=15,
+                    timezone="America/Chicago",
+                ),
+                id="mes_session_outcome",
+                name="MES Session Hypothesis Outcome (afternoon)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info(
+                "✅ MES session forward-recorder registered — "
+                "morning 08:30 CT / outcome 15:15 CT, Mon-Fri"
+            )
+    except Exception as _mes_err:
+        logger.warning(f"MES forward-recorder init failed (non-fatal): {_mes_err}")
+
     # Corey staleness watchdog (hourly, weekdays 9-17 CT) — alerts if
     # discord_corey_commentary stops refreshing. Agents consume corey_session_bias
     # derived from this table; silent staleness = silent signal drift.
