@@ -1216,6 +1216,8 @@ async def lifespan(app: FastAPI):
         schwab_connector,
     )
     inject_discord_data_manager(data_manager)
+    from routers.market_router import inject_dependencies as inject_market_deps
+    inject_market_deps(data_manager=data_manager)
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_scheduler_router_scheduler(scheduler)
@@ -1527,6 +1529,81 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Discord nightly import job registered — fires Mon–Fri at 06:00 CT")
     except Exception as _discord_err:
         logger.warning(f"Discord nightly import init failed (non-fatal): {_discord_err}")
+
+    # Corey staleness watchdog (hourly, weekdays 9-17 CT) — alerts if
+    # discord_corey_commentary stops refreshing. Agents consume corey_session_bias
+    # derived from this table; silent staleness = silent signal drift.
+    try:
+
+        async def run_corey_staleness_check() -> None:
+            """Alert on WhatsApp if Corey's commentary feed is >48h stale on a weekday."""
+            try:
+                import sqlite3
+                from datetime import datetime, timedelta
+                from zoneinfo import ZoneInfo
+                from config import settings
+                from notifications.openclaw_notifier import notify_corey_stale
+
+                ct = ZoneInfo("America/Chicago")
+                now_ct = datetime.now(ct)
+                if now_ct.weekday() >= 5:  # Saturday/Sunday — no alert
+                    return
+
+                with sqlite3.connect(settings.SQLITE_DB_PATH) as conn:
+                    row = conn.execute(
+                        "SELECT MAX(timestamp) FROM discord_corey_commentary"
+                    ).fetchone()
+
+                if not row or not row[0]:
+                    logger.warning("[CoreyStale] discord_corey_commentary empty — firing alert")
+                    await notify_corey_stale(days_stale=999, last_message_date="never")
+                    return
+
+                last_raw = str(row[0])
+                try:
+                    last_dt = datetime.fromisoformat(last_raw.replace("Z", "+00:00"))
+                    if last_dt.tzinfo is None:
+                        last_dt = last_dt.replace(tzinfo=ZoneInfo("UTC"))
+                except ValueError:
+                    logger.error("[CoreyStale] Unparseable last-msg timestamp: %r", last_raw)
+                    return
+
+                age = now_ct - last_dt.astimezone(ct)
+                days_stale = age.total_seconds() / 86400.0
+                if days_stale >= 2.0:
+                    logger.warning(
+                        "[CoreyStale] discord_corey_commentary %.1f days stale — alerting",
+                        days_stale,
+                    )
+                    await notify_corey_stale(
+                        days_stale=int(days_stale),
+                        last_message_date=last_dt.strftime("%Y-%m-%d %H:%M CT"),
+                    )
+                else:
+                    logger.debug(
+                        "[CoreyStale] OK — last msg %.1f days ago", days_stale
+                    )
+            except Exception as exc:
+                logger.error("[CoreyStale] check failed (non-fatal): %s", exc, exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_corey_staleness_check,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour="9-17",
+                    minute=0,
+                    timezone="America/Chicago",
+                ),
+                id="corey_staleness_watchdog",
+                name="Corey Commentary Staleness Watchdog",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=1800,
+            )
+            logger.info("✅ Corey staleness watchdog registered — hourly Mon-Fri 9-17 CT")
+    except Exception as _corey_err:
+        logger.warning(f"Corey staleness watchdog init failed (non-fatal): {_corey_err}")
 
     # Initialize IB Gateway Health Monitor (every 15 minutes, Mon-Fri 8:00am-4:45pm CT)
     try:
