@@ -457,6 +457,41 @@ async def notify_kill_switch_deactivated(
     return result
 
 
+# Corey staleness alerts — dedupe by day so we don't spam while the DCE
+# pipeline is broken for multiple days. Reset on successful recovery.
+_corey_stale_last_alert_date: str = ""
+
+
+async def notify_corey_stale(days_stale: int, last_message_date: str) -> bool:
+    """Send WhatsApp alert when Corey's discord_corey_commentary stops refreshing.
+
+    Corey's session bias is an agent input — silent staleness = silent signal drift.
+    Fires at most once per calendar day to avoid spam during multi-day outages.
+    """
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw Corey-stale notify suppressed in TESTING mode")
+        return False
+
+    global _corey_stale_last_alert_date
+    today_ct = datetime.now(_CT).strftime("%Y-%m-%d")
+    if _corey_stale_last_alert_date == today_ct:
+        logger.info("Corey-stale alert already sent today (%s) — suppressing dedupe", today_ct)
+        return False
+
+    ts = _ct_time()
+    msg = (
+        f"JARVIS CORey FEED STALE — {ts} CT\n"
+        f"discord_corey_commentary has not refreshed in {days_stale} days.\n"
+        f"Last ingested message: {last_message_date}\n"
+        f"Agents are consuming a stale corey_session_bias.\n"
+        f"Rotate DCE token and run: python -m scripts.nightly_discord_export"
+    )
+    result = await _send(msg)
+    if result:
+        _corey_stale_last_alert_date = today_ct
+    return result
+
+
 async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) -> bool:
     """Send WhatsApp alert when regime changes. No cooldown (regimes change rarely)."""
     if os.getenv("TESTING"):
