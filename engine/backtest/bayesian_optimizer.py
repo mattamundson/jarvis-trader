@@ -54,14 +54,29 @@ SEARCH_SPACE = {
 
 MIN_TRADES_FOR_SCORE = 3
 
+# Hard penalty for net-losing strategies. Large finite negative (not -inf) so
+# scikit-optimize's GP surrogate stays numerically stable. Any realistic
+# winning score is bounded by sharpe_cap * pf_cap ≈ 20 × 20 = 400, so -1e6
+# is unambiguously worse and the optimizer steers away from PF<1 regions.
+_LOSING_STRATEGY_PENALTY = -1e6
+
 
 def _score_result(result: Optional[BacktestResult]) -> float:
     """
     Objective value: sharpe * profit_factor (higher = better).
-    Returns 0.0 for None / insufficient trades.
+
+    Returns 0.0 for None / insufficient trades. Returns _LOSING_STRATEGY_PENALTY
+    for strategies with profit_factor < 1.0 — a PF below 1 means the strategy
+    is net-losing regardless of sharpe, so it must never be optimizer-preferred.
     """
     if result is None or result.total_trades < MIN_TRADES_FOR_SCORE:
         return 0.0
+    # Hard PF gate: net-losing strategies are rejected before multiplication.
+    # Without this, sr * pf can emit positive scores when sharpe is positive on
+    # per-period returns but PF<1 on per-trade basis (possible when a few large
+    # losing trades coexist with many small winning bars).
+    if result.profit_factor < 1.0:
+        return _LOSING_STRATEGY_PENALTY
     pf = min(result.profit_factor, 20.0)
     sr = max(result.sharpe_ratio, 0.0)
     return sr * pf
