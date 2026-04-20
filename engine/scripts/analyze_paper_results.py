@@ -1,13 +1,21 @@
 """Paper-trading empirical analyzer.
 
-Reads `engine/data/jarvis_trader.db` read-only, emits a JSON report covering:
+**Multi-DB aware** (2026-04-19 v2): walks all `.db` files in `engine/data/`:
+  - `jarvis_trader.db`    (main DB, 30 tables)
+  - `agent_feedback.db`   (AgentFeedbackTracker — `trade_outcomes` for Track H IC)
+  - `llm_costs.db`        (LLM call/cost tracking — `llm_calls`, not pipeline_llm_costs)
+  - `cot_cache.db`        (Commitments of Traders data cache)
+
+Emits a JSON report covering:
   - schema + analysis window
   - paper_trades breakdown (organic vs sync vs test vs contaminated)
   - pipeline_runs + decisions distribution per symbol
-  - data-availability matrix for the 9 analytics tables
+  - data-availability matrix for analytics tables across ALL DB files
   - contamination detection (futures-symbol records priced in equity range)
   - daily_pnl sanity (flags identical-every-day patterns)
   - full_pipeline_json structural extraction for non-HOLD decisions
+  - trade_outcomes (Track H input) from agent_feedback.db
+  - llm_calls cost + token tracking from llm_costs.db
 
 Usage:
     python -m engine.scripts.analyze_paper_results \\
@@ -15,10 +23,13 @@ Usage:
         --start 2026-04-10 \\
         --end   2026-04-19
 
+The `--db` arg only points at the main DB; the other DBs are resolved
+relative to the main DB's parent directory (i.e. always the engine/data dir).
+
 Outputs JSON to stdout. Pipe to `python -m json.tool` for pretty print,
 or to a file for downstream diffing.
 
-No writes to the DB. Safe to run while engine is live.
+No writes to any DB. Safe to run while engine is live.
 """
 
 from __future__ import annotations
@@ -97,15 +108,104 @@ def _max_drawdown(pnls_chron: list[float]) -> float:
     return max_dd
 
 
-def analyze(db_path: str, start: str, end: str) -> dict[str, Any]:
+def _analyze_agent_feedback_db(db_path: str, start: str, end: str) -> dict[str, Any]:
+    """trade_outcomes rows + test-vs-real classification."""
+    import os
+    if not os.path.exists(db_path):
+        return {"exists": False}
     con = sqlite3.connect(db_path)
     con.row_factory = sqlite3.Row
+    try:
+        n_total = con.execute("SELECT COUNT(*) FROM trade_outcomes").fetchone()[0]
+        rows = [dict(r) for r in con.execute(
+            "SELECT trade_id, timestamp, symbol, direction, pnl_usd, outcome "
+            "FROM trade_outcomes WHERE timestamp >= ? AND timestamp < ? "
+            "ORDER BY timestamp",
+            (start, end + "T23:59:59Z"),
+        )]
+        test_rows = [r for r in rows if r["trade_id"].startswith("test-")]
+        real_rows = [r for r in rows if not r["trade_id"].startswith("test-")]
+        return {
+            "exists": True,
+            "n_total": n_total,
+            "n_in_window": len(rows),
+            "n_real_in_window": len(real_rows),
+            "n_test_in_window": len(test_rows),
+            "real_rows": real_rows,
+        }
+    except sqlite3.OperationalError as e:
+        return {"exists": True, "error": str(e)}
+
+
+def _analyze_llm_costs_db(db_path: str, start: str, end: str) -> dict[str, Any]:
+    """llm_calls: per-day/model cost + token aggregate, plus broken-tracker detection."""
+    import os
+    if not os.path.exists(db_path):
+        return {"exists": False}
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    try:
+        n_total = con.execute("SELECT COUNT(*) FROM llm_calls").fetchone()[0]
+        by_day_model = [dict(r) for r in con.execute(
+            """
+            SELECT DATE(timestamp) d, model, COUNT(*) n,
+                   SUM(input_tokens) in_tok, SUM(output_tokens) out_tok,
+                   SUM(COALESCE(cost_usd, 0)) cost
+            FROM llm_calls WHERE timestamp >= ? AND timestamp < ?
+            GROUP BY d, model ORDER BY d DESC, n DESC
+            """,
+            (start, end + "T23:59:59Z"),
+        )]
+        # Detect broken tracker: rows where input_tokens=0 despite the call happening
+        n_zero_tok = con.execute(
+            "SELECT COUNT(*) FROM llm_calls WHERE timestamp >= ? AND timestamp < ? AND input_tokens = 0",
+            (start, end + "T23:59:59Z"),
+        ).fetchone()[0]
+        n_in_window = con.execute(
+            "SELECT COUNT(*) FROM llm_calls WHERE timestamp >= ? AND timestamp < ?",
+            (start, end + "T23:59:59Z"),
+        ).fetchone()[0]
+        total_cost = con.execute(
+            "SELECT SUM(COALESCE(cost_usd,0)) FROM llm_calls WHERE timestamp >= ? AND timestamp < ?",
+            (start, end + "T23:59:59Z"),
+        ).fetchone()[0] or 0.0
+        return {
+            "exists": True,
+            "n_total": n_total,
+            "n_in_window": n_in_window,
+            "zero_token_rows_in_window": n_zero_tok,
+            "tracker_healthy": n_in_window > 0 and n_zero_tok < n_in_window * 0.5,
+            "total_cost_usd_in_window": round(total_cost, 4),
+            "by_day_model": by_day_model,
+        }
+    except sqlite3.OperationalError as e:
+        return {"exists": True, "error": str(e)}
+
+
+def analyze(db_path: str, start: str, end: str) -> dict[str, Any]:
+    import os
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+
+    # Sibling DB paths (always resolve to the same engine/data directory).
+    data_dir = os.path.dirname(os.path.abspath(db_path))
+    agent_feedback_db = os.path.join(data_dir, "agent_feedback.db")
+    llm_costs_db = os.path.join(data_dir, "llm_costs.db")
 
     out: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "db_path": db_path,
+        "sibling_dbs": {
+            "agent_feedback_db": agent_feedback_db,
+            "llm_costs_db": llm_costs_db,
+        },
         "window": {"start": start, "end": end},
     }
+
+    # Multi-DB sections — added in v2 (2026-04-19) after Task 2.5 discovered
+    # the multi-DB architecture was missed by v1.
+    out["agent_feedback"] = _analyze_agent_feedback_db(agent_feedback_db, start, end)
+    out["llm_costs"] = _analyze_llm_costs_db(llm_costs_db, start, end)
 
     # Schema version
     sv = con.execute(
