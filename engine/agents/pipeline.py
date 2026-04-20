@@ -664,6 +664,22 @@ class TradingPipeline:
         except Exception as _ib_err:
             logger.debug("[Pipeline] IBLevelProvider failed (non-fatal): %s", _ib_err)
 
+        # ── A1: Unified Discord briefing — aggregates Corey bias + IB levels +
+        # keyword sentiment + recent bot signal into a single dict that
+        # bull/bear/debate can read without re-wiring 4 providers each.
+        # Facade has a 5-min TTL; per-bar cost is negligible after first call.
+        try:
+            from discord.briefing import get_discord_briefing
+            _briefing = await get_discord_briefing(symbol, lookback_hours=24)
+            analyst_reports["discord_briefing"] = _briefing.to_dict()
+            if _briefing.warnings:
+                logger.debug(
+                    "[Pipeline] Discord briefing warnings for %s: %s",
+                    symbol, _briefing.warnings,
+                )
+        except Exception as _brief_err:
+            logger.debug("[Pipeline] Discord briefing failed (non-fatal): %s", _brief_err)
+
         pipeline_result["analyst_reports"] = analyst_reports
 
         # ── Technical-Only Fallback: LLM credits exhausted ────────────────
