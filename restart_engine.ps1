@@ -1,4 +1,86 @@
 
+$repoRoot = "C:\Users\mattm\ThinkorSwim\jarvis-trader"
+$pythonExe = Join-Path $repoRoot "engine\.venv\Scripts\python.exe"
+$envFile = Join-Path $repoRoot "engine\.env"
+
+# ── PM2 fast path ────────────────────────────────────────────────────────────
+# If jarvis-engine is registered with PM2, delegate the restart to PM2 instead
+# of racing our port-kill against PM2's auto-restart. History: when the two
+# fight, PM2 sometimes wins the rebind and `Start-Process` silently exits,
+# leaving the OLD uvicorn running (uptime does not reset, new code does not
+# load). The port-based logic below is kept only for non-PM2 setups.
+$pm2Managed = $false
+try {
+    $pm2Json = pm2 jlist 2>$null | Out-String
+    if ($pm2Json -match '"name"\s*:\s*"jarvis-engine"') { $pm2Managed = $true }
+} catch {}
+
+if ($pm2Managed) {
+    Write-Host "Detected jarvis-engine under PM2 - using pm2 restart (port-kill path skipped)"
+
+    if (Test-Path $envFile) {
+        $clientId = [int]((Get-Date).ToString("ss")) + 200
+        (Get-Content $envFile) -replace "IBKR_CLIENT_ID=\d+", "IBKR_CLIENT_ID=$clientId" | Set-Content $envFile
+        Write-Host "Using IBKR client ID: $clientId"
+    }
+
+    pm2 restart jarvis-engine | Out-Host
+    Write-Host "Waiting for engine to come up..."
+    # Poll /health with a 60s ceiling. Engine bootstrap (SafetyLayer, PnL,
+    # scheduler, IB init) routinely takes 30-45s so a fixed 15s Sleep was
+    # racing the port open.
+    $deadline = (Get-Date).AddSeconds(60)
+    $healthy = $false
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $r = Invoke-WebRequest -Uri "http://localhost:8010/health" -UseBasicParsing -TimeoutSec 3
+            if ($r.StatusCode -eq 200) { $healthy = $true; break }
+        } catch {}
+        Start-Sleep -Seconds 2
+    }
+    if (-not $healthy) {
+        Write-Host "ERROR: engine did not respond on /health within 60s after pm2 restart."
+        exit 1
+    }
+
+    # Verify the cycle actually happened. PM2 has been observed no-op'ing on
+    # transient conditions. A fresh restart should have uptime in the low
+    # seconds; anything over 60s means we're looking at a stale process.
+    # Parse pm_uptime via regex — ConvertFrom-Json trips over PM2's duplicate
+    # case-insensitive env-var keys (USERNAME vs username) on Windows.
+    $uptimeMs = -1
+    try {
+        $raw = (pm2 jlist 2>$null | Out-String)
+        # Locate the jarvis-engine record and pull its pm_uptime number.
+        $idx = $raw.IndexOf('"name":"jarvis-engine"')
+        if ($idx -ge 0) {
+            $slice = $raw.Substring($idx)
+            $m = [regex]::Match($slice, '"pm_uptime"\s*:\s*(\d+)')
+            if ($m.Success) {
+                $nowMs = [int64]([DateTimeOffset]::Now.ToUnixTimeMilliseconds())
+                $uptimeMs = $nowMs - [int64]$m.Groups[1].Value
+            }
+        }
+    } catch {
+        Write-Host "Could not read pm2 jlist for uptime verification: $($_.Exception.Message)"
+    }
+
+    if ($uptimeMs -lt 0) {
+        Write-Host "ERROR: could not verify pm2 restart (jlist unreadable). Aborting so caller doesn't mistake this for success."
+        exit 1
+    }
+    if ($uptimeMs -gt 60000) {
+        Write-Host ("ERROR: pm2 restart did NOT cycle the process - uptime=" + $uptimeMs + "ms (expected under 60000).")
+        Write-Host "  Stale uvicorn is still running. Try: pm2 delete jarvis-engine ; then re-run this script."
+        exit 1
+    }
+
+    Write-Host ("Engine UP: 200 (pm2 uptime " + $uptimeMs + "ms - fresh)")
+    exit 0
+}
+
+# ── Non-PM2 path: Task-Scheduler or plain uvicorn via Start-Process ──────────
+
 # If the JarvisEngine scheduled task is registered, use it for clean stop/start.
 $taskName = "JarvisEngine"
 $taskExists = (schtasks /query /tn $taskName 2>$null) -match $taskName
@@ -35,10 +117,6 @@ function Kill-WSL2SafePids8010 {
         taskkill /PID $p /F 2>$null | Out-Null
     }
 }
-
-$repoRoot = "C:\Users\mattm\ThinkorSwim\jarvis-trader"
-$pythonExe = Join-Path $repoRoot "engine\.venv\Scripts\python.exe"
-$envFile = Join-Path $repoRoot "engine\.env"
 
 $maxKillPasses = 3
 for ($i = 0; $i -lt $maxKillPasses; $i++) {
