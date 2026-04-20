@@ -913,6 +913,59 @@ def migration_020(conn: sqlite3.Connection) -> None:
     logger.info("Migration 020 applied — supervisor_decisions table created.")
 
 
+def migration_022(conn: sqlite3.Connection) -> None:
+    """
+    022 — mes_session_hypothesis table for the forward-recorder experiment.
+
+    Records daily pre-open state (Corey bias + TradingView gamma snapshot
+    + IB levels + hypothesis side) and the session outcome (high/low/close
+    + outcome_delta vs. hypothesis). Powers the post-grid-search experiment
+    to determine whether Corey-bias + gamma levels predict MES session
+    direction, since gamma levels have no historical archive and must be
+    recorded forward.
+
+    Schema-first design — extra instruments can be added later via the
+    symbol column without another migration.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mes_session_hypothesis (
+            id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+            date                       TEXT NOT NULL,              -- YYYY-MM-DD, session date in CT
+            symbol                     TEXT NOT NULL,              -- "MES" (expandable)
+            recorded_at                TEXT NOT NULL,              -- ISO-8601 UTC when morning row was written
+            corey_bias                 TEXT,                       -- bullish|bearish|neutral|null
+            corey_conviction           REAL,                       -- 0.0-1.0
+            corey_session_type         TEXT,                       -- range_day|trend_day|outside_bar|uncertain|null
+            corey_ib_bias              TEXT,                       -- above_ib|below_ib|inside_ib|null
+            corey_data_quality         TEXT,                       -- fresh|stale|none
+            gamma_snapshot_json        TEXT,                       -- serialized {gex_flip,call_wall,put_wall,hvl,vol_trigger_up,vol_trigger_down,max_pain,data_quality}
+            ib_levels_json             TEXT,                       -- serialized DiscordBriefing.ib_levels dict
+            entry_hypothesis_side      TEXT,                       -- long|short|skip (derived at record time)
+            entry_hypothesis_reason    TEXT,                       -- short text explaining why
+            open_price                 REAL,                       -- CT 08:30 open snapshot (or NULL if unavailable)
+            high_price                 REAL,                       -- session high (filled by outcome job)
+            low_price                  REAL,                       -- session low (filled by outcome job)
+            close_price                REAL,                       -- CT 15:00 close (filled by outcome job)
+            outcome_delta              REAL,                       -- close-open * (side sign), in points (filled by outcome job)
+            outcome_recorded_at        TEXT,                       -- ISO-8601 UTC when outcome row was filled
+            UNIQUE(date, symbol)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mes_session_hyp_date "
+        "ON mes_session_hypothesis(date DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mes_session_hyp_outcome_missing "
+        "ON mes_session_hypothesis(date, outcome_recorded_at) "
+        "WHERE outcome_recorded_at IS NULL"
+    )
+    conn.commit()
+    logger.info("Migration 022 applied — mes_session_hypothesis table created.")
+
+
 def migration_021(conn: sqlite3.Connection) -> None:
     """
     021 — paper_trades stop_loss / take_profit columns.
@@ -959,6 +1012,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_019,  # version 19
     migration_020,  # version 20
     migration_021,  # version 21
+    migration_022,  # version 22
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -983,6 +1037,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Full pipeline JSON: full_pipeline_json column on decisions for stage-by-stage reasoning storage",
     "Supervisor decisions: supervisor_decisions table for Hermes-pattern notifier gating (ACK/REVIEW/ESCALATE/HOLD audit log)",
     "Paper trades: stop_loss and take_profit columns for insert_paper_trade / fresh DB compatibility",
+    "MES session hypothesis: forward-recorder table for Corey bias + gamma levels daily snapshots + session outcomes",
 ]
 
 
