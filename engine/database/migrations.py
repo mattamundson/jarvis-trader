@@ -659,8 +659,16 @@ def migration_013(conn: sqlite3.Connection) -> None:
 
     Adds two tables for the trading memory consolidation system:
 
-    learning_events  — individual learning events from each trade execution
-    trading_patterns — aggregated patterns extracted nightly from trade history
+    learning_events  — GHOST TABLE. Has no writers anywhere in the codebase.
+                       The per-trade feedback signal is actually written to
+                       `trade_outcomes` by AgentFeedbackTracker.record_outcome()
+                       (analytics/agent_feedback.py). learning_events is kept
+                       in schema only for historical migration replay. Readers
+                       should query `trade_outcomes` instead. Do not add a
+                       writer here without deleting trade_outcomes first — you
+                       will end up with two half-populated parallel tables.
+    trading_patterns — aggregated patterns extracted nightly. Active: written
+                       by learning/pattern_db.py and learning/patterns.py.
     """
     # ── learning_events ───────────────────────────────────────────────────────
     conn.execute(

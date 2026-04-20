@@ -671,17 +671,20 @@ async def get_learning_status() -> dict:
                 "error": "Database unavailable",
             }
 
-        # Count feedback lessons (from learning_events table or similar)
+        # Count feedback lessons. The original `learning_events` table from
+        # migration 013 was never wired up (see migrations.py ghost-table note);
+        # `trade_outcomes` is the actual per-trade feedback record written by
+        # AgentFeedbackTracker.record_outcome() and is the correct source here.
         try:
             lesson_rows = db.query(
-                "SELECT COUNT(*) as count, MAX(created_at) as last_at FROM learning_events"
+                "SELECT COUNT(*) as count, MAX(timestamp) as last_at FROM trade_outcomes"
             )
             lesson_count = lesson_rows[0]["count"] if lesson_rows else 0
             last_lesson_at = (
                 lesson_rows[0]["last_at"] if lesson_rows and lesson_rows[0]["last_at"] else None
             )
         except Exception as e:
-            logger.debug(f"Could not query learning_events: {e}")
+            logger.debug(f"Could not query trade_outcomes: {e}")
             lesson_count = 0
             last_lesson_at = None
 
