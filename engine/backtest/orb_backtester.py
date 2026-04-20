@@ -11,7 +11,7 @@ Trade simulation rules:
   - After T1 hit: move stop to breakeven
   - Max 1 open position per session (first valid signal only)
   - Session end (15:59 bar close): force exit any open position at close
-  - Slippage: 1 tick ($12.50 per contract for MES) each way
+  - Slippage: 1 tick ($1.25 per contract for MES) each way
   - Commission: $0.62 per contract per leg (IB Tiered for micro futures)
 
 Contract specs (MES):
