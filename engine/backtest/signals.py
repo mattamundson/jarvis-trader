@@ -98,12 +98,24 @@ INSTRUMENT_PARAMS: Dict[str, tuple] = {
 # Instruments that use composite signal generation (STC+ORB+VWAP regime-adaptive).
 # Sprint 16: MCL and MNQ moved back to standard generate_signals() — the WF validation
 # used the standard path (WFE=0.82/0.57), and the composite path produced broken
-# exit_date=None artifacts. MES remains composite for data-collection purposes only.
-COMPOSITE_INSTRUMENTS = {"MES"}
+# exit_date=None artifacts. MES moved to SMA trend-following (2026-04-20 pivot).
+COMPOSITE_INSTRUMENTS: set[str] = set()  # no active composite instruments
+
+# Instruments that use SMA trend-following signal generation.
+# MES pivot (2026-04-20): WFO winner SMA(50,200)+2.0×ATR, train PF 2.06 / test PF 1.69.
+TREND_INSTRUMENTS = {"MES"}
 
 
 def generate_instrument_signals(df, symbol: str, **kwargs):
-    """Route to composite or standard signal generation based on instrument."""
+    """Route to trend, composite, or standard signal generation based on instrument."""
+    if symbol in TREND_INSTRUMENTS:
+        from backtest.trend_signals import get_sma_trend_params, generate_sma_trend_signals
+
+        params = get_sma_trend_params(symbol)
+        if params:
+            # Allow caller overrides (e.g. optimizer varying fast/slow)
+            merged = {**params, **{k: v for k, v in kwargs.items() if k in ("fast", "slow", "atr_trail_mult")}}
+            return generate_sma_trend_signals(df, **merged)
     if symbol in COMPOSITE_INSTRUMENTS:
         from backtest.composite_signals import generate_composite_signals
 
