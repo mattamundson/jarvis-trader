@@ -47,6 +47,30 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 
+# LLM-path health signal for /health endpoint. Updated by the terminal
+# except-block below when we see the underlying Anthropic body. Read by
+# health_router.py to report `llm_path_healthy` without needing a new probe.
+_LLM_PATH_STATE: dict = {
+    "healthy": True,
+    "last_failure_ts": None,
+    "last_failure_reason": None,
+    "last_failure_agent": None,
+}
+
+
+def get_llm_path_state() -> dict:
+    """Returns a copy of the current LLM-path health snapshot."""
+    return dict(_LLM_PATH_STATE)
+
+
+def _is_credit_exhaustion(body_or_text: object) -> bool:
+    """Detect Anthropic credit-balance-too-low signature in an error body/string."""
+    if body_or_text is None:
+        return False
+    s = str(body_or_text).lower()
+    return "credit balance is too low" in s or "credit_balance_too_low" in s or "credit balance too low" in s
+
+
 @dataclass
 class LLMCallResult:
     """Result of an LLM API call with metrics."""
@@ -130,6 +154,13 @@ class JarvisLLMClient:
         cache_salt: str = "",
     ) -> LLMCallResult:
         """Handle successful API call."""
+        # Any success clears the credit-exhaustion health flag (transient recovery)
+        if not _LLM_PATH_STATE["healthy"]:
+            _LLM_PATH_STATE["healthy"] = True
+            logger.info(
+                "LLM path healthy again after prior failure "
+                f"(was: {_LLM_PATH_STATE['last_failure_reason']})"
+            )
         latency_ms = int((time.time() - start_time) * 1000)
         input_tokens = result.usage.input_tokens
         output_tokens = result.usage.output_tokens
@@ -451,6 +482,7 @@ class JarvisLLMClient:
 
             except Exception as e:
                 last_error = e
+                body_str: str = ""
                 raw = getattr(e, "last_attempt", None)
                 if raw is not None:
                     try:
@@ -458,14 +490,30 @@ class JarvisLLMClient:
                         body = getattr(underlying, "body", None) or getattr(
                             getattr(underlying, "response", None), "text", None
                         )
+                        body_str = str(body) if body else str(underlying)
                         logger.error(
                             f"[{current_model}] {agent_name} final failure: "
                             f"{type(underlying).__name__}: {body or underlying}"
                         )
                     except Exception:
+                        body_str = str(e)
                         logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
                 else:
+                    body_str = str(e)
                     logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
+
+                if _is_credit_exhaustion(body_str):
+                    _LLM_PATH_STATE["healthy"] = False
+                    _LLM_PATH_STATE["last_failure_ts"] = datetime.now(timezone.utc).isoformat()
+                    _LLM_PATH_STATE["last_failure_reason"] = body_str[:500]
+                    _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                    try:
+                        from notifications.openclaw_notifier import notify_credits_exhausted
+                        asyncio.create_task(
+                            notify_credits_exhausted(reason=body_str[:300], agent=agent_name)
+                        )
+                    except Exception as notify_err:
+                        logger.debug(f"credits-exhausted notifier failed: {notify_err}")
                 break
 
         return await self._handle_failure(

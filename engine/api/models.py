@@ -117,6 +117,9 @@ class HealthResponse(BaseModel):
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
     cache: Optional[CacheStatus] = Field(None, description="Cache status")
+    llm_available: Optional[bool] = Field(True, description="Whether Anthropic API key is configured")
+    llm_path_healthy: Optional[bool] = Field(True, description="Whether the last-observed LLM call succeeded (false = credits/auth outage)")
+    llm_path_details: Optional[Dict[str, Any]] = Field(None, description="Populated only when llm_path_healthy=false")
 
 
 class SubsystemStatus(BaseModel):

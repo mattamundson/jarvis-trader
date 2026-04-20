@@ -108,10 +108,28 @@ async def _health_inner() -> dict:
         pass
 
     now = datetime.now(timezone.utc)
-    status = "ok" if db_ok else "degraded"
     ib_health = await _get_ib_gateway_health()
 
-    return {
+    llm_path_healthy = True
+    llm_path_details: dict = {}
+    try:
+        from llm.client import get_llm_path_state
+
+        llm_state = get_llm_path_state()
+        llm_path_healthy = bool(llm_state.get("healthy", True))
+        if not llm_path_healthy:
+            llm_path_details = {
+                "last_failure_ts": llm_state.get("last_failure_ts"),
+                "last_failure_agent": llm_state.get("last_failure_agent"),
+                "last_failure_reason": llm_state.get("last_failure_reason"),
+            }
+    except Exception:
+        # If the client module hasn't been imported yet, assume healthy
+        pass
+
+    status = "ok" if (db_ok and llm_path_healthy) else "degraded"
+
+    response = {
         "status": status,
         "version": "1.1.0",
         "timestamp": now.isoformat(),
@@ -123,7 +141,11 @@ async def _health_inner() -> dict:
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
         "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,
+        "llm_path_healthy": llm_path_healthy,
     }
+    if llm_path_details:
+        response["llm_path_details"] = llm_path_details
+    return response
 
 
 @router.get(

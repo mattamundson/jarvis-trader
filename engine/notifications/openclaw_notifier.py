@@ -492,6 +492,43 @@ async def notify_corey_stale(days_stale: int, last_message_date: str) -> bool:
     return result
 
 
+_credits_exhausted_last_alert_date: str = ""
+
+
+async def notify_credits_exhausted(reason: str = "", agent: str = "") -> bool:
+    """Send WhatsApp alert when Anthropic returns a credit_balance_too_low error.
+
+    This is the loudest failure mode the LLM path can silently inhabit — /health
+    stays green while 100% of calls 400 out. One alert per calendar day dedupe.
+    """
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw credits-exhausted notify suppressed in TESTING mode")
+        return False
+
+    global _credits_exhausted_last_alert_date
+    today_ct = datetime.now(_CT).strftime("%Y-%m-%d")
+    if _credits_exhausted_last_alert_date == today_ct:
+        logger.info(
+            "credits-exhausted alert already sent today (%s) — suppressing dedupe", today_ct
+        )
+        return False
+
+    ts = _ct_time()
+    agent_line = f"Triggered by: {agent}\n" if agent else ""
+    reason_line = f"Anthropic reply: {reason}\n" if reason else ""
+    msg = (
+        f"JARVIS LLM PATH DOWN — {ts} CT\n"
+        f"Anthropic rejected a call with credit_balance_too_low.\n"
+        f"{agent_line}{reason_line}"
+        f"All paid LLM calls will fail until credits are topped up.\n"
+        f"https://console.anthropic.com/settings/billing"
+    )
+    result = await _send(msg)
+    if result:
+        _credits_exhausted_last_alert_date = today_ct
+    return result
+
+
 async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) -> bool:
     """Send WhatsApp alert when regime changes. No cooldown (regimes change rarely)."""
     if os.getenv("TESTING"):
