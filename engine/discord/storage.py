@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 
-from .models import BotSignal, CoreyAlert, CoreyCommentary, IBReport
+from .models import Bookmark, BotSignal, CoreyAlert, CoreyCommentary, IBReport
 
 logger = logging.getLogger(__name__)
 
@@ -77,14 +77,32 @@ CREATE TABLE IF NOT EXISTS discord_corey_commentary (
     author_id TEXT DEFAULT '564449478174703646',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS discord_bookmarks (
+    message_id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL,
+    posted_at TEXT NOT NULL,
+    url TEXT NOT NULL,
+    domain TEXT,
+    source_type TEXT,
+    embed_title TEXT,
+    embed_description TEXT,
+    imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_posted ON discord_bookmarks(posted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_domain ON discord_bookmarks(domain);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_source_type ON discord_bookmarks(source_type);
 """
 
 
 def init_tables(db_path: str) -> None:
     """Create Discord tables if they don't exist."""
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         conn.executescript(CREATE_TABLES_SQL)
         conn.commit()
+    finally:
+        conn.close()  # `with sqlite3.connect(...)` only commits, never closes — Windows holds file lock otherwise
     logger.info(f"Discord tables initialized in {db_path}")
 
 
@@ -216,6 +234,32 @@ def insert_corey_commentary(conn: sqlite3.Connection, commentary: CoreyCommentar
         return False
 
 
+def insert_bookmark(conn: sqlite3.Connection, bookmark: Bookmark) -> bool:
+    """Insert a bookmark. Returns True if inserted, False if duplicate (message_id PK)."""
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO discord_bookmarks
+            (message_id, channel_id, posted_at, url, domain, source_type, embed_title, embed_description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                bookmark.message_id,
+                bookmark.channel_id,
+                bookmark.posted_at,
+                bookmark.url,
+                bookmark.domain,
+                bookmark.source_type,
+                bookmark.embed_title,
+                bookmark.embed_description,
+            ),
+        )
+        return conn.execute("SELECT changes()").fetchone()[0] > 0
+    except sqlite3.Error as e:
+        logger.error(f"Error inserting bookmark {bookmark.message_id}: {e}")
+        return False
+
+
 def get_stats(db_path: str) -> dict:
     """Return import statistics for all Discord tables."""
     with sqlite3.connect(db_path) as conn:
@@ -235,4 +279,13 @@ def get_stats(db_path: str) -> dict:
             "SELECT symbol, COUNT(*) FROM discord_bot_signals GROUP BY symbol ORDER BY COUNT(*) DESC"
         ).fetchall()
         stats["bot_signals_by_symbol"] = {row[0]: row[1] for row in symbols}
+        # Bookmarks use posted_at (not timestamp), handle separately
+        bm_row = conn.execute(
+            "SELECT COUNT(*), MIN(posted_at), MAX(posted_at) FROM discord_bookmarks"
+        ).fetchone()
+        stats["discord_bookmarks"] = {"count": bm_row[0], "earliest": bm_row[1], "latest": bm_row[2]}
+        bm_sources = conn.execute(
+            "SELECT source_type, COUNT(*) FROM discord_bookmarks GROUP BY source_type ORDER BY COUNT(*) DESC"
+        ).fetchall()
+        stats["bookmarks_by_source_type"] = {row[0] or "unknown": row[1] for row in bm_sources}
         return stats

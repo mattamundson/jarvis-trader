@@ -6,10 +6,18 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from .channel_parsers import bot_alerts, general, indicator_alerts, market_updates, trade_alerts
-from .models import BotSignal, CoreyAlert, CoreyCommentary, IBReport
+from .channel_parsers import (
+    bookmark,
+    bot_alerts,
+    general,
+    indicator_alerts,
+    market_updates,
+    trade_alerts,
+)
+from .models import Bookmark, BotSignal, CoreyAlert, CoreyCommentary, IBReport
 from .storage import (
     init_tables,
+    insert_bookmark,
     insert_bot_signal,
     insert_corey_alert,
     insert_corey_commentary,
@@ -44,6 +52,8 @@ CHANNEL_MAP = {
     "806343100435660801": {"parser": "market_updates", "type": "corey_commentary"},
     # general (tathedog filter ONLY)
     "741484321142997086": {"parser": "general", "type": "corey_commentary"},
+    # jarvis-trader general (Matt's personal bookmark dump — X.com / GitHub / news)
+    "1490851279180660819": {"parser": "bookmark", "type": "bookmark"},
 }
 
 
@@ -109,6 +119,8 @@ def process_file(
         parsed_list = market_updates.parse_channel(messages, "market-updates")
     elif parser_name == "general":
         parsed_list = general.parse_channel(messages, "general")
+    elif parser_name == "bookmark":
+        parsed_list = bookmark.parse_channel(messages, "jarvis-trader-general")
     else:
         logger.warning(f"Unknown parser: {parser_name}")
         return stats
@@ -134,6 +146,9 @@ def process_file(
             elif data_type == "corey_commentary":
                 commentary = CoreyCommentary(**item)
                 inserted = insert_corey_commentary(conn, commentary)
+            elif data_type == "bookmark":
+                bm = Bookmark(**item)
+                inserted = insert_bookmark(conn, bm)
 
             if inserted:
                 stats["inserted"] += 1
