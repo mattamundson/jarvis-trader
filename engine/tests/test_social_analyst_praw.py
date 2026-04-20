@@ -69,23 +69,23 @@ async def test_praw_skipped_when_praw_not_installed(
 async def test_praw_successful_fetch_returns_structured_dict(
     agent_with_creds, monkeypatch
 ) -> None:
-    """Happy path: mock praw.Reddit, verify structure and symbol mention counting."""
-    # Build mock posts — one mentioning MCL in title, one in selftext, one unrelated
+    """Happy path for an EQUITY ticker (SPY). PRAW is futures-gated by policy,
+    so the behavioral surface is tested only on equities."""
     mock_post_1 = MagicMock(
-        title="MCL crude oil short setup",
-        selftext="Looking at the 84 level",
+        title="SPY breakout setup",
+        selftext="Looking at the 5800 level",
         score=150,
         num_comments=42,
     )
     mock_post_2 = MagicMock(
-        title="Energy sector rotation",
-        selftext="Thinking about MCL exposure",
+        title="Equity sector rotation",
+        selftext="Thinking about SPY exposure",
         score=80,
         num_comments=15,
     )
     mock_post_3 = MagicMock(
         title="Random unrelated post",
-        selftext="Nothing about futures",
+        selftext="Nothing about the index",
         score=200,
         num_comments=100,
     )
@@ -101,32 +101,32 @@ async def test_praw_successful_fetch_returns_structured_dict(
 
     monkeypatch.setitem(sys.modules, "praw", mock_praw_module)
 
-    result = await agent_with_creds._fetch_reddit_praw("MCL", ["energy"])
+    result = await agent_with_creds._fetch_reddit_praw("SPY", ["investing"])
 
     assert result is not None
-    assert result["subreddits_queried"] == ["energy"]
+    assert result["subreddits_queried"] == ["investing"]
     assert result["posts_scanned"] == 3
-    # MCL appears in title of post 1 and selftext of post 2 — 2 mentions
+    # SPY appears in title of post 1 and selftext of post 2 — 2 mentions
     assert result["symbol_mentions"] == 2
-    # Top posts should be sorted by score descending
     top = result["top_posts"]
     assert len(top) == 3
-    assert top[0]["score"] == 200  # unrelated post has highest score
+    assert top[0]["score"] == 200
     assert top[1]["score"] == 150
     assert top[2]["score"] == 80
-    assert all("subreddit" in p and p["subreddit"] == "energy" for p in top)
+    assert all("subreddit" in p and p["subreddit"] == "investing" for p in top)
 
 
 @pytest.mark.asyncio
 async def test_praw_exception_returns_none(agent_with_creds, monkeypatch) -> None:
-    """If praw.Reddit() itself raises (bad credentials, network error), return None."""
+    """If praw.Reddit() itself raises (bad credentials, network error), return None.
+    Uses equity symbol because futures symbols are policy-gated above this path."""
     mock_praw_module = MagicMock()
     mock_praw_module.Reddit = MagicMock(
         side_effect=Exception("invalid_grant: auth failed")
     )
     monkeypatch.setitem(sys.modules, "praw", mock_praw_module)
 
-    result = await agent_with_creds._fetch_reddit_praw("MCL", ["energy"])
+    result = await agent_with_creds._fetch_reddit_praw("SPY", ["investing"])
     assert result is None
 
 
@@ -134,10 +134,10 @@ async def test_praw_exception_returns_none(agent_with_creds, monkeypatch) -> Non
 async def test_praw_per_subreddit_failure_is_isolated(
     agent_with_creds, monkeypatch
 ) -> None:
-    """If one subreddit errors out, the other subreddits still get scanned."""
-    # Build a broken subreddit and a working one
+    """If one subreddit errors out, the other subreddits still get scanned.
+    Uses equity symbol (SPY) because futures are policy-gated above this path."""
     mock_post_good = MagicMock(
-        title="Good post about MCL",
+        title="Good post about SPY",
         selftext="",
         score=50,
         num_comments=5,
@@ -159,7 +159,7 @@ async def test_praw_per_subreddit_failure_is_isolated(
     monkeypatch.setitem(sys.modules, "praw", mock_praw_module)
 
     result = await agent_with_creds._fetch_reddit_praw(
-        "MCL", ["broken_sub", "working_sub"]
+        "SPY", ["broken_sub", "working_sub"]
     )
 
     # Should succeed for the working subreddit even though broken_sub errored
@@ -168,31 +168,29 @@ async def test_praw_per_subreddit_failure_is_isolated(
     assert result["symbol_mentions"] == 1
 
 
-def test_missing_creds_emits_startup_warning(llm_stub, monkeypatch, caplog) -> None:
-    """Constructing the agent without creds must log a WARNING (not debug) so the
-    operator sees that futures-specific sentiment is degraded."""
-    monkeypatch.delenv("REDDIT_CLIENT_ID", raising=False)
-    monkeypatch.delenv("REDDIT_CLIENT_SECRET", raising=False)
-
-    with caplog.at_level("WARNING", logger="agents.social_analyst"):
-        SocialAnalystAgent(llm_client=llm_stub)
-
-    warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
-    assert any("PRAW Reddit credentials missing" in m for m in warning_msgs), (
-        f"Expected PRAW-missing warning, got: {warning_msgs}"
-    )
-
-
-def test_present_creds_emits_no_warning(llm_stub, monkeypatch, caplog) -> None:
-    """Constructing the agent WITH creds must not spam the warning log."""
+@pytest.mark.asyncio
+@pytest.mark.parametrize("symbol", ["MES", "MNQ", "MCL", "MGC"])
+async def test_praw_futures_policy_gate_never_queries_reddit(
+    llm_stub, monkeypatch, symbol
+) -> None:
+    """Policy enforcement (2026-04-19 owner directive): futures sentiment comes
+    from Corey Discord #market-updates only. PRAW must never be called for a
+    futures ticker, even when credentials are present and PRAW is installed."""
     monkeypatch.setenv("REDDIT_CLIENT_ID", "fake-id")
     monkeypatch.setenv("REDDIT_CLIENT_SECRET", "fake-secret")
+    agent = SocialAnalystAgent(llm_client=llm_stub)
 
-    with caplog.at_level("WARNING", logger="agents.social_analyst"):
-        SocialAnalystAgent(llm_client=llm_stub)
+    # Any attempt to import or construct praw would be caught here — if the
+    # gate fails, this test surfaces it deterministically.
+    fake_praw = MagicMock()
+    fake_praw.Reddit = MagicMock(side_effect=AssertionError(
+        "PRAW must never be constructed for futures tickers"
+    ))
+    monkeypatch.setitem(sys.modules, "praw", fake_praw)
 
-    warning_msgs = [
-        r.message for r in caplog.records
-        if r.levelname == "WARNING" and "PRAW Reddit credentials missing" in r.message
-    ]
-    assert warning_msgs == [], f"Unexpected warning when creds present: {warning_msgs}"
+    result = await agent._fetch_reddit_praw(
+        symbol, subreddits=["FuturesTrading", "emini"]
+    )
+
+    assert result is None, f"Futures gate leaked for {symbol}: {result}"
+    fake_praw.Reddit.assert_not_called()
