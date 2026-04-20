@@ -711,6 +711,8 @@ class MarketDataManager:
             df = await self.ibkr.get_historical_bars(symbol, duration, bar_size, is_futures)
             if not df.empty:
                 logger.info(f"IBKR returned {len(df)} bars for {symbol}")
+                df.attrs["source"] = "ibkr"
+                df.attrs["symbol"] = symbol
                 return df
 
         # Tier 2: Polygon — SKIPPED for futures (Polygon free plan returns
@@ -734,6 +736,8 @@ class MarketDataManager:
             )
             if not df.empty:
                 logger.info(f"Polygon returned {len(df)} bars for {symbol}")
+                df.attrs["source"] = "polygon"
+                df.attrs["symbol"] = symbol
                 return df
             logger.warning(f"Polygon returned no data for {symbol} ({timespan}/{multiplier})")
         elif self.polygon and symbol.upper() in POLYGON_FUTURES_BLOCKLIST:
@@ -754,12 +758,17 @@ class MarketDataManager:
                     )
                     df = pd.DataFrame()
             if not df.empty:
+                df.attrs["source"] = "csv_cache"
+                df.attrs["symbol"] = symbol
                 return df
 
         logger.error(
             f"All data sources failed for {symbol} — IBKR offline and Polygon unavailable."
         )
-        return pd.DataFrame()
+        empty = pd.DataFrame()
+        empty.attrs["source"] = "none"
+        empty.attrs["symbol"] = symbol
+        return empty
 
     async def get_current_price(self, symbol: str, is_futures: bool = False) -> dict:
         """
