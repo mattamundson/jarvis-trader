@@ -65,6 +65,103 @@ def _is_brier_enabled() -> bool:
     return flag in ("1", "true", "yes", "on")
 
 
+def _is_sepa_enabled() -> bool:
+    """SEPA (Minervini Stage 2) regime-confirmation nudge is opt-in via env.
+    Defaults False so the pipeline ships dark; flip to "true"/"1" once pipeline.py
+    is wired to populate `sepa_context` with daily OHLC series."""
+    flag = os.environ.get("REGIME_USE_SEPA", "false").strip().lower()
+    return flag in ("1", "true", "yes", "on")
+
+
+# SEPA nudge parameters. Intentionally small — this is a regime confirmation,
+# not a directional override. Magnitude is less than half of the tightest
+# regime threshold (COMPRESSION at 0.15), so SEPA alone cannot flip a verdict;
+# it only strengthens an already-near-threshold score.
+_SEPA_BULL_THRESHOLD: float = 0.75
+_SEPA_BEAR_THRESHOLD: float = 0.25
+_SEPA_NUDGE_MAGNITUDE: float = 0.03
+_SEPA_MIN_EVALUATED: int = 5
+
+
+def _apply_sepa_nudge(debate_score: float, raw_nudge: float) -> tuple[float, float]:
+    """Apply a SEPA nudge only when it agrees with the debate direction.
+
+    Returns ``(new_debate_score, applied_nudge)``. The applied_nudge is 0.0
+    when the raw nudge would contradict the debate — SEPA is a confirmation
+    signal, not a reversal signal. Callers store the applied_nudge for audit.
+    """
+    if raw_nudge == 0.0:
+        return (debate_score, 0.0)
+    if debate_score > 0 and raw_nudge > 0:
+        return (round(debate_score + raw_nudge, 4), raw_nudge)
+    if debate_score < 0 and raw_nudge < 0:
+        return (round(debate_score + raw_nudge, 4), raw_nudge)
+    # Directionally contradicts (or debate_score is exactly 0) — don't apply
+    return (debate_score, 0.0)
+
+
+def _compute_sepa_nudge(
+    sepa_context: Optional[dict],
+) -> tuple[Optional[float], float]:
+    """Compute a bounded debate-score nudge from a SEPA evaluation.
+
+    Pure function — does no I/O and no config reads. The env gate
+    (:func:`_is_sepa_enabled`) is checked at the call site; this helper is
+    safe to call directly in tests.
+
+    Parameters
+    ----------
+    sepa_context:
+        Optional dict with either:
+          * ``{"close": pd.Series, "high": pd.Series, "low": pd.Series,
+             "benchmark_close": Optional[pd.Series]}`` — we'll evaluate SEPA
+             from the supplied bars, or
+          * ``{"result": SEPAResult}`` — a pre-computed result (lets the caller
+             cache the evaluation across the pipeline).
+
+    Returns
+    -------
+    (score, nudge) tuple:
+        ``score`` is the SEPA score in [0, 1] or None if the context was
+        missing/thin. ``nudge`` is a float in {-_SEPA_NUDGE_MAGNITUDE, 0,
+        +_SEPA_NUDGE_MAGNITUDE} to be added to ``debate_score``.
+    """
+    if not sepa_context:
+        return (None, 0.0)
+
+    try:
+        if "result" in sepa_context:
+            sepa_result = sepa_context["result"]
+        else:
+            try:
+                from engine.analytics.sepa_trend_template import evaluate_sepa
+            except ImportError:
+                from analytics.sepa_trend_template import evaluate_sepa
+            sepa_result = evaluate_sepa(
+                close=sepa_context.get("close"),
+                high=sepa_context.get("high"),
+                low=sepa_context.get("low"),
+                benchmark_close=sepa_context.get("benchmark_close"),
+            )
+    except Exception as _err:  # pragma: no cover — defensive
+        logger.info("SEPA evaluation failed in debate: %s", _err)
+        return (None, 0.0)
+
+    if sepa_result is None:
+        return (None, 0.0)
+
+    evaluated = getattr(sepa_result, "evaluated_count", 0)
+    if evaluated < _SEPA_MIN_EVALUATED:
+        return (None, 0.0)
+
+    score = float(getattr(sepa_result, "score", 0.0))
+    if score >= _SEPA_BULL_THRESHOLD:
+        return (score, _SEPA_NUDGE_MAGNITUDE)
+    if score <= _SEPA_BEAR_THRESHOLD:
+        return (score, -_SEPA_NUDGE_MAGNITUDE)
+    return (score, 0.0)
+
+
 def _get_tail_risk_agent() -> Optional[TailRiskResearcherAgent]:
     """Lazy-construct TailRiskResearcherAgent. Returns None if disabled or init fails."""
     global _tail_risk_instance
@@ -97,7 +194,10 @@ def _get_ic_ensemble(agents):
     global _ic_ensemble_instance
     if _ic_ensemble_instance is None:
         try:
-            from engine.analytics.ic_ensemble import ICWeightedEnsemble
+            try:
+                from engine.analytics.ic_ensemble import ICWeightedEnsemble
+            except ImportError:
+                from analytics.ic_ensemble import ICWeightedEnsemble
             _ic_ensemble_instance = ICWeightedEnsemble(agents=list(agents))
         except Exception as _err:  # pragma: no cover — defensive
             logger.info("ICWeightedEnsemble unavailable in debate: %s", _err)
@@ -116,7 +216,10 @@ def _get_brier_tracker(agents):
         return None
     if _brier_tracker_instance is None:
         try:
-            from engine.analytics.ic_ensemble import BrierCalibrationTracker
+            try:
+                from engine.analytics.ic_ensemble import BrierCalibrationTracker
+            except ImportError:
+                from analytics.ic_ensemble import BrierCalibrationTracker
             _brier_tracker_instance = BrierCalibrationTracker(agents=list(agents))
         except Exception as _err:  # pragma: no cover — defensive
             logger.info("BrierCalibrationTracker unavailable in debate: %s", _err)
@@ -192,6 +295,12 @@ class DebateResult:
     # Tail-risk researcher output (Novel #1, opt-in via TAIL_RISK_RESEARCHER_ENABLED)
     tail_risk_report: Optional[TailRiskReport] = None
 
+    # SEPA regime-confirmation nudge (opt-in via REGIME_USE_SEPA).
+    # sepa_score is the Minervini Stage 2 score in [0, 1]; sepa_nudge is the
+    # signed delta applied to debate_score (±_SEPA_NUDGE_MAGNITUDE or 0).
+    sepa_score: Optional[float] = None
+    sepa_nudge: float = 0.0
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -226,6 +335,9 @@ class DebateResult:
             "ic_n_analysts": self.ic_n_analysts,
             # Tail-risk (Novel #1, opt-in)
             "tail_risk_report": self.tail_risk_report.to_dict() if self.tail_risk_report else None,
+            # SEPA regime confirmation (opt-in)
+            "sepa_score": self.sepa_score,
+            "sepa_nudge": self.sepa_nudge,
         }
 
 
@@ -270,6 +382,7 @@ class DebateOrchestrator:
         bear: BearResearcherAgent,
         rounds: int = 3,  # kept for interface compat; 3 is the default
         regime: Optional[str] = None,
+        sepa_context: Optional[dict] = None,
     ) -> DebateResult:
         """
         Run the 3-round adversarial debate and return a scored DebateResult.
@@ -439,12 +552,29 @@ class DebateOrchestrator:
         result.ic_avg = round(_avg_ic, 4)
         result.ic_n_analysts = _n_analysts
 
+        # ── SEPA regime-confirmation computation (opt-in, REGIME_USE_SEPA) ───
+        # The raw nudge is computed here; actual application is gated by
+        # :func:`_apply_sepa_nudge` at each verdict site so SEPA only
+        # reinforces the debate direction, never contradicts it.
+        _sepa_raw_nudge = 0.0
+        if _is_sepa_enabled():
+            _sepa_score, _sepa_raw_nudge = _compute_sepa_nudge(sepa_context)
+            result.sepa_score = _sepa_score
+            if _sepa_raw_nudge != 0.0:
+                logger.info(
+                    "[Debate] %s SEPA: score=%.2f raw_nudge=%+.3f (applied only "
+                    "if directionally aligned with verdict)",
+                    symbol, _sepa_score, _sepa_raw_nudge,
+                )
+
         # ── Short-circuit: skip Rounds 2+3 when Round 1 conviction is decisive ────
         # If one researcher is clearly more confident, scoring rounds won't flip the
         # verdict. Saves 2–4 Sonnet calls per high-conviction debate (~30% of runs).
         _r1_delta = result.bull_conviction - result.bear_conviction
         if abs(_r1_delta) >= 0.35:
-            result.debate_score = round(_r1_delta, 4)
+            _nudged, _applied = _apply_sepa_nudge(_r1_delta, _sepa_raw_nudge)
+            result.debate_score = round(_nudged, 4)
+            result.sepa_nudge = _applied
             result.verdict = "BULL_WINS" if _r1_delta > 0 else "BEAR_WINS"
             result.scoring_failed = True
             logger.info(
@@ -551,6 +681,21 @@ class DebateOrchestrator:
                     symbol,
                 )
                 result.scoring_failed = True
+
+            # ── Apply SEPA nudge (regime confirmation only) ──────────────────
+            # Only applied when directionally aligned and scoring did not fail.
+            # Bounded magnitude (±0.03) guarantees SEPA cannot promote a
+            # 0.00 score to a verdict — it only strengthens near-threshold ones.
+            if _sepa_raw_nudge != 0.0 and not result.scoring_failed:
+                _nudged, _applied = _apply_sepa_nudge(debate_score, _sepa_raw_nudge)
+                debate_score = _nudged
+                result.debate_score = debate_score
+                result.sepa_nudge = _applied
+                if _applied != 0.0:
+                    logger.info(
+                        "[Debate] %s SEPA nudge applied: %+.3f → debate_score=%+.4f",
+                        symbol, _applied, debate_score,
+                    )
 
             if debate_score >= _threshold:
                 verdict = "BULL_WINS"
