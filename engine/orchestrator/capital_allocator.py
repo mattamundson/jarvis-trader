@@ -58,13 +58,17 @@ class CapitalAllocator:
             {symbol: new_allocation_fraction} — values sum to 1.0 across active symbols.
 
         Rules:
-        - DO_NOT_TRADE instruments (MES, MGC) → always zeroed out
+        - DO_NOT_TRADE instruments (MCL, MNQ, MGC) → always zeroed out
         - Sharpe > 1.5 → increase allocation by 10% (cap at 50% of total)
         - Sharpe < 0.5 → decrease allocation by 10% (floor at 10% of total)
         - Otherwise → keep current allocation unchanged
         - Renormalize so all active allocations sum to 1.0
         """
-        _DO_NOT_TRADE: frozenset[str] = frozenset({"MES", "MGC"})
+        # MCL/MNQ: 0 WFO winners on cached OHLC per multi_symbol_trend_wfo.py
+        # (composite path scored PF 0.13). MGC: no validated strategy.
+        # MES: now tradeable (SMA(50,200)+2.0×ATR, live). Per-symbol decision
+        # T5 Option B (2026-04-21) — see project_per_symbol_strategy_decision.md.
+        _DO_NOT_TRADE: frozenset[str] = frozenset({"MCL", "MNQ", "MGC"})
 
         new_alloc: dict[str, float] = {}
         for symbol, perf in paper_performance_by_symbol.items():
