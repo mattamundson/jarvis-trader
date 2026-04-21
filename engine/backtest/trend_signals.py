@@ -27,6 +27,16 @@ _T1_MULT = 3.0   # static first target: 3× ATR from entry
 _T2_MULT = 5.0
 _T3_MULT = 7.0
 
+# Realized-vol filter (Phase B+ addition, 2026-04-21):
+# Analysis of 36 live champion trades shows SMA trend edge concentrates in
+# high-vol regimes. Below RV-20 annualized ≈ 9%, trades net-lose. See
+# commit cf76eb3 Tier A validation + ~/.claude/plans/ for threshold sweep.
+# Default: 0.0 (no filter, backward-compatible). Recommended: 9.0 (safer,
+# keeps 22/36 trades at PF 2.54) or 13.0 (max net, 13 trades at PF 5.51).
+# Production gate to enable only after 60+ trades confirm the improvement.
+_RV_WINDOW = 20
+_RV_ANNUAL_FACTOR = 252 * 24  # 24 1h bars per trading day, 252 trading days/yr
+
 
 def _wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
     prev_c = close.shift(1)
@@ -39,9 +49,16 @@ def generate_sma_trend_signals(
     fast: int = 50,
     slow: int = 200,
     atr_trail_mult: float = 2.0,
+    min_rv_annualized: float = 0.0,
 ) -> pd.DataFrame:
     """
     Generate SMA trend-following signals compatible with the JARVIS Backtester.
+
+    Args:
+        min_rv_annualized: If > 0, suppress ENTRY_NOW when 20-bar realized
+            vol (annualized %) at entry bar < threshold. Empirically the
+            SMA trend edge concentrates at RV ≥ 9% (36-trade sample).
+            0.0 (default) = filter disabled.
 
     Returns df with columns:
         entry_signal  : "ENTRY_NOW" | "NO_TRADE"
@@ -50,12 +67,16 @@ def generate_sma_trend_signals(
         bias          : "STRONG_BULL" | "STRONG_BEAR" | "NEUTRAL"
         regime        : "TRENDING_BULL" | "RANGE_BOUND"
         atr           : ATR(14) series
+        rv_20_ann_pct : 20-bar annualized realized volatility (percent)
     """
     df = df.copy()
 
     sma_f = df["close"].rolling(fast).mean()
     sma_s = df["close"].rolling(slow).mean()
     atr = _wilder_atr(df["high"], df["low"], df["close"], _ATR_PERIOD)
+    # Realized vol: stddev of log returns over _RV_WINDOW bars, annualized as percent
+    log_ret = np.log(df["close"] / df["close"].shift(1))
+    rv_ann = log_ret.rolling(_RV_WINDOW).std() * np.sqrt(_RV_ANNUAL_FACTOR) * 100.0
 
     # Force numpy bool dtype: NaN comparisons → False, shift with fill_value avoids
     # the object-dtype conversion that makes Python's ~bool give wrong results (Python 3.12+).
@@ -79,6 +100,12 @@ def generate_sma_trend_signals(
         atr_i = float(atr.iloc[i])
 
         if cross_up.iloc[i]:
+            # Realized-vol gate: skip entry if vol is below threshold.
+            # rv may be NaN during the first _RV_WINDOW bars — treat as 0 (block).
+            if min_rv_annualized > 0.0:
+                rv_i = rv_ann.iloc[i]
+                if pd.isna(rv_i) or float(rv_i) < min_rv_annualized:
+                    continue  # leave entry_signal as NO_TRADE
             entry_signal[i] = "ENTRY_NOW"
             stop_level[i]  = price - atr_trail_mult * atr_i
             target_1[i]    = price + _T1_MULT * atr_i
@@ -94,6 +121,7 @@ def generate_sma_trend_signals(
     df["target_2"]     = target_2
     df["target_3"]     = target_3
     df["atr"]          = atr
+    df["rv_20_ann_pct"] = rv_ann
 
     df["bias"] = "NEUTRAL"
     df.loc[above, "bias"] = "STRONG_BULL"
