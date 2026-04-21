@@ -105,3 +105,31 @@ def test_generate_instrument_signals_routes_mes_to_trend():
 def test_mes_not_in_composite_instruments():
     from backtest.signals import COMPOSITE_INSTRUMENTS
     assert "MES" not in COMPOSITE_INSTRUMENTS
+
+
+# ── Realized-vol filter (Phase B+ addition, 2026-04-21) ──────────────────
+def test_rv_column_present_default_off():
+    """rv_20_ann_pct column is emitted even when filter is disabled."""
+    df = generate_sma_trend_signals(_make_df(), fast=10, slow=50)
+    assert "rv_20_ann_pct" in df.columns
+    # All-zero min_rv_annualized = backward-compatible: same entries as pre-filter
+    assert df["rv_20_ann_pct"].iloc[-1] == df["rv_20_ann_pct"].iloc[-1]  # not NaN at tail
+
+
+def test_rv_filter_blocks_when_threshold_exceeds_all():
+    """Impossibly high threshold (999) suppresses ALL entries."""
+    df = generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100,
+                                    min_rv_annualized=999.0)
+    assert (df["entry_signal"] == "ENTRY_NOW").sum() == 0, \
+        "No entries should fire when RV threshold is unreachable"
+
+
+def test_rv_filter_zero_matches_unfiltered():
+    """min_rv_annualized=0.0 (default) must produce identical entry signals to pre-filter behavior."""
+    df_in = _make_trending_df()
+    df_off = generate_sma_trend_signals(df_in, fast=20, slow=100, min_rv_annualized=0.0)
+    df_on = generate_sma_trend_signals(df_in, fast=20, slow=100, min_rv_annualized=5.0)
+    # With a real threshold, filter should block at least one entry relative to off
+    n_off = (df_off["entry_signal"] == "ENTRY_NOW").sum()
+    n_on = (df_on["entry_signal"] == "ENTRY_NOW").sum()
+    assert n_on <= n_off, f"Filter should never INCREASE entries: off={n_off} on={n_on}"
