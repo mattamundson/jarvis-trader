@@ -258,3 +258,98 @@ for p in (\"openai\", \"codex\"):
     print(f\"{p}: ok, env id={k[\"id\"]}\")
 "'
 ```
+
+---
+
+## DCE Nightly Export — DiscordChatExporter Automation (2026-04-20)
+
+**Purpose**: Keep `discord_corey_commentary` fresh so `corey_session_bias` (agent input) stays current. The pipeline is:
+
+```
+Windows Task Scheduler (05:15 CT)
+  → scripts/dce-nightly.ps1
+    → DiscordChatExporter.Cli exports #market-updates + #general (last 48h)
+    → engine/.venv/Scripts/python -m scripts.nightly_discord  (ingest + ETL)
+      → discord.cli → parser.py → storage.py  (INSERT OR IGNORE on message_id)
+      → discord.sentiment_provider.run_etl()  (updates discord_daily_sentiment)
+```
+
+PM2 (`jarvis-discord-export`, id 11) provides a parallel nightly run at 02:00 CT via `engine/scripts/nightly_discord_export.py` (same chain, different scheduler). Whichever fires first wins; the second run is a no-op via INSERT OR IGNORE dedup.
+
+### One-time setup
+
+1. **Install DCE CLI** (already done — binary at `C:\Users\mattm\tools\DiscordChatExporter.Cli\DiscordChatExporter.Cli.exe`).
+
+2. **Write Discord token** (one line, no quotes, no trailing newline):
+   ```powershell
+   # Get token from Discord DevTools: F12 → Application → Local Storage → token
+   "YOUR_TOKEN_HERE" | Set-Content "C:\Users\mattm\discord-export\.token" -NoNewline
+   ```
+   The token file is read on every run; it is never embedded in scripts or logs.
+
+3. **Register the scheduled task** (idempotent, re-run any time):
+   ```powershell
+   pwsh -NoProfile -File scripts/install-dce-nightly-task.ps1
+   ```
+   Registers `JARVIS-DCE-Nightly` running daily at 05:15 local time under the current user account (Interactive logon — machine must be awake at 05:15).
+
+4. **Verify**:
+   ```powershell
+   schtasks /Query /TN "JARVIS-DCE-Nightly" /FO LIST
+   ```
+
+### Manual run / debugging
+
+Run the full chain manually:
+```powershell
+pwsh -NoProfile -File scripts/dce-nightly.ps1
+```
+
+Run only the Python export+ingest (no DCE):
+```powershell
+cd engine
+.venv\Scripts\python -m scripts.nightly_discord
+```
+
+Run only DCE export (no ingest), dry-run to inspect commands:
+```powershell
+cd engine
+.venv\Scripts\python -m scripts.nightly_discord_export --dry-run
+```
+
+### Failure alerts
+
+`engine/scripts/nightly_discord_export.py` tracks consecutive failure days in `engine/logs/dce_failure_streak.txt`. If DCE fails 2 or more days in a row, it calls `notify_corey_stale()` which sends a WhatsApp message via OpenClaw. The alert includes the streak count and the last ingested message date.
+
+`scripts/dce-nightly.ps1` has independent streak tracking in the same file for failures detected at the PowerShell level (e.g., DCE binary not found, token missing).
+
+**Reset the streak manually** after fixing a token rotation:
+```powershell
+"0" | Set-Content "C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\logs\dce_failure_streak.txt"
+```
+
+### Token rotation
+
+Discord user tokens expire and can be revoked. If DCE exits with HTTP 401:
+1. Log into Discord web (discord.com) in Chrome.
+2. Open DevTools (F12) → Application tab → Local Storage → `https://discord.com` → find key `token`.
+3. Copy the value (it is a JWT, ~200 chars).
+4. Overwrite the token file:
+   ```powershell
+   "NEW_TOKEN_HERE" | Set-Content "C:\Users\mattm\discord-export\.token" -NoNewline
+   ```
+5. Verify by running `scripts/dce-nightly.ps1` manually.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `scripts/dce-nightly.ps1` | PowerShell nightly wrapper (export + ingest chain) |
+| `scripts/install-dce-nightly-task.ps1` | One-time Task Scheduler registration |
+| `engine/scripts/nightly_discord_export.py` | Python DCE wrapper (PM2 path) |
+| `engine/scripts/nightly_discord.py` | Ingest + ETL only (no DCE call) |
+| `engine/logs/dce_nightly.log` | PS1 run log |
+| `engine/logs/nightly_discord_export.log` | Python run log |
+| `engine/logs/dce_failure_streak.txt` | Consecutive failure counter (reset to 0 on success) |
+| `C:\Users\mattm\discord-export\.token` | Discord auth token (never commit) |
+| `C:\Users\mattm\tools\DiscordChatExporter.Cli\` | DCE binary location |
