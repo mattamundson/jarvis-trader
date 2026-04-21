@@ -11,19 +11,37 @@ the full Tier A validation battery:
   * deflated_sharpe_from_returns (multiple-testing correction across N grid
     combinations)
 
-Output: a JSON report with a proposed-gate-v2 verdict and reason list.
+Output: a JSON report with a revised gate-v2 verdict and reason list.
 
-Proposed gate v2 (from Tier A plan memo A10):
-    (bootstrap_pf_ci_95_lower >= 1.10)
-    AND (p_positive_edge >= 0.95)
-    AND (mc_95th_max_dd_pct <= 5.0)     # % of initial capital
-    AND (dsr_p_value <= 0.10 passes as significance)
+Revised gate v2 — dual-pathway rule (memo 2026-04-21 03:48 CT + addendum 04:30 CT):
+
+    CORE_GATE (rich samples):
+        moving_block_pf_ci_95_lower >= 1.10
+        AND p_positive_edge         >= 0.95
+        AND mc_95th_max_dd_pct      <= 6.0
+        AND dsr                     >= 0.10
+
+    ALT_EVIDENCE_GATE (sparse samples, multi-lens confirmed):
+        dsr                          >= 0.30
+        AND rolling_wfo_verdict       in {STRONG, MODERATE}
+        AND fixed_params_min_pf       >= 1.20
+        AND cost_survives_through     >= realistic (2x commission, 2x slippage)
+        AND mc_95th_max_dd_pct        <= 7.0
+
+    A strategy PASSES if core OR alt holds. DSR is the load-bearing criterion
+    for both paths — sample-size mechanics can relax, signal-quality cannot.
 
 Usage (from engine/):
     .venv/Scripts/python -m scripts.validate_strategy \\
         --results-file scripts/mes_trend_search_results.json \\
         --rank 1 \\
+        --rolling-wfo validation_reports/MES_trend_rank1_rolling_wfo.json \\
+        --fixed-params validation_reports/MES_trend_fixed_params_temporal.json \\
+        --cost-sweep validation_reports/MES_trend_rank1_cost_sweep.json \\
         --output validation_reports/mes_rank1.json
+
+If any aux-input flag is omitted the alt-evidence path is scored as UNSCORED
+and the overall verdict is driven by the core gate alone.
 """
 from __future__ import annotations
 
@@ -48,13 +66,47 @@ from backtest.monte_carlo import (  # noqa: E402
     moving_block_bootstrap,
 )
 
-# Proposed gate v2 thresholds (see plan A10)
-GATE_V2 = {
+# Revised gate v2 thresholds — see memo project_gate_v2_proposal.md (2026-04-21)
+CORE_GATE = {
+    # Moving-block bootstrap lower bound. Addendum 2026-04-21 04:30 CT swapped
+    # IID → MBB because trend strategies exhibit serial correlation that IID
+    # overstates CI width against.
     "pf_ci_lower_min": 1.10,
     "p_positive_edge_min": 0.95,
-    "max_dd_95th_pct_max": 5.0,
-    "dsr_min_for_significance": 0.10,
+    # Raised from 5.0 → 6.0 per Phase A MC (p95 DD 6.58% on live MES EXCELLENT).
+    # 6.0% still respects the 60% of instrument-capital kill-switch at $5K/inst.
+    "max_dd_95th_pct_max": 6.0,
+    # Bailey-convention floor for core path. Selection-bias-indistinguishable below.
+    "dsr_min": 0.10,
 }
+
+ALT_EVIDENCE_GATE = {
+    # Tighter than core — relaxing sample-size demands tighter signal-quality.
+    "dsr_min": 0.30,
+    "fixed_params_min_pf_min": 1.20,
+    # Slightly looser DD ceiling given the supplementary evidence strength.
+    "max_dd_95th_pct_max": 7.0,
+    # rolling_wfo_verdict must be in ROLLING_WFO_QUALIFYING below.
+    # cost_survives_through must rank >= "realistic" in COST_SURVIVAL_LEVELS.
+}
+
+# Ordinal ladder from cost_sensitivity_sweep.py. Alt-path requires that edge
+# survives through at least "realistic" (2x commission, 2x slippage).
+COST_SURVIVAL_LEVELS = (
+    "optimistic",
+    "baseline",
+    "realistic",
+    "stressed",
+    "catastrophic",
+)
+
+# Rolling-WFO verdicts that qualify for the alt-evidence path. "WEAK" and
+# "FAIL" signal a bimodal / inconsistent temporal pattern (e.g. MNQ trend's
+# 50% profitable windows).
+ROLLING_WFO_QUALIFYING = frozenset({"STRONG", "MODERATE"})
+
+# Keys that must ALL be present in aux_evidence for the alt path to score.
+_ALT_AUX_REQUIRED = ("rolling_wfo_verdict", "fixed_params_min_pf", "cost_survives_through")
 
 
 def _load_result(results_file: Path, rank: int) -> dict:
@@ -122,52 +174,222 @@ def _extract_pnls(combo: dict, window: str | None = None) -> list[float]:
     return [float(t["pnl"]) for t in trades]
 
 
-def _evaluate_gate_v2(report: dict) -> dict:
-    """Apply proposed gate v2 thresholds; return PASS / MARGINAL / FAIL + reasons."""
-    reasons = []
-    passes = []
+def _score_core_gate(report: dict) -> tuple[list[bool], list[str]]:
+    """Evaluate the 4 core-gate criteria. MBB (not IID) is the CI stat per
+    the 2026-04-21 04:30 CT addendum — trend strategies have serial
+    correlation that IID overstates against."""
+    passes: list[bool] = []
+    reasons: list[str] = []
 
-    pf_lo = report["bootstrap_iid"]["pf_ci_95_low"]
-    if pf_lo >= GATE_V2["pf_ci_lower_min"]:
+    block_lo = report["bootstrap_block"]["pf_ci_95_low"]
+    if block_lo >= CORE_GATE["pf_ci_lower_min"]:
         passes.append(True)
-        reasons.append(f"pf_ci_lower={pf_lo} >= {GATE_V2['pf_ci_lower_min']}")
+        reasons.append(f"mbb_pf_ci_lower={block_lo} >= {CORE_GATE['pf_ci_lower_min']}")
     else:
         passes.append(False)
-        reasons.append(f"FAIL pf_ci_lower={pf_lo} < {GATE_V2['pf_ci_lower_min']}")
+        reasons.append(f"FAIL mbb_pf_ci_lower={block_lo} < {CORE_GATE['pf_ci_lower_min']}")
 
     p_edge = report["bootstrap_iid"]["p_positive_edge"]
-    if p_edge >= GATE_V2["p_positive_edge_min"]:
+    if p_edge >= CORE_GATE["p_positive_edge_min"]:
         passes.append(True)
-        reasons.append(f"p_positive_edge={p_edge} >= {GATE_V2['p_positive_edge_min']}")
+        reasons.append(f"p_positive_edge={p_edge} >= {CORE_GATE['p_positive_edge_min']}")
     else:
         passes.append(False)
-        reasons.append(f"FAIL p_positive_edge={p_edge} < {GATE_V2['p_positive_edge_min']}")
+        reasons.append(f"FAIL p_positive_edge={p_edge} < {CORE_GATE['p_positive_edge_min']}")
 
     mc_95 = report["drawdown_mc"]["mc_95th"]
-    if mc_95 <= GATE_V2["max_dd_95th_pct_max"]:
+    if mc_95 <= CORE_GATE["max_dd_95th_pct_max"]:
         passes.append(True)
-        reasons.append(f"mc_95th_dd_pct={mc_95} <= {GATE_V2['max_dd_95th_pct_max']}")
+        reasons.append(f"mc_95th_dd_pct={mc_95} <= {CORE_GATE['max_dd_95th_pct_max']}")
     else:
         passes.append(False)
-        reasons.append(f"FAIL mc_95th_dd_pct={mc_95} > {GATE_V2['max_dd_95th_pct_max']}")
+        reasons.append(f"FAIL mc_95th_dd_pct={mc_95} > {CORE_GATE['max_dd_95th_pct_max']}")
 
     dsr = report["deflated_sharpe"]["dsr"]
-    if dsr >= GATE_V2["dsr_min_for_significance"]:
+    if dsr >= CORE_GATE["dsr_min"]:
         passes.append(True)
-        reasons.append(f"dsr={dsr} >= {GATE_V2['dsr_min_for_significance']} (not selection-bias)")
+        reasons.append(f"dsr={dsr} >= {CORE_GATE['dsr_min']} (not selection-bias)")
     else:
         passes.append(False)
-        reasons.append(f"FAIL dsr={dsr} < {GATE_V2['dsr_min_for_significance']} (selection bias)")
+        reasons.append(f"FAIL dsr={dsr} < {CORE_GATE['dsr_min']} (selection bias)")
 
-    n_passed = sum(passes)
-    if n_passed == 4:
+    return passes, reasons
+
+
+def _score_alt_gate(report: dict, aux: dict) -> tuple[list[bool], list[str]]:
+    """Evaluate the 5 alt-evidence criteria. Assumes the aux dict has already
+    been validated for completeness."""
+    passes: list[bool] = []
+    reasons: list[str] = []
+
+    # (1) DSR — tighter than core's 0.10.
+    dsr = report["deflated_sharpe"]["dsr"]
+    if dsr >= ALT_EVIDENCE_GATE["dsr_min"]:
+        passes.append(True)
+        reasons.append(f"dsr={dsr} >= {ALT_EVIDENCE_GATE['dsr_min']} (alt floor)")
+    else:
+        passes.append(False)
+        reasons.append(f"FAIL dsr={dsr} < {ALT_EVIDENCE_GATE['dsr_min']} (alt floor)")
+
+    # (2) Rolling WFO verdict must be STRONG or MODERATE.
+    wfo = aux["rolling_wfo_verdict"]
+    if wfo in ROLLING_WFO_QUALIFYING:
+        passes.append(True)
+        reasons.append(f"rolling_wfo={wfo} in {sorted(ROLLING_WFO_QUALIFYING)}")
+    else:
+        passes.append(False)
+        reasons.append(f"FAIL rolling_wfo={wfo} not in {sorted(ROLLING_WFO_QUALIFYING)}")
+
+    # (3) Fixed-params segments must maintain PF >= 1.20 on the weakest segment.
+    min_pf = aux["fixed_params_min_pf"]
+    if min_pf >= ALT_EVIDENCE_GATE["fixed_params_min_pf_min"]:
+        passes.append(True)
+        reasons.append(
+            f"fixed_params_min_pf={min_pf} >= {ALT_EVIDENCE_GATE['fixed_params_min_pf_min']}"
+        )
+    else:
+        passes.append(False)
+        reasons.append(
+            f"FAIL fixed_params_min_pf={min_pf} < {ALT_EVIDENCE_GATE['fixed_params_min_pf_min']}"
+        )
+
+    # (4) Cost sensitivity — edge must survive through at least "realistic".
+    survives = aux["cost_survives_through"]
+    floor_idx = COST_SURVIVAL_LEVELS.index("realistic")
+    try:
+        survives_idx = COST_SURVIVAL_LEVELS.index(survives)
+    except ValueError:
+        survives_idx = -1
+    if survives_idx >= floor_idx:
+        passes.append(True)
+        reasons.append(f"cost_survives_through={survives} >= realistic")
+    else:
+        passes.append(False)
+        reasons.append(f"FAIL cost_survives_through={survives} < realistic")
+
+    # (5) MC 95th DD — looser than core (7% vs 6%).
+    mc_95 = report["drawdown_mc"]["mc_95th"]
+    if mc_95 <= ALT_EVIDENCE_GATE["max_dd_95th_pct_max"]:
+        passes.append(True)
+        reasons.append(
+            f"mc_95th_dd_pct={mc_95} <= {ALT_EVIDENCE_GATE['max_dd_95th_pct_max']} (alt ceiling)"
+        )
+    else:
+        passes.append(False)
+        reasons.append(
+            f"FAIL mc_95th_dd_pct={mc_95} > {ALT_EVIDENCE_GATE['max_dd_95th_pct_max']} (alt ceiling)"
+        )
+
+    return passes, reasons
+
+
+def _evaluate_gate_v2(report: dict, aux_evidence: dict | None = None) -> dict:
+    """Apply revised gate v2 — dual-pathway rule.
+
+    A strategy PASSES if CORE_GATE (4/4) OR ALT_EVIDENCE_GATE (5/5) holds.
+    DSR is load-bearing in both paths so selection-bias can never be bypassed.
+
+    Parameters
+    ----------
+    report : dict
+        Output of `validate()` — must contain bootstrap_iid, bootstrap_block,
+        drawdown_mc, and deflated_sharpe sub-dicts.
+    aux_evidence : dict | None
+        Optional dict with keys `rolling_wfo_verdict` (str), `fixed_params_min_pf`
+        (float), `cost_survives_through` (str). All three must be present or
+        the alt path scores as UNSCORED.
+
+    Returns
+    -------
+    dict with keys: verdict, passed_via, core_verdict, alt_verdict,
+    n_core_passed, n_core_criteria, n_alt_passed, n_alt_criteria,
+    core_reasons, alt_reasons, and backward-compat `reasons` / `n_passed` /
+    `n_criteria`.
+    """
+    core_passes, core_reasons = _score_core_gate(report)
+    n_core_passed = sum(core_passes)
+    core_verdict = "PASS" if n_core_passed == len(core_passes) else "FAIL"
+
+    aux_ready = bool(aux_evidence) and all(k in aux_evidence for k in _ALT_AUX_REQUIRED)
+    if aux_ready:
+        alt_passes, alt_reasons = _score_alt_gate(report, aux_evidence)
+        n_alt_passed = sum(alt_passes)
+        n_alt_criteria = len(alt_passes)
+        alt_verdict = "PASS" if n_alt_passed == n_alt_criteria else "FAIL"
+    else:
+        alt_passes = []
+        alt_reasons = []
+        n_alt_passed = 0
+        n_alt_criteria = 5
+        alt_verdict = "UNSCORED"
+
+    if core_verdict == "PASS":
         verdict = "PASS"
-    elif n_passed >= 2:
-        verdict = "MARGINAL"
+        passed_via = "core"
+    elif alt_verdict == "PASS":
+        verdict = "PASS"
+        passed_via = "alt"
     else:
         verdict = "FAIL"
+        passed_via = None
 
-    return {"verdict": verdict, "reasons": reasons, "n_passed": n_passed, "n_criteria": 4}
+    return {
+        "verdict": verdict,
+        "passed_via": passed_via,
+        "core_verdict": core_verdict,
+        "alt_verdict": alt_verdict,
+        "n_core_passed": n_core_passed,
+        "n_core_criteria": len(core_passes),
+        "n_alt_passed": n_alt_passed,
+        "n_alt_criteria": n_alt_criteria,
+        "core_reasons": core_reasons,
+        "alt_reasons": alt_reasons,
+        # Backward-compat surface for older callers that expected the old
+        # single-path schema (engine/scripts/validation_reports/*_report.json
+        # was written with these keys — keep them stable for bisect tooling).
+        "reasons": core_reasons + alt_reasons,
+        "n_passed": n_core_passed,
+        "n_criteria": len(core_passes),
+    }
+
+
+def _load_aux_evidence(
+    rolling_wfo_path: Path | None,
+    fixed_params_path: Path | None,
+    cost_sweep_path: Path | None,
+) -> dict | None:
+    """Extract the 3 alt-evidence signals from their respective validator JSONs.
+
+    Returns None if any path is missing — the caller then runs core-only. The
+    shape keys read are locked to what those scripts actually emit; see the
+    four example reports in `engine/scripts/validation_reports/` for the
+    contract.
+    """
+    if not (rolling_wfo_path and fixed_params_path and cost_sweep_path):
+        return None
+
+    aux: dict = {}
+    with open(rolling_wfo_path) as f:
+        wfo = json.load(f)
+    aux["rolling_wfo_verdict"] = wfo.get("verdict")
+
+    with open(fixed_params_path) as f:
+        fp = json.load(f)
+    stats = fp.get("stats") or {}
+    aux["fixed_params_min_pf"] = stats.get("min_pf")
+
+    with open(cost_sweep_path) as f:
+        cs = json.load(f)
+    aux["cost_survives_through"] = cs.get("edge_survives_through")
+
+    missing = [k for k, v in aux.items() if v is None]
+    if missing:
+        print(
+            f"[WARN] aux evidence incomplete — missing {missing} — alt path will be UNSCORED",
+            flush=True,
+        )
+        return None
+    return aux
 
 
 def validate(pnls: list[float], n_grid_trials: int,
@@ -221,6 +443,13 @@ def main():
     ap.add_argument("--initial-capital", type=float, default=10_000.0)
     ap.add_argument("--n-resamples", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--rolling-wfo", default=None,
+                    help="Path to rolling_wfo_validator report JSON (alt-path input)")
+    ap.add_argument("--fixed-params", default=None,
+                    help="Path to fixed_params_temporal_validator report JSON "
+                         "(alt-path input)")
+    ap.add_argument("--cost-sweep", default=None,
+                    help="Path to cost_sensitivity_sweep report JSON (alt-path input)")
     args = ap.parse_args()
 
     results_file = Path(args.results_file).resolve()
@@ -254,8 +483,15 @@ def main():
                       initial_capital=args.initial_capital,
                       n_resamples=args.n_resamples, seed=args.seed)
 
-    gate = _evaluate_gate_v2(report)
+    aux = _load_aux_evidence(
+        rolling_wfo_path=Path(args.rolling_wfo).resolve() if args.rolling_wfo else None,
+        fixed_params_path=Path(args.fixed_params).resolve() if args.fixed_params else None,
+        cost_sweep_path=Path(args.cost_sweep).resolve() if args.cost_sweep else None,
+    )
+    gate = _evaluate_gate_v2(report, aux_evidence=aux)
     report["gate_v2"] = gate
+    if aux is not None:
+        report["aux_evidence"] = aux
     report["strategy"] = {
         "symbol": loaded["symbol"],
         "interval": loaded.get("interval"),
@@ -286,9 +522,30 @@ def main():
           f"E[max|N]={report['deflated_sharpe']['expected_max_sharpe']:.3f}  "
           f"dsr={report['deflated_sharpe']['dsr']:.3f}  "
           f"passes_10pct={report['deflated_sharpe']['passes_at_10pct']}", flush=True)
-    print(f"\nGate v2 verdict: {gate['verdict']} ({gate['n_passed']}/{gate['n_criteria']} criteria)", flush=True)
-    for reason in gate["reasons"]:
-        print(f"  - {reason}", flush=True)
+    passed_via = gate["passed_via"] or "—"
+    print(
+        f"\nGate v2 verdict: {gate['verdict']} (via {passed_via})",
+        flush=True,
+    )
+    print(
+        f"  core: {gate['core_verdict']} ({gate['n_core_passed']}/{gate['n_core_criteria']})",
+        flush=True,
+    )
+    for reason in gate["core_reasons"]:
+        print(f"    - {reason}", flush=True)
+    print(
+        f"  alt : {gate['alt_verdict']} ({gate['n_alt_passed']}/{gate['n_alt_criteria']})",
+        flush=True,
+    )
+    if gate["alt_reasons"]:
+        for reason in gate["alt_reasons"]:
+            print(f"    - {reason}", flush=True)
+    else:
+        print(
+            "    - (alt path UNSCORED: pass --rolling-wfo --fixed-params --cost-sweep "
+            "to score it)",
+            flush=True,
+        )
 
     if args.output:
         out_path = Path(args.output).resolve()
