@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from engine.backtest.composite_signals import generate_composite_signals
+from backtest.composite_signals import generate_composite_signals
 
 
 def _make_bullish_bars(n: int = 200, seed: int = 7) -> pd.DataFrame:
