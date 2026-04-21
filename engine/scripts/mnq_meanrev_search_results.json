@@ -1,0 +1,1887 @@
+{
+  "symbol": "MNQ",
+  "interval": "1h",
+  "start": "2025-06-01",
+  "end": "2026-03-27",
+  "spec": {
+    "multiplier": 2.0,
+    "tick_size": 0.25,
+    "commission": 0.62
+  },
+  "n_combos": 144,
+  "elapsed_sec": 46.2,
+  "results": [
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 73,
+      "pf": 1.832,
+      "wr": 60.27,
+      "net_pnl": 7657.94,
+      "ret_pct": 76.58
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 74,
+      "pf": 1.803,
+      "wr": 52.7,
+      "net_pnl": 7076.6,
+      "ret_pct": 70.77
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 74,
+      "pf": 1.652,
+      "wr": 41.89,
+      "net_pnl": 6038.74,
+      "ret_pct": 60.39
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 74,
+      "pf": 1.652,
+      "wr": 41.89,
+      "net_pnl": 6038.74,
+      "ret_pct": 60.39
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 74,
+      "pf": 1.649,
+      "wr": 43.24,
+      "net_pnl": 5550.26,
+      "ret_pct": 55.5
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 74,
+      "pf": 1.62,
+      "wr": 51.35,
+      "net_pnl": 6545.74,
+      "ret_pct": 65.46
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 74,
+      "pf": 1.62,
+      "wr": 51.35,
+      "net_pnl": 6545.74,
+      "ret_pct": 65.46
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 72,
+      "pf": 1.593,
+      "wr": 62.5,
+      "net_pnl": 7112.22,
+      "ret_pct": 71.12
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 72,
+      "pf": 1.593,
+      "wr": 62.5,
+      "net_pnl": 7112.22,
+      "ret_pct": 71.12
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 44,
+      "pf": 1.501,
+      "wr": 63.64,
+      "net_pnl": 2760.9,
+      "ret_pct": 27.61
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 44,
+      "pf": 1.497,
+      "wr": 68.18,
+      "net_pnl": 2948.98,
+      "ret_pct": 29.49
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 44,
+      "pf": 1.497,
+      "wr": 68.18,
+      "net_pnl": 2948.98,
+      "ret_pct": 29.49
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 106,
+      "pf": 1.48,
+      "wr": 59.43,
+      "net_pnl": 8248.06,
+      "ret_pct": 82.48
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 34,
+      "pf": 1.479,
+      "wr": 41.18,
+      "net_pnl": 2067.79,
+      "ret_pct": 20.68
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 34,
+      "pf": 1.479,
+      "wr": 41.18,
+      "net_pnl": 2067.79,
+      "ret_pct": 20.68
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 115,
+      "pf": 1.471,
+      "wr": 56.52,
+      "net_pnl": 7185.65,
+      "ret_pct": 71.86
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 105,
+      "pf": 1.458,
+      "wr": 59.05,
+      "net_pnl": 7925.94,
+      "ret_pct": 79.26
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 44,
+      "pf": 1.456,
+      "wr": 56.82,
+      "net_pnl": 2482.3,
+      "ret_pct": 24.82
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 44,
+      "pf": 1.456,
+      "wr": 56.82,
+      "net_pnl": 2482.3,
+      "ret_pct": 24.82
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 45,
+      "pf": 1.432,
+      "wr": 48.89,
+      "net_pnl": 2183.34,
+      "ret_pct": 21.83
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 45,
+      "pf": 1.432,
+      "wr": 48.89,
+      "net_pnl": 2183.34,
+      "ret_pct": 21.83
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 44,
+      "pf": 1.422,
+      "wr": 54.55,
+      "net_pnl": 2251.37,
+      "ret_pct": 22.51
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 53,
+      "pf": 1.412,
+      "wr": 56.6,
+      "net_pnl": 2314.14,
+      "ret_pct": 23.14
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 53,
+      "pf": 1.412,
+      "wr": 56.6,
+      "net_pnl": 2314.14,
+      "ret_pct": 23.14
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 45,
+      "pf": 1.36,
+      "wr": 46.67,
+      "net_pnl": 1838.84,
+      "ret_pct": 18.39
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 34,
+      "pf": 1.358,
+      "wr": 44.12,
+      "net_pnl": 1498.3,
+      "ret_pct": 14.98
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 53,
+      "pf": 1.357,
+      "wr": 66.04,
+      "net_pnl": 2315.35,
+      "ret_pct": 23.15
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 53,
+      "pf": 1.357,
+      "wr": 66.04,
+      "net_pnl": 2315.35,
+      "ret_pct": 23.15
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 34,
+      "pf": 1.339,
+      "wr": 50.0,
+      "net_pnl": 1584.77,
+      "ret_pct": 15.85
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 53,
+      "pf": 1.317,
+      "wr": 62.26,
+      "net_pnl": 1946.6,
+      "ret_pct": 19.47
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 53,
+      "pf": 1.305,
+      "wr": 54.72,
+      "net_pnl": 1753.64,
+      "ret_pct": 17.54
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 53,
+      "pf": 1.3,
+      "wr": 45.28,
+      "net_pnl": 1604.26,
+      "ret_pct": 16.04
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 53,
+      "pf": 1.3,
+      "wr": 45.28,
+      "net_pnl": 1604.26,
+      "ret_pct": 16.04
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 53,
+      "pf": 1.3,
+      "wr": 45.28,
+      "net_pnl": 1604.26,
+      "ret_pct": 16.04
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 117,
+      "pf": 1.241,
+      "wr": 47.01,
+      "net_pnl": 3867.71,
+      "ret_pct": 38.68
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 33,
+      "pf": 1.222,
+      "wr": 54.55,
+      "net_pnl": 1195.72,
+      "ret_pct": 11.96
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 144,
+      "pf": 1.218,
+      "wr": 54.86,
+      "net_pnl": 4184.26,
+      "ret_pct": 41.84
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 87,
+      "pf": 1.213,
+      "wr": 56.32,
+      "net_pnl": 2535.16,
+      "ret_pct": 25.35
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 127,
+      "pf": 1.202,
+      "wr": 44.88,
+      "net_pnl": 2691.5,
+      "ret_pct": 26.92
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 127,
+      "pf": 1.202,
+      "wr": 44.88,
+      "net_pnl": 2691.5,
+      "ret_pct": 26.92
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 128,
+      "pf": 1.2,
+      "wr": 44.53,
+      "net_pnl": 2678.26,
+      "ret_pct": 26.78
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 114,
+      "pf": 1.199,
+      "wr": 44.74,
+      "net_pnl": 3722.14,
+      "ret_pct": 37.22
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 113,
+      "pf": 1.193,
+      "wr": 45.13,
+      "net_pnl": 3618.67,
+      "ret_pct": 36.19
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 259,
+      "pf": 1.175,
+      "wr": 62.55,
+      "net_pnl": 5341.23,
+      "ret_pct": 53.41
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 91,
+      "pf": 1.175,
+      "wr": 43.96,
+      "net_pnl": 1884.05,
+      "ret_pct": 18.84
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 91,
+      "pf": 1.175,
+      "wr": 43.96,
+      "net_pnl": 1884.05,
+      "ret_pct": 18.84
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 158,
+      "pf": 1.171,
+      "wr": 53.16,
+      "net_pnl": 3793.76,
+      "ret_pct": 37.94
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 126,
+      "pf": 1.169,
+      "wr": 62.7,
+      "net_pnl": 2489.62,
+      "ret_pct": 24.9
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 257,
+      "pf": 1.169,
+      "wr": 63.42,
+      "net_pnl": 5179.43,
+      "ret_pct": 51.79
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 257,
+      "pf": 1.169,
+      "wr": 63.42,
+      "net_pnl": 5179.43,
+      "ret_pct": 51.79
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 141,
+      "pf": 1.163,
+      "wr": 58.16,
+      "net_pnl": 3504.77,
+      "ret_pct": 35.05
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 141,
+      "pf": 1.163,
+      "wr": 58.16,
+      "net_pnl": 3504.77,
+      "ret_pct": 35.05
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 86,
+      "pf": 1.156,
+      "wr": 60.47,
+      "net_pnl": 2139.25,
+      "ret_pct": 21.39
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 86,
+      "pf": 1.156,
+      "wr": 60.47,
+      "net_pnl": 2139.25,
+      "ret_pct": 21.39
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 126,
+      "pf": 1.154,
+      "wr": 62.7,
+      "net_pnl": 2307.76,
+      "ret_pct": 23.08
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 126,
+      "pf": 1.154,
+      "wr": 62.7,
+      "net_pnl": 2307.76,
+      "ret_pct": 23.08
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 33,
+      "pf": 1.142,
+      "wr": 54.55,
+      "net_pnl": 901.26,
+      "ret_pct": 9.01
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 33,
+      "pf": 1.142,
+      "wr": 54.55,
+      "net_pnl": 901.26,
+      "ret_pct": 9.01
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 124,
+      "pf": 1.128,
+      "wr": 51.61,
+      "net_pnl": 1891.95,
+      "ret_pct": 18.92
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 124,
+      "pf": 1.128,
+      "wr": 51.61,
+      "net_pnl": 1891.95,
+      "ret_pct": 18.92
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 188,
+      "pf": 1.127,
+      "wr": 62.23,
+      "net_pnl": 3021.99,
+      "ret_pct": 30.22
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 188,
+      "pf": 1.127,
+      "wr": 62.23,
+      "net_pnl": 3021.99,
+      "ret_pct": 30.22
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 192,
+      "pf": 1.12,
+      "wr": 60.42,
+      "net_pnl": 3379.88,
+      "ret_pct": 33.8
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 192,
+      "pf": 1.12,
+      "wr": 60.42,
+      "net_pnl": 3379.88,
+      "ret_pct": 33.8
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 34,
+      "pf": 1.118,
+      "wr": 41.18,
+      "net_pnl": 671.77,
+      "ret_pct": 6.72
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 34,
+      "pf": 1.118,
+      "wr": 41.18,
+      "net_pnl": 671.77,
+      "ret_pct": 6.72
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 119,
+      "pf": 1.117,
+      "wr": 63.03,
+      "net_pnl": 1868.01,
+      "ret_pct": 18.68
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 119,
+      "pf": 1.117,
+      "wr": 63.03,
+      "net_pnl": 1868.01,
+      "ret_pct": 18.68
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 89,
+      "pf": 1.117,
+      "wr": 50.56,
+      "net_pnl": 1468.85,
+      "ret_pct": 14.69
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 89,
+      "pf": 1.117,
+      "wr": 50.56,
+      "net_pnl": 1468.85,
+      "ret_pct": 14.69
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 284,
+      "pf": 1.111,
+      "wr": 54.23,
+      "net_pnl": 3418.77,
+      "ret_pct": 34.19
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 121,
+      "pf": 1.111,
+      "wr": 38.84,
+      "net_pnl": 1714.83,
+      "ret_pct": 17.15
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 283,
+      "pf": 1.11,
+      "wr": 54.77,
+      "net_pnl": 3403.01,
+      "ret_pct": 34.03
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 283,
+      "pf": 1.11,
+      "wr": 54.77,
+      "net_pnl": 3403.01,
+      "ret_pct": 34.03
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 126,
+      "pf": 1.109,
+      "wr": 50.79,
+      "net_pnl": 1504.55,
+      "ret_pct": 15.05
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 126,
+      "pf": 1.109,
+      "wr": 50.79,
+      "net_pnl": 1504.55,
+      "ret_pct": 15.05
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 89,
+      "pf": 1.109,
+      "wr": 49.44,
+      "net_pnl": 1289.14,
+      "ret_pct": 12.89
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 206,
+      "pf": 1.108,
+      "wr": 51.94,
+      "net_pnl": 2554.92,
+      "ret_pct": 25.55
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 206,
+      "pf": 1.108,
+      "wr": 51.94,
+      "net_pnl": 2554.92,
+      "ret_pct": 25.55
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 204,
+      "pf": 1.105,
+      "wr": 57.84,
+      "net_pnl": 2957.0,
+      "ret_pct": 29.57
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 126,
+      "pf": 1.102,
+      "wr": 50.79,
+      "net_pnl": 1407.55,
+      "ret_pct": 14.08
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 121,
+      "pf": 1.098,
+      "wr": 61.16,
+      "net_pnl": 1558.82,
+      "ret_pct": 15.59
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 317,
+      "pf": 1.095,
+      "wr": 62.78,
+      "net_pnl": 3289.63,
+      "ret_pct": 32.9
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 91,
+      "pf": 1.094,
+      "wr": 42.86,
+      "net_pnl": 1017.55,
+      "ret_pct": 10.18
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 120,
+      "pf": 1.089,
+      "wr": 35.0,
+      "net_pnl": 1547.68,
+      "ret_pct": 15.48
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 120,
+      "pf": 1.089,
+      "wr": 35.0,
+      "net_pnl": 1547.68,
+      "ret_pct": 15.48
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 125,
+      "pf": 1.088,
+      "wr": 50.4,
+      "net_pnl": 1318.21,
+      "ret_pct": 13.18
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 126,
+      "pf": 1.083,
+      "wr": 42.06,
+      "net_pnl": 1076.47,
+      "ret_pct": 10.76
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 126,
+      "pf": 1.083,
+      "wr": 42.06,
+      "net_pnl": 1076.47,
+      "ret_pct": 10.76
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 126,
+      "pf": 1.083,
+      "wr": 42.06,
+      "net_pnl": 1076.47,
+      "ret_pct": 10.76
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 189,
+      "pf": 1.081,
+      "wr": 59.79,
+      "net_pnl": 1938.53,
+      "ret_pct": 19.39
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 315,
+      "pf": 1.08,
+      "wr": 62.54,
+      "net_pnl": 2781.69,
+      "ret_pct": 27.82
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 315,
+      "pf": 1.08,
+      "wr": 62.54,
+      "net_pnl": 2781.69,
+      "ret_pct": 27.82
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 206,
+      "pf": 1.066,
+      "wr": 50.49,
+      "net_pnl": 1590.85,
+      "ret_pct": 15.91
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 151,
+      "pf": 1.053,
+      "wr": 48.34,
+      "net_pnl": 1161.9,
+      "ret_pct": 11.62
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 151,
+      "pf": 1.053,
+      "wr": 48.34,
+      "net_pnl": 1161.9,
+      "ret_pct": 11.62
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 156,
+      "pf": 1.046,
+      "wr": 39.74,
+      "net_pnl": 901.72,
+      "ret_pct": 9.02
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 156,
+      "pf": 1.046,
+      "wr": 39.74,
+      "net_pnl": 901.72,
+      "ret_pct": 9.02
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 172,
+      "pf": 1.035,
+      "wr": 43.6,
+      "net_pnl": 834.51,
+      "ret_pct": 8.35
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 214,
+      "pf": 1.034,
+      "wr": 42.52,
+      "net_pnl": 777.43,
+      "ret_pct": 7.77
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 214,
+      "pf": 1.034,
+      "wr": 42.52,
+      "net_pnl": 777.43,
+      "ret_pct": 7.77
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 356,
+      "pf": 1.03,
+      "wr": 48.88,
+      "net_pnl": 1034.1,
+      "ret_pct": 10.34
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 340,
+      "pf": 1.021,
+      "wr": 55.29,
+      "net_pnl": 733.61,
+      "ret_pct": 7.34
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 339,
+      "pf": 1.016,
+      "wr": 55.16,
+      "net_pnl": 563.85,
+      "ret_pct": 5.64
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 339,
+      "pf": 1.016,
+      "wr": 55.16,
+      "net_pnl": 563.85,
+      "ret_pct": 5.64
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 214,
+      "pf": 1.016,
+      "wr": 41.59,
+      "net_pnl": 376.43,
+      "ret_pct": 3.76
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 355,
+      "pf": 1.014,
+      "wr": 48.73,
+      "net_pnl": 475.1,
+      "ret_pct": 4.75
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 355,
+      "pf": 1.014,
+      "wr": 48.73,
+      "net_pnl": 475.1,
+      "ret_pct": 4.75
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 236,
+      "pf": 1.013,
+      "wr": 50.85,
+      "net_pnl": 330.93,
+      "ret_pct": 3.31
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 236,
+      "pf": 1.013,
+      "wr": 50.85,
+      "net_pnl": 330.93,
+      "ret_pct": 3.31
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 236,
+      "pf": 1.013,
+      "wr": 50.85,
+      "net_pnl": 330.93,
+      "ret_pct": 3.31
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 157,
+      "pf": 1.001,
+      "wr": 38.22,
+      "net_pnl": 18.5,
+      "ret_pct": 0.18
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 140,
+      "pf": 0.995,
+      "wr": 55.0,
+      "net_pnl": -118.21,
+      "ret_pct": -1.18
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 1.5,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 140,
+      "pf": 0.993,
+      "wr": 55.0,
+      "net_pnl": -187.06,
+      "ret_pct": -1.87
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 298,
+      "pf": 0.989,
+      "wr": 43.96,
+      "net_pnl": -345.72,
+      "ret_pct": -3.46
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 297,
+      "pf": 0.988,
+      "wr": 44.44,
+      "net_pnl": -361.6,
+      "ret_pct": -3.62
+    },
+    {
+      "params": {
+        "bb_period": 20,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 297,
+      "pf": 0.988,
+      "wr": 44.44,
+      "net_pnl": -361.6,
+      "ret_pct": -3.62
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 163,
+      "pf": 0.976,
+      "wr": 42.94,
+      "net_pnl": -632.98,
+      "ret_pct": -6.33
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 163,
+      "pf": 0.976,
+      "wr": 42.94,
+      "net_pnl": -632.98,
+      "ret_pct": -6.33
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 227,
+      "pf": 0.97,
+      "wr": 59.03,
+      "net_pnl": -829.23,
+      "ret_pct": -8.29
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 227,
+      "pf": 0.97,
+      "wr": 59.03,
+      "net_pnl": -829.23,
+      "ret_pct": -8.29
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 228,
+      "pf": 0.966,
+      "wr": 58.77,
+      "net_pnl": -950.76,
+      "ret_pct": -9.51
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 176,
+      "pf": 0.963,
+      "wr": 34.09,
+      "net_pnl": -882.86,
+      "ret_pct": -8.83
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 176,
+      "pf": 0.963,
+      "wr": 34.09,
+      "net_pnl": -882.86,
+      "ret_pct": -8.83
+    },
+    {
+      "params": {
+        "bb_period": 50,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 181,
+      "pf": 0.953,
+      "wr": 35.36,
+      "net_pnl": -1084.42,
+      "ret_pct": -10.84
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 212,
+      "pf": 0.947,
+      "wr": 47.64,
+      "net_pnl": -1586.45,
+      "ret_pct": -15.86
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 212,
+      "pf": 0.947,
+      "wr": 47.64,
+      "net_pnl": -1586.45,
+      "ret_pct": -15.86
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 228,
+      "pf": 0.946,
+      "wr": 40.79,
+      "net_pnl": -1496.45,
+      "ret_pct": -14.96
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 228,
+      "pf": 0.946,
+      "wr": 40.79,
+      "net_pnl": -1496.45,
+      "ret_pct": -14.96
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 2.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 152,
+      "pf": 0.937,
+      "wr": 44.08,
+      "net_pnl": -1365.98,
+      "ret_pct": -13.66
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 1.5,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 230,
+      "pf": 0.92,
+      "wr": 40.43,
+      "net_pnl": -2242.08,
+      "ret_pct": -22.42
+    },
+    {
+      "params": {
+        "bb_period": 30,
+        "bb_std": 1.5,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 216,
+      "pf": 0.88,
+      "wr": 45.83,
+      "net_pnl": -3649.63,
+      "ret_pct": -36.5
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 244,
+      "pf": 0.875,
+      "wr": 40.57,
+      "net_pnl": -3308.6,
+      "ret_pct": -33.09
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 244,
+      "pf": 0.875,
+      "wr": 40.57,
+      "net_pnl": -3308.6,
+      "ret_pct": -33.09
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 2.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 244,
+      "pf": 0.875,
+      "wr": 40.57,
+      "net_pnl": -3308.6,
+      "ret_pct": -33.09
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 28,
+      "pf": 0.511,
+      "wr": 53.57,
+      "net_pnl": -2246.08,
+      "ret_pct": -22.46
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 28,
+      "pf": 0.511,
+      "wr": 53.57,
+      "net_pnl": -2246.08,
+      "ret_pct": -22.46
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 3.0,
+        "atr_stop_mult": 3.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 28,
+      "pf": 0.511,
+      "wr": 53.57,
+      "net_pnl": -2246.08,
+      "ret_pct": -22.46
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 20
+      },
+      "total_trades": 28,
+      "pf": 0.422,
+      "wr": 39.29,
+      "net_pnl": -2378.01,
+      "ret_pct": -23.78
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 50
+      },
+      "total_trades": 28,
+      "pf": 0.422,
+      "wr": 39.29,
+      "net_pnl": -2378.01,
+      "ret_pct": -23.78
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 3.0,
+        "atr_stop_mult": 2.0,
+        "max_hold_bars": 100
+      },
+      "total_trades": 28,
+      "pf": 0.422,
+      "wr": 39.29,
+      "net_pnl": -2378.01,
+      "ret_pct": -23.78
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 20
+      },
+      "total_trades": 28,
+      "pf": 0.362,
+      "wr": 28.57,
+      "net_pnl": -2597.15,
+      "ret_pct": -25.97
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 50
+      },
+      "total_trades": 28,
+      "pf": 0.362,
+      "wr": 28.57,
+      "net_pnl": -2597.15,
+      "ret_pct": -25.97
+    },
+    {
+      "params": {
+        "bb_period": 14,
+        "bb_std": 3.0,
+        "atr_stop_mult": 1.5,
+        "max_hold_bars": 100
+      },
+      "total_trades": 28,
+      "pf": 0.362,
+      "wr": 28.57,
+      "net_pnl": -2597.15,
+      "ret_pct": -25.97
+    }
+  ]
+}
