@@ -39,6 +39,7 @@ import { GoLivePlanCard } from "@/components/GoLivePlanCard";
 import { InstrumentValidationScorecard } from "@/components/InstrumentValidationScorecard";
 import { PortfolioPLChart } from "@/components/PortfolioPLChart";
 import { MESRevalidationTracker } from "@/components/MESRevalidationTracker";
+import { MESForwardRecorderPanel } from "@/components/MESForwardRecorderPanel";
 import {
   type BacktestBaselineRow,
   fmtBaselineNum,
@@ -1524,6 +1525,12 @@ export default function ValidationPage() {
         <section>
           <SectionLabel>1C — MES Re-Validation Progress</SectionLabel>
           <MESRevalidationTracker />
+        </section>
+
+        {/* Section 1D: MES Forward-Recorder (observational experiment) */}
+        <section>
+          <SectionLabel>1D — MES Forward-Recorder (observational)</SectionLabel>
+          <MESForwardRecorderPanel />
         </section>
 
         {/* Section 2: Monte Carlo Confidence Intervals */}
