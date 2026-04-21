@@ -249,8 +249,16 @@ class AlertManager:
                 message = await self._alert_queue.get()
                 if self._notify:
                     try:
-                        await self._notify(message)
-                        logger.info("[AlertManager] Sent: %.80s", message.replace("\n", " | "))
+                        delivered = await self._notify(message)
+                        if delivered:
+                            logger.info(
+                                "[AlertManager] Sent: %.80s", message.replace("\n", " | ")
+                            )
+                        else:
+                            logger.warning(
+                                "[AlertManager] notify_fn returned falsy — delivery failed: %.80s",
+                                message.replace("\n", " | "),
+                            )
                     except Exception as exc:
                         logger.error("[AlertManager] notify_fn raised: %s", exc)
                 else:

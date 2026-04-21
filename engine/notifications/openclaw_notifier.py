@@ -109,7 +109,7 @@ def _send_sync(message: str, phone: str = _PHONE_TO) -> bool:
             ],
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=45,
         )
         if result.returncode == 0:
             logger.info(f"OpenClaw WhatsApp sent to {phone}: {message[:80]}")
