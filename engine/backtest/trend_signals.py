@@ -66,6 +66,7 @@ def generate_sma_trend_signals(
 
     n = len(df)
     entry_signal = np.full(n, "NO_TRADE", dtype=object)
+    exit_signal  = np.full(n, "NO_EXIT", dtype=object)
     stop_level   = np.full(n, np.nan)
     target_1     = np.full(n, np.nan)
     target_2     = np.full(n, np.nan)
@@ -83,8 +84,11 @@ def generate_sma_trend_signals(
             target_1[i]    = price + _T1_MULT * atr_i
             target_2[i]    = price + _T2_MULT * atr_i
             target_3[i]    = price + _T3_MULT * atr_i
+        elif cross_dn.iloc[i]:
+            exit_signal[i] = "EXIT_NOW"
 
     df["entry_signal"] = entry_signal
+    df["exit_signal"]  = exit_signal
     df["stop_level"]   = stop_level
     df["target_1"]     = target_1
     df["target_2"]     = target_2
