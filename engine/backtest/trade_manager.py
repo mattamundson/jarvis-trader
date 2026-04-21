@@ -127,6 +127,10 @@ class BacktestResult:
     cvar_95: float = 0.0  # Expected Shortfall beyond 95% VaR
     cvar_99: float = 0.0  # Expected Shortfall beyond 99% VaR
 
+    # Kelly criterion (from avg_win / avg_loss)
+    kelly_fraction: float = 0.0        # full Kelly f* (theoretical optimal bet fraction)
+    half_kelly_fraction: float = 0.0   # f*/2 — practical sizing recommendation
+
     def summary(self) -> str:
         """Human-readable one-screen summary.
 
@@ -216,6 +220,8 @@ class BacktestResult:
             "cvar_95": round(self.cvar_95, 6),
             "cvar_99": round(self.cvar_99, 6),
             "spread_cost_total": round(self.spread_cost_total, 2),
+            "kelly_fraction": round(self.kelly_fraction, 4),
+            "half_kelly_fraction": round(self.half_kelly_fraction, 4),
             "equity_curve": [round(v, 2) for v in self.equity_curve],
             "trades": [t.to_dict() for t in self.trades],
         }
