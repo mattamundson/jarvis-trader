@@ -82,8 +82,13 @@ def generate_sma_trend_signals(
     # the object-dtype conversion that makes Python's ~bool give wrong results (Python 3.12+).
     above = (sma_f > sma_s).fillna(False).astype(bool)
     prev_above = above.shift(1, fill_value=False)
-    cross_up = above & ~prev_above   # golden cross
-    cross_dn = ~above & prev_above   # death cross
+    # Guard: require previous bar to also have valid slow SMA.  Without this,
+    # the first valid slow-SMA bar (bar=slow) always triggers a spurious cross
+    # because prev bar had NaN→fillna(False).  With wide trail stops this
+    # synthetic entry never exits, producing 0 completed trades.
+    prev_sma_s_valid = sma_s.shift(1).notna()
+    cross_up = above & ~prev_above & prev_sma_s_valid   # golden cross
+    cross_dn = ~above & prev_above & prev_sma_s_valid   # death cross
 
     n = len(df)
     entry_signal = np.full(n, "NO_TRADE", dtype=object)

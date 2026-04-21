@@ -17,8 +17,15 @@ def _make_df(n: int = 300, base: float = 5000.0, seed: int = 42) -> pd.DataFrame
 
 
 def _make_trending_df(n: int = 400) -> pd.DataFrame:
-    """Rising price series guaranteed to produce a golden cross."""
-    close = np.linspace(4800, 5500, n)
+    """Price series that produces a genuine golden cross (decline then strong rise).
+
+    Phase 1 (150 bars declining): SMA(20) drops below SMA(100) once both are valid.
+    Phase 2 (remaining bars rising): SMA(20) crosses above SMA(100) — genuine cross,
+    not the spurious first-valid-SMA-bar artifact that fillna(False) previously caused.
+    """
+    phase1 = np.linspace(5200, 4800, 150)
+    phase2 = np.linspace(4800, 5800, n - 150)
+    close = np.concatenate([phase1, phase2])
     high = close + 5
     low = close - 5
     idx = pd.date_range("2024-06-01", periods=n, freq="1h")
