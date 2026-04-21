@@ -470,6 +470,82 @@ def bootstrap_max_dd(
 
 
 # ---------------------------------------------------------------------------
+# Slippage stress test
+# ---------------------------------------------------------------------------
+
+
+def run_slippage_stress(
+    result: BacktestResult,
+    symbol: str = "MES",
+    extra_tick_scenarios: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+) -> dict:
+    """Measure how PF degrades as execution slippage increases.
+
+    For each extra-ticks scenario, adds (extra_ticks × tick_value) as a
+    fixed cost to every trade and recomputes PF. Identifies the breakeven
+    slippage — the number of extra ticks that drives PF to exactly 1.0.
+
+    Args:
+        result: BacktestResult with trades
+        symbol: instrument symbol for tick value lookup
+        extra_tick_scenarios: additional ticks per trade to stress-test
+
+    Returns:
+        {scenarios, breakeven_extra_ticks, breakeven_pf_at_1_tick, verdict}
+    """
+    tick_value = _get_tick_value(symbol)
+    pnls = np.array([t.pnl for t in result.trades], dtype=np.float64)
+    n = len(pnls)
+    if n == 0:
+        return {"scenarios": [], "breakeven_extra_ticks": None, "verdict": "NO_TRADES"}
+
+    scenarios = []
+    prev_pf = None
+    breakeven_ticks = None
+
+    for extra_ticks in extra_tick_scenarios:
+        added_cost = extra_ticks * tick_value  # $/contract/trade (one round-turn leg)
+        adjusted = pnls - added_cost
+        wins = adjusted[adjusted > 0]
+        losses = adjusted[adjusted <= 0]
+        gp = float(wins.sum()) if len(wins) else 0.0
+        gl = float(abs(losses.sum())) if len(losses) else 0.0
+        pf = gp / gl if gl > 0 else float("inf")
+        profitable = pf > 1.0
+        scenarios.append({
+            "extra_ticks": extra_ticks,
+            "added_cost_per_trade": round(added_cost, 2),
+            "pf": round(pf, 3),
+            "profitable": profitable,
+        })
+        # Linear interpolation for breakeven (where PF crosses 1.0)
+        if prev_pf is not None and prev_pf > 1.0 and pf <= 1.0 and breakeven_ticks is None:
+            frac = (prev_pf - 1.0) / (prev_pf - pf)
+            prev_ticks = scenarios[-2]["extra_ticks"]
+            breakeven_ticks = prev_ticks + frac * (extra_ticks - prev_ticks)
+        prev_pf = pf
+
+    # Verdict: how many extra ticks can this strategy absorb?
+    if breakeven_ticks is None:
+        verdict = "ROBUST"  # PF > 1.0 even at max stress scenario
+    elif breakeven_ticks >= 4:
+        verdict = "ADEQUATE"  # survives realistic spread widening
+    elif breakeven_ticks >= 2:
+        verdict = "MARGINAL"  # thin edge
+    else:
+        verdict = "FRAGILE"  # even normal execution variability kills it
+
+    return {
+        "symbol": symbol,
+        "tick_value": tick_value,
+        "n_trades": n,
+        "scenarios": scenarios,
+        "breakeven_extra_ticks": round(breakeven_ticks, 2) if breakeven_ticks is not None else None,
+        "verdict": verdict,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Report formatter
 # ---------------------------------------------------------------------------
 

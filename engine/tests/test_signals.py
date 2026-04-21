@@ -579,19 +579,27 @@ class TestSignalRobustness:
 
 
 # ── RV filter env-var wiring (Phase B+ addition, 2026-04-21) ──────────────
-def test_mes_rv_filter_env_var_default_off(monkeypatch):
-    """MES_MIN_RV_ANNUALIZED unset → no filter (0.0) passed to trend_signals."""
+def _make_mes_cross_df():
+    """Decline-then-rise series that produces a genuine SMA(50)/SMA(200) golden cross.
+
+    Phase 1 (210 bars declining): SMA(200) becomes valid and SMA(50) falls below it.
+    Phase 2 (300 bars rising): SMA(50) crosses above SMA(200) — genuine golden cross.
+    Monotonic linspace no longer works after the spurious-first-bar-cross fix.
+    """
     import numpy as np
     import pandas as pd
+    close = np.concatenate([np.linspace(5200, 4800, 210), np.linspace(4800, 5800, 300)])
+    idx = pd.date_range("2024-06-01", periods=len(close), freq="1h")
+    return pd.DataFrame({"open": close, "high": close + 5, "low": close - 5, "close": close}, index=idx)
+
+
+def test_mes_rv_filter_env_var_default_off(monkeypatch):
+    """MES_MIN_RV_ANNUALIZED unset → no filter (0.0) passed to trend_signals."""
     from backtest.signals import generate_instrument_signals
 
     monkeypatch.delenv("MES_MIN_RV_ANNUALIZED", raising=False)
 
-    # Trending price series — must produce golden cross
-    close = np.linspace(4800, 5500, 400)
-    idx = pd.date_range("2024-06-01", periods=400, freq="1h")
-    df = pd.DataFrame({"open": close, "high": close + 5,
-                       "low": close - 5, "close": close}, index=idx)
+    df = _make_mes_cross_df()
     out = generate_instrument_signals(df, symbol="MES")
     assert "rv_20_ann_pct" in out.columns
     # Filter off means: as long as trend conditions hit, entries fire
@@ -600,30 +608,20 @@ def test_mes_rv_filter_env_var_default_off(monkeypatch):
 
 def test_mes_rv_filter_env_var_invalid_safe(monkeypatch):
     """Malformed MES_MIN_RV_ANNUALIZED → fall back to 0.0 (no filter)."""
-    import numpy as np
-    import pandas as pd
     from backtest.signals import generate_instrument_signals
 
     monkeypatch.setenv("MES_MIN_RV_ANNUALIZED", "not_a_number")
-    close = np.linspace(4800, 5500, 400)
-    idx = pd.date_range("2024-06-01", periods=400, freq="1h")
-    df = pd.DataFrame({"open": close, "high": close + 5,
-                       "low": close - 5, "close": close}, index=idx)
+    df = _make_mes_cross_df()
     # Must not raise — invalid env silently defaults to 0.0
     out = generate_instrument_signals(df, symbol="MES")
     assert (out["entry_signal"] == "ENTRY_NOW").sum() >= 1
 
 
 def test_mes_rv_filter_env_var_high_blocks_entries(monkeypatch):
-    """Unreachable MES_MIN_RV_ANNUALIZED=999 → zero entries."""
-    import numpy as np
-    import pandas as pd
+    """Unreachable MES_MIN_RV_ANNUALIZED=999 → zero entries even with genuine crosses."""
     from backtest.signals import generate_instrument_signals
 
     monkeypatch.setenv("MES_MIN_RV_ANNUALIZED", "999.0")
-    close = np.linspace(4800, 5500, 400)
-    idx = pd.date_range("2024-06-01", periods=400, freq="1h")
-    df = pd.DataFrame({"open": close, "high": close + 5,
-                       "low": close - 5, "close": close}, index=idx)
+    df = _make_mes_cross_df()
     out = generate_instrument_signals(df, symbol="MES")
     assert (out["entry_signal"] == "ENTRY_NOW").sum() == 0
