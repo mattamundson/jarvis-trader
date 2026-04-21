@@ -26,20 +26,38 @@ if ($pm2Managed) {
 
     pm2 restart jarvis-engine | Out-Host
     Write-Host "Waiting for engine to come up..."
-    # Poll /health with a 60s ceiling. Engine bootstrap (SafetyLayer, PnL,
-    # scheduler, IB init) routinely takes 30-45s so a fixed 15s Sleep was
-    # racing the port open.
-    $deadline = (Get-Date).AddSeconds(60)
-    $healthy = $false
+    # Poll /health with a 180s ceiling. Full startup (SafetyLayer, PnL,
+    # RL model load, scheduler, IB init) has been observed at ~1m44s on
+    # this machine, so anything tighter produces false-positive ERRORs.
+    $startTime = Get-Date
+    $deadline  = $startTime.AddSeconds(180)
+    $healthy   = $false
+    $lastProgressPrint = 0
     while ((Get-Date) -lt $deadline) {
         try {
             $r = Invoke-WebRequest -Uri "http://localhost:8010/health" -UseBasicParsing -TimeoutSec 3
             if ($r.StatusCode -eq 200) { $healthy = $true; break }
         } catch {}
         Start-Sleep -Seconds 2
+        # Reassure operator at 60s and 120s marks — RL model load + scheduler
+        # warmup can keep uvicorn from binding until ~1m44s.
+        $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
+        if ($elapsed -ge 60 -and $lastProgressPrint -lt 60) {
+            Write-Host "  ...still booting at 60s (uvicorn not yet bound — normal up to ~110s)"
+            $lastProgressPrint = 60
+        } elseif ($elapsed -ge 120 -and $lastProgressPrint -lt 120) {
+            Write-Host "  ...still booting at 120s (if this keeps going past 180s, check pm2 logs for crash)"
+            $lastProgressPrint = 120
+        }
     }
     if (-not $healthy) {
-        Write-Host "ERROR: engine did not respond on /health within 60s after pm2 restart."
+        Write-Host "ERROR: engine did not respond on /health within 180s after pm2 restart."
+        Write-Host "Last 30 error-log lines for triage:"
+        try {
+            pm2 logs jarvis-engine --nostream --lines 30 --err 2>&1 | Select-Object -Last 30 | Out-Host
+        } catch {
+            Write-Host "  (pm2 logs fetch failed: $($_.Exception.Message))"
+        }
         exit 1
     }
 
