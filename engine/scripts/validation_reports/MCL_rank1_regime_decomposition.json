@@ -1,0 +1,3727 @@
+{
+  "symbol": "MCL",
+  "rank": 1,
+  "params": {
+    "bb_period": 50,
+    "bb_std": 1.5,
+    "atr_stop_mult": 3.0,
+    "max_hold_bars": 20
+  },
+  "n_trades": 365,
+  "n_unmatched": 0,
+  "regime_stats": {
+    "TRENDING": {
+      "n": 47,
+      "pf": 1.164,
+      "wr": 55.3,
+      "sharpe": 0.896,
+      "net_pnl": 432.88,
+      "avg_pnl": 9.21,
+      "ret_pct": 4.33
+    },
+    "RANGING": {
+      "n": 303,
+      "pf": 1.32,
+      "wr": 53.8,
+      "sharpe": 1.639,
+      "net_pnl": 3537.68,
+      "avg_pnl": 11.68,
+      "ret_pct": 35.38
+    },
+    "VOLATILE": {
+      "n": 15,
+      "pf": 4.097,
+      "wr": 66.7,
+      "sharpe": 8.149,
+      "net_pnl": 769.5,
+      "avg_pnl": 51.3,
+      "ret_pct": 7.69
+    }
+  },
+  "adx_stats": {
+    "weak (<20)": {
+      "n": 150,
+      "pf": 1.227,
+      "wr": 58.0,
+      "sharpe": 1.167,
+      "net_pnl": 1229.57,
+      "avg_pnl": 8.2,
+      "ret_pct": 12.3
+    },
+    "mid (20-25)": {
+      "n": 86,
+      "pf": 1.386,
+      "wr": 53.5,
+      "sharpe": 1.959,
+      "net_pnl": 1472.44,
+      "avg_pnl": 17.12,
+      "ret_pct": 14.72
+    },
+    "strong (>=25)": {
+      "n": 129,
+      "pf": 1.434,
+      "wr": 51.2,
+      "sharpe": 2.142,
+      "net_pnl": 2038.05,
+      "avg_pnl": 15.8,
+      "ret_pct": 20.38
+    }
+  },
+  "conditional_failures": [],
+  "regime_concentrations": [
+    "RANGING (83%)"
+  ],
+  "tagged_trades": [
+    {
+      "entry_time": "2024-06-05 17:00:00",
+      "exit_time": "2024-06-06 14:00:00",
+      "side": "short",
+      "pnl": -51.70033569335938,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.69,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-06-06 15:00:00",
+      "exit_time": "2024-06-07 12:00:00",
+      "side": "short",
+      "pnl": 3.299969482421875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.32,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-06-10 13:00:00",
+      "exit_time": "2024-06-10 15:00:00",
+      "side": "short",
+      "pnl": -99.48541346958645,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.47,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-06-12 12:00:00",
+      "exit_time": "2024-06-13 01:00:00",
+      "side": "short",
+      "pnl": 91.29969482421875,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 44.43,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-06-13 22:00:00",
+      "exit_time": "2024-06-14 09:00:00",
+      "side": "long",
+      "pnl": 56.29984741210937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.81,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-06-14 11:00:00",
+      "exit_time": "2024-06-16 23:00:00",
+      "side": "short",
+      "pnl": 73.30042724609375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.91,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-06-17 13:00:00",
+      "exit_time": "2024-06-17 17:00:00",
+      "side": "short",
+      "pnl": -88.77145472935207,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.08,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-06-18 13:00:00",
+      "exit_time": "2024-06-20 10:00:00",
+      "side": "short",
+      "pnl": -60.69996948242188,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 34.86,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-06-20 13:00:00",
+      "exit_time": "2024-06-21 08:00:00",
+      "side": "short",
+      "pnl": 119.29957275390625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 37.89,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-06-23 23:00:00",
+      "exit_time": "2024-06-24 15:00:00",
+      "side": "long",
+      "pnl": 125.30009155273437,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.75,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-06-26 14:00:00",
+      "exit_time": "2024-06-26 17:00:00",
+      "side": "long",
+      "pnl": 57.29929809570312,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.46,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-06-26 19:00:00",
+      "exit_time": "2024-06-27 07:00:00",
+      "side": "long",
+      "pnl": 48.29966430664062,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.12,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-06-27 12:00:00",
+      "exit_time": "2024-06-28 06:00:00",
+      "side": "short",
+      "pnl": -69.485544259208,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.24,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-07-01 15:00:00",
+      "exit_time": "2024-07-02 08:00:00",
+      "side": "short",
+      "pnl": -102.48589085170262,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.75,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-07-05 13:00:00",
+      "exit_time": "2024-07-05 17:00:00",
+      "side": "short",
+      "pnl": 66.29969482421875,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.63,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-07-08 01:00:00",
+      "exit_time": "2024-07-08 22:00:00",
+      "side": "long",
+      "pnl": -60.69996948242188,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.48,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-07-09 08:00:00",
+      "exit_time": "2024-07-10 04:00:00",
+      "side": "long",
+      "pnl": -59.628421020507815,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.06,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-07-10 15:00:00",
+      "exit_time": "2024-07-11 12:00:00",
+      "side": "short",
+      "pnl": 21.3,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.29,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-07-11 18:00:00",
+      "exit_time": "2024-07-12 15:00:00",
+      "side": "short",
+      "pnl": 25.300091552734376,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.96,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-07-15 00:00:00",
+      "exit_time": "2024-07-15 20:00:00",
+      "side": "long",
+      "pnl": 11.300152587890626,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.55,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-07-16 05:00:00",
+      "exit_time": "2024-07-16 11:00:00",
+      "side": "long",
+      "pnl": -63.699901907784195,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 32.77,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-07-16 15:00:00",
+      "exit_time": "2024-07-17 12:00:00",
+      "side": "long",
+      "pnl": 61.30015258789062,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 43.64,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-07-17 13:00:00",
+      "exit_time": "2024-07-17 22:00:00",
+      "side": "short",
+      "pnl": -93.2714351109092,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.24,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-07-19 15:00:00",
+      "exit_time": "2024-07-19 17:00:00",
+      "side": "long",
+      "pnl": -115.77150050571926,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.77,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-07-22 18:00:00",
+      "exit_time": "2024-07-23 13:00:00",
+      "side": "long",
+      "pnl": -112.12835562569775,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 41.37,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-07-25 08:00:00",
+      "exit_time": "2024-07-25 11:00:00",
+      "side": "long",
+      "pnl": -70.98553771972657,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 31.52,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-07-25 15:00:00",
+      "exit_time": "2024-07-26 12:00:00",
+      "side": "short",
+      "pnl": 44.29957275390625,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 32.07,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-07-26 14:00:00",
+      "exit_time": "2024-07-29 05:00:00",
+      "side": "long",
+      "pnl": 126.29954223632812,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 29.69,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-07-29 14:00:00",
+      "exit_time": "2024-07-30 11:00:00",
+      "side": "long",
+      "pnl": -72.69948120117188,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.54,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-07-31 10:00:00",
+      "exit_time": "2024-07-31 17:00:00",
+      "side": "short",
+      "pnl": -94.77175554547951,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.84,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-02 11:00:00",
+      "exit_time": "2024-08-02 12:00:00",
+      "side": "long",
+      "pnl": -109.55719517299168,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.36,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-05 04:00:00",
+      "exit_time": "2024-08-06 00:00:00",
+      "side": "long",
+      "pnl": 111.30015258789062,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 47.62,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-07 10:00:00",
+      "exit_time": "2024-08-07 15:00:00",
+      "side": "short",
+      "pnl": -117.05699898856007,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.39,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-08-08 02:00:00",
+      "exit_time": "2024-08-08 23:00:00",
+      "side": "short",
+      "pnl": -56.6998779296875,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 30.17,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-09 11:00:00",
+      "exit_time": "2024-08-12 06:00:00",
+      "side": "short",
+      "pnl": -73.77168361118801,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.37,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-08-13 06:00:00",
+      "exit_time": "2024-08-13 18:00:00",
+      "side": "short",
+      "pnl": 137.2996032714844,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 53.42,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-14 14:00:00",
+      "exit_time": "2024-08-15 11:00:00",
+      "side": "long",
+      "pnl": 17.299908447265626,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.9,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-08-16 09:00:00",
+      "exit_time": "2024-08-16 10:00:00",
+      "side": "long",
+      "pnl": -81.69982343401269,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.69,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-08-16 14:00:00",
+      "exit_time": "2024-08-19 11:00:00",
+      "side": "long",
+      "pnl": -52.69978637695313,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 26.47,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-19 16:00:00",
+      "exit_time": "2024-08-20 15:00:00",
+      "side": "long",
+      "pnl": -64.70006103515625,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 22.45,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-08-21 07:00:00",
+      "exit_time": "2024-08-21 17:00:00",
+      "side": "long",
+      "pnl": -139.77123238699755,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 29.65,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-23 09:00:00",
+      "exit_time": "2024-08-23 12:00:00",
+      "side": "short",
+      "pnl": -64.34273289271825,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.34,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-08-26 06:00:00",
+      "exit_time": "2024-08-26 10:00:00",
+      "side": "short",
+      "pnl": -69.27121276855469,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 54.05,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-28 08:00:00",
+      "exit_time": "2024-08-28 10:00:00",
+      "side": "long",
+      "pnl": -80.84298793247707,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 38.16,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-28 18:00:00",
+      "exit_time": "2024-08-29 12:00:00",
+      "side": "long",
+      "pnl": 59.30048828125,
+      "reason": "mid_cross",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 39.94,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-29 13:00:00",
+      "exit_time": "2024-08-30 10:00:00",
+      "side": "short",
+      "pnl": 51.30030517578125,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 30.61,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-30 13:00:00",
+      "exit_time": "2024-09-03 10:00:00",
+      "side": "long",
+      "pnl": -133.7715855189736,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.59,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-09-04 07:00:00",
+      "exit_time": "2024-09-05 04:00:00",
+      "side": "long",
+      "pnl": 15.299481201171876,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 49.47,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-09-05 17:00:00",
+      "exit_time": "2024-09-06 06:00:00",
+      "side": "long",
+      "pnl": 72.30021362304687,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.55,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-06 14:00:00",
+      "exit_time": "2024-09-09 11:00:00",
+      "side": "long",
+      "pnl": 47.30021362304687,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 11.68,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-09 13:00:00",
+      "exit_time": "2024-09-09 16:00:00",
+      "side": "long",
+      "pnl": 114.30003051757812,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.72,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-10 09:00:00",
+      "exit_time": "2024-09-10 14:00:00",
+      "side": "long",
+      "pnl": -84.48547886439793,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 12.07,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-11 03:00:00",
+      "exit_time": "2024-09-11 16:00:00",
+      "side": "long",
+      "pnl": 151.30030517578126,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 29.64,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-09-12 09:00:00",
+      "exit_time": "2024-09-12 15:00:00",
+      "side": "short",
+      "pnl": -90.91427917480469,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.36,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-13 09:00:00",
+      "exit_time": "2024-09-16 03:00:00",
+      "side": "short",
+      "pnl": 96.3,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 36.11,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-09-16 13:00:00",
+      "exit_time": "2024-09-17 10:00:00",
+      "side": "short",
+      "pnl": 18.3001220703125,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.64,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-17 13:00:00",
+      "exit_time": "2024-09-17 16:00:00",
+      "side": "short",
+      "pnl": -112.34285060337551,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.19,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-09-18 19:00:00",
+      "exit_time": "2024-09-19 03:00:00",
+      "side": "long",
+      "pnl": 81.29984741210937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.74,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-19 06:00:00",
+      "exit_time": "2024-09-20 07:00:00",
+      "side": "short",
+      "pnl": -33.69954223632813,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.42,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-20 16:00:00",
+      "exit_time": "2024-09-20 20:00:00",
+      "side": "short",
+      "pnl": 106.29984741210937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.05,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-23 15:00:00",
+      "exit_time": "2024-09-24 06:00:00",
+      "side": "long",
+      "pnl": 130.30039672851564,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.33,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-09-24 09:00:00",
+      "exit_time": "2024-09-25 05:00:00",
+      "side": "short",
+      "pnl": 93.3001220703125,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.98,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-25 11:00:00",
+      "exit_time": "2024-09-25 16:00:00",
+      "side": "long",
+      "pnl": -94.55726056780175,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.72,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-26 02:00:00",
+      "exit_time": "2024-09-26 05:00:00",
+      "side": "long",
+      "pnl": -141.69988882882274,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 26.73,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-09-26 16:00:00",
+      "exit_time": "2024-09-27 13:00:00",
+      "side": "long",
+      "pnl": -26.700335693359374,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 45.72,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-09-30 05:00:00",
+      "exit_time": "2024-09-30 11:00:00",
+      "side": "short",
+      "pnl": 113.29981689453125,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.43,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-09-30 14:00:00",
+      "exit_time": "2024-10-01 06:00:00",
+      "side": "short",
+      "pnl": 74.30064086914062,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.23,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-01 07:00:00",
+      "exit_time": "2024-10-01 08:00:00",
+      "side": "long",
+      "pnl": -75.91434456961476,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 10.13,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-01 12:00:00",
+      "exit_time": "2024-10-01 13:00:00",
+      "side": "long",
+      "pnl": 290.300244140625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.47,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-02 07:00:00",
+      "exit_time": "2024-10-03 04:00:00",
+      "side": "short",
+      "pnl": 52.299755859375,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 24.76,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-10-03 14:00:00",
+      "exit_time": "2024-10-04 10:00:00",
+      "side": "short",
+      "pnl": -198.48563581194236,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.16,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-04 15:00:00",
+      "exit_time": "2024-10-07 10:00:00",
+      "side": "short",
+      "pnl": -147.70018964495017,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 29.83,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-10-07 14:00:00",
+      "exit_time": "2024-10-07 22:00:00",
+      "side": "short",
+      "pnl": -171.91392604282862,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 22.01,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-10-08 14:00:00",
+      "exit_time": "2024-10-09 11:00:00",
+      "side": "long",
+      "pnl": -39.70006103515625,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.22,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-10-09 13:00:00",
+      "exit_time": "2024-10-10 09:00:00",
+      "side": "long",
+      "pnl": 221.3,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.5,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-10-10 14:00:00",
+      "exit_time": "2024-10-11 11:00:00",
+      "side": "short",
+      "pnl": -24.699908447265624,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.81,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-14 09:00:00",
+      "exit_time": "2024-10-14 20:00:00",
+      "side": "long",
+      "pnl": -132.05726056780173,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.52,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-18 02:00:00",
+      "exit_time": "2024-10-18 10:00:00",
+      "side": "short",
+      "pnl": 65.300244140625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.85,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-18 13:00:00",
+      "exit_time": "2024-10-21 09:00:00",
+      "side": "long",
+      "pnl": 74.2998779296875,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.57,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-22 09:00:00",
+      "exit_time": "2024-10-22 13:00:00",
+      "side": "short",
+      "pnl": -87.0571297781802,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.31,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-24 07:00:00",
+      "exit_time": "2024-10-24 11:00:00",
+      "side": "short",
+      "pnl": 90.300244140625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.33,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-10-24 15:00:00",
+      "exit_time": "2024-10-25 12:00:00",
+      "side": "long",
+      "pnl": 108.30027465820312,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.08,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-10-27 22:00:00",
+      "exit_time": "2024-10-28 18:00:00",
+      "side": "long",
+      "pnl": -103.7,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 26.51,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-10-30 12:00:00",
+      "exit_time": "2024-10-31 09:00:00",
+      "side": "short",
+      "pnl": -58.70030517578125,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.49,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-10-31 12:00:00",
+      "exit_time": "2024-10-31 18:00:00",
+      "side": "short",
+      "pnl": -87.05729326520607,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.28,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-11-01 07:00:00",
+      "exit_time": "2024-11-01 17:00:00",
+      "side": "short",
+      "pnl": 116.29969482421875,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 33.96,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-11-04 08:00:00",
+      "exit_time": "2024-11-05 05:00:00",
+      "side": "short",
+      "pnl": -18.700152587890624,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 22.32,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-11-05 14:00:00",
+      "exit_time": "2024-11-06 03:00:00",
+      "side": "short",
+      "pnl": 79.30018310546875,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.93,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-11-06 05:00:00",
+      "exit_time": "2024-11-06 15:00:00",
+      "side": "long",
+      "pnl": 174.2998779296875,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.49,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-11-07 17:00:00",
+      "exit_time": "2024-11-08 08:00:00",
+      "side": "short",
+      "pnl": 137.2996032714844,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.8,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-11-08 14:00:00",
+      "exit_time": "2024-11-11 09:00:00",
+      "side": "long",
+      "pnl": -112.77118661063038,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.95,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-11-12 05:00:00",
+      "exit_time": "2024-11-13 02:00:00",
+      "side": "long",
+      "pnl": 56.29984741210937,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 59.86,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-11-13 14:00:00",
+      "exit_time": "2024-11-13 17:00:00",
+      "side": "long",
+      "pnl": 152.299755859375,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 23.44,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-11-14 10:00:00",
+      "exit_time": "2024-11-14 17:00:00",
+      "side": "short",
+      "pnl": 40.300244140625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.13,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-11-15 07:00:00",
+      "exit_time": "2024-11-15 11:00:00",
+      "side": "long",
+      "pnl": 94.29957275390625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.35,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-11-15 16:00:00",
+      "exit_time": "2024-11-18 13:00:00",
+      "side": "long",
+      "pnl": -15.69951171875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.47,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-11-18 18:00:00",
+      "exit_time": "2024-11-19 15:00:00",
+      "side": "short",
+      "pnl": -11.70018310546875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.82,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-11-21 10:00:00",
+      "exit_time": "2024-11-22 07:00:00",
+      "side": "short",
+      "pnl": -70.69981689453125,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.99,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-11-22 14:00:00",
+      "exit_time": "2024-11-25 11:00:00",
+      "side": "short",
+      "pnl": -57.70009155273438,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.63,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-11-25 15:00:00",
+      "exit_time": "2024-11-26 12:00:00",
+      "side": "long",
+      "pnl": 8.300274658203126,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.73,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-11-26 17:00:00",
+      "exit_time": "2024-11-27 13:00:00",
+      "side": "long",
+      "pnl": 95.29978637695312,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.48,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-11-27 16:00:00",
+      "exit_time": "2024-11-29 14:30:00",
+      "side": "long",
+      "pnl": 101.30030517578125,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.88,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-01 23:00:00",
+      "exit_time": "2024-12-02 11:00:00",
+      "side": "long",
+      "pnl": 48.29966430664062,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.6,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-02 16:00:00",
+      "exit_time": "2024-12-03 08:00:00",
+      "side": "long",
+      "pnl": 104.30018310546875,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.66,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-03 12:00:00",
+      "exit_time": "2024-12-03 16:00:00",
+      "side": "short",
+      "pnl": -71.62820521763332,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.78,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-04 09:00:00",
+      "exit_time": "2024-12-04 17:00:00",
+      "side": "short",
+      "pnl": 154.29942016601564,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 31.62,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-12-05 11:00:00",
+      "exit_time": "2024-12-06 08:00:00",
+      "side": "long",
+      "pnl": -4.700213623046875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 34.62,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-12-06 10:00:00",
+      "exit_time": "2024-12-06 15:00:00",
+      "side": "long",
+      "pnl": -70.77136971609913,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 31.74,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-12-10 15:00:00",
+      "exit_time": "2024-12-11 12:00:00",
+      "side": "short",
+      "pnl": -54.70021362304688,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 30.86,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-12-12 07:00:00",
+      "exit_time": "2024-12-12 15:00:00",
+      "side": "short",
+      "pnl": 118.3001220703125,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 44.13,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-12-13 10:00:00",
+      "exit_time": "2024-12-16 07:00:00",
+      "side": "short",
+      "pnl": -16.699725341796874,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.18,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-17 08:00:00",
+      "exit_time": "2024-12-17 15:00:00",
+      "side": "long",
+      "pnl": -70.34287022181981,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.29,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-18 15:00:00",
+      "exit_time": "2024-12-18 20:00:00",
+      "side": "short",
+      "pnl": 102.30051879882812,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.46,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-12-19 13:00:00",
+      "exit_time": "2024-12-19 16:00:00",
+      "side": "short",
+      "pnl": 98.30042724609375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.66,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-20 08:00:00",
+      "exit_time": "2024-12-23 05:00:00",
+      "side": "long",
+      "pnl": 85.29993896484375,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.31,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-23 15:00:00",
+      "exit_time": "2024-12-24 04:00:00",
+      "side": "long",
+      "pnl": 80.30039672851562,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.89,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-24 15:30:00",
+      "exit_time": "2024-12-26 19:00:00",
+      "side": "short",
+      "pnl": 57.30006103515625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.62,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-27 18:00:00",
+      "exit_time": "2024-12-30 15:00:00",
+      "side": "short",
+      "pnl": -81.48565543038525,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.9,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-12-30 20:00:00",
+      "exit_time": "2024-12-31 17:00:00",
+      "side": "short",
+      "pnl": -70.70057983398438,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.57,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-12-31 21:00:00",
+      "exit_time": "2025-01-02 10:00:00",
+      "side": "short",
+      "pnl": -95.19976457868263,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.36,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-01-03 03:00:00",
+      "exit_time": "2025-01-03 17:00:00",
+      "side": "short",
+      "pnl": -89.41461268833645,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 42.21,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-05 23:00:00",
+      "exit_time": "2025-01-06 17:00:00",
+      "side": "short",
+      "pnl": 52.299755859375,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 40.64,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-07 23:00:00",
+      "exit_time": "2025-01-08 15:00:00",
+      "side": "short",
+      "pnl": 56.3006103515625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.98,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-01-09 01:00:00",
+      "exit_time": "2025-01-09 15:00:00",
+      "side": "long",
+      "pnl": 109.30048828125,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 30.42,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-10 08:00:00",
+      "exit_time": "2025-01-10 09:00:00",
+      "side": "short",
+      "pnl": -73.12852565220363,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.8,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-01-13 08:00:00",
+      "exit_time": "2025-01-14 05:00:00",
+      "side": "short",
+      "pnl": -2.699786376953125,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 47.43,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-15 02:00:00",
+      "exit_time": "2025-01-15 13:00:00",
+      "side": "long",
+      "pnl": 66.29969482421875,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.59,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-01-15 14:00:00",
+      "exit_time": "2025-01-15 19:00:00",
+      "side": "short",
+      "pnl": -123.91429879324757,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.13,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-01-16 06:00:00",
+      "exit_time": "2025-01-16 16:00:00",
+      "side": "short",
+      "pnl": 168.3001220703125,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 36.09,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-17 15:00:00",
+      "exit_time": "2025-01-21 08:00:00",
+      "side": "long",
+      "pnl": -125.20012425014012,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 26.51,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-22 12:00:00",
+      "exit_time": "2025-01-23 09:00:00",
+      "side": "long",
+      "pnl": -54.70021362304688,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 41.37,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-23 18:00:00",
+      "exit_time": "2025-01-24 15:00:00",
+      "side": "long",
+      "pnl": -42.69993896484375,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.52,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-26 23:00:00",
+      "exit_time": "2025-01-27 09:00:00",
+      "side": "long",
+      "pnl": 53.29996948242187,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.71,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-01-27 15:00:00",
+      "exit_time": "2025-01-28 12:00:00",
+      "side": "long",
+      "pnl": 9.299725341796876,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.48,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-01-29 17:00:00",
+      "exit_time": "2025-01-30 14:00:00",
+      "side": "long",
+      "pnl": 32.30006103515625,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.32,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-01-31 14:00:00",
+      "exit_time": "2025-01-31 18:00:00",
+      "side": "long",
+      "pnl": 109.30048828125,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.79,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-01-31 21:00:00",
+      "exit_time": "2025-02-03 14:00:00",
+      "side": "short",
+      "pnl": 69.29957275390625,
+      "reason": "mid_cross",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 19.39,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-02-04 05:00:00",
+      "exit_time": "2025-02-04 16:00:00",
+      "side": "long",
+      "pnl": 104.30018310546875,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.97,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-02-05 16:00:00",
+      "exit_time": "2025-02-06 13:00:00",
+      "side": "long",
+      "pnl": 46.3,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.98,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-02-06 14:00:00",
+      "exit_time": "2025-02-07 11:00:00",
+      "side": "long",
+      "pnl": 27.299755859375,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.47,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-02-10 06:00:00",
+      "exit_time": "2025-02-10 16:00:00",
+      "side": "short",
+      "pnl": -70.55703822544582,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.39,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-02-11 16:00:00",
+      "exit_time": "2025-02-12 08:00:00",
+      "side": "short",
+      "pnl": 69.30033569335937,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 47.92,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-02-12 15:00:00",
+      "exit_time": "2025-02-12 21:00:00",
+      "side": "long",
+      "pnl": -83.19948992047951,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 32.72,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-02-16 23:00:00",
+      "exit_time": "2025-02-18 05:00:00",
+      "side": "long",
+      "pnl": 111.2993896484375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 29.65,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-02-18 10:00:00",
+      "exit_time": "2025-02-18 12:00:00",
+      "side": "short",
+      "pnl": 68.29935913085937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 26.38,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-02-19 01:00:00",
+      "exit_time": "2025-02-19 21:00:00",
+      "side": "short",
+      "pnl": -16.699725341796874,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.6,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-02-20 16:00:00",
+      "exit_time": "2025-02-21 08:00:00",
+      "side": "short",
+      "pnl": 88.29981689453125,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 26.07,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-02-21 14:00:00",
+      "exit_time": "2025-02-23 23:00:00",
+      "side": "long",
+      "pnl": -124.34263480050244,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.4,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-02-25 15:00:00",
+      "exit_time": "2025-02-26 12:00:00",
+      "side": "long",
+      "pnl": -16.699725341796874,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.99,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-02-27 15:00:00",
+      "exit_time": "2025-02-28 12:00:00",
+      "side": "short",
+      "pnl": 67.29990844726562,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 31.29,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-03-03 01:00:00",
+      "exit_time": "2025-03-03 08:00:00",
+      "side": "short",
+      "pnl": 106.29984741210937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.41,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-03-03 18:00:00",
+      "exit_time": "2025-03-04 14:00:00",
+      "side": "long",
+      "pnl": -145.55687473842136,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.02,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-03-05 13:00:00",
+      "exit_time": "2025-03-05 15:00:00",
+      "side": "long",
+      "pnl": -93.91410260881737,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 32.63,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-03-06 15:00:00",
+      "exit_time": "2025-03-07 07:00:00",
+      "side": "long",
+      "pnl": 103.29996948242187,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 32.0,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-03-07 10:00:00",
+      "exit_time": "2025-03-09 23:00:00",
+      "side": "short",
+      "pnl": 96.3,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 26.03,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-03-10 12:00:00",
+      "exit_time": "2025-03-10 13:00:00",
+      "side": "short",
+      "pnl": 87.3003662109375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.9,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-03-10 18:00:00",
+      "exit_time": "2025-03-11 10:00:00",
+      "side": "long",
+      "pnl": 81.29984741210937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.92,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-03-12 13:00:00",
+      "exit_time": "2025-03-13 10:00:00",
+      "side": "short",
+      "pnl": -10.699969482421874,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.78,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-03-17 00:00:00",
+      "exit_time": "2025-03-17 20:00:00",
+      "side": "short",
+      "pnl": 45.29978637695312,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.63,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-03-18 07:00:00",
+      "exit_time": "2025-03-18 15:00:00",
+      "side": "short",
+      "pnl": 92.29990844726562,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.58,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-03-18 16:00:00",
+      "exit_time": "2025-03-19 13:00:00",
+      "side": "long",
+      "pnl": 3.299969482421875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.38,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-03-20 14:00:00",
+      "exit_time": "2025-03-23 23:00:00",
+      "side": "short",
+      "pnl": -29.700213623046874,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.96,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-03-24 07:00:00",
+      "exit_time": "2025-03-24 15:00:00",
+      "side": "short",
+      "pnl": -65.20022234235451,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.67,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-03-25 07:00:00",
+      "exit_time": "2025-03-26 04:00:00",
+      "side": "short",
+      "pnl": 25.300091552734376,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.65,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-03-26 10:00:00",
+      "exit_time": "2025-03-26 15:00:00",
+      "side": "short",
+      "pnl": -62.41456691196926,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 12.7,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-03-26 20:00:00",
+      "exit_time": "2025-03-27 07:00:00",
+      "side": "short",
+      "pnl": 49.2998779296875,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.42,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-03-28 14:00:00",
+      "exit_time": "2025-03-31 07:00:00",
+      "side": "long",
+      "pnl": 38.29981689453125,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 12.32,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-03-31 13:00:00",
+      "exit_time": "2025-03-31 16:00:00",
+      "side": "short",
+      "pnl": -126.05712323870019,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.02,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-04-02 17:00:00",
+      "exit_time": "2025-04-02 20:00:00",
+      "side": "short",
+      "pnl": 109.29972534179687,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.5,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-04-04 04:00:00",
+      "exit_time": "2025-04-04 08:00:00",
+      "side": "long",
+      "pnl": -114.91466500418507,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 55.7,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-04-06 22:00:00",
+      "exit_time": "2025-04-07 18:00:00",
+      "side": "long",
+      "pnl": 91.30007629394531,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 59.64,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-04-08 18:00:00",
+      "exit_time": "2025-04-09 10:00:00",
+      "side": "long",
+      "pnl": -253.98555733816943,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.7,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-04-09 14:00:00",
+      "exit_time": "2025-04-09 17:00:00",
+      "side": "long",
+      "pnl": 553.2999694824218,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 35.2,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-04-09 19:00:00",
+      "exit_time": "2025-04-10 13:00:00",
+      "side": "short",
+      "pnl": 322.3002136230469,
+      "reason": "mid_cross",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 34.71,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-04-14 08:00:00",
+      "exit_time": "2025-04-15 05:00:00",
+      "side": "short",
+      "pnl": 17.299908447265626,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.32,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-04-16 05:00:00",
+      "exit_time": "2025-04-16 08:00:00",
+      "side": "long",
+      "pnl": 128.30035095214845,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.45,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-04-16 12:00:00",
+      "exit_time": "2025-04-17 04:00:00",
+      "side": "short",
+      "pnl": -119.19998692103856,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.0,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-04-17 12:00:00",
+      "exit_time": "2025-04-17 15:00:00",
+      "side": "short",
+      "pnl": -89.84278520856545,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 39.46,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-04-22 15:00:00",
+      "exit_time": "2025-04-23 11:00:00",
+      "side": "short",
+      "pnl": 129.2998016357422,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 18.13,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-04-23 14:00:00",
+      "exit_time": "2025-04-24 11:00:00",
+      "side": "long",
+      "pnl": 55.30001525878906,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 19.91,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-04-27 22:00:00",
+      "exit_time": "2025-04-28 09:00:00",
+      "side": "short",
+      "pnl": 60.29993896484375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.36,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-04-28 14:00:00",
+      "exit_time": "2025-04-29 07:00:00",
+      "side": "long",
+      "pnl": -106.12821829659619,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.39,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-04-30 02:00:00",
+      "exit_time": "2025-04-30 15:00:00",
+      "side": "long",
+      "pnl": -102.27147761753638,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 49.37,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-05-01 03:00:00",
+      "exit_time": "2025-05-01 18:00:00",
+      "side": "long",
+      "pnl": 98.30004577636718,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 40.91,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-05-04 22:00:00",
+      "exit_time": "2025-05-05 18:00:00",
+      "side": "long",
+      "pnl": 87.29998474121093,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 21.45,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-05-06 13:00:00",
+      "exit_time": "2025-05-07 10:00:00",
+      "side": "short",
+      "pnl": -21.700030517578124,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.31,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-05-08 15:00:00",
+      "exit_time": "2025-05-09 10:00:00",
+      "side": "short",
+      "pnl": -117.7000752040315,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.66,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-05-11 22:00:00",
+      "exit_time": "2025-05-12 07:00:00",
+      "side": "short",
+      "pnl": -107.62862047467944,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 34.99,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-05-13 15:00:00",
+      "exit_time": "2025-05-14 12:00:00",
+      "side": "short",
+      "pnl": 61.29977111816406,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 30.46,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-05-15 02:00:00",
+      "exit_time": "2025-05-15 23:00:00",
+      "side": "long",
+      "pnl": 15.299862670898438,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.98,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-05-18 22:00:00",
+      "exit_time": "2025-05-19 10:00:00",
+      "side": "short",
+      "pnl": 96.3,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.87,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-05-19 15:00:00",
+      "exit_time": "2025-05-20 07:00:00",
+      "side": "short",
+      "pnl": 85.29993896484375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.09,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-05-21 07:00:00",
+      "exit_time": "2025-05-21 14:00:00",
+      "side": "short",
+      "pnl": 93.29974060058593,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 12.38,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-05-22 06:00:00",
+      "exit_time": "2025-05-23 03:00:00",
+      "side": "long",
+      "pnl": 17.299908447266336,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 19.74,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-05-23 20:00:00",
+      "exit_time": "2025-05-26 17:00:00",
+      "side": "short",
+      "pnl": 18.299740600585938,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.62,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-05-27 14:00:00",
+      "exit_time": "2025-05-28 07:00:00",
+      "side": "long",
+      "pnl": 78.29996948242045,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.38,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-05-28 12:00:00",
+      "exit_time": "2025-05-29 01:00:00",
+      "side": "short",
+      "pnl": -87.27129778180905,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 10.5,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-05-29 09:00:00",
+      "exit_time": "2025-05-29 12:00:00",
+      "side": "short",
+      "pnl": 109.30010681152343,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 37.84,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-05-30 12:00:00",
+      "exit_time": "2025-06-01 22:00:00",
+      "side": "long",
+      "pnl": 163.29981689453126,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 33.1,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-06-02 08:00:00",
+      "exit_time": "2025-06-03 05:00:00",
+      "side": "short",
+      "pnl": 11.299771118164063,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 33.04,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-06-04 09:00:00",
+      "exit_time": "2025-06-04 12:00:00",
+      "side": "short",
+      "pnl": 61.29977111816335,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 12.4,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-04 13:00:00",
+      "exit_time": "2025-06-04 15:00:00",
+      "side": "short",
+      "pnl": 100.30009155273437,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.4,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-05 12:00:00",
+      "exit_time": "2025-06-06 02:00:00",
+      "side": "short",
+      "pnl": 51.299923706054685,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.13,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-06 12:00:00",
+      "exit_time": "2025-06-06 13:00:00",
+      "side": "short",
+      "pnl": -69.48570774623387,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 12.15,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-09 11:00:00",
+      "exit_time": "2025-06-10 01:00:00",
+      "side": "short",
+      "pnl": -62.84306640625,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 31.55,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-06-10 13:00:00",
+      "exit_time": "2025-06-10 18:00:00",
+      "side": "short",
+      "pnl": 117.29990844726562,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.25,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-11 10:00:00",
+      "exit_time": "2025-06-11 15:00:00",
+      "side": "short",
+      "pnl": -83.62880684988819,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.14,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-12 20:00:00",
+      "exit_time": "2025-06-13 00:00:00",
+      "side": "short",
+      "pnl": -155.6284929547993,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.9,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-06-13 08:00:00",
+      "exit_time": "2025-06-16 05:00:00",
+      "side": "short",
+      "pnl": -66.69972534179688,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 46.61,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-06-17 17:00:00",
+      "exit_time": "2025-06-18 14:00:00",
+      "side": "short",
+      "pnl": 53.29996948242187,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.05,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-06-19 06:00:00",
+      "exit_time": "2025-06-20 05:00:00",
+      "side": "short",
+      "pnl": 105.2996337890625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.13,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-20 20:00:00",
+      "exit_time": "2025-06-22 23:00:00",
+      "side": "long",
+      "pnl": 169.29957275390626,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.6,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-06-23 07:00:00",
+      "exit_time": "2025-06-23 17:00:00",
+      "side": "long",
+      "pnl": -283.55692705426856,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.47,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-06-24 15:00:00",
+      "exit_time": "2025-06-25 12:00:00",
+      "side": "long",
+      "pnl": 45.29978637695312,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 40.95,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-06-26 14:00:00",
+      "exit_time": "2025-06-26 20:00:00",
+      "side": "short",
+      "pnl": 89.30003051757812,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.9,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-27 08:00:00",
+      "exit_time": "2025-06-27 10:00:00",
+      "side": "short",
+      "pnl": 47.30021362304687,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 9.02,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-27 13:00:00",
+      "exit_time": "2025-06-27 15:00:00",
+      "side": "short",
+      "pnl": 60.29993896484375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 9.03,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-29 22:00:00",
+      "exit_time": "2025-06-30 05:00:00",
+      "side": "long",
+      "pnl": 62.3003662109375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.9,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-30 14:00:00",
+      "exit_time": "2025-07-01 06:00:00",
+      "side": "long",
+      "pnl": 34.30048828125,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.0,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-07-01 10:00:00",
+      "exit_time": "2025-07-02 07:00:00",
+      "side": "short",
+      "pnl": -0.7001220703125,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.45,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-07-02 09:00:00",
+      "exit_time": "2025-07-02 15:00:00",
+      "side": "short",
+      "pnl": -70.5572017124717,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.11,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-07-03 13:30:00",
+      "exit_time": "2025-07-06 22:00:00",
+      "side": "short",
+      "pnl": 99.2998779296875,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 27.88,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-07-07 14:00:00",
+      "exit_time": "2025-07-08 11:00:00",
+      "side": "short",
+      "pnl": -23.69969482421875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.34,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-07-08 15:00:00",
+      "exit_time": "2025-07-09 12:00:00",
+      "side": "short",
+      "pnl": -0.7001220703125,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 31.36,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-07-09 15:00:00",
+      "exit_time": "2025-07-10 00:00:00",
+      "side": "short",
+      "pnl": 56.29984741210937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.91,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-07-10 11:00:00",
+      "exit_time": "2025-07-10 13:00:00",
+      "side": "long",
+      "pnl": -88.3432822091245,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.87,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-07-11 02:00:00",
+      "exit_time": "2025-07-11 13:00:00",
+      "side": "long",
+      "pnl": 76.29954223632812,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 41.84,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-07-14 07:00:00",
+      "exit_time": "2025-07-14 15:00:00",
+      "side": "short",
+      "pnl": 188.3005798339844,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 40.04,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-07-16 11:00:00",
+      "exit_time": "2025-07-16 17:00:00",
+      "side": "long",
+      "pnl": 95.29978637695312,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.13,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-07-17 15:00:00",
+      "exit_time": "2025-07-18 06:00:00",
+      "side": "short",
+      "pnl": -96.27142203194775,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.22,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-07-21 13:00:00",
+      "exit_time": "2025-07-22 10:00:00",
+      "side": "long",
+      "pnl": -17.69993896484375,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.31,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-07-22 13:00:00",
+      "exit_time": "2025-07-23 07:00:00",
+      "side": "long",
+      "pnl": -68.84271327427395,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.27,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-07-25 05:00:00",
+      "exit_time": "2025-07-25 14:00:00",
+      "side": "short",
+      "pnl": 92.29990844726562,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.55,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-07-25 17:00:00",
+      "exit_time": "2025-07-28 11:00:00",
+      "side": "long",
+      "pnl": 103.29996948242187,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.12,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-07-28 13:00:00",
+      "exit_time": "2025-07-29 10:00:00",
+      "side": "short",
+      "pnl": 7.30006103515625,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.15,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-07-29 13:00:00",
+      "exit_time": "2025-07-29 17:00:00",
+      "side": "short",
+      "pnl": -91.98593662806981,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.47,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-07-30 06:00:00",
+      "exit_time": "2025-07-30 17:00:00",
+      "side": "short",
+      "pnl": -115.77117353166894,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 46.95,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-01 10:00:00",
+      "exit_time": "2025-08-01 14:00:00",
+      "side": "long",
+      "pnl": -103.55738481794045,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 12.9,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-08-04 08:00:00",
+      "exit_time": "2025-08-05 05:00:00",
+      "side": "long",
+      "pnl": -19.699603271484374,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 28.1,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-05 09:00:00",
+      "exit_time": "2025-08-06 06:00:00",
+      "side": "long",
+      "pnl": 18.299359130859376,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.6,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-06 15:00:00",
+      "exit_time": "2025-08-07 12:00:00",
+      "side": "long",
+      "pnl": -21.700030517578124,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.16,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-07 14:00:00",
+      "exit_time": "2025-08-08 11:00:00",
+      "side": "long",
+      "pnl": -3.7,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 26.33,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-08 20:00:00",
+      "exit_time": "2025-08-11 10:00:00",
+      "side": "long",
+      "pnl": 58.30027465820383,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 30.29,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-12 15:00:00",
+      "exit_time": "2025-08-13 12:00:00",
+      "side": "long",
+      "pnl": -14.70006103515696,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.61,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-08-13 14:00:00",
+      "exit_time": "2025-08-14 11:00:00",
+      "side": "long",
+      "pnl": 60.29993896484304,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 42.34,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-14 15:00:00",
+      "exit_time": "2025-08-15 12:00:00",
+      "side": "short",
+      "pnl": 40.30024414062571,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.97,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-08-17 23:00:00",
+      "exit_time": "2025-08-18 17:00:00",
+      "side": "long",
+      "pnl": 80.30001525878906,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.21,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-19 10:00:00",
+      "exit_time": "2025-08-20 02:00:00",
+      "side": "long",
+      "pnl": -62.62865317208376,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.13,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-08-21 06:00:00",
+      "exit_time": "2025-08-21 13:00:00",
+      "side": "short",
+      "pnl": 59.300106811523435,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.78,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-08-21 16:00:00",
+      "exit_time": "2025-08-22 13:00:00",
+      "side": "short",
+      "pnl": -23.69969482421875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.69,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-08-22 18:00:00",
+      "exit_time": "2025-08-25 13:00:00",
+      "side": "short",
+      "pnl": -90.91427917480469,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.02,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-08-26 16:00:00",
+      "exit_time": "2025-08-27 13:00:00",
+      "side": "long",
+      "pnl": 28.299969482421876,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 26.18,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-28 11:00:00",
+      "exit_time": "2025-08-28 16:00:00",
+      "side": "short",
+      "pnl": 46.3,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.96,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-08-28 17:00:00",
+      "exit_time": "2025-08-29 14:00:00",
+      "side": "short",
+      "pnl": 17.299908447265626,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.29,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-09-02 04:00:00",
+      "exit_time": "2025-09-02 09:00:00",
+      "side": "short",
+      "pnl": -98.6286597115659,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.97,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-09-02 15:00:00",
+      "exit_time": "2025-09-03 09:00:00",
+      "side": "short",
+      "pnl": 97.29945068359375,
+      "reason": "mid_cross",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 28.46,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-03 17:00:00",
+      "exit_time": "2025-09-04 14:00:00",
+      "side": "long",
+      "pnl": -34.700137329101565,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.74,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-09-05 12:00:00",
+      "exit_time": "2025-09-08 06:00:00",
+      "side": "long",
+      "pnl": 75.30009155273508,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 33.13,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-09 13:00:00",
+      "exit_time": "2025-09-10 10:00:00",
+      "side": "short",
+      "pnl": 2.3001373291015623,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.99,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-09-10 15:00:00",
+      "exit_time": "2025-09-11 10:00:00",
+      "side": "short",
+      "pnl": 80.30001525878906,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 29.78,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-11 14:00:00",
+      "exit_time": "2025-09-12 03:00:00",
+      "side": "long",
+      "pnl": -76.34284406389479,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.88,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-15 14:00:00",
+      "exit_time": "2025-09-16 08:00:00",
+      "side": "short",
+      "pnl": 41.29969482421804,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 33.38,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-16 11:00:00",
+      "exit_time": "2025-09-16 12:00:00",
+      "side": "short",
+      "pnl": -59.20000326974072,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.68,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-18 09:00:00",
+      "exit_time": "2025-09-18 12:00:00",
+      "side": "long",
+      "pnl": 94.29957275390625,
+      "reason": "mid_cross",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 28.54,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-18 16:00:00",
+      "exit_time": "2025-09-19 13:00:00",
+      "side": "long",
+      "pnl": -48.700076293945315,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 21.58,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-09-22 09:00:00",
+      "exit_time": "2025-09-23 06:00:00",
+      "side": "long",
+      "pnl": -31.6998779296875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.77,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-09-23 10:00:00",
+      "exit_time": "2025-09-23 15:00:00",
+      "side": "short",
+      "pnl": -73.12885262625538,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.99,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-09-24 10:00:00",
+      "exit_time": "2025-09-24 15:00:00",
+      "side": "short",
+      "pnl": -71.4145276750835,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 32.18,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-25 00:00:00",
+      "exit_time": "2025-09-25 20:00:00",
+      "side": "short",
+      "pnl": -36.70018310546875,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 45.88,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-26 13:00:00",
+      "exit_time": "2025-09-26 14:00:00",
+      "side": "short",
+      "pnl": -82.77115391322606,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.58,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-09-26 21:00:00",
+      "exit_time": "2025-09-29 07:00:00",
+      "side": "short",
+      "pnl": 70.29978637695312,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 20.3,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-09-29 10:00:00",
+      "exit_time": "2025-09-29 14:00:00",
+      "side": "long",
+      "pnl": -94.55742405482691,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.01,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-09-30 07:00:00",
+      "exit_time": "2025-09-30 12:00:00",
+      "side": "long",
+      "pnl": -67.12830657958914,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 41.14,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-30 14:00:00",
+      "exit_time": "2025-10-01 11:00:00",
+      "side": "long",
+      "pnl": -16.700106811523437,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 43.76,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-10-01 12:00:00",
+      "exit_time": "2025-10-02 09:00:00",
+      "side": "long",
+      "pnl": -52.70016784667969,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 40.26,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-10-06 08:00:00",
+      "exit_time": "2025-10-07 15:00:00",
+      "side": "short",
+      "pnl": 31.299847412109376,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.55,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-10-07 19:00:00",
+      "exit_time": "2025-10-08 16:00:00",
+      "side": "short",
+      "pnl": -59.700137329101565,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.17,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-10-09 07:00:00",
+      "exit_time": "2025-10-09 10:00:00",
+      "side": "short",
+      "pnl": 54.299801635742185,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.72,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-10-09 16:00:00",
+      "exit_time": "2025-10-10 12:00:00",
+      "side": "long",
+      "pnl": -121.12864336286303,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.78,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-10-14 07:00:00",
+      "exit_time": "2025-10-14 10:00:00",
+      "side": "long",
+      "pnl": -77.4145015171599,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 31.48,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-10-16 11:00:00",
+      "exit_time": "2025-10-16 15:00:00",
+      "side": "long",
+      "pnl": -95.62875453404028,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.54,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-10-21 09:00:00",
+      "exit_time": "2025-10-21 13:00:00",
+      "side": "short",
+      "pnl": 91.30007629394531,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.89,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-10-21 19:00:00",
+      "exit_time": "2025-10-22 16:00:00",
+      "side": "short",
+      "pnl": -131.6998779296875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.03,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-10-22 18:00:00",
+      "exit_time": "2025-10-22 19:00:00",
+      "side": "short",
+      "pnl": -119.84281790597119,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 34.26,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-10-27 08:00:00",
+      "exit_time": "2025-10-27 13:00:00",
+      "side": "long",
+      "pnl": 107.30006103515625,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 28.43,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-10-28 07:00:00",
+      "exit_time": "2025-10-29 04:00:00",
+      "side": "long",
+      "pnl": -56.700259399414065,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.56,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-10-29 08:00:00",
+      "exit_time": "2025-10-29 14:00:00",
+      "side": "long",
+      "pnl": 110.29993896484375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.05,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-10-30 13:00:00",
+      "exit_time": "2025-10-30 14:00:00",
+      "side": "long",
+      "pnl": 52.299755859375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.02,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-10-30 16:00:00",
+      "exit_time": "2025-10-30 19:00:00",
+      "side": "short",
+      "pnl": 41.29969482421804,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.28,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-10-31 12:00:00",
+      "exit_time": "2025-11-03 10:00:00",
+      "side": "short",
+      "pnl": -40.699893188476565,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.89,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-11-04 08:00:00",
+      "exit_time": "2025-11-05 05:00:00",
+      "side": "long",
+      "pnl": 41.30007629394531,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.68,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-11-05 16:00:00",
+      "exit_time": "2025-11-06 08:00:00",
+      "side": "long",
+      "pnl": 49.30025939941406,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.16,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-11-06 14:00:00",
+      "exit_time": "2025-11-07 06:00:00",
+      "side": "long",
+      "pnl": 97.30021362304687,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.34,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-11-10 05:00:00",
+      "exit_time": "2025-11-10 10:00:00",
+      "side": "short",
+      "pnl": 46.3,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.54,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-11-11 09:00:00",
+      "exit_time": "2025-11-11 14:00:00",
+      "side": "short",
+      "pnl": -59.842915998186285,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.32,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-11-12 14:00:00",
+      "exit_time": "2025-11-12 18:00:00",
+      "side": "long",
+      "pnl": -78.48575025285963,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.49,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-11-14 10:00:00",
+      "exit_time": "2025-11-17 07:00:00",
+      "side": "short",
+      "pnl": 70.29978637695241,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 34.64,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-11-18 07:00:00",
+      "exit_time": "2025-11-18 10:00:00",
+      "side": "long",
+      "pnl": 52.30013732910156,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.66,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-11-18 17:00:00",
+      "exit_time": "2025-11-19 11:00:00",
+      "side": "short",
+      "pnl": 76.29992370605468,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.8,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-11-19 12:00:00",
+      "exit_time": "2025-11-20 09:00:00",
+      "side": "long",
+      "pnl": 56.29984741210937,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.52,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-11-20 16:00:00",
+      "exit_time": "2025-11-21 10:00:00",
+      "side": "long",
+      "pnl": -134.41449824741917,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.77,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-11-21 14:00:00",
+      "exit_time": "2025-11-24 11:00:00",
+      "side": "long",
+      "pnl": 43.299740600585224,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.75,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-11-24 19:00:00",
+      "exit_time": "2025-11-25 12:00:00",
+      "side": "short",
+      "pnl": 106.29984741210937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.11,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-11-25 14:00:00",
+      "exit_time": "2025-11-26 11:00:00",
+      "side": "long",
+      "pnl": 56.29984741210937,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.12,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-11-28 14:30:00",
+      "exit_time": "2025-12-01 14:00:00",
+      "side": "short",
+      "pnl": -27.699786376953124,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.04,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-02 14:00:00",
+      "exit_time": "2025-12-03 09:00:00",
+      "side": "long",
+      "pnl": 95.30016784667968,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.13,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-04 16:00:00",
+      "exit_time": "2025-12-05 13:00:00",
+      "side": "short",
+      "pnl": 21.3,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.08,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-05 14:00:00",
+      "exit_time": "2025-12-08 09:00:00",
+      "side": "short",
+      "pnl": 35.29993896484375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 9.98,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-08 17:00:00",
+      "exit_time": "2025-12-09 14:00:00",
+      "side": "long",
+      "pnl": -62.700015258789065,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 31.01,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-12-10 14:00:00",
+      "exit_time": "2025-12-10 19:00:00",
+      "side": "long",
+      "pnl": 83.29989318847656,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 30.09,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-12-11 08:00:00",
+      "exit_time": "2025-12-12 05:00:00",
+      "side": "long",
+      "pnl": 33.29989318847585,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.9,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-12-12 15:00:00",
+      "exit_time": "2025-12-15 12:00:00",
+      "side": "long",
+      "pnl": -5.700045776367188,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.14,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-16 07:00:00",
+      "exit_time": "2025-12-16 08:00:00",
+      "side": "long",
+      "pnl": -55.128849356515374,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 34.42,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-12-19 07:00:00",
+      "exit_time": "2025-12-19 11:00:00",
+      "side": "long",
+      "pnl": 51.299923706054685,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.93,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-19 18:00:00",
+      "exit_time": "2025-12-22 11:00:00",
+      "side": "short",
+      "pnl": -91.77160513741721,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.5,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-23 19:00:00",
+      "exit_time": "2025-12-26 11:00:00",
+      "side": "short",
+      "pnl": 2.299755859375,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 37.12,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-12-26 15:00:00",
+      "exit_time": "2025-12-29 09:00:00",
+      "side": "long",
+      "pnl": 51.299923706054685,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.95,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-31 13:00:00",
+      "exit_time": "2025-12-31 15:00:00",
+      "side": "short",
+      "pnl": 56.29984741210866,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.56,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-31 17:00:00",
+      "exit_time": "2026-01-02 14:00:00",
+      "side": "long",
+      "pnl": -93.48560311453663,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.83,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-01-05 05:00:00",
+      "exit_time": "2026-01-05 11:00:00",
+      "side": "long",
+      "pnl": 71.3,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.39,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-01-05 15:00:00",
+      "exit_time": "2026-01-06 12:00:00",
+      "side": "short",
+      "pnl": -17.700320434570312,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.11,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-01-06 13:00:00",
+      "exit_time": "2026-01-06 17:00:00",
+      "side": "short",
+      "pnl": 107.30006103515625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.1,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-01-06 23:00:00",
+      "exit_time": "2026-01-07 19:00:00",
+      "side": "long",
+      "pnl": -24.699908447265624,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 26.53,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-01-08 18:00:00",
+      "exit_time": "2026-01-08 20:00:00",
+      "side": "short",
+      "pnl": -91.12844717843213,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.46,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-01-09 14:00:00",
+      "exit_time": "2026-01-12 11:00:00",
+      "side": "short",
+      "pnl": 60.30032043457102,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.88,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-01-12 21:00:00",
+      "exit_time": "2026-01-13 14:00:00",
+      "side": "short",
+      "pnl": -123.0570545741494,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.45,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-01-14 10:00:00",
+      "exit_time": "2026-01-14 20:00:00",
+      "side": "short",
+      "pnl": 170.3001678466797,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.24,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-01-15 09:00:00",
+      "exit_time": "2026-01-16 06:00:00",
+      "side": "long",
+      "pnl": -22.700244140625,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 34.58,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-01-20 14:00:00",
+      "exit_time": "2026-01-21 08:00:00",
+      "side": "short",
+      "pnl": 106.29984741210937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.11,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-01-21 11:00:00",
+      "exit_time": "2026-01-22 08:00:00",
+      "side": "short",
+      "pnl": -2.699786376953125,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.7,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-01-22 12:00:00",
+      "exit_time": "2026-01-23 09:00:00",
+      "side": "long",
+      "pnl": 51.30030517578196,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.36,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-01-23 13:00:00",
+      "exit_time": "2026-01-26 10:00:00",
+      "side": "short",
+      "pnl": -25.7001220703125,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.49,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-01-27 13:00:00",
+      "exit_time": "2026-01-28 03:00:00",
+      "side": "short",
+      "pnl": -109.34294542585131,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.88,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-01-28 08:00:00",
+      "exit_time": "2026-01-28 23:00:00",
+      "side": "short",
+      "pnl": -93.91442958286841,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 42.04,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-01-29 01:00:00",
+      "exit_time": "2026-01-29 13:00:00",
+      "side": "short",
+      "pnl": -142.77138279506056,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 40.71,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-02-02 18:00:00",
+      "exit_time": "2026-02-03 15:00:00",
+      "side": "long",
+      "pnl": 97.30021362304687,
+      "reason": "time_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 26.23,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-02-04 17:00:00",
+      "exit_time": "2026-02-05 13:00:00",
+      "side": "short",
+      "pnl": 174.29987792968822,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.37,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-02-05 23:00:00",
+      "exit_time": "2026-02-06 05:00:00",
+      "side": "long",
+      "pnl": 123.29966430664062,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 23.58,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-02-06 13:00:00",
+      "exit_time": "2026-02-06 15:00:00",
+      "side": "long",
+      "pnl": 162.3003662109375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.91,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-02-09 07:00:00",
+      "exit_time": "2026-02-09 10:00:00",
+      "side": "long",
+      "pnl": 110.29993896484375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.99,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-02-09 15:00:00",
+      "exit_time": "2026-02-10 12:00:00",
+      "side": "short",
+      "pnl": -31.6998779296875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.25,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-02-11 11:00:00",
+      "exit_time": "2026-02-12 08:00:00",
+      "side": "short",
+      "pnl": 36.2993896484375,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.79,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-02-12 14:00:00",
+      "exit_time": "2026-02-12 16:00:00",
+      "side": "long",
+      "pnl": -104.84288330078125,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.49,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-02-13 07:00:00",
+      "exit_time": "2026-02-16 04:00:00",
+      "side": "long",
+      "pnl": 19.299954223632813,
+      "reason": "time_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 41.98,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-02-17 15:00:00",
+      "exit_time": "2026-02-18 10:00:00",
+      "side": "long",
+      "pnl": 100.30009155273437,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.48,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-02-18 11:00:00",
+      "exit_time": "2026-02-18 14:00:00",
+      "side": "short",
+      "pnl": -77.84283752441407,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.78,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-02-23 13:00:00",
+      "exit_time": "2026-02-23 17:00:00",
+      "side": "short",
+      "pnl": 62.3003662109375,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.18,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-02-24 03:00:00",
+      "exit_time": "2026-02-24 10:00:00",
+      "side": "short",
+      "pnl": 56.29984741210937,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.94,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-02-25 09:00:00",
+      "exit_time": "2026-02-26 06:00:00",
+      "side": "long",
+      "pnl": -15.69951171875,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 11.13,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-02-26 09:00:00",
+      "exit_time": "2026-02-26 10:00:00",
+      "side": "long",
+      "pnl": -83.20030735560887,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.83,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-02-27 09:00:00",
+      "exit_time": "2026-02-27 13:00:00",
+      "side": "short",
+      "pnl": -111.70001961844288,
+      "reason": "stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.57,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-02-27 18:00:00",
+      "exit_time": "2026-03-01 23:00:00",
+      "side": "short",
+      "pnl": -158.41463884626074,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 22.7,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-03-03 08:00:00",
+      "exit_time": "2026-03-03 10:00:00",
+      "side": "short",
+      "pnl": -265.9851780482705,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 31.45,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-03-04 06:00:00",
+      "exit_time": "2026-03-04 13:00:00",
+      "side": "short",
+      "pnl": 290.2994812011719,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.97,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-03-05 02:00:00",
+      "exit_time": "2026-03-05 18:00:00",
+      "side": "short",
+      "pnl": -278.41444266183055,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 15.33,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-03-05 23:00:00",
+      "exit_time": "2026-03-06 09:00:00",
+      "side": "short",
+      "pnl": -414.48600202287986,
+      "reason": "stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 20.96,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-03-10 17:00:00",
+      "exit_time": "2026-03-11 14:00:00",
+      "side": "long",
+      "pnl": 595.3005493164062,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 35.19,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-03-11 22:00:00",
+      "exit_time": "2026-03-12 18:00:00",
+      "side": "short",
+      "pnl": -575.7001220703125,
+      "reason": "time_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.86,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-03-13 20:00:00",
+      "exit_time": "2026-03-16 12:00:00",
+      "side": "short",
+      "pnl": 398.2996643066392,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 21.24,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-03-16 18:00:00",
+      "exit_time": "2026-03-17 05:00:00",
+      "side": "long",
+      "pnl": 429.29942016601706,
+      "reason": "mid_cross",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 23.34,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-03-18 03:00:00",
+      "exit_time": "2026-03-18 12:00:00",
+      "side": "long",
+      "pnl": 456.2998474121108,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.16,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-03-18 19:00:00",
+      "exit_time": "2026-03-19 09:00:00",
+      "side": "short",
+      "pnl": 247.29945068359518,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.26,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-03-20 01:00:00",
+      "exit_time": "2026-03-20 09:00:00",
+      "side": "long",
+      "pnl": 287.29960327148297,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.52,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-03-20 18:00:00",
+      "exit_time": "2026-03-23 11:00:00",
+      "side": "short",
+      "pnl": 605.2996337890625,
+      "reason": "mid_cross",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 16.71,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-03-26 07:00:00",
+      "exit_time": "2026-03-27 00:00:00",
+      "side": "short",
+      "pnl": -103.7,
+      "reason": "end_of_data",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.16,
+      "adx_bucket": "mid (20-25)"
+    }
+  ],
+  "elapsed_sec": 5.1
+}

@@ -95,36 +95,44 @@ def _run(df: pd.DataFrame, bb_period: int, bb_std: float, atr_stop_mult: float,
     stop = 0.0
     trades = []
 
+    entry_time = None
     for i in range(len(df)):
         if pd.isna(lower.iloc[i]) or pd.isna(atr.iloc[i]):
             continue
         price = float(df["close"].iloc[i])
         prev_price = float(df["close"].iloc[i - 1]) if i > 0 else price
+        bar_time = df.index[i]
 
         if in_pos:
             # Exit checks (order: stop → middle cross → time stop)
             if side > 0:
                 if float(df["low"].iloc[i]) <= stop:
                     pnl = (stop - entry) * mult * CONTRACTS - 2 * slip_usd - commission_round
-                    trades.append({"pnl": pnl, "reason": "stop"})
+                    trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
+                                   "side": "long", "pnl": pnl, "reason": "stop"})
                     in_pos = False; continue
                 if price >= sma.iloc[i] and prev_price < sma.iloc[i - 1]:
                     pnl = (price - entry) * mult * CONTRACTS - 2 * slip_usd - commission_round
-                    trades.append({"pnl": pnl, "reason": "mid_cross"})
+                    trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
+                                   "side": "long", "pnl": pnl, "reason": "mid_cross"})
                     in_pos = False; continue
             else:
                 if float(df["high"].iloc[i]) >= stop:
                     pnl = (entry - stop) * mult * CONTRACTS - 2 * slip_usd - commission_round
-                    trades.append({"pnl": pnl, "reason": "stop"})
+                    trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
+                                   "side": "short", "pnl": pnl, "reason": "stop"})
                     in_pos = False; continue
                 if price <= sma.iloc[i] and prev_price > sma.iloc[i - 1]:
                     pnl = (entry - price) * mult * CONTRACTS - 2 * slip_usd - commission_round
-                    trades.append({"pnl": pnl, "reason": "mid_cross"})
+                    trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
+                                   "side": "short", "pnl": pnl, "reason": "mid_cross"})
                     in_pos = False; continue
             # Time stop
             if i - entry_idx >= max_hold_bars:
                 pnl = ((price - entry) if side > 0 else (entry - price)) * mult * CONTRACTS - 2 * slip_usd - commission_round
-                trades.append({"pnl": pnl, "reason": "time_stop"})
+                trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
+                               "side": "long" if side > 0 else "short",
+                               "pnl": pnl, "reason": "time_stop"})
                 in_pos = False; continue
         else:
             # Entry: close crosses outside band
@@ -132,12 +140,14 @@ def _run(df: pd.DataFrame, bb_period: int, bb_std: float, atr_stop_mult: float,
                 side = +1
                 entry = price
                 entry_idx = i
+                entry_time = bar_time
                 stop = entry - atr_stop_mult * float(atr.iloc[i])
                 in_pos = True
             elif prev_price <= upper.iloc[i - 1] and price > upper.iloc[i]:
                 side = -1
                 entry = price
                 entry_idx = i
+                entry_time = bar_time
                 stop = entry + atr_stop_mult * float(atr.iloc[i])
                 in_pos = True
 
@@ -145,7 +155,9 @@ def _run(df: pd.DataFrame, bb_period: int, bb_std: float, atr_stop_mult: float,
     if in_pos:
         price = float(df["close"].iloc[-1])
         pnl = ((price - entry) if side > 0 else (entry - price)) * mult * CONTRACTS - 2 * slip_usd - commission_round
-        trades.append({"pnl": pnl, "reason": "end_of_data"})
+        trades.append({"entry_time": str(entry_time), "exit_time": str(df.index[-1]),
+                       "side": "long" if side > 0 else "short",
+                       "pnl": pnl, "reason": "end_of_data"})
 
     if not trades:
         return {"total_trades": 0, "pf": 0.0, "wr": 0.0, "net_pnl": 0.0, "ret_pct": 0.0}
