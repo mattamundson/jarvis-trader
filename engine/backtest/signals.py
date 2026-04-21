@@ -12,6 +12,7 @@ Layers wired:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Dict, Optional
 
 import numpy as np
@@ -120,8 +121,22 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
 
         params = get_sma_trend_params(symbol)
         if params:
-            # Allow caller overrides (e.g. optimizer varying fast/slow)
-            merged = {**params, **{k: v for k, v in kwargs.items() if k in ("fast", "slow", "atr_trail_mult")}}
+            # Config-controlled RV filter (off by default; see commit 5816aae).
+            # Env var MES_MIN_RV_ANNUALIZED enables the filter for live backtests
+            # without redeploying code — set to "9.0" or "13.0" after forward
+            # validation confirms improvement on 60+ trades.
+            env_rv = os.environ.get(f"{symbol.upper()}_MIN_RV_ANNUALIZED", "0.0")
+            try:
+                default_rv = float(env_rv)
+            except (TypeError, ValueError):
+                default_rv = 0.0
+            # Allow caller overrides (e.g. optimizer varying fast/slow/min_rv_annualized)
+            merged = {
+                **params,
+                "min_rv_annualized": default_rv,
+                **{k: v for k, v in kwargs.items()
+                   if k in ("fast", "slow", "atr_trail_mult", "min_rv_annualized")},
+            }
             return generate_sma_trend_signals(df, **merged)
     if symbol in COMPOSITE_INSTRUMENTS:
         from backtest.composite_signals import generate_composite_signals
