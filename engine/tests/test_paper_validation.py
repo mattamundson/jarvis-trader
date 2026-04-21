@@ -480,6 +480,39 @@ class TestConsecutiveLosses:
         tracker = ValidationTracker(data_dir=temp_data_dir)
         assert tracker.metrics["MCL"].max_consecutive_losses == 5
 
+    def test_breakeven_trades_do_not_count_as_losses(self, tracker, temp_data_dir):
+        """Regression: pnl == 0 breakevens must not advance the loss streak.
+
+        Pre-fix, the `else` branch in `_build_instrument_metrics` treated any
+        trade with `pnl <= 0` as a loss, so 11 breakeven test-fixture trades
+        in live MCL paper triggered `consecutive_losses = 11` and made
+        /validate/proactive-suite return NOT_READY with a fake 11-loss streak.
+        """
+        trades = [
+            {
+                "entry_date": "2026-04-02",
+                "exit_date": "2026-04-02",
+                "entry_price": 84.2,
+                "exit_price": 84.2,
+                "side": "long",
+                "contracts": 1,
+                "exit_reason": "manual_flat",
+                "regime_type": "trending",
+                "pnl": 0.0,
+                "pnl_pct": 0.0,
+                "recorded_at": f"2026-04-02T{12 + i:02d}:00:00",
+                "symbol": "MCL",
+            }
+            for i in range(11)
+        ]
+        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        tracker = ValidationTracker(data_dir=temp_data_dir)
+        mcl = tracker.metrics["MCL"]
+        assert mcl.consecutive_losses == 0, "breakevens must not advance streak"
+        assert mcl.losing_trades == 0, "breakevens must not count as losses"
+        assert mcl.winning_trades == 0, "breakevens must not count as wins"
+        assert mcl.total_trades == 11, "breakevens still count in total"
+
 
 class TestDashboardData:
     """Test dashboard response format."""
