@@ -147,10 +147,10 @@ export function MESForwardRecorderPanel() {
             <FlaskConical className="h-4 w-4" /> MES forward-recorder
           </CardTitle>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="border-zinc-700 text-zinc-400 text-[10px]">
+            <Badge variant="neutral" className="border-zinc-700 text-zinc-400 text-[10px]">
               observational
             </Badge>
-            <Badge variant="outline" className="border-zinc-700 text-zinc-400 text-[10px]">
+            <Badge variant="neutral" className="border-zinc-700 text-zinc-400 text-[10px]">
               no trades fired
             </Badge>
           </div>
