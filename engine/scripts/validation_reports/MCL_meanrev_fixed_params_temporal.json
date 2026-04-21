@@ -1,0 +1,79 @@
+{
+  "symbol": "MCL",
+  "family": "meanrev",
+  "params": {
+    "bb_period": 50,
+    "bb_std": 1.5,
+    "atr_stop_mult": 3.0,
+    "max_hold_bars": 20
+  },
+  "n_segments": 4,
+  "start": "2024-06-01",
+  "end": "2026-03-27",
+  "segments": [
+    {
+      "segment": 1,
+      "start": "2024-06-02",
+      "end": "2024-11-12",
+      "n_bars": 2555,
+      "pf": 0.944,
+      "wr": 48.91,
+      "total_trades": 92,
+      "net_pnl": -227.83,
+      "ret_pct": -2.28,
+      "thin": false
+    },
+    {
+      "segment": 2,
+      "start": "2024-11-12",
+      "end": "2025-05-02",
+      "n_bars": 2555,
+      "pf": 1.675,
+      "wr": 57.78,
+      "total_trades": 90,
+      "net_pnl": 1914.43,
+      "ret_pct": 19.14,
+      "thin": false
+    },
+    {
+      "segment": 3,
+      "start": "2025-05-02",
+      "end": "2025-10-10",
+      "n_bars": 2555,
+      "pf": 1.141,
+      "wr": 53.19,
+      "total_trades": 94,
+      "net_pnl": 423.48,
+      "ret_pct": 4.23,
+      "thin": false
+    },
+    {
+      "segment": 4,
+      "start": "2025-10-10",
+      "end": "2026-03-27",
+      "n_bars": 2558,
+      "pf": 1.615,
+      "wr": 57.65,
+      "total_trades": 85,
+      "net_pnl": 2416.5,
+      "ret_pct": 24.16,
+      "thin": false
+    }
+  ],
+  "segment_pfs": [
+    0.944,
+    1.675,
+    1.141,
+    1.615
+  ],
+  "stats": {
+    "min_pf": 0.944,
+    "max_pf": 1.675,
+    "mean_pf": 1.344,
+    "all_profitable": false,
+    "pct_profitable": 0.75,
+    "total_trades": 361
+  },
+  "verdict": "MIXED",
+  "elapsed_sec": 0.8
+}
