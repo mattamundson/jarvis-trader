@@ -690,10 +690,30 @@ class MarketDataManager:
         is_futures: bool = False,
     ) -> pd.DataFrame:
         """
-        Get OHLCV bars. Waterfall: IBKR → Polygon → CSV cache.
+        Get OHLCV bars. Waterfall: TradingView MCP → IBKR → Polygon → CSV cache.
         Returns empty DataFrame if all sources unavailable.
+
+        TV MCP added 2026-04-21 (roadmap P0.2) as Tier 0 — fastest path to fresh
+        bars. Requires TV Desktop running with --remote-debugging-port=9222.
+        Preserves user's chart state via save/restore inside the fetcher.
         """
         is_futures = is_futures or symbol.upper() in FUTURES_MAP
+
+        # Tier 0: TradingView MCP (live bars via CDP)
+        if _tv_feed is not None and _tv_feed.is_available():
+            tv_df = _tv_feed.get_bars(symbol, timeframe=timeframe, limit=300)
+            if not tv_df.empty and "timestamp" in tv_df.columns:
+                last_ts = pd.to_datetime(tv_df["timestamp"].iloc[-1], utc=True)
+                age_hours = (datetime.now(last_ts.tzinfo) - last_ts).total_seconds() / 3600
+                if age_hours <= 72:  # allow long weekends; caller checks tighter freshness
+                    logger.info(
+                        f"TV returned {len(tv_df)} bars for {symbol} "
+                        f"({timeframe}, last bar {age_hours:.1f}h old)"
+                    )
+                    return tv_df
+                logger.warning(
+                    f"[{symbol}] TV returned stale bars ({age_hours:.1f}h old) — falling through"
+                )
 
         # Tier 1: IBKR
         if self.ibkr and self.ibkr.is_connected:

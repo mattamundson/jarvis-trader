@@ -83,10 +83,22 @@ async def run_technical_analysis(req: AnalysisRequest):
 
 
 @router.get("/analyze/bars/{symbol}", response_model=BarsResponse)
-async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: bool = False):
-    """Get OHLCV bars for a symbol, including VWAP and STC per bar"""
+async def get_bars(
+    symbol: str,
+    timeframe: str | None = None,
+    interval: str | None = None,
+    days: int = 7,
+    futures: bool = False,
+):
+    """Get OHLCV bars for a symbol, including VWAP and STC per bar.
+
+    `interval` is accepted as an alias for `timeframe` (matches pandas/ohlcv convention).
+    Precedence: explicit `timeframe` > `interval` > default `5m`.
+    """
     if not data_manager:
         raise HTTPException(503, "Data manager not initialized")
+
+    timeframe = timeframe or interval or "5m"
 
     try:
         df = await data_manager.get_bars(
