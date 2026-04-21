@@ -129,9 +129,15 @@ class TradingViewFeed:
 
     def _set_symbol(self, ticker: str) -> bool:
         try:
+            # Timeout is 20s because TV chart switches under heavy study load
+            # (gamma overlay + Corey profile + TAPivots + JARVIS MCP manifest +
+            # Volume, plus duplicates) take ~11s observed 2026-04-21 on this
+            # machine. 8s was the original value and produced false "Failed to
+            # set TV symbol" log noise on every multi-symbol scan, even though
+            # `tv symbol` itself returned success:true when given enough time.
             r = subprocess.run(
                 [TV_CLI, "symbol", ticker],
-                capture_output=True, text=True, timeout=8
+                capture_output=True, text=True, timeout=20
             )
             if r.returncode != 0:
                 logger.debug(
@@ -149,9 +155,10 @@ class TradingViewFeed:
 
     def _set_timeframe(self, resolution: str) -> bool:
         try:
+            # 20s matches _set_symbol — same TV chart redraw latency applies.
             r = subprocess.run(
                 [TV_CLI, "timeframe", resolution],
-                capture_output=True, text=True, timeout=8
+                capture_output=True, text=True, timeout=20
             )
             if r.returncode != 0:
                 logger.debug(
