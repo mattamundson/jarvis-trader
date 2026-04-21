@@ -84,8 +84,8 @@ scripts:
     author: "Corey (AA)"
     layer: 2
     layer_name: Structure
-    status: orphan
-    python_counterpart: null
+    status: ported
+    python_counterpart: "engine/backtest/tpo_profile.py::compute_tpo_profile"
     panel: upper
     jarvis_signals:
       - vpoc
@@ -103,8 +103,8 @@ scripts:
     author: "Corey (AA)"
     layer: 2
     layer_name: Structure
-    status: orphan
-    python_counterpart: null
+    status: ported
+    python_counterpart: "engine/backtest/tpo_score.py::compute_tpo_score"
     panel: lower
     jarvis_signals:
       - layer2_structure
@@ -119,8 +119,8 @@ scripts:
     author: "Corey (AA)"
     layer: 2
     layer_name: Structure
-    status: orphan
-    python_counterpart: null
+    status: ported
+    python_counterpart: "engine/backtest/ib_signals.py::compute_initial_balance"
     panel: upper
     jarvis_signals:
       - ib_high
@@ -139,8 +139,8 @@ scripts:
     author: "Corey (AA)"
     layer: 2
     layer_name: Structure
-    status: orphan
-    python_counterpart: null
+    status: ported
+    python_counterpart: "engine/backtest/rangefinder.py::compute_rangefinder"
     panel: upper
     jarvis_signals: []
     tos_inputs:
@@ -155,8 +155,8 @@ scripts:
     author: "Corey (AA)"
     layer: 2
     layer_name: Structure
-    status: orphan
-    python_counterpart: null
+    status: ported
+    python_counterpart: "engine/backtest/singlefinder.py::compute_single_prints"
     panel: upper
     jarvis_signals: []
     tos_inputs:
@@ -169,8 +169,8 @@ scripts:
     author: "Corey (AA)"
     layer: 2
     layer_name: Structure
-    status: orphan
-    python_counterpart: null
+    status: ported
+    python_counterpart: "engine/backtest/gapfinder.py::compute_gaps"
     panel: upper
     jarvis_signals: []
     tos_inputs: {}
@@ -358,8 +358,8 @@ scripts:
     author: "Chetan"
     layer: 0
     layer_name: Supporting
-    status: orphan
-    python_counterpart: null
+    status: ported
+    python_counterpart: "engine/backtest/gaps_chetan.py::compute_chetan_gaps"
     panel: upper
     jarvis_signals: []
     tos_inputs: {}

@@ -3,7 +3,7 @@
 **File**: `thinkorswim-scripts/AA_CoreyIBv1STUDY.ts`  
 **Author**: Corey Surles (@coreysurles)  
 **JARVIS Layer**: Layer 2 (Structure) + Layer 4 (Entry Trigger)  
-**Status**: Orphan — no Python counterpart  
+**Status**: Ported (Phase 2, commit pending) — `engine/backtest/ib_signals.py::compute_initial_balance`  
 **Panel**: Upper (main price chart)
 
 ## Purpose

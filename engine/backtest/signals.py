@@ -278,6 +278,16 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # IB proxy for daily bars: prior bar's high/low acts as the
     # "Initial Balance" range that price must accept or reject today.
+    # TODO(Phase 2): replace this shift(1) proxy with compute_initial_balance()
+    #   from engine/backtest/ib_signals.py.  That function requires intraday
+    #   (1-min or 5-min) bars with a DatetimeIndex so it can isolate the
+    #   first `open_minutes` of each RTH session.  generate_signals() currently
+    #   operates on daily OHLC bars, so the wiring requires either (a) passing
+    #   an intraday df alongside the daily df, or (b) pre-computing IB columns
+    #   before calling generate_signals and merging on date.  Until the data
+    #   pipeline supports intraday lookups here, the shift(1) proxy is the
+    #   correct fallback.  See thinkorswim-scripts/docs/corey_ib_v1.md for
+    #   the full IB spec and engine/backtest/ib_signals.py for the port.
     df["ib_high"] = df["high"].shift(1)
     df["ib_low"] = df["low"].shift(1)
 

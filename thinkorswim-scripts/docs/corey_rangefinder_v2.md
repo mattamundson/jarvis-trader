@@ -3,7 +3,7 @@
 **File**: `thinkorswim-scripts/AA_CoreyRFv2STUDY.ts`  
 **Author**: Corey Surles (@coreysurles)  
 **JARVIS Layer**: 2 Structure + 4 Entry confirmation  
-**Status**: Orphan (no Python counterpart)  
+**Status**: Ported (Phase 2, commit pending) — `engine/backtest/rangefinder.py::compute_rangefinder`  
 **Panel**: Upper (study)
 
 ## Purpose

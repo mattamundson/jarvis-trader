@@ -3,7 +3,7 @@
 **File**: `thinkorswim-scripts/AA_CoreySFv2STUDY.ts`  
 **Author**: Corey Surles (@coreysurles)  
 **JARVIS Layer**: 2 Structure (gap-fill bias)  
-**Status**: Orphan (no Python counterpart)  
+**Status**: Ported (Phase 2, commit pending) — `engine/backtest/singlefinder.py::compute_single_prints`  
 **Panel**: Upper (study)
 
 ## Purpose

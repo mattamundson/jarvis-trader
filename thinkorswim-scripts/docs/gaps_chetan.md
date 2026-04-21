@@ -3,8 +3,8 @@
 **File**: `thinkorswim-scripts/GAPS_Chetan1STUDY.ts`  
 **Author**: Chetan  
 **JARVIS Layer**: Layer 2 (Structure Map — supplementary)  
-**Status**: Orphan  
-**Python counterpart**: None  
+**Status**: Ported (Phase 2, commit pending)  
+**Python counterpart**: `engine/backtest/gaps_chetan.py::compute_chetan_gaps`  
 **Panel**: Upper
 
 ---
