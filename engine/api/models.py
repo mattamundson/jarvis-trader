@@ -120,6 +120,8 @@ class HealthResponse(BaseModel):
     llm_available: Optional[bool] = Field(True, description="Whether Anthropic API key is configured")
     llm_path_healthy: Optional[bool] = Field(True, description="Whether the last-observed LLM call succeeded (false = credits/auth outage)")
     llm_path_details: Optional[Dict[str, Any]] = Field(None, description="Populated only when llm_path_healthy=false")
+    tradingview_mcp_healthy: Optional[bool] = Field(True, description="Whether TradingView Desktop CDP port 9222 responds (false = TV MCP bar source unavailable)")
+    tradingview_mcp_details: Optional[str] = Field(None, description="Short diagnostic populated only when tradingview_mcp_healthy=false")
 
 
 class SubsystemStatus(BaseModel):

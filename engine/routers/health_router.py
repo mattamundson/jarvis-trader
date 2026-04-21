@@ -7,6 +7,9 @@ status information about all JARVIS TRADER subsystems.
 
 import logging
 import sqlite3
+import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
@@ -19,6 +22,37 @@ from middleware.rate_limit import get_limiter
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["health", "system"])
+
+_TV_MCP_CDP_URL = "http://127.0.0.1:9222/json/version"
+_TV_MCP_CACHE_TTL_SEC = 30.0
+_tv_mcp_health_cache: dict = {"checked_at": 0.0, "healthy": False, "details": "not yet probed"}
+
+
+def _check_tradingview_mcp_health() -> tuple[bool, str | None]:
+    """Probe TradingView Desktop CDP endpoint. Cached 30s to avoid hammering CDP
+    on every /health poll. Returns (healthy, details) — details is None on
+    success, a short diagnostic string on failure."""
+    now = time.monotonic()
+    cached_at = _tv_mcp_health_cache.get("checked_at", 0.0)
+    if now - cached_at < _TV_MCP_CACHE_TTL_SEC:
+        return _tv_mcp_health_cache["healthy"], _tv_mcp_health_cache["details"]
+
+    details: str | None = None
+    healthy = False
+    try:
+        req = urllib.request.Request(_TV_MCP_CDP_URL, method="GET")
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            if resp.status == 200:
+                healthy = True
+            else:
+                details = f"CDP returned HTTP {resp.status}"
+    except urllib.error.URLError as exc:
+        details = f"CDP port 9222 unreachable: {exc.reason}"
+    except Exception as exc:
+        details = f"CDP probe failed: {exc}"
+
+    _tv_mcp_health_cache.update(checked_at=now, healthy=healthy, details=details)
+    return healthy, details
 
 # Get limiter instance for rate limiting
 limiter = get_limiter()
@@ -127,6 +161,8 @@ async def _health_inner() -> dict:
         # If the client module hasn't been imported yet, assume healthy
         pass
 
+    tv_mcp_healthy, tv_mcp_details = _check_tradingview_mcp_health()
+
     status = "ok" if (db_ok and llm_path_healthy) else "degraded"
 
     response = {
@@ -142,9 +178,12 @@ async def _health_inner() -> dict:
         "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,
         "llm_path_healthy": llm_path_healthy,
+        "tradingview_mcp_healthy": tv_mcp_healthy,
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
+    if tv_mcp_details:
+        response["tradingview_mcp_details"] = tv_mcp_details
     return response
 
 
