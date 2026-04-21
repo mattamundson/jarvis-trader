@@ -107,14 +107,42 @@ TREND_INSTRUMENTS = {"MES"}
 # Decision frame: memory/project_per_symbol_strategy_decision.md (Option B).
 DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ"})
 
+# Env-var feature flag for Phase 3 FULL (gate v2 routing enforcement).
+# Default OFF — ships dormant, user activates after verifying verdict
+# files exist and the policy module reads them correctly.
+# See: memory/project_gate_v2_proposal.md, engine/backtest/gate_v2_policy.py
+_GATE_V2_ROUTING_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _is_gate_v2_routing_enforced() -> bool:
+    """Check `GATE_V2_ENFORCE_ROUTING` env var (case-insensitive truthy set)."""
+    return os.environ.get("GATE_V2_ENFORCE_ROUTING", "").strip().lower() in \
+        _GATE_V2_ROUTING_TRUTHY
+
+
+def _force_no_trade(result):
+    """Override entry/exit columns to NO_TRADE / NO_EXIT while preserving
+    all other columns + the index. Shared by DO_NOT_TRADE and gate_v2
+    enforcement paths."""
+    result = result.copy()
+    result["entry_signal"] = "NO_TRADE"
+    if "exit_signal" in result.columns:
+        result["exit_signal"] = "NO_EXIT"
+    return result
+
 
 def generate_instrument_signals(df, symbol: str, **kwargs):
     """Route to trend, composite, or standard signal generation based on instrument.
 
-    Symbols in DO_NOT_TRADE_SYMBOLS are short-circuited: the standard pipeline
-    runs to populate the full column shape, then entry/exit signals are force-
-    overridden to NO_TRADE / NO_EXIT. The Backtester consumes this as zero
-    trades without any null-column surprises.
+    Post-processing (applied universally regardless of routing path):
+      1. DO_NOT_TRADE_SYMBOLS — static blocklist, always forces NO_TRADE.
+      2. Gate v2 routing enforcement (optional, env-flagged) — force NO_TRADE
+         when `GATE_V2_ENFORCE_ROUTING` is set and the symbol lacks a fresh
+         PASS verdict per `gate_v2_policy.is_ungate_eligible`.
+
+    DO_NOT_TRADE takes precedence — MCL/MNQ stay blocked even if a
+    gate_v2 PASS verdict exists. Gate v2 enforcement fails open: a missing
+    or stale verdict forces NO_TRADE, never an implicit allow.
     """
     if symbol in TREND_INSTRUMENTS:
         from backtest.trend_signals import get_sma_trend_params, generate_sma_trend_signals
@@ -137,17 +165,29 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
                 **{k: v for k, v in kwargs.items()
                    if k in ("fast", "slow", "atr_trail_mult", "min_rv_annualized")},
             }
-            return generate_sma_trend_signals(df, **merged)
-    if symbol in COMPOSITE_INSTRUMENTS:
+            result = generate_sma_trend_signals(df, **merged)
+        else:
+            result = generate_signals(df, symbol=symbol, **kwargs)
+    elif symbol in COMPOSITE_INSTRUMENTS:
         from backtest.composite_signals import generate_composite_signals
 
-        return generate_composite_signals(df, symbol=symbol, **kwargs)
-    result = generate_signals(df, symbol=symbol, **kwargs)
+        result = generate_composite_signals(df, symbol=symbol, **kwargs)
+    else:
+        result = generate_signals(df, symbol=symbol, **kwargs)
+
+    # Override layer 1: static blocklist wins first.
     if symbol in DO_NOT_TRADE_SYMBOLS:
-        result = result.copy()
-        result["entry_signal"] = "NO_TRADE"
-        if "exit_signal" in result.columns:
-            result["exit_signal"] = "NO_EXIT"
+        return _force_no_trade(result)
+
+    # Override layer 2: optional gate_v2 dynamic enforcement.
+    if _is_gate_v2_routing_enforced():
+        # Lazy import so the policy module's dependencies aren't loaded
+        # for callers that never enable enforcement.
+        from backtest.gate_v2_policy import is_ungate_eligible
+
+        if not is_ungate_eligible(symbol):
+            return _force_no_trade(result)
+
     return result
 
 
