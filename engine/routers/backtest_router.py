@@ -162,9 +162,33 @@ async def run_backtest(request: BacktestRequest):
                 raise ValueError(f"No data for {request.symbol}")
             df = generate_instrument_signals(df, symbol=request.symbol)
             multiplier = loader.get_multiplier(request.symbol)
+            from backtest.signals import TREND_INSTRUMENTS
+            from backtest.trend_signals import get_sma_trend_params
+            is_trend = request.symbol.upper() in TREND_INSTRUMENTS
+            trend_params = get_sma_trend_params(request.symbol) if is_trend else None
             backtester = Backtester(
                 initial_capital=request.capital,
                 risk_per_trade=request.risk_per_trade,
+                trailing_stop=is_trend,
+                trailing_atr_mult=trend_params["atr_trail_mult"] if trend_params else 0.70,
+                # Trend strategies: no partial exits (WFO closes whole position at death
+                # cross or stop); strict trail (update every bar like WFO, no excursion
+                # gate); disable kill-switch so all 36 signals can fire.
+                t1_exit_pct=1.0 if is_trend else 0.50,
+                t2_exit_pct=0.0 if is_trend else 0.30,
+                strict_trailing=is_trend,
+                # Trend strategies hold overnight (SMA crossovers last days/weeks);
+                # intraday EOD-close would chop positions daily, diverging from WFO.
+                eod_close=not is_trend,
+                # Trend strategies exit ONLY on trailing stop or death cross —
+                # never at a fixed ATR target (which would cap winners).
+                use_targets=not is_trend,
+                # Fixed 1 contract matches WFO equal-weight basis. ATR-scaled sizing
+                # inverts trend edge: low-ATR false signals → more contracts (amplified
+                # losses); high-ATR trend signals → fewer contracts (dampened wins).
+                fixed_contracts=1 if is_trend else None,
+                max_drawdown=0.99 if is_trend else 0.05,
+                max_daily_loss=0.99 if is_trend else 0.02,
             )
             result = backtester.run(df, request.symbol, multiplier)
             return result.to_dict()

@@ -67,6 +67,10 @@ class Backtester:
         trailing_stop: bool = False,
         trailing_atr_mult: float = 0.70,
         trailing_post_t1: bool = False,
+        strict_trailing: bool = False,
+        eod_close: bool = True,
+        use_targets: bool = True,
+        fixed_contracts: Optional[int] = None,
     ):
         self.initial_capital = initial_capital
         self.risk_per_trade = risk_per_trade
@@ -82,6 +86,17 @@ class Backtester:
         self.trailing_stop = trailing_stop
         self.trailing_atr_mult = trailing_atr_mult
         self.trailing_post_t1 = trailing_post_t1
+        # strict_trailing=True: update trail on every bar (no favorable_excursion gate),
+        # matching the WFO custom backtester behavior for trend-following strategies.
+        self.strict_trailing = strict_trailing
+        # eod_close=False: hold positions overnight (trend strategies). True = intraday only.
+        self.eod_close = eod_close
+        # use_targets=False: never exit at fixed price targets (trend-following only).
+        self.use_targets = use_targets
+        # fixed_contracts: override ATR-based sizing. Set to 1 for trend strategies to
+        # match WFO equal-weight basis (ATR sizing inverts trend edge: small-ATR → more
+        # contracts → amplified losses; large-ATR/trending → fewer contracts → muted wins).
+        self.fixed_contracts = fixed_contracts
 
     def _apply_slippage(self, price: float, direction: str, tick_size: float, slippage_ticks: float) -> float:
         """Long entries pay up, short entries get worse fills. Realistic 1-tick adverse selection."""
@@ -196,9 +211,12 @@ class Backtester:
         if rr < 1.2:
             return None, 0, 0, 0, [], 0.0
 
-        total_contracts = self._calculate_contracts(
-            row.get("capital", self.initial_capital), entry_price, stop_price, multiplier
-        )
+        if self.fixed_contracts is not None:
+            total_contracts = self.fixed_contracts
+        else:
+            total_contracts = self._calculate_contracts(
+                row.get("capital", self.initial_capital), entry_price, stop_price, multiplier
+            )
         if total_contracts < 1:
             return None, 0, 0, 0, [], 0.0
 
@@ -233,6 +251,8 @@ class Backtester:
         t2_touched: bool,
     ) -> tuple[int, int, float, list]:
         """Check and process target exits."""
+        if not self.use_targets:
+            return open_contracts_t1, open_contracts_t2, 0.0, []
         targets_hit = []
         capital_change = 0.0
 
@@ -311,7 +331,8 @@ class Backtester:
         exited = False
 
         favorable_excursion = close - open_trade.entry_price
-        if favorable_excursion >= 0.5 * bar_atr:
+        trail_active = self.strict_trailing or favorable_excursion >= 0.5 * bar_atr
+        if trail_active:
             new_trail = close - self.trailing_atr_mult * bar_atr
             if new_trail > open_trade.stop_price:
                 open_trade.stop_price = new_trail
@@ -452,6 +473,12 @@ class Backtester:
             t1_touched = low <= open_trade.target_1 if open_contracts_t1 > 0 else False
             t2_touched = low <= open_trade.target_2 if open_contracts_t2 > 0 else False
             target_first = bar_open <= open_trade.entry_price
+
+        # Strict trailing: _process_trailing_stop_long updates trail BEFORE checking
+        # (matching WFO's update-then-check order). Delegating stop here (prev-bar trail)
+        # would exit 1 bar early vs WFO, causing missed re-entries.
+        if self.trailing_stop and self.strict_trailing:
+            stop_touched = False
 
         # Process exits in priority order
         both_stop_and_target = stop_touched and (t1_touched or t2_touched)
@@ -659,6 +686,8 @@ class Backtester:
                 if remaining > 0 and t1_gate:
                     bar_atr = row.get("atr", 0)
                     if bar_atr > 0:
+                        trade_before_trail = open_trade  # save ref before function sets it to None
+                        ts_exited = False
                         if open_trade.direction == "long":
                             open_trade, open_contracts_t1, capital_ts, ts_exited = (
                                 self._process_trailing_stop_long(
@@ -671,11 +700,6 @@ class Backtester:
                                     low,
                                 )
                             )
-                            if ts_exited:
-                                open_contracts_t2 = 0
-                                open_contracts_t3 = 0
-                                targets_hit = []
-                            capital += capital_ts
                         else:
                             open_trade, open_contracts_t1, capital_ts, ts_exited = (
                                 self._process_trailing_stop_short(
@@ -688,17 +712,17 @@ class Backtester:
                                     high,
                                 )
                             )
-                            if ts_exited:
-                                open_contracts_t2 = 0
-                                open_contracts_t3 = 0
-                                targets_hit = []
-                            capital += capital_ts
+                        capital += capital_ts
                         if ts_exited:
-                            completed_trades.append(open_trade) if open_trade else None
+                            open_contracts_t2 = 0
+                            open_contracts_t3 = 0
+                            targets_hit = []
+                            trade_before_trail.exit_date = idx
+                            completed_trades.append(trade_before_trail)
 
             # End of day close
             remaining_contracts = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
-            if remaining_contracts > 0 and open_trade is not None:
+            if self.eod_close and remaining_contracts > 0 and open_trade is not None:
                 next_idx_pos = df.index.get_loc(idx)
                 is_last_bar = next_idx_pos == len(df) - 1
                 is_eod = is_last_bar
@@ -706,6 +730,7 @@ class Backtester:
                     next_bar_date = df.index[next_idx_pos + 1].date()
                     is_eod = next_bar_date != row_date
 
+                trade_before_eod = open_trade
                 (
                     open_trade,
                     open_contracts_t1,
@@ -726,9 +751,28 @@ class Backtester:
                     targets_hit,
                 )
                 capital += capital_eod
-                if open_trade is None:
-                    # Trade was closed at EOD
-                    pass
+                if open_trade is None and capital_eod != 0.0:
+                    completed_trades.append(trade_before_eod)
+
+            # -- Explicit exit signal (e.g. death cross from SMA trend strategy) --
+            if open_trade is not None:
+                exit_sig = row.get("exit_signal", "NO_EXIT")
+                if exit_sig == "EXIT_NOW":
+                    remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
+                    if remaining > 0:
+                        if open_trade.direction == "long":
+                            pnl = remaining * (close - open_trade.entry_price) * multiplier
+                        else:
+                            pnl = remaining * (open_trade.entry_price - close) * multiplier
+                        capital_change = pnl - self._transaction_cost(remaining, tick_size) - self._exit_spread_cost(remaining, tick_size, multiplier)
+                        capital += capital_change
+                        open_trade.pnl += pnl
+                        open_trade.exit_price = close
+                        open_trade.exit_date = idx
+                        open_trade.exit_reason = "exit_signal"
+                        completed_trades.append(open_trade)
+                        open_trade = None
+                        open_contracts_t1 = open_contracts_t2 = open_contracts_t3 = 0
 
             # -- Check for new entry signal (Bug 3: store as pending, don't enter now) --
             if open_trade is None and pending_entry is None and not kill_switch:
