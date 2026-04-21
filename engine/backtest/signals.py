@@ -83,15 +83,7 @@ INSTRUMENT_PARAMS: Dict[str, tuple] = {
         2.618,
         True,
     ),  # SPY 1h optimizer consensus (2024-06→2026-03): PF 3.79, 23 trades
-    "MES": (
-        15,
-        83,
-        0.50,
-        2.00,
-        3.236,
-        4.00,
-        False,
-    ),  # MES 1h optimizer consensus (2024-06→2026-03): PF 1.69, 23 trades
+    # MES → routed via TREND_INSTRUMENTS to trend_signals.generate_sma_trend_signals()
     # Defaults used for all other symbols: STC_OS=15, STC_OB=83, Stop=0.70, T1=1.00, regime ON
 }
 
@@ -105,9 +97,24 @@ COMPOSITE_INSTRUMENTS: set[str] = set()  # no active composite instruments
 # MES pivot (2026-04-20): WFO winner SMA(50,200)+2.0×ATR, train PF 2.06 / test PF 1.69.
 TREND_INSTRUMENTS = {"MES"}
 
+# Instruments with no validated edge on cached OHLC 2024-06→2026-03. The pipeline
+# emits forced NO_TRADE signals for these symbols until a per-symbol edge is
+# re-derived. Rationale: multi_symbol_trend_wfo.py (2026-04-20) showed 0 WFO
+# winners for MCL/MNQ on the MES SMA(50,200) config; composite path scored
+# PF 0.13 — net-negative. Paper-trading a negative-expectancy strategy
+# contaminates the learning/feedback feedback loop.
+# Decision frame: memory/project_per_symbol_strategy_decision.md (Option B).
+DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ"})
+
 
 def generate_instrument_signals(df, symbol: str, **kwargs):
-    """Route to trend, composite, or standard signal generation based on instrument."""
+    """Route to trend, composite, or standard signal generation based on instrument.
+
+    Symbols in DO_NOT_TRADE_SYMBOLS are short-circuited: the standard pipeline
+    runs to populate the full column shape, then entry/exit signals are force-
+    overridden to NO_TRADE / NO_EXIT. The Backtester consumes this as zero
+    trades without any null-column surprises.
+    """
     if symbol in TREND_INSTRUMENTS:
         from backtest.trend_signals import get_sma_trend_params, generate_sma_trend_signals
 
@@ -120,7 +127,13 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
         from backtest.composite_signals import generate_composite_signals
 
         return generate_composite_signals(df, symbol=symbol, **kwargs)
-    return generate_signals(df, symbol=symbol, **kwargs)
+    result = generate_signals(df, symbol=symbol, **kwargs)
+    if symbol in DO_NOT_TRADE_SYMBOLS:
+        result = result.copy()
+        result["entry_signal"] = "NO_TRADE"
+        if "exit_signal" in result.columns:
+            result["exit_signal"] = "NO_EXIT"
+    return result
 
 
 # Default STC thresholds
