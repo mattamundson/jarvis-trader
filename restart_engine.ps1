@@ -43,10 +43,10 @@ if ($pm2Managed) {
         # warmup can keep uvicorn from binding until ~1m44s.
         $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
         if ($elapsed -ge 60 -and $lastProgressPrint -lt 60) {
-            Write-Host "  ...still booting at 60s (uvicorn not yet bound — normal up to ~110s)"
+            Write-Host '  [60s] still booting (uvicorn not yet bound; normal up to ~110s)'
             $lastProgressPrint = 60
         } elseif ($elapsed -ge 120 -and $lastProgressPrint -lt 120) {
-            Write-Host "  ...still booting at 120s (if this keeps going past 180s, check pm2 logs for crash)"
+            Write-Host '  [120s] still booting (if this keeps going past 180s, check pm2 logs for crash)'
             $lastProgressPrint = 120
         }
     }
