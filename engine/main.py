@@ -1912,6 +1912,76 @@ async def lifespan(app: FastAPI):
     except Exception as _weekly_err:
         logger.warning(f"Weekly discovery job init failed (non-fatal): {_weekly_err}")
 
+    # ── Weekly gate v2 orchestrator ────────────────────────────────────────────
+    # Re-scores the revised dual-pathway gate for each tracked symbol and
+    # persists a verdict snapshot under engine/data/gate_v2_verdicts/.
+    # Advisory only — does NOT block routing. See:
+    #   * scripts/gate_v2_orchestrator.py
+    #   * backtest/gate_v2_policy.py
+    #   * memory/project_gate_v2_proposal.md
+    try:
+        # (symbol, family, rank, results_file_relative_to_engine/)
+        _GATE_V2_TRACKED: list[tuple[str, str, int, str]] = [
+            ("MES", "trend",   7, "scripts/mes_trend_search_results.json"),
+            ("MCL", "meanrev", 1, "scripts/mcl_meanrev_search_results.json"),
+            ("MNQ", "trend",   1, "scripts/mnq_trend_search_results.json"),
+        ]
+
+        async def _run_weekly_gate_v2() -> None:
+            """Saturday 01:00 CT: re-score gate v2 for each tracked symbol."""
+            try:
+                from pathlib import Path as _Path
+                from scripts.gate_v2_orchestrator import orchestrate_gate_v2
+
+                engine_dir = _Path(__file__).resolve().parent
+                reports_dir = engine_dir / "scripts" / "validation_reports"
+                output_dir = engine_dir / "data" / "gate_v2_verdicts"
+
+                for _sym, _fam, _rank, _results_rel in _GATE_V2_TRACKED:
+                    _results_file = engine_dir / _results_rel
+                    if not _results_file.exists():
+                        logger.warning(
+                            "[GateV2Weekly] missing results file %s — skipping %s/%s rank=%d",
+                            _results_file, _sym, _fam, _rank,
+                        )
+                        continue
+                    try:
+                        _snap = orchestrate_gate_v2(
+                            results_file=_results_file,
+                            symbol=_sym, family=_fam, rank=_rank,
+                            reports_dir=reports_dir,
+                            output_dir=output_dir,
+                        )
+                        logger.info(
+                            "[GateV2Weekly] %s/%s rank=%d verdict=%s via=%s "
+                            "(core %d/4, alt %d/5)",
+                            _sym, _fam, _rank, _snap.verdict,
+                            _snap.passed_via or "-",
+                            _snap.n_core_passed, _snap.n_alt_passed,
+                        )
+                    except Exception as _inner_err:
+                        logger.error(
+                            "[GateV2Weekly] %s/%s rank=%d failed: %s",
+                            _sym, _fam, _rank, _inner_err, exc_info=True,
+                        )
+            except Exception as _gv2_err:
+                logger.error(f"[GateV2Weekly] cycle failed: {_gv2_err}", exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_weekly_gate_v2,
+                CronTrigger(day_of_week="sat", hour=1, minute=0, timezone="America/Chicago"),
+                id="weekly_gate_v2",
+                name="Weekly Gate v2 Orchestrator",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("Weekly gate v2 orchestrator registered (Saturday 01:00 Chicago)")
+    except Exception as _gv2_init_err:
+        logger.warning(
+            f"Weekly gate v2 job init failed (non-fatal): {_gv2_init_err}"
+        )
+
     # ── Telegram long-polling service ──────────────────────────────────────────
     try:
         from routers.messaging_router import start_messaging_services
