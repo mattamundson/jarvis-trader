@@ -125,7 +125,28 @@ def _is_healthy(port: int) -> bool:
         return False
 
 
+def _check_venv_python() -> None:
+    """Exit immediately if running under Store Python instead of the project venv.
+
+    The PM2 venv python sometimes spawns a Store Python child that also tries to
+    bind port 8010. This guard breaks that cycle by making any non-venv invocation
+    exit before touching the port.
+    """
+    import sys
+    exe = sys.executable.lower()
+    venv_marker = ".venv"
+    store_marker = "windowsapps"
+    if store_marker in exe or venv_marker not in exe:
+        print(
+            f"[port_guardian] WRONG PYTHON: {sys.executable!r} is not the project venv. "
+            "Exiting to prevent double-binding port 8010.",
+            flush=True,
+        )
+        sys.exit(4)
+
+
 def main() -> int:
+    _check_venv_python()
     print(f"[port_guardian] checking port {PORT}...", flush=True)
     holders = _port_holders(PORT)
 
