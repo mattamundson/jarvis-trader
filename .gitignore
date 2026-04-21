@@ -221,3 +221,8 @@ docs/usage-report.html
 
 # Legacy WSL-mount path artifacts (the actual skill files live in .claude/skills/)
 n-autoresearch-skill/mnt/
+
+# Root-level ephemeral handoff / EOD artifacts (generated per session, not source)
+/jarvis_trader_handoff_*.md
+/eod_compact.txt
+/eod_compact*.txt
