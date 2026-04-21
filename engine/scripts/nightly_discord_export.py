@@ -21,6 +21,7 @@ Scheduled via PM2 cron at 02:00 America/Chicago (engine/ecosystem.config.js).
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import os
 import subprocess
@@ -34,6 +35,10 @@ sys.path.insert(0, str(ENGINE_DIR))
 
 LOGS_DIR = ENGINE_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
+
+# Consecutive-failure streak file. Tracks how many consecutive days DCE has
+# failed so we can fire a WhatsApp alert after 2+ days of silence.
+STREAK_FILE = LOGS_DIR / "dce_failure_streak.txt"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -130,6 +135,38 @@ def _run_ingest(dry_run: bool) -> int:
     return result.returncode
 
 
+def _get_failure_streak() -> int:
+    """Return the number of consecutive days DCE has failed (0 = no streak)."""
+    try:
+        return int(STREAK_FILE.read_text(encoding="utf-8").strip())
+    except Exception:
+        return 0
+
+
+def _set_failure_streak(count: int) -> None:
+    """Persist the consecutive failure count to disk."""
+    try:
+        STREAK_FILE.write_text(str(count), encoding="utf-8")
+    except Exception as exc:
+        logger.warning("Could not write streak file: %s", exc)
+
+
+def _fire_stale_alert(streak: int) -> None:
+    """Dispatch WhatsApp alert via openclaw_notifier (one per calendar day)."""
+    try:
+        from notifications.openclaw_notifier import notify_corey_stale
+
+        asyncio.run(
+            notify_corey_stale(
+                days_stale=streak,
+                last_message_date="unknown — DCE export failed",
+            )
+        )
+        logger.info("WhatsApp stale-feed alert dispatched (streak=%d)", streak)
+    except Exception as exc:
+        logger.warning("WhatsApp stale-feed alert failed to dispatch: %s", exc)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="DCE nightly export + ingest chain")
     parser.add_argument("--no-ingest", action="store_true",
@@ -161,16 +198,41 @@ def main() -> int:
 
     if failures == len(CHANNELS):
         logger.error("All DCE exports failed; skipping ingest.")
+        # Track consecutive-failure days and alert on day 2+.
+        if not args.dry_run:
+            streak = _get_failure_streak() + 1
+            _set_failure_streak(streak)
+            logger.warning("DCE failure streak: %d consecutive day(s)", streak)
+            if streak >= 2:
+                logger.warning("Streak >= 2 — dispatching WhatsApp staleness alert")
+                _fire_stale_alert(streak)
         return 4
 
+    # ── Ingest fresh JSON into SQLite + run sentiment ETL ──────────────────────
     ingest_rc = 0
     if not args.no_ingest:
         ingest_rc = _run_ingest(args.dry_run)
 
+    overall_rc = 1 if (failures or ingest_rc) else 0
+
+    # ── Update failure streak ──────────────────────────────────────────────────
+    if not args.dry_run:
+        if overall_rc == 0:
+            # Clean run — reset streak so a future failure starts counting fresh.
+            _set_failure_streak(0)
+        else:
+            # Partial failure (some channels ok, some failed, or ingest failed).
+            streak = _get_failure_streak() + 1
+            _set_failure_streak(streak)
+            logger.warning("DCE partial-failure streak: %d consecutive day(s)", streak)
+            if streak >= 2:
+                logger.warning("Streak >= 2 — dispatching WhatsApp staleness alert")
+                _fire_stale_alert(streak)
+
     elapsed = time.time() - start
-    logger.info("=== DCE refresh done in %.1fs — export_failures=%d ingest_rc=%d ===",
-                elapsed, failures, ingest_rc)
-    return 1 if (failures or ingest_rc) else 0
+    logger.info("=== DCE refresh done in %.1fs — export_failures=%d ingest_rc=%d rc=%d ===",
+                elapsed, failures, ingest_rc, overall_rc)
+    return overall_rc
 
 
 if __name__ == "__main__":
