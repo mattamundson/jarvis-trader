@@ -98,12 +98,13 @@ def compute_tpo_score(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"compute_tpo_score: missing columns {sorted(missing)}")
 
     out = df.copy()
-    scores = np.vectorize(_tpo_score_row)(
-        out["close"].to_numpy(),
-        out["vpoc"].to_numpy(),
-        out["va_high"].to_numpy(),
-        out["va_low"].to_numpy(),
-    )
+    with np.errstate(invalid="ignore", divide="ignore"):
+        scores = np.vectorize(_tpo_score_row)(
+            out["close"].to_numpy(),
+            out["vpoc"].to_numpy(),
+            out["va_high"].to_numpy(),
+            out["va_low"].to_numpy(),
+        )
     out["tpo_score"] = scores
     out["tpo_score_label"] = [_score_label(s) for s in scores]
     out["price_zone_label"] = [
