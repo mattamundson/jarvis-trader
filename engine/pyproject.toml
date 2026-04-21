@@ -43,6 +43,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "integration_ib: needs IB Gateway on paper port 4002 (skips if unavailable)",
+    "manual: opt-in tests that require external setup (e.g. IB Gateway running); never collected in CI",
     "unit: marks tests as unit tests",
     "smoke: marks tests as smoke tests",
 ]
