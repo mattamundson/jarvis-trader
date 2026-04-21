@@ -36,24 +36,9 @@ FUTURES_MAP: Dict[str, str] = {
     "ZN": "ZN",
 }
 
-CONTRACT_MULTIPLIERS: Dict[str, float] = {
-    "MES": 5.0,  # $5 per point
-    "ES": 50.0,  # $50 per point
-    "MNQ": 2.0,  # $2 per point
-    "NQ": 20.0,  # $20 per point
-    "MCL": 100.0,  # $100 per barrel (micro = 100 barrels)
-    "CL": 1000.0,  # $1000 per barrel
-    "MGC": 10.0,  # $10 per oz
-    "GC": 100.0,  # $100 per oz
-    "M2K": 5.0,  # $5 per point
-    "RTY": 50.0,  # $50 per point
-    "MYM": 0.5,  # $0.50 per point
-    "YM": 5.0,  # $5 per point
-    # ETFs (no multiplier)
-    "SPY": 1.0,
-    "QQQ": 1.0,
-    "IWM": 1.0,
-}
+# Multipliers are derived from the canonical CONTRACT_SPECS source.
+# See engine/backtest/contract_specs.py for the single source of truth.
+from .contract_specs import CONTRACT_MULTIPLIERS  # noqa: E402,F401
 
 
 class BacktestDataLoader:

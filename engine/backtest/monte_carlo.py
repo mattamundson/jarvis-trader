@@ -227,6 +227,249 @@ def run_monte_carlo(
 
 
 # ---------------------------------------------------------------------------
+# Bootstrap primitives (Tier A statistical hardening)
+# ---------------------------------------------------------------------------
+#
+# `run_monte_carlo` answers "given the observed multiset of PnLs, what
+# drawdown path could we have seen under a different trade order?"
+# The bootstrap functions below answer a different question:
+#   "if the trade-generating process produced a new sample of size N, what
+#    PF / Sharpe / max-DD would we see?"
+#
+# Permutation (shuffle without replacement) preserves the exact multiset.
+# Bootstrap (resample with replacement) approximates the sampling
+# distribution of the statistic. Both belong in this module under distinct
+# names so downstream callers can pick the question that matches their need.
+#
+# Moving-block bootstrap is added for strategies where trade PnLs are
+# serially correlated (mean-reversion in particular). Default block length
+# is sqrt(N) — a standard finite-sample rule of thumb from Politis-Romano.
+
+
+def _pf_from_pnls(pnls: np.ndarray) -> float:
+    """Profit factor from a pnl array. Returns inf if no losses, 0 if no wins."""
+    wins = pnls[pnls > 0].sum()
+    losses = -pnls[pnls < 0].sum()  # absolute value
+    if losses == 0:
+        return float("inf") if wins > 0 else 0.0
+    return float(wins / losses)
+
+
+def bootstrap_pf(
+    pnls: list[float] | np.ndarray,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Bootstrap a 95% confidence interval on profit factor.
+
+    Resamples the pnl list WITH REPLACEMENT n_resamples times and recomputes
+    PF on each resample. The resulting distribution approximates the sampling
+    distribution of PF given the observed trade-generating process.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        n_resamples: bootstrap iterations
+        seed: RNG seed for reproducibility
+
+    Returns:
+        {median_pf, pf_ci_95_low, pf_ci_95_high, p_positive_edge, n_trades}
+        p_positive_edge = fraction of bootstrap resamples with PF > 1.0
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n == 0:
+        return {
+            "median_pf": 0.0, "pf_ci_95_low": 0.0, "pf_ci_95_high": 0.0,
+            "p_positive_edge": 0.0, "n_trades": 0,
+        }
+
+    rng = np.random.default_rng(seed)
+    pfs = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        sample = pnls_arr[rng.integers(0, n, size=n)]
+        pfs[i] = _pf_from_pnls(sample)
+
+    # Replace inf (no-losses resamples) with a large finite sentinel so
+    # percentiles remain meaningful. np.percentile handles inf poorly.
+    finite = pfs[np.isfinite(pfs)]
+    if len(finite) == 0:
+        median_pf = float("inf")
+        ci_low = float("inf")
+        ci_high = float("inf")
+    else:
+        median_pf = float(np.median(finite))
+        ci_low = float(np.percentile(finite, 2.5))
+        ci_high = float(np.percentile(finite, 97.5))
+
+    p_positive_edge = float(np.mean(pfs > 1.0))
+
+    return {
+        "median_pf": round(median_pf, 4),
+        "pf_ci_95_low": round(ci_low, 4),
+        "pf_ci_95_high": round(ci_high, 4),
+        "p_positive_edge": round(p_positive_edge, 4),
+        "n_trades": n,
+    }
+
+
+def moving_block_bootstrap(
+    pnls: list[float] | np.ndarray,
+    n_resamples: int = 10_000,
+    block_size: int | None = None,
+    seed: int = 42,
+) -> dict:
+    """Moving-block bootstrap preserving short-run serial correlation.
+
+    Instead of resampling individual trades (IID assumption), sample blocks of
+    contiguous trades with replacement. This preserves serial-correlation
+    structure important for mean-reversion strategies, where sequential
+    trades are NOT independent.
+
+    Args:
+        pnls: per-trade PnL values
+        n_resamples: bootstrap iterations
+        block_size: contiguous-block length. Defaults to ceil(sqrt(N)).
+        seed: RNG seed
+
+    Returns:
+        {median_pf, pf_ci_95_low, pf_ci_95_high, p_positive_edge, block_size, n_trades}
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n == 0:
+        return {
+            "median_pf": 0.0, "pf_ci_95_low": 0.0, "pf_ci_95_high": 0.0,
+            "p_positive_edge": 0.0, "block_size": 0, "n_trades": 0,
+        }
+
+    if block_size is None:
+        block_size = max(1, int(np.ceil(np.sqrt(n))))
+    block_size = min(block_size, n)
+
+    rng = np.random.default_rng(seed)
+    n_blocks = int(np.ceil(n / block_size))
+    max_start = n - block_size + 1
+
+    pfs = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        starts = rng.integers(0, max_start, size=n_blocks)
+        sample = np.concatenate([pnls_arr[s:s + block_size] for s in starts])[:n]
+        pfs[i] = _pf_from_pnls(sample)
+
+    finite = pfs[np.isfinite(pfs)]
+    if len(finite) == 0:
+        median_pf, ci_low, ci_high = float("inf"), float("inf"), float("inf")
+    else:
+        median_pf = float(np.median(finite))
+        ci_low = float(np.percentile(finite, 2.5))
+        ci_high = float(np.percentile(finite, 97.5))
+    p_positive_edge = float(np.mean(pfs > 1.0))
+
+    return {
+        "median_pf": round(median_pf, 4),
+        "pf_ci_95_low": round(ci_low, 4),
+        "pf_ci_95_high": round(ci_high, 4),
+        "p_positive_edge": round(p_positive_edge, 4),
+        "block_size": block_size,
+        "n_trades": n,
+    }
+
+
+def bootstrap_sharpe(
+    pnls: list[float] | np.ndarray,
+    initial_capital: float = 10_000.0,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+    ann_factor: float = 252.0,
+) -> dict:
+    """Bootstrap a 95% confidence interval on Sharpe ratio.
+
+    Sharpe is computed from the equity curve that results from applying the
+    resampled PnL sequence, matching `_compute_sharpe` convention in this
+    module.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        initial_capital: starting equity for Sharpe normalization
+        n_resamples: bootstrap iterations
+        seed: RNG seed
+        ann_factor: annualization factor (252 trading days is the convention)
+
+    Returns:
+        {median_sharpe, sharpe_ci_95_low, sharpe_ci_95_high, p_positive_sharpe, n_trades}
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n < 2:
+        return {
+            "median_sharpe": 0.0, "sharpe_ci_95_low": 0.0, "sharpe_ci_95_high": 0.0,
+            "p_positive_sharpe": 0.0, "n_trades": n,
+        }
+
+    rng = np.random.default_rng(seed)
+    sharpes = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        sample = pnls_arr[rng.integers(0, n, size=n)]
+        equity = np.concatenate([[initial_capital], initial_capital + np.cumsum(sample)])
+        sharpes[i] = _compute_sharpe(equity, ann_factor=ann_factor)
+
+    return {
+        "median_sharpe": round(float(np.median(sharpes)), 4),
+        "sharpe_ci_95_low": round(float(np.percentile(sharpes, 2.5)), 4),
+        "sharpe_ci_95_high": round(float(np.percentile(sharpes, 97.5)), 4),
+        "p_positive_sharpe": round(float(np.mean(sharpes > 0)), 4),
+        "n_trades": n,
+    }
+
+
+def bootstrap_max_dd(
+    pnls: list[float] | np.ndarray,
+    initial_capital: float = 10_000.0,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Permutation distribution of max drawdown.
+
+    Max drawdown is path-dependent, so the meaningful question is "under
+    alternative trade orders, what's the worst DD we could have seen?"
+    This is the same question `run_monte_carlo` answers but exposed as a
+    primitive that works on a bare pnl list — no BacktestResult needed.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        initial_capital: starting equity for DD scaling
+        n_resamples: permutation iterations
+        seed: RNG seed
+
+    Returns:
+        {observed_max_dd_pct, mc_50th, mc_95th, mc_99th, n_trades}
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n < 2:
+        return {"observed_max_dd_pct": 0.0, "mc_50th": 0.0,
+                "mc_95th": 0.0, "mc_99th": 0.0, "n_trades": n}
+
+    observed_equity = np.concatenate([[initial_capital], initial_capital + np.cumsum(pnls_arr)])
+    observed_dd = _compute_max_dd(observed_equity)
+
+    rng = np.random.default_rng(seed)
+    dds = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        shuffled = rng.permutation(pnls_arr)
+        equity = np.concatenate([[initial_capital], initial_capital + np.cumsum(shuffled)])
+        dds[i] = _compute_max_dd(equity)
+
+    return {
+        "observed_max_dd_pct": round(observed_dd, 4),
+        "mc_50th": round(float(np.percentile(dds, 50)), 4),
+        "mc_95th": round(float(np.percentile(dds, 95)), 4),
+        "mc_99th": round(float(np.percentile(dds, 99)), 4),
+        "n_trades": n,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Report formatter
 # ---------------------------------------------------------------------------
 
