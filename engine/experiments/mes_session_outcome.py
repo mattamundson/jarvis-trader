@@ -164,6 +164,11 @@ async def fill_outcomes(
         delta = _compute_delta(side, open_price, close)
 
         with sqlite3.connect(db_path) as conn:
+            reason_row = conn.execute(
+                "SELECT entry_hypothesis_reason FROM mes_session_hypothesis "
+                "WHERE id = ?",
+                (row["id"],),
+            ).fetchone()
             conn.execute(
                 """
                 UPDATE mes_session_hypothesis
@@ -191,6 +196,20 @@ async def fill_outcomes(
             close,
             delta,
         )
+
+        # Fire-and-forget Discord embed so every outcome is visible same-day
+        try:
+            from notifications.discord_notifier import discord_mes_forward_outcome
+            await discord_mes_forward_outcome(
+                date_str=row["date"],
+                side=side or "skip",
+                reason=reason_row[0] if reason_row else "",
+                open_price=open_price,
+                close_price=close,
+                outcome_delta=delta,
+            )
+        except Exception as exc:  # pragma: no cover — notifier must never block
+            logger.warning("[MESOutcome] discord notify failed: %s", exc)
 
     return result
 
