@@ -43,7 +43,8 @@ def test_status_distribution():
     r = load_registry()
     statuses = {s.status for s in r.scripts}
     assert "ported" in statuses
-    assert "orphan" in statuses
+    # "orphan" status was cleared by Phase 2 porting — all 7 orphans are now ported.
+    # If new orphans are added in future phases, restore this assertion.
     assert "deprecated" in statuses
     assert "reference_only" in statuses
 

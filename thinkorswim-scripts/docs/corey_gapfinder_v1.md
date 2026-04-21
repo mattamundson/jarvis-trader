@@ -3,8 +3,8 @@
 **File**: `thinkorswim-scripts/AA_CoreyGapfinderv1STUDY.ts`  
 **Author**: Corey Surles  
 **JARVIS Layer**: Layer 2 (Structure Map)  
-**Status**: Orphan  
-**Python counterpart**: None  
+**Status**: Ported (Phase 2, commit pending)  
+**Python counterpart**: `engine/backtest/gapfinder.py::compute_gaps`  
 **Panel**: Upper  
 
 ---

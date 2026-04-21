@@ -3,8 +3,8 @@
 **File**: `thinkorswim-scripts/AA_CoreyTscorev2STUDY.ts`  
 **Author**: Corey Surles  
 **JARVIS Layer**: 2 Structure  
-**Status**: Orphan  
-**Python counterpart**: None (orphan — reference-only until Phase 2 porting)  
+**Status**: Ported (Phase 2, commit pending)  
+**Python counterpart**: `engine/backtest/tpo_score.py::compute_tpo_score`  
 **Panel**: Lower (sub-pane indicator)
 
 ## Purpose
