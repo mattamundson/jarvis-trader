@@ -27,6 +27,7 @@ if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
 from backtest.data_loader import BacktestDataLoader  # noqa: E402
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 
 SYMBOLS = ["MES", "MCL", "MNQ"]
 INTERVAL = "1h"
@@ -35,10 +36,15 @@ TEST = ("2025-06-01", "2026-03-27")
 INITIAL_CAPITAL = 10_000.0
 CONTRACTS = 1
 
+# SPECS is derived from canonical CONTRACT_SPECS. See backtest/contract_specs.py.
 SPECS = {
-    "MES": {"multiplier": 5.0,   "tick_size": 0.25,  "slip_ticks": 1, "commission": 0.62},
-    "MCL": {"multiplier": 100.0, "tick_size": 0.01,  "slip_ticks": 1, "commission": 0.85},
-    "MNQ": {"multiplier": 2.0,   "tick_size": 0.25,  "slip_ticks": 2, "commission": 0.62},
+    sym: {
+        "multiplier": CONTRACT_SPECS[sym].multiplier,
+        "tick_size": CONTRACT_SPECS[sym].tick_size,
+        "slip_ticks": CONTRACT_SPECS[sym].slippage_ticks,
+        "commission": CONTRACT_SPECS[sym].commission,
+    }
+    for sym in SYMBOLS
 }
 
 # Focused grid informed by MES WFO top-6 cluster
@@ -125,6 +131,7 @@ def _run(df: pd.DataFrame, symbol: str, fast: int, slow: int, trail: float) -> d
         "wr": round(wr, 2),
         "net_pnl": round(net_pnl, 2),
         "ret_pct": round(ret_pct, 2),
+        "trades": trades,  # Full per-trade list for bootstrap / MC validators
     }
 
 

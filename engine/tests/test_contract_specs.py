@@ -91,3 +91,87 @@ def test_position_sizing_instrument_multipliers_match_cme(symbol, spec):
         f"{symbol}: position_sizing multiplier={INSTRUMENT_MULTIPLIERS[symbol]} "
         f"but CME spec says {spec['dollars_per_point']}"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Canonical CONTRACT_SPECS module (2026-04-21). Consolidates duplicate
+# per-symbol dicts that had drifted across research scripts — notably MCL
+# commission was 0.62 in mes_trend_search.py and 0.85 in mcl_meanrev_search.py.
+# The canonical value is 0.85 (IB tier 1 NYMEX micro actual).
+# ─────────────────────────────────────────────────────────────────────────
+
+class TestCanonicalContractSpecs:
+    def test_mes_canonical_values(self):
+        from backtest.contract_specs import get_spec
+        spec = get_spec("MES")
+        assert spec.multiplier == 5.0
+        assert spec.tick_size == 0.25
+        assert spec.commission == 0.62
+        assert spec.slippage_ticks == 1
+        assert spec.tick_value == 1.25
+
+    def test_mcl_commission_canonical_is_85_cents(self):
+        """MCL commission was the drift (0.62 in one script, 0.85 in others).
+        Canonical is 0.85 — IB tier 1 NYMEX micro actual round-trip rate."""
+        from backtest.contract_specs import get_spec
+        spec = get_spec("MCL")
+        assert spec.multiplier == 100.0
+        assert spec.tick_size == 0.01
+        assert spec.commission == 0.85
+        assert spec.tick_value == 1.0
+
+    def test_mnq_slippage_is_2_ticks(self):
+        """MNQ gaps through stops more than MES — 2 ticks, not 1.
+        Empirical from live paper logs; update only with new evidence."""
+        from backtest.contract_specs import get_spec
+        spec = get_spec("MNQ")
+        assert spec.slippage_ticks == 2, (
+            "MNQ slippage is 2 ticks, not 1. Update contract_specs.py with "
+            "evidence in the commit message if this changes."
+        )
+
+    def test_round_trip_commission_helper(self):
+        from backtest.contract_specs import get_spec
+        spec = get_spec("MES")
+        assert spec.round_trip_commission == 1.24  # 2 × 0.62
+
+    def test_get_spec_case_insensitive(self):
+        from backtest.contract_specs import get_spec
+        assert get_spec("mes") is get_spec("MES")
+
+    def test_unknown_symbol_raises_helpful_error(self):
+        from backtest.contract_specs import get_spec
+        with pytest.raises(KeyError, match="No contract spec"):
+            get_spec("ZZZZ_UNKNOWN")
+
+    def test_backward_compat_multipliers_view(self):
+        """Legacy CONTRACT_MULTIPLIERS view must track spec multipliers."""
+        from backtest.contract_specs import CONTRACT_MULTIPLIERS, CONTRACT_SPECS
+        for sym, spec in CONTRACT_SPECS.items():
+            assert CONTRACT_MULTIPLIERS[sym] == spec.multiplier
+
+    def test_specs_are_immutable(self):
+        """Frozen dataclass prevents accidental mutation during backtests."""
+        from dataclasses import FrozenInstanceError
+        from backtest.contract_specs import get_spec
+        spec = get_spec("MES")
+        with pytest.raises(FrozenInstanceError):
+            spec.multiplier = 999.0  # type: ignore[misc]
+
+    def test_required_live_symbols_present(self):
+        """These symbols are actively traded or in paper validation."""
+        from backtest.contract_specs import CONTRACT_SPECS
+        required = {"MES", "MCL", "MNQ", "MGC", "SPY"}
+        missing = required - set(CONTRACT_SPECS.keys())
+        assert not missing, f"Missing canonical specs: {missing}"
+
+    @pytest.mark.parametrize("symbol", ["MES", "MNQ", "MCL", "MGC"])
+    def test_canonical_matches_cme_arithmetic(self, symbol):
+        """Canonical CONTRACT_SPECS tick_value must match CME_SPECS (source of truth)."""
+        from backtest.contract_specs import get_spec
+        canonical = get_spec(symbol)
+        cme = CME_SPECS[symbol]
+        assert canonical.tick_value == cme["tick_value"], (
+            f"{symbol}: canonical tick_value={canonical.tick_value} "
+            f"but CME spec says {cme['tick_value']}"
+        )

@@ -34,16 +34,22 @@ if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
 from backtest.data_loader import BacktestDataLoader  # noqa: E402
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 
-# Per-symbol contract specs. Tick value = MULTIPLIER * TICK_SIZE.
-# MES: $5 * 0.25 = $1.25 tick.  MCL: $100 * 0.01 = $1.00 tick.  MNQ: $2 * 0.25 = $0.50 tick.
+# SYMBOL_SPECS is derived from the canonical CONTRACT_SPECS source so that
+# commission / tick_size / multiplier / slippage never drift between research
+# scripts and production Backtester. See engine/backtest/contract_specs.py.
 SYMBOL_SPECS = {
-    "MES": {"multiplier": 5.0,   "tick_size": 0.25, "commission": 0.62},
-    "MCL": {"multiplier": 100.0, "tick_size": 0.01, "commission": 0.62},
-    "MNQ": {"multiplier": 2.0,   "tick_size": 0.25, "commission": 0.62},
+    sym: {
+        "multiplier": spec.multiplier,
+        "tick_size": spec.tick_size,
+        "commission": spec.commission,
+        "slippage_ticks": spec.slippage_ticks,
+    }
+    for sym, spec in CONTRACT_SPECS.items()
+    if sym in ("MES", "MCL", "MNQ", "MGC")
 }
 
-SLIPPAGE_TICKS = 1
 CONTRACTS = 1
 INITIAL_CAPITAL = 10_000.0
 
@@ -71,6 +77,7 @@ def _run(df: pd.DataFrame, fast: int, slow: int, atr_trail_mult: float, spec: di
     multiplier = spec["multiplier"]
     tick_size = spec["tick_size"]
     commission = spec["commission"]
+    slippage_ticks = spec.get("slippage_ticks", 1)  # per-symbol, per canonical spec
 
     in_pos = False
     entry = 0.0
@@ -79,7 +86,7 @@ def _run(df: pd.DataFrame, fast: int, slow: int, atr_trail_mult: float, spec: di
     entry_time = None
     trades = []
 
-    slip_usd = SLIPPAGE_TICKS * tick_size * multiplier * CONTRACTS  # one leg
+    slip_usd = slippage_ticks * tick_size * multiplier * CONTRACTS  # one leg
     commission_round = commission * 2 * CONTRACTS
 
     for i in range(len(df)):
@@ -156,6 +163,7 @@ def _run(df: pd.DataFrame, fast: int, slow: int, atr_trail_mult: float, spec: di
         "wr": round(wr * 100, 2),
         "net_pnl": round(net_pnl, 2),
         "ret_pct": round(ret_pct, 2),
+        "trades": trades,  # Full per-trade list for bootstrap / MC validators
         "avg_win": round(np.mean(wins), 2) if wins else 0.0,
         "avg_loss": round(np.mean(losses), 2) if losses else 0.0,
     }

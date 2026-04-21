@@ -40,14 +40,21 @@ if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
 from backtest.data_loader import BacktestDataLoader  # noqa: E402
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 
+# SYMBOL_SPECS is derived from the canonical CONTRACT_SPECS source.
+# See engine/backtest/contract_specs.py for the single source of truth.
 SYMBOL_SPECS = {
-    "MES": {"multiplier": 5.0,   "tick_size": 0.25, "commission": 0.62},
-    "MCL": {"multiplier": 100.0, "tick_size": 0.01, "commission": 0.85},
-    "MNQ": {"multiplier": 2.0,   "tick_size": 0.25, "commission": 0.62},
+    sym: {
+        "multiplier": spec.multiplier,
+        "tick_size": spec.tick_size,
+        "commission": spec.commission,
+        "slippage_ticks": spec.slippage_ticks,
+    }
+    for sym, spec in CONTRACT_SPECS.items()
+    if sym in ("MES", "MCL", "MNQ", "MGC")
 }
 
-SLIPPAGE_TICKS = 1
 CONTRACTS = 1
 INITIAL_CAPITAL = 10_000.0
 
@@ -71,7 +78,8 @@ def _run(df: pd.DataFrame, bb_period: int, bb_std: float, atr_stop_mult: float,
     mult = spec["multiplier"]
     tick_size = spec["tick_size"]
     commission = spec["commission"]
-    slip_usd = SLIPPAGE_TICKS * tick_size * mult * CONTRACTS
+    slippage_ticks = spec.get("slippage_ticks", 1)
+    slip_usd = slippage_ticks * tick_size * mult * CONTRACTS
     commission_round = commission * 2 * CONTRACTS
 
     sma = df["close"].rolling(bb_period).mean()
@@ -158,6 +166,7 @@ def _run(df: pd.DataFrame, bb_period: int, bb_std: float, atr_stop_mult: float,
         "wr": round(wr, 2),
         "net_pnl": round(net_pnl, 2),
         "ret_pct": round(ret_pct, 2),
+        "trades": trades,  # Full per-trade list for bootstrap / MC validators
     }
 
 
