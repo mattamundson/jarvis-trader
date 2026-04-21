@@ -193,11 +193,13 @@ def _build_metrics_from_trade_list(
         if trade.pnl > 0:
             im.winning_trades += 1
             im.consecutive_losses = 0
-        else:
+        elif trade.pnl < 0:
             im.losing_trades += 1
             im.consecutive_losses += 1
             if im.consecutive_losses > im.max_consecutive_losses:
                 im.max_consecutive_losses = im.consecutive_losses
+        # pnl == 0 is a breakeven — neither W nor L. Do not advance the streak
+        # counter (prevents test-fixture breakevens from triggering NOT_READY).
 
         if not im.first_trade_date:
             im.first_trade_date = trade.timestamp
