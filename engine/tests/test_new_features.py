@@ -44,6 +44,181 @@ class TestTradingViewFeed:
         feed.reset_availability()
         assert feed._available is None
 
+    def test_get_bars_empty_when_unavailable(self):
+        """get_bars returns empty DataFrame (not None) when TV is unavailable."""
+        from engine.data.tradingview_feed import TradingViewFeed
+        import pandas as pd
+        with patch("shutil.which", return_value=None):
+            feed = TradingViewFeed()
+            df = feed.get_bars("MES", "1h", limit=100)
+            assert isinstance(df, pd.DataFrame)
+            assert df.empty
+            assert df.attrs.get("source") == "tradingview"
+
+    def test_get_bars_rejects_unknown_symbol(self):
+        """Symbols without a TV_SYMBOL_MAP entry return empty without calling tv CLI."""
+        from engine.data.tradingview_feed import TradingViewFeed
+        feed = TradingViewFeed()
+        feed._available = True  # pretend TV is up
+        df = feed.get_bars("UNKNOWN_TICKER", "1h", limit=50)
+        assert df.empty
+
+    def test_get_bars_rejects_unknown_timeframe(self):
+        """Timeframes not in TV_TIMEFRAME_MAP return empty without calling tv CLI."""
+        from engine.data.tradingview_feed import TradingViewFeed
+        feed = TradingViewFeed()
+        feed._available = True
+        df = feed.get_bars("MES", "2h", limit=50)  # 2h is not mapped
+        assert df.empty
+
+    def test_symbol_map_covers_primary_futures(self):
+        """MES/MNQ/MCL/MGC must all map to TV tickers (breaks pipeline if missing)."""
+        from engine.data.tradingview_feed import TV_SYMBOL_MAP
+        for sym in ["MES", "MNQ", "MCL", "MGC"]:
+            assert sym in TV_SYMBOL_MAP, f"{sym} missing from TV_SYMBOL_MAP"
+            assert TV_SYMBOL_MAP[sym], f"{sym} mapped to empty ticker"
+
+
+# ─── Track C+: Market Data Waterfall ──────────────────────────────────────────
+
+class TestMarketDataTVTier:
+    """TV MCP tier in MarketDataManager.get_bars() waterfall (roadmap P0.2)."""
+
+    @pytest.mark.asyncio
+    async def test_tv_tier_fires_when_available(self):
+        """When TV feed returns non-empty fresh data, get_bars returns it without falling through."""
+        import pandas as pd
+        from datetime import datetime, timezone
+
+        fake_bars = pd.DataFrame({
+            "timestamp": pd.date_range(
+                end=datetime.now(timezone.utc), periods=10, freq="1h", tz="UTC"
+            ),
+            "open": [100.0] * 10, "high": [101.0] * 10, "low": [99.5] * 10,
+            "close": [100.5] * 10, "volume": [1000] * 10,
+        })
+        fake_bars.attrs["source"] = "tradingview"
+
+        fake_tv = MagicMock()
+        fake_tv.is_available.return_value = True
+        fake_tv.get_bars.return_value = fake_bars
+
+        with patch("engine.data.market_data._tv_feed", fake_tv):
+            from engine.data.market_data import MarketDataManager
+            from engine.config import TradingConfig
+            mgr = MarketDataManager(TradingConfig())
+            mgr.ibkr = None       # force no IBKR
+            mgr.polygon = None    # force no Polygon
+            df = await mgr.get_bars("MES", lookback_days=30, timeframe="1h", is_futures=True)
+
+        assert not df.empty
+        assert len(df) == 10
+        fake_tv.get_bars.assert_called_once()
+        assert fake_tv.get_bars.call_args.kwargs.get("timeframe") == "1h"
+
+    @pytest.mark.asyncio
+    async def test_tv_tier_falls_through_on_stale_bars(self):
+        """When TV returns bars >72h old, waterfall does not return that stale data."""
+        import pandas as pd
+        from datetime import datetime, timezone, timedelta
+
+        stale_end = datetime.now(timezone.utc) - timedelta(hours=100)
+        stale_bars = pd.DataFrame({
+            "timestamp": pd.date_range(end=stale_end, periods=5, freq="1h", tz="UTC"),
+            "open": [100.0] * 5, "high": [101.0] * 5, "low": [99.5] * 5,
+            "close": [100.5] * 5, "volume": [1000] * 5,
+        })
+        stale_bars.attrs["source"] = "tradingview"
+
+        fake_tv = MagicMock()
+        fake_tv.is_available.return_value = True
+        fake_tv.get_bars.return_value = stale_bars
+
+        with patch("engine.data.market_data._tv_feed", fake_tv):
+            from engine.data.market_data import MarketDataManager
+            from engine.config import TradingConfig
+            mgr = MarketDataManager(TradingConfig())
+            mgr.ibkr = None
+            mgr.polygon = None
+            df = await mgr.get_bars("MES", lookback_days=30, timeframe="1h", is_futures=True)
+
+        # TV stale response must NOT be returned as-is. Either empty or CSV cache.
+        if not df.empty:
+            assert df.attrs.get("source") != "tradingview"
+
+    @pytest.mark.asyncio
+    async def test_tv_tier_skipped_when_unavailable(self):
+        """When TV feed.is_available() is False, get_bars is never called."""
+        fake_tv = MagicMock()
+        fake_tv.is_available.return_value = False
+
+        with patch("engine.data.market_data._tv_feed", fake_tv):
+            from engine.data.market_data import MarketDataManager
+            from engine.config import TradingConfig
+            mgr = MarketDataManager(TradingConfig())
+            mgr.ibkr = None
+            mgr.polygon = None
+            await mgr.get_bars("MES", lookback_days=30, timeframe="1h", is_futures=True)
+
+        fake_tv.get_bars.assert_not_called()
+
+
+# ─── Roadmap P0.3: /analyze/bars interval alias ──────────────────────────────
+
+class TestAnalyzeBarsIntervalAlias:
+    """Router at /analyze/bars/{symbol} must accept `interval` as alias for `timeframe`
+    so agent callers using the pandas/ohlcv convention don't silently get 5m bars.
+    Precedence: explicit timeframe > interval > default 5m."""
+
+    @pytest.fixture
+    def fake_df(self):
+        import pandas as pd
+        df = pd.DataFrame({
+            "timestamp": pd.date_range("2026-04-21", periods=3, freq="1h", tz="UTC"),
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [1000, 1100, 1200],
+        })
+        return df
+
+    @pytest.mark.asyncio
+    async def test_interval_alone_is_honored(self, fake_df):
+        """interval=1h with no timeframe → data_manager called with timeframe=1h."""
+        from unittest.mock import AsyncMock
+        from engine.routers import analysis_router as ar
+        mock_dm = MagicMock()
+        mock_dm.get_bars = AsyncMock(return_value=fake_df)
+        with patch.object(ar, "data_manager", mock_dm):
+            resp = await ar.get_bars(symbol="MES", timeframe=None, interval="1h", days=5, futures=True)
+        assert mock_dm.get_bars.call_args.kwargs["timeframe"] == "1h"
+        assert resp["timeframe"] == "1h"
+
+    @pytest.mark.asyncio
+    async def test_timeframe_wins_over_interval(self, fake_df):
+        """When both are passed, explicit timeframe takes precedence."""
+        from unittest.mock import AsyncMock
+        from engine.routers import analysis_router as ar
+        mock_dm = MagicMock()
+        mock_dm.get_bars = AsyncMock(return_value=fake_df)
+        with patch.object(ar, "data_manager", mock_dm):
+            resp = await ar.get_bars(symbol="MES", timeframe="15m", interval="1h", days=5, futures=True)
+        assert mock_dm.get_bars.call_args.kwargs["timeframe"] == "15m"
+        assert resp["timeframe"] == "15m"
+
+    @pytest.mark.asyncio
+    async def test_default_is_5m_when_both_omitted(self, fake_df):
+        """No timeframe, no interval → default 5m (backward compat)."""
+        from unittest.mock import AsyncMock
+        from engine.routers import analysis_router as ar
+        mock_dm = MagicMock()
+        mock_dm.get_bars = AsyncMock(return_value=fake_df)
+        with patch.object(ar, "data_manager", mock_dm):
+            resp = await ar.get_bars(symbol="MES", timeframe=None, interval=None, days=5, futures=True)
+        assert mock_dm.get_bars.call_args.kwargs["timeframe"] == "5m"
+        assert resp["timeframe"] == "5m"
+
 
 # ─── Track D: TRIN ───────────────────────────────────────────────────────────
 

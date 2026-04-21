@@ -7,20 +7,77 @@ is not running or Chrome CDP is not connected.
 Usage:
     feed = TradingViewFeed()
     if feed.is_available():
-        quote = feed.get_quote("ES1!")
-        # Returns: {symbol, time, close, open, high, low, volume, bid, ask}
+        quote = feed.get_quote("MES")
+        bars  = feed.get_bars("MES", "1h", limit=300)
+
+CLI contract (tv CLI v2.0.0, verified 2026-04-21):
+    tv status                       → connection + current symbol/resolution
+    tv state                        → same as status plus studies
+    tv symbol <TICKER>              → switch chart symbol
+    tv timeframe <MIN>              → switch chart resolution
+    tv ohlcv -n <N>                 → pull N bars for current chart
+    tv quote                        → latest quote for current chart
 """
 
 import subprocess
 import json
 import logging
 import shutil
+import threading
+import time
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
-TV_CLI = "tv"  # tradingview-mcp CLI command
+# Resolve the tv CLI at import time. On Windows, `npm link` installs `tv.cmd`
+# (a shell wrapper) and `tv` (bash wrapper) to %APPDATA%\npm. Python's
+# subprocess.run does NOT auto-append .cmd when given the bare name "tv" —
+# it only searches for .exe extensions without shell=True. shutil.which
+# correctly locates tv.cmd. Fall back to "tv" so the module still imports
+# cleanly when tv is not linked.
+TV_CLI: str = shutil.which("tv") or "tv"
+
+# Engine symbol → TradingView ticker mapping.
+# Continuous-front-month contracts (!) maintain the same price as the active
+# front-month future. Micro contracts price-equivalent to standard (MES≈ES etc).
+TV_SYMBOL_MAP: dict[str, str] = {
+    "MES": "CME_MINI:ES1!",
+    "ES":  "CME_MINI:ES1!",
+    "MNQ": "CME_MINI:NQ1!",
+    "NQ":  "CME_MINI:NQ1!",
+    "MCL": "NYMEX:CL1!",
+    "CL":  "NYMEX:CL1!",
+    "MGC": "COMEX:GC1!",
+    "GC":  "COMEX:GC1!",
+    "M2K": "CME_MINI:RTY1!",
+    "RTY": "CME_MINI:RTY1!",
+    "MYM": "CBOT_MINI:YM1!",
+    "YM":  "CBOT_MINI:YM1!",
+    "SPY": "AMEX:SPY",
+    "QQQ": "NASDAQ:QQQ",
+    "IWM": "AMEX:IWM",
+    "DIA": "AMEX:DIA",
+}
+
+# Engine timeframe → TradingView resolution code
+TV_TIMEFRAME_MAP: dict[str, str] = {
+    "1m":  "1",
+    "5m":  "5",
+    "15m": "15",
+    "30m": "30",
+    "1h":  "60",
+    "4h":  "240",
+    "1d":  "1D",
+    "1w":  "1W",
+}
+
+# Module-level lock: the TV chart is a single shared resource. Concurrent
+# fetches would race on the `tv symbol` / `tv timeframe` / `tv ohlcv` sequence
+# and get mixed-symbol bars. Serialize all chart-switching fetches.
+_TV_CHART_LOCK = threading.Lock()
 
 
 class TradingViewFeed:
@@ -34,75 +91,243 @@ class TradingViewFeed:
         if self._available is not None:
             return self._available
 
-        # Check if 'tv' CLI is on PATH
         if not shutil.which(TV_CLI):
-            # Try node-based invocation from project path
             logger.debug("TradingView MCP CLI not found on PATH; feed unavailable")
             self._available = False
             return False
 
         try:
             result = subprocess.run(
-                [TV_CLI, "health-check"],
+                [TV_CLI, "status"],
                 capture_output=True, text=True, timeout=5
             )
-            self._available = result.returncode == 0
+            if result.returncode != 0:
+                logger.debug("tv status failed: %s", result.stderr)
+                self._available = False
+                return False
+            payload = json.loads(result.stdout.strip() or "{}")
+            self._available = bool(payload.get("success") and payload.get("cdp_connected"))
             if not self._available:
-                logger.debug("TradingView health check failed: %s", result.stderr)
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+                logger.debug("tv status reports not connected: %s", payload)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError) as e:
+            logger.debug("tv status error: %s", e)
             self._available = False
 
         return self._available
+
+    def _get_state(self) -> Optional[Dict[str, Any]]:
+        """Return current chart state (symbol, resolution) or None."""
+        try:
+            r = subprocess.run(
+                [TV_CLI, "state"], capture_output=True, text=True, timeout=5
+            )
+            if r.returncode != 0:
+                return None
+            return json.loads(r.stdout.strip() or "{}")
+        except (subprocess.TimeoutExpired, json.JSONDecodeError):
+            return None
+
+    def _set_symbol(self, ticker: str) -> bool:
+        try:
+            r = subprocess.run(
+                [TV_CLI, "symbol", ticker],
+                capture_output=True, text=True, timeout=8
+            )
+            if r.returncode != 0:
+                logger.debug(
+                    "tv symbol %s exit=%s stderr=%s stdout=%s",
+                    ticker, r.returncode, r.stderr.strip()[:200], r.stdout.strip()[:200]
+                )
+                return False
+            # tv symbol can return success=true but chart_ready=false; accept it
+            # since the subsequent timeframe switch + sleep gives the chart time
+            # to load before we call tv ohlcv.
+            return True
+        except subprocess.TimeoutExpired:
+            logger.debug("tv symbol %s timed out", ticker)
+            return False
+
+    def _set_timeframe(self, resolution: str) -> bool:
+        try:
+            r = subprocess.run(
+                [TV_CLI, "timeframe", resolution],
+                capture_output=True, text=True, timeout=8
+            )
+            if r.returncode != 0:
+                logger.debug(
+                    "tv timeframe %s exit=%s stderr=%s stdout=%s",
+                    resolution, r.returncode, r.stderr.strip()[:200], r.stdout.strip()[:200]
+                )
+                return False
+            return True
+        except subprocess.TimeoutExpired:
+            logger.debug("tv timeframe %s timed out", resolution)
+            return False
 
     def get_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         Get current price quote for a symbol from TradingView.
 
         Args:
-            symbol: TradingView symbol (e.g., "ES1!", "NQ1!", "MCL1!")
+            symbol: engine symbol ("MES", "ES1!", etc.) — auto-mapped to TV ticker
 
         Returns:
-            Dict with {symbol, time, close, open, high, low, volume, bid, ask}
+            Dict with {symbol, time, close, open, high, low, volume, source}
             or None if unavailable
         """
         if not self.is_available():
             return None
 
-        try:
-            # Switch chart to symbol and get quote
-            # First set the symbol, then get the quote
-            set_result = subprocess.run(
-                [TV_CLI, "chart", "set-symbol", symbol],
-                capture_output=True, text=True, timeout=10
-            )
-            if set_result.returncode != 0:
-                logger.debug("Failed to set symbol %s: %s", symbol, set_result.stderr)
-                return None
+        ticker = TV_SYMBOL_MAP.get(symbol.upper(), symbol)
 
-            quote_result = subprocess.run(
-                [TV_CLI, "data", "get-quote"],
-                capture_output=True, text=True, timeout=10
-            )
-            if quote_result.returncode != 0:
-                return None
+        with _TV_CHART_LOCK:
+            prior = self._get_state()
+            try:
+                # Only switch if necessary
+                if not prior or prior.get("symbol") != ticker:
+                    if not self._set_symbol(ticker):
+                        logger.debug("Failed to set symbol %s", ticker)
+                        return None
+                    time.sleep(0.6)  # let chart refresh
 
-            data = json.loads(quote_result.stdout.strip())
-            return {
-                "symbol": symbol,
-                "time": datetime.now(timezone.utc).isoformat(),
-                "close": data.get("last") or data.get("close"),
-                "open": data.get("open"),
-                "high": data.get("high"),
-                "low": data.get("low"),
-                "volume": data.get("volume"),
-                "bid": data.get("bid"),
-                "ask": data.get("ask"),
-                "source": "tradingview",
-            }
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError) as e:
-            logger.debug("TradingView quote fetch error: %s", e)
-            self._available = False  # Mark unavailable on error
-            return None
+                r = subprocess.run(
+                    [TV_CLI, "quote"],
+                    capture_output=True, text=True, timeout=8
+                )
+                if r.returncode != 0:
+                    return None
+                data = json.loads(r.stdout.strip() or "{}")
+                return {
+                    "symbol": symbol,
+                    "time": datetime.now(timezone.utc).isoformat(),
+                    "close": data.get("last") or data.get("close"),
+                    "open": data.get("open"),
+                    "high": data.get("high"),
+                    "low": data.get("low"),
+                    "volume": data.get("volume"),
+                    "source": "tradingview",
+                }
+            except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError) as e:
+                logger.debug("TradingView quote fetch error: %s", e)
+                return None
+            finally:
+                # Restore prior symbol so we don't leave Matt's chart on the wrong ticker
+                if prior and prior.get("symbol") and prior["symbol"] != ticker:
+                    self._set_symbol(prior["symbol"])
+
+    def get_bars(
+        self,
+        symbol: str,
+        timeframe: str = "1h",
+        limit: int = 300,
+    ) -> pd.DataFrame:
+        """
+        Get OHLCV bars for a symbol via TradingView.
+
+        Args:
+            symbol: engine symbol ("MES", "MNQ", "MCL", "SPY", etc.) — auto-mapped
+            timeframe: "1m", "5m", "15m", "30m", "1h", "4h", "1d" (default "1h")
+            limit: number of bars to return, max 500 per `tv ohlcv --help`
+
+        Returns:
+            DataFrame with columns [timestamp, open, high, low, close, volume].
+            Empty DataFrame if TV unavailable or fetch fails.
+            df.attrs["source"] = "tradingview"
+            df.attrs["symbol"] = <engine symbol>
+            df.attrs["ticker"] = <TV ticker>
+
+        Notes:
+            - Serializes with other chart-switching calls via module lock.
+            - Preserves the user's prior chart symbol/timeframe on return.
+            - Respects staleness at the caller — this method does not filter.
+        """
+        empty = pd.DataFrame()
+        empty.attrs["source"] = "tradingview"
+        empty.attrs["symbol"] = symbol
+
+        if not self.is_available():
+            logger.debug("TV not available — skipping get_bars(%s, %s)", symbol, timeframe)
+            return empty
+
+        ticker = TV_SYMBOL_MAP.get(symbol.upper())
+        if ticker is None:
+            logger.debug("No TV ticker mapping for %s — skipping", symbol)
+            return empty
+
+        resolution = TV_TIMEFRAME_MAP.get(timeframe.lower())
+        if resolution is None:
+            logger.debug("No TV resolution mapping for %s — skipping", timeframe)
+            return empty
+
+        # Clamp per tv ohlcv --help (max 500)
+        bar_count = max(1, min(int(limit), 500))
+
+        with _TV_CHART_LOCK:
+            prior = self._get_state()
+            prior_symbol = prior.get("symbol") if prior else None
+            prior_resolution = prior.get("resolution") if prior else None
+
+            try:
+                # Switch symbol if needed
+                if prior_symbol != ticker:
+                    if not self._set_symbol(ticker):
+                        logger.warning("Failed to set TV symbol %s", ticker)
+                        return empty
+                    time.sleep(0.6)
+
+                # Switch timeframe if needed
+                if prior_resolution != resolution:
+                    if not self._set_timeframe(resolution):
+                        logger.warning("Failed to set TV resolution %s", resolution)
+                        return empty
+                    time.sleep(0.6)
+
+                # Fetch bars
+                r = subprocess.run(
+                    [TV_CLI, "ohlcv", "-n", str(bar_count)],
+                    capture_output=True, text=True, timeout=15
+                )
+                if r.returncode != 0:
+                    logger.warning("tv ohlcv failed: %s", r.stderr.strip()[:200])
+                    return empty
+
+                payload = json.loads(r.stdout.strip() or "{}")
+                bars = payload.get("bars", [])
+                if not bars:
+                    logger.debug("TV returned no bars for %s %s", ticker, resolution)
+                    return empty
+
+                df = pd.DataFrame(bars)
+                if "time" in df.columns:
+                    df["timestamp"] = pd.to_datetime(df["time"], unit="s", utc=True)
+                    df = df.drop(columns=["time"])
+
+                # Ensure canonical column order + types
+                for col in ["open", "high", "low", "close", "volume"]:
+                    if col not in df.columns:
+                        df[col] = 0.0
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+
+                df = df[["timestamp", "open", "high", "low", "close", "volume"]]
+                df.attrs["source"] = "tradingview"
+                df.attrs["symbol"] = symbol
+                df.attrs["ticker"] = ticker
+                df.attrs["resolution"] = resolution
+                logger.info(
+                    "TV returned %d %s bars for %s (ticker=%s)",
+                    len(df), timeframe, symbol, ticker
+                )
+                return df
+
+            except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError) as e:
+                logger.warning("TV get_bars error for %s %s: %s", symbol, timeframe, e)
+                return empty
+            finally:
+                # Restore prior chart state so Matt's workspace is unchanged
+                if prior_symbol and prior_symbol != ticker:
+                    self._set_symbol(prior_symbol)
+                if prior_resolution and prior_resolution != resolution:
+                    self._set_timeframe(prior_resolution)
 
     def get_snapshot(self, symbol: str) -> Optional[Any]:
         """
