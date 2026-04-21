@@ -31,6 +31,7 @@ import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidge
 import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
+import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
 import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
@@ -291,6 +292,9 @@ export default function DashboardPage() {
 
             {/* Discord Intelligence — Corey Auction Tools signal context */}
             <DiscordIntelligenceWidget />
+
+            {/* Bookmark Themes — Claude-clustered weekly themes from Discord bookmarks */}
+            <BookmarkThemesPanel />
 
             {/* Strategy Parameters */}
             <StrategyParamsPanel />
