@@ -1,0 +1,361 @@
+{
+  "symbol": "MES",
+  "interval": "1h",
+  "start": "2024-06-01",
+  "end": "2026-03-27",
+  "strategy": "pure_stc",
+  "n_samples": 25,
+  "elapsed_sec": 151.1,
+  "results": [
+    {
+      "params": {
+        "stc_os": 15,
+        "stc_ob": 92,
+        "stop_mult": 2.0,
+        "target_mult": 2.5,
+        "regime": true
+      },
+      "pf": 1.075,
+      "wr": 0.47,
+      "trades": 43,
+      "ret": 0.07,
+      "sharpe": 0.554
+    },
+    {
+      "params": {
+        "stc_os": 20,
+        "stc_ob": 83,
+        "stop_mult": 1.5,
+        "target_mult": 2.0,
+        "regime": false
+      },
+      "pf": 0.956,
+      "wr": 0.44,
+      "trades": 66,
+      "ret": -0.01,
+      "sharpe": -0.344
+    },
+    {
+      "params": {
+        "stc_os": 20,
+        "stc_ob": 80,
+        "stop_mult": 2.0,
+        "target_mult": 4.0,
+        "regime": true
+      },
+      "pf": 0.857,
+      "wr": 0.31,
+      "trades": 42,
+      "ret": 0.01,
+      "sharpe": -1.128
+    },
+    {
+      "params": {
+        "stc_os": 15,
+        "stc_ob": 85,
+        "stop_mult": 0.3,
+        "target_mult": 0.8,
+        "regime": true
+      },
+      "pf": 0.593,
+      "wr": 0.25,
+      "trades": 8,
+      "ret": -0.05,
+      "sharpe": -3.677
+    },
+    {
+      "params": {
+        "stc_os": 19,
+        "stc_ob": 88,
+        "stop_mult": 0.5,
+        "target_mult": 1.0,
+        "regime": true
+      },
+      "pf": 0.49,
+      "wr": 0.3,
+      "trades": 10,
+      "ret": -0.05,
+      "sharpe": -5.27
+    },
+    {
+      "params": {
+        "stc_os": 23,
+        "stc_ob": 83,
+        "stop_mult": 0.5,
+        "target_mult": 1.0,
+        "regime": true
+      },
+      "pf": 0.268,
+      "wr": 0.25,
+      "trades": 8,
+      "ret": -0.05,
+      "sharpe": -10.395
+    },
+    {
+      "params": {
+        "stc_os": 15,
+        "stc_ob": 92,
+        "stop_mult": 0.7,
+        "target_mult": 1.0,
+        "regime": true
+      },
+      "pf": 0.203,
+      "wr": 0.22,
+      "trades": 9,
+      "ret": -0.06,
+      "sharpe": -12.962
+    },
+    {
+      "params": {
+        "stc_os": 10,
+        "stc_ob": 88,
+        "stop_mult": 0.7,
+        "target_mult": 2.5,
+        "regime": false
+      },
+      "pf": 0.181,
+      "wr": 0.12,
+      "trades": 8,
+      "ret": 0.0,
+      "sharpe": -14.03
+    },
+    {
+      "params": {
+        "stc_os": 20,
+        "stc_ob": 92,
+        "stop_mult": 1.0,
+        "target_mult": 1.5,
+        "regime": true
+      },
+      "pf": 0.134,
+      "wr": 0.12,
+      "trades": 8,
+      "ret": -0.05,
+      "sharpe": -17.091
+    },
+    {
+      "params": {
+        "stc_os": 15,
+        "stc_ob": 83,
+        "stop_mult": 0.9,
+        "target_mult": 1.5,
+        "regime": true
+      },
+      "pf": 0.131,
+      "wr": 0.14,
+      "trades": 7,
+      "ret": -0.05,
+      "sharpe": -16.829
+    },
+    {
+      "params": {
+        "stc_os": 20,
+        "stc_ob": 75,
+        "stop_mult": 1.0,
+        "target_mult": 3.0,
+        "regime": true
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 7,
+      "ret": -0.02,
+      "sharpe": -112.725
+    },
+    {
+      "params": {
+        "stc_os": 30,
+        "stc_ob": 75,
+        "stop_mult": 1.0,
+        "target_mult": 3.0,
+        "regime": false
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 7,
+      "ret": -0.02,
+      "sharpe": -93.17
+    },
+    {
+      "params": {
+        "stc_os": 20,
+        "stc_ob": 75,
+        "stop_mult": 0.5,
+        "target_mult": 3.0,
+        "regime": true
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 7,
+      "ret": -0.01,
+      "sharpe": -324.371
+    },
+    {
+      "params": {
+        "stc_os": 10,
+        "stc_ob": 88,
+        "stop_mult": 0.5,
+        "target_mult": 1.5,
+        "regime": false
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 5,
+      "ret": -0.05,
+      "sharpe": -154.133
+    },
+    {
+      "params": {
+        "stc_os": 15,
+        "stc_ob": 88,
+        "stop_mult": 0.3,
+        "target_mult": 2.5,
+        "regime": false
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 5,
+      "ret": -0.06,
+      "sharpe": -280.733
+    },
+    {
+      "params": {
+        "stc_os": 10,
+        "stc_ob": 95,
+        "stop_mult": 1.5,
+        "target_mult": 0.8,
+        "regime": false
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    },
+    {
+      "params": {
+        "stc_os": 30,
+        "stc_ob": 70,
+        "stop_mult": 1.5,
+        "target_mult": 1.0,
+        "regime": true
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    },
+    {
+      "params": {
+        "stc_os": 10,
+        "stc_ob": 83,
+        "stop_mult": 1.0,
+        "target_mult": 0.8,
+        "regime": true
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    },
+    {
+      "params": {
+        "stc_os": 10,
+        "stc_ob": 88,
+        "stop_mult": 1.0,
+        "target_mult": 0.8,
+        "regime": true
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    },
+    {
+      "params": {
+        "stc_os": 30,
+        "stc_ob": 88,
+        "stop_mult": 1.0,
+        "target_mult": 0.8,
+        "regime": true
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    },
+    {
+      "params": {
+        "stc_os": 30,
+        "stc_ob": 95,
+        "stop_mult": 2.0,
+        "target_mult": 1.0,
+        "regime": true
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    },
+    {
+      "params": {
+        "stc_os": 30,
+        "stc_ob": 88,
+        "stop_mult": 2.0,
+        "target_mult": 1.0,
+        "regime": false
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    },
+    {
+      "params": {
+        "stc_os": 10,
+        "stc_ob": 88,
+        "stop_mult": 2.0,
+        "target_mult": 0.8,
+        "regime": true
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    },
+    {
+      "params": {
+        "stc_os": 10,
+        "stc_ob": 88,
+        "stop_mult": 1.0,
+        "target_mult": 1.0,
+        "regime": false
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    },
+    {
+      "params": {
+        "stc_os": 15,
+        "stc_ob": 83,
+        "stop_mult": 1.0,
+        "target_mult": 0.8,
+        "regime": true
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "sharpe": 0.0
+    }
+  ]
+}
