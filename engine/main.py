@@ -39,6 +39,8 @@ from agents.corey_auction_analyst import CoreyAuctionAnalystAgent
 from agents.technical_analyst import TechnicalAnalystAgent
 from agents.thinkscript_generator import ThinkScriptGeneratorAgent
 from agents.trader import TraderAgent
+from schemas.thinkscript_registry import ScriptRegistry, ScriptWithDocs
+from utils.thinkscript_registry_loader import load_registry, read_doc
 from api.models import (
     BarsResponse,
     DailyPnLResponse,
@@ -75,8 +77,11 @@ from risk.safety_layer import SafetyLayer
 from routers.analytics_router import router as analytics_router
 from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.analytics_router import set_data_manager as set_analytics_data_manager
+from routers.backtest_router import router as backtest_router
+from routers.backtest_router import inject_dependencies as inject_backtest_deps
 from routers.discord_router import inject_data_manager as inject_discord_data_manager
 from routers.discord_router import router as discord_router
+from routers.experiments_router import router as experiments_router
 from routers.flags_router import router as flags_router
 from routers.flags_router import set_flags as set_flags_router
 from routers.health_router import inject_dependencies as inject_health_router_deps
@@ -1220,6 +1225,7 @@ async def lifespan(app: FastAPI):
         schwab_connector,
     )
     inject_discord_data_manager(data_manager)
+    inject_backtest_deps(data_manager)
     from routers.market_router import inject_dependencies as inject_market_deps
     inject_market_deps(data_manager=data_manager)
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
@@ -2036,6 +2042,8 @@ app.include_router(paper_validation_router)
 app.include_router(proactive_validation_router)
 app.include_router(webhook_router)
 app.include_router(discord_router)
+app.include_router(experiments_router)
+app.include_router(backtest_router)
 app.include_router(learning_router)
 app.include_router(events_router)
 app.include_router(kairos_router)
@@ -3772,6 +3780,28 @@ async def generate_thinkscript(req: ThinkScriptRequest):
     }
 
 
+@app.get("/thinkscript/registry", response_model=ScriptRegistry)
+async def get_thinkscript_registry():
+    """Return the full catalog of ThinkScript studies wired into JARVIS."""
+    try:
+        return load_registry()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/thinkscript/registry/{script_id}", response_model=ScriptWithDocs)
+async def get_thinkscript_registry_entry(script_id: str):
+    """Return a single registry entry plus its full markdown documentation body."""
+    try:
+        registry = load_registry()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    entry = next((s for s in registry.scripts if s.id == script_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"script_id '{script_id}' not found")
+    return ScriptWithDocs(entry=entry, doc_markdown=read_doc(entry.docs))
+
+
 # ── Macro Data (FRED) ──────────────────────────────────────────────────────
 
 
@@ -3852,26 +3882,9 @@ class BacktestRequest(BaseModel):
     risk_per_trade: float = 0.01
 
 
-@app.get("/backtest/results")
-async def get_backtest_results():
-    """Return all saved backtest result JSON files from backtest/results/."""
-    import json
-    from pathlib import Path
-
-    results_dir = Path(__file__).parent / "backtest" / "results"
-    if not results_dir.exists():
-        return []
-
-    results = []
-    for json_file in sorted(results_dir.glob("*.json")):
-        try:
-            data = json.loads(json_file.read_text(encoding="utf-8"))
-            data["_filename"] = json_file.name
-            results.append(data)
-        except Exception as e:
-            logger.warning(f"Failed to parse {json_file.name}: {e}")
-
-    return results
+# /backtest/results is served by routers/backtest_router.py (sanitizes inf/nan
+# and logs leakers). Inline duplicate removed 2026-04-20 — it shadowed the
+# sanitized version and returned HTTP 500 on any result containing inf.
 
 
 @app.post("/backtest/run")
