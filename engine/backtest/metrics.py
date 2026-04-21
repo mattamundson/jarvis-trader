@@ -186,6 +186,29 @@ def compute_duration_metrics(result: BacktestResult, trades: List[Trade]) -> Non
         result.max_drawdown_duration_bars = max(max_dd_dur, cur_dd_dur)
 
 
+def compute_kelly_fraction(result: BacktestResult) -> None:
+    """Compute full-Kelly and half-Kelly bet fraction from avg_win / avg_loss.
+
+    Kelly formula: f* = (W * R - (1 - W)) / R
+    where W = win_rate (fraction), R = avg_win / |avg_loss| (payoff ratio).
+
+    Result is clamped to [0, 1] — negative Kelly (W*R < 1-W) means no edge,
+    fraction > 1 (degenerate) is clipped. Half-Kelly is the practical recommendation
+    for live trading: reduces variance at the cost of ~25% of long-run CAGR.
+    """
+    w = result.win_rate
+    avg_w = result.avg_win
+    avg_l = result.avg_loss  # stored as negative number
+    if w <= 0 or avg_w <= 0 or avg_l >= 0:
+        result.kelly_fraction = 0.0
+        result.half_kelly_fraction = 0.0
+        return
+    r = avg_w / abs(avg_l)
+    kelly = (w * r - (1 - w)) / r
+    result.kelly_fraction = float(max(0.0, min(1.0, kelly)))
+    result.half_kelly_fraction = result.kelly_fraction / 2.0
+
+
 def calculate_metrics(result: BacktestResult) -> BacktestResult:
     """Fill in all metrics from the trades list.
 
@@ -277,5 +300,6 @@ def calculate_metrics(result: BacktestResult) -> BacktestResult:
     compute_regime_breakdown(result, trades)
     compute_duration_metrics(result, trades)
     compute_exposure_time(result)
+    compute_kelly_fraction(result)
 
     return result
