@@ -441,3 +441,59 @@ async def discord_test() -> bool:
         "timestamp": _iso_ts(),
     }
     return await _send_embed(embed, alert_type="test")
+
+
+async def discord_mes_forward_outcome(
+    date_str: str,
+    side: str,
+    reason: str,
+    open_price: float | None,
+    close_price: float | None,
+    outcome_delta: float | None,
+) -> bool:
+    """Send the daily MES forward-recorder outcome as a rich embed.
+
+    Called by the 15:15 CT outcome job so each accumulated row is visible
+    same-day without opening the dashboard. Green if the hypothesis was
+    profitable, red if it lost, neutral grey for skip days.
+    """
+    # Colour key:
+    #   long/short with positive delta  → green
+    #   long/short with negative delta  → red
+    #   skip OR missing outcome         → grey
+    if outcome_delta is not None and side in ("long", "short"):
+        color = 0x00C853 if outcome_delta > 0 else 0xD50000
+        hit_icon = "✅" if outcome_delta > 0 else "❌"
+    else:
+        color = 0x607D8B
+        hit_icon = "⏸"
+
+    delta_str = (
+        f"{outcome_delta:+.2f} pts"
+        if outcome_delta is not None
+        else "—"
+    )
+    open_str = f"{open_price:.2f}" if open_price is not None else "—"
+    close_str = f"{close_price:.2f}" if close_price is not None else "—"
+
+    fields = [
+        {"name": "Date", "value": date_str, "inline": True},
+        {"name": "Side", "value": side.upper(), "inline": True},
+        {"name": "Result", "value": f"{hit_icon} {delta_str}", "inline": True},
+        {"name": "Open", "value": open_str, "inline": True},
+        {"name": "Close", "value": close_str, "inline": True},
+        {"name": "Reason", "value": reason[:200] if reason else "—", "inline": False},
+    ]
+
+    embed = {
+        "title": "🧪 MES Forward-Recorder",
+        "description": (
+            "Observational experiment — *no position was taken.* "
+            "Evaluated after ~8–12 weeks of accumulated rows."
+        ),
+        "color": color,
+        "fields": fields,
+        "footer": _footer(),
+        "timestamp": _iso_ts(),
+    }
+    return await _send_embed(embed, alert_type="mes_forward_outcome")
