@@ -28,7 +28,7 @@ if str(ENGINE_DIR) not in sys.path:
 
 from backtest import BacktestDataLoader, Backtester
 from backtest.evaluation_harness import evaluate
-from backtest.monte_carlo import run_monte_carlo
+from backtest.monte_carlo import bootstrap_pf, run_monte_carlo, run_slippage_stress
 from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals
 from backtest.trend_signals import get_sma_trend_params
 
@@ -101,19 +101,12 @@ def build_report(result) -> dict:
     print("[phase-a] Running evaluation harness (two-layer gate)...")
     eval_result = evaluate(result)
 
-    # Breakeven slippage scan — how much extra slippage kills the edge?
-    import numpy as np
-    pnls = np.array([t.pnl for t in result.trades])
-    n_trades = len(pnls)
-    tick_value = 1.25  # MES
-    breakeven_scan = []
-    for extra_ticks in [0, 1, 2, 3, 4, 5, 6, 8, 10]:
-        added_cost_per_trade = extra_ticks * tick_value
-        adj = pnls - added_cost_per_trade
-        gp = float(adj[adj > 0].sum()) if (adj > 0).any() else 0.0
-        gl = float(abs(adj[adj <= 0].sum())) if (adj <= 0).any() else 0.0
-        pf = gp / gl if gl > 0 else float("inf")
-        breakeven_scan.append({"extra_ticks": extra_ticks, "pf": round(pf, 3)})
+    print("[phase-a] Running bootstrap PF CI (10k resamples)...")
+    pnls_list = [t.pnl for t in result.trades]
+    bootstrap_pf_result = bootstrap_pf(pnls_list, n_resamples=N_SIMULATIONS, seed=SEED)
+
+    print("[phase-a] Running slippage stress test...")
+    slippage_stress = run_slippage_stress(result, symbol=SYMBOL)
 
     return {
         "metadata": {
@@ -139,10 +132,14 @@ def build_report(result) -> dict:
             "total_return_pct": round(result.total_return_pct, 4),
             "max_consecutive_losses": result.max_consecutive_losses,
             "avg_holding_bars": round(result.avg_holding_bars, 2),
+            "max_dd_duration_bars": result.max_drawdown_duration_bars,
+            "kelly_fraction": round(result.kelly_fraction, 4),
+            "half_kelly_fraction": round(result.half_kelly_fraction, 4),
         },
         "monte_carlo_clean": mc_clean,
         "monte_carlo_slippage_2tick": mc_slip2,
-        "breakeven_slippage_scan": breakeven_scan,
+        "bootstrap_pf_ci": bootstrap_pf_result,
+        "slippage_stress": slippage_stress,
         "evaluation_harness": {
             "verdict": eval_result.verdict.value,
             "layer1_passed": eval_result.layer1_passed,
@@ -156,6 +153,9 @@ def build_report(result) -> dict:
             "prob_profitable_value": mc_clean["confidence"]["prob_profitable"],
             "evaluation_eligible": eval_result.verdict.value == "ELIGIBLE",
             "slippage_2tick_still_profitable": mc_slip2["confidence"]["prob_profitable"] >= 50.0,
+            "bootstrap_pf_ci_lower_gte_1": bootstrap_pf_result.get("pf_ci_95_low", 0.0) >= 1.0,
+            "bootstrap_pf_ci_lower": round(bootstrap_pf_result.get("pf_ci_95_low", 0.0), 3),
+            "slippage_stress_verdict": slippage_stress.get("verdict", "?"),
         },
     }
 
@@ -197,11 +197,22 @@ def print_summary(report: dict) -> None:
     print(f"  prob_profitable: {mc_slip['confidence']['prob_profitable']:.2f}%  (vs clean: "
           f"{mc_clean['confidence']['prob_profitable']:.2f}%)")
     print(f"  verdict: {mc_slip['verdict']}")
+    bpf = report["bootstrap_pf_ci"]
+    print(f"Bootstrap PF CI (10k IID resamples):")
+    print(f"  median={bpf.get('median_pf', 0.0):.3f}  "
+          f"p5={bpf.get('pf_ci_95_low', 0.0):.3f}  "
+          f"p95={bpf.get('pf_ci_95_high', 0.0):.3f}  "
+          f"p_edge={bpf.get('p_positive_edge', 0.0):.3f}")
+    ci_lower = bpf.get('pf_ci_95_low', 0.0)
+    print(f"  ci_lower_gte_1.0: {ci_lower >= 1.0}  (ci_lower={ci_lower:.3f})")
     print()
-    print("Breakeven slippage scan (when does PF drop below 1.0?):")
-    for row in report["breakeven_slippage_scan"]:
-        marker = " ← BREAKEVEN" if row["pf"] < 1.0 and row["extra_ticks"] > 0 else ""
-        print(f"  +{row['extra_ticks']} ticks → PF {row['pf']:.3f}{marker}")
+    sl = report["slippage_stress"]
+    print(f"Slippage stress (verdict: {sl.get('verdict', '?')}):")
+    for row in sl.get("scenarios", []):
+        be = " ← BREAKEVEN" if sl.get("breakeven_extra_ticks") and row["extra_ticks"] >= sl["breakeven_extra_ticks"] else ""
+        print(f"  +{row['extra_ticks']} ticks  PF={row['pf']:.3f}{be}")
+    if sl.get("breakeven_extra_ticks") is None:
+        print("  → No breakeven found — ROBUST at all tested slippage levels")
     print()
     print(f"Evaluation harness: {eval_['summary']}")
     print(f"  Layer 1 (stat validity): {'PASS' if eval_['layer1_passed'] else 'FAIL'}")
