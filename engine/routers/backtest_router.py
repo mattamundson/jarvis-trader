@@ -114,10 +114,27 @@ async def get_backtest_results():
         for json_file in sorted(results_dir.glob("*.json")):
             try:
                 data = json.loads(json_file.read_text(encoding="utf-8"))
-                data["_filename"] = json_file.name
-                # Sanitize inf/nan floats — stdlib json.dumps rejects them and
-                # causes a streaming 500 even though json.loads accepted them.
-                results.append(_sanitize_floats(data))
+                if isinstance(data, dict):
+                    data["_filename"] = json_file.name
+                elif isinstance(data, list):
+                    # Top-level arrays get wrapped so the response stays uniform
+                    data = {"_filename": json_file.name, "_array": data}
+                else:
+                    data = {"_filename": json_file.name, "_scalar": data}
+                sanitized = _sanitize_floats(data)
+                # Belt-and-suspenders: verify the sanitized entry is JSON-safe
+                # with allow_nan=False. If it still has inf/nan, a numpy-subclass
+                # leaked past isinstance(float). Drop the entry and log loudly.
+                try:
+                    json.dumps(sanitized, allow_nan=False)
+                except ValueError as enc_err:
+                    logger.error(
+                        "[BACKTEST] %s leaked inf/nan past sanitizer: %s — dropping entry",
+                        json_file.name,
+                        enc_err,
+                    )
+                    continue
+                results.append(sanitized)
             except Exception as e:
                 logger.warning(f"Failed to parse {json_file.name}: {e}")
 
@@ -136,13 +153,14 @@ async def run_backtest(request: BacktestRequest):
     try:
 
         def _run():
-            from backtest import BacktestDataLoader, Backtester, generate_signals
+            from backtest import BacktestDataLoader, Backtester
+            from backtest.signals import generate_instrument_signals
 
             loader = BacktestDataLoader()
             df = loader.load(request.symbol, request.start, request.end, request.interval)
             if df is None or df.empty:
                 raise ValueError(f"No data for {request.symbol}")
-            df = generate_signals(df)
+            df = generate_instrument_signals(df, symbol=request.symbol)
             multiplier = loader.get_multiplier(request.symbol)
             backtester = Backtester(
                 initial_capital=request.capital,
