@@ -4,7 +4,7 @@ ThinkScript generation endpoints
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 try:
@@ -69,6 +69,35 @@ async def generate_thinkscript(req: ThinkScriptRequest):
         "signals_included": result.signals_included,
         "timestamp": result.timestamp.isoformat(),
     }
+
+
+
+# ── ThinkScript Registry ───────────────────────────────────────────────────
+
+from schemas.thinkscript_registry import ScriptRegistry, ScriptWithDocs
+from utils.thinkscript_registry_loader import load_registry, read_doc
+
+
+@router.get("/thinkscript/registry", response_model=ScriptRegistry)
+async def get_thinkscript_registry():
+    """Return the full catalog of ThinkScript studies wired into JARVIS."""
+    try:
+        return load_registry()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@router.get("/thinkscript/registry/{script_id}", response_model=ScriptWithDocs)
+async def get_thinkscript_registry_entry(script_id: str):
+    """Return a single entry plus its full markdown documentation body."""
+    try:
+        registry = load_registry()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    entry = next((s for s in registry.scripts if s.id == script_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"script_id '{script_id}' not found")
+    return ScriptWithDocs(entry=entry, doc_markdown=read_doc(entry.docs))
 
 
 # ── Macro Data (FRED) ──────────────────────────────────────────────────────
