@@ -576,3 +576,54 @@ class TestSignalRobustness:
             assert len(signals) > 0
         except Exception as e:
             pytest.fail(f"generate_signals should handle zero volume: {e}")
+
+
+# ── RV filter env-var wiring (Phase B+ addition, 2026-04-21) ──────────────
+def test_mes_rv_filter_env_var_default_off(monkeypatch):
+    """MES_MIN_RV_ANNUALIZED unset → no filter (0.0) passed to trend_signals."""
+    import numpy as np
+    import pandas as pd
+    from backtest.signals import generate_instrument_signals
+
+    monkeypatch.delenv("MES_MIN_RV_ANNUALIZED", raising=False)
+
+    # Trending price series — must produce golden cross
+    close = np.linspace(4800, 5500, 400)
+    idx = pd.date_range("2024-06-01", periods=400, freq="1h")
+    df = pd.DataFrame({"open": close, "high": close + 5,
+                       "low": close - 5, "close": close}, index=idx)
+    out = generate_instrument_signals(df, symbol="MES")
+    assert "rv_20_ann_pct" in out.columns
+    # Filter off means: as long as trend conditions hit, entries fire
+    assert (out["entry_signal"] == "ENTRY_NOW").sum() >= 1
+
+
+def test_mes_rv_filter_env_var_invalid_safe(monkeypatch):
+    """Malformed MES_MIN_RV_ANNUALIZED → fall back to 0.0 (no filter)."""
+    import numpy as np
+    import pandas as pd
+    from backtest.signals import generate_instrument_signals
+
+    monkeypatch.setenv("MES_MIN_RV_ANNUALIZED", "not_a_number")
+    close = np.linspace(4800, 5500, 400)
+    idx = pd.date_range("2024-06-01", periods=400, freq="1h")
+    df = pd.DataFrame({"open": close, "high": close + 5,
+                       "low": close - 5, "close": close}, index=idx)
+    # Must not raise — invalid env silently defaults to 0.0
+    out = generate_instrument_signals(df, symbol="MES")
+    assert (out["entry_signal"] == "ENTRY_NOW").sum() >= 1
+
+
+def test_mes_rv_filter_env_var_high_blocks_entries(monkeypatch):
+    """Unreachable MES_MIN_RV_ANNUALIZED=999 → zero entries."""
+    import numpy as np
+    import pandas as pd
+    from backtest.signals import generate_instrument_signals
+
+    monkeypatch.setenv("MES_MIN_RV_ANNUALIZED", "999.0")
+    close = np.linspace(4800, 5500, 400)
+    idx = pd.date_range("2024-06-01", periods=400, freq="1h")
+    df = pd.DataFrame({"open": close, "high": close + 5,
+                       "low": close - 5, "close": close}, index=idx)
+    out = generate_instrument_signals(df, symbol="MES")
+    assert (out["entry_signal"] == "ENTRY_NOW").sum() == 0
