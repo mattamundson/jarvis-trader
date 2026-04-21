@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 try:
     from config import settings
@@ -86,6 +87,12 @@ class KillSwitchReason(Enum):
     DATA_FEED_LOSS = "data_feed_loss"
     BROKER_DISCONNECT = "broker_disconnect"
     ANOMALOUS_ORDER_RATE = "anomalous_order_rate"
+
+
+# Symbols eligible to hold overnight (23h markets); subject to MAX_OVERNIGHT_CONTRACTS.
+_OVERNIGHT_SYMBOLS: frozenset[str] = frozenset({"MES"})
+_CT_ZONE = ZoneInfo("America/Chicago")
+_OVERNIGHT_CUTOFF_HOUR = 15  # 15:00 CT — CME RTH close for equity futures
 
 
 @dataclass
@@ -626,12 +633,29 @@ class SafetyLayer:
         return RiskCheckResult(approved=True), now
 
     def _check_contract_limits(self, order: OrderRequest) -> RiskCheckResult:
-        """Check futures contract limits."""
+        """Check futures contract limits, including overnight cap after 15:00 CT."""
         if order.is_futures and abs(order.quantity) > self._config.MAX_CONTRACTS_PER_INSTRUMENT:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason=f"Requested {abs(order.quantity)} contracts exceeds max {self._config.MAX_CONTRACTS_PER_INSTRUMENT}",
             )
+        sym = order.symbol.upper()
+        if order.is_futures and sym in _OVERNIGHT_SYMBOLS:
+            now_ct = datetime.now(_CT_ZONE)
+            if now_ct.hour >= _OVERNIGHT_CUTOFF_HOUR:
+                limit = self._config.MAX_OVERNIGHT_CONTRACTS
+                if abs(order.quantity) > limit:
+                    logger.warning(
+                        "OVERNIGHT_CONTRACT_LIMIT: %s rejected %d contracts after 15:00 CT (max %d)",
+                        sym, abs(order.quantity), limit,
+                    )
+                    return RiskCheckResult(
+                        approved=False,
+                        rejection_reason=(
+                            f"OVERNIGHT_LIMIT: {sym} allows max {limit} contract(s) after 15:00 CT, "
+                            f"requested {abs(order.quantity)}"
+                        ),
+                    )
         return RiskCheckResult(approved=True)
 
     def check_order(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:

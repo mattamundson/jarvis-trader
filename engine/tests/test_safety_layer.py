@@ -6,6 +6,9 @@ Comprehensive testing of all 14 hard rules.
 import os
 import sqlite3
 import tempfile
+from datetime import datetime
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -748,3 +751,86 @@ class TestKillSwitchPersistence:
             mock_settings.SQLITE_DB_PATH = None
         safety = SafetyLayer(mock_settings, db_path=None)
         assert safety.is_killed is False
+
+
+class TestOvernightContractLimit:
+    """MAX_OVERNIGHT_CONTRACTS enforced for MES after 15:00 CT."""
+
+    _CT = ZoneInfo("America/Chicago")
+
+    def _make_mes_order(self, quantity: int) -> OrderRequest:
+        return OrderRequest(
+            symbol="MES",
+            quantity=quantity,
+            order_type="market",
+            is_futures=True,
+            estimated_value=quantity * 500.0,  # Low to pass order-value check
+        )
+
+    def test_mes_2_contracts_after_15_ct_rejected(self, mock_safety_layer, mock_settings):
+        """MES order for 2 contracts after 15:00 CT exceeds overnight limit of 1."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 1
+        safety = SafetyLayer(mock_settings)
+
+        fake_time = datetime(2026, 4, 21, 15, 30, tzinfo=self._CT)
+        with patch("risk.safety_layer.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_time
+            result = safety.check_order(self._make_mes_order(2), 100_000.0)
+
+        assert result.approved is False
+        assert "OVERNIGHT_LIMIT" in result.rejection_reason
+
+    def test_mes_1_contract_after_15_ct_allowed(self, mock_safety_layer, mock_settings):
+        """MES order for 1 contract after 15:00 CT is within overnight limit."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 1
+        safety = SafetyLayer(mock_settings)
+
+        fake_time = datetime(2026, 4, 21, 16, 0, tzinfo=self._CT)
+        with patch("risk.safety_layer.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_time
+            result = safety.check_order(self._make_mes_order(1), 100_000.0)
+
+        assert result.approved is True
+
+    def test_mes_2_contracts_before_15_ct_allowed(self, mock_safety_layer, mock_settings):
+        """MES order for 2 contracts before 15:00 CT is within daytime limit."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 1
+        safety = SafetyLayer(mock_settings)
+
+        fake_time = datetime(2026, 4, 21, 10, 0, tzinfo=self._CT)
+        with patch("risk.safety_layer.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_time
+            result = safety.check_order(self._make_mes_order(2), 100_000.0)
+
+        assert result.approved is True
+
+    def test_non_overnight_symbol_not_affected(self, mock_safety_layer, mock_settings):
+        """MCL is not in OVERNIGHT_SYMBOLS — no overnight check applied."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 1
+        safety = SafetyLayer(mock_settings)
+
+        order = OrderRequest(
+            symbol="MCL",
+            quantity=2,
+            order_type="market",
+            is_futures=True,
+            estimated_value=1000.0,  # Low to pass order-value check
+        )
+        fake_time = datetime(2026, 4, 21, 16, 0, tzinfo=self._CT)
+        with patch("risk.safety_layer.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_time
+            result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is True

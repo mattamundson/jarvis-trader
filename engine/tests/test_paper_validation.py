@@ -21,7 +21,12 @@ from pathlib import Path
 import pytest
 
 from paper.validation_gate_config import PAPER_VALIDATION_GATES
-from paper.validation_tracker import PASS_THRESHOLDS, ValidationTracker
+from paper.validation_tracker import (
+    PASS_THRESHOLDS,
+    _TRACKED_INSTRUMENTS,
+    _thresholds_for,
+    ValidationTracker,
+)
 
 
 def _create_mock_tracker_file(data_dir: Path, symbol: str, trades: list) -> None:
@@ -638,3 +643,75 @@ class TestValidationGateConfig:
         assert PAPER_VALIDATION_GATES["min_trades"] == 60
         assert PAPER_VALIDATION_GATES["min_days"] == 30
         assert PAPER_VALIDATION_GATES["max_drawdown_pct"] == 15.0
+
+
+def _make_mes_trade(entry_date: str, exit_date: str, pnl: float, symbol: str = "MES") -> dict:
+    """Helper: minimal MES trade record."""
+    return {
+        "entry_date": entry_date,
+        "exit_date": exit_date,
+        "entry_price": 5800.0,
+        "exit_price": 5800.0 + (pnl / 5.0),
+        "side": "long",
+        "contracts": 1,
+        "exit_reason": "trailing_stop" if pnl > 0 else "stop",
+        "regime_type": "trending",
+        "pnl": pnl,
+        "pnl_pct": pnl / 5800.0 * 100,
+        "recorded_at": f"{entry_date}T12:00:00",
+        "symbol": symbol,
+    }
+
+
+class TestMESValidationTracker:
+    """MES is tracked, uses 45% WR threshold (not 55% default)."""
+
+    def test_mes_in_tracked_instruments(self):
+        assert "MES" in _TRACKED_INSTRUMENTS
+
+    def test_mes_win_rate_threshold_is_45_pct(self):
+        t = _thresholds_for("MES")
+        assert t["win_rate_pct"] == 45.0
+
+    def test_mcl_win_rate_threshold_is_55_pct(self):
+        t = _thresholds_for("MCL")
+        assert t["win_rate_pct"] == 55.0
+
+    def test_mes_other_thresholds_unchanged(self):
+        t = _thresholds_for("MES")
+        assert t["profit_factor"] == 2.0
+        assert t["sharpe_ratio"] == 1.5
+        assert t["min_trades"] == 60
+        assert t["min_days"] == 30
+        assert t["max_drawdown_pct"] == 15.0
+
+    def test_mes_gate_rejects_at_fewer_than_60_trades(self, temp_data_dir):
+        """Gate must reject MES with only 5 trades regardless of metrics."""
+        # 5 big winners — gate should still fail (min_trades = 60)
+        trades = [_make_mes_trade("2026-01-02", "2026-01-10", 500.0) for _ in range(5)]
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
+        tracker = ValidationTracker(data_dir=temp_data_dir)
+        assert not tracker.is_validated("MES")
+
+    def test_mes_win_rate_45pct_accepted(self, temp_data_dir):
+        """44–46% WR should pass for MES (trend strategy high R:R profile)."""
+        base = datetime(2026, 1, 2)
+        # 60 trades: 27 winners (45%) + 33 losers, spread over 31 days
+        trades = []
+        for i in range(60):
+            d = (base + timedelta(days=i % 31)).strftime("%Y-%m-%d")
+            pnl = 300.0 if i < 27 else -100.0
+            trades.append(_make_mes_trade(d, d, pnl))
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
+        tracker = ValidationTracker(data_dir=temp_data_dir)
+        m = tracker.metrics["MES"]
+        assert m.win_rate_pct == pytest.approx(45.0)
+        # WR gate should pass; other gates (PF, Sharpe, days) may vary in fixture
+        pf = _thresholds_for("MES")
+        assert m.win_rate_pct >= pf["win_rate_pct"]
+
+    def test_mes_55pct_wr_threshold_would_reject(self, temp_data_dir):
+        """Confirm that the old 55% WR threshold would have rejected MES at 45% WR."""
+        assert PAPER_VALIDATION_GATES["win_rate_pct"] == 55.0
+        assert _thresholds_for("MES")["win_rate_pct"] == 45.0
+        assert 45.0 < 55.0
