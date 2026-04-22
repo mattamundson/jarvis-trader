@@ -1,4 +1,8 @@
 """
+STATUS: ARCHIVED — FAILED gate v2 (2026-04-22). Test PF 3.66 but only n=3.
+Insufficient evidence floor per gate_v2_policy.py.
+Retained for reference; see backtest/archive/failed/README.md.
+
 RSI-oversold breakout signal generator for JARVIS TRADER.
 
 Entry  : RSI was deep-oversold within the last `rsi_lookback` bars (long),

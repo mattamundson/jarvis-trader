@@ -1,4 +1,8 @@
 """
+STATUS: ARCHIVED — FAILED gate v2 (2026-04-22). Test PF 0.648 on MES 1h (n=90).
+No edge after ADX strength gate. Retained for reference; see
+backtest/archive/failed/README.md before resurrecting.
+
 ADX-EMA trend signal generator for JARVIS TRADER.
 
 Entry  : ADX >= adx_threshold (strong trend) AND ema_slope direction aligns
