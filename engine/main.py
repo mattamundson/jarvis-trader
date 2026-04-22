@@ -511,6 +511,12 @@ async def lifespan(app: FastAPI):
         data_manager.inject_schwab(schwab_connector)
         logger.info("✅ Schwab wired into MarketDataManager as Tier 2 price source")
 
+    # Now that data_manager is ready, inject the IB gateway into PnLMonitor
+    # so the circuit breakers can read live account data from IBKR when connected.
+    if pnl_monitor is not None and data_manager.ibkr is not None:
+        pnl_monitor._ib = data_manager.ibkr
+        logger.info("✅ PnL Monitor: IB Gateway wired (live account data source active)")
+
     # Agents (need LLM client)
     if settings.ANTHROPIC_API_KEY:
         llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY)
@@ -2140,6 +2146,10 @@ app.include_router(v1_router)
 app.include_router(observability_router)
 app.include_router(strategy_c_router)
 
+app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(webhook_router)
+app.include_router(v1_router)
+
 
 # ── Strategy Lab endpoints ────────────────────────────────────────────────────
 
@@ -2296,6 +2306,284 @@ async def calculate_position_size_alias():
         "account_value": result.account_value,
         "reasoning": result.reasoning,
     }
+
+
+@app.get("/safety/loss-tracker")
+async def get_loss_tracker_status():
+    """
+    Return consecutive loss tracking state.
+
+    Returns:
+        global_consecutive_losses: Total consecutive losses (all symbols)
+        symbol_losses: Dict[symbol] -> consecutive loss count
+        position_size_multiplier: 1.0 / 0.5 / 0.25 / 0.0 based on loss streak
+        is_halted: True if trading is paused due to loss limit
+        halt_until: ISO timestamp when trading resumes (if halted)
+        last_trade_symbol: Which symbol was last traded
+        last_trade_timestamp: When the last trade executed
+        config: Loss threshold configuration
+    """
+    if not loss_tracker:
+        raise HTTPException(500, "Loss tracker not initialized")
+    try:
+        return loss_tracker.get_status()
+    except Exception as e:
+        logger.error(f"[LOSS-TRACKER] Status query failed: {e}")
+        raise HTTPException(500, f"Failed to get loss tracker status: {e}") from e
+
+
+# ── Risk Limits Settings ───────────────────────────────────────────────────
+
+
+@app.get("/settings/risk")
+async def get_risk_settings():
+    """Get current risk/circuit breaker settings."""
+    try:
+        # Get live circuit breaker state
+        cb_status = {}
+        if safety_layer:
+            cb_status = safety_layer.check_circuit_breakers()
+
+        # Get config defaults from env / TradingConfig
+        config = {
+            "daily_loss_limit": float(
+                os.getenv("DAILY_LOSS_LIMIT", str(settings.MAX_DAILY_LOSS_PCT * 10000))
+            ),
+            "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
+            "max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+            "risk_per_trade_pct": float(os.getenv("RISK_PER_TRADE_PCT", "0.01")),
+            "atr_stop_multiplier": float(os.getenv("ATR_STOP_MULTIPLIER", "0.70")),
+            "atr_target_multiplier": float(os.getenv("ATR_TARGET_MULTIPLIER", "1.50")),
+        }
+
+        # Override with DB settings if available (DB values take precedence over env)
+        if db_manager:
+            for key in config:
+                val = db_manager.get_setting(key)
+                if val is not None:
+                    try:
+                        config[key] = type(config[key])(val)
+                    except (ValueError, TypeError):
+                        pass
+
+        return {
+            "config": config,
+            "circuit_breakers": cb_status,
+            "editable_keys": list(config.keys()),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/settings/risk")
+async def update_risk_settings(payload: dict):
+    """Update risk settings (persists to DB settings table)."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    ALLOWED_KEYS = {
+        "daily_loss_limit",
+        "max_drawdown_pct",
+        "max_contracts",
+        "risk_per_trade_pct",
+        "atr_stop_multiplier",
+        "atr_target_multiplier",
+    }
+
+    VALIDATORS = {
+        "daily_loss_limit": lambda v: float(v) > 0,
+        "max_drawdown_pct": lambda v: 0 < float(v) <= 1.0,
+        "max_contracts": lambda v: 1 <= int(v) <= 10,
+        "risk_per_trade_pct": lambda v: 0 < float(v) <= 0.05,
+        "atr_stop_multiplier": lambda v: 0.1 <= float(v) <= 3.0,
+        "atr_target_multiplier": lambda v: 0.1 <= float(v) <= 5.0,
+    }
+
+    updated = {}
+    errors = {}
+
+    for key, value in payload.items():
+        if key not in ALLOWED_KEYS:
+            errors[key] = "Unknown setting"
+            continue
+
+        validator = VALIDATORS.get(key)
+        try:
+            if validator and not validator(value):
+                errors[key] = f"Value {value} out of allowed range"
+                continue
+            db_manager.set_setting(key, str(value))
+            updated[key] = value
+        except Exception as e:
+            errors[key] = str(e)[:80]
+
+    return {
+        "updated": updated,
+        "errors": errors,
+        "count": len(updated),
+    }
+
+
+# ── Strategy Parameters ────────────────────────────────────────────────────────
+
+
+class StrategyParams(BaseModel):
+    """Strategy parameter configuration."""
+
+    ema_short: int = 8
+    ema_long: int = 21
+    ema_smoother: int = 34
+    atr_length: int = 14
+    atr_mult_stop: float = 1.5
+    atr_mult_target: float = 3.0
+    min_volume_sma: int = 20
+    rsi_length: int = 14
+    rsi_oversold: int = 30
+    rsi_overbought: int = 70
+    adaptive_regime: bool = True
+    volume_filter: bool = False
+    mtf_filter: bool = False
+
+
+# In-memory strategy params (would be persisted in production)
+_strategy_params = StrategyParams()
+
+
+@app.get("/strategy/params")
+async def get_strategy_params():
+    """
+    Get current strategy parameter configuration.
+
+    Returns:
+        ema_short: Short-term EMA period (default 8)
+        ema_long: Medium-term EMA period (default 21)
+        ema_smoother: Long-term EMA period (default 34)
+        atr_length: ATR indicator period (default 14)
+        atr_mult_stop: Stop loss as multiple of ATR (default 1.5x)
+        atr_mult_target: Profit target as multiple of ATR (default 3.0x)
+        min_volume_sma: Minimum volume SMA period (default 20)
+        rsi_length: RSI indicator period (default 14)
+        rsi_oversold: RSI oversold threshold (default 30)
+        rsi_overbought: RSI overbought threshold (default 70)
+        adaptive_regime: Apply regime-based filters (default True)
+        volume_filter: Apply volume filters (default False)
+        mtf_filter: Apply multi-timeframe filters (default False)
+    """
+    global _strategy_params
+    return _strategy_params.model_dump()
+
+
+@app.put("/strategy/params")
+async def update_strategy_params(params: StrategyParams):
+    """
+    Update strategy parameter configuration.
+
+    Changes take effect immediately for future backtests and live trading.
+    Existing positions are unaffected.
+
+    Request:
+        ema_short, ema_long, ema_smoother: EMA periods
+        atr_length, atr_mult_stop, atr_mult_target: ATR configuration
+        min_volume_sma, rsi_length, rsi_oversold, rsi_overbought: Indicator settings
+        adaptive_regime, volume_filter, mtf_filter: Feature flags
+    """
+    global _strategy_params
+    try:
+        # Validate parameters
+        if not (1 < params.ema_short < params.ema_long < params.ema_smoother < 200):
+            raise ValueError("EMA periods must satisfy: 1 < short < long < smoother < 200")
+        if not (1 <= params.atr_length <= 50):
+            raise ValueError("ATR length must be 1-50")
+        if not (0.5 <= params.atr_mult_stop <= 10.0):
+            raise ValueError("ATR stop multiplier must be 0.5-10.0")
+        if not (0.5 <= params.atr_mult_target <= 10.0):
+            raise ValueError("ATR target multiplier must be 0.5-10.0")
+        if not (1 <= params.rsi_length <= 50):
+            raise ValueError("RSI length must be 1-50")
+        if not (0 < params.rsi_oversold < 50):
+            raise ValueError("RSI oversold must be 0-50")
+        if not (50 < params.rsi_overbought < 100):
+            raise ValueError("RSI overbought must be 50-100")
+
+        old_params = _strategy_params.model_dump()
+        _strategy_params = params
+        logger.info(f"[STRATEGY] Parameters updated: {params.model_dump()}")
+
+        return {
+            "status": "updated",
+            "old_params": old_params,
+            "new_params": params.model_dump(),
+        }
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid parameter: {e}") from e
+    except Exception as e:
+        logger.error(f"[STRATEGY] Update failed: {e}")
+        raise HTTPException(500, f"Failed to update strategy parameters: {e}") from e
+
+
+@app.get("/safety/circuit-breakers", response_model=CircuitBreakerStatus)
+async def get_circuit_breakers():
+    """
+    Current circuit breaker state for all safety limits.
+
+    Returns a snapshot of every circuit breaker without triggering any
+    state changes.  Safe to poll frequently (e.g. every 5 seconds from
+    the dashboard).
+
+    Response fields:
+        daily_pnl            — today's P&L in dollars (realized + unrealized)
+        daily_limit          — max allowed daily loss in dollars (negative)
+        daily_pnl_pct        — daily P&L as fraction of starting balance
+        daily_limit_pct      — configured daily loss limit (e.g. -0.02)
+        daily_limit_breached — True when daily loss limit has been exceeded
+        drawdown_pct         — current drawdown from peak (negative fraction)
+        drawdown_limit_pct   — configured max drawdown limit (e.g. -0.10)
+        drawdown_breached    — True when max drawdown has been exceeded
+        kill_switch_active   — whether the kill switch is currently on
+        kill_switch_reason   — reason string or null
+        pnl_source           — data origin: "ib" | "sqlite" | "memory"
+        current_balance      — current account balance in dollars
+        starting_balance     — balance at start of today in dollars
+        orders_last_minute   — number of orders placed in the last 60 seconds
+        all_clear            — True when no circuit breaker has tripped
+    """
+    if not safety_layer:
+        raise HTTPException(500, "Safety layer not initialized")
+    return safety_layer.check_circuit_breakers()
+
+
+@app.get("/safety/config", response_model=SafetyConfigResponse)
+async def get_safety_config():
+    """
+    Return current risk parameter configuration (read-only).
+    Sourced from settings singleton — reflects .env values at startup.
+    """
+    return {
+        "max_daily_loss_pct": settings.MAX_DAILY_LOSS_PCT,
+        "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
+        "max_position_size_pct": settings.MAX_POSITION_SIZE_PCT,
+        "max_contracts_per_instrument": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+        "max_overnight_contracts": settings.MAX_OVERNIGHT_CONTRACTS,
+        "max_orders_per_minute": settings.MAX_ORDERS_PER_MINUTE,
+        "max_single_order_value": settings.MAX_SINGLE_ORDER_VALUE,
+        "max_margin_utilization": settings.MAX_MARGIN_UTILIZATION,
+        "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
+        "require_human_approval": settings.REQUIRE_HUMAN_APPROVAL,
+        "ibkr_host": settings.IBKR_HOST,
+        "ibkr_port": settings.IBKR_PORT,
+        "ibkr_client_id": settings.IBKR_CLIENT_ID,
+        "ibkr_paper_mode": settings.IBKR_PAPER_MODE,
+    }
+
+
+@app.post("/safety/reset-daily-pnl", response_model=dict)
+async def reset_daily_pnl():
+    """Reset the in-memory daily P&L counter (useful for testing)."""
+    if not safety_layer:
+        raise HTTPException(500, "Safety layer not initialized")
+    safety_layer._daily_realized_pnl = 0.0
+    safety_layer._daily_order_count = 0
+    return {"status": "daily_pnl_reset", "message": "Daily P&L counter cleared"}
 
 
 @app.get("/safety/loss-tracker")
@@ -3561,6 +3849,39 @@ async def run_pipeline(req: PipelineRequest):
         except Exception as exc:
             logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
 
+    # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
+    if not settings.LIVE_TRADING_ENABLED and final_action != "hold" and paper_tracker:
+        try:
+            trade_dec = result.get("trade_decision") or {}
+            # Prefer limit_price, fall back to stop_price, then last known price from indicators
+            entry_price = (
+                trade_dec.get("limit_price")
+                or trade_dec.get("stop_price")
+                or (result.get("technical", {}) or {}).get("current_price")
+            )
+            final_qty = result.get("final_quantity", 1) or 1
+
+            if entry_price:
+                trade_id = paper_tracker.open_trade(
+                    symbol=req.symbol,
+                    action=final_action,
+                    quantity=float(final_qty),
+                    price=float(entry_price),
+                    notes=result.get("summary", ""),
+                )
+                result["paper_trade_id"] = trade_id
+                logger.info(
+                    f"[PAPER] Auto-logged {req.symbol} {final_action.upper()} "
+                    f"qty={final_qty} @ {entry_price:.4f}  id={trade_id[:8]}"
+                )
+            else:
+                logger.warning(
+                    f"[PAPER] Skipped auto-log for {req.symbol} {final_action.upper()} "
+                    f"— could not determine entry price from pipeline result"
+                )
+        except Exception as exc:
+            logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
+
     # Send WhatsApp alert for non-HOLD signals
     from notifications.whatsapp import get_notifier
 
@@ -3777,6 +4098,62 @@ async def check_vix_alert():
 
         vix = VIXOverlay(data_manager=data_manager)
         state = await vix.get_state_async()
+
+        thresholds = [
+            (40, "EXTREME VIX", "Consider halting all trading"),
+            (30, "ELEVATED VIX", "Reduce position size, widen stops"),
+            (20, "CAUTION VIX", "Monitor closely, use regime filter"),
+        ]
+
+        alert_level = None
+        guidance = None
+        for level, label, advice in thresholds:
+            if state.vix_value >= level:
+                alert_level = label
+                guidance = advice
+                break
+
+        if alert_level is None:
+            return {
+                "sent": False,
+                "vix": state.vix_value,
+                "regime": state.regime,
+                "reason": "VIX normal — no alert needed",
+            }
+
+        msg = (
+            "JARVIS TRADER - VIX Alert\n\n"
+            f"VIX: {state.vix_value:.1f} - {alert_level}\n"
+            f"Classification: {state.classification}\n\n"
+            f"{guidance}\n\n"
+            f"Source: {state.source}"
+        )
+
+        success = await send_whatsapp_message(msg)
+        return {
+            "sent": success,
+            "vix": state.vix_value,
+            "regime": state.regime,
+            "alert_level": alert_level,
+            "guidance": guidance,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────
+
+
+@app.post("/notifications/vix-alert-check")
+async def check_vix_alert():
+    """Check VIX and send WhatsApp alert if above key thresholds."""
+    try:
+        from analytics.vix_overlay import VIXOverlay
+        from notifications.whatsapp import send_whatsapp_message
+
+        vix = VIXOverlay()
+        state = vix.get_state()
 
         thresholds = [
             (40, "EXTREME VIX", "Consider halting all trading"),
