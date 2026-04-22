@@ -1,0 +1,205 @@
+=== JARVIS MARKET OPEN SCAN ===
+SCAN TIME: 2026-04-22T13:40:16.724874+00:00
+
+--- HEALTH CHECK ---
+{
+  "status": "ok",
+  "version": "1.1.0",
+  "timestamp": "2026-04-22T13:40:18.812438+00:00",
+  "live_trading": false,
+  "kill_switch_active": false,
+  "paper_mode": true,
+  "database": "connected",
+  "ibkr_connected": true,
+  "schwab_connected": false,
+  "uptime_seconds": 16834.855348,
+  "paper_trading": null,
+  "cache": null,
+  "llm_available": true,
+  "llm_path_healthy": true,
+  "llm_path_details": null,
+  "tradingview_mcp_healthy": true,
+  "tradingview_mcp_details": null
+}
+
+--- WATCHLIST SCAN ---
+{
+  "error": 401,
+  "body": "{\"detail\":\"Invalid or missing API key\"}"
+}
+
+--- MCL PIPELINE RUN ---
+{
+  "error": 401,
+  "body": "{\"detail\":\"Invalid or missing API key\"}"
+}
+
+--- POLLING PROGRESS (MCL) ---
+  [0s] status=unknown progress=0
+  [5s] status=unknown progress=0
+  [10s] status=unknown progress=0
+  [15s] status=unknown progress=0
+  [20s] status=unknown progress=0
+  [25s] status=unknown progress=0
+  [30s] status=unknown progress=0
+  [35s] status=unknown progress=0
+  [40s] status=unknown progress=0
+  [45s] status=unknown progress=0
+  [50s] status=unknown progress=0
+  [55s] status=unknown progress=0
+  [60s] status=unknown progress=0
+  [65s] status=unknown progress=0
+  [70s] status=unknown progress=0
+  [75s] status=unknown progress=0
+  [80s] status=unknown progress=0
+  [85s] status=unknown progress=0
+  [90s] status=unknown progress=0
+  [95s] status=unknown progress=0
+  [100s] status=unknown progress=0
+  [105s] status=unknown progress=0
+  [110s] status=unknown progress=0
+  [115s] status=unknown progress=0
+--- MCL RECENT DECISIONS ---
+{
+  "error": 401,
+  "body": "{\"detail\":\"Invalid or missing API key\"}"
+}
+
+--- MNQ PIPELINE RUN ---
+{
+  "error": 401,
+  "body": "{\"detail\":\"Invalid or missing API key\"}"
+}
+
+--- POLLING PROGRESS (MNQ) ---
+  [0s] status=unknown progress=0
+  [5s] status=unknown progress=0
+  [10s] status=unknown progress=0
+  [15s] status=unknown progress=0
+  [20s] status=unknown progress=0
+  [25s] status=unknown progress=0
+  [30s] status=unknown progress=0
+  [35s] status=unknown progress=0
+  [40s] status=unknown progress=0
+  [45s] status=unknown progress=0
+  [50s] status=unknown progress=0
+  [55s] status=unknown progress=0
+  [60s] status=unknown progress=0
+  [65s] status=unknown progress=0
+  [70s] status=unknown progress=0
+  [75s] status=unknown progress=0
+  [80s] status=unknown progress=0
+  [85s] status=unknown progress=0
+  [90s] status=unknown progress=0
+  [95s] status=unknown progress=0
+  [100s] status=unknown progress=0
+  [105s] status=unknown progress=0
+  [110s] status=unknown progress=0
+  [115s] status=unknown progress=0
+--- MNQ RECENT DECISIONS ---
+{
+  "error": 401,
+  "body": "{\"detail\":\"Invalid or missing API key\"}"
+}
+
+--- FULL HEALTH ---
+{
+  "overall": "healthy",
+  "timestamp": "2026-04-22T13:46:09.555749+00:00",
+  "uptime_seconds": 17185.598659,
+  "version": "1.1.0",
+  "phase": "paper_trading",
+  "subsystems": {
+    "database": {
+      "status": "ok",
+      "details": {
+        "db_path": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\data\\jarvis_trader.db",
+        "schema_version": 22,
+        "row_counts": {
+          "paper_trades": 17,
+          "decisions": 2985,
+          "daily_pnl": 13,
+          "positions": 0,
+          "settings": 0,
+          "trade_journal": 0,
+          "pipeline_runs": 2904
+        }
+      },
+      "error": null,
+      "kill_switch_active": null,
+      "all_clear": null,
+      "open_positions": null,
+      "daily_pnl": null
+    },
+    "safety_layer": {
+      "status": "ok",
+      "details": null,
+      "error": null,
+      "kill_switch_active": false,
+      "all_clear": null,
+      "open_positions": null,
+      "daily_pnl": null
+    },
+    "ib_gateway": {
+      "status": "connected",
+      "details": null,
+      "error": null,
+      "kill_switch_active": null,
+      "all_clear": null,
+      "open_positions": null,
+      "daily_pnl": null
+    },
+    "circuit_breakers": {
+      "status": "ok",
+      "details": {
+        "daily_pnl": 180.0,
+        "daily_limit": -206.6,
+        "daily_pnl_pct": 0.017424975798644726,
+        "daily_limit_pct": -0.02,
+        "daily_limit_breached": false,
+        "drawdown_pct": 0.09702797202797203,
+        "drawdown_limit_pct": -0.2,
+        "drawdown_breached": false,
+        "kill_switch_active": false,
+        "kill_switch_reason": null
+      },
+      "error": null,
+      "kill_switch_active": null,
+      "all_clear": null,
+      "open_positions": null,
+      "daily_pnl": null
+    },
+    "portfolio": {
+      "status": "ok",
+      "details": null,
+      "error": null,
+      "kill_switch_active": null,
+      "all_clear": null,
+      "open_positions": 1,
+      "daily_pnl": null
+    },
+    "pnl_monitor": {
+      "status": "ok",
+      "details": null,
+      "error": null,
+      "kill_switch_active": null,
+      "all_clear": null,
+      "open_positions": null,
+      "daily_pnl": 180.0
+    }
+  }
+}
+
+--- STATUS ---
+{
+  "error": 401,
+  "body": "{\"detail\":\"Invalid or missing API key\"}"
+}
+
+--- LOSS TRACKER ---
+{
+  "error": 401,
+  "body": "{\"detail\":\"Invalid or missing API key\"}"
+}
+
+=== SCAN COMPLETE ===
