@@ -1,0 +1,22 @@
+[Unit]
+Description=JARVIS API Bridge — Strategy C+ Data Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=user
+WorkingDirectory=/home/user/workspace/jarvis_api
+ExecStart=/usr/local/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8020 --workers 1
+Restart=always
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=5
+StandardOutput=append:/home/user/workspace/jarvis_api/logs/jarvis_api.log
+StandardError=append:/home/user/workspace/jarvis_api/logs/jarvis_api_err.log
+Environment=PYTHONUNBUFFERED=1
+KillMode=mixed
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
