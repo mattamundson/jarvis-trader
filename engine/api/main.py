@@ -687,6 +687,64 @@ def get_commentary():
 
 
 # ─────────────────────────────────────────────
+# COHEN v3 EMA Trend Filter
+# ─────────────────────────────────────────────
+
+@app.get("/api/cohen_ema")
+def get_cohen_ema():
+    """Returns EMA(50) vs EMA(200) trend state for COHEN v3 instruments using daily bars."""
+    cached = _cache_get("cohen_ema", ttl=300)  # 5 min cache
+    if cached:
+        return cached
+
+    instruments = {
+        "MES": "ES=F",   # S&P 500 futures proxy
+        "MNQ": "NQ=F",   # Nasdaq futures proxy
+        "MCL": "CL=F",   # Crude oil futures proxy
+    }
+
+    result = {}
+    try:
+        import yfinance as yf
+        for label, ticker in instruments.items():
+            try:
+                df = yf.download(ticker, period="1y", interval="1d", progress=False, auto_adjust=True)
+                if df.empty or len(df) < 60:
+                    result[label] = {"trend": "UNKNOWN", "ema50": None, "ema200": None, "gap_pct": None}
+                    continue
+                close = df["Close"].squeeze()
+                ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1])
+                ema200 = float(close.ewm(span=200, adjust=False).mean().iloc[-1]) if len(close) >= 200 else float(close.mean())
+                gap_pct = round((ema50 - ema200) / ema200 * 100, 3) if ema200 else 0.0
+                if gap_pct > 0.2:
+                    trend = "UPTREND"
+                    trend_val = 1
+                elif gap_pct < -0.2:
+                    trend = "DOWNTREND"
+                    trend_val = -1
+                else:
+                    trend = "NEUTRAL"
+                    trend_val = 0
+                result[label] = {
+                    "ticker": ticker,
+                    "trend": trend,
+                    "trend_val": trend_val,
+                    "ema50": round(ema50, 2),
+                    "ema200": round(ema200, 2),
+                    "gap_pct": gap_pct,
+                    "trade_gate": "LONG ALLOWED" if trend_val == 1 else ("SHORT ONLY" if trend_val == -1 else "NO TRADE"),
+                }
+            except Exception as e:
+                result[label] = {"trend": "ERROR", "error": str(e)}
+    except Exception as e:
+        return {"error": str(e), "timestamp": _now_iso()}
+
+    payload = {"instruments": result, "timestamp": _now_iso(), "ema_periods": {"fast": 50, "slow": 200}}
+    _cache_set("cohen_ema", payload)
+    return payload
+
+
+# ─────────────────────────────────────────────
 # Startup
 # ─────────────────────────────────────────────
 
