@@ -26,6 +26,102 @@ Today resolved a 12-day outage: MES produced 0 non-HOLD decisions 2026-04-10 →
 
 ---
 
+## 0.2 Deployment Verification Findings — 2026-04-22 PM
+
+A parallel Claude Code session ran the `compound-engineering:deployment-verification-agent` against the "MES paper → 1-contract live" scenario and surfaced blockers the Q2 plan (written at 11:17 CT) had not yet captured. Severity tags use the agent's convention: **HB** = Hard Blocker (must fix before any live capital), **OU** = Operational Unknown (must investigate), **AF** = Ambiguous Flag (intent-clarification needed).
+
+### HB-1 — No broker-side STP orders in the codebase (HIGHEST SEVERITY)
+
+`grep -rn "STP" engine/execution/ engine/agents/ engine/trader/ engine/pipeline/` returns **zero matches**. The trader agent computes `stop_price` and writes it to `paper_trades.stop_loss` for display; nothing submits it to IBKR.
+
+- `engine/backtest/trend_signals.py:10-12` docstring explicitly says the "trailing stop" is static at entry bar — full trailing requires Backtester enhancement that was never done.
+- `engine/execution/ib_gateway.py:510-518` supports `order_type="STP"` via `place_paper_order()` but no caller invokes that path.
+- **Consequence**: any engine crash or network disconnect mid-trade = position runs naked until manually flattened. With pm2 restart count at 558 (see OU-1), this is not hypothetical.
+- **Fix sketch**: after entry fill confirmed, submit child STP via `place_paper_order(order_type="STP", aux_price=stop_price, parent_order_id=<entry_id>)`. Must land on IBKR server-side, not in Python process state.
+
+**Files to touch**: `engine/execution/order_router.py`, `engine/execution/ib_gateway.py`, entry-confirm callback in `engine/agents/pipeline.py`. Tracked as new **Q2-P2.7**.
+
+### HB-2 — Position-size gate rejects every MES order
+
+`engine/risk/safety_layer.py:608-613`:
+
+```python
+estimated_value = quantity * estimated_price
+if estimated_value / portfolio_equity > MAX_POSITION_SIZE_PCT:
+    return False, "Position exceeds max size..."
+```
+
+- `MAX_POSITION_SIZE_PCT = 0.10`
+- 1 MES contract @ ~$7,130 × $5 multiplier = **~$35,650 notional**
+- Against `INITIAL_CAPITAL=10000` → 356% of equity → **reject**
+- `_check_order_value_limits()` has no futures-specific branch (treats notional as equity exposure, not margin requirement).
+
+**Fix options** (pick one or both):
+- (a) Call `sync_from_broker()` on startup so `portfolio_equity` reflects real IBKR paper equity (~$1M typical on a paper account), not `.env` initial capital.
+- (b) Add `if symbol in FUTURES_SYMBOLS: use margin_requirement(symbol)` branch — ~$1,500 margin vs $35K notional.
+- Recommendation: **(a) first (smaller change), then (b) as defense-in-depth**.
+
+Tracked as new **Q2-P2.8**.
+
+### HB-3 — Scanner disabled since 2026-04-10, paper-trade accumulation halted
+
+`engine/.env` line 107: `WATCHLIST_SCAN_ENABLED=false`. Set after the 2026-04-10 data contamination incident. Parallel-session audit (commits `be6927d` + `94c4793`) confirms **all 5 guards landed** (kill switch, hard cap, already-open position guard, price sanity, paper-runner adapter) and **42 regression tests green**. Safe to re-enable.
+
+- **Blocker**: permission hook rejected `proceed` as insufficient authorization for flipping the flag — it reads the flag-flip as "disabling a deliberately-set safety guard." Requires unambiguous user sentence such as: *"Flip WATCHLIST_SCAN_ENABLED to true and restart the engine."*
+- **Consequence of delay**: MES has only 3 closed paper trades since 2026-04-10, clustered on one contaminated day with $0 P&L. Cannot validate strategy behavior under current regime without fresh accumulation.
+
+Tracked as new **Q2-P1.11**.
+
+### OU-1 — pm2 jarvis-engine restart count 558 in 90 minutes
+
+- `pm2 describe jarvis-engine` shows restart count climbed from 497 to 558 during a 90-minute window today with no operator intervention.
+- Cause unknown — possibly parallel-session iterations on TV-CDP fixes (`0dbcc4e` + `1c4b11b`), or a genuine crash loop.
+- **Consequence**: restart storms + no broker-side stops = live-flip creates exposure to naked positions during every restart. Must RCA before D5 (live cutover).
+- **Investigation**: `pm2 logs jarvis-engine --lines 2000 --nostream | grep -Ei "(error|disconnect|kill|traceback)"` + `pm2 describe jarvis-engine | grep -E "(restart|unstable)"`.
+
+Tracked as new **Q2-P1.10**.
+
+### AF-1 — Overnight-cutoff hour 15 CT vs RTH close 16:00 CT
+
+- Somewhere in the trade/risk layer (exact constant still to be located), overnight flatten triggers at 15:00 CT.
+- RTH futures session closes at 16:00 CT (CME equity index spec).
+- `SESSION_FLATTEN_TIME_ET = "15:45"` exists elsewhere = 14:45 CT — inconsistent with the 15:00 CT cutoff.
+- **Question**: is 15:00 CT an intentional 1-hour early-flatten buffer, or a bug? Intent memo needed before D5.
+
+Tracked as new **Q2-P2.9**.
+
+### Secondary flags (informational, no blocker)
+
+- Anomalous MES paper trade row at `2026-04-22T15:52:07 UTC` appeared with scanner OFF — either blocklist isn't fully wired for `paper_trades` inserts, `jarvis-paper-runner` has its own path, or an endpoint injected it. Trace before trusting scanner-off as ground truth.
+- MCL has 13 paper trades despite `DO_NOT_TRADE_SYMBOLS` frozenset — may be legitimate shadow-mode replay, but audit paths before live.
+- `REQUIRE_HUMAN_APPROVAL=True` + `LIVE_TRADING_ENABLED=True` is an untested combined state; no approval-surface endpoint exists. At D5, must pick autonomous OR build approval first.
+- Gate v2 verdict staleness: MES PASS is 0.95d old; cron runs Saturday 01:00 CT. Two missed Saturdays → stale → MES auto-blocked. Monitor.
+
+---
+
+## 0.3 Decisions Log — 2026-04-22 (for user review)
+
+Every decision made today on the trading path, with authorization trail. Open items flagged for user review.
+
+| # | Decision | Status | Committed? | Needs user review? |
+|---|---|---|---|---|
+| L1 | Adopt the 10-week Q2 roadmap (1 live MES contract by 2026-06-30) | ACCEPTED (plan file approved) | Plan file at `.claude/plans/so-what-tasks-are-velvety-starlight.md` | No |
+| L2 | Archive 3 failed strategies (ADX-EMA, ATR-channel, RSI-breakout) via STATUS headers rather than file moves — preserves imports in `strategy_comparison.py` + 3 test files | IMPLEMENTED | ✅ `6808b65` | No (but flag if you want physical moves later) |
+| L3 | Add `GET /paper/validation/counts` endpoint returning display string `"Paper trades — MES: X/30 | MCL: Y/60 (blocked) | MNQ: Z/60 (blocked)"` — closed trades only (`exit_time IS NOT NULL`) | IMPLEMENTED | ✅ `6808b65` | No |
+| L4 | Push today's 2 TV fix commits (`0dbcc4e` shim paths + `1c4b11b` TTL cache) to origin | IMPLEMENTED | ✅ pushed `1c4b11b..6808b65` | No |
+| L5 | Keep `WATCHLIST_SCAN_ENABLED=false` until user explicitly authorizes flip via unambiguous sentence | HOLDING | N/A | **YES — needs your explicit sentence to flip** |
+| L6 | Extend roadmap horizon: added Phase 8 (2027 consolidation) + Phase 9 (2027+ directional) | IMPLEMENTED | ✅ `1cf7be5` | No (review if you disagree) |
+| L7 | Treat 60-trade / 30-day validation threshold as relaxation candidate → Q2-D1 | OPEN | Logged as Q2-D1 | **YES — Q2 Week 3 decision** |
+| L8 | Treat futures position-sizing as blocker → Q2-D2 resolution options (a) IBKR sync, (b) futures branch, (c) both | OPEN | Logged as Q2-D2 + Q2-P2.8 | **YES — Q2 Week 3-4 decision** |
+| L9 | MCL Q2 participation: LEANING NO (gate v2 FAIL both paths) | OPEN → preliminary NO | Logged as Q2-D3 | **YES — Q2 Week 5 final call** |
+| L10 | MNQ Q2 participation: LEANING DEFERRED (edge real, needs $50K re-run) | OPEN | Logged as Q2-D4 | **YES — Q2 Week 5 final call** |
+| L11 | MES paper → live cutover gate: 6 weeks forward-paper + HB-1/HB-2 cleared + OU-1 root-caused + AF-1 clarified | OPEN | Logged as Q2-D5 | **YES — Q2 Week 7 Go/No-Go** |
+| L12 | Do NOT move failed-strategy `.py` files to `archive/failed/` — would break imports in `strategy_comparison.py` + 3 test files | IMPLEMENTED (STATUS headers instead) | ✅ `6808b65` | No |
+
+**Open decisions to review before acting**: L5 (scanner flip), L7/L8/L9/L10/L11 (Q2-D1..D5 as they come due). Everything else is locked in.
+
+---
+
 ## 0. Vision
 
 Transform JARVIS TRADER from a **single-strategy, single-instrument, paper-only** system into a **multi-strategy, multi-instrument, semi-autonomous** trading platform with:
@@ -114,6 +210,11 @@ Current memory notes already analyzed what works per symbol:
 | **P1.7** Consolidate duplicate routes (main.py → routers/) | Discovered during P0.3: `main.py` has ~50 route handlers that duplicate `routers/*` definitions. FastAPI registers main.py first, so router edits are silently ignored. Move all handlers out of `main.py`, leave only `app.include_router(...)`. Audit OpenAPI against pre-migration snapshot to confirm zero behavioral drift. | `engine/main.py`, `engine/routers/*.py` | L |
 | **P1.8** Decouple scanner from uvicorn lifespan | Current state: lifespan runs ~3-4 min of pre-yield setup (RL model load, scheduler registration, SDK pipeline init) before uvicorn binds port 8010. Task 22's 20s TV timeout × 3-symbol chart-lock serialization made this worse — one first-pass scan can now consume up to 60s inside lifespan. Symptom: `/health` unreachable for 3-4 min after every restart; `restart_engine.ps1` prints ERROR on every restart even though the engine is healthy seconds later. Fix: move non-critical init (first scanner pass, cost-tracker warmup, MES forward-recorder schema ensure) to `asyncio.create_task` AFTER `yield`, so uvicorn binds first and heavy init runs in the background. Uvicorn should bind within ~10s of process start. Memory `feedback_restart_engine_ps1_slow_startup.md` documents the operator impact. | `engine/main.py:333-2018` (lifespan) | M |
 | **P1.9** `/portfolio/summary` perf: cache or deflake `get_current_price` | Handler at `portfolio_router.py:147` awaits `_data_manager.get_current_price(sym)` per open position. Since TV became Tier 0 (P0.2), each call routes through the TV chart-lock + 11-20s symbol-switch subprocess. Observed latency: 24-26s consistently even with a single open position. Cascading impact: `test_portfolio_endpoint` had to bump urllib timeout 5s → 60s (commit `f252756`); `/portfolio/summary` is the default live-engine probe in `live_engine_probe.py`, so every test run penalizes startup. Fix options: (a) 30s TTL cache on current_price per symbol, (b) prefer IBKR ticker over TV for ticker-only reads, (c) `asyncio.wait_for` with 3s timeout + stale-price fallback. Pick (b) as primary; IBKR is already connected on port 4002 and delivers ticks in <100ms. | `engine/routers/portfolio_router.py`, `engine/data/market_data.py` (ticker vs bars split) | S |
+| **Q2-P1.10** pm2 restart-count RCA (OU-1) | Diagnose why `jarvis-engine` accumulated 558 restarts in 90 min today. Run `pm2 logs jarvis-engine --lines 2000 --nostream` with grep filters on error/disconnect/kill/traceback. Confirm root cause before D5. Must be a clean dry run (≥24h zero unexpected restarts) before live flip. | pm2 logs, `engine/main.py` lifespan, orphan-PID audit | S |
+| **Q2-P1.11** Re-enable `WATCHLIST_SCAN_ENABLED` (HB-3) | Flip `engine/.env` line 107 `false → true`, restart engine. Already-vetted: all 5 contamination guards landed in `be6927d`, Polygon futures blocklist in `94c4793`, 42 regression tests green. **Blocked on user explicit sentence** (auto-mode-classifier hook rejected generic `proceed`). Post-flip: observe paper_trades accumulation for 5-10 days, expect 2-4 MES/week at SMA(50,200) on 1h cadence. | `engine/.env:107` | XS (1 line flip) |
+| **Q2-P2.7** Wire broker-side STP child orders (HB-1) | After entry fill confirmed on IBKR, submit child STP order via `place_paper_order(order_type="STP", aux_price=stop_price, parent_order_id=<entry_id>)`. Stop lives broker-side, not in Python process. Add emergency `/safety/flatten-all` endpoint (kill switch stops new orders but doesn't close open positions). Regression tests on STP routing + parent/child linkage. | `engine/execution/order_router.py`, `engine/execution/ib_gateway.py:510-518`, new endpoint in `engine/routers/safety_router.py`, entry-confirm callback in `engine/agents/pipeline.py` | L |
+| **Q2-P2.8** Futures position-size math (HB-2) | `safety_layer.py:608` rejects 356%-of-equity MES notional against `INITIAL_CAPITAL=10000`. Fix: (a) call `sync_from_broker()` at startup so `portfolio_equity` reflects real IBKR paper equity (~$1M), (b) add `if symbol in FUTURES_SYMBOLS: use margin_requirement(symbol)` branch in `_check_order_value_limits`. Ship (a) first, (b) as defense-in-depth. | `engine/risk/safety_layer.py:608-613`, `engine/execution/ib_gateway.sync_from_broker`, `engine/risk/futures_margin.py` (new?) | M |
+| **Q2-P2.9** Clarify overnight-cutoff intent (AF-1) | Locate the 15:00 CT cutoff constant (likely in risk layer). Compare against `SESSION_FLATTEN_TIME_ET = "15:45"` (= 14:45 CT). Decide: (a) 15:00 CT is intentional buffer → document reason in code comment + decision memo; (b) it's a bug vs RTH 16:00 CT close → align to real RTH close or 15:45 CT scheme. Either way, write one-paragraph decision memo before D5. | Grep `15:00`/`cutoff` in `engine/risk/`, decision memo in `docs/decisions/` | S |
 
 **Exit criteria:**
 - [ ] 3 strategy families live OR explicitly deferred per-symbol
@@ -369,7 +470,9 @@ Done in 1 week → full Phase 1 unblocked.
 | Q2-D2 | Futures position-sizing policy (margin-based vs. raise `MAX_POSITION_SIZE_PCT` vs. futures-specific bypass) | Q2 Week 3-4 | 3 | pending |
 | Q2-D3 | MCL Q2 participation yes/no | Q2 Week 5 | 3 | leaning NO (gate v2 FAIL) |
 | Q2-D4 | MNQ Q2 participation yes/no | Q2 Week 5 | 3 | leaning NO or re-run-at-$50K |
-| Q2-D5 | MES paper → live cutover Go/No-Go | Q2 Week 7 | 3 | gated on 6 weeks forward-paper health |
+| Q2-D5 | MES paper → live cutover Go/No-Go | Q2 Week 7 | 3 | gated on 6 weeks forward-paper health + HB-1/HB-2 cleared + OU-1 root-caused + AF-1 clarified |
+| Q2-D6 | Broker-side STP wiring pattern (parent/child OCA vs bracket) | Q2 Week 3 | 3 | pending — implementation choice for Q2-P2.7 |
+| Q2-D7 | Futures sizing fix path: (a) sync_from_broker only, (b) futures-margin branch only, (c) both | Q2 Week 3-4 | 3 | pending — implementation choice for Q2-P2.8 |
 
 Each of these gets its own decision memo under `docs/decisions/` when the time arrives.
 
@@ -434,6 +537,6 @@ Checklist stays here. Monthly self-audit marks progress.
 ---
 
 **Next review:** 2026-05-22 (1 month from today's update)
-**Status:** v1.1 — Phase 0 closed 2026-04-22. Phase 1 mid-flight with MCL/MNQ still blocklisted pending gate v2 re-runs. D1 resolved (Phase 3-FULL live). Q2-D1..D5 added from tactical plan. Phase 8 (2027) vision appended.
+**Status:** v1.2 — Phase 0 closed 2026-04-22. Phase 1 mid-flight with MCL/MNQ still blocklisted pending gate v2 re-runs. D1 resolved (Phase 3-FULL live). Q2-D1..D5 from tactical plan + Q2-D6/D7 from deployment-verification findings. Phase 8 (2027) vision retained. Added sections 0.2 (Deployment Verification Findings: HB-1/HB-2/HB-3/OU-1/AF-1) + 0.3 (Decisions Log). Extended Phase 1 table with Q2-P1.10 (pm2 RCA), Q2-P1.11 (scanner re-enable, user-blocked), Q2-P2.7 (broker-side STP), Q2-P2.8 (futures sizing), Q2-P2.9 (overnight-cutoff intent).
 
-**Update cadence from here:** weekly closure memos (every Sunday 17:00 CT per Q2 plan verification block) augment this doc without replacing it; monthly refresh of the banner section.
+**Update cadence from here:** weekly closure memos (every Sunday 17:00 CT per Q2 plan verification block) augment this doc without replacing it; monthly refresh of the banner section. Companion HTML: `docs/ROADMAP_2026-Q2-Q4.html`.
