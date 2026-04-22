@@ -3557,23 +3557,6 @@ async def run_pipeline(req: PipelineRequest):
         except Exception as exc:
             logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
 
-    # Surface forward-recorder feedback (MES-only; observational)
-    if req.symbol.upper() == "MES":
-        try:
-            from experiments.feedback_aggregator import (
-                get_last_session_hypothesis,
-                get_recent_hit_rate,
-            )
-            hit_rate, samples = get_recent_hit_rate()
-            last = get_last_session_hypothesis()
-            result["forward_recorder"] = {
-                "hit_rate_10d": hit_rate,
-                "samples": samples,
-                "last_hypothesis": last,
-            }
-        except Exception as exc:
-            logger.warning("[forward_recorder] aggregator failed: %s", exc)
-
     # Send WhatsApp alert for non-HOLD signals
     from notifications.whatsapp import get_notifier
 
