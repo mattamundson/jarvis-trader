@@ -71,7 +71,8 @@ def _load_params(results_file: Path, rank: int) -> dict:
 def main():
     ap = argparse.ArgumentParser(description="Cost sensitivity sweep (Tier A A5)")
     ap.add_argument("--symbol", required=True)
-    ap.add_argument("--family", required=True, choices=["trend", "meanrev", "breakout"],
+    ap.add_argument("--family", required=True,
+                    choices=["trend", "meanrev", "breakout", "meanrev_regime"],
                     help="Strategy family (dispatches to the matching research _run)")
     ap.add_argument("--rank", type=int, default=1,
                     help="Which rank from the research results file to sweep")
@@ -97,7 +98,7 @@ def main():
         def runner(df, params, spec):
             return _run_meanrev(df, params["bb_period"], params["bb_std"],
                                 params["atr_stop_mult"], params["max_hold_bars"], spec)
-    else:  # breakout
+    elif args.family == "breakout":
         from scripts.mnq_breakout_search import _run as _run_breakout
         default_rf = _ENGINE / "scripts" / f"{symbol.lower()}_breakout_search_results.json"
         def runner(df, params, spec):
@@ -108,6 +109,23 @@ def main():
                 vol_mult=params.get("vol_mult", 1.0),
                 stop_atr_mult=params.get("stop_atr_mult", 2.0),
                 short_only=params.get("short_only", True),
+                spec=spec,
+            )
+    else:  # meanrev_regime — Bollinger+RSI w/ regime filter (MCL bbwidth variant)
+        from scripts.mcl_meanrev_regime_search import _run as _run_regime
+        default_rf = _ENGINE / "scripts" / \
+            f"{symbol.lower()}_meanrev_regime_search_results.json"
+        def runner(df, params, spec):
+            return _run_regime(
+                df,
+                bb_period=params["bb_period"],
+                bb_std=params["bb_std"],
+                rsi_long=params.get("rsi_long", 30.0),
+                rsi_short=params.get("rsi_short", 70.0),
+                stop_atr_mult=params["stop_atr_mult"],
+                regime_filter_mode=params.get("regime_filter_mode", "bbwidth"),
+                regime_filter_bbwidth_pct=params.get("regime_filter_bbwidth_pct", 40.0),
+                regime_filter_adx_threshold=params.get("regime_filter_adx_threshold", 20.0),
                 spec=spec,
             )
 
