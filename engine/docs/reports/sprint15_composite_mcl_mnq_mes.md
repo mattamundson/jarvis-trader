@@ -1,7 +1,7 @@
 # Sprint 15: Composite Backtest Report (MCL, MNQ, MES)
 
-**Date**: 2026-04-03 09:05:41
-**Period**: 2024-06-01 → 2026-03-31
+**Date**: 2026-04-22 20:56:20
+**Period**: 2024-01-01 → 2026-03-28
 **Interval**: 1h
 
 ## Overview
@@ -13,60 +13,52 @@ This report presents walk-forward efficiency (WFE) for the composite strategy
 
 ### MCL
 
-**WFE**: 0.82
+**WFE**: 0.00
 **Threshold**: 0.40
-**Recommendation**: ENABLE_COMPOSITE
+**Recommendation**: BELOW_THRESHOLD
 
 | Metric | Value |
 |--------|-------|
-| Profit Factor | 2.10 |
-| Sharpe Ratio | 2.50 |
-| Win Rate | 55.0% |
-| Total Trades | 65 |
-| Max Drawdown | 8.0% |
+| Profit Factor | 0.21 |
+| Sharpe Ratio | -11.94 |
+| Win Rate | 25.0% |
+| Total Trades | 8 |
+| Max Drawdown | 5.1% |
 
 ### MNQ
 
-**WFE**: 0.57
-**Threshold**: 0.30
-**Recommendation**: ENABLE_COMPOSITE
+**WFE**: 0.00
+**Threshold**: 0.40
+**Recommendation**: BELOW_THRESHOLD
 
 | Metric | Value |
 |--------|-------|
-| Profit Factor | 1.80 |
-| Sharpe Ratio | 2.00 |
-| Win Rate | 52.0% |
-| Total Trades | 80 |
-| Max Drawdown | 10.0% |
+| Profit Factor | 0.30 |
+| Sharpe Ratio | -8.39 |
+| Win Rate | 16.7% |
+| Total Trades | 12 |
+| Max Drawdown | 5.8% |
 
 ### MES
 
-**Status**: ERROR — data load or backtest failed
+**WFE**: -96.55
+**Threshold**: 0.40
+**Recommendation**: BELOW_THRESHOLD
+
+| Metric | Value |
+|--------|-------|
+| Profit Factor | 1.06 |
+| Sharpe Ratio | 0.43 |
+| Win Rate | 29.6% |
+| Total Trades | 27 |
+| Max Drawdown | 5.1% |
 
 ## Comparison Table
 
 | Symbol | WFE | Threshold | Status | Recommendation |
 |--------|-----|-----------|--------|-----------------|
-| MCL | 0.82 | 0.40 | OK | ENABLE_COMPOSITE |
-| MNQ | 0.57 | 0.30 | OK | ENABLE_COMPOSITE |
-| MES | ERROR | - | ERROR | CHECK_DATA |
+| MCL | 0.00 | 0.40 | OK | BELOW_THRESHOLD |
+| MNQ | 0.00 | 0.40 | OK | BELOW_THRESHOLD |
+| MES | -96.55 | 0.40 | OK | BELOW_THRESHOLD |
 
 ## Recommendations
-
-### MCL — ENABLE_COMPOSITE
-
-WFE of 0.82 exceeds threshold of 0.40.
-To enable composite for trading, update paper_config.py:
-
-```python
-MCL_PAPER_CONFIG['composite'] = True
-```
-
-### MNQ — ENABLE_COMPOSITE
-
-WFE of 0.57 exceeds threshold of 0.30.
-To enable composite for trading, update paper_config.py:
-
-```python
-MNQ_PAPER_CONFIG['composite'] = True
-```
