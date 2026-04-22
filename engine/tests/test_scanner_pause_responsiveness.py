@@ -170,3 +170,74 @@ async def test_chunked_sleep_pattern_in_run_loop_source() -> None:
     assert "min(60, _sleep_remaining)" in source, (
         "Scanner _run must chunk the inter-scan sleep into 1-minute slices."
     )
+
+
+# ── P1.8 partial: initial-delay mitigation ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_initial_delay_defers_first_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    With initial_delay_seconds=X, the scanner should sleep for X seconds
+    BEFORE the first scan. Uvicorn can bind port 8010 during that window
+    without competing with concurrent pipeline + TV MCP fetches.
+    """
+    scanner = SignalScanner(
+        trading_pipeline=MagicMock(),
+        db_manager=MagicMock(),
+        symbols=["MCL"],
+        scan_interval_minutes=60,
+        initial_delay_seconds=30,
+    )
+
+    scan_count = 0
+
+    async def _fake_run_scan() -> None:
+        nonlocal scan_count
+        scan_count += 1
+
+    scanner._run_scan = _fake_run_scan  # type: ignore[method-assign]
+
+    import scanner.signal_scanner as _mod
+    monkeypatch.setattr(_mod, "_is_futures_market_hours", lambda: True)
+
+    sleep_durations: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def _tracking_sleep(seconds: float) -> None:
+        sleep_durations.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(asyncio, "sleep", _tracking_sleep)
+
+    scanner._active = True
+    task = asyncio.create_task(scanner._run())
+
+    # Let the loop run briefly
+    await real_sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    # The first recorded sleep must be the initial 30s delay
+    assert sleep_durations, "scanner _run did not call asyncio.sleep at all"
+    assert sleep_durations[0] == 30, (
+        f"Expected first sleep = 30s initial delay; got {sleep_durations[0]}s. "
+        "Scanner may be running its first scan before uvicorn can bind."
+    )
+
+
+def test_initial_delay_seconds_defaults_to_60_in_init() -> None:
+    """The default must be a non-zero startup buffer so the engine has time
+    to bind port 8010 before the scanner fires its first parallel scan.
+    """
+    scanner = SignalScanner(
+        trading_pipeline=MagicMock(),
+        db_manager=MagicMock(),
+        symbols=["MCL"],
+    )
+    assert scanner.initial_delay_seconds == 60

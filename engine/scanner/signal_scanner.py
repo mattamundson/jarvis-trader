@@ -76,6 +76,7 @@ class SignalScanner:
         db_manager,
         symbols: Optional[List[str]] = None,
         scan_interval_minutes: int = 60,
+        initial_delay_seconds: int = 60,
     ):
         """
         Args:
@@ -83,11 +84,16 @@ class SignalScanner:
             db_manager: DatabaseManager instance for creating approvals
             symbols: List of symbols to scan (default: ["MCL", "MNQ"])
             scan_interval_minutes: How often to scan (default: 60)
+            initial_delay_seconds: Wait before the FIRST scan so uvicorn can
+                bind port 8010 and /health can respond before the scanner
+                starts hammering the data layer. Default 60s. Set to 0 in
+                tests. Roadmap P1.8 partial mitigation.
         """
         self.trading_pipeline = trading_pipeline
         self.db_manager = db_manager
         self.symbols = symbols or ["MCL", "MNQ"]
         self.scan_interval_minutes = scan_interval_minutes
+        self.initial_delay_seconds = max(0, int(initial_delay_seconds))
         self._paper_tracker = None  # injected post-construction via set_paper_tracker()
 
         self._active = False
@@ -171,6 +177,20 @@ class SignalScanner:
         docs/session-logs/diag-2026-04-10-D2-scanner-pause-leak.md.
         """
         logger.info("[Scanner] Background loop started")
+
+        # P1.8 mitigation: defer the first scan so uvicorn can bind port 8010
+        # and /health can respond before the scanner starts spawning parallel
+        # pipeline runs + TV MCP set-symbol calls that eat the event loop.
+        if self.initial_delay_seconds > 0:
+            logger.info(
+                "[Scanner] Delaying first scan by %ds to let API bind cleanly",
+                self.initial_delay_seconds,
+            )
+            try:
+                await asyncio.sleep(self.initial_delay_seconds)
+            except asyncio.CancelledError:
+                logger.info("[Scanner] Cancelled during initial delay")
+                return
 
         while True:
             try:

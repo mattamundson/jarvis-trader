@@ -1244,10 +1244,12 @@ async def lifespan(app: FastAPI):
         # Use FUTURES_WATCHLIST from settings so MCL, MNQ, MES are all included.
         # Fallback to ["MCL", "MNQ"] if setting is empty.
         _scan_symbols = list(settings.FUTURES_WATCHLIST) if settings.FUTURES_WATCHLIST else ["MCL", "MNQ"]
+        _scanner_initial_delay = int(getattr(settings, "SCANNER_INITIAL_DELAY_SECONDS", 60))
         signal_scanner = SignalScanner(
             trading_pipeline=trading_pipeline,
             db_manager=db_manager,
             symbols=_scan_symbols,
+            initial_delay_seconds=_scanner_initial_delay,
         )
         # Inject paper tracker so the scanner can auto-log paper trades
         # when it fires a BUY/SELL signal in paper mode.
