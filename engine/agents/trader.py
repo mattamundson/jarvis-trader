@@ -990,6 +990,7 @@ class TraderAgent:
         news = analyst_reports.get("news", {})
         social = analyst_reports.get("social", {})
         fundamental = analyst_reports.get("fundamental", {})
+        forward_recorder = analyst_reports.get("forward_recorder_metric")
 
         # Safety context
         daily_pnl = safety_status.get("daily_pnl", 0.0)
@@ -1087,7 +1088,7 @@ Summary: {social.get("summary", "N/A")}
 === FUNDAMENTAL ANALYSIS ===
 Signal: {fundamental.get("signal", "N/A")} | Confidence: {fundamental.get("confidence", "N/A")}
 Summary: {fundamental.get("summary", "N/A")}
-
+{self._forward_recorder_section(forward_recorder)}
 === PORTFOLIO / RISK CONTEXT ===
 Live trading enabled: {live_enabled}
 Current equity: ${current_equity:,.2f}
@@ -1249,6 +1250,42 @@ Respond with JSON in exactly this format:
             risk_notes=result.get("risk_notes", ""),
             timestamp=datetime.now(),
             sizing_method=sizing_method,
+        )
+
+    @staticmethod
+    def _forward_recorder_section(metric: Optional[dict]) -> str:
+        """Render the MES forward-recorder feedback block when present.
+
+        Returns empty string (including no header) when the metric is absent
+        so non-MES symbols — and MES pipelines where pre-market recording
+        failed — get the legacy prompt shape unchanged.
+
+        `degraded=True` means samples < 5; the block tells the LLM the
+        signal is weak so the trader can avoid over-weighting it.
+        """
+        if not isinstance(metric, dict):
+            return ""
+        hit_rate = metric.get("hit_rate")
+        samples = metric.get("samples", 0)
+        degraded = metric.get("degraded")
+        last = metric.get("last_hypothesis") or {}
+
+        hr_str = f"{hit_rate:.2f}" if isinstance(hit_rate, (int, float)) else "N/A"
+        deg_str = " (degraded: sample size < 5)" if degraded else ""
+        last_line = (
+            f"Last hypothesis ({last.get('date', '?')}): "
+            f"side={last.get('entry_hypothesis_side', '?')} "
+            f"open={last.get('open_price', '?')} "
+            f"reason={last.get('entry_hypothesis_reason', '?')}"
+            if last
+            else "No prior session hypothesis on record."
+        )
+        return (
+            f"\n=== FORWARD-RECORDER FEEDBACK (MES observational) ===\n"
+            f"Recent hit rate (last {samples} sessions): {hr_str}{deg_str}\n"
+            f"{last_line}\n"
+            f"Use this empirically-derived feedback as directional context — "
+            f"a low hit rate warrants extra caution on high-conviction entries.\n"
         )
 
     def _compute_confluence_multiplier(self, analyst_reports: dict, verdict_direction: str) -> float:
