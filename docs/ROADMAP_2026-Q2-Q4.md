@@ -1,9 +1,28 @@
 # JARVIS TRADER — Implementation Roadmap 2026 Q2–Q4
 
 **Created:** 2026-04-21
-**Horizon:** 6–9 months (April 2026 → December 2026)
+**Last updated:** 2026-04-22 (post-MES-dry-spell-recovery)
+**Horizon:** 8 months (April 2026 → December 2026), with Phase 8 2027 vision appended
 **Author:** Claude (Opus 4.7) with Matt Morrison
-**Source-of-truth doc.** Other roadmap fragments (multi-market-trading-framework.md, Sprint A–G manifest, prd.json) feed into this one.
+**Source-of-truth doc.** Other roadmap fragments (multi-market-trading-framework.md, Sprint A–G manifest, prd.json, `.claude/plans/so-what-tasks-are-velvety-starlight.md`) feed into this one.
+
+---
+
+## 0.1 Progress Banner — 2026-04-22
+
+Today resolved a 12-day outage: MES produced 0 non-HOLD decisions 2026-04-10 → 2026-04-22 because `TradingViewFeed.is_available()` permanently cached False after transient CDP drops. Three-layer cascade found:
+1. PS1 task-scheduler stale pwsh path (`JARVIS-TV-CDP-AtLogon`) → CDP dead at boot.
+2. Orphan elevated engine PID 13516 held :8010 outside PM2 supervision.
+3. `is_available()` TTL-less negative cache permanently disabled TV Tier 0 once it saw one failure.
+
+**Shipped today** (commits on `feat/tradingview-mcp-gamma-kraken`):
+- `0dbcc4e` — shim-path fixes for `JARVIS-TV-CDP-AtLogon` + `launch-tv-with-cdp.ps1` (Store-app version-rot-proof).
+- `1c4b11b` — TTL negative-cache in `TradingViewFeed.is_available()` (60s).
+- `6808b65` — Week 1 Q2 roadmap work: archive markers on 3 failed strategies (ADX-EMA, ATR-channel, RSI-breakout) + new `GET /paper/validation/counts` endpoint (session-start display).
+
+**Verification** (2026-04-22 10:52 CT): decision `id=2994` MES SELL with `atr=14.886 regime=trending`, 9 populated analyst_reports. First non-HOLD in 12 days.
+
+**Calendar cost**: 12 days slipped from Phase 1 multi-strategy expansion (P1.1/P1.2 partial-complete pre-outage). Phase completion dates below reflect the slip.
 
 ---
 
@@ -65,15 +84,17 @@ Transform JARVIS TRADER from a **single-strategy, single-instrument, paper-only*
 | **P0.6** `tradingview_mcp_healthy` in `/health` | **ALREADY SHIPPED** — `engine/routers/health_router.py:26-55` probes CDP port 9222 with 30s TTL cache, surfaces `tradingview_mcp_healthy` + optional `tradingview_mcp_details`. Live verified: `curl /health` → `"tradingview_mcp_healthy": true`. | `engine/routers/health_router.py` | XS |
 
 **Exit criteria:**
-- [ ] `/pipeline/run` returns non-empty signal with freshness ≤ 1 hour
-- [ ] TV MCP auto-starts on login
-- [ ] `/health` surfaces TV MCP state
-- [ ] Gate v2 Phase 3-FULL: shipped OR explicitly deferred with signed memo
-- [ ] Forward-recorder hit-rate visible in pipeline output
+- [x] `/pipeline/run` returns non-empty signal with freshness ≤ 1 hour — **MET 2026-04-22** (id=2994)
+- [x] TV MCP auto-starts on login — **MET 2026-04-22** (shim paths + CDP task re-register)
+- [x] `/health` surfaces TV MCP state — **MET** (P0.6, 30s TTL probe)
+- [x] Gate v2 Phase 3-FULL: shipped — **MET** (P0.4, `GATE_V2_ENFORCE_ROUTING=1`)
+- [x] Forward-recorder hit-rate visible in pipeline output — **MET** (P0.5)
+
+**Phase 0 closed 2026-04-22** (one week slip from original close-by-04-28 target — absorbed by TV outage).
 
 ---
 
-### PHASE 1 — Multi-Strategy Expansion (4 weeks: 2026-04-28 → 2026-05-26)
+### PHASE 1 — Multi-Strategy Expansion (revised: 2026-04-22 → 2026-05-26; in progress)
 
 **Goal:** Break the single-strategy monoculture. Run 3 strategy families, one per instrument, with an honest regime-based router.
 
@@ -84,8 +105,8 @@ Current memory notes already analyzed what works per symbol:
 
 | Task | Deliverable | File(s) | Size |
 |---|---|---|---|
-| **P1.1** MCL mean-reversion family | Bollinger(20,2) + RSI divergence for MCL. Backtest Jan 2024 → present. Run gate v2. Ship if rank ≥ MARGINAL on ≥3/5 criteria. Remove MCL from `DO_NOT_TRADE_SYMBOLS` if it passes. | `engine/backtest/meanrev_signals.py`, router update in `signals.py` | L |
-| **P1.2** MNQ breakout family | Donchian(20) + volume confirmation + opening-range filter. Same validation bar as MCL. | `engine/backtest/breakout_signals.py`, router update | L |
+| **P1.1** MCL mean-reversion family | **PARTIAL (2026-04-22)**: naive Bollinger+RSI failed first-pass (PF 0.855). Bbwidth≤40pct regime-filter retry PASSED floor (PF 1.695). Full gate v2 battery on bbwidth variant: **FAIL both paths** (CORE 2/4, ALT 3/5) — MC DD safe but temporal-instability breaks it. MCL stays blocklisted. Routes to PASS remain: shadow-mode more trades, tighter bbwidth, or orthogonal period filter. See `project_mcl_bbwidth_gate_v2_fail.md`. | `engine/backtest/meanrev_signals.py`, router update in `signals.py` | L |
+| **P1.2** MNQ breakout family | **PARTIAL (2026-04-22)**: SHORT-only don=20 Donchian — CORE FAIL 2/4 at $10K (mc_95_dd 22%, mbb_pf_ci_lower 1.07 vs 1.10), ALT FAIL 3/5. Edge IS real (p_edge 0.98, DSR 1.0) but account-scale math fails. Routes to PASS: (a) re-run at --initial-capital 50000, (b) shadow-mode. See `project_mnq_alt_battery_fail.md`. MNQ stays blocklisted. | `engine/backtest/breakout_signals.py`, router update | L |
 | **P1.3** Regime-aware strategy router | `engine/backtest/regime_classifier.py` → classifies current bar as TREND/MEANREV/RANGE/VOLATILE. Router dispatches to the appropriate strategy family per-symbol. | `engine/backtest/signals.py`, new `regime_classifier.py` | M |
 | **P1.4** Per-strategy gate v2 verdict | Extend `gate_v2_orchestrator.py` to emit verdicts per (symbol, family) tuple. Live routing respects both per-symbol AND per-family verdicts. | `engine/scripts/gate_v2_orchestrator.py` | M |
 | **P1.5** Shadow-mode for new strategies | Before any new family routes paper trades, it runs in shadow for ≥14 days — logs what it WOULD have done, compared to what actually happened. Exit criterion: ≥10 shadow trades with positive expectancy. | `engine/validation/shadow_mode.py` (new) | L |
@@ -123,7 +144,7 @@ Current memory notes already analyzed what works per symbol:
 
 ---
 
-### PHASE 3 — Agent Intelligence Upgrade (4 weeks: 2026-06-16 → 2026-07-14)
+### PHASE 3 — Agent Intelligence Upgrade (revised: 2026-06-17 → 2026-07-21 — overlaps Q2 closure)
 
 **Goal:** Replace rule-based decisions with LLM reasoning chains where reasoning genuinely helps. Skip where it's overkill.
 
@@ -142,6 +163,8 @@ Honest assessment of what LLM reasoning actually improves:
 | **P3.4** Trading Agent Reasoning Chains | Per installed skill `compound-engineering:trading-agent-reasoning-chains`. Wire DeepSeek-R1 as optional pre-processor for Bull/Bear researchers. A/B test: R1-preprocessed vs baseline over 30 days. | Skill integration + A/B harness | L |
 | **P3.5** claude-mem cross-session memory | Agents currently have no cross-session context. Wire claude-mem so TraderAgent remembers last 20 trade outcomes + agent feedback patterns. | `engine/agents/memory_bridge.py` (new) | M |
 | **P3.6** Agent reliability metrics | Per-agent accuracy tracking already exists (AgentFeedbackTracker). Extend: which agents contribute to winners vs losers? Auto-mute agents whose signal is inversely correlated with P&L over 30 trades. | `engine/analytics/agent_reliability.py` | M |
+| **P3.7** Pattern Vision Analyst live-wiring | Scaffold already committed (`a217dd0`, 2026-04-17): 6th analyst, 13-pattern allowlist, Protocol-injected ChartCapture + VisionClassifier, abstention-on-unknown. Live-wire: (1) implement ChromeDevToolsChartCapture against chrome-devtools MCP, (2) implement ClaudeVisionClassifier with Sonnet-4.6 multi-modal, (3) gate on `ic_ensemble` weight threshold, (4) eval on 30 historical MCL 1h Hidden Pivots setups (HP+Vision vs HP-alone on 2h forward PnL). Ship only if Vision-augmented IC beats HP-alone by ≥0.05. | `engine/agents/pattern_vision.py` + implementations | L |
+| **P3.8** GEPA reflection-prompt optimizer | ML/AI Novel #3 from research digest. Wire GEPA-style reflection on top of existing debate verdicts: after each closed paper trade, an Opus reflection agent proposes a prompt patch for Bull/Bear if the trade's outcome contradicted the debate. Apply patches only after 30 examples agree. See research memo for rubric. | `engine/agents/gepa_reflector.py` (new) | L |
 
 **Exit criteria:**
 - [ ] Each pipeline run names the model used per agent + reason
@@ -151,7 +174,7 @@ Honest assessment of what LLM reasoning actually improves:
 
 ---
 
-### PHASE 4 — Automation & Approval Surfaces (3 weeks: 2026-07-14 → 2026-08-04)
+### PHASE 4 — Automation & Approval Surfaces (revised: 2026-07-21 → 2026-08-11)
 
 **Goal:** You should be able to approve/reject/modify a trade within 60 seconds, from whatever device you're near.
 
@@ -172,7 +195,7 @@ Honest assessment of what LLM reasoning actually improves:
 
 ---
 
-### PHASE 5 — Options Layer (6 weeks: 2026-08-04 → 2026-09-15)
+### PHASE 5 — Options Layer (revised: 2026-08-11 → 2026-09-22)
 
 **Goal:** Add defined-risk options strategies on SPY/QQQ. This is a significant scope expansion — handle with care.
 
@@ -193,7 +216,7 @@ Honest assessment of what LLM reasoning actually improves:
 
 ---
 
-### PHASE 6 — Instrument & Intelligence Expansion (8 weeks: 2026-09-15 → 2026-11-10)
+### PHASE 6 — Instrument & Intelligence Expansion (revised: 2026-09-22 → 2026-11-17)
 
 **Goal:** Diversify beyond equity index futures. Add macro-calendar awareness.
 
@@ -213,7 +236,7 @@ Honest assessment of what LLM reasoning actually improves:
 
 ---
 
-### PHASE 7 — Meta-Learning Loop (ongoing from 2026-11-10)
+### PHASE 7 — Meta-Learning Loop (ongoing from 2026-11-17)
 
 **Goal:** System improves itself without you watching.
 
@@ -227,6 +250,46 @@ Honest assessment of what LLM reasoning actually improves:
 | **P7.6** Weekly self-audit | Every Sunday 18:00 CT, a meta-agent runs: reviews past week's trades, identifies common patterns (winning regimes, losing setups), writes to `weekly_audit.md`. | `engine/agents/self_audit.py` | M |
 
 **This phase never "ends" — it's the operating mode from here forward.**
+
+---
+
+### PHASE 8 — 2027 Consolidation & Compounding (2027-01 → 2027-06)
+
+**Goal:** Move from "one live strategy + research queue" to "portfolio of validated systems running autonomously with weekly touch."
+
+**Preconditions** (all must be satisfied by EOY 2026):
+- MES live at ≥1 contract since mid-Q3 2026, no incidents of kill-switch daily-loss triggers
+- ≥1 additional strategy family passed gate v2 + 30-day shadow (MCL or MNQ)
+- Options paper trades at ≥30 days with gate v2 options-variant PASS on at least one config
+- Phase 7 meta-loop producing weekly self-audit reports
+
+| Task | Deliverable | Size |
+|---|---|---|
+| **P8.1** Portfolio capital allocator | Kelly-fractional sizing across (strategy, instrument) cells with covariance matrix. Per-cell cap of 25% of margin; per-strategy-family cap of 50%. | L |
+| **P8.2** Regime-router live | The classifier from P1.3 goes from "outputs classifications" to "dispatches orders." TRENDING regime → SMA family gets capital; MEANREV → Bollinger gets capital; etc. | L |
+| **P8.3** Live-options cutover (Tier 3 — new decision D8) | Paper options layer promoted to live capital at 10% of futures notional. Defined-risk spreads only; no naked premium. | L |
+| **P8.4** BTC live (Tier 3 — new decision D9) | Kraken BTC strategies from P6 promoted from paper to 1-unit notional. | L |
+| **P8.5** Quarterly strategy re-certification | Every gate-v2-PASS'd strategy re-runs full validation battery every 90 days. Auto-flag if drift detected (links to P7.2). | M |
+| **P8.6** 2027 research agenda | Review what the meta-loop (P7.1 n-autoresearch) has discovered. Pick next 3 hypotheses to graduate from scaffold → gate v2. | S (planning) |
+
+**Exit criteria:**
+- [ ] Portfolio allocator live with at least 3 (strategy, instrument) cells
+- [ ] Live capital at 2+ strategies simultaneously
+- [ ] Zero quarter-on-quarter degradation on any live cell (tracked in monthly audit)
+
+---
+
+### PHASE 9 — Beyond 2027 (directional only — not committed)
+
+Listed here to anchor strategic direction, NOT as commitments:
+
+- **Agent-native portfolio manager**: TraderAgent becomes portfolio-level. Sizes allocations across strategies using real-time correlation matrix. Approves its own small adjustments (< 5% of capital); confirms major ones with Matt.
+- **Cross-asset hedge layer**: When MES long + BTC long correlate, auto-overlay VIX call or SPY put to neutralize macro risk.
+- **Liquidity-aware execution**: Fill algo that splits entries/exits across 5-15 minute windows to minimize slippage on size.
+- **Institutional-grade risk reporting**: monthly PDF covering VaR, CVaR, Sharpe, Sortino, Calmar, Omega. Ready for CPA / advisor review.
+- **Signal-publishing opt-in**: if Matt wants to share validated signals with a small group (family/friends), the infra exists to gate access, log consumption, track relative performance.
+
+These are deliberately NOT dated. They happen when the earlier phases prove themselves.
 
 ---
 
@@ -286,15 +349,27 @@ Done in 1 week → full Phase 1 unblocked.
 
 ## 5. Decision Points Requiring Matt's Input
 
-| # | Decision | When | Tier |
-|---|---|---|---|
-| D1 | Gate v2 Phase 3-FULL: adopt as routing-blocker, or keep advisory? | Week 1 | 3 |
-| D2 | MCL mean-reversion: paper-trial approval to remove MCL from `DO_NOT_TRADE_SYMBOLS` after gate v2 passes | Week 4 | 3 |
-| D3 | MNQ breakout: same as D2 for MNQ | Week 4 | 3 |
-| D4 | MES RV filter: activate at 9% threshold after 60+ live trades | Week 6 | 3 |
-| D5 | Options layer scope: SPY+QQQ only, or add individual equities? | Week 16 | 3 |
-| D6 | Kraken activation: BTC paper-only first, or BTC+ETH from day 1? | Week 24 | 3 |
-| D7 | Live capital cutover: any subset, or wait for all 3 strategies validated? | Phase 6 completion | 3 (highest stakes) |
+| # | Decision | When | Tier | Status |
+|---|---|---|---|---|
+| D1 | Gate v2 Phase 3-FULL: adopt as routing-blocker | Week 1 | 3 | ✅ RESOLVED (P0.4, `GATE_V2_ENFORCE_ROUTING=1`) |
+| D2 | MCL mean-reversion: remove MCL from `DO_NOT_TRADE_SYMBOLS` | Week 4 | 3 | ❌ KEPT BLOCKED — gate v2 FAIL both paths |
+| D3 | MNQ breakout: remove MNQ from `DO_NOT_TRADE_SYMBOLS` | Week 4 | 3 | ⏳ DEFERRED — edge is real, re-run at $50K pending |
+| D4 | MES RV filter: activate at 9% threshold after 60+ live trades | Week 6 | 3 | ⏳ BLOCKED — need ≥60 live trades; currently 3 closed |
+| D5 | Options layer scope: SPY+QQQ only, or add individual equities? | Phase 5 entry | 3 | pending |
+| D6 | Kraken activation: BTC paper-only first, or BTC+ETH from day 1? | Phase 6 entry | 3 | pending |
+| D7 | Live capital cutover: any subset, or wait for all 3 strategies validated? | Phase 6 completion | 3 (highest stakes) | pending |
+| D8 | Live-options promotion from paper to 10% notional | Phase 8 entry (2027-Q1) | 3 | future |
+| D9 | Kraken BTC promotion from paper to 1-unit notional | Phase 8 entry | 3 | future |
+
+**Q2-specific decision layer** (from `.claude/plans/so-what-tasks-are-velvety-starlight.md`):
+
+| # | Decision | When | Tier | Status |
+|---|---|---|---|---|
+| Q2-D1 | Paper-validation exit criterion: 60 trades vs. "gate v2 PASS + 14 forward days no regime-flip violation" | Q2 Week 3 | 3 | pending |
+| Q2-D2 | Futures position-sizing policy (margin-based vs. raise `MAX_POSITION_SIZE_PCT` vs. futures-specific bypass) | Q2 Week 3-4 | 3 | pending |
+| Q2-D3 | MCL Q2 participation yes/no | Q2 Week 5 | 3 | leaning NO (gate v2 FAIL) |
+| Q2-D4 | MNQ Q2 participation yes/no | Q2 Week 5 | 3 | leaning NO or re-run-at-$50K |
+| Q2-D5 | MES paper → live cutover Go/No-Go | Q2 Week 7 | 3 | gated on 6 weeks forward-paper health |
 
 Each of these gets its own decision memo under `docs/decisions/` when the time arrives.
 
@@ -358,5 +433,7 @@ Checklist stays here. Monthly self-audit marks progress.
 
 ---
 
-**Next review:** 2026-05-21 (1 month)
-**Status:** Draft v1 — awaiting Matt's sign-off on D1 (Gate v2 Phase 3-FULL) before Phase 0 ships.
+**Next review:** 2026-05-22 (1 month from today's update)
+**Status:** v1.1 — Phase 0 closed 2026-04-22. Phase 1 mid-flight with MCL/MNQ still blocklisted pending gate v2 re-runs. D1 resolved (Phase 3-FULL live). Q2-D1..D5 added from tactical plan. Phase 8 (2027) vision appended.
+
+**Update cadence from here:** weekly closure memos (every Sunday 17:00 CT per Q2 plan verification block) augment this doc without replacing it; monthly refresh of the banner section.
