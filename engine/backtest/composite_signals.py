@@ -15,8 +15,10 @@ Regime-Adaptive Weighting (from RegimeClassifier):
   RANGING regime   → STC=0.50, ORB=0.20, VWAP=0.30  (STC primary, VWAP supporting)
   VOLATILE regime  → ALL=0.00                         (no entries — sit out)
 
-Entry threshold: composite_score >= 0.35 for LONG or SHORT
+Entry threshold: composite_score >= 0.55 for LONG or SHORT (v2, was 0.35)
   (STC alone can enter at 0.50+, but VWAP alone at 0.30 cannot)
+ADX filter: ADX must be >= 25 for entries (v2 addition, eliminates chop)
+ORB band: 3.0×ATR default (v2, was 2.5)
 R:R filter: entries with composite_rr < 1.5 are rejected
 
 Output columns added (backtester-compatible):
@@ -54,7 +56,7 @@ DEFAULT_WEIGHTS = REGIME_WEIGHTS["RANGING"]  # default when regime unknown
 
 # Entry threshold: composite score must exceed this to generate a signal
 # 0.35 lets STC alone (0.50 or 0.60) enter, but VWAP alone (0.30) cannot
-ENTRY_THRESHOLD = 0.35
+ENTRY_THRESHOLD = 0.55  # v2: raised from 0.35 to eliminate chop entries
 
 # Minimum reward:risk ratio for composite entries
 MIN_RR = 1.2
@@ -63,7 +65,7 @@ MIN_RR = 1.2
 def generate_composite_signals(
     df: pd.DataFrame,
     symbol: str = "MES",
-    band_mult: float = 2.5,
+    band_mult: float = 3.0,  # v2: widened from 2.5 to reduce false breakouts
     stop_mult: float = 0.5,  # legacy: ignored here; kept for call-site compat
     atr_period: int = 14,
     entry_threshold: float = ENTRY_THRESHOLD,
@@ -204,6 +206,45 @@ def generate_composite_signals(
             regime_series = pd.Series("RANGING", index=result.index)
             result["regime_type"] = regime_series
 
+    # ── Step 5b: ADX trend-strength filter (v2) ───────────────────────────────
+    # Only allow entries when ADX > adx_threshold (default 25), ensuring
+    # minimum trend conviction before firing composite signals.
+    # In RANGING regime, ADX is typically 10-20 (flat); in TRENDING, 25-40+.
+    try:
+        adx_threshold = 25.0
+        period = 14
+        high = result["high"]
+        low = result["low"]
+        close_s = result["close"]
+        
+        # True Range
+        tr1 = high - low
+        tr2 = (high - close_s.shift(1)).abs()
+        tr3 = (low - close_s.shift(1)).abs()
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        
+        # Directional Movement
+        up_move = high.diff()
+        down_move = -low.diff()
+        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+        
+        # Smooth with Wilder EMA (alpha = 1/period)
+        atr_wilder = tr.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+        plus_di = 100 * pd.Series(plus_dm, index=result.index).ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr_wilder
+        minus_di = 100 * pd.Series(minus_dm, index=result.index).ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr_wilder
+        
+        dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+        adx = dx.ewm(alpha=1/period, min_periods=period, adjust=False).mean().fillna(0)
+        
+        result["adx"] = adx.round(2)
+        adx_pass = adx >= adx_threshold
+        logger.info(f"{symbol}: ADX filter — {adx_pass.sum()} / {len(adx_pass)} bars pass ADX≥{adx_threshold} ({adx_pass.mean():.1%})")
+    except Exception as e:
+        logger.warning(f"{symbol}: ADX filter failed, bypassing: {e}")
+        adx_pass = pd.Series(True, index=result.index)  # fail-open
+        result["adx"] = np.nan
+
     # ── Step 6: Vectorized composite scoring ──────────────────────────────
     # Encode each signal as 0 or 1
     stc_long = result.get("stc_cross_up", pd.Series(False, index=result.index)).astype(float)
@@ -248,8 +289,8 @@ def generate_composite_signals(
     stc_short_bool = stc_short.astype(bool)
 
     is_volatile = regime_series == "VOLATILE"
-    is_long_entry = (long_score >= entry_threshold) & stc_long_bool & ~is_volatile
-    is_short_entry = (short_score >= entry_threshold) & stc_short_bool & ~is_volatile
+    is_long_entry = (long_score >= entry_threshold) & stc_long_bool & ~is_volatile & adx_pass
+    is_short_entry = (short_score >= entry_threshold) & stc_short_bool & ~is_volatile & adx_pass
 
     # Resolve conflicts: when both fire on same bar, take the stronger one
     both = is_long_entry & is_short_entry
