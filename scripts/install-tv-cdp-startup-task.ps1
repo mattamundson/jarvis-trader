@@ -24,8 +24,18 @@ $ErrorActionPreference = "Stop"
 $taskName = "JARVIS-TV-CDP-AtLogon"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $psScript = Join-Path $repoRoot "scripts\launch-tv-with-cdp.ps1"
-$pwsh     = (Get-Command pwsh -ErrorAction SilentlyContinue)?.Source
-if (-not $pwsh) { $pwsh = "pwsh" }
+# Prefer the per-user WindowsApps shim — a reparse point that redirects to the
+# currently-installed pwsh, so the scheduled task's Command field survives Store
+# auto-updates (e.g. PowerShell 7.6.0 → 7.6.1). Without this, `Get-Command pwsh`
+# returns a version-stamped WindowsApps path that rots on every pwsh update,
+# causing the task to fail silently at login with ERROR_FILE_NOT_FOUND.
+$shimPwsh = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\pwsh.exe"
+if (Test-Path $shimPwsh) {
+    $pwsh = $shimPwsh
+} else {
+    $pwsh = (Get-Command pwsh -ErrorAction SilentlyContinue)?.Source
+    if (-not $pwsh) { $pwsh = "pwsh" }
+}
 
 # ── Pre-flight ─────────────────────────────────────────────────────────────────
 if (-not (Test-Path $psScript)) {

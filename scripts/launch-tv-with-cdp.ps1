@@ -30,7 +30,13 @@ $ErrorActionPreference = "Stop"
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 $cdpPort       = 9222
-$tvBinary      = "C:\Program Files\WindowsApps\TradingView.Desktop_3.0.0.7652_x64__n534cwy3pjxzj\TradingView.exe"
+# Discover the installed TV Desktop version dir via wildcard resolve — survives
+# Microsoft Store auto-updates that rotate the version-stamped folder name (e.g.
+# 3.0.0.7652 → 3.0.0.7800). Resolve-Path with wildcards works from user context
+# without admin rights; Get-ChildItem on WindowsApps usually does not. Fallback
+# to the last-known path keeps old behaviour if discovery silently returns null.
+$tvResolved    = Resolve-Path "C:\Program Files\WindowsApps\TradingView.Desktop_*_x64__*\TradingView.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
+$tvBinary      = if ($tvResolved) { $tvResolved.Path } else { "C:\Program Files\WindowsApps\TradingView.Desktop_3.0.0.7652_x64__n534cwy3pjxzj\TradingView.exe" }
 $logPath       = Join-Path $env:USERPROFILE "jarvis-tv-cdp.log"
 $maxLogBytes   = 1MB
 $launchTimeoutSec = 15
