@@ -532,14 +532,15 @@ class IBGatewayConnector:
         order_type: str = "MKT",
         limit_price: Optional[float] = None,
         aux_price: Optional[float] = None,
+        parent_order_id: Optional[str] = None,
     ) -> Optional[str]:
         """
         Record a paper fill after ``SafetyLayer`` has already validated the order.
 
-        Same contract as ``IBGatewayManager.place_paper_order`` for
-        ``SafetyLayer.submit_paper_order`` (returns fill id token; no duplicate safety).
+        STP child orders pass ``aux_price`` + ``parent_order_id`` and are held
+        as ``pending`` in ``_open_orders`` without touching positions until the
+        stop would trigger (paper sim does not currently model trigger).
         """
-        del aux_price  # paper simulation does not model stop triggers yet
         if not self._settings.PAPER_TRADING:
             raise NotImplementedError(
                 "IB Gateway live connection not yet implemented. "
@@ -559,11 +560,39 @@ class IBGatewayConnector:
             internal_ot = "market"
         elif ot_upper in ("LMT", "LIMIT"):
             internal_ot = "limit"
+        elif ot_upper in ("STP", "STOP"):
+            internal_ot = "stop"
         else:
             internal_ot = order_type.lower()
 
         sym_upper = symbol.upper()
         is_futures = sym_upper in _FUTURES_ROOTS
+
+        if internal_ot == "stop":
+            if aux_price is None:
+                logger.error("place_paper_order: aux_price required for STP order")
+                return None
+            stp_id = str(uuid.uuid4())
+            self._open_orders[stp_id] = {
+                "status": "pending",
+                "order_id": stp_id,
+                "symbol": symbol,
+                "quantity": signed_qty,
+                "order_type": "stop",
+                "stop_price": aux_price,
+                "limit_price": limit_price,
+                "is_futures": is_futures,
+                "parent_order_id": parent_order_id,
+            }
+            logger.info(
+                "IBGatewayConnector STP accepted | id=%s sym=%s qty=%d stop=%.2f parent=%s",
+                stp_id,
+                symbol,
+                signed_qty,
+                aux_price,
+                parent_order_id,
+            )
+            return stp_id
 
         order = {
             "symbol": symbol,
@@ -576,7 +605,21 @@ class IBGatewayConnector:
         res = await self._submit_paper_order(order, [])
         if res.get("status") == "placed":
             oid = res.get("order_id")
-            return str(oid) if oid is not None else None
+            if oid is not None:
+                oid_str = str(oid)
+                self._open_orders[oid_str] = {
+                    "status": "filled",
+                    "order_id": oid_str,
+                    "symbol": symbol,
+                    "quantity": signed_qty,
+                    "order_type": internal_ot,
+                    "limit_price": limit_price,
+                    "filled_price": res.get("filled_price"),
+                    "fill_time": res.get("fill_time"),
+                    "is_futures": is_futures,
+                    "parent_order_id": parent_order_id,
+                }
+                return oid_str
         return None
 
     async def cancel_order(self, order_id: str) -> dict:

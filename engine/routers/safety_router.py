@@ -280,6 +280,28 @@ async def deactivate_kill_switch(
 
 
 @router.post(
+    "/flatten-all",
+    description=(
+        "Emergency-close every open position via market orders. Kill switch blocks new "
+        "discretionary orders but leaves existing positions naked; this is the operator "
+        "path to liquidate them. Returns {flattened, order_ids, errors}."
+    ),
+)
+async def flatten_all_positions() -> dict[str, Any]:
+    """Close every open position via MKT orders (emergency recovery)."""
+    if _safety_layer is None:
+        raise HTTPException(status_code=503, detail="Safety layer not initialized")
+    result = await _safety_layer.flatten_all_positions()
+    logger.warning(
+        "[SAFETY] /safety/flatten-all invoked — flattened=%s order_ids=%s errors=%s",
+        result.get("flattened"),
+        result.get("order_ids"),
+        result.get("errors"),
+    )
+    return result
+
+
+@router.post(
     "/kill-switch",
     description="Toggle kill switch state via dashboard JSON body with activate boolean flag (legacy endpoint).",
 )
