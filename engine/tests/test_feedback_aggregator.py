@@ -148,6 +148,94 @@ def test_pending_rows_excluded(tmp_path):
     assert rate == 1.0
 
 
+# ─── Pipeline injection (roadmap P0.5) ──────────────────────────────────────
+
+
+class TestPipelineForwardRecorderInjection:
+    """TradingPipeline._inject_forward_recorder must be MES-only and observational.
+
+    The key-injection (not consumption) is what matters — Bull/Bear/Trader
+    prompts serialize `analyst_reports` as JSON, so adding the key makes the
+    metric prompt-visible to the LLMs without any prompt rewrite.
+    """
+
+    def _make_pipeline(self):
+        from agents.pipeline import TradingPipeline
+        return TradingPipeline({}, None)
+
+    def test_mes_symbol_injects_all_four_keys(self, monkeypatch):
+        tp = self._make_pipeline()
+        monkeypatch.setattr(
+            "experiments.feedback_aggregator.get_recent_hit_rate",
+            lambda **kwargs: (0.7, 10),
+        )
+        monkeypatch.setattr(
+            "experiments.feedback_aggregator.get_last_session_hypothesis",
+            lambda db_path=None: {"date": "2026-04-21", "side": "long"},
+        )
+        reports: dict = {}
+        tp._inject_forward_recorder("MES", reports)
+        m = reports["forward_recorder_metric"]
+        assert m["hit_rate"] == 0.7
+        assert m["samples"] == 10
+        assert m["degraded"] is False
+        assert m["last_hypothesis"]["date"] == "2026-04-21"
+
+    def test_mes_degraded_flag_flips_below_5_samples(self, monkeypatch):
+        tp = self._make_pipeline()
+        monkeypatch.setattr(
+            "experiments.feedback_aggregator.get_recent_hit_rate",
+            lambda **kwargs: (0.5, 3),
+        )
+        monkeypatch.setattr(
+            "experiments.feedback_aggregator.get_last_session_hypothesis",
+            lambda db_path=None: None,
+        )
+        reports: dict = {}
+        tp._inject_forward_recorder("MES", reports)
+        assert reports["forward_recorder_metric"]["degraded"] is True
+
+    def test_non_mes_symbol_is_noop(self):
+        """MCL/MNQ must not receive the MES-specific forward-recorder key."""
+        tp = self._make_pipeline()
+        reports: dict = {"technical": {"signal": "LONG"}}
+        tp._inject_forward_recorder("MCL", reports)
+        tp._inject_forward_recorder("MNQ", reports)
+        tp._inject_forward_recorder("SPY", reports)
+        assert "forward_recorder_metric" not in reports
+        assert reports == {"technical": {"signal": "LONG"}}  # untouched
+
+    def test_aggregator_exception_is_swallowed(self, monkeypatch):
+        """Never block the pipeline on a forward-recorder failure."""
+        tp = self._make_pipeline()
+
+        def _raise(**_):
+            raise RuntimeError("db file missing")
+
+        monkeypatch.setattr(
+            "experiments.feedback_aggregator.get_recent_hit_rate", _raise,
+        )
+        reports: dict = {}
+        tp._inject_forward_recorder("MES", reports)  # must not raise
+        assert "forward_recorder_metric" not in reports
+
+    def test_symbol_casing_is_normalized(self, monkeypatch):
+        """Accept mes / Mes / MES equivalently — callers shouldn't have to normalize."""
+        tp = self._make_pipeline()
+        monkeypatch.setattr(
+            "experiments.feedback_aggregator.get_recent_hit_rate",
+            lambda **kwargs: (0.6, 8),
+        )
+        monkeypatch.setattr(
+            "experiments.feedback_aggregator.get_last_session_hypothesis",
+            lambda db_path=None: None,
+        )
+        for variant in ("mes", "Mes", "MES"):
+            reports: dict = {}
+            tp._inject_forward_recorder(variant, reports)
+            assert "forward_recorder_metric" in reports, f"failed for {variant!r}"
+
+
 def test_stale_rows_excluded_by_max_age_days(tmp_path):
     """Default 7-day window must drop older rows even when n=10 would include them."""
     db = str(tmp_path / "stale.db")

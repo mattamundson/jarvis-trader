@@ -680,6 +680,10 @@ class TradingPipeline:
         except Exception as _brief_err:
             logger.debug("[Pipeline] Discord briefing failed (non-fatal): %s", _brief_err)
 
+        # ── A2: MES forward-recorder feedback (roadmap P0.5) ──────────────
+        # Observational-only injection, MES-only. See _inject_forward_recorder.
+        self._inject_forward_recorder(symbol, analyst_reports)
+
         pipeline_result["analyst_reports"] = analyst_reports
 
         # ── Technical-Only Fallback: LLM credits exhausted ────────────────
@@ -1105,6 +1109,41 @@ class TradingPipeline:
             return "sell", "OVERBOUGHT"
         else:
             return "hold", "NEUTRAL"
+
+    def _inject_forward_recorder(self, symbol: str, analyst_reports: dict) -> None:
+        """Attach the MES forward-recorder metric to analyst_reports.
+
+        Roadmap P0.5. MES-only: the 08:30 CT / 15:15 CT recorder is a dedicated
+        experiment (see ``experiments/mes_session_*.py``). Observational — never
+        blocks the pipeline. Swallows all errors so a missing DB/table can never
+        break signal generation.
+
+        Mutates ``analyst_reports`` in-place. Adds a single key
+        ``forward_recorder_metric`` with ``hit_rate``, ``samples``, ``degraded``,
+        and ``last_hypothesis`` entries. The downstream agent prompts (bull /
+        bear / trader) serialize ``analyst_reports`` to JSON and pass it through
+        to the LLM, so the metric becomes prompt-visible without any prompt
+        rewrite.
+        """
+        if symbol.upper() != "MES":
+            return
+        try:
+            from experiments.feedback_aggregator import (
+                get_last_session_hypothesis,
+                get_recent_hit_rate,
+            )
+            hit_rate, samples = get_recent_hit_rate(n=10, max_age_days=14)
+            last = get_last_session_hypothesis()
+            analyst_reports["forward_recorder_metric"] = {
+                "hit_rate": hit_rate,
+                "samples": samples,
+                "degraded": samples < 5,
+                "last_hypothesis": last,
+            }
+        except Exception as exc:
+            logger.debug(
+                "[Pipeline] forward_recorder_metric failed (non-fatal): %s", exc
+            )
 
     def _check_technical_only_fallback(
         self,
