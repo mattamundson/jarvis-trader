@@ -79,21 +79,44 @@ TV_TIMEFRAME_MAP: dict[str, str] = {
 # and get mixed-symbol bars. Serialize all chart-switching fetches.
 _TV_CHART_LOCK = threading.Lock()
 
+# How long to trust a negative is_available() result before re-probing.
+# Positive results stay sticky (if TV was reachable once, keep trusting it;
+# per-call bar fetches handle their own failure modes). Negatives MUST have
+# a TTL so a transient CDP drop at engine boot — or a TV Desktop restart
+# mid-session — doesn't permanently disable the Tier 0 bar source. Prior
+# cache-forever behavior caused the 2026-04-22 MES multi-hour HOLD window:
+# engine started ~04:00 CDT while TV Desktop was momentarily unresponsive,
+# `_available` cached False, scanner returned `_empty_report` for 4+ hours
+# even after TV recovered because is_available() never re-checked.
+_AVAILABLE_NEG_TTL = 60.0
+
 
 class TradingViewFeed:
     """Optional real-time price feed from TradingView Desktop via MCP CLI."""
 
     def __init__(self):
         self._available: Optional[bool] = None  # None = not yet checked
+        self._last_negative_probe_at: float = 0.0  # monotonic seconds
 
     def is_available(self) -> bool:
-        """Check if TradingView Desktop + CDP is reachable."""
-        if self._available is not None:
-            return self._available
+        """Check if TradingView Desktop + CDP is reachable.
+
+        Positive cache is sticky; negative cache has a _AVAILABLE_NEG_TTL
+        second floor so transient CDP outages self-heal. Tests that set
+        ``self._available = True`` directly still short-circuit on the
+        positive-cache path.
+        """
+        if self._available is True:
+            return True
+
+        now = time.monotonic()
+        if self._available is False and (now - self._last_negative_probe_at) < _AVAILABLE_NEG_TTL:
+            return False
 
         if not shutil.which(TV_CLI):
             logger.debug("TradingView MCP CLI not found on PATH; feed unavailable")
             self._available = False
+            self._last_negative_probe_at = now
             return False
 
         try:
@@ -104,14 +127,17 @@ class TradingViewFeed:
             if result.returncode != 0:
                 logger.debug("tv status failed: %s", result.stderr)
                 self._available = False
+                self._last_negative_probe_at = now
                 return False
             payload = json.loads(result.stdout.strip() or "{}")
             self._available = bool(payload.get("success") and payload.get("cdp_connected"))
             if not self._available:
                 logger.debug("tv status reports not connected: %s", payload)
+                self._last_negative_probe_at = now
         except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError) as e:
             logger.debug("tv status error: %s", e)
             self._available = False
+            self._last_negative_probe_at = now
 
         return self._available
 
