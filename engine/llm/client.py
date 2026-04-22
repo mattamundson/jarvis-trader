@@ -71,6 +71,21 @@ def _is_credit_exhaustion(body_or_text: object) -> bool:
     return "credit balance is too low" in s or "credit_balance_too_low" in s or "credit balance too low" in s
 
 
+_TEMPERATURE_DEPRECATED_PREFIXES = ("claude-opus-4-7",)
+
+
+def _temperature_deprecated(model: str) -> bool:
+    """True if the model rejects the `temperature` param with BadRequestError.
+
+    Anthropic deprecated sampling temperature for claude-opus-4-7; passing it
+    returns a 400. All other models still accept it. Prefix match covers suffix
+    variants like "claude-opus-4-7[1m]".
+    """
+    if not model:
+        return False
+    return any(model.startswith(p) for p in _TEMPERATURE_DEPRECATED_PREFIXES)
+
+
 @dataclass
 class LLMCallResult:
     """Result of an LLM API call with metrics."""
@@ -537,13 +552,15 @@ class JarvisLLMClient:
         Low-level async call to Anthropic API.
         Retries are handled at the call() level.
         """
-        return await self.client.messages.create(
-            model=model,
-            system=system,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
+        kwargs = {
+            "model": model,
+            "system": system,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+        if not _temperature_deprecated(model):
+            kwargs["temperature"] = temperature
+        return await self.client.messages.create(**kwargs)
 
     def _calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate USD cost for a single API call."""
