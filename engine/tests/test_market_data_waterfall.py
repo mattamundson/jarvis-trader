@@ -7,7 +7,18 @@ from unittest.mock import AsyncMock, MagicMock
 import pandas as pd
 import pytest
 
+from data import market_data as market_data_module
 from data.market_data import MarketDataManager
+
+
+@pytest.fixture(autouse=True)
+def _disable_tv_tier_0(monkeypatch):
+    """Same rationale as test_market_data_fallback._disable_tv_tier_0: these
+    waterfall tests assert source attributions for IBKR/Polygon/CSV tiers,
+    and TV Tier 0 (live whenever TradingView Desktop is running with CDP)
+    intercepts before those tiers can be tested.
+    """
+    monkeypatch.setattr(market_data_module, "_tv_feed", None)
 
 
 class _MinimalConfig:

@@ -21,7 +21,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pandas as pd
 import pytest
 
+from data import market_data as market_data_module
 from data.market_data import MarketDataManager
+
+
+@pytest.fixture(autouse=True)
+def _disable_tv_tier_0(monkeypatch):
+    """Disable the TradingView Tier-0 bar source for this module's tests.
+
+    These tests exercise IBKR/Polygon/CSV tier ordering and expect
+    `attrs["source"]` to reflect whichever of those served the request.
+    After P0.2 made TV Tier 0, a live TV feed (which exists whenever
+    TradingView Desktop is running with CDP on port 9222) intercepts
+    every get_bars call before IBKR is consulted, making the expected
+    source attributions unreachable. Stubbing `_tv_feed` to None restores
+    the pre-P0.2 contract for these regression tests without affecting
+    the production tier order.
+    """
+    monkeypatch.setattr(market_data_module, "_tv_feed", None)
 
 
 def _fresh_bars(n: int = 50) -> pd.DataFrame:
