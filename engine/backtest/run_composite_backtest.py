@@ -46,7 +46,7 @@ MES_BACKTEST_PARAMS = {
 # Composite approval thresholds by symbol
 COMPOSITE_THRESHOLDS = {
     "MCL": 0.40,
-    "MNQ": 0.30,
+    "MNQ": 0.40,
     "MES": 0.40,
 }
 
@@ -70,13 +70,13 @@ def main():
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.35,
+        default=0.55,
         help="Composite score threshold for entry (0.3-0.6)",
     )
     parser.add_argument(
         "--band-mult",
         type=float,
-        default=2.5,
+        default=3.0,
         help="VWAP band ATR multiplier",
     )
     parser.add_argument("--output", default=None, help="Save JSON results to file")

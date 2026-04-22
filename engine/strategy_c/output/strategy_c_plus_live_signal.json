@@ -1,0 +1,86 @@
+{
+  "generated_at": "2026-04-22T20:48:20.824729",
+  "strategy": "Strategy_C_Plus",
+  "effective_date": "2026-04-22",
+  "execution_note": "T+1 lag: execute Monday open after Friday signal",
+  "holdings": {
+    "XLK": 0.3046,
+    "QQQ": 0.3046,
+    "SHY": 0.3907
+  },
+  "combined_scale": 0.6093,
+  "layers": {
+    "momentum_signal": {
+      "raw_holdings": {
+        "XLK": 0.5,
+        "QQQ": 0.5
+      },
+      "risk_regime": "RISK_ON",
+      "absolute_mom_pass": true
+    },
+    "vol_targeting": {
+      "scale": 0.5539,
+      "realized_vol_pct": 12.64,
+      "vol_target_pct": 7.0,
+      "vol_regime": "NORMAL"
+    },
+    "vix_composite": {
+      "vix": 19.5,
+      "vix_regime": "NORMAL",
+      "composite_score": 0.8787,
+      "position_multiplier": 1.0,
+      "level_score": 0.75,
+      "mom_score": 0.9147,
+      "ma_score": 1.0,
+      "fear_score": 1.0,
+      "date": "2026-04-24"
+    },
+    "macro_filter": {
+      "yield_curve_adj": 0.1,
+      "cot_adj": 0.0,
+      "fed_cycle_adj": 0.0,
+      "yield_curve": 0.699,
+      "cot_es": "NEUTRAL",
+      "cot_nq": "NEUTRAL",
+      "fed_funds": 4.33,
+      "source": "live",
+      "cot_es_net": -115762,
+      "cot_nq_net": 10821,
+      "multiplier": 1.1,
+      "total_adj": 0.1
+    }
+  },
+  "ibkr_instructions": {
+    "account": "DUP662235",
+    "mode": "PAPER",
+    "gateway_port": 4002,
+    "execution_timing": "MOO (Market On Open) \u2014 Monday morning",
+    "orders": [
+      {
+        "symbol": "XLK",
+        "action": "BUY",
+        "weight_pct": 30.46,
+        "order_type": "MKT",
+        "tif": "OPG",
+        "note": "Strategy C+ allocation: 30.5%"
+      },
+      {
+        "symbol": "QQQ",
+        "action": "BUY",
+        "weight_pct": 30.46,
+        "order_type": "MKT",
+        "tif": "OPG",
+        "note": "Strategy C+ allocation: 30.5%"
+      },
+      {
+        "symbol": "SHY",
+        "action": "BUY",
+        "weight_pct": 39.07,
+        "order_type": "MKT",
+        "tif": "OPG",
+        "note": "Strategy C+ allocation: 39.1%"
+      }
+    ],
+    "rebalance_required": true
+  }
+}
