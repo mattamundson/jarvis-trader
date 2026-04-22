@@ -156,8 +156,11 @@ async def portfolio_summary():
             if open_positions:
                 symbols = [str(p.get("symbol", "")) for p in open_positions]
                 if _data_manager is not None:
+                    # Use tick-only path (skips TV) — /portfolio/summary fires
+                    # once per open position and we care about tail latency,
+                    # not necessarily the absolute freshest quote.
                     results = await asyncio.gather(
-                        *[_data_manager.get_current_price(sym) for sym in symbols],
+                        *[_data_manager.get_tick_price(sym) for sym in symbols],
                         return_exceptions=True,
                     )
                     current_prices = [

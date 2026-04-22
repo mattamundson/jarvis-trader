@@ -120,3 +120,69 @@ async def test_get_current_price_falls_back_to_polygon_when_ibkr_no_price() -> N
     # Waterfall falls through to CSV cache or unavailable.
     mock_poly.get_last_price.assert_not_called()
     assert out["source"] in ("csv_cache", "unavailable")
+
+
+# ── get_tick_price — ticker-only path that skips TV ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_tick_price_skips_tv_feed(monkeypatch) -> None:
+    """get_tick_price must never invoke _tv_feed, even when TV is available.
+
+    Regression guard for P1.9 /portfolio/summary latency fix: ticker reads
+    for open positions route through IBKR/Schwab/Polygon but never touch
+    TV Desktop (whose chart-switch cost inflates tail latency).
+    """
+    mgr = MarketDataManager(_MinimalConfig())
+    mock_ib = MagicMock()
+    mock_ib.is_connected = True
+    mock_ib.get_snapshot_price = AsyncMock(
+        return_value={"last_price": 71.5, "source": "ibkr"}
+    )
+    mgr.ibkr = mock_ib
+    mgr.schwab = None
+    mgr.polygon = MagicMock()
+
+    # Force TV feed to "available" but assert it is NEVER called from get_tick_price.
+    mock_tv = MagicMock()
+    mock_tv.is_available = MagicMock(return_value=True)
+    mock_tv.get_quote = MagicMock(return_value={"close": 999.0})
+    mock_tv.get_bars = MagicMock()
+    monkeypatch.setattr(market_data_module, "_tv_feed", mock_tv)
+
+    out = await mgr.get_tick_price("MCL", is_futures=True)
+
+    assert out["source"] == "ibkr"
+    assert out["last_price"] == 71.5
+    mock_ib.get_snapshot_price.assert_awaited_once()
+    mock_tv.get_quote.assert_not_called()
+    mock_tv.get_bars.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_tick_price_falls_to_schwab_when_ibkr_empty(monkeypatch) -> None:
+    mgr = MarketDataManager(_MinimalConfig())
+    mock_ib = MagicMock()
+    mock_ib.is_connected = True
+    mock_ib.get_snapshot_price = AsyncMock(return_value={"last_price": None})
+    mgr.ibkr = mock_ib
+
+    mock_schwab = MagicMock()
+    mock_schwab.is_connected = True
+    mock_schwab.get_quotes = AsyncMock(
+        return_value={"MCL": {"last": 72.1, "mark": 72.15, "change_pct": 1.5}}
+    )
+    mgr.schwab = mock_schwab
+    mgr.polygon = MagicMock()
+
+    mock_tv = MagicMock()
+    mock_tv.is_available = MagicMock(return_value=True)
+    mock_tv.get_quote = MagicMock(return_value={"close": 999.0})
+    monkeypatch.setattr(market_data_module, "_tv_feed", mock_tv)
+
+    out = await mgr.get_tick_price("MCL", is_futures=True)
+
+    assert out["source"] == "schwab"
+    assert out["last_price"] == 72.1
+    # Still must not touch TV even in Schwab-fallback case.
+    mock_tv.get_quote.assert_not_called()
