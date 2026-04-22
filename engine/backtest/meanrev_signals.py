@@ -72,6 +72,76 @@ def _wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
     return tr.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
 
 
+def _build_regime_gate(
+    mode: str,
+    df: pd.DataFrame,
+    bb_upper: pd.Series,
+    bb_lower: pd.Series,
+    adx_threshold: float,
+    bbwidth_pct: float,
+    bbwidth_lookback: int,
+    keltner_atr_mult: float,
+) -> pd.Series:
+    """Return a boolean Series — True = entry allowed, False = suppressed.
+
+    The gate ANDs into the per-direction entry conditions in the caller.
+    Each mode targets a specific trend-regime signature that kills naive
+    mean-reversion setups:
+        adx      : suppress when ADX >= adx_threshold (trending)
+        bbwidth  : suppress when bb_width rolling percentile > bbwidth_pct
+                    (volatility-expansion phase = trend burst)
+        keltner  : suppress when price is outside BOTH Bollinger AND Keltner
+                    (extreme dislocation confirmed by ATR, not just SD)
+    Unknown modes fall back to all-True (effectively no gate).
+    """
+    from backtest.indicators import compute_adx, keltner_channels
+
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+    n = len(df)
+    all_true = pd.Series(True, index=df.index)
+
+    if mode == "adx":
+        adx_df = compute_adx(df, period=14)
+        adx = adx_df["adx"]
+        # Allow entry when adx < threshold (non-trending / ranging regime).
+        return (adx < adx_threshold).fillna(False)
+
+    if mode == "bbwidth":
+        bb_width = (bb_upper - bb_lower).abs()
+        # Rolling percentile rank of current bb_width vs the prior `lookback`
+        # bars. rank normalized to [0, 100]. Allow entry when rank <= pct
+        # (current vol is in the calm-to-normal range, not top-pct%).
+        rank = bb_width.rolling(bbwidth_lookback, min_periods=max(5, bbwidth_lookback // 4)).apply(
+            lambda w: 100.0 * (w.iloc[-1] <= w).sum() / len(w)
+            if len(w) > 0 else 50.0,
+            raw=False,
+        )
+        # Above definition gives the "rank of current value among window"
+        # (higher = current is LOW compared to window). Flip to standard
+        # "percentile rank" where 100 = current is highest.
+        percentile = 100.0 - rank
+        return (percentile <= bbwidth_pct).fillna(False)
+
+    if mode == "keltner":
+        kc_upper, _kc_basis, kc_lower = keltner_channels(
+            close, high, low, sma_len=20, atr_factor=keltner_atr_mult,
+        )
+        outside_bb_up = close > bb_upper
+        outside_bb_dn = close < bb_lower
+        outside_kc_up = close > kc_upper
+        outside_kc_dn = close < kc_lower
+        # Suppress when price breaches BOTH channel systems in the same
+        # direction — that's a confirmed trend extension, not a reversion
+        # setup. Allow entry when price breaches Bollinger but NOT Keltner.
+        trend_ext = (outside_bb_up & outside_kc_up) | (outside_bb_dn & outside_kc_dn)
+        return (~trend_ext).fillna(False)
+
+    # Unknown mode — fail safe to all-True (no gating).
+    return all_true
+
+
 def _wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     """Wilder's RSI with exponential smoothing (alpha = 1/period)."""
     delta = close.diff()
@@ -97,6 +167,11 @@ def generate_bollinger_rsi_signals(
     rsi_long: float = 30.0,
     rsi_short: float = 70.0,
     stop_atr_mult: float = 1.5,
+    regime_filter_mode: str = "none",
+    regime_filter_adx_threshold: float = 20.0,
+    regime_filter_bbwidth_pct: float = 40.0,
+    regime_filter_bbwidth_lookback: int = 100,
+    regime_filter_keltner_atr_mult: float = 1.5,
 ) -> pd.DataFrame:
     """Generate Bollinger + RSI mean-reversion signals.
 
@@ -108,6 +183,23 @@ def generate_bollinger_rsi_signals(
         rsi_long: Oversold threshold for LONG entries (default 30.0).
         rsi_short: Overbought threshold for SHORT entries (default 70.0).
         stop_atr_mult: Stop distance in ATR(14) multiples (default 1.5).
+        regime_filter_mode: "none" | "adx" | "bbwidth" | "keltner".
+            - "none": default, no additional filter.
+            - "adx":  suppress entries when ADX >= adx_threshold (trend day).
+            - "bbwidth": suppress entries when bb_width rolling percentile
+                rank > regime_filter_bbwidth_pct (top-pct% vol = trend burst).
+            - "keltner": suppress entries when price is outside BOTH the
+                Bollinger AND the Keltner channel (trend extension confirmed
+                by ATR, not just standard deviation — filters out one-way
+                momentum moves that look like reversion setups).
+        regime_filter_adx_threshold: ADX value above which entries are
+            suppressed in "adx" mode (default 20.0).
+        regime_filter_bbwidth_pct: percentile threshold in "bbwidth" mode
+            (default 40 = suppress top 60% vol bars).
+        regime_filter_bbwidth_lookback: rolling window for bb_width percentile
+            rank (default 100 bars).
+        regime_filter_keltner_atr_mult: ATR multiplier for Keltner channel
+            used in "keltner" mode (default 1.5, matching indicator default).
 
     Returns:
         Copy of df with added columns documented in the module docstring.
@@ -137,6 +229,24 @@ def generate_bollinger_rsi_signals(
     conflict = long_cond & short_cond
     long_cond = long_cond & ~conflict
     short_cond = short_cond & ~conflict
+
+    # ── Regime filter (optional) ─────────────────────────────────────────
+    # Default "none" preserves original behavior. Non-default modes AND an
+    # additional gate into the entry condition to suppress trend-day chop
+    # that killed the first-pass MCL result (PF 0.855, 55% stop-hit rate).
+    if regime_filter_mode != "none":
+        regime_gate = _build_regime_gate(
+            mode=regime_filter_mode,
+            df=df,
+            bb_upper=bb_upper,
+            bb_lower=bb_lower,
+            adx_threshold=regime_filter_adx_threshold,
+            bbwidth_pct=regime_filter_bbwidth_pct,
+            bbwidth_lookback=regime_filter_bbwidth_lookback,
+            keltner_atr_mult=regime_filter_keltner_atr_mult,
+        )
+        long_cond = long_cond & regime_gate
+        short_cond = short_cond & regime_gate
 
     # ── Exit logic: midband cross ─────────────────────────────────────────
     # Midband cross in either direction — simple reversion-complete signal.

@@ -181,6 +181,64 @@ def main() -> int:
     stats2 = _stats(trades2)
     print(json.dumps(stats2, indent=2, default=str))
 
+    # ── Regime-filter retry (Track 4) ─────────────────────────────────────
+    # First-pass default produced PF 0.855 (LONG 0.918, SHORT 0.797) with
+    # 55% stop-hit rate — the trend-day-chop signature. Try 3 regime
+    # filters: ADX (skip trending), bbwidth (skip vol-expansion), keltner
+    # (skip confirmed-trend extensions). Acceptance bar: PF >= 1.10.
+    print("\n=== Regime-filter variant 1: ADX < 20 gate (skip trending regimes) ===")
+    sig_adx = generate_bollinger_rsi_signals(
+        df, regime_filter_mode="adx", regime_filter_adx_threshold=20.0,
+    )
+    trades_adx = _simulate(sig_adx)
+    stats_adx = _stats(trades_adx)
+    print(json.dumps(stats_adx, indent=2, default=str))
+
+    print("\n=== Regime-filter variant 2: BB-width percentile <= 40 (skip vol-expansion) ===")
+    sig_bbw = generate_bollinger_rsi_signals(
+        df, regime_filter_mode="bbwidth", regime_filter_bbwidth_pct=40.0,
+    )
+    trades_bbw = _simulate(sig_bbw)
+    stats_bbw = _stats(trades_bbw)
+    print(json.dumps(stats_bbw, indent=2, default=str))
+
+    print("\n=== Regime-filter variant 3: Keltner (skip BB+KC double-breach) ===")
+    sig_kc = generate_bollinger_rsi_signals(
+        df, regime_filter_mode="keltner", regime_filter_keltner_atr_mult=1.5,
+    )
+    trades_kc = _simulate(sig_kc)
+    stats_kc = _stats(trades_kc)
+    print(json.dumps(stats_kc, indent=2, default=str))
+
+    # ── Summary: which (if any) clears PF >= 1.10? ───────────────────────
+    print("\n" + "=" * 70)
+    print("  Regime-filter comparison summary (PF >= 1.10 = gate v2 floor)")
+    print("=" * 70)
+    rows = [
+        ("default", stats),
+        ("loose (rsi 40/60)", stats2),
+        ("adx<20", stats_adx),
+        ("bbwidth<=40pct", stats_bbw),
+        ("keltner", stats_kc),
+    ]
+    print(f"  {'variant':<22} {'trades':>6} {'PF':>7} {'WR%':>6} {'exp_pts':>9} {'pass?':>6}")
+    print("  " + "-" * 60)
+    winners = []
+    for name, s in rows:
+        pf_val = s["pf"] if isinstance(s["pf"], (int, float)) else float("inf")
+        passed = isinstance(s["pf"], (int, float)) and s["pf"] >= 1.10
+        mark = "PASS" if passed else "fail"
+        if passed:
+            winners.append(name)
+        print(
+            f"  {name:<22} {s['trades']:>6} {pf_val if isinstance(pf_val, float) else '   inf':>7} "
+            f"{s['win_rate']*100:>5.1f} {s['expectancy_pts']:>9.3f} {mark:>6}"
+        )
+    print("=" * 70)
+    if winners:
+        print(f"\n  WINNERS: {', '.join(winners)}")
+    else:
+        print("\n  No variant clears PF >= 1.10 floor — MCL mean-rev abandoned for now.")
     return 0
 
 

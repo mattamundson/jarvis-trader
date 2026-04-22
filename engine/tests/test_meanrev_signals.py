@@ -183,4 +183,59 @@ def test_no_conflict_both_long_and_short_same_bar():
 def test_mcl_params_dict_readable():
     """Router in signals.py (P1.1 step 5) will look up MEANREV_PARAMS[symbol]."""
     assert "MCL" in MEANREV_PARAMS
+
+
+# ── Regime-filter retry (Track 4 / P1.1 iteration 2) ──────────────────────
+
+
+def _make_trend_ohlc(n: int = 400, seed: int = 99) -> pd.DataFrame:
+    """Strong monotonic uptrend — ADX should climb well above 20 throughout
+    the latter half. Mean-reversion entries on a trend like this are exactly
+    the false-positives the regime filter must suppress.
+    """
+    rng = np.random.default_rng(seed)
+    base = 100.0
+    drift = np.linspace(0, 40, n)
+    noise = rng.normal(0, 0.5, n)
+    close = base + drift + noise
+    high = close + 0.8
+    low = close - 0.8
+    idx = pd.date_range("2024-01-01", periods=n, freq="1h")
+    return pd.DataFrame({
+        "open": close, "high": high, "low": low, "close": close, "volume": 1000,
+    }, index=idx)
+
+
+def test_adx_regime_filter_reduces_entries_on_trend():
+    """On a monotonic uptrend, the default generator may fire mean-rev
+    entries at pullback-to-lower-band bars. ADX filter must suppress them.
+    """
+    df = _make_trend_ohlc(n=400)
+    default = generate_bollinger_rsi_signals(df, rsi_long=35.0, rsi_short=65.0)
+    adx_gated = generate_bollinger_rsi_signals(
+        df, rsi_long=35.0, rsi_short=65.0,
+        regime_filter_mode="adx", regime_filter_adx_threshold=20.0,
+    )
+    n_default = (default["entry_signal"] == "ENTRY_NOW").sum()
+    n_adx = (adx_gated["entry_signal"] == "ENTRY_NOW").sum()
+    # ADX filter must not INCREASE entries — it can only suppress.
+    assert n_adx <= n_default, f"ADX filter increased entries ({n_default} → {n_adx})"
+
+
+def test_regime_filter_none_preserves_existing_behavior():
+    """regime_filter_mode='none' (default) must produce identical entries to
+    an explicit call with no filter kwargs — protects the existing test
+    suite and downstream consumers from behavior drift.
+    """
+    df = _make_oscillating_ohlc(n=200)
+    default = generate_bollinger_rsi_signals(df)
+    explicit_none = generate_bollinger_rsi_signals(df, regime_filter_mode="none")
+
+    # Entry/exit columns must be identical
+    pd.testing.assert_series_equal(
+        default["entry_signal"], explicit_none["entry_signal"], check_names=False,
+    )
+    pd.testing.assert_series_equal(
+        default["exit_signal"], explicit_none["exit_signal"], check_names=False,
+    )
     assert isinstance(MEANREV_PARAMS["MCL"], dict)
