@@ -135,9 +135,24 @@ async def fill_outcomes(
         logger.info("[MESOutcome] no rows need outcome fills")
         return result
 
+    today_iso = (for_date or date.today()).isoformat()
     for row in rows:
         if row["outcome_recorded_at"]:
             result.skipped_existing += 1
+            continue
+
+        # Cross-day backfill guard: `lookback_days=1` returns bars for the
+        # current session only, so assigning that close to an older row's
+        # open yields a multi-day delta instead of the 1-day-hypothesis
+        # delta we meant to record. Skip stale rows rather than mis-label
+        # them; they stay NULL and are dropped from the hit-rate sample.
+        if for_date is None and row["date"] != today_iso:
+            logger.info(
+                "[MESOutcome] skipping stale row %s/%s — cross-day close "
+                "would distort outcome_delta; leaving NULL",
+                row["date"], row["symbol"],
+            )
+            result.skipped_no_data += 1
             continue
 
         symbol = row["symbol"]

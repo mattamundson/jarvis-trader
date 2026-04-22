@@ -384,7 +384,7 @@ async def test_fill_outcomes_long_row_gets_positive_delta():
             {"high": [5830.0, 5840.0], "low": [5790.0, 5810.0], "close": [5820.0, 5835.0]}
         )
 
-    result = await fill_outcomes(db_path=db_path, bars_fn=bars_fn)
+    result = await fill_outcomes(for_date=date(2026, 4, 20), db_path=db_path, bars_fn=bars_fn)
     assert result.updated_rows == 1
 
     with sqlite3.connect(db_path) as conn:
@@ -418,8 +418,8 @@ async def test_fill_outcomes_idempotent():
     async def bars_fn(symbol: str):
         return pd.DataFrame({"high": [5830.0], "low": [5790.0], "close": [5820.0]})
 
-    r1 = await fill_outcomes(db_path=db_path, bars_fn=bars_fn)
-    r2 = await fill_outcomes(db_path=db_path, bars_fn=bars_fn)
+    r1 = await fill_outcomes(for_date=date(2026, 4, 20), db_path=db_path, bars_fn=bars_fn)
+    r2 = await fill_outcomes(for_date=date(2026, 4, 20), db_path=db_path, bars_fn=bars_fn)
     assert r1.updated_rows == 1
     # Second pass either skips or sees nothing pending — either way, no re-update
     assert r2.updated_rows == 0
@@ -440,7 +440,7 @@ async def test_fill_outcomes_missing_bars_leaves_row_pending():
     async def bars_fn(symbol: str):
         return None  # simulate no bars available
 
-    result = await fill_outcomes(db_path=db_path, bars_fn=bars_fn)
+    result = await fill_outcomes(for_date=date(2026, 4, 20), db_path=db_path, bars_fn=bars_fn)
     assert result.updated_rows == 0
     assert result.skipped_no_data == 1
 
@@ -450,6 +450,51 @@ async def test_fill_outcomes_missing_bars_leaves_row_pending():
         ).fetchone()
     # Row stays pending — the outcome job can retry the next cycle
     assert row[0] is None
+
+
+@pytest.mark.asyncio
+async def test_fill_outcomes_skips_stale_rows_without_for_date():
+    """When called bare (no for_date), only TODAY's row is filled. Stale
+    rows must stay NULL rather than be filled with the wrong-day close.
+
+    Scenario: yesterday's 15:15 CT job failed (no bars). Today at 15:15 CT,
+    the scheduler calls fill_outcomes() bare. If we used today's close to
+    fill yesterday's open, the outcome_delta would be 2-day, not 1-day.
+    The guard must skip yesterday's row and leave it NULL.
+    """
+    db_path = _fresh_db()
+    briefing_fn = await _fake_briefing_fn_factory(_make_briefing())
+    # Seed yesterday's row (stale) + today's row (current)
+    from datetime import timedelta
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    await record_session(
+        for_date=yesterday, db_path=db_path,
+        briefing_fn=briefing_fn, tv_bridge=FakeTVBridge(),
+        data_manager=FakeDataManager(price=5800.0),
+    )
+    await record_session(
+        for_date=today, db_path=db_path,
+        briefing_fn=briefing_fn, tv_bridge=FakeTVBridge(),
+        data_manager=FakeDataManager(price=5900.0),
+    )
+
+    async def bars_fn(symbol: str):
+        return pd.DataFrame({"high": [5950.0], "low": [5880.0], "close": [5920.0]})
+
+    result = await fill_outcomes(db_path=db_path, bars_fn=bars_fn)
+    assert result.updated_rows == 1  # only today's row filled
+    assert result.skipped_no_data == 1  # yesterday's row skipped
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = {r["date"]: r["outcome_recorded_at"]
+                for r in conn.execute(
+                    "SELECT date, outcome_recorded_at FROM mes_session_hypothesis"
+                ).fetchall()}
+    assert rows[yesterday.isoformat()] is None, \
+        "stale row must stay NULL to avoid cross-day close corruption"
+    assert rows[today.isoformat()] is not None
 
 
 @pytest.mark.asyncio
