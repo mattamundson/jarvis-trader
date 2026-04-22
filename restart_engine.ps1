@@ -67,8 +67,9 @@ if ($pm2Managed) {
     }
 
     # Verify the cycle actually happened. PM2 has been observed no-op'ing on
-    # transient conditions. A fresh restart should have uptime in the low
-    # seconds; anything over 60s means we're looking at a stale process.
+    # transient conditions. A fresh restart's pm_uptime should be less than
+    # the time we spent waiting — if uptime exceeds our elapsed script time,
+    # the process started BEFORE this script ran, which means pm2 didn't cycle.
     # Parse pm_uptime via regex — ConvertFrom-Json trips over PM2's duplicate
     # case-insensitive env-var keys (USERNAME vs username) on Windows.
     $uptimeMs = -1
@@ -92,13 +93,19 @@ if ($pm2Managed) {
         Write-Host "ERROR: could not verify pm2 restart (jlist unreadable). Aborting so caller doesn't mistake this for success."
         exit 1
     }
-    if ($uptimeMs -gt 60000) {
-        Write-Host ("ERROR: pm2 restart did NOT cycle the process - uptime=" + $uptimeMs + "ms (expected under 60000).")
+    # Cycle detector: uptime must be <= elapsed-since-script-start (with 5s
+    # clock-skew tolerance). Previous static 60000ms cutoff broke when real
+    # startup grew past 60s — healthy restarts taking 197s were flagged as
+    # stale because the cutoff was shorter than the successful bind time.
+    $elapsedMs = [int64]((Get-Date) - $startTime).TotalMilliseconds
+    $cycleBudgetMs = $elapsedMs + 5000
+    if ($uptimeMs -gt $cycleBudgetMs) {
+        Write-Host ("ERROR: pm2 restart did NOT cycle the process - uptime=" + $uptimeMs + "ms exceeds elapsed=" + $elapsedMs + "ms (+5s tolerance).")
         Write-Host "  Stale uvicorn is still running. Try: pm2 delete jarvis-engine ; then re-run this script."
         exit 1
     }
 
-    Write-Host ("Engine UP: 200 (pm2 uptime " + $uptimeMs + "ms - fresh)")
+    Write-Host ("Engine UP: 200 (pm2 uptime " + $uptimeMs + "ms / elapsed " + $elapsedMs + "ms - fresh)")
     exit 0
 }
 
