@@ -127,6 +127,34 @@ class TradingViewFeed:
         except (subprocess.TimeoutExpired, json.JSONDecodeError):
             return None
 
+    def _wait_for_chart_state(
+        self,
+        expected_symbol: Optional[str] = None,
+        expected_resolution: Optional[str] = None,
+        max_wait: float = 3.0,
+    ) -> bool:
+        """Poll `tv state` until reported symbol/resolution match what we set.
+
+        Returns True once the state matches (chart finished repainting),
+        False if the deadline expires. Each poll issues `tv state` which
+        itself takes ~150-300ms, so we get 5-8 probes inside a 3s budget —
+        on a fast chart this returns well under the old fixed 600ms sleep.
+        """
+        deadline = time.monotonic() + max_wait
+        interval = 0.1
+        while time.monotonic() < deadline:
+            time.sleep(interval)
+            state = self._get_state()
+            if state is None:
+                interval = min(interval * 1.5, 0.4)
+                continue
+            sym_ok = (expected_symbol is None) or (state.get("symbol") == expected_symbol)
+            res_ok = (expected_resolution is None) or (state.get("resolution") == expected_resolution)
+            if sym_ok and res_ok:
+                return True
+            interval = min(interval * 1.5, 0.4)
+        return False
+
     def _set_symbol(self, ticker: str) -> bool:
         try:
             # Timeout is 20s because TV chart switches under heavy study load
@@ -195,7 +223,7 @@ class TradingViewFeed:
                     if not self._set_symbol(ticker):
                         logger.debug("Failed to set symbol %s", ticker)
                         return None
-                    time.sleep(0.6)  # let chart refresh
+                    self._wait_for_chart_state(expected_symbol=ticker)
 
                 r = subprocess.run(
                     [TV_CLI, "quote"],
@@ -275,19 +303,21 @@ class TradingViewFeed:
             prior_resolution = prior.get("resolution") if prior else None
 
             try:
-                # Switch symbol if needed
+                # Switch symbol if needed — poll state for chart repaint
                 if prior_symbol != ticker:
                     if not self._set_symbol(ticker):
                         logger.warning("Failed to set TV symbol %s", ticker)
                         return empty
-                    time.sleep(0.6)
+                    if not self._wait_for_chart_state(expected_symbol=ticker):
+                        logger.warning("TV chart did not settle on %s within 3s", ticker)
 
-                # Switch timeframe if needed
+                # Switch timeframe if needed — poll state for chart repaint
                 if prior_resolution != resolution:
                     if not self._set_timeframe(resolution):
                         logger.warning("Failed to set TV resolution %s", resolution)
                         return empty
-                    time.sleep(0.6)
+                    if not self._wait_for_chart_state(expected_resolution=resolution):
+                        logger.warning("TV chart did not settle on %s within 3s", resolution)
 
                 # Fetch bars
                 r = subprocess.run(
