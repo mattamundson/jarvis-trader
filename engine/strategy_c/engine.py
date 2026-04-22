@@ -44,6 +44,7 @@ from .signals import StrategyCSignals
 from .vol_targeting import VolatilityTargeter
 from .vix_composite import VIXComposite
 from .macro_filter import MacroRegimeFilter
+from .mtf_filter import MTFFilter
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,9 @@ class StrategyCConfig:
         # Macro filter
         use_macro_filter: bool = True,
         use_cot: bool = False,  # Live only — not vectorized for backtest
+        # Multi-timeframe momentum confirmation
+        use_mtf: bool = True,
+        mtf_symbols: list = None,  # defaults to ["XLK", "QQQ", "SPY"]
         # Risk-on universe
         risk_on: Optional[list] = None,
         risk_off: Optional[list] = None,
@@ -100,6 +104,8 @@ class StrategyCConfig:
         self.use_factor_tilt = use_factor_tilt
         self.use_macro_filter = use_macro_filter
         self.use_cot = use_cot
+        self.use_mtf = use_mtf
+        self.mtf_symbols = mtf_symbols  # None → MTFFilter defaults to ["XLK", "QQQ", "SPY"]
         self.risk_on = risk_on or ["QQQ", "SPY", "EFA", "USMV", "MTUM", "XLK", "XLV"]
         self.risk_off = risk_off or ["IEF", "SHY"]
 
@@ -565,12 +571,32 @@ class StrategyCEngine:
         # Macro filter (live FRED + CoT)
         macro_mult, macro_detail = self.macro_filter.get_live_multiplier()
 
-        # Final combined scale
+        # Pre-MTF combined scale
         combined_scale = (
             vol_scale
             * vix_signal.get("position_multiplier", 1.0)
             * macro_mult
         )
+        pre_mtf_scale = combined_scale
+
+        # MTF momentum confirmation layer
+        mtf_signal: dict = {
+            "mtf_scale": 1.0,
+            "weekly_momentum": "NEUTRAL",
+            "monthly_momentum": "NEUTRAL",
+            "daily_confirmation": "NEUTRAL",
+            "breadth": "NEUTRAL",
+            "votes_bull": 0,
+            "votes_bear": 0,
+            "confidence": "LOW",
+            "details": {"skipped": True},
+        }
+        if self.config.use_mtf:
+            mtf_filter = MTFFilter()
+            mtf_syms = self.config.mtf_symbols or ["XLK", "QQQ", "SPY"]
+            mtf_signal = mtf_filter.get_mtf_signal(mtf_syms)
+            # Apply MTF multiplier and cap at 1.0
+            combined_scale = min(1.0, combined_scale * mtf_signal.get("mtf_scale", 1.0))
 
         # Holdings after scaling (scale reduces position; remainder in SHY)
         raw_holdings = signal.get("holdings", {})
@@ -588,6 +614,7 @@ class StrategyCEngine:
             # Scaled final holdings
             "holdings": {k: round(v, 4) for k, v in scaled_holdings.items()},
             "combined_scale": round(combined_scale, 4),
+            "pre_mtf_scale": round(pre_mtf_scale, 4),
 
             # Layer breakdown
             "layers": {
@@ -604,6 +631,7 @@ class StrategyCEngine:
                 },
                 "vix_composite": vix_signal,
                 "macro_filter": macro_detail,
+                "mtf_signal": mtf_signal,
             },
 
             # Execution guidance for IBKR
