@@ -9,6 +9,7 @@ Endpoints:
   GET /paper/validation/progress — current metrics vs thresholds
   GET /paper/validation/trades — list of all paper trades
   GET /paper/validation/status — overall pass/fail + days remaining
+  GET /paper/validation/counts — per-symbol closed-trade counts vs Q2 2026 thresholds (session-start display)
   GET /paper/validation/approved-paper-gates — MCL/MNQ gates vs canonical thresholds (SQLite)
   POST /paper/validation/record — DEPRECATED (kept for compatibility, no-op)
 """
@@ -165,6 +166,55 @@ async def get_validation_status():
     except Exception as exc:
         logger.error(f"Validation status error: {exc}")
         raise HTTPException(500, str(exc)) from exc
+
+
+_Q2_PAPER_TARGETS = {"MES": 30, "MCL": 60, "MNQ": 60}
+_Q2_BLOCKED_SYMBOLS = {"MCL", "MNQ"}
+
+
+@router.get("/counts")
+async def get_paper_trade_counts():
+    """
+    Per-symbol paper-trade counts vs Q2 2026 live-readiness thresholds.
+
+    Surfaces the session-start counter line defined in the Q2 roadmap:
+        Paper trades — MES: X/30 | MCL: Y/60 (blocked) | MNQ: 0/60 (blocked)
+
+    Counts only CLOSED paper trades (exit_time IS NOT NULL).
+    """
+    if get_db is None:
+        raise HTTPException(500, "database module unavailable")
+    counts: dict[str, int] = {}
+    try:
+        with get_db() as conn:
+            for sym in _Q2_PAPER_TARGETS:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM paper_trades "
+                    "WHERE symbol = ? AND exit_time IS NOT NULL",
+                    (sym,),
+                ).fetchone()
+                counts[sym] = int(row[0]) if row else 0
+    except Exception as exc:
+        logger.error(f"Paper counts query error: {exc}")
+        raise HTTPException(500, str(exc)) from exc
+
+    parts = []
+    for sym, target in _Q2_PAPER_TARGETS.items():
+        tag = " (blocked)" if sym in _Q2_BLOCKED_SYMBOLS else ""
+        parts.append(f"{sym}: {counts[sym]}/{target}{tag}")
+    display = "Paper trades — " + " | ".join(parts)
+
+    return {
+        "counts": {
+            sym: {
+                "closed": counts[sym],
+                "target": _Q2_PAPER_TARGETS[sym],
+                "blocked": sym in _Q2_BLOCKED_SYMBOLS,
+            }
+            for sym in _Q2_PAPER_TARGETS
+        },
+        "display": display,
+    }
 
 
 class ValidationGate(BaseModel):

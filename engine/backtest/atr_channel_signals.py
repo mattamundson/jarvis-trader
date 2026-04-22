@@ -1,4 +1,8 @@
 """
+STATUS: ARCHIVED — FAILED gate v2 (2026-04-22). Test PF 0.433 on MES 1h.
+Keltner-style breakout surrendered the edge under ATR-regime filter.
+Retained for reference; see backtest/archive/failed/README.md.
+
 ATR-channel volatility breakout signal generator for JARVIS TRADER.
 
 Entry  : close breaks above midline + atr_mult*ATR (long) / below midline -
