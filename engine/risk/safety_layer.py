@@ -929,6 +929,129 @@ class SafetyLayer:
                 "routed_to_ib": False,
             }
 
+    async def submit_entry_with_stop(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        price: float,
+        stop_price: float,
+    ) -> dict:
+        """
+        Submit a MKT entry and an immediate child STP on the broker side.
+
+        Closes HB-1 from the 2026-04-22 deployment-verification review:
+        the trader agent computed stop_price but no code path submitted it
+        to IBKR, so any engine crash mid-trade left positions unprotected.
+
+        Returns a dict with keys:
+            approved       : entry passed SafetyLayer
+            reason         : outcome message
+            entry_order_id : broker id of the MKT entry (None if blocked)
+            stp_order_id   : broker id of the STP child (None if entry blocked
+                             or STP placement raised)
+            stp_linked     : True iff the STP carries parent_order_id == entry
+            routed_to_ib   : True iff entry reached IB Gateway
+        """
+        entry_res = await self.submit_paper_order(
+            symbol=symbol,
+            action=action,
+            quantity=quantity,
+            price=price,
+            order_type="MKT",
+            limit_price=None,
+        )
+        if not entry_res.get("approved") or not entry_res.get("routed_to_ib"):
+            return {
+                "approved": entry_res.get("approved", False),
+                "reason": entry_res.get("reason", "Entry rejected"),
+                "entry_order_id": entry_res.get("order_id"),
+                "stp_order_id": None,
+                "stp_linked": False,
+                "routed_to_ib": entry_res.get("routed_to_ib", False),
+            }
+
+        entry_id = entry_res["order_id"]
+        stp_action = "SELL" if action.upper() == "BUY" else "BUY"
+
+        try:
+            stp_id_raw = await self._ib_gateway.place_paper_order(
+                symbol=symbol,
+                action=stp_action,
+                quantity=quantity,
+                order_type="STP",
+                limit_price=None,
+                aux_price=stop_price,
+                parent_order_id=entry_id,
+            )
+            stp_id = str(stp_id_raw) if stp_id_raw is not None else None
+        except Exception as exc:
+            logger.error(
+                "submit_entry_with_stop: STP child placement raised - symbol=%s: %s",
+                symbol,
+                exc,
+                exc_info=True,
+            )
+            stp_id = None
+
+        return {
+            "approved": True,
+            "reason": "Entry + child STP submitted",
+            "entry_order_id": entry_id,
+            "stp_order_id": stp_id,
+            "stp_linked": stp_id is not None,
+            "routed_to_ib": True,
+        }
+
+    async def flatten_all_positions(self) -> dict:
+        """
+        Emergency close of every open position via MKT orders.
+
+        Used by POST /safety/flatten-all. Kill switch blocks new discretionary
+        orders but leaves existing positions open; this is the operator path
+        to liquidate them.
+        """
+        if self._ib_gateway is None:
+            return {"flattened": [], "order_ids": [], "errors": [{"error": "No IB gateway attached"}]}
+
+        try:
+            positions = await self._ib_gateway.get_positions()
+        except Exception as exc:
+            return {"flattened": [], "order_ids": [], "errors": [{"error": f"get_positions raised: {exc}"}]}
+
+        flattened: list[str] = []
+        order_ids: list[str] = []
+        errors: list[dict] = []
+
+        for pos in positions or []:
+            symbol = pos.get("symbol")
+            qty = int(pos.get("position", 0) or 0)
+            if not symbol or qty == 0:
+                continue
+            close_action = "SELL" if qty > 0 else "BUY"
+            try:
+                oid = await self._ib_gateway.place_paper_order(
+                    symbol=symbol,
+                    action=close_action,
+                    quantity=abs(qty),
+                    order_type="MKT",
+                    limit_price=None,
+                )
+                if oid is not None:
+                    flattened.append(symbol)
+                    order_ids.append(str(oid))
+                else:
+                    errors.append({"symbol": symbol, "error": "place_paper_order returned None"})
+            except Exception as exc:
+                errors.append({"symbol": symbol, "error": str(exc)})
+
+        logger.warning(
+            "flatten_all_positions: closed=%d errors=%d",
+            len(flattened),
+            len(errors),
+        )
+        return {"flattened": flattened, "order_ids": order_ids, "errors": errors}
+
     # ── Portfolio State Sync (from broker, NOT from agents) ───────────────
 
     def sync_from_broker(self, equity: float, daily_pnl: float) -> None:
