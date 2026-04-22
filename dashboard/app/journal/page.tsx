@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   Activity,
   ArrowLeft,
@@ -279,15 +280,15 @@ export default function JournalPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1600px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
-            <a
+            <Link
               href="/"
               className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="text-xs">Dashboard</span>
-            </a>
+            </Link>
             <div className="h-5 w-px bg-border" />
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
@@ -305,32 +306,32 @@ export default function JournalPage() {
           </div>
 
           <nav className="hidden lg:flex items-center gap-4">
-            <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Dashboard
-            </a>
-            <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Analysis
-            </a>
-            <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Backtest
-            </a>
-            <a href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Performance
-            </a>
-            <a href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Validation
-            </a>
-            <a href="/journal" className="text-xs text-accent font-semibold">
+            </Link>
+            <Link href="/journal" className="text-xs text-accent font-semibold">
               Journal
-            </a>
-            <a href="/paper" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/paper" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Paper Trading
-            </a>
+            </Link>
           </nav>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
         {/* ── Market Session Status ──────────────────────────────────────────── */}
         <MarketSessionStatusCard />
 

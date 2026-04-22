@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── ET time helpers ────────────────────────────────────────────────────────
 
@@ -341,10 +341,10 @@ export function MarketSessionWidget() {
     let cancelled = false;
     const check = async () => {
       try {
-        const res = await fetch(`${ENGINE_URL}/health`, {
+        await fetchEngine(`/health`, {
           signal: AbortSignal.timeout(4000),
         });
-        if (!cancelled) setEngineOnline(res.ok);
+        if (!cancelled) setEngineOnline(true);
       } catch {
         if (!cancelled) setEngineOnline(false);
       }

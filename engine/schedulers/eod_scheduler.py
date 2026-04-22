@@ -17,7 +17,80 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("jarvis_trader.eod_scheduler")
 
 # Starting balance used when no prior DB record exists (paper trading default)
-_DEFAULT_STARTING_BALANCE = 100_000.0
+_DEFAULT_STARTING_BALANCE = 10_000.0
+
+
+async def _check_wfe_decay(symbol: str, wfe_value: float) -> None:
+    """Fire alert if WFE drops below decay thresholds."""
+    if wfe_value >= 0.50:
+        return  # WFE healthy — no alert needed
+
+    if wfe_value < 0.30:
+        severity = "CRITICAL"
+        msg = (
+            f"CRITICAL: {symbol} WFE dropped to {wfe_value:.2f} — below 0.30 fail threshold. "
+            f"Strategy edge has degraded. Manual review required. Trading should be halted."
+        )
+    else:
+        severity = "WARNING"
+        msg = (
+            f"WARNING: {symbol} WFE is {wfe_value:.2f} — below 0.50 warn threshold. "
+            f"Strategy edge is weakening. Monitor closely."
+        )
+
+    logger.warning("[EOD] WFE decay alert for %s: severity=%s wfe=%.2f", symbol, severity, wfe_value)
+
+    # Discord alert
+    try:
+        from notifications.discord_notifier import discord_validation_alert
+
+        await discord_validation_alert(
+            gate_name=f"wfe_decay_{symbol.lower()}",
+            old_status="PASS",
+            new_status=severity,
+            current_value=wfe_value,
+            target_value=0.50,
+        )
+    except Exception as exc:
+        logger.debug("[EOD] Discord WFE alert failed (non-fatal): %s", exc)
+
+    # WhatsApp / OpenClaw alert
+    try:
+        from notifications.openclaw_notifier import send_raw
+
+        await send_raw(msg)
+    except Exception as exc:
+        logger.debug("[EOD] OpenClaw WFE alert failed (non-fatal): %s", exc)
+
+
+async def _save_wfe_snapshots() -> None:
+    """Save WFE snapshots for paper-validated instruments via the engine API."""
+    import httpx
+
+    from config import TradingConfig
+
+    config = TradingConfig()
+    for symbol in ["MCL", "MNQ"]:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "http://localhost:8010/wfe/snapshot",
+                    params={"symbol": symbol},
+                    headers={"X-API-Key": config.API_KEY},
+                    timeout=30.0,
+                )
+                logger.info("[EOD] WFE snapshot saved for %s: %s", symbol, resp.status_code)
+                # Check for WFE decay in the snapshot response
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                        wfe_val = data.get("wfe_score") or data.get("wfe") or data.get("value")
+                        if wfe_val is not None:
+                            await _check_wfe_decay(symbol, float(wfe_val))
+                    except Exception as _parse_exc:
+                        logger.debug("[EOD] WFE decay check parse error for %s: %s", symbol, _parse_exc)
+        except Exception as exc:
+            logger.warning("[EOD] WFE snapshot failed for %s: %s", symbol, exc)
 
 
 class EODScheduler:
@@ -44,15 +117,22 @@ class EODScheduler:
         db_manager: Any = None,
         portfolio_tracker: Any = None,
         whatsapp_notifier: Any = None,
+        learning_consolidator: Any = None,
+        capital_allocator: Any = None,
     ) -> None:
         self._db = db_manager
         self._tracker = portfolio_tracker
         self._notifier = whatsapp_notifier
+        self._consolidator = learning_consolidator
+        self._capital_allocator = capital_allocator
+        self._alert_manager = None  # Injected by main.py after ValidationAlertManager is created
         logger.info(
-            "EODScheduler initialised — db=%s tracker=%s whatsapp=%s",
+            "EODScheduler initialised — db=%s tracker=%s whatsapp=%s consolidator=%s allocator=%s",
             "yes" if self._db else "no",
             "yes" if self._tracker else "no",
             "yes" if self._notifier else "no",
+            "yes" if self._consolidator else "no",
+            "yes" if self._capital_allocator else "no",
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -140,6 +220,44 @@ class EODScheduler:
             "max_drawdown": round(perf.get("max_dd", 0.0), 4),
         }
 
+    def _build_paper_performance_by_symbol(self) -> Dict[str, Dict[str, float]]:
+        """
+        Build {symbol: {"sharpe": float, "current_allocation": float}} from
+        the portfolio tracker's closed-trade performance data.
+
+        Returns an empty dict when no tracker is available or no trades exist.
+        """
+        if self._tracker is None:
+            return {}
+
+        try:
+            perf = self._tracker.get_performance()
+        except Exception as exc:
+            logger.warning("[EOD] Could not fetch performance for rebalance: %s", exc)
+            return {}
+
+        # get_performance() may return per-symbol breakdown or a flat dict.
+        # Try per-symbol first; fall back to applying flat Sharpe to known symbols.
+        by_symbol: Dict[str, Dict[str, float]] = {}
+
+        symbol_breakdown = perf.get("by_symbol") or perf.get("symbols") or {}
+        if isinstance(symbol_breakdown, dict) and symbol_breakdown:
+            for sym, sym_perf in symbol_breakdown.items():
+                by_symbol[sym] = {
+                    "sharpe": float(sym_perf.get("sharpe", 0.0) or 0.0),
+                    "current_allocation": float(sym_perf.get("allocation", 0.25) or 0.25),
+                }
+        else:
+            # Flat performance dict — apply to known active instruments
+            flat_sharpe = float(perf.get("sharpe", 0.0) or 0.0)
+            for sym in ("MCL", "MNQ", "MES", "MGC"):
+                by_symbol[sym] = {
+                    "sharpe": flat_sharpe,
+                    "current_allocation": 0.25,
+                }
+
+        return by_symbol
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     async def run_eod_snapshot(self) -> Dict[str, Any]:
@@ -213,6 +331,66 @@ class EODScheduler:
                 await self._send_eod_whatsapp(snapshot)
             except Exception as exc:
                 logger.warning("[EOD] WhatsApp notification failed: %s", exc)
+
+        # Send Discord EOD summary
+        try:
+            from notifications.discord_notifier import discord_eod_summary
+
+            await discord_eod_summary(
+                total_trades=snapshot["total_trades"],
+                wins=snapshot["winning_trades"],
+                losses=snapshot["losing_trades"],
+                daily_pnl=snapshot["realized_pnl"],
+            )
+        except Exception as exc:
+            logger.warning("[EOD] Discord EOD summary failed: %s", exc)
+
+        # Evaluate validation gates (30-day paper trading targets)
+        if self._alert_manager is not None:
+            try:
+                # Build metrics dict for validation alert manager
+                metrics = {
+                    "profit_factor": snapshot.get("profit_factor", 0.0),
+                    "sharpe_ratio": snapshot.get("sharpe_ratio", 0.0),
+                    "win_rate_pct": snapshot.get("win_rate_pct", 0.0),
+                    "total_trades": snapshot.get("total_trades", 0),
+                    "max_drawdown_pct": snapshot.get("max_drawdown", 0.0),
+                    "days_active": snapshot.get("days_active", 0),
+                }
+                alerts = self._alert_manager.evaluate_gates(metrics)
+                if alerts:
+                    logger.info(
+                        f"[EOD] Validation gate alerts: {len(alerts)} status changes detected"
+                    )
+            except Exception as exc:
+                logger.warning("[EOD] Validation gate evaluation failed: %s", exc)
+
+        # Run memory consolidation at EOD
+        if self._consolidator is not None:
+            try:
+                consolidation_result = await self._consolidator.consolidate_daily(target_date=today)
+                logger.info(
+                    "[EOD] Memory consolidation complete: %d patterns from %d trades",
+                    consolidation_result.get("patterns_extracted", 0),
+                    consolidation_result.get("trades_analyzed", 0),
+                )
+            except Exception as exc:
+                logger.warning("[EOD] Memory consolidation failed: %s", exc)
+
+        # Save WFE snapshots for paper-validated instruments
+        await _save_wfe_snapshots()
+
+        # Dynamic capital reallocation based on 30-day Sharpe per instrument
+        if self._capital_allocator is not None:
+            try:
+                paper_perf = self._build_paper_performance_by_symbol()
+                if paper_perf:
+                    new_allocations = self._capital_allocator.rebalance(paper_perf)
+                    logger.info("[EOD] Capital rebalance complete: %s", new_allocations)
+                else:
+                    logger.info("[EOD] Capital rebalance skipped — no performance data available")
+            except Exception as exc:
+                logger.warning("[EOD] Capital rebalance failed (non-fatal): %s", exc)
 
         return snapshot
 
@@ -420,6 +598,29 @@ class EODScheduler:
         except Exception as e:
             logging.getLogger(__name__).error(f"VIX alert check failed: {e}")
 
+    async def run_session_flatten(self) -> None:
+        """Flatten all open positions at end of session (3:45 PM ET = 20:45 UTC)."""
+        logger.info("[EODScheduler] Session flatten triggered — closing all open positions")
+        if self._tracker is None:
+            logger.warning("[EODScheduler] session_flatten: no paper_tracker available")
+            return
+
+        try:
+            # Call flatten_all_positions if available
+            if hasattr(self._tracker, "flatten_all_positions"):
+                closed = self._tracker.flatten_all_positions()
+                count = len(closed) if isinstance(closed, list) else 0
+                net_pnl = sum(t.get("pnl", 0) for t in closed) if isinstance(closed, list) else 0.0
+                logger.info(
+                    "[EODScheduler] Session flatten complete: closed %d positions, net P&L: $%.2f",
+                    count,
+                    net_pnl,
+                )
+            else:
+                logger.warning("[EODScheduler] flatten_all_positions not available on tracker")
+        except Exception as exc:
+            logger.exception("[EODScheduler] session_flatten failed: %s", exc)
+
     def register_with_scheduler(self, scheduler: Any) -> None:
         """
         Register EOD snapshot, weekly review, morning briefing, and VIX alert
@@ -504,11 +705,21 @@ class EODScheduler:
             replace_existing=True,
         )
 
+        # Session flatten: 3:45 PM ET = 20:45 UTC (Mon-Fri)
+        scheduler.add_job(
+            self.run_session_flatten,
+            CronTrigger(day_of_week="mon-fri", hour=20, minute=45, timezone="UTC"),
+            id="session_flatten",
+            replace_existing=True,
+        )
+        logger.info("[EODScheduler] Session flatten job registered: Mon-Fri 20:45 UTC (3:45 PM ET)")
+
         logger.info(
-            "EODScheduler registered 4 APScheduler jobs: "
+            "EODScheduler registered 5 APScheduler jobs: "
             "morning_briefing (Mon-Fri 08:25 CT) | "
             "eod_snapshot (Mon-Fri 20:05 UTC) | weekly_review (Fri 20:30 UTC) | "
-            "vix_alert_check (Mon-Fri 08:00-17:00 CT hourly)"
+            "vix_alert_check (Mon-Fri 08:00-17:00 CT hourly) | "
+            "session_flatten (Mon-Fri 20:45 UTC)"
         )
 
     # ── Private WhatsApp formatters ───────────────────────────────────────────

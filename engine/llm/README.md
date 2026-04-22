@@ -57,7 +57,7 @@ client = JarvisLLMClient(
 
 # Make a call with retry logic and tracking
 result = await client.call(
-    model="claude-opus-4-6",
+    model="claude-opus-4-7",
     system="You are a technical analyst.",
     messages=[
         {"role": "user", "content": "Analyze SPY's technical setup."}
@@ -119,7 +119,7 @@ curl -X GET http://localhost:8010/llm/stats/monthly \
 CREATE TABLE llm_calls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT NOT NULL,                -- ISO 8601 UTC timestamp
-    model TEXT NOT NULL,                    -- e.g. "claude-opus-4-6"
+    model TEXT NOT NULL,                    -- e.g. "claude-opus-4-7"
     input_tokens INTEGER DEFAULT 0,         -- Input token count
     output_tokens INTEGER DEFAULT 0,        -- Output token count
     cost_usd REAL DEFAULT 0.0,              -- Cost in USD
@@ -207,11 +207,11 @@ class TechnicalAnalystAgent:
 Every LLM call produces a log entry:
 
 ```
-[2026-03-29 14:23:45] INFO [claude-opus-4-6] technical_analyst | in:512 out:341 | cost:$0.0284 | latency:1250ms | retries:0
-[2026-03-29 14:24:12] WARNING [claude-opus-4-6] Rate limit (429) for news_analyst — attempt 1/3
-[2026-03-29 14:24:13] WARNING [claude-opus-4-6] Rate limit (429) for news_analyst — attempt 2/3
-[2026-03-29 14:24:15] WARNING [claude-opus-4-6] Rate limit (429) for news_analyst — attempt 3/3
-[2026-03-29 14:24:15] WARNING [claude-opus-4-6] Max retries exhausted. Falling back to claude-sonnet-4-6 for news_analyst
+[2026-03-29 14:23:45] INFO [claude-opus-4-7] technical_analyst | in:512 out:341 | cost:$0.0284 | latency:1250ms | retries:0
+[2026-03-29 14:24:12] WARNING [claude-opus-4-7] Rate limit (429) for news_analyst — attempt 1/3
+[2026-03-29 14:24:13] WARNING [claude-opus-4-7] Rate limit (429) for news_analyst — attempt 2/3
+[2026-03-29 14:24:15] WARNING [claude-opus-4-7] Rate limit (429) for news_analyst — attempt 3/3
+[2026-03-29 14:24:15] WARNING [claude-opus-4-7] Max retries exhausted. Falling back to claude-sonnet-4-6 for news_analyst
 [2026-03-29 14:24:15] INFO [claude-sonnet-4-6] news_analyst | in:512 out:280 | cost:$0.0081 | latency:800ms | retries:0
 ```
 
@@ -237,7 +237,7 @@ if not result.success and "connection" in result.error.lower():
 #### Model Fallback
 ```python
 result = await client.call(
-    model="claude-opus-4-6",
+    model="claude-opus-4-7",
     allow_fallback=True  # Default; allows Opus → Sonnet → Haiku
 )
 # If Opus fails, client automatically tries Sonnet

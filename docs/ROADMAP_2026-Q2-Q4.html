@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JARVIS TRADER — Q2–Q4 2026 Roadmap (Decision Review)</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-elev: #161b22;
+    --bg-elev-2: #1f2937;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent-2: #79c0ff;
+    --success: #3fb950;
+    --warn: #d29922;
+    --danger: #f85149;
+    --purple: #bc8cff;
+    --teal: #56d4dd;
+    --code-bg: #161b22;
+    --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.55; font-size: 15px; }
+  body { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+
+  nav.toc {
+    position: sticky; top: 0; align-self: start; height: 100vh;
+    overflow-y: auto; padding: 22px 18px; border-right: 1px solid var(--border);
+    background: var(--bg-elev); font-size: 13px;
+  }
+  nav.toc h2 { font-size: 12px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.08em; margin: 0 0 10px; }
+  nav.toc ol { list-style: none; padding-left: 0; margin: 0; }
+  nav.toc ol li { margin: 3px 0; }
+  nav.toc a { color: var(--text); text-decoration: none; display: block; padding: 4px 8px; border-radius: 4px; border-left: 2px solid transparent; }
+  nav.toc a:hover { background: var(--bg-elev-2); border-left-color: var(--accent); color: var(--accent-2); }
+  nav.toc .indent { padding-left: 16px; color: var(--text-muted); font-size: 12.5px; }
+  nav.toc .pin { color: var(--warn); font-weight: 600; }
+
+  main { padding: 36px 56px 72px; max-width: 1120px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h1 + .sub { color: var(--text-muted); font-size: 14px; margin-bottom: 30px; }
+  h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 17px; margin: 24px 0 8px; color: var(--accent-2); }
+  h4 { font-size: 14px; margin: 16px 0 6px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  p { margin: 8px 0 12px; }
+  code { font-family: var(--mono); font-size: 13px; background: var(--code-bg); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); }
+  pre { font-family: var(--mono); font-size: 13px; background: var(--code-bg); padding: 14px 16px; border-radius: 6px; border: 1px solid var(--border); overflow-x: auto; line-height: 1.45; }
+  pre code { background: transparent; border: 0; padding: 0; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed var(--border); }
+  a:hover { color: var(--accent-2); border-bottom-color: var(--accent-2); }
+
+  .tag { display: inline-block; font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid; margin: 0 4px 2px 0; vertical-align: middle; font-weight: 600; }
+  .tag-hb     { color: var(--danger);  border-color: var(--danger);  background: rgba(248,81,73,0.08); }
+  .tag-ou     { color: var(--warn);    border-color: var(--warn);    background: rgba(210,153,34,0.08); }
+  .tag-af     { color: var(--purple);  border-color: var(--purple);  background: rgba(188,140,255,0.08); }
+  .tag-open   { color: var(--warn);    border-color: var(--warn);    background: rgba(210,153,34,0.08); }
+  .tag-done   { color: var(--success); border-color: var(--success); background: rgba(63,185,80,0.08); }
+  .tag-partial{ color: var(--teal);    border-color: var(--teal);    background: rgba(86,212,221,0.08); }
+  .tag-tier3  { color: var(--purple);  border-color: var(--purple);  background: rgba(188,140,255,0.08); }
+  .tag-user   { color: var(--accent);  border-color: var(--accent);  background: rgba(88,166,255,0.08); }
+
+  .callout { border-left: 4px solid; padding: 14px 18px; margin: 14px 0; background: var(--bg-elev); border-radius: 4px; }
+  .callout h3 { margin-top: 0; color: inherit; }
+  .cal-hb { border-color: var(--danger); }
+  .cal-hb h3 { color: var(--danger); }
+  .cal-ou { border-color: var(--warn); }
+  .cal-ou h3 { color: var(--warn); }
+  .cal-af { border-color: var(--purple); }
+  .cal-af h3 { color: var(--purple); }
+  .cal-note { border-color: var(--accent); background: rgba(88,166,255,0.04); }
+  .cal-note h3 { color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--bg-elev-2); font-weight: 600; color: var(--text); }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+  td.center { text-align: center; }
+
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+
+  .banner {
+    background: linear-gradient(135deg, rgba(88,166,255,0.12), rgba(86,212,221,0.05));
+    border: 1px solid var(--accent); border-radius: 8px; padding: 18px 22px; margin: 0 0 28px;
+  }
+  .banner h3 { margin-top: 0; color: var(--accent-2); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 14px 0; }
+  .card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; }
+  .card .num { font-family: var(--mono); font-size: 28px; color: var(--accent-2); font-weight: 600; }
+  .card .lbl { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+
+  @media (max-width: 960px) {
+    body { grid-template-columns: 1fr; }
+    nav.toc { position: relative; height: auto; max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
+    main { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#banner">Progress Banner</a></li>
+    <li><a href="#verify" class="pin">0.2 Deployment Findings</a></li>
+    <li class="indent"><a href="#hb1">HB-1 · No STP orders</a></li>
+    <li class="indent"><a href="#hb2">HB-2 · Futures sizing</a></li>
+    <li class="indent"><a href="#hb3">HB-3 · Scanner disabled</a></li>
+    <li class="indent"><a href="#ou1">OU-1 · pm2 restart churn</a></li>
+    <li class="indent"><a href="#af1">AF-1 · Overnight cutoff</a></li>
+    <li><a href="#decisions" class="pin">0.3 Decisions Log</a></li>
+    <li><a href="#vision">0. Vision</a></li>
+    <li><a href="#phase0">Phase 0 — Foundation</a></li>
+    <li><a href="#phase1">Phase 1 — Multi-Strategy</a></li>
+    <li class="indent"><a href="#q2tasks">+ Q2-P1.10–P2.9</a></li>
+    <li><a href="#phase2">Phase 2 — Data Fabric</a></li>
+    <li><a href="#phase3">Phase 3 — Agent Intelligence</a></li>
+    <li><a href="#phase4">Phase 4 — Approval Surfaces</a></li>
+    <li><a href="#phase5">Phase 5 — Options</a></li>
+    <li><a href="#phase6">Phase 6 — Expansion</a></li>
+    <li><a href="#phase7">Phase 7 — Meta-Learning</a></li>
+    <li><a href="#phase8">Phase 8 — 2027</a></li>
+    <li><a href="#phase9">Phase 9 — Beyond 2027</a></li>
+    <li><a href="#d-table" class="pin">Decision Points (D1–D9, Q2-D1–D7)</a></li>
+    <li><a href="#risks">Risk Register</a></li>
+    <li><a href="#soa">State of the Art</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<h1>JARVIS TRADER — Q2–Q4 2026 Roadmap</h1>
+<div class="sub">Decision-review companion to <code>ROADMAP_2026-Q2-Q4.md</code>. Generated 2026-04-22 PM after deployment-verification agent surfaced 5 findings (2 true blockers HB-1/HB-2 + 3 resolved). Markdown is source-of-truth.</div>
+
+<div class="callout" style="border-color: var(--warn); background: rgba(210,153,34,0.10);">
+  <h3 style="color: var(--warn); margin-top: 0;">⚡ SPRINT MODE 2026-04-22 → 2026-04-30 ACTIVE</h3>
+  <p>Matt's directive at 12:03 CT: <em>"backtesting done by end of this week, live by end of month, 18h/day"</em>. An 8-day compressed plan supersedes Phase 1 week-by-week work during the sprint window. See <code>docs/SPRINT_2026-04-22_to_04-30.md</code> for the full day-by-day.</p>
+  <p><strong>Binding decision needed first:</strong> forward-paper threshold (Q2-D1) — pick Option A (6 weeks), B (14 days), C (3 RTH days, sprint default), or D (gate v2 only). Only A/B/C/D below change the timeline; sprint execution starts once one is chosen.</p>
+</div>
+
+<div class="banner" id="banner">
+  <h3>0.1 Progress Banner — 2026-04-22</h3>
+  <p>Today resolved a 12-day outage: MES produced 0 non-HOLD decisions 2026-04-10 → 2026-04-22 because <code>TradingViewFeed.is_available()</code> permanently cached False after transient CDP drops. Three-layer cascade:</p>
+  <ol>
+    <li>PS1 task-scheduler stale <code>pwsh</code> path (<code>JARVIS-TV-CDP-AtLogon</code>) → CDP dead at boot.</li>
+    <li>Orphan elevated engine PID 13516 held <code>:8010</code> outside PM2 supervision.</li>
+    <li><code>is_available()</code> TTL-less negative cache permanently disabled TV Tier 0 once it saw one failure.</li>
+  </ol>
+  <p><strong>Shipped today</strong> on <code>feat/tradingview-mcp-gamma-kraken</code>: <code>0dbcc4e</code> (shim-path fixes) · <code>1c4b11b</code> (TTL negative-cache) · <code>6808b65</code> (archive markers on 3 failed strategies + <code>GET /paper/validation/counts</code>) · <code>1cf7be5</code> (roadmap v1.1).</p>
+  <p><strong>Verification</strong> (10:52 CT): decision <code>id=2994</code> MES SELL with <code>atr=14.886 regime=trending</code>, 9 populated analyst_reports. First non-HOLD in 12 days. Calendar cost: 12 days slipped from Phase 1.</p>
+  <div class="grid-2">
+    <div class="card"><div class="num">3</div><div class="lbl">MES closed paper trades (target 30)</div></div>
+    <div class="card"><div class="num">2&nbsp;<span style="font-size:14px;color:var(--text-muted)">of 5</span></div><div class="lbl">True blockers (HB-1 + HB-2) — 3 findings closed 2026-04-22 PM</div></div>
+  </div>
+</div>
+
+<h2 id="verify">0.2 Deployment Verification Findings — 2026-04-22 PM</h2>
+
+<p>A parallel Claude Code session ran the <code>compound-engineering:deployment-verification-agent</code> against the "MES paper → 1-contract live" scenario. Severity tags: <span class="tag tag-hb">HB</span> Hard Blocker · <span class="tag tag-ou">OU</span> Operational Unknown · <span class="tag tag-af">AF</span> Ambiguous Flag.</p>
+
+<div class="callout cal-hb" id="hb1">
+  <h3><span class="tag tag-hb">HB-1</span> No broker-side STP orders in the codebase &nbsp;<span style="color:var(--text-muted);font-weight:normal;font-size:13px">(HIGHEST SEVERITY)</span></h3>
+  <p><code>grep -rn "STP" engine/execution/ engine/agents/ engine/trader/ engine/pipeline/</code> returns <strong>zero matches</strong>. Trader computes <code>stop_price</code>, writes to <code>paper_trades.stop_loss</code> for display, nothing submits to IBKR.</p>
+  <ul>
+    <li><code>engine/backtest/trend_signals.py:10-12</code> docstring: "trailing stop" is static at entry bar — full trailing was never built.</li>
+    <li><code>engine/execution/ib_gateway.py:510-518</code> supports <code>order_type="STP"</code> but no caller invokes that path.</li>
+    <li><strong>Consequence:</strong> engine crash or network disconnect mid-trade = naked position until manual flatten. With pm2 restart count 558 (see OU-1), not hypothetical.</li>
+    <li><strong>Fix:</strong> after entry fill confirmed, submit child STP via <code>place_paper_order(order_type="STP", aux_price=stop_price, parent_order_id=&lt;entry_id&gt;)</code>. Broker-side, not Python-side.</li>
+  </ul>
+  <p><strong>Tracked as Q2-P2.7.</strong> Resolves via decision Q2-D6 (parent/child OCA vs bracket).</p>
+</div>
+
+<div class="callout cal-hb" id="hb2">
+  <h3><span class="tag tag-hb">HB-2</span> Position-size gate rejects every MES order</h3>
+  <p>At <code>engine/risk/safety_layer.py:608-613</code>:</p>
+<pre><code>estimated_value = quantity * estimated_price
+if estimated_value / portfolio_equity &gt; MAX_POSITION_SIZE_PCT:
+    return False, "Position exceeds max size..."</code></pre>
+  <ul>
+    <li><code>MAX_POSITION_SIZE_PCT = 0.10</code></li>
+    <li>1 MES @ ~$7,130 × $5 = <strong>~$35,650 notional</strong></li>
+    <li>Against <code>INITIAL_CAPITAL=10000</code> → 356% of equity → <strong>reject</strong></li>
+    <li>No futures branch in <code>_check_order_value_limits()</code>.</li>
+  </ul>
+  <p><strong>Fix options:</strong></p>
+  <ul>
+    <li><strong>(a)</strong> Call <code>sync_from_broker()</code> on startup so <code>portfolio_equity</code> reflects real IBKR paper equity (~$1M typical).</li>
+    <li><strong>(b)</strong> Add <code>if symbol in FUTURES_SYMBOLS: use margin_requirement(symbol)</code> branch.</li>
+    <li><strong>Recommendation:</strong> (a) first (smaller change), then (b) as defense-in-depth.</li>
+  </ul>
+  <p><strong>Tracked as Q2-P2.8.</strong> Resolves via decision Q2-D7.</p>
+</div>
+
+<div class="callout cal-hb" id="hb3" style="border-color: var(--success);">
+  <h3 style="color: var(--success);"><span class="tag tag-hb">HB-3</span> "Scanner disabled" &nbsp;<span class="tag tag-done">REFRAMED 2026-04-22 11:46 CT — not a blocker</span></h3>
+  <p>Ground-truth query against <code>engine/data/jarvis_trader.db</code> shows the pipeline is running hourly regardless of <code>WATCHLIST_SCAN_ENABLED</code>:</p>
+  <table>
+    <thead><tr><th>Symbol</th><th>Decisions (24h)</th><th>First</th><th>Last</th></tr></thead>
+    <tbody>
+      <tr><td>MES</td><td class="center">52</td><td>2026-04-21T00:20:31</td><td>2026-04-22T15:52:07</td></tr>
+      <tr><td>MCL</td><td class="center">50</td><td>2026-04-21T00:21:56</td><td>2026-04-22T14:46:51</td></tr>
+      <tr><td>MNQ</td><td class="center">52</td><td>2026-04-21T00:21:57</td><td>2026-04-22T15:50:30</td></tr>
+    </tbody>
+  </table>
+  <p>All but 2 were HOLD. The 2 non-HOLDs (MES SELL @ 15:52:07 → trade #135, MCL SELL @ 02:19:57 → trade #133) are legitimate scanner-sourced trades matching decision rows exactly.</p>
+  <p><strong>Correction:</strong> the verification agent conflated "no non-HOLD signals for 12 days" with "scanner off." Reality is hourly HOLD cadence throughout — a regime state, not an infrastructure failure.</p>
+  <p><strong>Going-forward verification:</strong> query the <code>decisions</code> table for hourly cadence; do NOT rely on <code>WATCHLIST_SCAN_ENABLED</code> as ground truth. <strong>Q2-P1.11 status: DONE.</strong> No user action needed.</p>
+</div>
+
+<div class="callout cal-ou" id="ou1">
+  <h3><span class="tag tag-ou">OU-1</span> pm2 jarvis-engine restart count 558 &nbsp;<span class="tag tag-done">RESOLVED 2026-04-22 09:42 CT</span></h3>
+  <p>Flagged at 11:14 CT as 497 → 558. Root-caused as historical churn, not live instability.</p>
+  <p><strong>Root cause:</strong> elevated orphan PID 13516 held port 8010 outside PM2. <code>port_guardian</code> detected 8010 owned, attempted <code>taskkill</code>, failed (elevated), exited non-zero after 30s backoff to prevent split-brain. PM2 auto-restarted, loop repeated every ~1s.</p>
+  <p><strong>Fix:</strong> admin <code>taskkill /F /PID 13516</code> this morning. Log confirms at <code>2026-04-22 09:42:42</code>: <code>port_guardian port 8010 is free / launching uvicorn in-process</code>.</p>
+  <p><strong>Current state</strong> (11:48 CT): <code>status=online, restarts=558, uptime=2h, unstable restarts=1</code>. Port 8010 single-owner PID 11656. Only recurring warning is benign <code>services.messaging_health: ollama=error</code> (optional local-LLM probe). <strong>Q2-P1.10 status: DONE.</strong></p>
+</div>
+
+<div class="callout cal-af" id="af1">
+  <h3><span class="tag tag-af">AF-1</span> Overnight-cutoff hour &nbsp;<span class="tag tag-done">RESOLVED 2026-04-22 (misread)</span></h3>
+  <p>The "15:00 CT cutoff" the agent reported does not exist. Only flatten constant in <code>engine/</code> is <code>SESSION_FLATTEN_TIME_ET = "15:45"</code> (= 14:45 CT) at <code>config.py:184</code>, with comment <code># Flatten all positions at 3:45 PM ET</code>. APScheduler cron <code>Mon-Fri 20:45 UTC</code> (<code>eod_scheduler.py:722</code>) matches exactly.</p>
+  <p>The agent's "15:00 CT" came from <code>migrations.py:949</code> — a schema-column comment on <code>close_price: -- CT 15:00 close (filled by outcome job)</code>. That's NYSE equity-index RTH cash-close time, not a flatten trigger.</p>
+  <p><strong>Intent:</strong> 14:45 CT flatten = 15-min buffer before NYSE 16:00 ET cash close. Intentional — avoids final-minute liquidity crunch on S&P closing print. <strong>Decision memo:</strong> <code>docs/decisions/af1_session_flatten_intent.md</code>. <strong>Q2-P2.9 status: DONE.</strong></p>
+</div>
+
+<div class="callout cal-note">
+  <h3>Secondary flags (informational, no blocker)</h3>
+  <ul>
+    <li>Anomalous MES paper trade at <code>2026-04-22T15:52:07 UTC</code> appeared with scanner OFF — trace paper_trades INSERT callers.</li>
+    <li>MCL 13 paper trades despite <code>DO_NOT_TRADE_SYMBOLS</code> — likely shadow-mode replay, audit before live.</li>
+    <li><code>REQUIRE_HUMAN_APPROVAL=True</code> + <code>LIVE_TRADING_ENABLED=True</code> combined state is untested; no approval-surface endpoint exists. At D5 pick autonomous OR build approval first.</li>
+    <li>Gate v2 verdict staleness: MES PASS is 0.95d old; cron runs Saturday 01:00 CT. Two missed Saturdays → stale → auto-block.</li>
+  </ul>
+</div>
+
+<h2 id="decisions">0.3 Decisions Log — 2026-04-22 (for user review)</h2>
+<p>Every decision made today, with authorization trail. <span class="tag tag-user">USER INPUT NEEDED</span> rows are items waiting on you.</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Decision</th><th>Status</th><th>Committed?</th><th>Needs review?</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>L1</td><td>Adopt 10-week Q2 roadmap — 1 live MES contract by 2026-06-30</td><td><span class="tag tag-done">ACCEPTED</span></td><td>Plan file</td><td>No</td></tr>
+    <tr><td>L2</td><td>Archive 3 failed strategies via STATUS headers (not file moves) — preserves imports</td><td><span class="tag tag-done">DONE</span></td><td><code>6808b65</code></td><td>No</td></tr>
+    <tr><td>L3</td><td>Add <code>GET /paper/validation/counts</code> endpoint (closed-trades only)</td><td><span class="tag tag-done">DONE</span></td><td><code>6808b65</code></td><td>No</td></tr>
+    <tr><td>L4</td><td>Push today's 2 TV fix commits to origin</td><td><span class="tag tag-done">DONE</span></td><td><code>1c4b11b..6808b65</code></td><td>No</td></tr>
+    <tr><td>L5</td><td><s>Keep <code>WATCHLIST_SCAN_ENABLED=false</code></s> <span class="tag tag-done">MOOT</span> — flag doesn't halt pipeline; 52 MES decisions/24h verified</td><td><span class="tag tag-done">RESOLVED</span></td><td>memory</td><td>No</td></tr>
+    <tr><td>L6</td><td>Extend roadmap: Phase 8 (2027 consolidation) + Phase 9 (2027+)</td><td><span class="tag tag-done">DONE</span></td><td><code>1cf7be5</code></td><td>No</td></tr>
+    <tr><td>L7</td><td>60-trade / 30-day validation threshold → relaxation candidate</td><td><span class="tag tag-open">OPEN</span></td><td>Q2-D1</td><td><span class="tag tag-user">YES — Q2 Week 3</span></td></tr>
+    <tr><td>L8</td><td>Futures position-sizing: (a) IBKR sync, (b) futures branch, (c) both</td><td><span class="tag tag-open">OPEN</span></td><td>Q2-D2 / Q2-D7 / Q2-P2.8</td><td><span class="tag tag-user">YES — Q2 Week 3-4</span></td></tr>
+    <tr><td>L9</td><td>MCL Q2 participation: LEANING NO (gate v2 FAIL both paths)</td><td><span class="tag tag-open">OPEN</span></td><td>Q2-D3</td><td><span class="tag tag-user">YES — Q2 Week 5</span></td></tr>
+    <tr><td>L10</td><td>MNQ Q2 participation: LEANING DEFERRED (edge real, $50K re-run pending)</td><td><span class="tag tag-open">OPEN</span></td><td>Q2-D4</td><td><span class="tag tag-user">YES — Q2 Week 5</span></td></tr>
+    <tr><td>L11</td><td>MES paper → live cutover Go/No-Go</td><td><span class="tag tag-open">OPEN</span></td><td>Q2-D5</td><td><span class="tag tag-user">YES — Q2 Week 7</span></td></tr>
+    <tr><td>L12</td><td>Do NOT move failed-strategy <code>.py</code> files — would break imports</td><td><span class="tag tag-done">DONE (STATUS headers)</span></td><td><code>6808b65</code></td><td>No</td></tr>
+  </tbody>
+</table>
+
+<h2 id="vision">0. Vision</h2>
+<p>Transform JARVIS TRADER from a <strong>single-strategy, single-instrument, paper-only</strong> system into a <strong>multi-strategy, multi-instrument, semi-autonomous</strong> trading platform with:</p>
+<ul>
+  <li>Real-time data fabric (no more stale CSVs)</li>
+  <li>Strategy ensemble (trend + mean-reversion + breakout per instrument, router decides)</li>
+  <li>Agent-native intelligence (LLM reasoning chains do the heavy lifting; humans approve, don't decide)</li>
+  <li>Continuous learning loop (n-autoresearch + A/B paper-canary + Gate v2 governance)</li>
+  <li>Multi-surface approval (WhatsApp, voice, dashboard — whichever you're near)</li>
+</ul>
+<p><strong>Success metric (end of 2026):</strong> 3+ validated strategies live across 2+ instruments, ≥90 days forward-test profitable, ≥$X live capital deployed (Tier 3 decision), agent-driven signals with &lt;60s human approval latency.</p>
+
+<h2 id="phase0">Phase 0 — Foundation Lock-In <span class="tag tag-done">CLOSED 2026-04-22</span></h2>
+<p>All 6 tasks shipped. Full detail in markdown. Exit criteria met — TV MCP Tier 0 live, gate v2 enforcing, forward-recorder wired, <code>/health</code> surfaces TV MCP state.</p>
+
+<h2 id="phase1">Phase 1 — Multi-Strategy Expansion <span class="tag tag-partial">IN PROGRESS</span></h2>
+<p><strong>Window:</strong> 2026-04-22 → 2026-05-26. Break single-strategy monoculture. Run 3 strategy families with regime-based router.</p>
+
+<h3>Q2 tasks added today from findings</h3>
+<table id="q2tasks">
+  <thead><tr><th>Task</th><th>Why</th><th>Size</th><th>Links</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Q2-P1.10</strong> pm2 restart-count RCA <span class="tag tag-done">DONE</span></td><td>Orphan PID 13516 was the culprit. Cleared 09:42 CT. 2h uptime since.</td><td class="center">S</td><td><a href="#ou1">OU-1</a></td></tr>
+    <tr><td><strong>Q2-P1.11</strong> ~~Re-enable scanner~~ <span class="tag tag-done">DONE</span></td><td>Flag doesn't halt pipeline — decisions flowing 52/24h per symbol. Use <code>decisions</code> table as ground truth.</td><td class="center">—</td><td><a href="#hb3">HB-3</a></td></tr>
+    <tr><td><strong>Q2-P2.7</strong> Wire broker-side STP child orders</td><td>Stops currently never reach IBKR (HB-1). Submit child STP after entry fill.</td><td class="center">L</td><td><a href="#hb1">HB-1</a></td></tr>
+    <tr><td><strong>Q2-P2.8</strong> Futures position-size math</td><td>356%-of-equity MES rejected by <code>safety_layer.py:608</code> (HB-2).</td><td class="center">M</td><td><a href="#hb2">HB-2</a></td></tr>
+    <tr><td><strong>Q2-P2.9</strong> Clarify overnight-cutoff intent <span class="tag tag-done">DONE</span></td><td>Misread — only flatten is <code>"15:45"</code> ET = 14:45 CT. Memo at <code>docs/decisions/af1_session_flatten_intent.md</code>.</td><td class="center">S</td><td><a href="#af1">AF-1</a></td></tr>
+  </tbody>
+</table>
+
+<h3>Carry-over Phase 1 tasks (from v1.1)</h3>
+<table>
+  <thead><tr><th>Task</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td><strong>P1.1</strong> MCL mean-rev family</td><td><span class="tag tag-partial">PARTIAL</span> naive BB+RSI fail; bbwidth retry fail gate v2 both paths. MCL blocklisted.</td></tr>
+    <tr><td><strong>P1.2</strong> MNQ breakout family</td><td><span class="tag tag-partial">PARTIAL</span> SHORT-only don=20 CORE FAIL 2/4 at $10K; edge real (p_edge 0.98, DSR 1.0); routes: $50K re-run or shadow.</td></tr>
+    <tr><td><strong>P1.3–P1.6</strong> Regime router, per-family gate v2, shadow framework, RV filter</td><td><span class="tag tag-open">OPEN</span></td></tr>
+    <tr><td><strong>P1.7</strong> Consolidate duplicate routes main.py → routers/</td><td><span class="tag tag-open">OPEN</span> ~50 handlers shadow routers/.</td></tr>
+    <tr><td><strong>P1.8</strong> Decouple scanner from uvicorn lifespan</td><td><span class="tag tag-open">OPEN</span> lifespan 3-4m blocks :8010 bind.</td></tr>
+    <tr><td><strong>P1.9</strong> <code>/portfolio/summary</code> perf (tick-only path)</td><td><span class="tag tag-done">SHIPPED</span> <code>84be5c7</code>.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="phase2">Phase 2 — Real-Time Data Fabric <span class="tag tag-open">PLANNED</span></h2>
+<p><strong>Window:</strong> 2026-05-26 → 2026-06-16. TV streaming, event-driven bar-close, gamma levels daily, Corey bias ingestion, options chain foundation, data-integrity dashboard.</p>
+
+<h2 id="phase3">Phase 3 — Agent Intelligence Upgrade <span class="tag tag-open">PLANNED</span></h2>
+<p><strong>Window:</strong> 2026-06-17 → 2026-07-21. Multi-model ensemble routing · confluence scoring · post-trade analysis · DeepSeek-R1 A/B · claude-mem cross-session memory · agent reliability metrics · Pattern Vision live-wiring (P3.7) · GEPA reflector (P3.8).</p>
+
+<h2 id="phase4">Phase 4 — Approval Surfaces <span class="tag tag-open">PLANNED</span></h2>
+<p><strong>Window:</strong> 2026-07-21 → 2026-08-11. WhatsApp/voicemode/dashboard approval, timeouts, remote kill-switch, trade queue batching.</p>
+
+<h2 id="phase5">Phase 5 — Options Layer <span class="tag tag-open">PLANNED</span></h2>
+<p><strong>Window:</strong> 2026-08-11 → 2026-09-22. SPY/QQQ verticals, Greeks-aware risk, IV rank filter, options backtest harness, earnings avoidance, assignment monitor.</p>
+
+<h2 id="phase6">Phase 6 — Instrument & Intelligence Expansion <span class="tag tag-open">PLANNED</span></h2>
+<p><strong>Window:</strong> 2026-09-22 → 2026-11-17. Kraken BTC, sector rotation, macro-calendar gating, Fed-statement NLP, multi-timeframe confluence.</p>
+
+<h2 id="phase7">Phase 7 — Meta-Learning Loop <span class="tag tag-open">ONGOING FROM 2026-11-17</span></h2>
+<p>n-autoresearch live, drift detection, A/B canary framework, auto-regen search space, ce-compound skill integration, weekly self-audit. Never "ends."</p>
+
+<h2 id="phase8">Phase 8 — 2027 Consolidation <span class="tag tag-open">2027-01 → 2027-06</span></h2>
+<p>Portfolio capital allocator, regime-router live (dispatches capital not just labels), live-options cutover (D8), BTC live (D9), quarterly recertification.</p>
+
+<h2 id="phase9">Phase 9 — Beyond 2027 (directional)</h2>
+<ul>
+  <li>Agent-native portfolio manager (sizes allocations autonomously &lt;5% of capital)</li>
+  <li>Cross-asset hedge layer (VIX calls / SPY puts overlay)</li>
+  <li>Liquidity-aware execution (5-15 min entry splits)</li>
+  <li>Institutional-grade risk reporting (VaR, CVaR, Sortino, Calmar, Omega)</li>
+  <li>Signal-publishing opt-in</li>
+</ul>
+
+<h2 id="d-table">Decision Points Requiring Matt's Input</h2>
+<h4>Long-horizon decisions</h4>
+<table>
+  <thead><tr><th>#</th><th>Decision</th><th>When</th><th>Tier</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>D1</td><td>Gate v2 Phase 3-FULL: routing-blocker</td><td>Week 1</td><td class="center"><span class="tag tag-tier3">3</span></td><td><span class="tag tag-done">RESOLVED</span> <code>GATE_V2_ENFORCE_ROUTING=1</code></td></tr>
+    <tr><td>D2</td><td>MCL mean-rev remove from blocklist</td><td>Week 4</td><td class="center"><span class="tag tag-tier3">3</span></td><td>KEPT BLOCKED — gate v2 FAIL</td></tr>
+    <tr><td>D3</td><td>MNQ breakout remove from blocklist</td><td>Week 4</td><td class="center"><span class="tag tag-tier3">3</span></td><td>DEFERRED — edge real, $50K re-run pending</td></tr>
+    <tr><td>D4</td><td>MES RV filter activate at 9% after 60+ trades</td><td>Week 6</td><td class="center"><span class="tag tag-tier3">3</span></td><td>BLOCKED — need ≥60 live trades</td></tr>
+    <tr><td>D5</td><td>Options layer scope</td><td>Phase 5</td><td class="center"><span class="tag tag-tier3">3</span></td><td>pending</td></tr>
+    <tr><td>D6</td><td>Kraken BTC day-1 scope</td><td>Phase 6</td><td class="center"><span class="tag tag-tier3">3</span></td><td>pending</td></tr>
+    <tr><td>D7</td><td>Live capital cutover — which subset</td><td>Phase 6</td><td class="center"><span class="tag tag-tier3">3 (highest stakes)</span></td><td>pending</td></tr>
+    <tr><td>D8</td><td>Live-options promotion (10% notional)</td><td>Phase 8</td><td class="center"><span class="tag tag-tier3">3</span></td><td>future</td></tr>
+    <tr><td>D9</td><td>Kraken BTC promotion (1-unit notional)</td><td>Phase 8</td><td class="center"><span class="tag tag-tier3">3</span></td><td>future</td></tr>
+  </tbody>
+</table>
+
+<h4>Q2-specific decisions</h4>
+<table>
+  <thead><tr><th>#</th><th>Decision</th><th>When</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Q2-D1</td><td>Paper-validation exit criterion: 60 trades vs "gate v2 PASS + 14 forward days"</td><td>Week 3</td><td><span class="tag tag-open">pending</span></td></tr>
+    <tr><td>Q2-D2</td><td>Futures sizing policy (margin-based vs <code>MAX_POSITION_SIZE_PCT</code> raise vs bypass)</td><td>Week 3-4</td><td><span class="tag tag-open">pending</span></td></tr>
+    <tr><td>Q2-D3</td><td>MCL Q2 participation Y/N</td><td>Week 5</td><td>leaning NO (gate v2 FAIL)</td></tr>
+    <tr><td>Q2-D4</td><td>MNQ Q2 participation Y/N</td><td>Week 5</td><td>leaning NO or $50K re-run</td></tr>
+    <tr><td>Q2-D5</td><td>MES paper → live Go/No-Go</td><td>Week 7</td><td>gated on 6wk forward + HB-1/HB-2 cleared. OU-1 + AF-1 both <span class="tag tag-done">RESOLVED</span> 2026-04-22.</td></tr>
+    <tr><td>Q2-D6</td><td><strong>NEW</strong> · Broker-side STP pattern (parent/child OCA vs bracket)</td><td>Week 3</td><td><span class="tag tag-open">pending</span> — Q2-P2.7 choice</td></tr>
+    <tr><td>Q2-D7</td><td><strong>NEW</strong> · Futures sizing fix path (a/b/both)</td><td>Week 3-4</td><td><span class="tag tag-open">pending</span> — Q2-P2.8 choice</td></tr>
+  </tbody>
+</table>
+
+<h2 id="risks">Risk Register</h2>
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>TV MCP breaks on TV Desktop update</td><td>Med</td><td>High</td><td>Nightly health check → WhatsApp</td></tr>
+    <tr><td>Gate v2 too strict → blocks all live</td><td>Low</td><td>Med</td><td>Fallback to Phase 3-LIGHT</td></tr>
+    <tr><td>LLM cost explosion</td><td>Med</td><td>Med</td><td>Token proxy + monthly budgets + per-run kill</td></tr>
+    <tr><td>Strategy overfits recent data</td><td>High</td><td>High</td><td>30-day shadow + A/B mandatory</td></tr>
+    <tr><td>IB Gateway disconnect mid-position</td><td>Low</td><td>High</td><td>Heartbeat → WhatsApp; broker-side GTC stops (Q2-P2.7)</td></tr>
+    <tr><td>Single-machine failure</td><td>Med</td><td>High</td><td>Weekly <code>engine/data/</code> cloud snapshot</td></tr>
+    <tr><td>Burnout (velocity &gt; maintenance)</td><td>High</td><td>High</td><td>Every feature → shadow period; no phase skips</td></tr>
+  </tbody>
+</table>
+
+<h2 id="soa">State of the Art — JARVIS TRADER</h2>
+<ol>
+  <li>Signal-to-decision latency &lt; 60s (event-driven, not polling)</li>
+  <li>Zero stale-data decisions (all freshness-gated)</li>
+  <li>Multi-strategy + regime-aware (right tool for the tape)</li>
+  <li>Statistically-governed promotion (gate v2 + shadow + A/B; no vibes)</li>
+  <li>Paper-parity with live (same code path, different broker flag)</li>
+  <li>Multi-surface approval (not locked to one device)</li>
+  <li>Self-documenting (post-mortem per trade; memo per decision)</li>
+  <li>Continuously learning (n-autoresearch + drift detection)</li>
+  <li>Full cost accounting ($ per LLM call, API call, trade)</li>
+  <li>Agent-native by default (any human action has an agent-equivalent)</li>
+</ol>
+
+<footer>
+  <p>Document: <code>docs/ROADMAP_2026-Q2-Q4.html</code> (companion to <code>.md</code> source-of-truth) · Generated 2026-04-22 · Branch <code>feat/tradingview-mcp-gamma-kraken</code> · v1.2</p>
+  <p>Next review: 2026-05-22 · Update cadence: weekly closure memos (Sunday 17:00 CT) + monthly banner refresh.</p>
+</footer>
+
+</main>
+
+</body>
+</html>

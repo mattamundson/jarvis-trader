@@ -5,9 +5,9 @@ Black-Scholes pricing, probability of profit, expected value, spread metrics.
 
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
-from typing import Literal, Optional
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helper: normal distribution
 # ---------------------------------------------------------------------------
+
 
 def _norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
@@ -30,7 +31,7 @@ def _d1_d2(S: float, K: float, T: float, r: float, sigma: float) -> tuple[float,
     if sigma <= 0:
         raise ValueError("sigma must be > 0")
     log_sk = math.log(S / K)
-    d1 = (log_sk + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
+    d1 = (log_sk + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
     return d1, d2
 
@@ -38,6 +39,7 @@ def _d1_d2(S: float, K: float, T: float, r: float, sigma: float) -> tuple[float,
 # ---------------------------------------------------------------------------
 # Black-Scholes price
 # ---------------------------------------------------------------------------
+
 
 def black_scholes_price(
     S: float,
@@ -83,6 +85,7 @@ def black_scholes_price(
 # ---------------------------------------------------------------------------
 # Probability of profit
 # ---------------------------------------------------------------------------
+
 
 def probability_of_profit(
     S: float,
@@ -134,6 +137,7 @@ def probability_of_profit(
 # Expected value
 # ---------------------------------------------------------------------------
 
+
 def expected_value(
     premium: float,
     prob_profit: float,
@@ -162,6 +166,7 @@ def expected_value(
 # Dataclass for scan results
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PremiumScanResult:
     """Result of a premium scan across a specific options strategy."""
@@ -188,6 +193,7 @@ class PremiumScanResult:
 # ---------------------------------------------------------------------------
 # Credit spread metrics
 # ---------------------------------------------------------------------------
+
 
 def get_credit_spread_metrics(
     sell_strike: float,
@@ -219,7 +225,7 @@ def get_credit_spread_metrics(
     net_premium = round(sell_premium - buy_premium, 4)
     spread_width = abs(sell_strike - buy_strike)
 
-    max_profit = round(net_premium * 100, 2)      # one options contract = 100 shares
+    max_profit = round(net_premium * 100, 2)  # one options contract = 100 shares
     max_risk = round((spread_width - net_premium) * 100, 2)
 
     # Breakeven: depends on spread direction
@@ -251,6 +257,7 @@ def get_credit_spread_metrics(
 # ---------------------------------------------------------------------------
 # PnL scenarios at expiry
 # ---------------------------------------------------------------------------
+
 
 def pnl_at_expiry(
     underlying_price: float,

@@ -3,19 +3,13 @@
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
-
-// ── Static backtest reference values ─────────────────────────────────────────
-
-const BACKTEST = {
-  profitFactor: 5.27,
-  sharpeRatio: 4.16,
-  winRate: 67.3,
-  totalTrades: 847,
-  avgRR: 2.14,
-  totalReturn: 47.2,
-} as const;
+import { fetchEngine } from "@/lib/api";
+import {
+  type BacktestBaselineRow,
+  fmtBaselineNum,
+  pickApprovedBacktestBaseline,
+  type ScorecardBacktestBaseline,
+} from "@/lib/scorecardBaseline";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,8 +20,6 @@ interface PaperMetrics {
   sharpe_ratio?: number;
   win_rate?: number;
   total_trades?: number;
-  avg_rr?: number;
-  total_return?: number;
 }
 
 // ── Badge logic ───────────────────────────────────────────────────────────────
@@ -56,31 +48,42 @@ function tradesVariant(t: number): BadgeVariant {
   return "info";
 }
 
-// ── Helper to normalize win rate ──────────────────────────────────────────────
-
 function normalizeWinRate(raw: number): number {
-  // API may return 0.673 (fraction) or 67.3 (percent)
   return raw > 1 ? raw : raw * 100;
+}
+
+function fmtBacktestCell(
+  loadingBt: boolean,
+  n: number | null,
+  decimals = 2
+): string {
+  if (loadingBt) return "…";
+  return fmtBaselineNum(n, decimals);
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function BacktestVsPaperWidget() {
   const [paper, setPaper] = useState<PaperMetrics | null>(null);
+  const [baseline, setBaseline] = useState<ScorecardBacktestBaseline | null>(null);
+  const [loadingBt, setLoadingBt] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function fetchMetrics() {
     try {
-      const res = await fetch(`${ENGINE_URL}/analytics/performance`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setPaper(data);
+      const [perf, btRows] = await Promise.all([
+        fetchEngine<PaperMetrics>(`/analytics/performance`),
+        fetchEngine<BacktestBaselineRow[]>(`/backtest/results`).catch(() => [] as BacktestBaselineRow[]),
+      ]);
+      setPaper(perf);
+      setBaseline(pickApprovedBacktestBaseline(btRows));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch");
     } finally {
       setLoading(false);
+      setLoadingBt(false);
     }
   }
 
@@ -90,11 +93,15 @@ export function BacktestVsPaperWidget() {
     return () => clearInterval(id);
   }, []);
 
-  // Resolved paper values
   const pf = paper?.profit_factor ?? null;
   const sharpe = paper?.sharpe_ratio ?? null;
   const wr = paper?.win_rate != null ? normalizeWinRate(paper.win_rate) : null;
   const trades = paper?.total_trades ?? null;
+
+  const btPf = baseline?.profitFactor ?? null;
+  const btSr = baseline?.sharpeRatio ?? null;
+  const btWr = baseline?.winRatePct ?? null;
+  const btTrades = baseline?.totalTrades ?? null;
 
   return (
     <Card>
@@ -105,7 +112,7 @@ export function BacktestVsPaperWidget() {
               Backtest vs Paper Reality
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              STC Strategy — Target Validation
+              Backtest column from saved engine results (MCL/MNQ preferred)
             </p>
           </div>
           {loading && (
@@ -146,11 +153,10 @@ export function BacktestVsPaperWidget() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
-              {/* Profit Factor */}
               <tr className="hover:bg-muted/20 transition-colors">
                 <td className="py-2.5 pr-4 font-medium text-foreground">Profit Factor</td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                  {BACKTEST.profitFactor.toFixed(2)}
+                  {fmtBacktestCell(loadingBt, btPf)}
                 </td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-foreground">
                   {loading ? (
@@ -172,11 +178,10 @@ export function BacktestVsPaperWidget() {
                 </td>
               </tr>
 
-              {/* Sharpe Ratio */}
               <tr className="hover:bg-muted/20 transition-colors">
                 <td className="py-2.5 pr-4 font-medium text-foreground">Sharpe Ratio</td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                  {BACKTEST.sharpeRatio.toFixed(2)}
+                  {fmtBacktestCell(loadingBt, btSr)}
                 </td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-foreground">
                   {loading ? (
@@ -198,11 +203,16 @@ export function BacktestVsPaperWidget() {
                 </td>
               </tr>
 
-              {/* Win Rate */}
               <tr className="hover:bg-muted/20 transition-colors">
                 <td className="py-2.5 pr-4 font-medium text-foreground">Win Rate</td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                  {BACKTEST.winRate.toFixed(1)}%
+                  {loadingBt ? (
+                    "…"
+                  ) : btWr != null ? (
+                    `${btWr.toFixed(1)}%`
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-foreground">
                   {loading ? (
@@ -224,11 +234,16 @@ export function BacktestVsPaperWidget() {
                 </td>
               </tr>
 
-              {/* Total Trades */}
               <tr className="hover:bg-muted/20 transition-colors">
                 <td className="py-2.5 pr-4 font-medium text-foreground">Total Trades</td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                  {BACKTEST.totalTrades.toLocaleString()}
+                  {loadingBt ? (
+                    "…"
+                  ) : btTrades != null ? (
+                    btTrades.toLocaleString()
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-foreground">
                   {loading ? (
@@ -245,8 +260,8 @@ export function BacktestVsPaperWidget() {
                       {tradesVariant(trades) === "bull"
                         ? "SUFFICIENT"
                         : tradesVariant(trades) === "warn"
-                        ? "BUILDING"
-                        : "TOO FEW"}
+                          ? "BUILDING"
+                          : "TOO FEW"}
                     </Badge>
                   ) : (
                     <span className="text-muted-foreground text-xs">—</span>

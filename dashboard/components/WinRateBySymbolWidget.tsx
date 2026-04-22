@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { RefreshCw, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -189,13 +189,9 @@ export function WinRateBySymbolWidget() {
   async function fetchData() {
     setError(null);
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
+      const raw: unknown = await fetchEngine<unknown>(
+        `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      const raw: unknown = await res.json();
 
       // Handle both array and { trades: [...] } shapes
       let trades: TradeRecord[];

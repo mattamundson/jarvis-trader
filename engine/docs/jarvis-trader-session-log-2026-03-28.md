@@ -78,7 +78,7 @@ yfinance caps intraday data at 60 days maximum history. For backtesting MES/MNQ/
 
 ### API Key Retrieved
 ```
-POLYGON_API_KEY=yTH5rktrXpDpdvKWg0K6paPlXiYOwv0c
+POLYGON_API_KEY=***POLYGON_KEY_REMOVED***
 ```
 Added to `engine/.env`
 
@@ -122,8 +122,8 @@ JARVIS needs push alerts when the pipeline generates BUY/SELL decisions. Twilio 
 
 ### Credentials Retrieved
 ```
-TWILIO_ACCOUNT_SID=AC358933780f5511cd53c3454d74aa1a2d
-TWILIO_AUTH_TOKEN=82979185d63feaf1780da212c469768b
+TWILIO_ACCOUNT_SID=***TWILIO_SID_REMOVED***
+TWILIO_AUTH_TOKEN=***TWILIO_TOKEN_REMOVED***
 TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
 ```
 

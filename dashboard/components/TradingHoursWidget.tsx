@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { Clock, TrendingUp, TrendingDown, Activity, Info } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -148,15 +148,17 @@ export function TradingHoursWidget() {
 
   const fetchTrades = useCallback(async () => {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
+      const raw: unknown = await fetchEngine<unknown>(
+        `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: TradesResponse = await res.json();
-      const trades = data.trades ?? [];
+      const trades: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
       const stats = buildHourStats(trades);
       setHourStats(stats);
-      setTotalTrades(trades.filter((t) => t.status === "CLOSED" && t.exit_time !== null).length);
+      setTotalTrades(
+        trades.filter((t: TradeRecord) => t.status === "CLOSED" && t.exit_time !== null).length,
+      );
       setError(null);
       setLastUpdated(new Date());
     } catch (err) {

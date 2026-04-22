@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -92,8 +92,8 @@ export function AlertSummaryWidget() {
   async function fetchData() {
     try {
       const [historyRes, statsRes] = await Promise.allSettled([
-        fetch(`${ENGINE_URL}/alerts/history?limit=10`),
-        fetch(`${ENGINE_URL}/alerts/stats`),
+        fetchEngine(`/alerts/history?limit=10`),
+        fetchEngine(`/alerts/stats`),
       ]);
 
       if (historyRes.status === "fulfilled" && historyRes.value.ok) {

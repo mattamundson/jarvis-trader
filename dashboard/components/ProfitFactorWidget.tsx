@@ -4,8 +4,8 @@ import React, { useState, useEffect } from "react";
 import { BarChart3, RefreshCw, TrendingUp, TrendingDown, Hash, Trophy } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── API types ──────────────────────────────────────────────────────────────────
 
@@ -80,12 +80,8 @@ export function ProfitFactorWidget() {
   async function fetchData() {
     try {
       setLoading(true);
-      const res = await fetch(`${ENGINE_URL}/analytics/performance`);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const json: PerformanceResponse = await res.json();
-      setData(json);
+      const payload = await fetchEngine(`/analytics/performance`);
+      setData(payload);
       setError(null);
       setLastRefresh(new Date());
     } catch (err) {

@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -83,10 +83,8 @@ export function IbGatewayDetailCard() {
 
   async function fetchStatus() {
     try {
-      const res = await fetch(`${ENGINE_URL}/ib/connection-test`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as IBConnectionTestResult;
-      setData(json);
+      const payload = await fetchEngine<IBConnectionTestResult>(`/ib/connection-test`);
+      setData(payload);
       setEngineDown(false);
       setLastChecked(new Date().toISOString());
     } catch {
@@ -165,7 +163,7 @@ export function IbGatewayDetailCard() {
           <div className="flex items-start gap-2 rounded-lg border border-bear/30 bg-bear/5 p-3">
             <AlertCircle className="h-4 w-4 text-bear shrink-0 mt-0.5" />
             <p className="text-xs text-bear">
-              Engine unreachable — verify the engine is running on port 8010.
+              Engine unreachable — verify the engine is running and reachable through the dashboard proxy.
             </p>
           </div>
         )}

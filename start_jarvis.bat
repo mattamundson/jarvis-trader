@@ -56,7 +56,7 @@ goto :wait_engine
 :health_ok
 
 echo  [2/4] Launching Dashboard on port 3010...
-start "JARVIS DASHBOARD - Port 3010" cmd /k "title JARVIS DASHBOARD - Port 3010 && cd /d %~dp0dashboard && echo JARVIS Dashboard starting... && npm run dev"
+start "JARVIS DASHBOARD - Port 3010" cmd /k "title JARVIS DASHBOARD - Port 3010 && cd /d %~dp0dashboard && echo JARVIS Dashboard starting... && pnpm dev"
 
 echo  [3/4] Launching Health Monitor...
 start "JARVIS HEALTH MONITOR" cmd /k "title JARVIS HEALTH MONITOR && cd /d %~dp0engine && echo JARVIS Health Monitor starting... && .venv\Scripts\python health_monitor.py"

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 import {
   Card,
   CardHeader,
@@ -9,7 +10,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,11 +65,7 @@ export function EquityCurveWidget() {
   async function fetchTrades() {
     try {
       setError(null);
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw: unknown = await res.json();
+      const raw: unknown = await fetchEngine(`/portfolio/history/trades?status=CLOSED&limit=500`);
 
       let list: TradeRecord[];
       if (Array.isArray(raw)) {

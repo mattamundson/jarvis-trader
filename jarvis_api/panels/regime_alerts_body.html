@@ -1,0 +1,368 @@
+<div class="alert-overlay" id="alertOverlay"></div>
+
+<div class="alert-banner" id="alertBanner">
+  ⚠ REGIME ALERT ACTIVE — SEE DETAILS BELOW
+</div>
+
+<div class="panel" id="mainPanel">
+  <!-- HEADER -->
+  <div class="panel-header">
+    <div class="header-dot" id="headerDot"></div>
+    <span class="panel-title">REGIME MONITOR</span>
+    <span class="header-time" id="headerTime">--:--:--</span>
+  </div>
+
+  <!-- REGIME BADGE + META -->
+  <div class="regime-section">
+    <div class="regime-badge risk-on" id="regimeBadge">RISK_ON</div>
+    <div class="regime-meta">
+      <div class="regime-meta-row">
+        <span class="regime-meta-label">COMBINED SCALE</span>
+        <span class="regime-meta-value" id="scaleValue">60.9%</span>
+      </div>
+      <div class="regime-meta-row">
+        <span class="regime-meta-label">REGIME</span>
+        <span class="regime-meta-value" id="regimeText">RISK_ON</span>
+      </div>
+      <div class="scale-bar-wrap">
+        <div class="scale-bar-track">
+          <div class="scale-bar-fill" id="scaleBar" style="width:60.9%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIX GAUGE -->
+  <div class="vix-section">
+    <div class="section-label">VIX VOLATILITY INDEX</div>
+    <div class="vix-gauge-wrap">
+      <svg class="vix-svg" viewBox="0 0 320 130" id="vixSvg">
+        <!-- Background arc zones -->
+        <!-- Green zone 0-15 -->
+        <path id="arcGreen" fill="none" stroke="rgba(0,255,136,0.25)" stroke-width="14" stroke-linecap="butt"/>
+        <!-- Amber zone 15-20 -->
+        <path id="arcAmber" fill="none" stroke="rgba(255,140,0,0.25)" stroke-width="14" stroke-linecap="butt"/>
+        <!-- Red zone 20-25 -->
+        <path id="arcRed" fill="none" stroke="rgba(255,34,68,0.25)" stroke-width="14" stroke-linecap="butt"/>
+        <!-- Danger zone 25-40 -->
+        <path id="arcDanger" fill="none" stroke="rgba(255,34,68,0.12)" stroke-width="14" stroke-linecap="butt"/>
+        <!-- Track -->
+        <path id="arcTrack" fill="none" stroke="rgba(0,212,255,0.08)" stroke-width="14" stroke-linecap="round"/>
+        <!-- Needle -->
+        <line id="vixNeedle" stroke="white" stroke-width="2" stroke-linecap="round"
+              style="filter: drop-shadow(0 0 4px white) drop-shadow(0 0 8px rgba(0,212,255,0.8))"/>
+        <!-- Needle hub -->
+        <circle id="vixHub" r="5" fill="#020814" stroke="var(--blue)" stroke-width="1.5"/>
+
+        <!-- Threshold markers -->
+        <g id="threshMarkers" font-family="'JetBrains Mono', monospace" font-size="8" fill="rgba(0,212,255,0.5)">
+          <!-- Will be positioned by JS -->
+        </g>
+      </svg>
+
+      <div class="vix-current-label">
+        <div class="vix-value-big" id="vixValueBig">18.92</div>
+        <div class="vix-sub">VIX CURRENT LEVEL</div>
+      </div>
+
+      <div class="gauge-thresholds">
+        <div class="thresh-item"><div class="thresh-val" style="color:var(--green)">15</div><div>NORMAL</div></div>
+        <div class="thresh-item"><div class="thresh-val" style="color:var(--amber)">20</div><div>CAUTION</div></div>
+        <div class="thresh-item"><div class="thresh-val" style="color:var(--red)">25</div><div>ELEVATED</div></div>
+        <div class="thresh-item"><div class="thresh-val" style="color:var(--red)">30+</div><div>DANGER</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REGIME HISTORY -->
+  <div class="history-section">
+    <div class="section-label">REGIME HISTORY — LAST 10 PERIODS</div>
+    <div class="history-squares" id="regimeHistory"></div>
+  </div>
+
+  <!-- ALERT FEED -->
+  <div class="alert-feed-section">
+    <div class="section-label">ALERT FEED — LAST 5</div>
+    <div class="alert-feed-list" id="alertFeedList"></div>
+  </div>
+
+  <!-- SCALE DISPLAY -->
+  <div class="scale-section">
+    <div class="section-label">POSITION SIZE MULTIPLIERS</div>
+    <div class="scale-grid">
+      <div class="scale-cell">
+        <div class="scale-cell-val" id="scaleMultiplier">0.609×</div>
+        <div class="scale-cell-label">COMBINED SCALE</div>
+      </div>
+      <div class="scale-cell">
+        <div class="scale-cell-val" id="fullPosSize">100%</div>
+        <div class="scale-cell-label">FULL DEPLOY</div>
+      </div>
+      <div class="scale-cell">
+        <div class="scale-cell-val" id="adjPosSize">60.9%</div>
+        <div class="scale-cell-label">ADJUSTED SIZE</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──
+const API_URL = 'http://localhost:8020/api/regime';
+const POLL_INTERVAL = 15000;
+
+const FALLBACK = {
+  regime: "RISK_ON",
+  combined_scale: 0.609,
+  vix: 18.92,
+  alert: null,
+  color: "green"
+};
+
+// ── STATE ──
+let currentData = { ...FALLBACK };
+let alertHistory = [];
+let regimeHistory = [
+  { state: "RISK_ON", week: "W-10" },
+  { state: "RISK_ON", week: "W-9" },
+  { state: "RISK_ON", week: "W-8" },
+  { state: "TRANSITIONING", week: "W-7" },
+  { state: "RISK_OFF", week: "W-6" },
+  { state: "RISK_OFF", week: "W-5" },
+  { state: "TRANSITIONING", week: "W-4" },
+  { state: "RISK_ON", week: "W-3" },
+  { state: "RISK_ON", week: "W-2" },
+  { state: "RISK_ON", week: "W-1" }
+];
+
+// ── VIX GAUGE MATH ──
+const CX = 160, CY = 105, R = 85;
+const START_ANGLE = Math.PI; // 180° left
+const END_ANGLE = 0;         // 0° right (top arc)
+const VIX_MIN = 0, VIX_MAX = 40;
+
+function vixToAngle(vix) {
+  const frac = Math.min(Math.max((vix - VIX_MIN) / (VIX_MAX - VIX_MIN), 0), 1);
+  // Arc from 180° → 0° counter-clockwise via top
+  return Math.PI - frac * Math.PI;
+}
+
+function polarToXY(angle, radius) {
+  return {
+    x: CX + radius * Math.cos(angle),
+    y: CY - radius * Math.sin(angle)
+  };
+}
+
+function arcPath(startVix, endVix, r) {
+  const a1 = vixToAngle(startVix);
+  const a2 = vixToAngle(endVix);
+  const p1 = polarToXY(a1, r);
+  const p2 = polarToXY(a2, r);
+  const largeArc = (endVix - startVix) / (VIX_MAX - VIX_MIN) > 0.5 ? 1 : 0;
+  // Going counter-clockwise from right to left
+  return `M ${p1.x} ${p1.y} A ${r} ${r} 0 ${largeArc} 0 ${p2.x} ${p2.y}`;
+}
+
+function buildGauge() {
+  document.getElementById('arcTrack').setAttribute('d', arcPath(0, 40, R));
+  document.getElementById('arcGreen').setAttribute('d', arcPath(0, 15, R));
+  document.getElementById('arcAmber').setAttribute('d', arcPath(15, 20, R));
+  document.getElementById('arcRed').setAttribute('d', arcPath(20, 25, R));
+  document.getElementById('arcDanger').setAttribute('d', arcPath(25, 40, R));
+
+  // Threshold markers
+  const markers = document.getElementById('threshMarkers');
+  const thresholds = [
+    { vix: 15, color: 'rgba(0,255,136,0.8)', label: '15' },
+    { vix: 20, color: 'rgba(255,140,0,0.8)', label: '20' },
+    { vix: 25, color: 'rgba(255,34,68,0.8)', label: '25' },
+    { vix: 30, color: 'rgba(255,34,68,0.5)', label: '30' },
+  ];
+  thresholds.forEach(t => {
+    const a = vixToAngle(t.vix);
+    const inner = polarToXY(a, R - 14);
+    const outer = polarToXY(a, R + 4);
+    const lp = polarToXY(a, R + 14);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', inner.x); line.setAttribute('y1', inner.y);
+    line.setAttribute('x2', outer.x); line.setAttribute('y2', outer.y);
+    line.setAttribute('stroke', t.color); line.setAttribute('stroke-width', '1.5');
+    markers.appendChild(line);
+    const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x', lp.x); txt.setAttribute('y', lp.y + 3);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('fill', t.color);
+    txt.textContent = t.label;
+    markers.appendChild(txt);
+  });
+}
+
+function updateNeedle(vix) {
+  const a = vixToAngle(vix);
+  const tip = polarToXY(a, R - 5);
+  const base = polarToXY(a, 10);
+  const needle = document.getElementById('vixNeedle');
+  needle.setAttribute('x1', base.x); needle.setAttribute('y1', base.y);
+  needle.setAttribute('x2', tip.x); needle.setAttribute('y2', tip.y);
+  document.getElementById('vixHub').setAttribute('cx', CX);
+  document.getElementById('vixHub').setAttribute('cy', CY);
+
+  // Color the needle by zone
+  let color = 'var(--green)';
+  if (vix > 25) color = 'var(--red)';
+  else if (vix > 20) color = 'var(--red)';
+  else if (vix > 15) color = 'var(--amber)';
+  needle.setAttribute('stroke', color);
+  needle.style.filter = `drop-shadow(0 0 4px ${color})`;
+
+  const bigLabel = document.getElementById('vixValueBig');
+  bigLabel.style.color = color;
+}
+
+// ── RENDER REGIME ──
+function renderRegime(data) {
+  const badge = document.getElementById('regimeBadge');
+  const dot = document.getElementById('headerDot');
+  const regimeText = document.getElementById('regimeText');
+  badge.textContent = data.regime || 'RISK_ON';
+  badge.className = 'regime-badge';
+
+  if (data.regime === 'RISK_ON') {
+    badge.classList.add('risk-on');
+    dot.style.background = 'var(--green)';
+    dot.style.boxShadow = '0 0 8px var(--green)';
+  } else if (data.regime === 'RISK_OFF') {
+    badge.classList.add('risk-off');
+    dot.style.background = 'var(--red)';
+    dot.style.boxShadow = '0 0 8px var(--red)';
+  } else {
+    badge.classList.add('transitioning');
+    dot.style.background = 'var(--amber)';
+    dot.style.boxShadow = '0 0 8px var(--amber)';
+  }
+
+  regimeText.textContent = data.regime;
+  const scale = (data.combined_scale * 100).toFixed(1);
+  document.getElementById('scaleValue').textContent = scale + '%';
+  document.getElementById('scaleBar').style.width = scale + '%';
+  document.getElementById('scaleMultiplier').textContent = data.combined_scale.toFixed(3) + '×';
+  document.getElementById('adjPosSize').textContent = scale + '%';
+
+  document.getElementById('vixValueBig').textContent = (data.vix || 18.92).toFixed(2);
+  updateNeedle(data.vix || 18.92);
+}
+
+// ── ALERT HANDLING ──
+function handleAlert(data) {
+  const overlay = document.getElementById('alertOverlay');
+  const banner = document.getElementById('alertBanner');
+
+  if (data.alert) {
+    overlay.classList.add('active');
+    banner.classList.add('active');
+
+    let bannerText = '⚠ ALERT: ';
+    if (data.alert === 'VIX_SPIKE') bannerText += 'VIX SPIKE DETECTED — ELEVATED VOLATILITY';
+    else if (data.alert === 'VIX_ELEVATED') bannerText += 'VIX ELEVATED — MONITOR CLOSELY';
+    else if (data.alert === 'REGIME_CHANGE') {
+      bannerText += 'REGIME CHANGE IN PROGRESS';
+      document.getElementById('mainPanel').classList.add('regime-flash');
+      setTimeout(() => document.getElementById('mainPanel').classList.remove('regime-flash'), 1500);
+    }
+    banner.textContent = bannerText;
+
+    alertHistory.unshift({
+      time: new Date().toLocaleTimeString('en-US', {hour12:false}),
+      type: data.alert,
+      msg: bannerText.replace('⚠ ALERT: ','')
+    });
+    if (alertHistory.length > 5) alertHistory.pop();
+    renderAlertFeed();
+  } else {
+    overlay.classList.remove('active');
+    banner.classList.remove('active');
+  }
+}
+
+// ── ALERT FEED ──
+const INITIAL_ALERTS = [
+  { time: '08:54', type: 'ok', msg: 'Regime stable — RISK_ON confirmed for 3 weeks' },
+  { time: '08:49', type: 'VIX_ELEVATED', msg: 'VIX touched 20.1 briefly, returned below threshold' },
+  { time: '16:05', type: 'ok', msg: 'Weekly signal refresh — scale maintained at 60.9%' },
+  { time: '04/14', type: 'REGIME_CHANGE', msg: 'Regime transitioned RISK_OFF → RISK_ON' },
+  { time: '04/07', type: 'ok', msg: 'Regime RISK_ON steady — full quarter' },
+];
+
+function renderAlertFeed() {
+  const list = document.getElementById('alertFeedList');
+  const combined = [...alertHistory, ...INITIAL_ALERTS].slice(0, 5);
+  list.innerHTML = '';
+  combined.forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'alert-item ' + (a.type === 'ok' ? 'ok' : a.type === 'VIX_ELEVATED' ? 'vix-elevated' : a.type === 'REGIME_CHANGE' ? 'regime-change' : 'vix-spike');
+    const typeColors = {
+      'ok': 'rgba(0,255,136,0.8)',
+      'VIX_ELEVATED': 'rgba(255,140,0,0.9)',
+      'VIX_SPIKE': 'rgba(255,34,68,0.9)',
+      'REGIME_CHANGE': 'rgba(255,34,68,0.9)'
+    };
+    const typeLabels = {
+      'ok': 'OK',
+      'VIX_ELEVATED': 'VIX↑',
+      'VIX_SPIKE': 'SPIKE',
+      'REGIME_CHANGE': 'REGIME'
+    };
+    div.innerHTML = `
+      <span class="alert-time">${a.time}</span>
+      <span class="alert-type-badge" style="background:${typeColors[a.type]||'rgba(0,212,255,0.3)'};color:#020814">${typeLabels[a.type]||a.type}</span>
+      <span class="alert-msg">${a.msg}</span>
+    `;
+    list.appendChild(div);
+  });
+}
+
+// ── REGIME HISTORY SQUARES ──
+function renderRegimeHistory() {
+  const container = document.getElementById('regimeHistory');
+  container.innerHTML = '';
+  regimeHistory.forEach(h => {
+    const sq = document.createElement('div');
+    const colorClass = h.state === 'RISK_ON' ? 'green' : h.state === 'RISK_OFF' ? 'red' : 'amber';
+    sq.className = `hist-sq ${colorClass}`;
+    sq.innerHTML = `<div class="tooltip">${h.week}: ${h.state}</div>`;
+    container.appendChild(sq);
+  });
+}
+
+// ── CLOCK ──
+function updateClock() {
+  document.getElementById('headerTime').textContent =
+    new Date().toLocaleTimeString('en-US', { hour12: false });
+}
+
+// ── FETCH DATA ──
+async function fetchRegime() {
+  try {
+    const res = await fetch(API_URL, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    currentData = data;
+  } catch {
+    currentData = { ...FALLBACK };
+  }
+  renderRegime(currentData);
+  handleAlert(currentData);
+}
+
+// ── INIT ──
+buildGauge();
+updateNeedle(FALLBACK.vix);
+renderRegime(FALLBACK);
+renderAlertFeed();
+renderRegimeHistory();
+updateClock();
+setInterval(updateClock, 1000);
+setInterval(fetchRegime, POLL_INTERVAL);
+fetchRegime();
+</script>

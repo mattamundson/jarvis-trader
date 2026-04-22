@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import {
   AreaChart,
@@ -11,6 +12,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import type { LucideIcon } from "lucide-react";
 import { Activity, TrendingUp, Award, BarChart2, Percent } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -160,7 +162,7 @@ function StatCard({
   label: string;
   value: string;
   sub?: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   valueClass?: string;
 }) {
   return (
@@ -486,7 +488,7 @@ export default function BacktestPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1400px] flex items-center gap-3 px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center gap-3 px-6 py-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
             <Activity className="h-5 w-5 text-accent" />
           </div>
@@ -495,20 +497,20 @@ export default function BacktestPage() {
             <p className="text-xs text-muted-foreground">Historical strategy performance</p>
           </div>
           <nav className="hidden lg:flex items-center gap-4 ml-6">
-            <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Dashboard
-            </a>
-            <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Analysis
-            </a>
-            <a href="/backtest" className="text-xs text-accent transition-colors font-medium">
+            </Link>
+            <Link href="/backtest" className="text-xs text-accent transition-colors font-medium">
               Backtest
-            </a>
+            </Link>
           </nav>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
         {/* Strategy Parameters reference card */}
         <StrategyParamsCard />
 
@@ -521,7 +523,7 @@ export default function BacktestPage() {
         )}
         {error && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
-            Engine offline or no backtest results found. Start engine on port 8010.
+            Engine offline or no backtest results found. Start the FastAPI engine and verify the dashboard proxy is configured.
           </div>
         )}
 
@@ -619,16 +621,9 @@ export default function BacktestPage() {
         )}
 
         {/* Optimizer / Parameters section */}
-        {results && <OptimizerPanel results={results} />}
-
-        {/* Empty state */}
-        {!isLoading && !error && backtestResults.length === 0 && (
-          <div className="rounded-xl border border-border bg-card p-10 text-center">
-            <BarChart2 className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm font-medium text-muted-foreground">No backtest results yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Run a backtest from the engine CLI to populate results here.
-            </p>
+        {(results?.length ?? 0) === 0 && (
+          <div className="text-center text-muted-foreground py-12">
+            <p>No backtest results yet. Run a backtest above to see results.</p>
           </div>
         )}
       </main>

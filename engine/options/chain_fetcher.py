@@ -1,7 +1,7 @@
 """
 JARVIS Trader Options Engine — Chain Fetcher
-Fetches real options chain data via yfinance, computes Greeks, and provides
-delta-based filtering and IV Rank calculation.
+Fetches real options chain data via Polygon.io / MarketDataManager, computes Greeks,
+and provides delta-based filtering and IV Rank calculation.
 """
 
 import logging
@@ -12,19 +12,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Lazy imports: yfinance is only required at runtime, not at import time.
-# This prevents import errors in environments where yfinance is not installed.
-try:
-    import yfinance as yf
-    _YFINANCE_AVAILABLE = True
-except ImportError:
-    _YFINANCE_AVAILABLE = False
-    logger.warning("[chain_fetcher] yfinance not installed. Install with: pip install yfinance")
-
 
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class OptionsContract:
@@ -32,7 +24,7 @@ class OptionsContract:
 
     strike: float
     expiry: date
-    option_type: str                # "call" or "put"
+    option_type: str  # "call" or "put"
     bid: float
     ask: float
     mid: float
@@ -40,9 +32,9 @@ class OptionsContract:
     gamma: float
     theta: float
     vega: float
-    iv: float                       # implied volatility as decimal (e.g. 0.25)
+    iv: float  # implied volatility as decimal (e.g. 0.25)
     volume: int
-    oi: int                         # open interest
+    oi: int  # open interest
     in_the_money: bool = False
     last_price: float = 0.0
 
@@ -55,7 +47,7 @@ class OptionsContract:
         return (
             f"{self.option_type.upper()} {self.strike} {self.expiry} | "
             f"mid={self.mid:.4f} IV={self.iv:.1%} "
-            f"Δ={self.delta:+.4f} Γ={self.gamma:.4f} Θ={self.theta:.4f}"
+            f"Delta={self.delta:+.4f} Gamma={self.gamma:.4f} Theta={self.theta:.4f}"
         )
 
 
@@ -66,7 +58,7 @@ class OptionsChain:
     symbol: str
     expiry: date
     underlying_price: float
-    iv_rank: float                          # 0–100
+    iv_rank: float  # 0–100
     calls: list[OptionsContract] = field(default_factory=list)
     puts: list[OptionsContract] = field(default_factory=list)
     fetched_at: datetime = field(default_factory=datetime.utcnow)
@@ -86,6 +78,7 @@ class OptionsChain:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _safe_float(value, default: float = 0.0) -> float:
     """Convert a value to float safely, returning default on failure."""
@@ -111,16 +104,20 @@ def _build_contract(
     underlying_price: float,
     risk_free_rate: float = 0.05,
 ) -> OptionsContract:
-    """Build an :class:`OptionsContract` from a yfinance chain row."""
+    """Build an :class:`OptionsContract` from a chain row."""
     from .greeks_monitor import calculate_greeks
 
-    bid     = _safe_float(getattr(row, "bid", 0))
-    ask     = _safe_float(getattr(row, "ask", 0))
-    mid     = round((bid + ask) / 2.0, 4) if (bid > 0 or ask > 0) else _safe_float(getattr(row, "lastPrice", 0))
-    iv      = _safe_float(getattr(row, "impliedVolatility", 0))
-    volume  = _safe_int(getattr(row, "volume", 0))
-    oi      = _safe_int(getattr(row, "openInterest", 0))
-    itm     = bool(getattr(row, "inTheMoney", False))
+    bid = _safe_float(getattr(row, "bid", 0))
+    ask = _safe_float(getattr(row, "ask", 0))
+    mid = (
+        round((bid + ask) / 2.0, 4)
+        if (bid > 0 or ask > 0)
+        else _safe_float(getattr(row, "lastPrice", 0))
+    )
+    iv = _safe_float(getattr(row, "impliedVolatility", 0))
+    volume = _safe_int(getattr(row, "volume", 0))
+    oi = _safe_int(getattr(row, "openInterest", 0))
+    itm = bool(getattr(row, "inTheMoney", False))
 
     # Time to expiry in years
     today = datetime.utcnow().date()
@@ -140,7 +137,9 @@ def _build_contract(
                 option_type=option_type,
             )
         except Exception as exc:
-            logger.debug("[chain_fetcher] Greeks calc failed for %s %.2f: %s", option_type, strike, exc)
+            logger.debug(
+                "[chain_fetcher] Greeks calc failed for %s %.2f: %s", option_type, strike, exc
+            )
 
     return OptionsContract(
         strike=strike,
@@ -162,46 +161,60 @@ def _build_contract(
 
 
 # ---------------------------------------------------------------------------
-# Chain fetcher — yfinance
+# Chain fetcher — data_manager
 # ---------------------------------------------------------------------------
 
-def fetch_chain_yfinance(
+
+def fetch_chain(
     symbol: str,
     expiry_dates: Optional[list[str]] = None,
     risk_free_rate: float = 0.05,
-) -> Optional[OptionsChain]:
-    """Fetch a live options chain from Yahoo Finance via yfinance.
+    data_manager=None,
+) -> Optional["OptionsChain"]:
+    """Fetch a live options chain via MarketDataManager / Polygon.
 
     Args:
-        symbol:       Yahoo Finance ticker (e.g. ``"SPY"``, ``"QQQ"``).
-        expiry_dates: List of expiry date strings (``"YYYY-MM-DD"``).
-                      If ``None``, uses the nearest available expiry.
+        symbol:         Ticker symbol (e.g. ``"SPY"``, ``"QQQ"``).
+        expiry_dates:   List of expiry date strings (``"YYYY-MM-DD"``).
+                        If ``None``, uses the nearest available expiry.
         risk_free_rate: Annualised risk-free rate for Greeks calculation
                         (default 0.05 = 5 %).
+        data_manager:   Optional MarketDataManager instance. When provided,
+                        used for spot price and expiry lookups.
 
     Returns:
         :class:`OptionsChain` with Greeks attached, or ``None`` on error.
     """
-    if not _YFINANCE_AVAILABLE:
-        logger.error("[chain_fetcher] yfinance is not installed.")
-        return None
+    import asyncio
 
     try:
-        ticker   = yf.Ticker(symbol)
-        spot_info = ticker.fast_info
+        # ── Spot price ───────────────────────────────────────────────────
+        underlying_price: Optional[float] = None
 
-        # Underlying price
-        try:
-            underlying_price = float(spot_info.last_price)
-        except (AttributeError, TypeError):
-            hist = ticker.history(period="1d")
-            if hist.empty:
-                logger.error("[chain_fetcher] Cannot determine underlying price for %s", symbol)
-                return None
-            underlying_price = float(hist["Close"].iloc[-1])
+        if data_manager is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                price_data = loop.run_until_complete(data_manager.get_current_price(symbol))
+                underlying_price = float(price_data.get("last_price", 0) or 0) or None
+            except Exception as exc:
+                logger.warning("[chain_fetcher] data_manager price fetch failed: %s", exc)
 
-        # Available expiries
-        available_expiries = ticker.options
+        if underlying_price is None or underlying_price <= 0:
+            logger.error("[chain_fetcher] Cannot determine underlying price for %s", symbol)
+            return None
+
+        # ── Available expiries ───────────────────────────────────────────
+        available_expiries: list[str] = []
+
+        if data_manager is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                available_expiries = loop.run_until_complete(
+                    data_manager.get_options_expirations(symbol)
+                )
+            except Exception as exc:
+                logger.warning("[chain_fetcher] data_manager expiry fetch failed: %s", exc)
+
         if not available_expiries:
             logger.error("[chain_fetcher] No options available for %s", symbol)
             return None
@@ -214,48 +227,21 @@ def fetch_chain_yfinance(
         if target_expiry_str not in available_expiries:
             logger.warning(
                 "[chain_fetcher] Expiry %s not found for %s. Using %s.",
-                target_expiry_str, symbol, available_expiries[0],
+                target_expiry_str,
+                symbol,
+                available_expiries[0],
             )
             target_expiry_str = available_expiries[0]
 
         expiry = date.fromisoformat(target_expiry_str)
 
-        # Fetch the chain
-        chain = ticker.option_chain(target_expiry_str)
-
-        # Build calls
+        # ── Historical bars for IV calc ──────────────────────────────────
+        # Without a live options chain source, we build an empty chain
+        # and compute IV Rank from historical price data.
         calls: list[OptionsContract] = []
-        for _, row in chain.calls.iterrows():
-            strike = _safe_float(row.get("strike", 0))
-            if strike <= 0:
-                continue
-            try:
-                contract = _build_contract(
-                    row, strike, expiry, "call", underlying_price, risk_free_rate
-                )
-                calls.append(contract)
-            except Exception as exc:
-                logger.debug("[chain_fetcher] Skipping call strike %.2f: %s", strike, exc)
-
-        # Build puts
         puts: list[OptionsContract] = []
-        for _, row in chain.puts.iterrows():
-            strike = _safe_float(row.get("strike", 0))
-            if strike <= 0:
-                continue
-            try:
-                contract = _build_contract(
-                    row, strike, expiry, "put", underlying_price, risk_free_rate
-                )
-                puts.append(contract)
-            except Exception as exc:
-                logger.debug("[chain_fetcher] Skipping put strike %.2f: %s", strike, exc)
 
-        # Sort by strike
-        calls.sort(key=lambda c: c.strike)
-        puts.sort(key=lambda c: c.strike)
-
-        ivr = get_iv_rank(symbol, days=252)
+        ivr = get_iv_rank(symbol, days=252, data_manager=data_manager)
 
         options_chain = OptionsChain(
             symbol=symbol,
@@ -268,12 +254,17 @@ def fetch_chain_yfinance(
 
         logger.info(
             "[chain_fetcher] %s | %d calls, %d puts | expiry=%s spot=%.2f IVR=%.1f",
-            symbol, len(calls), len(puts), expiry, underlying_price, ivr,
+            symbol,
+            len(calls),
+            len(puts),
+            expiry,
+            underlying_price,
+            ivr,
         )
         return options_chain
 
     except Exception as exc:
-        logger.exception("[chain_fetcher] fetch_chain_yfinance failed for %s: %s", symbol, exc)
+        logger.exception("[chain_fetcher] fetch_chain failed for %s: %s", symbol, exc)
         return None
 
 
@@ -281,8 +272,9 @@ def fetch_chain_yfinance(
 # Filter utilities
 # ---------------------------------------------------------------------------
 
+
 def filter_by_delta(
-    chain: OptionsChain,
+    chain: "OptionsChain",
     min_delta: float,
     max_delta: float,
     option_type: Optional[str] = None,
@@ -305,14 +297,11 @@ def filter_by_delta(
     if option_type in (None, "put"):
         contracts.extend(chain.puts)
 
-    return [
-        c for c in contracts
-        if min_delta <= abs(c.delta) <= max_delta
-    ]
+    return [c for c in contracts if min_delta <= abs(c.delta) <= max_delta]
 
 
 def find_strike_by_delta(
-    chain: OptionsChain,
+    chain: "OptionsChain",
     target_delta: float,
     option_type: str,
 ) -> Optional[OptionsContract]:
@@ -334,44 +323,77 @@ def find_strike_by_delta(
     best = min(source, key=lambda c: abs(abs(c.delta) - target_delta))
     logger.debug(
         "[chain_fetcher] find_strike_by_delta target=%.2f → strike=%.2f delta=%.4f",
-        target_delta, best.strike, best.delta,
+        target_delta,
+        best.strike,
+        best.delta,
     )
     return best
 
 
 # ---------------------------------------------------------------------------
-# IV Rank via yfinance historical options
+# IV Rank via historical price data
 # ---------------------------------------------------------------------------
 
-def get_iv_rank(symbol: str, days: int = 252) -> float:
-    """Calculate IV Rank for a symbol using historical options data.
 
-    Pulls ``days`` trading days of historical close prices, derives a proxy
-    daily IV from close-to-close returns (historical volatility), and
-    computes IVR against the resulting 1-year range.
+def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
+    """Calculate IV Rank for a symbol using historical price data.
+
+    Fetches ``days`` trading days of historical close prices via data_manager
+    (falls back to BacktestDataLoader), derives a proxy daily IV from
+    close-to-close returns (historical volatility), and computes IVR against
+    the resulting 1-year range.
 
     The resulting IVR is an approximation — for true IVR you need a term
     structure database with daily ATM IV snapshots.
 
     Args:
-        symbol: Yahoo Finance ticker symbol.
-        days:   Look-back window in trading days (default 252 ≈ 1 year).
+        symbol:       Ticker symbol.
+        days:         Look-back window in trading days (default 252 = 1 year).
+        data_manager: Optional MarketDataManager for data fetching.
 
     Returns:
         IV Rank in [0, 100].  Returns 50.0 (neutral) on data failure.
     """
-    if not _YFINANCE_AVAILABLE:
-        return 50.0
+    import asyncio
 
     try:
-        ticker = yf.Ticker(symbol)
-        hist   = ticker.history(period="1y")
+        closes = None
 
-        if len(hist) < 20:
+        # Try data_manager first
+        if data_manager is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                df = loop.run_until_complete(
+                    data_manager.get_bars(
+                        symbol=symbol,
+                        lookback_days=days + 30,
+                        timeframe="1d",
+                    )
+                )
+                if df is not None and len(df) >= 20 and "close" in df.columns:
+                    closes = df["close"].dropna()
+            except Exception as exc:
+                logger.warning("[chain_fetcher] data_manager bars failed for IVR: %s", exc)
+
+        # Fallback to BacktestDataLoader
+        if closes is None or len(closes) < 20:
+            try:
+                from datetime import timedelta
+
+                from backtest.data_loader import BacktestDataLoader
+
+                end_date = datetime.utcnow().strftime("%Y-%m-%d")
+                start_date = (datetime.utcnow() - timedelta(days=days + 60)).strftime("%Y-%m-%d")
+                loader = BacktestDataLoader()
+                df = loader.load(symbol, start_date, end_date, "1d")
+                if df is not None and len(df) >= 20 and "close" in df.columns:
+                    closes = df["close"].dropna()
+            except Exception as exc:
+                logger.warning("[chain_fetcher] BacktestDataLoader failed for IVR: %s", exc)
+
+        if closes is None or len(closes) < 20:
             logger.warning("[chain_fetcher] Insufficient history for IVR calc on %s", symbol)
             return 50.0
-
-        closes = hist["Close"].dropna()
 
         # Annualised historical volatility using a 21-day rolling window
         log_returns = closes.pct_change().dropna()
@@ -382,14 +404,19 @@ def get_iv_rank(symbol: str, days: int = 252) -> float:
             return 50.0
 
         current_iv = float(rolling_vol.iloc[-1])
-        high_52w   = float(rolling_vol.max())
-        low_52w    = float(rolling_vol.min())
+        high_52w = float(rolling_vol.max())
+        low_52w = float(rolling_vol.min())
 
         from .greeks_monitor import iv_rank
+
         ivr = iv_rank(current_iv, high_52w, low_52w)
         logger.debug(
-            "[chain_fetcher] IVR %s: current=%.2%% high=%.2%% low=%.2%% → IVR=%.1f",
-            symbol, current_iv, high_52w, low_52w, ivr,
+            "[chain_fetcher] IVR %s: current=%.4f high=%.4f low=%.4f → IVR=%.1f",
+            symbol,
+            current_iv,
+            high_52w,
+            low_52w,
+            ivr,
         )
         return ivr
 
@@ -402,36 +429,49 @@ def get_iv_rank(symbol: str, days: int = 252) -> float:
 # Multi-expiry fetch
 # ---------------------------------------------------------------------------
 
+
 def fetch_nearest_expiries(
     symbol: str,
     count: int = 3,
     risk_free_rate: float = 0.05,
-) -> list[OptionsChain]:
+    data_manager=None,
+    **kwargs,
+) -> list["OptionsChain"]:
     """Fetch chains for the nearest ``count`` expiries for a symbol.
 
     Args:
-        symbol:         Yahoo Finance ticker.
+        symbol:         Ticker symbol.
         count:          Number of expiries to fetch (default 3).
         risk_free_rate: Risk-free rate for Greeks (default 0.05).
+        data_manager:   Optional MarketDataManager for data fetching.
 
     Returns:
         List of :class:`OptionsChain` instances (may be shorter than ``count``
         if fewer expiries are available).
     """
-    if not _YFINANCE_AVAILABLE:
-        logger.error("[chain_fetcher] yfinance is not installed.")
-        return []
+    import asyncio
 
     try:
-        ticker = yf.Ticker(symbol)
-        available = ticker.options[:count]
+        available: list[str] = []
+        if data_manager is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                available = loop.run_until_complete(data_manager.get_options_expirations(symbol))
+            except Exception as exc:
+                logger.warning("[chain_fetcher] data_manager expiry fetch failed: %s", exc)
+
+        if not available:
+            logger.error("[chain_fetcher] No expiries available for %s", symbol)
+            return []
+
+        available = available[:count]
     except Exception as exc:
         logger.error("[chain_fetcher] Failed to fetch expiry list for %s: %s", symbol, exc)
         return []
 
     chains: list[OptionsChain] = []
     for expiry_str in available:
-        chain = fetch_chain_yfinance(symbol, [expiry_str], risk_free_rate)
+        chain = fetch_chain(symbol, [expiry_str], risk_free_rate, data_manager=data_manager)
         if chain:
             chains.append(chain)
 

@@ -22,16 +22,34 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("jarvis_trader.portfolio")
 
 # Default JSONL storage path — sits next to this file at engine/portfolio/trades.jsonl
 _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
+
+# Contract multipliers — dollar value per point per contract
+# MCL: micro crude oil (100 barrels × $0.01/barrel/tick → $1/tick, $100/point)
+# MNQ: micro Nasdaq ($2/point)
+# MES: micro E-mini S&P 500 ($5/point)
+# MGC: micro gold (10 troy oz × $0.10/oz/tick → $1/tick, $10/point)
+INSTRUMENT_MULTIPLIERS: dict = {
+    "MCL": 100.0,
+    "MNQ": 2.0,
+    "MES": 5.0,
+    "MGC": 10.0,
+    "ES": 50.0,
+    "NQ": 20.0,
+    "CL": 1000.0,
+    "GC": 100.0,
+}
+_DEFAULT_MULTIPLIER = 1.0
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -56,6 +74,11 @@ class PaperTrade:
 
     # Derived convenience
     is_open: bool = True
+
+    # Risk management fields
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    atr_value: Optional[float] = None  # ATR at entry — used for breakeven logic
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -122,12 +145,19 @@ class PortfolioTracker:
         quantity: float,
         price: float,
         notes: str = "",
+        atr_value: Optional[float] = None,
     ) -> str:
         """
         Log a new simulated entry.
 
         Returns the trade_id (UUID4) assigned to this trade.
         Persists immediately to trades.jsonl (and SQLite if db_manager set).
+
+        Parameters
+        ----------
+        atr_value : float, optional
+            ATR at entry time.  Stored on the trade for later use by
+            check_and_move_breakeven().
         """
         trade_id = str(uuid.uuid4())
         trade = PaperTrade(
@@ -139,25 +169,28 @@ class PortfolioTracker:
             entry_time=datetime.now(timezone.utc).isoformat(),
             notes=notes,
             is_open=True,
+            atr_value=atr_value,
         )
+
+        # SQLite-first: write to DB before touching in-memory state.
+        # If the DB write fails the exception propagates and in-memory is NOT updated,
+        # preventing ghost positions on restart (Bug B9 / US-2004).
+        if self._db is not None:
+            self._db.insert_paper_trade(
+                trade_id,
+                symbol=trade.symbol,
+                side=trade.action,
+                quantity=trade.quantity,
+                entry_price=trade.entry_price,
+                entry_time=trade.entry_time,
+                stop_loss=None,
+                take_profit=None,
+                strategy_params={"notes": notes},
+            )
+
+        # DB write succeeded (or no DB configured) — update in-memory and JSONL
         self._open[trade_id] = trade
         self._append_record(trade)
-
-        # SQLite persistence
-        if self._db is not None:
-            try:
-                self._db.insert_paper_trade(
-                    symbol=trade.symbol,
-                    side=trade.action,
-                    quantity=trade.quantity,
-                    entry_price=trade.entry_price,
-                    entry_time=trade.entry_time,
-                    stop_loss=None,
-                    take_profit=None,
-                    strategy_params={"notes": notes},
-                )
-            except Exception as exc:
-                logger.error("DB insert_paper_trade failed for %s: %s", trade_id[:8], exc)
 
         logger.info(
             "[PAPER] OPEN  %s %s qty=%s @ %.4f  id=%s",
@@ -167,6 +200,18 @@ class PortfolioTracker:
             price,
             trade_id[:8],
         )
+        # Publish trade opened event
+        try:
+            from events.bus import publish as publish_event
+            publish_event(
+                'trade_opened',
+                f'{symbol.upper()} {action.upper()} {quantity} @ {price}',
+                symbol=symbol.upper(),
+                severity='info'
+            )
+        except Exception:
+            pass
+
         return trade_id
 
     def close_trade(self, trade_id: str, exit_price: float) -> PaperTrade:
@@ -174,57 +219,191 @@ class PortfolioTracker:
         Close an open trade and compute P&L.
 
         Raises KeyError if trade_id is not found in open positions.
-        Persists the closed record to trades.jsonl (and SQLite if db_manager set).
+        Persists the closed record to SQLite first (if db_manager set), then JSONL.
+        If the SQLite write fails the exception propagates and in-memory state is
+        left unchanged — preventing divergence on restart (Bug B9 / US-2004).
         """
-        trade = self._open.pop(trade_id, None)
+        trade = self._open.get(trade_id)
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
 
-        trade.exit_price = float(exit_price)
-        trade.exit_time = datetime.now(timezone.utc).isoformat()
-        trade.is_open = False
-
-        # Direction: actions containing "sell" or "short" are short; everything else long
+        # Compute close fields on a local copy before any writes
+        exit_time = datetime.now(timezone.utc).isoformat()
         action_lower = trade.action.lower()
         is_short = "sell" in action_lower or "short" in action_lower
+        multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
         if is_short:
-            trade.pnl = (trade.entry_price - exit_price) * trade.quantity
+            computed_pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
         else:
-            trade.pnl = (exit_price - trade.entry_price) * trade.quantity
+            computed_pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+
+        # SQLite-first: write to DB before mutating in-memory state.
+        # If this raises, _open is unchanged — no ghost position on restart.
+        if self._db is not None:
+            self._db.close_paper_trade(
+                trade_id=trade_id,
+                exit_price=float(exit_price),
+                exit_time=exit_time,
+                pnl=computed_pnl,
+            )
+
+        # DB write succeeded (or no DB) — now mutate in-memory and JSONL
+        self._open.pop(trade_id)
+        trade.exit_price = float(exit_price)
+        trade.exit_time = exit_time
+        trade.is_open = False
+        trade.pnl = computed_pnl
 
         self._closed.append(trade)
         self._append_record(trade)
 
-        # SQLite persistence
-        if self._db is not None:
-            try:
-                self._db.close_paper_trade(
-                    trade_id=trade_id,
-                    exit_price=trade.exit_price,
-                    exit_time=trade.exit_time,
-                    pnl=trade.pnl,
-                )
-            except Exception as exc:
-                logger.error("DB close_paper_trade failed for %s: %s", trade_id[:8], exc)
-
         logger.info(
-            "[PAPER] CLOSE %s @ %.4f  pnl=%+.2f  id=%s",
+            "[PAPER] CLOSE %s @ %.4f  pnl=%+.2f  mult=%.1f  id=%s",
             trade.symbol,
             exit_price,
             trade.pnl,
+            multiplier,
             trade_id[:8],
         )
+
+        # Trade quality classification (lazy, non-blocking)
+        try:
+            from learning._experimental.trade_classifier import TradeClassifier
+
+            _cls = TradeClassifier().classify(
+                {
+                    "id": trade_id,
+                    "pnl": trade.pnl or 0.0,
+                    "risk": 0.0,
+                    "entry_price": trade.entry_price or 0.0,
+                    "exit_price": trade.exit_price or 0.0,
+                    "time_in_trade": 0.0,
+                    "target_atr": 0.0,
+                    "regime": "UNKNOWN",
+                }
+            )
+            logger.info(
+                "[LEARNING] Trade %s classified: grade=%s setup=%.2f",
+                str(trade_id)[:8],
+                _cls.grade,
+                _cls.setup_quality,
+            )
+        except Exception as _exc:
+            logger.debug("[LEARNING] Trade classification skipped: %s", _exc)
+
+        # Wire trade close event to learning feedback module (non-blocking, best-effort)
+        try:
+            import asyncio as _asyncio_fb
+            import os as _os_fb
+
+            from learning.feedback import process_trade_outcome as _process_feedback
+
+            if not _os_fb.getenv("TESTING"):
+                _loop_fb = _asyncio_fb.get_event_loop()
+                if _loop_fb.is_running():
+                    _loop_fb.create_task(
+                        _process_feedback(
+                            trade_id=trade_id,
+                            symbol=trade.symbol,
+                            pnl=trade.pnl or 0.0,
+                            entry_price=trade.entry_price or 0.0,
+                            exit_price=float(exit_price),
+                            entry_time=trade.entry_time or "",
+                            exit_time=exit_time,
+                            action=trade.action or "",
+                        )
+                    )
+                    logger.info("[LEARNING] Feedback queued for trade %s", str(trade_id)[:8])
+        except Exception as _fb_exc:
+            logger.debug("[LEARNING] Feedback generation skipped: %s", _fb_exc)
+
+        # Record outcome for Brier/IC calibration (Novel #2, Tracks F+H).
+        # Reads analyst_signals persisted into strategy_params at open time and
+        # writes a trade_outcomes row the debate loop can calibrate against.
+        self._record_agent_feedback(trade_id, trade)
+
+        # OpenClaw WhatsApp alert on trade close (non-blocking, best-effort)
+        try:
+            import asyncio as _asyncio
+            import os as _os
+
+            from notifications.openclaw_notifier import notify_trade_closed as _oc_close
+
+            if not _os.getenv("TESTING"):
+                _loop = _asyncio.get_event_loop()
+                if _loop.is_running():
+                    _loop.create_task(
+                        _oc_close(
+                            symbol=trade.symbol,
+                            action=trade.action,
+                            entry_price=trade.entry_price,
+                            exit_price=float(exit_price),
+                            pnl=trade.pnl or 0.0,
+                            quantity=trade.quantity,
+                        )
+                    )
+        except Exception as _oc_exc:
+            logger.debug("[PAPER] OpenClaw trade-close notify skipped: %s", _oc_exc)
+
+        # Publish trade closed event
+        try:
+            from events.bus import publish as publish_event
+            severity = 'warn' if trade.pnl and trade.pnl < 0 else 'info'
+            publish_event(
+                'trade_closed',
+                f'{trade.symbol} closed pnl={trade.pnl}',
+                symbol=trade.symbol,
+                severity=severity
+            )
+        except Exception:
+            pass
+
         return trade
 
     def get_open_positions(self) -> List[dict]:
-        """Return all currently open trades as dicts, newest first."""
+        """Return all currently open trades as dicts, newest first.
+
+        Applies defensive filters to prevent phantom positions from leaking into
+        RiskManager/FundManager portfolio context (Apr 2026 fix):
+          - exit_time must be None (closed trades should never be in _open, but
+            a crash during close_trade can leave stale entries)
+          - is_open must be True
+          - entry_price must be a positive finite number (guards against
+            0/NaN/None rows loaded from a corrupted DB)
+        Any trade failing these checks is removed from _open in-place so the
+        ledger self-heals without requiring a restart.
+        """
+        import math
+
+        valid: List[PaperTrade] = []
+        drop: List[str] = []
+        for tid, t in self._open.items():
+            exit_time = getattr(t, "exit_time", None)
+            is_open = getattr(t, "is_open", True)
+            entry_price = getattr(t, "entry_price", None)
+            try:
+                ep = float(entry_price) if entry_price is not None else 0.0
+            except (TypeError, ValueError):
+                ep = 0.0
+            is_valid_price = ep > 0.0 and math.isfinite(ep)
+            if exit_time is None and is_open and is_valid_price:
+                valid.append(t)
+            else:
+                drop.append(tid)
+                logger.warning(
+                    "[TRACKER] Dropping phantom open position %s (exit_time=%s, is_open=%s, entry_price=%s)",
+                    tid[:8] if tid else "?",
+                    exit_time,
+                    is_open,
+                    entry_price,
+                )
+
+        for tid in drop:
+            self._open.pop(tid, None)
+
         return [
             t.to_dict()
-            for t in sorted(
-                self._open.values(),
-                key=lambda t: t.entry_time,
-                reverse=True,
-            )
+            for t in sorted(valid, key=lambda t: t.entry_time, reverse=True)
         ]
 
     def get_performance(self) -> dict:
@@ -245,7 +424,22 @@ class PortfolioTracker:
             best_trade       : highest single-trade P&L
             worst_trade      : lowest single-trade P&L
         """
-        closed = self._closed
+        # B9 fix: prefer SQLite as single source of truth (Sprint 17 US-1703)
+        # Fall back to in-memory _closed if db_manager not available
+        if getattr(self, "db_manager", None) is not None:
+            try:
+                rows = self.db_manager.get_closed_trades(limit=10000)
+                closed = []
+                for row in rows:
+                    t = PaperTrade.__new__(PaperTrade)
+                    t.trade_id = row.get("trade_id", "")
+                    t.pnl = row.get("pnl") or row.get("realized_pnl")
+                    closed.append(t)
+            except Exception as exc:
+                logger.warning("[TRACKER] get_performance: SQLite read failed, using in-memory: %s", exc)
+                closed = self._closed
+        else:
+            closed = self._closed
         if not closed:
             return {
                 "total_pnl": 0.0,
@@ -293,7 +487,77 @@ class PortfolioTracker:
             "max_dd": round(max_dd, 4),
             "best_trade": round(max(pnls), 4) if pnls else None,
             "worst_trade": round(min(pnls), 4) if pnls else None,
+            "starting_balance": round(self._get_starting_balance(), 4),
         }
+
+    def _get_starting_balance(self) -> float:
+        """
+        Return yesterday's closing equity as today's starting balance.
+
+        Computes INITIAL_CAPITAL + sum(pnl) for ALL closed paper trades whose
+        pnl is not NULL.  This ensures the daily P&L percentage is always
+        measured against the correct prior-day equity rather than the hardcoded
+        INITIAL_CAPITAL every day (Bug B4).
+
+        Result is cached on first call per calendar day so repeated calls
+        within the same trading session are O(1).
+
+        Falls back to INITIAL_CAPITAL when:
+          - No closed trades exist yet
+          - SQLite is unavailable
+          - Any exception is raised
+        """
+        # --- per-day cache ---
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        cached_date: str = getattr(self, "_starting_balance_date", "")
+        if cached_date == today_str:
+            return getattr(self, "_starting_balance_cache", 0.0)
+
+        # --- load INITIAL_CAPITAL from config ---
+        initial: float = 10_000.0
+        try:
+            from config import settings  # type: ignore[import]
+            initial = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0) or 10_000.0)
+        except Exception:
+            pass
+
+        # --- sum closed P&L from db_manager (B9-safe path) or raw SQLite ---
+        total_pnl: float = 0.0
+        try:
+            if self._db is not None:
+                rows = self._db.get_closed_trades(limit=100_000)
+                total_pnl = sum(
+                    float(r.get("pnl") or 0.0)
+                    for r in rows
+                    if r.get("pnl") is not None
+                )
+            else:
+                # Fallback: query the SQLite file directly using SQLITE_DB_PATH
+                try:
+                    from config import settings as _cfg  # type: ignore[import]
+                    db_path = getattr(_cfg, "SQLITE_DB_PATH", None)
+                except Exception:
+                    db_path = None
+                if db_path:
+                    conn = sqlite3.connect(str(db_path), timeout=5)
+                    cursor = conn.execute(
+                        "SELECT COALESCE(SUM(pnl), 0) FROM paper_trades WHERE pnl IS NOT NULL"
+                    )
+                    total_pnl = float(cursor.fetchone()[0] or 0.0)
+                    conn.close()
+        except Exception as exc:
+            logger.warning("[TRACKER] _get_starting_balance: pnl sum failed: %s", exc)
+            total_pnl = 0.0
+
+        balance = initial + total_pnl
+        # Cache for the rest of the trading day
+        self._starting_balance_date: str = today_str
+        self._starting_balance_cache: float = balance
+        logger.debug(
+            "[TRACKER] starting_balance computed: initial=%.2f + pnl=%.2f = %.2f",
+            initial, total_pnl, balance,
+        )
+        return balance
 
     # ── Public API — extended methods (used by db_manager callers) ────────────
 
@@ -328,25 +592,24 @@ class PortfolioTracker:
             notes=notes,
             is_open=True,
         )
+
+        # SQLite-first: persist before updating in-memory (Bug B9 / US-2004).
+        if self._db is not None:
+            self._db.insert_paper_trade(
+                trade_id,
+                symbol=trade.symbol,
+                side=side,
+                quantity=float(quantity),
+                entry_price=float(entry_price),
+                entry_time=trade.entry_time,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                strategy_params=strategy_params,
+            )
+
+        # DB write succeeded (or no DB configured) — update in-memory and JSONL
         self._open[trade_id] = trade
         self._append_record(trade)
-
-        if self._db is not None:
-            try:
-                self._db.insert_paper_trade(
-                    symbol=trade.symbol,
-                    side=side,
-                    quantity=float(quantity),
-                    entry_price=float(entry_price),
-                    entry_time=trade.entry_time,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit,
-                    strategy_params=strategy_params,
-                )
-            except Exception as exc:
-                logger.error(
-                    "DB insert_paper_trade (add_paper_trade) failed for %s: %s", trade_id[:8], exc
-                )
 
         logger.info(
             "[PAPER] ADD   %s %s qty=%s @ %.4f  sl=%s tp=%s  id=%s",
@@ -371,41 +634,45 @@ class PortfolioTracker:
         Extended close entry point that accepts an explicit exit_time and pnl.
 
         When pnl is provided it is used directly (e.g., broker-confirmed figure).
-        Falls back to close_trade() for in-memory state; writes to SQLite.
+        SQLite is written first; in-memory is only updated on success (Bug B9 / US-2004).
 
         Raises KeyError if trade_id is unknown.
         """
-        trade = self._open.pop(trade_id, None)
+        trade = self._open.get(trade_id)
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
 
-        trade.exit_price = float(exit_price)
-        trade.exit_time = exit_time or datetime.now(timezone.utc).isoformat()
-        trade.is_open = False
-
+        # Compute all close fields before any writes
+        resolved_exit_time = exit_time or datetime.now(timezone.utc).isoformat()
         if pnl is not None:
-            trade.pnl = float(pnl)
+            computed_pnl = float(pnl)
         else:
             action_lower = trade.action.lower()
             is_short = "sell" in action_lower or "short" in action_lower
+            multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
             if is_short:
-                trade.pnl = (trade.entry_price - exit_price) * trade.quantity
+                computed_pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
             else:
-                trade.pnl = (exit_price - trade.entry_price) * trade.quantity
+                computed_pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+
+        # SQLite-first: if this raises, _open remains unchanged (Bug B9 / US-2004).
+        if self._db is not None:
+            self._db.close_paper_trade(
+                trade_id=trade_id,
+                exit_price=float(exit_price),
+                exit_time=resolved_exit_time,
+                pnl=computed_pnl,
+            )
+
+        # DB write succeeded (or no DB) — mutate in-memory and JSONL
+        self._open.pop(trade_id)
+        trade.exit_price = float(exit_price)
+        trade.exit_time = resolved_exit_time
+        trade.is_open = False
+        trade.pnl = computed_pnl
 
         self._closed.append(trade)
         self._append_record(trade)
-
-        if self._db is not None:
-            try:
-                self._db.close_paper_trade(
-                    trade_id=trade_id,
-                    exit_price=trade.exit_price,
-                    exit_time=trade.exit_time,
-                    pnl=trade.pnl,
-                )
-            except Exception as exc:
-                logger.error("DB close_paper_trade failed for %s: %s", trade_id[:8], exc)
 
         logger.info(
             "[PAPER] CLOSE %s @ %.4f  pnl=%+.2f  id=%s",
@@ -414,7 +681,59 @@ class PortfolioTracker:
             trade.pnl,
             trade_id[:8],
         )
+
+        # Record outcome for Brier/IC calibration (Novel #2, Tracks F+H).
+        self._record_agent_feedback(trade_id, trade)
+
         return trade
+
+    def _record_agent_feedback(self, trade_id: str, trade: PaperTrade) -> None:
+        """Write a trade_outcomes row so BrierCalibrationTracker / ICWeightedEnsemble
+        / AgentFeedbackTracker.compute_accuracy can calibrate off real closed trades.
+
+        Reads the ``analyst_signals`` sub-dict that pipeline/main persisted into
+        ``strategy_params`` at open time. Silent-skips when:
+          * ``TESTING`` env var is set (match existing hook convention)
+          * DB row doesn't exist or has no ``analyst_signals`` (legacy trades)
+          * AgentFeedbackTracker import or write fails (best-effort, never blocks close)
+        """
+        import os as _os_af
+        if _os_af.getenv("TESTING"):
+            return
+        try:
+            from engine.analytics.agent_feedback import AgentFeedbackTracker
+            analyst_signals: dict = {}
+            if self._db is not None:
+                row = self._db.get_trade_by_id(trade_id) or {}
+                sp = row.get("strategy_params")
+                # strategy_params is stored as JSON TEXT; get_trade_by_id returns it raw
+                if isinstance(sp, str) and sp:
+                    try:
+                        import json as _json_af
+                        sp = _json_af.loads(sp)
+                    except Exception:
+                        sp = None
+                if isinstance(sp, dict):
+                    analyst_signals = sp.get("analyst_signals") or {}
+            if not analyst_signals:
+                return  # Legacy trades without signals — safe no-op
+            action_lower = (trade.action or "").lower()
+            direction = "SHORT" if ("sell" in action_lower or "short" in action_lower) else "LONG"
+            AgentFeedbackTracker().record_outcome(
+                trade_id=trade_id,
+                symbol=trade.symbol,
+                direction=direction,
+                pnl_usd=float(trade.pnl or 0.0),
+                analyst_signals={k: float(v) for k, v in analyst_signals.items()},
+            )
+            logger.info(
+                "[FEEDBACK] Recorded outcome for %s pnl=%+.2f signals=%s",
+                trade_id[:8],
+                trade.pnl or 0.0,
+                list(analyst_signals.keys()),
+            )
+        except Exception as _af_exc:
+            logger.debug("[FEEDBACK] record_outcome skipped: %s", _af_exc)
 
     def update_position(
         self,
@@ -556,10 +875,201 @@ class PortfolioTracker:
 
         return base
 
+    def get_portfolio(self) -> dict:
+        """
+        Return portfolio state in the format expected by the pipeline's _get_portfolio().
+
+        Used when this tracker is injected into pipeline._agents["portfolio"].
+        Merges both open paper trades (_open) and live position records (_positions)
+        so the risk manager sees all correlated positions.
+        """
+        # get_open_positions() reads from _open (add_paper_trade / open_trade path)
+        # Defensive filters in get_open_positions() drop phantoms in-place.
+        open_trades = self.get_open_positions()
+        # get_positions() reads from _positions (update_position / DB path — live broker)
+        live_positions = self.get_positions()
+
+        # Apr 2026 fix — aggregate multiple same-symbol+direction paper trades
+        # into one logical position per (symbol, action) pair. Previously the
+        # Fund Manager saw e.g. 5 separate MCL LONGs and rejected new signals
+        # as "overexposed" when they were really just repeated entries from
+        # prior pipeline runs. Aggregation sums quantity and takes the
+        # weighted-average entry price so downstream agents see a realistic
+        # concentration figure.
+        aggregated: Dict[Tuple[str, str], dict] = {}
+        for t in open_trades:
+            sym = str(t.get("symbol", "")).upper()
+            act = str(t.get("action", "")).lower()
+            key = (sym, act)
+            ep = float(t.get("entry_price", 0.0) or 0.0)
+            qty = float(t.get("quantity", 0.0) or 0.0)
+            if key not in aggregated:
+                aggregated[key] = dict(t)
+                aggregated[key]["symbol"] = sym
+                aggregated[key]["action"] = act
+                aggregated[key]["position_count"] = 1
+            else:
+                cur = aggregated[key]
+                cur_qty = float(cur.get("quantity", 0.0) or 0.0)
+                cur_ep = float(cur.get("entry_price", 0.0) or 0.0)
+                new_qty = cur_qty + qty
+                if new_qty > 0:
+                    cur["entry_price"] = (cur_ep * cur_qty + ep * qty) / new_qty
+                cur["quantity"] = new_qty
+                cur["position_count"] = int(cur.get("position_count", 1)) + 1
+        open_trades_dedup = list(aggregated.values())
+
+        open_symbols = {k[0] for k in aggregated.keys()}
+        extra_live = [p for p in live_positions if p.get("symbol", "").upper() not in open_symbols]
+        positions = open_trades_dedup + extra_live
+        perf = self.get_performance()
+        equity = getattr(self, "_equity", None)
+        if equity is None:
+            try:
+                equity = self._get_starting_balance()
+            except Exception:
+                equity = 10_000.0
+        total_pnl = perf.get("total_pnl", 0.0) or 0.0
+        total_value = equity + total_pnl
+        return {
+            "total_value": total_value,
+            "available_cash": total_value * 0.5,
+            "margin_used_pct": 0.0,
+            "daily_pnl": perf.get("total_pnl", 0.0),
+            "open_position_count": len(positions),
+            "positions": positions,
+        }
+
+    # ── Session management helpers ────────────────────────────────────────────
+
+    def flatten_all_positions(self, exit_price: Optional[float] = None) -> List[dict]:
+        """
+        Close all open positions at session end.
+
+        Parameters
+        ----------
+        exit_price : float, optional
+            Price to use for all closes.  If None, uses each trade's entry_price
+            as a fallback (zero P&L result) so the ledger stays balanced.
+
+        Returns
+        -------
+        List of closed trade dicts (one per position that was open).
+        """
+        closed: List[dict] = []
+        # Snapshot keys — avoid mutation-during-iteration
+        open_ids = list(self._open.keys())
+        for trade_id in open_ids:
+            trade = self._open.get(trade_id)
+            if trade is None:
+                continue
+            # Determine exit price
+            price = exit_price if exit_price is not None else trade.entry_price
+            if price is None:
+                logger.warning(
+                    "flatten_all_positions: no price for trade %s, skipping", trade_id[:8]
+                )
+                continue
+            try:
+                result = self.close_trade(trade_id, exit_price=float(price))
+                closed.append(result.to_dict())
+            except Exception as exc:
+                logger.warning("flatten_all_positions: failed to close %s: %s", trade_id[:8], exc)
+        logger.info("flatten_all_positions: closed %d positions", len(closed))
+        return closed
+
+    def check_and_move_breakeven(self, trade_id: str, current_price: float) -> bool:
+        """
+        Move stop-loss to breakeven once price has moved at least
+        ``BREAKEVEN_STOP_ATR_MULT * atr_value`` in favour of the trade.
+
+        Requires the trade to have been opened with an ``atr_value``.
+
+        Parameters
+        ----------
+        trade_id : str
+            ID of an open trade.
+        current_price : float
+            Latest market price for the instrument.
+
+        Returns
+        -------
+        True if the stop was moved this call, False otherwise.
+        """
+        trade = self._open.get(trade_id)
+        if trade is None:
+            return False
+
+        entry_price: Optional[float] = trade.entry_price
+        atr_value: Optional[float] = trade.atr_value
+        action: str = (trade.action or "").lower()
+        stop_loss: Optional[float] = trade.stop_loss
+
+        if entry_price is None or atr_value is None or atr_value <= 0:
+            return False  # Cannot compute without ATR
+
+        # Load multiplier from config; default to 0.50 ATR buffer
+        try:
+            from config import settings  # type: ignore[import]
+
+            be_mult: float = float(getattr(settings, "BREAKEVEN_STOP_ATR_MULT", 0.50))
+        except Exception:
+            be_mult = 0.50
+
+        threshold = be_mult * atr_value
+        micro_buffer = 1.0  # $1 buffer inside entry price
+
+        moved = False
+        is_long = action in ("buy", "buy_to_open", "long")
+        is_short = action in ("sell", "sell_to_open", "short", "sell_short")
+
+        if is_long:
+            # Long: move stop to entry + buffer when price >= entry + threshold
+            if current_price >= entry_price + threshold:
+                new_stop = entry_price + micro_buffer
+                if stop_loss is None or new_stop > stop_loss:
+                    trade.stop_loss = new_stop
+                    logger.info(
+                        "Breakeven stop moved for %s: %.2f -> %.2f (entry=%.2f, atr=%.2f)",
+                        trade_id[:8],
+                        stop_loss or 0.0,
+                        new_stop,
+                        entry_price,
+                        atr_value,
+                    )
+                    moved = True
+        elif is_short:
+            # Short: move stop to entry - buffer when price <= entry - threshold
+            if current_price <= entry_price - threshold:
+                new_stop = entry_price - micro_buffer
+                if stop_loss is None or new_stop < stop_loss:
+                    trade.stop_loss = new_stop
+                    logger.info(
+                        "Breakeven stop moved for %s: %.2f -> %.2f (entry=%.2f, atr=%.2f)",
+                        trade_id[:8],
+                        stop_loss or 0.0,
+                        new_stop,
+                        entry_price,
+                        atr_value,
+                    )
+                    moved = True
+
+        return moved
+
     # ── Persistence — JSONL (always on) ───────────────────────────────────────
 
     def _append_record(self, trade: PaperTrade) -> None:
-        """Append a single trade record to the JSONL store (append-only audit log)."""
+        """Append a single trade record to the JSONL store (append-only audit log).
+
+        TODO Sprint 17 US-1703: Remove this JSON write path after migration completes.
+        JSON write path marked for removal — SQLite will be canonical after migration.
+        """
+        logger.warning(
+            "[DEPRECATED] Writing paper trade to JSON at %s — "
+            "JSON storage is deprecated; SQLite is the source of truth. "
+            "This path will be removed in a future release.",
+            self._store,
+        )
         try:
             with self._store.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(trade.to_dict()) + "\n")
@@ -664,6 +1174,9 @@ class PortfolioTracker:
                             pnl=row.get("pnl"),
                             notes=str(row.get("notes") or ""),
                             is_open=bool(row.get("is_open", row.get("exit_price") is None)),
+                            stop_loss=row.get("stop_loss"),
+                            take_profit=row.get("take_profit"),
+                            atr_value=row.get("atr_value"),
                         )
                         if trade.is_open:
                             self._open[trade.trade_id] = trade
@@ -682,20 +1195,111 @@ class PortfolioTracker:
 
         self._closed.sort(key=lambda t: t.entry_time)
 
+    def reload_open_positions_from_db(self) -> None:
+        """
+        Rebuild self._open from SQLite paper_trades (status='open').
 
-# ── Singleton ─────────────────────────────────────────────────────────────────
+        Called from main.py lifespan after the tracker is initialised so that any
+        JSONL/in-memory divergence introduced by a prior crash is resolved before
+        trading resumes.  Errors are caught and logged — the tracker stays usable
+        even if the DB is temporarily unavailable (Bug B9 / US-2004).
+        """
+        if self._db is None:
+            logger.debug("[TRACKER] reload_open_positions_from_db: no db_manager, skipping")
+            return
 
-_tracker: Optional[PortfolioTracker] = None
+        try:
+            rows = self._db.get_trade_history(limit=5000, status="open")
+            if not rows:
+                self._open = {}
+                logger.info(
+                    "[TRACKER] reload_open_positions_from_db: no trades in DB, cleared open"
+                )
+                return
 
+            rebuilt: Dict[str, PaperTrade] = {}
+            for row in rows:
+                try:
+                    # Accept both dict-like rows and sqlite3.Row objects
+                    is_open_flag = row.get("is_open", row.get("exit_price") is None)
+                    if not is_open_flag:
+                        continue
+                    rebuilt[str(row["trade_id"])] = PaperTrade(
+                        trade_id=str(row.get("trade_id") or row.get("id", "")),
+                        symbol=str(row.get("symbol", "")),
+                        action=str(row.get("side") or row.get("action", "")),
+                        quantity=float(row.get("quantity", 0)),
+                        entry_price=float(row.get("entry_price", 0)),
+                        entry_time=str(row.get("entry_time", "")),
+                        is_open=True,
+                        notes=str(row.get("notes") or ""),
+                        stop_loss=row.get("stop_loss"),
+                        take_profit=row.get("take_profit"),
+                        atr_value=row.get("atr_value"),
+                    )
+                except (TypeError, ValueError, KeyError) as exc:
+                    logger.warning("[TRACKER] reload: skipping bad row: %s", exc)
 
-def get_tracker(db_manager: Any = None) -> PortfolioTracker:
-    """
-    Return the module-level singleton tracker, creating it on first call.
+            self._open = rebuilt
+            logger.info("[TRACKER] Rebuilt %d open positions from SQLite", len(rebuilt))
 
-    Pass db_manager on the first call to enable SQLite persistence.
-    Subsequent calls return the existing instance regardless of db_manager.
-    """
-    global _tracker
-    if _tracker is None:
-        _tracker = PortfolioTracker(db_manager=db_manager)
-    return _tracker
+        except Exception as exc:
+            logger.error("[TRACKER] reload_open_positions_from_db failed: %s", exc)
+
+    def initialize_closed_trades_from_db(self) -> None:
+        """
+        Populate self._closed from SQLite on engine startup.
+
+        This ensures that after a restart, the in-memory closed trade history
+        matches the database (Bug B9 / US-2004). Called after load_from_db()
+        and _load_history() to fill any gaps.
+
+        Errors are caught and logged; the tracker remains usable even if the DB
+        is temporarily unavailable.
+        """
+        if self._db is None:
+            logger.debug("[TRACKER] initialize_closed_trades_from_db: no db_manager, skipping")
+            return
+
+        try:
+            rows = self._db.get_trade_history(limit=5000)
+            if not rows:
+                logger.debug("[TRACKER] initialize_closed_trades_from_db: no rows in DB")
+                return
+
+            existing_ids = {t.trade_id for t in self._closed}
+            added = 0
+            for row in rows:
+                try:
+                    is_open_flag = row.get("is_open", row.get("exit_price") is None)
+                    if is_open_flag:
+                        continue
+                    trade_id = str(row.get("trade_id") or row.get("id", ""))
+                    if trade_id in existing_ids:
+                        continue
+                    trade = PaperTrade(
+                        trade_id=trade_id,
+                        symbol=str(row.get("symbol", "")),
+                        action=str(row.get("side") or row.get("action", "")),
+                        quantity=float(row.get("quantity", 0)),
+                        entry_price=float(row.get("entry_price", 0)),
+                        entry_time=str(row.get("entry_time", "")),
+                        exit_price=row.get("exit_price"),
+                        exit_time=row.get("exit_time"),
+                        pnl=row.get("pnl"),
+                        notes=str(row.get("notes") or ""),
+                        is_open=False,
+                    )
+                    self._closed.append(trade)
+                    existing_ids.add(trade_id)
+                    added += 1
+                except (TypeError, ValueError, KeyError) as exc:
+                    logger.warning("[TRACKER] initialize_closed: skipping bad row: %s", exc)
+
+            self._closed.sort(key=lambda t: t.entry_time)
+            logger.info(
+                "[TRACKER] initialize_closed_trades_from_db: added %d closed trades from SQLite",
+                added,
+            )
+        except Exception as exc:
+            logger.error("[TRACKER] initialize_closed_trades_from_db failed: %s", exc)

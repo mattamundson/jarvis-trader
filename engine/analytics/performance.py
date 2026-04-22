@@ -150,6 +150,11 @@ class PerformanceCalculator:
             f"meets_threshold={meets}"
         )
 
+        # Sanitize non-finite floats — float('inf') and float('nan') cannot
+        # be JSON-serialised by FastAPI's default encoder.
+        if not math.isfinite(profit_factor):
+            profit_factor = 9999.0
+
         return PerformanceMetrics(
             profit_factor=round(profit_factor, 4),
             sharpe_ratio=round(sharpe, 4),
@@ -332,7 +337,7 @@ class PerformanceCalculator:
     def get_validation_report(self) -> Dict[str, Any]:
         """
         Run ``calculate()`` over all available history and return a structured
-        report suitable for the ``/analytics/performance`` endpoint.
+        report suitable for the ``/analytics/validation-report`` endpoint.
 
         Status values
         -------------

@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface CommissionStats {
   total_commissions: number;
@@ -24,9 +24,8 @@ export function CommissionTrackerWidget() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(`${ENGINE_URL}/portfolio/stats/commissions`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        setData(await res.json());
+        const payload = await fetchEngine(`/portfolio/stats/commissions`);
+        setData(payload);
       } catch {
         setData(null);
       } finally {

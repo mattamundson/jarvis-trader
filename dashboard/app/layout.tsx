@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
+import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
+import { EngineWebSocketProvider } from "@/lib/engine-websocket-context";
 import { ToastProvider } from "@/lib/toast-context";
+import { Sidebar } from "@/components/Sidebar";
 import "./globals.css";
 
 const inter = Inter({
@@ -30,7 +34,16 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="min-h-screen bg-background font-sans antialiased">
         <ToastProvider>
-          {children}
+          <EngineWebSocketProvider>
+            <PendingApprovalToastListener />
+            <EngineAvailabilityHint />
+            <div className="flex min-h-screen">
+              <Sidebar />
+              <main className="flex-1 min-w-0 overflow-x-hidden">
+                {children}
+              </main>
+            </div>
+          </EngineWebSocketProvider>
         </ToastProvider>
       </body>
     </html>

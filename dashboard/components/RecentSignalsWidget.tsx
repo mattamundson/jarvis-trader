@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { AlertTriangle, Radio } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -80,14 +80,10 @@ export function RecentSignalsWidget() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${ENGINE_URL}/signals/recent?limit=10`, {
+      const payload = await fetchEngine(`/signals/recent?limit=10`, {
         cache: "no-store",
       });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const json: RecentSignalsResponse = await res.json();
-      setData(json);
+      setData(payload);
       setError(null);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (e) {

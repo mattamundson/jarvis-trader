@@ -61,8 +61,8 @@ def main():
     parser.add_argument(
         "--capital",
         type=float,
-        default=100_000.0,
-        help="Initial capital for simulation (default: 100000)",
+        default=10_000.0,
+        help="Initial capital for simulation (default: 10000)",
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)"

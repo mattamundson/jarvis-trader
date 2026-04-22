@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Clock, TrendingUp, Zap, Timer } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -184,13 +184,11 @@ export default function AvgTradeTimeWidget() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(
-          `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=200`,
+        const json: unknown = await fetchEngine<unknown>(
+          `/portfolio/history/trades?status=CLOSED&limit=200`,
           { cache: "no-store" }
         );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const trades: TradeRecord[] = Array.isArray(json) ? json : (json.trades ?? []);
+        const trades: TradeRecord[] = Array.isArray(json) ? json : (json as { trades?: TradeRecord[] }).trades ?? [];
         const computed = computeData(trades);
         setData(computed);
         setError(false);

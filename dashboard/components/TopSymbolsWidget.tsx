@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { RefreshCw, BarChart2 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Trade record shape returned by GET /portfolio/history/trades ─────────────
 interface TradeRecord {
@@ -76,18 +76,17 @@ export function TopSymbolsWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=200`
+      const raw: unknown = await fetchEngine<unknown>(
+        `/portfolio/history/trades?status=CLOSED&limit=200`
       );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      const data: TradeHistoryResponse = await res.json();
+      const trades: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as TradeHistoryResponse).trades ?? []);
 
       // Group by symbol
       const symbolMap = new Map<string, { wins: number; losses: number; totalPnl: number; count: number }>();
 
-      for (const trade of data.trades) {
+      for (const trade of trades) {
         const sym = trade.symbol?.toUpperCase() ?? "UNKNOWN";
         const pnl = typeof trade.pnl === "number" ? trade.pnl : 0;
         const existing = symbolMap.get(sym) ?? { wins: 0, losses: 0, totalPnl: 0, count: 0 };

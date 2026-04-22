@@ -1,0 +1,121 @@
+{
+  "project": "JARVIS TRADER — Agent 5: Learning System Wiring",
+  "branchName": "ralph/learning-system-wiring",
+  "description": "The learning system has 4 modules (events, feedback, patterns, recommendations) that are built but disconnected from the live pipeline. Wire recommendations into Stage 1 (TechnicalAnalyst context) so that historical trade patterns improve future analysis. Add GET /learning/status endpoint. Connect feedback and patterns triggers to closed trade events.",
+  "userStories": [
+    {
+      "id": "US-LEARN-001",
+      "title": "Map the full learning system — what's connected vs disconnected",
+      "description": "As a developer, I want a precise map of which learning modules are wired and which are not before making any changes.",
+      "acceptanceCriteria": [
+        "Read engine/learning/events.py — document what triggers it, what it produces",
+        "Read engine/learning/feedback.py — document inputs, outputs, connection status",
+        "Read engine/learning/patterns.py — document inputs, outputs, connection status",
+        "Read engine/learning/recommendations.py — document inputs, outputs, connection status",
+        "Read engine/agents/pipeline.py Stage 1 — identify TechnicalAnalyst context construction",
+        "Document in progress.txt: exact connection points missing, exact functions to call",
+        "No code changes — analysis only"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "The previous session analysis says 'learning loop built but disconnected'. Confirm exactly which wires are missing."
+    },
+    {
+      "id": "US-LEARN-002",
+      "title": "Wire trade-close event to feedback module",
+      "description": "As the learning system, I want to automatically generate a lesson when a paper trade closes so that the feedback module builds up trading knowledge over time.",
+      "acceptanceCriteria": [
+        "Identify where trades are closed in engine (likely engine/routers/ or engine/execution/)",
+        "After trade close, call learning.feedback.process_trade_outcome(trade_result)",
+        "feedback.process_trade_outcome generates a lesson and persists it",
+        "Wiring is async and non-blocking — trade close should not wait for learning",
+        "Add logging: 'Learning: feedback generated for trade {trade_id}'",
+        "Unit test: mock a trade close and verify feedback.process_trade_outcome is called",
+        "Commit: feat: wire trade-close event to learning feedback module"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Use asyncio.create_task() for non-blocking wiring pattern — match existing async patterns in codebase"
+    },
+    {
+      "id": "US-LEARN-003",
+      "title": "Wire feedback output to patterns module",
+      "description": "As the learning system, I want patterns to be updated whenever new feedback is generated so the pattern library stays current.",
+      "acceptanceCriteria": [
+        "After feedback.process_trade_outcome completes, call learning.patterns.update_patterns(feedback_result)",
+        "patterns.update_patterns aggregates lessons into recurring patterns",
+        "Patterns are persisted to disk/DB",
+        "Add logging: 'Learning: patterns updated ({n} patterns in library)'",
+        "Unit test: verify patterns.update_patterns is called after feedback generation",
+        "Commit: feat: wire feedback to patterns module — automatic pattern library updates"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-LEARN-004",
+      "title": "Wire recommendations into Stage 1 TechnicalAnalyst context",
+      "description": "As the TechnicalAnalyst, I want to receive relevant historical pattern recommendations as part of my analysis context so that past lessons inform future signals.",
+      "acceptanceCriteria": [
+        "Before Stage 1 TechnicalAnalyst prompt construction, call learning.recommendations.get_recommendations(symbol, timeframe)",
+        "Recommendations are injected into the TechnicalAnalyst system prompt or context as: 'Historical pattern context: [recommendations]'",
+        "If recommendations are empty or module fails, Stage 1 proceeds normally with no error",
+        "Injection is logged: 'Learning: {n} recommendations injected for {symbol}'",
+        "Recommendations are filtered by relevance: only patterns for the current symbol and market regime",
+        "Unit test: verify recommendations are present in TechnicalAnalyst context when patterns exist",
+        "Commit: feat: inject learning recommendations into Stage 1 TechnicalAnalyst context"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "CRITICAL: This must not break the pipeline if learning system fails. Wrap in try/except with graceful fallback."
+    },
+    {
+      "id": "US-LEARN-005",
+      "title": "Add GET /learning/status endpoint",
+      "description": "As the dashboard, I want to query the learning system status to show how many patterns, lessons, and recommendations exist.",
+      "acceptanceCriteria": [
+        "New endpoint: GET /learning/status",
+        "Response: {\"feedback_lessons\": int, \"patterns\": int, \"recommendations_available\": int, \"last_lesson_at\": str|null, \"connection_status\": {\"events\": bool, \"feedback\": bool, \"patterns\": bool, \"recommendations\": bool}}",
+        "Add to engine/routers/learning_router.py (create if not exists)",
+        "Register in main.py",
+        "Smoke test: curl http://localhost:8010/learning/status",
+        "Commit: feat: add GET /learning/status endpoint"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-LEARN-006",
+      "title": "Add learning status widget to dashboard",
+      "description": "As a trader, I want to see the learning system status on the dashboard so I know it's accumulating knowledge.",
+      "acceptanceCriteria": [
+        "Add a 'Learning System' status widget to the command center or a relevant dashboard page",
+        "Widget shows: lessons collected, patterns identified, recommendations active, last lesson timestamp",
+        "Fetches from GET /learning/status",
+        "Badge 'bull' when all modules connected, 'warn' when partially connected, 'bear' when disconnected",
+        "cd dashboard && pnpm run build — passes",
+        "Commit: feat: add learning system status widget to dashboard"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Coordinate with Agent 4 if they're modifying the command center page — read progress.txt for Agent 4 status"
+    },
+    {
+      "id": "US-LEARN-007",
+      "title": "Run full test suite and verify learning loop E2E",
+      "description": "As a developer, I want the complete learning loop tested end-to-end: trade close → feedback → patterns → recommendations → pipeline injection.",
+      "acceptanceCriteria": [
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v — 0 failures",
+        "If live engine is available: submit a paper trade, close it, verify GET /learning/status shows +1 lesson",
+        "If Anthropic credits available: run POST /pipeline/run and verify recommendations appear in stage 1 output",
+        "cd dashboard && pnpm run build — passes",
+        "Commit: test: learning system E2E loop verification"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "E2E test with real pipeline requires Anthropic credits. If credits unavailable, unit tests are sufficient for this story."
+    }
+  ]
+}

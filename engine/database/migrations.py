@@ -301,6 +301,692 @@ def migration_005(conn: sqlite3.Connection) -> None:
     logger.info("Migration 005 applied — alert_log table created.")
 
 
+def migration_006(conn: sqlite3.Connection) -> None:
+    """
+    006 — Discord signal tables.
+
+    Adds four tables for persisting parsed Discord messages from the JARVIS
+    trading Discord server:
+
+      discord_bot_signals      — parsed signals from proton-bot-alerts and
+                                  instrument channels (es, nq, gc, cl, ym, rty,
+                                  eurusd, btc, spy).  Captures direction, entry,
+                                  targets, stops, win-rate, MFE/MAE, R:R, etc.
+      discord_ib_reports       — Initial Balance reports from indicator-alerts
+                                  channel (IB OHLC, extensions ibu/ibd, auction
+                                  context, trade plan).
+      discord_corey_alerts     — Manual trade alerts posted by Corey (tathedog)
+                                  in the trade-alerts channel.
+      discord_corey_commentary — Market commentary from Corey in market-updates
+                                  or general channels.
+
+    All tables use message_id as a UNIQUE key so re-importing the same Discord
+    export is idempotent (INSERT OR IGNORE).
+    """
+    # ── discord_bot_signals ───────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discord_bot_signals (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id      TEXT    UNIQUE NOT NULL,
+            timestamp       TEXT    NOT NULL,          -- ISO-8601 UTC
+            symbol          TEXT    NOT NULL,           -- e.g. ES, NQ, GC, CL
+            timeframe       TEXT,                       -- e.g. "1 m", "15 m"
+            direction       TEXT,                       -- LONG | SHORT
+            signal_type     TEXT,                       -- ENTRY | EXIT
+            entry_price     REAL,
+            target1         REAL,
+            target2         REAL,
+            stop1           REAL,
+            stop2           REAL,
+            win_rate        REAL,
+            wins            INTEGER,
+            losses          INTEGER,
+            mfe             REAL,
+            mae             REAL,
+            rr              REAL,
+            gain            REAL,
+            draw            REAL,
+            net             REAL,
+            last_price      REAL,
+            raw_description TEXT,
+            source_channel  TEXT,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dbs_symbol    ON discord_bot_signals(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dbs_timestamp ON discord_bot_signals(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dbs_direction ON discord_bot_signals(direction)")
+
+    # ── discord_ib_reports ────────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discord_ib_reports (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id      TEXT    UNIQUE NOT NULL,
+            timestamp       TEXT    NOT NULL,          -- ISO-8601 UTC
+            symbol          TEXT    NOT NULL,           -- e.g. ES, NQ
+            timeframe       TEXT,
+            ib_open         REAL,
+            ib_high         REAL,
+            ib_low          REAL,
+            ib_close        REAL,
+            ib_range        REAL,
+            ibu50           REAL,
+            ibu100          REAL,
+            ibd50           REAL,
+            ibd100          REAL,
+            auction_context TEXT,
+            trade_plan      TEXT,
+            raw_content     TEXT,
+            source_channel  TEXT    NOT NULL DEFAULT 'indicator-alerts',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dir_symbol    ON discord_ib_reports(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dir_timestamp ON discord_ib_reports(timestamp)")
+
+    # ── discord_corey_alerts ──────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discord_corey_alerts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id      TEXT    UNIQUE NOT NULL,
+            timestamp       TEXT    NOT NULL,          -- ISO-8601 UTC
+            content         TEXT    NOT NULL,
+            symbol          TEXT,
+            direction       TEXT,                       -- LONG | SHORT
+            price           REAL,
+            source_channel  TEXT    NOT NULL DEFAULT 'trade-alerts',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dca_timestamp ON discord_corey_alerts(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dca_symbol    ON discord_corey_alerts(symbol)")
+
+    # ── discord_corey_commentary ──────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discord_corey_commentary (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id      TEXT    UNIQUE NOT NULL,
+            timestamp       TEXT    NOT NULL,          -- ISO-8601 UTC
+            content         TEXT    NOT NULL,
+            channel         TEXT    NOT NULL,           -- market-updates | general
+            author_id       TEXT    NOT NULL DEFAULT '564449478174703646',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_dcc_timestamp ON discord_corey_commentary(timestamp)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_dcc_channel   ON discord_corey_commentary(channel)"
+    )
+
+    conn.commit()
+    logger.info("Migration 006 applied — Discord signal tables created.")
+
+
+def migration_007(conn: sqlite3.Connection) -> None:
+    """
+    007 — Capital allocation table.
+
+    Tracks how the $10,000 total account capital is distributed across
+    trading instruments/markets.  One row per symbol (e.g. MES, MNQ, MGC,
+    MCL).  The script scripts/init_capital.py seeds the initial rows;
+    subsequent writes use INSERT OR REPLACE so the table is always current.
+
+    Columns
+    -------
+    symbol          — instrument ticker (e.g. MES, MNQ)
+    market          — market module name (futures | options | crypto | polymarket)
+    allocation      — USD amount allocated to this instrument
+    allocation_pct  — fraction of total capital (0.0–1.0)
+    total_capital   — total account capital at time of last update (USD)
+    notes           — optional free-text notes
+    updated_at      — ISO-8601 UTC timestamp of last upsert
+    created_at      — ISO-8601 UTC timestamp when row was first inserted
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS capital_allocation (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT    NOT NULL UNIQUE,
+            market          TEXT    NOT NULL DEFAULT 'futures',
+            allocation      REAL    NOT NULL DEFAULT 0.0,
+            allocation_pct  REAL    NOT NULL DEFAULT 0.0,
+            total_capital   REAL    NOT NULL DEFAULT 10000.0,
+            notes           TEXT    DEFAULT '',
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc')),
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ca_market ON capital_allocation(market)")
+    conn.commit()
+    logger.info("Migration 007 applied — capital_allocation table created.")
+
+
+def migration_008(conn: sqlite3.Connection) -> None:
+    """
+    008 — Pending human trade approvals.
+
+    Rows are created when the pipeline proposes buy/sell with requires_human=True.
+    Approve/reject updates status and records audit fields.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pending_trade_approvals (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            approval_id             TEXT    NOT NULL UNIQUE,
+            symbol                  TEXT    NOT NULL,
+            action                  TEXT    NOT NULL,
+            quantity                REAL    NOT NULL,
+            entry_price             REAL,
+            status                  TEXT    NOT NULL DEFAULT 'pending',
+            pipeline_snapshot_json  TEXT    NOT NULL,
+            created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
+            resolved_at             TEXT,
+            resolved_by             TEXT,
+            rejection_reason        TEXT,
+            paper_trade_id          TEXT,
+            ib_order_id             TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pta_status_created "
+        "ON pending_trade_approvals(status, created_at DESC)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pta_symbol ON pending_trade_approvals(symbol)")
+    conn.commit()
+    logger.info("Migration 008 applied — pending_trade_approvals table created.")
+
+
+def migration_009(conn: sqlite3.Connection) -> None:
+    """
+    009 — LLM cost tracking per pipeline run.
+
+    Tracks token usage (input/output) and estimated costs for each LLM call
+    within a pipeline execution, allowing cost monitoring and optimization.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pipeline_llm_costs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id          TEXT    NOT NULL,
+            symbol          TEXT    NOT NULL,
+            stage           TEXT    NOT NULL,
+            model           TEXT    NOT NULL,
+            input_tokens    INTEGER NOT NULL DEFAULT 0,
+            output_tokens   INTEGER NOT NULL DEFAULT 0,
+            estimated_cost_usd REAL NOT NULL DEFAULT 0.0,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_costs_run_id ON pipeline_llm_costs(run_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_llm_costs_created_at ON pipeline_llm_costs(created_at)"
+    )
+    conn.commit()
+    logger.info("Migration 009 applied — pipeline_llm_costs table created.")
+
+
+def migration_010(conn: sqlite3.Connection) -> None:
+    """
+    010 — Paper trades signal provenance columns.
+
+    Adds columns to paper_trades to store full signal provenance for every trade:
+      regime          — Market regime at entry (TEXT, nullable)
+      structure_position — Structural position (BUYER_CONTROL, SELLER_CONTROL, etc., TEXT, nullable)
+      bias            — Directional bias from signals (TEXT, nullable)
+      composite_score — Cohen composite score (REAL, nullable)
+      stc_contrib     — STC oscillator signal fired (INTEGER 0/1, nullable)
+      orb_contrib     — ORB signal fired (INTEGER 0/1, nullable)
+      vwap_contrib    — VWAP signal fired (INTEGER 0/1, nullable)
+
+    All nullable for backward compatibility with existing trades.
+    """
+    conn.execute(
+        """
+        ALTER TABLE paper_trades ADD COLUMN regime TEXT
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE paper_trades ADD COLUMN structure_position TEXT
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE paper_trades ADD COLUMN bias TEXT
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE paper_trades ADD COLUMN composite_score REAL
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE paper_trades ADD COLUMN stc_contrib INTEGER
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE paper_trades ADD COLUMN orb_contrib INTEGER
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE paper_trades ADD COLUMN vwap_contrib INTEGER
+        """
+    )
+    conn.commit()
+    logger.info("Migration 010 applied — paper_trades signal provenance columns added.")
+
+
+def migration_011(conn: sqlite3.Connection) -> None:
+    """
+    011 — Layer 5 conviction-aware position sizing.
+
+    Adds 'risk_pct_used' column to paper_trades table to track the actual
+    risk percentage used for each trade, computed from signal conviction
+    (bias, regime, structure_position alignment). Nullable for backward
+    compatibility with existing rows.
+    """
+    conn.execute(
+        """
+        ALTER TABLE paper_trades ADD COLUMN risk_pct_used REAL
+        """
+    )
+    conn.commit()
+    logger.info("Migration 011 applied — risk_pct_used column added to paper_trades.")
+
+
+def migration_012(conn: sqlite3.Connection) -> None:
+    """
+    012 — Trade journal attribution columns.
+
+    Adds attribution columns to trade_journal table to track which pipeline stage
+    drove each decision and what confidence/scores were involved:
+      regime_tier      — Market regime tier at decision (INTEGER, nullable)
+      deciding_stage   — Pipeline stage that drove decision (TEXT, e.g. 'technical', 'debate', 'news')
+      bull_score       — Bull researcher score (REAL, nullable)
+      bear_score       — Bear researcher score (REAL, nullable)
+      debate_confidence — Confidence from debate stage (REAL, nullable)
+
+    All nullable for backward compatibility with existing journal entries.
+    """
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN regime_tier INTEGER
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN deciding_stage TEXT
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN bull_score REAL
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN bear_score REAL
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN debate_confidence REAL
+        """
+    )
+    conn.commit()
+    logger.info("Migration 012 applied — attribution columns added to trade_journal.")
+
+
+def migration_013(conn: sqlite3.Connection) -> None:
+    """
+    013 — Learning events and trading patterns tables.
+
+    Adds two tables for the trading memory consolidation system:
+
+    learning_events  — GHOST TABLE. Has no writers anywhere in the codebase.
+                       The per-trade feedback signal is actually written to
+                       `trade_outcomes` by AgentFeedbackTracker.record_outcome()
+                       (analytics/agent_feedback.py). learning_events is kept
+                       in schema only for historical migration replay. Readers
+                       should query `trade_outcomes` instead. Do not add a
+                       writer here without deleting trade_outcomes first — you
+                       will end up with two half-populated parallel tables.
+    trading_patterns — aggregated patterns extracted nightly. Active: written
+                       by learning/pattern_db.py and learning/patterns.py.
+    """
+    # ── learning_events ───────────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS learning_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_id        TEXT,                              -- soft FK → paper_trades.trade_id
+            event_type      TEXT    NOT NULL,                  -- entry | exit | stop_hit | profit_target
+            symbol          TEXT    NOT NULL,
+            regime_tier     INTEGER,                           -- market regime at event (nullable)
+            signal_strength REAL,                              -- confidence of signal (0.0–1.0, nullable)
+            outcome         TEXT,                              -- win | loss | neutral (nullable)
+            pnl_usd         REAL,                              -- P&L realized from event (nullable)
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_trade_id ON learning_events(trade_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_symbol ON learning_events(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_event_type ON learning_events(event_type)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_le_created_at ON learning_events(created_at)")
+
+    # ── trading_patterns ──────────────────────────────────────────────────────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trading_patterns (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            pattern_hash    TEXT    NOT NULL UNIQUE,           -- hash of pattern conditions
+            symbol          TEXT    NOT NULL,
+            regime_tier     INTEGER,                           -- market regime context (nullable)
+            conditions      TEXT    NOT NULL,                  -- JSON: pattern definition
+            win_rate        REAL    NOT NULL DEFAULT 0.0,      -- 0.0–1.0
+            sample_count    INTEGER NOT NULL DEFAULT 0,        -- number of times pattern occurred
+            last_seen       TEXT,                              -- ISO-8601 UTC timestamp
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tp_pattern_hash ON trading_patterns(pattern_hash)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tp_symbol ON trading_patterns(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tp_regime_tier ON trading_patterns(regime_tier)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tp_last_seen ON trading_patterns(last_seen)")
+
+    conn.commit()
+    logger.info("Migration 013 applied — learning_events and trading_patterns tables created.")
+
+
+def migration_014(conn: sqlite3.Connection) -> None:
+    """
+    014 — Signal timeframe attribution columns.
+
+    Adds 'timeframe' TEXT column to both pending_trade_approvals and trade_journal
+    tables to track whether signals came from 1h or 15m timeframes. Nullable for
+    backward compatibility with existing rows. Enables post-validation attribution:
+    did 1h or 15m signals perform better?
+    """
+    conn.execute(
+        """
+        ALTER TABLE pending_trade_approvals ADD COLUMN timeframe TEXT
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE trade_journal ADD COLUMN timeframe TEXT
+        """
+    )
+    conn.commit()
+    logger.info(
+        "Migration 014 applied — timeframe columns added to pending_trade_approvals and trade_journal."
+    )
+
+
+def migration_015(conn: sqlite3.Connection) -> None:
+    """
+    015 — Pipeline runs confidence monitoring.
+
+    Adds columns to pipeline_runs table for tracking confidence/hold statistics:
+      confidence      — Average pipeline confidence (0-1, REAL, nullable)
+      final_decision  — Final decision made ('hold', 'buy', 'sell', 'pending', TEXT, nullable)
+
+    These fields enable high-hold-rate detection for pipeline regression monitoring.
+    All nullable for backward compatibility with existing runs.
+    """
+    conn.execute(
+        """
+        ALTER TABLE pipeline_runs ADD COLUMN confidence REAL
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE pipeline_runs ADD COLUMN final_decision TEXT
+        """
+    )
+    conn.commit()
+    logger.info("Migration 015 applied — confidence columns added to pipeline_runs.")
+
+
+def migration_016(conn: sqlite3.Connection) -> None:
+    """
+    016 — WFE snapshots table + divergence flag column.
+
+    Creates the wfe_snapshots table (if not exists) for tracking weekly walk-forward
+    efficiency metrics per symbol. Also adds the divergence_flag TEXT column for
+    flagging when live paper performance diverges from WFE baseline projections.
+    """
+    # Create the table first (idempotent)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wfe_snapshots (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT    NOT NULL,
+            week_start      TEXT    NOT NULL,
+            trades          INTEGER NOT NULL DEFAULT 0,
+            win_rate        REAL,
+            profit_factor   REAL,
+            sharpe          REAL,
+            max_dd          REAL,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.commit()
+    logger.info("Migration 016 — wfe_snapshots table ensured.")
+
+    # Add divergence_flag column (idempotent)
+    try:
+        conn.execute(
+            """
+            ALTER TABLE wfe_snapshots ADD COLUMN divergence_flag TEXT
+            """
+        )
+        conn.commit()
+        logger.info("Migration 016 applied — divergence_flag column added to wfe_snapshots.")
+    except sqlite3.OperationalError:
+        # Column already exists — idempotent
+        logger.debug("Migration 016 skipped — divergence_flag already exists in wfe_snapshots.")
+
+
+def migration_017(conn: sqlite3.Connection) -> None:
+    """
+    017 — System state persistence table.
+
+    Adds the system_state key/value table for persisting engine state across
+    restarts.  Initially used to persist kill switch activation so the safety
+    layer re-arms automatically on restart without human re-intervention.
+
+    Columns
+    -------
+    key        — state key (e.g. 'kill_switch_active', 'kill_switch_reason')
+    value      — TEXT value (JSON-serialisable)
+    updated_at — ISO-8601 UTC timestamp of last write
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS system_state (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.commit()
+    logger.info("Migration 017 applied — system_state table created.")
+
+
+def migration_018(conn: sqlite3.Connection) -> None:
+    """
+    018 — P&L snapshots table for safety layer state persistence.
+
+    Stores daily P&L state so the safety layer can restore its position
+    after an engine restart mid-session without resetting drawdown to 0.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pnl_snapshots (
+            date             TEXT    NOT NULL,
+            daily_pnl        REAL    NOT NULL DEFAULT 0.0,
+            portfolio_equity REAL    NOT NULL DEFAULT 0.0,
+            peak_equity      REAL    NOT NULL DEFAULT 0.0,
+            consecutive_losses INTEGER NOT NULL DEFAULT 0,
+            updated_at       TEXT    NOT NULL DEFAULT (datetime('now', 'utc')),
+            PRIMARY KEY (date)
+        )
+        """
+    )
+    conn.commit()
+    logger.info("Migration 018 applied — pnl_snapshots table created.")
+
+
+def migration_019(conn: sqlite3.Connection) -> None:
+    """
+    019 — Full pipeline JSON column on decisions table.
+
+    Adds full_pipeline_json TEXT column so that the complete stage-by-stage
+    pipeline result (analyst_reports, debate_result, trade_decision,
+    risk_decision, fund_decision, confidence gate, etc.) is persisted
+    alongside each decision row.  Existing rows get NULL for the new column.
+    """
+    conn.execute(
+        "ALTER TABLE decisions ADD COLUMN full_pipeline_json TEXT"
+    )
+    conn.commit()
+    logger.info("Migration 019 applied — full_pipeline_json column added to decisions.")
+
+
+def migration_020(conn: sqlite3.Connection) -> None:
+    """
+    020 — Supervisor decisions table for Hermes-pattern supervisor agent.
+
+    Records every ACK / REVIEW / ESCALATE / HOLD_FOR_INFO decision made by
+    the in-process SupervisorAgent that gates openclaw_notifier outputs.
+    Enables noise-reduction metrics (via /supervisor/stats) and decision
+    replay for prompt tuning (via POST /supervisor/replay/{id}).
+
+    Source pattern: https://x.com/gkisokay/status/2037902655016804496
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS supervisor_decisions (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts              TEXT    NOT NULL,              -- ISO-8601 UTC
+            event_type      TEXT    NOT NULL,              -- signal|approval|kill_switch|morning_brief|target|drawdown|cron_failure|trade_closed|ib_disconnect
+            marker          TEXT    NOT NULL,              -- ACK|REVIEW|ESCALATE|HOLD_FOR_INFO
+            reason          TEXT,                          -- <=200 chars
+            payload_json    TEXT,                          -- serialized event payload
+            latency_ms      INTEGER NOT NULL DEFAULT 0,
+            pass_through    INTEGER NOT NULL DEFAULT 1,    -- 0=swallowed, 1=fired
+            correlation_id  TEXT,
+            cost_usd        REAL    NOT NULL DEFAULT 0.0
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_supervisor_decisions_ts "
+        "ON supervisor_decisions(ts DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_supervisor_decisions_event_type "
+        "ON supervisor_decisions(event_type)"
+    )
+    conn.commit()
+    logger.info("Migration 020 applied — supervisor_decisions table created.")
+
+
+def migration_022(conn: sqlite3.Connection) -> None:
+    """
+    022 — mes_session_hypothesis table for the forward-recorder experiment.
+
+    Records daily pre-open state (Corey bias + TradingView gamma snapshot
+    + IB levels + hypothesis side) and the session outcome (high/low/close
+    + outcome_delta vs. hypothesis). Powers the post-grid-search experiment
+    to determine whether Corey-bias + gamma levels predict MES session
+    direction, since gamma levels have no historical archive and must be
+    recorded forward.
+
+    Schema-first design — extra instruments can be added later via the
+    symbol column without another migration.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mes_session_hypothesis (
+            id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+            date                       TEXT NOT NULL,              -- YYYY-MM-DD, session date in CT
+            symbol                     TEXT NOT NULL,              -- "MES" (expandable)
+            recorded_at                TEXT NOT NULL,              -- ISO-8601 UTC when morning row was written
+            corey_bias                 TEXT,                       -- bullish|bearish|neutral|null
+            corey_conviction           REAL,                       -- 0.0-1.0
+            corey_session_type         TEXT,                       -- range_day|trend_day|outside_bar|uncertain|null
+            corey_ib_bias              TEXT,                       -- above_ib|below_ib|inside_ib|null
+            corey_data_quality         TEXT,                       -- fresh|stale|none
+            gamma_snapshot_json        TEXT,                       -- serialized {gex_flip,call_wall,put_wall,hvl,vol_trigger_up,vol_trigger_down,max_pain,data_quality}
+            ib_levels_json             TEXT,                       -- serialized DiscordBriefing.ib_levels dict
+            entry_hypothesis_side      TEXT,                       -- long|short|skip (derived at record time)
+            entry_hypothesis_reason    TEXT,                       -- short text explaining why
+            open_price                 REAL,                       -- CT 08:30 open snapshot (or NULL if unavailable)
+            high_price                 REAL,                       -- session high (filled by outcome job)
+            low_price                  REAL,                       -- session low (filled by outcome job)
+            close_price                REAL,                       -- CT 15:00 close (filled by outcome job)
+            outcome_delta              REAL,                       -- close-open * (side sign), in points (filled by outcome job)
+            outcome_recorded_at        TEXT,                       -- ISO-8601 UTC when outcome row was filled
+            UNIQUE(date, symbol)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mes_session_hyp_date "
+        "ON mes_session_hypothesis(date DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mes_session_hyp_outcome_missing "
+        "ON mes_session_hypothesis(date, outcome_recorded_at) "
+        "WHERE outcome_recorded_at IS NULL"
+    )
+    conn.commit()
+    logger.info("Migration 022 applied — mes_session_hypothesis table created.")
+
+
+def migration_021(conn: sqlite3.Connection) -> None:
+    """
+    021 — paper_trades stop_loss / take_profit columns.
+
+    ``insert_paper_trade`` always referenced these columns; migration 001's
+    initial ``paper_trades`` DDL did not create them, breaking **fresh** DBs.
+    Idempotent: skips if columns already exist (e.g. manually altered DBs).
+    """
+    for stmt in (
+        "ALTER TABLE paper_trades ADD COLUMN stop_loss REAL",
+        "ALTER TABLE paper_trades ADD COLUMN take_profit REAL",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+    conn.commit()
+    logger.info("Migration 021 applied — paper_trades stop_loss/take_profit columns.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -310,6 +996,23 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_003,  # version 3
     migration_004,  # version 4
     migration_005,  # version 5
+    migration_006,  # version 6
+    migration_007,  # version 7
+    migration_008,  # version 8
+    migration_009,  # version 9
+    migration_010,  # version 10
+    migration_011,  # version 11
+    migration_012,  # version 12
+    migration_013,  # version 13
+    migration_014,  # version 14
+    migration_015,  # version 15
+    migration_016,  # version 16
+    migration_017,  # version 17
+    migration_018,  # version 18
+    migration_019,  # version 19
+    migration_020,  # version 20
+    migration_021,  # version 21
+    migration_022,  # version 22
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -318,51 +1021,46 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Pipeline runs: pipeline_runs table for webhook/manual run history",
     "Journal notes: journal_notes table with note_type, title, body, tags (JSON array)",
     "Alert log: alert_log table for WhatsApp notification history",
+    "Discord signals: discord_bot_signals, discord_ib_reports, discord_corey_alerts, discord_corey_commentary",
+    "Capital allocation: capital_allocation table for $10K cross-market distribution",
+    "Pending trade approvals: pending_trade_approvals for human-gated paper/live execution",
+    "LLM cost tracking: pipeline_llm_costs table for token usage and estimated costs",
+    "Paper trades signal provenance: regime, structure, bias, composite_score, signal contributions",
+    "Layer 5 conviction-aware sizing: risk_pct_used column for position sizing by conviction",
+    "Trade journal attribution: regime_tier, deciding_stage, bull_score, bear_score, debate_confidence",
+    "Learning events and trading patterns: learning_events and trading_patterns tables for memory consolidation",
+    "Signal timeframe attribution: timeframe column for pending_trade_approvals and trade_journal (1h/15m)",
+    "Pipeline confidence monitoring: confidence and final_decision columns for hold-rate detection",
+    "WFE divergence flag: divergence_flag column for wfe_snapshots table to track performance divergence",
+    "System state persistence: system_state key/value table for kill switch and engine state across restarts",
+    "P&L snapshots: pnl_snapshots table for safety layer daily P&L persistence across engine restarts",
+    "Full pipeline JSON: full_pipeline_json column on decisions for stage-by-stage reasoning storage",
+    "Supervisor decisions: supervisor_decisions table for Hermes-pattern notifier gating (ACK/REVIEW/ESCALATE/HOLD audit log)",
+    "Paper trades: stop_loss and take_profit columns for insert_paper_trade / fresh DB compatibility",
+    "MES session hypothesis: forward-recorder table for Corey bias + gamma levels daily snapshots + session outcomes",
 ]
 
 
-# ── Public entry point ─────────────────────────────────────────────────────────
+# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def run_migrations(conn: sqlite3.Connection) -> None:
     """
-    Apply any pending migrations to `conn` in version order.
+    Run all pending migrations in order.
 
-    This function is idempotent — calling it multiple times is safe.
-    Each migration runs inside its own implicit transaction; the version
-    record is written only after the migration function returns without
-    raising.
-
-    Parameters
-    ----------
-    conn:
-        An open sqlite3.Connection to the target database.
-        WAL mode should already be set by the caller for best concurrency.
+    Idempotent — safe to call multiple times. Only applies migrations
+    that haven't been applied yet (as tracked by schema_version table).
     """
     _ensure_version_table(conn)
-    current = _get_current_version(conn)
-    total = len(MIGRATIONS)
+    current_version = _get_current_version(conn)
 
-    if current >= total:
-        logger.debug(f"Database schema is up-to-date (version {current}/{total}).")
-        return
+    for index, migration_func in enumerate(MIGRATIONS):
+        version = index + 1
+        if version > current_version:
+            migration_func(conn)
+            _record_version(conn, version, MIGRATION_DESCRIPTIONS[index])
+            logger.info(f"Applied migration {version}: {MIGRATION_DESCRIPTIONS[index]}")
+        else:
+            logger.debug(f"Skipped migration {version} (already applied)")
 
-    logger.info(f"Running migrations {current + 1}–{total} (currently at version {current})...")
-
-    for idx, migrate_fn in enumerate(MIGRATIONS):
-        version = idx + 1
-        if version <= current:
-            continue  # already applied
-        description = MIGRATION_DESCRIPTIONS[idx]
-        logger.info(f"  Applying migration {version:03d}: {description}")
-        try:
-            migrate_fn(conn)
-            _record_version(conn, version, description)
-            logger.info(f"  Migration {version:03d} complete.")
-        except Exception as exc:
-            logger.error(f"  Migration {version:03d} FAILED — rolling back: {exc}")
-            conn.rollback()
-            raise RuntimeError(f"Migration {version:03d} failed: {exc}") from exc
-
-    final = _get_current_version(conn)
-    logger.info(f"All migrations complete.  Schema version: {final}.")
+    logger.info(f"Migrations complete. Current schema version: {_get_current_version(conn)}")

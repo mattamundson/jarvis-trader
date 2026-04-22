@@ -4,8 +4,8 @@ import React, { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, ArrowRight, Circle, Target } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -215,9 +215,7 @@ export function PhaseProgressWidget() {
 
     async function fetchData() {
       try {
-        const res = await fetch(`${ENGINE_URL}/analytics/performance`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: ValidationReport = await res.json();
+        const data = await fetchEngine(`/analytics/performance`);
         if (!cancelled) {
           setReport(data);
           setError(null);

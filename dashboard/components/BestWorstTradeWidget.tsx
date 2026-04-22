@@ -10,8 +10,8 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import type { TradeRecord } from "@/lib/api";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface TradesResponse {
   trades: TradeRecord[];
@@ -198,18 +198,23 @@ export function BestWorstTradeWidget() {
 
   const fetchTrades = async () => {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=200`
+      const raw: unknown = await fetchEngine<unknown>(
+        `/portfolio/history/trades?status=CLOSED&limit=200`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: TradesResponse = await res.json();
+      const rows: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
 
-      const closed = (json.trades ?? []).filter(
-        (t) => t.status === "CLOSED" && t.exit_time != null && t.realized_pnl != null
+      const closed = rows.filter(
+        (t: TradeRecord) =>
+          t.status === "CLOSED" && t.exit_time != null && t.realized_pnl != null
       );
 
       // Sort descending by realized_pnl for best → worst
-      closed.sort((a, b) => (b.realized_pnl ?? 0) - (a.realized_pnl ?? 0));
+      closed.sort(
+        (a: TradeRecord, b: TradeRecord) =>
+          (b.realized_pnl ?? 0) - (a.realized_pnl ?? 0),
+      );
       setTrades(closed);
       setError(null);
     } catch (err) {

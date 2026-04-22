@@ -1,0 +1,77 @@
+//@version=5
+indicator("JARVIS Volume Stack", overlay=false, max_labels_count=500, max_lines_count=500)
+
+// ── Volume classification ─────────────────────────────────────────────────────
+bull_vol = close > open ? volume : 0.0
+bear_vol = close <= open ? volume : 0.0
+
+// ── Session-cumulative accumulators ──────────────────────────────────────────
+// Reset on new calendar day (works for intraday and daily+ charts)
+var float cum_bull       = 0.0
+var float cum_bear       = 0.0
+var float cum_vol_above  = 0.0   // volume traded in bars that close above VWAP
+var float cum_vol_total  = 0.0   // all volume (for above-VWAP pct)
+
+new_day = ta.change(dayofmonth) != 0
+if new_day
+    cum_bull      := 0.0
+    cum_bear      := 0.0
+    cum_vol_above := 0.0
+    cum_vol_total := 0.0
+
+cum_bull  += bull_vol
+cum_bear  += bear_vol
+
+// ── VWAP ─────────────────────────────────────────────────────────────────────
+vwap_val = ta.vwap(close)
+
+cum_vol_above += close > vwap_val ? volume : 0.0
+cum_vol_total += volume
+
+// ── Derived metrics ───────────────────────────────────────────────────────────
+total_vol   = cum_bull + cum_bear
+bull_pct    = total_vol > 0 ? cum_bull / total_vol * 100 : 50.0
+bear_pct    = total_vol > 0 ? cum_bear / total_vol * 100 : 50.0
+delta       = cum_bull - cum_bear
+delta_pct   = bull_pct - 50.0                              // positive = bull dominant
+above_pct   = cum_vol_total > 0 ? cum_vol_above / cum_vol_total * 100 : 50.0
+
+vol_bias_str = bull_pct > 55 ? "BULL" : bull_pct < 45 ? "BEAR" : "NEUTRAL"
+
+// ── Colour helpers ────────────────────────────────────────────────────────────
+col_bar = close > open ? color.new(color.lime, 30) : color.new(color.red, 30)
+col_delta = delta_pct >= 0 ? color.new(color.lime, 40) : color.new(color.red, 40)
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+hline(50,  "50%",      color=color.new(color.white, 70), linestyle=hline.style_dashed)
+hline(55,  "Bull Zone",color=color.new(color.lime,  80), linestyle=hline.style_dotted)
+hline(45,  "Bear Zone",color=color.new(color.red,   80), linestyle=hline.style_dotted)
+
+plot(bull_pct,  "Bull Vol %",        color=color.new(color.lime,   20), linewidth=2)
+plot(bear_pct,  "Bear Vol %",        color=color.new(color.red,    20), linewidth=1)
+plot(above_pct, "Vol Above VWAP %",  color=color.new(color.yellow, 40), linewidth=1)
+
+// Delta pct as histogram in a rescaled window (centered at 50)
+plot(50 + delta_pct, "Delta Shifted", color=col_delta, style=plot.style_histogram, linewidth=2)
+
+// ── MCP readback labels (barstate.islast only) ────────────────────────────────
+if barstate.islast
+    y = 20.0
+    label.new(bar_index, y,       "VOL_BULL_PCT: "     + str.tostring(math.round(bull_pct,   1)),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 4,   "VOL_BEAR_PCT: "     + str.tostring(math.round(bear_pct,   1)),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 8,   "VOL_DELTA: "        + str.tostring(math.round(delta,       0)),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 12,  "VOL_DELTA_PCT: "    + str.tostring(math.round(delta_pct,  1)),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 16,  "VOL_BIAS: "         + vol_bias_str,
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 20,  "VOL_ABOVE_VWAP: "   + str.tostring(math.round(above_pct,  1)),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)

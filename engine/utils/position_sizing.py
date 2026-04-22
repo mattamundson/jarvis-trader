@@ -29,14 +29,26 @@ INSTRUMENT_MULTIPLIERS: dict[str, float] = {
     "MES": 5.0,
     "MNQ": 2.0,
     "MCL": 100.0,
+    "MGC": 10.0,
     # Continuous / front-month futures tickers (Yahoo / ib_insync style)
     "MES=F": 5.0,
     "NQ=F": 2.0,
     "CL=F": 100.0,
+    "GC=F": 10.0,
 }
 
 # Default multiplier when symbol is unknown — conservative $5 (same as MES)
 _DEFAULT_MULTIPLIER = 5.0
+
+# Spot crypto symbols sized by price, not per-point multiplier. See
+# `calculate_crypto_position_size` below. This set is consulted by the order
+# router as well to choose between futures-style and crypto-style sizing.
+CRYPTO_SPOT_SYMBOLS: set[str] = {
+    "BTCUSD",
+    "ETHUSD",
+    "SOLUSD",
+    "XBTUSD",  # Kraken's alias for BTCUSD
+}
 
 
 # ---------------------------------------------------------------------------
@@ -197,3 +209,209 @@ def calculate_position_size(
         symbol=symbol,
         reasoning=reasoning,
     )
+
+
+# ---------------------------------------------------------------------------
+# Spot crypto sizing — fractional quantity instead of per-point multipliers
+# ---------------------------------------------------------------------------
+@dataclass
+class CryptoPositionSizeResult:
+    """Parallel to PositionSizeResult for crypto — quantity is fractional."""
+
+    quantity: float           # fractional units (e.g. 0.012 BTC)
+    risk_per_trade: float
+    stop_distance: float      # absolute $ distance used as stop
+    dollar_risk_per_unit: float
+    account_value: float
+    symbol: str
+    reasoning: str
+
+
+def calculate_crypto_position_size(
+    symbol: str,
+    account_value: float,
+    spot_price: float,
+    atr_pct: float,
+    risk_pct: float = 0.01,
+    atr_stop_multiplier: float = 0.70,
+    max_notional_pct: float = 0.25,
+    min_quantity: float = 0.0,
+) -> CryptoPositionSizeResult:
+    """
+    Price-based fractional sizing for spot crypto (no per-point multiplier).
+
+        risk_budget       = account_value * risk_pct
+        stop_distance     = spot_price * atr_pct * atr_stop_multiplier
+        qty               = risk_budget / stop_distance
+
+    Then cap notional at `max_notional_pct` of account to prevent a single
+    crypto position from dominating the book. Divergence from futures sizing:
+
+      - Futures use INSTRUMENT_MULTIPLIERS ($/pt) and integer contracts
+        clamped to MAX_CONTRACTS_PER_INSTRUMENT.
+      - Crypto uses spot price as its own multiplier and returns a float
+        quantity (e.g. 0.012 BTC). A quantity floor of `min_quantity` (0.0
+        by default) can be raised by callers to enforce exchange minimums
+        — Kraken's BTC minimum is 0.0001, ETH 0.01.
+
+    Edge cases: non-positive price/atr → qty=0.0 (caller should abstain).
+    """
+    if spot_price is None or spot_price <= 0:
+        return CryptoPositionSizeResult(
+            quantity=0.0,
+            risk_per_trade=0.0,
+            stop_distance=0.0,
+            dollar_risk_per_unit=0.0,
+            account_value=account_value,
+            symbol=symbol,
+            reasoning="spot_price missing or non-positive — abstaining",
+        )
+    if atr_pct is None or atr_pct <= 0:
+        return CryptoPositionSizeResult(
+            quantity=0.0,
+            risk_per_trade=0.0,
+            stop_distance=0.0,
+            dollar_risk_per_unit=0.0,
+            account_value=account_value,
+            symbol=symbol,
+            reasoning="atr_pct missing or non-positive — abstaining",
+        )
+
+    risk_per_trade = account_value * risk_pct
+    stop_distance = spot_price * atr_pct * atr_stop_multiplier
+    dollar_risk_per_unit = stop_distance  # 1 unit = 1 coin = 1 * stop_distance $
+
+    if dollar_risk_per_unit <= 0:
+        qty = 0.0
+    else:
+        qty = risk_per_trade / dollar_risk_per_unit
+
+    # Notional cap: qty * spot_price must not exceed max_notional_pct of account
+    notional_cap = account_value * max_notional_pct
+    if qty * spot_price > notional_cap:
+        qty = notional_cap / spot_price
+
+    if qty < min_quantity:
+        qty = 0.0  # below exchange minimum — abstain rather than round up
+
+    reasoning = (
+        f"Symbol={symbol} | Account=${account_value:,.2f} | "
+        f"Risk={risk_pct:.1%} => ${risk_per_trade:,.2f} | "
+        f"Spot=${spot_price:,.2f} ATR%={atr_pct:.2%} x {atr_stop_multiplier:.0%} "
+        f"=> stop=${stop_distance:,.2f} | Qty=${risk_per_trade:,.2f}/${stop_distance:,.2f}"
+        f"={qty:.6f} | Notional cap={max_notional_pct:.0%} => ${notional_cap:,.2f}"
+    )
+    logger.info(f"[CryptoSizing] {reasoning}")
+
+    return CryptoPositionSizeResult(
+        quantity=round(qty, 8),
+        risk_per_trade=risk_per_trade,
+        stop_distance=stop_distance,
+        dollar_risk_per_unit=dollar_risk_per_unit,
+        account_value=account_value,
+        symbol=symbol,
+        reasoning=reasoning,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Half-Kelly position sizing
+# ---------------------------------------------------------------------------
+
+
+def calculate_half_kelly_size(
+    capital: float,
+    win_rate: float,
+    avg_win_loss_ratio: float,
+    tick_value: float,
+    atr_ticks: float,
+    stop_atr_mult: float = 0.70,
+    max_risk_pct: float = 0.06,
+    min_contracts: int = 1,
+    max_contracts: int = 2,
+) -> dict:
+    """
+    Half-Kelly position sizing with multiple safety caps.
+
+    Kelly fraction = (win_rate * avg_win_loss_ratio - loss_rate) / avg_win_loss_ratio
+    Half-Kelly = Kelly / 2 (fractional Kelly for robustness against estimation error)
+
+    Falls back to min_contracts when edge is zero or negative.
+    Hard cap at max_risk_pct (6%) to prevent overbetting on noisy estimates.
+
+    Returns dict: contracts, risk_pct, method, kelly_fraction, dollar_risk
+    """
+    loss_rate = 1.0 - win_rate
+
+    if avg_win_loss_ratio <= 0:
+        return {
+            'contracts': min_contracts, 'risk_pct': 0.01,
+            'method': 'fixed_fallback', 'kelly_fraction': 0.0,
+            'dollar_risk': capital * 0.01
+        }
+
+    kelly_fraction = (win_rate * avg_win_loss_ratio - loss_rate) / avg_win_loss_ratio
+    half_kelly = kelly_fraction / 2.0
+
+    if half_kelly <= 0:
+        return {
+            'contracts': min_contracts, 'risk_pct': 0.01,
+            'method': 'no_edge_minimum', 'kelly_fraction': kelly_fraction,
+            'dollar_risk': capital * 0.01
+        }
+
+    risk_pct = min(half_kelly, max_risk_pct)
+
+    stop_dollars = atr_ticks * stop_atr_mult * tick_value
+    if stop_dollars <= 0:
+        return {
+            'contracts': min_contracts, 'risk_pct': risk_pct,
+            'method': 'stop_zero_fallback', 'kelly_fraction': kelly_fraction,
+            'dollar_risk': capital * risk_pct
+        }
+
+    dollar_risk = capital * risk_pct
+    raw_contracts = dollar_risk / stop_dollars
+    contracts = max(min_contracts, min(max_contracts, round(raw_contracts)))
+
+    return {
+        'contracts': contracts,
+        'risk_pct': risk_pct,
+        'method': 'half_kelly',
+        'kelly_fraction': kelly_fraction,
+        'half_kelly': half_kelly,
+        'dollar_risk': dollar_risk,
+        'stop_dollars': stop_dollars,
+    }
+
+
+def compute_rolling_edge(
+    recent_trades: list,
+    window: int = 20,
+) -> dict:
+    """
+    Compute edge metrics from last N closed paper trades.
+
+    Each trade in recent_trades should be a dict with a 'pnl' key (float).
+    Returns 'sufficient_data': False if fewer than 10 trades.
+
+    Returns: {sufficient_data, n_trades, win_rate, avg_win_loss_ratio, edge_pct}
+    """
+    if len(recent_trades) < 10:
+        return {'sufficient_data': False, 'n_trades': len(recent_trades)}
+
+    trades = recent_trades[-window:]
+    wins = [t['pnl'] for t in trades if t.get('pnl', 0) > 0]
+    losses = [abs(t['pnl']) for t in trades if t.get('pnl', 0) <= 0]
+
+    win_rate = len(wins) / len(trades) if trades else 0
+    avg_win = sum(wins) / len(wins) if wins else 0
+    avg_loss = sum(losses) / len(losses) if losses else 1
+
+    return {
+        'sufficient_data': True,
+        'n_trades': len(trades),
+        'win_rate': win_rate,
+        'avg_win_loss_ratio': avg_win / avg_loss if avg_loss > 0 else 0,
+        'edge_pct': win_rate - (1 - win_rate) * (avg_loss / avg_win) if avg_win > 0 else 0,
+    }

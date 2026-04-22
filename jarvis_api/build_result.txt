@@ -1,0 +1,24 @@
+BUILD OK
+
+Timestamp: 2025-01-01T00:00:00Z
+File: /home/user/workspace/jarvis_api/main.py (570 lines)
+File: /home/user/workspace/jarvis_api/start.sh
+
+Import check: PASS (fastapi, uvicorn, yfinance)
+Syntax check: PASS (py_compile)
+
+Endpoints implemented:
+  GET /health
+  GET /api/quotes        — batch quotes, 25s cache
+  GET /api/signal        — reads strategy_c_plus_live_signal.json
+  GET /api/search        — ticker search with fast_info + .info
+  GET /api/options       — options chain, ±5% ATM, 10 calls + 10 puts
+  GET /api/pnl           — paper portfolio P&L (SPY strangle)
+  GET /api/regime        — regime + VIX alerts
+  GET /api/ibkr/status   — IBKR paper account / execution log
+  GET /api/gainers       — top movers, 60s cache
+  GET /api/macro         — macro indicators (VIX, TNX, GLD, BTC-USD)
+
+CORS: allow_origins=["*"]
+Port: 8020
+Start command: python3 -m uvicorn main:app --host 0.0.0.0 --port 8020 --reload

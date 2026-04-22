@@ -176,7 +176,7 @@ export function WatchlistBar({ items = [] }: WatchlistBarProps) {
         <p className="font-mono text-xs text-muted-foreground">
           Engine offline — start{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
-            uvicorn main:app --port 8010
+            uvicorn main:app
           </code>
         </p>
       )}

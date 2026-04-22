@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { DailyPnlRecord } from "@/lib/api";
+import { fetchDailyPnLHistory, type DailyPnlRecord } from "@/lib/api";
 
 export function DailyPnLChart({ days = 30 }: { days?: number }) {
   const [data, setData] = useState<DailyPnlRecord[]>([]);
@@ -10,8 +10,7 @@ export function DailyPnLChart({ days = 30 }: { days?: number }) {
 
   useEffect(() => {
     const load = () => {
-      fetch(`http://localhost:8010/portfolio/history/daily-pnl?days=${days}`)
-        .then((r) => r.json())
+      fetchDailyPnLHistory({ days })
         .then((d) => {
           const rows: DailyPnlRecord[] = d.daily_pnl ?? [];
           // Endpoint returns oldest-first; keep that order for the chart

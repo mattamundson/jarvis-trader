@@ -9,7 +9,9 @@ and client code generation.
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+JARVIS_SUPPORTED_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "ytd", "1y", "2y", "5y", "10y", "max"}
 
 # ── Enums ────────────────────────────────────────────────────────────────────
 
@@ -115,10 +117,17 @@ class HealthResponse(BaseModel):
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
     cache: Optional[CacheStatus] = Field(None, description="Cache status")
+    llm_available: Optional[bool] = Field(True, description="Whether Anthropic API key is configured")
+    llm_path_healthy: Optional[bool] = Field(True, description="Whether the last-observed LLM call succeeded (false = credits/auth outage)")
+    llm_path_details: Optional[Dict[str, Any]] = Field(None, description="Populated only when llm_path_healthy=false")
+    tradingview_mcp_healthy: Optional[bool] = Field(True, description="Whether TradingView Desktop CDP port 9222 responds (false = TV MCP bar source unavailable)")
+    tradingview_mcp_details: Optional[str] = Field(None, description="Short diagnostic populated only when tradingview_mcp_healthy=false")
 
 
 class SubsystemStatus(BaseModel):
-    """Individual subsystem status."""
+    """Individual subsystem status — accepts any extra fields from subsystem dicts."""
+
+    model_config = ConfigDict(extra="ignore")
 
     status: str = Field(..., description="Subsystem status")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional details")
@@ -184,6 +193,14 @@ class SafetyStatusResponse(BaseModel):
     starting_balance: float = Field(0, description="Starting balance")
     pnl_source: str = Field("sqlite", description="P&L data source")
     current_balance: float = Field(0, description="Current balance")
+    orders_last_minute: Optional[int] = Field(
+        None, description="Orders recorded in the last minute"
+    )
+    consecutive_losses: Optional[int] = Field(
+        None, description="Consecutive losing trades (loss tracker)"
+    )
+    equity_peak: Optional[float] = Field(None, description="Peak equity from safety snapshot")
+    daily_realized_pnl: Optional[float] = Field(None, description="Daily realized P&L component")
 
 
 class CircuitBreakerStatus(BaseModel):
@@ -246,19 +263,21 @@ class TechnicalAnalysisResponse(BaseModel):
 
 
 class BarsResponse(BaseModel):
-    """Historical OHLCV data."""
+    """Historical OHLCV data with VWAP and STC per bar."""
 
     symbol: str = Field(..., description="Symbol")
     timeframe: str = Field(..., description="Timeframe")
-    bars: List[Dict[str, Any]] = Field(default_factory=list, description="OHLCV bars")
+    bars: List[Dict[str, Any]] = Field(default_factory=list, description="OHLCV bars (each bar includes vwap and stc fields)")
     count: int = Field(0, description="Number of bars")
+    vwap_current: Optional[float] = Field(None, description="Current VWAP value (last bar)")
+    vwap_trend: Optional[str] = Field(None, description="'above' or 'below' — price vs VWAP")
 
 
 class RedditSentimentResponse(BaseModel):
     """Reddit trending tickers."""
 
     filter: str = Field("all-stocks", description="Filter applied")
-    tickers: List[str] = Field(default_factory=list, description="Trending tickers")
+    tickers: List[Dict[str, Any]] = Field(default_factory=list, description="Trending tickers")
 
 
 class NewsSentimentResponse(BaseModel):
@@ -266,6 +285,40 @@ class NewsSentimentResponse(BaseModel):
 
     symbol: str = Field(..., description="Symbol analyzed")
     sentiment: Dict[str, Any] = Field(default_factory=dict, description="Sentiment data")
+
+
+class JarvisQuickAnalysisRequest(BaseModel):
+    """Quick Gemini-backed Jarvis snapshot request."""
+
+    symbol: str = Field(..., min_length=1, max_length=20, description="Ticker symbol")
+    period: str = Field(default="5d", description="Historical period to analyze")
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not normalized:
+            raise ValueError("symbol cannot be empty")
+        return normalized
+
+    @field_validator("period")
+    @classmethod
+    def normalize_period(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in JARVIS_SUPPORTED_PERIODS:
+            allowed = ", ".join(sorted(JARVIS_SUPPORTED_PERIODS))
+            raise ValueError(f"period must be one of: {allowed}")
+        return normalized
+
+
+class JarvisQuickAnalysisResponse(BaseResponse):
+    """Quick Gemini-backed Jarvis snapshot response."""
+
+    symbol: str = Field(..., description="Analyzed ticker symbol")
+    period: str = Field(..., description="Historical period used")
+    analysis: str = Field(..., description="Generated Jarvis analysis text")
+    model: str = Field(..., description="LLM model used to generate the analysis")
+    generated_at: str = Field(..., description="UTC timestamp for when the analysis was generated")
 
 
 # ── Portfolio Models ─────────────────────────────────────────────────────────

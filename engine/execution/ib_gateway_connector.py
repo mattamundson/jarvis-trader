@@ -19,25 +19,55 @@ When PAPER_TRADING=False:
 INTERFACE:
   This connector matches the pattern of SchwabConnector and must implement:
   - connect() / disconnect()
-  - is_connected property
+  - is_connected() — method, same as IBGatewayManager / SafetyLayer.submit_paper_order
   - submit_order(), cancel_order(), get_order_status()
+  - place_paper_order() — post-safety path for SafetyLayer routing
   - get_positions(), get_account_balance()
   - get_quote() (mock in paper mode)
-  All methods are async.
+  All methods are async except is_connected.
 """
 
+from __future__ import annotations
+
 import asyncio
-import json
 import logging
 import random
 import uuid
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
+from enum import Enum
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["IBGatewayConnector"]
+__all__ = ["IBGatewayConnector", "ConnectionState"]
+
+
+class ConnectionState(Enum):
+    """State transitions for IB Gateway connection."""
+
+    CONNECTED = "connected"
+    DISCONNECTING = "disconnecting"
+    RECONNECTING = "reconnecting"
+    FAILED = "failed"
+
+
+_FUTURES_ROOTS = frozenset(
+    {
+        "MES",
+        "MNQ",
+        "M2K",
+        "MCL",
+        "MGC",
+        "MHG",
+        "MSI",
+        "ES",
+        "NQ",
+        "RTY",
+        "CL",
+        "GC",
+        "HG",
+    }
+)
 
 
 class IBGatewayConnector:
@@ -58,32 +88,43 @@ class IBGatewayConnector:
     When ready for live trading, replace order logging with actual IB API calls.
     """
 
-    def __init__(self, settings, safety_layer):
+    def __init__(self, settings, safety_layer, portfolio_tracker=None):
         """
         Initialize the IB Gateway connector.
 
         Args:
             settings: TradingConfig with PAPER_TRADING, IBKR_HOST, IBKR_PORT, etc.
             safety_layer: RiskSafetyLayer for pre-trade validation
+            portfolio_tracker: Optional ``PortfolioTracker`` — when set, paper fills
+                can mirror to the engine API book via ``PaperTradeLogger`` (see execution README).
         """
         self._settings = settings
         self._safety_layer = safety_layer
+        self._portfolio_tracker = portfolio_tracker
         self._connected = False
         self._ib_client = None  # Will hold ib_insync.IB() when live trading is implemented
         self._paper_trade_logger = None  # Lazy-loaded on first use
         self._account_summary = {
-            "equity": 100000.0,
-            "cash": 100000.0,
-            "buying_power": 400000.0,
+            "equity": 10000.0,
+            "cash": 10000.0,
+            "buying_power": 40000.0,
         }
         self._positions = {}
         self._open_orders = {}
+
+        # Connection resilience
+        self._connection_state = ConnectionState.FAILED
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 3
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._on_disconnect_callback: Optional[Callable] = None
+        self._last_heartbeat: Optional[datetime] = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def connect(self) -> bool:
         """
-        Connect to IB Gateway.
+        Connect to IB Gateway with resilience.
 
         In paper trading mode: just initializes local state and paper trade logger.
         In live mode: Would connect to IB Gateway at IBKR_HOST:IBKR_PORT.
@@ -97,10 +138,28 @@ class IBGatewayConnector:
                 "Orders will be logged to data/paper_trades.json"
             )
             # Initialize paper trade logger on first connect
-            from engine.execution.paper_trade_logger import PaperTradeLogger  # noqa: PLC0415
+            from execution.paper_trade_logger import PaperTradeLogger  # noqa: PLC0415
 
-            self._paper_trade_logger = PaperTradeLogger(self._settings)
+            self._paper_trade_logger = PaperTradeLogger(
+                self._settings,
+                portfolio_tracker=self._portfolio_tracker,
+            )
             self._connected = True
+            self._connection_state = ConnectionState.CONNECTED
+            self._reconnect_attempts = 0
+            self._last_heartbeat = datetime.utcnow()
+
+            # Notify safety layer of connection state change
+            self._notify_connection_state(ConnectionState.CONNECTED)
+
+            # Start heartbeat monitoring if not already running
+            if self._heartbeat_task is None or self._heartbeat_task.done():
+                self._heartbeat_task = asyncio.create_task(self._heartbeat())
+
+            logger.info(
+                "IBGatewayConnector: Connected. Heartbeat started. State=%s",
+                self._connection_state.value,
+            )
             return True
 
         # Live mode: not yet implemented
@@ -109,6 +168,8 @@ class IBGatewayConnector:
             "Set PAPER_TRADING=True for now."
         )
         self._connected = False
+        self._connection_state = ConnectionState.FAILED
+        self._notify_connection_state(ConnectionState.FAILED)
         return False
 
     async def disconnect(self) -> bool:
@@ -121,21 +182,153 @@ class IBGatewayConnector:
         Returns:
             True if successfully disconnected
         """
+        self._connection_state = ConnectionState.DISCONNECTING
+        logger.info("IBGatewayConnector: Disconnecting. State=%s", self._connection_state.value)
+
+        # Cancel heartbeat task if running
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                logger.debug("IBGatewayConnector: Heartbeat task cancelled")
+
         if self._ib_client:
             try:
-                # TODO: When live trading implemented, call self._ib_client.disconnect()
+                # Phase 3 (live trading): call self._ib_client.disconnect() for clean shutdown
                 pass
             except Exception as exc:
                 logger.error("Error disconnecting from IB Gateway: %s", exc)
 
         self._connected = False
+        self._connection_state = ConnectionState.FAILED
+        self._notify_connection_state(ConnectionState.FAILED)
         logger.info("IBGatewayConnector: Disconnected")
         return True
 
-    @property
     def is_connected(self) -> bool:
-        """Return True if connected to IB Gateway (or in paper trading mode)."""
+        """Return True if connected to IB Gateway (or in paper trading simulation)."""
         return self._connected
+
+    async def _reconnect(self) -> bool:
+        """
+        Attempt to reconnect with exponential backoff.
+
+        Retries: 3 attempts at 2s, 4s, 8s intervals
+        On persistent failure, logs CRITICAL and emits safety event
+
+        Returns:
+            True if reconnect succeeded, False if all retries exhausted
+        """
+        if self._reconnect_attempts >= self._max_reconnect_attempts:
+            logger.critical(
+                "IBGatewayConnector: Max reconnect attempts (%d) exhausted. Connection FAILED.",
+                self._max_reconnect_attempts,
+            )
+            self._connection_state = ConnectionState.FAILED
+            self._notify_connection_state(ConnectionState.FAILED)
+            return False
+
+        self._reconnect_attempts += 1
+        backoff_seconds = 2**self._reconnect_attempts  # 2, 4, 8
+        logger.warning(
+            "IBGatewayConnector: Reconnect attempt %d/%d. " "Waiting %d seconds before retry.",
+            self._reconnect_attempts,
+            self._max_reconnect_attempts,
+            backoff_seconds,
+        )
+
+        self._connection_state = ConnectionState.RECONNECTING
+        self._notify_connection_state(ConnectionState.RECONNECTING)
+
+        await asyncio.sleep(backoff_seconds)
+
+        # Attempt reconnect
+        success = await self.connect()
+        if success:
+            logger.info(
+                "IBGatewayConnector: Reconnection succeeded on attempt %d",
+                self._reconnect_attempts,
+            )
+            self._connection_state = ConnectionState.CONNECTED
+            self._notify_connection_state(ConnectionState.CONNECTED)
+            return True
+
+        # If still failed, try next retry
+        return await self._reconnect()
+
+    async def _heartbeat(self) -> None:
+        """
+        Monitor connection health every 60 seconds.
+
+        Checks if connection is still active. If disconnected,
+        triggers _reconnect() automatically.
+
+        The disconnection check runs at the TOP of each loop iteration
+        (before sleeping) so that a disconnect detected while sleeping is
+        caught on the very next wakeup, and so tests that cancel the sleep
+        immediately still exercise the reconnect path.
+        """
+        heartbeat_interval = 60
+
+        while True:
+            try:
+                # Check connection health at the start of every iteration.
+                # This ensures a disconnection is detected even if sleep is
+                # cancelled immediately (e.g. in tests).
+                if not self._connected:
+                    logger.warning(
+                        "IBGatewayConnector: Heartbeat detected disconnection. "
+                        "Triggering auto-reconnect."
+                    )
+                    # Reset retry counter on new disconnection
+                    self._reconnect_attempts = 0
+                    await self._reconnect()
+                else:
+                    self._last_heartbeat = datetime.utcnow()
+                    logger.debug(
+                        "IBGatewayConnector: Heartbeat OK. State=%s",
+                        self._connection_state.value,
+                    )
+
+                await asyncio.sleep(heartbeat_interval)
+
+            except asyncio.CancelledError:
+                logger.debug("IBGatewayConnector: Heartbeat task cancelled")
+                break
+            except Exception as exc:
+                logger.error("IBGatewayConnector: Heartbeat error: %s", exc, exc_info=True)
+
+    def _notify_connection_state(self, state: ConnectionState) -> None:
+        """
+        Notify safety layer of connection state changes.
+
+        Args:
+            state: New connection state
+        """
+        try:
+            if hasattr(self._safety_layer, "on_connection_state_change"):
+                self._safety_layer.on_connection_state_change(state)
+                logger.debug(
+                    "IBGatewayConnector: SafetyLayer notified of state change: %s",
+                    state.value,
+                )
+        except Exception as exc:
+            logger.error(
+                "IBGatewayConnector: Failed to notify SafetyLayer of state change: %s",
+                exc,
+                exc_info=True,
+            )
+
+    def set_on_disconnect_callback(self, callback: Callable[[ConnectionState], None]) -> None:
+        """
+        Register a callback to be invoked on disconnect events.
+
+        Args:
+            callback: Callable that accepts a ConnectionState enum value
+        """
+        self._on_disconnect_callback = callback
+        logger.debug("IBGatewayConnector: Disconnect callback registered")
 
     # ── Order Execution ───────────────────────────────────────────────────────
 
@@ -168,7 +361,7 @@ class IBGatewayConnector:
                 "fill_time": str,  # ISO 8601 timestamp
             }
         """
-        if not self.is_connected:
+        if not self.is_connected():
             logger.error("IBGatewayConnector: Not connected")
             return {"status": "error", "reason": "Not connected to IB Gateway"}
 
@@ -268,11 +461,12 @@ class IBGatewayConnector:
         # Log to paper trades file
         try:
             if self._paper_trade_logger is None:
-                from engine.execution.paper_trade_logger import (  # noqa: PLC0415
-                    PaperTradeLogger,
-                )
+                from execution.paper_trade_logger import PaperTradeLogger  # noqa: PLC0415
 
-                self._paper_trade_logger = PaperTradeLogger(self._settings)
+                self._paper_trade_logger = PaperTradeLogger(
+                    self._settings,
+                    portfolio_tracker=self._portfolio_tracker,
+                )
 
             await self._paper_trade_logger.log_trade(
                 {
@@ -330,6 +524,104 @@ class IBGatewayConnector:
 
         return result
 
+    async def place_paper_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        order_type: str = "MKT",
+        limit_price: Optional[float] = None,
+        aux_price: Optional[float] = None,
+        parent_order_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Record a paper fill after ``SafetyLayer`` has already validated the order.
+
+        STP child orders pass ``aux_price`` + ``parent_order_id`` and are held
+        as ``pending`` in ``_open_orders`` without touching positions until the
+        stop would trigger (paper sim does not currently model trigger).
+        """
+        if not self._settings.PAPER_TRADING:
+            raise NotImplementedError(
+                "IB Gateway live connection not yet implemented. "
+                "Set PAPER_TRADING=True for paper trading mode."
+            )
+        if not self.is_connected():
+            logger.error("place_paper_order: not connected")
+            return None
+
+        action_upper = action.upper()
+        if action_upper not in ("BUY", "SELL") or quantity <= 0:
+            return None
+
+        signed_qty = quantity if action_upper == "BUY" else -quantity
+        ot_upper = order_type.upper()
+        if ot_upper in ("MKT", "MARKET"):
+            internal_ot = "market"
+        elif ot_upper in ("LMT", "LIMIT"):
+            internal_ot = "limit"
+        elif ot_upper in ("STP", "STOP"):
+            internal_ot = "stop"
+        else:
+            internal_ot = order_type.lower()
+
+        sym_upper = symbol.upper()
+        is_futures = sym_upper in _FUTURES_ROOTS
+
+        if internal_ot == "stop":
+            if aux_price is None:
+                logger.error("place_paper_order: aux_price required for STP order")
+                return None
+            stp_id = str(uuid.uuid4())
+            self._open_orders[stp_id] = {
+                "status": "pending",
+                "order_id": stp_id,
+                "symbol": symbol,
+                "quantity": signed_qty,
+                "order_type": "stop",
+                "stop_price": aux_price,
+                "limit_price": limit_price,
+                "is_futures": is_futures,
+                "parent_order_id": parent_order_id,
+            }
+            logger.info(
+                "IBGatewayConnector STP accepted | id=%s sym=%s qty=%d stop=%.2f parent=%s",
+                stp_id,
+                symbol,
+                signed_qty,
+                aux_price,
+                parent_order_id,
+            )
+            return stp_id
+
+        order = {
+            "symbol": symbol,
+            "quantity": signed_qty,
+            "order_type": internal_ot,
+            "limit_price": limit_price,
+            "is_futures": is_futures,
+        }
+
+        res = await self._submit_paper_order(order, [])
+        if res.get("status") == "placed":
+            oid = res.get("order_id")
+            if oid is not None:
+                oid_str = str(oid)
+                self._open_orders[oid_str] = {
+                    "status": "filled",
+                    "order_id": oid_str,
+                    "symbol": symbol,
+                    "quantity": signed_qty,
+                    "order_type": internal_ot,
+                    "limit_price": limit_price,
+                    "filled_price": res.get("filled_price"),
+                    "fill_time": res.get("fill_time"),
+                    "is_futures": is_futures,
+                    "parent_order_id": parent_order_id,
+                }
+                return oid_str
+        return None
+
     async def cancel_order(self, order_id: str) -> dict:
         """
         Cancel an open order.
@@ -343,7 +635,7 @@ class IBGatewayConnector:
         Returns:
             {"status": "cancelled" | "not_found" | "error"}
         """
-        if not self.is_connected:
+        if not self.is_connected():
             return {"status": "error", "reason": "Not connected"}
 
         if self._settings.PAPER_TRADING:
@@ -378,7 +670,7 @@ class IBGatewayConnector:
                 ...
             }
         """
-        if not self.is_connected:
+        if not self.is_connected():
             return {"status": "error", "reason": "Not connected"}
 
         if self._settings.PAPER_TRADING:
@@ -394,41 +686,42 @@ class IBGatewayConnector:
 
     # ── Account Methods ───────────────────────────────────────────────────────
 
-    async def get_positions(self) -> dict[str, dict]:
+    async def get_positions(self) -> list[dict]:
         """
-        Get current positions across all symbols.
-
-        In paper trading mode: returns simulated positions from _positions dict
-        In live mode: Would fetch from IB Gateway
-
-        Returns:
-            {
-                "symbol": {
-                    "quantity": int,
-                    "avg_price": float,
-                    "market_value": float,
-                    "unrealized_pnl": float,
-                },
-                ...
-            }
+        Return positions in the same list shape as ``IBGatewayManager.get_positions``
+        (for ``IBOrderManager.sync_positions_from_ib`` / ``reconcile``).
         """
-        if not self.is_connected:
-            return {}
+        if not self.is_connected():
+            return []
 
         if self._settings.PAPER_TRADING:
-            positions = {}
+            out: list[dict] = []
             for symbol, quantity in self._positions.items():
                 if quantity == 0:
                     continue
                 quote = await self.get_quote(symbol)
-                current_price = quote.get("last", 100.0) if quote else 100.0
-                positions[symbol] = {
-                    "symbol": symbol,
-                    "quantity": quantity,
-                    "current_price": current_price,
-                    "market_value": quantity * current_price,
-                }
-            return positions
+                if quote and "error" not in quote:
+                    current_price = float(quote.get("last", 100.0))
+                else:
+                    current_price = 100.0
+                sym_upper = symbol.upper()
+                sec_type = "FUT" if sym_upper in _FUTURES_ROOTS else "STK"
+                pos_int = int(quantity)
+                out.append(
+                    {
+                        "symbol": symbol,
+                        "sec_type": sec_type,
+                        "exchange": "PAPER",
+                        "currency": "USD",
+                        "position": pos_int,
+                        "avg_cost": current_price,
+                        "market_price": current_price,
+                        "market_value": pos_int * current_price,
+                        "unrealized_pnl": None,
+                        "is_futures": sym_upper in _FUTURES_ROOTS,
+                    }
+                )
+            return out
 
         raise NotImplementedError(
             "IB Gateway live connection not yet implemented. "
@@ -451,7 +744,7 @@ class IBGatewayConnector:
                 ...
             }
         """
-        if not self.is_connected:
+        if not self.is_connected():
             return {}
 
         if self._settings.PAPER_TRADING:
@@ -476,11 +769,12 @@ class IBGatewayConnector:
             Account balances and positions merged
         """
         balance = await self.get_account_balance()
-        positions = await self.get_positions()
+        positions_list = await self.get_positions()
+        positions_map = {p["symbol"]: p for p in positions_list}
         return {
             **balance,
-            "positions": positions,
-            "position_count": len(positions),
+            "positions": positions_map,
+            "position_count": len(positions_list),
         }
 
     # ── Market Data ───────────────────────────────────────────────────────────
@@ -506,7 +800,7 @@ class IBGatewayConnector:
                 "timestamp": str,  # ISO 8601
             }
         """
-        if not self.is_connected:
+        if not self.is_connected():
             return {"error": "Not connected"}
 
         if self._settings.PAPER_TRADING:
@@ -554,7 +848,7 @@ class IBGatewayConnector:
         Returns:
             Number of orders cancelled
         """
-        if not self.is_connected:
+        if not self.is_connected():
             logger.warning("cancel_all_orders: IBGatewayConnector not connected")
             return 0
 

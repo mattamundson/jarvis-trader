@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--start", default="2024-01-01", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", default="2025-12-31", help="End date (YYYY-MM-DD)")
     parser.add_argument("--interval", default="1d", help="Data interval (1d, 1h, 15m, etc.)")
-    parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital")
+    parser.add_argument("--capital", type=float, default=10_000.0, help="Initial capital")
     parser.add_argument("--risk", type=float, default=0.01, help="Risk per trade (fraction)")
     parser.add_argument("--output", default=None, help="Save JSON results to file")
     args = parser.parse_args()

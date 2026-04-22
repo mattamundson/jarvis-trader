@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,9 +96,7 @@ export function PipelineDecisionsWidget() {
 
   async function fetchRuns() {
     try {
-      const res = await fetch(`${ENGINE_URL}/pipeline/history?limit=20`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const json = await fetchEngine(`/pipeline/history?limit=20`);
       // Handle both {runs: [...]} and bare array
       const data: PipelineRun[] = Array.isArray(json)
         ? json

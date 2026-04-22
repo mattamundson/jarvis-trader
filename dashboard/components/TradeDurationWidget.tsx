@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface Trade {
   entry_time?: string | null;
@@ -79,12 +79,12 @@ export function TradeDurationWidget() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(
-          `${ENGINE_URL}/portfolio/history/trades?limit=500&status=CLOSED`
+        const body: unknown = await fetchEngine<unknown>(
+          `/portfolio/history/trades?limit=500&status=CLOSED`
         );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const trades: Trade[] = Array.isArray(json) ? json : json.trades ?? [];
+        const trades: Trade[] = Array.isArray(body)
+          ? body
+          : ((body as { trades?: Trade[] }).trades ?? []);
         const computed = computeDurationData(trades);
         setData(computed);
         setError(false);

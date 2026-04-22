@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import React from "react";
 import useSWR from "swr";
+import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   AlertTriangle,
@@ -17,6 +19,12 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
+import {
+  type BacktestBaselineRow,
+  fmtBaselineNum,
+  pickApprovedBacktestBaseline,
+  type ScorecardBacktestBaseline,
+} from "@/lib/scorecardBaseline";
 import { formatCurrency } from "@/lib/utils";
 import { ReadinessCheckWidget } from "@/components/ReadinessCheckWidget";
 import { StreakBadge } from "@/components/StreakBadge";
@@ -32,16 +40,6 @@ import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const BACKTEST = {
-  profitFactor: 5.27,
-  sharpeRatio: 4.16,
-  winRate: 68,        // percent
-  maxDrawdown: 8.2,   // percent (positive = loss)
-  totalReturn: "+47.2%",
-  instrument: "MES — Micro E-mini S&P 500",
-  timeframe: "1-hour bars",
-};
 
 const TARGETS = {
   profitFactor: 2.0,  // v2.7 live gate (paper gate: 1.5)
@@ -88,6 +86,8 @@ const fetchPerformance = () =>
   fetchEngine<AnalyticsPerformance>("/analytics/performance");
 const fetchDrawdown = () =>
   fetchEngine<DrawdownStats>("/portfolio/stats/drawdown");
+const fetchBacktestResults = () =>
+  fetchEngine<BacktestBaselineRow[]>("/backtest/results");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ function MetricCard({
   value: string;
   sub?: string;
   level: ColorLevel;
-  icon: React.ElementType;
+  icon: LucideIcon;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-2">
@@ -283,12 +283,21 @@ export default function ScorecardPage() {
     refreshInterval: REFRESH_MS,
   });
 
+  const { data: backtestRows, mutate: mutateBacktest } = useSWR<BacktestBaselineRow[]>(
+    "scorecard/backtest-results",
+    fetchBacktestResults,
+    { refreshInterval: REFRESH_MS }
+  );
+  const baseline: ScorecardBacktestBaseline | null =
+    pickApprovedBacktestBaseline(backtestRows);
+
   const isLoading = loadingSummary || loadingPerf || loadingDrawdown;
 
   function refreshAll() {
     mutateSummary();
     mutatePerf();
     mutateDrawdown();
+    mutateBacktest();
   }
 
   // Derived values
@@ -330,7 +339,7 @@ export default function ScorecardPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1200px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
               <Activity className="h-5 w-5 text-accent" />
@@ -344,66 +353,66 @@ export default function ScorecardPage() {
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a
+              <Link
                 href="/"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Dashboard
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/analysis"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Analysis
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/backtest"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Backtest
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/performance"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Performance
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/validation"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Validation
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/scorecard"
                 className="text-xs text-foreground font-semibold border-b border-accent pb-0.5"
               >
                 Scorecard
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/journal"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Journal
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/watchlist"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Watchlist
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/settings"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Settings
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/health"
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Health
-              </a>
+              </Link>
             </nav>
           </div>
 
@@ -411,15 +420,15 @@ export default function ScorecardPage() {
             <span className="text-[10px] text-muted-foreground hidden sm:block">
               Auto-refresh 60s
             </span>
-            <a
-              href="http://localhost:8010/reports/performance?format=download"
+            <Link
+              href="/api/engine/reports/performance?format=download"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-accent"
             >
               <FileDown className="h-4 w-4" />
               Download Report
-            </a>
+            </Link>
             <button
               onClick={refreshAll}
               disabled={isLoading}
@@ -433,7 +442,7 @@ export default function ScorecardPage() {
       </header>
 
       {/* Page content */}
-      <main className="mx-auto max-w-[1200px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] px-6 py-6 space-y-6">
 
         {/* Page title */}
         <div className="flex items-center gap-3">
@@ -443,7 +452,9 @@ export default function ScorecardPage() {
               Paper Trading Scorecard
             </h2>
             <p className="text-xs text-muted-foreground">
-              {BACKTEST.instrument} &mdash; {BACKTEST.timeframe} &mdash; Validation targets for live trading promotion
+              {baseline
+                ? `${baseline.label} — ${baseline.timeframe} — Validation targets for live trading promotion`
+                : "No MCL/MNQ baseline JSON — Validation targets for live trading promotion"}
             </p>
           </div>
         </div>
@@ -622,7 +633,7 @@ export default function ScorecardPage() {
                     Profit Factor
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
-                    {BACKTEST.profitFactor}
+                    {fmtBaselineNum(baseline?.profitFactor ?? null)}
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
@@ -650,7 +661,7 @@ export default function ScorecardPage() {
                     Sharpe Ratio
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
-                    {BACKTEST.sharpeRatio}
+                    {fmtBaselineNum(baseline?.sharpeRatio ?? null)}
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
@@ -678,7 +689,9 @@ export default function ScorecardPage() {
                     Win Rate
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
-                    {BACKTEST.winRate}%
+                    {baseline?.winRatePct != null
+                      ? `${baseline.winRatePct.toFixed(1)}%`
+                      : "—"}
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
@@ -710,7 +723,9 @@ export default function ScorecardPage() {
                     Max Drawdown
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
-                    -{BACKTEST.maxDrawdown}%
+                    {baseline?.maxDrawdownPct != null
+                      ? `-${Math.abs(baseline.maxDrawdownPct).toFixed(1)}%`
+                      : "—"}
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
@@ -837,8 +852,20 @@ export default function ScorecardPage() {
 
         {/* Footer note */}
         <p className="text-[11px] text-muted-foreground text-center pb-4">
-          Backtest baseline: MES 1h &mdash; PF {BACKTEST.profitFactor}, Sharpe {BACKTEST.sharpeRatio},{" "}
-          {BACKTEST.totalReturn}, Win Rate {BACKTEST.winRate}% &mdash; Auto-refresh every 60s
+          {baseline ? (
+            <>
+              Backtest baseline: {baseline.label} &mdash; PF{" "}
+              {fmtBaselineNum(baseline.profitFactor)}, Sharpe{" "}
+              {fmtBaselineNum(baseline.sharpeRatio)}, {baseline.totalReturnLabel ?? "—"}, Win Rate{" "}
+              {baseline.winRatePct != null ? `${baseline.winRatePct.toFixed(1)}%` : "—"} &mdash;
+              Auto-refresh every 60s
+            </>
+          ) : (
+            <>
+              Baseline from saved backtest (MCL/MNQ preferred) &mdash; none loaded &mdash;
+              Auto-refresh every 60s
+            </>
+          )}
         </p>
       </main>
     </div>

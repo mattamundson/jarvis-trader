@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { RefreshCw, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,13 +107,9 @@ export function RegimePnLBreakdownWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
+      const json = await fetchEngine<{ trades?: TradeRecord[]; count?: number }>(
+        `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      const json = (await res.json()) as { trades?: TradeRecord[]; count?: number };
       setTrades(json.trades ?? []);
       setLastRefreshed(new Date());
     } catch (err) {

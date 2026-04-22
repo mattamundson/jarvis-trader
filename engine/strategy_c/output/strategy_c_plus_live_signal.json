@@ -1,0 +1,112 @@
+{
+  "generated_at": "2026-04-22T21:47:44.514728",
+  "strategy": "Strategy_C_Plus",
+  "effective_date": "2026-04-22",
+  "execution_note": "T+1 lag: execute Monday open after Friday signal",
+  "holdings": {
+    "XLK": 0.3503,
+    "QQQ": 0.3503,
+    "SHY": 0.2993
+  },
+  "combined_scale": 0.7007,
+  "pre_mtf_scale": 0.6093,
+  "layers": {
+    "momentum_signal": {
+      "raw_holdings": {
+        "XLK": 0.5,
+        "QQQ": 0.5
+      },
+      "risk_regime": "RISK_ON",
+      "absolute_mom_pass": true
+    },
+    "vol_targeting": {
+      "scale": 0.5539,
+      "realized_vol_pct": 12.64,
+      "vol_target_pct": 7.0,
+      "vol_regime": "NORMAL"
+    },
+    "vix_composite": {
+      "vix": 19.5,
+      "vix_regime": "NORMAL",
+      "composite_score": 0.8787,
+      "position_multiplier": 1.0,
+      "level_score": 0.75,
+      "mom_score": 0.9147,
+      "ma_score": 1.0,
+      "fear_score": 1.0,
+      "date": "2026-04-24"
+    },
+    "macro_filter": {
+      "yield_curve_adj": 0.1,
+      "cot_adj": 0.0,
+      "fed_cycle_adj": 0.0,
+      "yield_curve": 0.699,
+      "cot_es": "NEUTRAL",
+      "cot_nq": "NEUTRAL",
+      "fed_funds": 4.33,
+      "source": "live",
+      "cot_es_net": -115762,
+      "cot_nq_net": 10821,
+      "multiplier": 1.1,
+      "total_adj": 0.1
+    },
+    "mtf_signal": {
+      "mtf_scale": 1.15,
+      "weekly_momentum": "BULL",
+      "monthly_momentum": "BULL",
+      "daily_confirmation": "BULL",
+      "breadth": "EXPANDING",
+      "votes_bull": 3,
+      "votes_bear": 0,
+      "confidence": "HIGH",
+      "details": {
+        "XLK_weekly_roc": 0.076469,
+        "QQQ_weekly_roc": 0.037423,
+        "SPY_weekly_roc": 0.02028,
+        "weekly_median_roc": 0.037423,
+        "XLK_monthly_roc": 0.091951,
+        "QQQ_monthly_roc": 0.060985,
+        "SPY_monthly_roc": 0.041948,
+        "monthly_median_roc": 0.060985,
+        "daily_ema_symbol": "SPY",
+        "ema20_above_ema50": true,
+        "ema20": 682.7298,
+        "ema50": 676.7718,
+        "ema_gap_pct": 0.8804
+      }
+    }
+  },
+  "ibkr_instructions": {
+    "account": "DUP662235",
+    "mode": "PAPER",
+    "gateway_port": 4002,
+    "execution_timing": "MOO (Market On Open) \u2014 Monday morning",
+    "orders": [
+      {
+        "symbol": "XLK",
+        "action": "BUY",
+        "weight_pct": 35.03,
+        "order_type": "MKT",
+        "tif": "OPG",
+        "note": "Strategy C+ allocation: 35.0%"
+      },
+      {
+        "symbol": "QQQ",
+        "action": "BUY",
+        "weight_pct": 35.03,
+        "order_type": "MKT",
+        "tif": "OPG",
+        "note": "Strategy C+ allocation: 35.0%"
+      },
+      {
+        "symbol": "SHY",
+        "action": "BUY",
+        "weight_pct": 29.93,
+        "order_type": "MKT",
+        "tif": "OPG",
+        "note": "Strategy C+ allocation: 29.9%"
+      }
+    ],
+    "rebalance_required": true
+  }
+}

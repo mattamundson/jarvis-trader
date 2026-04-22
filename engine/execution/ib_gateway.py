@@ -20,8 +20,47 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 from typing import Optional
+
+
+def _nearest_front_month(reference: Optional[date] = None) -> str:
+    """
+    Return the nearest active front-month expiry as "YYYYMM" (IB contract month format).
+
+    Used for monthly-expiry futures (MCL crude oil) where the front month rolls
+    approximately on the 25th of the month prior to delivery.
+    """
+    ref = reference or date.today()
+    # If we're past the 20th, the current month has likely rolled — use next month
+    if ref.day >= 20:
+        if ref.month == 12:
+            return f"{ref.year + 1}01"
+        return f"{ref.year}{ref.month + 1:02d}"
+    return f"{ref.year}{ref.month:02d}"
+
+
+def _nearest_quarterly_expiry(reference: Optional[date] = None) -> str:
+    """
+    Return the nearest active quarterly expiry as "YYYYMM".
+
+    IB accepts the contract month in YYYYMM format and resolves the exact
+    expiry date itself. Using YYYYMMDD caused "No security definition" errors
+    because IB treats that as an exact date rather than a contract month.
+
+    Quarterly months: March (3), June (6), September (9), December (12).
+    """
+    ref = reference or date.today()
+    quarterly_months = [3, 6, 9, 12]
+    expiry_day_approx = 21
+    for month in quarterly_months:
+        candidate = date(ref.year, month, expiry_day_approx)
+        if candidate > ref:
+            return f"{ref.year}{month:02d}"
+    # All quarterly months in current year passed — use March of next year
+    return f"{ref.year + 1}03"
+
 
 logger = logging.getLogger(__name__)
 
@@ -89,19 +128,40 @@ except ImportError:
 # Values: (ib_local_symbol_root, exchange, currency, multiplier)
 
 FUTURES_SYMBOL_MAP: dict[str, dict] = {
+    # MES — Micro E-mini S&P 500. IB requires exchange="CME" (not GLOBEX) for
+    # contract qualification. Symbol is "MES" (not the standard "ES" underlying).
     "MES": {
-        "underlying": "ES",
-        "exchange": "GLOBEX",
+        "underlying": "MES",
+        "exchange": "CME",
         "currency": "USD",
         "secType": "FUT",
         "multiplier": "5",
     },
+    # MNQ — Micro E-mini Nasdaq-100. exchange="CME" required for qualification.
     "MNQ": {
-        "underlying": "NQ",
-        "exchange": "GLOBEX",
+        "underlying": "MNQ",
+        "exchange": "CME",
         "currency": "USD",
         "secType": "FUT",
         "multiplier": "2",
+    },
+    # Micro Crude Oil — NYMEX (approved paper-trading instrument, WFE=0.82)
+    # Error 321 root cause: MCL was missing from this map and fell back to Stock().
+    # Fix: explicitly map MCL to NYMEX with correct contract metadata.
+    "MCL": {
+        "underlying": "MCL",
+        "exchange": "NYMEX",
+        "currency": "USD",
+        "secType": "FUT",
+        "multiplier": "100",
+    },
+    # Micro Gold — COMEX
+    "MGC": {
+        "underlying": "MGC",
+        "exchange": "COMEX",
+        "currency": "USD",
+        "secType": "FUT",
+        "multiplier": "10",
     },
     # Extended micro-futures for future use
     "MYM": {
@@ -354,15 +414,29 @@ class IBGatewayManager:
 
         if upper in FUTURES_SYMBOL_MAP:
             spec = FUTURES_SYMBOL_MAP[upper]
-            # Use empty lastTradeDateOrContractMonth to let IB resolve front month
+
+            # MCL (Micro Crude Oil) uses monthly expiry; all others use quarterly.
+            # Providing lastTradeDateOrContractMonth prevents IB Error 321
+            # ("Error validating request") which occurs when the contract spec is
+            # ambiguous because both exchange AND expiry are unspecified.
+            if upper == "MCL":
+                contract_month = _nearest_front_month()
+            else:
+                contract_month = _nearest_quarterly_expiry()
+
             contract = Future(
                 symbol=spec["underlying"],
+                lastTradeDateOrContractMonth=contract_month,
                 exchange=spec["exchange"],
                 currency=spec["currency"],
                 multiplier=spec["multiplier"],
             )
             logger.debug(
-                "Resolved %s → Future(%s, %s)", symbol, spec["underlying"], spec["exchange"]
+                "Resolved %s → Future(%s, %s, month=%s)",
+                symbol,
+                spec["underlying"],
+                spec["exchange"],
+                contract_month,
             )
             return contract
 
@@ -391,7 +465,9 @@ class IBGatewayManager:
 
     # ── Order placement ───────────────────────────────────────────────────
 
-    def _validate_order_preconditions(self, action: str, quantity: int) -> Optional[tuple[str, str]]:
+    def _validate_order_preconditions(
+        self, action: str, quantity: int
+    ) -> Optional[tuple[str, str]]:
         """Validate safety and input preconditions. Returns (action_upper, order_type_upper) or None."""
         if self._config.port == LIVE_TRADING_PORT:
             logger.critical("place_paper_order: port 4001 rejected — live trading disabled")
@@ -463,17 +539,21 @@ class IBGatewayManager:
         order_type: str = "MKT",
         limit_price: Optional[float] = None,
         aux_price: Optional[float] = None,
+        parent_order_id: Optional[int] = None,
     ) -> Optional[int]:
         """
         Place an order on the IB paper account (port 4002 only).
 
         Args:
-            symbol:      JARVIS symbol (e.g. "MES", "MNQ", "AAPL")
-            action:      "BUY" or "SELL"
-            quantity:    Number of contracts / shares (positive integer)
-            order_type:  "MKT", "LMT", "STP", "STP_LMT"
-            limit_price: Required for LMT and STP_LMT orders
-            aux_price:   Stop price for STP and STP_LMT orders
+            symbol:          JARVIS symbol (e.g. "MES", "MNQ", "AAPL")
+            action:          "BUY" or "SELL"
+            quantity:        Number of contracts / shares (positive integer)
+            order_type:      "MKT", "LMT", "STP", "STP_LMT"
+            limit_price:     Required for LMT and STP_LMT orders
+            aux_price:       Stop price for STP and STP_LMT orders
+            parent_order_id: IB orderId of the parent entry when placing a
+                             child STP — sets Order.parentId so IB links the
+                             child to the entry fill atomically at the broker.
 
         Returns:
             IB order ID (int) on success, None on failure.
@@ -485,13 +565,14 @@ class IBGatewayManager:
         order_type_upper = order_type.upper()
 
         logger.info(
-            "place_paper_order | symbol=%s action=%s qty=%d type=%s lmt=%s aux=%s",
+            "place_paper_order | symbol=%s action=%s qty=%d type=%s lmt=%s aux=%s parent=%s",
             symbol,
             action_upper,
             quantity,
             order_type_upper,
             limit_price,
             aux_price,
+            parent_order_id,
         )
 
         try:
@@ -514,16 +595,20 @@ class IBGatewayManager:
             if self._config.account:
                 ib_order.account = self._config.account
 
+            if parent_order_id is not None:
+                ib_order.parentId = int(parent_order_id)
+
             trade = self._ib.placeOrder(contract, ib_order)
             order_id: int = trade.order.orderId
 
             logger.info(
-                "Order placed | symbol=%s action=%s qty=%d type=%s order_id=%d",
+                "Order placed | symbol=%s action=%s qty=%d type=%s order_id=%d parent=%s",
                 symbol,
                 action_upper,
                 quantity,
                 order_type_upper,
                 order_id,
+                parent_order_id,
             )
             return order_id
 

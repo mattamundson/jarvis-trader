@@ -1,5 +1,6 @@
 // Settings API — kill switch, risk config, IB gateway controls
-// All calls proxy through Next.js rewrites → http://localhost:8010
+// All calls proxy through fetchEngine/postEngine in @/lib/api.ts
+// NEVER hardcode an absolute engine URL or make fetch calls directly.
 
 import { fetchEngine, postEngine } from "@/lib/api";
 

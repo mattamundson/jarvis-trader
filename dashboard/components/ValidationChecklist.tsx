@@ -3,8 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchDailyPnLHistory, fetchEngine } from "@/lib/api";
 const STARTING_BALANCE = 10_000;
 const REFRESH_MS = 300_000; // 5 minutes
 
@@ -20,6 +19,7 @@ interface PerformanceData {
 interface DailyPnlEntry {
   cumulative_pnl?: number;
   pnl?: number;
+  realized_pnl?: number;
   date?: string;
 }
 
@@ -62,6 +62,9 @@ function computeMaxDrawdown(entries: DailyPnlEntry[]): number | null {
     } else if (typeof entry.pnl === "number") {
       running += entry.pnl;
       series.push(running);
+    } else if (typeof entry.realized_pnl === "number") {
+      running += entry.realized_pnl;
+      series.push(running);
     }
   }
 
@@ -98,18 +101,9 @@ export function ValidationChecklist() {
     setState((prev) => ({ ...prev, loading: prev.criteria.length === 0, error: null }));
 
     const [perfResult, pnlResult, daysResult] = await Promise.allSettled([
-      fetch(`${ENGINE_URL}/analytics/performance`).then((r) => {
-        if (!r.ok) throw new Error(`/analytics/performance ${r.status}`);
-        return r.json() as Promise<PerformanceData>;
-      }),
-      fetch(`${ENGINE_URL}/portfolio/history/daily-pnl?limit=90`).then((r) => {
-        if (!r.ok) throw new Error(`/portfolio/history/daily-pnl ${r.status}`);
-        return r.json() as Promise<DailyPnlEntry[] | { data?: DailyPnlEntry[] }>;
-      }),
-      fetch(`${ENGINE_URL}/portfolio/stats/trading-days`).then((r) => {
-        if (!r.ok) throw new Error(`/portfolio/stats/trading-days ${r.status}`);
-        return r.json() as Promise<TradingDaysData>;
-      }),
+      fetchEngine<PerformanceData>("/analytics/performance"),
+      fetchDailyPnLHistory({ days: 90 }),
+      fetchEngine<TradingDaysData>("/portfolio/stats/trading-days"),
     ]);
 
     // ── Extract performance metrics ──────────────────────────────────────────
@@ -126,12 +120,7 @@ export function ValidationChecklist() {
     // ── Extract daily PnL ────────────────────────────────────────────────────
     let pnlEntries: DailyPnlEntry[] = [];
     if (pnlResult.status === "fulfilled") {
-      const raw = pnlResult.value;
-      if (Array.isArray(raw)) {
-        pnlEntries = raw;
-      } else if (raw && typeof raw === "object" && Array.isArray((raw as { data?: DailyPnlEntry[] }).data)) {
-        pnlEntries = (raw as { data: DailyPnlEntry[] }).data;
-      }
+      pnlEntries = pnlResult.value.daily_pnl ?? [];
     }
     const maxDrawdown = computeMaxDrawdown(pnlEntries);
 

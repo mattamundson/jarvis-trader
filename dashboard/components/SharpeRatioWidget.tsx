@@ -4,8 +4,8 @@ import React, { useState, useEffect } from "react";
 import { TrendingUp, RefreshCw, Target, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -157,12 +157,8 @@ export function SharpeRatioWidget() {
 
   async function fetchData() {
     try {
-      const res = await fetch(`${ENGINE_URL}/analytics/performance`);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      const json: PerformanceResponse = await res.json();
-      setData(json);
+      const payload = await fetchEngine(`/analytics/performance`);
+      setData(payload);
       setError(null);
       setLastRefresh(new Date());
     } catch (err) {
@@ -235,7 +231,7 @@ export function SharpeRatioWidget() {
               <p className="text-sm font-semibold text-bear">Engine unavailable</p>
               <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Ensure JARVIS engine is running on port 8010. Retrying every 30s.
+                Ensure the JARVIS engine is running and reachable through the dashboard proxy. Retrying every 30s.
               </p>
             </div>
           </div>

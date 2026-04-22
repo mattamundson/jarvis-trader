@@ -49,7 +49,7 @@ class TestCostCalculation:
     def test_opus_cost_calculation(self, llm_client):
         """Test cost calculation for Opus model."""
         cost = llm_client._calculate_cost(
-            model="claude-opus-4-6",
+            model="claude-opus-4-7",
             input_tokens=100_000,  # 0.1M
             output_tokens=50_000,  # 0.05M
         )
@@ -94,7 +94,7 @@ class TestCostTracking:
         """Test logging a single call."""
         await cost_tracker.log_call(
             timestamp=datetime.now(timezone.utc).isoformat(),
-            model="claude-opus-4-6",
+            model="claude-opus-4-7",
             input_tokens=100,
             output_tokens=50,
             cost_usd=1.50,
@@ -121,7 +121,7 @@ class TestCostTracking:
         for i in range(5):
             await cost_tracker.log_call(
                 timestamp=now.isoformat(),
-                model="claude-opus-4-6",
+                model="claude-opus-4-7",
                 input_tokens=1000,
                 output_tokens=500,
                 cost_usd=0.05,
@@ -135,17 +135,21 @@ class TestCostTracking:
         assert stats["total_calls"] == 5
         assert stats["total_cost_usd"] == pytest.approx(0.25, rel=0.01)
         assert stats["success_rate"] == pytest.approx(0.8, rel=0.01)
-        assert "claude-opus-4-6" in stats["per_model"]
+        assert "claude-opus-4-7" in stats["per_model"]
 
     @pytest.mark.asyncio
     async def test_monthly_summary(self, cost_tracker):
         """Test monthly summary with daily breakdown."""
         now = datetime.now(timezone.utc)
 
-        # Log 10 calls
+        # Log 10 calls — normalise to midnight so all records fall before any
+        # month_start timestamp computed inside get_monthly_summary (which uses
+        # the current wall-clock time, not midnight).
         for i in range(10):
             await cost_tracker.log_call(
-                timestamp=now.replace(day=min(i + 1, 28)).isoformat(),
+                timestamp=now.replace(
+                    day=min(i + 1, 28), hour=0, minute=0, second=0, microsecond=0
+                ).isoformat(),
                 model="claude-sonnet-4-6",
                 input_tokens=500,
                 output_tokens=200,
@@ -168,7 +172,7 @@ class TestFallbackChain:
 
     def test_fallback_chain_mapping(self, llm_client):
         """Test that fallback chain is correctly defined."""
-        assert llm_client.FALLBACK_CHAIN["claude-opus-4-6"] == "claude-sonnet-4-6"
+        assert llm_client.FALLBACK_CHAIN["claude-opus-4-7"] == "claude-sonnet-4-6"
         assert llm_client.FALLBACK_CHAIN["claude-sonnet-4-6"] == "claude-haiku-4-5-20251001"
         assert llm_client.FALLBACK_CHAIN["claude-haiku-4-5-20251001"] is None
 
@@ -182,7 +186,7 @@ class TestLLMCallResult:
 
         result = LLMCallResult(
             success=True,
-            model="claude-opus-4-6",
+            model="claude-opus-4-7",
             input_tokens=100,
             output_tokens=50,
             cost_usd=0.10,
@@ -192,7 +196,7 @@ class TestLLMCallResult:
         )
 
         assert result.success is True
-        assert result.model == "claude-opus-4-6"
+        assert result.model == "claude-opus-4-7"
         assert result.input_tokens == 100
         assert result.latency_ms == 800
 
@@ -202,7 +206,7 @@ class TestLLMCallResult:
 
         result = LLMCallResult(
             success=False,
-            model="claude-opus-4-6",
+            model="claude-opus-4-7",
             input_tokens=0,
             output_tokens=0,
             cost_usd=0.0,

@@ -284,3 +284,282 @@ def ema_ribbon(close: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
     ema_21 = close.ewm(span=21, adjust=False).mean()
     ema_34 = close.ewm(span=34, adjust=False).mean()
     return ema_8, ema_21, ema_34
+
+
+# ─── AutoTrade-derived indicators (Phase 1) ───────────────────────────
+
+
+def donchian_channels(
+    high: pd.Series, low: pd.Series, entry_period: int = 20, exit_period: int = 6
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
+    """
+    Donchian breakout + exit channels.
+    Shifted 1 bar to prevent look-ahead bias.
+    Returns (entry_high, entry_low, exit_high, exit_low).
+    """
+    entry_high = high.shift(1).rolling(entry_period).max()
+    entry_low = low.shift(1).rolling(entry_period).min()
+    exit_high = high.shift(1).rolling(exit_period).max()
+    exit_low = low.shift(1).rolling(exit_period).min()
+    return entry_high, entry_low, exit_high, exit_low
+
+
+def ema_slope(close: pd.Series, period: int = 21, lookback: int = 3) -> pd.Series:
+    """
+    Slope of EMA over lookback bars.
+    Positive = rising trend confirmation, negative = declining.
+    Filters flat crossovers where EMA is directionless.
+    """
+    ema = close.ewm(span=period, adjust=False).mean()
+    return ema - ema.shift(lookback)
+
+
+def atr_regime(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    atr_period: int = 14, sma_period: int = 20
+) -> pd.Series:
+    """
+    ATR regime filter: True when volatility is expanding (ATR > SMA of ATR).
+    Only enter trades when volatility is expanding — filters choppy markets.
+    """
+    atr = wilder_atr(high, low, close, atr_period)
+    atr_sma = atr.rolling(sma_period).mean()
+    return atr > atr_sma
+
+
+def volume_regime(volume: pd.Series, lookback: int = 20) -> pd.Series:
+    """
+    Volume regime classification: HIGH (>1.5x avg), NORMAL, LOW (<0.67x avg).
+    HIGH volume confirms institutional participation in moves.
+    """
+    avg = volume.rolling(lookback).mean()
+    ratio = volume / avg.replace(0, np.nan)
+    result = pd.Series("NORMAL", index=volume.index)
+    result[ratio > 1.5] = "HIGH"
+    result[ratio < 0.67] = "LOW"
+    return result
+
+
+def compute_vwap(df: "pd.DataFrame", session_reset: bool = True) -> "pd.Series":
+    """
+    Volume-Weighted Average Price.
+
+    Resets at the start of each trading day when session_reset=True.
+    Standard formula: cumsum(typical_price * volume) / cumsum(volume)
+
+    Args:
+        df: DataFrame with columns: high, low, close, volume. Index must be datetime.
+        session_reset: Reset accumulation at each new trading day (True for intraday use).
+
+    Returns:
+        pd.Series named 'vwap', same index as df.
+    """
+    import pandas as pd
+
+    typical_price = (df['high'] + df['low'] + df['close']) / 3.0
+    dollar_volume = typical_price * df['volume']
+
+    if session_reset:
+        try:
+            if hasattr(df.index, 'date'):
+                dates = df.index.date
+            else:
+                dates = pd.to_datetime(df.index).dt.date
+
+            cumulative_dv = dollar_volume.groupby(dates).cumsum()
+            cumulative_v = df['volume'].groupby(dates).cumsum()
+        except Exception:
+            # Fall back to rolling VWAP if date grouping fails
+            cumulative_dv = dollar_volume.cumsum()
+            cumulative_v = df['volume'].cumsum()
+    else:
+        cumulative_dv = dollar_volume.cumsum()
+        cumulative_v = df['volume'].cumsum()
+
+    vwap = cumulative_dv / cumulative_v.replace(0, float('nan'))
+    return vwap.rename('vwap')
+
+
+def compute_adx(df: "pd.DataFrame", period: int = 14) -> "pd.DataFrame":
+    """
+    Average Directional Index (ADX) with +DI and -DI.
+
+    ADX measures trend strength (0-100):
+    - ADX >= 25: strong trend
+    - ADX 20-25: developing trend
+    - ADX < 20: weak/ranging market
+
+    Returns DataFrame with columns: adx, adx_norm (0-1), plus_di, minus_di
+    """
+    import pandas as pd
+    import numpy as np
+
+    high = df['high']
+    low = df['low']
+    close = df['close']
+
+    # True Range components
+    tr = pd.concat([
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low - close.shift(1)).abs(),
+    ], axis=1).max(axis=1)
+
+    # Directional Movement
+    up_move = high.diff()
+    down_move = -low.diff()
+
+    plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0.0), index=df.index)
+    minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0.0), index=df.index)
+
+    # Wilder's smoothed averages (standard RMA: seed = sum of first period bars)
+    def wilder_smooth(series, period):
+        """Wilder RMA seeded with sum of first period values."""
+        result = series.copy().astype(float)
+        result.iloc[:period] = float('nan')
+        result.iloc[period - 1] = series.iloc[:period].sum()
+        for i in range(period, len(series)):
+            result.iloc[i] = result.iloc[i-1] - (result.iloc[i-1] / period) + series.iloc[i]
+        return result
+
+    tr_smooth = wilder_smooth(tr, period)
+    plus_dm_smooth = wilder_smooth(plus_dm, period)
+    minus_dm_smooth = wilder_smooth(minus_dm, period)
+
+    plus_di = 100 * plus_dm_smooth / tr_smooth.replace(0, float('nan'))
+    minus_di = 100 * minus_dm_smooth / tr_smooth.replace(0, float('nan'))
+
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, float('nan'))
+
+    # ADX: Wilder smooth of DX, seeded with mean of first `period` valid DX values.
+    # DX is NaN for first (period-1) bars, so we seed from index (2*period-2).
+    adx = pd.Series(float('nan'), index=df.index)
+    seed_end = 2 * period - 2  # inclusive index where the first valid DX batch ends
+    if len(dx) > seed_end:
+        valid_dx = dx.iloc[period - 1: seed_end + 1].dropna()
+        if len(valid_dx) > 0:
+            adx.iloc[seed_end] = valid_dx.mean()
+            for i in range(seed_end + 1, len(dx)):
+                if pd.isna(dx.iloc[i]):
+                    adx.iloc[i] = adx.iloc[i - 1]
+                else:
+                    adx.iloc[i] = (adx.iloc[i - 1] * (period - 1) + dx.iloc[i]) / period
+
+    return pd.DataFrame({
+        'adx': adx,
+        'adx_norm': adx / 100.0,
+        'plus_di': plus_di,
+        'minus_di': minus_di,
+    }, index=df.index)
+
+
+def rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    """
+    Relative Strength Index (0-100).
+    Entry filter: >54 for longs, <46 for shorts.
+    Exit trigger: crosses 50 midpoint.
+    """
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+
+    # Wilder's smoothing (same as EMA with alpha=1/period)
+    avg_gain = gain.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return (100 - 100 / (1 + rs)).fillna(50.0)
+
+
+def fib_ema_stack(close: pd.Series) -> Dict[str, pd.Series]:
+    """
+    Fibonacci-period EMA stack: 8, 13, 21, 34, 55, 89, 144.
+    Extended trend analysis — all aligned = strong trend.
+    """
+    periods = [8, 13, 21, 34, 55, 89, 144]
+    return {f"ema_{p}": close.ewm(span=p, adjust=False).mean() for p in periods}
+
+
+# ─── Futures-adapted strategy indicators (Phase 2) ───────────────────────────
+
+
+def compute_roc(
+    close: pd.Series,
+    period: int = 10,
+) -> pd.Series:
+    """
+    Rate of Change (momentum oscillator).
+    RoC = (close / close[N periods ago] - 1) * 100
+
+    Positive RoC = upward momentum (price higher than N bars ago)
+    Negative RoC = downward momentum
+    Threshold: |RoC| > 0.3% = meaningful momentum signal
+
+    For MES/MCL/MNQ 1h bars, period=10 = ~10 hours of momentum lookback.
+    """
+    return ((close / close.shift(period)) - 1) * 100.0
+
+
+def compute_trin(advancing_issues: int, declining_issues: int,
+                 advancing_volume: float, declining_volume: float) -> Optional[float]:
+    """
+    Compute TRIN (Arms Index / Short-Term Trading Index).
+
+    TRIN = (Advancing Issues / Declining Issues) / (Advancing Volume / Declining Volume)
+
+    Interpretation:
+    - TRIN < 0.60: Blow-off top / extreme buying — caution for LONG entries
+    - TRIN 0.60-1.00: Bullish breadth
+    - TRIN 1.00-1.40: Bearish breadth
+    - TRIN > 2.00: Capitulation / extreme selling — potential reversal
+
+    Returns None if any input is zero (division guard).
+    """
+    if declining_issues == 0 or declining_volume == 0:
+        return None
+
+    advance_decline_ratio = advancing_issues / declining_issues
+    advance_decline_vol_ratio = advancing_volume / declining_volume
+
+    if advance_decline_vol_ratio == 0:
+        return None
+
+    return advance_decline_ratio / advance_decline_vol_ratio
+
+
+def classify_trin(trin_value: Optional[float]) -> str:
+    """Classify TRIN value into a regime signal."""
+    if trin_value is None:
+        return "UNAVAILABLE"
+    if trin_value < 0.60:
+        return "BLOWOFF_TOP"       # Extreme buying — caution for longs
+    elif trin_value < 1.00:
+        return "BULLISH"
+    elif trin_value < 1.40:
+        return "BEARISH"
+    elif trin_value < 2.00:
+        return "OVERSOLD"
+    else:
+        return "CAPITULATION"      # Extreme selling — potential reversal
+
+
+def compute_vwap_zscore(
+    close: pd.Series,
+    vwap: pd.Series,
+    atr: pd.Series,
+) -> pd.Series:
+    """
+    VWAP deviation z-score: how many ATR units is price from VWAP.
+
+    z = (close - vwap) / atr
+
+    z > +1.2 → price extended above VWAP (mean-reversion short opportunity)
+    z < -1.2 → price extended below VWAP (mean-reversion long opportunity)
+    |z| < 0.5 → price near VWAP (neutral)
+
+    Uses ATR as normalizer — scale-invariant across instruments (MES vs MCL).
+    Used as convergence/mean-reversion signal when opposite to trend bias.
+    """
+    deviation = close - vwap
+    zscore = deviation / atr.replace(0, float('nan'))
+    return zscore.rename('vwap_zscore')

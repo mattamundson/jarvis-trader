@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Target, ShieldAlert, Minus, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngineRaw } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface TradeRecord {
   id: number;
@@ -99,14 +99,17 @@ export function EntryQualityWidget() {
 
   async function load() {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=200`,
+      const res = await fetchEngineRaw(
+        `/portfolio/history/trades?status=CLOSED&limit=200`,
         { cache: "no-store" }
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: TradesResponse = await res.json();
-      const trades = (data.trades ?? []).filter(
-        (t) => t.realized_pnl !== null && t.realized_pnl !== undefined
+      const payload: unknown = await res.json();
+      const rows: TradeRecord[] = Array.isArray(payload)
+        ? payload
+        : ((payload as { trades?: TradeRecord[] }).trades ?? []);
+      const trades = rows.filter(
+        (t: TradeRecord) =>
+          t.realized_pnl !== null && t.realized_pnl !== undefined
       );
       setStats(computeStats(trades));
       setTotal(trades.length);

@@ -8,18 +8,13 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { fetchEngine } from "@/lib/api";
+import { fetchDailyPnLHistory } from "@/lib/api";
 
-// Shape returned by GET /portfolio/history/daily-pnl
 interface DailyPnlEntry {
   date: string;
   pnl: number;
   num_trades: number;
   balance?: number;
-}
-
-interface DailyPnlResponse {
-  daily_pnl: DailyPnlEntry[];
 }
 
 export function CalendarHeatmap() {
@@ -29,10 +24,17 @@ export function CalendarHeatmap() {
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await fetchEngine<DailyPnlResponse>(
-          "/portfolio/history/daily-pnl?limit=90"
+        const data = await fetchDailyPnLHistory({ days: 90 });
+        const raw = data.daily_pnl ?? [];
+        setRecords(
+          raw.map((r) => ({
+            date: String(r.date).slice(0, 10),
+            pnl: Number(r.realized_pnl ?? 0),
+            num_trades: Number(
+              r.num_trades ?? (r as { total_trades?: number }).total_trades ?? 0
+            ),
+          }))
         );
-        setRecords(data.daily_pnl ?? []);
       } catch {
         // ignore fetch errors — show empty calendar
       } finally {

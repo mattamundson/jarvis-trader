@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
+import { JetBrains_Mono, Orbitron } from "next/font/google";
 import {
   Shield,
   Zap,
@@ -23,6 +24,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { fetchEngine } from "@/lib/api";
+import { INSTRUMENTS, WFE_ROWS } from "./constants";
+import { SignalFeedWidget } from "@/components/SignalFeedWidget";
+import ApprovalPanel from "@/components/ApprovalPanel";
+import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+
+const fontDisplay = Orbitron({
+  subsets: ["latin"],
+  weight: ["500", "700", "900"],
+  variable: "--font-cc-display",
+});
+const fontMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "600"],
+  variable: "--font-cc-mono",
+});
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -90,6 +106,15 @@ interface MacroData {
   vix_regime?: string;
   regime?: string;
   timestamp?: string;
+}
+
+interface PaperStatusRow {
+  status?: string;
+  wfe?: number;
+  wfe_label?: string;
+  reason?: string;
+  cleared_date?: string;
+  closed_date?: string;
 }
 
 interface Trade {
@@ -187,44 +212,6 @@ function getMarketSession(): SessionInfo {
   };
 }
 
-// ── Instrument Config ─────────────────────────────────────────────────────
-
-const INSTRUMENTS = [
-  {
-    symbol: "MCL",
-    tf: "1h",
-    status: "APPROVED" as const,
-    wfe: 0.82,
-    regime: "BULL",
-    lastSignal: "LONG",
-    atr: "~0.42",
-  },
-  {
-    symbol: "MNQ",
-    tf: "1h",
-    status: "APPROVED" as const,
-    wfe: 0.57,
-    regime: "NEUTRAL",
-    lastSignal: "FLAT",
-    atr: "~18.5",
-  },
-  {
-    symbol: "MGC",
-    tf: "1d",
-    status: "HALTED" as const,
-    wfe: 0.88,
-    regime: "OVERFIT",
-    lastSignal: "—",
-    atr: "~9.2",
-  },
-];
-
-const WFE_ROWS = [
-  { symbol: "MCL", tf: "1h", wfe: 0.82, threshold: 0.3, status: "PASS" as const },
-  { symbol: "MNQ", tf: "1h", wfe: 0.57, threshold: 0.3, status: "PASS" as const },
-  { symbol: "MGC", tf: "1d", wfe: 0.88, threshold: 0.3, status: "OVERFIT" as const },
-];
-
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function fmtUSD(n: number | undefined | null): string {
@@ -317,6 +304,12 @@ export default function CommandCenterPage() {
     shouldRetryOnError: false,
   });
 
+  const { data: paperStatus } = useSWR<Record<string, PaperStatusRow>>(
+    "/backtest/paper-status",
+    fetcher,
+    { refreshInterval: 120_000, shouldRetryOnError: false }
+  );
+
   const { data: trades } = useSWR<Trade[]>(
     "/portfolio/history/trades",
     fetcher,
@@ -325,6 +318,37 @@ export default function CommandCenterPage() {
 
   const engineOnline = !healthErr && !!health;
   const killSwitchActive = health?.kill_switch_active ?? false;
+
+  const liveWfeRows = useMemo(() => {
+    if (!paperStatus) return WFE_ROWS;
+    const keys: { k: string; symbol: string; tf: string; threshold: number }[] = [
+      { k: "MCL_1h", symbol: "MCL", tf: "1h", threshold: 0.3 },
+      { k: "MNQ_1h", symbol: "MNQ", tf: "1h", threshold: 0.3 },
+      { k: "MGC_1d", symbol: "MGC", tf: "1d", threshold: 0.3 },
+    ];
+    return keys.map(({ k, symbol, tf, threshold }) => {
+      const row = paperStatus[k];
+      const wfe = typeof row?.wfe === "number" ? row.wfe : 0;
+      const active = (row?.status || "").toUpperCase() === "ACTIVE";
+      const status = active ? ("PASS" as const) : ("OVERFIT" as const);
+      return { symbol, tf, wfe, threshold, status };
+    });
+  }, [paperStatus]);
+
+  const liveInstruments = useMemo(() => {
+    if (!paperStatus) return INSTRUMENTS;
+    return INSTRUMENTS.map((inst) => {
+      const key = `${inst.symbol}_${inst.tf}`;
+      const row = paperStatus[key];
+      if (!row || typeof row.wfe !== "number") return inst;
+      const active = (row.status || "").toUpperCase() === "ACTIVE";
+      return {
+        ...inst,
+        wfe: row.wfe,
+        status: active ? ("APPROVED" as const) : ("HALTED" as const),
+      };
+    });
+  }, [paperStatus]);
 
   // Risk gauge calculations
   const dailyPnlPct =
@@ -362,13 +386,19 @@ export default function CommandCenterPage() {
   }, [mutateHealth]);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 p-4 font-sans">
+    <div
+      className={`min-h-screen bg-gray-950 text-gray-100 p-4 font-sans ${fontDisplay.variable} ${fontMono.variable}`}
+      style={{ fontFamily: "var(--font-cc-mono), ui-monospace, monospace" }}
+    >
       {/* ═══════════════════════════════════════════════════════
           HEADER
       ═══════════════════════════════════════════════════════ */}
       <div className="flex items-center justify-between mb-5 border-b border-cyan-900/40 pb-4">
         <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 via-blue-300 to-cyan-300 bg-clip-text text-transparent tracking-widest font-mono uppercase">
+          <h1
+            className="text-2xl font-bold bg-gradient-to-r from-cyan-400 via-blue-300 to-cyan-300 bg-clip-text text-transparent tracking-widest uppercase"
+            style={{ fontFamily: "var(--font-cc-display), sans-serif" }}
+          >
             JARVIS TRADER — COMMAND CENTER
           </h1>
           <div className="flex items-center gap-3 mt-1">
@@ -443,9 +473,26 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          ROW 1 — STATUS OVERVIEW (4 columns)
+          TRADE APPROVALS — human-in-the-loop gate
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="mb-4">
+        <Card className="border border-amber-500/30 bg-zinc-900/50">
+          <CardHeader className="pb-1.5 pt-3 px-4">
+            <CardTitle className="text-xs font-mono text-amber-400 tracking-widest flex items-center gap-1.5">
+              <AlertTriangle className="w-3 h-3" />
+              TRADE APPROVALS
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <ApprovalPanel />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          ROW 1 — STATUS OVERVIEW (5 columns)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-5 gap-3 mb-4">
         {/* Portfolio */}
         <Card className="bg-slate-900/60 border border-cyan-900/50">
           <CardHeader className="pb-1.5 pt-3 px-4">
@@ -496,7 +543,7 @@ export default function CommandCenterPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3 space-y-2.5">
-            {INSTRUMENTS.map((inst) => (
+            {liveInstruments.map((inst) => (
               <div
                 key={inst.symbol}
                 className="flex items-center justify-between"
@@ -631,13 +678,16 @@ export default function CommandCenterPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Portfolio Correlation */}
+        <PortfolioCorrelationWidget />
       </div>
 
       {/* ═══════════════════════════════════════════════════════
           ROW 2 — SIGNAL CARDS (3 columns)
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-3 gap-3 mb-4">
-        {INSTRUMENTS.map((inst) => (
+        {liveInstruments.map((inst) => (
           <Card
             key={inst.symbol}
             className={`bg-slate-900/60 border ${
@@ -980,7 +1030,7 @@ export default function CommandCenterPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3 space-y-4">
-            {WFE_ROWS.map((row) => (
+            {liveWfeRows.map((row) => (
               <div key={row.symbol}>
                 <div className="flex justify-between items-center mb-1.5">
                   <div className="flex items-center gap-2">
@@ -1220,27 +1270,20 @@ export default function CommandCenterPage() {
             <Button
               onClick={() => mutateHealth()}
               variant="ghost"
-              className="w-full mt-1 h-7 text-xs font-mono text-slate-500 hover:text-cyan-400 hover:bg-slate-800/50 border border-slate-800 hover:border-cyan-900"
+              size="sm"
+              className="w-full text-xs"
             >
-              <RefreshCw className="w-3 h-3 mr-1.5" />
-              Refresh Health
+              Refresh
             </Button>
           </CardContent>
         </Card>
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          FOOTER
+          ROW 6 — SIGNAL FEED (full width)
       ═══════════════════════════════════════════════════════ */}
-      <div className="mt-5 pt-3 border-t border-slate-800/50 flex items-center justify-between text-xs font-mono text-slate-600">
-        <span>JARVIS TRADER — COMMAND CENTER v2.7 · Port 8010</span>
-        <span>
-          Auto-refresh:{" "}
-          <span className={session.isActive ? "text-green-600" : "text-slate-600"}>
-            {refreshInterval / 1000}s
-          </span>{" "}
-          · Last render: {now.toLocaleTimeString("en-US", { hour12: false })}
-        </span>
+      <div className="mt-3">
+        <SignalFeedWidget />
       </div>
     </div>
   );

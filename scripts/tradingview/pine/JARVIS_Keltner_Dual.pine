@@ -1,0 +1,117 @@
+//@version=5
+indicator("JARVIS Keltner Dual", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_fast_ema_len  = input.int(7,  "Fast EMA Length",      minval=1)
+i_fast_atr_len  = input.int(7,  "Fast ATR Length",      minval=1)
+i_fast_mult     = input.float(1.5, "Fast ATR Multiplier", minval=0.1, step=0.1)
+
+i_slow_ema_len  = input.int(20, "Slow EMA Length",      minval=1)
+i_slow_atr_len  = input.int(14, "Slow ATR Length",      minval=1)
+i_slow_mult     = input.float(2.0, "Slow ATR Multiplier", minval=0.1, step=0.1)
+
+// ─── Fast Keltner Channel ────────────────────────────────────────────────────
+fast_ema   = ta.ema(close, i_fast_ema_len)
+fast_atr   = ta.atr(i_fast_atr_len)
+fast_upper = fast_ema + i_fast_mult * fast_atr
+fast_lower = fast_ema - i_fast_mult * fast_atr
+
+// ─── Slow Keltner Channel ────────────────────────────────────────────────────
+slow_ema   = ta.ema(close, i_slow_ema_len)
+slow_atr   = ta.atr(i_slow_atr_len)
+slow_upper = slow_ema + i_slow_mult * slow_atr
+slow_lower = slow_ema - i_slow_mult * slow_atr
+
+// ─── Bias Logic ──────────────────────────────────────────────────────────────
+// Bull: entire fast channel is above slow midline
+// Bear: entire fast channel is below slow midline
+// Neutral: channels overlap around slow mid
+bull_bias    = fast_lower > slow_ema
+bear_bias    = fast_upper < slow_ema
+neutral_bias = not bull_bias and not bear_bias
+
+// Squeeze: fast channel is fully contained within slow channel
+kc_squeeze = fast_upper <= slow_upper and fast_lower >= slow_lower
+
+// ─── Plots ───────────────────────────────────────────────────────────────────
+// Fast KC — solid lines
+plot(fast_upper, "Fast Upper", color=color.cyan,    linewidth=2, style=plot.style_line)
+plot(fast_ema,   "Fast Mid",   color=color.gray,    linewidth=1, style=plot.style_line)
+plot(fast_lower, "Fast Lower", color=color.fuchsia, linewidth=2, style=plot.style_line)
+
+// Slow KC — dashed lines
+plot(slow_upper, "Slow Upper", color=color.blue, linewidth=2, style=plot.style_linebr)
+plot(slow_ema,   "Slow Mid",   color=color.gray, linewidth=1, style=plot.style_linebr)
+plot(slow_lower, "Slow Lower", color=color.red,  linewidth=2, style=plot.style_linebr)
+
+// Background fill
+bg_color = bull_bias    ? color.new(color.green, 90) :
+           bear_bias    ? color.new(color.red,   90) :
+           color.new(color.gray, 98)
+bgcolor(bg_color, title="Bias Background")
+
+// ─── MCP Readback Labels (barstate.islast only) ───────────────────────────────
+var label lbl_fast_upper  = na
+var label lbl_fast_mid    = na
+var label lbl_fast_lower  = na
+var label lbl_slow_upper  = na
+var label lbl_slow_mid    = na
+var label lbl_slow_lower  = na
+var label lbl_bias        = na
+var label lbl_squeeze     = na
+
+if barstate.islast
+    bias_str    = bull_bias ? "BULL" : bear_bias ? "BEAR" : "NEUTRAL"
+    squeeze_str = kc_squeeze ? "true" : "false"
+
+    label.delete(lbl_fast_upper)
+    label.delete(lbl_fast_mid)
+    label.delete(lbl_fast_lower)
+    label.delete(lbl_slow_upper)
+    label.delete(lbl_slow_mid)
+    label.delete(lbl_slow_lower)
+    label.delete(lbl_bias)
+    label.delete(lbl_squeeze)
+
+    _x = bar_index + 2
+
+    lbl_fast_upper := label.new(_x, fast_upper + 6 * syminfo.mintick,
+         "KELT_FAST_UPPER: " + str.tostring(fast_upper, format.mintick),
+         style=label.style_label_left, color=color.new(color.cyan, 85),
+         textcolor=color.white, size=size.small)
+
+    lbl_fast_mid := label.new(_x, fast_ema + 2 * syminfo.mintick,
+         "KELT_FAST_MID: " + str.tostring(fast_ema, format.mintick),
+         style=label.style_label_left, color=color.new(color.gray, 85),
+         textcolor=color.white, size=size.small)
+
+    lbl_fast_lower := label.new(_x, fast_lower - 6 * syminfo.mintick,
+         "KELT_FAST_LOWER: " + str.tostring(fast_lower, format.mintick),
+         style=label.style_label_left, color=color.new(color.fuchsia, 85),
+         textcolor=color.white, size=size.small)
+
+    lbl_slow_upper := label.new(_x, slow_upper + 10 * syminfo.mintick,
+         "KELT_SLOW_UPPER: " + str.tostring(slow_upper, format.mintick),
+         style=label.style_label_left, color=color.new(color.blue, 85),
+         textcolor=color.white, size=size.small)
+
+    lbl_slow_mid := label.new(_x, slow_ema - 2 * syminfo.mintick,
+         "KELT_SLOW_MID: " + str.tostring(slow_ema, format.mintick),
+         style=label.style_label_left, color=color.new(color.gray, 85),
+         textcolor=color.white, size=size.small)
+
+    lbl_slow_lower := label.new(_x, slow_lower - 10 * syminfo.mintick,
+         "KELT_SLOW_LOWER: " + str.tostring(slow_lower, format.mintick),
+         style=label.style_label_left, color=color.new(color.red, 85),
+         textcolor=color.white, size=size.small)
+
+    lbl_bias := label.new(_x, slow_ema + 14 * syminfo.mintick,
+         "KELT_BIAS: " + bias_str,
+         style=label.style_label_left,
+         color=bull_bias ? color.new(color.green, 70) : bear_bias ? color.new(color.red, 70) : color.new(color.gray, 70),
+         textcolor=color.white, size=size.normal)
+
+    lbl_squeeze := label.new(_x, slow_ema - 14 * syminfo.mintick,
+         "KELT_SQUEEZE: " + squeeze_str,
+         style=label.style_label_left, color=color.new(color.orange, 80),
+         textcolor=color.white, size=size.small)

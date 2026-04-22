@@ -18,38 +18,74 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Mock the heavy dependencies before importing main
 import unittest.mock as mock
 
-# Mock complex dependencies that aren't needed for auth tests
-sys.modules["data.market_data"] = mock.MagicMock()
-sys.modules["risk.safety_layer"] = mock.MagicMock()
-sys.modules["risk.pnl_monitor"] = mock.MagicMock()
-sys.modules["agents.bear_researcher"] = mock.MagicMock()
-sys.modules["agents.bull_researcher"] = mock.MagicMock()
-sys.modules["agents.debate"] = mock.MagicMock()
-sys.modules["agents.fund_manager"] = mock.MagicMock()
-sys.modules["agents.fundamental_analyst"] = mock.MagicMock()
-sys.modules["agents.news_analyst"] = mock.MagicMock()
-sys.modules["agents.pipeline"] = mock.MagicMock()
-sys.modules["agents.risk_manager"] = mock.MagicMock()
-sys.modules["agents.social_analyst"] = mock.MagicMock()
-sys.modules["agents.technical_analyst"] = mock.MagicMock()
-sys.modules["agents.thinkscript_generator"] = mock.MagicMock()
-sys.modules["agents.trader"] = mock.MagicMock()
-sys.modules["portfolio.tracker"] = mock.MagicMock()
-sys.modules["database.schema"] = mock.MagicMock()
-sys.modules["schedulers.eod_scheduler"] = mock.MagicMock()
-sys.modules["routers.journal_router"] = mock.MagicMock()
-sys.modules["routers.webhook_router"] = mock.MagicMock()
-sys.modules["execution.ib_order_manager"] = mock.MagicMock()
-sys.modules["notifications.whatsapp"] = mock.MagicMock()
-sys.modules["apscheduler"] = mock.MagicMock()
-sys.modules["apscheduler.schedulers"] = mock.MagicMock()
-sys.modules["apscheduler.schedulers.asyncio"] = mock.MagicMock()
-sys.modules["apscheduler.triggers.cron"] = mock.MagicMock()
+# Save originals for modules that other test files import directly so we can
+# restore them after main is imported. This prevents test-ordering contamination
+# where test_safety_layer.py / test_loss_tracker.py receive a MagicMock instead
+# of the real risk.safety_layer module.
+_MODULES_TO_MOCK = [
+    "data.market_data",
+    "risk.safety_layer",
+    "risk.pnl_monitor",
+    "agents.bear_researcher",
+    "agents.bull_researcher",
+    "agents.debate",
+    "agents.fund_manager",
+    "agents.fundamental_analyst",
+    "agents.news_analyst",
+    # Keep real agents.pipeline — mocking it breaks test_pipeline_e2e when collected in the same session.
+    "agents.risk_manager",
+    "agents.social_analyst",
+    "agents.technical_analyst",
+    "agents.thinkscript_generator",
+    "agents.trader",
+    "portfolio.tracker",
+    "database.schema",
+    "schedulers.eod_scheduler",
+    "routers.journal_router",
+    "routers.webhook_router",
+    "execution.ib_order_manager",
+    "notifications.whatsapp",
+    "apscheduler",
+    "apscheduler.schedulers",
+    "apscheduler.schedulers.asyncio",
+    "apscheduler.triggers.cron",
+]
 
-# Import FastAPI app
+_saved_modules: dict = {}
+for _mod_name in _MODULES_TO_MOCK:
+    _saved_modules[_mod_name] = sys.modules.get(_mod_name)
+    sys.modules[_mod_name] = mock.MagicMock()
+
+# Import FastAPI app (uses the mocked modules above)
+from config import settings
 from main import app
 
+# Restore real modules so subsequent test files (test_safety_layer, test_loss_tracker)
+# import the genuine implementations and not the MagicMocks injected above.
+for _mod_name, _original in _saved_modules.items():
+    if _original is None:
+        # Module was not previously imported — remove our mock so the real one loads fresh.
+        sys.modules.pop(_mod_name, None)
+    else:
+        sys.modules[_mod_name] = _original
+
+# Clean parent module attributes so subsequent imports get fresh real modules.
+# Without this, Python finds MagicMock on the parent module object (e.g. risk.safety_layer)
+# even after sys.modules is restored, because the parent module's __dict__ still holds
+# the mock reference from when we injected it.
+for _mod_name in _MODULES_TO_MOCK:
+    if "." in _mod_name:
+        _parent, _attr = _mod_name.rsplit(".", 1)
+        _parent_mod = sys.modules.get(_parent)
+        if _parent_mod is not None and hasattr(_parent_mod, _attr):
+            try:
+                delattr(_parent_mod, _attr)
+            except AttributeError:
+                pass
+
 client = TestClient(app)
+
+_VALID_HEADERS = {"X-API-Key": settings.API_KEY}
 
 
 class TestHealthEndpoints:
@@ -84,9 +120,7 @@ class TestApiKeyAuthentication:
 
     def test_valid_api_key_on_protected_endpoint(self):
         """POST /safety/kill-switch/activate with correct X-API-Key should pass auth"""
-        # Using the default test key from config
-        headers = {"X-API-Key": "jarvis-dev-key-change-me"}
-        response = client.post("/safety/kill-switch/activate", headers=headers)
+        response = client.post("/safety/kill-switch/activate", headers=_VALID_HEADERS)
         # Will fail due to mocked safety_layer, but should NOT be a 401
         assert response.status_code != 401
 
@@ -127,19 +161,17 @@ class TestRateLimiting:
 
     def test_safety_status_rate_limit_header(self):
         """GET /safety/status should include RateLimit headers"""
-        headers = {"X-API-Key": "jarvis-dev-key-change-me"}
-        response = client.get("/safety/status", headers=headers)
+        response = client.get("/safety/status", headers=_VALID_HEADERS)
         # Check that rate limit headers are present
         # Status will be 503 due to mocking, but rate limit should be in effect
         assert response.status_code in [200, 503]
 
     def test_exceed_rate_limit_returns_429(self):
         """Exceeding rate limit should return 429 Too Many Requests"""
-        headers = {"X-API-Key": "jarvis-dev-key-change-me"}
         # Make requests up to the limit (10/minute for /safety/status)
         # In memory storage might be reset between tests, so we do aggressive test
         for _i in range(15):
-            response = client.get("/safety/status", headers=headers)
+            response = client.get("/safety/status", headers=_VALID_HEADERS)
             if response.status_code == 429:
                 assert response.json()["detail"] == "Rate limit exceeded. Please try again later."
                 return  # Test passes
@@ -157,8 +189,7 @@ class TestAuthIntegration:
         response = client.post("/safety/kill-switch/activate")
         assert response.status_code == 401
         # With API key, might fail for other reasons but not 401
-        headers = {"X-API-Key": "jarvis-dev-key-change-me"}
-        response = client.post("/safety/kill-switch/activate", headers=headers)
+        response = client.post("/safety/kill-switch/activate", headers=_VALID_HEADERS)
         assert response.status_code != 401
 
     def test_api_key_on_all_post_endpoints(self):

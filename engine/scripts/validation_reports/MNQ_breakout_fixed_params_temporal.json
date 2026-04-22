@@ -1,0 +1,80 @@
+{
+  "symbol": "MNQ",
+  "family": "breakout",
+  "params": {
+    "donchian_period": 20,
+    "vol_ma_period": 20,
+    "vol_mult": 1.0,
+    "stop_atr_mult": 2.0,
+    "short_only": true
+  },
+  "n_segments": 4,
+  "start": "2024-04-01",
+  "end": "2026-03-27",
+  "segments": [
+    {
+      "segment": 1,
+      "start": "2024-04-01",
+      "end": "2024-09-27",
+      "n_bars": 2845,
+      "pf": 1.423,
+      "wr": 44.23,
+      "total_trades": 52,
+      "net_pnl": 1423.58,
+      "ret_pct": 14.24,
+      "thin": false
+    },
+    {
+      "segment": 2,
+      "start": "2024-09-27",
+      "end": "2025-03-31",
+      "n_bars": 2845,
+      "pf": 1.937,
+      "wr": 50.79,
+      "total_trades": 63,
+      "net_pnl": 3294.77,
+      "ret_pct": 32.95,
+      "thin": false
+    },
+    {
+      "segment": 3,
+      "start": "2025-03-31",
+      "end": "2025-09-25",
+      "n_bars": 2845,
+      "pf": 1.186,
+      "wr": 34.04,
+      "total_trades": 47,
+      "net_pnl": 633.26,
+      "ret_pct": 6.33,
+      "thin": false
+    },
+    {
+      "segment": 4,
+      "start": "2025-09-25",
+      "end": "2026-03-27",
+      "n_bars": 2847,
+      "pf": 1.468,
+      "wr": 44.44,
+      "total_trades": 54,
+      "net_pnl": 1873.15,
+      "ret_pct": 18.73,
+      "thin": false
+    }
+  ],
+  "segment_pfs": [
+    1.423,
+    1.937,
+    1.186,
+    1.468
+  ],
+  "stats": {
+    "min_pf": 1.186,
+    "max_pf": 1.937,
+    "mean_pf": 1.504,
+    "all_profitable": true,
+    "pct_profitable": 1.0,
+    "total_trades": 216
+  },
+  "verdict": "MODERATE",
+  "elapsed_sec": 0.1
+}
