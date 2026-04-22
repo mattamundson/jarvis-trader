@@ -152,7 +152,7 @@
   <p><strong>Verification</strong> (10:52 CT): decision <code>id=2994</code> MES SELL with <code>atr=14.886 regime=trending</code>, 9 populated analyst_reports. First non-HOLD in 12 days. Calendar cost: 12 days slipped from Phase 1.</p>
   <div class="grid-2">
     <div class="card"><div class="num">3</div><div class="lbl">MES closed paper trades (target 30)</div></div>
-    <div class="card"><div class="num">5</div><div class="lbl">New findings for review (below)</div></div>
+    <div class="card"><div class="num">2&nbsp;<span style="font-size:14px;color:var(--text-muted)">of 5</span></div><div class="lbl">True blockers (HB-1 + HB-2) — 3 findings closed 2026-04-22 PM</div></div>
   </div>
 </div>
 
@@ -193,27 +193,35 @@ if estimated_value / portfolio_equity &gt; MAX_POSITION_SIZE_PCT:
   <p><strong>Tracked as Q2-P2.8.</strong> Resolves via decision Q2-D7.</p>
 </div>
 
-<div class="callout cal-hb" id="hb3">
-  <h3><span class="tag tag-hb">HB-3</span> Scanner disabled since 2026-04-10, paper accumulation halted</h3>
-  <p><code>engine/.env:107</code> → <code>WATCHLIST_SCAN_ENABLED=false</code>, set after contamination incident. Parallel-session audit confirms all 5 guards landed (<code>be6927d</code>), Polygon futures blocklist landed (<code>94c4793</code>), 42 regression tests green. <strong>Safe to re-enable.</strong></p>
-  <p><strong>Blocker:</strong> permission hook rejected <code>proceed</code> as insufficient — it reads the flag-flip as "disabling a deliberately-set safety guard." <span class="tag tag-user">USER INPUT NEEDED</span> unambiguous sentence such as:</p>
-  <blockquote style="border-left:3px solid var(--accent); margin-left:0; padding-left:14px; color:var(--accent-2); font-family:var(--mono); font-size:13px;">
-  Flip WATCHLIST_SCAN_ENABLED to true and restart the engine.
-  </blockquote>
-  <p>Expected: 2-4 MES paper trades/week post-flip at SMA(50,200) on 1h. <strong>Tracked as Q2-P1.11.</strong></p>
+<div class="callout cal-hb" id="hb3" style="border-color: var(--success);">
+  <h3 style="color: var(--success);"><span class="tag tag-hb">HB-3</span> "Scanner disabled" &nbsp;<span class="tag tag-done">REFRAMED 2026-04-22 11:46 CT — not a blocker</span></h3>
+  <p>Ground-truth query against <code>engine/data/jarvis_trader.db</code> shows the pipeline is running hourly regardless of <code>WATCHLIST_SCAN_ENABLED</code>:</p>
+  <table>
+    <thead><tr><th>Symbol</th><th>Decisions (24h)</th><th>First</th><th>Last</th></tr></thead>
+    <tbody>
+      <tr><td>MES</td><td class="center">52</td><td>2026-04-21T00:20:31</td><td>2026-04-22T15:52:07</td></tr>
+      <tr><td>MCL</td><td class="center">50</td><td>2026-04-21T00:21:56</td><td>2026-04-22T14:46:51</td></tr>
+      <tr><td>MNQ</td><td class="center">52</td><td>2026-04-21T00:21:57</td><td>2026-04-22T15:50:30</td></tr>
+    </tbody>
+  </table>
+  <p>All but 2 were HOLD. The 2 non-HOLDs (MES SELL @ 15:52:07 → trade #135, MCL SELL @ 02:19:57 → trade #133) are legitimate scanner-sourced trades matching decision rows exactly.</p>
+  <p><strong>Correction:</strong> the verification agent conflated "no non-HOLD signals for 12 days" with "scanner off." Reality is hourly HOLD cadence throughout — a regime state, not an infrastructure failure.</p>
+  <p><strong>Going-forward verification:</strong> query the <code>decisions</code> table for hourly cadence; do NOT rely on <code>WATCHLIST_SCAN_ENABLED</code> as ground truth. <strong>Q2-P1.11 status: DONE.</strong> No user action needed.</p>
 </div>
 
 <div class="callout cal-ou" id="ou1">
-  <h3><span class="tag tag-ou">OU-1</span> pm2 jarvis-engine restart count 558 in 90 minutes</h3>
-  <p><code>pm2 describe jarvis-engine</code> shows 497 → 558 restarts in a 90-min window today, no operator intervention. Possibly parallel-session iterations on TV-CDP fixes, possibly genuine crash loop.</p>
-  <p><strong>Consequence:</strong> restart storms + no broker-side stops = naked-position exposure every restart. <strong>Must RCA before D5 live cutover.</strong></p>
-  <p><strong>Investigation:</strong> <code>pm2 logs jarvis-engine --lines 2000 --nostream | grep -Ei "(error|disconnect|kill|traceback)"</code> + <code>pm2 describe jarvis-engine</code> for unstable-restart flag. <strong>Tracked as Q2-P1.10.</strong></p>
+  <h3><span class="tag tag-ou">OU-1</span> pm2 jarvis-engine restart count 558 &nbsp;<span class="tag tag-done">RESOLVED 2026-04-22 09:42 CT</span></h3>
+  <p>Flagged at 11:14 CT as 497 → 558. Root-caused as historical churn, not live instability.</p>
+  <p><strong>Root cause:</strong> elevated orphan PID 13516 held port 8010 outside PM2. <code>port_guardian</code> detected 8010 owned, attempted <code>taskkill</code>, failed (elevated), exited non-zero after 30s backoff to prevent split-brain. PM2 auto-restarted, loop repeated every ~1s.</p>
+  <p><strong>Fix:</strong> admin <code>taskkill /F /PID 13516</code> this morning. Log confirms at <code>2026-04-22 09:42:42</code>: <code>port_guardian port 8010 is free / launching uvicorn in-process</code>.</p>
+  <p><strong>Current state</strong> (11:48 CT): <code>status=online, restarts=558, uptime=2h, unstable restarts=1</code>. Port 8010 single-owner PID 11656. Only recurring warning is benign <code>services.messaging_health: ollama=error</code> (optional local-LLM probe). <strong>Q2-P1.10 status: DONE.</strong></p>
 </div>
 
 <div class="callout cal-af" id="af1">
-  <h3><span class="tag tag-af">AF-1</span> Overnight-cutoff hour 15:00 CT vs RTH close 16:00 CT</h3>
-  <p>Something in the trade/risk layer triggers overnight flatten at 15:00 CT; CME equity-index RTH closes 16:00 CT. <code>SESSION_FLATTEN_TIME_ET = "15:45"</code> elsewhere = 14:45 CT — inconsistent.</p>
-  <p><strong>Question:</strong> is 15:00 CT an intentional 1-hour early-flatten buffer, or a bug? Write one-paragraph intent memo before D5. <strong>Tracked as Q2-P2.9.</strong></p>
+  <h3><span class="tag tag-af">AF-1</span> Overnight-cutoff hour &nbsp;<span class="tag tag-done">RESOLVED 2026-04-22 (misread)</span></h3>
+  <p>The "15:00 CT cutoff" the agent reported does not exist. Only flatten constant in <code>engine/</code> is <code>SESSION_FLATTEN_TIME_ET = "15:45"</code> (= 14:45 CT) at <code>config.py:184</code>, with comment <code># Flatten all positions at 3:45 PM ET</code>. APScheduler cron <code>Mon-Fri 20:45 UTC</code> (<code>eod_scheduler.py:722</code>) matches exactly.</p>
+  <p>The agent's "15:00 CT" came from <code>migrations.py:949</code> — a schema-column comment on <code>close_price: -- CT 15:00 close (filled by outcome job)</code>. That's NYSE equity-index RTH cash-close time, not a flatten trigger.</p>
+  <p><strong>Intent:</strong> 14:45 CT flatten = 15-min buffer before NYSE 16:00 ET cash close. Intentional — avoids final-minute liquidity crunch on S&P closing print. <strong>Decision memo:</strong> <code>docs/decisions/af1_session_flatten_intent.md</code>. <strong>Q2-P2.9 status: DONE.</strong></p>
 </div>
 
 <div class="callout cal-note">
@@ -238,7 +246,7 @@ if estimated_value / portfolio_equity &gt; MAX_POSITION_SIZE_PCT:
     <tr><td>L2</td><td>Archive 3 failed strategies via STATUS headers (not file moves) — preserves imports</td><td><span class="tag tag-done">DONE</span></td><td><code>6808b65</code></td><td>No</td></tr>
     <tr><td>L3</td><td>Add <code>GET /paper/validation/counts</code> endpoint (closed-trades only)</td><td><span class="tag tag-done">DONE</span></td><td><code>6808b65</code></td><td>No</td></tr>
     <tr><td>L4</td><td>Push today's 2 TV fix commits to origin</td><td><span class="tag tag-done">DONE</span></td><td><code>1c4b11b..6808b65</code></td><td>No</td></tr>
-    <tr><td>L5</td><td>Keep <code>WATCHLIST_SCAN_ENABLED=false</code> until user authorizes flip</td><td><span class="tag tag-open">HOLDING</span></td><td>—</td><td><span class="tag tag-user">YES — your explicit sentence</span></td></tr>
+    <tr><td>L5</td><td><s>Keep <code>WATCHLIST_SCAN_ENABLED=false</code></s> <span class="tag tag-done">MOOT</span> — flag doesn't halt pipeline; 52 MES decisions/24h verified</td><td><span class="tag tag-done">RESOLVED</span></td><td>memory</td><td>No</td></tr>
     <tr><td>L6</td><td>Extend roadmap: Phase 8 (2027 consolidation) + Phase 9 (2027+)</td><td><span class="tag tag-done">DONE</span></td><td><code>1cf7be5</code></td><td>No</td></tr>
     <tr><td>L7</td><td>60-trade / 30-day validation threshold → relaxation candidate</td><td><span class="tag tag-open">OPEN</span></td><td>Q2-D1</td><td><span class="tag tag-user">YES — Q2 Week 3</span></td></tr>
     <tr><td>L8</td><td>Futures position-sizing: (a) IBKR sync, (b) futures branch, (c) both</td><td><span class="tag tag-open">OPEN</span></td><td>Q2-D2 / Q2-D7 / Q2-P2.8</td><td><span class="tag tag-user">YES — Q2 Week 3-4</span></td></tr>
@@ -270,11 +278,11 @@ if estimated_value / portfolio_equity &gt; MAX_POSITION_SIZE_PCT:
 <table id="q2tasks">
   <thead><tr><th>Task</th><th>Why</th><th>Size</th><th>Links</th></tr></thead>
   <tbody>
-    <tr><td><strong>Q2-P1.10</strong> pm2 restart-count RCA</td><td>558 restarts in 90m today (OU-1). Must be ≥24h clean before live flip.</td><td class="center">S</td><td><a href="#ou1">OU-1</a></td></tr>
-    <tr><td><strong>Q2-P1.11</strong> Re-enable <code>WATCHLIST_SCAN_ENABLED</code></td><td>All 5 contamination guards landed; safe. Blocked on user sentence (HB-3).</td><td class="center">XS</td><td><a href="#hb3">HB-3</a></td></tr>
+    <tr><td><strong>Q2-P1.10</strong> pm2 restart-count RCA <span class="tag tag-done">DONE</span></td><td>Orphan PID 13516 was the culprit. Cleared 09:42 CT. 2h uptime since.</td><td class="center">S</td><td><a href="#ou1">OU-1</a></td></tr>
+    <tr><td><strong>Q2-P1.11</strong> ~~Re-enable scanner~~ <span class="tag tag-done">DONE</span></td><td>Flag doesn't halt pipeline — decisions flowing 52/24h per symbol. Use <code>decisions</code> table as ground truth.</td><td class="center">—</td><td><a href="#hb3">HB-3</a></td></tr>
     <tr><td><strong>Q2-P2.7</strong> Wire broker-side STP child orders</td><td>Stops currently never reach IBKR (HB-1). Submit child STP after entry fill.</td><td class="center">L</td><td><a href="#hb1">HB-1</a></td></tr>
     <tr><td><strong>Q2-P2.8</strong> Futures position-size math</td><td>356%-of-equity MES rejected by <code>safety_layer.py:608</code> (HB-2).</td><td class="center">M</td><td><a href="#hb2">HB-2</a></td></tr>
-    <tr><td><strong>Q2-P2.9</strong> Clarify overnight-cutoff intent</td><td>15:00 CT vs 16:00 CT RTH close vs 15:45 ET (14:45 CT) — memo (AF-1).</td><td class="center">S</td><td><a href="#af1">AF-1</a></td></tr>
+    <tr><td><strong>Q2-P2.9</strong> Clarify overnight-cutoff intent <span class="tag tag-done">DONE</span></td><td>Misread — only flatten is <code>"15:45"</code> ET = 14:45 CT. Memo at <code>docs/decisions/af1_session_flatten_intent.md</code>.</td><td class="center">S</td><td><a href="#af1">AF-1</a></td></tr>
   </tbody>
 </table>
 
@@ -346,7 +354,7 @@ if estimated_value / portfolio_equity &gt; MAX_POSITION_SIZE_PCT:
     <tr><td>Q2-D2</td><td>Futures sizing policy (margin-based vs <code>MAX_POSITION_SIZE_PCT</code> raise vs bypass)</td><td>Week 3-4</td><td><span class="tag tag-open">pending</span></td></tr>
     <tr><td>Q2-D3</td><td>MCL Q2 participation Y/N</td><td>Week 5</td><td>leaning NO (gate v2 FAIL)</td></tr>
     <tr><td>Q2-D4</td><td>MNQ Q2 participation Y/N</td><td>Week 5</td><td>leaning NO or $50K re-run</td></tr>
-    <tr><td>Q2-D5</td><td>MES paper → live Go/No-Go</td><td>Week 7</td><td>gated on 6wk forward + HB-1/HB-2 cleared + OU-1 RCA + AF-1 clarified</td></tr>
+    <tr><td>Q2-D5</td><td>MES paper → live Go/No-Go</td><td>Week 7</td><td>gated on 6wk forward + HB-1/HB-2 cleared. OU-1 + AF-1 both <span class="tag tag-done">RESOLVED</span> 2026-04-22.</td></tr>
     <tr><td>Q2-D6</td><td><strong>NEW</strong> · Broker-side STP pattern (parent/child OCA vs bracket)</td><td>Week 3</td><td><span class="tag tag-open">pending</span> — Q2-P2.7 choice</td></tr>
     <tr><td>Q2-D7</td><td><strong>NEW</strong> · Futures sizing fix path (a/b/both)</td><td>Week 3-4</td><td><span class="tag tag-open">pending</span> — Q2-P2.8 choice</td></tr>
   </tbody>
