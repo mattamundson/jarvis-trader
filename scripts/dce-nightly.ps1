@@ -146,10 +146,16 @@ try {
     # nightly_discord.py imports the fresh JSON from $ExportsRoot into SQLite,
     # then runs the sentiment ETL. It is the ingest-only companion that reads
     # whatever JSON is on disk — no re-export.
-    $ingestOut = & $Python -m scripts.nightly_discord 2>&1
-    $ingestOut | ForEach-Object { Write-Log 'ETL' "$_" }
-    if ($LASTEXITCODE -ne 0) { throw "nightly_discord exited $LASTEXITCODE" }
-    Write-Log 'INFO' "Ingest + ETL complete"
+    # Must run with cwd=$EngineDir so `scripts.nightly_discord` resolves.
+    Push-Location $EngineDir
+    try {
+        $ingestOut = & $Python -m scripts.nightly_discord 2>&1
+        $ingestOut | ForEach-Object { Write-Log 'ETL' "$_" }
+        if ($LASTEXITCODE -ne 0) { throw "nightly_discord exited $LASTEXITCODE" }
+        Write-Log 'INFO' "Ingest + ETL complete"
+    } finally {
+        Pop-Location
+    }
 } catch {
     Write-Log 'ERROR' "Ingest/ETL failed: $_"
     exit 20
