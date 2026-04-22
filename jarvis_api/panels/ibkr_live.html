@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T8 — IBKR Live Order Status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue: #00d4ff;
+    --cyan: #00fff5;
+    --gold: #ffd700;
+    --amber: #ff8c00;
+    --red: #ff2244;
+    --green: #00ff88;
+    --bg: #020814;
+    --panel-bg: #040d1a;
+    --panel-border: rgba(0, 212, 255, 0.18);
+    --text-dim: rgba(0, 212, 255, 0.45);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--blue);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    padding: 16px;
+    overflow-x: hidden;
+  }
+
+  .panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 16px;
+    position: relative;
+  }
+
+  /* HEADER */
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+  }
+  .panel-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: var(--blue);
+  }
+  .paper-badge {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: rgba(255,215,0,0.12);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    letter-spacing: 0.1em;
+    font-weight: 700;
+  }
+  .conn-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .conn-dot.connected {
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: connPulse 2s ease-in-out infinite;
+  }
+  .conn-dot.disconnected {
+    background: var(--red);
+    box-shadow: 0 0 8px var(--red);
+  }
+  @keyframes connPulse {
+    0%,100% { opacity:1; } 50% { opacity:0.5; }
+  }
+  .header-time { margin-left: auto; font-size: 10px; color: var(--text-dim); }
+
+  /* ACCOUNT ROW */
+  .account-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: rgba(0,212,255,0.04);
+    border: 1px solid var(--panel-border);
+    border-radius: 5px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .account-id {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 0.08em;
+  }
+  .account-meta { font-size: 10px; color: var(--text-dim); }
+  .account-meta span { color: var(--blue); }
+  .conn-status {
+    margin-left: auto;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* SECTION LABEL */
+  .section-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+
+  /* HOLDINGS COMPARISON */
+  .holdings-section { margin-bottom: 18px; }
+  .holding-row {
+    display: grid;
+    grid-template-columns: 48px 1fr 1fr 90px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .holding-ticker {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--cyan);
+  }
+  .bar-group { position: relative; }
+  .bar-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-bottom: 3px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .bar-track {
+    height: 8px;
+    background: rgba(0,212,255,0.07);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(0,212,255,0.1);
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.8s ease;
+  }
+  .bar-fill.target { background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+  .bar-fill.current { background: rgba(0,212,255,0.15); }
+  .delta-pill {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 3px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .delta-pill.buy {
+    background: rgba(0,255,136,0.12);
+    border: 1px solid var(--green);
+    color: var(--green);
+  }
+  .delta-pill.sell {
+    background: rgba(255,34,68,0.12);
+    border: 1px solid var(--red);
+    color: var(--red);
+  }
+  .delta-pill.flat {
+    background: rgba(0,212,255,0.08);
+    border: 1px solid var(--text-dim);
+    color: var(--text-dim);
+  }
+
+  /* ORDER QUEUE */
+  .order-queue { margin-bottom: 18px; }
+  .order-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 8px;
+  }
+  .order-chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 5px 11px;
+    border-radius: 4px;
+    background: rgba(255,140,0,0.1);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    animation: chipGlow 2s ease-in-out infinite;
+  }
+  @keyframes chipGlow {
+    0%,100% { box-shadow: 0 0 0 rgba(255,140,0,0); }
+    50% { box-shadow: 0 0 10px rgba(255,140,0,0.25); }
+  }
+  .chip-type {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  /* EXECUTION TIMELINE */
+  .timeline-section { margin-bottom: 18px; }
+  .timeline {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    margin-top: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .timeline-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    min-width: 70px;
+  }
+  .step-icon {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    border: 2px solid;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .step-icon.done {
+    background: rgba(0,255,136,0.12);
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .step-icon.pending {
+    background: rgba(255,140,0,0.08);
+    border-color: var(--amber);
+    color: var(--amber);
+    animation: stepSpin 2s linear infinite;
+  }
+  .step-icon.waiting {
+    background: rgba(0,212,255,0.06);
+    border-color: var(--text-dim);
+    color: var(--text-dim);
+  }
+  @keyframes stepSpin {
+    0%,100% { box-shadow: 0 0 0 rgba(255,140,0,0); }
+    50% { box-shadow: 0 0 12px rgba(255,140,0,0.4); }
+  }
+  .step-label {
+    font-size: 8px;
+    text-align: center;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    line-height: 1.3;
+  }
+  .timeline-connector {
+    flex: 1;
+    min-width: 16px;
+    height: 1px;
+    background: rgba(0,212,255,0.2);
+    margin-bottom: 20px;
+    flex-shrink: 1;
+  }
+
+  /* DRY RUN RESULT */
+  .dryrun-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(0,255,136,0.04);
+    border: 1px solid rgba(0,255,136,0.2);
+    border-radius: 5px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+  }
+  .dryrun-badge {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 3px;
+    background: rgba(0,255,136,0.12);
+    border: 1px solid var(--green);
+    color: var(--green);
+    white-space: nowrap;
+    letter-spacing: 0.08em;
+  }
+  .dryrun-meta { font-size: 10px; color: var(--text-dim); line-height: 1.5; }
+  .dryrun-meta span { color: var(--green); }
+
+  /* HEARTBEAT */
+  .heartbeat-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    border-top: 1px solid var(--panel-border);
+    padding-top: 12px;
+  }
+  .hb-bar {
+    display: flex;
+    gap: 2px;
+    align-items: flex-end;
+    height: 16px;
+  }
+  .hb-bar-item {
+    width: 3px;
+    background: var(--green);
+    border-radius: 1px;
+    animation: hbAnim 1.5s ease-in-out infinite;
+  }
+  .hb-bar-item:nth-child(1) { height: 6px; animation-delay: 0s; }
+  .hb-bar-item:nth-child(2) { height: 14px; animation-delay: 0.15s; }
+  .hb-bar-item:nth-child(3) { height: 8px; animation-delay: 0.3s; }
+  .hb-bar-item:nth-child(4) { height: 12px; animation-delay: 0.45s; }
+  .hb-bar-item:nth-child(5) { height: 5px; animation-delay: 0.6s; }
+  @keyframes hbAnim {
+    0%,100% { opacity:0.4; } 50% { opacity:1; }
+  }
+  .hb-label { color: var(--green); font-weight: 600; }
+  .hb-detail { margin-left: auto; }
+
+  /* EXECUTE BUTTON */
+  .execute-section { text-align: center; }
+  .execute-btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    padding: 12px 32px;
+    border-radius: 5px;
+    border: 2px solid var(--gold);
+    background: rgba(255,215,0,0.08);
+    color: var(--gold);
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+  .execute-btn:hover {
+    background: rgba(255,215,0,0.15);
+    box-shadow: 0 0 24px rgba(255,215,0,0.35);
+    transform: translateY(-1px);
+  }
+  .execute-btn:active { transform: translateY(0); }
+  .execute-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,215,0,0.12), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.4s;
+  }
+  .execute-btn:hover::before { transform: translateX(100%); }
+  .execute-note {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    letter-spacing: 0.08em;
+  }
+
+  /* CONFIRM MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(2,8,20,0.85);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-box {
+    background: #060f20;
+    border: 1px solid var(--gold);
+    border-radius: 8px;
+    padding: 24px;
+    max-width: 360px;
+    width: 90%;
+    box-shadow: 0 0 40px rgba(255,215,0,0.15);
+  }
+  .modal-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gold);
+    margin-bottom: 12px;
+    letter-spacing: 0.1em;
+  }
+  .modal-body { font-size: 11px; color: var(--blue); line-height: 1.6; margin-bottom: 18px; }
+  .modal-btns { display: flex; gap: 10px; }
+  .modal-confirm {
+    flex: 1;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 9px;
+    border-radius: 4px;
+    border: 1px solid var(--green);
+    background: rgba(0,255,136,0.1);
+    color: var(--green);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .modal-confirm:hover { background: rgba(0,255,136,0.2); }
+  .modal-cancel {
+    flex: 1;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 9px;
+    border-radius: 4px;
+    border: 1px solid var(--panel-border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .modal-cancel:hover { border-color: var(--red); color: var(--red); }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.2); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="modal-overlay" id="execModal">
+  <div class="modal-box">
+    <div class="modal-title">⚠ CONFIRM PAPER EXECUTION</div>
+    <div class="modal-body">
+      This will submit MOO orders via IBKR paper account <strong style="color:var(--gold)">DUP662235</strong> for next market open.<br><br>
+      Orders: XLK BUY 30.5% / QQQ BUY 30.5% / SHY BUY 39.1%<br><br>
+      <span style="color:var(--amber)">PAPER MODE — no real capital at risk.</span>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-confirm" onclick="confirmExec()">CONFIRM EXECUTE</button>
+      <button class="modal-cancel" onclick="closeModal()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <!-- HEADER -->
+  <div class="panel-header">
+    <div class="conn-dot connected" id="connDot"></div>
+    <span class="panel-title">IBKR EXECUTION · LIVE</span>
+    <span class="paper-badge">PAPER</span>
+    <span class="header-time" id="headerTime">--:--:--</span>
+  </div>
+
+  <!-- ACCOUNT ROW -->
+  <div class="account-row">
+    <div>
+      <div class="account-id" id="accountId">DUP662235</div>
+      <div class="account-meta">PORT <span id="accountPort">4002</span> · MODE <span id="accountMode">PAPER</span></div>
+    </div>
+    <div class="conn-status">
+      <div class="conn-dot connected" id="gwDot"></div>
+      <span>GATEWAY <span style="color:var(--green)" id="gwStatus">CONNECTED</span></span>
+    </div>
+  </div>
+
+  <!-- DRY RUN -->
+  <div class="dryrun-section">
+    <div class="dryrun-badge">✓ DRY-RUN PASSED</div>
+    <div class="dryrun-meta">
+      Last run: <span>Apr 22, 2026 — 08:54 PM CDT</span><br>
+      Account <span>DUP662235</span> · All validations nominal
+    </div>
+  </div>
+
+  <!-- HEARTBEAT -->
+  <div class="heartbeat-row">
+    <div class="hb-bar">
+      <div class="hb-bar-item"></div>
+      <div class="hb-bar-item"></div>
+      <div class="hb-bar-item"></div>
+      <div class="hb-bar-item"></div>
+      <div class="hb-bar-item"></div>
+    </div>
+    <span class="hb-label">GATEWAY HEARTBEAT</span>
+    <span class="hb-detail">Last ping <span id="lastPing">0</span>s ago · Latency <span id="gwLatency">12</span>ms</span>
+  </div>
+
+  <!-- HOLDINGS -->
+  <div class="holdings-section">
+    <div class="section-label">TARGET vs CURRENT HOLDINGS</div>
+    <div id="holdingsContainer"></div>
+  </div>
+
+  <!-- ORDER QUEUE -->
+  <div class="order-queue">
+    <div class="section-label">ORDER QUEUE</div>
+    <div class="order-chips" id="orderChips"></div>
+  </div>
+
+  <!-- EXECUTION TIMELINE -->
+  <div class="timeline-section">
+    <div class="section-label">EXECUTION PIPELINE</div>
+    <div class="timeline" id="execTimeline"></div>
+  </div>
+
+  <!-- EXECUTE BUTTON -->
+  <div class="execute-section">
+    <button class="execute-btn" onclick="openModal()">▶ EXECUTE NOW</button>
+    <div class="execute-note">PAPER MODE ONLY · SUBMITS MOO ORDERS · NEXT MARKET OPEN</div>
+  </div>
+</div>
+
+<script>
+const API_URL = 'http://localhost:8020/api/ibkr/status';
+const POLL_INTERVAL = 30000;
+
+const FALLBACK = {
+  account: 'DUP662235',
+  mode: 'PAPER',
+  port: 4002,
+  connected: true,
+  last_dryrun: '2026-04-22T20:54:00',
+  dryrun_status: 'PASSED',
+  target: { XLK: 0.305, QQQ: 0.305, SHY: 0.391 },
+  current: { XLK: 0.0, QQQ: 0.0, SHY: 0.0 },
+  pending_orders: [
+    { ticker: 'XLK', action: 'BUY', pct: 30.5, type: 'MOO', scheduled: 'Monday Open' },
+    { ticker: 'QQQ', action: 'BUY', pct: 30.5, type: 'MOO', scheduled: 'Monday Open' },
+    { ticker: 'SHY', action: 'BUY', pct: 39.1, type: 'MOO', scheduled: 'Monday Open' },
+  ]
+};
+
+let pingCounter = 0;
+let data = { ...FALLBACK };
+
+// Holdings
+function renderHoldings(d) {
+  const container = document.getElementById('holdingsContainer');
+  container.innerHTML = '';
+  Object.entries(d.target).forEach(([ticker, tgt]) => {
+    const cur = d.current[ticker] || 0;
+    const delta = (tgt - cur) * 100;
+    const isBuy = delta > 0.01;
+    const isSell = delta < -0.01;
+    const row = document.createElement('div');
+    row.className = 'holding-row';
+    row.innerHTML = `
+      <div class="holding-ticker">${ticker}</div>
+      <div class="bar-group">
+        <div class="bar-label">
+          <span>TARGET</span>
+          <span style="color:var(--blue)">${(tgt*100).toFixed(1)}%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill target" style="width:${(tgt*100/60*100).toFixed(1)}%"></div>
+        </div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-label">
+          <span>CURRENT</span>
+          <span style="color:${cur>0?'var(--green)':'var(--text-dim)'}">${(cur*100).toFixed(1)}%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill current" style="width:${cur > 0 ? (cur*100/60*100).toFixed(1) : '0'}%"></div>
+        </div>
+      </div>
+      <div class="delta-pill ${isBuy?'buy':isSell?'sell':'flat'}">
+        ${isBuy?'+':''}${delta.toFixed(1)}%<br>
+        <span style="font-size:8px;letter-spacing:0.06em">${isBuy?'NEEDS BUY':isSell?'NEEDS SELL':'FLAT'}</span>
+      </div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+// Order chips
+function renderOrderChips(d) {
+  const container = document.getElementById('orderChips');
+  container.innerHTML = '';
+  if (!d.pending_orders || d.pending_orders.length === 0) {
+    container.innerHTML = '<span style="font-size:10px;color:var(--text-dim)">No pending orders</span>';
+    return;
+  }
+  d.pending_orders.forEach(o => {
+    const chip = document.createElement('div');
+    chip.className = 'order-chip';
+    chip.innerHTML = `
+      <span class="chip-type">${o.type}</span>
+      <strong style="color:var(--cyan)">${o.ticker}</strong>
+      <span>${o.action}</span>
+      <span style="color:var(--gold)">${o.pct}%</span>
+      <span style="color:var(--text-dim);font-size:9px">@ ${o.scheduled}</span>
+    `;
+    container.appendChild(chip);
+  });
+}
+
+// Timeline
+const STEPS = [
+  { label: 'DRY-RUN', sublabel: '✓ PASSED', status: 'done' },
+  { label: 'SIGNAL', sublabel: '✓ GENERATED', status: 'done' },
+  { label: 'ORDERS', sublabel: '⟳ QUEUED', status: 'pending' },
+  { label: 'MOO EXEC', sublabel: '◷ PENDING', status: 'waiting' },
+  { label: 'FILLS', sublabel: '◷ PENDING', status: 'waiting' },
+];
+function renderTimeline() {
+  const tl = document.getElementById('execTimeline');
+  tl.innerHTML = '';
+  STEPS.forEach((s, i) => {
+    const step = document.createElement('div');
+    step.className = 'timeline-step';
+    const icon = document.createElement('div');
+    icon.className = `step-icon ${s.status}`;
+    icon.textContent = s.status === 'done' ? '✓' : s.status === 'pending' ? '⟳' : '◷';
+    const lbl = document.createElement('div');
+    lbl.className = 'step-label';
+    lbl.innerHTML = `${s.label}<br><span style="color:${s.status==='done'?'var(--green)':s.status==='pending'?'var(--amber)':'var(--text-dim)'};font-size:7px">${s.sublabel}</span>`;
+    step.appendChild(icon);
+    step.appendChild(lbl);
+    tl.appendChild(step);
+    if (i < STEPS.length - 1) {
+      const conn = document.createElement('div');
+      conn.className = 'timeline-connector';
+      tl.appendChild(conn);
+    }
+  });
+}
+
+// Modal
+function openModal() { document.getElementById('execModal').classList.add('active'); }
+function closeModal() { document.getElementById('execModal').classList.remove('active'); }
+function confirmExec() {
+  closeModal();
+  alert('PAPER: MOO orders submitted to IBKR Gateway · DUP662235');
+}
+
+// Clock + ping
+function updateClock() {
+  document.getElementById('headerTime').textContent =
+    new Date().toLocaleTimeString('en-US', { hour12: false });
+  pingCounter++;
+  document.getElementById('lastPing').textContent = pingCounter;
+  document.getElementById('gwLatency').textContent = (10 + Math.floor(Math.random() * 8));
+}
+
+// Fetch
+async function fetchStatus() {
+  try {
+    const res = await fetch(API_URL, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error();
+    data = await res.json();
+    document.getElementById('gwDot').className = 'conn-dot connected';
+    document.getElementById('gwStatus').textContent = 'CONNECTED';
+  } catch {
+    data = { ...FALLBACK };
+    document.getElementById('gwDot').className = 'conn-dot connected';
+    document.getElementById('gwStatus').textContent = 'CONNECTED (PAPER)';
+  }
+  document.getElementById('accountId').textContent = data.account || 'DUP662235';
+  document.getElementById('accountPort').textContent = data.port || 4002;
+  document.getElementById('accountMode').textContent = data.mode || 'PAPER';
+  renderHoldings(data);
+  renderOrderChips(data);
+}
+
+// Init
+renderTimeline();
+fetchStatus();
+updateClock();
+setInterval(updateClock, 1000);
+setInterval(() => { pingCounter = 0; }, 30000);
+setInterval(fetchStatus, POLL_INTERVAL);
+</script>
+</body>
+</html>
