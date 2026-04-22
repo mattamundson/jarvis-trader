@@ -31,7 +31,7 @@ import argparse
 import json
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -64,26 +64,26 @@ INSTRUMENT_CONFIGS: Dict[str, Dict[str, Any]] = {
         "adaptive_regime": False,
         "volume_filter": False,
         "mtf_filter": False,
-        "wfe_minimum": 0.40,        # Halt threshold — from MCL_PAPER_CONFIG kill_threshold
+        "wfe_minimum": 0.40,  # Halt threshold — from MCL_PAPER_CONFIG kill_threshold
         "wfe_excellent": 0.70,
         "wfe_good": 0.50,
-        "last_known_wfe": 0.82,     # Baseline from v2.7 (2026-03-29T23:41)
+        "last_known_wfe": 0.82,  # Baseline from v2.7 (2026-03-29T23:41)
         "paper_config_key": "MCL_PAPER_CONFIG",
     },
     "MNQ": {
         "symbol": "MNQ",
         "interval": "1h",
-        "start": "2024-04-26",      # Extended start that produced WFE=0.57
+        "start": "2024-04-26",  # Extended start that produced WFE=0.57
         "train_months": 6,
         "test_months": 3,
         "step_months": 3,
-        "adaptive_regime": True,    # CRITICAL — MTF=OFF, Volume=OFF
-        "volume_filter": False,     # NEVER ENABLE — degrades to -0.23
-        "mtf_filter": False,        # NEVER ENABLE — degrades to 0.17
-        "wfe_minimum": 0.30,        # Halt threshold — from MNQ_PAPER_CONFIG kill_threshold
+        "adaptive_regime": True,  # CRITICAL — MTF=OFF, Volume=OFF
+        "volume_filter": False,  # NEVER ENABLE — degrades to -0.23
+        "mtf_filter": False,  # NEVER ENABLE — degrades to 0.17
+        "wfe_minimum": 0.30,  # Halt threshold — from MNQ_PAPER_CONFIG kill_threshold
         "wfe_excellent": 0.70,
         "wfe_good": 0.50,
-        "last_known_wfe": 0.57,     # Baseline from v2.7 (2026-03-29T23:46)
+        "last_known_wfe": 0.57,  # Baseline from v2.7 (2026-03-29T23:46)
         "paper_config_key": "MNQ_PAPER_CONFIG",
     },
 }
@@ -92,6 +92,7 @@ DEFAULT_CADENCE_DAYS = 28  # 4-week rolling cadence per JARVIS_TRADER_MASTER.md 
 
 
 # ── State management ──────────────────────────────────────────────────────────
+
 
 class RollingWFEState:
     """Persistent state for the rolling WFE scheduler."""
@@ -123,7 +124,9 @@ class RollingWFEState:
             "last_run": run_ts,
             "last_wfe": wfe,
             "prev_wfe": prev.get("last_wfe"),
-            "wfe_delta": round(wfe - (prev.get("last_wfe") or 0), 4) if prev.get("last_wfe") else None,
+            "wfe_delta": round(wfe - (prev.get("last_wfe") or 0), 4)
+            if prev.get("last_wfe")
+            else None,
             "result_path": result_path,
             "run_count": prev.get("run_count", 0) + 1,
         }
@@ -150,6 +153,7 @@ class RollingWFEState:
 
 # ── WFE runner ────────────────────────────────────────────────────────────────
 
+
 def run_wfe_for_instrument(
     cfg: Dict[str, Any],
     end_date: str,
@@ -171,17 +175,19 @@ def run_wfe_for_instrument(
         return cfg.get("last_known_wfe")
 
     try:
-        from backtest.walk_forward import WalkForwardValidator
         from backtest.data_loader import BacktestDataLoader
+        from backtest.walk_forward import WalkForwardValidator
     except ImportError as e:
         logger.error(f"  [{symbol}] Import error: {e}. Make sure you're in the engine/ directory.")
         return None
 
     try:
-        loader = BacktestDataLoader(symbol=symbol, interval=cfg["interval"])
-        df = loader.load(start=cfg["start"], end=end_date)
+        loader = BacktestDataLoader()
+        df = loader.load(symbol=symbol, start=cfg["start"], end=end_date, interval=cfg["interval"])
         if df is None or len(df) < 200:
-            logger.error(f"  [{symbol}] Insufficient data: {len(df) if df is not None else 0} bars.")
+            logger.error(
+                f"  [{symbol}] Insufficient data: {len(df) if df is not None else 0} bars."
+            )
             return None
 
         validator = WalkForwardValidator(
@@ -232,6 +238,7 @@ def send_alert(symbol: str, wfe: float, verdict: str, prev_wfe: Optional[float])
     """Send WhatsApp alert for significant WFE changes."""
     try:
         from notifications.whatsapp import WhatsAppNotifier
+
         notifier = WhatsAppNotifier()
 
         delta_str = ""
@@ -272,6 +279,7 @@ def send_alert(symbol: str, wfe: float, verdict: str, prev_wfe: Optional[float])
 
 
 # ── Main scheduler loop ───────────────────────────────────────────────────────
+
 
 def run_scheduler(
     instruments: Optional[List[str]] = None,
@@ -334,8 +342,10 @@ def run_scheduler(
         inst_state = state.get_instrument_state(symbol)
         days_since = state.days_since_last_run(symbol)
 
-        logger.info(f"\n[{symbol}] Last run: {inst_state.get('last_run', 'NEVER')} "
-                    f"({days_since if days_since is not None else 'N/A'} days ago)")
+        logger.info(
+            f"\n[{symbol}] Last run: {inst_state.get('last_run', 'NEVER')} "
+            f"({days_since if days_since is not None else 'N/A'} days ago)"
+        )
         logger.info(f"[{symbol}] Last WFE: {inst_state.get('last_wfe', cfg['last_known_wfe']):.4f}")
 
         # Check if due
@@ -364,7 +374,9 @@ def run_scheduler(
 
         verdict = evaluate_wfe(symbol, wfe, cfg)
         prev_wfe = inst_state.get("last_wfe", cfg["last_known_wfe"])
-        result_path = str(RESULTS_DIR / f"WF_{symbol}_{cfg['interval']}_rolling_{now.strftime('%Y%m%d')}.json")
+        result_path = str(
+            RESULTS_DIR / f"WF_{symbol}_{cfg['interval']}_rolling_{now.strftime('%Y%m%d')}.json"
+        )
 
         # Determine action
         if verdict == "HALT":
@@ -427,34 +439,40 @@ def print_status() -> None:
 
 # ── CLI entry point ───────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="JARVIS TRADER — Rolling 4-Week WFE Recalculation Scheduler",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--instrument", "-i",
+        "--instrument",
+        "-i",
         nargs="+",
         metavar="SYMBOL",
         help="Specific instrument(s) to check (default: all approved)",
     )
     parser.add_argument(
-        "--force", "-f",
+        "--force",
+        "-f",
         action="store_true",
         help="Force recalculation even if cadence not reached",
     )
     parser.add_argument(
-        "--dry-run", "-n",
+        "--dry-run",
+        "-n",
         action="store_true",
         help="Print plan without running WFE",
     )
     parser.add_argument(
-        "--status", "-s",
+        "--status",
+        "-s",
         action="store_true",
         help="Show current rolling WFE state and exit",
     )
     parser.add_argument(
-        "--cadence-days", "-c",
+        "--cadence-days",
+        "-c",
         type=int,
         default=DEFAULT_CADENCE_DAYS,
         help="Minimum days between recalculations",
@@ -478,12 +496,11 @@ def main() -> None:
     )
 
     # Exit 1 if any instrument requires halting
-    halt_required = any(
-        r.get("halt_required", False)
-        for r in summary.get("results", {}).values()
-    )
+    halt_required = any(r.get("halt_required", False) for r in summary.get("results", {}).values())
     if halt_required:
-        logger.critical("🔴 HALT REQUIRED — at least one instrument WFE below threshold. Review immediately.")
+        logger.critical(
+            "🔴 HALT REQUIRED — at least one instrument WFE below threshold. Review immediately."
+        )
         sys.exit(1)
 
 

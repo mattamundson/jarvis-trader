@@ -1,0 +1,1210 @@
+{
+  "symbol": "MES",
+  "interval": "1h",
+  "start": "2024-06-01",
+  "end": "2026-03-27",
+  "n_samples": 80,
+  "elapsed_sec": 1729.9,
+  "results": [
+    {
+      "params": {
+        "threshold": 0.6,
+        "stc_os": 15,
+        "stc_ob": 83,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.978,
+      "wr": 0.46,
+      "trades": 37,
+      "ret": 0.0,
+      "score": 0.978
+    },
+    {
+      "params": {
+        "threshold": 0.6,
+        "stc_os": 15,
+        "stc_ob": 75,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 2.5,
+        "band_mult": 1.5
+      },
+      "pf": 0.965,
+      "wr": 0.38,
+      "trades": 34,
+      "ret": -0.03,
+      "score": 0.965
+    },
+    {
+      "params": {
+        "threshold": 0.2,
+        "stc_os": 15,
+        "stc_ob": 92,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.962,
+      "wr": 0.4,
+      "trades": 53,
+      "ret": -0.0,
+      "score": 0.962
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 15,
+        "stc_ob": 75,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.962,
+      "wr": 0.4,
+      "trades": 53,
+      "ret": -0.0,
+      "score": 0.962
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 10,
+        "stc_ob": 70,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.962,
+      "wr": 0.4,
+      "trades": 53,
+      "ret": -0.0,
+      "score": 0.962
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 10,
+        "stc_ob": 92,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 2.5,
+        "band_mult": 1.0
+      },
+      "pf": 0.917,
+      "wr": 0.43,
+      "trades": 37,
+      "ret": -0.0,
+      "score": 0.917
+    },
+    {
+      "params": {
+        "threshold": 0.3,
+        "stc_os": 10,
+        "stc_ob": 92,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 3.0,
+        "band_mult": 2.0
+      },
+      "pf": 0.844,
+      "wr": 0.32,
+      "trades": 47,
+      "ret": 0.0,
+      "score": 0.844
+    },
+    {
+      "params": {
+        "threshold": 0.3,
+        "stc_os": 15,
+        "stc_ob": 75,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.844,
+      "wr": 0.32,
+      "trades": 47,
+      "ret": 0.0,
+      "score": 0.844
+    },
+    {
+      "params": {
+        "threshold": 0.25,
+        "stc_os": 25,
+        "stc_ob": 80,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 3.0,
+        "band_mult": 2.0
+      },
+      "pf": 0.844,
+      "wr": 0.32,
+      "trades": 47,
+      "ret": 0.0,
+      "score": 0.844
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 15,
+        "stc_ob": 83,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.844,
+      "wr": 0.32,
+      "trades": 47,
+      "ret": 0.0,
+      "score": 0.844
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 25,
+        "stc_ob": 83,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.784,
+      "wr": 0.4,
+      "trades": 47,
+      "ret": -0.02,
+      "score": 0.784
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 10,
+        "stc_ob": 80,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 2.0,
+        "band_mult": 2.0
+      },
+      "pf": 0.784,
+      "wr": 0.4,
+      "trades": 47,
+      "ret": -0.02,
+      "score": 0.784
+    },
+    {
+      "params": {
+        "threshold": 0.5,
+        "stc_os": 15,
+        "stc_ob": 80,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.784,
+      "wr": 0.4,
+      "trades": 47,
+      "ret": -0.02,
+      "score": 0.784
+    },
+    {
+      "params": {
+        "threshold": 0.3,
+        "stc_os": 15,
+        "stc_ob": 92,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.783,
+      "wr": 0.29,
+      "trades": 83,
+      "ret": -0.03,
+      "score": 0.783
+    },
+    {
+      "params": {
+        "threshold": 0.2,
+        "stc_os": 10,
+        "stc_ob": 83,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 4.0,
+        "band_mult": 2.5
+      },
+      "pf": 0.783,
+      "wr": 0.29,
+      "trades": 83,
+      "ret": -0.03,
+      "score": 0.783
+    },
+    {
+      "params": {
+        "threshold": 0.25,
+        "stc_os": 10,
+        "stc_ob": 83,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.783,
+      "wr": 0.29,
+      "trades": 83,
+      "ret": -0.03,
+      "score": 0.783
+    },
+    {
+      "params": {
+        "threshold": 0.2,
+        "stc_os": 10,
+        "stc_ob": 70,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 2.5,
+        "band_mult": 1.0
+      },
+      "pf": 0.742,
+      "wr": 0.34,
+      "trades": 44,
+      "ret": -0.03,
+      "score": 0.742
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 20,
+        "stc_ob": 83,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 2.5,
+        "band_mult": 2.5
+      },
+      "pf": 0.664,
+      "wr": 0.22,
+      "trades": 9,
+      "ret": -0.04,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.5,
+        "stc_os": 10,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.531,
+      "wr": 0.22,
+      "trades": 9,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 10,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.531,
+      "wr": 0.22,
+      "trades": 9,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.3,
+        "stc_os": 10,
+        "stc_ob": 88,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.531,
+      "wr": 0.22,
+      "trades": 9,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.5,
+        "stc_os": 20,
+        "stc_ob": 80,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.455,
+      "wr": 0.23,
+      "trades": 40,
+      "ret": -0.02,
+      "score": 0.455
+    },
+    {
+      "params": {
+        "threshold": 0.25,
+        "stc_os": 10,
+        "stc_ob": 92,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.455,
+      "wr": 0.23,
+      "trades": 40,
+      "ret": -0.02,
+      "score": 0.455
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 25,
+        "stc_ob": 92,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.455,
+      "wr": 0.23,
+      "trades": 40,
+      "ret": -0.02,
+      "score": 0.455
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 15,
+        "stc_ob": 75,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 2.5
+      },
+      "pf": 0.455,
+      "wr": 0.23,
+      "trades": 40,
+      "ret": -0.02,
+      "score": 0.455
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 20,
+        "stc_ob": 75,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.455,
+      "wr": 0.23,
+      "trades": 40,
+      "ret": -0.02,
+      "score": 0.455
+    },
+    {
+      "params": {
+        "threshold": 0.25,
+        "stc_os": 15,
+        "stc_ob": 88,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.455,
+      "wr": 0.23,
+      "trades": 40,
+      "ret": -0.02,
+      "score": 0.455
+    },
+    {
+      "params": {
+        "threshold": 0.25,
+        "stc_os": 15,
+        "stc_ob": 80,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 2.0
+      },
+      "pf": 0.455,
+      "wr": 0.23,
+      "trades": 40,
+      "ret": -0.02,
+      "score": 0.455
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 10,
+        "stc_ob": 70,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.455,
+      "wr": 0.23,
+      "trades": 40,
+      "ret": -0.02,
+      "score": 0.455
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 10,
+        "stc_ob": 70,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 2.5
+      },
+      "pf": 0.455,
+      "wr": 0.23,
+      "trades": 40,
+      "ret": -0.02,
+      "score": 0.455
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 15,
+        "stc_ob": 75,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 1.5,
+        "band_mult": 1.0
+      },
+      "pf": 0.434,
+      "wr": 0.27,
+      "trades": 41,
+      "ret": -0.04,
+      "score": 0.434
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 15,
+        "stc_ob": 92,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 1.5,
+        "band_mult": 2.5
+      },
+      "pf": 0.434,
+      "wr": 0.27,
+      "trades": 41,
+      "ret": -0.04,
+      "score": 0.434
+    },
+    {
+      "params": {
+        "threshold": 0.2,
+        "stc_os": 20,
+        "stc_ob": 83,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 1.5,
+        "band_mult": 1.5
+      },
+      "pf": 0.398,
+      "wr": 0.22,
+      "trades": 9,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 25,
+        "stc_ob": 80,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 1.5,
+        "band_mult": 2.0
+      },
+      "pf": 0.398,
+      "wr": 0.22,
+      "trades": 9,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 15,
+        "stc_ob": 92,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.366,
+      "wr": 0.13,
+      "trades": 39,
+      "ret": 0.0,
+      "score": 0.366
+    },
+    {
+      "params": {
+        "threshold": 0.5,
+        "stc_os": 15,
+        "stc_ob": 92,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.366,
+      "wr": 0.13,
+      "trades": 39,
+      "ret": 0.0,
+      "score": 0.366
+    },
+    {
+      "params": {
+        "threshold": 0.5,
+        "stc_os": 25,
+        "stc_ob": 80,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 2.0,
+        "band_mult": 2.5
+      },
+      "pf": 0.328,
+      "wr": 0.26,
+      "trades": 19,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 10,
+        "stc_ob": 80,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.328,
+      "wr": 0.26,
+      "trades": 19,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 25,
+        "stc_ob": 88,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.328,
+      "wr": 0.26,
+      "trades": 19,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.25,
+        "stc_os": 20,
+        "stc_ob": 83,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 2.5,
+        "band_mult": 1.5
+      },
+      "pf": 0.316,
+      "wr": 0.22,
+      "trades": 18,
+      "ret": -0.04,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 20,
+        "stc_ob": 88,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 2.5,
+        "band_mult": 1.2
+      },
+      "pf": 0.316,
+      "wr": 0.22,
+      "trades": 18,
+      "ret": -0.04,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.3,
+        "stc_os": 25,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 2.5,
+        "band_mult": 2.0
+      },
+      "pf": 0.316,
+      "wr": 0.22,
+      "trades": 18,
+      "ret": -0.04,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 15,
+        "stc_ob": 83,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 2.5,
+        "band_mult": 2.5
+      },
+      "pf": 0.31,
+      "wr": 0.2,
+      "trades": 20,
+      "ret": -0.02,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.6,
+        "stc_os": 15,
+        "stc_ob": 80,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 4.0,
+        "band_mult": 2.0
+      },
+      "pf": 0.275,
+      "wr": 0.11,
+      "trades": 9,
+      "ret": -0.04,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 20,
+        "stc_ob": 88,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 1.5,
+        "band_mult": 1.0
+      },
+      "pf": 0.253,
+      "wr": 0.26,
+      "trades": 19,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 20,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 1.5,
+        "band_mult": 2.0
+      },
+      "pf": 0.253,
+      "wr": 0.26,
+      "trades": 19,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 20,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 1.5,
+        "band_mult": 1.5
+      },
+      "pf": 0.253,
+      "wr": 0.26,
+      "trades": 19,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.3,
+        "stc_os": 15,
+        "stc_ob": 80,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 1.5,
+        "band_mult": 2.5
+      },
+      "pf": 0.253,
+      "wr": 0.26,
+      "trades": 19,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 15,
+        "stc_ob": 83,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 1.5,
+        "band_mult": 1.5
+      },
+      "pf": 0.253,
+      "wr": 0.26,
+      "trades": 19,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.6,
+        "stc_os": 10,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.245,
+      "wr": 0.14,
+      "trades": 7,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.5,
+        "stc_os": 10,
+        "stc_ob": 83,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 4.0,
+        "band_mult": 2.0
+      },
+      "pf": 0.165,
+      "wr": 0.07,
+      "trades": 14,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 25,
+        "stc_ob": 80,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 4.0,
+        "band_mult": 2.0
+      },
+      "pf": 0.165,
+      "wr": 0.07,
+      "trades": 14,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.3,
+        "stc_os": 25,
+        "stc_ob": 88,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.165,
+      "wr": 0.07,
+      "trades": 14,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 15,
+        "stc_ob": 83,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.147,
+      "wr": 0.11,
+      "trades": 18,
+      "ret": -0.04,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 15,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.147,
+      "wr": 0.11,
+      "trades": 18,
+      "ret": -0.04,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.6,
+        "stc_os": 25,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.137,
+      "wr": 0.14,
+      "trades": 7,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.5,
+        "stc_os": 10,
+        "stc_ob": 80,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 19,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 10,
+        "stc_ob": 80,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 4.0,
+        "band_mult": 2.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 19,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 10,
+        "stc_ob": 92,
+        "stop_atr_mult": 1.0,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 19,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.6,
+        "stc_os": 20,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 6,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.5,
+        "stc_os": 20,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 6,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.2,
+        "stc_os": 20,
+        "stc_ob": 88,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 6,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 15,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 6,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.6,
+        "stc_os": 15,
+        "stc_ob": 88,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 4.0,
+        "band_mult": 2.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 6,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.25,
+        "stc_os": 10,
+        "stc_ob": 92,
+        "stop_atr_mult": 0.75,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 6,
+      "ret": -0.05,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.6,
+        "stc_os": 25,
+        "stc_ob": 75,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 5,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.2,
+        "stc_os": 25,
+        "stc_ob": 88,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 5,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.4,
+        "stc_os": 10,
+        "stc_ob": 92,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 5,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.2,
+        "stc_os": 20,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 4.0,
+        "band_mult": 2.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 5,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.25,
+        "stc_os": 15,
+        "stc_ob": 83,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 5,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.3,
+        "stc_os": 20,
+        "stc_ob": 70,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 4.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 5,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 20,
+        "stc_ob": 75,
+        "stop_atr_mult": 0.5,
+        "t1_atr_mult": 3.0,
+        "band_mult": 1.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 5,
+      "ret": -0.06,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.3,
+        "stc_os": 10,
+        "stc_ob": 92,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 1.5,
+        "band_mult": 2.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.25,
+        "stc_os": 25,
+        "stc_ob": 70,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.2
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 10,
+        "stc_ob": 88,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 2.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.2,
+        "stc_os": 20,
+        "stc_ob": 70,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 2.0,
+        "band_mult": 1.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.6,
+        "stc_os": 10,
+        "stc_ob": 70,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 1.5,
+        "band_mult": 1.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.5,
+        "stc_os": 10,
+        "stc_ob": 75,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 1.5,
+        "band_mult": 2.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.45,
+        "stc_os": 25,
+        "stc_ob": 88,
+        "stop_atr_mult": 2.0,
+        "t1_atr_mult": 1.5,
+        "band_mult": 2.0
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "score": 0.0
+    },
+    {
+      "params": {
+        "threshold": 0.35,
+        "stc_os": 20,
+        "stc_ob": 70,
+        "stop_atr_mult": 1.5,
+        "t1_atr_mult": 1.5,
+        "band_mult": 2.5
+      },
+      "pf": 0.0,
+      "wr": 0.0,
+      "trades": 0,
+      "ret": 0.0,
+      "score": 0.0
+    }
+  ]
+}

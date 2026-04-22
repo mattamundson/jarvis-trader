@@ -22,6 +22,8 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-feature-settings: "rlig" 1, "calt" 1;
+    /* Fluid font scaling: 14px on 1080p → 16px on 1440p → 18px on 4K */
+    font-size: clamp(13px, 0.85vw, 18px);
   }
 
   /* Monospace for numbers/prices */

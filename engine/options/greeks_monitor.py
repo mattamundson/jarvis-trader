@@ -8,7 +8,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Black-Scholes core math
 # ---------------------------------------------------------------------------
+
 
 def _norm_cdf(x: float) -> float:
     """Cumulative distribution function of the standard normal distribution."""
@@ -51,7 +52,7 @@ def _d1_d2(
     if sigma <= 0:
         raise ValueError("Volatility sigma must be positive.")
     log_sk = math.log(S / K)
-    d1 = (log_sk + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
+    d1 = (log_sk + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
     return d1, d2
 
@@ -59,6 +60,7 @@ def _d1_d2(
 # ---------------------------------------------------------------------------
 # Public API — Greeks
 # ---------------------------------------------------------------------------
+
 
 def calculate_greeks(
     S: float,
@@ -131,6 +133,7 @@ def calculate_greeks(
 # Implied volatility — Newton-Raphson solver
 # ---------------------------------------------------------------------------
 
+
 def implied_volatility(
     market_price: float,
     S: float,
@@ -185,13 +188,16 @@ def implied_volatility(
         # Clamp sigma to a sensible range to avoid divergence
         sigma = max(0.001, min(sigma, 20.0))
 
-    logger.warning("implied_volatility: Newton-Raphson did not converge for S=%s K=%s T=%s", S, K, T)
+    logger.warning(
+        "implied_volatility: Newton-Raphson did not converge for S=%s K=%s T=%s", S, K, T
+    )
     return float("nan")
 
 
 # ---------------------------------------------------------------------------
 # IV rank and percentile
 # ---------------------------------------------------------------------------
+
 
 def iv_rank(
     current_iv: float,
@@ -241,6 +247,7 @@ def iv_percentile(
 # Portfolio Greeks dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PortfolioGreeks:
     """Aggregate Greeks across all options positions in the portfolio."""
@@ -266,6 +273,7 @@ class PortfolioGreeks:
 # Greeks alert dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GreeksAlert:
     """Alert raised when a Greeks threshold is breached."""
@@ -273,7 +281,7 @@ class GreeksAlert:
     position_id: str
     symbol: str
     strategy: str
-    alert_type: str          # e.g. "DELTA_BREACH", "GAMMA_SPIKE"
+    alert_type: str  # e.g. "DELTA_BREACH", "GAMMA_SPIKE"
     message: str
     delta: float
     threshold: float
@@ -283,6 +291,7 @@ class GreeksAlert:
 # ---------------------------------------------------------------------------
 # Greeks Monitor
 # ---------------------------------------------------------------------------
+
 
 class GreeksMonitor:
     """Real-time Greeks monitor for an options portfolio.
@@ -414,7 +423,11 @@ class GreeksMonitor:
                 )
                 logger.warning(
                     "[GreeksMonitor] DELTA_BREACH — %s %s pos=%s delta=%+.4f threshold=%.2f",
-                    symbol, strategy, pos_id, delta, self.delta_alert_threshold,
+                    symbol,
+                    strategy,
+                    pos_id,
+                    delta,
+                    self.delta_alert_threshold,
                 )
 
             # --- Gamma spike ---
@@ -436,7 +449,11 @@ class GreeksMonitor:
                 )
                 logger.warning(
                     "[GreeksMonitor] GAMMA_SPIKE — %s %s pos=%s gamma=%.4f threshold=%.4f",
-                    symbol, strategy, pos_id, gamma, self.gamma_alert_threshold,
+                    symbol,
+                    strategy,
+                    pos_id,
+                    gamma,
+                    self.gamma_alert_threshold,
                 )
 
         return alerts

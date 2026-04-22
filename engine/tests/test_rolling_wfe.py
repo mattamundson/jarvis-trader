@@ -33,8 +33,8 @@ from backtest.rolling_wfe_scheduler import (
     run_scheduler,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def temp_state_file(tmp_path):
@@ -97,6 +97,7 @@ def state_with_old_run(temp_state_file):
 
 
 # ── RollingWFEState tests ─────────────────────────────────────────────────────
+
 
 class TestRollingWFEState:
     """State persistence and cadence logic."""
@@ -181,6 +182,7 @@ class TestRollingWFEState:
 
 # ── evaluate_wfe tests ────────────────────────────────────────────────────────
 
+
 class TestEvaluateWFE:
     """WFE verdict classification — canonical v2.7 thresholds."""
 
@@ -234,6 +236,7 @@ class TestEvaluateWFE:
 
 # ── Instrument config tests ───────────────────────────────────────────────────
 
+
 class TestInstrumentConfigs:
     """Validate canonical v2.7 instrument configurations."""
 
@@ -284,6 +287,7 @@ class TestInstrumentConfigs:
 
 
 # ── run_scheduler dry-run tests ───────────────────────────────────────────────
+
 
 class TestRunSchedulerDryRun:
     """Scheduler dry-run behavior."""
@@ -371,7 +375,9 @@ class TestRunSchedulerDryRun:
         with patch("backtest.rolling_wfe_scheduler.STATE_FILE", tmp_path / "state.json"):
             with patch("backtest.rolling_wfe_scheduler.RESULTS_DIR", tmp_path):
                 # Patch to return a below-threshold WFE
-                with patch("backtest.rolling_wfe_scheduler.run_wfe_for_instrument", return_value=0.20):
+                with patch(
+                    "backtest.rolling_wfe_scheduler.run_wfe_for_instrument", return_value=0.20
+                ):
                     summary = run_scheduler(
                         instruments=["MCL"],  # MCL halt threshold = 0.40
                         force=True,
@@ -385,7 +391,9 @@ class TestRunSchedulerDryRun:
         """Verdict=GOOD → halt_required=False in summary."""
         with patch("backtest.rolling_wfe_scheduler.STATE_FILE", tmp_path / "state.json"):
             with patch("backtest.rolling_wfe_scheduler.RESULTS_DIR", tmp_path):
-                with patch("backtest.rolling_wfe_scheduler.run_wfe_for_instrument", return_value=0.60):
+                with patch(
+                    "backtest.rolling_wfe_scheduler.run_wfe_for_instrument", return_value=0.60
+                ):
                     summary = run_scheduler(
                         instruments=["MCL"],
                         force=True,
@@ -399,7 +407,9 @@ class TestRunSchedulerDryRun:
         """WFE run returning None → status=error in summary."""
         with patch("backtest.rolling_wfe_scheduler.STATE_FILE", tmp_path / "state.json"):
             with patch("backtest.rolling_wfe_scheduler.RESULTS_DIR", tmp_path):
-                with patch("backtest.rolling_wfe_scheduler.run_wfe_for_instrument", return_value=None):
+                with patch(
+                    "backtest.rolling_wfe_scheduler.run_wfe_for_instrument", return_value=None
+                ):
                     summary = run_scheduler(
                         instruments=["MCL"],
                         force=True,

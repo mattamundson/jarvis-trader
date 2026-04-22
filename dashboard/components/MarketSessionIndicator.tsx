@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Clock, TrendingUp, Moon, Sun, Sunset } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
 interface MarketSession {
   session: string;
@@ -41,9 +42,7 @@ export function MarketSessionIndicator() {
   useEffect(() => {
     const fetch_session = async () => {
       try {
-        const res = await fetch("http://localhost:8010/market/session");
-        if (!res.ok) throw new Error();
-        const data = await res.json();
+        const data = await fetchEngine("/market/session");
         setSession(data);
         setError(false);
       } catch {

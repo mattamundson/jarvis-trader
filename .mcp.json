@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "tradingview": {
+      "command": "node",
+      "args": ["C:/Users/mattm/ThinkorSwim/jarvis-trader/tradingview-mcp/src/server.js"],
+      "env": {}
+    },
+    "kraken": {
+      "command": "kraken",
+      "args": ["mcp", "serve"],
+      "env": {}
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"],
+      "env": {}
+    },
+    "markitdown": {
+      "command": "uvx",
+      "args": ["markitdown-mcp"],
+      "env": {}
+    }
+  }
+}

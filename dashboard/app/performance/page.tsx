@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useState } from "react";
 import { Activity, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import { WeeklyStatsWidget } from "@/components/WeeklyStatsWidget";
@@ -16,6 +17,11 @@ import { EntryQualityWidget } from "@/components/EntryQualityWidget";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
 import { WinRateBySymbolWidget } from "@/components/WinRateBySymbolWidget";
 import { DailyPnLCalendarWidget } from "@/components/DailyPnLCalendarWidget";
+import { PnlCalendarWidget } from "@/components/PnlCalendarWidget";
+import HoldTimeWidget from "@/components/HoldTimeWidget";
+import { WinRateByHourWidget } from "@/components/WinRateByHourWidget";
+import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
+import { RegimeAttributionWidget } from "@/components/RegimeAttributionWidget";
 
 // ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
 
@@ -587,7 +593,7 @@ export default function PerformancePage() {
         className="sticky top-0 z-50 backdrop-blur"
         style={{ backgroundColor: "rgba(5,5,5,0.95)", borderBottom: "1px solid #1a1a2e" }}
       >
-        <div className="mx-auto max-w-[1600px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <div
               className="flex h-8 w-8 items-center justify-center rounded-lg"
@@ -604,59 +610,59 @@ export default function PerformancePage() {
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a href="/" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Dashboard
-              </a>
-              <a href="/analysis" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/analysis" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Analysis
-              </a>
-              <a href="/backtest" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/backtest" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Backtest
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/performance"
                 className="text-xs font-semibold pb-0.5"
                 style={{ color: "#e0e0e0", borderBottom: "1px solid #00ff88" }}
               >
                 Performance
-              </a>
-              <a href="/validation" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/validation" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Validation
-              </a>
-              <a href="/journal" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/journal" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Journal
-              </a>
-              <a href="/paper" className="text-xs font-semibold transition-colors" style={{ color: "#00ff88" }}>
+              </Link>
+              <Link href="/paper" className="text-xs font-semibold transition-colors" style={{ color: "#00ff88" }}>
                 Paper Trading
-              </a>
-              <a href="/watchlist" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/watchlist" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Watchlist
-              </a>
-              <a href="/scorecard" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/scorecard" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Scorecard
-              </a>
-              <a href="/settings" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/settings" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Settings
-              </a>
-              <a href="/health" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/health" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Health
-              </a>
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">
-            <a
+            <Link
               href="/"
               className="flex items-center gap-1.5 text-xs transition-colors"
               style={{ color: "#888" }}
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Back to Dashboard
-            </a>
+            </Link>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
         {/* Account ROI */}
         <AccountROIWidget />
 
@@ -665,6 +671,18 @@ export default function PerformancePage() {
 
         {/* Daily P&L Calendar */}
         <DailyPnLCalendarWidget />
+
+        {/* P&L Calendar Heatmap -- 13-week GitHub-style grid */}
+        <PnlCalendarWidget />
+
+        {/* Win Rate by Hour of Day */}
+        <WinRateByHourWidget />
+
+        {/* Streak Tracker */}
+        <StreakTrackerWidget />
+
+        {/* Regime Attribution */}
+        <RegimeAttributionWidget />
 
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -701,6 +719,11 @@ export default function PerformancePage() {
           <SummaryCard label="Research" value="0" sub="All cleared or halted" color="#555" />
           <SummaryCard label="Do Not Trade" value="8" sub="Failed walk-forward" color="#ff4444" />
           <SummaryCard label="Best WFE" value="0.82" sub="MCL 1h APPROVED (static)" color="#00ff88" />
+        </div>
+
+        {/* Hold time analytics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <HoldTimeWidget />
         </div>
 
         {/* Weekly live performance summary */}

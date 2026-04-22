@@ -4,8 +4,8 @@ import React, { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface TradingDaysStats {
   trading_days: number;
@@ -29,8 +29,8 @@ export function TradingDaysCountdownCard() {
   async function fetchData() {
     try {
       const [daysRes, summaryRes] = await Promise.allSettled([
-        fetch(`${ENGINE_URL}/portfolio/stats/trading-days`),
-        fetch(`${ENGINE_URL}/portfolio/stats/paper-phase-summary`),
+        fetchEngine(`/portfolio/stats/trading-days`),
+        fetchEngine(`/portfolio/stats/paper-phase-summary`),
       ]);
 
       if (daysRes.status === "fulfilled" && daysRes.value.ok) {

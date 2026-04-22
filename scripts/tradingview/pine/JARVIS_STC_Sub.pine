@@ -1,0 +1,131 @@
+// JARVIS STC Sub-Indicator
+// Port of COHEN_MES_STC_SUB.ts (ThinkorSwim)
+// Outputs labels and lines readable by TradingView MCP tools:
+//   data_get_pine_labels(study_filter="JARVIS STC Sub")
+//   data_get_pine_lines (study_filter="JARVIS STC Sub")
+//@version=5
+indicator(title="JARVIS STC Sub", shorttitle="JARVIS_STC", overlay=false,
+         max_labels_count=500, max_lines_count=500)
+
+// --- Inputs ---
+fast_len   = input.int(23,  title="EMA Fast Length")
+slow_len   = input.int(50,  title="EMA Slow Length")
+stc_len    = input.int(10,  title="STC Length")
+smooth     = input.int(3,   title="Smoothing Factor")
+ob_level   = input.float(83.0, title="Overbought Level")
+os_level   = input.float(15.0, title="Oversold Level")
+
+// --- STC Calculation ---
+f_stc(src, length, smth) =>
+    ema1 = ta.ema(src, fast_len)
+    ema2 = ta.ema(src, slow_len)
+    macd = ema1 - ema2
+    // First stochastic pass
+    lowest1  = ta.lowest(macd, length)
+    highest1 = ta.highest(macd, length)
+    range1   = highest1 - lowest1
+    k1       = range1 != 0.0 ? (macd - lowest1) / range1 * 100.0 : 50.0
+    d1       = ta.ema(k1, smth)
+    // Second stochastic pass
+    lowest2  = ta.lowest(d1, length)
+    highest2 = ta.highest(d1, length)
+    range2   = highest2 - lowest2
+    k2       = range2 != 0.0 ? (d1 - lowest2) / range2 * 100.0 : 50.0
+    ta.ema(k2, smth)
+
+stc = f_stc(close, stc_len, smooth)
+
+// --- State Classification ---
+stc_state =
+     stc >= ob_level ? "OVERBOUGHT" :
+     stc <= os_level ? "OVERSOLD"   :
+     stc > 50.0      ? "BULLISH"    : "BEARISH"
+
+// --- Divergence Detection (simple 5-bar swing) ---
+lookback = 5
+price_hi = ta.highest(close, lookback)
+price_lo = ta.lowest(close, lookback)
+stc_hi   = ta.highest(stc, lookback)
+stc_lo   = ta.lowest(stc, lookback)
+
+// Bullish div: price making lower low, STC making higher low
+bull_div = close[1] < price_lo[1] and stc[1] > stc_lo[1] and stc <= os_level
+// Bearish div: price making higher high, STC making lower high
+bear_div = close[1] > price_hi[1] and stc[1] < stc_hi[1] and stc >= ob_level
+
+// --- Plot ---
+stc_color = stc >= ob_level ? color.red :
+             stc <= os_level ? color.green :
+             stc > 50.0      ? color.new(color.green, 50) :
+                               color.new(color.red, 50)
+
+plot(stc, title="STC", color=stc_color, linewidth=2)
+hline(ob_level, "Overbought", color=color.red,   linestyle=hline.style_dashed)
+hline(os_level, "Oversold",   color=color.green, linestyle=hline.style_dashed)
+hline(50.0,     "Midline",    color=color.gray,  linestyle=hline.style_dotted)
+
+bgcolor(stc >= ob_level ? color.new(color.red, 90) :
+        stc <= os_level ? color.new(color.green, 90) : na)
+
+// --- MCP-Readable Labels (last bar only) ---
+if barstate.islast
+    bar_idx = bar_index
+
+    // Primary value label
+    label.new(bar_idx, stc,
+     text      = "STC: " + str.tostring(math.round(stc, 1)),
+     style     = label.style_label_left,
+     color     = color.new(color.black, 80),
+     textcolor = color.white,
+     size      = size.small)
+
+    // State label
+    label.new(bar_idx, stc - 8.0,
+     text      = "STC_STATE: " + stc_state,
+     style     = label.style_label_left,
+     color     = color.new(color.navy, 80),
+     textcolor = color.white,
+     size      = size.small)
+
+    // OB / OS reference labels
+    label.new(bar_idx, ob_level,
+     text      = "STC_OB: " + str.tostring(ob_level),
+     style     = label.style_label_left,
+     color     = color.new(color.red, 80),
+     textcolor = color.white,
+     size      = size.tiny)
+
+    label.new(bar_idx, os_level,
+     text      = "STC_OS: " + str.tostring(os_level),
+     style     = label.style_label_left,
+     color     = color.new(color.green, 80),
+     textcolor = color.white,
+     size      = size.tiny)
+
+    // Divergence labels (only when active)
+    if bull_div
+        label.new(bar_idx, os_level - 5.0,
+         text      = "BULL_DIV: true",
+         style     = label.style_label_left,
+         color     = color.new(color.lime, 70),
+         textcolor = color.black,
+         size      = size.small)
+
+    if bear_div
+        label.new(bar_idx, ob_level + 5.0,
+         text      = "BEAR_DIV: true",
+         style     = label.style_label_left,
+         color     = color.new(color.orange, 70),
+         textcolor = color.black,
+         size      = size.small)
+
+    // MCP-readable horizontal reference lines
+    line.new(bar_idx - 10, ob_level, bar_idx, ob_level,
+     color  = color.new(color.red, 60),
+     width  = 1,
+     style  = line.style_dashed)
+
+    line.new(bar_idx - 10, os_level, bar_idx, os_level,
+     color  = color.new(color.green, 60),
+     width  = 1,
+     style  = line.style_dashed)

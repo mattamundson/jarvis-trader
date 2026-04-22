@@ -10,8 +10,8 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import type { TradeRecord } from "@/lib/api";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -191,13 +191,14 @@ export function TradeCalendarWidget() {
 
   const fetchTrades = async () => {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
+      const raw: unknown = await fetchEngine<unknown>(
+        `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: TradesResponse = await res.json();
-      const closed = (json.trades ?? []).filter(
-        (t) => t.status === "CLOSED" && t.exit_time != null
+      const rows: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
+      const closed = rows.filter(
+        (t: TradeRecord) => t.status === "CLOSED" && t.exit_time != null
       );
       setTrades(closed);
       setError(null);

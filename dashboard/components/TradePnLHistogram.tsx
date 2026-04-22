@@ -9,8 +9,8 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -70,12 +70,13 @@ export function TradePnLHistogram() {
 
   const fetchTrades = async () => {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?limit=200&status=CLOSED`
+      const raw: unknown = await fetchEngine<unknown>(
+        `/portfolio/history/trades?limit=200&status=CLOSED`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: TradesResponse = await res.json();
-      setTrades(data.trades ?? []);
+      const list: Trade[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: Trade[] }).trades ?? []);
+      setTrades(list);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch trades");

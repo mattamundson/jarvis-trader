@@ -1,12 +1,22 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const nextConfig: NextConfig = {
-  // Allow API calls to the Python engine on port 8010
+  outputFileTracingRoot: path.join(__dirname, ".."),
   async rewrites() {
+    const engineUrl = (
+      process.env.ENGINE_INTERNAL_URL ??
+      process.env.ENGINE_URL_INTERNAL ??
+      "http://localhost:8010"
+    ).replace(/\/$/, "");
+
     return [
       {
-        source: "/api/engine/:path*",
-        destination: "http://localhost:8010/:path*",
+        source: "/ws/:path*",
+        destination: `${engineUrl}/ws/:path*`,
       },
     ];
   },

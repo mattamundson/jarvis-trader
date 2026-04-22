@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
 import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals } from "@/lib/api";
@@ -15,18 +16,59 @@ import { SessionSummaryWidget } from "@/components/SessionSummaryWidget";
 import { TodaySummaryWidget } from "@/components/TodaySummaryWidget";
 import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 import { SignalQueueWidget } from "@/components/SignalQueueWidget";
+import { PaperApprovedValidationWidget } from "@/components/PaperApprovedValidationWidget";
+import ValidationCheckpointWidget from "@/components/ValidationCheckpointWidget";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
 }
 
+type EngineHealthPayload = { status?: string };
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function PaperTradingPage() {
+  const { data: health, error: healthError, isLoading: healthLoading } = useSWR<EngineHealthPayload>(
+    "/health",
+    fetcher,
+    { refreshInterval: 30_000, revalidateOnFocus: true }
+  );
+
+  let engineHealthLabel = "ENGINE …";
+  let engineHealthStyle: React.CSSProperties = {
+    borderColor: "#88888844",
+    backgroundColor: "#88888810",
+    color: "#888888",
+  };
+  if (healthError) {
+    engineHealthLabel = "ENGINE offline";
+    engineHealthStyle = {
+      borderColor: "#ff444466",
+      backgroundColor: "#ff444410",
+      color: "#ff6666",
+    };
+  } else if (!healthLoading && health) {
+    if (health.status === "ok") {
+      engineHealthLabel = "ENGINE ok";
+      engineHealthStyle = {
+        borderColor: "#00aaff44",
+        backgroundColor: "#00aaff12",
+        color: "#00ccff",
+      };
+    } else {
+      engineHealthLabel = `ENGINE ${health.status ?? "?"}`;
+      engineHealthStyle = {
+        borderColor: "#ffaa0044",
+        backgroundColor: "#ffaa0010",
+        color: "#ffcc66",
+      };
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1600px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
               <Activity className="h-5 w-5 text-accent" />
@@ -40,22 +82,29 @@ export default function PaperTradingPage() {
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+              <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
                 <ArrowLeft className="h-3 w-3" />
                 Dashboard
-              </a>
-              <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Analysis
-              </a>
-              <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Backtest
-              </a>
-              <a href="/paper" className="text-xs text-accent font-semibold transition-colors">
+              </Link>
+              <Link href="/paper" className="text-xs text-accent font-semibold transition-colors">
                 Paper Trading
-              </a>
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-2">
+            <span
+              className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
+              style={engineHealthStyle}
+              title="GET /health — same check as WORKING_TODAY smoke"
+            >
+              {engineHealthLabel}
+            </span>
             <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
               style={{ borderColor: "#00ff8833", backgroundColor: "#00ff8810", color: "#00ff88" }}>
               PAPER MODE
@@ -64,7 +113,7 @@ export default function PaperTradingPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-4 space-y-4">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-4 space-y-4">
         {/* WFE Halt Banner */}
         <div className="rounded-xl p-4 font-mono"
           style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
@@ -84,6 +133,12 @@ export default function PaperTradingPage() {
 
         {/* Risk Status — always visible at top of page */}
         <RiskStatusWidget />
+
+        {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
+        <PaperApprovedValidationWidget />
+
+        {/* Overall validation checkpoint (30-day window progress) */}
+        <ValidationCheckpointWidget />
 
         {/* Circuit breaker / safety status */}
         <CircuitBreakerWidget />

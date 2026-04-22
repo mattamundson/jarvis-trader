@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
 type DayRow = {
   day: string;
@@ -47,9 +48,9 @@ export function TradeAnalyticsWidget() {
 
   useEffect(() => {
     Promise.all([
-      fetch("http://localhost:8010/analytics/trades/by-day").then((r) => r.json()),
-      fetch("http://localhost:8010/analytics/trades/by-symbol").then((r) => r.json()),
-      fetch("http://localhost:8010/analytics/trades/by-hour").then((r) => r.json()),
+      fetchEngine("/analytics/trades/by-day"),
+      fetchEngine("/analytics/trades/by-symbol"),
+      fetchEngine("/analytics/trades/by-hour"),
     ])
       .then(([d, s, h]) => {
         setDays(d.days ?? []);

@@ -4,8 +4,8 @@ import React, { useState, useEffect } from "react";
 import { Calendar, Target, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 const TARGET_DAYS = 30;
 const REFRESH_MS = 120_000;
 
@@ -65,13 +65,9 @@ export function CumulativeTradingDaysWidget() {
   async function fetchData() {
     try {
       setLoading(true);
-      const res = await fetch(`${ENGINE_URL}/portfolio/history/trades`);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const json: unknown = await res.json();
+      const raw = await fetchEngine(`/portfolio/history/trades`);
       // API returns an array of trades directly
-      const arr: TradeRecord[] = Array.isArray(json) ? json : [];
+      const arr: TradeRecord[] = Array.isArray(raw) ? raw : [];
       setTrades(arr);
       setError(null);
       setLastRefresh(new Date());

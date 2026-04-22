@@ -12,14 +12,14 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { fetchEngine } from "@/lib/api";
+import { fetchDailyPnlHistoryNormalized } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import type { DailyPnlRecord } from "@/lib/api";
 
 const REFRESH_MS = 30_000;
 
-function fetcher<T>(path: string): Promise<T> {
-  return fetchEngine<T>(path);
+async function dailyPnlFetcher(): Promise<DailyPnlRecord[]> {
+  return fetchDailyPnlHistoryNormalized({ days: 30 });
 }
 
 function formatShortDate(iso: string): string {
@@ -29,8 +29,8 @@ function formatShortDate(iso: string): string {
 
 export function DailyPnlPanel() {
   const { data: records, isLoading, error } = useSWR<DailyPnlRecord[]>(
-    "/portfolio/history/daily-pnl?days=30",
-    fetcher,
+    "portfolio/history/daily-pnl-normalized-30",
+    dailyPnlFetcher,
     { refreshInterval: REFRESH_MS }
   );
 

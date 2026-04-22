@@ -61,6 +61,7 @@ logger = logging.getLogger(__name__)
 
 # ── Individual checks ─────────────────────────────────────────────────────────
 
+
 class ValidationResult:
     def __init__(self, name: str):
         self.name = name
@@ -122,11 +123,13 @@ def check_library_available() -> ValidationResult:
     result = ValidationResult("ib_async library")
     try:
         import ib_async  # noqa: F401
+
         return result.ok("ib_async is installed")
     except ImportError:
         pass
     try:
         import ib_insync  # noqa: F401
+
         return result.ok("ib_insync is installed (legacy — consider upgrading to ib_async)")
     except ImportError:
         return result.fail(
@@ -135,7 +138,9 @@ def check_library_available() -> ValidationResult:
         )
 
 
-async def check_ib_connection(host: str, port: int, timeout: float = 10.0) -> list[ValidationResult]:
+async def check_ib_connection(
+    host: str, port: int, timeout: float = 10.0
+) -> list[ValidationResult]:
     """
     Connect to IB Gateway and run account-level checks.
     Returns a list of ValidationResult objects for each sub-check.
@@ -278,6 +283,7 @@ async def check_ib_connection(host: str, port: int, timeout: float = 10.0) -> li
 
 # ── Main runner ───────────────────────────────────────────────────────────────
 
+
 async def run_validation(host: str = PAPER_HOST, port: int = PAPER_PORT) -> dict:
     """Run all validation checks and return a summary dict."""
     run_ts = datetime.utcnow().isoformat()
@@ -306,14 +312,18 @@ async def run_validation(host: str = PAPER_HOST, port: int = PAPER_PORT) -> dict
         ib_results = await check_ib_connection(host, port)
         all_results.extend(ib_results)
     else:
-        for name in ["IB Gateway connection", "Paper account (DU prefix)", "Paper trading mode active", "Market data tick (MCL)"]:
+        for name in [
+            "IB Gateway connection",
+            "Paper account (DU prefix)",
+            "Paper trading mode active",
+            "Market data tick (MCL)",
+        ]:
             r = ValidationResult(name)
             r.fail("Skipped — prerequisite check failed (TCP or library)")
             all_results.append(r)
 
     # Summary
     passed = [r for r in all_results if r.passed]
-    failed = [r for r in all_results if not r.passed]
     overall = "PASS" if all(r.passed for r in all_results) else "FAIL"
 
     logger.info("\n" + "=" * 60)
@@ -347,11 +357,15 @@ def main() -> None:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--host", default=PAPER_HOST, help="IB Gateway host")
-    parser.add_argument("--port", type=int, default=PAPER_PORT, help="IB Gateway port (must be 4002)")
+    parser.add_argument(
+        "--port", type=int, default=PAPER_PORT, help="IB Gateway port (must be 4002)"
+    )
     args = parser.parse_args()
 
     if args.port == 4001:
-        logger.critical("Port 4001 is the LIVE trading port. JARVIS never connects to live port during testing.")
+        logger.critical(
+            "Port 4001 is the LIVE trading port. JARVIS never connects to live port during testing."
+        )
         sys.exit(2)
 
     summary = asyncio.run(run_validation(args.host, args.port))

@@ -14,13 +14,27 @@ import { TradeHistory } from "@/components/TradeHistory";
 import { DailyPnlPanel } from "@/components/DailyPnlPanel";
 import { RegimeDisplay } from "@/components/RegimeDisplay";
 import { MTFConfirmationWidget } from "@/components/MTFConfirmationWidget";
+import { DualTFWidget } from "@/components/DualTFWidget";
 import { SignalHistory } from "@/components/SignalHistory";
 import { CircuitBreakerPanel } from "@/components/CircuitBreakerPanel";
 import { IBGatewayStatus } from "@/components/IBGatewayStatus";
+import { SchwabStatusWidget } from "@/components/SchwabStatusWidget";
+import { BrokerPositionsWidget } from "@/components/BrokerPositionsWidget";
 import { StrategyParamsPanel } from "@/components/StrategyParamsPanel";
 import { SessionTodayWidget } from "@/components/SessionTodayWidget";
+import { RollingWFEWidget } from "@/components/RollingWFEWidget";
+import { TradeJournalWidget } from "@/components/TradeJournalWidget";
+import { EODSummaryWidget } from "@/components/EODSummaryWidget";
+import { EventsFeedWidget } from '@/components/EventsFeedWidget';
+import UnrealizedPnLWidget from "@/components/UnrealizedPnLWidget";
+import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidget";
+import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
+import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
+import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
+import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
+import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
   HealthResponse,
   SafetyStatus,
@@ -81,14 +95,24 @@ export default function DashboardPage() {
     { refreshInterval: 60_000, shouldRetryOnError: false }
   );
 
-  const engineOnline = !healthErr && !!health;
+  const engineReachable = !healthErr && !!health;
+  const engineHealthy =
+    health?.status === "ok" || health?.status === "healthy";
+  const engineDegraded = engineReachable && !engineHealthy;
+
+  const { data: pendingApprovals } = useSWR(
+    engineReachable ? "pending-approvals-count" : null,
+    () => getPendingApprovals(50),
+    { refreshInterval: 25_000, shouldRetryOnError: false }
+  );
+  const pendingCount = pendingApprovals?.count ?? 0;
 
   const [analysisSymbol, setAnalysisSymbol] = React.useState("SPY");
   const [isRunning, setIsRunning] = React.useState(false);
   const [lastResult, setLastResult] = React.useState<Record<string, unknown> | null>(null);
 
   const runAnalysis = useCallback(async () => {
-    if (!engineOnline || isRunning) return;
+    if (!engineReachable || isRunning) return;
     setIsRunning(true);
     try {
       const res = await fetchEngine("/pipeline/run", {
@@ -102,7 +126,7 @@ export default function DashboardPage() {
     } finally {
       setIsRunning(false);
     }
-  }, [engineOnline, isRunning, analysisSymbol]);
+  }, [engineReachable, isRunning, analysisSymbol]);
 
   const onKillSwitchToggle = useCallback(() => {
     mutateSafety();
@@ -113,7 +137,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1600px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 2xl:px-10 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
               <Activity className="h-5 w-5 text-accent" />
@@ -126,38 +150,7 @@ export default function DashboardPage() {
                 IBKR Futures + Schwab Options
               </p>
             </div>
-            <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Analysis
-              </a>
-              <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Backtest
-              </a>
-              <a href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Performance
-              </a>
-              <a href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Validation
-              </a>
-              <a href="/journal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Journal
-              </a>
-              <a href="/paper" className="text-xs text-accent font-semibold hover:text-foreground transition-colors">
-                Paper Trading
-              </a>
-              <a href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Watchlist
-              </a>
-              <a href="/scorecard" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Scorecard
-              </a>
-              <a href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Settings
-              </a>
-              <a href="/health" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Health
-              </a>
-            </nav>
+            
           </div>
 
           <div className="flex items-center gap-3">
@@ -165,10 +158,12 @@ export default function DashboardPage() {
             <IBGatewayStatus />
 
             {/* Engine connection status */}
-            {engineOnline ? (
+            {engineReachable ? (
               <div className="flex items-center gap-1.5 text-xs text-bull">
                 <Wifi className="h-3.5 w-3.5" />
-                <span>Engine connected</span>
+                <span>
+                  {engineDegraded ? "Engine connected (degraded)" : "Engine connected"}
+                </span>
                 {health?.schwab_connected && <Badge variant="info">Schwab</Badge>}
               </div>
             ) : (
@@ -180,6 +175,7 @@ export default function DashboardPage() {
 
             {/* Mode badges */}
             {health?.live_trading && <Badge variant="bull">LIVE</Badge>}
+            {health?.paper_mode && <Badge variant="info">PAPER MODE</Badge>}
             {health?.kill_switch_active && (
               <Badge variant="bear">
                 <AlertTriangle className="mr-1 h-3 w-3" />
@@ -192,18 +188,30 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-4 space-y-4">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 2xl:px-10 py-4 space-y-4">
         {/* Macro / VIX header bar */}
         <MacroBar macro={macro ?? null} />
 
         {/* Watchlist ticker bar — live price feed */}
         <WatchlistBar items={watchlist ?? []} />
 
+        {/* EOD Summary — daily P&L and validation gates */}
+        <EODSummaryWidget />
+
         {/* Circuit breaker safety panel — safety-critical, shown before trading panels */}
         <CircuitBreakerPanel />
 
+        {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
+        <ProactiveValidationWidget />
+
+        {/* Signal Flow — per-instrument STC values and pipeline block stage */}
+        <SignalFlowWidget />
+
         {/* Walk-Forward / Paper Trading Status */}
         <WFEStatusCard />
+
+        {/* Rolling WFE Monitoring */}
+        <RollingWFEWidget />
 
         {/* Main grid */}
         <div className="grid grid-cols-12 gap-4">
@@ -222,6 +230,7 @@ export default function DashboardPage() {
             />
             <RegimeDisplay />
             <MTFConfirmationWidget symbol="MES" />
+            <DualTFWidget />
           </div>
 
           {/* Center column — agent activity feed */}
@@ -237,6 +246,15 @@ export default function DashboardPage() {
               onToggle={onKillSwitchToggle}
             />
 
+            {/* Schwab connection status */}
+            <SchwabStatusWidget />
+
+            {/* Broker position reconciliation */}
+            <BrokerPositionsWidget />
+
+            {/* Unrealized P&L — live paper positions with mark-to-market */}
+            <UnrealizedPnLWidget />
+
             {/* Safety metrics */}
             {safety && (
               <div className="rounded-xl border border-border bg-card p-4 space-y-2">
@@ -245,29 +263,38 @@ export default function DashboardPage() {
                 </p>
                 <RiskRow
                   label="Daily P&L"
-                  value={`$${safety.daily_pnl.toFixed(0)}`}
-                  limit={`limit: $${Math.abs(safety.max_daily_loss).toFixed(0)}`}
-                  pct={Math.abs(safety.daily_pnl) / Math.abs(safety.max_daily_loss || 1)}
-                  danger={safety.daily_pnl < safety.max_daily_loss}
+                  value={`$${(safety.daily_pnl ?? 0).toFixed(0)}`}
+                  limit={`limit: $${Math.abs(safety.max_daily_loss ?? 0).toFixed(0)}`}
+                  pct={Math.abs(safety.daily_pnl ?? 0) / Math.abs(safety.max_daily_loss || 1)}
+                  danger={(safety.daily_pnl ?? 0) < (safety.max_daily_loss ?? 0)}
                 />
                 <RiskRow
                   label="Drawdown"
-                  value={`${(safety.current_drawdown * 100).toFixed(1)}%`}
+                  value={`${((safety.current_drawdown ?? 0) * 100).toFixed(1)}%`}
                   limit="limit: 10%"
-                  pct={safety.current_drawdown / 0.10}
-                  danger={safety.current_drawdown > 0.08}
+                  pct={(safety.current_drawdown ?? 0) / 0.10}
+                  danger={(safety.current_drawdown ?? 0) > 0.08}
                 />
                 <RiskRow
                   label="Orders Today"
-                  value={String(safety.orders_today)}
+                  value={String(safety.orders_today ?? 0)}
                   limit="limit: 50"
-                  pct={safety.orders_today / 50}
-                  danger={safety.orders_today > 40}
+                  pct={(safety.orders_today ?? 0) / 50}
+                  danger={(safety.orders_today ?? 0) > 40}
                 />
               </div>
             )}
 
             <SentimentPanel sentiments={sentiments ?? []} />
+
+            {/* Alert History — fired P&L threshold alerts */}
+            <AlertHistoryWidget />
+
+            {/* Discord Intelligence — Corey Auction Tools signal context */}
+            <DiscordIntelligenceWidget />
+
+            {/* Bookmark Themes — Claude-clustered weekly themes from Discord bookmarks */}
+            <BookmarkThemesPanel />
 
             {/* Strategy Parameters */}
             <StrategyParamsPanel />
@@ -287,7 +314,7 @@ export default function DashboardPage() {
                 />
                 <button
                   onClick={runAnalysis}
-                  disabled={!engineOnline || isRunning}
+                  disabled={!engineReachable || isRunning}
                   className="rounded-lg bg-accent/20 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {isRunning ? "Running…" : "Analyze"}
@@ -315,6 +342,12 @@ export default function DashboardPage() {
         {/* Paper trading positions panel — full width below main grid */}
         <PaperTradingPanel />
 
+        {/* Live pipeline reasoning — full 5-stage breakdown for each trade decision */}
+        <LiveTradeReasoningWidget />
+
+        {/* Trade journal with full signal provenance (US-1404) */}
+        <TradeJournalWidget />
+
         {/* Persisted history — full width, three-column on large screens */}
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 lg:col-span-6">
@@ -327,7 +360,12 @@ export default function DashboardPage() {
             <DailyPnlPanel />
           </div>
         </div>
-      </main>
+      
+      <div className="mt-8">
+        <EventsFeedWidget />
+      </div>
+    
+</main>
     </div>
   );
 }
@@ -591,6 +629,7 @@ function WFEStatusCard() {
   );
 }
 
+// ── Risk Row ──────────────────────────────────────────────────────────────
 
 function RiskRow({
   label,
@@ -605,26 +644,28 @@ function RiskRow({
   pct: number;
   danger: boolean;
 }) {
-  const clampedPct = Math.min(1, Math.max(0, pct));
-  const barColor = danger ? "bg-bear" : clampedPct > 0.7 ? "bg-warn" : "bg-bull";
-
+  const clampedPct = Math.min(pct, 1);
   return (
     <div className="space-y-1">
-      <div className="flex justify-between text-xs">
+      <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">{label}</span>
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground/60">{limit}</span>
-          <span className={`tabular-nums font-medium ${danger ? "text-bear" : "text-foreground"}`}>
+          <span className="font-mono font-semibold" style={{ color: danger ? "#ff4444" : "#e0e0e0" }}>
             {value}
           </span>
+          <span className="font-mono" style={{ color: "#555" }}>/ {limit}</span>
         </div>
       </div>
-      <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+      <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "#1a1a2e" }}>
         <div
-          className={`h-full rounded-full transition-all ${barColor}`}
-          style={{ width: `${clampedPct * 100}%` }}
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${clampedPct * 100}%`,
+            backgroundColor: danger ? "#ff4444" : clampedPct > 0.7 ? "#ffcc00" : "#00ff88",
+          }}
         />
       </div>
+      <p className="font-mono text-[10px]" style={{ color: "#555" }}>{limit}</p>
     </div>
   );
 }

@@ -1,0 +1,113 @@
+{
+  "project": "JARVIS TRADER — Agent 2: MES Re-Validation Campaign",
+  "branchName": "ralph/mes-revalidation",
+  "description": "Systematically attack MES WFE=0.09 through parameter search and RL validation. Goal: find at least one parameter configuration achieving WFE≥0.40. If found, document and stage for config.py promotion (Tier 3 confirmation required). Run 50 parameter combinations via n-autoresearch experiment loop.",
+  "userStories": [
+    {
+      "id": "US-MES-001",
+      "title": "Run MES diagnostic baseline backtests",
+      "description": "As a researcher, I want to establish the current WFE baseline for MES across three timeframes so I understand the failure mode before searching for fixes.",
+      "acceptanceCriteria": [
+        "Run: cd engine && .venv/Scripts/python -m backtest.run_backtest --symbol MES --interval 1h 2>&1 | tee data/mes_baseline_1h.txt",
+        "Run: cd engine && .venv/Scripts/python -m backtest.run_backtest --symbol MES --interval 4h 2>&1 | tee data/mes_baseline_4h.txt",
+        "Run: cd engine && .venv/Scripts/python -m backtest.run_backtest --symbol MES --interval 1d 2>&1 | tee data/mes_baseline_1d.txt",
+        "Extract WFE, PF, Sharpe, WR from each output and record in data/mes_diagnostic_report.json",
+        "Identify which timeframe shows highest WFE",
+        "Commit: docs(data): add MES diagnostic baseline results"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "If backtest module not found, check: ls engine/backtest/ and adapt command. If engine is not running, start it first: cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010 &"
+    },
+    {
+      "id": "US-MES-002",
+      "title": "Create MES search space JSON",
+      "description": "As a researcher, I want a structured search space file covering all parameter axes that could improve MES WFE.",
+      "acceptanceCriteria": [
+        "engine/backtest/mes_search_space.json created with at least 50 parameter combinations",
+        "Axes covered: stc_os (5 values), stc_ob (4 values), stc_cycle_length (4 values), atr_stop (4 values), atr_target (4 values), interval (2 values)",
+        "File follows format: [{\"id\": \"MES-001\", \"stc_os\": 10, \"stc_ob\": 80, \"stc_cycle_length\": 10, \"atr_stop\": 0.50, \"atr_target\": 1.20, \"interval\": \"1h\"}, ...]",
+        "Total combinations: 50-100 entries",
+        "Commit: feat(backtest): add MES parameter search space (50+ combinations)"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Start with tightest ATR stops for MES (smaller contract, less ATR). Prioritize 4h over 1h based on diagnostic results."
+    },
+    {
+      "id": "US-MES-003",
+      "title": "Implement or verify MES experiment runner",
+      "description": "As a researcher, I want a script that iterates over mes_search_space.json, runs each backtest, and records WFE results.",
+      "acceptanceCriteria": [
+        "Check if engine/backtest/run_experiment.py exists and supports --search-space flag",
+        "If it exists: verify it can accept mes_search_space.json",
+        "If it doesn't exist or needs extension: implement run_mes_experiment.py that reads search space, calls backtest for each config, records WFE/PF/Sharpe/WR to experiment log",
+        "Script writes results to engine/data/mes_experiment_log.json incrementally (not all-or-nothing)",
+        "Script is idempotent — can be re-run and skips already-tested configs",
+        "Commit: feat(backtest): MES experiment runner with incremental logging"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Incremental logging is critical — if the run crashes at iteration 40, we don't lose 39 results"
+    },
+    {
+      "id": "US-MES-004",
+      "title": "Run MES parameter search — first 25 combinations",
+      "description": "As a researcher, I want the first 25 parameter combinations tested and results recorded.",
+      "acceptanceCriteria": [
+        "Run experiment runner on first 25 configs from mes_search_space.json",
+        "engine/data/mes_experiment_log.json has 25 entries with WFE, PF, Sharpe, WR",
+        "Any config achieving WFE≥0.40 is flagged in the log with 'wfe_gate_passed': true",
+        "Commit: chore(data): MES experiment log — batch 1 (25 configs)"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "If engine pipeline LLM calls fail (Anthropic credits=0), the strategy signal generation may still work without LLM — check if backtest uses raw signals or pipeline signals"
+    },
+    {
+      "id": "US-MES-005",
+      "title": "Run MES parameter search — second 25 combinations",
+      "description": "As a researcher, I want all 50 parameter combinations tested.",
+      "acceptanceCriteria": [
+        "Run experiment runner on configs 26-50 from mes_search_space.json",
+        "engine/data/mes_experiment_log.json has 50 entries total",
+        "Commit: chore(data): MES experiment log — batch 2 (50 configs total)"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-MES-006",
+      "title": "Validate RL Run 10 WFE",
+      "description": "As a researcher, I want to know whether the RL Run 10 model achieves WFE≥0.40, providing an alternative path to MES paper trading.",
+      "acceptanceCriteria": [
+        "Locate RL Run 10 model: find engine/data -name '*.zip' | head -10 or ls engine/data/rl_models/",
+        "Run walk-forward validation on Run 10",
+        "Record WFE in engine/data/rl_run10_wfe.json: {\"run\": 10, \"wfe\": X, \"pf\": X, \"sharpe\": X, \"wr\": X}",
+        "If WFE≥0.40: flag as 'gate_passed': true — this is a valid path to MES paper trading",
+        "If WFE<0.20: document recommended Run 11 config changes",
+        "Commit: docs(data): RL Run 10 WFE validation results"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "The RL agent uses a separate signal path from STC — it may pass the gate even if STC params don't"
+    },
+    {
+      "id": "US-MES-007",
+      "title": "Generate MES top results and promotion recommendation",
+      "description": "As a researcher, I want a ranked summary of the best-performing MES configurations so Matt can make a Tier 3 decision on config.py promotion.",
+      "acceptanceCriteria": [
+        "engine/data/mes_top_results.json created with top 5 configs sorted by WFE descending",
+        "Each entry includes: config params, WFE, PF, Sharpe, WR, trades count, max_dd",
+        "Document clearly: which configs (if any) pass the gate (WFE≥0.40)",
+        "Document clearly: whether RL Run 10 passes the gate",
+        "Create data/MES_ACTIVATION_BRIEF.md summarizing findings and next steps for Tier 3 config.py promotion",
+        "Commit: docs: MES activation brief — top results and promotion recommendation"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "config.py promotion requires explicit Tier 3 confirmation from Matt — this story documents the case, not makes the change"
+    }
+  ]
+}

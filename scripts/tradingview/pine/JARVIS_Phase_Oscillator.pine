@@ -1,0 +1,135 @@
+// JARVIS Phase Oscillator
+// Port of Saty_Phase_OscillatorSTUDY.ts (ThinkorSwim)
+// Outputs labels readable by TradingView MCP tools:
+//   data_get_pine_labels(study_filter="JARVIS Phase Oscillator")
+//   data_get_pine_lines (study_filter="JARVIS Phase Oscillator")
+//@version=5
+indicator(title="JARVIS Phase Oscillator", shorttitle="JARVIS_PHASE", overlay=false,
+         max_labels_count=500, max_lines_count=500)
+
+// --- Inputs ---
+pivot_len   = input.int(21,    title="Pivot EMA Length")
+atr_len     = input.int(14,    title="ATR Length")
+smooth_len  = input.int(3,     title="Oscillator Smoothing")
+bb_len      = input.int(21,    title="BB Length for Compression")
+bb_mult     = input.float(2.0, title="BB StdDev Multiplier")
+// Compression threshold: BB width < ATR * threshold
+comp_thresh = input.float(1.854, title="Compression ATR Threshold")
+
+// --- Phase Oscillator Calculation ---
+// pivot: EMA(close, 21)
+// osc  = EMA(((close - pivot) / (3 * ATR)) * 100, 3)
+pivot  = ta.ema(close, pivot_len)
+atr14  = ta.atr(atr_len)
+raw    = atr14 != 0.0 ? ((close - pivot) / (3.0 * atr14)) * 100.0 : 0.0
+phase  = ta.ema(raw, smooth_len)
+
+// --- Compression Detection ---
+// BB width = 2 * bb_mult * stdev; compare against ATR * comp_thresh * 2
+[bb_mid, bb_upper, bb_lower] = ta.bb(close, bb_len, bb_mult)
+bb_width   = bb_upper - bb_lower
+atr_band   = atr14 * comp_thresh * 2.0
+is_compressed = bb_width < atr_band
+
+// --- Fibonacci Zone Classification ---
+// Zones: ±23.6, ±61.8, ±100
+fib_hi3 =  100.0
+fib_hi2 =   61.8
+fib_hi1 =   23.6
+fib_lo1 =  -23.6
+fib_lo2 =  -61.8
+fib_lo3 = -100.0
+
+phase_state =
+     phase >  fib_hi2 ? "DISTRIBUTION"   :
+     phase >  fib_hi1 ? "NEUTRAL_UP"     :
+     phase >  0.0     ? "EXPANSION_UP"   :
+     phase > fib_lo1  ? "EXPANSION_DOWN" :
+     phase > fib_lo2  ? "NEUTRAL_DOWN"   : "ACCUMULATION"
+
+// --- Colors ---
+pos_color = color.new(color.teal, 20)
+neg_color = color.new(color.red,  20)
+comp_color = color.new(color.yellow, 60)
+
+phase_color = phase >= 0.0 ? pos_color : neg_color
+
+// --- Plot ---
+plot(phase, title="Phase", color=phase_color, linewidth=2)
+plot(0.0,   title="Zero",         color=color.gray,                    linewidth=1)
+plot(fib_hi2, title="+61.8",      color=color.new(color.red, 50),      linewidth=1)
+plot(fib_hi1, title="+23.6",      color=color.new(color.orange, 60),   linewidth=1)
+plot(fib_lo1, title="-23.6",      color=color.new(color.lime, 60),     linewidth=1)
+plot(fib_lo2, title="-61.8",      color=color.new(color.green, 50),    linewidth=1)
+
+// Compression background
+bgcolor(is_compressed ? comp_color : na, title="Compression Zone")
+
+// --- MCP-Readable Labels (last bar only) ---
+if barstate.islast
+    bar_idx = bar_index
+
+    // Primary value label
+    label.new(bar_idx, phase,
+     text      = "PHASE: " + str.tostring(math.round(phase, 2)),
+     style     = label.style_label_left,
+     color     = color.new(color.black, 75),
+     textcolor = color.white,
+     size      = size.small)
+
+    // Compression label
+    label.new(bar_idx, phase - 6.0,
+     text      = "COMPRESSED: " + str.tostring(is_compressed),
+     style     = label.style_label_left,
+     color     = color.new(color.navy, 75),
+     textcolor = color.white,
+     size      = size.small)
+
+    // State label
+    label.new(bar_idx, phase - 12.0,
+     text      = "PHASE_STATE: " + phase_state,
+     style     = label.style_label_left,
+     color     = color.new(color.maroon, 75),
+     textcolor = color.white,
+     size      = size.small)
+
+    // Fibonacci level reference labels (for MCP line detection)
+    label.new(bar_idx, fib_hi2,
+     text      = "PHASE_FIB_HI2: " + str.tostring(fib_hi2),
+     style     = label.style_label_left,
+     color     = color.new(color.red, 80),
+     textcolor = color.white,
+     size      = size.tiny)
+
+    label.new(bar_idx, fib_hi1,
+     text      = "PHASE_FIB_HI1: " + str.tostring(fib_hi1),
+     style     = label.style_label_left,
+     color     = color.new(color.orange, 80),
+     textcolor = color.white,
+     size      = size.tiny)
+
+    label.new(bar_idx, fib_lo1,
+     text      = "PHASE_FIB_LO1: " + str.tostring(fib_lo1),
+     style     = label.style_label_left,
+     color     = color.new(color.lime, 80),
+     textcolor = color.black,
+     size      = size.tiny)
+
+    label.new(bar_idx, fib_lo2,
+     text      = "PHASE_FIB_LO2: " + str.tostring(fib_lo2),
+     style     = label.style_label_left,
+     color     = color.new(color.green, 80),
+     textcolor = color.white,
+     size      = size.tiny)
+
+    // MCP-readable horizontal level lines
+    line.new(bar_idx - 10, fib_hi2, bar_idx, fib_hi2,
+     color = color.new(color.red, 50),   width = 1, style = line.style_dashed)
+    line.new(bar_idx - 10, fib_hi1, bar_idx, fib_hi1,
+     color = color.new(color.orange, 50), width = 1, style = line.style_dashed)
+    line.new(bar_idx - 10, 0.0,     bar_idx, 0.0,
+     color = color.new(color.gray, 50),  width = 1, style = line.style_dotted)
+    line.new(bar_idx - 10, fib_lo1, bar_idx, fib_lo1,
+     color = color.new(color.lime, 50),  width = 1, style = line.style_dashed)
+    line.new(bar_idx - 10, fib_lo2, bar_idx, fib_lo2,
+     color = color.new(color.green, 50), width = 1, style = line.style_dashed)

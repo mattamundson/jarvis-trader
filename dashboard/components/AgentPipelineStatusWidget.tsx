@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -206,39 +205,25 @@ export function AgentPipelineStatusWidget() {
 
   async function fetchStatus() {
     try {
-      // Primary: /pipeline/status
-      let res = await fetch(`${ENGINE_URL}/pipeline/status`);
-
-      if (res.status === 404) {
-        // Fallback: /health — look for agent info there
-        res = await fetch(`${ENGINE_URL}/health`);
-        if (!res.ok) {
-          throw new Error(`Health endpoint returned ${res.status}`);
-        }
-        const health = await res.json();
-        // /health may have agent info nested — try to extract or return empty agent list
-        const fallbackAgents: PipelineAgent[] = health.agents ?? [];
-        setData({
-          agents: fallbackAgents,
-          pipeline_healthy: health.overall === "healthy" || health.status === "ok",
-          last_cycle: health.timestamp ?? null,
-        });
-        setError(null);
-        setLastRefresh(new Date());
-        setLoading(false);
-        return;
-      }
-
-      if (!res.ok) {
-        throw new Error(`Pipeline status returned ${res.status}`);
-      }
-
-      const json: PipelineStatusResponse = await res.json();
+      const json = await fetchEngine<PipelineStatusResponse>("/pipeline/status");
       setData(json);
       setError(null);
       setLastRefresh(new Date());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      // Fallback: try /health and extract agent info if present
+      try {
+        const health = await fetchEngine<Record<string, unknown>>("/health");
+        const fallbackAgents: PipelineAgent[] = (health.agents as PipelineAgent[]) ?? [];
+        setData({
+          agents: fallbackAgents,
+          pipeline_healthy: health.overall === "healthy" || health.status === "ok",
+          last_cycle: (health.timestamp as string) ?? null,
+        });
+        setError(null);
+        setLastRefresh(new Date());
+      } catch {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      }
     } finally {
       setLoading(false);
     }

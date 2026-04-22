@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // RTH hours to display (8 AM through 3 PM CT)
 const RTH_HOURS = [8, 9, 10, 11, 12, 13, 14, 15];
@@ -172,13 +172,14 @@ export function TradeHourlyBreakdownWidget() {
 
   const fetchTrades = useCallback(async () => {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?limit=500&status=CLOSED`
+      const raw: unknown = await fetchEngine<unknown>(
+        `/portfolio/history/trades?limit=500&status=CLOSED`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: TradesResponse = await res.json();
+      const tradesArr: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as TradesResponse).trades ?? []);
 
-      const map = buildHourMap(data.trades || []);
+      const map = buildHourMap(tradesArr);
       setHourMap(map);
 
       // Compute RTH aggregates

@@ -1,0 +1,32 @@
+{
+  "MCL": {
+    "instrument": "MCL",
+    "total_trades": 0,
+    "winning_trades": 0,
+    "losing_trades": 0,
+    "total_pnl": 0.0,
+    "daily_pnl_values": [],
+    "consecutive_losses": 0,
+    "max_consecutive_losses": 0,
+    "trades": [],
+    "first_trade_date": null,
+    "last_trade_date": null,
+    "validation_start_date": "2026-04-03T00:00:00",
+    "note": "Reset 2026-04-03 — real paper trading validation begins"
+  },
+  "MNQ": {
+    "instrument": "MNQ",
+    "total_trades": 0,
+    "winning_trades": 0,
+    "losing_trades": 0,
+    "total_pnl": 0.0,
+    "daily_pnl_values": [],
+    "consecutive_losses": 0,
+    "max_consecutive_losses": 0,
+    "trades": [],
+    "first_trade_date": null,
+    "last_trade_date": null,
+    "validation_start_date": "2026-04-03T00:00:00",
+    "note": "Reset 2026-04-03 — real paper trading validation begins"
+  }
+}

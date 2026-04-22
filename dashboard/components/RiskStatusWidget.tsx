@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { ShieldOff, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -86,14 +86,10 @@ export function RiskStatusWidget() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${ENGINE_URL}/safety/circuit-breakers`, {
+      const payload = await fetchEngine(`/safety/circuit-breakers`, {
         cache: "no-store",
       });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const json: CircuitBreakerData = await res.json();
-      setData(json);
+      setData(payload);
       setError(null);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (e) {

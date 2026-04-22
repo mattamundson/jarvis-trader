@@ -1,0 +1,59 @@
+{
+  "project": "Sprint 21-D: Trade Journal Attribution + Pipeline Confidence Monitor",
+  "branchName": "feat/sprint21-trade-journal",
+  "description": "Add regime labels and pipeline attribution to every closed trade. Track which pipeline stage drove each decision. Add pipeline confidence monitoring endpoint to detect future all-HOLD regressions early.",
+  "userStories": [
+    {
+      "id": "US-2130",
+      "title": "Add regime_tier and deciding_stage columns to trade_journal",
+      "description": "As a trader, I want every closed trade tagged with the regime tier and the pipeline stage that drove the decision so that I can tune the strategy based on what's actually working.",
+      "acceptanceCriteria": [
+        "trade_journal table has 'regime_tier' INTEGER column (migration_011 or new)",
+        "trade_journal table has 'deciding_stage' TEXT column (e.g. 'technical', 'debate', 'news')",
+        "trade_journal table has 'bull_score' REAL and 'bear_score' REAL columns",
+        "trade_journal table has 'debate_confidence' REAL column",
+        "Approval router saves these from pipeline result metadata",
+        "GET /trades/journal includes all attribution fields",
+        "ruff check engine/routers/ passes",
+        "pytest tests/ -k 'not integration' passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Without attribution we're flying blind on strategy tuning. The pipeline result dict already contains bull_score, bear_score, regime from Stage 2/3 — just need to persist them."
+    },
+    {
+      "id": "US-2131",
+      "title": "Add pipeline confidence monitoring endpoint",
+      "description": "As an operator, I want a GET /pipeline/confidence-stats endpoint so that I can detect all-HOLD regressions (like the MAX_TOKENS bug) before they waste a full trading day.",
+      "acceptanceCriteria": [
+        "GET /pipeline/confidence-stats returns last 24h pipeline run stats",
+        "Response includes: total_runs, hold_count, trade_count, avg_confidence, min_confidence, max_confidence",
+        "Response includes: hold_rate (hold_count/total_runs as float 0-1)",
+        "If hold_rate > 0.90 and total_runs >= 5, response flags 'alert': 'HIGH_HOLD_RATE'",
+        "Reads from pipeline_runs table in engine/data/jarvis_trader.db",
+        "Endpoint registered in existing analytics_router.py or new router",
+        "ruff check passes",
+        "pytest tests/ -k 'not integration' passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "The MAX_TOKENS bug caused 115 HOLDs in 24h with avg confidence 3-6%. This endpoint would have caught it within the first hour. Critical operational monitoring."
+    },
+    {
+      "id": "US-2132",
+      "title": "Dashboard: Trade Attribution Widget on /trades/journal page",
+      "description": "As a trader, I want a table on the journal page showing regime tier, deciding stage, and bull/bear scores for each trade so that I can visually spot patterns.",
+      "acceptanceCriteria": [
+        "dashboard/app/trades/journal/page.tsx exists (create if not present)",
+        "Page shows table with columns: Date, Symbol, Side, P&L, Regime Tier, Deciding Stage, Bull Score, Bear Score, Debate Confidence",
+        "Data fetched via fetchEngine('/trades/journal')",
+        "Uses existing Badge component with bull/bear/warn/neutral variants",
+        "pnpm run build passes (zero TypeScript errors)",
+        "No hardcoded localhost:8010"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Use existing dashboard conventions: SWR for data fetching, Tailwind only, Badge variants are strict: 'bull' | 'bear' | 'warn' | 'info' | 'neutral'."
+    }
+  ]
+}

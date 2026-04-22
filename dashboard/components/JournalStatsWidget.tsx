@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface TradeRecord {
   id: number;
@@ -181,18 +181,14 @@ export function JournalStatsWidget() {
 
   async function fetchStats() {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?limit=500`
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const raw: unknown = await fetchEngine(`/portfolio/history/trades?limit=500`);
 
       // Handle both array and wrapped { trades: [...] } responses
-      const trades: TradeRecord[] = Array.isArray(json)
-        ? json
-        : Array.isArray(json.trades)
-        ? json.trades
-        : [];
+      const trades: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as { trades?: TradeRecord[] }).trades)
+          ? (raw as { trades: TradeRecord[] }).trades
+          : [];
 
       setStats(computeStats(trades));
       setError(false);

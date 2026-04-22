@@ -1,0 +1,77 @@
+//@version=5
+indicator("JARVIS Momentum Signal", overlay=false, max_labels_count=500, max_lines_count=500)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+i_rsi_len  = input.int(14, "RSI Length",  minval=2,  maxval=50)
+i_stc_fast = input.int(23, "STC Fast",    minval=5,  maxval=50)
+i_stc_slow = input.int(50, "STC Slow",    minval=20, maxval=200)
+i_stc_len  = input.int(10, "STC Length",  minval=3,  maxval=30)
+
+// ── RSI momentum (-1 to +1) ───────────────────────────────────────────────────
+rsi_val  = ta.rsi(close, i_rsi_len)
+rsi_norm = (rsi_val - 50) / 50
+
+// ── MACD momentum ─────────────────────────────────────────────────────────────
+macd_line = ta.ema(close, 12) - ta.ema(close, 26)
+macd_sig  = ta.ema(macd_line, 9)
+macd_norm = macd_line > 0 ? 1.0 : -1.0
+macd_bull_cross = macd_line > macd_sig
+macd_cross_str  = macd_bull_cross ? "BULL" : "BEAR"
+
+// ── STC (Schaff Trend Cycle) (-1 to +1) ──────────────────────────────────────
+f_stc(fast, slow, len) =>
+    m = ta.ema(close, fast) - ta.ema(close, slow)
+    m_hi = ta.highest(m, len)
+    m_lo = ta.lowest(m,  len)
+    k1   = m_hi - m_lo != 0 ? (m - m_lo) / (m_hi - m_lo) * 100 : 50.0
+    d1   = ta.ema(k1, 3)
+    d_hi = ta.highest(d1, len)
+    d_lo = ta.lowest(d1,  len)
+    k2   = d_hi - d_lo != 0 ? (d1 - d_lo) / (d_hi - d_lo) * 100 : 50.0
+    ta.ema(k2, 3)
+
+stc_val  = f_stc(i_stc_fast, i_stc_slow, i_stc_len)
+stc_norm = (stc_val - 50) / 50
+
+// ── Composite momentum (equal-ish weighting) ──────────────────────────────────
+momentum = rsi_norm * 0.33 + macd_norm * 0.34 + stc_norm * 0.33
+momentum  := math.round(momentum, 4)
+
+momentum_dir = momentum >  0.1 ? "BULL" :
+               momentum < -0.1 ? "BEAR" : "NEUTRAL"
+
+// ── Colours ───────────────────────────────────────────────────────────────────
+col = momentum >  0.1 ? color.new(color.lime,  20) :
+      momentum < -0.1 ? color.new(color.red,   20) :
+                        color.new(color.gray,  40)
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+hline( 0.0, "Zero",         color=color.new(color.white,  70), linestyle=hline.style_dashed)
+hline( 0.1, "Bull Thresh",  color=color.new(color.lime,   80), linestyle=hline.style_dotted)
+hline(-0.1, "Bear Thresh",  color=color.new(color.red,    80), linestyle=hline.style_dotted)
+hline( 1.0, "Max Bull",     color=color.new(color.lime,   90), linestyle=hline.style_dotted)
+hline(-1.0, "Max Bear",     color=color.new(color.red,    90), linestyle=hline.style_dotted)
+
+plot(momentum,  "Composite Momentum", color=col, linewidth=2)
+plot(rsi_norm,  "RSI Norm",           color=color.new(color.yellow, 50), linewidth=1)
+plot(stc_norm,  "STC Norm",           color=color.new(color.aqua,   60), linewidth=1)
+plot(macd_norm * 0.5, "MACD Norm",    color=color.new(color.orange, 60), linewidth=1)
+
+// ── MCP readback labels (barstate.islast only) ────────────────────────────────
+if barstate.islast
+    y = -1.25
+    label.new(bar_index, y,       "MOMENTUM: "     + str.tostring(math.round(momentum, 2)),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 0.2, "MOMENTUM_DIR: " + momentum_dir,
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 0.4, "RSI: "          + str.tostring(math.round(rsi_val, 1)),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 0.6, "MACD_CROSS: "   + macd_cross_str,
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 0.8, "STC: "          + str.tostring(math.round(stc_val, 1)),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)

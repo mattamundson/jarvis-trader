@@ -3,8 +3,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { RefreshCw, BarChart2, Calendar, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,14 +79,12 @@ export function DailyTradeCountWidget() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?status=CLOSED&limit=500`
+      const raw: unknown = await fetchEngine<unknown>(
+        `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const json: TradeHistoryResponse = await res.json();
-      const trades = json.trades ?? [];
+      const trades: TradeRecord[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
 
       // Build 14-day buckets
       const dayBuckets = buildBuckets(14);

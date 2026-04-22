@@ -4,7 +4,8 @@ JARVIS TRADER — Main Server
 FastAPI backend for the trading engine.
 Runs on port 8010 (separate from GMS JARVIS on 8009).
 
-Start with: uvicorn main:app --reload --port 8010
+Start with: .venv\\Scripts\\python -m uvicorn main:app --port 8010
+(No --reload — IB Gateway / duplicate client-id issues; use restart_engine.ps1 after code changes.)
 """
 
 import asyncio
@@ -12,16 +13,18 @@ import json
 import logging
 import logging.handlers
 import os
+import signal
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi.errors import RateLimitExceeded
 
 from agents.bear_researcher import BearResearcherAgent
 from agents.bull_researcher import BullResearcherAgent
@@ -32,18 +35,17 @@ from agents.news_analyst import NewsAnalystAgent
 from agents.pipeline import TradingPipeline
 from agents.risk_manager import RiskManagerAgent
 from agents.social_analyst import SocialAnalystAgent
+from agents.corey_auction_analyst import CoreyAuctionAnalystAgent
 from agents.technical_analyst import TechnicalAnalystAgent
 from agents.thinkscript_generator import ThinkScriptGeneratorAgent
 from agents.trader import TraderAgent
+from schemas.thinkscript_registry import ScriptRegistry, ScriptWithDocs
+from utils.thinkscript_registry_loader import load_registry, read_doc
 from api.models import (
     BarsResponse,
-    CircuitBreakerStatus,
     DailyPnLResponse,
     DecisionHistoryResponse,
     DrawdownResponse,
-    FullHealthResponse,
-    HealthResponse,
-    KillSwitchToggleResponse,
     NewsSentimentResponse,
     PaperPerformanceResponse,
     PaperPositionsResponse,
@@ -52,7 +54,6 @@ from api.models import (
     PortfolioResponse,
     RedditSentimentResponse,
     SafetyConfigResponse,
-    SafetyStatusResponse,
     StatsSummaryResponse,
     TechnicalAnalysisResponse,
     TradeHistoryResponse,
@@ -60,19 +61,92 @@ from api.models import (
 from config import settings
 from data.market_data import MarketDataManager
 from database.schema import DatabaseManager, init_db
+from execution.ib_gateway_connector import IBGatewayConnector
 from execution.ib_order_manager import IBOrderManager
+from execution.order_router import OrderRouter
+from execution.schwab_connector import SchwabConnector
+from llm.client import JarvisLLMClient
 from llm.cost_tracker import CostTracker
+from middleware.api_key_middleware import APIKeyMiddleware
+from middleware.exception_handler import GlobalExceptionHandler
+from middleware.rate_limit import get_limiter, rate_limit_exception_handler
 from portfolio.tracker import PortfolioTracker
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
+from routers.analytics_router import router as analytics_router
+from routers.analytics_router import set_db_manager as set_analytics_db
+from routers.analytics_router import set_data_manager as set_analytics_data_manager
+from routers.backtest_router import router as backtest_router
+from routers.backtest_router import inject_dependencies as inject_backtest_deps
+from routers.discord_router import inject_data_manager as inject_discord_data_manager
+from routers.discord_router import router as discord_router
+from routers.experiments_router import router as experiments_router
+from routers.flags_router import router as flags_router
+from routers.flags_router import set_flags as set_flags_router
+from routers.health_router import inject_dependencies as inject_health_router_deps
+from routers.health_router import router as health_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
+from routers.jarvis_router import router as jarvis_router
+from routers.kairos_router import router as kairos_router
+from routers.learning_router import router as learning_router
+from routers.events_router import router as events_router
+from routers.market_router import router as market_router
+from routers.phase3_readiness_router import inject_dependencies as inject_phase3_readiness_deps
+from routers.phase3_readiness_router import router as phase3_readiness_router
+from routers.portfolio_router import inject_dependencies as inject_portfolio_deps
+from routers.portfolio_router import router as portfolio_router
+from routers.profiling_router import router as profiling_router
+from routers.profiling_router import set_profiler_instance
+from routers.safety_router import inject_dependencies as inject_safety_router_deps
+from routers.safety_router import router as safety_router
+from routers.schwab_router import router as schwab_router
+from routers.schwab_router import set_schwab_connector
+from routers.strategies_router import router as strategies_router
+from routers.validation_router import router as validation_router
+from routers.validation_router import set_validation_alert_manager
+from routers.paper_validation_router import router as paper_validation_router
+from routers.proactive_validation_router import router as proactive_validation_router
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
+from routers.instruments_router import router as instruments_router
+from routers.brokers_router import router as brokers_router
+from routers.brokers_router import inject_dependencies as inject_brokers_deps
+from routers.options_router import router as options_router
+from routers.approval_router import router as approval_router
+from routers.approval_router import inject_dependencies as inject_approval_deps
+from routers.pipeline_router import router as pipeline_router
+from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
+from routers.messaging_router import router as messaging_router
+from routers.messaging_router import inject_dependencies as inject_messaging_deps
+from routers.observability_router import router as observability_router
+from routers.strategy_c_router import router as strategy_c_router
+from routers.scanner_router import router as scanner_router
+from routers.scanner_router import inject_dependencies as inject_scanner_deps
+from routers.tradingview_router import router as tradingview_router
+from routers.scheduler_router import router as scheduler_router
+from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
+from routers.trades_router import router as trades_router
+from routers.wfe_router import router as wfe_router
+from routers.discovery_router import router as discovery_router
+from routers.hidden_pivots_router import router as hidden_pivots_router
+from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
+from routers.decisions_router import router as decisions_router
+from routers.decisions_router import set_db_manager as set_decisions_db
+from routers.cache_router import router as cache_router
 from schedulers.eod_scheduler import EODScheduler
+from notifications.validation_alerts import ValidationAlertManager
+from notifications.morning_brief import inject_morning_brief_deps
 from websocket.events import set_ws_manager
 from websocket.manager import WebSocketManager
+
+try:
+    from agents.sdk_pipeline import SDKTradingPipeline
+except ModuleNotFoundError as exc:
+    if exc.name != "claude_agent_sdk":
+        raise
+    SDKTradingPipeline = None
 
 # ── Logging (initialized in lifespan) ────────────────────────────────────
 logger = logging.getLogger("jarvis_trader")
@@ -139,19 +213,118 @@ data_manager: MarketDataManager | None = None
 safety_layer: SafetyLayer | None = None
 technical_analyst: TechnicalAnalystAgent | None = None
 trading_pipeline: TradingPipeline | None = None
+sdk_pipeline: "SDKTradingPipeline | None" = None
 scheduler: AsyncIOScheduler | None = None
 paper_tracker: PortfolioTracker | None = None
 db_manager: DatabaseManager | None = None
 pnl_monitor: PnLMonitor | None = None
 eod_scheduler: EODScheduler | None = None
 order_manager: IBOrderManager | None = None
+ib_paper_connector: IBGatewayConnector | None = None
+schwab_connector: SchwabConnector | None = None
+order_router: OrderRouter = OrderRouter()
 ws_manager: WebSocketManager | None = None
 cost_tracker: "CostTracker | None" = None
 loss_tracker: "ConsecutiveLossTracker | None" = None
+validation_alert_manager: "ValidationAlertManager | None" = None
 
-# Rate limit: track last alert time per symbol to avoid flooding (2-hour cooldown)
-_last_alert_time: Dict[str, datetime] = {}
-ALERT_COOLDOWN_HOURS = 2
+
+def _log_pipeline_whatsapp_to_alert_log(
+    symbol: str,
+    message: str,
+    status: str,
+    error: Optional[str] = None,
+) -> None:
+    """Persist pipeline WhatsApp outcomes (sent, failed, suppressed) for audit."""
+    if db_manager is None:
+        return
+    try:
+        db_manager.insert_alert_log(
+            alert_type="pipeline_signal",
+            message=message,
+            channel="whatsapp",
+            symbol=symbol,
+            status=status,
+            error=error,
+        )
+    except Exception as exc:
+        logger.warning("alert_log pipeline_signal insert failed (non-fatal): %s", exc)
+
+
+async def _deliver_pipeline_whatsapp_if_eligible(
+    symbol: str,
+    action: str,
+    qty: int,
+    price_info,
+    reasoning: str,
+    confidence: float,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Send Twilio WhatsApp for a non-HOLD pipeline result when cooldown allows.
+
+    Returns (delivered_to_twilio, suppressed_reason). ``suppressed_reason`` is None
+    on successful send; ``send_failed`` when Twilio returns false; otherwise a
+    short code for API responses (manual scan).
+    """
+    from notifications.pipeline_alert_cooldown import (
+        get_last_pipeline_alert_sent,
+        mark_pipeline_alert_sent,
+        pipeline_alert_decision,
+    )
+    from notifications.whatsapp import get_notifier
+
+    notifier = get_notifier()
+    now = datetime.now()
+    last_sent = get_last_pipeline_alert_sent(symbol)
+    decision = pipeline_alert_decision(
+        last_sent=last_sent,
+        now=now,
+        cooldown_minutes=settings.ALERT_COOLDOWN_MINUTES,
+        notifier_enabled=notifier.enabled,
+    )
+    price_str = f" @ {price_info:.2f}" if price_info else ""
+    pct = int(confidence * 100)
+    short_reason = (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
+    msg = (
+        f"JARVIS: {symbol} -> {action.upper()} {qty}{price_str}\n"
+        f"Confidence: {pct}%\n"
+        f"Reason: {short_reason}"
+    )
+
+    if decision == "send":
+        sent = await notifier.send(msg)
+        if sent:
+            mark_pipeline_alert_sent(symbol, now)
+            _log_pipeline_whatsapp_to_alert_log(symbol, msg, "sent")
+            logger.info("WhatsApp alert sent for %s (%s)", symbol, action.upper())
+            return True, None
+        _log_pipeline_whatsapp_to_alert_log(
+            symbol, msg, "failed", error="twilio_send_returned_false"
+        )
+        logger.warning("WhatsApp alert failed for %s", symbol)
+        return False, "send_failed"
+
+    if decision == "suppressed_cooldown":
+        tail = last_sent.strftime("%H:%M") if last_sent else "unknown"
+        logger.info(
+            "WhatsApp alert for %s suppressed — cooldown active (last sent %s)",
+            symbol,
+            tail,
+        )
+        _log_pipeline_whatsapp_to_alert_log(
+            symbol,
+            msg,
+            "suppressed_cooldown",
+            error=(f"last_sent={last_sent.isoformat()}" if last_sent else "last_sent=n/a"),
+        )
+        return False, f"cooldown_active_since_{tail}"
+
+    logger.info("WhatsApp alert for %s suppressed — WhatsApp not configured", symbol)
+    _log_pipeline_whatsapp_to_alert_log(
+        symbol, msg, "suppressed", error="whatsapp_not_configured"
+    )
+    return False, "whatsapp_not_configured"
+
 
 # 5-minute macro snapshot cache (keyed by "snapshot", stores flattened dict + "_ts")
 _macro_cache: Dict[str, dict] = {}
@@ -171,9 +344,14 @@ async def lifespan(app: FastAPI):
         pnl_monitor, \
         eod_scheduler, \
         order_manager, \
+        ib_paper_connector, \
+        schwab_connector, \
+        order_router, \
         ws_manager, \
         cost_tracker, \
-        loss_tracker
+        loss_tracker, \
+        validation_alert_manager, \
+        sdk_pipeline
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -186,16 +364,54 @@ async def lifespan(app: FastAPI):
         f"   IBKR port:   {settings.IBKR_PORT} ({'live' if settings.IBKR_PORT == 4001 else 'paper'})"
     )
 
+    # Run startup validation checks BEFORE scheduler setup
+    from startup_checks import run_startup_checks
+
+    check_results = run_startup_checks(settings)
+
+    # Fail boot if any CRITICAL checks failed
+    critical_failures = [r for r in check_results if r.status == "fail"]
+    if critical_failures:
+        logger.error(
+            f"🛑 {len(critical_failures)} critical startup check(s) failed. Engine shutdown."
+        )
+        raise SystemExit(1)
+
+    logger.info("✅ All startup checks passed")
+
     # Initialize SQLite database
     os.makedirs("data", exist_ok=True)
     db_manager = init_db(db_path="data/jarvis_trader.db")
     db_manager.initialize()
     set_journal_db(db_manager)
+    set_analytics_db(db_manager)
+    set_decisions_db(db_manager)
     logger.info("✅ SQLite database initialized at data/jarvis_trader.db")
+
+    # Feature Flags — two-layer flag system (config defaults + runtime SQLite overrides)
+    from flags import FeatureFlags, set_flags_instance
+
+    feature_flags = FeatureFlags(config=settings, db=db_manager)
+    set_flags_instance(feature_flags)
+    set_flags_router(feature_flags)
+    logger.info("✅ Feature Flags system initialised")
+
+    # Hook system — register default logging/db hooks
+    from hooks.registry import get_hook_registry
+    from hooks.trading_hooks import register_default_hooks
+
+    _hook_registry = get_hook_registry()
+    register_default_hooks(_hook_registry)
+    logger.info("✅ Trading hook registry initialised")
 
     # Paper trading tracker — initialise before safety layer so it is always available
     paper_tracker = PortfolioTracker(db_manager=db_manager)
-    logger.info("✅ Paper portfolio tracker ready")
+    # US-2004 / Bug B9: rebuild in-memory open-position state from SQLite so that
+    # any crash-induced JSONL/in-memory divergence is corrected before trading resumes.
+    paper_tracker.reload_open_positions_from_db()
+    # Also sync closed trades from SQLite to ensure P&L calculations match DB on restart
+    paper_tracker.initialize_closed_trades_from_db()
+    logger.info("✅ Paper portfolio tracker ready (open + closed trades rebuilt from SQLite)")
 
     # P&L Monitor — wires SQLite + IB Gateway data to circuit breakers
     # IB gateway is not available yet at this point; it is injected after data_manager is ready
@@ -203,24 +419,97 @@ async def lifespan(app: FastAPI):
         db_manager=db_manager,
         ib_gateway=None,  # updated below once data_manager is initialised
         paper_tracker=paper_tracker,
+        starting_balance=settings.INITIAL_CAPITAL,
     )
     logger.info("✅ PnL Monitor initialised (SQLite + paper tracker sources active)")
 
-    # Safety layer — always first; PnLMonitor feeds circuit breakers with live data
-    safety_layer = SafetyLayer(settings, pnl_monitor=pnl_monitor)
+    # Safety layer — always first; PnLMonitor feeds circuit breakers with live data.
+    # Both db_path (for kill-switch state via raw sqlite3) and db_manager (for typed
+    # upsert_pnl_snapshot calls) must be passed — they're separate code paths inside
+    # SafetyLayer. Omitting db_manager silently disables pnl_snapshots writes.
+    safety_layer = SafetyLayer(
+        settings,
+        pnl_monitor=pnl_monitor,
+        db_path=str(db_manager._db_path),
+        db_manager=db_manager,
+    )
 
-    # IB Order Manager — bridges SafetyLayer + IBGateway for paper-order submission
-    # ib_gateway is None until data_manager connects; injected below after data_manager init
+    # Paper IB connector — JSON audit + optional PortfolioTracker mirror; wired into SafetyLayer
+    ib_paper_connector = None
+    if settings.PAPER_TRADING:
+        ib_paper_connector = IBGatewayConnector(
+            settings,
+            safety_layer,
+            portfolio_tracker=paper_tracker,
+        )
+        _paper_ib_ok = await ib_paper_connector.connect()
+        if _paper_ib_ok:
+            safety_layer.attach_ib_gateway(ib_paper_connector)
+            logger.info(
+                "✅ IBGatewayConnector (paper) connected — SafetyLayer routes fills; "
+                "tracker mirror active when configured"
+            )
+        else:
+            logger.warning(
+                "⚠️ IBGatewayConnector.connect() returned False — paper orders stay dry-run"
+            )
+
     order_manager = IBOrderManager(
         safety_layer=safety_layer,
-        ib_gateway=None,
+        ib_gateway=ib_paper_connector,
         portfolio_tracker=paper_tracker,
     )
-    logger.info("✅ IBOrderManager initialized (ib_gateway=None until IBKR connects)")
+    logger.info("✅ IBOrderManager initialized")
+
+    # Wire IBKR into the order router now that it is available
+    order_router.attach_ibkr(ib_paper_connector)
+
+    # Schwab connector — initialized only when credentials are present.
+    # SCHWAB_READY=False guard inside SchwabConnector prevents accidental activation.
+    schwab_connector = None
+    if settings.SCHWAB_APP_KEY and settings.SCHWAB_APP_SECRET:
+        try:
+            schwab_connector = SchwabConnector(settings, safety_layer)
+            _schwab_ok = await schwab_connector.initialize()
+            if _schwab_ok:
+                order_router.attach_schwab(schwab_connector)
+                logger.info("✅ SchwabConnector initialized and wired into OrderRouter")
+            else:
+                logger.warning(
+                    "SchwabConnector.initialize() returned False — "
+                    "equity/options orders via Schwab unavailable"
+                )
+        except Exception as _schwab_err:
+            logger.warning(
+                "SchwabConnector init failed (non-fatal, equities unavailable): %s",
+                _schwab_err,
+            )
+            schwab_connector = None
+    else:
+        logger.info("Schwab credentials not set — SchwabConnector skipped (Phase 3 feature)")
+
+    set_schwab_connector(schwab_connector)
+    logger.info(
+        "✅ OrderRouter ready — IBKR: %s | Schwab: %s",
+        "connected" if order_router.ibkr else "not wired",
+        "connected" if (schwab_connector and schwab_connector.is_connected) else "not connected",
+    )
 
     # Market data connections
     data_manager = MarketDataManager(settings)
     await data_manager.initialize()
+    set_analytics_data_manager(data_manager)
+
+    # Now that data_manager is ready, inject the IB gateway into PnLMonitor
+    # so the circuit breakers can read live account data from IBKR when connected.
+    if pnl_monitor is not None and data_manager.ibkr is not None:
+        pnl_monitor._ib = data_manager.ibkr
+        logger.info("✅ PnL Monitor: IB Gateway wired (live account data source active)")
+
+    # Wire Schwab into MarketDataManager as Tier 2 price source (equities/options quotes)
+    if schwab_connector is not None and schwab_connector.is_connected:
+        data_manager.inject_schwab(schwab_connector)
+        logger.info("✅ Schwab wired into MarketDataManager as Tier 2 price source")
 
     # Now that data_manager is ready, inject the IB gateway into PnLMonitor
     # so the circuit breakers can read live account data from IBKR when connected.
@@ -229,17 +518,35 @@ async def lifespan(app: FastAPI):
         logger.info("✅ PnL Monitor: IB Gateway wired (live account data source active)")
 
     # Agents (need LLM client)
-    class SimpleLLMClient:
-        api_key = settings.ANTHROPIC_API_KEY
-
     if settings.ANTHROPIC_API_KEY:
-        llm_client = SimpleLLMClient()
+        llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY)
+
+        # Startup assertion — fail loud if the client is missing required interface
+        _required_methods = ["call"]
+        _missing = [m for m in _required_methods if not callable(getattr(llm_client, m, None))]
+        if _missing:
+            raise RuntimeError(
+                f"LLM client {type(llm_client).__name__} is missing required methods: {_missing}. "
+                "Check llm/client.py — agents will silently HOLD without this."
+            )
+        logger.info(f"✅ LLM client validated: {type(llm_client).__name__} has {_required_methods}")
 
         # Stage 1: Analysts
         technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
-        news_agent = NewsAnalystAgent(llm_client, data_manager)
+
+        # Wire Brave Search into news analyst if key is configured
+        _brave_client = None
+        if getattr(settings, "BRAVE_API_KEY", None):
+            from data.brave_search import BraveSearchClient
+            _brave_client = BraveSearchClient(api_key=settings.BRAVE_API_KEY)
+            logger.info("✅ Brave Search wired into news analyst")
+        else:
+            logger.warning("BRAVE_API_KEY not set — news analyst running without live web search")
+
+        news_agent = NewsAnalystAgent(llm_client, data_manager, brave_client=_brave_client)
         social_agent = SocialAnalystAgent(llm_client)
         fundamental_agent = FundamentalistAgent(llm_client, data_manager)
+        corey_agent = CoreyAuctionAnalystAgent(llm_client=llm_client)
 
         # Stage 2: Debate
         bull_agent = BullResearcherAgent(api_key=settings.ANTHROPIC_API_KEY)
@@ -247,11 +554,11 @@ async def lifespan(app: FastAPI):
         debate_agent = DebateOrchestrator()
 
         # Stages 3-5: Trader → Risk → Fund
-        trader_agent = TraderAgent(llm_client)
+        trader_agent = TraderAgent(llm_client, db_manager=db_manager)
         risk_agent = RiskManagerAgent(llm_client)
         fund_agent = FundManagerAgent(llm_client)
 
-        logger.info("✅ All 10 trading agents initialized")
+        logger.info("✅ All 11 trading agents initialized (incl. CoreyAuctionAnalyst)")
 
         # Trading Pipeline — all agents wired
         trading_pipeline = TradingPipeline(
@@ -260,6 +567,7 @@ async def lifespan(app: FastAPI):
                 "news": news_agent,
                 "social": social_agent,
                 "fundamental": fundamental_agent,
+                "corey": corey_agent,
                 "bull": bull_agent,
                 "bear": bear_agent,
                 "debate": debate_agent,
@@ -269,7 +577,23 @@ async def lifespan(app: FastAPI):
             },
             safety_layer=safety_layer,
         )
+
+        # Wire profiler instance into profiling_router
+        if trading_pipeline.profiler:
+            set_profiler_instance(trading_pipeline.profiler)
+            logger.info("✅ PipelineProfiler wired into /pipeline/profiling endpoint")
+
         logger.info("✅ Trading Pipeline initialized — all 5 stages wired")
+
+        # SDK Pipeline — parallel Claude Agent SDK path (/pipeline/run/sdk)
+        try:
+            sdk_pipeline = SDKTradingPipeline(
+                data_manager=data_manager,
+                api_key=getattr(settings, "API_KEY", ""),
+            )
+            logger.info("✅ SDK Pipeline initialized — /pipeline/run/sdk available")
+        except Exception as _sdk_exc:
+            logger.warning("⚠️  SDK Pipeline init failed (non-fatal): %s", _sdk_exc)
     else:
         logger.warning("⚠️  No ANTHROPIC_API_KEY — LLM agents disabled. Add to .env to enable.")
 
@@ -285,25 +609,109 @@ async def lifespan(app: FastAPI):
             logger.info("Scheduler: skipping — kill switch active")
             return
 
+        # Futures + equities — sequential to avoid OOM from parallel 10-agent LLM pipelines
         symbols_to_scan = (
             [
                 (sym, True)
-                for sym in settings.FUTURES_WATCHLIST[:2]  # Top 2 futures
+                for sym in settings.FUTURES_WATCHLIST  # MES, MNQ, MCL
             ]
             + [
                 (sym, False)
-                for sym in settings.OPTIONS_WATCHLIST[:3]  # Top 3 equities
+                for sym in settings.OPTIONS_WATCHLIST[:3]  # SPY, QQQ, AAPL
             ]
         )
 
         logger.info(f"Scheduled scan: {[s[0] for s in symbols_to_scan]}")
-        from notifications.whatsapp import get_notifier
 
-        notifier = get_notifier()
+        async def _analyze_and_alert(symbol: str, is_futures: bool) -> None:
+            import time as _time_mod
 
-        for symbol, is_futures in symbols_to_scan:
+            # ── Scanner guards (added 2026-04-10) ────────────────────────
+            # Guard 1: Already-open position check. Prevents duplicate trades
+            # like the 2026-04-10 incident where MES shorts #108/#109/#110 were
+            # created on consecutive hourly scans against identical bogus prices.
             try:
+                import sqlite3 as _sqlite3
+
+                with _sqlite3.connect(settings.SQLITE_DB_PATH) as _conn:
+                    _existing = _conn.execute(
+                        "SELECT id, side FROM paper_trades WHERE symbol=? AND status='open' LIMIT 1",
+                        (symbol,),
+                    ).fetchone()
+                if _existing is not None:
+                    logger.info(
+                        "[Scanner guard] %s already has open position id=%s side=%s — skipping scan",
+                        symbol,
+                        _existing[0],
+                        _existing[1],
+                    )
+                    return
+            except Exception as _guard_exc:
+                logger.warning(
+                    "[Scanner guard] already-open check failed for %s: %s (allowing scan)",
+                    symbol,
+                    _guard_exc,
+                )
+
+            try:
+                _t0 = _time_mod.monotonic()
                 result = await trading_pipeline.analyze_and_decide(symbol, is_futures)
+
+                # Guard 2: Price sanity check. Reject the decision if the
+                # pipeline operated on a price outside the hard-coded "plausible
+                # range" for the instrument. This is a last-line defense against
+                # stale-cache contamination like the 2026-04-10 incident where
+                # MES shorts were entered at $70.57 (real MES ~$6000).
+                # Ranges are deliberately wide — only catch obvious absurdities.
+                _PLAUSIBLE_PRICE_RANGE = {
+                    "MCL": (40.0, 130.0),   # WTI crude: ~$60-100 typical
+                    "MES": (3000.0, 8000.0),  # S&P 500 mini: ~$4000-7000
+                    "MNQ": (10000.0, 30000.0),  # Nasdaq mini
+                    "MGC": (1500.0, 5000.0),  # Gold
+                    "MYM": (25000.0, 50000.0),  # Dow mini
+                }
+                _trade_dec_for_guard = result.get("trade_decision") or {}
+                _px_candidate = (
+                    _trade_dec_for_guard.get("limit_price")
+                    or _trade_dec_for_guard.get("stop_price")
+                    or _trade_dec_for_guard.get("entry_price")
+                )
+                _range = _PLAUSIBLE_PRICE_RANGE.get(symbol.upper())
+                if (
+                    _range is not None
+                    and _px_candidate is not None
+                    and result.get("final_action", "hold") not in ("hold",)
+                ):
+                    try:
+                        _px = float(_px_candidate)
+                        if _px < _range[0] or _px > _range[1]:
+                            logger.error(
+                                "[Scanner guard] %s price sanity FAILED: px=%.2f outside plausible range %s — "
+                                "forcing HOLD. Likely stale-cache contamination.",
+                                symbol,
+                                _px,
+                                _range,
+                            )
+                            # Rewrite the result to HOLD and log to decision feed, then return
+                            result["final_action"] = "hold"
+                            result["sanity_override"] = {
+                                "price_rejected": _px,
+                                "plausible_range": list(_range),
+                                "reason": "price outside hardcoded plausible range — refusing to trade",
+                            }
+                            _log_decision(
+                                symbol=symbol,
+                                action="hold",
+                                confidence=0.0,
+                                source="scanner_guard_sanity_failed",
+                                summary=f"Price sanity guard rejected px={_px:.2f} outside {_range}",
+                                reasoning="Scanner guard: price outside plausible range (stale cache?)",
+                                full_pipeline_data=result,
+                            )
+                            return
+                    except (TypeError, ValueError):
+                        pass
+                _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
                 action = result.get("final_action", "hold")
 
                 # Extract key fields for logging and alerting
@@ -314,73 +722,78 @@ async def lifespan(app: FastAPI):
                 price_info = trade_dec.get("limit_price") or trade_dec.get("stop_price")
                 reasoning = trade_dec.get("reasoning", "")
 
-                # Always log to decision feed
-                _decision_log.append(
-                    {
-                        "id": len(_decision_log) + 1,
-                        "timestamp": datetime.now().isoformat(),
-                        "symbol": symbol,
-                        "action": action,
-                        "confidence": confidence,
-                        "source": "scheduler",
-                        "summary": result.get("summary", ""),
-                    }
+                # Always log to decision feed (in-memory + SQLite)
+                _log_decision(
+                    symbol=symbol,
+                    action=action,
+                    confidence=float(confidence),
+                    source="scheduler",
+                    summary=result.get("summary", ""),
+                    reasoning=reasoning,
+                    full_pipeline_data=result,
                 )
-                if len(_decision_log) > 100:
-                    _decision_log.pop(0)
+
+                # Persist pipeline run to pipeline_runs for audit trail.
+                if db_manager:
+                    try:
+                        from approval.pipeline_history import pipeline_run_record_from_result
+
+                        _run_record = pipeline_run_record_from_result(
+                            symbol=symbol,
+                            result=result,
+                            duration_ms=_duration_ms,
+                            source="watchlist",
+                        )
+                        db_manager.insert_pipeline_run(_run_record)
+                    except Exception as _db_exc:
+                        logger.warning(
+                            "[Scheduler] Failed to log pipeline_run for %s: %s", symbol, _db_exc
+                        )
 
                 if action not in ("hold",):
                     logger.info(f"{symbol}: {action.upper()} qty={qty} confidence={confidence:.0%}")
-
-                    # Rate limit: skip alert if we sent one for this symbol within cooldown window
-                    now = datetime.now()
-                    last_sent = _last_alert_time.get(symbol)
-                    cooldown_expired = last_sent is None or (now - last_sent) >= timedelta(
-                        hours=ALERT_COOLDOWN_HOURS
+                    await _deliver_pipeline_whatsapp_if_eligible(
+                        symbol=symbol,
+                        action=action,
+                        qty=qty,
+                        price_info=price_info,
+                        reasoning=reasoning,
+                        confidence=float(confidence),
                     )
-
-                    if notifier.enabled and cooldown_expired:
-                        price_str = f" @ {price_info:.2f}" if price_info else ""
-                        pct = int(confidence * 100)
-                        short_reason = (
-                            (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
-                        )
-                        msg = (
-                            f"JARVIS: {symbol} -> {action.upper()} {qty}{price_str}\n"
-                            f"Confidence: {pct}%\n"
-                            f"Reason: {short_reason}"
-                        )
-                        sent = await notifier.send(msg)
-                        if sent:
-                            _last_alert_time[symbol] = now
-                            logger.info(f"WhatsApp alert sent for {symbol} ({action.upper()})")
-                        else:
-                            logger.warning(f"WhatsApp alert failed for {symbol}")
-                    elif not cooldown_expired:
-                        logger.info(
-                            f"WhatsApp alert for {symbol} suppressed — cooldown active "
-                            f"(last sent {last_sent.strftime('%H:%M')})"
-                        )
                 else:
                     logger.debug(f"{symbol}: hold — no alert sent")
 
             except Exception as e:
                 logger.error(f"Scheduler analysis failed for {symbol}: {e}")
 
+        # Sequential execution — avoids OOM from 6 simultaneous 10-agent LLM pipelines
+        for sym, fut in symbols_to_scan:
+            await _analyze_and_alert(sym, fut)
+
     # Run every 30 minutes on weekdays, 9:30am-4:00pm Chicago time
+    # WATCHLIST_SCAN_ENABLED added 2026-04-10 as an emergency kill switch — when False,
+    # the scheduler still starts (other jobs below depend on it) but the watchlist scan
+    # job is not registered, preventing contaminated-data pipeline runs from landing trades.
     if settings.ANTHROPIC_API_KEY:
-        scheduler.add_job(
-            run_watchlist_analysis,
-            CronTrigger(
-                day_of_week="mon-fri", hour="9-15", minute="0,30", timezone="America/Chicago"
-            ),
-            id="watchlist_scan",
-            name="Watchlist Auto-Scan",
-            max_instances=1,
-            misfire_grace_time=300,
-        )
+        if settings.WATCHLIST_SCAN_ENABLED:
+            scheduler.add_job(
+                run_watchlist_analysis,
+                CronTrigger(
+                    day_of_week="mon-fri", hour="9-15", minute="0,30", timezone="America/Chicago"
+                ),
+                id="watchlist_scan",
+                name="Watchlist Auto-Scan",
+                max_instances=1,
+                misfire_grace_time=300,
+            )
+            logger.info("⏰ Watchlist auto-scan registered — every 30min (9:30am-4pm CT weekdays)")
+        else:
+            logger.warning(
+                "⛔ WATCHLIST_SCAN_ENABLED=false — hourly watchlist auto-scan is DISABLED. "
+                "Re-enable in .env after data layer + scanner guards are verified."
+            )
         scheduler.start()
-        logger.info("⏰ Scheduler started — watchlist scan every 30min (9:30am-4pm CT weekdays)")
+        logger.info("⏰ Scheduler started")
 
     # ── Daily MGC signal scanner (runs 18:00 ET / 23:00 UTC) ────────────
     async def run_daily_mgc_signal():
@@ -389,22 +802,13 @@ async def lifespan(app: FastAPI):
         from pathlib import Path
 
         try:
-            import yfinance as yf
-
             from backtest.signals import generate_signals as _gen_signals
 
-            logger.info("[MGC-daily] Fetching GC=F daily bar...")
-            gc_df = yf.download("GC=F", period="90d", interval="1d", progress=False)
+            logger.info("[MGC-daily] Fetching MGC daily bar via data_manager...")
+            gc_df = await data_manager.get_bars("MGC", lookback_days=90, timeframe="1d")
             if gc_df is None or gc_df.empty or len(gc_df) < 20:
-                logger.warning("[MGC-daily] Insufficient data from yfinance — skipping")
+                logger.warning("[MGC-daily] Insufficient data from data_manager — skipping")
                 return
-
-            # Flatten MultiIndex columns if present (yfinance sometimes returns them)
-            if hasattr(gc_df.columns, "levels") and gc_df.columns.nlevels > 1:
-                gc_df.columns = [c[0] if isinstance(c, tuple) else c for c in gc_df.columns]
-
-            # Normalise column names to lowercase
-            gc_df.columns = [c.lower() for c in gc_df.columns]
 
             sig_df = _gen_signals(gc_df, symbol="MGC", adaptive_regime=True)
 
@@ -479,20 +883,300 @@ async def lifespan(app: FastAPI):
         max_instances=1,
         misfire_grace_time=600,
     )
+    # Messaging health monitor — check Ollama every 60s
+    try:
+        from services.messaging_health import run_health_check
+        scheduler.add_job(
+            run_health_check,
+            "interval",
+            seconds=60,
+            id="messaging_health_check",
+            name="Messaging Health Monitor",
+            max_instances=1,
+            misfire_grace_time=30,
+        )
+        logger.info("✅ Messaging health monitor registered (60s interval)")
+    except Exception as _mhc_err:
+        logger.warning("Messaging health monitor init failed (non-fatal): %s", _mhc_err)
+
     if not scheduler.running:
         scheduler.start()
     logger.info("⏰ MGC daily signal job registered — 18:00 ET (23:00 UTC) weekdays")
 
+    # ── Market open scan (09:31 ET) — parallel 1h + 15m scans for MCL, MNQ ──────
+    async def market_open_scan_job():
+        """Trigger parallel 1h and 15m pipeline scans at market open (MCL, MNQ)."""
+        if not trading_pipeline or not safety_layer:
+            logger.warning("[MARKET_OPEN] Pipeline or safety layer not available")
+            return
+
+        safety = safety_layer.get_status()
+        if safety.get("kill_switch_active"):
+            logger.info("[MARKET_OPEN] Skipping — kill switch active")
+            return
+
+        instruments_1h = [("MCL", True), ("MNQ", True)]
+        instruments_15m = [("MCL", "15m"), ("MNQ", "15m")]
+        logger.info("[MARKET_OPEN] Starting parallel 1h+15m scans for MCL, MNQ")
+
+        async def _scan_1h(symbol: str) -> None:
+            import time as _time_mod
+
+            try:
+                _t0 = _time_mod.monotonic()
+                result = await trading_pipeline.analyze_and_decide(symbol, True, timeframe="1h")
+                _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
+                action = result.get("final_action", "hold")
+                logger.info(f"[MARKET_OPEN] {symbol} 1h: {action.upper()}")
+
+                if db_manager:
+                    try:
+                        from approval.pipeline_history import pipeline_run_record_from_result
+
+                        _run_record = pipeline_run_record_from_result(
+                            symbol=symbol,
+                            result=result,
+                            duration_ms=_duration_ms,
+                            source="market_open_1h",
+                        )
+                        db_manager.insert_pipeline_run(_run_record)
+                    except Exception as _db_exc:
+                        logger.warning(
+                            "[MARKET_OPEN] Failed to log pipeline_run 1h for %s: %s",
+                            symbol,
+                            _db_exc,
+                        )
+            except Exception as e:
+                logger.error(f"[MARKET_OPEN] 1h pipeline failed for {symbol}: {e}")
+
+        async def _scan_15m(symbol: str) -> None:
+            import time as _time_mod
+
+            try:
+                from backtest.data_loader import BacktestDataLoader
+                from backtest.paper_config import FIFTEEN_MIN_CONFIGS
+                from backtest.signals import compute_all_indicators, generate_signals
+                from routers.scanner_router import record_signal
+
+                _t0 = _time_mod.monotonic()
+                loader = BacktestDataLoader()
+                config = FIFTEEN_MIN_CONFIGS.get(symbol)
+                if not config or not config.get("enabled"):
+                    logger.info(f"[MARKET_OPEN] {symbol} 15m not enabled, skipping")
+                    return
+
+                end_date = datetime.now().strftime("%Y-%m-%d")
+                start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+                df = loader.load(symbol=symbol, start=start_date, end=end_date, interval="15m")
+                if df is None or df.empty:
+                    logger.warning(f"[MARKET_OPEN] No 15m data for {symbol}")
+                    return
+
+                df = df.tail(50).reset_index(drop=True)
+                df = compute_all_indicators(df)
+                stc = config.get("stc_params", {})
+                df = generate_signals(
+                    df,
+                    regime_filter=config.get("regime_filter", True),
+                    stc_oversold=stc.get("stc_os"),
+                    stc_overbought=stc.get("stc_ob"),
+                    symbol=symbol,
+                    adaptive_regime=config.get("adaptive_regime", False),
+                    volume_filter=config.get("volume_filter", False),
+                )
+                entry_rows = df[df["entry_signal"] == "ENTRY_NOW"]
+                if not entry_rows.empty:
+                    latest = entry_rows.iloc[-1]
+                    record_signal(
+                        symbol=symbol,
+                        timeframe="15m",
+                        entry_signal="ENTRY_NOW",
+                        bias=latest.get("bias"),
+                        regime=latest.get("regime"),
+                        composite_score=None,
+                        position_size_multiplier=0.5,
+                    )
+                    _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
+                    logger.info(
+                        f"[MARKET_OPEN] {symbol} 15m ENTRY_NOW — "
+                        f"regime={latest.get('regime')}, bias={latest.get('bias')} "
+                        f"({_duration_ms:.0f}ms)"
+                    )
+                else:
+                    _duration_ms = (_time_mod.monotonic() - _t0) * 1000.0
+                    logger.info(f"[MARKET_OPEN] {symbol} 15m: no signal ({_duration_ms:.0f}ms)")
+            except Exception as e:
+                logger.error(f"[MARKET_OPEN] 15m scan failed for {symbol}: {e}")
+
+        tasks = [_scan_1h(sym) for sym, _ in instruments_1h] + [
+            _scan_15m(sym) for sym, _ in instruments_15m
+        ]
+        await asyncio.gather(*tasks)
+
+    scheduler.add_job(
+        market_open_scan_job,
+        CronTrigger(
+            day_of_week="mon-fri",
+            hour=9,
+            minute=31,
+            timezone="America/New_York",
+        ),
+        id="market_open_scan",
+        name="Market Open Scan",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+    logger.info("⏰ Market open scan job registered — 09:31 ET weekdays")
+
+    # ── EOD summary (16:05 ET) — logs daily P&L summary ────────────────────────
+    async def eod_summary_job():
+        """Log end-of-day summary with P&L metrics."""
+        try:
+            if paper_tracker is None:
+                logger.info("[EOD_SUMMARY] No trades today")
+                return
+
+            today_trades = paper_tracker.get_trades_by_date(
+                date_str=datetime.now().strftime("%Y-%m-%d")
+            )
+            total_trades = len(today_trades) if today_trades else 0
+
+            if total_trades == 0:
+                logger.info("[EOD_SUMMARY] No trades today")
+                return
+
+            realized_pnl = sum(t.get("realized_pnl", 0) for t in today_trades)
+            winning = sum(1 for t in today_trades if t.get("realized_pnl", 0) > 0)
+            losing = sum(1 for t in today_trades if t.get("realized_pnl", 0) < 0)
+
+            logger.info(
+                f"[EOD_SUMMARY] Trades: {total_trades} | "
+                f"P&L: ${realized_pnl:.2f} | Wins: {winning} | Losses: {losing}"
+            )
+
+            # Run memory consolidation (non-fatal if it fails)
+            try:
+                from learning.consolidator import TradingMemoryConsolidator
+
+                consolidator = TradingMemoryConsolidator(db_manager=db_manager)
+                result = await consolidator.consolidate_daily()
+                logger.info(
+                    f"[EOD_CONSOLIDATION] {result.get('patterns_extracted', 0)} patterns extracted"
+                )
+            except Exception as consolidation_error:
+                logger.warning(f"[EOD_CONSOLIDATION] Non-fatal error: {consolidation_error}")
+
+        except Exception as e:
+            logger.error(f"[EOD_SUMMARY] Failed: {e}")
+
+    scheduler.add_job(
+        eod_summary_job,
+        CronTrigger(
+            day_of_week="mon-fri",
+            hour=16,
+            minute=5,
+            timezone="America/New_York",
+        ),
+        id="eod_summary",
+        name="EOD Summary",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+    logger.info("⏰ EOD summary job registered — 16:05 ET weekdays")
+
+    # ── Intraday 15-minute scanner (US-1402) ──────────────────────────────────
+    async def intraday_scan_15m_job():
+        """Scan MCL and MNQ on 15m timeframe to increase trade frequency."""
+        try:
+            from backtest.data_loader import BacktestDataLoader
+            from backtest.paper_config import FIFTEEN_MIN_CONFIGS
+            from backtest.signals import compute_all_indicators, generate_signals
+            from routers.scanner_router import record_signal
+
+            if safety_layer and safety_layer.get_status().get("kill_switch_active"):
+                logger.info("[INTRADAY_15M] Skipping — kill switch active")
+                return
+
+            loader = BacktestDataLoader()
+            for symbol in ["MCL", "MNQ"]:
+                try:
+                    config = FIFTEEN_MIN_CONFIGS.get(symbol)
+                    if not config or not config.get("enabled"):
+                        continue
+                    end_date = datetime.now().strftime("%Y-%m-%d")
+                    start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+                    df = loader.load(symbol=symbol, start=start_date, end=end_date, interval="15m")
+                    if df is None or df.empty:
+                        logger.warning(f"[INTRADAY_15M] No data for {symbol} 15m")
+                        continue
+                    df = df.tail(50).reset_index(drop=True)
+                    df = compute_all_indicators(df)
+                    stc = config.get("stc_params", {})
+                    df = generate_signals(
+                        df,
+                        regime_filter=config.get("regime_filter", True),
+                        stc_oversold=stc.get("stc_os"),
+                        stc_overbought=stc.get("stc_ob"),
+                        symbol=symbol,
+                        adaptive_regime=config.get("adaptive_regime", False),
+                        volume_filter=config.get("volume_filter", False),
+                    )
+                    entry_rows = df[df["entry_signal"] == "ENTRY_NOW"]
+                    if not entry_rows.empty:
+                        latest = entry_rows.iloc[-1]
+                        record_signal(
+                            symbol=symbol,
+                            timeframe="15m",
+                            entry_signal="ENTRY_NOW",
+                            bias=latest.get("bias"),
+                            regime=latest.get("regime"),
+                            composite_score=None,
+                        )
+                        logger.info(
+                            f"[INTRADAY_15M] {symbol} ENTRY_NOW — "
+                            f"regime={latest.get('regime')}, bias={latest.get('bias')}"
+                        )
+                except Exception as sym_err:
+                    logger.error(f"[INTRADAY_15M] {symbol} failed: {sym_err}")
+        except Exception as e:
+            logger.error(f"[INTRADAY_15M] job failed: {e}")
+
+    scheduler.add_job(
+        intraday_scan_15m_job,
+        CronTrigger(minute="*/15", day_of_week="mon-fri", hour="9-15", timezone="America/New_York"),
+        id="intraday_scan_15m",
+        name="Intraday 15m Scanner",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=60,
+    )
+    logger.info("⏰ Intraday 15m scanner registered — every 15 min 09:45-15:45 ET weekdays")
+
     # EOD P&L snapshot scheduler — registers its own jobs on the existing scheduler
     from notifications.whatsapp import get_notifier as _get_notifier
+    from learning.consolidator import TradingMemoryConsolidator
+
+    learning_consolidator = TradingMemoryConsolidator(db_manager=db_manager)
 
     eod_scheduler = EODScheduler(
         db_manager=db_manager,
         portfolio_tracker=paper_tracker,
         whatsapp_notifier=_get_notifier(),
+        learning_consolidator=learning_consolidator,
     )
     if scheduler is not None:
         eod_scheduler.register_with_scheduler(scheduler)
+
+    # Validation Alert Manager — monitors 30-day paper validation gates
+    try:
+        validation_alert_manager = ValidationAlertManager(alert_file="data/validation_alerts.json")
+        eod_scheduler._alert_manager = validation_alert_manager
+        set_validation_alert_manager(validation_alert_manager)
+        logger.info("✅ ValidationAlertManager initialized and wired to EODScheduler")
+    except Exception as _alert_err:
+        logger.warning("ValidationAlertManager init failed (non-fatal): %s", _alert_err)
 
     # WebSocket manager for real-time event streaming
     ws_manager = WebSocketManager()
@@ -507,18 +1191,890 @@ async def lifespan(app: FastAPI):
     loss_tracker = ConsecutiveLossTracker(data_dir="data")
     logger.info("✅ Consecutive Loss Tracker initialized")
 
-    logger.info("✅ JARVIS TRADER ready. Dashboard: http://localhost:3010")
+    # Wire loss tracker into SafetyLayer so 3/5/7-loss scaling logic is active
+    safety_layer._loss_tracker = loss_tracker
+    logger.info("✅ ConsecutiveLossTracker wired into SafetyLayer (3→0.5x, 5→0.25x, 7→halt)")
+
+    # AlertManager — push WhatsApp alerts when P&L thresholds are crossed
+    _pnl_alert_manager = None
+    try:
+        from risk.alert_manager import AlertManager as _AlertManager
+        from notifications.openclaw_notifier import send_raw as _oc_send_raw
+
+        _pnl_alert_manager = _AlertManager(notify_fn=_oc_send_raw)
+        _pnl_alert_manager.start()
+        safety_layer.inject_alert_manager(_pnl_alert_manager)
+        logger.info(
+            "✅ AlertManager started — P&L push alerts active via OpenClaw WhatsApp"
+        )
+    except Exception as _am_err:
+        logger.warning("AlertManager init failed (non-fatal — no P&L push alerts): %s", _am_err)
+
+    # Wire router dependencies now that all singletons are ready
+    inject_portfolio_deps(paper_tracker, db_manager, data_manager, safety_layer)
+    inject_safety_router_deps(safety_layer, loss_tracker)
+    # Inject AlertManager into safety router for /safety/alerts/history
+    try:
+        from routers.safety_router import inject_alert_manager as _inject_am
+        if _pnl_alert_manager is not None:
+            _inject_am(_pnl_alert_manager)
+    except Exception as _am_inject_err:
+        logger.warning("Failed to inject AlertManager into safety_router: %s", _am_inject_err)
+    inject_phase3_readiness_deps(safety_layer)
+    inject_health_router_deps(
+        _health_server_start,
+        data_manager,
+        safety_layer,
+        db_manager,
+        paper_tracker,
+        pnl_monitor,
+        trading_pipeline,
+        schwab_connector,
+    )
+    inject_discord_data_manager(data_manager)
+    inject_backtest_deps(data_manager)
+    from routers.market_router import inject_dependencies as inject_market_deps
+    inject_market_deps(data_manager=data_manager)
+    inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
+    inject_approval_deps(safety_layer, paper_tracker, db_manager)
+    inject_scheduler_router_scheduler(scheduler)
+    inject_pipeline_deps(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline)
+    inject_messaging_deps(str(db_manager._db_path))
+    # Morning brief deps
+    inject_morning_brief_deps(data_manager, paper_tracker, safety_layer)
+    inject_hp_deps(data_manager, settings)
+
+    # Initialize Signal Scanner
+    try:
+        from scanner.signal_scanner import SignalScanner
+
+        # Use FUTURES_WATCHLIST from settings so MCL, MNQ, MES are all included.
+        # Fallback to ["MCL", "MNQ"] if setting is empty.
+        _scan_symbols = list(settings.FUTURES_WATCHLIST) if settings.FUTURES_WATCHLIST else ["MCL", "MNQ"]
+        _scanner_initial_delay = int(getattr(settings, "SCANNER_INITIAL_DELAY_SECONDS", 60))
+        signal_scanner = SignalScanner(
+            trading_pipeline=trading_pipeline,
+            db_manager=db_manager,
+            symbols=_scan_symbols,
+            initial_delay_seconds=_scanner_initial_delay,
+        )
+        # Inject paper tracker so the scanner can auto-log paper trades
+        # when it fires a BUY/SELL signal in paper mode.
+        if paper_tracker is not None:
+            signal_scanner.set_paper_tracker(paper_tracker)
+            logger.info("Signal scanner: paper_tracker injected")
+        inject_scanner_deps(signal_scanner)
+        await signal_scanner.start()
+        logger.info("Signal scanner started (symbols=%s, 60-min interval)", _scan_symbols)
+    except Exception as e:
+        logger.warning("Signal scanner failed to start: %s (non-fatal)", e)
+
+    # Initialize Tilt Detection
+    try:
+        if getattr(settings, "ENABLE_TILT_DETECTION", True):
+            from risk.tilt_detector import TiltDetector
+
+            tilt_detector = TiltDetector(config=settings, loss_tracker=loss_tracker)
+            safety_layer.tilt_detector = tilt_detector
+            logger.info("✅ TiltDetector initialized")
+    except Exception as _tilt_err:
+        logger.error(f"TiltDetector init failed (non-fatal): {_tilt_err}")
+
+    # Multi-Market Orchestrator
+    try:
+        from markets.futures.module import FuturesMarketModule
+        from orchestrator.multi_market import MultiMarketOrchestrator, set_orchestrator
+
+        _orchestrator = MultiMarketOrchestrator(
+            daily_target=getattr(settings, "DAILY_TARGET", 500.0),
+        )
+        _futures_module = FuturesMarketModule(
+            ib_gateway=ib_paper_connector,
+            portfolio_tracker=paper_tracker,
+            safety_layer=safety_layer,
+            trading_pipeline=trading_pipeline,
+            symbols=["MCL", "MNQ", "MES"],
+        )
+        _orchestrator.register(_futures_module)
+        set_orchestrator(_orchestrator)
+        await _orchestrator.start()
+        logger.info("MultiMarketOrchestrator started with 1 module (futures: MCL, MNQ, MES)")
+    except Exception as _orch_err:
+        logger.warning("MultiMarketOrchestrator init failed (non-fatal): %s", _orch_err)
+
+    # Initialize KAIROS if enabled
+    if getattr(settings, "ENABLE_KAIROS", False):
+        try:
+            from kairos import KairosDaemon, set_kairos_instance
+            from kairos.watchers import (
+                CorrelationBreakWatcher,
+                RegimeChangeWatcher,
+                RiskLimitWatcher,
+                SpreadWideningWatcher,
+                STCCrossoverWatcher,
+                VIXSpikeWatcher,
+                VolumeAnomalyWatcher,
+            )
+
+            logger.info("KAIROS: initializing proactive monitoring daemon...")
+            # Wire in WhatsApp notifier for alerts (Phase 2 — requires Twilio creds in .env)
+            from notifications.whatsapp import get_notifier
+
+            whatsapp_notifier = get_notifier()
+            kairos_daemon = KairosDaemon(
+                config=settings,
+                data_manager=data_manager,
+                safety_layer=safety_layer,
+                ws_manager=ws_manager,
+                notifier=whatsapp_notifier,
+            )
+            # Register all watchers
+            kairos_daemon.register_watcher(RegimeChangeWatcher())
+            kairos_daemon.register_watcher(STCCrossoverWatcher())
+            kairos_daemon.register_watcher(RiskLimitWatcher())
+            kairos_daemon.register_watcher(VIXSpikeWatcher())
+            kairos_daemon.register_watcher(VolumeAnomalyWatcher())
+            kairos_daemon.register_watcher(SpreadWideningWatcher())
+            kairos_daemon.register_watcher(CorrelationBreakWatcher())
+            set_kairos_instance(kairos_daemon)
+            await kairos_daemon.start()
+            logger.info("KAIROS: started")
+        except Exception as _kairos_err:
+            logger.error(
+                "KAIROS: init failed (non-fatal, engine will start without KAIROS): %s", _kairos_err
+            )
+    else:
+        logger.info("KAIROS: disabled (set ENABLE_KAIROS=True to enable)")
+
+    # Initialize Speculation Engine (pre-fetches market data during idle periods)
+    if getattr(settings, "ENABLE_SPECULATION", False):
+        try:
+            from speculation import SpeculationEngine, set_speculation_engine
+
+            speculation_engine = SpeculationEngine(
+                config=settings,
+                data_manager=data_manager,
+                prefetch_ttl=600,  # 10-minute cache TTL
+            )
+            set_speculation_engine(speculation_engine)
+            logger.info("SpeculationEngine: initialized")
+
+            # Register 15-min pre-fetch job offset from the 30-min pipeline scan
+            # (fires at :15 and :45 past each hour so data is warm before :00/:30 scans)
+            async def run_speculation_cycle():
+                result = await speculation_engine.speculate()
+                logger.debug(
+                    f"SpeculationEngine: cycle {result['speculation_count']} — "
+                    f"{result['symbols_processed']}/{result['symbols_requested']} symbols "
+                    f"cached in {result['duration_ms']:.0f}ms"
+                )
+
+            scheduler.add_job(
+                run_speculation_cycle,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour="9-15",
+                    minute="15,45",
+                    timezone="America/Chicago",
+                ),
+                id="speculation_prefetch",
+                name="Speculation Pre-fetch",
+                max_instances=1,
+                misfire_grace_time=120,
+            )
+            if not scheduler.running:
+                scheduler.start()
+            logger.info(
+                "SpeculationEngine: pre-fetch job registered — fires at :15/:45 past each hour (9-4 CT weekdays)"
+            )
+        except Exception as _spec_err:
+            logger.error(f"SpeculationEngine init failed (non-fatal): {_spec_err}")
+    else:
+        logger.info("SpeculationEngine: disabled (set ENABLE_SPECULATION=True to enable)")
+
+    # Initialize Database Backup (nightly at 23:30 UTC)
+    try:
+        import asyncio
+
+        from backup.db_backup import get_backup_manager
+
+        backup_manager = get_backup_manager()
+
+        async def run_nightly_backup():
+            """Run database backup and cleanup in thread executor."""
+            loop = asyncio.get_event_loop()
+            backup_result = await loop.run_in_executor(None, backup_manager.backup)
+            cleanup_result = await loop.run_in_executor(None, backup_manager.cleanup_old)
+            logger.info(f"Backup: {backup_result.get('message')}")
+            logger.info(f"Cleanup: {cleanup_result.get('message')}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_nightly_backup,
+                CronTrigger(hour=23, minute=30, timezone="UTC"),
+                id="nightly_db_backup",
+                name="Nightly Database Backup",
+                max_instances=1,
+                misfire_grace_time=300,
+            )
+            if not scheduler.running:
+                scheduler.start()
+            logger.info("✅ Database backup job registered — fires nightly at 23:30 UTC")
+    except Exception as _backup_err:
+        logger.warning(f"Database backup init failed (non-fatal): {_backup_err}")
+
+    # Initialize Nightly Learning Consolidation (04:00 ET = 09:00 UTC)
+    try:
+
+        async def run_nightly_consolidation() -> None:
+            try:
+                from learning.consolidator import TradingMemoryConsolidator
+
+                consolidator = TradingMemoryConsolidator(db_manager=db_manager)
+                result = await consolidator.consolidate_daily()
+                logger.info("[LEARNING] Nightly consolidation complete: %s", result)
+            except Exception as exc:
+                logger.error("[LEARNING] Nightly consolidation failed: %s", exc)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_nightly_consolidation,
+                CronTrigger(hour=9, minute=0, timezone="UTC"),  # 04:00 ET = 09:00 UTC
+                id="nightly_learning_consolidation",
+                name="Nightly Learning Consolidation",
+                replace_existing=True,
+            )
+            logger.info(
+                "✅ Learning consolidation job registered — fires nightly at 09:00 UTC (04:00 ET)"
+            )
+    except Exception as _consolidation_err:
+        logger.warning(f"Learning consolidation init failed (non-fatal): {_consolidation_err}")
+
+    # Initialize Morning Intelligence Brief (8:45 CT, Mon–Fri)
+    try:
+
+        async def run_morning_brief() -> None:
+            """Fire-and-forget morning intelligence brief at 8:45 CT."""
+            try:
+                from notifications.morning_brief import assemble_morning_brief
+                from notifications.openclaw_notifier import send_raw
+                from notifications.discord_notifier import discord_morning_brief
+
+                brief_text = await assemble_morning_brief()
+                logger.info("[MorningBrief] Assembled: %s chars", len(brief_text))
+                # Supervisor gate (Hermes pattern) — review brief before sending.
+                _send_brief = True
+                try:
+                    from notifications.supervisor import get_supervisor, SupervisorEvent
+                    _sup = get_supervisor()
+                    if _sup.enabled:
+                        _decision = await _sup.review(SupervisorEvent(
+                            event_type="morning_brief",
+                            payload={"length": len(brief_text), "preview": brief_text[:500]},
+                        ))
+                        _send_brief = _decision.pass_through
+                        if not _send_brief:
+                            logger.info("Supervisor ACK'd morning brief: %s", _decision.reason)
+                except Exception as _sup_exc:
+                    logger.warning("Supervisor morning_brief gate failed (fail-open): %s", _sup_exc)
+                if _send_brief:
+                    await send_raw(brief_text)
+                    await discord_morning_brief(brief_text)
+            except Exception as exc:
+                logger.error("[MorningBrief] run_morning_brief failed: %s", exc)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_morning_brief,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=7,
+                    minute=25,
+                    timezone="America/Chicago",
+                ),
+                id="morning_brief",
+                name="Morning Intelligence Brief",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("✅ Morning brief job registered — fires Mon–Fri at 07:25 CT")
+    except Exception as _brief_err:
+        logger.warning(f"Morning brief init failed (non-fatal): {_brief_err}")
+
+    # Initialize Nightly Discord Import (6:00 AM CT, Mon–Fri)
+    try:
+
+        async def run_nightly_discord() -> None:
+            """Run Discord nightly import + sentiment ETL, emit completion event."""
+            try:
+                import scripts.nightly_discord as nd_module
+
+                import_stats = nd_module.run_discord_import()
+                sentiment_stats = nd_module.run_sentiment_etl()
+
+                logger.info(f"Discord import complete: {import_stats}")
+                logger.info(f"Discord sentiment ETL complete: {sentiment_stats}")
+
+                from websocket.events import publish_event
+
+                combined_stats = {"import": import_stats, "sentiment_etl": sentiment_stats}
+                publish_event(
+                    "system",
+                    f"Discord nightly import complete: {combined_stats}",
+                    severity="info",
+                )
+
+            except Exception as exc:
+                logger.error("[Discord] Nightly import failed: %s", exc, exc_info=True)
+                from websocket.events import publish_event
+
+                publish_event("system", "Discord nightly import FAILED", severity="warn")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_nightly_discord,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=6,
+                    minute=0,
+                    timezone="America/Chicago",
+                ),
+                id="nightly_discord_import",
+                name="Nightly Discord Import",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info("✅ Discord nightly import job registered — fires Mon–Fri at 06:00 CT")
+    except Exception as _discord_err:
+        logger.warning(f"Discord nightly import init failed (non-fatal): {_discord_err}")
+
+    # Weekly bookmark thematic clustering — Sunday 18:00 CT pre-warms the
+    # 6h cache so Monday-morning dashboard/API reads are instant (no LLM wait).
+    try:
+
+        async def run_bookmark_clusterer() -> None:
+            try:
+                from routers.discord_router import _get_bookmark_clusterer
+
+                clusterer = _get_bookmark_clusterer()
+                result = await clusterer.cluster_recent(
+                    lookback_days=7, force_refresh=True
+                )
+                logger.info(
+                    "[BookmarkClusterer] refreshed: %d themes, %d bookmarks, "
+                    "actionable=%s, cost=$%.4f, error=%s",
+                    len(result.themes),
+                    result.bookmark_count,
+                    result.actionable,
+                    result.cost_usd,
+                    result.error,
+                )
+            except Exception as exc:
+                logger.error("[BookmarkClusterer] weekly refresh failed: %s", exc)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_bookmark_clusterer,
+                CronTrigger(
+                    day_of_week="sun",
+                    hour=18,
+                    minute=0,
+                    timezone="America/Chicago",
+                ),
+                id="bookmark_weekly_cluster",
+                name="Weekly Bookmark Thematic Clustering",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info(
+                "✅ Bookmark clusterer registered — fires Sun at 18:00 CT"
+            )
+    except Exception as _bm_err:
+        logger.warning(f"Bookmark clusterer init failed (non-fatal): {_bm_err}")
+
+    # Daily bookmark vault render — writes any missing Discord bookmarks to
+    # second-brain/wiki/discord-bookmarks/ so agents and the human both have
+    # an Obsidian-linkable page for every URL dropped in #general. Catch-up
+    # mode: existing files are skipped (preserves 2026-04-17 manual triage).
+    try:
+        from scripts.render_bookmarks_to_vault import render_vault as _render_vault
+
+        _BOOKMARK_DB_PATH = os.environ.get(
+            "JARVIS_TRADER_DB_PATH", "engine/data/jarvis_trader.db"
+        )
+        _BOOKMARK_VAULT_DIR = os.environ.get(
+            "BOOKMARK_VAULT_DIR",
+            r"C:\Users\mattm\second-brain\wiki\discord-bookmarks",
+        )
+
+        async def run_bookmark_vault_render() -> None:
+            try:
+                stats = _render_vault(_BOOKMARK_DB_PATH, _BOOKMARK_VAULT_DIR)
+                logger.info(
+                    "[BookmarkVaultRender] created=%d skipped=%d failed=%d by_kind=%s",
+                    stats.get("created", 0),
+                    stats.get("skipped_existing", 0),
+                    stats.get("failed", 0),
+                    stats.get("by_kind", {}),
+                )
+            except Exception as exc:
+                logger.error(
+                    "[BookmarkVaultRender] daily render failed: %s", exc, exc_info=True
+                )
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_bookmark_vault_render,
+                CronTrigger(hour=3, minute=0, timezone="America/Chicago"),
+                id="bookmark_vault_render",
+                name="Daily Bookmark Vault Render",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info(
+                "✅ Bookmark vault renderer registered — fires daily 03:00 CT"
+            )
+    except Exception as _bvr_err:
+        logger.warning(
+            f"Bookmark vault renderer init failed (non-fatal): {_bvr_err}"
+        )
+
+    # MES session forward-recorder — observational experiment that accumulates
+    # (Corey bias + gamma levels + IB levels → hypothesis → session outcome)
+    # rows for post-hoc evaluation once ~8-12 weeks of data exist. Does NOT
+    # trade. See memory/project_mes_forward_recorder.md for experiment design.
+    try:
+        from experiments.mes_session_recorder import record_session as _mes_record
+        from experiments.mes_session_outcome import fill_outcomes as _mes_fill_outcomes
+
+        async def run_mes_session_recorder() -> None:
+            try:
+                result = await _mes_record(data_manager=data_manager)
+                logger.info(
+                    "[MESRecorder] inserted=%s side=%s reason=%s warnings=%s",
+                    result.inserted,
+                    result.hypothesis_side,
+                    result.hypothesis_reason,
+                    result.warnings,
+                )
+            except Exception as exc:
+                logger.error("[MESRecorder] morning pass failed: %s", exc, exc_info=True)
+
+        async def run_mes_session_outcome() -> None:
+            try:
+                result = await _mes_fill_outcomes(data_manager=data_manager)
+                logger.info(
+                    "[MESOutcome] filled=%d skipped_existing=%d skipped_no_data=%d errors=%s",
+                    result.updated_rows,
+                    result.skipped_existing,
+                    result.skipped_no_data,
+                    result.errors,
+                )
+            except Exception as exc:
+                logger.error("[MESOutcome] afternoon pass failed: %s", exc, exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_mes_session_recorder,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=8,
+                    minute=30,
+                    timezone="America/Chicago",
+                ),
+                id="mes_session_recorder",
+                name="MES Session Hypothesis Recorder (morning)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=1800,
+            )
+            scheduler.add_job(
+                run_mes_session_outcome,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=15,
+                    minute=15,
+                    timezone="America/Chicago",
+                ),
+                id="mes_session_outcome",
+                name="MES Session Hypothesis Outcome (afternoon)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info(
+                "✅ MES session forward-recorder registered — "
+                "morning 08:30 CT / outcome 15:15 CT, Mon-Fri"
+            )
+    except Exception as _mes_err:
+        logger.warning(f"MES forward-recorder init failed (non-fatal): {_mes_err}")
+
+    # Corey staleness watchdog (hourly, weekdays 9-17 CT) — alerts if
+    # discord_corey_commentary stops refreshing. Agents consume corey_session_bias
+    # derived from this table; silent staleness = silent signal drift.
+    try:
+
+        async def run_corey_staleness_check() -> None:
+            """Alert on WhatsApp if Corey's commentary feed is >48h stale on a weekday."""
+            try:
+                import sqlite3
+                from datetime import datetime, timedelta
+                from zoneinfo import ZoneInfo
+                from config import settings
+                from notifications.openclaw_notifier import notify_corey_stale
+
+                ct = ZoneInfo("America/Chicago")
+                now_ct = datetime.now(ct)
+                if now_ct.weekday() >= 5:  # Saturday/Sunday — no alert
+                    return
+
+                with sqlite3.connect(settings.SQLITE_DB_PATH) as conn:
+                    row = conn.execute(
+                        "SELECT MAX(timestamp) FROM discord_corey_commentary"
+                    ).fetchone()
+
+                if not row or not row[0]:
+                    logger.warning("[CoreyStale] discord_corey_commentary empty — firing alert")
+                    await notify_corey_stale(days_stale=999, last_message_date="never")
+                    return
+
+                last_raw = str(row[0])
+                try:
+                    last_dt = datetime.fromisoformat(last_raw.replace("Z", "+00:00"))
+                    if last_dt.tzinfo is None:
+                        last_dt = last_dt.replace(tzinfo=ZoneInfo("UTC"))
+                except ValueError:
+                    logger.error("[CoreyStale] Unparseable last-msg timestamp: %r", last_raw)
+                    return
+
+                age = now_ct - last_dt.astimezone(ct)
+                days_stale = age.total_seconds() / 86400.0
+                if days_stale >= 2.0:
+                    logger.warning(
+                        "[CoreyStale] discord_corey_commentary %.1f days stale — alerting",
+                        days_stale,
+                    )
+                    await notify_corey_stale(
+                        days_stale=int(days_stale),
+                        last_message_date=last_dt.strftime("%Y-%m-%d %H:%M CT"),
+                    )
+                else:
+                    logger.debug(
+                        "[CoreyStale] OK — last msg %.1f days ago", days_stale
+                    )
+            except Exception as exc:
+                logger.error("[CoreyStale] check failed (non-fatal): %s", exc, exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_corey_staleness_check,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour="9-17",
+                    minute=0,
+                    timezone="America/Chicago",
+                ),
+                id="corey_staleness_watchdog",
+                name="Corey Commentary Staleness Watchdog",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=1800,
+            )
+            logger.info("✅ Corey staleness watchdog registered — hourly Mon-Fri 9-17 CT")
+    except Exception as _corey_err:
+        logger.warning(f"Corey staleness watchdog init failed (non-fatal): {_corey_err}")
+
+    # Initialize IB Gateway Health Monitor (every 15 minutes, Mon-Fri 8:00am-4:45pm CT)
+    try:
+
+        async def run_ib_health_check() -> None:
+            """Check IB Gateway health and alert on disconnect."""
+            try:
+                from health.ib_monitor import check_ib_health
+                from brokers.ib_paper_connector import ib_paper_connector
+
+                result = await check_ib_health(ib_paper_connector)
+                if not result:
+                    logger.warning("[IBHealth] IB Gateway health check failed (disconnected)")
+            except Exception as exc:
+                logger.debug(f"[IBHealth] Health check failed (non-fatal): {exc}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                run_ib_health_check,
+                CronTrigger(
+                    day_of_week="mon-fri",
+                    hour="8-16",
+                    minute="0,15,30,45",
+                    timezone="America/Chicago",
+                ),
+                id="ib_health_monitor",
+                name="IB Gateway Health Monitor",
+                max_instances=1,
+                misfire_grace_time=60,
+                replace_existing=True,
+            )
+            logger.info(
+                "✅ IB health monitor job registered — fires every 15 min Mon–Fri 8am–4:45pm CT"
+            )
+    except Exception as _health_err:
+        logger.warning(f"IB health monitor init failed (non-fatal): {_health_err}")
+
+    # Periodic SafetyLayer equity sync (every 60 seconds) — ground-truth from PnLMonitor
+    try:
+
+        async def _sync_safety_equity() -> None:
+            """Pull current equity + daily P&L from PnLMonitor and push to SafetyLayer."""
+            try:
+                if safety_layer is None or pnl_monitor is None:
+                    logger.warning(
+                        "[sync_safety_equity] early-return: safety_layer=%s pnl_monitor=%s",
+                        safety_layer is not None,
+                        pnl_monitor is not None,
+                    )
+                    return
+                state = pnl_monitor.get_current_pnl_state()
+                equity = state.current_balance if state.current_balance > 0 else safety_layer._current_equity
+                daily_pnl = pnl_monitor.get_daily_pnl()
+                safety_layer.sync_from_broker(equity, daily_pnl)
+            except Exception as exc:
+                logger.warning("[sync_safety_equity] error: %s", exc, exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _sync_safety_equity,
+                "interval",
+                seconds=60,
+                id="sync_safety_equity",
+                name="SafetyLayer Equity Sync",
+                max_instances=1,
+                replace_existing=True,
+            )
+            if not scheduler.running:
+                scheduler.start()
+            logger.info("✅ SafetyLayer equity sync job registered — fires every 60 seconds")
+    except Exception as _sync_err:
+        logger.warning(f"SafetyLayer equity sync job init failed (non-fatal): {_sync_err}")
+
+    # ── RL executor — MES paper validation (experimental, non-blocking) ───────
+    try:
+        from pathlib import Path as _RLPath
+        from strategies.rl_executor import RLExecutor
+
+        _rl_model_dir = _RLPath(__file__).parent / "data" / "rl_models"
+        _mes_models = sorted(_rl_model_dir.glob("MES_*.zip"))
+        if _mes_models:
+            _latest_mes_model = str(_mes_models[-1]).removesuffix(".zip")
+            _rl_executor = RLExecutor(
+                symbol="MES",
+                model_path=_latest_mes_model,
+                data_manager=data_manager,
+                safety_layer=safety_layer,
+            )
+            _rl_executor.start()  # sync — starts BackgroundScheduler thread (non-blocking)
+            logger.info(
+                "RL executor started — MES paper validation running (model: %s)",
+                _mes_models[-1].name,
+            )
+        else:
+            logger.warning("[RL Executor] No MES model found in data/rl_models/ — skipping")
+    except Exception as _rl_err:
+        logger.warning("[RL Executor] Could not start: %s — continuing without RL", _rl_err)
+
+    # ── Weekly strategy discovery ──────────────────────────────────────────────
+    try:
+        async def _run_weekly_discovery() -> None:
+            """Saturday midnight: generate + evaluate one LLM strategy per active instrument."""
+            try:
+                from pathlib import Path as _Path
+                from strategies.discovery_loop import generate_strategy, evaluate_strategy_file
+
+                for _sym, _ivl in [("MCL", "1h"), ("MNQ", "1h")]:
+                    logger.info(f"[WeeklyDiscovery] Running cycle for {_sym}/{_ivl}")
+                    _path = await generate_strategy(symbol=_sym, interval=_ivl)
+                    if _path is None:
+                        logger.warning(f"[WeeklyDiscovery] No strategy generated for {_sym}")
+                        continue
+                    _result = evaluate_strategy_file(
+                        filename=_Path(_path).name, symbol=_sym, interval=_ivl
+                    )
+                    logger.info(
+                        f"[WeeklyDiscovery] {_sym} verdict={_result.get('verdict')} "
+                        f"sharpe={_result.get('sharpe', 0):.2f}"
+                    )
+            except Exception as _disc_err:
+                logger.error(f"[WeeklyDiscovery] Failed: {_disc_err}", exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_weekly_discovery,
+                CronTrigger(day_of_week="sat", hour=0, minute=0, timezone="America/Chicago"),
+                id="weekly_discovery",
+                name="Weekly Strategy Discovery",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("Weekly strategy discovery job registered (Saturday 00:00 Chicago)")
+    except Exception as _weekly_err:
+        logger.warning(f"Weekly discovery job init failed (non-fatal): {_weekly_err}")
+
+    # ── Weekly gate v2 orchestrator ────────────────────────────────────────────
+    # Re-scores the revised dual-pathway gate for each tracked symbol and
+    # persists a verdict snapshot under engine/data/gate_v2_verdicts/.
+    # Advisory only — does NOT block routing. See:
+    #   * scripts/gate_v2_orchestrator.py
+    #   * backtest/gate_v2_policy.py
+    #   * memory/project_gate_v2_proposal.md
+    try:
+        # (symbol, family, rank, results_file_relative_to_engine/)
+        _GATE_V2_TRACKED: list[tuple[str, str, int, str]] = [
+            ("MES", "trend",   7, "scripts/mes_trend_search_results.json"),
+            ("MCL", "meanrev", 1, "scripts/mcl_meanrev_search_results.json"),
+            ("MNQ", "trend",   1, "scripts/mnq_trend_search_results.json"),
+        ]
+
+        async def _run_weekly_gate_v2() -> None:
+            """Saturday 01:00 CT: re-score gate v2 for each tracked symbol."""
+            try:
+                from pathlib import Path as _Path
+                from scripts.gate_v2_orchestrator import orchestrate_gate_v2
+
+                engine_dir = _Path(__file__).resolve().parent
+                reports_dir = engine_dir / "scripts" / "validation_reports"
+                output_dir = engine_dir / "data" / "gate_v2_verdicts"
+
+                for _sym, _fam, _rank, _results_rel in _GATE_V2_TRACKED:
+                    _results_file = engine_dir / _results_rel
+                    if not _results_file.exists():
+                        logger.warning(
+                            "[GateV2Weekly] missing results file %s — skipping %s/%s rank=%d",
+                            _results_file, _sym, _fam, _rank,
+                        )
+                        continue
+                    try:
+                        _snap = orchestrate_gate_v2(
+                            results_file=_results_file,
+                            symbol=_sym, family=_fam, rank=_rank,
+                            reports_dir=reports_dir,
+                            output_dir=output_dir,
+                        )
+                        logger.info(
+                            "[GateV2Weekly] %s/%s rank=%d verdict=%s via=%s "
+                            "(core %d/4, alt %d/5)",
+                            _sym, _fam, _rank, _snap.verdict,
+                            _snap.passed_via or "-",
+                            _snap.n_core_passed, _snap.n_alt_passed,
+                        )
+                    except Exception as _inner_err:
+                        logger.error(
+                            "[GateV2Weekly] %s/%s rank=%d failed: %s",
+                            _sym, _fam, _rank, _inner_err, exc_info=True,
+                        )
+            except Exception as _gv2_err:
+                logger.error(f"[GateV2Weekly] cycle failed: {_gv2_err}", exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_weekly_gate_v2,
+                CronTrigger(day_of_week="sat", hour=1, minute=0, timezone="America/Chicago"),
+                id="weekly_gate_v2",
+                name="Weekly Gate v2 Orchestrator",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("Weekly gate v2 orchestrator registered (Saturday 01:00 Chicago)")
+    except Exception as _gv2_init_err:
+        logger.warning(
+            f"Weekly gate v2 job init failed (non-fatal): {_gv2_init_err}"
+        )
+
+    # ── Telegram long-polling service ──────────────────────────────────────────
+    try:
+        from routers.messaging_router import start_messaging_services
+        await start_messaging_services()
+        logger.info("✅ Messaging services started (Telegram poller)")
+    except Exception as _msg_err:
+        logger.warning("Messaging services init failed (non-fatal): %s", _msg_err)
+
+    logger.info("JARVIS TRADER ready. Dashboard: http://localhost:3010")
     logger.info("   API docs: http://localhost:8010/docs")
+
+    # ── Signal handlers for clean crash detection ──────────────────────────────
+    # Log reason before exit so watchdog.log can distinguish crash vs intentional stop.
+    def _make_signal_handler(sig_name: str):
+        def _handler(signum, frame):
+            logger.warning(
+                "ENGINE SHUTTING DOWN — reason: %s (signal %d)",
+                sig_name,
+                signum,
+            )
+            # Re-raise as KeyboardInterrupt so uvicorn's normal shutdown path runs
+            raise KeyboardInterrupt(f"Signal {sig_name} received")
+        return _handler
+
+    try:
+        # SIGINT = Ctrl-C / manual stop; SIGTERM = Task Scheduler / OS shutdown
+        signal.signal(signal.SIGINT, _make_signal_handler("SIGINT"))
+        signal.signal(signal.SIGTERM, _make_signal_handler("SIGTERM"))
+        logger.info("✅ Signal handlers registered (SIGINT, SIGTERM)")
+    except (OSError, ValueError) as _sig_err:
+        # On Windows, SIGTERM is not always supported; log and continue
+        logger.warning("Signal handler registration incomplete: %s", _sig_err)
 
     yield  # Server runs here
 
     # Teardown
+    # Stop AlertManager worker gracefully
+    if _pnl_alert_manager is not None:
+        try:
+            await _pnl_alert_manager.stop()
+        except Exception:
+            pass
+    try:
+        from orchestrator.multi_market import get_orchestrator
+
+        _orch = get_orchestrator()
+        if _orch:
+            await _orch.stop()
+    except Exception:
+        pass
+    # Shutdown KAIROS
+    try:
+        from kairos import get_kairos
+
+        kairos = get_kairos()
+        if kairos:
+            await kairos.stop()
+    except Exception:
+        pass
     if data_manager and data_manager.ibkr:
         await data_manager.ibkr.disconnect()
+    try:
+        if ib_paper_connector and ib_paper_connector.is_connected():
+            await ib_paper_connector.disconnect()
+    except Exception:
+        pass
     if scheduler and scheduler.running:
         scheduler.shutdown(wait=False)
-    logger.info("👋 JARVIS TRADER shutdown complete")
+    # Close Brave Search client if it was initialised
+    try:
+        if _brave_client is not None:
+            await _brave_client.close()
+    except Exception:
+        pass
+    # Stop Telegram poller
+    try:
+        from routers.messaging_router import stop_messaging_services
+        await stop_messaging_services()
+    except Exception:
+        pass
+    logger.info("JARVIS TRADER shutdown complete")
 
+
+_health_server_start = datetime.now(timezone.utc)
 
 app = FastAPI(
     title="JARVIS TRADER",
@@ -537,6 +2093,7 @@ v1_router = APIRouter(prefix="/v1", tags=["v1"])
 # This allows clients to transition gradually.
 
 
+app.add_middleware(GlobalExceptionHandler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3010", "http://localhost:3000", "http://localhost:3004"],
@@ -544,350 +2101,424 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(APIKeyMiddleware)
+app.state.limiter = get_limiter()
+app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
+
+app.include_router(health_router)
+app.include_router(phase3_readiness_router)
+app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(jarvis_router)
+app.include_router(trades_router)
+app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
+app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
+app.include_router(market_router)
+app.include_router(analytics_router)
+app.include_router(safety_router)
+app.include_router(strategies_router)
+app.include_router(validation_router)
+app.include_router(paper_validation_router)
+app.include_router(proactive_validation_router)
+app.include_router(webhook_router)
+app.include_router(discord_router)
+app.include_router(experiments_router)
+app.include_router(backtest_router)
+app.include_router(learning_router)
+app.include_router(events_router)
+app.include_router(kairos_router)
+app.include_router(profiling_router)
+app.include_router(schwab_router)
+app.include_router(instruments_router)
+app.include_router(brokers_router)
+app.include_router(options_router)
+app.include_router(approval_router)
+app.include_router(pipeline_router)
+app.include_router(messaging_router)
+app.include_router(scanner_router)
+app.include_router(tradingview_router)
+app.include_router(scheduler_router)
+app.include_router(wfe_router)
+app.include_router(discovery_router)
+app.include_router(hidden_pivots_router)
+app.include_router(decisions_router)
+app.include_router(cache_router)
+app.include_router(v1_router)
+app.include_router(observability_router)
+app.include_router(strategy_c_router)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(webhook_router)
 app.include_router(v1_router)
 
 
-# ── Health ────────────────────────────────────────────────────────────────
-
-_start_time = datetime.now(timezone.utc)
+# ── Strategy Lab endpoints ────────────────────────────────────────────────────
 
 
-@app.get("/health", response_model=HealthResponse)
-async def health():
-    safety = safety_layer.get_status() if safety_layer else {}
+@app.post("/strategy-lab/run")
+async def start_strategy_lab(
+    background_tasks: BackgroundTasks,
+    symbol: str = "MES",
+    max_iterations: int = 20,
+    start: str = "2024-06-01",
+    end: str = "2026-03-27",
+):
+    """
+    Start the LLM autonomous strategy improvement loop in the background.
+    Generates STC+ATR strategy variants via Claude, backtests each variant,
+    applies dual-gate validation, and saves ELIGIBLE results to disk.
 
-    # Quick database connectivity check
-    db_ok = False
-    try:
-        if db_manager:
-            db_manager.health_check()
-            db_ok = True
-    except Exception:
-        pass
+    Auth: global X-API-Key middleware enforces authentication.
+    """
+    from strategy_lab.strategy_loop import run_strategy_loop
 
-    now = datetime.now(timezone.utc)
-    status = "ok" if db_ok else "degraded"
-
+    background_tasks.add_task(
+        run_strategy_loop,
+        symbol=symbol,
+        max_iterations=max_iterations,
+        start=start,
+        end=end,
+    )
     return {
-        "status": status,
-        "version": "1.1.0",
-        "timestamp": now.isoformat(),
-        "live_trading": settings.LIVE_TRADING_ENABLED,
-        "kill_switch_active": safety.get("kill_switch_active", False),
-        "paper_mode": not settings.LIVE_TRADING_ENABLED,
-        "database": "connected" if db_ok else "error",
-        "ibkr_connected": data_manager.ibkr.is_connected()
-        if data_manager and data_manager.ibkr
-        else False,
-        "schwab_connected": False,  # Schwab connector TODO
-        "uptime_seconds": (now - _start_time).total_seconds(),
+        "status": "started",
+        "symbol": symbol,
+        "max_iterations": max_iterations,
+        "message": (
+            f"Strategy lab running {max_iterations} iterations on {symbol}. "
+            "Check /strategy-lab/results when complete."
+        ),
     }
 
 
-@app.get("/health/full", response_model=FullHealthResponse)
-async def full_health_check():
-    """Comprehensive health check of all JARVIS TRADER subsystems."""
-    status: dict = {}
-    overall = "healthy"
-
-    # 1. Database health
-    try:
-        if db_manager:
-            db_health = db_manager.health_check()
-            status["database"] = {"status": "ok", "details": db_health}
-        else:
-            status["database"] = {"status": "not_initialized"}
-            overall = "degraded"
-    except Exception as e:
-        status["database"] = {"status": "error", "error": str(e)}
-        overall = "degraded"
-
-    # 2. Safety layer
-    try:
-        if safety_layer:
-            kill_switch = safety_layer._kill_switch_active
-            kill_reason = safety_layer._kill_switch_reason
-            status["safety_layer"] = {
-                "status": "ok",
-                "kill_switch_active": kill_switch,
-                "kill_switch_reason": kill_reason.value if kill_reason else None,
-            }
-            if kill_switch:
-                overall = "kill_switch_active"
-        else:
-            status["safety_layer"] = {"status": "not_initialized"}
-            overall = "degraded"
-    except Exception as e:
-        status["safety_layer"] = {"status": "error", "error": str(e)}
-        overall = "degraded"
-
-    # 3. IB Gateway (optional — may not be connected)
-    try:
-        ib_gw = data_manager.ibkr if data_manager else None
-        if ib_gw:
-            ib_health = await ib_gw.health_check()
-            status["ib_gateway"] = ib_health
-        else:
-            status["ib_gateway"] = {"status": "not_configured", "mode": "paper_only"}
-    except Exception as e:
-        status["ib_gateway"] = {"status": "error", "error": str(e)}
-
-    # 4. Circuit breakers
-    try:
-        if safety_layer and hasattr(safety_layer, "check_circuit_breakers"):
-            breakers = safety_layer.check_circuit_breakers()
-            status["circuit_breakers"] = breakers
-            if not breakers.get("all_clear", True):
-                # Only escalate if kill switch hasn't already set a stronger state
-                if overall == "healthy":
-                    overall = "circuit_breaker_tripped"
-        else:
-            status["circuit_breakers"] = {"status": "not_available"}
-    except Exception as e:
-        status["circuit_breakers"] = {"status": "error", "error": str(e)}
-
-    # 5. Portfolio tracker
-    try:
-        if paper_tracker:
-            positions = paper_tracker.get_open_positions()
-            status["portfolio"] = {
-                "status": "ok",
-                "open_positions": len(positions),
-            }
-        else:
-            status["portfolio"] = {"status": "not_initialized"}
-    except Exception as e:
-        status["portfolio"] = {"status": "error", "error": str(e)}
-
-    # 6. PnL monitor
-    try:
-        if pnl_monitor:
-            pnl_state = pnl_monitor.get_current_pnl_state()
-            status["pnl_monitor"] = {
-                "status": "ok",
-                "source": pnl_state.source,
-                "daily_pnl": round(pnl_monitor.get_daily_pnl(), 4),
-                "drawdown_pct": round(pnl_monitor.get_drawdown_pct(), 6),
-                "current_balance": round(pnl_state.current_balance, 2),
-                "starting_balance": round(pnl_state.starting_balance, 2),
-            }
-        else:
-            status["pnl_monitor"] = {"status": "not_initialized"}
-    except Exception as e:
-        status["pnl_monitor"] = {"status": "error", "error": str(e)}
-
-    return {
-        "overall": overall,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "uptime_seconds": (datetime.now(timezone.utc) - _start_time).total_seconds(),
-        "subsystems": status,
-        "version": "1.1.0",
-        "phase": "paper_trading",
-    }
-
-
-@app.get("/system/preflight")
-async def system_preflight():
+@app.get("/strategy-lab/results")
+async def get_strategy_lab_results():
     """
-    Run all critical pre-flight checks before accepting trading signals.
-    Returns a list of checks with pass/fail/warn status.
+    Return the best strategies found by the strategy lab.
+
+    Auth: global X-API-Key middleware enforces authentication.
     """
-    checks = []
-    all_pass = True
+    import json
+    from pathlib import Path
 
-    def add_check(name: str, status: str, detail: str):
-        nonlocal all_pass
-        if status == "fail":
-            all_pass = False
-        checks.append({"name": name, "status": status, "detail": detail})
+    best_file = Path("backtest/results/strategy_lab_best.json")
+    all_file = Path("backtest/results/strategy_lab_results.jsonl")
 
-    # 1. Database health
-    try:
-        if db_manager is None:
-            add_check("Database", "fail", "Not initialized")
-        else:
-            with db_manager._lock:
-                conn = sqlite3.connect(str(db_manager._db_path))
+    best = json.loads(best_file.read_text()) if best_file.exists() else []
+
+    total_evaluated = 0
+    eligible_count = 0
+    if all_file.exists():
+        for line in all_file.read_text().strip().splitlines():
+            if line.strip():
                 try:
-                    conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()
-                    add_check(
-                        "Database",
-                        "pass",
-                        f"SQLite healthy — {str(db_manager._db_path).split('/')[-1]}",
-                    )
-                finally:
-                    conn.close()
-    except Exception as e:
-        add_check("Database", "fail", str(e))
-
-    # 2. Kill switch clear
-    try:
-        if safety_layer is None:
-            add_check("Kill Switch", "warn", "SafetyLayer not initialized")
-        else:
-            ks = safety_layer._kill_switch_active
-            if ks:
-                add_check("Kill Switch", "fail", "KILL SWITCH IS ACTIVE — trading blocked")
-            else:
-                add_check("Kill Switch", "pass", "Kill switch clear")
-    except Exception as e:
-        add_check("Kill Switch", "warn", f"Could not check: {e}")
-
-    # 3. Circuit breakers
-    try:
-        if safety_layer is not None:
-            cb_result = safety_layer.check_circuit_breakers()
-            daily_breached = cb_result.get("daily_limit_breached", False)
-            drawdown_breached_flag = cb_result.get("drawdown_breached", False)
-            if daily_breached or drawdown_breached_flag:
-                tripped = []
-                if daily_breached:
-                    tripped.append("daily_loss_limit")
-                if drawdown_breached_flag:
-                    tripped.append("drawdown_limit")
-                add_check("Circuit Breakers", "fail", f"Tripped: {', '.join(tripped)}")
-            else:
-                add_check("Circuit Breakers", "pass", "All circuit breakers clear")
-        else:
-            add_check("Circuit Breakers", "warn", "SafetyLayer not initialized")
-    except Exception as e:
-        add_check("Circuit Breakers", "warn", f"Could not check: {e}")
-
-    # 4. Trading pipeline
-    try:
-        if trading_pipeline is None:
-            add_check("Pipeline", "fail", "TradingPipeline not initialized")
-        else:
-            add_check("Pipeline", "pass", "TradingPipeline ready")
-    except Exception as e:
-        add_check("Pipeline", "fail", str(e))
-
-    # 5. VIX overlay
-    try:
-        from analytics.vix_overlay import fetch_vix
-
-        vix_state = fetch_vix()
-        vix_val = getattr(vix_state, "vix_value", None)
-        source = getattr(vix_state, "source", "unknown")
-        if vix_val is not None:
-            add_check(
-                "VIX Data",
-                "pass" if source != "error_fallback" else "warn",
-                f"VIX={vix_val:.1f} (source: {source})",
-            )
-        else:
-            add_check("VIX Data", "warn", "VIX unavailable — using fallback")
-    except Exception as e:
-        add_check("VIX Data", "warn", f"VIX check failed: {e}")
-
-    # 6. Market session
-    try:
-        from datetime import datetime as _dt
-
-        import pytz
-
-        ct_tz = pytz.timezone("America/Chicago")
-        now_ct = _dt.now(ct_tz)
-        weekday = now_ct.weekday()
-        hour = now_ct.hour
-        if weekday >= 5:
-            add_check("Market Session", "warn", "Weekend — market closed")
-        elif 8 <= hour < 15:
-            add_check("Market Session", "pass", f"RTH active ({now_ct.strftime('%H:%M')} CT)")
-        elif 17 <= hour or hour < 6:
-            add_check(
-                "Market Session", "pass", f"Futures session active ({now_ct.strftime('%H:%M')} CT)"
-            )
-        else:
-            add_check(
-                "Market Session",
-                "warn",
-                f"Outside primary trading hours ({now_ct.strftime('%H:%M')} CT)",
-            )
-    except Exception as e:
-        add_check("Market Session", "warn", str(e))
-
-    # 7. IB Gateway connection (paper port 4002)
-    try:
-        ib_gw = data_manager.ibkr if data_manager else None
-        if ib_gw is None:
-            add_check("IB Gateway", "warn", "Not initialized (paper only — optional)")
-        else:
-            connected = getattr(ib_gw, "is_connected", lambda: False)()
-            if connected:
-                add_check("IB Gateway", "pass", "Paper port 4002 connected")
-            else:
-                add_check("IB Gateway", "warn", "Not connected (paper only — optional)")
-    except Exception as e:
-        add_check("IB Gateway", "warn", f"Could not check: {e}")
-
-    # 8. Portfolio tracker
-    try:
-        if paper_tracker is None:
-            add_check("Portfolio Tracker", "fail", "Not initialized")
-        else:
-            positions = paper_tracker.get_open_positions()
-            if pnl_monitor is not None:
-                pnl_state = pnl_monitor.get_current_pnl_state()
-                balance = round(pnl_state.current_balance, 2)
-                add_check(
-                    "Portfolio Tracker",
-                    "pass",
-                    f"Balance: ${balance:,.2f} | {len(positions)} open position(s)",
-                )
-            else:
-                add_check("Portfolio Tracker", "pass", f"{len(positions)} open position(s)")
-    except Exception as e:
-        add_check("Portfolio Tracker", "fail", str(e))
+                    r = json.loads(line)
+                    total_evaluated += 1
+                    if r.get('verdict') == 'ELIGIBLE':
+                        eligible_count += 1
+                except Exception:
+                    pass
 
     return {
-        "all_pass": all_pass,
-        "check_count": len(checks),
-        "pass_count": sum(1 for c in checks if c["status"] == "pass"),
-        "fail_count": sum(1 for c in checks if c["status"] == "fail"),
-        "warn_count": sum(1 for c in checks if c["status"] == "warn"),
-        "checks": checks,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "best_strategies": best,
+        "stats": {
+            "total_evaluated": total_evaluated,
+            "eligible_count": eligible_count,
+            "best_pf": max(
+                (
+                    s.get('metrics', {}).get('profit_factor')
+                    or s.get('metrics', {}).get('pf')
+                    or 0
+                    for s in best
+                ),
+                default=0,
+            ),
+        },
+        "message": (
+            "No results yet. POST /strategy-lab/run to start."
+            if not best
+            else f"Top {len(best)} strategies shown."
+        ),
     }
 
 
-# ── Safety / Kill Switch ──────────────────────────────────────────────────
+# ── WebSocket Price Feed ────────────────────────────────────────────────────────
+from websocket.price_feed import price_feed_endpoint
+
+app.websocket("/ws/prices")(price_feed_endpoint)
 
 
-@app.post("/safety/kill-switch/activate", response_model=KillSwitchToggleResponse)
-async def activate_kill_switch(reason: str = "manual"):
-    if not safety_layer:
-        raise HTTPException(500, "Safety layer not initialized")
-    from risk.safety_layer import KillSwitchReason
-
-    safety_layer.activate_kill_switch(KillSwitchReason.MANUAL, f"Manual activation: {reason}")
-    from notifications.whatsapp import get_notifier
-    from websocket.events import emit_kill_switch_change
-
-    asyncio.create_task(get_notifier().alert_kill_switch(reason))
-    asyncio.create_task(emit_kill_switch_change(active=True, reason=reason))
-    return {"status": "kill_switch_activated", "reason": reason}
+# ── WebSocket Events (Trading Events) ────────────────────────────────────────────
+from websocket.events_endpoint import events_endpoint
 
 
-@app.post("/safety/kill-switch/deactivate", response_model=KillSwitchToggleResponse)
-async def deactivate_kill_switch():
-    if not safety_layer:
-        raise HTTPException(500, "Safety layer not initialized")
-    from websocket.events import emit_kill_switch_change
-
-    safety_layer.deactivate_kill_switch(authorized_by="matt_dashboard")
-    asyncio.create_task(emit_kill_switch_change(active=False, reason="Manual deactivation"))
-    return {"status": "kill_switch_deactivated"}
+async def events_handler(websocket: WebSocket):
+    """Route WebSocket /ws/events to events_endpoint with ws_manager."""
+    await events_endpoint(websocket, ws_manager)
 
 
-@app.get("/safety/status", response_model=SafetyStatusResponse)
-async def safety_status():
-    if not safety_layer:
-        raise HTTPException(500, "Safety layer not initialized")
-    return safety_layer.get_status()
+app.websocket("/ws/events")(events_handler)
+
+# ── Safety / Kill Switch (shared routes live in routers/safety_router.py) ───
+
+
+@app.get("/safety/config", response_model=SafetyConfigResponse)
+async def get_safety_config():
+    """
+    Return current risk parameter configuration (read-only).
+    Sourced from settings singleton — reflects .env values at startup.
+    """
+    return {
+        "max_daily_loss_pct": settings.MAX_DAILY_LOSS_PCT,
+        "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
+        "max_position_size_pct": settings.MAX_POSITION_SIZE_PCT,
+        "max_contracts_per_instrument": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+        "max_overnight_contracts": settings.MAX_OVERNIGHT_CONTRACTS,
+        "max_orders_per_minute": settings.MAX_ORDERS_PER_MINUTE,
+        "max_single_order_value": settings.MAX_SINGLE_ORDER_VALUE,
+        "max_margin_utilization": settings.MAX_MARGIN_UTILIZATION,
+        "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
+        "require_human_approval": settings.REQUIRE_HUMAN_APPROVAL,
+        "ibkr_host": settings.IBKR_HOST,
+        "ibkr_port": settings.IBKR_PORT,
+        "ibkr_client_id": settings.IBKR_CLIENT_ID,
+        "ibkr_paper_mode": settings.IBKR_PAPER_MODE,
+    }
+
+
+@app.get("/position-sizing/calculate")
+async def calculate_position_size_alias():
+    """Top-level alias for position sizing calculation."""
+    from utils.position_sizing import calculate_position_size
+
+    result = calculate_position_size(
+        symbol="MES",
+        account_value=settings.INITIAL_CAPITAL,
+        atr=15.0,
+        risk_pct=0.01,
+        atr_stop_multiplier=0.70,
+        max_contracts=2,
+    )
+    return {
+        "symbol": result.symbol,
+        "contracts": result.contracts,
+        "risk_per_trade": result.risk_per_trade,
+        "stop_distance": result.stop_distance,
+        "dollar_risk_per_contract": result.dollar_risk_per_contract,
+        "account_value": result.account_value,
+        "reasoning": result.reasoning,
+    }
+
+
+@app.get("/safety/loss-tracker")
+async def get_loss_tracker_status():
+    """
+    Return consecutive loss tracking state.
+
+    Returns:
+        global_consecutive_losses: Total consecutive losses (all symbols)
+        symbol_losses: Dict[symbol] -> consecutive loss count
+        position_size_multiplier: 1.0 / 0.5 / 0.25 / 0.0 based on loss streak
+        is_halted: True if trading is paused due to loss limit
+        halt_until: ISO timestamp when trading resumes (if halted)
+        last_trade_symbol: Which symbol was last traded
+        last_trade_timestamp: When the last trade executed
+        config: Loss threshold configuration
+    """
+    if not loss_tracker:
+        raise HTTPException(500, "Loss tracker not initialized")
+    try:
+        return loss_tracker.get_status()
+    except Exception as e:
+        logger.error(f"[LOSS-TRACKER] Status query failed: {e}")
+        raise HTTPException(500, f"Failed to get loss tracker status: {e}") from e
+
+
+# ── Risk Limits Settings ───────────────────────────────────────────────────
+
+
+@app.get("/settings/risk")
+async def get_risk_settings():
+    """Get current risk/circuit breaker settings."""
+    try:
+        # Get live circuit breaker state
+        cb_status = {}
+        if safety_layer:
+            cb_status = safety_layer.check_circuit_breakers()
+
+        # Get config defaults from env / TradingConfig
+        config = {
+            "daily_loss_limit": float(
+                os.getenv("DAILY_LOSS_LIMIT", str(settings.MAX_DAILY_LOSS_PCT * 10000))
+            ),
+            "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
+            "max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+            "risk_per_trade_pct": float(os.getenv("RISK_PER_TRADE_PCT", "0.01")),
+            "atr_stop_multiplier": float(os.getenv("ATR_STOP_MULTIPLIER", "0.70")),
+            "atr_target_multiplier": float(os.getenv("ATR_TARGET_MULTIPLIER", "1.50")),
+        }
+
+        # Override with DB settings if available (DB values take precedence over env)
+        if db_manager:
+            for key in config:
+                val = db_manager.get_setting(key)
+                if val is not None:
+                    try:
+                        config[key] = type(config[key])(val)
+                    except (ValueError, TypeError):
+                        pass
+
+        return {
+            "config": config,
+            "circuit_breakers": cb_status,
+            "editable_keys": list(config.keys()),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/settings/risk")
+async def update_risk_settings(payload: dict):
+    """Update risk settings (persists to DB settings table)."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    ALLOWED_KEYS = {
+        "daily_loss_limit",
+        "max_drawdown_pct",
+        "max_contracts",
+        "risk_per_trade_pct",
+        "atr_stop_multiplier",
+        "atr_target_multiplier",
+    }
+
+    VALIDATORS = {
+        "daily_loss_limit": lambda v: float(v) > 0,
+        "max_drawdown_pct": lambda v: 0 < float(v) <= 1.0,
+        "max_contracts": lambda v: 1 <= int(v) <= 10,
+        "risk_per_trade_pct": lambda v: 0 < float(v) <= 0.05,
+        "atr_stop_multiplier": lambda v: 0.1 <= float(v) <= 3.0,
+        "atr_target_multiplier": lambda v: 0.1 <= float(v) <= 5.0,
+    }
+
+    updated = {}
+    errors = {}
+
+    for key, value in payload.items():
+        if key not in ALLOWED_KEYS:
+            errors[key] = "Unknown setting"
+            continue
+
+        validator = VALIDATORS.get(key)
+        try:
+            if validator and not validator(value):
+                errors[key] = f"Value {value} out of allowed range"
+                continue
+            db_manager.set_setting(key, str(value))
+            updated[key] = value
+        except Exception as e:
+            errors[key] = str(e)[:80]
+
+    return {
+        "updated": updated,
+        "errors": errors,
+        "count": len(updated),
+    }
+
+
+# ── Strategy Parameters ────────────────────────────────────────────────────────
+
+
+class StrategyParams(BaseModel):
+    """Strategy parameter configuration."""
+
+    ema_short: int = 8
+    ema_long: int = 21
+    ema_smoother: int = 34
+    atr_length: int = 14
+    atr_mult_stop: float = 1.5
+    atr_mult_target: float = 3.0
+    min_volume_sma: int = 20
+    rsi_length: int = 14
+    rsi_oversold: int = 30
+    rsi_overbought: int = 70
+    adaptive_regime: bool = True
+    volume_filter: bool = False
+    mtf_filter: bool = False
+
+
+# In-memory strategy params (would be persisted in production)
+_strategy_params = StrategyParams()
+
+
+@app.get("/strategy/params")
+async def get_strategy_params():
+    """
+    Get current strategy parameter configuration.
+
+    Returns:
+        ema_short: Short-term EMA period (default 8)
+        ema_long: Medium-term EMA period (default 21)
+        ema_smoother: Long-term EMA period (default 34)
+        atr_length: ATR indicator period (default 14)
+        atr_mult_stop: Stop loss as multiple of ATR (default 1.5x)
+        atr_mult_target: Profit target as multiple of ATR (default 3.0x)
+        min_volume_sma: Minimum volume SMA period (default 20)
+        rsi_length: RSI indicator period (default 14)
+        rsi_oversold: RSI oversold threshold (default 30)
+        rsi_overbought: RSI overbought threshold (default 70)
+        adaptive_regime: Apply regime-based filters (default True)
+        volume_filter: Apply volume filters (default False)
+        mtf_filter: Apply multi-timeframe filters (default False)
+    """
+    global _strategy_params
+    return _strategy_params.model_dump()
+
+
+@app.put("/strategy/params")
+async def update_strategy_params(params: StrategyParams):
+    """
+    Update strategy parameter configuration.
+
+    Changes take effect immediately for future backtests and live trading.
+    Existing positions are unaffected.
+
+    Request:
+        ema_short, ema_long, ema_smoother: EMA periods
+        atr_length, atr_mult_stop, atr_mult_target: ATR configuration
+        min_volume_sma, rsi_length, rsi_oversold, rsi_overbought: Indicator settings
+        adaptive_regime, volume_filter, mtf_filter: Feature flags
+    """
+    global _strategy_params
+    try:
+        # Validate parameters
+        if not (1 < params.ema_short < params.ema_long < params.ema_smoother < 200):
+            raise ValueError("EMA periods must satisfy: 1 < short < long < smoother < 200")
+        if not (1 <= params.atr_length <= 50):
+            raise ValueError("ATR length must be 1-50")
+        if not (0.5 <= params.atr_mult_stop <= 10.0):
+            raise ValueError("ATR stop multiplier must be 0.5-10.0")
+        if not (0.5 <= params.atr_mult_target <= 10.0):
+            raise ValueError("ATR target multiplier must be 0.5-10.0")
+        if not (1 <= params.rsi_length <= 50):
+            raise ValueError("RSI length must be 1-50")
+        if not (0 < params.rsi_oversold < 50):
+            raise ValueError("RSI oversold must be 0-50")
+        if not (50 < params.rsi_overbought < 100):
+            raise ValueError("RSI overbought must be 50-100")
+
+        old_params = _strategy_params.model_dump()
+        _strategy_params = params
+        logger.info(f"[STRATEGY] Parameters updated: {params.model_dump()}")
+
+        return {
+            "status": "updated",
+            "old_params": old_params,
+            "new_params": params.model_dump(),
+        }
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid parameter: {e}") from e
+    except Exception as e:
+        logger.error(f"[STRATEGY] Update failed: {e}")
+        raise HTTPException(500, f"Failed to update strategy parameters: {e}") from e
 
 
 @app.get("/safety/circuit-breakers", response_model=CircuitBreakerStatus)
@@ -1213,10 +2844,22 @@ async def run_technical_analysis(req: AnalysisRequest):
 
 
 @app.get("/analyze/bars/{symbol}", response_model=BarsResponse)
-async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: bool = False):
-    """Get OHLCV bars for a symbol"""
+async def get_bars(
+    symbol: str,
+    timeframe: str | None = None,
+    interval: str | None = None,
+    days: int = 7,
+    futures: bool = False,
+):
+    """Get OHLCV bars for a symbol.
+
+    `interval` is accepted as an alias for `timeframe` (pandas/ohlcv convention).
+    Precedence: explicit `timeframe` > `interval` > default `5m`.
+    """
     if not data_manager:
         raise HTTPException(503, "Data manager not initialized")
+
+    timeframe = timeframe or interval or "5m"
 
     df = await data_manager.get_bars(
         symbol, lookback_days=days, timeframe=timeframe, is_futures=futures
@@ -1322,7 +2965,7 @@ async def get_paper_positions():
     }
 
 
-@app.post("/portfolio/paper/trade", response_model=PaperTradeResponse)
+@app.post("/portfolio/paper/trade/manual", response_model=PaperTradeResponse)
 async def submit_paper_trade(req: PaperTradeRequest):
     """
     Open or close a paper trade.
@@ -1381,6 +3024,18 @@ async def submit_paper_trade(req: PaperTradeRequest):
             "trade": trade.to_dict(),
         }
     else:
+        from approval.service import approved_watchlist_symbols
+        from execution.order_router import FUTURES_SYMBOLS
+
+        if settings.LIVE_TRADING_ENABLED:
+            raise HTTPException(409, "Direct paper-trade open disabled in live mode")
+        if safety_layer and safety_layer.get_status().get("kill_switch_active"):
+            raise HTTPException(409, "Kill switch active — cannot open direct paper trade")
+        if req.symbol.upper() in FUTURES_SYMBOLS and req.symbol.upper() not in approved_watchlist_symbols():
+            raise HTTPException(
+                400,
+                f"Symbol {req.symbol.upper()} not on approved futures watchlist",
+            )
         trade_id = paper_tracker.open_trade(
             symbol=req.symbol,
             action=req.action,
@@ -1630,39 +3285,8 @@ async def get_pipeline_history(limit: int = 50, symbol: str = ""):
 
 
 # ── Analytics / Performance Validation ────────────────────────────────────
-
-
-@app.get("/analytics/performance")
-async def get_analytics_performance():
-    """
-    Forward-test validation report.
-
-    Computes Profit Factor, Sharpe ratio, win rate, average win/loss,
-    max drawdown, and total P&L from all closed paper trades and daily P&L
-    records stored in SQLite.
-
-    Returns a structured report with status PASS / FAIL / INSUFFICIENT_DATA
-    and a plain-English recommendation.
-    """
-    if not db_manager:
-        return {
-            "status": "INSUFFICIENT_DATA",
-            "metrics": {},
-            "thresholds": {
-                "profit_factor": 2.0,
-                "sharpe_ratio": 1.5,
-                "min_trades_required": 10,
-            },
-            "recommendation": "Database not initialized.",
-        }
-    try:
-        from analytics.performance import PerformanceCalculator
-
-        calc = PerformanceCalculator(db_manager)
-        return calc.get_validation_report()
-    except Exception as exc:
-        logger.error(f"[Analytics] get_validation_report failed: {exc}")
-        raise HTTPException(500, f"Analytics error: {exc}") from exc
+# GET /analytics/performance — canonical metrics: routers/analytics_router.py
+# GET /analytics/validation-report — PASS/FAIL report: routers/analytics_router.py
 
 
 @app.get("/analytics/performance/rolling")
@@ -1720,7 +3344,7 @@ async def get_mtf_analysis(symbol: str = "MES"):
         from analytics.mtf_analyzer import analyze_mtf
 
         sym = symbol.strip().upper()
-        result = analyze_mtf(sym)
+        result = await analyze_mtf(sym, data_manager)
         return {
             "symbol": result.symbol,
             "recommendation": result.recommendation,
@@ -1759,7 +3383,7 @@ async def watchlist_scan(symbols: str = "MES,MNQ,MCL"):
         results = []
         for sym in symbol_list[:5]:  # cap at 5 to avoid abuse
             try:
-                mtf_result = analyze_mtf(sym)
+                mtf_result = await analyze_mtf(sym, data_manager)
                 results.append(
                     {
                         "symbol": sym,
@@ -1815,18 +3439,85 @@ async def watchlist_scan(symbols: str = "MES,MNQ,MCL"):
 _decision_log: list[dict] = []  # In-memory ring buffer, 100 entries
 
 
+def _log_decision(
+    symbol: str,
+    action: str,
+    confidence: float = 0.0,
+    source: str = "unknown",
+    summary: str = "",
+    reasoning: str = "",
+    regime: str | None = None,
+    signal_data: dict | None = None,
+    full_pipeline_data: dict | None = None,
+) -> None:
+    """Append a decision to the in-memory ring buffer AND persist to SQLite."""
+    entry: dict = {
+        "id": len(_decision_log) + 1,
+        "timestamp": datetime.now().isoformat(),
+        "symbol": symbol,
+        "action": action,
+        "confidence": confidence,
+        "source": source,
+        "summary": summary,
+    }
+    _decision_log.append(entry)
+    if len(_decision_log) > 100:
+        _decision_log.pop(0)
+
+    # Persist to SQLite (non-blocking best-effort — never crash the caller)
+    if db_manager:
+        try:
+            db_manager.insert_decision(
+                symbol=symbol,
+                action=action,
+                confidence=confidence,
+                regime=regime,
+                signal_data=signal_data or {"source": source, "summary": summary},
+                reasoning=reasoning or summary,
+                full_pipeline_data=full_pipeline_data,
+            )
+        except Exception as _db_err:
+            logger.warning(f"[DB] Failed to persist decision for {symbol}: {_db_err}")
+
+
 @app.get("/decisions/recent")
 async def get_recent_decisions(limit: int = 20):
-    """Return most recent agent decisions"""
+    """Return most recent agent decisions — queries SQLite first, falls back to in-memory."""
+    if db_manager:
+        try:
+            rows = db_manager.get_decisions(limit=limit)
+            if rows:
+                # Normalise to the same shape the dashboard expects
+                return [
+                    {
+                        "id": r.get("id"),
+                        "timestamp": r.get("timestamp"),
+                        "symbol": r.get("symbol"),
+                        "action": r.get("action"),
+                        "confidence": r.get("confidence"),
+                        "source": (r.get("signal_data_json") or {}).get("source", "db"),
+                        "summary": r.get("reasoning") or "",
+                    }
+                    for r in rows
+                ]
+        except Exception as _db_err:
+            logger.warning(f"[DB] get_decisions failed, falling back to in-memory: {_db_err}")
     return _decision_log[-limit:]
 
 
 @app.post("/decisions/log")
 async def log_decision(decision: dict):
     """Internal: agents call this to log decisions"""
-    _decision_log.append({**decision, "id": len(_decision_log) + 1})
-    if len(_decision_log) > 100:
-        _decision_log.pop(0)
+    _log_decision(
+        symbol=decision.get("symbol", "UNKNOWN"),
+        action=decision.get("action", "hold"),
+        confidence=float(decision.get("confidence", 0.0)),
+        source=decision.get("source", "api"),
+        summary=decision.get("summary", ""),
+        reasoning=decision.get("reasoning", ""),
+        regime=decision.get("regime"),
+        signal_data=decision,
+    )
     return {"ok": True}
 
 
@@ -1862,41 +3553,18 @@ async def get_sentiment_recent():
 @app.get("/watchlist")
 async def get_watchlist():
     """Return configured watchlists as ticker items with live prices"""
-    import yfinance as yf
-
-    futures_map = {
-        "MES": "ES=F",
-        "MNQ": "NQ=F",
-        "MCL": "CL=F",
-        "MGC": "GC=F",
-        "MHG": "HG=F",
-        "MYM": "YM=F",
-        "M2K": "RTY=F",
-    }
     all_symbols = list(settings.FUTURES_WATCHLIST) + list(settings.OPTIONS_WATCHLIST)
     prices: dict = {}
-    try:
-        yf_tickers_map = {s: futures_map.get(s, s) for s in all_symbols}
-        tickers_obj = yf.Tickers(" ".join(set(yf_tickers_map.values())))
-        for sym, yf_sym in yf_tickers_map.items():
-            try:
-                info = tickers_obj.tickers[yf_sym].fast_info
-                current = (
-                    float(info.last_price)
-                    if hasattr(info, "last_price") and info.last_price
-                    else None
-                )
-                prev = (
-                    float(info.previous_close)
-                    if hasattr(info, "previous_close") and info.previous_close
-                    else None
-                )
-                chg = ((current - prev) / prev) if current and prev and prev > 0 else None
-                prices[sym] = {"last_price": current, "change_pct": chg}
-            except Exception:
-                prices[sym] = {"last_price": None, "change_pct": None}
-    except Exception:
-        pass
+    if data_manager and all_symbols:
+        try:
+            batch = await data_manager.get_batch_prices(all_symbols)
+            for sym, price_dict in batch.items():
+                prices[sym] = {
+                    "last_price": price_dict.get("last_price"),
+                    "change_pct": price_dict.get("change_pct"),
+                }
+        except Exception:
+            pass
 
     items = []
     names = {
@@ -1980,59 +3648,30 @@ async def remove_from_watchlist(symbol: str):
 
 
 @app.get("/prices/snapshot")
-async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
+async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
     """
     Get current prices and daily change % for comma-separated symbols.
-    Futures micro contracts (MES, MNQ, MCL etc) are mapped to continuous contracts.
+    Futures micro contracts (MES, MNQ, MCL etc) are mapped via data_manager.
     """
-    import yfinance as yf
+    if not data_manager:
+        raise HTTPException(503, "Data manager not initialized")
 
-    futures_map = {
-        "MES": "ES=F",
-        "MNQ": "NQ=F",
-        "MCL": "CL=F",
-        "MGC": "GC=F",
-        "MHG": "HG=F",
-        "MYM": "YM=F",
-        "M2K": "RTY=F",
-    }
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     if not symbol_list:
         return {}
 
-    yf_tickers = [futures_map.get(s, s) for s in symbol_list]
     try:
-        tickers = yf.Tickers(" ".join(yf_tickers))
+        batch = await data_manager.get_batch_prices(symbol_list)
         result = {}
-        for original, yf_ticker in zip(symbol_list, yf_tickers, strict=False):
-            try:
-                info = tickers.tickers[yf_ticker].fast_info
-                current = (
-                    float(info.last_price)
-                    if hasattr(info, "last_price") and info.last_price
-                    else None
-                )
-                prev = (
-                    float(info.previous_close)
-                    if hasattr(info, "previous_close") and info.previous_close
-                    else None
-                )
-                chg = ((current - prev) / prev) if current and prev and prev > 0 else None
-                result[original] = {
-                    "symbol": original,
-                    "last_price": current,
-                    "prev_close": prev,
-                    "change_pct": chg,
-                    "yf_ticker": yf_ticker,
-                }
-            except Exception as e:
-                result[original] = {
-                    "symbol": original,
-                    "last_price": None,
-                    "prev_close": None,
-                    "change_pct": None,
-                    "error": str(e),
-                }
+        for sym in symbol_list:
+            price_dict = batch.get(sym, {})
+            result[sym] = {
+                "symbol": sym,
+                "last_price": price_dict.get("last_price"),
+                "prev_close": price_dict.get("prev_close"),
+                "change_pct": price_dict.get("change_pct"),
+                "source": price_dict.get("source"),
+            }
         return result
     except Exception as e:
         raise HTTPException(500, f"Price fetch failed: {e}") from e
@@ -2055,75 +3694,16 @@ async def get_upcoming_earnings(days: int = 7):
         "GOOGL": "Alphabet",
     }
 
-    from datetime import datetime, timedelta, timezone
-
-    now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(days=days)
-    upcoming = []
-
-    try:
-        import yfinance as yf
-
-        for symbol, name in WATCHED.items():
-            try:
-                ticker = yf.Ticker(symbol)
-                cal = ticker.calendar
-                if cal is None:
-                    continue
-                if hasattr(cal, "columns"):
-                    dates = (
-                        cal["Earnings Date"].dropna().tolist()
-                        if "Earnings Date" in cal.columns
-                        else []
-                    )
-                elif isinstance(cal, dict):
-                    dates = cal.get("Earnings Date", [])
-                    if not isinstance(dates, list):
-                        dates = [dates]
-                else:
-                    continue
-                for d in dates:
-                    if d is None:
-                        continue
-                    if hasattr(d, "to_pydatetime"):
-                        d = d.to_pydatetime()
-                    if not hasattr(d, "tzinfo"):
-                        continue
-                    if d.tzinfo is None:
-                        import pytz
-
-                        d = pytz.utc.localize(d)
-                    if now <= d <= cutoff:
-                        upcoming.append(
-                            {
-                                "symbol": symbol,
-                                "name": name,
-                                "date": d.strftime("%Y-%m-%d"),
-                                "days_away": (d - now).days,
-                            }
-                        )
-            except Exception:
-                continue
-
-        upcoming.sort(key=lambda x: x["days_away"])
-        return {
-            "upcoming_earnings": upcoming,
-            "count": len(upcoming),
-            "days_lookahead": days,
-            "note": "High-impact earnings can increase volatility on MES/MNQ",
-            "source": "yfinance",
-        }
-
-    except ImportError:
-        return {
-            "upcoming_earnings": [],
-            "count": 0,
-            "days_lookahead": days,
-            "note": "yfinance not installed",
-            "source": "unavailable",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    # Earnings calendar data requires a dedicated earnings data source (e.g. Polygon earnings
+    # endpoint). No equivalent is available on data_manager at this time.
+    return {
+        "upcoming_earnings": [],
+        "count": 0,
+        "days_lookahead": days,
+        "note": "Earnings calendar unavailable — no earnings data source configured",
+        "source": "unavailable",
+        "watched_symbols": list(WATCHED.keys()),
+    }
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────
@@ -2132,6 +3712,7 @@ async def get_upcoming_earnings(days: int = 7):
 class PipelineRequest(BaseModel):
     symbol: str
     is_futures: bool = False
+    interval: str = "1h"
 
 
 @app.post("/pipeline/run")
@@ -2140,24 +3721,133 @@ async def run_pipeline(req: PipelineRequest):
     if not trading_pipeline:
         raise HTTPException(503, "Pipeline not available (no ANTHROPIC_API_KEY)")
 
-    result = await trading_pipeline.analyze_and_decide(req.symbol, req.is_futures)
+    result = await trading_pipeline.analyze_and_decide(
+        req.symbol, req.is_futures, timeframe=req.interval
+    )
 
     final_action = result.get("final_action", "hold")
 
-    # Log to decision feed
-    _decision_log.append(
-        {
-            "id": len(_decision_log) + 1,
-            "timestamp": datetime.now().isoformat(),
-            "symbol": req.symbol,
-            "action": final_action,
-            "confidence": result.get("confidence", 0),
-            "source": "pipeline",
-            "summary": result.get("summary", ""),
-        }
+    # Log to decision feed (in-memory + SQLite)
+    _fund_dec = result.get("fund_decision") or {}
+    _trade_dec = result.get("trade_decision") or {}
+    _log_decision(
+        symbol=req.symbol,
+        action=final_action,
+        confidence=float(
+            result.get("boosted_confidence")
+            or _fund_dec.get("final_conviction")
+            or _trade_dec.get("confidence")
+            or 0.0
+        ),
+        source="pipeline",
+        summary=result.get("summary", ""),
+        reasoning=_trade_dec.get("reasoning", ""),
+        full_pipeline_data=result,
     )
-    if len(_decision_log) > 100:
-        _decision_log.pop(0)
+
+    # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
+    # Guard: only log approved instruments (FUTURES_WATCHLIST) — never DO NOT TRADE symbols
+    _approved_for_paper = {s.upper() for s in (settings.FUTURES_WATCHLIST or [])}
+    if (
+        not settings.LIVE_TRADING_ENABLED
+        and final_action != "hold"
+        and req.symbol.upper() in _approved_for_paper
+    ):
+        try:
+            trade_dec = result.get("trade_decision") or {}
+            # Prefer limit_price, fall back to stop_price, then last known price from indicators
+            entry_price = (
+                trade_dec.get("limit_price")
+                or trade_dec.get("stop_price")
+                or (result.get("technical", {}) or {}).get("current_price")
+            )
+            final_qty = result.get("final_quantity", 1) or 1
+
+            # Human-gate: when requires_human=True, insert a pending approval row
+            # and skip immediately opening the paper trade
+            if result.get("requires_human") and db_manager:
+                approval_id = db_manager.insert_pending_approval(
+                    symbol=req.symbol,
+                    action=final_action,
+                    quantity=float(final_qty),
+                    entry_price=float(entry_price) if entry_price else None,
+                    pipeline_snapshot=result,
+                    timeframe=result.get("timeframe", "1h"),
+                )
+                result["pending_approval_id"] = approval_id
+                logger.info(
+                    f"[PAPER] Human gate — inserted pending approval {approval_id[:8]} "
+                    f"for {req.symbol} {final_action.upper()}"
+                )
+                # Fire-and-forget: WebSocket + WhatsApp + Telegram fan-out
+                try:
+                    from notifications.pending_approval_notify import (
+                        notify_pending_approval_queued as _notify_approval,
+                    )
+
+                    asyncio.create_task(
+                        _notify_approval(
+                            approval_id=approval_id,
+                            symbol=req.symbol,
+                            action=final_action,
+                            quantity=float(final_qty),
+                            entry_price=float(entry_price) if entry_price else None,
+                        )
+                    )
+                except Exception as _notify_exc:
+                    logger.warning("[PAPER] Approval notify task failed: %s", _notify_exc)
+                # OpenClaw WhatsApp alert (direct WSL path, non-blocking)
+                try:
+                    from notifications.openclaw_notifier import (
+                        notify_approval_required as _oc_approval,
+                    )
+
+                    asyncio.create_task(
+                        _oc_approval(
+                            symbol=req.symbol,
+                            action=final_action,
+                            quantity=float(final_qty),
+                            entry_price=float(entry_price) if entry_price else 0.0,
+                        )
+                    )
+                except Exception as _oc_exc:
+                    logger.warning("[PAPER] OpenClaw approval notify failed: %s", _oc_exc)
+            elif paper_tracker and entry_price:
+                # Persist per-analyst signals so AgentFeedbackTracker.record_outcome
+                # can compute Brier/IC calibration when this trade closes (Novel #2).
+                _analyst_reports = result.get("analyst_reports") or {}
+                _analyst_signals = {
+                    name: float(rep.get("signal", 0.0))
+                    for name, rep in _analyst_reports.items()
+                    if isinstance(rep, dict)
+                    and name in ("technical", "news", "social", "fundamental", "corey")
+                }
+                trade_id = paper_tracker.add_paper_trade(
+                    symbol=req.symbol,
+                    side=final_action,
+                    quantity=float(final_qty),
+                    entry_price=float(entry_price),
+                    stop_loss=float(trade_dec.get("stop_price")) if trade_dec.get("stop_price") else None,
+                    take_profit=float(trade_dec.get("target_price") or trade_dec.get("take_profit") or 0) or None,
+                    strategy_params={
+                        "source": "pipeline",
+                        "summary": result.get("summary", ""),
+                        "predicted_direction": final_action.upper(),
+                        "analyst_signals": _analyst_signals,
+                    },
+                )
+                result["paper_trade_id"] = trade_id
+                logger.info(
+                    f"[PAPER] Auto-logged {req.symbol} {final_action.upper()} "
+                    f"qty={final_qty} @ {entry_price:.4f}  id={trade_id[:8]}"
+                )
+            elif not entry_price:
+                logger.warning(
+                    f"[PAPER] Skipped auto-log for {req.symbol} {final_action.upper()} "
+                    f"— could not determine entry price from pipeline result"
+                )
+        except Exception as exc:
+            logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
 
     # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
     if not settings.LIVE_TRADING_ENABLED and final_action != "hold" and paper_tracker:
@@ -2201,11 +3891,59 @@ async def run_pipeline(req: PipelineRequest):
     return result
 
 
+@app.post("/pipeline/run/sdk")
+async def run_sdk_pipeline(req: PipelineRequest):
+    """
+    Run the 5-stage trading pipeline via Claude Agent SDK (managed agents).
+
+    This is the additive SDK-powered path that runs alongside /pipeline/run.
+    Uses the claude-agent-sdk to orchestrate 10 specialist subagents with
+    parallel Stage 1 analysis and Stage 2 debate. Output format is compatible
+    with /pipeline/run for dashboard consumption.
+
+    The existing /pipeline/run endpoint is unaffected.
+    """
+    if not sdk_pipeline:
+        raise HTTPException(
+            503,
+            "SDK pipeline not available — requires claude-agent-sdk and ANTHROPIC_API_KEY",
+        )
+
+    result = await sdk_pipeline.analyze_and_decide(
+        symbol=req.symbol,
+        interval=req.interval,
+        is_futures=req.is_futures,
+    )
+
+    final_action = result.get("final_action", "hold")
+
+    # Log to decision feed (same as /pipeline/run)
+    _sdk_fund_dec = result.get("fund_decision") or {}
+    _sdk_trade_dec = result.get("trade_decision") or {}
+    _log_decision(
+        symbol=req.symbol,
+        action=final_action,
+        confidence=float(
+            result.get("boosted_confidence")
+            or _sdk_fund_dec.get("final_conviction")
+            or _sdk_trade_dec.get("confidence")
+            or 0.0
+        ),
+        source="sdk_pipeline",
+        summary=result.get("summary", ""),
+        reasoning=_sdk_trade_dec.get("reasoning", ""),
+        full_pipeline_data=result,
+    )
+
+    return result
+
+
 @app.get("/pipeline/status")
 async def pipeline_status():
     """Pipeline availability and last run info"""
     return {
         "available": trading_pipeline is not None,
+        "sdk_available": sdk_pipeline is not None,
         "last_run": _decision_log[-1] if _decision_log else None,
         "decision_count": len(_decision_log),
     }
@@ -2262,15 +4000,11 @@ async def trigger_scan_now():
     if safety.get("kill_switch_active"):
         return {"status": "skipped", "reason": "kill_switch_active"}
 
-    symbols_to_scan = [(sym, True) for sym in settings.FUTURES_WATCHLIST[:2]] + [
+    symbols_to_scan = [(sym, True) for sym in settings.FUTURES_WATCHLIST] + [
         (sym, False) for sym in settings.OPTIONS_WATCHLIST[:3]
     ]
 
     logger.info(f"Manual scan triggered: {[s[0] for s in symbols_to_scan]}")
-
-    from notifications.whatsapp import get_notifier
-
-    notifier = get_notifier()
 
     scan_results = []
     for symbol, is_futures in symbols_to_scan:
@@ -2285,45 +4019,29 @@ async def trigger_scan_now():
             price_info = trade_dec.get("limit_price") or trade_dec.get("stop_price")
             reasoning = trade_dec.get("reasoning", "")
 
-            _decision_log.append(
-                {
-                    "id": len(_decision_log) + 1,
-                    "timestamp": datetime.now().isoformat(),
-                    "symbol": symbol,
-                    "action": action,
-                    "confidence": confidence,
-                    "source": "manual_scan",
-                    "summary": result.get("summary", ""),
-                }
+            # Log to decision feed (in-memory + SQLite)
+            _log_decision(
+                symbol=symbol,
+                action=action,
+                confidence=float(confidence),
+                source="manual_scan",
+                summary=result.get("summary", ""),
+                reasoning=reasoning,
+                full_pipeline_data=result,
             )
-            if len(_decision_log) > 100:
-                _decision_log.pop(0)
 
             alert_sent = False
             alert_suppressed_reason = None
 
             if action not in ("hold",):
-                now = datetime.now()
-                last_sent = _last_alert_time.get(symbol)
-                cooldown_expired = last_sent is None or (now - last_sent) >= timedelta(
-                    hours=ALERT_COOLDOWN_HOURS
+                alert_sent, alert_suppressed_reason = await _deliver_pipeline_whatsapp_if_eligible(
+                    symbol=symbol,
+                    action=action,
+                    qty=qty,
+                    price_info=price_info,
+                    reasoning=reasoning,
+                    confidence=float(confidence),
                 )
-                if notifier.enabled and cooldown_expired:
-                    price_str = f" @ {price_info:.2f}" if price_info else ""
-                    pct = int(confidence * 100)
-                    short_reason = (reasoning[:100] + "...") if len(reasoning) > 100 else reasoning
-                    msg = (
-                        f"JARVIS: {symbol} -> {action.upper()} {qty}{price_str}\n"
-                        f"Confidence: {pct}%\n"
-                        f"Reason: {short_reason}"
-                    )
-                    alert_sent = await notifier.send(msg)
-                    if alert_sent:
-                        _last_alert_time[symbol] = now
-                elif not cooldown_expired:
-                    alert_suppressed_reason = f"cooldown_active_since_{last_sent.strftime('%H:%M')}"
-                elif not notifier.enabled:
-                    alert_suppressed_reason = "whatsapp_not_configured"
 
             scan_results.append(
                 {
@@ -2356,13 +4074,72 @@ async def test_whatsapp():
     from notifications.whatsapp import get_notifier
 
     notifier = get_notifier()
+    ts = datetime.now(timezone.utc).isoformat()
     if not notifier.enabled:
         return {
             "status": "not_configured",
+            "sent": False,
+            "timestamp": ts,
             "message": "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, WHATSAPP_TO to .env",
         }
     ok = await notifier.test()
-    return {"status": "sent" if ok else "failed"}
+    return {"status": "sent" if ok else "failed", "sent": bool(ok), "timestamp": ts}
+
+
+# ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────
+
+
+@app.post("/notifications/vix-alert-check")
+async def check_vix_alert():
+    """Check VIX and send WhatsApp alert if above key thresholds."""
+    try:
+        from analytics.vix_overlay import VIXOverlay
+        from notifications.whatsapp import send_whatsapp_message
+
+        vix = VIXOverlay(data_manager=data_manager)
+        state = await vix.get_state_async()
+
+        thresholds = [
+            (40, "EXTREME VIX", "Consider halting all trading"),
+            (30, "ELEVATED VIX", "Reduce position size, widen stops"),
+            (20, "CAUTION VIX", "Monitor closely, use regime filter"),
+        ]
+
+        alert_level = None
+        guidance = None
+        for level, label, advice in thresholds:
+            if state.vix_value >= level:
+                alert_level = label
+                guidance = advice
+                break
+
+        if alert_level is None:
+            return {
+                "sent": False,
+                "vix": state.vix_value,
+                "regime": state.regime,
+                "reason": "VIX normal — no alert needed",
+            }
+
+        msg = (
+            "JARVIS TRADER - VIX Alert\n\n"
+            f"VIX: {state.vix_value:.1f} - {alert_level}\n"
+            f"Classification: {state.classification}\n\n"
+            f"{guidance}\n\n"
+            f"Source: {state.source}"
+        )
+
+        success = await send_whatsapp_message(msg)
+        return {
+            "sent": success,
+            "vix": state.vix_value,
+            "regime": state.regime,
+            "alert_level": alert_level,
+            "guidance": guidance,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────
@@ -2466,6 +4243,28 @@ async def generate_thinkscript(req: ThinkScriptRequest):
     }
 
 
+@app.get("/thinkscript/registry", response_model=ScriptRegistry)
+async def get_thinkscript_registry():
+    """Return the full catalog of ThinkScript studies wired into JARVIS."""
+    try:
+        return load_registry()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/thinkscript/registry/{script_id}", response_model=ScriptWithDocs)
+async def get_thinkscript_registry_entry(script_id: str):
+    """Return a single registry entry plus its full markdown documentation body."""
+    try:
+        registry = load_registry()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    entry = next((s for s in registry.scripts if s.id == script_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"script_id '{script_id}' not found")
+    return ScriptWithDocs(entry=entry, doc_markdown=read_doc(entry.docs))
+
+
 # ── Macro Data (FRED) ──────────────────────────────────────────────────────
 
 
@@ -2546,26 +4345,9 @@ class BacktestRequest(BaseModel):
     risk_per_trade: float = 0.01
 
 
-@app.get("/backtest/results")
-async def get_backtest_results():
-    """Return all saved backtest result JSON files from backtest/results/."""
-    import json
-    from pathlib import Path
-
-    results_dir = Path(__file__).parent / "backtest" / "results"
-    if not results_dir.exists():
-        return []
-
-    results = []
-    for json_file in sorted(results_dir.glob("*.json")):
-        try:
-            data = json.loads(json_file.read_text(encoding="utf-8"))
-            data["_filename"] = json_file.name
-            results.append(data)
-        except Exception as e:
-            logger.warning(f"Failed to parse {json_file.name}: {e}")
-
-    return results
+# /backtest/results is served by routers/backtest_router.py (sanitizes inf/nan
+# and logs leakers). Inline duplicate removed 2026-04-20 — it shadowed the
+# sanitized version and returned HTTP 500 on any result containing inf.
 
 
 @app.post("/backtest/run")
@@ -2864,15 +4646,15 @@ async def get_regime_status():
     Falls back to static data if market data is unavailable.
     """
     try:
-        import yfinance as yf
-
         from backtest.regime import RegimeClassifier
 
         results = {}
 
-        # --- MNQ 1h (via NQ=F) ---
+        # --- MNQ 1h ---
         try:
-            nq = yf.download("NQ=F", period="10d", interval="1h", progress=False)
+            if not data_manager:
+                raise ValueError("data_manager not initialized")
+            nq = await data_manager.get_bars("MNQ", lookback_days=10, timeframe="1h")
             if nq is not None and len(nq) >= 20:
                 rc = RegimeClassifier()
                 nq_classified = rc.classify(nq)
@@ -2886,16 +4668,18 @@ async def get_regime_status():
                     "regime_breakdown_30d": {str(k): round(v, 1) for k, v in regime_counts.items()},
                 }
             else:
-                raise ValueError("Insufficient NQ data")
+                raise ValueError("Insufficient MNQ data")
         except Exception:
             results["MNQ_1h"] = {
                 "current_regime": "RANGING",
                 "regime_breakdown_30d": {"TRENDING": 15.3, "RANGING": 80.5, "VOLATILE": 4.2},
             }
 
-        # --- MGC 1d (via GC=F) ---
+        # --- MGC 1d ---
         try:
-            gc = yf.download("GC=F", period="60d", interval="1d", progress=False)
+            if not data_manager:
+                raise ValueError("data_manager not initialized")
+            gc = await data_manager.get_bars("MGC", lookback_days=60, timeframe="1d")
             if gc is not None and len(gc) >= 20:
                 rc = RegimeClassifier()
                 gc_classified = rc.classify(gc)
@@ -2909,7 +4693,7 @@ async def get_regime_status():
                     "adaptive_stc_ob": int(last_row.get("adaptive_stc_ob", 92)),
                 }
             else:
-                raise ValueError("Insufficient GC data")
+                raise ValueError("Insufficient MGC data")
         except Exception:
             results["MGC_1d"] = {
                 "current_regime": "TRENDING",
@@ -2986,32 +4770,23 @@ async def get_mgc_signal():
     Generate today's MGC (Gold Micro) signal using the walk-forward validated
     adaptive regime strategy (WFE=0.88).
 
-    Fetches 200 daily bars of GC=F via yfinance, runs the full indicator +
+    Fetches 200 daily bars via data_manager, runs the full indicator +
     regime + signal pipeline, and returns the last bar's signal with entry/exit
     levels.
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    def _generate_signal():
-        import yfinance as yf
+    if not data_manager:
+        raise HTTPException(503, "Data manager not initialized")
 
+    # Fetch data asynchronously before entering the sync thread worker
+    gc_df = await data_manager.get_bars("MGC", lookback_days=200, timeframe="1d")
+    if gc_df is None or len(gc_df) < 50:
+        raise HTTPException(503, "Insufficient MGC data from data_manager")
+
+    def _generate_signal(gc):
         from backtest.paper_config import MGC_PAPER_CONFIG
         from backtest.signals import generate_signals
-
-        # Fetch data
-        gc = yf.download("GC=F", period="200d", interval="1d", progress=False)
-        if gc is None or len(gc) < 50:
-            return {
-                "error": "Insufficient GC=F data from yfinance",
-                "bars_received": len(gc) if gc is not None else 0,
-            }
-
-        # Flatten MultiIndex columns if present (yfinance sometimes returns them)
-        if hasattr(gc.columns, "nlevels") and gc.columns.nlevels > 1:
-            gc.columns = gc.columns.get_level_values(0)
-
-        # Normalize column names to lowercase
-        gc.columns = [c.lower() for c in gc.columns]
 
         # Run full signal pipeline with adaptive regime
         df = generate_signals(
@@ -3078,7 +4853,7 @@ async def get_mgc_signal():
     try:
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as pool:
-            result = await loop.run_in_executor(pool, _generate_signal)
+            result = await loop.run_in_executor(pool, _generate_signal, gc_df)
         if "error" in result:
             raise HTTPException(503, result["error"])
         return result
@@ -3715,6 +5490,43 @@ async def get_todays_session():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.get("/portfolio/stats/weekly")
+async def get_weekly_stats():
+    """Rolling 7-day trade statistics for the paper trading phase."""
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        with db_manager._lock:
+            conn = db_manager._connect()
+            try:
+                cursor = conn.execute(
+                    "SELECT pnl, symbol FROM paper_trades WHERE status = 'closed' AND exit_time >= ? ORDER BY exit_time DESC",
+                    (cutoff,),
+                )
+                cols = [d[0] for d in cursor.description]
+                trades = [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
+            finally:
+                conn.close()
+
+        pnls = [float(t.get("pnl", 0) or 0) for t in trades]
+        wins = [p for p in pnls if p > 0]
+        total = len(pnls)
+        win_rate = round(len(wins) / total, 4) if total else 0.0
+        return {
+            "period": "7d",
+            "total_trades": total,
+            "wins": len(wins),
+            "losses": len([p for p in pnls if p < 0]),
+            "win_rate": win_rate,
+            "gross_pnl": round(sum(pnls), 2),
+            "avg_pnl": round(sum(pnls) / total, 2) if total else 0.0,
+            "symbols": list({t.get("symbol") for t in trades}),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @app.get("/portfolio/stats/commissions")
 async def get_commission_stats():
     """
@@ -3772,7 +5584,7 @@ async def get_trades_by_day():
                          SUM(pnl) AS total_pnl,
                          AVG(pnl) AS avg_pnl
                        FROM paper_trades
-                       WHERE status = 'CLOSED' AND exit_time IS NOT NULL
+                       WHERE status = 'closed' AND exit_time IS NOT NULL
                        GROUP BY dow
                        ORDER BY dow"""
                 ).fetchall()
@@ -3824,7 +5636,7 @@ async def get_trades_by_symbol():
                          MAX(pnl) AS best_trade,
                          MIN(pnl) AS worst_trade
                        FROM paper_trades
-                       WHERE status = 'CLOSED'
+                       WHERE status = 'closed'
                        GROUP BY symbol
                        ORDER BY total_pnl DESC"""
                 ).fetchall()
@@ -3917,14 +5729,18 @@ async def import_paper_trades(request: Request):
             try:
                 for i, t in enumerate(trades):
                     try:
+                        import uuid as _uuid
+
+                        trade_id = t.get("trade_id") or str(_uuid.uuid4())
                         conn.execute(
-                            """INSERT INTO paper_trades
-                               (symbol, action, entry_price, exit_price, quantity,
-                                pnl, status, entry_time, exit_time, strategy, notes)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                            """INSERT OR IGNORE INTO paper_trades
+                               (trade_id, symbol, side, entry_price, exit_price, quantity,
+                                pnl, status, entry_time, exit_time, strategy_params, notes)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                             (
+                                trade_id,
                                 str(t.get("symbol", "UNKNOWN")),
-                                str(t.get("action", "LONG")),
+                                str(t.get("action", t.get("side", "LONG"))),
                                 float(t.get("entry_price", 0)),
                                 float(t.get("exit_price", 0)),
                                 int(t.get("quantity", 1)),
@@ -3932,7 +5748,7 @@ async def import_paper_trades(request: Request):
                                 "CLOSED",
                                 str(t.get("entry_time", datetime.now(timezone.utc).isoformat())),
                                 str(t.get("exit_time", datetime.now(timezone.utc).isoformat())),
-                                str(t.get("strategy", "imported")),
+                                str(t.get("strategy", t.get("strategy_params", "imported"))),
                                 str(t.get("notes", "")),
                             ),
                         )
@@ -3950,118 +5766,4 @@ async def import_paper_trades(request: Request):
         raise HTTPException(status_code=503, detail=str(e)) from e
 
 
-@app.get("/analytics/trades/by-hour")
-async def get_trades_by_hour():
-    """Hour-of-day trade performance breakdown."""
-    try:
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT
-                    CAST(strftime('%H', exit_time) AS INTEGER) as hour,
-                    COUNT(*) as count,
-                    SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
-                    SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) as losses,
-                    ROUND(SUM(pnl), 2) as total_pnl,
-                    ROUND(AVG(pnl), 2) as avg_pnl
-                FROM paper_trades
-                WHERE status = 'CLOSED' AND exit_time IS NOT NULL
-                GROUP BY hour
-                ORDER BY hour
-            """)
-            rows = cursor.fetchall()
-            conn.close()
 
-        hours = []
-        for row in rows:
-            h = row["hour"]
-            count = row["count"]
-            wins = row["wins"]
-            losses = row["losses"]
-            win_rate = round(wins / count * 100, 1) if count > 0 else 0.0
-            hours.append(
-                {
-                    "hour": h,
-                    "hour_label": f"{h:02d}:00",
-                    "count": count,
-                    "wins": wins,
-                    "losses": losses,
-                    "win_rate": win_rate,
-                    "total_pnl": row["total_pnl"] or 0.0,
-                    "avg_pnl": row["avg_pnl"] or 0.0,
-                }
-            )
-
-        return {"hours": hours, "total_hours_analyzed": len(hours)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@app.get("/portfolio/stats/weekly")
-async def get_weekly_stats():
-    """7-day rolling performance summary."""
-    try:
-        from datetime import timedelta
-
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT
-                    COUNT(*) as total_trades,
-                    SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
-                    SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) as losses,
-                    ROUND(SUM(pnl), 2) as total_pnl,
-                    ROUND(AVG(pnl), 2) as avg_pnl,
-                    ROUND(MAX(pnl), 2) as best_trade,
-                    ROUND(MIN(pnl), 2) as worst_trade,
-                    COUNT(DISTINCT DATE(exit_time)) as trading_days
-                FROM paper_trades
-                WHERE status = 'CLOSED'
-                  AND exit_time IS NOT NULL
-                  AND exit_time >= ?
-            """,
-                (cutoff,),
-            )
-            row = cursor.fetchone()
-            conn.close()
-
-        if not row or row["total_trades"] == 0:
-            return {
-                "period": "7d",
-                "total_trades": 0,
-                "wins": 0,
-                "losses": 0,
-                "win_rate": 0.0,
-                "total_pnl": 0.0,
-                "avg_pnl": 0.0,
-                "best_trade": 0.0,
-                "worst_trade": 0.0,
-                "trading_days": 0,
-            }
-
-        total = row["total_trades"]
-        wins = row["wins"] or 0
-        return {
-            "period": "7d",
-            "total_trades": total,
-            "wins": wins,
-            "losses": row["losses"] or 0,
-            "win_rate": round(wins / total * 100, 1) if total > 0 else 0.0,
-            "total_pnl": row["total_pnl"] or 0.0,
-            "avg_pnl": row["avg_pnl"] or 0.0,
-            "best_trade": row["best_trade"] or 0.0,
-            "worst_trade": row["worst_trade"] or 0.0,
-            "trading_days": row["trading_days"] or 0,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-# ──────────────────────────────────�

@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Activity, Clock, Cpu } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -174,34 +174,27 @@ export function DecisionLogWidget() {
   const [loading, setLoading] = useState(true);
 
   async function fetchData() {
+    let decErr: string | null = null;
     try {
-      // Fetch recent decisions (in-memory ring buffer, newest last)
-      const decisionsRes = await fetch(
-        `${ENGINE_URL}/decisions/recent?limit=10`,
-        { cache: "no-store" }
-      );
-      // Fetch pipeline status for availability + count
-      const statusRes = await fetch(`${ENGINE_URL}/pipeline/status`, {
+      const raw = await fetchEngine<unknown>(`/decisions/recent?limit=10`, {
         cache: "no-store",
       });
-
-      if (decisionsRes.ok) {
-        const raw: unknown = await decisionsRes.json();
-        if (Array.isArray(raw)) {
-          // Newest first for display
-          setDecisions([...raw].reverse());
-        }
-        setError(null);
-      } else {
-        setError(`Decisions endpoint returned ${decisionsRes.status}`);
+      if (Array.isArray(raw)) {
+        setDecisions([...raw].reverse() as DecisionEntry[]);
       }
+    } catch (e) {
+      decErr =
+        e instanceof Error ? e.message : "Decisions endpoint unavailable";
+    }
+    setError(decErr);
 
-      if (statusRes.ok) {
-        const s: PipelineStatus = await statusRes.json();
-        setStatus(s);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Engine unreachable");
+    try {
+      const s = await fetchEngine<PipelineStatus>(`/pipeline/status`, {
+        cache: "no-store",
+      });
+      setStatus(s);
+    } catch {
+      /* pipeline status optional */
     } finally {
       setLoading(false);
       setLastRefresh(new Date());

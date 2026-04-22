@@ -111,7 +111,7 @@ def run_sensitivity_analysis(
     symbol: str,
     multiplier: float,
     base_params: Optional[Dict[str, float]] = None,
-    capital: float = 100_000.0,
+    capital: float = 10_000.0,
 ) -> Dict[str, Any]:
     """
     Run parameter sensitivity analysis.
@@ -304,7 +304,7 @@ def main():
     parser.add_argument("--interval", default="1h", help="Bar interval (1h, 1d)")
     parser.add_argument("--start", default="2024-06-01", help="Start date")
     parser.add_argument("--end", default="2026-03-27", help="End date")
-    parser.add_argument("--capital", type=float, default=100_000.0, help="Initial capital")
+    parser.add_argument("--capital", type=float, default=10_000.0, help="Initial capital")
     parser.add_argument("--stc-os", type=int, default=15, help="Base STC oversold")
     parser.add_argument("--stc-ob", type=int, default=83, help="Base STC overbought")
     parser.add_argument("--stop-atr", type=float, default=0.70, help="Base stop ATR mult")

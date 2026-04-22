@@ -340,3 +340,28 @@ Test Suite Verification and Fixes
 ### Remaining Work
 Signal tests require technical indicator tuning (warmup periods, indicator parameters).
 These are non-critical enhancements that do not block paper trading phase.
+
+## 2026-04-02 - US-1203 ✅ COMPLETE
+- Patched engine/routers/pipeline_router.py _run_pipeline_and_log()
+- Added requires_human = bool(result.get("requires_human", True)) check
+- When requires_human=True: calls _db_manager.insert_pending_approval() with pipeline snapshot
+- When requires_human=False: existing _paper_tracker.add_paper_trade() path unchanged
+- Telegram signal alert fires for ALL directional decisions regardless of requires_human
+- **Learnings:**
+  - pipeline_result_for_approval_snapshot() in approval/snapshot.py produces the correct JSON blob
+  - _db_manager is already injected into pipeline_router via inject_dependencies() in main.py
+  - The 4-branch if/elif structure covers: human+db, human+no-db, auto+tracker, auto+no-tracker
+---
+
+## 2026-04-03 07:30 - US-1403 Layer 5 Conviction-Aware Position Sizing
+- compute_position_size() added to engine/backtest/signals.py (line 694)
+  - 4-tier sizing: FULL(1.0x), HIGH(0.80x), HALF(0.50x), MIN(0.25x)
+  - STRONG+TRENDING+DIRECTIONAL_STRUCTURE = full, STRONG+TRENDING = high, LEAN/RANGING = half, else = min
+- Paper tracker wired: engine/backtest/paper_tracker.py imports and calls at trade insert (line 141-146)
+- Migration 011: risk_pct_used REAL column added to paper_trades (nullable, backward compat)
+- Validation router: avg_conviction_score field added to /paper-validation/gates (base_risk_pct=0.02)
+- **Learnings for future iterations:**
+  - The paper_tracker add_trade() method uses dict-based trades, not Pydantic — new fields are just dict keys
+  - Migration numbering: 010 was taken by trade journal provenance columns, so conviction sizing is 011
+  - base_risk_pct=0.02 is the canonical risk parameter — matches TradingConfig defaults
+---

@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -124,9 +124,7 @@ export function SignalQueueWidget() {
 
   const fetchSignal = async () => {
     try {
-      const res = await fetch(`${ENGINE_URL}/paper/mgc-signal`);
-      if (!res.ok) throw new Error(`Engine returned ${res.status}`);
-      const json: MGCSignalData = await res.json();
+      const json = await fetchEngine(`/paper/mgc-signal`);
       setData(json);
       setError(null);
       setLastFetch(new Date().toLocaleTimeString());

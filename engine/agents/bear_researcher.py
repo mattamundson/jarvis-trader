@@ -13,6 +13,7 @@ Model: Claude Sonnet 4.6
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -80,11 +81,25 @@ class BearResearcherAgent:
         "signal, or narrative that warns of downside risk. Minimise bullish data "
         "points; reframe them as false breakouts, overextension, or temporary noise "
         "where possible. Your output must be valid JSON only — no prose outside the "
-        "JSON object."
+        "JSON object.\n\n"
+        "SCORING RUBRIC:\n"
+        "When rating the opposing argument, provide your assessment in this EXACT "
+        "format on a new line:\n"
+        "ASSESSMENT: SCORE: X/10 | EVIDENCE_COUNT: N | EVIDENCE_QUALITY: low/medium/high\n\n"
+        "Definitions:\n"
+        "- SCORE (1-10): Your conviction that the opposing argument will lead to a "
+        "profitable trade\n"
+        "- EVIDENCE_COUNT: Number of distinct data points cited (price levels, "
+        "indicators, news events, macro data). Count: 0-10+\n"
+        "- EVIDENCE_QUALITY:\n"
+        "  - low = vague statements, no specific data (\"market seems uncertain\")\n"
+        "  - medium = specific indicators or events cited (\"STC at 45, above midline\")\n"
+        "  - high = quantified data with context (\"STC crossed above OS=15 with 1.8x "
+        "ATR expansion, VIX=17.2 confirming low-vol regime\")"
     )
 
     MODEL = "claude-sonnet-4-6"
-    MAX_TOKENS = 600
+    MAX_TOKENS = 1200
     ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
     ANTHROPIC_VERSION = "2023-06-01"
 
@@ -134,7 +149,7 @@ class BearResearcherAgent:
             response_text = data["content"][0]["text"].strip()
             result = self._parse_json(response_text)
 
-            return BearReport(
+            report = BearReport(
                 symbol=symbol,
                 timestamp=datetime.now(),
                 bear_thesis=result.get("bear_thesis", ""),
@@ -144,12 +159,132 @@ class BearResearcherAgent:
                 conviction=float(result.get("conviction", 0.0)),
                 counterargument_response=result.get("counterargument_response", ""),
             )
+            self._apply_discord_evidence(report, analyst_reports)
+            return report
 
         except Exception as e:
             logger.error(f"BearResearcherAgent failed for {symbol}: {e}")
             return self._empty_report(symbol)
 
+    @staticmethod
+    def _apply_discord_evidence(report: "BearReport", analyst_reports: dict) -> None:
+        """Post-LLM adjustment using Discord briefing (Corey bias + IB levels).
+
+        Symmetric to BullResearcher:
+        - Bearish session bias with conviction>=0.5 boosts bear conviction by 0.1 (cap 1.0).
+        - Bullish session bias with conviction>=0.5 dampens bear conviction by 0.1 (floor 0.0).
+        - Downside target below IB 100%-downside extension (ibd100) is cleared —
+          bears already in the lower-extension range lack a defensible target below it.
+
+        Silent no-op if the briefing is absent or malformed.
+        """
+        briefing = analyst_reports.get("discord_briefing")
+        if not isinstance(briefing, dict):
+            return
+
+        corey = briefing.get("corey_bias") or {}
+        bias = str(corey.get("directional_bias") or "").lower()
+        try:
+            conv = float(corey.get("conviction") or 0.0)
+        except (TypeError, ValueError):
+            conv = 0.0
+
+        if conv >= 0.5:
+            if bias == "bearish":
+                report.conviction = min(1.0, report.conviction + 0.1)
+                report.key_risks.append(
+                    f"Corey session bias BEARISH (conv={conv:.2f}) confirms bear thesis"
+                )
+            elif bias == "bullish":
+                report.conviction = max(0.0, report.conviction - 0.1)
+                report.key_risks.append(
+                    f"Corey session bias BULLISH (conv={conv:.2f}) contradicts bear thesis"
+                )
+
+        ib_levels = briefing.get("ib_levels")
+        if isinstance(ib_levels, dict) and report.downside_target is not None:
+            ibd100 = ib_levels.get("ibd100")
+            if isinstance(ibd100, (int, float)) and report.downside_target < ibd100:
+                cleared = report.downside_target
+                note = (
+                    f"[downside_target ${cleared:.2f} exceeded IB ibd100 "
+                    f"${ibd100:.2f}, cleared]"
+                )
+                report.counterargument_response = (
+                    f"{report.counterargument_response} {note}".strip()
+                )
+                report.downside_target = None
+
+    async def call_llm(self, prompt: str) -> str:
+        """Direct LLM call for debate scoring — returns raw text response.
+
+        If the response contains a structured ASSESSMENT block, appends a
+        WEIGHTED_SCORE line computed via _compute_weighted_score so that
+        callers (e.g. DebateOrchestrator) can use evidence-adjusted scores.
+        Falls back to raw text when no ASSESSMENT block is present.
+        """
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                self.ANTHROPIC_API_URL,
+                headers={
+                    "x-api-key": self._api_key,
+                    "anthropic-version": self.ANTHROPIC_VERSION,
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": self.MODEL,
+                    "max_tokens": 256,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+        raw_text = data["content"][0]["text"].strip()
+
+        # Evidence-weighted score enhancement (backward-compatible)
+        assessment = self._parse_assessment(raw_text)
+        if assessment["score"] is not None:
+            weighted = self._compute_weighted_score(
+                raw_score=assessment["score"],
+                evidence_count=assessment["evidence_count"] or 3,
+                evidence_quality=assessment["evidence_quality"] or "medium",
+            )
+            raw_text = (
+                f"{raw_text}\n"
+                f"WEIGHTED_SCORE: {weighted:.2f}/10"
+            )
+        return raw_text
+
     # ── Internal helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_assessment(response_text: str) -> dict:
+        """Parse structured assessment from LLM response."""
+        result = {"score": None, "evidence_count": None, "evidence_quality": None}
+
+        # Try structured format first
+        pattern = (
+            r'ASSESSMENT:\s*SCORE:\s*(\d+(?:\.\d+)?)/10\s*\|\s*'
+            r'EVIDENCE_COUNT:\s*(\d+)\s*\|\s*'
+            r'EVIDENCE_QUALITY:\s*(low|medium|high)'
+        )
+        match = re.search(pattern, response_text, re.IGNORECASE)
+        if match:
+            result["score"] = float(match.group(1))
+            result["evidence_count"] = int(match.group(2))
+            result["evidence_quality"] = match.group(3).lower()
+
+        # Fallback: try existing score extraction pattern
+        # (keep whatever score extraction already exists as primary, this as enhancement)
+        return result
+
+    @staticmethod
+    def _compute_weighted_score(raw_score: float, evidence_count: int = 3,
+                                evidence_quality: str = "medium") -> float:
+        """Apply evidence weighting to raw score."""
+        count_boost = 1 + 0.1 * min(evidence_count, 5)  # max 1.5x boost at 5 pieces
+        quality_mult = {"low": 0.9, "medium": 1.0, "high": 1.1}.get(evidence_quality, 1.0)
+        return min(10.0, raw_score * count_boost * quality_mult)
 
     def _build_prompt(self, symbol: str, analyst_reports: dict) -> str:
         """Serialise analyst reports into a structured prompt."""
@@ -213,6 +348,30 @@ Respond with valid JSON in exactly this format (no text outside the JSON):
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    async def _call_llm(self, prompt: str) -> str:
+        """Generic LLM call used by DebateOrchestrator for adversarial scoring/rebuttals."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.ANTHROPIC_API_URL,
+                    headers={
+                        "x-api-key": self._api_key,
+                        "anthropic-version": self.ANTHROPIC_VERSION,
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": self.MODEL,
+                        "max_tokens": 512,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["content"][0]["text"].strip()
+        except Exception as exc:
+            logger.warning(f"BearResearcherAgent._call_llm failed: {exc}")
+            return ""
 
     def _empty_report(self, symbol: str) -> BearReport:
         return BearReport(

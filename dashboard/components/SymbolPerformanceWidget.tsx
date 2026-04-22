@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw } from "lucide-react";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface SymbolStat {
   symbol: string;
@@ -48,7 +48,7 @@ export function SymbolPerformanceWidget() {
 
   const fetchData = () => {
     setLoading(true);
-    fetch(`${ENGINE_URL}/analytics/trades/by-symbol`)
+    fetchEngine(`/analytics/trades/by-symbol`)
       .then((r) => r.json())
       .then((d: BySymbolResponse) => {
         // Sort by total_pnl descending

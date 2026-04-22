@@ -7,7 +7,7 @@ Schema:
   llm_calls(
     id INTEGER PRIMARY KEY,
     timestamp TEXT,           -- ISO 8601 UTC timestamp
-    model TEXT,               -- e.g. "claude-opus-4-6"
+    model TEXT,               -- e.g. "claude-opus-4-7"
     input_tokens INTEGER,     -- Input token count
     output_tokens INTEGER,    -- Output token count
     cost_usd REAL,            -- Cost in USD
@@ -229,7 +229,8 @@ class CostTracker:
 
         # Calculate the date range
         now = datetime.now(timezone.utc)
-        first_day_this_month = now.replace(day=1)
+        # Normalise to midnight so the range covers the full first day of the month.
+        first_day_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         if months_back == 0:
             # Current month
@@ -238,7 +239,9 @@ class CostTracker:
             # Previous months
             for _ in range(months_back):
                 first_day_this_month = first_day_this_month - timedelta(days=1)
-                first_day_this_month = first_day_this_month.replace(day=1)
+                first_day_this_month = first_day_this_month.replace(
+                    day=1, hour=0, minute=0, second=0, microsecond=0
+                )
             month_start = first_day_this_month
 
         # Next month (exclusive)

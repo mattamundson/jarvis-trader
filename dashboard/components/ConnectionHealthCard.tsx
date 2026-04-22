@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Response shapes ────────────────────────────────────────────────────────────
 
@@ -45,8 +45,8 @@ export function ConnectionHealthCard() {
 
   async function fetchAll() {
     const [healthResult, ibResult] = await Promise.allSettled([
-      fetch(`${ENGINE_URL}/health`).then((r) => r.json() as Promise<HealthResponse>),
-      fetch(`${ENGINE_URL}/ib/connection-test`).then(
+      fetchEngine(`/health`),
+      fetchEngine(`/ib/connection-test`).then(
         (r) => r.json() as Promise<IBConnectionTestResponse>
       ),
     ]);
@@ -120,7 +120,7 @@ export function ConnectionHealthCard() {
           <div className="flex items-center justify-between py-1.5 border-b border-border">
             <div>
               <p className="text-sm font-medium">Trading Engine</p>
-              <p className="text-xs text-muted-foreground">FastAPI • Port 8010</p>
+              <p className="text-xs text-muted-foreground">FastAPI • via dashboard proxy</p>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant={engineBadgeVariant}>{engineLabel}</Badge>

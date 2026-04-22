@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -16,42 +16,48 @@ logger = logging.getLogger(__name__)
 # Enums
 # ---------------------------------------------------------------------------
 
+
 class OptionsStrategy(str, Enum):
     """Supported options strategies."""
-    COVERED_CALL       = "COVERED_CALL"
-    CREDIT_SPREAD_PUT  = "CREDIT_SPREAD_PUT"    # Bull put spread
-    CREDIT_SPREAD_CALL = "CREDIT_SPREAD_CALL"   # Bear call spread
-    IRON_CONDOR        = "IRON_CONDOR"
-    PROTECTIVE_PUT     = "PROTECTIVE_PUT"
-    STRADDLE           = "STRADDLE"
-    STRANGLE           = "STRANGLE"
+
+    COVERED_CALL = "COVERED_CALL"
+    CREDIT_SPREAD_PUT = "CREDIT_SPREAD_PUT"  # Bull put spread
+    CREDIT_SPREAD_CALL = "CREDIT_SPREAD_CALL"  # Bear call spread
+    IRON_CONDOR = "IRON_CONDOR"
+    PROTECTIVE_PUT = "PROTECTIVE_PUT"
+    STRADDLE = "STRADDLE"
+    STRANGLE = "STRANGLE"
 
 
 class VIXRegime(str, Enum):
     """VIX-based market volatility regime."""
-    LOW     = "LOW"       # VIX < 15
-    NORMAL  = "NORMAL"    # 15 ≤ VIX < 20
-    HIGH    = "HIGH"      # 20 ≤ VIX < 30
-    EXTREME = "EXTREME"   # VIX ≥ 30
+
+    LOW = "LOW"  # VIX < 15
+    NORMAL = "NORMAL"  # 15 ≤ VIX < 20
+    HIGH = "HIGH"  # 20 ≤ VIX < 30
+    EXTREME = "EXTREME"  # VIX ≥ 30
 
 
 class RegimeState(str, Enum):
     """5-layer regime framework state from JARVIS technical analysis."""
+
     TRENDING_BULL = "TRENDING_BULL"
     TRENDING_BEAR = "TRENDING_BEAR"
-    RANGING       = "RANGING"
-    VOLATILE      = "VOLATILE"
-    MIXED         = "MIXED"
-    UNKNOWN       = "UNKNOWN"
+    RANGING = "RANGING"
+    VOLATILE = "VOLATILE"
+    MIXED = "MIXED"
+    UNKNOWN = "UNKNOWN"
 
 
 # ---------------------------------------------------------------------------
 # OptionsOrder dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class OptionsLeg:
     """Represents a single leg of an options order."""
+
     action: Literal["BUY", "SELL"]
     option_type: Literal["call", "put"]
     strike: float
@@ -66,20 +72,20 @@ class OptionsOrder:
     Produced by the strategy builder functions.  All risk metrics are
     per-spread (1 contract = 100 shares for equity options).
     """
+
     symbol: str
     strategy: OptionsStrategy
     legs: list[OptionsLeg]
-    estimated_premium: float    # net credit (positive) or debit (negative) per share
-    max_risk: float             # maximum dollar loss per spread (positive)
-    max_profit: float           # maximum dollar gain per spread (positive)
+    estimated_premium: float  # net credit (positive) or debit (negative) per share
+    max_risk: float  # maximum dollar loss per spread (positive)
+    max_profit: float  # maximum dollar gain per spread (positive)
     notes: str = ""
     created_at: datetime = field(default_factory=datetime.utcnow)
-    expiry_dte: int = 0         # days to expiration at order creation
+    expiry_dte: int = 0  # days to expiration at order creation
 
     def __str__(self) -> str:
         legs_str = ", ".join(
-            f"{l.action} {l.option_type.upper()} {l.strike} {l.expiry}"
-            for l in self.legs
+            f"{leg.action} {leg.option_type.upper()} {leg.strike} {leg.expiry}" for leg in self.legs
         )
         return (
             f"[{self.strategy.value}] {self.symbol} | "
@@ -92,6 +98,7 @@ class OptionsOrder:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _expiry_date(dte: int) -> date:
     """Return the expiry date ``dte`` calendar days from today."""
@@ -106,6 +113,7 @@ def _round_strike(price: float, tick: float = 1.0) -> float:
 # ---------------------------------------------------------------------------
 # Strategy builders
 # ---------------------------------------------------------------------------
+
 
 def build_covered_call(
     symbol: str,
@@ -139,7 +147,11 @@ def build_covered_call(
 
     logger.info(
         "[build_covered_call] %s | price=%.2f atr=%.2f → strike=%.2f DTE=%d",
-        symbol, futures_price, atr, strike, expiry_dte,
+        symbol,
+        futures_price,
+        atr,
+        strike,
+        expiry_dte,
     )
 
     return OptionsOrder(
@@ -184,17 +196,20 @@ def build_bull_put_spread(
         :class:`OptionsOrder` for a bull put spread.
     """
     short_strike = _round_strike(futures_price - 1.0 * atr, tick_size)
-    long_strike  = _round_strike(short_strike - width, tick_size)
+    long_strike = _round_strike(short_strike - width, tick_size)
     expiry = _expiry_date(expiry_dte)
 
     # Rough credit estimate: ~30 % of spread width
     net_premium = round(width * 0.30, 4)
-    max_profit  = round(net_premium * 100, 2)
-    max_risk    = round((width - net_premium) * 100, 2)
+    max_profit = round(net_premium * 100, 2)
+    max_risk = round((width - net_premium) * 100, 2)
 
     logger.info(
         "[build_bull_put_spread] %s | short=%.2f long=%.2f DTE=%d",
-        symbol, short_strike, long_strike, expiry_dte,
+        symbol,
+        short_strike,
+        long_strike,
+        expiry_dte,
     )
 
     return OptionsOrder(
@@ -202,7 +217,7 @@ def build_bull_put_spread(
         strategy=OptionsStrategy.CREDIT_SPREAD_PUT,
         legs=[
             OptionsLeg(action="SELL", option_type="put", strike=short_strike, expiry=expiry),
-            OptionsLeg(action="BUY",  option_type="put", strike=long_strike,  expiry=expiry),
+            OptionsLeg(action="BUY", option_type="put", strike=long_strike, expiry=expiry),
         ],
         estimated_premium=net_premium,
         max_risk=max_risk,
@@ -240,16 +255,19 @@ def build_bear_call_spread(
         :class:`OptionsOrder` for a bear call spread.
     """
     short_strike = _round_strike(futures_price + 1.0 * atr, tick_size)
-    long_strike  = _round_strike(short_strike + width, tick_size)
+    long_strike = _round_strike(short_strike + width, tick_size)
     expiry = _expiry_date(expiry_dte)
 
     net_premium = round(width * 0.30, 4)
-    max_profit  = round(net_premium * 100, 2)
-    max_risk    = round((width - net_premium) * 100, 2)
+    max_profit = round(net_premium * 100, 2)
+    max_risk = round((width - net_premium) * 100, 2)
 
     logger.info(
         "[build_bear_call_spread] %s | short=%.2f long=%.2f DTE=%d",
-        symbol, short_strike, long_strike, expiry_dte,
+        symbol,
+        short_strike,
+        long_strike,
+        expiry_dte,
     )
 
     return OptionsOrder(
@@ -257,7 +275,7 @@ def build_bear_call_spread(
         strategy=OptionsStrategy.CREDIT_SPREAD_CALL,
         legs=[
             OptionsLeg(action="SELL", option_type="call", strike=short_strike, expiry=expiry),
-            OptionsLeg(action="BUY",  option_type="call", strike=long_strike,  expiry=expiry),
+            OptionsLeg(action="BUY", option_type="call", strike=long_strike, expiry=expiry),
         ],
         estimated_premium=net_premium,
         max_risk=max_risk,
@@ -299,29 +317,34 @@ def build_iron_condor(
     """
     one_sd = 1.5 * atr
     short_call = _round_strike(futures_price + one_sd, tick_size)
-    long_call  = _round_strike(short_call + wing_width, tick_size)
-    short_put  = _round_strike(futures_price - one_sd, tick_size)
-    long_put   = _round_strike(short_put - wing_width, tick_size)
-    expiry     = _expiry_date(expiry_dte)
+    long_call = _round_strike(short_call + wing_width, tick_size)
+    short_put = _round_strike(futures_price - one_sd, tick_size)
+    long_put = _round_strike(short_put - wing_width, tick_size)
+    expiry = _expiry_date(expiry_dte)
 
     # Combined credit estimate: ~30 % of one wing × 2
     net_premium = round(wing_width * 0.30 * 2, 4)
-    max_profit  = round(net_premium * 100, 2)
-    max_risk    = round((wing_width - net_premium / 2) * 100, 2)
+    max_profit = round(net_premium * 100, 2)
+    max_risk = round((wing_width - net_premium / 2) * 100, 2)
 
     logger.info(
         "[build_iron_condor] %s | put_spread=%s/%s call_spread=%s/%s DTE=%d",
-        symbol, short_put, long_put, short_call, long_call, expiry_dte,
+        symbol,
+        short_put,
+        long_put,
+        short_call,
+        long_call,
+        expiry_dte,
     )
 
     return OptionsOrder(
         symbol=symbol,
         strategy=OptionsStrategy.IRON_CONDOR,
         legs=[
-            OptionsLeg(action="SELL", option_type="put",  strike=short_put,  expiry=expiry),
-            OptionsLeg(action="BUY",  option_type="put",  strike=long_put,   expiry=expiry),
+            OptionsLeg(action="SELL", option_type="put", strike=short_put, expiry=expiry),
+            OptionsLeg(action="BUY", option_type="put", strike=long_put, expiry=expiry),
             OptionsLeg(action="SELL", option_type="call", strike=short_call, expiry=expiry),
-            OptionsLeg(action="BUY",  option_type="call", strike=long_call,  expiry=expiry),
+            OptionsLeg(action="BUY", option_type="call", strike=long_call, expiry=expiry),
         ],
         estimated_premium=net_premium,
         max_risk=max_risk,
@@ -362,12 +385,15 @@ def build_protective_put(
 
     # Rough debit estimate for a 0.20 delta put: ~0.8 % of underlying
     estimated_premium = round(futures_price * 0.008, 4)
-    max_risk   = round(estimated_premium * 100, 2)   # debit paid
+    max_risk = round(estimated_premium * 100, 2)  # debit paid
     max_profit = round((futures_price - strike - estimated_premium) * 100, 2)
 
     logger.info(
         "[build_protective_put] %s | price=%.2f strike=%.2f DTE=%d",
-        symbol, futures_price, strike, expiry_dte,
+        symbol,
+        futures_price,
+        strike,
+        expiry_dte,
     )
 
     return OptionsOrder(
@@ -376,7 +402,7 @@ def build_protective_put(
         legs=[
             OptionsLeg(action="BUY", option_type="put", strike=strike, expiry=expiry),
         ],
-        estimated_premium=-estimated_premium,   # debit = negative
+        estimated_premium=-estimated_premium,  # debit = negative
         max_risk=max_risk,
         max_profit=max_profit,
         expiry_dte=expiry_dte,
@@ -408,27 +434,24 @@ def build_straddle(
         :class:`OptionsOrder` for a long straddle.
     """
     atm_strike = _round_strike(futures_price, tick_size)
-    expiry     = _expiry_date(expiry_dte)
+    expiry = _expiry_date(expiry_dte)
 
     # Rough premium: ~1.5 % of underlying for ATM straddle
     estimated_premium = round(futures_price * 0.015, 4)
-    max_risk   = round(estimated_premium * 100 * 2, 2)  # total debit for 2 legs
-    max_profit = float("inf")                            # unlimited
+    max_risk = round(estimated_premium * 100 * 2, 2)  # total debit for 2 legs
 
-    logger.info(
-        "[build_straddle] %s | strike=%.2f DTE=%d", symbol, atm_strike, expiry_dte
-    )
+    logger.info("[build_straddle] %s | strike=%.2f DTE=%d", symbol, atm_strike, expiry_dte)
 
     return OptionsOrder(
         symbol=symbol,
         strategy=OptionsStrategy.STRADDLE,
         legs=[
             OptionsLeg(action="BUY", option_type="call", strike=atm_strike, expiry=expiry),
-            OptionsLeg(action="BUY", option_type="put",  strike=atm_strike, expiry=expiry),
+            OptionsLeg(action="BUY", option_type="put", strike=atm_strike, expiry=expiry),
         ],
         estimated_premium=-(estimated_premium * 2),
         max_risk=max_risk,
-        max_profit=0.0,   # stored as 0 to indicate unlimited
+        max_profit=0.0,  # stored as 0 to indicate unlimited
         expiry_dte=expiry_dte,
         notes=(
             f"Long straddle | ATM strike {atm_strike} | "
@@ -460,18 +483,21 @@ def build_strangle(
         :class:`OptionsOrder` for a long strangle.
     """
     call_strike = _round_strike(futures_price + 1.0 * atr, tick_size)
-    put_strike  = _round_strike(futures_price - 1.0 * atr, tick_size)
-    expiry      = _expiry_date(expiry_dte)
+    put_strike = _round_strike(futures_price - 1.0 * atr, tick_size)
+    expiry = _expiry_date(expiry_dte)
 
     # Rough OTM premium: ~0.5 % of underlying per leg
     per_leg_premium = round(futures_price * 0.005, 4)
     estimated_premium = round(per_leg_premium * 2, 4)
-    max_risk   = round(estimated_premium * 100, 2)
+    max_risk = round(estimated_premium * 100, 2)
     max_profit = 0.0  # unlimited
 
     logger.info(
         "[build_strangle] %s | call=%.2f put=%.2f DTE=%d",
-        symbol, call_strike, put_strike, expiry_dte,
+        symbol,
+        call_strike,
+        put_strike,
+        expiry_dte,
     )
 
     return OptionsOrder(
@@ -479,7 +505,7 @@ def build_strangle(
         strategy=OptionsStrategy.STRANGLE,
         legs=[
             OptionsLeg(action="BUY", option_type="call", strike=call_strike, expiry=expiry),
-            OptionsLeg(action="BUY", option_type="put",  strike=put_strike,  expiry=expiry),
+            OptionsLeg(action="BUY", option_type="put", strike=put_strike, expiry=expiry),
         ],
         estimated_premium=-estimated_premium,
         max_risk=max_risk,
@@ -498,9 +524,9 @@ def build_strangle(
 
 # VIX thresholds used for regime classification
 _VIX_THRESHOLDS = {
-    VIXRegime.LOW:     (0.0,  15.0),
-    VIXRegime.NORMAL:  (15.0, 20.0),
-    VIXRegime.HIGH:    (20.0, 30.0),
+    VIXRegime.LOW: (0.0, 15.0),
+    VIXRegime.NORMAL: (15.0, 20.0),
+    VIXRegime.HIGH: (20.0, 30.0),
     VIXRegime.EXTREME: (30.0, float("inf")),
 }
 
@@ -568,8 +594,7 @@ def validate_order(
     if order.expiry_dte < 7:
         return (
             False,
-            f"DTE={order.expiry_dte} is too close to expiry (< 7 days). "
-            f"Gamma risk too high.",
+            f"DTE={order.expiry_dte} is too close to expiry (< 7 days). " f"Gamma risk too high.",
         )
 
     # --- Iron condor VIX block ---
@@ -593,12 +618,13 @@ def validate_order(
     # --- Protective put — only valuable in VOLATILE/HIGH-VIX environments ---
     if strategy == OptionsStrategy.PROTECTIVE_PUT:
         if vix_regime == VIXRegime.LOW and regime_state not in (
-            RegimeState.VOLATILE, RegimeState.MIXED
+            RegimeState.VOLATILE,
+            RegimeState.MIXED,
         ):
             return (
                 False,
-                f"Protective put in LOW VIX + non-VOLATILE regime is cost-ineffective. "
-                f"Premium is expensive relative to hedging benefit.",
+                "Protective put in LOW VIX + non-VOLATILE regime is cost-ineffective. "
+                "Premium is expensive relative to hedging benefit.",
             )
 
     # --- Short credit strategies in EXTREME VIX ---
@@ -626,6 +652,11 @@ def validate_order(
 
     logger.info(
         "[validate_order] %s APPROVED | vix_regime=%s regime=%s",
-        strategy.value, vix_regime.value, regime_state.value,
+        strategy.value,
+        vix_regime.value,
+        regime_state.value,
     )
-    return (True, f"{strategy.value} validated | VIX={vix_regime.value} | regime={regime_state.value}")
+    return (
+        True,
+        f"{strategy.value} validated | VIX={vix_regime.value} | regime={regime_state.value}",
+    )

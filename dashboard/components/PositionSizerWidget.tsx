@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 const MAX_CONTRACTS = 5;
 const TICK_SIZE = 0.25;        // points
@@ -108,8 +108,8 @@ export function PositionSizerWidget() {
   async function fetchData() {
     try {
       const [sigRes, safetyRes] = await Promise.allSettled([
-        fetch(`${ENGINE_URL}/paper/mes-signal`),
-        fetch(`${ENGINE_URL}/safety/status`),
+        fetchEngine(`/paper/mes-signal`),
+        fetchEngine(`/safety/status`),
       ]);
 
       if (sigRes.status === "fulfilled" && sigRes.value.ok) {

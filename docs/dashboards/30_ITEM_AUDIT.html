@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — 30-Item System Audit | v2.7</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script type="importmap">{ "imports": { "three": "https://esm.sh/three@0.163.0" } }</script>
+<style>
+  :root {
+    --cyan:   #06b6d4;
+    --cyan2:  #22d3ee;
+    --green:  #10b981;
+    --red:    #ef4444;
+    --amber:  #f59e0b;
+    --navy:   #0a1628;
+    --navy2:  #0f1e35;
+    --navy3:  #162440;
+    --slate:  #1e293b;
+    --border: rgba(6,182,212,0.18);
+    --glow:   0 0 24px rgba(6,182,212,0.18);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--navy);
+    color: #e2e8f0;
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Canvas hero ── */
+  #hero-canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 0;
+  }
+  #hero {
+    position: relative;
+    height: 420px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .hero-content { position: relative; z-index: 10; text-align: center; }
+
+  /* ── Scan-line overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent, transparent 2px,
+      rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none; z-index: 1000;
+  }
+
+  /* ── Glitch title ── */
+  .glitch {
+    position: relative;
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 0.12em;
+    animation: flicker 6s infinite;
+  }
+  @keyframes flicker {
+    0%,95%,100% { opacity: 1; }
+    96% { opacity: 0.85; }
+    97% { opacity: 1; }
+    98% { opacity: 0.7; }
+    99% { opacity: 1; }
+  }
+  .glitch::before, .glitch::after {
+    content: attr(data-text);
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .glitch::before {
+    color: var(--cyan);
+    animation: glitch1 3s infinite;
+    clip-path: polygon(0 30%, 100% 30%, 100% 50%, 0 50%);
+  }
+  .glitch::after {
+    color: var(--green);
+    animation: glitch2 3s infinite;
+    clip-path: polygon(0 55%, 100% 55%, 100% 75%, 0 75%);
+  }
+  @keyframes glitch1 {
+    0%,90%,100%   { transform: none; opacity: 0; }
+    91%  { transform: translate(-2px, 0); opacity: 0.6; }
+    92%  { transform: translate(2px, 0);  opacity: 0; }
+  }
+  @keyframes glitch2 {
+    0%,93%,100%   { transform: none; opacity: 0; }
+    94%  { transform: translate(2px, -1px); opacity: 0.5; }
+    95%  { transform: translate(-1px, 1px); opacity: 0; }
+  }
+
+  /* ── Live clock ── */
+  .live-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(16,185,129,0.12);
+    border: 1px solid rgba(16,185,129,0.3);
+    color: var(--green);
+    padding: 3px 12px;
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+  }
+  .live-dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%     { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  /* ── Score ring canvas ── */
+  #score-ring { display: block; margin: 0 auto; }
+
+  /* ── Audit cards ── */
+  .audit-card {
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+    cursor: default;
+  }
+  .audit-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+  }
+  .audit-card.pass::before  { background: var(--green); }
+  .audit-card.warn::before  { background: var(--amber); }
+  .audit-card.fail::before  { background: var(--red); }
+  .audit-card.pending::before { background: #64748b; }
+
+  .audit-card:hover {
+    border-color: rgba(6,182,212,0.4);
+    box-shadow: var(--glow);
+    transform: translateY(-1px);
+  }
+
+  .status-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+  .badge-pass    { background: rgba(16,185,129,0.15); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+  .badge-warn    { background: rgba(245,158,11,0.15);  color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+  .badge-fail    { background: rgba(239,68,68,0.15);   color: var(--red);   border: 1px solid rgba(239,68,68,0.3); }
+  .badge-pending { background: rgba(100,116,139,0.15); color: #94a3b8;      border: 1px solid rgba(100,116,139,0.3); }
+
+  .card-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #334155;
+    letter-spacing: 0.05em;
+  }
+  .card-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #e2e8f0;
+    line-height: 1.3;
+    margin: 6px 0 4px;
+  }
+  .card-detail {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: #64748b;
+    line-height: 1.5;
+  }
+  .card-metric {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--cyan);
+    margin-top: 8px;
+    letter-spacing: 0.05em;
+  }
+  .card-category {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #334155;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+
+  /* ── Filter bar ── */
+  .filter-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    padding: 5px 14px;
+    border-radius: 2px;
+    border: 1px solid #1e293b;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    background: rgba(6,182,212,0.08);
+  }
+  .filter-btn.active-pass  { border-color: var(--green); color: var(--green); background: rgba(16,185,129,0.08); }
+  .filter-btn.active-warn  { border-color: var(--amber); color: var(--amber); background: rgba(245,158,11,0.08); }
+  .filter-btn.active-fail  { border-color: var(--red);   color: var(--red);   background: rgba(239,68,68,0.08); }
+  .filter-btn.active-pending { border-color: #475569; color: #94a3b8; background: rgba(100,116,139,0.08); }
+
+  /* ── Stat tiles ── */
+  .stat-tile {
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 22px;
+    text-align: center;
+  }
+  .stat-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 2.4rem;
+    line-height: 1;
+    letter-spacing: 0.05em;
+  }
+  .stat-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: #475569;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* ── Radar canvas ── */
+  #radar-canvas { display: block; margin: 0 auto; }
+
+  /* ── Progress bar ── */
+  .prog-bar {
+    height: 4px;
+    background: #1e293b;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .prog-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* ── Section heading ── */
+  .section-head {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.25em;
+    color: var(--cyan);
+    text-transform: uppercase;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+
+  /* ── Fade-in animation ── */
+  .fade-in { opacity: 0; transform: translateY(12px); transition: opacity 0.5s ease, transform 0.5s ease; }
+  .fade-in.visible { opacity: 1; transform: none; }
+
+  /* ── Card hidden state ── */
+  .audit-card.hidden { display: none; }
+
+  /* ── Footer ── */
+  .footer-mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #1e293b;
+    text-align: center;
+    padding: 24px 0 32px;
+    letter-spacing: 0.1em;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--navy); }
+  ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     HERO SECTION — Three.js Particle Field
+═══════════════════════════════════════════ -->
+<div id="hero">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero-content">
+    <div class="live-badge mb-4" id="live-clock">
+      <div class="live-dot"></div>
+      <span id="clock-text">LIVE — 2026-03-30</span>
+    </div>
+    <h1 class="glitch text-5xl font-bold text-white mb-2" style="font-size:2.6rem; text-shadow: 0 0 40px rgba(6,182,212,0.4);" data-text="JARVIS TRADER AUDIT">
+      JARVIS TRADER AUDIT
+    </h1>
+    <p style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#64748b; letter-spacing:0.2em; margin-top:8px;">
+      30-ITEM SYSTEM AUDIT &nbsp;·&nbsp; VERSION 2.7 &nbsp;·&nbsp; 2026-03-30
+    </p>
+    <p style="font-family:'Rajdhani',sans-serif; font-size:0.9rem; color:#475569; margin-top:6px; letter-spacing:0.05em;">
+      MCL WFE=0.82 EXCELLENT &nbsp;|&nbsp; MNQ WFE=0.57 GOOD &nbsp;|&nbsp; MGC HALTED &nbsp;|&nbsp; Options Engine Built
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STATS ROW
+═══════════════════════════════════════════ -->
+<div style="max-width:1200px; margin:0 auto; padding:0 24px;">
+
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8 fade-in">
+    <div class="stat-tile">
+      <div class="stat-num" style="color:var(--green);" id="count-pass">0</div>
+      <div class="stat-label">PASS</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--green); width:0%" id="bar-pass"></div></div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-num" style="color:var(--amber);" id="count-warn">0</div>
+      <div class="stat-label">WARN</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--amber); width:0%" id="bar-warn"></div></div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-num" style="color:var(--red);" id="count-fail">0</div>
+      <div class="stat-label">FAIL</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--red); width:0%" id="bar-fail"></div></div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-num" style="color:#94a3b8;" id="count-pending">0</div>
+      <div class="stat-label">PENDING</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:#475569; width:0%" id="bar-pending"></div></div>
+    </div>
+    <div class="stat-tile col-span-2 md:col-span-1">
+      <div class="stat-num" style="color:var(--cyan);" id="score-pct">—</div>
+      <div class="stat-label">AUDIT SCORE</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--cyan); width:0%" id="bar-score"></div></div>
+    </div>
+  </div>
+
+  <!-- Score ring + Radar -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 fade-in">
+    <div style="background:var(--navy2); border:1px solid var(--border); border-radius:4px; padding:24px;">
+      <div class="section-head">OVERALL SCORE</div>
+      <canvas id="score-ring" width="260" height="260"></canvas>
+    </div>
+    <div style="background:var(--navy2); border:1px solid var(--border); border-radius:4px; padding:24px;">
+      <div class="section-head">CATEGORY RADAR</div>
+      <canvas id="radar-canvas" width="260" height="260"></canvas>
+    </div>
+  </div>
+
+  <!-- ── Filter bar ── -->
+  <div class="flex flex-wrap gap-2 mb-6 fade-in" id="filter-bar">
+    <button class="filter-btn active" data-filter="all">ALL (30)</button>
+    <button class="filter-btn" data-filter="pass" id="btn-pass">PASS</button>
+    <button class="filter-btn" data-filter="warn" id="btn-warn">WARN</button>
+    <button class="filter-btn" data-filter="fail" id="btn-fail">FAIL</button>
+    <button class="filter-btn" data-filter="pending" id="btn-pending">PENDING</button>
+    <span style="flex:1"></span>
+    <span style="font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:#334155; align-self:center; letter-spacing:0.1em;">
+      COMMIT: e2cd5fc &nbsp;·&nbsp; 28 FILES &nbsp;·&nbsp; +9,695
+    </span>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       AUDIT CARDS — 30 Items
+  ═══════════════════════════════════════════ -->
+  <div id="audit-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10 fade-in">
+
+    <!-- 01 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">01 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">MCL 1h Walk-Forward Engine</div>
+      <div class="card-detail">6/6 windows analyzed · 5/6 OOS profitable · Static params · regime_filter=ON · adaptive=OFF</div>
+      <div class="card-metric">WFE = 0.82 &nbsp;·&nbsp; EXCELLENT &nbsp;·&nbsp; ✅ APPROVED</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--green); width:82%"></div></div>
+    </div>
+
+    <!-- 02 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">02 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">MNQ 1h Walk-Forward Engine</div>
+      <div class="card-detail">6/6 windows · 4/6 OOS profitable · adaptive_regime=ON · MTF=OFF · Volume=OFF (both rejected)</div>
+      <div class="card-metric">WFE = 0.57 &nbsp;·&nbsp; GOOD &nbsp;·&nbsp; ✅ APPROVED</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--green); width:57%"></div></div>
+    </div>
+
+    <!-- 03 -->
+    <div class="audit-card warn" data-status="warn" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">03 / 30</span>
+        <span class="status-badge badge-warn">WARN</span>
+      </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">MGC 1d Walk-Forward Status</div>
+      <div class="card-detail">15-window extended history · prior WFE=0.88 was 3-window small-sample gold bull run bias · correctly halted</div>
+      <div class="card-metric">WFE = 0.14 &nbsp;·&nbsp; OVERFIT &nbsp;·&nbsp; 🛑 HALTED</div>
+      <div class="prog-bar"><div class="prog-fill" style="background:var(--amber); width:14%"></div></div>
+    </div>
+
+    <!-- 04 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">04 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">Filter Rejection Validation</div>
+      <div class="card-detail">MTF filter: MNQ WFE 0.57→0.17 (−0.40). Volume filter: 0.57→−0.23 (−0.80). Both empirically rejected and locked OFF.</div>
+      <div class="card-metric">MTF REJECTED · VOLUME REJECTED · Final verdict</div>
+    </div>
+
+    <!-- 05 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">05 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">Optimizer Kwarg Bug Fix (v2.6)</div>
+      <div class="card-detail">CRITICAL: adaptive_regime, volume_filter, mtf_filter were silently passed to _compute_signals() → TypeError → bare except → None returns for ALL WF runs. Fixed in walk_forward.py.</div>
+      <div class="card-metric">Before: MGC=0.27, MNQ=0.34 &nbsp;·&nbsp; After: MGC=0.14, MNQ=0.57</div>
+    </div>
+
+    <!-- 06 -->
+    <div class="audit-card pass" data-status="pass" data-cat="validation">
+      <div class="flex justify-between items-start">
+        <span class="card-number">06 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Validation</div>
+      <div class="card-title">MES / SPY Overfit Documentation</div>
+      <div class="card-detail">MES WFE=0.09, SPY WFE=−1.11 (adaptive: −0.71). Both documented as NOT CLEARED. Signal redesign required before reconsideration.</div>
+      <div class="card-metric">MES: 0.09 OVERFIT &nbsp;·&nbsp; SPY: −1.11 OVERFIT</div>
+    </div>
+
+    <!-- 07 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">07 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">greeks_monitor.py</div>
+      <div class="card-detail">Full Black-Scholes Greeks (delta, gamma, theta, vega, rho). Newton-Raphson IV solver. iv_rank(), iv_percentile(). PortfolioGreeks dataclass. 0.30 delta breach alerts.</div>
+      <div class="card-metric">engine/options/greeks_monitor.py &nbsp;·&nbsp; 15.6 KB</div>
+    </div>
+
+    <!-- 08 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">08 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">strategy_executor.py</div>
+      <div class="card-detail">OptionsStrategy enum (7 types). OptionsOrder + OptionsLeg dataclasses. Builders: covered_call, bull_put_spread, bear_call_spread, iron_condor, protective_put, straddle, strangle. validate_order() with full regime rules.</div>
+      <div class="card-metric">engine/options/strategy_executor.py &nbsp;·&nbsp; 21.5 KB</div>
+    </div>
+
+    <!-- 09 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">09 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">chain_fetcher.py</div>
+      <div class="card-detail">OptionsChain + OptionsContract dataclasses. fetch_chain_yfinance() with live Greeks calc. filter_by_delta(), find_strike_by_delta(). get_iv_rank() using 21-day rolling HV as proxy.</div>
+      <div class="card-metric">engine/options/chain_fetcher.py &nbsp;·&nbsp; 14.3 KB</div>
+    </div>
+
+    <!-- 10 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">10 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">premium_calculator.py</div>
+      <div class="card-detail">black_scholes_price(), probability_of_profit() (risk-neutral N(d2)), expected_value(). PremiumScanResult dataclass. get_credit_spread_metrics(). PnL at expiry scenarios.</div>
+      <div class="card-metric">engine/options/premium_calculator.py &nbsp;·&nbsp; 10 KB</div>
+    </div>
+
+    <!-- 11 -->
+    <div class="audit-card pass" data-status="pass" data-cat="options">
+      <div class="flex justify-between items-start">
+        <span class="card-number">11 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Options Engine</div>
+      <div class="card-title">position_manager.py</div>
+      <div class="card-detail">OptionsPosition dataclass with unrealised_pnl / dte properties. OptionsPositionManager with SQLite persistence (WAL mode). check_roll_candidates(), update_greeks(), close_position().</div>
+      <div class="card-metric">engine/options/position_manager.py &nbsp;·&nbsp; 17.5 KB</div>
+    </div>
+
+    <!-- 12 -->
+    <div class="audit-card pass" data-status="pass" data-cat="api">
+      <div class="flex justify-between items-start">
+        <span class="card-number">12 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">API & Engine</div>
+      <div class="card-title">Options Endpoints Wired (main.py)</div>
+      <div class="card-detail">5 new /options/* routes registered. Lazy imports — engine starts clean even if yfinance unavailable. 501 fallback on ImportError.</div>
+      <div class="card-metric">/options/chain/{symbol} · /positions · /trade · /greeks · /scan</div>
+    </div>
+
+    <!-- 13 -->
+    <div class="audit-card pass" data-status="pass" data-cat="api">
+      <div class="flex justify-between items-start">
+        <span class="card-number">13 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">API & Engine</div>
+      <div class="card-title">23 API Field Corrections</div>
+      <div class="card-detail">status="online" not "ok". daily_pnl is raw dollars. last_price not price. No volume field in snapshot. decisions/recent has no symbol/hours params. GET /backtest/results does NOT exist.</div>
+      <div class="card-metric">All 23 corrections in JARVIS_TRADER_MASTER.md §1.11</div>
+    </div>
+
+    <!-- 14 -->
+    <div class="audit-card fail" data-status="fail" data-cat="api">
+      <div class="flex justify-between items-start">
+        <span class="card-number">14 / 30</span>
+        <span class="status-badge badge-fail">FAIL</span>
+      </div>
+      <div class="card-category mt-2">API & Engine</div>
+      <div class="card-title">FRED API Key Not Configured</div>
+      <div class="card-detail">GET /macro/snapshot returns 422 without FRED_API_KEY. VIX data unavailable via API. Macro regime not functional. Using VIX from prices as proxy only.</div>
+      <div class="card-metric">ACTION REQUIRED: Set FRED_API_KEY in .env</div>
+    </div>
+
+    <!-- 15 -->
+    <div class="audit-card pass" data-status="pass" data-cat="paper">
+      <div class="flex justify-between items-start">
+        <span class="card-number">15 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Paper Trading</div>
+      <div class="card-title">MCL_PAPER_CONFIG</div>
+      <div class="card-detail">STC_OS=15, STC_OB=83, Stop=0.90 ATR, T1=1.50 ATR. risk=0.25%. regime_filter=ON. adaptive=OFF (WFE=-0.31 when adaptive — confirmed degraded). enabled=True.</div>
+      <div class="card-metric">engine/backtest/paper_config.py · MCL_PAPER_CONFIG</div>
+    </div>
+
+    <!-- 16 -->
+    <div class="audit-card pass" data-status="pass" data-cat="paper">
+      <div class="flex justify-between items-start">
+        <span class="card-number">16 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Paper Trading</div>
+      <div class="card-title">MNQ_PAPER_CONFIG</div>
+      <div class="card-detail">STC_OS=15, STC_OB=92, Stop=0.70 ATR, T1=1.00 ATR. risk=0.25%. adaptive_regime=ON (CRITICAL). volume_filter=OFF (NEVER ENABLE). mtf_filter=OFF (NEVER ENABLE). enabled=True.</div>
+      <div class="card-metric">engine/backtest/paper_config.py · MNQ_PAPER_CONFIG</div>
+    </div>
+
+    <!-- 17 -->
+    <div class="audit-card pass" data-status="pass" data-cat="paper">
+      <div class="flex justify-between items-start">
+        <span class="card-number">17 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Paper Trading</div>
+      <div class="card-title">MGC_PAPER_CONFIG Halted</div>
+      <div class="card-detail">enabled=False. WFE=0.14 OVERFIT. Previous ACTIVE status was based on 3-window small-sample result. Correctly suspended indefinitely. Re-evaluation requires 24+ months new data.</div>
+      <div class="card-metric">engine/backtest/paper_config.py · MGC_PAPER_CONFIG enabled=False</div>
+    </div>
+
+    <!-- 18 -->
+    <div class="audit-card pass" data-status="pass" data-cat="paper">
+      <div class="flex justify-between items-start">
+        <span class="card-number">18 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Paper Trading</div>
+      <div class="card-title">Kill Thresholds Per Instrument</div>
+      <div class="card-detail">Monthly loss −3% → halt. Daily loss −2% → pause. Consecutive losses 3 → review. Rolling WFE min: MCL=0.40, MNQ=0.30. Max daily loss −2%, max drawdown −10% (SafetyLayer hardcoded).</div>
+      <div class="card-metric">MCL kill_threshold + MNQ kill_threshold defined in configs</div>
+    </div>
+
+    <!-- 19 -->
+    <div class="audit-card pass" data-status="pass" data-cat="dashboard">
+      <div class="flex justify-between items-start">
+        <span class="card-number">19 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Dashboard</div>
+      <div class="card-title">Command Center (Iron Man HUD)</div>
+      <div class="card-detail">New /command-center route. Portfolio row (4 cols). MCL/MNQ/MGC signal panels. Risk gauges (4 progress bars). Recent trades. WFE monitor. Options panel. Engine health. Auto-refresh 30s RTH / 5min after-hours.</div>
+      <div class="card-metric">dashboard/app/command-center/page.tsx &nbsp;·&nbsp; 8.31 kB</div>
+    </div>
+
+    <!-- 20 -->
+    <div class="audit-card pass" data-status="pass" data-cat="dashboard">
+      <div class="flex justify-between items-start">
+        <span class="card-number">20 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Dashboard</div>
+      <div class="card-title">Dashboard Build 16/16 Clean</div>
+      <div class="card-detail">All 16 routes compile with zero TypeScript errors. Fixed: isSubmitting→submitting (paper/page.tsx), Calculator→DollarSign, BarChart3→BarChart2, Calendar→CalendarDays (icon compatibility). Removed node_modules.bak.</div>
+      <div class="card-metric">pnpm run build · Next.js 15.5.14 · ✓ All routes static</div>
+    </div>
+
+    <!-- 21 -->
+    <div class="audit-card pass" data-status="pass" data-cat="dashboard">
+      <div class="flex justify-between items-start">
+        <span class="card-number">21 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Dashboard</div>
+      <div class="card-title">Performance Page v2.7 Data</div>
+      <div class="card-detail">MCL: wfe=0.82, status=ACTIVE (was -0.16 / DO NOT TRADE). MNQ: wfe=0.57, status=ACTIVE (was 0.48 / RESEARCH). SPY: wfe=-1.11 canonical. Active Instruments counter: 2 (was 0).</div>
+      <div class="card-metric">dashboard/app/performance/page.tsx · BACKTEST_DATA + WFE_DATA updated</div>
+    </div>
+
+    <!-- 22 -->
+    <div class="audit-card pass" data-status="pass" data-cat="dashboard">
+      <div class="flex justify-between items-start">
+        <span class="card-number">22 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Dashboard</div>
+      <div class="card-title">Scorecard Canonical Thresholds</div>
+      <div class="card-detail">TARGETS updated: maxDrawdown 10%→8% (live gate). daysActive 30→60. PF≥1.5 paper / ≥2.0 live gate. Sharpe≥1.0 paper / ≥1.5 live gate. WR≥45% paper / ≥50% live gate.</div>
+      <div class="card-metric">dashboard/app/scorecard/page.tsx · Phase 2→3 canonical gates</div>
+    </div>
+
+    <!-- 23 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">23 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">JARVIS_TRADER_MASTER.md Created</div>
+      <div class="card-detail">1,459 lines · 76 KB · 20 sections (§1.1–§1.20) · Consolidated 40+ source documents. Architecture, Strategy, WFE, Backtests, Paper Trading, Risk, VIX 6-tier, Autonomy, Triggers, API, TOS, Dashboard, Infra, Options, Futures, Go-Live, History, Issues, File Reference.</div>
+      <div class="card-metric">JARVIS_TRADER_MASTER.md · Single source of truth</div>
+    </div>
+
+    <!-- 24 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">24 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">MEMORY.md Updated</div>
+      <div class="card-detail">v2.7 block prepended at top. Single-source-of-truth pointer. Instrument statuses. Options engine note. Dashboard note. All conflict resolutions: VIX 6-tier, WR 45%/50%, DD gates, PF gates, min trades 60 over 60 days.</div>
+      <div class="card-metric">~/.claude/projects/.../memory/MEMORY.md · v2.7 canonical</div>
+    </div>
+
+    <!-- 25 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">25 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">PAPER_TRADING_APPROVAL.md</div>
+      <div class="card-detail">Official approval document. MCL WFE=0.82 EXCELLENT. MNQ WFE=0.57 GOOD. MGC WFE=0.14 HALTED. Filter verdicts final. Re-evaluation schedule (4-week rolling WFE, quarterly, annual).</div>
+      <div class="card-metric">PAPER_TRADING_APPROVAL.md · v2.7 · 2026-03-30</div>
+    </div>
+
+    <!-- 26 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">26 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">EXECUTIVE_BRIEFING.md v2.7</div>
+      <div class="card-detail">Full performance table reranked: MCL #1 (0.82), MNQ #2 (0.57), MGC #3 HALTED, MES #4, SPY #5. Walk-forward table updated with all 8 run results. Paper Trading section: MCL ACTIVE + MNQ ACTIVE + MGC HALTED.</div>
+      <div class="card-metric">engine/backtest/results/EXECUTIVE_BRIEFING.md</div>
+    </div>
+
+    <!-- 27 -->
+    <div class="audit-card pass" data-status="pass" data-cat="docs">
+      <div class="flex justify-between items-start">
+        <span class="card-number">27 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Documentation</div>
+      <div class="card-title">CANON_SOURCE_MAP.json</div>
+      <div class="card-detail">Machine-readable provenance map for 44 ingested source documents. Each entry: absolute path, SHA-256 checksum, canon sections contributed to, ingest date. Full audit trail for completeness.</div>
+      <div class="card-metric">docs/CANON_SOURCE_MAP.json · v1.0.0 · 44 entries</div>
+    </div>
+
+    <!-- 28 -->
+    <div class="audit-card pass" data-status="pass" data-cat="infrastructure">
+      <div class="flex justify-between items-start">
+        <span class="card-number">28 / 30</span>
+        <span class="status-badge badge-pass">PASS</span>
+      </div>
+      <div class="card-category mt-2">Infrastructure</div>
+      <div class="card-title">Safety Layer Architecture</div>
+      <div class="card-detail">Pure Python hardcoded constants — no LLM bypass possible. Circuit breakers: daily loss −2%, max drawdown −10%, order rate >10/min, max contracts 2, margin 40%. Kill switch 3 states. IB port 4002 paper only.</div>
+      <div class="card-metric">engine/risk/safety_layer.py · SACRED · Cannot be bypassed</div>
+    </div>
+
+    <!-- 29 -->
+    <div class="audit-card pending" data-status="pending" data-cat="infrastructure">
+      <div class="flex justify-between items-start">
+        <span class="card-number">29 / 30</span>
+        <span class="status-badge badge-pending">PENDING</span>
+      </div>
+      <div class="card-category mt-2">Infrastructure</div>
+      <div class="card-title">IB Gateway Paper Port 4002</div>
+      <div class="card-detail">Engine starts but ibkr_connected=false. Phase 3 (June 2026+) requires TWS running on paper port 4002. Not required for current paper trading phase (manual decision logging). Graduation gate check #7.</div>
+      <div class="card-metric">Phase 3 gate &nbsp;·&nbsp; IBKR_PORT=4002 &nbsp;·&nbsp; Target: Jun 2026</div>
+    </div>
+
+    <!-- 30 -->
+    <div class="audit-card pending" data-status="pending" data-cat="infrastructure">
+      <div class="flex justify-between items-start">
+        <span class="card-number">30 / 30</span>
+        <span class="status-badge badge-pending">PENDING</span>
+      </div>
+      <div class="card-category mt-2">Infrastructure</div>
+      <div class="card-title">Rolling WFE Recalculation Job</div>
+      <div class="card-detail">4-week cadence WFE recalculation not yet automated. Must recalculate monthly: MCL min 0.40, MNQ min 0.30. Halt instrument if WFE drops below threshold. Currently requires manual backtest run.</div>
+      <div class="card-metric">Sprint 7 item &nbsp;·&nbsp; Scheduler job pending &nbsp;·&nbsp; Target: next session</div>
+    </div>
+
+  </div><!-- /audit-grid -->
+
+  <!-- ── Category summary ── -->
+  <div class="mb-8 fade-in">
+    <div class="section-head">CATEGORY BREAKDOWN</div>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3" id="category-grid">
+    </div>
+  </div>
+
+  <!-- ── Conflict resolution table ── -->
+  <div class="mb-10 fade-in" style="background:var(--navy2); border:1px solid var(--border); border-radius:4px; padding:24px;">
+    <div class="section-head">CANONICAL CONFLICT RESOLUTIONS (v2.7)</div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:0.7rem;">
+        <thead>
+          <tr style="border-bottom:1px solid #1e293b; color:#475569; text-transform:uppercase; letter-spacing:0.1em;">
+            <th style="text-align:left; padding:8px 12px; font-weight:500;">Conflict</th>
+            <th style="text-align:left; padding:8px 12px; font-weight:500;">Prior Values</th>
+            <th style="text-align:left; padding:8px 12px; font-weight:500; color:var(--cyan);">Canonical v2.7</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">VIX regime tiers</td>
+            <td style="padding:8px 12px; color:#ef4444;">4-tier, 5-tier, 6-tier</td>
+            <td style="padding:8px 12px; color:var(--green);">6-tier canonical (§1.7)</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">Win rate paper gate</td>
+            <td style="padding:8px 12px; color:#ef4444;">28%, 45%, 50%, 55%</td>
+            <td style="padding:8px 12px; color:var(--green);">45% paper / 50% live (§1.17)</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">MaxDD circuit breaker</td>
+            <td style="padding:8px 12px; color:#ef4444;">8%, 10%, 15%</td>
+            <td style="padding:8px 12px; color:var(--green);">SafetyLayer −10.0% / live gate −8%</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">Min trade count</td>
+            <td style="padding:8px 12px; color:#ef4444;">40, 60</td>
+            <td style="padding:8px 12px; color:var(--green);">60 trades over 60+ days</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">Profit Factor paper gate</td>
+            <td style="padding:8px 12px; color:#ef4444;">1.5, 2.0, 3.0, 5.27</td>
+            <td style="padding:8px 12px; color:var(--green);">≥1.5 paper / ≥2.0 live gate</td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(30,41,59,0.8);">
+            <td style="padding:8px 12px; color:#94a3b8;">MGC paper status</td>
+            <td style="padding:8px 12px; color:#ef4444;">ACTIVE, CAUTION, HALTED (conflicting)</td>
+            <td style="padding:8px 12px; color:var(--green);">HALTED — WFE=0.14 OVERFIT</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px; color:#94a3b8;">MCL paper status</td>
+            <td style="padding:8px 12px; color:#ef4444;">DO NOT TRADE</td>
+            <td style="padding:8px 12px; color:var(--green);">APPROVED — WFE=0.82 EXCELLENT</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<div class="footer-mono">
+  JARVIS TRADER · AUDIT REPORT v2.7 · 2026-03-30 · COMMIT e2cd5fc · 28 FILES · +9,695 LINES<br>
+  MCL 1h WFE=0.82 EXCELLENT · MNQ 1h WFE=0.57 GOOD · OPTIONS ENGINE BUILT · 16/16 DASHBOARD ROUTES CLEAN
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SCRIPTS
+═══════════════════════════════════════════ -->
+<script type="module">
+import * as THREE from 'three';
+
+// ── Clock ──────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('clock-text').textContent =
+    `LIVE — ${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}  ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} CT`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Three.js Particle Field ─────────────────
+const canvas = document.getElementById('hero-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setClearColor(0x000000, 0);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+camera.position.set(0, 0, 28);
+
+function resize() {
+  const w = canvas.parentElement.clientWidth;
+  const h = 420;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Particle system
+const N = 280;
+const positions = new Float32Array(N * 3);
+const velocities = [];
+const colors = new Float32Array(N * 3);
+const c1 = new THREE.Color(0x06b6d4);
+const c2 = new THREE.Color(0x10b981);
+const c3 = new THREE.Color(0x0ea5e9);
+const palette = [c1, c2, c3];
+
+for (let i = 0; i < N; i++) {
+  const r = 22 + Math.random() * 6;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = (Math.random() - 0.5) * Math.PI * 0.7;
+  positions[i*3]   = r * Math.cos(phi) * Math.cos(theta);
+  positions[i*3+1] = r * Math.sin(phi);
+  positions[i*3+2] = r * Math.cos(phi) * Math.sin(theta);
+  velocities.push({
+    x: (Math.random() - 0.5) * 0.006,
+    y: (Math.random() - 0.5) * 0.006,
+    z: (Math.random() - 0.5) * 0.006,
+  });
+  const col = palette[Math.floor(Math.random() * palette.length)];
+  colors[i*3]   = col.r;
+  colors[i*3+1] = col.g;
+  colors[i*3+2] = col.b;
+}
+
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const mat = new THREE.PointsMaterial({
+  size: 0.35,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.7,
+  sizeAttenuation: true,
+});
+const particles = new THREE.Points(geo, mat);
+scene.add(particles);
+
+// Grid lines
+const gridGeo = new THREE.BufferGeometry();
+const gridVerts = [];
+for (let i = -20; i <= 20; i += 4) {
+  gridVerts.push(i, -14, -30, i, -14, 10);
+  gridVerts.push(-20, -14, i*1.5, 20, -14, i*1.5);
+}
+gridGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(gridVerts), 3));
+const gridMat = new THREE.LineBasicMaterial({ color: 0x0c2438, transparent: true, opacity: 0.5 });
+scene.add(new THREE.LineSegments(gridGeo, gridMat));
+
+// Central ring
+const ringGeo = new THREE.RingGeometry(5, 5.05, 64);
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, side: THREE.DoubleSide, transparent: true, opacity: 0.15 });
+const ring = new THREE.Mesh(ringGeo, ringMat);
+scene.add(ring);
+
+const ring2Geo = new THREE.RingGeometry(8, 8.04, 64);
+const ring2Mat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide, transparent: true, opacity: 0.08 });
+const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+scene.add(ring2);
+
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.008;
+
+  // Drift particles
+  const pos = geo.attributes.position.array;
+  for (let i = 0; i < N; i++) {
+    pos[i*3]   += velocities[i].x;
+    pos[i*3+1] += velocities[i].y;
+    pos[i*3+2] += velocities[i].z;
+    const dist = Math.sqrt(pos[i*3]**2 + pos[i*3+1]**2 + pos[i*3+2]**2);
+    if (dist > 30 || dist < 18) {
+      velocities[i].x *= -1;
+      velocities[i].y *= -1;
+      velocities[i].z *= -1;
+    }
+  }
+  geo.attributes.position.needsUpdate = true;
+
+  particles.rotation.y = t * 0.05;
+  ring.rotation.z = t * 0.3;
+  ring2.rotation.z = -t * 0.15;
+  ring.rotation.x = Math.sin(t * 0.2) * 0.3;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── Score Ring Canvas 2D ─────────────────────
+const ringCanvas = document.getElementById('score-ring');
+const rctx = ringCanvas.getContext('2d');
+const cards = document.querySelectorAll('.audit-card');
+const total = cards.length;
+let pass = 0, warn = 0, fail = 0, pending = 0;
+cards.forEach(c => {
+  const s = c.dataset.status;
+  if (s === 'pass') pass++;
+  else if (s === 'warn') warn++;
+  else if (s === 'fail') fail++;
+  else pending++;
+});
+
+// Animate counters
+function animateCount(id, target, duration=1200) {
+  let start = null;
+  const el = document.getElementById(id);
+  function step(ts) {
+    if (!start) start = ts;
+    const p = Math.min((ts - start) / duration, 1);
+    el.textContent = Math.round(p * target);
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+setTimeout(() => {
+  animateCount('count-pass', pass);
+  animateCount('count-warn', warn);
+  animateCount('count-fail', fail);
+  animateCount('count-pending', pending);
+  const score = Math.round((pass / total) * 100);
+  setTimeout(() => {
+    document.getElementById('score-pct').textContent = score + '%';
+  }, 1200);
+  // Bars
+  setTimeout(() => {
+    document.getElementById('bar-pass').style.width = (pass/total*100) + '%';
+    document.getElementById('bar-warn').style.width = (warn/total*100) + '%';
+    document.getElementById('bar-fail').style.width = (fail/total*100) + '%';
+    document.getElementById('bar-pending').style.width = (pending/total*100) + '%';
+    document.getElementById('bar-score').style.width = score + '%';
+  }, 300);
+}, 400);
+
+function drawScoreRing(progress) {
+  const cx = 130, cy = 130, r = 100, lw = 14;
+  rctx.clearRect(0, 0, 260, 260);
+
+  // Background track
+  rctx.beginPath();
+  rctx.arc(cx, cy, r, 0, Math.PI * 2);
+  rctx.strokeStyle = '#1e293b';
+  rctx.lineWidth = lw;
+  rctx.stroke();
+
+  // Arc segments
+  const start = -Math.PI/2;
+  const pAngle = (pass/total) * Math.PI * 2 * progress;
+  const wAngle = (warn/total) * Math.PI * 2 * progress;
+  const fAngle = (fail/total) * Math.PI * 2 * progress;
+  const pendAngle = (pending/total) * Math.PI * 2 * progress;
+
+  let cur = start;
+  const segs = [
+    { angle: pAngle, color: '#10b981' },
+    { angle: wAngle, color: '#f59e0b' },
+    { angle: fAngle, color: '#ef4444' },
+    { angle: pendAngle, color: '#475569' },
+  ];
+  segs.forEach(seg => {
+    if (seg.angle <= 0) return;
+    rctx.beginPath();
+    rctx.arc(cx, cy, r, cur, cur + seg.angle);
+    rctx.strokeStyle = seg.color;
+    rctx.lineWidth = lw;
+    rctx.lineCap = 'round';
+    rctx.stroke();
+    cur += seg.angle;
+  });
+
+  // Center text
+  const score = Math.round((pass / total) * 100);
+  rctx.fillStyle = '#e2e8f0';
+  rctx.font = "bold 44px 'Share Tech Mono', monospace";
+  rctx.textAlign = 'center';
+  rctx.textBaseline = 'middle';
+  rctx.fillText(score + '%', cx, cy - 8);
+  rctx.fillStyle = '#64748b';
+  rctx.font = "11px 'JetBrains Mono', monospace";
+  rctx.fillText('AUDIT SCORE', cx, cy + 24);
+  rctx.fillText(`${pass}/${total} PASS`, cx, cy + 40);
+}
+
+// Animate ring
+let ringProg = 0;
+function animRing() {
+  ringProg = Math.min(ringProg + 0.025, 1);
+  drawScoreRing(ringProg);
+  if (ringProg < 1) requestAnimationFrame(animRing);
+}
+setTimeout(animRing, 500);
+
+// ── Radar Chart ─────────────────────────────
+const radarCanvas = document.getElementById('radar-canvas');
+const rdr = radarCanvas.getContext('2d');
+const categories = {
+  'Validation': { pass: 0, total: 0 },
+  'Options':    { pass: 0, total: 0 },
+  'API':        { pass: 0, total: 0 },
+  'Paper':      { pass: 0, total: 0 },
+  'Dashboard':  { pass: 0, total: 0 },
+  'Docs':       { pass: 0, total: 0 },
+  'Infra':      { pass: 0, total: 0 },
+};
+const catMap = {
+  'validation': 'Validation',
+  'options':    'Options',
+  'api':        'API',
+  'paper':      'Paper',
+  'dashboard':  'Dashboard',
+  'docs':       'Docs',
+  'infrastructure': 'Infra',
+};
+cards.forEach(c => {
+  const cat = catMap[c.dataset.cat] || 'Infra';
+  categories[cat].total++;
+  if (c.dataset.status === 'pass') categories[cat].pass++;
+});
+
+const cats = Object.keys(categories);
+const scores = cats.map(k => {
+  const d = categories[k];
+  return d.total > 0 ? d.pass / d.total : 0;
+});
+
+function drawRadar(progress) {
+  rdr.clearRect(0, 0, 260, 260);
+  const cx = 130, cy = 130, maxR = 95;
+  const n = cats.length;
+  const step = (Math.PI * 2) / n;
+
+  // Grid rings
+  for (let g = 1; g <= 4; g++) {
+    const gr = maxR * g/4;
+    rdr.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = i * step - Math.PI/2;
+      const x = cx + Math.cos(a) * gr;
+      const y = cy + Math.sin(a) * gr;
+      if (i === 0) rdr.moveTo(x, y); else rdr.lineTo(x, y);
+    }
+    rdr.closePath();
+    rdr.strokeStyle = 'rgba(30,41,59,0.9)';
+    rdr.lineWidth = 1;
+    rdr.stroke();
+  }
+
+  // Spokes
+  for (let i = 0; i < n; i++) {
+    const a = i * step - Math.PI/2;
+    rdr.beginPath();
+    rdr.moveTo(cx, cy);
+    rdr.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
+    rdr.strokeStyle = '#1e293b';
+    rdr.lineWidth = 1;
+    rdr.stroke();
+  }
+
+  // Data polygon
+  rdr.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = i * step - Math.PI/2;
+    const r = maxR * scores[i] * progress;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    if (i === 0) rdr.moveTo(x, y); else rdr.lineTo(x, y);
+  }
+  rdr.closePath();
+  rdr.fillStyle = 'rgba(6,182,212,0.12)';
+  rdr.fill();
+  rdr.strokeStyle = '#06b6d4';
+  rdr.lineWidth = 1.5;
+  rdr.stroke();
+
+  // Data dots
+  for (let i = 0; i < n; i++) {
+    const a = i * step - Math.PI/2;
+    const r = maxR * scores[i] * progress;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    rdr.beginPath();
+    rdr.arc(x, y, 3, 0, Math.PI*2);
+    rdr.fillStyle = '#06b6d4';
+    rdr.fill();
+  }
+
+  // Labels
+  rdr.font = "10px 'JetBrains Mono', monospace";
+  rdr.textAlign = 'center';
+  rdr.textBaseline = 'middle';
+  for (let i = 0; i < n; i++) {
+    const a = i * step - Math.PI/2;
+    const lx = cx + Math.cos(a) * (maxR + 18);
+    const ly = cy + Math.sin(a) * (maxR + 18);
+    const score100 = Math.round(scores[i] * 100);
+    rdr.fillStyle = score100 === 100 ? '#10b981' : score100 >= 50 ? '#06b6d4' : '#f59e0b';
+    rdr.fillText(cats[i], lx, ly - 5);
+    rdr.fillStyle = '#475569';
+    rdr.fillText(score100 + '%', lx, ly + 7);
+  }
+}
+
+let rdrProg = 0;
+function animRadar() {
+  rdrProg = Math.min(rdrProg + 0.03, 1);
+  drawRadar(rdrProg);
+  if (rdrProg < 1) requestAnimationFrame(animRadar);
+}
+setTimeout(animRadar, 700);
+
+// ── Category grid ────────────────────────────
+const catGrid = document.getElementById('category-grid');
+Object.entries(categories).forEach(([name, d]) => {
+  if (d.total === 0) return;
+  const pct = Math.round(d.pass/d.total*100);
+  const color = pct===100 ? 'var(--green)' : pct>=50 ? 'var(--cyan)' : 'var(--amber)';
+  const tile = document.createElement('div');
+  tile.style.cssText = `background:var(--navy2); border:1px solid var(--border); border-radius

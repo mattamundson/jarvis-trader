@@ -1,0 +1,52 @@
+{
+  "alerts": [
+    {
+      "gate_name": "profit_factor",
+      "old_status": "FAIL",
+      "new_status": "PASS",
+      "current_value": 2.2,
+      "target_value": 2.0,
+      "timestamp": "2026-04-02T19:07:14.227989"
+    },
+    {
+      "gate_name": "sharpe_ratio",
+      "old_status": "FAIL",
+      "new_status": "PASS",
+      "current_value": 1.6,
+      "target_value": 1.5,
+      "timestamp": "2026-04-02T19:07:14.233984"
+    },
+    {
+      "gate_name": "win_rate",
+      "old_status": "FAIL",
+      "new_status": "PASS",
+      "current_value": 56.0,
+      "target_value": 55.0,
+      "timestamp": "2026-04-02T19:07:14.243186"
+    },
+    {
+      "gate_name": "trade_count",
+      "old_status": "FAIL",
+      "new_status": "PASS",
+      "current_value": 65.0,
+      "target_value": 60,
+      "timestamp": "2026-04-02T19:07:14.247749"
+    },
+    {
+      "gate_name": "max_drawdown",
+      "old_status": "FAIL",
+      "new_status": "PASS",
+      "current_value": 12.0,
+      "target_value": 15.0,
+      "timestamp": "2026-04-02T19:07:14.252489"
+    },
+    {
+      "gate_name": "trading_days",
+      "old_status": "FAIL",
+      "new_status": "PASS",
+      "current_value": 31.0,
+      "target_value": 30,
+      "timestamp": "2026-04-02T19:07:14.280464"
+    }
+  ]
+}

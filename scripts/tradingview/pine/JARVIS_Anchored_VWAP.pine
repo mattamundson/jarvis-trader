@@ -1,0 +1,137 @@
+// JARVIS_Anchored_VWAP.pine
+// Session VWAP with standard deviation bands
+// Outputs labels readable by data_get_pine_labels() and lines by data_get_pine_lines()
+// MCP tools: study_filter="JARVIS Anchored VWAP"
+
+//@version=5
+indicator(title="JARVIS Anchored VWAP", shorttitle="JARVIS Anchored VWAP", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+show_sd1      = input.bool(true,  title="Show ±1 SD Bands")
+show_sd2      = input.bool(true,  title="Show ±2 SD Bands")
+show_sd3      = input.bool(false, title="Show ±3 SD Bands")
+at_threshold  = input.float(0.05, title="AT threshold (% of VWAP)", minval=0.0, step=0.01)
+
+vwap_col      = input.color(color.new(color.white,  0),  title="VWAP Color")
+sd1_col       = input.color(color.new(color.yellow, 20), title="±1 SD Color")
+sd2_col       = input.color(color.new(color.orange, 20), title="±2 SD Color")
+sd3_col       = input.color(color.new(color.red,    20), title="±3 SD Color")
+
+// ─── Session VWAP via cumulative method ───────────────────────────────────────
+// Resets at session open; uses hlc3 as typical price
+is_new_session = ta.change(time("D")) != 0
+
+var float cum_vol  = 0.0
+var float cum_pv   = 0.0
+var float cum_pv2  = 0.0
+
+if is_new_session
+    cum_vol  := 0.0
+    cum_pv   := 0.0
+    cum_pv2  := 0.0
+
+cum_vol  += volume
+cum_pv   += hlc3 * volume
+cum_pv2  += hlc3 * hlc3 * volume
+
+vwap_calc = cum_vol > 0 ? cum_pv / cum_vol : hlc3
+variance  = cum_vol > 0 ? (cum_pv2 / cum_vol) - vwap_calc * vwap_calc : 0.0
+std_dev   = math.sqrt(math.max(variance, 0.0))
+
+vwap_p1 = vwap_calc + 1.0 * std_dev
+vwap_p2 = vwap_calc + 2.0 * std_dev
+vwap_p3 = vwap_calc + 3.0 * std_dev
+vwap_m1 = vwap_calc - 1.0 * std_dev
+vwap_m2 = vwap_calc - 2.0 * std_dev
+vwap_m3 = vwap_calc - 3.0 * std_dev
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+plot(vwap_calc, title="VWAP",    color=vwap_col, linewidth=2)
+plot(show_sd1 ? vwap_p1 : na,   title="+1 SD",  color=sd1_col, linewidth=1)
+plot(show_sd1 ? vwap_m1 : na,   title="-1 SD",  color=sd1_col, linewidth=1)
+plot(show_sd2 ? vwap_p2 : na,   title="+2 SD",  color=sd2_col, linewidth=1)
+plot(show_sd2 ? vwap_m2 : na,   title="-2 SD",  color=sd2_col, linewidth=1)
+plot(show_sd3 ? vwap_p3 : na,   title="+3 SD",  color=sd3_col, linewidth=1)
+plot(show_sd3 ? vwap_m3 : na,   title="-3 SD",  color=sd3_col, linewidth=1)
+
+// ─── Fill between bands ───────────────────────────────────────────────────────
+p_vwap = plot(vwap_calc, display=display.none)
+p_p1   = plot(show_sd1 ? vwap_p1 : na, display=display.none)
+p_m1   = plot(show_sd1 ? vwap_m1 : na, display=display.none)
+p_p2   = plot(show_sd2 ? vwap_p2 : na, display=display.none)
+p_m2   = plot(show_sd2 ? vwap_m2 : na, display=display.none)
+fill(p_vwap, p_p1, color=color.new(color.yellow, 92))
+fill(p_vwap, p_m1, color=color.new(color.yellow, 92))
+fill(p_p1,   p_p2, color=color.new(color.orange, 92))
+fill(p_m1,   p_m2, color=color.new(color.orange, 92))
+
+// ─── Persistent horizontal lines on last bar ──────────────────────────────────
+var line ln_vwap = na
+var line ln_p1   = na
+var line ln_p2   = na
+var line ln_m1   = na
+var line ln_m2   = na
+var line ln_p3   = na
+var line ln_m3   = na
+
+_redraw(var line ln, float price, color col, int lw) =>
+    if not na(ln)
+        line.delete(ln)
+    line.new(bar_index - 1, price, bar_index, price, extend=extend.both, color=col, width=lw)
+
+if barstate.islast
+    ln_vwap := _redraw(ln_vwap, vwap_calc, vwap_col, 2)
+    ln_p1   := _redraw(ln_p1,   vwap_p1,   sd1_col,  1)
+    ln_m1   := _redraw(ln_m1,   vwap_m1,   sd1_col,  1)
+    ln_p2   := _redraw(ln_p2,   vwap_p2,   sd2_col,  1)
+    ln_m2   := _redraw(ln_m2,   vwap_m2,   sd2_col,  1)
+    if show_sd3
+        ln_p3 := _redraw(ln_p3, vwap_p3,   sd3_col,  1)
+        ln_m3 := _redraw(ln_m3, vwap_m3,   sd3_col,  1)
+
+// ─── Price vs VWAP classification ────────────────────────────────────────────
+at_band = vwap_calc * at_threshold / 100.0
+price_vs_vwap_str = close > vwap_calc + at_band ? "ABOVE"
+                  : close < vwap_calc - at_band ? "BELOW"
+                  : "AT"
+
+// ─── Labels on last bar (MCP readable) ────────────────────────────────────────
+if barstate.islast
+    label.new(bar_index, vwap_calc,
+              "VWAP: " + str.tostring(vwap_calc, "#.##"),
+              style=label.style_none, textcolor=color.white, size=size.small)
+
+    label.new(bar_index, vwap_p1,
+              "VWAP_PLUS1: " + str.tostring(vwap_p1, "#.##"),
+              style=label.style_none, textcolor=color.yellow, size=size.small)
+
+    label.new(bar_index, vwap_p2,
+              "VWAP_PLUS2: " + str.tostring(vwap_p2, "#.##"),
+              style=label.style_none, textcolor=color.orange, size=size.small)
+
+    label.new(bar_index, vwap_m1,
+              "VWAP_MINUS1: " + str.tostring(vwap_m1, "#.##"),
+              style=label.style_none, textcolor=color.yellow, size=size.small)
+
+    label.new(bar_index, vwap_m2,
+              "VWAP_MINUS2: " + str.tostring(vwap_m2, "#.##"),
+              style=label.style_none, textcolor=color.orange, size=size.small)
+
+    label.new(bar_index, vwap_calc,
+              "PRICE_VS_VWAP: " + price_vs_vwap_str,
+              style=label.style_none, textcolor=price_vs_vwap_str == "ABOVE" ? color.green
+                                               : price_vs_vwap_str == "BELOW" ? color.red
+                                               : color.white,
+              size=size.small)
+
+    label.new(bar_index, vwap_calc,
+              "STD_DEV: " + str.tostring(std_dev, "#.####"),
+              style=label.style_none, textcolor=color.gray, size=size.small)
+
+    if show_sd3
+        label.new(bar_index, vwap_p3,
+                  "VWAP_PLUS3: " + str.tostring(vwap_p3, "#.##"),
+                  style=label.style_none, textcolor=color.red, size=size.small)
+        label.new(bar_index, vwap_m3,
+                  "VWAP_MINUS3: " + str.tostring(vwap_m3, "#.##"),
+                  style=label.style_none, textcolor=color.red, size=size.small)

@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, Target } from "lucide-react";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngine } from "@/lib/api";
 
 interface PerformanceData {
   profit_factor: number;
@@ -103,9 +102,7 @@ export function LiveReadinessWidget() {
 
   async function fetchData() {
     try {
-      const res = await fetch(`${ENGINE_URL}/analytics/performance`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: PerformanceData = await res.json();
+      const json = await fetchEngine<PerformanceData>("/analytics/performance");
       setData(json);
       setError(null);
       setLastUpdated(new Date());

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 import {
   Card,
   CardHeader,
@@ -9,7 +10,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface Trade {
   trade_id?: string;
@@ -57,12 +57,13 @@ export function RecentTradesTableWidget() {
 
   const fetchTrades = async () => {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/trades?limit=10&status=CLOSED`
+      const raw: unknown = await fetchEngine(
+        `/portfolio/history/trades?limit=10&status=CLOSED`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: TradesResponse = await res.json();
-      setTrades(json.trades ?? []);
+      const list: Trade[] = Array.isArray(raw)
+        ? raw
+        : ((raw as { trades?: Trade[] }).trades ?? []);
+      setTrades(list);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch");

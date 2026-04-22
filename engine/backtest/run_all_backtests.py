@@ -33,7 +33,7 @@ INTERVAL_DATES: Dict[str, Tuple[str, str]] = {
     "1d": ("2025-01-01", "2026-03-27"),
 }
 
-DEFAULT_CAPITAL = 100_000.0
+DEFAULT_CAPITAL = 10_000.0
 RESULTS_DIR = Path(__file__).parent / "results"
 
 

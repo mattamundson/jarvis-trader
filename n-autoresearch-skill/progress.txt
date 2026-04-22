@@ -1,0 +1,32 @@
+## 2026-04-03 — Phase 2: US-001 through US-004 (experiment loop infrastructure)
+- Created: `engine/strategies/experiment_log.py` — JSONL logger, compute_experiment_score(), near-miss detection
+- Modified: `engine/strategies/rl_trainer.py` — added IS evaluation per window + WFE=OOS_PF/IS_PF in result dict
+- Created: `engine/strategies/run_experiment.py` — full 11-step CLI runner (exit 0=keep, 1=reset)
+- Created: `engine/strategies/search_strategy.py` — explore/exploit/combine/ablation advisor
+- Created: `engine/data/rl_experiments/` directory for JSONL log storage
+- **Key learnings:**
+  - IS profit_factor requires running a second agent.evaluate() on df_train after training (not from training_summary which only has episode_rewards)
+  - mypy blocked by AppControl policy — use py_compile + structural assertions instead
+  - search_strategy decision priority: ablation → combine → explore → exploit
+  - KEEP threshold: score >= best × 0.95 (5% tolerance)
+---
+
+## 2026-04-03 — US-001 through US-004 (complete session)
+- Installed skill: `~/.claude/skills/n-autoresearch/` (4 files)
+- Created: `~/.claude/skills/jarvis-trader/n-autoresearch-patterns.md`
+- Updated: JARVIS TRADER SKILL.md Context Files table
+- Updated: MEMORY.md with integration note
+- **Key learning**: rl_config.py Run 1–10 comment block is the experiment log — the framework was already being done manually. n-autoresearch adds git lineage + adaptive search + crash recovery on top.
+- **Learnings for future iterations:**
+  - optimizer.py PARAM_GRID is the static equivalent; n-autoresearch replaces it with adaptive search
+  - rl_config.py is the ONLY file to touch per experiment (= train.py rule)
+  - WFE × PF × Sharpe composite = the val_bpb equivalent metric
+  - 8 experiment categories defined: reward_shape, episode_config, signal_params, regime_filter, rl_hyperparams, feature_engineering, ablation, combine
+---
+
+## Codebase Patterns
+- Skill files go to ~/.claude/skills/[name]/
+- Concept mapping files go to ~/.claude/skills/jarvis-trader/
+- Model patterns after paperclip-patterns.md (concept table + code examples + when to invoke)
+- JARVIS TRADER SKILL.md Context Files table is at the bottom of the file
+- MEMORY.md lives at C:\Users\mattm\.claude\projects\C--windows-system32\memory\MEMORY.md

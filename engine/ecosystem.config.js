@@ -6,7 +6,7 @@
  * Usage:
  *   pm2 start ecosystem.config.js                   # Start all processes
  *   pm2 start ecosystem.config.js --only jarvis-engine
- *   pm2 start ecosystem.config.js --only jarvis-rolling-wfe
+ *   pm2 start ecosystem.config.js --only jarvis-morning-brief
  *   pm2 stop all
  *   pm2 restart jarvis-engine
  *   pm2 logs jarvis-engine
@@ -20,11 +20,17 @@
  *   - Dependencies installed: .venv/Scripts/pip install -r requirements-core.txt
  *
  * Ports:
- *   jarvis-engine:       8010 (FastAPI)
- *   jarvis-rolling-wfe:  cron (no port — scheduler only)
+ *   jarvis-engine:           8010 (FastAPI)
+ *   jarvis-rolling-wfe:      cron (no port — scheduler only)
+ *   jarvis-paper-runner:     cron (no port — scheduler only)
+ *   jarvis-health-check:     cron (no port — health monitoring)
+ *   jarvis-morning-brief:    cron (no port — pre-market brief)
+ *   jarvis-eod-summary:      cron (no port — end-of-day journal)
  *
  * @see JARVIS_TRADER_MASTER.md §1.14 Infrastructure
- * @see engine/backtest/rolling_wfe_scheduler.py
+ * @see engine/scripts/daily_health_check.py
+ * @see engine/scripts/morning_brief.py
+ * @see engine/scripts/eod_summary.py
  */
 
 const path = require("path");
@@ -36,10 +42,14 @@ const PYTHON = path.join(ENGINE_DIR, ".venv", "Scripts", "python.exe");
 module.exports = {
   apps: [
     // ── FastAPI Engine ─────────────────────────────────────────────────────────
+    // NOTE: launched via scripts/port_guardian.py instead of uvicorn directly.
+    // Guardian kills any orphaned python/uvicorn process holding port 8010 before
+    // exec'ing uvicorn. Prevents the 2026-04-14 crash-loop class of bug where a
+    // PowerShell-launched orphan blocks PM2 restarts. See docs/troubleshooting.md.
     {
       name: "jarvis-engine",
       script: PYTHON,
-      args: "-m uvicorn main:app --host 0.0.0.0 --port 8010 --reload",
+      args: "scripts/port_guardian.py",
       cwd: ENGINE_DIR,
       interpreter: "none",
 
@@ -50,11 +60,11 @@ module.exports = {
         PYTHONUNBUFFERED: "1",
       },
 
-      // Restart policy
+      // Restart policy — no --reload so PM2 is the sole restart mechanism
       autorestart: true,
-      watch: false,            // Do NOT watch — uvicorn --reload handles file changes
-      max_restarts: 10,
-      min_uptime: "30s",       // Must stay up 30s to count as "started"
+      watch: false,
+      max_restarts: 50,
+      min_uptime: "10s",
       restart_delay: 5000,     // Wait 5s between restarts
 
       // Logging
@@ -103,18 +113,171 @@ module.exports = {
       exec_mode: "fork",
     },
 
-    // ── Dashboard (Next.js) — OPTIONAL: use if not running dashboard separately ──
-    // Uncomment to manage dashboard via PM2 as well.
-    // {
-    //   name: "jarvis-dashboard",
-    //   script: "node",
-    //   args: "node_modules/.bin/next start -p 3010",
-    //   cwd: path.join(ENGINE_DIR, "..", "dashboard"),
-    //   interpreter: "none",
-    //   autorestart: true,
-    //   watch: false,
-    //   env: { NODE_ENV: "production", PORT: "3010" },
-    //   log_date_format: "YYYY-MM-DD HH:mm:ss",
-    // },
+    // ── Daily Health Check ─────────────────────────────────────────────────────
+    // Validates engine health, safety status, and portfolio equity.
+    // Runs every 30 minutes during market hours (8:00am–5:00pm CT Mon–Fri).
+    // Logs to data/daily_health_log.json.
+    {
+      name: "jarvis-health-check",
+      script: PYTHON,
+      args: "scripts/daily_health_check.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+
+      // Cron: every 30 minutes during market hours (8:00am–5:00pm CT)
+      // */30 8-16 * * 1-5 in CT (note: PM2 uses cron_restart for cron scheduling)
+      cron_restart: "*/30 8-16 * * 1-5",
+      autorestart: false,
+
+      // Environment
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+
+      // Logging
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "health-check-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "health-check-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Pre-Market Intelligence Brief ──────────────────────────────────────────
+    // Generates market snapshot, VIX regime, sentiment, and portfolio status.
+    // Runs daily at 6:30am CT (2 hours before RTH open at 8:30am CT).
+    // Saves brief to data/morning_briefs/YYYY-MM-DD.md.
+    {
+      name: "jarvis-morning-brief",
+      script: PYTHON,
+      args: "scripts/morning_brief.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+
+      // Cron: every weekday at 06:30 CT
+      cron_restart: "30 6 * * 1-5",
+      autorestart: false,
+
+      // Environment
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+
+      // Logging
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "morning-brief-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "morning-brief-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── End-of-Day Summary ─────────────────────────────────────────────────────
+    // Generates daily journal entry with trades, P&L, and learning insights.
+    // Runs daily at 4:05pm CT (5 minutes after RTH close at 4:00pm CT).
+    // Saves journal to data/daily_journals/YYYY-MM-DD.md.
+    {
+      name: "jarvis-eod-summary",
+      script: PYTHON,
+      args: "scripts/eod_summary.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+
+      // Cron: every weekday at 16:05 CT (4:05pm CT)
+      cron_restart: "5 16 * * 1-5",
+      autorestart: false,
+
+      // Environment
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+
+      // Logging
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "eod-summary-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "eod-summary-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Nightly Discord Export + Ingest ────────────────────────────────────────
+    // Runs DiscordChatExporter on the two live Corey channels (general,
+    // market-updates), then chains into nightly_discord.py to ingest the fresh
+    // JSON into SQLite + run sentiment ETL. Closes T2.1 staleness (agents were
+    // reading discord_corey_commentary that was 15 days stale).
+    //
+    // Prereqs (user action): install DiscordChatExporter.Cli to
+    // C:\Users\mattm\tools\DiscordChatExporter.Cli\ (or set DCE_CLI_PATH env).
+    //
+    // Runs nightly at 02:00 America/Chicago — after all US sessions close,
+    // before morning-brief at 06:30. --after=7d keeps per-run payload <5 MB.
+    {
+      name: "jarvis-discord-export",
+      script: PYTHON,
+      args: "-m scripts.nightly_discord_export",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+
+      cron_restart: "0 2 * * *",
+      autorestart: false,
+
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "discord-export-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "discord-export-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Next.js Dashboard ─────────────────────────────────────────────────────
+    // Serves the React dashboard at http://localhost:3010
+    // Uses pnpm start (production build) — run `pnpm build` in dashboard/ first.
+    //
+    // NOTE: script must be ``cmd /c pnpm run start`` on Windows, NOT ``pnpm`` directly.
+    // PM2 on Node 24 tries to ``require("pnpm.cmd")`` as a JS module and hits
+    // ``SyntaxError: Invalid or unexpected token`` on the ``@ECHO off`` line.
+    // Wrapping through ``cmd.exe`` lets the .cmd shim run normally.
+    {
+      name: "jarvis-dashboard",
+      script: "cmd",
+      args: "/c pnpm run start",
+      cwd: path.join(ENGINE_DIR, "..", "dashboard"),
+      interpreter: "none",
+
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      min_uptime: "10s",
+      restart_delay: 3000,
+
+      env: {
+        NODE_ENV: "production",
+        PORT: "3010",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "dashboard-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "dashboard-out.log"),
+      merge_logs: true,
+      exec_mode: "fork",
+    },
   ],
 };

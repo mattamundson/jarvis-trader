@@ -1,0 +1,600 @@
+//@version=5
+// JARVIS MCP Manifest Indicator
+// One indicator → one MCP call → all signal data.
+// Python bridge reads this first; falls back to individual indicators only if not loaded.
+//
+// MCP readback:
+//   data_get_pine_tables(study_filter="JARVIS MCP Manifest")   ← primary
+//   data_get_pine_labels(study_filter="JARVIS MCP Manifest")   ← secondary
+//
+// Table layout: 3 columns — Category | Key | Value
+// Label format: "KEY: value"
+indicator("JARVIS MCP Manifest", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=50)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── INPUTS ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+i_stc_fast     = input.int(23,    "STC Fast EMA",        group="STC")
+i_stc_slow     = input.int(50,    "STC Slow EMA",        group="STC")
+i_stc_len      = input.int(10,    "STC Length",          group="STC")
+i_stc_smooth   = input.int(3,     "STC Smoothing",       group="STC")
+i_stc_ob       = input.float(83.0, "STC Overbought",     group="STC")
+i_stc_os       = input.float(15.0, "STC Oversold",       group="STC")
+
+i_atr_len      = input.int(14,    "ATR Length",          group="ATR")
+i_phase_len    = input.int(21,    "Phase Pivot EMA Len", group="Phase")
+i_phase_smooth = input.int(3,     "Phase Smoothing",     group="Phase")
+i_bb_len       = input.int(21,    "Compression BB Len",  group="Phase")
+i_bb_mult      = input.float(2.0, "Compression BB Mult", group="Phase")
+i_comp_thresh  = input.float(1.854,"Compression Thresh", group="Phase")
+
+i_vwap_mult    = input.float(2.0, "VWAP SD Multiplier",  group="VWAP")
+i_kc_ema       = input.int(20,    "KC 1H EMA Length",    group="Keltner")
+i_kc_atr       = input.int(14,    "KC 1H ATR Length",    group="Keltner")
+i_kc_mult      = input.float(2.0, "KC 1H Multiplier",    group="Keltner")
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── STC (Schaff Trend Cycle) ───────────────────────────────────────────────
+// Matches JARVIS_STC_Sub.pine exactly.
+// ═══════════════════════════════════════════════════════════════════════════
+f_stc(fast, slow, len, smth) =>
+    ema1     = ta.ema(close, fast)
+    ema2     = ta.ema(close, slow)
+    macd     = ema1 - ema2
+    lowest1  = ta.lowest(macd, len)
+    highest1 = ta.highest(macd, len)
+    range1   = highest1 - lowest1
+    k1       = range1 != 0.0 ? (macd - lowest1) / range1 * 100.0 : 50.0
+    d1       = ta.ema(k1, smth)
+    lowest2  = ta.lowest(d1, len)
+    highest2 = ta.highest(d1, len)
+    range2   = highest2 - lowest2
+    k2       = range2 != 0.0 ? (d1 - lowest2) / range2 * 100.0 : 50.0
+    ta.ema(k2, smth)
+
+stc_raw   = f_stc(i_stc_fast, i_stc_slow, i_stc_len, i_stc_smooth)
+stc_val   = math.max(0.0, math.min(100.0, stc_raw))
+stc_state = stc_val >= i_stc_ob ? "OVERBOUGHT" : stc_val <= i_stc_os ? "OVERSOLD" : stc_val > 50.0 ? "BULLISH" : "BEARISH"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── ATR LEVELS (daily) ─────────────────────────────────────────────────────
+// Matches JARVIS_ATR_Levels.pine exactly.
+// ═══════════════════════════════════════════════════════════════════════════
+prev_close_d  = request.security(syminfo.tickerid, "D", close[1],            lookahead=barmerge.lookahead_on)
+atr_daily     = request.security(syminfo.tickerid, "D", ta.atr(i_atr_len)[1],lookahead=barmerge.lookahead_on)
+
+atr_intraday  = ta.atr(i_atr_len)
+true_range    = math.max(high - low, math.abs(high - close[1]), math.abs(low - close[1]))
+tr_pct        = atr_daily > 0 ? math.round(true_range / atr_daily * 100) : 0
+
+neg1 = prev_close_d - 1.0 * atr_daily
+pos1 = prev_close_d + 1.0 * atr_daily
+neg2 = prev_close_d - 2.0 * atr_daily
+pos2 = prev_close_d + 2.0 * atr_daily
+neg3 = prev_close_d - 3.0 * atr_daily
+pos3 = prev_close_d + 3.0 * atr_daily
+lower_trig = prev_close_d - 0.236 * atr_daily
+upper_trig = prev_close_d + 0.236 * atr_daily
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── IB LEVELS (9:30–10:30 ET) ─────────────────────────────────────────────
+// Matches JARVIS_IB_Levels.pine exactly.
+// ═══════════════════════════════════════════════════════════════════════════
+ib_start = timestamp("America/New_York", year, month, dayofmonth, 9, 30)
+ib_end   = timestamp("America/New_York", year, month, dayofmonth, 10, 30)
+in_ib    = time >= ib_start and time < ib_end
+after_ib = time >= ib_end
+
+var float ib_high = na
+var float ib_low  = na
+var bool  ib_done = false
+
+day_changed = dayofmonth != dayofmonth[1] or month != month[1]
+if day_changed
+    ib_high := na
+    ib_low  := na
+    ib_done := false
+
+if in_ib
+    ib_high := na(ib_high) ? high : math.max(ib_high, high)
+    ib_low  := na(ib_low)  ? low  : math.min(ib_low,  low)
+
+if after_ib and not ib_done and not na(ib_high)
+    ib_done := true
+
+ib_range  = na(ib_high) or na(ib_low) ? na : ib_high - ib_low
+ibu50     = na(ib_high) or na(ib_range) ? na : ib_high + ib_range * 0.50
+ibu100    = na(ib_high) or na(ib_range) ? na : ib_high + ib_range * 1.00
+ibd50     = na(ib_low)  or na(ib_range) ? na : ib_low  - ib_range * 0.50
+ibd100    = na(ib_low)  or na(ib_range) ? na : ib_low  - ib_range * 1.00
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── PHASE OSCILLATOR ───────────────────────────────────────────────────────
+// Matches JARVIS_Phase_Oscillator.pine exactly.
+// ═══════════════════════════════════════════════════════════════════════════
+phase_pivot    = ta.ema(close, i_phase_len)
+atr14_phase    = ta.atr(i_atr_len)
+phase_raw      = atr14_phase != 0.0 ? ((close - phase_pivot) / (3.0 * atr14_phase)) * 100.0 : 0.0
+phase_val      = ta.ema(phase_raw, i_phase_smooth)
+
+[bb_mid, bb_upper, bb_lower] = ta.bb(close, i_bb_len, i_bb_mult)
+bb_width       = bb_upper - bb_lower
+atr_band       = atr14_phase * i_comp_thresh * 2.0
+is_compressed  = bb_width < atr_band
+
+phase_state    = phase_val > 61.8 ? "DISTRIBUTION" : phase_val > 23.6 ? "NEUTRAL_UP" : phase_val > 0.0 ? "EXPANSION_UP" : phase_val > -23.6 ? "EXPANSION_DOWN" : phase_val > -61.8 ? "NEUTRAL_DOWN" : "ACCUMULATION"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── VWAP + STANDARD DEVIATION BANDS ────────────────────────────────────────
+// Rolling session VWAP with ±1SD and ±2SD bands.
+// ═══════════════════════════════════════════════════════════════════════════
+vwap_val    = ta.vwap(close)
+
+// Standard deviation of price from VWAP (session-cumulative approximation)
+// Uses the same rolling period as the chart resolution.
+vwap_std    = ta.stdev(close, 20)
+vwap_p1sd   = vwap_val + 1.0 * i_vwap_mult * vwap_std
+vwap_p2sd   = vwap_val + 2.0 * i_vwap_mult * vwap_std
+vwap_m1sd   = vwap_val - 1.0 * i_vwap_mult * vwap_std
+vwap_m2sd   = vwap_val - 2.0 * i_vwap_mult * vwap_std
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── PIVOT POINTS (floor, daily) ────────────────────────────────────────────
+// Matches JARVIS_Pivot_Points.pine exactly.
+// ═══════════════════════════════════════════════════════════════════════════
+pp_close = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+pp_high  = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_on)
+pp_low   = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_on)
+pp_hl    = pp_high - pp_low
+
+pp = (pp_high + pp_low + pp_close) / 3.0
+r1 = 2.0 * pp - pp_low
+r2 = pp + pp_hl
+r3 = pp_high + 2.0 * (pp - pp_low)
+s1 = 2.0 * pp - pp_high
+s2 = pp - pp_hl
+s3 = pp_low - 2.0 * (pp_high - pp)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── KELTNER CHANNEL (1H via MTF) ───────────────────────────────────────────
+// Matches JARVIS_Keltner_Dual slow-channel params on 1H timeframe.
+// ═══════════════════════════════════════════════════════════════════════════
+kc_1h_mid   = request.security(syminfo.tickerid, "60", ta.ema(close, i_kc_ema),  lookahead=barmerge.lookahead_off)
+kc_1h_atr   = request.security(syminfo.tickerid, "60", ta.atr(i_kc_atr),         lookahead=barmerge.lookahead_off)
+kc_1h_upper = kc_1h_mid + i_kc_mult * kc_1h_atr
+kc_1h_lower = kc_1h_mid - i_kc_mult * kc_1h_atr
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── GAP DETECTION ──────────────────────────────────────────────────────────
+// Matches JARVIS_Gap_Finder.pine exactly.
+// ═══════════════════════════════════════════════════════════════════════════
+gap_prev_high = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_on)
+gap_prev_low  = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_on)
+gap_today_open= request.security(syminfo.tickerid, "D", open,     lookahead=barmerge.lookahead_on)
+gap_today_high= request.security(syminfo.tickerid, "D", high,     lookahead=barmerge.lookahead_on)
+gap_today_low = request.security(syminfo.tickerid, "D", low,      lookahead=barmerge.lookahead_on)
+
+gap_up     = gap_today_open > gap_prev_high
+gap_down   = gap_today_open < gap_prev_low
+gap_exists = gap_up or gap_down
+
+gap_high_val = gap_up   ? gap_today_open : gap_down ? gap_prev_low   : na
+gap_low_val  = gap_up   ? gap_prev_high  : gap_down ? gap_today_open : na
+gap_dir_str  = gap_up   ? "UP"           : gap_down ? "DOWN"         : "NONE"
+
+var bool gap_filled_flag = false
+if gap_exists and not na(gap_high_val) and not na(gap_low_val)
+    if gap_today_low <= gap_high_val and gap_today_high >= gap_low_val
+        gap_filled_flag := true
+else
+    gap_filled_flag := false
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── COMPOSITE SCORE (ORB + STC + VWAP) ─────────────────────────────────────
+// Matches JARVIS_Composite_Score.pine regime-adaptive weighting.
+// ═══════════════════════════════════════════════════════════════════════════
+ema8_r  = ta.ema(close, 8)
+ema21_r = ta.ema(close, 21)
+ema34_r = ta.ema(close, 34)
+norm_atr = close > 0.0 ? atr_intraday / close * 100.0 : 0.0
+is_volatile      = norm_atr >= 2.0
+is_trending_bull = ema8_r > ema21_r and ema21_r > ema34_r and not is_volatile
+is_trending_bear = ema8_r < ema21_r and ema21_r < ema34_r and not is_volatile
+is_ranging       = not is_volatile and not is_trending_bull and not is_trending_bear
+
+comp_regime_str = is_volatile ? "VOLATILE" : is_trending_bull ? "TRENDING_BULL" : is_trending_bear ? "TRENDING_BEAR" : "RANGING"
+
+w_stc_c  = is_volatile ? 0.0 : (is_trending_bull or is_trending_bear) ? 0.60 : 0.50
+w_orb_c  = is_volatile ? 0.0 : (is_trending_bull or is_trending_bear) ? 0.30 : 0.20
+w_vwap_c = is_volatile ? 0.0 : (is_trending_bull or is_trending_bear) ? 0.10 : 0.30
+
+// ORB tracking (30-min opening range, 9:30 ET)
+var int   orb_start_bar = na
+var float orb_high_val  = na
+var float orb_low_val   = na
+var bool  orb_complete  = false
+
+is_new_session = ta.change(time("D")) != 0
+if is_new_session
+    orb_start_bar := bar_index
+    orb_high_val  := high
+    orb_low_val   := low
+    orb_complete  := false
+else if not na(orb_start_bar)
+    bars_in = bar_index - orb_start_bar
+    tf_mins = timeframe.in_seconds() / 60.0
+    orb_bars_needed = math.max(1, math.round(30.0 / tf_mins))
+    if not orb_complete
+        if bars_in < orb_bars_needed
+            orb_high_val := math.max(orb_high_val, high)
+            orb_low_val  := math.min(orb_low_val,  low)
+        else
+            orb_complete := true
+
+// Persistent STC cross state
+var bool stc_long_active  = false
+var bool stc_short_active = false
+stc_cross_long  = ta.crossover(stc_val, i_stc_os)
+stc_cross_short = ta.crossunder(stc_val, i_stc_ob)
+if stc_cross_long
+    stc_long_active  := true
+    stc_short_active := false
+if stc_cross_short
+    stc_short_active := true
+    stc_long_active  := false
+
+vwap_long_c  = close <= vwap_m1sd and close > close[1]
+vwap_short_c = close >= vwap_p1sd  and close < close[1]
+orb_long_c   = orb_complete and close > orb_high_val and (is_trending_bull or is_ranging)
+orb_short_c  = orb_complete and close < orb_low_val  and (is_trending_bear or is_ranging)
+
+long_score  = w_stc_c * (stc_long_active ? 1.0 : 0.0) + w_orb_c * (orb_long_c ? 1.0 : 0.0) + w_vwap_c * (vwap_long_c ? 1.0 : 0.0)
+short_score = w_stc_c * (stc_short_active ? 1.0 : 0.0) + w_orb_c * (orb_short_c ? 1.0 : 0.0) + w_vwap_c * (vwap_short_c ? 1.0 : 0.0)
+composite_score = long_score - short_score
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── COREY SCORE ─────────────────────────────────────────────────────────────
+// Matches JARVIS_Corey_Score.pine exactly (4-component weighted).
+// ═══════════════════════════════════════════════════════════════════════════
+prev_close_corey = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+session_ema5     = ta.ema(close, 5)
+
+corey_vwap_score    = close > vwap_val ? 1.0 : close < vwap_val ? -1.0 : 0.0
+corey_close_score   = na(prev_close_corey) ? 0.0 : close > prev_close_corey ? 1.0 : close < prev_close_corey ? -1.0 : 0.0
+corey_session_score = close > session_ema5 ? 1.0 : -1.0
+corey_stc_score     = stc_val <= i_stc_os ? 1.0 : stc_val >= i_stc_ob ? -1.0 : (stc_val - 49.0) / 49.0
+
+corey_raw   = corey_vwap_score * 0.40 + corey_close_score * 0.20 + corey_session_score * 0.20 + corey_stc_score * 0.20
+corey_score = math.max(-1.0, math.min(1.0, corey_raw))
+corey_bias  = corey_score > 0.05 ? "BULL" : corey_score < -0.05 ? "BEAR" : "NEUTRAL"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── LIGHT CHART PLOTS (so indicator is visible on chart) ────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+c_vwap_line = color.new(color.cyan, 20)
+c_vwap_sd   = color.new(color.teal, 50)
+c_kc_up     = color.new(color.blue, 60)
+c_kc_lo     = color.new(color.red, 60)
+plot(vwap_val,    "VWAP",      color=c_vwap_line, linewidth=1)
+plot(vwap_p1sd,   "VWAP +1SD", color=c_vwap_sd,   linewidth=1, style=plot.style_circles)
+plot(vwap_m1sd,   "VWAP -1SD", color=c_vwap_sd,   linewidth=1, style=plot.style_circles)
+plot(kc_1h_upper, "KC 1H Up",  color=c_kc_up,     linewidth=1)
+plot(kc_1h_lower, "KC 1H Lo",  color=c_kc_lo,     linewidth=1)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── TABLE OUTPUT (data_get_pine_tables) ────────────────────────────────────
+// 3 columns: Category | Key | Value
+// Rows ordered: STC, COMP, ATR, IB, PHASE, COREY, VWAP, PP, KC, GAP
+// ═══════════════════════════════════════════════════════════════════════════
+var table t = na
+
+if barstate.islast
+    if not na(t)
+        table.delete(t)
+    t := table.new(position.top_right, 3, 48,
+         border_color   = color.new(color.gray, 60),
+         border_width   = 1,
+         frame_color    = color.new(color.gray, 50),
+         frame_width    = 1)
+
+    // Helpers — colors
+    C_HDR_BG   = color.new(color.navy,   20)
+    C_CAT_BG   = color.new(color.black,  70)
+    C_VAL_BG   = color.new(color.black,  80)
+    C_WHITE    = color.white
+    C_GRAY     = color.new(color.gray,   20)
+    C_GREEN    = color.new(color.lime,    0)
+    C_RED      = color.new(color.red,     0)
+    C_YELLOW   = color.new(color.yellow,  0)
+    C_CYAN     = color.new(color.cyan,    0)
+    C_ORANGE   = color.new(color.orange,  0)
+
+    // ── Header row ─────────────────────────────────────────────────────────
+    table.cell(t, 0, 0, "CATEGORY", text_color=C_WHITE, bgcolor=C_HDR_BG, text_size=size.small)
+    table.cell(t, 1, 0, "KEY",      text_color=C_WHITE, bgcolor=C_HDR_BG, text_size=size.small)
+    table.cell(t, 2, 0, "VALUE",    text_color=C_WHITE, bgcolor=C_HDR_BG, text_size=size.small)
+
+    // ── STC rows (2) ───────────────────────────────────────────────────────
+    stc_color = stc_val >= i_stc_ob ? C_RED : stc_val <= i_stc_os ? C_GREEN : stc_val > 50.0 ? C_GREEN : C_RED
+    table.cell(t, 0, 1, "STC",   text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 1, "VALUE", text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 1, str.tostring(stc_val, "#.#"), text_color=stc_color, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 2, "STC",   text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 2, "STATE", text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 2, stc_state, text_color=stc_color, bgcolor=C_VAL_BG, text_size=size.small)
+
+    // ── COMP rows (4) ──────────────────────────────────────────────────────
+    comp_color = composite_score > 0.0 ? C_GREEN : composite_score < 0.0 ? C_RED : C_GRAY
+    table.cell(t, 0, 3, "COMP",   text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 3, "SCORE",  text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 3, str.tostring(composite_score, "#.####"), text_color=comp_color, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 4, "COMP",   text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 4, "REGIME", text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 4, comp_regime_str, text_color=C_YELLOW, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 5, "COMP",    text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 5, "ORB_H",   text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 5, str.tostring(na(orb_high_val) ? 0.0 : orb_high_val, "#.##"), text_color=C_ORANGE, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 6, "COMP",    text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 6, "ORB_L",   text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 6, str.tostring(na(orb_low_val) ? 0.0 : orb_low_val, "#.##"), text_color=C_ORANGE, bgcolor=C_VAL_BG, text_size=size.small)
+
+    // ── ATR rows (8) ───────────────────────────────────────────────────────
+    table.cell(t, 0, 7, "ATR",       text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 7, "VALUE",     text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 7, str.tostring(atr_daily, "#.####"), text_color=C_WHITE, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 8, "ATR",       text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 8, "TR_PCT",    text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 8, str.tostring(tr_pct, "#") + "%", text_color=C_WHITE, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 9, "ATR",       text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 9, "NEG1",      text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 9, str.tostring(neg1, "#.##"), text_color=C_RED, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 10, "ATR",      text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 10, "POS1",     text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 10, str.tostring(pos1, "#.##"), text_color=C_GREEN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 11, "ATR",      text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 11, "NEG2",     text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 11, str.tostring(neg2, "#.##"), text_color=C_RED, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 12, "ATR",      text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 12, "POS2",     text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 12, str.tostring(pos2, "#.##"), text_color=C_GREEN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 13, "ATR",      text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 13, "NEG3",     text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 13, str.tostring(neg3, "#.##"), text_color=C_RED, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 14, "ATR",      text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 14, "POS3",     text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 14, str.tostring(pos3, "#.##"), text_color=C_GREEN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 15, "ATR",      text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 15, "LO_TRIG",  text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 15, str.tostring(lower_trig, "#.##"), text_color=C_RED, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 16, "ATR",      text_color=C_GRAY, bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 16, "HI_TRIG",  text_color=C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 16, str.tostring(upper_trig, "#.##"), text_color=C_GREEN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    // ── IB rows (6) ────────────────────────────────────────────────────────
+    ib_complete_str = ib_done ? "true" : "false"
+    table.cell(t, 0, 17, "IB",        text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 17, "HIGH",      text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 17, na(ib_high) ? "—" : str.tostring(ib_high, "#.##"), text_color=C_YELLOW, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 18, "IB",        text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 18, "LOW",       text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 18, na(ib_low)  ? "—" : str.tostring(ib_low,  "#.##"), text_color=C_YELLOW, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 19, "IB",        text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 19, "RANGE",     text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 19, na(ib_range) ? "—" : str.tostring(ib_range, "#.##"), text_color=C_WHITE, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 20, "IB",        text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 20, "IBU50",     text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 20, na(ibu50)   ? "—" : str.tostring(ibu50,   "#.##"), text_color=C_GREEN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 21, "IB",        text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 21, "IBU100",    text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 21, na(ibu100)  ? "—" : str.tostring(ibu100,  "#.##"), text_color=C_GREEN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 22, "IB",        text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 22, "IBD50",     text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 22, na(ibd50)   ? "—" : str.tostring(ibd50,   "#.##"), text_color=C_RED, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 23, "IB",        text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 23, "IBD100",    text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 23, na(ibd100)  ? "—" : str.tostring(ibd100,  "#.##"), text_color=C_RED, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 24, "IB",        text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 24, "COMPLETE",  text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 24, ib_complete_str, text_color=ib_done ? C_GREEN : C_YELLOW, bgcolor=C_VAL_BG, text_size=size.small)
+
+    // ── PHASE rows (3) ─────────────────────────────────────────────────────
+    phase_color = phase_val >= 0.0 ? C_GREEN : C_RED
+    table.cell(t, 0, 25, "PHASE",     text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 25, "VALUE",     text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 25, str.tostring(phase_val, "#.##"), text_color=phase_color, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 26, "PHASE",     text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 26, "STATE",     text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 26, phase_state, text_color=C_WHITE, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 27, "PHASE",     text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 27, "COMPRESS",  text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 27, is_compressed ? "true" : "false", text_color=is_compressed ? C_YELLOW : C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+
+    // ── COREY rows (2) ─────────────────────────────────────────────────────
+    corey_color = corey_score > 0.05 ? C_GREEN : corey_score < -0.05 ? C_RED : C_YELLOW
+    table.cell(t, 0, 28, "COREY",     text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 28, "SCORE",     text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 28, str.tostring(corey_score, "#.####"), text_color=corey_color, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 29, "COREY",     text_color=C_GRAY,   bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 29, "BIAS",      text_color=C_GRAY,   bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 29, corey_bias,  text_color=corey_color, bgcolor=C_VAL_BG, text_size=size.small)
+
+    // ── VWAP rows (5) ──────────────────────────────────────────────────────
+    table.cell(t, 0, 30, "VWAP",      text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 30, "VALUE",     text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 30, str.tostring(vwap_val, "#.##"),  text_color=C_CYAN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 31, "VWAP",      text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 31, "+1SD",      text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 31, str.tostring(vwap_p1sd, "#.##"), text_color=C_RED,  bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 32, "VWAP",      text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 32, "+2SD",      text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 32, str.tostring(vwap_p2sd, "#.##"), text_color=C_RED,  bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 33, "VWAP",      text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 33, "-1SD",      text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 33, str.tostring(vwap_m1sd, "#.##"), text_color=C_GREEN,bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 34, "VWAP",      text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 34, "-2SD",      text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 34, str.tostring(vwap_m2sd, "#.##"), text_color=C_GREEN,bgcolor=C_VAL_BG, text_size=size.small)
+
+    // ── PP rows (7) ────────────────────────────────────────────────────────
+    table.cell(t, 0, 35, "PP",        text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 35, "PP",        text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 35, str.tostring(pp, "#.##"),  text_color=C_WHITE, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 36, "PP",        text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 36, "R1",        text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 36, str.tostring(r1, "#.##"),  text_color=C_RED,   bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 37, "PP",        text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 37, "R2",        text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 37, str.tostring(r2, "#.##"),  text_color=C_RED,   bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 38, "PP",        text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 38, "R3",        text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 38, str.tostring(r3, "#.##"),  text_color=C_RED,   bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 39, "PP",        text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 39, "S1",        text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 39, str.tostring(s1, "#.##"),  text_color=C_GREEN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 40, "PP",        text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 40, "S2",        text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 40, str.tostring(s2, "#.##"),  text_color=C_GREEN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 41, "PP",        text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 41, "S3",        text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 41, str.tostring(s3, "#.##"),  text_color=C_GREEN, bgcolor=C_VAL_BG, text_size=size.small)
+
+    // ── KC rows (3) ────────────────────────────────────────────────────────
+    table.cell(t, 0, 42, "KC_1H",     text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 42, "UPPER",     text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 42, str.tostring(kc_1h_upper, "#.##"), text_color=C_RED,  bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 43, "KC_1H",     text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 43, "MID",       text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 43, str.tostring(kc_1h_mid,   "#.##"), text_color=C_WHITE,bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 44, "KC_1H",     text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 44, "LOWER",     text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 44, str.tostring(kc_1h_lower, "#.##"), text_color=C_GREEN,bgcolor=C_VAL_BG, text_size=size.small)
+
+    // ── GAP rows (5) ───────────────────────────────────────────────────────
+    gap_color = gap_up ? C_GREEN : gap_down ? C_RED : C_GRAY
+    table.cell(t, 0, 45, "GAP",       text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 45, "EXISTS",    text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 45, gap_exists ? "true" : "false", text_color=gap_exists ? C_YELLOW : C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 46, "GAP",       text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 46, "DIR",       text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 46, gap_dir_str, text_color=gap_color, bgcolor=C_VAL_BG, text_size=size.small)
+
+    table.cell(t, 0, 47, "GAP",       text_color=C_GRAY,  bgcolor=C_CAT_BG, text_size=size.small)
+    table.cell(t, 1, 47, "FILLED",    text_color=C_GRAY,  bgcolor=C_VAL_BG, text_size=size.small)
+    table.cell(t, 2, 47, gap_filled_flag ? "true" : "false", text_color=gap_filled_flag ? C_YELLOW : C_GRAY, bgcolor=C_VAL_BG, text_size=size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── LABEL OUTPUT (data_get_pine_labels) ────────────────────────────────────
+// Format: "KEY: value"   — one label per datum, all at barstate.islast.
+// Y positions staggered around close to avoid exact overlap.
+// ═══════════════════════════════════════════════════════════════════════════
+_lbl_color = color.new(color.white, 15)
+
+_lbl(txt, yoff) =>
+    label.new(bar_index + 1, close + yoff, txt, style=label.style_none, textcolor=_lbl_color, size=size.tiny)
+
+if barstate.islast
+    // STC
+    _lbl("STC_VALUE: "    + str.tostring(stc_val, "#.##"),        0.0)
+    _lbl("STC_STATE: "    + stc_state,                            0.0)
+
+    // COMP
+    _lbl("COMP_SCORE: "   + str.tostring(composite_score, "#.####"), 0.0)
+    _lbl("COMP_REGIME: "  + comp_regime_str,                      0.0)
+    _lbl("ORB_HIGH: "     + str.tostring(na(orb_high_val) ? 0.0 : orb_high_val, "#.##"), 0.0)
+    _lbl("ORB_LOW: "      + str.tostring(na(orb_low_val)  ? 0.0 : orb_low_val,  "#.##"), 0.0)
+
+    // ATR
+    _lbl("ATR_VALUE: "    + str.tostring(atr_daily,  "#.####"),   0.0)
+    _lbl("ATR_TR_PCT: "   + str.tostring(tr_pct, "#"),            0.0)
+    _lbl("ATR_NEG1: "     + str.tostring(neg1, "#.##"),           0.0)
+    _lbl("ATR_POS1: "     + str.tostring(pos1, "#.##"),           0.0)
+    _lbl("ATR_NEG2: "     + str.tostring(neg2, "#.##"),           0.0)
+    _lbl("ATR_POS2: "     + str.tostring(pos2, "#.##"),           0.0)
+    _lbl("ATR_NEG3: "     + str.tostring(neg3, "#.##"),           0.0)
+    _lbl("ATR_POS3: "     + str.tostring(pos3, "#.##"),           0.0)
+    _lbl("ATR_LO_TRIG: "  + str.tostring(lower_trig, "#.##"),     0.0)
+    _lbl("ATR_HI_TRIG: "  + str.tostring(upper_trig, "#.##"),     0.0)
+    _lbl("ATR_PREV_CLOSE: "+ str.tostring(prev_close_d, "#.##"),  0.0)
+
+    // IB
+    _lbl("IB_HIGH: "      + (na(ib_high)  ? "na" : str.tostring(ib_high,  "#.##")), 0.0)
+    _lbl("IB_LOW: "       + (na(ib_low)   ? "na" : str.tostring(ib_low,   "#.##")), 0.0)
+    _lbl("IB_RANGE: "     + (na(ib_range) ? "na" : str.tostring(ib_range, "#.##")), 0.0)
+    _lbl("IBU50: "        + (na(ibu50)    ? "na" : str.tostring(ibu50,    "#.##")), 0.0)
+    _lbl("IBU100: "       + (na(ibu100)   ? "na" : str.tostring(ibu100,   "#.##")), 0.0)
+    _lbl("IBD50: "        + (na(ibd50)    ? "na" : str.tostring(ibd50,    "#.##")), 0.0)
+    _lbl("IBD100: "       + (na(ibd100)   ? "na" : str.tostring(ibd100,   "#.##")), 0.0)
+    _lbl("IB_COMPLETE: "  + (ib_done ? "true" : "false"),         0.0)
+
+    // PHASE
+    _lbl("PHASE_VALUE: "  + str.tostring(phase_val, "#.##"),      0.0)
+    _lbl("PHASE_STATE: "  + phase_state,                          0.0)
+    _lbl("PHASE_COMPRESSED: " + (is_compressed ? "true" : "false"), 0.0)
+
+    // COREY
+    _lbl("COREY_SCORE: "  + str.tostring(corey_score, "#.####"),  0.0)
+    _lbl("COREY_BIAS: "   + corey_bias,                           0.0)
+
+    // VWAP
+    _lbl("VWAP: "         + str.tostring(vwap_val,  "#.##"),      0.0)
+    _lbl("VWAP_P1SD: "    + str.tostring(vwap_p1sd, "#.##"),      0.0)
+    _lbl("VWAP_P2SD: "    + str.tostring(vwap_p2sd, "#.##"),      0.0)
+    _lbl("VWAP_M1SD: "    + str.tostring(vwap_m1sd, "#.##"),      0.0)
+    _lbl("VWAP_M2SD: "    + str.tostring(vwap_m2sd, "#.##"),      0.0)
+
+    // PP
+    _lbl("PP: "           + str.tostring(pp, "#.##"),             0.0)
+    _lbl("PP_R1: "        + str.tostring(r1, "#.##"),             0.0)
+    _lbl("PP_R2: "        + str.tostring(r2, "#.##"),             0.0)
+    _lbl("PP_R3: "        + str.tostring(r3, "#.##"),             0.0)
+    _lbl("PP_S1: "        + str.tostring(s1, "#.##"),             0.0)
+    _lbl("PP_S2: "        + str.tostring(s2, "#.##"),             0.0)
+    _lbl("PP_S3: "        + str.tostring(s3, "#.##"),             0.0)
+
+    // KC 1H
+    _lbl("KC_1H_UPPER: "  + str.tostring(kc_1h_upper, "#.##"),   0.0)
+    _lbl("KC_1H_MID: "    + str.tostring(kc_1h_mid,   "#.##"),   0.0)
+    _lbl("KC_1H_LOWER: "  + str.tostring(kc_1h_lower, "#.##"),   0.0)
+
+    // GAP
+    _lbl("GAP_EXISTS: "   + (gap_exists ? "true" : "false"),      0.0)
+    _lbl("GAP_DIR: "      + gap_dir_str,                          0.0)
+    _lbl("GAP_HIGH: "     + (na(gap_high_val) ? "na" : str.tostring(gap_high_val, "#.##")), 0.0)
+    _lbl("GAP_LOW: "      + (na(gap_low_val)  ? "na" : str.tostring(gap_low_val,  "#.##")), 0.0)
+    _lbl("GAP_FILLED: "   + (gap_filled_flag ? "true" : "false"),  0.0)

@@ -69,14 +69,20 @@ class PnLMonitor:
         db_manager=None,
         ib_gateway=None,
         paper_tracker=None,
+        starting_balance: float = 0.0,
     ) -> None:
         self._db = db_manager
         self._ib = ib_gateway
         self._paper = paper_tracker
+        self._starting_balance = starting_balance  # configured paper balance fallback
 
         # Cache the last successfully-read state so sync callers always get
         # something even if an async IB call hasn't completed yet.
-        self._cached_state: PnLState = PnLState()
+        # Seed with configured starting_balance so health checks always see > 0.
+        self._cached_state: PnLState = PnLState(
+            starting_balance=starting_balance,
+            current_balance=starting_balance,
+        )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -371,6 +377,9 @@ class PnLMonitor:
 
             row = rows[0]
             starting = float(row.get("starting_balance", 0.0) or 0.0)
+            # Fall back to configured starting balance when DB row has 0.0
+            if starting <= 0 and self._starting_balance > 0:
+                starting = self._starting_balance
             ending = float(row.get("ending_balance", 0.0) or 0.0)
             realized = float(row.get("realized_pnl", 0.0) or 0.0)
             unrealized = float(row.get("unrealized_pnl", 0.0) or 0.0)
@@ -410,6 +419,9 @@ class PnLMonitor:
             # Paper tracker does not split daily from cumulative;
             # treat the entire session P&L as the daily figure in paper mode.
             starting = float(perf.get("starting_balance", 0.0) or 0.0)
+            # Fall back to configured starting balance when tracker has no history
+            if starting <= 0 and self._starting_balance > 0:
+                starting = self._starting_balance
             current = starting + total_pnl if starting > 0 else total_pnl
 
             # Equity curve to find peak

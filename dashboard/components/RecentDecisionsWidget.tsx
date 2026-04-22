@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,12 +74,17 @@ export function RecentDecisionsWidget() {
 
   const fetchDecisions = async () => {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/decisions?limit=10`
+      const payload: unknown = await fetchEngine(
+        `/portfolio/history/decisions?limit=10`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: DecisionHistoryResponse = await res.json();
-      setDecisions(Array.isArray(data?.decisions) ? data.decisions : []);
+      const obj = payload as { decisions?: Decision[] };
+      setDecisions(
+        Array.isArray(obj?.decisions)
+          ? obj.decisions
+          : Array.isArray(payload)
+            ? (payload as Decision[])
+            : [],
+      );
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch decisions");

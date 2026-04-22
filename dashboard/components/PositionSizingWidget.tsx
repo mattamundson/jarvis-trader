@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -112,8 +112,8 @@ export function PositionSizingWidget() {
     try {
       // Fetch signal (ATR) and risk settings in parallel
       const [signalRes, settingsRes] = await Promise.all([
-        fetch(`${ENGINE_URL}/paper/mgc-signal`),
-        fetch(`${ENGINE_URL}/settings/risk`),
+        fetchEngine(`/paper/mgc-signal`),
+        fetchEngine(`/settings/risk`),
       ]);
 
       if (!signalRes.ok) throw new Error(`Signal fetch failed: ${signalRes.status}`);

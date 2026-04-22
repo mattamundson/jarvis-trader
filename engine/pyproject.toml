@@ -28,6 +28,7 @@ dev = [
 # Pytest configuration
 testpaths = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -41,6 +42,8 @@ markers = [
     "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "integration_ib: needs IB Gateway on paper port 4002 (skips if unavailable)",
+    "manual: opt-in tests that require external setup (e.g. IB Gateway running); never collected in CI",
     "unit: marks tests as unit tests",
     "smoke: marks tests as smoke tests",
 ]
@@ -113,6 +116,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by black)
+    "C901",  # complexity - legacy, ignored for now
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -129,6 +133,10 @@ ignore = [
 "**/conftest.py" = [
     "F401",  # pytest fixtures are often unused in the file they're defined
     "E402",  # conftest can have imports mid-file
+]
+"main.py" = [
+    "I001",  # import block unsorted — 4100-line file with sprints of appended router imports
+    "E402",  # late websocket imports are intentional (circular import avoidance)
 ]
 "backtest/backtester.py" = [
     "B023",  # false positive: nested functions in loops used as closures
@@ -152,6 +160,4 @@ exclude_lines = [
     "def __repr__",
     "raise AssertionError",
     "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
 ]

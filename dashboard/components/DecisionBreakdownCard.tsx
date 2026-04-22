@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchEngine } from "@/lib/api";
 
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
 
 interface DecisionRecord {
   action?: string;
@@ -97,15 +97,13 @@ export function DecisionBreakdownCard() {
 
   async function fetchDecisions() {
     try {
-      const res = await fetch(
-        `${ENGINE_URL}/portfolio/history/decisions?limit=500`
+      const payload = await fetchEngine<unknown>(
+        `/portfolio/history/decisions?limit=500`
       );
-      if (!res.ok) throw new Error("non-200");
-      const data: DecisionsResponse = await res.json();
       // Handle both { decisions: [...] } and a top-level array
-      const list: DecisionRecord[] = Array.isArray(data)
-        ? (data as DecisionRecord[])
-        : (data.decisions ?? []);
+      const list: DecisionRecord[] = Array.isArray(payload)
+        ? (payload as DecisionRecord[])
+        : ((payload as { decisions?: DecisionRecord[] }).decisions ?? []);
       setRecords(list);
       setError(false);
     } catch {

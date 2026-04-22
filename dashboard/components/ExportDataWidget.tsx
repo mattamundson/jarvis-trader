@@ -3,8 +3,7 @@ import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Download } from "lucide-react";
-
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8010";
+import { fetchEngineRaw } from "@/lib/api";
 
 interface ExportItem {
   label: string;
@@ -35,8 +34,7 @@ export function ExportDataWidget() {
   const handleDownload = async (item: ExportItem) => {
     setDownloading(item.endpoint);
     try {
-      const res = await fetch(`${ENGINE_URL}${item.endpoint}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res = await fetchEngineRaw(item.endpoint);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
