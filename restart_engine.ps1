@@ -26,11 +26,13 @@ if ($pm2Managed) {
 
     pm2 restart jarvis-engine | Out-Host
     Write-Host "Waiting for engine to come up..."
-    # Poll /health with a 180s ceiling. Full startup (SafetyLayer, PnL,
-    # RL model load, scheduler, IB init) has been observed at ~1m44s on
-    # this machine, so anything tighter produces false-positive ERRORs.
+    # Poll /health with a 360s ceiling. Full startup (SafetyLayer, PnL,
+    # RL model load, scheduler, IB init, scanner first-pass retry cascade)
+    # was observed at 229s on 2026-04-21 after the advisor temperature fix
+    # restart. Prior 180s ceiling produced a false-ERROR on a successful
+    # boot because the scanner's TV-feed retries kept uvicorn from binding.
     $startTime = Get-Date
-    $deadline  = $startTime.AddSeconds(180)
+    $deadline  = $startTime.AddSeconds(360)
     $healthy   = $false
     $lastProgressPrint = 0
     while ((Get-Date) -lt $deadline) {
@@ -39,19 +41,22 @@ if ($pm2Managed) {
             if ($r.StatusCode -eq 200) { $healthy = $true; break }
         } catch {}
         Start-Sleep -Seconds 2
-        # Reassure operator at 60s and 120s marks — RL model load + scheduler
-        # warmup can keep uvicorn from binding until ~1m44s.
+        # Reassure operator at 60s / 180s / 300s marks — scanner first-pass
+        # and RL model load can keep uvicorn from binding until ~230s.
         $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
         if ($elapsed -ge 60 -and $lastProgressPrint -lt 60) {
-            Write-Host '  [60s] still booting (uvicorn not yet bound; normal up to ~110s)'
+            Write-Host '  [60s] still booting (uvicorn not yet bound; normal up to ~230s)'
             $lastProgressPrint = 60
-        } elseif ($elapsed -ge 120 -and $lastProgressPrint -lt 120) {
-            Write-Host '  [120s] still booting (if this keeps going past 180s, check pm2 logs for crash)'
-            $lastProgressPrint = 120
+        } elseif ($elapsed -ge 180 -and $lastProgressPrint -lt 180) {
+            Write-Host '  [180s] still booting (scanner retry cascade; steady-state bind ~229s)'
+            $lastProgressPrint = 180
+        } elseif ($elapsed -ge 300 -and $lastProgressPrint -lt 300) {
+            Write-Host '  [300s] still booting (if this keeps going past 360s, check pm2 logs for crash)'
+            $lastProgressPrint = 300
         }
     }
     if (-not $healthy) {
-        Write-Host "ERROR: engine did not respond on /health within 180s after pm2 restart."
+        Write-Host "ERROR: engine did not respond on /health within 360s after pm2 restart."
         Write-Host "Last 30 error-log lines for triage:"
         try {
             pm2 logs jarvis-engine --nostream --lines 30 --err 2>&1 | Select-Object -Last 30 | Out-Host
