@@ -150,6 +150,17 @@ class TradingConfig(BaseSettings):
     )
     MAX_OVERNIGHT_CONTRACTS: int = Field(1, description="Max contracts to hold overnight")
 
+    # Futures position-size gate uses MARGIN (not notional). 1 MES is ~$7,130
+    # notional but only ~$1,320 overnight maintenance margin at IBKR. Against a
+    # $10K paper account, notional-based math rejects every futures order as
+    # "356% of equity"; margin-based math correctly reads as ~13%. This gate
+    # defaults to 30% so 1-2 MES contracts approve on a $10K account while
+    # still catching genuine oversizing.
+    MAX_FUTURES_MARGIN_PCT: float = Field(
+        0.30,
+        description="Max 30% of portfolio equity as futures initial margin",
+    )
+
     # ── Execution Cost Modeling (Backtests) ──────────────────────────────
     COMMISSION_PER_CONTRACT: float = Field(
         1.42,

@@ -85,6 +85,7 @@ def mock_settings():
     config.MAX_MARGIN_UTILIZATION = 0.40
     config.PRICE_COLLAR_PCT = 0.05
     config.MAX_CORRELATED_EXPOSURE_PCT = 0.20
+    config.MAX_FUTURES_MARGIN_PCT = 0.30  # HB-2: futures sizing gate
     return config
 
 

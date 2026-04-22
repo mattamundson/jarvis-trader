@@ -94,6 +94,41 @@ _OVERNIGHT_SYMBOLS: frozenset[str] = frozenset({"MES"})
 _CT_ZONE = ZoneInfo("America/Chicago")
 _OVERNIGHT_CUTOFF_HOUR = 15  # 15:00 CT — CME RTH close for equity futures
 
+# IBKR overnight maintenance margin per contract (USD). These are the figures
+# used by the futures-sizing gate when `order.is_futures=True`. Notional-based
+# gating is wrong for futures: 1 MES is $7,130 notional but only ~$1,320 margin.
+# Source: IBKR futures margin requirements 2026 (CME micro + mini). Conservative
+# overnight figures — day-trade margin is lower. Update when IBKR revises.
+_FUTURES_MARGIN_BY_ROOT: dict[str, float] = {
+    # Micros
+    "MES": 1320.0,   # E-mini S&P 500 micro
+    "MNQ": 1780.0,   # E-mini Nasdaq-100 micro
+    "M2K":  900.0,   # E-mini Russell 2000 micro
+    "MCL": 1100.0,   # WTI crude micro
+    "MGC": 1400.0,   # Gold micro
+    "MHG":  600.0,   # Copper micro
+    "MSI": 1500.0,   # Silver micro
+    # Minis (roughly 10x the micros)
+    "ES":  13200.0,
+    "NQ":  17800.0,
+    "RTY":  9000.0,
+    "CL":  11000.0,
+    "GC":  14000.0,
+    "HG":   6000.0,
+}
+
+
+def _futures_margin_required(symbol: str, quantity: int) -> float | None:
+    """
+    Return estimated IBKR maintenance margin in USD for `quantity` contracts
+    of `symbol`, or None if the root is not in our margin table (caller falls
+    back to notional-based gating).
+    """
+    margin_per = _FUTURES_MARGIN_BY_ROOT.get(symbol.upper())
+    if margin_per is None:
+        return None
+    return margin_per * abs(quantity)
+
 
 @dataclass
 class OrderRequest:
@@ -599,7 +634,43 @@ class SafetyLayer:
     def _check_order_value_limits(
         self, order: OrderRequest, portfolio_equity: float
     ) -> RiskCheckResult:
-        """Check order size and position size limits."""
+        """
+        Check order size and position size limits.
+
+        Futures branch: uses IBKR maintenance margin (via `_FUTURES_MARGIN_BY_ROOT`)
+        instead of notional value, and `MAX_FUTURES_MARGIN_PCT` instead of
+        `MAX_POSITION_SIZE_PCT`. Notional-based gating is wrong for futures —
+        1 MES at $7,130 notional is only ~$1,320 margin, so a notional-based
+        5% cap would reject every futures order on a $10K account.
+
+        Non-futures path: unchanged — notional vs `MAX_SINGLE_ORDER_VALUE` and
+        `MAX_POSITION_SIZE_PCT`.
+
+        Unknown futures root (not in `_FUTURES_MARGIN_BY_ROOT`): falls back to
+        notional-based gating so unrecognized symbols never silently bypass.
+        """
+        if order.is_futures:
+            margin = _futures_margin_required(order.symbol, order.quantity)
+            if margin is not None:
+                if portfolio_equity <= 0:
+                    return RiskCheckResult(
+                        approved=False,
+                        rejection_reason="Cannot size futures order against zero portfolio equity",
+                    )
+                margin_pct = margin / portfolio_equity
+                max_pct = getattr(self._config, "MAX_FUTURES_MARGIN_PCT", 0.30)
+                if margin_pct > max_pct:
+                    return RiskCheckResult(
+                        approved=False,
+                        rejection_reason=(
+                            f"Futures margin {margin_pct:.1%} exceeds max {max_pct:.1%} "
+                            f"(margin ${margin:,.0f} vs equity ${portfolio_equity:,.0f}, "
+                            f"{abs(order.quantity)} {order.symbol.upper()})"
+                        ),
+                    )
+                return RiskCheckResult(approved=True)
+            # Unknown futures root — fall through to notional-based check below.
+
         if order.estimated_value > self._config.MAX_SINGLE_ORDER_VALUE:
             return RiskCheckResult(
                 approved=False,
