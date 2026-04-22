@@ -1,7 +1,9 @@
 # JARVIS TRADER — Implementation Roadmap 2026 Q2–Q4
 
+> **SPRINT MODE 2026-04-22 → 2026-04-30 ACTIVE** (per Matt's 12:03 CT directive: "backtesting done by end of this week, live by end of month, 18h/day"). See **`docs/SPRINT_2026-04-22_to_04-30.md`** for the compressed 8-day plan that supersedes Phase 1 week-by-week work during the sprint. Roadmap below is still the long-horizon source-of-truth for Phase 2+ (post 04-30).
+
 **Created:** 2026-04-21
-**Last updated:** 2026-04-22 (post-MES-dry-spell-recovery)
+**Last updated:** 2026-04-22 (post-MES-dry-spell-recovery, v1.4 sprint pivot)
 **Horizon:** 8 months (April 2026 → December 2026), with Phase 8 2027 vision appended
 **Author:** Claude (Opus 4.7) with Matt Morrison
 **Source-of-truth doc.** Other roadmap fragments (multi-market-trading-framework.md, Sprint A–G manifest, prd.json, `.claude/plans/so-what-tasks-are-velvety-starlight.md`) feed into this one.
