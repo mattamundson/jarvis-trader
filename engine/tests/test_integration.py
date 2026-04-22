@@ -610,12 +610,16 @@ class TestPortfolioEndpoints(unittest.TestCase):
     BASE = _ENGINE_BASE
 
     def _get(self, path: str) -> tuple[int, dict]:
-        """GET the given path and return (status_code, parsed_json)."""
+        """GET the given path and return (status_code, parsed_json).
+
+        10s timeout — post-P1.9 fix, /portfolio/summary must return within
+        this envelope (tick-only path via IBKR/Schwab, no TV chart-lock).
+        """
         url = f"{self.BASE}{path}"
         req = urllib.request.Request(url)
         req.add_header("X-API-Key", os.environ.get("API_KEY") or "test-key")
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 return resp.status, json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             try:

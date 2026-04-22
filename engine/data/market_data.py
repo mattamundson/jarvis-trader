@@ -872,6 +872,65 @@ class MarketDataManager:
 
         return {"last_price": None, "prev_close": None, "change_pct": None, "source": "unavailable"}
 
+    async def get_tick_price(self, symbol: str, is_futures: bool = False) -> dict:
+        """
+        Ticker-only price read — explicitly skips TradingView.
+
+        Waterfall: IBKR snapshot → Schwab quote → Polygon → CSV cache.
+
+        Rationale: TV Desktop via CDP is the right bar source (Tier 0 in
+        get_bars) but for ticker-only reads it incurs a chart-switch cost
+        that can balloon /portfolio/summary latency when called once per
+        open position. This method guarantees the tick path never touches
+        TV, keeping per-position reads to sub-200ms when IBKR/Schwab are up.
+        """
+        is_futures = is_futures or symbol.upper() in FUTURES_MAP
+
+        # Tier 1: IBKR snapshot (real-time L1, sub-100ms typical)
+        if self.ibkr and self.ibkr.is_connected:
+            result = await self.ibkr.get_snapshot_price(symbol, is_futures)
+            if result.get("last_price"):
+                return result
+
+        # Tier 2: Schwab quotes
+        if self.schwab is not None and self.schwab.is_connected:
+            try:
+                schwab_sym = SCHWAB_FUTURES_MAP.get(symbol.upper(), symbol)
+                quotes = await self.schwab.get_quotes([schwab_sym])
+                quote = quotes.get(schwab_sym) or quotes.get(symbol)
+                if quote:
+                    price = quote.get("last") or quote.get("mark")
+                    if price:
+                        change_pct = quote.get("change_pct")
+                        return {
+                            "last_price": float(price),
+                            "prev_close": None,
+                            "change_pct": float(change_pct) if change_pct is not None else None,
+                            "source": "schwab",
+                        }
+            except Exception as _schwab_err:
+                logger.debug(f"[get_tick_price] Schwab failed for {symbol}: {_schwab_err}")
+
+        # Tier 3: Polygon (stocks/ETFs only — futures blocklisted)
+        if self.polygon and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
+            polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
+            result = self.polygon.get_last_price(polygon_symbol)
+            if result.get("last_price"):
+                return result
+
+        # Tier 4: CSV cache last close
+        df = self._load_csv_cache(symbol, "1d", 2)
+        if not df.empty and "close" in df.columns:
+            last_close = float(df.iloc[-1]["close"])
+            return {
+                "last_price": last_close,
+                "prev_close": None,
+                "change_pct": None,
+                "source": "csv_cache",
+            }
+
+        return {"last_price": None, "prev_close": None, "change_pct": None, "source": "unavailable"}
+
     async def get_batch_prices(self, symbols: list) -> dict:
         """Get current prices for multiple symbols. Returns {symbol: price_dict}."""
         results = {}
