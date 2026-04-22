@@ -1,5 +1,6 @@
 """
-Phase D — Strategy comparison: SMA trend vs Donchian vs ADX-EMA vs MACD.
+Phase D/E — Strategy comparison: SMA trend vs Donchian vs ADX-EMA vs
+RSI-breakout vs ATR-channel.
 
 All strategies are run on MES 1h (2024-06-01 → 2026-03-27) using the same
 Backtester configuration and capital. Champion params are chosen by a simple
@@ -27,7 +28,10 @@ if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
 from backtest import BacktestDataLoader, Backtester
+from backtest.adx_ema_signals import generate_adx_ema_signals
+from backtest.atr_channel_signals import generate_atr_channel_signals
 from backtest.donchian_signals import generate_donchian_signals
+from backtest.rsi_breakout_signals import generate_rsi_breakout_signals
 from backtest.trend_signals import generate_sma_trend_signals
 
 SYMBOL = "MES"
@@ -62,6 +66,24 @@ DONCHIAN_GRID = {
     "lookback_entry": [10, 15, 20, 25, 30],
     "lookback_exit":  [5,  7,  10, 12],
     "atr_trail":      [1.5, 2.0, 2.5],
+}
+
+ADX_EMA_GRID = {
+    "adx_threshold": [20.0, 25.0, 30.0],
+    "ema_period":    [13, 21, 34],
+    "atr_trail":     [2.0, 2.5, 3.0],
+}
+
+RSI_BREAKOUT_GRID = {
+    "rsi_oversold":  [20.0, 25.0, 30.0],
+    "entry_period":  [15, 20, 25],
+    "atr_trail":     [1.5, 2.0, 2.5],
+}
+
+ATR_CHANNEL_GRID = {
+    "atr_mult":      [1.5, 2.0, 2.5, 3.0],
+    "ema_period":    [13, 20],
+    "atr_trail":     [1.5, 2.0],
 }
 
 # Minimum trades required in train window for a combo to be considered
@@ -181,6 +203,85 @@ def _apply_donchian(df: pd.DataFrame, params: dict) -> pd.DataFrame:
     return generate_donchian_signals(df, lookback_entry=params["lookback_entry"], lookback_exit=params["lookback_exit"], atr_trail_mult=params["atr_trail"])
 
 
+def _apply_adx_ema(df: pd.DataFrame, params: dict) -> pd.DataFrame:
+    return generate_adx_ema_signals(
+        df,
+        adx_threshold=params["adx_threshold"],
+        ema_period=params["ema_period"],
+        atr_trail_mult=params["atr_trail"],
+    )
+
+
+def _apply_rsi_breakout(df: pd.DataFrame, params: dict) -> pd.DataFrame:
+    return generate_rsi_breakout_signals(
+        df,
+        rsi_oversold=params["rsi_oversold"],
+        rsi_overbought=100.0 - params["rsi_oversold"],  # mirror symmetric
+        entry_period=params["entry_period"],
+        atr_stop_mult=params["atr_trail"],
+    )
+
+
+def _apply_atr_channel(df: pd.DataFrame, params: dict) -> pd.DataFrame:
+    return generate_atr_channel_signals(
+        df,
+        atr_mult=params["atr_mult"],
+        ema_period=params["ema_period"],
+        atr_stop_mult=params["atr_trail"],
+    )
+
+
+def _grid_search_adx_ema(df_train: pd.DataFrame) -> tuple[dict, dict]:
+    best_pf, best_params, best_metrics = -1, None, None
+    for adx_t, ema_p, trail in product(
+        ADX_EMA_GRID["adx_threshold"], ADX_EMA_GRID["ema_period"], ADX_EMA_GRID["atr_trail"],
+    ):
+        try:
+            sig = _apply_adx_ema(df_train.copy(), {"adx_threshold": adx_t, "ema_period": ema_p, "atr_trail": trail})
+            m = _run_bt(sig, trail)
+            if m["n_trades"] >= MIN_TRAIN_TRADES and m["pf"] > best_pf:
+                best_pf = m["pf"]
+                best_params = {"adx_threshold": adx_t, "ema_period": ema_p, "atr_trail": trail}
+                best_metrics = m
+        except Exception:
+            continue
+    return best_params, best_metrics
+
+
+def _grid_search_rsi_breakout(df_train: pd.DataFrame) -> tuple[dict, dict]:
+    best_pf, best_params, best_metrics = -1, None, None
+    for rsi_os, entry_p, trail in product(
+        RSI_BREAKOUT_GRID["rsi_oversold"], RSI_BREAKOUT_GRID["entry_period"], RSI_BREAKOUT_GRID["atr_trail"],
+    ):
+        try:
+            sig = _apply_rsi_breakout(df_train.copy(), {"rsi_oversold": rsi_os, "entry_period": entry_p, "atr_trail": trail})
+            m = _run_bt(sig, trail)
+            if m["n_trades"] >= MIN_TRAIN_TRADES and m["pf"] > best_pf:
+                best_pf = m["pf"]
+                best_params = {"rsi_oversold": rsi_os, "entry_period": entry_p, "atr_trail": trail}
+                best_metrics = m
+        except Exception:
+            continue
+    return best_params, best_metrics
+
+
+def _grid_search_atr_channel(df_train: pd.DataFrame) -> tuple[dict, dict]:
+    best_pf, best_params, best_metrics = -1, None, None
+    for am, ep, trail in product(
+        ATR_CHANNEL_GRID["atr_mult"], ATR_CHANNEL_GRID["ema_period"], ATR_CHANNEL_GRID["atr_trail"],
+    ):
+        try:
+            sig = _apply_atr_channel(df_train.copy(), {"atr_mult": am, "ema_period": ep, "atr_trail": trail})
+            m = _run_bt(sig, trail)
+            if m["n_trades"] >= MIN_TRAIN_TRADES and m["pf"] > best_pf:
+                best_pf = m["pf"]
+                best_params = {"atr_mult": am, "ema_period": ep, "atr_trail": trail}
+                best_metrics = m
+        except Exception:
+            continue
+    return best_params, best_metrics
+
+
 def main():
     loader = BacktestDataLoader()
     df_full = loader.load(SYMBOL, FULL_START, TEST_END, "1h")
@@ -227,6 +328,18 @@ def main():
 
     print("── SMA Trend — grid search (for comparison vs fixed-champion) ──")
     results.append(_run_strategy("SMA-grid", df_full, _grid_search_sma, _apply_sma))
+    print()
+
+    print("── ADX-EMA Trend — grid search ──")
+    results.append(_run_strategy("ADX-EMA", df_full, _grid_search_adx_ema, _apply_adx_ema))
+    print()
+
+    print("── RSI-Breakout — grid search ──")
+    results.append(_run_strategy("RSI-Breakout", df_full, _grid_search_rsi_breakout, _apply_rsi_breakout))
+    print()
+
+    print("── ATR-Channel — grid search ──")
+    results.append(_run_strategy("ATR-Channel", df_full, _grid_search_atr_channel, _apply_atr_channel))
     print()
 
     # Summary table
