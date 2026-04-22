@@ -103,7 +103,7 @@ def _verdict(segment_pfs: list[float], all_profitable: bool) -> str:
 def main():
     ap = argparse.ArgumentParser(description="Fixed-params temporal validator (P3)")
     ap.add_argument("--symbol", required=True)
-    ap.add_argument("--family", required=True, choices=["trend", "meanrev"])
+    ap.add_argument("--family", required=True, choices=["trend", "meanrev", "breakout"])
     ap.add_argument("--params", default=None,
                     help='JSON dict of strategy params. If omitted, use --rank from results file.')
     ap.add_argument("--rank", type=int, default=None,
@@ -129,12 +129,25 @@ def main():
         def runner(df, params, spec):
             return _run_harness(df, params["fast"], params["slow"],
                                 params["atr_trail_mult"], spec)
-    else:
+    elif args.family == "meanrev":
         from scripts.mcl_meanrev_search import _run as _run_harness
         default_rf = _ENGINE / "scripts" / f"{symbol.lower()}_meanrev_search_results.json"
         def runner(df, params, spec):
             return _run_harness(df, params["bb_period"], params["bb_std"],
                                 params["atr_stop_mult"], params["max_hold_bars"], spec)
+    else:  # breakout
+        from scripts.mnq_breakout_search import _run as _run_harness
+        default_rf = _ENGINE / "scripts" / f"{symbol.lower()}_breakout_search_results.json"
+        def runner(df, params, spec):
+            return _run_harness(
+                df,
+                donchian_period=params["donchian_period"],
+                vol_ma_period=params.get("vol_ma_period", 20),
+                vol_mult=params.get("vol_mult", 1.0),
+                stop_atr_mult=params.get("stop_atr_mult", 2.0),
+                short_only=params.get("short_only", True),
+                spec=spec,
+            )
 
     # Resolve params
     if args.params:

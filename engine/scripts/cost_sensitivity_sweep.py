@@ -71,7 +71,7 @@ def _load_params(results_file: Path, rank: int) -> dict:
 def main():
     ap = argparse.ArgumentParser(description="Cost sensitivity sweep (Tier A A5)")
     ap.add_argument("--symbol", required=True)
-    ap.add_argument("--family", required=True, choices=["trend", "meanrev"],
+    ap.add_argument("--family", required=True, choices=["trend", "meanrev", "breakout"],
                     help="Strategy family (dispatches to the matching research _run)")
     ap.add_argument("--rank", type=int, default=1,
                     help="Which rank from the research results file to sweep")
@@ -91,12 +91,25 @@ def main():
         def runner(df, params, spec):
             return _run_trend(df, params["fast"], params["slow"],
                               params["atr_trail_mult"], spec)
-    else:  # meanrev
+    elif args.family == "meanrev":
         from scripts.mcl_meanrev_search import _run as _run_meanrev
         default_rf = _ENGINE / "scripts" / f"{symbol.lower()}_meanrev_search_results.json"
         def runner(df, params, spec):
             return _run_meanrev(df, params["bb_period"], params["bb_std"],
                                 params["atr_stop_mult"], params["max_hold_bars"], spec)
+    else:  # breakout
+        from scripts.mnq_breakout_search import _run as _run_breakout
+        default_rf = _ENGINE / "scripts" / f"{symbol.lower()}_breakout_search_results.json"
+        def runner(df, params, spec):
+            return _run_breakout(
+                df,
+                donchian_period=params["donchian_period"],
+                vol_ma_period=params.get("vol_ma_period", 20),
+                vol_mult=params.get("vol_mult", 1.0),
+                stop_atr_mult=params.get("stop_atr_mult", 2.0),
+                short_only=params.get("short_only", True),
+                spec=spec,
+            )
 
     results_file = Path(args.results_file) if args.results_file else default_rf
     params = _load_params(results_file, args.rank)
