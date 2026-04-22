@@ -79,6 +79,55 @@ class TestTradingViewFeed:
             assert TV_SYMBOL_MAP[sym], f"{sym} mapped to empty ticker"
 
 
+# ─── TV chart-switch race fix (poll vs fixed sleep) ──────────────────────────
+
+class TestTVChartStatePolling:
+    """`_wait_for_chart_state` replaces the old 600ms fixed sleep.
+
+    Root cause: `tv symbol` returns success=true before the chart finishes
+    repainting. The old fixed 0.6s sleep was both (a) a floor slower than
+    needed on fast charts and (b) a ceiling not generous enough on heavy
+    charts (gamma overlay + Corey profile + TAPivots can take ~11s).
+    The poll returns as soon as `tv state` reports the expected symbol.
+    """
+
+    def test_returns_true_quickly_when_state_matches(self):
+        from engine.data.tradingview_feed import TradingViewFeed
+        feed = TradingViewFeed()
+        feed._available = True
+        with patch.object(feed, "_get_state", return_value={"symbol": "CME_MINI:ES1!", "resolution": "60"}):
+            assert feed._wait_for_chart_state(expected_symbol="CME_MINI:ES1!", max_wait=2.0) is True
+
+    def test_returns_false_when_deadline_expires(self):
+        from engine.data.tradingview_feed import TradingViewFeed
+        feed = TradingViewFeed()
+        feed._available = True
+        with patch.object(feed, "_get_state", return_value={"symbol": "WRONG"}):
+            assert feed._wait_for_chart_state(expected_symbol="CME_MINI:ES1!", max_wait=0.3) is False
+
+    def test_tolerates_get_state_returning_none(self):
+        """If `tv state` momentarily fails, keep polling until deadline."""
+        from engine.data.tradingview_feed import TradingViewFeed
+        feed = TradingViewFeed()
+        feed._available = True
+        calls = {"n": 0}
+        def fake_state():
+            calls["n"] += 1
+            if calls["n"] < 2:
+                return None
+            return {"symbol": "CME_MINI:ES1!"}
+        with patch.object(feed, "_get_state", side_effect=fake_state):
+            assert feed._wait_for_chart_state(expected_symbol="CME_MINI:ES1!", max_wait=2.0) is True
+
+    def test_resolution_match_checked_when_requested(self):
+        from engine.data.tradingview_feed import TradingViewFeed
+        feed = TradingViewFeed()
+        feed._available = True
+        with patch.object(feed, "_get_state", return_value={"symbol": "X", "resolution": "60"}):
+            assert feed._wait_for_chart_state(expected_resolution="60", max_wait=1.0) is True
+            assert feed._wait_for_chart_state(expected_resolution="240", max_wait=0.3) is False
+
+
 # ─── Track C+: Market Data Waterfall ──────────────────────────────────────────
 
 class TestMarketDataTVTier:
