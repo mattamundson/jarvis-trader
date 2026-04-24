@@ -87,8 +87,7 @@ class RecipeLoader:
             raise RecipeValidationError("required_tools must contain only strings")
 
 
-# TODO(Apr 14 Sonnet agent): wire this into engine/pipeline.py. Add optional
-# `active_recipe_name: str | None = None` parameter to the main pipeline entry.
-# When set, load via RecipeLoader(Path(__file__).parent / "recipes") and override
-# VIX ceiling, confluence floor, and size_mult with recipe.parameters values.
-# Default behavior (active_recipe_name=None) must remain unchanged.
+# Wired at engine/agents/pipeline.py:TradingPipeline.analyze_and_decide via
+# the optional active_recipe_name kwarg. When set, the recipe's entry_max_vix,
+# min_confluence, and size_mult override pipeline defaults;
+# active_recipe_name=None preserves legacy behavior.
