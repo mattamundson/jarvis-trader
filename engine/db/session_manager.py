@@ -229,6 +229,8 @@ class SessionManager:
             conn.commit()
 
 
-# TODO(Apr 14 Sonnet agent): wire create_session into engine/pipeline.py at the
-# top of the pipeline run, create_thread per analyst inside debate.py,
-# append_message per analyst output, close_session at the end of the run.
+# Wired via engine/services/agent_gateway.py:GatewaySessionStore.
+# Architecture pivoted from per-pipeline-run scope to per-messaging-channel
+# scope — each (channel, user_id, agent) gets a persistent session and thread
+# so conversational history survives across pipeline invocations.
+# close_session is intentionally not called: channel sessions are long-lived.
