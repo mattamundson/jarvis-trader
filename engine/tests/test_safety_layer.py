@@ -192,15 +192,18 @@ class TestDailyLossLimit:
         assert safety._kill_switch_reason == KillSwitchReason.DAILY_LOSS_LIMIT
 
     def test_daily_loss_limit_allows_within_threshold(self, mock_safety_layer, mock_settings):
-        """Daily loss within limit → orders allowed."""
+        """Daily loss within BOTH pct and flat-USD limits → orders allowed."""
         # Arrange
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
         mock_settings.MAX_DAILY_LOSS_PCT = 0.02
+        # SafetyLayer enforces BOTH pct and flat USD caps; without this the
+        # default $100 USD cap rejects the -$500 fixture independently of pct.
+        mock_settings.MAX_DAILY_LOSS_USD = 1_000.0
         safety = SafetyLayer(mock_settings)
 
         portfolio_equity = 100_000.0
-        safe_loss = -500.0  # Only -0.5%
+        safe_loss = -500.0  # Only -0.5% AND within -$1,000 flat cap
 
         safety.sync_from_broker(equity=portfolio_equity, daily_pnl=safe_loss)
 
@@ -970,3 +973,43 @@ class TestFuturesMarginGate:
         assert _futures_margin_required("MES", 3) == 3960.0
         # Sign-agnostic — short and long require the same margin
         assert _futures_margin_required("MES", -2) == 2640.0
+
+    @pytest.mark.parametrize(
+        "symbol,quantity,equity,expected_approved,reason_substr",
+        [
+            # Active watchlist roots — boundary cases at $10K equity, 30% cap.
+            # MCL margin $1100 → 11% on $10K → ALLOW
+            ("MCL", 1, 10_000.0, True, None),
+            # MCL × 3 = $3300 → 33% on $10K → REJECT
+            ("MCL", 3, 10_000.0, False, "Futures margin"),
+            # MNQ margin $1780 → 17.8% on $10K → ALLOW
+            ("MNQ", 1, 10_000.0, True, None),
+            # MNQ × 2 = $3560 → 35.6% on $10K → REJECT
+            ("MNQ", 2, 10_000.0, False, "Futures margin"),
+            # MGC margin $1400 → 14% on $10K → ALLOW
+            ("MGC", 1, 10_000.0, True, None),
+            # MGC × 3 = $4200 → 42% on $10K → REJECT
+            ("MGC", 3, 10_000.0, False, "Futures margin"),
+        ],
+    )
+    def test_active_watchlist_margin_boundaries(
+        self, mock_settings, symbol, quantity, equity, expected_approved, reason_substr
+    ):
+        """Boundary coverage for the four active futures roots (MES tested above)."""
+        # Bypass MAX_CONTRACTS_PER_INSTRUMENT to isolate the margin gate
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
+        safety = self._live_safety(mock_settings)
+        order = OrderRequest(
+            symbol=symbol,
+            quantity=quantity,
+            order_type="market",
+            is_futures=True,
+            estimated_value=equity,  # value irrelevant for futures branch
+        )
+        result = safety.check_order(order, equity)
+        assert result.approved is expected_approved, (
+            f"{symbol}×{quantity} on ${equity:,.0f}: expected approved={expected_approved}, "
+            f"got reason={result.rejection_reason}"
+        )
+        if reason_substr:
+            assert reason_substr in result.rejection_reason
