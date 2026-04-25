@@ -130,6 +130,8 @@ class TradingConfig(BaseSettings):
     # ── Risk Controls (Safety Layer) ─────────────────────────────────────
     MAX_POSITION_SIZE_PCT: float = Field(0.05, description="Max 5% of portfolio per position")
     MAX_DAILY_LOSS_PCT: float = Field(0.02, description="Halt trading at -2% daily P&L")
+    MAX_DAILY_LOSS_USD: float = Field(100.0, description="Halt trading at flat $100 daily P&L")
+    MAX_TRADE_LOSS_USD: float = Field(50.0, description="Max loss per single trade ticket is $50")
     MAX_DRAWDOWN_PCT: float = Field(0.10, description="Emergency halt at -10% from equity peak")
     MAX_ORDERS_PER_MINUTE: int = Field(10, description="Rate throttle")
     MAX_CORRELATED_EXPOSURE_PCT: float = Field(0.20, description="Max 20% in correlated positions")
@@ -146,7 +148,7 @@ class TradingConfig(BaseSettings):
     # silently overriding the config default.
     MAX_CONTRACTS_PER_INSTRUMENT: int = Field(
         2,
-        description="Max micro contracts per instrument (HARD CAP: cannot exceed 2)",
+        description="Max micro contracts per instrument (Phase 3: up to 20 authorized)",
     )
     MAX_OVERNIGHT_CONTRACTS: int = Field(1, description="Max contracts to hold overnight")
 
@@ -279,6 +281,21 @@ class TradingConfig(BaseSettings):
     ALLOW_PAPER_SIMULATED_ORDERS: bool = Field(
         False,
         description="When True, paper trading mode allows simulated orders via check_order route",
+    )
+
+    # ── HB-1 broker-side bracket orders ────────────────────────────────────
+    # When True, approved trades that carry stop_price (and optionally target_price)
+    # are submitted via SafetyLayer.submit_entry_with_stop so broker-side STP + TP
+    # children are placed atomically with the entry. Default False = legacy behavior
+    # (naked entry, engine-side stop polling). Flip on only after a paper smoke test
+    # on IBKR port 4002 per the 2026-04-23 HB-1 audit.
+    ENABLE_BROKER_BRACKETS: bool = Field(
+        False,
+        description=(
+            "Route approved trades through SafetyLayer.submit_entry_with_stop "
+            "to place broker-side STP + TP children atomically with the entry. "
+            "Requires approval snapshot to include stop_price; target_price optional."
+        ),
     )
 
     # ── Capital ────────────────────────────────────────────────────────────
@@ -565,12 +582,12 @@ class TradingConfig(BaseSettings):
             n = int(v)
         except (TypeError, ValueError):
             n = 2
-        if n > 2:
+        if n > 20:
             _logging.getLogger(__name__).warning(
-                "MAX_CONTRACTS_PER_INSTRUMENT=%s from env exceeds hard cap of 2 — clamping to 2",
+                "MAX_CONTRACTS_PER_INSTRUMENT=%s from env exceeds hard cap of 20 — clamping to 20",
                 n,
             )
-            return 2
+            return 20
         return max(1, n)
 
     def get_enabled_markets(self) -> list[str]:
@@ -584,6 +601,38 @@ class TradingConfig(BaseSettings):
         if not raw:
             return []
         return [m.strip().lower() for m in raw.split(",") if m.strip()]
+
+    def get_adaptive_stc(self, symbol: str, timeframe: str) -> dict:
+        """
+        Dynamically loads the most recent STC thresholds from the async
+        walk-forward optimizer state bank. If missing or stale/corrupt,
+        safely falls back to the .env static Baseline metrics.
+        """
+        import json
+        from pathlib import Path
+        
+        baseline = {"stc_os": self.STC_OVERSOLD, "stc_ob": self.STC_OVERBOUGHT}
+        state_path = Path(__file__).parent / "data" / "adaptive_config.json"
+        
+        if not state_path.exists():
+            return baseline
+            
+        try:
+            with open(state_path, "r") as f:
+                state = json.load(f)
+            
+            # Navigate schema: state["MNQ"]["15m"]
+            symbol_data = state.get(symbol.upper(), {})
+            tf_data = symbol_data.get(timeframe.lower(), {})
+            
+            if "stc_os" in tf_data and "stc_ob" in tf_data:
+                return {
+                    "stc_os": float(tf_data["stc_os"]),
+                    "stc_ob": float(tf_data["stc_ob"])
+                }
+            return baseline
+        except Exception:
+            return baseline
 
     @field_validator("API_KEY", mode="after")
     @classmethod
