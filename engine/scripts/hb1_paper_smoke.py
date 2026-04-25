@@ -57,11 +57,13 @@ async def main() -> int:
     logger.info("HB-1 paper smoke starting")
 
     from execution.ib_gateway import IBGatewayConfig
+    # Use engine client_id + 1 so the smoke doesn't conflict with the live engine (client_id=1).
+    smoke_client_id = getattr(settings, "IBKR_CLIENT_ID", 1) + 1
     ib = IBGatewayManager(
         config=IBGatewayConfig(
-            host=getattr(settings, "ib_host", "127.0.0.1"),
-            port=getattr(settings, "ib_paper_port", 4002),
-            client_id=getattr(settings, "ib_client_id", 77),
+            host=getattr(settings, "IBKR_HOST", "127.0.0.1"),
+            port=getattr(settings, "IBKR_PORT", 4002),
+            client_id=smoke_client_id,
         )
     )
 
