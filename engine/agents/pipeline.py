@@ -25,12 +25,13 @@ import os
 import uuid
 from pathlib import Path
 import zoneinfo
-from datetime import datetime
-from typing import Any, Optional
+from datetime import datetime, timezone
+from typing import Any, Optional, Dict, List
 
 import pandas as pd
 
 from database import repository
+from analysis.regime_engine import RegimeEngine
 
 try:
     from profiling.pipeline_profiler import PipelineProfiler
@@ -463,7 +464,8 @@ class TradingPipeline:
         """
         self._agents = agents
         self._safety = safety_layer
-        self.db_manager = db_manager
+        self._db = db_manager
+        self._regime_engine = RegimeEngine()
         self.context_manager = context_manager
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
 
@@ -1339,6 +1341,19 @@ class TradingPipeline:
         except Exception:
             pass  # learning context is optional — never block the pipeline
 
+        # Stage 0: Regime Analysis (Deterministic)
+        # Note: Requires access to data manager or bars; assuming technical agent provides access
+        # or we fetch here. For this implementation, we assume the technical agent's data manager.
+        _tech_agent = self._agents.get("technical")
+        _data_mgr = getattr(_tech_agent, "_data", None)
+        df = None
+        if _data_mgr:
+            df = await _data_mgr.get_bars(symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures)
+        
+        regime_status = self._regime_engine.classify(df) if df is not None else None
+        if regime_status:
+            logger.info(f"[Pipeline] %s — Regime classified as %s (%s)", symbol, regime_status.regime.value, regime_status.description)
+
         # Stage 1a: Run technical analyst first to extract price+ATR for Corey proximity boost
         technical_coro = self._call_agent_analyze(
             "technical",
@@ -1360,12 +1375,20 @@ class TradingPipeline:
         corey_coro = self._call_agent_analyze(
             "corey", symbol, current_price=current_price, atr=atr
         )
+        breakout_coro = self._call_agent_analyze(
+            "breakout", symbol, is_futures=is_futures, timeframe=timeframe
+        )
+        harmonic_coro = self._call_agent_analyze(
+            "harmonic", symbol, is_futures=is_futures, timeframe=timeframe
+        )
 
         results = await asyncio.gather(
             safe_analyze("news", news_coro),
             safe_analyze("social", social_coro),
             safe_analyze("fundamental", fundamental_coro),
             safe_analyze("corey", corey_coro),
+            safe_analyze("breakout", breakout_coro),
+            safe_analyze("harmonic", harmonic_coro),
         )
 
         return {
@@ -1374,6 +1397,9 @@ class TradingPipeline:
             "social": results[1],
             "fundamental": results[2],
             "corey": results[3],
+            "breakout": results[4],
+            "harmonic": results[5],
+            "regime_status": regime_status,
         }
 
     async def _call_agent_analyze(self, agent_name: str, symbol: str, **kwargs):
