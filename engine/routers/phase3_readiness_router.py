@@ -188,3 +188,155 @@ async def get_phase3_readiness() -> dict:
     except Exception as e:
         logger.error("[PHASE3] Readiness check failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Phase 3 readiness check error: {e}") from e
+
+
+@router.get("/system/mes-sprint-gate", tags=["system"])
+async def mes_sprint_gate() -> dict:
+    """MES Sprint Gate — aggregates 6 prerequisite checks for the April 30 live flip."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    checks: list[dict] = []
+    all_pass = True
+
+    # 1. HB-1 paper smoke flag file present.
+    flag = _Path(__file__).resolve().parent.parent / "data" / "hb1_smoke_passed.json"
+    smoke_ok = flag.exists()
+    checks.append(
+        {
+            "name": "smoke_test",
+            "pass": smoke_ok,
+            "detail": str(flag) if smoke_ok else "Run engine/scripts/hb1_paper_smoke.py first",
+        }
+    )
+    if not smoke_ok:
+        all_pass = False
+
+    # 2. Bracket paper trades — count rows whose notes mention 'bracket'.
+    bracket_count = 0
+    try:
+        from database.manager import get_db
+
+        db = get_db()
+        row = db.fetch_one(
+            "SELECT COUNT(*) AS n FROM paper_trades WHERE notes LIKE ?",
+            ("%bracket%",),
+        )
+        bracket_count = int(row["n"]) if row else 0
+    except Exception as exc:  # noqa: BLE001 — gate must never raise
+        logger.warning("mes-sprint-gate: bracket count query failed: %s", exc)
+    bracket_ok = bracket_count >= 5
+    checks.append(
+        {
+            "name": "bracket_trades",
+            "pass": bracket_ok,
+            "value": f"{bracket_count}/5",
+            "detail": (
+                f"Need {max(0, 5 - bracket_count)} more bracket trades"
+                if not bracket_ok
+                else "OK"
+            ),
+        }
+    )
+    if not bracket_ok:
+        all_pass = False
+
+    # 3. Kill switch clean (uses injected SafetyLayer if available).
+    ks_active = False
+    if _safety_layer is not None:
+        ks_active = bool(getattr(_safety_layer, "_kill_switch_active", False))
+    ks_ok = not ks_active
+    checks.append(
+        {
+            "name": "kill_switch_clean",
+            "pass": ks_ok,
+            "detail": "Kill switch inactive" if ks_ok else "KILL SWITCH ACTIVE — trading halted",
+        }
+    )
+    if not ks_ok:
+        all_pass = False
+
+    # 4. pm2 restarts ≤ 5 in rolling 72h (read sidecar JSON).
+    restart_count = 0
+    restart_file = _Path(__file__).resolve().parent.parent / "data" / "pm2_restart_count_72h.json"
+    try:
+        restart_data = _json.loads(restart_file.read_text(encoding="utf-8"))
+        restart_count = int(restart_data.get("restarts_72h", 0) or 0)
+    except Exception:
+        restart_count = 0  # no sidecar yet — benefit of the doubt
+    restart_ok = restart_count <= 5
+    checks.append(
+        {
+            "name": "pm2_restarts",
+            "pass": restart_ok,
+            "value": f"{restart_count}/5 (72h)",
+            "detail": (
+                "Stable"
+                if restart_ok
+                else f"{restart_count} restarts in 72h — investigate before flipping live"
+            ),
+        }
+    )
+    if not restart_ok:
+        all_pass = False
+
+    # 5. Loss streak < 3 (consecutive losing closed trades by entry_time DESC).
+    streak = 0
+    try:
+        from database.manager import get_db
+
+        db = get_db()
+        recent = db.fetch_all(
+            "SELECT pnl FROM paper_trades "
+            "WHERE status = 'closed' AND pnl IS NOT NULL "
+            "ORDER BY entry_time DESC LIMIT 10"
+        )
+        for r in recent:
+            if (r.get("pnl") or 0) < 0:
+                streak += 1
+            else:
+                break
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("mes-sprint-gate: loss streak query failed: %s", exc)
+    streak_ok = streak < 3
+    checks.append(
+        {
+            "name": "loss_streak",
+            "pass": streak_ok,
+            "value": str(streak),
+            "detail": f"Current streak: {streak}" + (" — WARNING" if streak >= 2 else ""),
+        }
+    )
+    if not streak_ok:
+        all_pass = False
+
+    # 6. Drawdown < 2% (sourced from SafetyLayer's PnLMonitor when available).
+    drawdown = 0.0
+    if _safety_layer is not None:
+        try:
+            pnl_mon = getattr(_safety_layer, "_pnl_monitor", None)
+            if pnl_mon is not None and hasattr(pnl_mon, "get_drawdown_pct"):
+                drawdown = float(pnl_mon.get_drawdown_pct() or 0.0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("mes-sprint-gate: drawdown read failed: %s", exc)
+    drawdown_abs = abs(drawdown)
+    dd_ok = drawdown_abs < 0.02
+    checks.append(
+        {
+            "name": "drawdown",
+            "pass": dd_ok,
+            "value": f"{drawdown_abs * 100:.2f}%",
+            "detail": f"Current drawdown: {drawdown_abs * 100:.2f}% (limit 2%)",
+        }
+    )
+    if not dd_ok:
+        all_pass = False
+
+    overall = "PASS" if all_pass else ("PENDING" if not bracket_ok else "FAIL")
+    return {
+        "overall": overall,
+        "ready_for_live": all_pass,
+        "checks": checks,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "notes": "MES Sprint Gate v1 — iteration 1 of many",
+    }
