@@ -37,6 +37,7 @@ import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
 import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
+import { MESSprintGate } from "@/components/MESSprintGate";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -217,6 +218,9 @@ export default function DashboardPage() {
 
           {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
           <Pm2StabilityWidget />
+
+          {/* MES Sprint Gate — April 30 live-flip prerequisite aggregator */}
+          <MESSprintGate />
         </div>
 
         {/* Walk-Forward / Paper Trading Status */}
