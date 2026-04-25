@@ -201,6 +201,29 @@ async def main() -> int:
     logger.info("=" * 60)
 
     all_pass = approved and routed and stp_linked and tp_linked
+
+    # Write flag file only on clean 4/4 PASS — consumed by /system/mes-sprint-gate.
+    if all_pass:
+        import json as _json
+        from datetime import datetime, timezone
+        results = {
+            "entry_approved": approved,
+            "entry_routed_to_ib": routed,
+            "stp_linked": stp_linked,
+            "tp_linked": tp_linked,
+        }
+        flag_path = Path(__file__).resolve().parent.parent / "data" / "hb1_smoke_passed.json"
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        flag_path.write_text(
+            _json.dumps({
+                "passed_at": datetime.now(timezone.utc).isoformat(),
+                "results": results,
+                "ibkr_port": 4002,
+            }),
+            encoding="utf-8",
+        )
+        logger.info("Flag file written: %s", flag_path)
+
     return 0 if all_pass else 1
 
 
