@@ -20,18 +20,22 @@ logger = logging.getLogger("jarvis_trader.orders_router")
 
 router = APIRouter(tags=["orders"])
 
-# Module-level reference to the shared OrderRouter — injected at startup.
+# Module-level references injected at startup.
 _order_router = None
+_safety_layer = None   # For authoritative IBKR connected-state (mirrors health_router)
+_data_manager = None   # Fallback IBKR source when safety_layer has no gateway attached
 
 
-def inject_dependencies(order_router) -> None:
+def inject_dependencies(order_router, safety_layer=None, data_manager=None) -> None:
     """
-    Inject the global OrderRouter instance.
+    Inject the global OrderRouter instance and optional broker-state sources.
     Called from main.py during the lifespan startup block.
     """
-    global _order_router
+    global _order_router, _safety_layer, _data_manager
     _order_router = order_router
-    logger.info("OrdersRouter: OrderRouter dependency injected")
+    _safety_layer = safety_layer
+    _data_manager = data_manager
+    logger.info("OrdersRouter: dependencies injected (order_router + safety_layer + data_manager)")
 
 
 # ── Request / Response Models ─────────────────────────────────────────────────
@@ -180,17 +184,35 @@ async def get_order_router_status():
     """
     Return the current connectivity status of the OrderRouter.
 
-    Reports which brokers are wired and available for order execution.
+    Uses the same authoritative IBKR source as /health (safety_layer._ib_gateway
+    preferred, falling back to data_manager.ibkr) so the two endpoints stay
+    consistent.
     """
-    if _order_router is None:
-        return {
-            "status": "not_initialised",
-            "ibkr_connected": False,
-            "schwab_connected": False,
-            "futures_broker": "unavailable",
-            "equity_broker": "unavailable",
-        }
+    # ── Determine authoritative IBKR connection state ─────────────────────────
+    execution_ib = getattr(_safety_layer, "_ib_gateway", None) if _safety_layer else None
+    data_ib = _data_manager.ibkr if _data_manager else None
+    ib_gw = execution_ib or data_ib
 
-    status = _order_router.status()
-    status["status"] = "ok"
-    return status
+    if ib_gw:
+        is_connected_attr = getattr(ib_gw, "is_connected", False)
+        ibkr_connected = is_connected_attr() if callable(is_connected_attr) else bool(is_connected_attr)
+    else:
+        # Fallback: read from order_router itself
+        ibkr_connected = bool(
+            _order_router and _order_router.ibkr and _order_router.ibkr.is_connected()
+        ) if _order_router else False
+
+    # ── Schwab state ──────────────────────────────────────────────────────────
+    schwab_connected = False
+    if _order_router and _order_router.schwab:
+        sc = _order_router.schwab
+        schwab_connected = bool(getattr(sc, "is_connected", False))
+
+    return {
+        "status": "ok" if _order_router else "not_initialised",
+        "ibkr_connected": ibkr_connected,
+        "schwab_connected": schwab_connected,
+        "futures_broker": "ibkr" if ibkr_connected else "unavailable",
+        "equity_broker": "schwab" if schwab_connected else "unavailable",
+        "source": "execution_connector" if execution_ib else ("market_data_connector" if data_ib else "order_router"),
+    }
