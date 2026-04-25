@@ -698,6 +698,23 @@ class IBGatewayManager:
             logger.error("get_open_orders failed: %s", exc, exc_info=True)
             return []
 
+    async def get_order_status(self, order_id: str) -> dict:
+        """Return status dict for a single order, including parent_order_id.
+
+        Used by SafetyLayer._verify_parent_linkage to confirm broker-side
+        STP/TP children carry the correct parentId before reporting stp_linked.
+        """
+        orders = await self.get_open_orders()
+        for o in orders:
+            if str(o.get("order_id")) == str(order_id):
+                return {
+                    "order_id": o["order_id"],
+                    "parent_order_id": o.get("parent_id"),
+                    "status": o.get("status"),
+                    "symbol": o.get("symbol"),
+                }
+        return {}
+
     # ── Account summary ───────────────────────────────────────────────────
 
     async def get_account_summary(self) -> dict:
