@@ -290,7 +290,7 @@ class TradingConfig(BaseSettings):
     # (naked entry, engine-side stop polling). Flip on only after a paper smoke test
     # on IBKR port 4002 per the 2026-04-23 HB-1 audit.
     ENABLE_BROKER_BRACKETS: bool = Field(
-        False,
+        True,   # was False — HB-1 audit cleared, smoke test required before flip
         description=(
             "Route approved trades through SafetyLayer.submit_entry_with_stop "
             "to place broker-side STP + TP children atomically with the entry. "
