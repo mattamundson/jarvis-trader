@@ -140,6 +140,8 @@ from routers.scheduler_router import inject_scheduler as inject_scheduler_router
 from routers.trades_router import router as trades_router
 from routers.wfe_router import router as wfe_router
 from routers.discovery_router import router as discovery_router
+from routers.orders_router import router as orders_router
+from routers.orders_router import inject_dependencies as inject_orders_deps
 from routers.hidden_pivots_router import router as hidden_pivots_router
 from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
 from routers.decisions_router import router as decisions_router
@@ -523,7 +525,7 @@ async def lifespan(app: FastAPI):
 
     # HB-4: Position Reconciliation on Restart
     if ib_paper_connector is not None:
-        from engine.execution.position_reconciler import PositionReconciler
+        from execution.position_reconciler import PositionReconciler
         reconciler = PositionReconciler(ib_paper_connector)
         asyncio.create_task(reconciler.reconcile())
         logger.info("✅ PositionReconciler initialized and scheduled to check for orphaned positions")
@@ -553,6 +555,8 @@ async def lifespan(app: FastAPI):
         logger.info("Schwab credentials not set — SchwabConnector skipped (Phase 3 feature)")
 
     set_schwab_connector(schwab_connector)
+    # Inject the fully-wired order_router into the orders_router API bridge
+    inject_orders_deps(order_router)
     logger.info(
         "✅ OrderRouter ready — IBKR: %s | Schwab: %s",
         "connected" if order_router.ibkr else "not wired",
@@ -2320,6 +2324,7 @@ app.include_router(decisions_router)
 app.include_router(cache_router)
 app.include_router(polymarket_router)
 app.include_router(super_engine_router)
+app.include_router(orders_router)
 app.include_router(v1_router)
 app.include_router(observability_router)
 app.include_router(strategy_c_router)
