@@ -966,6 +966,33 @@ def migration_022(conn: sqlite3.Connection) -> None:
     logger.info("Migration 022 applied — mes_session_hypothesis table created.")
 
 
+def migration_023(conn: sqlite3.Connection) -> None:
+    """
+    023 — trading_patterns schema alignment.
+
+    Adds missing columns to trading_patterns table to support both
+    consolidator.py and patterns.py (AgentFeedbackTracker) logic.
+    """
+    columns_to_add = [
+        ("pattern_type", "TEXT"),
+        ("win_count", "INTEGER DEFAULT 0"),
+        ("loss_count", "INTEGER DEFAULT 0"),
+        ("avg_return", "REAL DEFAULT 0.0"),
+        ("is_active", "INTEGER DEFAULT 1"),
+    ]
+
+    for col_name, col_type in columns_to_add:
+        try:
+            conn.execute(f"ALTER TABLE trading_patterns ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+            logger.debug(f"Migration 023: column {col_name} already exists in trading_patterns.")
+
+    conn.commit()
+    logger.info("Migration 023 applied — trading_patterns schema aligned.")
+
+
 def migration_021(conn: sqlite3.Connection) -> None:
     """
     021 — paper_trades stop_loss / take_profit columns.
@@ -1013,6 +1040,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_020,  # version 20
     migration_021,  # version 21
     migration_022,  # version 22
+    migration_023,  # version 23
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1038,6 +1066,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Supervisor decisions: supervisor_decisions table for Hermes-pattern notifier gating (ACK/REVIEW/ESCALATE/HOLD audit log)",
     "Paper trades: stop_loss and take_profit columns for insert_paper_trade / fresh DB compatibility",
     "MES session hypothesis: forward-recorder table for Corey bias + gamma levels daily snapshots + session outcomes",
+    "Trading patterns alignment: adding pattern_type, win_count, loss_count, avg_return, and is_active columns.",
 ]
 
 

@@ -126,6 +126,44 @@ class DatabaseManager(
 
     # -- Diagnostics ----------------------------------------------------------
 
+    # -- Low-level Query API (Safe wrappers) ----------------------------------
+    # Use these for custom queries in learning/consolidator modules where
+    # a dedicated mixin method doesn't yet exist.
+
+    def execute(self, sql: str, params: tuple = ()) -> int:
+        """
+        Execute a DML/DDL statement (INSERT, UPDATE, DELETE, CREATE).
+        Returns the number of rows affected (rowcount).
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                cur = conn.execute(sql, params)
+                conn.commit()
+                return cur.rowcount
+            finally:
+                conn.close()
+
+    def fetch_one(self, sql: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
+        """Execute a query and return the first row as a dict, or None."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(sql, params).fetchone()
+                return dict(row) if row else None
+            finally:
+                conn.close()
+
+    def fetch_all(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
+        """Execute a query and return all rows as a list of dicts."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(sql, params).fetchall()
+                return [dict(r) for r in rows]
+            finally:
+                conn.close()
+
     def health_check(self) -> Dict[str, Any]:
         """
         Return a dict with row counts per table and the current schema version.

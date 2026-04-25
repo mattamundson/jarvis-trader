@@ -15,13 +15,16 @@ Cost per token (as of 2026-03-29):
 """
 
 import asyncio
+import os
 import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Literal, Optional
 
 import anthropic
+import httpx
 from anthropic import APIConnectionError, APIStatusError, RateLimitError
 from tenacity import (
     retry,
@@ -123,6 +126,7 @@ class JarvisLLMClient:
         "claude-opus-4-6": {"input": 15.0, "output": 75.0},
         "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
         "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
+        "hermes3:latest": {"input": 0.0, "output": 0.0},
     }
 
     # Model fallback chain when overloaded
@@ -138,6 +142,7 @@ class JarvisLLMClient:
         "claude-opus-4-6": 200_000,
         "claude-sonnet-4-6": 200_000,
         "claude-haiku-4-5-20251001": 200_000,
+        "hermes3:latest": 4_096,
     }
 
     def __init__(self, api_key: str, db_path: str = "data/llm_costs.db"):
@@ -148,11 +153,16 @@ class JarvisLLMClient:
             api_key: Anthropic API key
             db_path: Path to SQLite cost tracking database
         """
-        self.api_key = api_key
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+        self.provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
+        self.api_key = "" if self.provider == "ollama" else api_key
+        self.ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+        self.ollama_model = os.getenv("OLLAMA_MODEL", "hermes3:latest")
+        self.ollama_num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
+        self.ollama_num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "256"))
+        self.client = None if self.provider == "ollama" else anthropic.AsyncAnthropic(api_key=api_key)
         self.cost_tracker = CostTracker(db_path=db_path)
-        self.default_model = "claude-sonnet-4-6"
-        self.fast_model = "claude-haiku-4-5-20251001"
+        self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
+        self.fast_model = self.ollama_model if self.provider == "ollama" else "claude-haiku-4-5-20251001"
         self.compaction_count = 0
         logger.info(f"✅ JarvisLLMClient initialized with cost tracking at {db_path}")
 
@@ -398,6 +408,8 @@ class JarvisLLMClient:
         """
         working_messages = [dict(message) for message in messages]
         current_model = self._resolve_model_for_tier(model, tier)
+        if self.provider == "ollama":
+            current_model = self.ollama_model
 
         if compact:
             try:
@@ -535,6 +547,49 @@ class JarvisLLMClient:
             last_error, current_model, start_time, retries, agent_name, tier=tier
         )
 
+    def _messages_to_ollama_prompt(self, system: str, messages: list[dict]) -> str:
+        parts: list[str] = []
+        if system:
+            parts.append(f"System:\n{system}")
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            parts.append(f"{role.title()}:\n{content}")
+        parts.append("Assistant:")
+        return "\n\n".join(parts)
+
+    async def _call_ollama(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+    ):
+        prompt = self._messages_to_ollama_prompt(system, messages)
+        payload = {
+            "model": self.ollama_model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "num_ctx": self.ollama_num_ctx,
+                "num_predict": min(max_tokens, self.ollama_num_predict),
+                "temperature": temperature,
+            },
+        }
+        timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180"))
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(f"{self.ollama_host}/api/generate", json=payload)
+            response.raise_for_status()
+            data = response.json()
+        text = data.get("response", "")
+        input_tokens = int(data.get("prompt_eval_count") or self._estimate_tokens(system, messages))
+        output_tokens = int(data.get("eval_count") or max(1, len(text) // 4))
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
+        )
     @retry(
         stop=stop_after_attempt(1),  # Single attempt; retries handled at call() level
         wait=wait_exponential(multiplier=1, min=1, max=4),
@@ -549,9 +604,12 @@ class JarvisLLMClient:
         temperature: float,
     ):
         """
-        Low-level async call to Anthropic API.
+        Low-level async call to the configured LLM provider.
         Retries are handled at the call() level.
         """
+        if self.provider == "ollama":
+            return await self._call_ollama(system, messages, max_tokens, temperature)
+
         kwargs = {
             "model": model,
             "system": system,
