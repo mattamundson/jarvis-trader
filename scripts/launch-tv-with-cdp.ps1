@@ -5,26 +5,38 @@
 # TV Desktop launched from the Start menu does NOT set this flag by default,
 # which leaves the MCP dormant.
 #
-# This script:
-#   1. Checks if port 9222 is already bound (CDP already alive → exit clean)
-#   2. If TV is running without CDP, logs a warning but does not kill (user may be
-#      mid-session with unsaved layouts). Exits 2 to signal a config gap.
-#   3. If TV is not running, launches the Store-app binary with the CDP flag.
+# States handled:
+#   CDP-UP                     → nothing to do (exit 0)
+#   CDP-DOWN + TV-STOPPED      → launch TV with CDP flag (exit 0 / 1)
+#   CDP-DOWN + TV-RUNNING      → without -AutoHeal: warn + exit 2 (preserve user session)
+#                                with -AutoHeal inside safe window: kill + relaunch
+#                                with -AutoHeal outside safe window: warn + exit 2
 #
-# Idempotent. Safe to run on login, manually, or from another script.
+# Safe-window for auto-kill (futures 24/5; assume user may be watching charts):
+#   - Weekdays 18:00-07:00 CT (overnight, post-close to pre-market)
+#   - All day Sat/Sun
+#   - Any time if $env:JARVIS_FORCE_TV_RELAUNCH = "1" (manual override)
+#
+# Idempotent. Safe to run on login, manually, or from another scheduled watchdog task.
 #
 # Logs to: $env:USERPROFILE\jarvis-tv-cdp.log (rotated when >1MB)
 #
 # Exit codes:
-#   0 = CDP alive (already was, or was just launched)
+#   0 = CDP alive (already was, or was just launched / auto-healed)
 #   1 = hard failure (binary missing, launch failed)
-#   2 = soft config gap (TV running without CDP — user action needed)
+#   2 = soft config gap (TV running without CDP and auto-heal skipped)
 #
 # Usage:
-#   pwsh -NoProfile -File scripts\launch-tv-with-cdp.ps1
+#   pwsh -NoProfile -File scripts\launch-tv-with-cdp.ps1                    # detect-only
+#   pwsh -NoProfile -File scripts\launch-tv-with-cdp.ps1 -AutoHeal          # detect + kill+relaunch in safe windows
 #
-# Auto-triggered via scheduled task "JARVIS-TV-CDP-AtLogon"
-# (installed via scripts/install-tv-cdp-startup-task.ps1).
+# Triggers:
+#   - JARVIS-TV-CDP-AtLogon    (AtLogon, no -AutoHeal)       --> covers login case
+#   - JARVIS-TV-CDP-Watchdog   (every 10min, -AutoHeal)      --> covers auto-update / wake-from-sleep
+
+param(
+    [switch]$AutoHeal
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -39,7 +51,7 @@ $tvResolved    = Resolve-Path "C:\Program Files\WindowsApps\TradingView.Desktop_
 $tvBinary      = if ($tvResolved) { $tvResolved.Path } else { "C:\Program Files\WindowsApps\TradingView.Desktop_3.0.0.7652_x64__n534cwy3pjxzj\TradingView.exe" }
 $logPath       = Join-Path $env:USERPROFILE "jarvis-tv-cdp.log"
 $maxLogBytes   = 1MB
-$launchTimeoutSec = 15
+$launchTimeoutSec = 30  # 2026-04-24: bumped from 15s — TV cold-start observed at 22s (23:33) and 26s (failed at 23:23). 15s triggered false-failure on the 2026-04-23 22:23 scheduled-task fire (LastResult=1).
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 if ((Test-Path $logPath) -and ((Get-Item $logPath).Length -gt $maxLogBytes)) {
@@ -74,10 +86,36 @@ if (Test-CdpAlive) {
 }
 
 # ── Step 2: Is TV running without CDP? ────────────────────────────────────────
+function Test-IsSafeKillWindow {
+    # Safe windows for killing a live TV session: overnight + weekends, or explicit override.
+    if ($env:JARVIS_FORCE_TV_RELAUNCH -eq "1") { return $true }
+    $now = Get-Date
+    $dow = $now.DayOfWeek  # Sunday=0..Saturday=6
+    if ($dow -eq 'Saturday' -or $dow -eq 'Sunday') { return $true }
+    $h = $now.Hour  # local time on this box (America/Chicago when CT)
+    # 18:00-23:59 CT OR 00:00-06:59 CT = overnight off-market futures window
+    if ($h -ge 18 -or $h -lt 7) { return $true }
+    return $false
+}
+
 $tvProcs = @(Get-Process TradingView -ErrorAction SilentlyContinue)
 if ($tvProcs.Count -gt 0) {
-    Write-Log "TV Desktop is running ($($tvProcs.Count) processes) but CDP port $cdpPort is not responding. User likely launched TV from Start menu (no --remote-debugging-port flag). Not killing the session — user may have unsaved layouts. Relaunch manually via: taskkill /IM TradingView.exe /F; then rerun this script." "WARN"
-    exit 2
+    if ($AutoHeal -and (Test-IsSafeKillWindow)) {
+        Write-Log "TV running without CDP; -AutoHeal set and inside safe-kill window. Terminating $($tvProcs.Count) TV processes and relaunching with --remote-debugging-port=$cdpPort." "WARN"
+        $tvProcs | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        # Escape hatch for stuck children
+        $remaining = @(Get-Process TradingView -ErrorAction SilentlyContinue)
+        if ($remaining.Count -gt 0) {
+            & taskkill /F /IM TradingView.exe /T 2>&1 | Out-Null
+            Start-Sleep -Seconds 2
+        }
+        # Fall through to Step 3 (fresh launch)
+    } else {
+        $reason = if ($AutoHeal) { "-AutoHeal set but outside safe-kill window (weekday 07:00-18:00 CT)" } else { "-AutoHeal not set" }
+        Write-Log "TV Desktop is running ($($tvProcs.Count) processes) but CDP port $cdpPort is not responding. $reason. Not killing the session — user may have unsaved layouts. Relaunch manually via: taskkill /IM TradingView.exe /F; then rerun this script. Or set \$env:JARVIS_FORCE_TV_RELAUNCH='1' and rerun with -AutoHeal." "WARN"
+        exit 2
+    }
 }
 
 # ── Step 3: Launch TV with CDP flag ────────────────────────────────────────────
@@ -88,7 +126,7 @@ if (-not (Test-Path $tvBinary)) {
 
 Write-Log "Launching TV Desktop with --remote-debugging-port=$cdpPort"
 try {
-    Start-Process -FilePath $tvBinary -ArgumentList "--remote-debugging-port=$cdpPort"
+    Start-Process -FilePath $tvBinary -ArgumentList "--remote-debugging-port=$cdpPort --remote-debugging-address=0.0.0.0"
 } catch {
     Write-Log "Start-Process failed: $($_.Exception.Message)" "ERROR"
     exit 1
