@@ -80,6 +80,7 @@ from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
 from risk.margin_monitor import MarginMonitorAgent
+from risk.regime_guard import RegimeGuard
 from routers.analytics_router import router as analytics_router
 from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.analytics_router import set_data_manager as set_analytics_data_manager
@@ -585,10 +586,11 @@ async def lifespan(app: FastAPI):
         data_manager.inject_schwab(schwab_connector)
         logger.info("✅ Schwab wired into MarketDataManager as Tier 2 price source")
 
-    # JARVIS Super-Engine: Initialize ArbScout once data_manager is ready
+    # JARVIS Super-Engine: Initialize ArbScout and RegimeGuard once data_manager is ready
     arb_scout = ArbScout(polymarket_connector=polymarket, data_manager=data_manager)
+    regime_guard = RegimeGuard(data_manager=data_manager)
+    
     # Add initial pairs for cross-market monitoring
-    # (Token IDs can be updated via .env or manual scan later)
     arb_scout.add_pair("0x...", "MES") 
     
     # Update super-engine injection with all components now ready
@@ -597,7 +599,8 @@ async def lifespan(app: FastAPI):
         "openbb": openbb,
         "sentiment_bridge": sentiment_bridge,
         "model_drawer": model_drawer,
-        "arb_scout": arb_scout
+        "arb_scout": arb_scout,
+        "regime_guard": regime_guard
     })
 
     inject_institutional_data_manager(data_manager)
