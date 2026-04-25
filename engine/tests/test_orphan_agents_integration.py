@@ -1,24 +1,11 @@
 """
-US-007 — Coverage tests for the three "orphan agents" identified during the
-top-10 ROI roadmap audit.
+US-007 — Coverage tests for BreakoutAgent + HarmonicAgent.
 
-Findings during scoping (recorded here for the commit triage in US-009):
-
-  1. BreakoutAgent: NOT orphan — wired into TradingPipeline at
-     pipeline.py:1379-1401 as part of `_run_analysts`. Just untested.
+Findings during scoping:
+  1. BreakoutAgent: NOT orphan — wired at pipeline.py:1379-1401 in _run_analysts.
   2. HarmonicAgent: NOT orphan — same wiring as breakout.
-  3. RegimeGuard: TRULY orphan AND structurally broken.
-     - Instantiated at main.py:465 + sdk_pipeline.py:342
-     - `classify_regime` and `is_strategy_safe` never invoked anywhere
-     - `classify_regime` calls `self.indicators.adx(df)` but JesseIndicators
-       has no `adx` method → AttributeError on first call.
-     - `classify_regime` also calls `self.indicators.atr(df)` but the real
-       signature is `atr(high, low, close, period=14)` (three arrays).
-
-This file:
-  * Adds behavioral tests for BreakoutAgent + HarmonicAgent.
-  * Reproduces the RegimeGuard bugs so the broken state is visible in CI
-    and can drive a deletion decision in US-009 commit triage.
+  3. RegimeGuard: was orphan + structurally broken (JesseIndicators.adx missing,
+     atr wrong signature). Deleted in US-012.
 """
 
 import os
@@ -34,7 +21,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.breakout_agent import BreakoutAgent, BreakoutReport  # noqa: E402
 from agents.harmonic_agent import HarmonicAgent, HarmonicReport  # noqa: E402
-from agents.regime_guard import RegimeGuard  # noqa: E402
 
 
 def _ohlcv(rows: int) -> pd.DataFrame:
@@ -191,46 +177,3 @@ class TestHarmonicAgent:
         assert d["patterns"][0]["name"] == "Gartley"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RegimeGuard — broken-state regression tests
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestRegimeGuardBrokenState:
-    """
-    These tests document the broken state of RegimeGuard so the failure is
-    visible in CI rather than only at runtime when (if) it gets wired.
-    """
-
-    def test_classify_regime_short_history_returns_unknown_safely(self):
-        """Short-history early-return path (line 26-27) works without touching indicators."""
-        guard = RegimeGuard()
-        df = _ohlcv(20)  # < 30 → early return
-        assert guard.classify_regime(df) == "unknown"
-        assert guard.current_regime == "unknown"
-
-    def test_classify_regime_with_full_history_crashes_due_to_missing_adx(self):
-        """
-        AttributeError documented: JesseIndicators has no `adx` method.
-        If this test ever PASSES (i.e., does NOT raise), it means someone added
-        `JesseIndicators.adx` and RegimeGuard might be safe to wire — re-evaluate.
-        """
-        guard = RegimeGuard()
-        df = _ohlcv(100)
-        with pytest.raises((AttributeError, TypeError)):
-            guard.classify_regime(df)
-
-    def test_is_strategy_safe_pure_function_works(self):
-        """is_strategy_safe is the only working method — pure boolean policy."""
-        guard = RegimeGuard()
-        assert guard.is_strategy_safe("mm", "ranging") is True
-        assert guard.is_strategy_safe("mm", "trending") is False
-        assert guard.is_strategy_safe("trend", "trending") is True
-        assert guard.is_strategy_safe("trend", "ranging") is False
-        # Unknown strategy types default to True (permissive)
-        assert guard.is_strategy_safe("scalp", "ranging") is True
-        assert guard.is_strategy_safe("anything", "volatile") is True
-
-    def test_default_current_regime_is_unknown(self):
-        guard = RegimeGuard()
-        assert guard.current_regime == "unknown"

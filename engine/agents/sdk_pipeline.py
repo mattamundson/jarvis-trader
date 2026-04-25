@@ -36,6 +36,11 @@ import claude_agent_sdk as sdk
 
 from tools.market_mcp_server import create_market_mcp_server
 
+from backtest.regime_classifier import MarketRegime, RegimeClassifierV2
+from orchestrator.strategy_router import StrategyRouter
+from validation.shadow_mode import ShadowModeTracker
+from orchestrator.sentiment_bridge import SentimentBridge
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["SDKTradingPipeline"]
@@ -327,6 +332,15 @@ class SDKTradingPipeline:
         self._data_manager = data_manager
         self._api_key = api_key or os.getenv("JARVIS_API_KEY", "")
 
+        # Phase 2 Components
+        self._classifier = RegimeClassifierV2()
+        self._router = StrategyRouter()
+        self._shadow_tracker = ShadowModeTracker(data_manager._db if hasattr(data_manager, "_db") else None)
+
+        # Super-Engine Orchestration (Phase 6)
+        # Note: news_analyst is wired in from the orchestrator map if needed
+        self._sentiment_bridge = SentimentBridge(news_analyst=None) 
+
         # Build the in-process MCP server
         self._mcp_server = create_market_mcp_server(
             data_manager=data_manager,
@@ -431,9 +445,16 @@ class SDKTradingPipeline:
         started_at = datetime.now()
         logger.info("[SDKPipeline] Starting %s %s", symbol, interval)
 
+        # 1. Regime Detection (Phase 2)
+        bars = await self._data_manager.get_price_bars(symbol, interval, limit=100)
+        df_regime = self._classifier.classify(bars)
+        current_regime = MarketRegime(df_regime["regime_v2"].iloc[-1])
+        logger.info("[SDKPipeline] Detected Regime: %s", current_regime)
+
         orchestrator_prompt = (
             f"Run the JARVIS 5-stage trading pipeline for symbol={symbol} interval={interval}. "
             f"Follow the system prompt protocol exactly. "
+            f"The current market REGIME is {current_regime}. Factor this into your analysis. "
             f"Output ONLY the final JSON object — no prose, no markdown code blocks."
         )
 
@@ -469,11 +490,36 @@ class SDKTradingPipeline:
             errors=errors,
         )
 
+        # 2. Extract active positions for the router
+        active_symbols = []
+        if hasattr(self._data_manager, "_db"):
+            active_symbols = [p["symbol"] for p in self._data_manager._db.get_open_trades()]
+
+        # 3. Multi-Strategy Routing (Phase 2)
+        pipeline_result = self._router.route_decision(
+            symbol=symbol,
+            regime=current_regime,
+            raw_decision=pipeline_result,
+            active_positions=active_symbols
+        )
+
+        # 4. Shadow Logging (Phase 2)
+        if pipeline_result.get("is_shadow") and pipeline_result.get("final_action") in ["buy", "sell"]:
+            self._shadow_tracker.log_shadow_entry(
+                symbol=symbol,
+                side=pipeline_result["final_action"],
+                quantity=pipeline_result["final_quantity"],
+                price=pipeline_result["trade_decision"].get("limit_price") or bars["close"].iloc[-1],
+                strategy_name="SDK_Shadow",
+                reasoning=pipeline_result.get("reasoning", "")
+            )
+
         logger.info(
-            "[SDKPipeline] %s complete — action=%s quantity=%d (%.1fs)",
+            "[SDKPipeline] %s complete — action=%s quantity=%d regime=%s (%.1fs)",
             symbol,
             pipeline_result.get("final_action", "unknown"),
             pipeline_result.get("final_quantity", 0),
+            current_regime,
             (datetime.now() - started_at).total_seconds(),
         )
         return pipeline_result

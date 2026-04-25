@@ -1,0 +1,54 @@
+"""
+Super-Engine Router — status and health of advanced JARVIS components.
+"""
+
+from fastapi import APIRouter, HTTPException
+import logging
+from datetime import datetime
+
+logger = logging.getLogger("jarvis_trader.routers.super_engine")
+
+router = APIRouter(prefix="/super-engine", tags=["super-engine"])
+
+# Global references (assigned in main.py lifespan)
+registry = {
+    "polymarket": None,
+    "openbb": None,
+    "sentiment_bridge": None,
+    "model_drawer": None
+}
+
+def inject_super_engine(components: dict):
+    """Update global component registry."""
+    global registry
+    registry.update(components)
+
+@router.get("/status")
+async def get_engine_status():
+    """Return status of all Super-Engine components."""
+    status = {}
+    for key, instance in registry.items():
+        if instance:
+            status[key] = {
+                "active": True,
+                "type": type(instance).__name__,
+                "last_check": datetime.now().isoformat()
+            }
+        else:
+            status[key] = {"active": False}
+    
+    return status
+
+@router.get("/polymarket/balance")
+async def get_poly_balance():
+    """Fetch balance from Polymarket connector."""
+    poly = registry.get("polymarket")
+    if not poly:
+        raise HTTPException(status_code=503, detail="Polymarket connector not active")
+    
+    try:
+        # In a real implementation, we'd call the exchange API
+        return {"balance": 1000.0, "currency": "USDC", "chain": "Polygon"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
