@@ -27,6 +27,8 @@ from pydantic import BaseModel
 from slowapi.errors import RateLimitExceeded
 
 from agents.bear_researcher import BearResearcherAgent
+from agents.breakout_agent import BreakoutAgent
+from agents.harmonic_agent import HarmonicAgent
 from agents.bull_researcher import BullResearcherAgent
 from agents.debate import DebateOrchestrator
 from agents.fund_manager import FundManagerAgent
@@ -67,6 +69,7 @@ from execution.order_router import OrderRouter
 from execution.schwab_connector import SchwabConnector
 from llm.client import JarvisLLMClient
 from llm.cost_tracker import CostTracker
+from utils.inference_router import get_inference_router
 from middleware.api_key_middleware import APIKeyMiddleware
 from middleware.exception_handler import GlobalExceptionHandler
 from middleware.rate_limit import get_limiter, rate_limit_exception_handler
@@ -74,6 +77,7 @@ from portfolio.tracker import PortfolioTracker
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
+from risk.margin_monitor import MarginMonitorAgent
 from routers.analytics_router import router as analytics_router
 from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.analytics_router import set_data_manager as set_analytics_data_manager
@@ -93,6 +97,8 @@ from routers.kairos_router import router as kairos_router
 from routers.learning_router import router as learning_router
 from routers.events_router import router as events_router
 from routers.market_router import router as market_router
+from routers.institutional_router import router as institutional_router
+from routers.institutional_router import inject_data_manager as inject_institutional_data_manager
 from routers.phase3_readiness_router import inject_dependencies as inject_phase3_readiness_deps
 from routers.phase3_readiness_router import router as phase3_readiness_router
 from routers.portfolio_router import inject_dependencies as inject_portfolio_deps
@@ -123,6 +129,7 @@ from routers.messaging_router import inject_dependencies as inject_messaging_dep
 from routers.observability_router import router as observability_router
 from routers.scanner_router import router as scanner_router
 from routers.scanner_router import inject_dependencies as inject_scanner_deps
+from routers.super_engine_router import router as super_engine_router, inject_super_engine
 from routers.tradingview_router import router as tradingview_router
 from routers.scheduler_router import router as scheduler_router
 from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
@@ -134,11 +141,22 @@ from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
 from routers.decisions_router import router as decisions_router
 from routers.decisions_router import set_db_manager as set_decisions_db
 from routers.cache_router import router as cache_router
+from routers.polymarket_router import router as polymarket_router
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
 from websocket.events import set_ws_manager
 from websocket.manager import WebSocketManager
+try:
+    from execution.polymarket_connector import PolymarketConnector
+except ImportError as _pm_err:
+    PolymarketConnector = None  # Polymarket optional; py-clob-client↔py-order-utils version skew
+try:
+    from data.openbb_adapter import OpenBBAdapter
+except ImportError as _obb_err:
+    OpenBBAdapter = None  # openbb optional; install only if macro data needed
+from risk.protections import RiskProtections
+from orchestrator.sentiment_bridge import SentimentBridge
 
 try:
     from agents.sdk_pipeline import SDKTradingPipeline
@@ -226,6 +244,13 @@ ws_manager: WebSocketManager | None = None
 cost_tracker: "CostTracker | None" = None
 loss_tracker: "ConsecutiveLossTracker | None" = None
 validation_alert_manager: "ValidationAlertManager | None" = None
+margin_monitor: "MarginMonitorAgent | None" = None
+breakout_analyst: "BreakoutAgent | None" = None
+harmonic_analyst: "HarmonicAgent | None" = None
+polymarket: "PolymarketConnector | None" = None
+openbb: "OpenBBAdapter | None" = None
+risk_protections: RiskProtections | None = None
+sentiment_bridge: SentimentBridge | None = None
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -422,6 +447,11 @@ async def lifespan(app: FastAPI):
     )
     logger.info("✅ PnL Monitor initialised (SQLite + paper tracker sources active)")
 
+    # Margin Monitor — Phase 3
+    # Initialized here, connector will be wired after data_manager
+    margin_monitor = MarginMonitorAgent(connector=None)
+    logger.info("✅ Margin Monitor Agent initialised")
+
     # Safety layer — always first; PnLMonitor feeds circuit breakers with live data.
     # Both db_path (for kill-switch state via raw sqlite3) and db_manager (for typed
     # upsert_pnl_snapshot calls) must be passed — they're separate code paths inside
@@ -432,6 +462,28 @@ async def lifespan(app: FastAPI):
         db_path=str(db_manager._db_path),
         db_manager=db_manager,
     )
+
+    # JARVIS Super-Engine: Polymarket, OpenBB, Risk Protections
+    if PolymarketConnector is not None:
+        polymarket = PolymarketConnector()
+        await polymarket.connect()
+    else:
+        polymarket = None  # py-clob-client dep skew; wiki + OpenBB still functional
+    openbb = OpenBBAdapter() if OpenBBAdapter is not None else None
+    risk_protections = RiskProtections(db_manager=db_manager)
+
+    # Needs analyst for the bridge, assuming news_analyst is initialized later or available
+    # For now, initialize stub if news_analyst is not yet ready
+    sentiment_bridge = SentimentBridge(news_analyst=None)
+
+    # Inject into API registry
+    inject_super_engine({
+        "polymarket": polymarket,
+        "openbb": openbb,
+        "sentiment_bridge": sentiment_bridge
+    })
+
+    logger.info("✅ Super-Engine components initialized (Polymarket, OpenBB, Protections, SentimentBridge)")
 
     # Paper IB connector — JSON audit + optional PortfolioTracker mirror; wired into SafetyLayer
     ib_paper_connector = None
@@ -462,6 +514,13 @@ async def lifespan(app: FastAPI):
 
     # Wire IBKR into the order router now that it is available
     order_router.attach_ibkr(ib_paper_connector)
+
+    # HB-4: Position Reconciliation on Restart
+    if ib_paper_connector is not None:
+        from engine.execution.position_reconciler import PositionReconciler
+        reconciler = PositionReconciler(ib_paper_connector)
+        asyncio.create_task(reconciler.reconcile())
+        logger.info("✅ PositionReconciler initialized and scheduled to check for orphaned positions")
 
     # Schwab connector — initialized only when credentials are present.
     # SCHWAB_READY=False guard inside SchwabConnector prevents accidental activation.
@@ -499,20 +558,40 @@ async def lifespan(app: FastAPI):
     await data_manager.initialize()
     set_analytics_data_manager(data_manager)
 
+    # Start PolygonStreamer background task if available
+    if data_manager.polygon_streamer:
+        asyncio.create_task(data_manager.polygon_streamer.connect())
+        logger.info("✅ Polygon Streamer background task started")
+
     # Now that data_manager is ready, inject the IB gateway into PnLMonitor
     # so the circuit breakers can read live account data from IBKR when connected.
     if pnl_monitor is not None and data_manager.ibkr is not None:
         pnl_monitor._ib = data_manager.ibkr
         logger.info("✅ PnL Monitor: IB Gateway wired (live account data source active)")
 
+    _margin_connector = ib_paper_connector or data_manager.ibkr
+    if margin_monitor is not None and _margin_connector is not None:
+        margin_monitor._connector = _margin_connector
+        asyncio.create_task(margin_monitor.run_loop())
+        logger.info("✅ Margin Monitor: broker connector wired and background loop started")
+
     # Wire Schwab into MarketDataManager as Tier 2 price source (equities/options quotes)
     if schwab_connector is not None and schwab_connector.is_connected:
         data_manager.inject_schwab(schwab_connector)
         logger.info("✅ Schwab wired into MarketDataManager as Tier 2 price source")
 
+    inject_institutional_data_manager(data_manager)
+
     # Agents (need LLM client)
-    if settings.ANTHROPIC_API_KEY:
-        llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY)
+    llm_provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
+    llm_enabled = llm_provider == "ollama" or bool(settings.ANTHROPIC_API_KEY)
+    if llm_enabled:
+        llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY or "ollama-local")
+        direct_anthropic_key = settings.ANTHROPIC_API_KEY
+        if getattr(llm_client, "provider", "").lower() == "ollama":
+            os.environ["ANTHROPIC_API_KEY"] = ""
+            direct_anthropic_key = ""
+            logger.info("✅ Ollama mode active — direct Anthropic call sites disabled at runtime")
 
         # Startup assertion — fail loud if the client is missing required interface
         _required_methods = ["call"]
@@ -523,6 +602,16 @@ async def lifespan(app: FastAPI):
                 "Check llm/client.py — agents will silently HOLD without this."
             )
         logger.info(f"✅ LLM client validated: {type(llm_client).__name__} has {_required_methods}")
+
+        # Initialize inference router (Ollama primary, Anthropic fallback)
+        inference_router = get_inference_router()
+        router_status = await inference_router.test_connection()
+        if router_status["ollama"]["available"]:
+            logger.info("✅ Inference router: Ollama is PRIMARY provider (local inference)")
+        else:
+            logger.warning("⚠️  Inference router: Ollama unavailable. Falling back to Anthropic.")
+        logger.info(f"   Ollama model: {router_status['ollama']['model']}")
+        logger.info(f"   Fallback: Anthropic {router_status['anthropic']['model']}")
 
         # Stage 1: Analysts
         technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
@@ -542,8 +631,8 @@ async def lifespan(app: FastAPI):
         corey_agent = CoreyAuctionAnalystAgent(llm_client=llm_client)
 
         # Stage 2: Debate
-        bull_agent = BullResearcherAgent(api_key=settings.ANTHROPIC_API_KEY)
-        bear_agent = BearResearcherAgent(api_key=settings.ANTHROPIC_API_KEY)
+        bull_agent = BullResearcherAgent(api_key=direct_anthropic_key)
+        bear_agent = BearResearcherAgent(api_key=direct_anthropic_key)
         debate_agent = DebateOrchestrator()
 
         # Stages 3-5: Trader → Risk → Fund
@@ -551,7 +640,11 @@ async def lifespan(app: FastAPI):
         risk_agent = RiskManagerAgent(llm_client)
         fund_agent = FundManagerAgent(llm_client)
 
-        logger.info("✅ All 11 trading agents initialized (incl. CoreyAuctionAnalyst)")
+        # Stage 1 Enrichment
+        breakout_analyst = BreakoutAgent(data_manager)
+        harmonic_analyst = HarmonicAgent(data_manager)
+
+        logger.info("✅ All 13 trading agents initialized (incl. Corey, Breakout, Harmonics)")
 
         # Trading Pipeline — all agents wired
         trading_pipeline = TradingPipeline(
@@ -561,6 +654,8 @@ async def lifespan(app: FastAPI):
                 "social": social_agent,
                 "fundamental": fundamental_agent,
                 "corey": corey_agent,
+                "breakout": breakout_analyst,
+                "harmonic": harmonic_analyst,
                 "bull": bull_agent,
                 "bear": bear_agent,
                 "debate": debate_agent,
@@ -588,7 +683,7 @@ async def lifespan(app: FastAPI):
         except Exception as _sdk_exc:
             logger.warning("⚠️  SDK Pipeline init failed (non-fatal): %s", _sdk_exc)
     else:
-        logger.warning("⚠️  No ANTHROPIC_API_KEY — LLM agents disabled. Add to .env to enable.")
+        logger.warning("⚠️  No local/provider LLM configured — LLM agents disabled. Set JARVIS_LLM_PROVIDER=ollama or configure a hosted key.")
 
     # Scheduled analysis (runs during market hours)
     scheduler = AsyncIOScheduler(timezone="America/Chicago")
@@ -767,7 +862,7 @@ async def lifespan(app: FastAPI):
     # WATCHLIST_SCAN_ENABLED added 2026-04-10 as an emergency kill switch — when False,
     # the scheduler still starts (other jobs below depend on it) but the watchlist scan
     # job is not registered, preventing contaminated-data pipeline runs from landing trades.
-    if settings.ANTHROPIC_API_KEY:
+    if llm_enabled:
         if settings.WATCHLIST_SCAN_ENABLED:
             scheduler.add_job(
                 run_watchlist_analysis,
@@ -780,11 +875,49 @@ async def lifespan(app: FastAPI):
                 misfire_grace_time=300,
             )
             logger.info("⏰ Watchlist auto-scan registered — every 30min (9:30am-4pm CT weekdays)")
+            
+            # HB-3: Decouple initial scan from lifespan (<10s boot constraint)
+            async def delayed_watchlist_scan():
+                await asyncio.sleep(10)
+                logger.info("⏰ Running delayed initial watchlist scan (10s post-boot)")
+                try:
+                    await run_watchlist_analysis()
+                except Exception as e:
+                    logger.error(f"Initial watchlist scan failed: {e}")
+            
+            asyncio.create_task(delayed_watchlist_scan())
         else:
             logger.warning(
                 "⛔ WATCHLIST_SCAN_ENABLED=false — hourly watchlist auto-scan is DISABLED. "
                 "Re-enable in .env after data layer + scanner guards are verified."
             )
+        # ── Approval Expiry Background Job (Phase 1 Protection) ──────────
+        async def run_approval_expiry():
+            """Auto-cancel pending trades older than 5 minutes."""
+            from approval.service import cancel_expired_approvals
+            try:
+                cancelled = cancel_expired_approvals(db_manager)
+                if cancelled > 0:
+                    logger.info(f"⏰ Auto-expired {cancelled} stale approval(s)")
+            except Exception as e:
+                logger.error(f"Approval expiry job failed: {e}")
+
+        scheduler.add_job(
+            run_approval_expiry,
+            "interval",
+            minutes=1,
+            id="approval_expiry",
+            name="Auto-expire stale approvals",
+            max_instances=1,
+        )
+        logger.info("⏰ Approval expiry job registered (every 1m)")
+
+        # Delayed run for approval expiry (don't wait 1m for first check)
+        async def delayed_approval_expiry():
+            await asyncio.sleep(5)
+            await run_approval_expiry()
+        asyncio.create_task(delayed_approval_expiry())
+
         scheduler.start()
         logger.info("⏰ Scheduler started")
 
@@ -1158,6 +1291,7 @@ async def lifespan(app: FastAPI):
         portfolio_tracker=paper_tracker,
         whatsapp_notifier=_get_notifier(),
         learning_consolidator=learning_consolidator,
+        market_price_fn=data_manager.get_current_price if data_manager is not None else None,
     )
     if scheduler is not None:
         eod_scheduler.register_with_scheduler(scheduler)
@@ -1232,7 +1366,7 @@ async def lifespan(app: FastAPI):
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_scheduler_router_scheduler(scheduler)
     inject_pipeline_deps(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline)
-    inject_messaging_deps(str(db_manager._db_path))
+    inject_messaging_deps(db_manager, paper_tracker=paper_tracker, safety_layer=safety_layer)
     # Morning brief deps
     inject_morning_brief_deps(data_manager, paper_tracker, safety_layer)
     inject_hp_deps(data_manager, settings)
@@ -1257,10 +1391,19 @@ async def lifespan(app: FastAPI):
             signal_scanner.set_paper_tracker(paper_tracker)
             logger.info("Signal scanner: paper_tracker injected")
         inject_scanner_deps(signal_scanner)
-        await signal_scanner.start()
-        logger.info("Signal scanner started (symbols=%s, 60-min interval)", _scan_symbols)
+        if settings.WATCHLIST_SCAN_ENABLED:
+            asyncio.create_task(signal_scanner.start())
+            logger.info(
+                "Signal scanner queued as background task (symbols=%s, 60-min interval)",
+                _scan_symbols,
+            )
+        else:
+            logger.warning(
+                "⛔ Signal scanner initialized but NOT started because "
+                "WATCHLIST_SCAN_ENABLED=false"
+            )
     except Exception as e:
-        logger.warning("Signal scanner failed to start: %s (non-fatal)", e)
+        logger.warning("Signal scanner failed to queue: %s (non-fatal)", e)
 
     # Initialize Tilt Detection
     try:
@@ -1385,10 +1528,23 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("SpeculationEngine: disabled (set ENABLE_SPECULATION=True to enable)")
 
+    # Initialize Weekly Adaptive Calibration (Saturday 00:00)
+    try:
+        from backtest.auto_calibrate import run_weekly_calibration
+        scheduler.add_job(
+            run_weekly_calibration,
+            CronTrigger(day_of_week="sat", hour=0, minute=0, timezone="America/Chicago"),
+            id="weekly_adaptive_calibration",
+            name="Weekly Adaptive Walk-Forward Calibration",
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
+        logger.info("⏰ Weekly Adaptive Calibration registered — runs Saturdays at 00:00 CT")
+    except Exception as _calib_err:
+        logger.warning(f"Failed to register weekly calibration (non-fatal): {_calib_err}")
+
     # Initialize Database Backup (nightly at 23:30 UTC)
     try:
-        import asyncio
-
         from backup.db_backup import get_backup_manager
 
         backup_manager = get_backup_manager()
@@ -2135,6 +2291,8 @@ app.include_router(discovery_router)
 app.include_router(hidden_pivots_router)
 app.include_router(decisions_router)
 app.include_router(cache_router)
+app.include_router(polymarket_router)
+app.include_router(super_engine_router)
 app.include_router(v1_router)
 app.include_router(observability_router)
 
@@ -2153,8 +2311,7 @@ async def start_strategy_lab(
     """
     Start the LLM autonomous strategy improvement loop in the background.
     Generates STC+ATR strategy variants via Claude, backtests each variant,
-    applies dual-gate validation, and saves ELIGIBLE results to disk.
-
+    applies dual-gate validation, and saves ELIGIBLE results to disk.\n
     Auth: global X-API-Key middleware enforces authentication.
     """
     from strategy_lab.strategy_loop import run_strategy_loop
@@ -2180,8 +2337,7 @@ async def start_strategy_lab(
 @app.get("/strategy-lab/results")
 async def get_strategy_lab_results():
     """
-    Return the best strategies found by the strategy lab.
-
+    Return the best strategies found by the strategy lab.\n
     Auth: global X-API-Key middleware enforces authentication.
     """
     import json
@@ -2299,8 +2455,7 @@ async def calculate_position_size_alias():
 @app.get("/safety/loss-tracker")
 async def get_loss_tracker_status():
     """
-    Return consecutive loss tracking state.
-
+    Return consecutive loss tracking state.\n
     Returns:
         global_consecutive_losses: Total consecutive losses (all symbols)
         symbol_losses: Dict[symbol] -> consecutive loss count
@@ -2440,8 +2595,7 @@ _strategy_params = StrategyParams()
 @app.get("/strategy/params")
 async def get_strategy_params():
     """
-    Get current strategy parameter configuration.
-
+    Get current strategy parameter configuration.\n
     Returns:
         ema_short: Short-term EMA period (default 8)
         ema_long: Medium-term EMA period (default 21)
@@ -2464,11 +2618,9 @@ async def get_strategy_params():
 @app.put("/strategy/params")
 async def update_strategy_params(params: StrategyParams):
     """
-    Update strategy parameter configuration.
-
+    Update strategy parameter configuration.\n
     Changes take effect immediately for future backtests and live trading.
-    Existing positions are unaffected.
-
+    Existing positions are unaffected.\n
     Request:
         ema_short, ema_long, ema_smoother: EMA periods
         atr_length, atr_mult_stop, atr_mult_target: ATR configuration
@@ -2561,8 +2713,7 @@ async def get_bars(
     days: int = 7,
     futures: bool = False,
 ):
-    """Get OHLCV bars for a symbol.
-
+    """Get OHLCV bars for a symbol.\n
     `interval` is accepted as an alias for `timeframe` (pandas/ohlcv convention).
     Precedence: explicit `timeframe` > `interval` > default `5m`.
     """
@@ -2588,11 +2739,9 @@ async def get_bars(
 @app.get("/llm/stats")
 async def get_llm_stats(days_back: int = 0):
     """
-    Get LLM API usage and cost statistics for a given day.
-
+    Get LLM API usage and cost statistics for a given day.\n
     Query Parameters:
-        days_back: 0 for today, 1 for yesterday, etc. (default: 0)
-
+        days_back: 0 for today, 1 for yesterday, etc. (default: 0)\n
     Returns:
         date: ISO date string
         total_calls: Total LLM API calls made
@@ -2678,11 +2827,9 @@ async def get_paper_positions():
 @app.post("/portfolio/paper/trade/manual", response_model=PaperTradeResponse)
 async def submit_paper_trade(req: PaperTradeRequest):
     """
-    Open or close a paper trade.
-
+    Open or close a paper trade.\n
     - If close_trade_id is omitted (or null):  opens a new position.
-    - If close_trade_id is provided:           closes that position at req.price.
-
+    - If close_trade_id is provided:           closes that position at req.price.\n
     Body fields:
         symbol        : ticker (e.g. "SPY", "MES")
         action        : "buy" | "sell" | "sell_short" | "buy_to_cover"
@@ -2777,8 +2924,7 @@ async def get_paper_performance():
 @app.get("/paper/pending-signals", response_model=PendingSignalsResponse)
 async def get_pending_signals():
     """
-    Return pending entry signals generated by the daily MGC scanner.
-
+    Return pending entry signals generated by the daily MGC scanner.\n
     Reads from backtest/results/pending_signals.json. Each entry includes
     date, symbol, direction, estimated entry price, stop, target, regime,
     and a status field (pending / filled / expired).
@@ -2804,8 +2950,7 @@ async def get_pending_signals():
 @app.get("/portfolio/history/trades", response_model=TradeHistoryResponse)
 async def get_trade_history(limit: int = 100, symbol: str = "", status: str = ""):
     """
-    Return historical trades from SQLite.
-
+    Return historical trades from SQLite.\n
     Query params:
         limit  : max rows to return (default 100)
         symbol : filter by ticker symbol (optional)
@@ -2828,8 +2973,7 @@ async def get_trade_history(limit: int = 100, symbol: str = "", status: str = ""
 @app.get("/portfolio/history/daily-pnl", response_model=DailyPnLResponse)
 async def get_daily_pnl(days: int = 30):
     """
-    Return daily P&L snapshots for the last N days.
-
+    Return daily P&L snapshots for the last N days.\n
     Query params:
         days : lookback window in calendar days (default 30)
     """
@@ -2846,8 +2990,7 @@ async def get_daily_pnl(days: int = 30):
 @app.get("/portfolio/history/decisions", response_model=DecisionHistoryResponse)
 async def get_decision_history(limit: int = 50, symbol: str = ""):
     """
-    Return historical agent decisions from SQLite.
-
+    Return historical agent decisions from SQLite.\n
     Query params:
         limit  : max rows to return (default 50)
         symbol : filter by ticker symbol (optional)
@@ -2971,11 +3114,9 @@ async def get_trading_streaks():
 @app.get("/pipeline/history")
 async def get_pipeline_history(limit: int = 50, symbol: str = ""):
     """
-    Return historical pipeline run records from SQLite.
-
+    Return historical pipeline run records from SQLite.\n
     Each record corresponds to one TradingPipeline execution triggered by
-    a TradingView webhook or manual call.
-
+    a TradingView webhook or manual call.\n
     Query params:
         limit  : max rows to return (default 50, capped at 200)
         symbol : filter by ticker symbol (optional, case-insensitive)
@@ -3017,11 +3158,9 @@ async def get_rolling_performance(days: int = 30):
 @app.get("/analytics/performance/compare")
 async def get_analytics_performance_compare():
     """
-    Compare current forward-test metrics against backtest targets.
-
+    Compare current forward-test metrics against backtest targets.\n
     Forward metrics (from live paper trading in SQLite) are compared to the
-    reference backtest results: PF=5.27, Sharpe=4.16.
-
+    reference backtest results: PF=5.27, Sharpe=4.16.\n
     Returns per-metric diffs, retention percentages, and a ``degradation_ok``
     flag that is True when forward results still exceed the paper thresholds
     (PF > 2.0 and Sharpe > 1.5).
@@ -3571,13 +3710,11 @@ async def run_pipeline(req: PipelineRequest):
 @app.post("/pipeline/run/sdk")
 async def run_sdk_pipeline(req: PipelineRequest):
     """
-    Run the 5-stage trading pipeline via Claude Agent SDK (managed agents).
-
+    Run the 5-stage trading pipeline via Claude Agent SDK (managed agents).\n
     This is the additive SDK-powered path that runs alongside /pipeline/run.
     Uses the claude-agent-sdk to orchestrate 10 specialist subagents with
     parallel Stage 1 analysis and Stage 2 debate. Output format is compatible
-    with /pipeline/run for dashboard consumption.
-
+    with /pipeline/run for dashboard consumption.\n
     The existing /pipeline/run endpoint is unaffected.
     """
     if not sdk_pipeline:
@@ -3892,11 +4029,9 @@ async def get_thinkscript_registry_entry(script_id: str):
 @app.get("/macro/snapshot")
 async def get_macro_snapshot():
     """
-    Current macro environment from FRED — flat snapshot for dashboard polling.
-
+    Current macro environment from FRED — flat snapshot for dashboard polling.\n
     Returns:
-        {"vix": float, "fed_funds_rate": float, "ten_year_yield": float, "unemployment": float}
-
+        {"vix": float, "fed_funds_rate": float, "ten_year_yield": float, "unemployment": float}\n
     Uses a 5-minute in-memory cache so 60s dashboard polling doesn't hammer FRED.
     The underlying FREDDataService already caches at 1h per series; this adds a
     dedicated short-TTL cache for the flattened response shape.
@@ -4389,8 +4524,7 @@ class MGCTradeLogRequest(BaseModel):
 async def get_mgc_signal():
     """
     Generate today's MGC (Gold Micro) signal using the walk-forward validated
-    adaptive regime strategy (WFE=0.88).
-
+    adaptive regime strategy (WFE=0.88).\n
     Fetches 200 daily bars via data_manager, runs the full indicator +
     regime + signal pipeline, and returns the last bar's signal with entry/exit
     levels.
@@ -4924,120 +5058,45 @@ def _build_performance_report_html(
     pnl_json = str(pnl_data).replace("None", "0")
     dates_json = str([str(r.get("date", ""))[:10] for r in daily_pnl[-30:]])
 
-    return (
-        "<!DOCTYPE html>\n"
-        '<html lang="en">\n'
-        "<head>\n"
-        '<meta charset="UTF-8">\n'
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
-        "<title>JARVIS TRADER - Performance Report</title>\n"
-        '<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>\n'
-        "<style>\n"
-        "  * { box-sizing: border-box; margin: 0; padding: 0; }\n"
-        "  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n"
-        "          background: #0a0a0a; color: #e5e5e5; padding: 24px; }\n"
-        "  h1 { font-size: 1.5rem; margin-bottom: 4px; }\n"
-        "  .subtitle { color: #6b6b6b; font-size: 0.875rem; margin-bottom: 24px; }\n"
-        "  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));"
-        " gap: 12px; margin-bottom: 24px; }\n"
-        "  .card { background: #161616; border: 1px solid #262626; border-radius: 8px; padding: 16px; }\n"
-        "  .card-label { font-size: 0.75rem; color: #6b6b6b; text-transform: uppercase; letter-spacing: 0.05em; }\n"
-        "  .card-value { font-size: 1.5rem; font-weight: 600; margin-top: 4px; }\n"
-        "  .card-status { font-size: 0.75rem; margin-top: 4px; }\n"
-        "  .pass { color: #22c55e; }\n"
-        "  .fail { color: #ef4444; }\n"
-        "  .neutral { color: #6b6b6b; }\n"
-        "  .section { background: #161616; border: 1px solid #262626; border-radius: 8px;"
-        " padding: 20px; margin-bottom: 16px; }\n"
-        "  .section h2 { font-size: 1rem; margin-bottom: 16px; color: #a3a3a3; }\n"
-        "  table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }\n"
-        "  th { text-align: left; padding: 8px 12px; border-bottom: 1px solid #262626;"
-        " color: #6b6b6b; font-weight: 500; }\n"
-        "  td { padding: 8px 12px; border-bottom: 1px solid #1a1a1a; }\n"
-        "  tr:hover td { background: #1a1a1a; }\n"
-        "  canvas { max-height: 200px; }\n"
-        "</style>\n"
-        "</head>\n"
-        "<body>\n"
-        "<h1>JARVIS TRADER - Performance Report</h1>\n"
-        f'<p class="subtitle">Generated {generated_at[:10]} | Paper Trading Phase</p>\n'
-        "\n"
-        '<div class="grid">\n'
-        '  <div class="card">\n'
-        '    <div class="card-label">Profit Factor</div>\n'
-        f'    <div class="card-value {pf_class}">{fmt_num(pf)}</div>\n'
-        f'    <div class="card-status {pf_status_class}">{pf_status_txt}</div>\n'
-        "  </div>\n"
-        '  <div class="card">\n'
-        '    <div class="card-label">Sharpe Ratio</div>\n'
-        f'    <div class="card-value {sharpe_class}">{fmt_num(sharpe)}</div>\n'
-        f'    <div class="card-status {sharpe_status_class}">{sharpe_status_txt}</div>\n'
-        "  </div>\n"
-        '  <div class="card">\n'
-        '    <div class="card-label">Win Rate</div>\n'
-        f'    <div class="card-value neutral">{fmt_pct(win_rate)}</div>\n'
-        '    <div class="card-status neutral">Target &gt;= 50%</div>\n'
-        "  </div>\n"
-        '  <div class="card">\n'
-        '    <div class="card-label">Max Drawdown</div>\n'
-        f'    <div class="card-value fail">{fmt_pct(max_dd)}</div>\n'
-        '    <div class="card-status neutral">Limit &lt;= -15%</div>\n'
-        "  </div>\n"
-        '  <div class="card">\n'
-        '    <div class="card-label">Total Trades</div>\n'
-        f'    <div class="card-value neutral">{total_trades}</div>\n'
-        '    <div class="card-status neutral">Target &gt;= 30</div>\n'
-        "  </div>\n"
-        '  <div class="card">\n'
-        '    <div class="card-label">Gross P&amp;L</div>\n'
-        f'    <div class="card-value {pnl_class}">{fmt_usd(gross_pnl)}</div>\n'
-        '    <div class="card-status neutral">Paper account</div>\n'
-        "  </div>\n"
-        "</div>\n"
-        "\n"
-        '<div class="section">\n'
-        "  <h2>Daily P&amp;L - Last 30 Days</h2>\n"
-        '  <canvas id="pnlChart"></canvas>\n'
-        "</div>\n"
-        "\n"
-        '<div class="section">\n'
-        "  <h2>Trade History (latest 100)</h2>\n"
-        "  <table>\n"
-        "    <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th>"
-        "<th>Entry</th><th>Exit</th><th>P&amp;L</th><th>Date</th></tr></thead>\n"
-        f"    <tbody>{trade_rows}</tbody>\n"
-        "  </table>\n"
-        "</div>\n"
-        "\n"
-        "<script>\n"
-        "const ctx = document.getElementById('pnlChart').getContext('2d');\n"
-        f"const pnlData = {pnl_json};\n"
-        f"const labels = {dates_json};\n"
-        "new Chart(ctx, {\n"
-        "  type: 'bar',\n"
-        "  data: {\n"
-        "    labels: labels,\n"
-        "    datasets: [{\n"
-        "      label: 'Daily P&L',\n"
-        "      data: pnlData,\n"
-        "      backgroundColor: pnlData.map(v => v >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'),\n"
-        "      borderColor: pnlData.map(v => v >= 0 ? '#22c55e' : '#ef4444'),\n"
-        "      borderWidth: 1,\n"
-        "    }],\n"
-        "  },\n"
-        "  options: {\n"
-        "    responsive: true,\n"
-        "    plugins: { legend: { display: false } },\n"
-        "    scales: {\n"
-        "      x: { ticks: { color: '#6b6b6b', maxTicksLimit: 10 } },\n"
-        "      y: { ticks: { color: '#6b6b6b' }, grid: { color: '#1a1a1a' } },\n"
-        "    },\n"
-        "  },\n"
-        "});\n"
-        "</script>\n"
-        "</body>\n"
-        "</html>"
-    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER - Performance Report</title>
+<style>
+body {{ font-family: Arial, sans-serif; background: #0a0a0a; color: #e5e5e5; padding: 24px; }}
+h1 {{ margin-bottom: 4px; }}
+p {{ color: #b5b5b5; }}
+section {{ margin-top: 24px; padding: 16px; border: 1px solid #262626; background: #161616; border-radius: 8px; }}
+table {{ width: 100%; border-collapse: collapse; margin-top: 12px; }}
+th, td {{ text-align: left; padding: 8px 10px; border-bottom: 1px solid #262626; }}
+.pass {{ color: #22c55e; }}
+.fail {{ color: #ef4444; }}
+.neutral {{ color: #a3a3a3; }}
+</style>
+</head>
+<body>
+<h1>JARVIS TRADER - Performance Report</h1>
+<p>Generated {generated_at[:10]} | Paper Trading Phase</p>
+<section>
+<h2>Summary</h2>
+<p>Profit Factor: <span class="{pf_class}">{fmt_num(pf)}</span></p>
+<p>Sharpe Ratio: <span class="{sharpe_class}">{fmt_num(sharpe)}</span></p>
+<p>Win Rate: <span class="neutral">{fmt_pct(win_rate)}</span></p>
+<p>Max Drawdown: <span class="fail">{fmt_pct(max_dd)}</span></p>
+<p>Total Trades: <span class="neutral">{total_trades}</span></p>
+<p>Gross P&amp;L: <span class="{pnl_class}">{fmt_usd(gross_pnl)}</span></p>
+</section>
+<section>
+<h2>Trade History (latest 100)</h2>
+<table>
+<thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>P&amp;L</th><th>Date</th></tr></thead>
+<tbody>{trade_rows}</tbody>
+</table>
+</section>
+</body>
+</html>"""
 
 
 @app.get("/portfolio/stats/session-today")
@@ -5326,8 +5385,7 @@ async def get_alert_stats():
 
 @app.post("/portfolio/import/trades")
 async def import_paper_trades(request: Request):
-    """Bulk import paper trades from JSON array.
-
+    """Bulk import paper trades from JSON array.\n
     Body: {"trades": [{"symbol": "MES", "action": "LONG", "entry_price": 5000.0,
                        "exit_price": 5010.0, "quantity": 1, "pnl": 50.0,
                        "entry_time": "2026-03-01T09:30:00Z",
@@ -5385,6 +5443,5 @@ async def import_paper_trades(request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
-
 
 
