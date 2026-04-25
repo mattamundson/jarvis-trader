@@ -9,18 +9,14 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+try:
+    from utils.position_sizing import INSTRUMENT_MULTIPLIERS as INSTRUMENT_POINT_VALUES
+except ImportError:
+    from engine.utils.position_sizing import INSTRUMENT_MULTIPLIERS as INSTRUMENT_POINT_VALUES
+
 logger = logging.getLogger(__name__)
 
 _CT = ZoneInfo("America/Chicago")
-
-INSTRUMENT_POINT_VALUES: dict[str, float] = {
-    "MCL": 100.0,
-    "MNQ": 2.0,
-    "MES": 5.0,
-    "MGC": 10.0,
-    "ES": 50.0,
-    "NQ": 20.0,
-}
 
 # Module-level globals — injected via inject_morning_brief_deps()
 _data_manager = None

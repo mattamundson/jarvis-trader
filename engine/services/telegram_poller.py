@@ -145,6 +145,11 @@ async def start_telegram_poller(gateway_handle_fn) -> Optional[TelegramPoller]:
         gateway_handle_fn: async callable(chat_id, text, username) -> reply_text
     """
     global _poller
+    enabled = os.getenv("TELEGRAM_POLLER_ENABLED", "").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        logger.info("TELEGRAM_POLLER_ENABLED is not true - Telegram poller disabled")
+        return None
+
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         logger.info("TELEGRAM_BOT_TOKEN not set — Telegram poller disabled")

@@ -46,6 +46,7 @@ HEALTHY_ORPHAN_BACKOFF = 30  # seconds to sleep before exiting when orphan is he
                               # space to mark the slot as unstable instead of looping
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENGINE_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = ENGINE_DIR.parent
 
 
 def _port_holders(port: int) -> list[int]:
@@ -213,6 +214,9 @@ def main() -> int:
     # sees one long-lived PID; shutdown signals propagate normally.
     print("[port_guardian] launching uvicorn in-process", flush=True)
     os.chdir(ENGINE_DIR)
+    for path in (str(PROJECT_ROOT), str(ENGINE_DIR)):
+        if path not in sys.path:
+            sys.path.insert(0, path)
     import uvicorn  # noqa: PLC0415 — deferred import so the cleanup phase above stays cheap
     uvicorn.run(
         "main:app",
@@ -226,3 +230,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+

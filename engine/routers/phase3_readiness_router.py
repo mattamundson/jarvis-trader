@@ -124,11 +124,17 @@ async def get_phase3_readiness() -> dict:
             all_pass = False
 
         try:
+            # MAX_SINGLE_ORDER_VALUE was intentionally raised from $5k to $100k in
+            # handoff-2026-04-09-2354 to allow futures notional (MES contract is
+            # ~$35k notional per-contract; the old $5k cap rejected every futures
+            # order). Gate now accepts anything up to $100k. Lower is also fine
+            # (stricter = safer). This honors the post-futures-fix policy without
+            # hard-coding a single value.
             position_ok = (
                 settings.MAX_CONTRACTS_PER_INSTRUMENT == 2
                 and settings.MAX_OVERNIGHT_CONTRACTS == 1
                 and settings.MAX_POSITION_SIZE_PCT == 0.05
-                and settings.MAX_SINGLE_ORDER_VALUE == 5000.0
+                and 0 < settings.MAX_SINGLE_ORDER_VALUE <= 100_000.0
                 and settings.MAX_MARGIN_UTILIZATION == 0.40
             )
             gates["position_limits_verified"] = {

@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/messaging", tags=["messaging"])
 
 _gateway: Optional[SharedAgentGateway] = None
-_db_path: Optional[str] = None
+_db_manager = None
+_paper_tracker = None
+_safety_layer = None
 
 
 class DirectChatRequest(BaseModel):
@@ -36,9 +38,11 @@ class DirectChatRequest(BaseModel):
     display_name: str = ""
 
 
-def inject_dependencies(db_path: str) -> None:
-    global _db_path, _gateway
-    _db_path = db_path
+def inject_dependencies(db_manager, paper_tracker=None, safety_layer=None) -> None:
+    global _db_manager, _paper_tracker, _safety_layer, _gateway
+    _db_manager = db_manager
+    _paper_tracker = paper_tracker
+    _safety_layer = safety_layer
     _gateway = None
 
 
@@ -51,7 +55,7 @@ def _normalize_whatsapp_sender(raw: str) -> str:
 
 
 def _build_gateway() -> SharedAgentGateway:
-    if _db_path is None:
+    if _db_manager is None:
         raise RuntimeError("messaging gateway not initialized")
 
     config = GatewayConfig(
@@ -62,7 +66,7 @@ def _build_gateway() -> SharedAgentGateway:
             _normalize_whatsapp_sender(v) for v in _parse_csv(os.getenv("MESSAGING_ALLOWED_WHATSAPP_NUMBERS", ""))
         ),
     )
-    store = GatewaySessionStore(_db_path)
+    store = GatewaySessionStore(str(_db_manager._db_path))
     ollama_base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
     # Both adapters use direct Ollama for fast local inference.
@@ -231,6 +235,63 @@ async def whatsapp_webhook(request: Request) -> dict[str, Any]:
     if not sender:
         raise HTTPException(status_code=400, detail="whatsapp sender missing")
 
+    # ── Phase 1: Hardcoded Safety Commands (Matt Only) ────────────────────────
+    from config import settings as _cfg
+    admin_normalized = _normalize_whatsapp_sender(_cfg.WHATSAPP_TO)
+    is_admin = sender == admin_normalized
+    cmd = raw_text.strip().upper()
+
+    if is_admin:
+        # Command: CONFIRM KILL
+        if cmd == "CONFIRM KILL":
+            if _safety_layer:
+                from engine.risk.safety_layer import KillSwitchReason
+                _safety_layer.activate_kill_switch(KillSwitchReason.MANUAL, "WhatsApp Remote Kill")
+                await _send_whatsapp_reply(sender, "JARVIS: ⛔ KILL SWITCH ACTIVATED. All trading halted.")
+                return {"ok": True, "action": "kill_switch"}
+            else:
+                await _send_whatsapp_reply(sender, "JARVIS: Safety layer not available.")
+                return {"ok": False, "error": "safety_layer_unavailable"}
+
+        # Command: Y / N (Approval)
+        if cmd in ("Y", "N"):
+            if _db_manager and _paper_tracker and _safety_layer:
+                try:
+                    from approval.service import (
+                        approve_pending_trade,
+                        get_latest_pending_approval_row,
+                        reject_pending_trade,
+                    )
+                    
+                    row = get_latest_pending_approval_row(_db_manager)
+                    aid = row["approval_id"]
+                    sym = row["symbol"]
+                    act = row["action"]
+                    
+                    if cmd == "Y":
+                        res = await approve_pending_trade(
+                            approval_id=aid,
+                            db_manager=_db_manager,
+                            paper_tracker=_paper_tracker,
+                            safety_layer=_safety_layer,
+                            resolved_by="whatsapp_remote",
+                        )
+                        await _send_whatsapp_reply(sender, f"JARVIS: ✅ {sym} {act} APPROVED. Trade {res['paper_trade_id'][:8]} open.")
+                    else:
+                        reject_pending_trade(
+                            approval_id=aid,
+                            db_manager=_db_manager,
+                            resolved_by="whatsapp_remote",
+                            reason="Rejected via WhatsApp",
+                        )
+                        await _send_whatsapp_reply(sender, f"JARVIS: ❌ {sym} {act} REJECTED.")
+                    return {"ok": True, "action": "approval_resolve"}
+                except Exception as e:
+                    logger.error(f"WhatsApp approval resolution failed: {e}")
+                    await _send_whatsapp_reply(sender, f"JARVIS: Error resolving approval: {str(e)[:100]}")
+                    return {"ok": False, "error": str(e)}
+
+    # Fallback to LLM Gateway
     reply = await _get_gateway().handle(
         InboundMessage(
             channel="whatsapp",
