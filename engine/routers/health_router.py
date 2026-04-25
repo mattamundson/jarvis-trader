@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["health", "system"])
 
-_TV_MCP_CDP_URL = "http://[::1]:9222/json/version"
+_TV_MCP_CDP_URL = "http://127.0.0.1:9222/json/version"
 _TV_MCP_CACHE_TTL_SEC = 30.0
 _tv_mcp_health_cache: dict = {"checked_at": 0.0, "healthy": False, "details": "not yet probed"}
 
