@@ -801,6 +801,26 @@ export async function toggleKillSwitch(
   return postEngine<KillSwitchStatus>(`/paper/kill-switch?${params.toString()}`);
 }
 
+// ── Super-Engine Status API ──────────────────────────────────────────────────
+
+export interface SuperEngineComponentStatus {
+  active: boolean;
+  type?: string;
+  last_check?: string;
+}
+
+export interface SuperEngineStatusResponse {
+  polymarket: SuperEngineComponentStatus;
+  openbb: SuperEngineComponentStatus;
+  regime_guard: SuperEngineComponentStatus;
+  sentiment_bridge: SuperEngineComponentStatus;
+  model_drawer: SuperEngineComponentStatus;
+}
+
+export async function fetchSuperEngineStatus(): Promise<SuperEngineStatusResponse> {
+  return fetchEngine<SuperEngineStatusResponse>("/super-engine/status");
+}
+
 export async function resetPendingSignals(): Promise<{ cleared: number }> {
   return postEngine<{ cleared: number }>("/paper/reset-pending-signals");
 }
@@ -1348,4 +1368,16 @@ export async function fetchTVHealth(): Promise<TVBridgeHealth> {
 export interface RecentPipelineReasoningResponse {
   decisions: RecentPipelineDecision[];
   count: number;
+}
+export interface ShadowMetricsResponse {
+  count: number;
+  total_pnl: number;
+  win_rate: number;
+  avg_win: number;
+  avg_loss: number;
+}
+
+export async function fetchShadowMetrics(strategyName?: string): Promise<ShadowMetricsResponse> {
+  const q = strategyName ? `?strategy_name=${encodeURIComponent(strategyName)}` : "";
+  return fetchEngine<ShadowMetricsResponse>(`/pipeline/shadow-metrics${q}`);
 }

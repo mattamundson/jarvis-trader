@@ -33,6 +33,9 @@ import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
 import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
+import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
+import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
+import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -204,8 +207,13 @@ export default function DashboardPage() {
         {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
         <ProactiveValidationWidget />
 
-        {/* Signal Flow — per-instrument STC values and pipeline block stage */}
-        <SignalFlowWidget />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Signal Flow — per-instrument STC values and pipeline block stage */}
+          <SignalFlowWidget />
+          
+          {/* Super-Engine Infrastructure Status */}
+          <SuperEngineStatusWidget />
+        </div>
 
         {/* Walk-Forward / Paper Trading Status */}
         <WFEStatusCard />
@@ -218,6 +226,7 @@ export default function DashboardPage() {
           {/* Left column — positions + performance + regime */}
           <div className="col-span-12 lg:col-span-3 space-y-4">
             <SessionTodayWidget />
+            <InstitutionalProfileWidget defaultSymbol="MES" />
             <PositionsPanel
               positions={portfolio?.positions ?? []}
               totalEquity={portfolio?.total_equity ?? 0}
@@ -229,6 +238,7 @@ export default function DashboardPage() {
               equityCurve={[]}
             />
             <RegimeDisplay />
+            <ShadowPerformanceWidget />
             <MTFConfirmationWidget symbol="MES" />
             <DualTFWidget />
           </div>
