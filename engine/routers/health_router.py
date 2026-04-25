@@ -621,6 +621,41 @@ async def api_health():
     }
 
 
+@router.get(
+    "/health/pm2",
+    description="pm2 process status for jarvis-engine — restart count, uptime, memory.",
+)
+async def pm2_status():
+    """Query pm2 for jarvis-engine process stats. Returns empty on non-pm2 deployments."""
+    import asyncio
+    import json as _json
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "pm2", "jlist",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        processes = _json.loads(stdout.decode())
+        for p in processes:
+            if p.get("name") == "jarvis-engine":
+                monit = p.get("monit", {})
+                pm2_env = p.get("pm2_env", {})
+                return {
+                    "found": True,
+                    "status": pm2_env.get("status"),
+                    "restart_count": pm2_env.get("restart_time", 0),
+                    "unstable_restarts": pm2_env.get("unstable_restarts", 0),
+                    "uptime_ms": pm2_env.get("pm_uptime"),
+                    "memory_mb": round(monit.get("memory", 0) / 1_048_576, 1),
+                    "cpu_pct": monit.get("cpu", 0),
+                    "pid": p.get("pid"),
+                }
+        return {"found": False, "note": "jarvis-engine not found in pm2 list"}
+    except Exception as exc:
+        return {"found": False, "error": str(exc)}
+
+
 @router.post(
     "/health/backup-now",
     description="Trigger an immediate database backup outside the nightly schedule.",
