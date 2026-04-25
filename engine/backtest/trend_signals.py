@@ -94,34 +94,56 @@ def generate_sma_trend_signals(
     entry_signal = np.full(n, "NO_TRADE", dtype=object)
     exit_signal  = np.full(n, "NO_EXIT", dtype=object)
     stop_level   = np.full(n, np.nan)
+    trailing_stop = np.full(n, np.nan)
     target_1     = np.full(n, np.nan)
     target_2     = np.full(n, np.nan)
     target_3     = np.full(n, np.nan)
+
+    current_trail = np.nan
+    in_trade = False
 
     for i in range(n):
         if pd.isna(sma_s.iloc[i]) or pd.isna(atr.iloc[i]):
             continue
         price = float(df["close"].iloc[i])
+        low_i = float(df["low"].iloc[i])
         atr_i = float(atr.iloc[i])
 
         if cross_up.iloc[i]:
             # Realized-vol gate: skip entry if vol is below threshold.
-            # rv may be NaN during the first _RV_WINDOW bars — treat as 0 (block).
             if min_rv_annualized > 0.0:
                 rv_i = rv_ann.iloc[i]
                 if pd.isna(rv_i) or float(rv_i) < min_rv_annualized:
                     continue  # leave entry_signal as NO_TRADE
+            
             entry_signal[i] = "ENTRY_NOW"
-            stop_level[i]  = price - atr_trail_mult * atr_i
+            initial_stop = price - atr_trail_mult * atr_i
+            stop_level[i]  = initial_stop
+            current_trail = initial_stop
+            in_trade = True
+            
             target_1[i]    = price + _T1_MULT * atr_i
             target_2[i]    = price + _T2_MULT * atr_i
             target_3[i]    = price + _T3_MULT * atr_i
-        elif cross_dn.iloc[i]:
-            exit_signal[i] = "EXIT_NOW"
+        
+        elif in_trade:
+            # Update trail: only moves UP
+            new_trail = price - atr_trail_mult * atr_i
+            if new_trail > current_trail:
+                current_trail = new_trail
+            
+            trailing_stop[i] = current_trail
+            
+            # Exit check
+            if low_i <= current_trail or cross_dn.iloc[i]:
+                exit_signal[i] = "EXIT_NOW"
+                in_trade = False
+                current_trail = np.nan
 
     df["entry_signal"] = entry_signal
     df["exit_signal"]  = exit_signal
     df["stop_level"]   = stop_level
+    df["trailing_stop"] = trailing_stop
     df["target_1"]     = target_1
     df["target_2"]     = target_2
     df["target_3"]     = target_3
