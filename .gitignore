@@ -247,3 +247,10 @@ docs/session-logs/scan-*.md
 docs/session-logs/stop-stubs-*.md
 docs/session-logs/*.html
 docs/session-logs/*.txt
+
+# Ephemeral Q2 sprint artifacts
+docs/HERMES_AUTONOMOUS_SCAN_*.md
+docs/JARVIS_MASTER_PLAYBOOK.html
+docs/reports/backtests/
+engine/scripts/mnq_breakout_search_results.json
+"User asked whether we can pull from.md"
