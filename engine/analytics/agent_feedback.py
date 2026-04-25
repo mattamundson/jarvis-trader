@@ -31,7 +31,7 @@ MIN_WEIGHT = 0.70
 MAX_WEIGHT = 1.30
 DEFAULT_WEIGHT = 1.00
 
-AGENT_NAMES = ["technical", "news", "social", "fundamental", "corey"]
+AGENT_NAMES = ["technical", "news", "social", "fundamental", "corey", "breakout", "harmonic"]
 
 
 class AgentFeedbackTracker:
@@ -56,7 +56,10 @@ class AgentFeedbackTracker:
                     news_signal REAL,
                     social_signal REAL,
                     fundamental_signal REAL,
-                    corey_signal REAL
+                    corey_signal REAL,
+                    breakout_signal REAL,
+                    harmonic_signal REAL,
+                    regime TEXT
                 )
             """)
 
@@ -67,6 +70,7 @@ class AgentFeedbackTracker:
         direction: str,
         pnl_usd: float,
         analyst_signals: Dict[str, float],
+        regime: Optional[str] = None,
         timestamp: Optional[str] = None,
     ):
         """
@@ -87,8 +91,9 @@ class AgentFeedbackTracker:
             conn.execute("""
                 INSERT OR REPLACE INTO trade_outcomes
                 (trade_id, timestamp, symbol, direction, pnl_usd, pnl_pct, outcome,
-                 technical_signal, news_signal, social_signal, fundamental_signal, corey_signal)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 technical_signal, news_signal, social_signal, fundamental_signal, corey_signal,
+                 breakout_signal, harmonic_signal, regime)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade_id, ts, symbol, direction, pnl_usd, 0.0, outcome,
                 analyst_signals.get("technical", 0.0),
@@ -96,25 +101,67 @@ class AgentFeedbackTracker:
                 analyst_signals.get("social", 0.0),
                 analyst_signals.get("fundamental", 0.0),
                 analyst_signals.get("corey", 0.0),
+                analyst_signals.get("breakout", 0.0),
+                analyst_signals.get("harmonic", 0.0),
+                regime
             ))
 
         logger.debug("Recorded trade outcome: %s %s PnL=%.2f", trade_id, outcome, pnl_usd)
 
-    def compute_accuracy(self, agent_name: str, window_days: int = 30) -> float:
+        Returns: dict of {agent_name: weight_multiplier}
         """
-        Compute directional accuracy for an agent over a rolling window.
+        return self._compute_weights(None, window_days_short, window_days_long)
 
-        Returns: float 0.0 to 1.0 (proportion of trades where agent agreed with winning direction)
+    def get_weights_by_regime(
+        self, regime: str, window_days_short: int = 30, window_days_long: int = 90
+    ) -> Dict[str, float]:
+        """
+        Compute weights filtered by a specific market regime.
+        """
+        return self._compute_weights(regime, window_days_short, window_days_long)
+
+    def _compute_weights(
+        self, 
+        regime: Optional[str], 
+        window_days_short: int = 30, 
+        window_days_long: int = 90
+    ) -> Dict[str, float]:
+        weights = {}
+        for agent in AGENT_NAMES:
+            acc_short = self._compute_accuracy_internal(agent, window_days_short, regime)
+            acc_long = self._compute_accuracy_internal(agent, window_days_long, regime)
+
+            # Blend short and long window
+            blended = 0.7 * acc_short + 0.3 * acc_long
+
+            # Convert accuracy to weight: 0.5 accuracy = 1.0 weight
+            weight = DEFAULT_WEIGHT + (blended - 0.5) * 2 * (MAX_WEIGHT - DEFAULT_WEIGHT)
+            weight = max(MIN_WEIGHT, min(MAX_WEIGHT, weight))
+
+            weights[agent] = round(weight, 3)
+
+        return weights
+
+    def compute_accuracy(self, agent_name: str, window_days: int = 30) -> float:
+        return self._compute_accuracy_internal(agent_name, window_days, None)
+
+    def _compute_accuracy_internal(self, agent_name: str, window_days: int, regime: Optional[str]) -> float:
+        """
+        Compute directional accuracy for an agent over a rolling window, 
+        optionally filtered by regime.
         """
         cutoff = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
         signal_col = f"{agent_name}_signal"
+        
+        query = f"SELECT direction, outcome, {signal_col} FROM trade_outcomes WHERE timestamp > ? AND {signal_col} != 0"
+        params = [cutoff]
+        
+        if regime:
+            query += " AND regime = ?"
+            params.append(regime)
 
         with sqlite3.connect(DB_PATH) as conn:
-            rows = conn.execute(f"""
-                SELECT direction, outcome, {signal_col}
-                FROM trade_outcomes
-                WHERE timestamp > ? AND {signal_col} != 0
-            """, (cutoff,)).fetchall()
+            rows = conn.execute(query, tuple(params)).fetchall()
 
         if len(rows) < 5:  # Need at least 5 trades for meaningful accuracy
             return 0.5  # Default to neutral if insufficient data
