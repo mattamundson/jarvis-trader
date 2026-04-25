@@ -1234,6 +1234,35 @@ class SafetyLayer:
             reason_parts.append("TP")
         reason = " + ".join(reason_parts) + " submitted"
 
+        # Bump the bracket-trade sidecar counter consumed by /system/mes-sprint-gate.
+        # Decoupled from paper_trades.notes because the writer chain is unreliable
+        # (mirror path drops notes; some INSERT paths hardcode notes='').
+        if stp_id is not None:
+            try:
+                from pathlib import Path as _Path
+                import json as _json
+                _sidecar = (
+                    _Path(__file__).resolve().parent.parent
+                    / "data"
+                    / "bracket_trade_count.json"
+                )
+                _sidecar.parent.mkdir(parents=True, exist_ok=True)
+                _state: dict = {}
+                if _sidecar.exists():
+                    try:
+                        _state = _json.loads(_sidecar.read_text(encoding="utf-8")) or {}
+                    except Exception:
+                        _state = {}
+                _state["count"] = int(_state.get("count", 0) or 0) + 1
+                _state["last_symbol"] = symbol
+                _state["last_entry_order_id"] = entry_id
+                _state["last_at"] = datetime.now(timezone.utc).isoformat()
+                _sidecar.write_text(_json.dumps(_state), encoding="utf-8")
+            except Exception as exc:  # noqa: BLE001 — counter must never block trade
+                logger.warning(
+                    "submit_entry_with_stop: bracket sidecar bump failed: %s", exc
+                )
+
         return {
             "approved": True,
             "reason": reason,
