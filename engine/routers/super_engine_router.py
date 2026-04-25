@@ -16,7 +16,8 @@ registry = {
     "openbb": None,
     "sentiment_bridge": None,
     "model_drawer": None,
-    "arb_scout": None
+    "arb_scout": None,
+    "regime_guard": None
 }
 
 def inject_super_engine(components: dict):
@@ -40,6 +41,9 @@ async def get_engine_status():
                 status[key]["model_loaded"] = instance.current_model is not None
             if key == "arb_scout" and hasattr(instance, "paired_assets"):
                 status[key]["pairs_count"] = len(instance.paired_assets)
+            if key == "regime_guard" and hasattr(instance, "last_regime"):
+                status[key]["current_regime"] = instance.last_regime
+                status[key]["last_check"] = instance.last_check.isoformat() if instance.last_check else None
         else:
             status[key] = {"active": False}
     

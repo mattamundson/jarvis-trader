@@ -64,3 +64,8 @@ class JesseIndicators:
     def stoch_rsi(data: Union[pd.Series, np.ndarray], period: int = 14, k: int = 3, d: int = 3) -> pd.DataFrame:
         """Stochastic RSI."""
         return ta.stochrsi(pd.Series(data), length=period, k=k, d=d)
+
+    @staticmethod
+    def adx(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14) -> pd.DataFrame:
+        """Average Directional Index (Trend Strength)."""
+        return ta.adx(pd.Series(high), pd.Series(low), pd.Series(close), length=period)
