@@ -27,7 +27,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("jarvis_trader.portfolio")
 
@@ -703,6 +703,7 @@ class PortfolioTracker:
         try:
             from engine.analytics.agent_feedback import AgentFeedbackTracker
             analyst_signals: dict = {}
+            regime: Optional[str] = None
             if self._db is not None:
                 row = self._db.get_trade_by_id(trade_id) or {}
                 sp = row.get("strategy_params")
@@ -715,6 +716,7 @@ class PortfolioTracker:
                         sp = None
                 if isinstance(sp, dict):
                     analyst_signals = sp.get("analyst_signals") or {}
+                    regime = sp.get("regime")
             if not analyst_signals:
                 return  # Legacy trades without signals — safe no-op
             action_lower = (trade.action or "").lower()
@@ -725,6 +727,7 @@ class PortfolioTracker:
                 direction=direction,
                 pnl_usd=float(trade.pnl or 0.0),
                 analyst_signals={k: float(v) for k, v in analyst_signals.items()},
+                regime=regime
             )
             logger.info(
                 "[FEEDBACK] Recorded outcome for %s pnl=%+.2f signals=%s",
@@ -854,6 +857,48 @@ class PortfolioTracker:
 
         return [t.to_dict() for t in reversed(self._closed[-limit:])]
 
+    def get_trades_by_date(self, date_str: str) -> List[dict]:
+        """
+        Return closed trades whose ``exit_time`` falls on the given calendar date.
+
+        Parameters
+        ----------
+        date_str : str
+            ISO calendar date in "YYYY-MM-DD" form.  Compared against the
+            prefix of each trade's exit_time.  Empty / malformed input returns [].
+
+        Returns
+        -------
+        List of closed-trade dicts.  Each dict includes both ``pnl`` (the
+        canonical column) and ``realized_pnl`` (alias expected by the EOD
+        summary task at main.py:1136).  Caller contract: EOD job sums
+        ``t.get("realized_pnl", 0)`` across the returned list.
+        """
+        if not isinstance(date_str, str) or len(date_str) < 10:
+            return []
+        prefix = date_str[:10]
+
+        rows: List[dict]
+        if self._db is not None:
+            try:
+                rows = list(self._db.get_trade_history(limit=1000, status="closed") or [])
+            except Exception as exc:
+                logger.error("DB get_trade_history failed in get_trades_by_date: %s", exc)
+                rows = [t.to_dict() for t in self._closed]
+        else:
+            rows = [t.to_dict() for t in self._closed]
+
+        result: List[dict] = []
+        for r in rows:
+            exit_time = r.get("exit_time")
+            if not isinstance(exit_time, str) or not exit_time.startswith(prefix):
+                continue
+            enriched = dict(r)
+            if "realized_pnl" not in enriched:
+                enriched["realized_pnl"] = float(enriched.get("pnl") or 0.0)
+            result.append(enriched)
+        return result
+
     def get_performance_summary(self) -> dict:
         """
         Extended performance summary.
@@ -942,39 +987,83 @@ class PortfolioTracker:
 
     # ── Session management helpers ────────────────────────────────────────────
 
-    def flatten_all_positions(self, exit_price: Optional[float] = None) -> List[dict]:
+    def flatten_all_positions(
+        self,
+        exit_price: Optional[float] = None,
+        market_price_fn: Optional[Callable[[str], Optional[float]]] = None,
+    ) -> List[dict]:
         """
         Close all open positions at session end.
 
         Parameters
         ----------
         exit_price : float, optional
-            Price to use for all closes.  If None, uses each trade's entry_price
-            as a fallback (zero P&L result) so the ledger stays balanced.
+            Blanket price for every close.  Use only when you genuinely want
+            every symbol closed at the same price (rare — most EOD flows
+            should pass market_price_fn instead).
+        market_price_fn : callable, optional
+            Per-symbol price fetcher: ``symbol -> float | None``.  Preferred
+            input when closing at market: allows each symbol to settle at its
+            own last-known price.  If both args are provided, market_price_fn
+            wins per-symbol and exit_price is used when the fetcher returns
+            None.
+
+        Resolution order for each position:
+          1. ``market_price_fn(symbol)`` if provided and returns non-None
+          2. ``exit_price`` if provided
+          3. ``trade.entry_price`` **as a last-resort fallback that produces
+             $0 P&L** — this is the source of the 2026-04-23 Phase-3 metrics
+             bug and is now escalated to ERROR-level logging so the condition
+             is visible.  Callers should strive to provide a real price.
 
         Returns
         -------
         List of closed trade dicts (one per position that was open).
         """
         closed: List[dict] = []
-        # Snapshot keys — avoid mutation-during-iteration
+        breakeven_fallback_count = 0
         open_ids = list(self._open.keys())
         for trade_id in open_ids:
             trade = self._open.get(trade_id)
             if trade is None:
                 continue
-            # Determine exit price
-            price = exit_price if exit_price is not None else trade.entry_price
+
+            price: Optional[float] = None
+            if market_price_fn is not None:
+                try:
+                    fetched = market_price_fn(trade.symbol)
+                    if fetched is not None:
+                        price = float(fetched)
+                except Exception as exc:
+                    logger.warning(
+                        "flatten_all_positions: market_price_fn raised for %s: %s",
+                        trade.symbol, exc,
+                    )
+            if price is None and exit_price is not None:
+                price = float(exit_price)
+            if price is None and trade.entry_price is not None:
+                price = float(trade.entry_price)
+                breakeven_fallback_count += 1
             if price is None:
                 logger.warning(
                     "flatten_all_positions: no price for trade %s, skipping", trade_id[:8]
                 )
                 continue
+
             try:
-                result = self.close_trade(trade_id, exit_price=float(price))
+                result = self.close_trade(trade_id, exit_price=price)
                 closed.append(result.to_dict())
             except Exception as exc:
                 logger.warning("flatten_all_positions: failed to close %s: %s", trade_id[:8], exc)
+
+        if breakeven_fallback_count > 0:
+            logger.error(
+                "flatten_all_positions: %d position(s) closed at entry_price "
+                "(breakeven fallback). P&L will be $0 for those trades; "
+                "profit_factor and win_rate will be corrupted. Pass a "
+                "market_price_fn to avoid this.",
+                breakeven_fallback_count,
+            )
         logger.info("flatten_all_positions: closed %d positions", len(closed))
         return closed
 
