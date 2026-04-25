@@ -23,7 +23,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["health", "system"])
 
-_TV_MCP_CDP_URL = "http://localhost:9222/json/version"
+# Chrome CDP binds to IPv4 or IPv6 depending on launch flags — try both.
+_TV_MCP_CDP_URLS = [
+    "http://127.0.0.1:9222/json/version",
+    "http://[::1]:9222/json/version",
+]
 _TV_MCP_CACHE_TTL_SEC = 30.0
 _tv_mcp_health_cache: dict = {"checked_at": 0.0, "healthy": False, "details": "not yet probed"}
 
@@ -31,7 +35,8 @@ _tv_mcp_health_cache: dict = {"checked_at": 0.0, "healthy": False, "details": "n
 def _check_tradingview_mcp_health() -> tuple[bool, str | None]:
     """Probe TradingView Desktop CDP endpoint. Cached 30s to avoid hammering CDP
     on every /health poll. Returns (healthy, details) — details is None on
-    success, a short diagnostic string on failure."""
+    success, a short diagnostic string on failure.
+    Tries IPv4 then IPv6 — Chrome binds to one or the other depending on launch."""
     now = time.monotonic()
     cached_at = _tv_mcp_health_cache.get("checked_at", 0.0)
     if now - cached_at < _TV_MCP_CACHE_TTL_SEC:
@@ -39,17 +44,20 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None]:
 
     details: str | None = None
     healthy = False
-    try:
-        req = urllib.request.Request(_TV_MCP_CDP_URL, method="GET")
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
-            if resp.status == 200:
-                healthy = True
-            else:
-                details = f"CDP returned HTTP {resp.status}"
-    except urllib.error.URLError as exc:
-        details = f"CDP port 9222 unreachable: {exc.reason}"
-    except Exception as exc:
-        details = f"CDP probe failed: {exc}"
+    for url in _TV_MCP_CDP_URLS:
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                if resp.status == 200:
+                    healthy = True
+                    details = None
+                    break
+                else:
+                    details = f"CDP returned HTTP {resp.status}"
+        except urllib.error.URLError as exc:
+            details = f"CDP port 9222 unreachable: {exc.reason}"
+        except Exception as exc:
+            details = f"CDP probe failed: {exc}"
 
     _tv_mcp_health_cache.update(checked_at=now, healthy=healthy, details=details)
     return healthy, details
