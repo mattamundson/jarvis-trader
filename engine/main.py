@@ -63,6 +63,8 @@ from api.models import (
 from config import settings
 from data.market_data import MarketDataManager
 from database.schema import DatabaseManager, init_db
+from learning.model_drawer import ModelDrawer
+from strategies.arbitrage.polymarket_arb import ArbScout
 from execution.ib_gateway_connector import IBGatewayConnector
 from execution.ib_order_manager import IBOrderManager
 from execution.order_router import OrderRouter
@@ -471,6 +473,8 @@ async def lifespan(app: FastAPI):
         polymarket = None  # py-clob-client dep skew; wiki + OpenBB still functional
     openbb = OpenBBAdapter() if OpenBBAdapter is not None else None
     risk_protections = RiskProtections(db_manager=db_manager)
+    model_drawer = ModelDrawer(model_dir=str(db_manager._db_path.parent / "models"))
+    arb_scout = None # Initialized after data_manager
 
     # Needs analyst for the bridge, assuming news_analyst is initialized later or available
     # For now, initialize stub if news_analyst is not yet ready
@@ -580,6 +584,21 @@ async def lifespan(app: FastAPI):
         data_manager.inject_schwab(schwab_connector)
         logger.info("✅ Schwab wired into MarketDataManager as Tier 2 price source")
 
+    # JARVIS Super-Engine: Initialize ArbScout once data_manager is ready
+    arb_scout = ArbScout(polymarket_connector=polymarket, data_manager=data_manager)
+    # Add initial pairs for cross-market monitoring
+    # (Token IDs can be updated via .env or manual scan later)
+    arb_scout.add_pair("0x...", "MES") 
+    
+    # Update super-engine injection with all components now ready
+    inject_super_engine({
+        "polymarket": polymarket,
+        "openbb": openbb,
+        "sentiment_bridge": sentiment_bridge,
+        "model_drawer": model_drawer,
+        "arb_scout": arb_scout
+    })
+
     inject_institutional_data_manager(data_manager)
 
     # Agents (need LLM client)
@@ -626,6 +645,10 @@ async def lifespan(app: FastAPI):
             logger.warning("BRAVE_API_KEY not set — news analyst running without live web search")
 
         news_agent = NewsAnalystAgent(llm_client, data_manager, brave_client=_brave_client)
+        # Wire live analyst into sentiment bridge
+        if sentiment_bridge:
+            sentiment_bridge.analyst = news_agent
+            logger.info("✅ Sentiment Bridge wired into News Analyst")
         social_agent = SocialAnalystAgent(llm_client)
         fundamental_agent = FundamentalistAgent(llm_client, data_manager)
         corey_agent = CoreyAuctionAnalystAgent(llm_client=llm_client)
