@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { fetchSuperEngineStatus, SuperEngineStatusResponse } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Cpu, Globe, Shield, MessageSquare, Database, RefreshCw } from "lucide-react";
+import { Cpu, Globe, Shield, MessageSquare, Database, RefreshCw, Radar } from "lucide-react";
 
 export const SuperEngineStatusWidget: React.FC = () => {
   const [status, setStatus] = useState<SuperEngineStatusResponse | null>(null);
@@ -33,6 +33,7 @@ export const SuperEngineStatusWidget: React.FC = () => {
     { key: "regime_guard", label: "Regime Guard", icon: Shield, color: "text-purple-400" },
     { key: "sentiment_bridge", label: "Sentiment Bridge", icon: MessageSquare, color: "text-yellow-400" },
     { key: "model_drawer", label: "FreqAI Model Drawer", icon: Cpu, color: "text-pink-400" },
+    { key: "arb_scout", label: "Arb Scout", icon: Radar, color: "text-red-400" },
   ];
 
   return (

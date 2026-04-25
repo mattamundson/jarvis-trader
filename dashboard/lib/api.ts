@@ -815,6 +815,7 @@ export interface SuperEngineStatusResponse {
   regime_guard: SuperEngineComponentStatus;
   sentiment_bridge: SuperEngineComponentStatus;
   model_drawer: SuperEngineComponentStatus;
+  arb_scout: SuperEngineComponentStatus;
 }
 
 export async function fetchSuperEngineStatus(): Promise<SuperEngineStatusResponse> {
