@@ -226,3 +226,24 @@ n-autoresearch-skill/mnt/
 /jarvis_trader_handoff_*.md
 /eod_compact.txt
 /eod_compact*.txt
+
+# Root-level generated/export files (not source)
+/*.html
+/*.pdf
+/*.docx
+/*.sql
+/extract_pdf.py
+/jarvis_session_export.py
+/OLLAMA_INTEGRATION_SUMMARY.md
+
+# Engine docs generated during sprints
+engine/RECOMMENDATIONS_*.md
+engine/TRADE_LOGGING_*.md
+
+# Session-specific scan/EOD/premarket logs
+docs/session-logs/eod-*.md
+docs/session-logs/premarket-*.md
+docs/session-logs/scan-*.md
+docs/session-logs/stop-stubs-*.md
+docs/session-logs/*.html
+docs/session-logs/*.txt
