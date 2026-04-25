@@ -212,19 +212,20 @@ async def mes_sprint_gate() -> dict:
     if not smoke_ok:
         all_pass = False
 
-    # 2. Bracket paper trades — count rows whose notes mention 'bracket'.
+    # 2. Bracket paper trades — read sidecar bumped by SafetyLayer.submit_entry_with_stop.
+    # Sidecar is preferred over paper_trades.notes because the writer chain
+    # (paper_trade_logger → portfolio_tracker → DB) currently drops notes
+    # (writes empty string). The sidecar is incremented at the bracket call site.
     bracket_count = 0
+    bracket_sidecar = (
+        _Path(__file__).resolve().parent.parent / "data" / "bracket_trade_count.json"
+    )
     try:
-        from database.manager import get_db
-
-        db = get_db()
-        row = db.fetch_one(
-            "SELECT COUNT(*) AS n FROM paper_trades WHERE notes LIKE ?",
-            ("%bracket%",),
-        )
-        bracket_count = int(row["n"]) if row else 0
+        if bracket_sidecar.exists():
+            sc = _json.loads(bracket_sidecar.read_text(encoding="utf-8"))
+            bracket_count = int(sc.get("count", 0) or 0)
     except Exception as exc:  # noqa: BLE001 — gate must never raise
-        logger.warning("mes-sprint-gate: bracket count query failed: %s", exc)
+        logger.warning("mes-sprint-gate: bracket sidecar read failed: %s", exc)
     bracket_ok = bracket_count >= 5
     checks.append(
         {
