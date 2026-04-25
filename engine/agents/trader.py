@@ -20,6 +20,7 @@ from typing import Optional
 import httpx
 
 from utils.position_sizing import (
+    INSTRUMENT_MULTIPLIERS,
     PositionSizeResult,
     calculate_position_size,
     calculate_half_kelly_size,
@@ -243,13 +244,9 @@ class TraderAgent:
     }
     _DEFAULT_ATR_PARAMS = (0.70, 1.50, 2.50)  # Generic fallback
 
-    # Dollar value per point per instrument
-    _POINT_VALUES: dict = {
-        "MES": 5.0,
-        "MNQ": 2.0,
-        "MCL": 100.0,
-        "MGC": 10.0,
-    }
+    # Dollar value per point per instrument — sourced from the canonical
+    # INSTRUMENT_MULTIPLIERS table in engine/utils/position_sizing.py
+    _POINT_VALUES: dict = INSTRUMENT_MULTIPLIERS
 
     def __init__(self, llm_client, db_manager=None):
         """
@@ -991,6 +988,7 @@ class TraderAgent:
         social = analyst_reports.get("social", {})
         fundamental = analyst_reports.get("fundamental", {})
         forward_recorder = analyst_reports.get("forward_recorder_metric")
+        regime_status = analyst_reports.get("regime_status")
 
         # Safety context
         daily_pnl = safety_status.get("daily_pnl", 0.0)
@@ -1058,36 +1056,41 @@ Return null for entry_price, stop_price, target_1, target_2, atr_used, rr_ratio 
 
         return f"""Make a trade decision for {symbol}.
 
-=== BULL/BEAR DEBATE RESULT ===
-Verdict: {debate_result.get("verdict", "N/A")}
-Bull score: {debate_result.get("bull_score", "N/A")}
-Bear score: {debate_result.get("bear_score", "N/A")}
-Debate summary: {debate_result.get("summary", "N/A")}
-Key bull arguments: {debate_result.get("bull_arguments", [])}
-Key bear arguments: {debate_result.get("bear_arguments", [])}
+=== STARK-TPO ALGORITHMIC MATRIX (HARD CONSTRAINT) ===
+TPO Algorithmic Signal: {technical.get("stark_signal", "HOLD")}
+TPO Sub-Structure: {technical.get("stark_structure", "UNKNOWN")}
 
-=== TECHNICAL ANALYSIS ===
-Signal: {technical.get("signal", "N/A")} | Confidence: {technical.get("confidence", "N/A")}
-Trend: {technical.get("trend", "N/A")} | Regime: {technical.get("regime", "N/A")}
-Current price: {technical.get("current_price", "N/A")}
-Support levels: {technical.get("support_levels", [])}
-Resistance levels: {technical.get("resistance_levels", [])}
-Summary: {technical.get("summary", "N/A")}
+CRITICAL DIRECTIVE: You are NO LONGER responsible for numerical technical analysis. The Stark-TPO algorithm has computed the raw math edge. 
+If the TPO Algorithmic Signal is 'HOLD', you MUST output 'hold'. 
+If the TPO Algorithmic Signal is 'LONG' or 'SHORT', you may review the News and Social sentiment to verify there is no extreme black-swan event contradicting the math.
 
-=== NEWS ANALYSIS ===
-Signal: {news.get("signal", "N/A")} | Confidence: {news.get("confidence", "N/A")}
-Event type: {news.get("event_type", "none")}
-Bullish catalysts: {news.get("catalysts_bull", [])}
-Bearish catalysts: {news.get("catalysts_bear", [])}
-Summary: {news.get("summary", "N/A")}
+=== DETERMINISTIC REGIME-BASED ROUTER (PHASE 4) ===
+Current Regime: {getattr(regime_status, 'regime', 'NEUTRAL').value.upper() if regime_status else 'NEUTRAL'}
+Description: {getattr(regime_status, 'description', 'No deterministic regime status available.') if regime_status else 'None'}
+ADX: {getattr(regime_status, 'adx', 0.0):.1f} | ATR Ratio: {getattr(regime_status, 'atr_ratio', 1.0):.2f}
 
-=== SOCIAL SENTIMENT ===
-Signal: {social.get("signal", "N/A")} | Confidence: {social.get("confidence", "N/A")}
-Summary: {social.get("summary", "N/A")}
+ROUTING DIRECTIVES:
+- If regime=TRENDING: Prioritize 'Breakout Specialist' and 'STARK-TPO Alignment'.
+- If regime=RANGING: Prioritize 'Harmonic Vision' (reversal zones) and 'STC/Oscillator' confluence. Expect mean-reversion.
+- If regime=VOLATILE: Be extremely conservative. Require higher confidence (>0.8) for any entry.
 
-=== FUNDAMENTAL ANALYSIS ===
-Signal: {fundamental.get("signal", "N/A")} | Confidence: {fundamental.get("confidence", "N/A")}
-Summary: {fundamental.get("summary", "N/A")}
+=== NEWS & SENTIMENT OVERLAY ===
+News Event Type: {news.get("event_type", "none")}
+Bullish Catalysts: {news.get("catalysts_bull", [])}
+Bearish Catalysts: {news.get("catalysts_bear", [])}
+Social Signal: {social.get("signal", "N/A")}
+
+=== BREAKOUT SPECIALIST ENRICHMENT (PHASE 4) ===
+Breakout Status: {analyst_reports.get("breakout", {}).get("status", "N/A")} ({analyst_reports.get("breakout", {}).get("side", "N/A")})
+Value Area (VAH/VAL): {analyst_reports.get("breakout", {}).get("vah", "N/A")} / {analyst_reports.get("breakout", {}).get("val", "N/A")}
+POC: {analyst_reports.get("breakout", {}).get("poc", "N/A")}
+Signal: {analyst_reports.get("breakout", {}).get("signal", 0.0)} (weight: HIGH for breakouts)
+
+=== HARMONIC VISION ENRICHMENT (PHASE 4) ===
+Patterns: {analyst_reports.get("harmonic", {}).get("summary", "None detected")}
+Active Patterns: {analyst_reports.get("harmonic", {}).get("patterns", [])}
+Signal: {analyst_reports.get("harmonic", {}).get("signal", 0.0)} (weight: HIGH for reversal confluence)
+
 {self._forward_recorder_section(forward_recorder)}
 === PORTFOLIO / RISK CONTEXT ===
 Live trading enabled: {live_enabled}
@@ -1123,7 +1126,7 @@ Respond with JSON in exactly this format:
   "time_in_force": "<day|gtc|ioc>",
   "signal_score": <float -1.0 to 1.0>,
   "confidence": <float 0.0 to 1.0>,
-  "reasoning": "<thorough explanation of why this action was chosen, including R:R assessment>",
+  "reasoning": "<thorough explanation of why this action was chosen, integrating TPO structure with News sentiment>",
   "risk_notes": "<what could go wrong, key risks to monitor>"
 }}"""
 

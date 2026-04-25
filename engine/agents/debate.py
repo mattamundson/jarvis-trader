@@ -481,7 +481,10 @@ class DebateOrchestrator:
         try:
             from engine.analytics.agent_feedback import AgentFeedbackTracker
             _tracker = AgentFeedbackTracker()
-            agent_weights = _tracker.load_weights()
+            if regime:
+                agent_weights = _tracker.get_weights_by_regime(regime)
+            else:
+                agent_weights = _tracker.load_weights()
         except Exception:
             _tracker = None
             agent_weights = {}
@@ -500,7 +503,7 @@ class DebateOrchestrator:
         # formula handles both — Spearman just yields stronger boosts for
         # genuinely-skilled analysts because it captures rank ordering, not
         # binary correctness.
-        _ic_analyst_names = ["technical", "news", "social", "fundamental", "corey"]
+        _ic_analyst_names = ["technical", "news", "social", "fundamental", "corey", "breakout", "harmonic"]
         ic_scores: dict[str, float] = {}
         _ic_source = "none"
 

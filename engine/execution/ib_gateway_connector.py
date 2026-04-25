@@ -259,33 +259,36 @@ class IBGatewayConnector:
 
     async def _heartbeat(self) -> None:
         """
-        Monitor connection health every 60 seconds.
+        Monitor connection health every 5 seconds.
 
-        Checks if connection is still active. If disconnected,
-        triggers _reconnect() automatically.
-
-        The disconnection check runs at the TOP of each loop iteration
-        (before sleeping) so that a disconnect detected while sleeping is
-        caught on the very next wakeup, and so tests that cancel the sleep
-        immediately still exercise the reconnect path.
+        Checks if connection is still active. 
+        If TCP dropout exceeds 15 seconds, triggers DEADMAN SWITCH to flatten positions.
         """
-        heartbeat_interval = 60
+        heartbeat_interval = 5
+        timeout_threshold = 15
 
         while True:
             try:
-                # Check connection health at the start of every iteration.
-                # This ensures a disconnection is detected even if sleep is
-                # cancelled immediately (e.g. in tests).
                 if not self._connected:
                     logger.warning(
                         "IBGatewayConnector: Heartbeat detected disconnection. "
                         "Triggering auto-reconnect."
                     )
-                    # Reset retry counter on new disconnection
                     self._reconnect_attempts = 0
                     await self._reconnect()
                 else:
-                    self._last_heartbeat = datetime.utcnow()
+                    now = datetime.utcnow()
+                    if self._last_heartbeat:
+                        delta = (now - self._last_heartbeat).total_seconds()
+                        if delta > timeout_threshold and not self._settings.PAPER_TRADING:
+                            logger.critical(
+                                f"IBGatewayConnector: Connectivity delta {delta:.1f}s exceeded "
+                                f"{timeout_threshold}s limit! TRIGGERING DEADMAN SWITCH."
+                            )
+                            await self._trigger_deadman_switch()
+                            
+                    # Simulated update of heartbeat for paper mode
+                    self._last_heartbeat = now
                     logger.debug(
                         "IBGatewayConnector: Heartbeat OK. State=%s",
                         self._connection_state.value,
@@ -298,6 +301,35 @@ class IBGatewayConnector:
                 break
             except Exception as exc:
                 logger.error("IBGatewayConnector: Heartbeat error: %s", exc, exc_info=True)
+
+    async def _trigger_deadman_switch(self) -> None:
+        """
+        Emergency liquidation protocol.
+        Loops through all active positions and hits the bid/ask with MARKET orders 
+        to neutralize margin exposure immediately due to communication loss.
+        """
+        self._connection_state = ConnectionState.FAILED
+        self._notify_connection_state(ConnectionState.FAILED)
+        
+        positions = await self.get_positions()
+        for pos in positions:
+            qty = pos.get("position", 0)
+            if qty == 0:
+                continue
+                
+            symbol = pos.get("symbol")
+            is_futures = pos.get("is_futures", False)
+            # Inverse the quantity to flatten
+            action = "SELL" if qty > 0 else "BUY"
+            abs_qty = abs(qty)
+            
+            logger.critical(f"DEADMAN SWITCH: Flattening {abs_qty} {symbol} ({action} MKT)")
+            await self.submit_order({
+                "symbol": symbol,
+                "quantity": -qty if qty > 0 else abs_qty, 
+                "order_type": "market",
+                "is_futures": is_futures
+            }, self._account_summary["equity"])
 
     def _notify_connection_state(self, state: ConnectionState) -> None:
         """

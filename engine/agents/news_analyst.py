@@ -98,19 +98,19 @@ class NewsAnalystAgent:
         "GC": ("GLD", "gold / GC futures"),
     }
 
-    SYSTEM_PROMPT = """You are a professional financial news analyst for JARVIS TRADER,
-an autonomous trading system.
+    SYSTEM_PROMPT = """You are a state-of-the-art Financial Intelligence Agent (FinGPT-pattern). 
+Your goal is to perform deep-reasoning news analysis for JARVIS TRADER.
 
-Analyze the provided news headlines for the given symbol.
-Your task:
-1. Assign a sentiment score (-1 to +1) to each headline
-2. Detect any material events: earnings, FDA decisions, M&A activity, legal/regulatory actions, macro events, or none
-3. Identify specific bullish catalysts (positive for price)
-4. Identify specific bearish catalysts (negative for price)
-5. Produce an overall news signal (-1.0 to +1.0) weighted by recency and materiality
-6. Assign a confidence score (0.0 to 1.0) — lower if news is ambiguous or sparse
+### ANALYSIS FRAMEWORK:
+1. **Materiality Filter**: Distinguish between "noise" and "market-moving" events (Earnings, M&A, FDA, SEC filings).
+2. **Sentiment Quantification**: Assign a precise sentiment score (-1.0 to +1.0) to each headline, weighting recent news higher.
+3. **Catalyst Extraction**: Identify specific data points (e.g., "$2.5B revenue beat", "15% YoY growth", "Rate hike fears").
+4. **Proxy Context**: If analyzing a proxy, translate the news into implications for the target futures contract (e.g., SPY news -> MES futures impact).
 
-Respond with valid JSON only. Do not add any explanation outside the JSON.
+### OUTPUT REQUIREMENTS:
+- Produce a single, high-fidelity 'signal' representing expected immediate price pressure.
+- Justify the signal with 'reasoning' that cites specific headlines.
+- Respond with valid JSON only.
 """
 
     def __init__(self, llm_client, data_manager=None, brave_client=None):

@@ -1,6 +1,7 @@
 """Pipeline notification router - test webhooks."""
 
 import asyncio
+import inspect
 import logging
 from collections import deque
 from datetime import datetime
@@ -104,6 +105,63 @@ def _guard_background_paper_open(symbol: str) -> None:
 
     if symbol.upper() in FUTURES_SYMBOLS and symbol.upper() not in approved_watchlist_symbols():
         raise RuntimeError(f"Symbol {symbol.upper()} not on approved futures watchlist")
+
+
+async def _submit_broker_entry_with_stop(
+    *,
+    symbol: str,
+    action: str,
+    quantity: float | int,
+    entry_price: float,
+    stop_price: float | None,
+) -> dict | None:
+    """
+    Route approved non-human directional paper decisions through SafetyLayer.
+
+    The paper tracker is an audit/portfolio mirror; broker-side protection still
+    has to happen through SafetyLayer so the computed stop reaches IB as a child
+    STP order.
+    """
+    if stop_price is None or _safety_layer is None:
+        return None
+
+    submitter = getattr(_safety_layer, "submit_entry_with_stop", None)
+    if submitter is None:
+        logger.warning(
+            "[EXECUTION] %s %s has stop_price=%s but SafetyLayer lacks submit_entry_with_stop",
+            symbol,
+            action.upper(),
+            stop_price,
+        )
+        return None
+
+    result = submitter(
+        symbol=symbol,
+        action=action.upper(),
+        quantity=int(quantity),
+        price=float(entry_price),
+        stop_price=float(stop_price),
+    )
+    if inspect.isawaitable(result):
+        result = await result
+    if not isinstance(result, dict):
+        logger.warning("[EXECUTION] submit_entry_with_stop returned unexpected value: %r", result)
+        return None
+
+    if not result.get("approved"):
+        raise RuntimeError(f"SafetyLayer rejected broker entry: {result.get('reason')}")
+
+    logger.info(
+        "[EXECUTION] Broker STP route %s %s qty=%s entry_id=%s stp_id=%s linked=%s routed=%s",
+        symbol,
+        action.upper(),
+        int(quantity),
+        result.get("entry_order_id"),
+        result.get("stp_order_id"),
+        result.get("stp_linked"),
+        result.get("routed_to_ib"),
+    )
+    return result
 
 
 def inject_dependencies(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker=None, sdk_pipeline=None):
@@ -565,6 +623,14 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
             final_qty = result.get("final_quantity", 1) or 1
 
             if entry_price:
+                broker_order = await _submit_broker_entry_with_stop(
+                    symbol=symbol,
+                    action=final_action,
+                    quantity=final_qty,
+                    entry_price=float(entry_price),
+                    stop_price=float(stop_price) if stop_price else None,
+                )
+
                 # Collect regime metadata from technical analyst for attribution
                 regime_label = technical_report.get("regime") or "unknown"
                 regime_bias = (
@@ -581,7 +647,7 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                     name: float(rep.get("signal", 0.0))
                     for name, rep in (analyst_reports or {}).items()
                     if isinstance(rep, dict)
-                    and name in ("technical", "news", "social", "fundamental", "corey")
+                    and name in ("technical", "news", "social", "fundamental", "corey", "breakout", "harmonic")
                 }
                 trade_id = _paper_tracker.add_paper_trade(
                     symbol=symbol,
@@ -604,6 +670,18 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                         "pipeline_conviction": round(float(conviction), 4),
                         "predicted_direction": final_action.upper(),
                         "analyst_signals": _analyst_signals,
+                        "broker_entry_order_id": broker_order.get("entry_order_id")
+                        if broker_order
+                        else None,
+                        "broker_stp_order_id": broker_order.get("stp_order_id")
+                        if broker_order
+                        else None,
+                        "broker_stp_linked": broker_order.get("stp_linked")
+                        if broker_order
+                        else None,
+                        "broker_routed_to_ib": broker_order.get("routed_to_ib")
+                        if broker_order
+                        else None,
                     },
                 )
                 logger.info(
@@ -791,3 +869,11 @@ async def run_sdk_pipeline(request: PipelineRunRequest):
     return result
 
 
+@router.get("/shadow-metrics")
+async def get_shadow_metrics(strategy_name: Optional[str] = None):
+    """Fetch performance metrics for shadow trades."""
+    if _sdk_pipeline is None:
+        raise HTTPException(503, "SDK pipeline not available")
+    
+    metrics = _sdk_pipeline._shadow_tracker.get_shadow_performance(strategy_name=strategy_name)
+    return metrics

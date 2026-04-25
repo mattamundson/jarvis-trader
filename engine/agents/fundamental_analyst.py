@@ -676,63 +676,23 @@ Respond with JSON in exactly this format:
 }}"""
 
         try:
-            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
-                "ANTHROPIC_API_KEY", ""
-            )
-            _t0 = time.time()
+            if not hasattr(self._llm, "call"):
+                raise RuntimeError("LLM client does not expose call(); cannot synthesize fundamentals locally")
 
-            if _ANTHROPIC_SDK_AVAILABLE and anthropic_key:
-                # Use the official async SDK — handles versioning and beta headers
-                # automatically for all model families including Claude 4.
-                async_client = _anthropic_sdk.AsyncAnthropic(api_key=anthropic_key)
-                message = await async_client.messages.create(
-                    model="claude-sonnet-4-6",
-                    max_tokens=1000,
-                    system=self.SYSTEM_PROMPT,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                response_text = message.content[0].text.strip()
-                _latency_ms = int((time.time() - _t0) * 1000)
-                # Track cost via JarvisLLMClient if available
-                if hasattr(self._llm, "track_raw_call"):
-                    await self._llm.track_raw_call(
-                        model="claude-sonnet-4-6",
-                        input_tokens=message.usage.input_tokens,
-                        output_tokens=message.usage.output_tokens,
-                        latency_ms=_latency_ms,
-                        agent_name="fundamental_analyst",
-                    )
-            else:
-                # Fallback: raw httpx when SDK is not installed
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    resp = await client.post(
-                        "https://api.anthropic.com/v1/messages",
-                        headers={
-                            "x-api-key": anthropic_key,
-                            "anthropic-version": "2023-06-01",
-                            "content-type": "application/json",
-                        },
-                        json={
-                            "model": "claude-sonnet-4-6",
-                            "max_tokens": 1000,
-                            "system": self.SYSTEM_PROMPT,
-                            "messages": [{"role": "user", "content": prompt}],
-                        },
-                    )
-                    resp.raise_for_status()
-                    payload = resp.json()
-                _latency_ms = int((time.time() - _t0) * 1000)
-                # Track cost via JarvisLLMClient if available
-                usage = payload.get("usage", {})
-                if hasattr(self._llm, "track_raw_call"):
-                    await self._llm.track_raw_call(
-                        model="claude-sonnet-4-6",
-                        input_tokens=usage.get("input_tokens", 0),
-                        output_tokens=usage.get("output_tokens", 0),
-                        latency_ms=_latency_ms,
-                        agent_name="fundamental_analyst",
-                    )
-                response_text = payload["content"][0]["text"].strip()
+            model = getattr(self._llm, "default_model", os.getenv("OLLAMA_MODEL", "hermes3:latest"))
+            max_tokens = min(256, int(os.getenv("OLLAMA_NUM_PREDICT", "256")))
+            result_obj = await self._llm.call(
+                model=model,
+                system=self.SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                agent_name="fundamental_analyst",
+                temperature=0.2,
+                allow_fallback=False,
+            )
+            if not getattr(result_obj, "success", False):
+                raise RuntimeError(getattr(result_obj, "error", "local LLM call failed"))
+            response_text = getattr(result_obj, "content", "").strip()
 
             # Strip markdown code blocks if present
             if response_text.startswith("```"):
