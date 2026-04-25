@@ -630,8 +630,8 @@ async def pm2_status():
     import asyncio
     import json as _json
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "pm2", "jlist",
+        proc = await asyncio.create_subprocess_shell(
+            "pm2 jlist",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
