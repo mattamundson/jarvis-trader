@@ -1,0 +1,53 @@
+{
+  "symbol": "MNQ",
+  "family": "breakout",
+  "rank": 1,
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "FAIL",
+  "n_core_passed": 3,
+  "n_alt_passed": 4,
+  "created_at": "2026-04-23T08:22:11.449536+00:00",
+  "aux_freshness": {
+    "rolling_wfo": "2026-04-22T10:57:57.460191+00:00",
+    "fixed_params": "2026-04-22T10:57:33.663029+00:00",
+    "cost_sweep": "2026-04-22T10:58:05.043426+00:00"
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "FAIL",
+    "n_core_passed": 3,
+    "n_core_criteria": 4,
+    "n_alt_passed": 4,
+    "n_alt_criteria": 5,
+    "core_reasons": [
+      "FAIL mbb_pf_ci_lower=1.0696 < 1.1",
+      "p_positive_edge=0.9826 >= 0.95",
+      "mc_95th_dd_pct=5.2917 <= 6.0",
+      "dsr=1.0 >= 0.1 (not selection-bias)"
+    ],
+    "alt_reasons": [
+      "dsr=1.0 >= 0.3 (alt floor)",
+      "rolling_wfo=MODERATE in ['MODERATE', 'STRONG']",
+      "FAIL fixed_params_min_pf=1.186 < 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct=5.2917 <= 7.0 (alt ceiling)"
+    ],
+    "reasons": [
+      "FAIL mbb_pf_ci_lower=1.0696 < 1.1",
+      "p_positive_edge=0.9826 >= 0.95",
+      "mc_95th_dd_pct=5.2917 <= 6.0",
+      "dsr=1.0 >= 0.1 (not selection-bias)",
+      "dsr=1.0 >= 0.3 (alt floor)",
+      "rolling_wfo=MODERATE in ['MODERATE', 'STRONG']",
+      "FAIL fixed_params_min_pf=1.186 < 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct=5.2917 <= 7.0 (alt ceiling)"
+    ],
+    "n_passed": 3,
+    "n_criteria": 4
+  }
+}
