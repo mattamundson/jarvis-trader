@@ -149,6 +149,10 @@ class SignalScanner:
         if self._active:
             logger.warning("[Scanner] Already active")
             return
+        if self._task is None or self._task.done():
+            logger.info("[Scanner] Resume requested from dormant state; starting task")
+            await self.start()
+            return
         self._active = True
         logger.info("[Scanner] Resumed")
 

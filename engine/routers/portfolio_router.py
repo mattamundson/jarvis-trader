@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from approval.service import approved_watchlist_symbols
 from config import settings
 from execution.order_router import FUTURES_SYMBOLS
+from utils.position_sizing import INSTRUMENT_MULTIPLIERS as INSTRUMENT_POINT_VALUES
 from utils.trade_invariants import is_inverted_stop
 
 logger = logging.getLogger("jarvis_trader.routers.portfolio")
@@ -1360,15 +1361,6 @@ async def close_stale_positions():
     except Exception as exc:
         logger.error("close_stale_positions failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-INSTRUMENT_POINT_VALUES: dict[str, float] = {
-    "MCL": 100.0,
-    "MNQ": 2.0,
-    "MES": 5.0,
-    "MGC": 10.0,
-    "DEFAULT": 1.0,
-}
 
 
 class UnrealizedPositionResponse(BaseModel):

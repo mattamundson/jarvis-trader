@@ -219,6 +219,47 @@ def save_report(report: str, output_dir: str) -> Path:
     return file_path
 
 
+def generate_quantstats_tearsheet(client: EngineAPIClient, output_dir: str):
+    """Attempt to generate an institutional tearsheet using QuantStats."""
+    try:
+        import pandas as pd
+        import quantstats as qs
+    except ImportError:
+        logger.warning("QuantStats or Pandas not installed. Skipping institutional tearsheet.")
+        return
+
+    logger.info("Generating QuantStats HTML Tearsheet...")
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    today = date.today().isoformat()
+    html_path = output_path / f"{today}_tearsheet.html"
+
+    # Simulate fetching historical daily returns from the engine API
+    # In production, this would hit client.get_historical_pnl()
+    try:
+        stats = client.get_portfolio_stats()
+        # Mocking a basic return series for demonstration. 
+        # You will connect this to your postgres DB of daily PnL vectors later.
+        dates = pd.date_range(end=today, periods=30, freq='D')
+        
+        # Simulate slight upward drift with volatility (Mock data)
+        np.random.seed(42)  # For reproducibility during mock phase
+        returns = np.random.normal(0.001, 0.015, size=len(dates))
+        returns_series = pd.Series(returns, index=dates)
+        
+        qs.extend_pandas()
+        
+        # Suppress warnings from QuantStats
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            qs.reports.html(returns_series, "SPY", title="Stark-TPO Performance Tearsheet", output=str(html_path))
+            
+        logger.info(f"QuantStats tearsheet saved to: {html_path}")
+    except Exception as exc:
+        logger.error(f"Failed to generate tearsheet: {exc}")
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -243,6 +284,9 @@ def main():
 
     logger.info(f"Report saved: {file_path}")
     print(report)
+    
+    # NEW: Attempt tearsheet generation
+    generate_quantstats_tearsheet(client, args.output_dir)
 
 
 if __name__ == "__main__":
