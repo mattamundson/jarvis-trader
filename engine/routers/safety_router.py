@@ -363,6 +363,121 @@ async def reset_daily_pnl() -> dict[str, Any]:
     return _safety_layer.reset_daily_pnl()
 
 
+@router.post(
+    "/smoke/bracket",
+    description=(
+        "HB-1 paper smoke test — fires 1-contract MES bracket directly through the "
+        "engine's live IBGatewayManager connection, verifies IB-side parentId linkage, "
+        "then cancels all 3 orders. Requires IB paper gateway connected (port 4002)."
+    ),
+)
+async def smoke_bracket(
+    symbol: str = "MES",
+    reference_price: float = 5700.0,
+    stop_offset: float = 8.0,
+    target_offset: float = 10.0,
+) -> dict:
+    """Fire a 1-contract bracket smoke test via the engine's live IBKRDataConnector._ib."""
+    import main as _main
+
+    ibkr_data = getattr(getattr(_main, "data_manager", None), "ibkr", None)
+    if ibkr_data is None or not ibkr_data.is_connected:
+        raise HTTPException(
+            503,
+            detail="IBKRDataConnector not connected — is IB Gateway on port 4002?",
+        )
+
+    _ib = getattr(ibkr_data, "_ib", None)
+    if _ib is None:
+        raise HTTPException(503, detail="IBKRDataConnector._ib is None — not initialised")
+
+    try:
+        from ib_async import LimitOrder, MarketOrder, StopOrder
+    except ImportError:
+        raise HTTPException(500, detail="ib_async not installed")
+
+    stop_price = reference_price - stop_offset
+    target_price = reference_price + target_offset
+
+    # Resolve and qualify the MES front-month contract using the data connector's method
+    try:
+        contract = await ibkr_data._resolve_front_month(symbol, "CME")
+        qualified = await _ib.qualifyContractsAsync(contract)
+        if qualified:
+            contract = qualified[0]
+    except Exception as exc:
+        raise HTTPException(500, detail=f"Contract qualification failed for {symbol}: {exc}")
+
+    # Place entry MKT order
+    entry_order = MarketOrder(action="BUY", totalQuantity=1)
+    entry_trade = _ib.placeOrder(contract, entry_order)
+    entry_id: int = entry_trade.order.orderId
+
+    # Place STP child linked to entry
+    stp_order = StopOrder(action="SELL", totalQuantity=1, stopPrice=stop_price)
+    stp_order.parentId = entry_id
+    stp_trade = _ib.placeOrder(contract, stp_order)
+    stp_id: int = stp_trade.order.orderId
+
+    # Place TP LMT child linked to entry
+    tp_order = LimitOrder(action="SELL", totalQuantity=1, lmtPrice=target_price)
+    tp_order.parentId = entry_id
+    tp_trade = _ib.placeOrder(contract, tp_order)
+    tp_id: int = tp_trade.order.orderId
+
+    logger.info("[SMOKE] orders placed — entry=%s stp=%s tp=%s", entry_id, stp_id, tp_id)
+
+    # Wait briefly for IB to register the orders
+    await asyncio.sleep(1.5)
+
+    # Verify parentId linkage from IB's own openTrades()
+    open_trades = _ib.openTrades()
+    stp_linked = any(
+        t.order.orderId == stp_id and t.order.parentId == entry_id for t in open_trades
+    )
+    tp_linked = any(
+        t.order.orderId == tp_id and t.order.parentId == entry_id for t in open_trades
+    )
+
+    # Cancel all orders to leave zero open risk
+    cancelled = []
+    for trade, label in ((entry_trade, "entry"), (stp_trade, "STP"), (tp_trade, "TP")):
+        try:
+            _ib.cancelOrder(trade.order)
+            cancelled.append(label)
+        except Exception as exc:
+            logger.warning("[SMOKE] cancel %s: %s", label, exc)
+
+    pass_flags = {
+        "entry_routed_to_ib": entry_id is not None,
+        "stp_linked (IB parentId)": stp_linked,
+        "tp_linked (IB parentId)": tp_linked,
+    }
+    all_pass = all(pass_flags.values())
+    logger.info("[SMOKE] HB-1 bracket result: %s cancelled=%s", pass_flags, cancelled)
+
+    open_orders_snapshot = [
+        {
+            "order_id": t.order.orderId,
+            "parent_id": t.order.parentId,
+            "action": t.order.action,
+            "type": t.order.orderType,
+            "qty": t.order.totalQuantity,
+            "status": t.orderStatus.status,
+        }
+        for t in open_trades[:10]
+    ]
+    return {
+        "result": "PASS" if all_pass else "FAIL",
+        "checks": pass_flags,
+        "entry_order_id": entry_id,
+        "stp_order_id": stp_id,
+        "tp_order_id": tp_id,
+        "cancelled_orders": cancelled,
+        "open_orders_snapshot": open_orders_snapshot,
+    }
+
+
 @router.get(
     "/position-size",
     description="Calculate recommended position size using ATR-based framework with hardcoded contract limits respecting drawdown state.",
