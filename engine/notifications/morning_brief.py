@@ -74,16 +74,15 @@ async def assemble_morning_brief(
                     dm.get_current_price("MNQ"),
                     return_exceptions=True,
                 )
-                prices["MCL"] = (
-                    float(results[0])
-                    if not isinstance(results[0], Exception) and results[0] is not None
-                    else None
-                )
-                prices["MNQ"] = (
-                    float(results[1])
-                    if not isinstance(results[1], Exception) and results[1] is not None
-                    else None
-                )
+                def _extract_price(r) -> float | None:
+                    if isinstance(r, Exception) or r is None:
+                        return None
+                    if isinstance(r, dict):
+                        return float(r.get("close") or r.get("price") or r.get("last") or 0) or None
+                    return float(r)
+
+                prices["MCL"] = _extract_price(results[0])
+                prices["MNQ"] = _extract_price(results[1])
             except Exception as exc:
                 logger.warning("[MorningBrief] Price fetch failed: %s", exc)
 
