@@ -539,17 +539,21 @@ class IBGatewayManager:
         order_type: str = "MKT",
         limit_price: Optional[float] = None,
         aux_price: Optional[float] = None,
+        parent_order_id: Optional[int] = None,
     ) -> Optional[int]:
         """
         Place an order on the IB paper account (port 4002 only).
 
         Args:
-            symbol:      JARVIS symbol (e.g. "MES", "MNQ", "AAPL")
-            action:      "BUY" or "SELL"
-            quantity:    Number of contracts / shares (positive integer)
-            order_type:  "MKT", "LMT", "STP", "STP_LMT"
-            limit_price: Required for LMT and STP_LMT orders
-            aux_price:   Stop price for STP and STP_LMT orders
+            symbol:          JARVIS symbol (e.g. "MES", "MNQ", "AAPL")
+            action:          "BUY" or "SELL"
+            quantity:        Number of contracts / shares (positive integer)
+            order_type:      "MKT", "LMT", "STP", "STP_LMT"
+            limit_price:     Required for LMT and STP_LMT orders
+            aux_price:       Stop price for STP and STP_LMT orders
+            parent_order_id: IB orderId of the parent entry when placing a
+                             child STP — sets Order.parentId so IB links the
+                             child to the entry fill atomically at the broker.
 
         Returns:
             IB order ID (int) on success, None on failure.
@@ -561,13 +565,14 @@ class IBGatewayManager:
         order_type_upper = order_type.upper()
 
         logger.info(
-            "place_paper_order | symbol=%s action=%s qty=%d type=%s lmt=%s aux=%s",
+            "place_paper_order | symbol=%s action=%s qty=%d type=%s lmt=%s aux=%s parent=%s",
             symbol,
             action_upper,
             quantity,
             order_type_upper,
             limit_price,
             aux_price,
+            parent_order_id,
         )
 
         try:
@@ -590,16 +595,20 @@ class IBGatewayManager:
             if self._config.account:
                 ib_order.account = self._config.account
 
+            if parent_order_id is not None:
+                ib_order.parentId = int(parent_order_id)
+
             trade = self._ib.placeOrder(contract, ib_order)
             order_id: int = trade.order.orderId
 
             logger.info(
-                "Order placed | symbol=%s action=%s qty=%d type=%s order_id=%d",
+                "Order placed | symbol=%s action=%s qty=%d type=%s order_id=%d parent=%s",
                 symbol,
                 action_upper,
                 quantity,
                 order_type_upper,
                 order_id,
+                parent_order_id,
             )
             return order_id
 
@@ -652,7 +661,7 @@ class IBGatewayManager:
         Return all open orders as a list of dicts.
 
         Each dict contains:
-          order_id, symbol, action, quantity, order_type,
+          order_id, parent_id, symbol, action, quantity, order_type,
           limit_price, aux_price, status, filled, remaining
         """
         if not IB_INSYNC_AVAILABLE or not self.is_connected():
@@ -670,6 +679,7 @@ class IBGatewayManager:
                 result.append(
                     {
                         "order_id": order.orderId,
+                        "parent_id": getattr(order, "parentId", 0) or None,
                         "symbol": contract.symbol,
                         "action": order.action,
                         "quantity": order.totalQuantity,
