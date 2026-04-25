@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
 import pandas as pd
 
+from data.polygon_stream import PolygonStreamer
+
 logger = logging.getLogger(__name__)
 
 # Optional TradingView real-time feed — imported lazily so it never breaks startup
@@ -644,6 +646,7 @@ class MarketDataManager:
         self.ibkr: Optional[IBKRDataConnector] = None
         self.schwab: Optional["SchwabConnector"] = None
         self.polygon: Optional[PolygonDataConnector] = None
+        self.polygon_streamer: Optional[PolygonStreamer] = None
         self.finnhub: Optional[FinnhubConnector] = None
         self.reddit = RedditSentimentConnector()
 
@@ -670,6 +673,12 @@ class MarketDataManager:
         if self._config.POLYGON_API_KEY:
             self.polygon = PolygonDataConnector(self._config.POLYGON_API_KEY)
             self.polygon.connect()
+            
+            # Tier 2.5: Real-time stream for equities (skips futures blocklist)
+            # Default watchlist for streaming - can be expanded or made dynamic
+            watchlist = ["SPY", "QQQ", "AAPL", "TSLA", "NVDA", "MSFT", "AMD", "META"]
+            self.polygon_streamer = PolygonStreamer(self._config.POLYGON_API_KEY, watchlist)
+            # Connection is started by main.py in the background
         else:
             logger.warning("POLYGON_API_KEY not set — set it in .env for price data fallback.")
 
@@ -846,7 +855,20 @@ class MarketDataManager:
             except Exception as _tv_err:
                 logger.debug(f"TradingView Tier 2.5 failed for {symbol}: {_tv_err}")
 
-        # Tier 3: Polygon — SKIPPED for futures (returns wrong asset on free plan).
+        # Tier 3: Polygon Stream Cache (Fastest Tier 2 fallback)
+        if (self.polygon_streamer and 
+            symbol.upper() not in POLYGON_FUTURES_BLOCKLIST):
+            stream_bar = self.polygon_streamer.get_latest_bar(symbol.upper())
+            if stream_bar and stream_bar.get("close"):
+                logger.info(f"Polygon Stream Tier 3 price for {symbol}: {stream_bar['close']}")
+                return {
+                    "last_price": float(stream_bar["close"]),
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "polygon_stream",
+                }
+
+        # Tier 4: Polygon REST — SKIPPED for futures (returns wrong asset on free plan).
         # See POLYGON_FUTURES_BLOCKLIST. Stocks/ETFs still flow through.
         if self.polygon and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
             polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
@@ -859,7 +881,7 @@ class MarketDataManager:
                 f"(futures — see incident 2026-04-16)"
             )
 
-        # Tier 4: CSV cache last close
+        # Tier 5: CSV cache last close
         df = self._load_csv_cache(symbol, "1d", 2)
         if not df.empty and "close" in df.columns:
             last_close = float(df.iloc[-1]["close"])
@@ -911,14 +933,26 @@ class MarketDataManager:
             except Exception as _schwab_err:
                 logger.debug(f"[get_tick_price] Schwab failed for {symbol}: {_schwab_err}")
 
-        # Tier 3: Polygon (stocks/ETFs only — futures blocklisted)
+        # Tier 3: Polygon Stream Cache
+        if (self.polygon_streamer and 
+            symbol.upper() not in POLYGON_FUTURES_BLOCKLIST):
+            stream_bar = self.polygon_streamer.get_latest_bar(symbol.upper())
+            if stream_bar and stream_bar.get("close"):
+                return {
+                    "last_price": float(stream_bar["close"]),
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "polygon_stream",
+                }
+
+        # Tier 4: Polygon REST (stocks/ETFs only — futures blocklisted)
         if self.polygon and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
             polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
             result = self.polygon.get_last_price(polygon_symbol)
             if result.get("last_price"):
                 return result
 
-        # Tier 4: CSV cache last close
+        # Tier 5: CSV cache last close
         df = self._load_csv_cache(symbol, "1d", 2)
         if not df.empty and "close" in df.columns:
             last_close = float(df.iloc[-1]["close"])
