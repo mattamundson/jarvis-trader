@@ -12,8 +12,12 @@ try {
     $raw = cmd /c "pm2 jlist" 2>$null
     if ($raw) {
         $data = $raw | ConvertFrom-Json -AsHashtable
-        # Accept either "jarvis-engine" (plan-canonical) or "jarvis" (actual on this host).
-        $engine = $data | Where-Object { $_["name"] -in @("jarvis-engine", "jarvis") } | Select-Object -First 1
+        # Prefer "jarvis-engine" (the FastAPI engine) over "jarvis" (a different
+        # pm2 process); fall back to "jarvis" only if jarvis-engine is missing.
+        $engine = $data | Where-Object { $_["name"] -eq "jarvis-engine" } | Select-Object -First 1
+        if (-not $engine) {
+            $engine = $data | Where-Object { $_["name"] -eq "jarvis" } | Select-Object -First 1
+        }
         if ($engine -and $engine["pm2_env"]) {
             $restarts = [int]$engine["pm2_env"]["restart_time"]
             $matchedName = [string]$engine["name"]

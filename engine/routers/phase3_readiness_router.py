@@ -311,29 +311,50 @@ async def mes_sprint_gate() -> dict:
     if not streak_ok:
         all_pass = False
 
-    # 6. Drawdown < 2% (sourced from SafetyLayer's PnLMonitor when available).
-    drawdown = 0.0
+    # 6. Today's intra-session drawdown < 2% (NOT all-time drawdown from peak).
+    # Pre-flight protection is "is the trader currently bleeding today" — historical
+    # peak-to-current can show stale paper-account volatility that has nothing to do
+    # with going-live readiness. Compute as daily_pnl / starting_balance, then take
+    # only the negative side (positive PnL = no drawdown today).
+    daily_drawdown = 0.0
     if _safety_layer is not None:
         try:
             pnl_mon = getattr(_safety_layer, "_pnl_monitor", None)
-            if pnl_mon is not None and hasattr(pnl_mon, "get_drawdown_pct"):
-                drawdown = float(pnl_mon.get_drawdown_pct() or 0.0)
+            if pnl_mon is not None and hasattr(pnl_mon, "get_current_pnl_state"):
+                state = pnl_mon.get_current_pnl_state()
+                daily_pnl = float(
+                    (getattr(state, "daily_realized_pnl", 0.0) or 0.0)
+                    + (getattr(state, "daily_unrealized_pnl", 0.0) or 0.0)
+                )
+                starting = float(getattr(state, "starting_balance", 0.0) or 0.0)
+                if starting > 0:
+                    pct = daily_pnl / starting
+                    daily_drawdown = -pct if pct < 0 else 0.0  # 0 if up, positive if down
         except Exception as exc:  # noqa: BLE001
-            logger.warning("mes-sprint-gate: drawdown read failed: %s", exc)
-    drawdown_abs = abs(drawdown)
-    dd_ok = drawdown_abs < 0.02
+            logger.warning("mes-sprint-gate: daily drawdown read failed: %s", exc)
+    dd_ok = daily_drawdown < 0.02
     checks.append(
         {
             "name": "drawdown",
             "pass": dd_ok,
-            "value": f"{drawdown_abs * 100:.2f}%",
-            "detail": f"Current drawdown: {drawdown_abs * 100:.2f}% (limit 2%)",
+            "value": f"{daily_drawdown * 100:.2f}%",
+            "detail": (
+                f"Today's drawdown: {daily_drawdown * 100:.2f}% (limit 2%, intra-session)"
+            ),
         }
     )
     if not dd_ok:
         all_pass = False
 
-    overall = "PASS" if all_pass else ("PENDING" if not bracket_ok else "FAIL")
+    # PENDING is reserved for "only thing missing is data that fills over time"
+    # — i.e., bracket count is the SOLE failing check. Anything else failing → FAIL.
+    other_checks_pass = all(c["pass"] for c in checks if c["name"] != "bracket_trades")
+    if all_pass:
+        overall = "PASS"
+    elif (not bracket_ok) and other_checks_pass:
+        overall = "PENDING"
+    else:
+        overall = "FAIL"
     return {
         "overall": overall,
         "ready_for_live": all_pass,
