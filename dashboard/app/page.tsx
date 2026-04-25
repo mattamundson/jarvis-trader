@@ -36,6 +36,7 @@ import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
 import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
+import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -207,12 +208,15 @@ export default function DashboardPage() {
         {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
         <ProactiveValidationWidget />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Signal Flow — per-instrument STC values and pipeline block stage */}
           <SignalFlowWidget />
-          
+
           {/* Super-Engine Infrastructure Status */}
           <SuperEngineStatusWidget />
+
+          {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
+          <Pm2StabilityWidget />
         </div>
 
         {/* Walk-Forward / Paper Trading Status */}
