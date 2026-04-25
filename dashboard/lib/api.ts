@@ -1382,3 +1382,37 @@ export async function fetchShadowMetrics(strategyName?: string): Promise<ShadowM
   const q = strategyName ? `?strategy_name=${encodeURIComponent(strategyName)}` : "";
   return fetchEngine<ShadowMetricsResponse>(`/pipeline/shadow-metrics${q}`);
 }
+
+export interface Pm2StatusResponse {
+  found: boolean;
+  status?: string;
+  restart_count?: number;
+  unstable_restarts?: number;
+  uptime_ms?: number;
+  memory_mb?: number;
+  cpu_pct?: number;
+  pid?: number;
+  note?: string;
+  error?: string;
+}
+
+export async function fetchPm2Status(): Promise<Pm2StatusResponse> {
+  return fetchEngine<Pm2StatusResponse>("/health/pm2");
+}
+
+export interface OpenPositionsResponse {
+  positions: Array<{
+    symbol: string;
+    action: string;
+    quantity: number;
+    entry_price: number;
+    stop_loss?: number;
+    broker_stp_order_id?: string;
+    unrealized_pnl?: number;
+  }>;
+  count: number;
+}
+
+export async function fetchOpenPositions(): Promise<OpenPositionsResponse> {
+  return fetchEngine<OpenPositionsResponse>("/portfolio/paper/positions");
+}

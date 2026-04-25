@@ -67,7 +67,7 @@ export const SuperEngineStatusWidget: React.FC = () => {
                   </div>
                 </div>
                 <Badge 
-                  variant={isActive ? "default" : "destructive"}
+                  variant={isActive ? "bull" : "bear"}
                   className={isActive ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-red-500/20 text-red-400 border-red-500/30"}
                 >
                   {isActive ? "ACTIVE" : "OFFLINE"}
