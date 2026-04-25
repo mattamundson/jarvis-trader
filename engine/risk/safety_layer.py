@@ -53,6 +53,11 @@ except ImportError:
         AlertManager = None  # type: ignore[assignment,misc]
 
 try:
+    from utils.position_sizing import INSTRUMENT_MULTIPLIERS as _FUTURES_POINT_VALUE
+except ImportError:
+    from engine.utils.position_sizing import INSTRUMENT_MULTIPLIERS as _FUTURES_POINT_VALUE
+
+try:
     from risk.loss_tracker import ConsecutiveLossTracker
 except ImportError:
     try:
@@ -92,13 +97,13 @@ class KillSwitchReason(Enum):
 # Symbols eligible to hold overnight (23h markets); subject to MAX_OVERNIGHT_CONTRACTS.
 _OVERNIGHT_SYMBOLS: frozenset[str] = frozenset({"MES"})
 _CT_ZONE = ZoneInfo("America/Chicago")
-_OVERNIGHT_CUTOFF_HOUR = 15  # 15:00 CT — CME RTH close for equity futures
+_OVERNIGHT_CUTOFF_HOUR = 15  # 15:00 CT â€” CME RTH close for equity futures
 
 # IBKR overnight maintenance margin per contract (USD). These are the figures
 # used by the futures-sizing gate when `order.is_futures=True`. Notional-based
 # gating is wrong for futures: 1 MES is $7,130 notional but only ~$1,320 margin.
 # Source: IBKR futures margin requirements 2026 (CME micro + mini). Conservative
-# overnight figures — day-trade margin is lower. Update when IBKR revises.
+# overnight figures â€” day-trade margin is lower. Update when IBKR revises.
 _FUTURES_MARGIN_BY_ROOT: dict[str, float] = {
     # Micros
     "MES": 1320.0,   # E-mini S&P 500 micro
@@ -116,6 +121,11 @@ _FUTURES_MARGIN_BY_ROOT: dict[str, float] = {
     "GC":  14000.0,
     "HG":   6000.0,
 }
+
+# Points-to-USD multiplier for futures loss estimation.
+# Sourced from engine/utils/position_sizing.INSTRUMENT_MULTIPLIERS (imported above
+# as _FUTURES_POINT_VALUE for back-compat). Used for the $50-per-trade-max-loss
+# safety gate at line ~680.
 
 
 def _futures_margin_required(symbol: str, quantity: int) -> float | None:
@@ -140,6 +150,7 @@ class OrderRequest:
     is_futures: bool = False
     is_options: bool = False
     estimated_value: float = 0.0
+    stark_signal: str | None = None
 
 
 @dataclass
@@ -171,7 +182,7 @@ class SafetyLayer:
         pnl_monitor : PnLMonitor | None
             Optional PnLMonitor instance.  When provided, circuit-breaker checks
             in check_order() and sync_from_broker() read live P&L from the best
-            available source (IB Gateway → SQLite → in-memory tracker) rather
+            available source (IB Gateway â†’ SQLite â†’ in-memory tracker) rather
             than relying solely on the values last set by sync_from_broker().
             Passing None preserves full backward-compatibility.
         loss_tracker : ConsecutiveLossTracker | None
@@ -210,10 +221,10 @@ class SafetyLayer:
         # Orders per minute tracking
         self._recent_order_timestamps: list[float] = []
 
-        # Tilt detector (optional — injected after construction)
+        # Tilt detector (optional â€” injected after construction)
         self.tilt_detector = None
 
-        # Alert manager (optional — injected after construction via inject_alert_manager())
+        # Alert manager (optional â€” injected after construction via inject_alert_manager())
         self._alert_manager: Optional[object] = None  # AlertManager | None
 
         # Re-entry lockouts: symbol -> lockout_until datetime
@@ -251,9 +262,9 @@ class SafetyLayer:
         SafetyLayer are initialised.  Passing None is a no-op (disables alerts).
         """
         self._alert_manager = manager
-        logger.info("SafetyLayer: AlertManager injected — P&L push alerts active")
+        logger.info("SafetyLayer: AlertManager injected â€” P&L push alerts active")
 
-    # ── Kill Switch DB Persistence ────────────────────────────────────────
+    # â”€â”€ Kill Switch DB Persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _resolve_db_path(self, db_path: Optional[str]) -> Optional[str]:
         """Return a non-empty SQLite path, or None to disable kill-switch persistence."""
@@ -301,7 +312,7 @@ class SafetyLayer:
         Bootstrap _current_equity and _equity_peak from PnLMonitor or config.
 
         Called once at startup when snapshot restoration left values at 0.
-        Source priority: PnLMonitor (SQLite) → INITIAL_CAPITAL config.
+        Source priority: PnLMonitor (SQLite) â†’ INITIAL_CAPITAL config.
         """
         # Try PnLMonitor first (reads SQLite daily_pnl table)
         if self._pnl_monitor is not None:
@@ -314,7 +325,7 @@ class SafetyLayer:
                     if self._equity_peak == 0.0:
                         self._equity_peak = max(balance, self._current_equity)
                     logger.info(
-                        "SafetyLayer: seeded from PnLMonitor — equity=%.2f peak=%.2f",
+                        "SafetyLayer: seeded from PnLMonitor â€” equity=%.2f peak=%.2f",
                         self._current_equity,
                         self._equity_peak,
                     )
@@ -334,7 +345,7 @@ class SafetyLayer:
             if self._equity_peak == 0.0:
                 self._equity_peak = max(initial, self._current_equity)
             logger.info(
-                "SafetyLayer: seeded from INITIAL_CAPITAL — equity=%.2f peak=%.2f",
+                "SafetyLayer: seeded from INITIAL_CAPITAL â€” equity=%.2f peak=%.2f",
                 self._current_equity,
                 self._equity_peak,
             )
@@ -350,7 +361,7 @@ class SafetyLayer:
         if self._db_manager is None:
             if not getattr(self, "_db_manager_warned", False):
                 logger.warning(
-                    "SafetyLayer: pnl_snapshots writes DISABLED — db_manager was not "
+                    "SafetyLayer: pnl_snapshots writes DISABLED â€” db_manager was not "
                     "passed to __init__. Kill-switch state will still persist via "
                     "db_path, but upsert_pnl_snapshot() will silently no-op every "
                     "60s sync. Pass db_manager=<DatabaseManager> to restore writes."
@@ -452,7 +463,7 @@ class SafetyLayer:
         except Exception as exc:
             logger.warning("SafetyLayer: failed to persist kill switch state to DB: %s", exc)
 
-    # ── Kill Switch ───────────────────────────────────────────────────────
+    # â”€â”€ Kill Switch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def activate_kill_switch(self, reason: KillSwitchReason | str, message: str = "") -> None:
         """Halt all trading. Requires human re-authorization to resume."""
@@ -518,7 +529,7 @@ class SafetyLayer:
             "recent_order_count": len(self._recent_order_timestamps),
         }
 
-    # ── Pre-Trade Checks ─────────────────────────────────────────────────
+    # â”€â”€ Pre-Trade Checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _check_drawdown(self, portfolio_equity: float, warnings: list) -> RiskCheckResult:
         """Check max drawdown limits. Returns RiskCheckResult(approved=True) if passed."""
@@ -581,10 +592,10 @@ class SafetyLayer:
             warnings.append(
                 f"Consecutive losses: {consecutive_losses} - "
                 f"position size reduced by {(1.0 - multiplier):.0%} "
-                f"(qty: {order.quantity} → {adjusted_order.quantity})"
+                f"(qty: {order.quantity} â†’ {adjusted_order.quantity})"
             )
             logger.warning(
-                f"Position size reduction applied: {order.symbol} qty {order.quantity} → "
+                f"Position size reduction applied: {order.symbol} qty {order.quantity} â†’ "
                 f"{adjusted_order.quantity} (multiplier={multiplier:.2f})"
             )
             return adjusted_order, warnings
@@ -617,18 +628,72 @@ class SafetyLayer:
         return RiskCheckResult(approved=True)
 
     def _check_daily_loss_limit(self, portfolio_equity: float) -> RiskCheckResult:
-        """Check daily loss limit."""
-        daily_pnl = (
-            self._pnl_monitor.get_daily_pnl() if self._pnl_monitor else self._daily_realized_pnl
+        """Check daily loss limit (both PCT and absolute USD)."""
+        pnl_state = (
+            self._pnl_monitor.get_current_pnl_state() if self._pnl_monitor else None
         )
-        if daily_pnl < -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT):
+        total_pnl = pnl_state.total_pnl if pnl_state else self._daily_realized_pnl
+        realized_pnl = pnl_state.daily_realized_pnl if pnl_state else self._daily_realized_pnl
+        
+        # 1. Check relative limit (e.g. -2%) against TOTAL P&L (standard)
+        rel_limit = -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT)
+        if total_pnl < rel_limit:
             self.activate_kill_switch(
                 KillSwitchReason.DAILY_LOSS_LIMIT,
-                f"Daily loss {daily_pnl:.2f} exceeded limit",
+                f"Daily total P&L {total_pnl:.2f} exceeded pct limit ({self._config.MAX_DAILY_LOSS_PCT:.1%})",
             )
             return RiskCheckResult(
-                approved=False, rejection_reason="Daily loss limit breached - kill switch activated"
+                approved=False, rejection_reason="Daily loss pct limit reached - kill switch activated"
             )
+
+        # 2. Check absolute limit (e.g. -$100) against REALIZED P&L (per Battle Plan)
+        abs_limit = -getattr(self._config, "MAX_DAILY_LOSS_USD", 100.0)
+        if realized_pnl < abs_limit:
+            self.activate_kill_switch(
+                KillSwitchReason.DAILY_LOSS_LIMIT,
+                f"Daily realized loss {realized_pnl:.2f} exceeded flat USD limit (${abs(abs_limit):.0f})",
+            )
+            return RiskCheckResult(
+                approved=False, rejection_reason="Daily realized loss limit reached - kill switch activated"
+            )
+
+        return RiskCheckResult(approved=True)
+
+    def _check_trade_loss_gate(self, order: OrderRequest) -> RiskCheckResult:
+        """
+        Damage control: reject any order where requested stop distance * qty 
+        exceeds MAX_TRADE_LOSS_USD ($50).
+        """
+        if order.stop_price is None:
+            # Entry without stop is permitted by safety layer (e.g. manual flattening),
+            # but usually blocked earlier by strategy policy for directional trades.
+            return RiskCheckResult(approved=True)
+
+        entry_px = order.limit_price or order.estimated_value / order.quantity if order.quantity != 0 else 0
+        if entry_px == 0:
+            return RiskCheckResult(approved=True) # Cannot compute risk without entry price
+
+        points_at_risk = abs(entry_px - order.stop_price)
+        
+        if order.is_futures:
+            multiplier = _FUTURES_POINT_VALUE.get(order.symbol.upper(), 1.0)
+            dollar_risk = points_at_risk * multiplier * abs(order.quantity)
+        else:
+            # Equities / Options: Notional points * qty usually map 1:1 to USD for stocks,
+            # or require complex Greeks for options. For now, use simple multiplier.
+            dollar_risk = points_at_risk * abs(order.quantity)
+
+        max_risk = getattr(self._config, "MAX_TRADE_LOSS_USD", 50.0)
+        if dollar_risk > max_risk:
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    f"TRADE_LOSS_LIMIT: Potential loss ${dollar_risk:.2f} "
+                    f"exceeds max ${max_risk:.2f} per ticket "
+                    f"({order.symbol} @ {entry_px:.2f}, stop {order.stop_price:.2f})"
+                )
+            )
+            
         return RiskCheckResult(approved=True)
 
     def _check_order_value_limits(
@@ -639,11 +704,11 @@ class SafetyLayer:
 
         Futures branch: uses IBKR maintenance margin (via `_FUTURES_MARGIN_BY_ROOT`)
         instead of notional value, and `MAX_FUTURES_MARGIN_PCT` instead of
-        `MAX_POSITION_SIZE_PCT`. Notional-based gating is wrong for futures —
+        `MAX_POSITION_SIZE_PCT`. Notional-based gating is wrong for futures â€”
         1 MES at $7,130 notional is only ~$1,320 margin, so a notional-based
         5% cap would reject every futures order on a $10K account.
 
-        Non-futures path: unchanged — notional vs `MAX_SINGLE_ORDER_VALUE` and
+        Non-futures path: unchanged â€” notional vs `MAX_SINGLE_ORDER_VALUE` and
         `MAX_POSITION_SIZE_PCT`.
 
         Unknown futures root (not in `_FUTURES_MARGIN_BY_ROOT`): falls back to
@@ -669,7 +734,7 @@ class SafetyLayer:
                         ),
                     )
                 return RiskCheckResult(approved=True)
-            # Unknown futures root — fall through to notional-based check below.
+            # Unknown futures root â€” fall through to notional-based check below.
 
         if order.estimated_value > self._config.MAX_SINGLE_ORDER_VALUE:
             return RiskCheckResult(
@@ -729,6 +794,18 @@ class SafetyLayer:
                     )
         return RiskCheckResult(approved=True)
 
+    def _check_stark_tpo_constraint(self, order: OrderRequest) -> RiskCheckResult:
+        """Ensure order strictly obeys the Stark-TPO math signal."""
+        if order.stark_signal:
+            sig = order.stark_signal.upper()
+            if sig == "HOLD" and order.quantity != 0:
+                return RiskCheckResult(approved=False, rejection_reason="STARK_TPO_CONSTRAINT: Math edge demands HOLD.")
+            if "LONG" in sig and order.quantity < 0:
+                return RiskCheckResult(approved=False, rejection_reason=f"STARK_TPO_CONSTRAINT: Math demands {sig} but order is SHORT.")
+            if "SHORT" in sig and order.quantity > 0:
+                return RiskCheckResult(approved=False, rejection_reason=f"STARK_TPO_CONSTRAINT: Math demands {sig} but order is LONG.")
+        return RiskCheckResult(approved=True)
+
     def check_order(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
         """
         Run all pre-trade safety checks.
@@ -744,7 +821,9 @@ class SafetyLayer:
             lambda: self._check_daily_loss_limit(portfolio_equity),
             lambda: self._check_drawdown(portfolio_equity, warnings),
             lambda: self._check_order_value_limits(order, portfolio_equity),
+            lambda: self._check_trade_loss_gate(order),
             lambda: self._check_contract_limits(order),
+            lambda: self._check_stark_tpo_constraint(order),
         ]:
             result = check_fn()
             if isinstance(result, tuple):
@@ -811,7 +890,7 @@ class SafetyLayer:
             adjusted_order=adjusted_order if adjusted_order != order else None,
         )
 
-    # ── Paper Order Submission (Safety → IB Gateway) ──────────────────────
+    # â”€â”€ Paper Order Submission (Safety â†’ IB Gateway) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async def submit_paper_order(
         self,
@@ -821,6 +900,7 @@ class SafetyLayer:
         price: float,
         order_type: str = "MKT",
         limit_price: float | None = None,
+        stop_price: float | None = None,
     ) -> dict:
         """
         Run all safety checks then, if they pass, route the order to IB
@@ -847,7 +927,7 @@ class SafetyLayer:
             order_id    (str|None) - IB order ID string if the order was placed, else None.
             routed_to_ib (bool)  - True only when the order reached IB Gateway.
         """
-        # ── 0. Kill switch - checked first, before anything else ──────────
+        # â”€â”€ 0. Kill switch - checked first, before anything else â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if self._kill_switch_active:
             reason = (
                 f"Kill switch active: {self._kill_switch_reason.value}"
@@ -863,7 +943,7 @@ class SafetyLayer:
             )
             return {"approved": False, "reason": reason, "order_id": None, "routed_to_ib": False}
 
-        # ── 1. Build an OrderRequest so we can re-use check_order() fully ─
+        # â”€â”€ 1. Build an OrderRequest so we can re-use check_order() fully â”€
         action_upper = action.upper()
         signed_qty = quantity if action_upper == "BUY" else -quantity
         estimated_value = abs(quantity) * price
@@ -889,7 +969,7 @@ class SafetyLayer:
         is_futures = symbol.upper() in _FUTURES_ROOTS
 
         ib_order_type = order_type.lower()
-        # Normalise "MKT"→"market", "LMT"→"limit" for OrderRequest
+        # Normalise "MKT"â†’"market", "LMT"â†’"limit" for OrderRequest
         if ib_order_type in ("mkt", "market"):
             normalised_order_type = "market"
         elif ib_order_type in ("lmt", "limit"):
@@ -902,11 +982,12 @@ class SafetyLayer:
             quantity=signed_qty,
             order_type=normalised_order_type,
             limit_price=limit_price,
+            stop_price=stop_price,
             is_futures=is_futures,
             estimated_value=estimated_value,
         )
 
-        # ── 2. Full pre-trade safety gate ─────────────────────────────────
+        # â”€â”€ 2. Full pre-trade safety gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         # check_order() re-checks the kill switch internally (check #0 above
         # is an early-exit optimisation to avoid building OrderRequest at all
         # when we already know the kill switch is on).
@@ -932,7 +1013,7 @@ class SafetyLayer:
             for w in risk_result.warnings:
                 logger.warning("submit_paper_order safety warning (order allowed): %s", w)
 
-        # ── 3. Route to IB Gateway if available ───────────────────────────
+        # â”€â”€ 3. Route to IB Gateway if available â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if self._ib_gateway is None:
             logger.info(
                 "submit_paper_order: safety checks PASSED - no IB gateway attached "
@@ -971,6 +1052,18 @@ class SafetyLayer:
                 order_type=order_type.upper(),
                 limit_price=limit_price,
             )
+            
+            # HB-1: Broker-side Stop Orders atomically linked
+            if order_id is not None and stop_price is not None:
+                stp_action = "SELL" if action_upper == "BUY" else "BUY"
+                await self._ib_gateway.place_paper_order(
+                    symbol=symbol,
+                    action=stp_action,
+                    quantity=quantity,
+                    order_type="STP",
+                    aux_price=stop_price,
+                    parent_order_id=order_id,
+                )
             logger.info(
                 "submit_paper_order ROUTED to IB Gateway (paper) - symbol=%s action=%s "
                 "qty=%d order_type=%s order_id=%s",
@@ -1000,6 +1093,31 @@ class SafetyLayer:
                 "routed_to_ib": False,
             }
 
+    async def _verify_parent_linkage(
+        self,
+        child_order_id: Optional[str],
+        entry_id: str,
+    ) -> bool:
+        # True iff IB reports child_order_id with parent_order_id == entry_id.
+        # Works for both IBGatewayConnector (paper) and IBGatewayManager (live).
+        if child_order_id is None:
+            return False
+        try:
+            status = await self._ib_gateway.get_order_status(str(child_order_id))
+        except Exception as exc:
+            logger.warning(
+                "_verify_parent_linkage: get_order_status raised - child=%s: %s",
+                child_order_id,
+                exc,
+            )
+            return False
+        if not isinstance(status, dict):
+            return False
+        parent = status.get("parent_order_id")
+        if parent is None:
+            return False
+        return str(parent) == str(entry_id)
+
     async def submit_entry_with_stop(
         self,
         symbol: str,
@@ -1007,21 +1125,39 @@ class SafetyLayer:
         quantity: int,
         price: float,
         stop_price: float,
+        target_price: Optional[float] = None,
     ) -> dict:
         """
-        Submit a MKT entry and an immediate child STP on the broker side.
+        Submit a MKT entry + broker-side child STP, and (optionally) a child
+        LMT take-profit, all linked to the same parent entry order.
 
         Closes HB-1 from the 2026-04-22 deployment-verification review:
         the trader agent computed stop_price but no code path submitted it
         to IBKR, so any engine crash mid-trade left positions unprotected.
+        The optional TP (``target_price``) completes the bracket: symmetric
+        engine-crash protection on winners, not just losers.
 
-        Returns a dict with keys:
+        Parameters
+        ----------
+        target_price : float, optional
+            Take-profit limit price.  When provided, a LMT child is placed
+            after the STP, linked to the same parent entry.  STP and TP are
+            both opposite-side of the entry (BUY entry → SELL STP + SELL TP).
+            Omit to submit entry + STP only (preserves pre-2026-04-23
+            behavior).
+
+        Returns
+        -------
+        dict with keys:
             approved       : entry passed SafetyLayer
             reason         : outcome message
             entry_order_id : broker id of the MKT entry (None if blocked)
             stp_order_id   : broker id of the STP child (None if entry blocked
                              or STP placement raised)
             stp_linked     : True iff the STP carries parent_order_id == entry
+            tp_order_id    : broker id of the TP child (None if not requested,
+                             entry blocked, or TP placement raised)
+            tp_linked      : True iff the TP carries parent_order_id == entry
             routed_to_ib   : True iff entry reached IB Gateway
         """
         entry_res = await self.submit_paper_order(
@@ -1039,16 +1175,19 @@ class SafetyLayer:
                 "entry_order_id": entry_res.get("order_id"),
                 "stp_order_id": None,
                 "stp_linked": False,
+                "tp_order_id": None,
+                "tp_linked": False,
                 "routed_to_ib": entry_res.get("routed_to_ib", False),
             }
 
         entry_id = entry_res["order_id"]
-        stp_action = "SELL" if action.upper() == "BUY" else "BUY"
+        child_action = "SELL" if action.upper() == "BUY" else "BUY"
 
+        # --- Child STP (stop-loss) ---
         try:
             stp_id_raw = await self._ib_gateway.place_paper_order(
                 symbol=symbol,
-                action=stp_action,
+                action=child_action,
                 quantity=quantity,
                 order_type="STP",
                 limit_price=None,
@@ -1065,12 +1204,44 @@ class SafetyLayer:
             )
             stp_id = None
 
+        # --- Child TP (take-profit) — opt-in via target_price ---
+        tp_id: Optional[str] = None
+        if target_price is not None:
+            try:
+                tp_id_raw = await self._ib_gateway.place_paper_order(
+                    symbol=symbol,
+                    action=child_action,
+                    quantity=quantity,
+                    order_type="LMT",
+                    limit_price=float(target_price),
+                    aux_price=None,
+                    parent_order_id=entry_id,
+                )
+                tp_id = str(tp_id_raw) if tp_id_raw is not None else None
+            except Exception as exc:
+                logger.error(
+                    "submit_entry_with_stop: TP child placement raised - symbol=%s: %s",
+                    symbol,
+                    exc,
+                    exc_info=True,
+                )
+                tp_id = None
+
+        reason_parts = ["Entry"]
+        if stp_id is not None:
+            reason_parts.append("STP")
+        if tp_id is not None:
+            reason_parts.append("TP")
+        reason = " + ".join(reason_parts) + " submitted"
+
         return {
             "approved": True,
-            "reason": "Entry + child STP submitted",
+            "reason": reason,
             "entry_order_id": entry_id,
             "stp_order_id": stp_id,
-            "stp_linked": stp_id is not None,
+            "stp_linked": await self._verify_parent_linkage(stp_id, entry_id),
+            "tp_order_id": tp_id,
+            "tp_linked": await self._verify_parent_linkage(tp_id, entry_id),
             "routed_to_ib": True,
         }
 
@@ -1123,12 +1294,12 @@ class SafetyLayer:
         )
         return {"flattened": flattened, "order_ids": order_ids, "errors": errors}
 
-    # ── Portfolio State Sync (from broker, NOT from agents) ───────────────
+    # â”€â”€ Portfolio State Sync (from broker, NOT from agents) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def sync_from_broker(self, equity: float, daily_pnl: float) -> None:
         """
         Called every 60 seconds with ground truth from broker API.
-        This is the ONLY way portfolio state is updated — never via agent memory.
+        This is the ONLY way portfolio state is updated â€” never via agent memory.
         """
         self._current_equity = equity
         self._daily_realized_pnl = daily_pnl
@@ -1145,7 +1316,7 @@ class SafetyLayer:
                 KillSwitchReason.DAILY_LOSS_LIMIT, f"Intraday sync: daily PnL {daily_pnl:.2f}"
             )
 
-        # Push P&L alerts via AlertManager (deduped — each threshold fires once per day)
+        # Push P&L alerts via AlertManager (deduped â€” each threshold fires once per day)
         if self._alert_manager is not None:
             try:
                 daily_pnl_pct = (daily_pnl / equity) if equity > 0 else 0.0
@@ -1244,7 +1415,7 @@ class SafetyLayer:
             else None,
         }
 
-    # ── Loss Tracking API ──────────────────────────────────────────────────
+    # â”€â”€ Loss Tracking API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def record_trade_result(self, symbol: str, pnl: float) -> None:
         """

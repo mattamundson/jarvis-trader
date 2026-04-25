@@ -661,7 +661,7 @@ class IBGatewayManager:
         Return all open orders as a list of dicts.
 
         Each dict contains:
-          order_id, symbol, action, quantity, order_type,
+          order_id, parent_id, symbol, action, quantity, order_type,
           limit_price, aux_price, status, filled, remaining
         """
         if not IB_INSYNC_AVAILABLE or not self.is_connected():
@@ -679,6 +679,7 @@ class IBGatewayManager:
                 result.append(
                     {
                         "order_id": order.orderId,
+                        "parent_id": getattr(order, "parentId", 0) or None,
                         "symbol": contract.symbol,
                         "action": order.action,
                         "quantity": order.totalQuantity,
