@@ -15,7 +15,8 @@ registry = {
     "polymarket": None,
     "openbb": None,
     "sentiment_bridge": None,
-    "model_drawer": None
+    "model_drawer": None,
+    "arb_scout": None
 }
 
 def inject_super_engine(components: dict):
@@ -34,6 +35,11 @@ async def get_engine_status():
                 "type": type(instance).__name__,
                 "last_check": datetime.now().isoformat()
             }
+            # Component-specific health details
+            if key == "model_drawer" and hasattr(instance, "current_model"):
+                status[key]["model_loaded"] = instance.current_model is not None
+            if key == "arb_scout" and hasattr(instance, "paired_assets"):
+                status[key]["pairs_count"] = len(instance.paired_assets)
         else:
             status[key] = {"active": False}
     
