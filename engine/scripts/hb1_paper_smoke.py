@@ -32,6 +32,9 @@ ENGINE_DIR = Path(__file__).resolve().parent.parent
 if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
+import os  # noqa: E402
+os.environ.setdefault("ALLOW_PAPER_SIMULATED_ORDERS", "true")  # enable paper bracket path
+
 from config import settings  # noqa: E402
 from execution.ib_gateway import IBGatewayManager  # noqa: E402
 from risk.safety_layer import SafetyLayer  # noqa: E402
