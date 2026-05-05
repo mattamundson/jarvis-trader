@@ -37,7 +37,10 @@ alpaca-py==0.35.0         # Alpaca — paper trading data, free with API key
 schwab-py==1.5.1          # Charles Schwab Trader API (1.4.2 yanked / unavailable on PyPI)
 
 # ── Technical Analysis ─────────────────────────────────────────────────────
-pandas-ta==0.4.67b0       # 150+ indicators, pure Python (no C binary needed)
+pandas-ta==0.4.67b0       # 150+ indicators. Windows: requires alligator.py:6 patch (comment `from posix import pread` — see project_engine_boot_state_2026_05_04_eve.md)
+
+# ── ML / Predictions ───────────────────────────────────────────────────────
+xgboost==3.2.0            # Used by engine/learning/model_drawer.py — Win amd64 wheel (101.7 MB)
 
 # ── Data Processing ────────────────────────────────────────────────────────
 pandas>=2.2.3
