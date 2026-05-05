@@ -159,6 +159,7 @@ class JarvisLLMClient:
         self.ollama_model = os.getenv("OLLAMA_MODEL", "hermes3:latest")
         self.ollama_num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
         self.ollama_num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "256"))
+        self.ollama_keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "5m")
         self.client = None if self.provider == "ollama" else anthropic.AsyncAnthropic(api_key=api_key)
         self.cost_tracker = CostTracker(db_path=db_path)
         self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
@@ -572,6 +573,7 @@ class JarvisLLMClient:
             "model": self.ollama_model,
             "prompt": prompt,
             "stream": False,
+            "keep_alive": self.ollama_keep_alive,
             "options": {
                 "num_ctx": self.ollama_num_ctx,
                 "num_predict": min(max_tokens, self.ollama_num_predict),
