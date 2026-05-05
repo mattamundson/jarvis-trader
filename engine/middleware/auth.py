@@ -19,6 +19,10 @@ logger = logging.getLogger("jarvis_trader.auth")
 EXEMPT_PATHS = {
     "/health",
     "/health/full",
+    "/health/llm",
+    "/health/watchdog",
+    "/health/pm2",
+    "/health/apis",
     "/docs",
     "/openapi.json",
     "/redoc",
