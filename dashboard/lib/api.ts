@@ -111,6 +111,8 @@ export interface HealthResponse {
   kill_switch_active: boolean;
   paper_mode: boolean;
   ibkr_connected: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   schwab_connected: boolean;
   uptime_seconds: number;
 }
