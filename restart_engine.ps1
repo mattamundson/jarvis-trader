@@ -13,7 +13,8 @@ $pm2Managed = $false
 try {
     $pm2Json = pm2 jlist 2>$null | Out-String
     if ($pm2Json -match '"name"\s*:\s*"jarvis-engine"') { $pm2Managed = $true }
-} catch {}
+}
+catch {}
 
 if ($pm2Managed) {
     Write-Host "Detected jarvis-engine under PM2 - using pm2 restart (port-kill path skipped)"
@@ -32,14 +33,15 @@ if ($pm2Managed) {
     # restart. Prior 180s ceiling produced a false-ERROR on a successful
     # boot because the scanner's TV-feed retries kept uvicorn from binding.
     $startTime = Get-Date
-    $deadline  = $startTime.AddSeconds(360)
-    $healthy   = $false
+    $deadline = $startTime.AddSeconds(360)
+    $healthy = $false
     $lastProgressPrint = 0
     while ((Get-Date) -lt $deadline) {
         try {
             $r = Invoke-WebRequest -Uri "http://localhost:8010/health" -UseBasicParsing -TimeoutSec 3
             if ($r.StatusCode -eq 200) { $healthy = $true; break }
-        } catch {}
+        }
+        catch {}
         Start-Sleep -Seconds 2
         # Reassure operator at 60s / 180s / 300s marks — scanner first-pass
         # and RL model load can keep uvicorn from binding until ~230s.
@@ -47,10 +49,12 @@ if ($pm2Managed) {
         if ($elapsed -ge 60 -and $lastProgressPrint -lt 60) {
             Write-Host '  [60s] still booting (uvicorn not yet bound; normal up to ~230s)'
             $lastProgressPrint = 60
-        } elseif ($elapsed -ge 180 -and $lastProgressPrint -lt 180) {
+        }
+        elseif ($elapsed -ge 180 -and $lastProgressPrint -lt 180) {
             Write-Host '  [180s] still booting (scanner retry cascade; steady-state bind ~229s)'
             $lastProgressPrint = 180
-        } elseif ($elapsed -ge 300 -and $lastProgressPrint -lt 300) {
+        }
+        elseif ($elapsed -ge 300 -and $lastProgressPrint -lt 300) {
             Write-Host '  [300s] still booting (if this keeps going past 360s, check pm2 logs for crash)'
             $lastProgressPrint = 300
         }
@@ -60,7 +64,8 @@ if ($pm2Managed) {
         Write-Host "Last 30 error-log lines for triage:"
         try {
             pm2 logs jarvis-engine --nostream --lines 30 --err 2>&1 | Select-Object -Last 30 | Out-Host
-        } catch {
+        }
+        catch {
             Write-Host "  (pm2 logs fetch failed: $($_.Exception.Message))"
         }
         exit 1
@@ -85,7 +90,8 @@ if ($pm2Managed) {
                 $uptimeMs = $nowMs - [int64]$m.Groups[1].Value
             }
         }
-    } catch {
+    }
+    catch {
         Write-Host "Could not read pm2 jlist for uptime verification: $($_.Exception.Message)"
     }
 
@@ -133,8 +139,8 @@ function Get-ListenPids8010 {
 # against the live Windows process list and kill only the intersection.
 function Kill-WSL2SafePids8010 {
     $netstatPids = (netstat -ano 2>$null | Select-String ":\b8010\b\s" | ForEach-Object {
-        ($_ -split '\s+')[-1]
-    }) | Sort-Object -Unique | Where-Object { $_ -match '^\d+$' }
+            ($_ -split '\s+')[-1]
+        }) | Sort-Object -Unique | Where-Object { $_ -match '^\d+$' }
 
     if (-not $netstatPids) { return }
 
@@ -176,7 +182,8 @@ if ($stillListen.Count -gt 0) {
             Write-Host "  → Right-click Task Manager → Run as Administrator → find python.exe → End Task → re-run this script."
             exit 1
         }
-    } catch {
+    }
+    catch {
         Write-Host "Engine not responding on /health: $($_.Exception.Message)"
     }
     exit 1
@@ -204,10 +211,19 @@ if (Test-Path $envFile) {
 if ($taskExists) {
     Write-Host "Starting via Task Scheduler (no admin required)..."
     schtasks /run /tn $taskName
-} else {
+}
+else {
+    # Capture stdout/stderr so import-time crashes (e.g. NameError on a missing
+    # response_model class) leave a trail. Without redirection, -WindowStyle
+    # Hidden swallowed the 2026-05-05 CircuitBreakerStatus NameError silently —
+    # /health stayed unreachable while the only signal was a missing process.
+    $bootLog = Join-Path $repoRoot "engine\logs\engine-boot.log"
+    $bootErrLog = Join-Path $repoRoot "engine\logs\engine-boot-error.log"
     Start-Process -FilePath $pythonExe `
         -ArgumentList "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8010", "--log-level", "warning" `
         -WorkingDirectory (Join-Path $repoRoot "engine") `
+        -RedirectStandardOutput $bootLog `
+        -RedirectStandardError  $bootErrLog `
         -WindowStyle Hidden
 }
 
@@ -217,7 +233,8 @@ Start-Sleep 15
 try {
     $r = Invoke-WebRequest -Uri "http://localhost:8010/health" -UseBasicParsing -TimeoutSec 5
     Write-Host "Engine UP: $($r.StatusCode)"
-} catch {
+}
+catch {
     Write-Host "Engine not responding"
     exit 1
 }
