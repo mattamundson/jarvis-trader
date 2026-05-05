@@ -81,6 +81,9 @@ def _build_regime_gate(
     bbwidth_pct: float,
     bbwidth_lookback: int,
     keltner_atr_mult: float,
+    rv_min: float = 0.0,
+    rv_max: float = 999.0,
+    rv_lookback: int = 20,
 ) -> pd.Series:
     """Return a boolean Series — True = entry allowed, False = suppressed.
 
@@ -92,6 +95,11 @@ def _build_regime_gate(
                     (volatility-expansion phase = trend burst)
         keltner  : suppress when price is outside BOTH Bollinger AND Keltner
                     (extreme dislocation confirmed by ATR, not just SD)
+        rv_band  : allow entry only when realized volatility (close-to-close,
+                    annualized %) is within [rv_min, rv_max].  Hypothesis C
+                    for MCL re-validation — filters out both ultra-low vol
+                    (thin, directionless) and ultra-high vol (trending shock)
+                    environments where mean-reversion has no edge.
     Unknown modes fall back to all-True (effectively no gate).
     """
     from backtest.indicators import compute_adx, keltner_channels
@@ -138,6 +146,35 @@ def _build_regime_gate(
         trend_ext = (outside_bb_up & outside_kc_up) | (outside_bb_dn & outside_kc_dn)
         return (~trend_ext).fillna(False)
 
+    if mode == "rv_band":
+        close = df["close"]
+        # Resample to daily to compute conventional daily annualized RV.
+        # Intraday (1h) close-to-close std × sqrt(252) understates because bars
+        # are not daily — resample first so the RV values match the 20-50%
+        # annualized convention used in the gate v2 parameter grid.
+        try:
+            daily_close = close.resample("1D").last().dropna()
+        except TypeError:
+            # Non-DatetimeIndex fallback: use raw 1h returns (rare case)
+            daily_close = None
+
+        if daily_close is not None and len(daily_close) >= max(5, rv_lookback // 2):
+            daily_log_ret = np.log(daily_close / daily_close.shift(1))
+            daily_rv = (
+                daily_log_ret.rolling(rv_lookback, min_periods=max(5, rv_lookback // 2))
+                .std() * np.sqrt(252) * 100.0
+            )
+            # Forward-fill daily RV back to the original (intraday) index.
+            rv = daily_rv.reindex(close.index, method="ffill")
+        else:
+            daily_log_ret = np.log(close / close.shift(1))
+            rv = (
+                daily_log_ret.rolling(rv_lookback * 23, min_periods=max(10, rv_lookback * 23 // 2))
+                .std() * np.sqrt(252 * 23) * 100.0
+            )
+
+        return ((rv >= rv_min) & (rv <= rv_max)).fillna(False)
+
     # Unknown mode — fail safe to all-True (no gating).
     return all_true
 
@@ -172,6 +209,9 @@ def generate_bollinger_rsi_signals(
     regime_filter_bbwidth_pct: float = 40.0,
     regime_filter_bbwidth_lookback: int = 100,
     regime_filter_keltner_atr_mult: float = 1.5,
+    regime_filter_min_rv: float = 20.0,
+    regime_filter_max_rv: float = 50.0,
+    regime_filter_rv_lookback: int = 20,
 ) -> pd.DataFrame:
     """Generate Bollinger + RSI mean-reversion signals.
 
@@ -200,6 +240,12 @@ def generate_bollinger_rsi_signals(
             rank (default 100 bars).
         regime_filter_keltner_atr_mult: ATR multiplier for Keltner channel
             used in "keltner" mode (default 1.5, matching indicator default).
+        regime_filter_min_rv: lower annualized RV bound (%) for "rv_band" mode
+            (default 20.0 — below this, market is too thin for mean-reversion).
+        regime_filter_max_rv: upper annualized RV bound (%) for "rv_band" mode
+            (default 50.0 — above this, market is trending/shocked, not ranging).
+        regime_filter_rv_lookback: rolling window (bars) for RV computation in
+            "rv_band" mode (default 20 = ~1 month of 1h bars on CME futures).
 
     Returns:
         Copy of df with added columns documented in the module docstring.
@@ -244,6 +290,9 @@ def generate_bollinger_rsi_signals(
             bbwidth_pct=regime_filter_bbwidth_pct,
             bbwidth_lookback=regime_filter_bbwidth_lookback,
             keltner_atr_mult=regime_filter_keltner_atr_mult,
+            rv_min=regime_filter_min_rv,
+            rv_max=regime_filter_max_rv,
+            rv_lookback=regime_filter_rv_lookback,
         )
         long_cond = long_cond & regime_gate
         short_cond = short_cond & regime_gate
