@@ -571,6 +571,18 @@ SPRINT-AGENT-4 COMPLETE — All 6 user stories passed
 
 ---
 
+## [2026-05-05 Evening] - US-001 through US-005
+- US-001: MCL Hypothesis C rv_band gate committed. pf=0.284, p_edge=0.0, FAIL. MCL confirmed no edge.
+- US-002: origin/master merged into feat (4d99ef3 Strategy C+ v3). Zero conflicts. Pushed to origin.
+- US-003: OLLAMA_NUM_CTX_PER_AGENT knob added to engine/llm/client.py. social/news agents: 2048 ctx. Prompt sizes: social ~430 tok, news ~1175 tok max. 1.7x headroom.
+- US-004: TV Desktop confirmed running (port 9222, TradingView/3.1.0). Health check is a real TCP probe with 1s timeout, not a config flag. No fix needed.
+- US-005: MNQ breakout rank2 WFO committed by parallel session.
+**Learnings:**
+  - OLLAMA_NUM_CTX is the primary latency lever on CPU-only machines. Halving it halves KV cache allocation.
+  - Branch divergence merges cleanly when feat is the de-facto active trunk — origin/master drift happens when old sessions push directly to master.
+  - SQLite strftime('%Y-%m-%dT%H:%M:%S', 'now', modifier) is required for ISO-T timestamp comparisons; datetime() uses space separator.
+---
+
 ## RALPH AGENT 4 SESSION SUMMARY
 
 ### Deliverables
@@ -602,3 +614,12 @@ SPRINT-AGENT-4 COMPLETE — All 6 user stories passed
 - Progress file documented with implementation details
 - Ready for git commit and push
 
+## [2026-05-05 Late Evening] - US-006
+- CredentialManager PS module v2.0 installed at user scope via Install-Module -Scope CurrentUser -Force
+- Path: C:\Users\mattm\OneDrive\Documents\WindowsPowerShell\Modules\CredentialManager\2.0\
+- manage-jarvis-secrets.ps1 -List confirmed clean (no warning, 0 entries — no jarvis/ credentials stored yet)
+- Next step: run manage-jarvis-secrets.ps1 -Set for each engine/.env key to populate WCM
+**Learnings:**
+  - Install-Module works in PS 5.1 non-interactive mode with -Force -AllowClobber flags
+  - Module lands in OneDrive\Documents\WindowsPowerShell\Modules\ (user profile path, not AppData)
+---

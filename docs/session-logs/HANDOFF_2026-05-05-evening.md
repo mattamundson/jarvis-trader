@@ -94,13 +94,57 @@ This session began as a continuation of a compacted context (LLM C2+C3 Ollama ho
 
 ---
 
+## Ralph Loop Extension (2026-05-05 late evening)
+
+All 6 user stories queued for the ralph loop were completed. Summary:
+
+**US-001 — MCL Hypothesis C committed**
+- Commit was already present (31ef7c6 with rv_band gate code)
+- `gate_v2_verdicts/MCL_hyp_c_20260505T212306Z.json`: FAIL (pf=0.284, p_edge=0.0, DSR=0.0)
+- MCL mean-reversion confirmed: no edge under any tested regime filter — hypothesis family closed
+
+**US-002 — Branch divergence resolved**
+- Merge commit `4077e46` merged `origin/master` (`4d99ef3` Strategy C+ v3, 2,194 files) into feat
+- Zero merge conflicts — ort strategy merged cleanly
+- Pushed to `origin/feat/tradingview-mcp-gamma-kraken` successfully
+- Blocker 1 from this handoff is **resolved**
+
+**US-003 — OLLAMA_NUM_CTX_PER_AGENT added**
+- Commit `4a2b4bf` — `engine/llm/client.py` now parses `OLLAMA_NUM_CTX_PER_AGENT` env var
+- `social_analyst` and `news_analyst` capped at 2048 ctx (vs 4096 global default)
+- Prompt sizes verified: social ~430 tok, news ~1175 tok worst-case — 1.7× headroom at 2048
+- `engine/.env` updated: `OLLAMA_NUM_CTX_PER_AGENT=social_analyst=2048,news_analyst=2048`
+- Engine restarted; pm2 self-healed after port-race with `restart_engine.ps1`; health=ok
+- Blocker 4 (Ollama CPU latency) partially mitigated for social/news agents
+
+**US-004 — TV MCP health confirmed accurate**
+- Port 9222 IS listening: TradingView/3.1.0 on Chrome/140.0.7339.133 (Electron 38.2.2)
+- Health check is a real TCP probe to `127.0.0.1:9222/json/version` with 1s timeout + 30s cache
+- `JARVIS-TV-CDP-AtLogon` last ran 2026-05-05 13:39 — TV Desktop is confirmed up
+- Blocker 3 (TV Desktop anomaly) is **resolved** — `tradingview_mcp_healthy=true` is accurate
+
+**US-005 — MNQ breakout rank2 committed (FAIL)**
+- Parallel session ran rank2 sweep with `vol_ma_period=20` variation
+- Result: degenerate — 0 OOS trades across all 18 windows (signal choked by param)
+- Rank1 remains best result: `pf_ci_lower=1.0696` (gap 0.030 to core threshold)
+- Alt path: `fixed_params_min_pf=1.186` (gap 0.014 to 1.20)
+- MNQ remains in `DO_NOT_TRADE_SYMBOLS`
+
+**US-006 — CredentialManager module installed**
+- Version 2.0 installed at user scope
+- Path: `C:\Users\mattm\OneDrive\Documents\WindowsPowerShell\Modules\CredentialManager\2.0\`
+- `manage-jarvis-secrets.ps1 -List` runs clean (0 entries — no secrets loaded yet)
+- Blocker 5 (module not installed) is **resolved**
+
+---
+
 ## 3. Current State — What's Running, What's Stopped, What's Broken
 
 ### Running / Healthy
 
 | Service | State | Details |
 |---|---|---|
-| `jarvis-engine` (pm2 id=0) | **Online** | PID 37832, uptime 62m, 2 restarts (expected — was restarted during session), CPU 0%, mem 24KB |
+| `jarvis-engine` (pm2 id=0) | **Online** | PID 37944, uptime post-ralph-loop, 4 restarts (port-race churn during restart_engine.ps1 — not crashloop), CPU 0%, mem 24KB |
 | Engine API (port 8010) | **Healthy** | `status=ok`, `llm_path_healthy=true`, `tradingview_mcp_healthy=true`, paper_mode=true, version=1.1.0 |
 | Ollama (port 11434) | **Running** | CPU-only; hermes3:latest + llama3.2:3b loaded with KEEP_ALIVE=24h |
 | `/health/llm` | **Live** | 141 hermes3 calls + 38 llama3.2:3b calls in last 24h, all $0.00 (Anthropic fallback dormant) |
@@ -114,17 +158,16 @@ This session began as a continuation of a compacted context (LLM C2+C3 Ollama ho
 | IBKR paper (port 4002) | Disconnected | Market closed; `ibkr_execution_connected=false`, `ibkr_data_connected=false` — normal |
 | IBKR live (port 4001) | Permanently blocked | Network policy, not a bug |
 | Schwab | Disconnected | Not configured / not used currently |
-| TV Desktop CDP (port 9222) | Not checked | `tradingview_mcp_healthy=true` suggests MCP is responding — TV Desktop may not be fully installed yet |
+| TV Desktop CDP (port 9222) | **Confirmed running** | TradingView/3.1.0 on Chrome/140.0.7339.133 (Electron 38.2.2); JARVIS-TV-CDP-AtLogon last ran 2026-05-05 13:39; `tradingview_mcp_healthy=true` is accurate |
 
 ### Known Issues / Degraded
 
 | Issue | Severity | Detail |
 |---|---|---|
 | Ollama latency | High | Both hermes3:latest and llama3.2:3b hitting ~181s (p95). Root cause: CPU-only inference + OLLAMA_NUM_CTX=4096 + long prompts. `latency_warning=true` in /health/llm. |
-| Branch divergence | Medium | `origin/master` has 1 massive commit (`4d99ef3`) not in feat. Local master was FF'd to feat but push blocked. See Blockers. |
-| meanrev_signals.py dirty | Low | 27 uncommitted lines (rv_band gate). Paired with untracked `run_mcl_hypothesis_c.py`. |
+| Branch divergence | ~~Medium~~ **Resolved** | Merge commit `4077e46` merged `origin/master` into feat; 0 conflicts; pushed successfully (US-002) |
+| meanrev_signals.py dirty | ~~Low~~ **Resolved** | MCL Hypothesis C committed as 31ef7c6; working tree clean (US-001) |
 | Secret rotation (Phase 0) | Medium | 6 known credential locations pending rotation — compliance debt accumulating |
-| `tradingview_mcp_healthy=true` anomaly | Low | Endpoint reports healthy but TV Desktop is not confirmed installed. May be a stale/cached state or the health check only probes the MCP server process, not TV data availability. Verify before relying on TV bar data. |
 
 ---
 
@@ -244,16 +287,19 @@ Both models (`hermes3:latest` and `llama3.2:3b`) hit ~181s per call (p95). Root 
 
 ## 7. TODO Items — Planned But Not Started
 
-These were in the Top-10 ROI list but not reached or blocked:
+These were in the Top-10 ROI list but not reached or blocked. US-001 through US-006 from the ralph loop are now complete (see Ralph Loop Extension section above).
 
-| # | Item | Reason not started |
+| # | Item | Status |
 |---|---|---|
-| Task 4 | Phase 0 secret rotation (15 services) | Requires issuer console access — cannot execute autonomously |
-| Task 5b | MNQ_breakout parameter sweep (targeted WFO re-run to close 0.0304 PF gap) | Trading judgment required; need to decide which params to sweep |
-| Task 6 | TV Desktop install from Microsoft Store | Manual user action — cannot install Store apps |
-| Task 2 final | Reboot test to confirm pm2 AtLogon resurrection | Requires reboot — disruptive to running engine |
-| WCM population | Load all engine/.env secrets into Windows Credential Manager | Requires user to provide secret values interactively; also needs `Install-Module CredentialManager` first |
-| MCL Hypothesis C commit | Commit or discard uncommitted meanrev_signals.py + run_mcl_hypothesis_c.py | Minor, but working tree is dirty |
+| Task 4 | Phase 0 secret rotation (15 services) | Still pending — requires issuer console access |
+| Task 5b | MNQ_breakout parameter sweep (close 0.0304 PF gap) | Still open — rank2 sweep (US-005) was a FAIL; need new approach. Rank1 pf_ci_lower=1.0696, alt fixed_params_min_pf=1.186 |
+| Task 6 | TV Desktop install from Microsoft Store | **Resolved** — TV Desktop confirmed running (US-004); port 9222 active |
+| Task 2 final | Reboot test to confirm pm2 AtLogon resurrection | Still pending — requires reboot |
+| WCM population | Load all engine/.env secrets into Windows Credential Manager | Module now installed (US-006); secrets not yet loaded — requires interactive input |
+| MCL Hypothesis C commit | Commit rv_band code and verdict | **Done** — committed as 31ef7c6 (US-001) |
+| Branch divergence | Merge origin/master into feat | **Done** — merge commit 4077e46, pushed (US-002) |
+| OLLAMA_NUM_CTX per agent | Cap social/news agents at 2048 ctx | **Done** — commit 4a2b4bf (US-003) |
+| CredentialManager module | Install-Module CredentialManager | **Done** — version 2.0 installed (US-006) |
 
 ---
 
@@ -261,16 +307,17 @@ These were in the Top-10 ROI list but not reached or blocked:
 
 ### Immediate (can execute next session without user input)
 
-- [ ] **Commit or discard MCL Hypothesis C code** — `engine/backtest/meanrev_signals.py` (+27 lines, rv_band gate) and `engine/backtest/run_mcl_hypothesis_c.py` are uncommitted. Recommend: commit as `docs(backtest): MCL hypothesis C rv_band gate — FAIL` to keep verdict JSON in sync with code.
-- [ ] **Install CredentialManager PS module** — `Install-Module CredentialManager -Scope CurrentUser` (needs user approval as it's a module install)
+- [x] **Commit or discard MCL Hypothesis C code** — committed as 31ef7c6; working tree clean (US-001)
+- [x] **Install CredentialManager PS module** — version 2.0 installed at user scope (US-006)
 - [ ] **Load engine secrets into WCM** — Run `manage-jarvis-secrets.ps1 -Set` for each key in engine/.env (requires user to provide values or read from 1Password)
-- [ ] **Verify tradingview_mcp_healthy=true is accurate** — Check whether TV Desktop is actually installed and port 9222 is listening. If not, the health flag is misleading.
+- [x] **Verify tradingview_mcp_healthy=true is accurate** — Confirmed: port 9222 active, TradingView/3.1.0 (Electron 38.2.2), JARVIS-TV-CDP-AtLogon last ran 13:39 (US-004)
+- [x] **Add OLLAMA_NUM_CTX_PER_AGENT** — commit 4a2b4bf; social/news agents capped at 2048 ctx (US-003)
 
 ### Requires Amo Decision
 
-- [ ] **Branch divergence resolution** — choose Option A/B/C/D from Blocker 1 above. Recommended: Option B (merge origin/master into feat, resolve conflicts, push).
-- [ ] **MNQ_breakout parameter sweep** — is the 0.0304 PF gap worth pursuing? If yes, define the sweep grid and run WFO.
-- [ ] **TV Desktop install** — manual Microsoft Store install of TradingView Desktop, then verify CDP port 9222 and re-check `/health`.
+- [x] **Branch divergence resolution** — resolved via merge commit 4077e46; pushed to origin (US-002)
+- [ ] **MNQ_breakout parameter sweep** — rank2 vol_ma_period=20 sweep was a FAIL (0 OOS trades). Rank1 pf_ci_lower=1.0696 (gap 0.030), alt fixed_params_min_pf=1.186 (gap 0.014). Need new sweep approach or accept MNQ stays gated.
+- [x] **TV Desktop install / verify** — TV Desktop confirmed running on port 9222 (US-004)
 - [ ] **Reboot test** — verify `Jarvis-PM2-AtLogon` actually resurrects pm2 on logon. Schedule a reboot when convenient.
 
 ### Requires Issuer Console Access
@@ -362,7 +409,7 @@ Engine: http://127.0.0.1:8010/health
   llama3.2:3b   — 24h: 38 calls  | 1h: 10 calls
 
 pm2:
-  jarvis-engine | online | PID 37832 | uptime 62m | restarts 2
+  jarvis-engine | online | PID 37944 | uptime post-ralph-loop | restarts 4 (port-race churn, not crashloop)
 
 Scheduled tasks:
   Jarvis-PM2-AtLogon — Ready (fires at next logon)
@@ -373,6 +420,9 @@ Scheduled tasks:
 
 ## Suggested First Action for Next Session
 
-1. **Commit MCL Hypothesis C code** (2 files, `engine/backtest/`) — clean up the dirty working tree before doing anything else.
-2. **Resolve branch divergence** — run `git merge origin/master` from feat, inspect conflicts (expect mostly `.claude/` and `docs/` files), commit merge, push.
-3. **Then:** Amo to decide on MNQ_breakout parameter sweep or TV Desktop install — both are high-leverage next steps for getting a second live strategy.
+Working tree is clean, branch is merged and pushed (all ralph loop items done). Next priorities:
+
+1. **Load engine secrets into Windows Credential Manager** — `manage-jarvis-secrets.ps1 -Set` for each key in `engine/.env`. Interactive — needs Amo's input or 1Password CLI session.
+2. **MNQ_breakout — decide on next sweep** — rank1 is 0.030 below core threshold; rank2 was degenerate. Options: (a) try a vol_ma_period grid in [10,15,25], (b) relax gate to alt routing ($50K+ path), (c) declare MNQ gated and move to a new symbol.
+3. **Phase 0 secret rotation** — 15 services pending; unblocks D-drive cleanup and gbrain-staging scrub. Requires issuer console access.
+4. **Reboot test** — schedule when convenient to confirm `Jarvis-PM2-AtLogon` resurrects pm2 correctly.
