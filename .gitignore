@@ -227,8 +227,10 @@ n-autoresearch-skill/mnt/
 /eod_compact.txt
 /eod_compact*.txt
 
-# Broken venv backups left behind during repair-engine-venv runs
+# Broken / empty / failed-rebuild venv directories left behind during repair-engine-venv runs
 engine/.venv.broken-*/
+engine/.venv.empty-*/
+engine/.venv.failed-*/
 
 # Runtime morning brief outputs (generated daily by EODScheduler / brief jobs)
 engine/data/morning_briefs/
