@@ -6,11 +6,13 @@ status information about all JARVIS TRADER subsystems.
 """
 
 import logging
+import os
 import sqlite3
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from starlette.requests import Request
@@ -30,6 +32,15 @@ _TV_MCP_CDP_URLS = [
 ]
 _TV_MCP_CACHE_TTL_SEC = 30.0
 _tv_mcp_health_cache: dict = {"checked_at": 0.0, "healthy": False, "details": "not yet probed"}
+
+# Cost-DB observability cache + thresholds. The DB lives under engine/data
+# regardless of cwd; resolve relative to this file so the endpoint works whether
+# the engine was launched from engine/ (pm2/restart_engine path) or repo root.
+_LLM_COSTS_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "llm_costs.db"
+_LLM_HEALTH_CACHE_TTL_SEC = 30.0
+_llm_health_cache: dict = {"checked_at": 0.0, "data": None}
+_LLM_LATENCY_P95_WARN_MS = int(os.getenv("LLM_LATENCY_P95_WARN_MS", "30000"))
+_LLM_COST_24H_WARN_USD = float(os.getenv("LLM_COST_24H_WARN_USD", "5.0"))
 
 
 def _check_tradingview_mcp_health() -> tuple[bool, str | None]:
@@ -687,6 +698,132 @@ async def pm2_status():
         return {"found": False, "note": "jarvis-engine not found in pm2 list"}
     except Exception as exc:
         return {"found": False, "error": str(exc)}
+
+
+@router.get(
+    "/health/llm",
+    description="LLM call observability: per-model latency p50/p95, 24h cost, "
+                "Anthropic-fallback detection. Reads from llm_costs.db. Cached 30s.",
+)
+async def llm_health():
+    """
+    Surface what `/health.llm_path_healthy` does NOT — actual call latencies and
+    whether we are silently paying Anthropic. Returns:
+
+      - per_model_1h: {model: {count, p50_ms, p95_ms, max_ms, cost_usd, last_call_ts}}
+      - per_model_24h: {model: {count, cost_usd}}
+      - anthropic_fallback_active: bool — any claude-* call in last hour means
+        Ollama hot path failed and the engine fell back. Should be False in
+        steady state since the 2026-04-23 cutover.
+      - latency_warning: bool — any model with p95 > LLM_LATENCY_P95_WARN_MS (30s default)
+      - cost_warning: bool — 24h cost > LLM_COST_24H_WARN_USD ($5/day default)
+      - cost_24h_total_usd, thresholds, timestamp
+    """
+    now = time.monotonic()
+    cached = _llm_health_cache.get("data")
+    if cached and (now - _llm_health_cache.get("checked_at", 0.0)) < _LLM_HEALTH_CACHE_TTL_SEC:
+        return cached
+
+    if not _LLM_COSTS_DB_PATH.exists():
+        return {
+            "status": "no_db",
+            "db_path": str(_LLM_COSTS_DB_PATH),
+            "note": "cost-tracker DB not yet initialized; engine has made no LLM calls",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    try:
+        conn = sqlite3.connect(str(_LLM_COSTS_DB_PATH))
+        cur = conn.cursor()
+        # Stored timestamps are ISO with 'T' separator and '+00:00' suffix
+        # (e.g. '2026-05-05T16:33:12.999595+00:00'). SQLite's datetime('now')
+        # uses a space separator ('2026-05-05 17:38:04'), so naive string
+        # comparison silently matches all of today's rows because 'T' > ' '
+        # in ASCII. Use strftime to produce a 'T'-prefixed cutoff that lex-sorts
+        # correctly against the ISO column.
+        cutoff_1h = "strftime('%Y-%m-%dT%H:%M:%S', 'now', '-1 hour')"
+        cutoff_24h = "strftime('%Y-%m-%dT%H:%M:%S', 'now', '-24 hours')"
+        cur.execute(
+            "SELECT model, latency_ms, cost_usd, timestamp "
+            f"FROM llm_calls WHERE timestamp > {cutoff_1h}"
+        )
+        rows_1h = cur.fetchall()
+        cur.execute(
+            "SELECT model, COUNT(*), COALESCE(SUM(cost_usd), 0.0) "
+            f"FROM llm_calls WHERE timestamp > {cutoff_24h} "
+            "GROUP BY model"
+        )
+        rows_24h = cur.fetchall()
+        conn.close()
+    except sqlite3.DatabaseError as exc:
+        return {
+            "status": "db_error",
+            "error": str(exc)[:200],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    per_model_1h: dict = {}
+    for model, latency_ms, cost_usd, ts in rows_1h:
+        bucket = per_model_1h.setdefault(
+            model, {"latencies": [], "cost_usd": 0.0, "last_ts": ts}
+        )
+        bucket["latencies"].append(int(latency_ms or 0))
+        bucket["cost_usd"] += float(cost_usd or 0.0)
+        if ts and ts > bucket["last_ts"]:
+            bucket["last_ts"] = ts
+
+    summary_1h = {}
+    anthropic_fallback_active = False
+    latency_warning = False
+    for model, b in per_model_1h.items():
+        latencies = sorted(b["latencies"])
+        n = len(latencies)
+        if n == 0:
+            continue
+        p50 = latencies[n // 2]
+        p95_idx = max(0, min(n - 1, int(n * 0.95) - 1)) if n > 1 else 0
+        p95 = latencies[p95_idx]
+        max_lat = latencies[-1]
+        if model.startswith("claude-"):
+            anthropic_fallback_active = True
+        if p95 > _LLM_LATENCY_P95_WARN_MS:
+            latency_warning = True
+        summary_1h[model] = {
+            "count": n,
+            "p50_ms": p50,
+            "p95_ms": p95,
+            "max_ms": max_lat,
+            "cost_usd": round(b["cost_usd"], 4),
+            "last_call_ts": b["last_ts"],
+        }
+
+    summary_24h = {}
+    cost_24h_total = 0.0
+    for model, count, total_cost in rows_24h:
+        cost = float(total_cost or 0.0)
+        summary_24h[model] = {"count": int(count), "cost_usd": round(cost, 4)}
+        cost_24h_total += cost
+
+    cost_warning = cost_24h_total > _LLM_COST_24H_WARN_USD
+
+    data = {
+        "status": "ok",
+        "anthropic_fallback_active": anthropic_fallback_active,
+        "latency_warning": latency_warning,
+        "cost_warning": cost_warning,
+        "cost_24h_total_usd": round(cost_24h_total, 4),
+        "per_model_1h": summary_1h,
+        "per_model_24h": summary_24h,
+        "thresholds": {
+            "latency_p95_warn_ms": _LLM_LATENCY_P95_WARN_MS,
+            "cost_24h_warn_usd": _LLM_COST_24H_WARN_USD,
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    _llm_health_cache["checked_at"] = now
+    _llm_health_cache["data"] = data
+    return data
 
 
 @router.post(
