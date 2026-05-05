@@ -26,6 +26,10 @@ class PolygonStreamer:
     # Using the standard stocks cluster for equities & ETFs
     WS_URL = "wss://socket.polygon.io/stocks"
     
+    _RECONNECT_DELAY_INITIAL = 5    # seconds
+    _RECONNECT_DELAY_MAX = 300      # cap at 5 minutes
+    _RECONNECT_MULTIPLIER = 2
+
     def __init__(self, api_key: str, symbols: List[str]):
         self.api_key = api_key
         # 'AM' equals 1-minute aggregate bars
@@ -35,6 +39,8 @@ class PolygonStreamer:
         self.subscribers: List[Callable[[Dict], None]] = []
         # Cache for latest 1m bars: {ticker: {timestamp, open, high, low, close, volume}}
         self.latest_bars: Dict[str, Dict] = {}
+        # Exponential backoff state for reconnects
+        self._reconnect_delay = self._RECONNECT_DELAY_INITIAL
 
     def subscribe(self, callback: Callable[[Dict], None]) -> None:
         """Register a callback for incoming AM (aggregate per minute) messages."""
@@ -70,6 +76,9 @@ class PolygonStreamer:
                         self.running = False
                         return
 
+                    # Successful auth — reset backoff
+                    self._reconnect_delay = self._RECONNECT_DELAY_INITIAL
+
                     # Subscribe to 1m aggregations
                     sub_message = {"action": "subscribe", "params": ",".join(self.symbols)}
                     logger.info(f"[POLYGON-WS] Subscribing to: {self.symbols}")
@@ -103,11 +112,23 @@ class PolygonStreamer:
                                         logger.error(f"[POLYGON-WS] Subscriber err: {e}")
 
             except websockets.ConnectionClosed as e:
-                logger.warning(f"[POLYGON-WS] Closed natively: {e}. Reconnecting in 5s...")
-                await asyncio.sleep(5)
+                logger.warning(
+                    f"[POLYGON-WS] Closed natively: {e}. "
+                    f"Reconnecting in {self._reconnect_delay}s..."
+                )
+                await asyncio.sleep(self._reconnect_delay)
+                self._reconnect_delay = min(
+                    self._reconnect_delay * self._RECONNECT_MULTIPLIER,
+                    self._RECONNECT_DELAY_MAX,
+                )
             except Exception as e:
                 logger.error(f"[POLYGON-WS] Unexpected error: {e}", exc_info=True)
-                await asyncio.sleep(5)
+                logger.warning(f"[POLYGON-WS] Retrying in {self._reconnect_delay}s...")
+                await asyncio.sleep(self._reconnect_delay)
+                self._reconnect_delay = min(
+                    self._reconnect_delay * self._RECONNECT_MULTIPLIER,
+                    self._RECONNECT_DELAY_MAX,
+                )
 
     async def disconnect(self) -> None:
         self.running = False
