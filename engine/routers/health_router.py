@@ -90,6 +90,14 @@ def inject_dependencies(start_time, dm, sl, dbm, pt, pm, tp, schwab=None):
     schwab_connector = schwab
 
 
+def _ib_is_connected(ib) -> bool:
+    """Resolve `is_connected` whether it's an attr or a callable."""
+    if ib is None:
+        return False
+    is_conn = getattr(ib, "is_connected", False)
+    return is_conn() if callable(is_conn) else bool(is_conn)
+
+
 async def _get_ib_gateway_health() -> dict:
     """
     Return IB gateway health for the broker path that matters operationally.
@@ -98,19 +106,31 @@ async def _get_ib_gateway_health() -> dict:
     SafetyLayer. The market-data layer may have its own IB object or none at all.
     Prefer the execution connector so `/health` and `/health/full` reflect the
     broker truth path used for paper orders.
+
+    The returned dict always contains `execution_connected` + `data_connected`
+    booleans so callers (notably `/health`) can surface per-path state directly,
+    not just the OR'd `status`. This matches the contract that `/brokers/positions`
+    sees, where only the execution connector matters.
     """
     execution_ib = getattr(safety_layer, "_ib_gateway", None) if safety_layer else None
     data_ib = data_manager.ibkr if data_manager else None
+    execution_connected = _ib_is_connected(execution_ib)
+    data_connected = _ib_is_connected(data_ib)
+
     ib_gw = execution_ib or data_ib
 
     if not ib_gw:
-        return {"status": "not_configured", "mode": "paper_only"}
+        return {
+            "status": "not_configured",
+            "mode": "paper_only",
+            "execution_connected": False,
+            "data_connected": False,
+        }
 
     if hasattr(ib_gw, "health_check"):
         health = await ib_gw.health_check()
     else:
-        is_connected_attr = getattr(ib_gw, "is_connected", False)
-        is_connected = is_connected_attr() if callable(is_connected_attr) else bool(is_connected_attr)
+        is_connected = execution_connected if ib_gw is execution_ib else data_connected
         health = {
             "status": "connected" if is_connected else "disconnected",
         }
@@ -120,6 +140,9 @@ async def _get_ib_gateway_health() -> dict:
         health.setdefault("source", "execution_connector")
     elif data_ib is not None and ib_gw is data_ib:
         health.setdefault("source", "market_data_connector")
+
+    health["execution_connected"] = execution_connected
+    health["data_connected"] = data_connected
 
     return health
 
@@ -182,6 +205,8 @@ async def _health_inner() -> dict:
         "paper_mode": not settings.LIVE_TRADING_ENABLED,
         "database": "connected" if db_ok else "error",
         "ibkr_connected": ib_health.get("status") == "connected",
+        "ibkr_execution_connected": ib_health.get("execution_connected", False),
+        "ibkr_data_connected": ib_health.get("data_connected", False),
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
         "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,

@@ -62,6 +62,8 @@ export async function getSafetyConfig(): Promise<SafetyConfig> {
 export interface IBGatewayStatus {
   status: string;
   ibkr_connected: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   paper_mode: boolean;
   live_trading: boolean;
   kill_switch_active: boolean;

@@ -18,6 +18,8 @@ interface HealthResponse {
   paper_mode?: boolean;
   database?: string;
   ibkr_connected?: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   schwab_connected?: boolean;
 }
 
