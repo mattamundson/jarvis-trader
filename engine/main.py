@@ -45,6 +45,7 @@ from schemas.thinkscript_registry import ScriptRegistry, ScriptWithDocs
 from utils.thinkscript_registry_loader import load_registry, read_doc
 from api.models import (
     BarsResponse,
+    CircuitBreakerStatus,
     DailyPnLResponse,
     DecisionHistoryResponse,
     DrawdownResponse,
