@@ -59,7 +59,17 @@ class PolygonStreamer:
                     await ws.send(json.dumps(auth_message))
                     auth_response = await ws.recv()
                     logger.info(f"[POLYGON-WS] Auth Response: {auth_response}")
-                    
+                    auth_data = json.loads(auth_response)
+                    if isinstance(auth_data, list):
+                        auth_data = auth_data[0]
+                    if auth_data.get("status") in ("auth_failed", "auth_timeout"):
+                        logger.warning(
+                            "[POLYGON-WS] Auth rejected (plan does not include WebSocket). "
+                            "Disabling streamer -- REST fallback still active."
+                        )
+                        self.running = False
+                        return
+
                     # Subscribe to 1m aggregations
                     sub_message = {"action": "subscribe", "params": ",".join(self.symbols)}
                     logger.info(f"[POLYGON-WS] Subscribing to: {self.symbols}")
