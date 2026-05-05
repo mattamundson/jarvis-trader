@@ -175,6 +175,24 @@ class JarvisLLMClient:
                 model_name = model_name.strip()
                 if agent and model_name:
                     self.ollama_model_per_agent[agent] = model_name
+        # Per-agent context window overrides. Format: "agent_a=2048,agent_b=3072".
+        # Falls back to OLLAMA_NUM_CTX for agents not listed. Reduces KV-cache
+        # allocation on CPU for lightweight agents (e.g. social_analyst, news_analyst).
+        self.ollama_num_ctx_per_agent: dict[str, int] = {}
+        per_ctx_raw = os.getenv("OLLAMA_NUM_CTX_PER_AGENT", "").strip()
+        if per_ctx_raw:
+            for spec in per_ctx_raw.split(","):
+                spec = spec.strip()
+                if not spec or "=" not in spec:
+                    continue
+                agent, ctx_str = spec.split("=", 1)
+                agent = agent.strip()
+                ctx_str = ctx_str.strip()
+                try:
+                    if agent and ctx_str:
+                        self.ollama_num_ctx_per_agent[agent] = int(ctx_str)
+                except ValueError:
+                    logger.warning(f"OLLAMA_NUM_CTX_PER_AGENT: invalid value '{ctx_str}' for agent '{agent}' — skipped")
         self.client = None if self.provider == "ollama" else anthropic.AsyncAnthropic(api_key=api_key)
         self.cost_tracker = CostTracker(db_path=db_path)
         self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
@@ -470,6 +488,7 @@ class JarvisLLMClient:
                     messages=working_messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    agent_name=agent_name,
                 )
                 return await self._handle_success(
                     result, current_model, start_time, retries, agent_name,
@@ -583,15 +602,17 @@ class JarvisLLMClient:
         max_tokens: int,
         temperature: float,
         model: str | None = None,
+        agent_name: str = "unknown",
     ):
         prompt = self._messages_to_ollama_prompt(system, messages)
+        num_ctx = self.ollama_num_ctx_per_agent.get(agent_name, self.ollama_num_ctx)
         payload = {
             "model": model or self.ollama_model,
             "prompt": prompt,
             "stream": False,
             "keep_alive": self.ollama_keep_alive,
             "options": {
-                "num_ctx": self.ollama_num_ctx,
+                "num_ctx": num_ctx,
                 "num_predict": min(max_tokens, self.ollama_num_predict),
                 "temperature": temperature,
             },
@@ -620,13 +641,14 @@ class JarvisLLMClient:
         messages: list[dict],
         max_tokens: int,
         temperature: float,
+        agent_name: str = "unknown",
     ):
         """
         Low-level async call to the configured LLM provider.
         Retries are handled at the call() level.
         """
         if self.provider == "ollama":
-            return await self._call_ollama(system, messages, max_tokens, temperature, model=model)
+            return await self._call_ollama(system, messages, max_tokens, temperature, model=model, agent_name=agent_name)
 
         kwargs = {
             "model": model,
