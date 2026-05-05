@@ -160,6 +160,21 @@ class JarvisLLMClient:
         self.ollama_num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
         self.ollama_num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "256"))
         self.ollama_keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "5m")
+        # Per-agent model overrides. Format: "agent_a=model_x,agent_b=model_y".
+        # Use '=' for agent→model so Ollama tag colons (e.g. "llama3.2:3b") survive parsing.
+        # Empty / unparseable entries fall back to OLLAMA_MODEL.
+        self.ollama_model_per_agent: dict[str, str] = {}
+        per_agent_raw = os.getenv("OLLAMA_MODEL_PER_AGENT", "").strip()
+        if per_agent_raw:
+            for spec in per_agent_raw.split(","):
+                spec = spec.strip()
+                if not spec or "=" not in spec:
+                    continue
+                agent, model_name = spec.split("=", 1)
+                agent = agent.strip()
+                model_name = model_name.strip()
+                if agent and model_name:
+                    self.ollama_model_per_agent[agent] = model_name
         self.client = None if self.provider == "ollama" else anthropic.AsyncAnthropic(api_key=api_key)
         self.cost_tracker = CostTracker(db_path=db_path)
         self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
@@ -410,7 +425,7 @@ class JarvisLLMClient:
         working_messages = [dict(message) for message in messages]
         current_model = self._resolve_model_for_tier(model, tier)
         if self.provider == "ollama":
-            current_model = self.ollama_model
+            current_model = self.ollama_model_per_agent.get(agent_name, self.ollama_model)
 
         if compact:
             try:
@@ -567,10 +582,11 @@ class JarvisLLMClient:
         messages: list[dict],
         max_tokens: int,
         temperature: float,
+        model: str | None = None,
     ):
         prompt = self._messages_to_ollama_prompt(system, messages)
         payload = {
-            "model": self.ollama_model,
+            "model": model or self.ollama_model,
             "prompt": prompt,
             "stream": False,
             "keep_alive": self.ollama_keep_alive,
@@ -610,7 +626,7 @@ class JarvisLLMClient:
         Retries are handled at the call() level.
         """
         if self.provider == "ollama":
-            return await self._call_ollama(system, messages, max_tokens, temperature)
+            return await self._call_ollama(system, messages, max_tokens, temperature, model=model)
 
         kwargs = {
             "model": model,
