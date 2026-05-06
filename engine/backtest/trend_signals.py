@@ -17,9 +17,16 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-# Walk-forward champion parameters — rank11 (2026-05-06)
+# Walk-forward champion parameters
+# MES: rank11 champion (2026-05-06) — gate v2 ALT PASS
+# MNQ: rank1 baseline (2026-05-06) — inherited from MES champion; pending rank1 verdict
 SMA_TREND_PARAMS: dict[str, dict] = {
     "MES": {"fast": 60, "slow": 200, "atr_trail_mult": 2.0},
+    # MNQ baseline: MES champion params as starting point.
+    # point_value=$2 (vs MES $5), tick_size=0.25, commission=$0.62/contract.
+    # ATR in dollar terms differs from MES — trail_mult grid [1.8, 2.0, 2.2]
+    # in run_mnq_trend_rank1.py determines production value after rank1 verdict.
+    "MNQ": {"fast": 50, "slow": 200, "atr_trail_mult": 2.0},
 }
 
 _ATR_PERIOD = 14
