@@ -86,12 +86,22 @@ class CheckResult:
 
 
 def _parse_iso(ts: str | None) -> datetime | None:
+    """Parse ISO 8601 to a UTC-aware datetime.
+
+    Coerces naive timestamps to UTC so callers can safely compare with
+    datetime.now(tz=timezone.utc). The PortfolioTracker JSONL store is the
+    canonical example — most entries are TZ-aware, but a handful of older
+    entries have date-only strings that parse as naive.
+    """
     if not ts:
         return None
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _fetch_engine_health() -> dict[str, Any] | None:
@@ -118,13 +128,102 @@ def _load_verdicts() -> list[dict[str, Any]]:
     return rows
 
 
+# Path to PortfolioTracker JSONL store. Resolved relative to engine root so the
+# check works regardless of where live_readiness.py is invoked from.
+PAPER_TRADES_PATH = engine_root / "portfolio" / "trades.jsonl"
+
+
+def _query_paper_trade_stats(symbol: str) -> dict[str, Any]:
+    """Return paper-trade stats for one symbol from the PortfolioTracker JSONL.
+
+    Returns dict with:
+      n_closed       — int, count of CLOSED trades (is_open=False, exit_time set)
+      n_open         — int, count of currently open positions
+      first_entry    — datetime|None, earliest entry_time across closed+open
+      last_entry     — datetime|None, latest entry_time
+      days_elapsed   — int, days from first_entry to now (None if no trades)
+      forward_pf     — float|None, sum(wins) / |sum(losses)| over closed trades.
+                       None when n_closed==0; inf when no losing trades.
+      total_pnl      — float, sum of pnl across closed trades
+      available      — bool, True if the JSONL store exists and is readable
+    """
+    stats = {
+        "n_closed": 0,
+        "n_open": 0,
+        "first_entry": None,
+        "last_entry": None,
+        "days_elapsed": None,
+        "forward_pf": None,
+        "total_pnl": 0.0,
+        "available": False,
+    }
+    if not PAPER_TRADES_PATH.exists():
+        return stats
+    stats["available"] = True
+
+    wins = 0.0
+    losses = 0.0
+    entries = []
+    try:
+        with PAPER_TRADES_PATH.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("symbol") != symbol:
+                    continue
+                entry_dt = _parse_iso(rec.get("entry_time"))
+                if entry_dt is not None:
+                    entries.append(entry_dt)
+                if rec.get("is_open"):
+                    stats["n_open"] += 1
+                    continue
+                # Closed trade
+                if rec.get("exit_time") is None:
+                    continue
+                stats["n_closed"] += 1
+                pnl = rec.get("pnl")
+                if pnl is None:
+                    continue
+                stats["total_pnl"] += float(pnl)
+                if pnl > 0:
+                    wins += float(pnl)
+                elif pnl < 0:
+                    losses += abs(float(pnl))
+    except OSError:
+        return stats
+
+    if entries:
+        stats["first_entry"] = min(entries)
+        stats["last_entry"] = max(entries)
+        now = datetime.now(tz=timezone.utc)
+        stats["days_elapsed"] = (now - stats["first_entry"]).days
+
+    if stats["n_closed"] > 0:
+        if losses == 0:
+            stats["forward_pf"] = float("inf") if wins > 0 else 0.0
+        else:
+            stats["forward_pf"] = wins / losses
+
+    return stats
+
+
 # ---------------------------------------------------------------------------
 # Individual checks
 # ---------------------------------------------------------------------------
 
 
 def check_c1_mes_paper_validation() -> CheckResult:
-    """30 days / 30 trades / forward-test PF >= 1.0 on MES."""
+    """30 days elapsed AND >=30 closed paper trades AND forward-test PF >= 1.0 on MES.
+
+    Authoritative source: portfolio/trades.jsonl (PortfolioTracker store).
+    Falls back to the verdict-creation-date proxy when the JSONL is missing,
+    which is the case before any paper trades have been recorded.
+    """
     try:
         from backtest.paper_config import MES_TREND_PAPER_CONFIG
     except ImportError as e:
@@ -143,51 +242,89 @@ def check_c1_mes_paper_validation() -> CheckResult:
             fix="Enable MES paper config after gate v2 verdict",
         )
 
-    # We can't easily verify "30 days elapsed" without paper-trade DB access,
-    # so this check is intentionally conservative: it reports the verdict
-    # creation date as the proxy for the paper-trade-clock start. A future
-    # version should query paper_trades table for actual count + first-trade-date.
-    verdict_path = VERDICTS_DIR / "MES_trend_rank11.json"
-    if not verdict_path.exists():
+    stats = _query_paper_trade_stats("MES")
+
+    # If no paper trade store yet, fall back to verdict-date proxy. This handles
+    # the bootstrap case before any trades have been recorded.
+    if not stats["available"] or stats["first_entry"] is None:
+        verdict_path = VERDICTS_DIR / "MES_trend_rank11.json"
+        if not verdict_path.exists():
+            return CheckResult(
+                name="C1 MES paper validation",
+                passed=False,
+                detail="No paper trades recorded and MES_trend_rank11.json verdict missing",
+                fix="Run run_mes_trend_rank11.py and start paper trading on MES",
+            )
+        try:
+            v = json.loads(verdict_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            return CheckResult(
+                name="C1 MES paper validation",
+                passed=False,
+                detail=f"Cannot parse MES verdict: {e}",
+            )
+        created = _parse_iso(v.get("created_at"))
+        if not created:
+            return CheckResult(
+                name="C1 MES paper validation",
+                passed=False,
+                detail="MES verdict missing created_at; no paper trades to fall back to",
+            )
+        days_elapsed = (datetime.now(tz=timezone.utc) - created).days
         return CheckResult(
             name="C1 MES paper validation",
             passed=False,
-            detail="MES_trend_rank11.json verdict not found",
-            fix="Run engine/backtest/run_mes_trend_rank11.py to refresh verdict",
+            detail=(
+                f"No MES paper trades recorded yet; using verdict-date proxy "
+                f"(day {days_elapsed} of {PAPER_MIN_DAYS}). Verify IB Gateway is "
+                f"connected and engine routing is firing MES signals."
+            ),
+            fix=(
+                f"Bring IB Gateway paper online; wait until "
+                f"{(created + timedelta(days=PAPER_MIN_DAYS)).date()} for verdict-date "
+                f"proxy expiry, OR until 30 trades fire."
+            ),
         )
 
-    try:
-        v = json.loads(verdict_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
-        return CheckResult(
-            name="C1 MES paper validation",
-            passed=False,
-            detail=f"Cannot parse MES verdict: {e}",
-        )
+    # Real path: we have actual paper trade data
+    days_elapsed = stats["days_elapsed"]
+    n_closed = stats["n_closed"]
+    forward_pf = stats["forward_pf"]
 
-    created = _parse_iso(v.get("created_at"))
-    if not created:
-        return CheckResult(
-            name="C1 MES paper validation",
-            passed=False,
-            detail="MES verdict missing created_at",
-        )
-
-    days_elapsed = (datetime.now(tz=timezone.utc) - created).days
+    failures = []
     if days_elapsed < PAPER_MIN_DAYS:
+        failures.append(f"days={days_elapsed}<{PAPER_MIN_DAYS}")
+    if n_closed < PAPER_MIN_TRADES:
+        failures.append(f"closed_trades={n_closed}<{PAPER_MIN_TRADES}")
+    if forward_pf is not None and forward_pf < PAPER_MIN_PF:
+        failures.append(f"forward_pf={forward_pf:.3f}<{PAPER_MIN_PF}")
+
+    pf_str = (
+        f"{forward_pf:.3f}"
+        if forward_pf not in (None, float("inf"))
+        else ("inf" if forward_pf == float("inf") else "n/a")
+    )
+    detail = (
+        f"days={days_elapsed}, closed={n_closed}, open={stats['n_open']}, "
+        f"forward_pf={pf_str}, total_pnl=${stats['total_pnl']:.2f}"
+    )
+
+    if failures:
         return CheckResult(
             name="C1 MES paper validation",
             passed=False,
-            detail=f"Paper validation in progress: day {days_elapsed} of {PAPER_MIN_DAYS}",
-            fix=f"Wait until {(created + timedelta(days=PAPER_MIN_DAYS)).date()} OR query paper_trades table for actual fills",
+            detail=f"FAIL: {', '.join(failures)} | {detail}",
+            fix=(
+                f"Continue paper trading until thresholds met: "
+                f">={PAPER_MIN_DAYS} days, >={PAPER_MIN_TRADES} closed trades, "
+                f"forward_pf>={PAPER_MIN_PF}"
+            ),
         )
 
-    # NOTE: actual paper trade count + PF check requires querying engine's
-    # paper_trades SQLite. Stubbed here pending integration.
     return CheckResult(
         name="C1 MES paper validation",
         passed=True,
-        detail=f"Day {days_elapsed} of paper validation; trade count + PF check pending DB integration",
+        detail=f"PASS | {detail}",
     )
 
 
