@@ -135,6 +135,7 @@ def extract_metrics(doc: dict) -> dict:
     m["n_oos_trades"] = (
         gm.get("total_oos_trades")
         or doc.get("aux_freshness", {}).get("n_total_oos_trades")
+        or doc.get("wfo_config", {}).get("total_oos_trades")
         or 0
     )
     m["wfo_consistency"] = gm.get("wfo_consistency") or doc.get("wfo_consistency", "N/A")
@@ -268,7 +269,7 @@ def render_symbol_block(
     diagnosis = _trend_diagnosis(ranks)
     if diagnosis:
         lines.append("")
-        lines.append("  " + _c(f"⚠  {diagnosis}", _YELLOW, _BOLD, use_color=use_color))
+        lines.append("  " + _c(f"!! {diagnosis}", _YELLOW, _BOLD, use_color=use_color))
 
     return lines
 
