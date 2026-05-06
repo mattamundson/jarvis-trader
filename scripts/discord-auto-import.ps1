@@ -136,7 +136,7 @@ Write-Host "DCE: $successCount/$total channels exported successfully"
 Push-Location $repoRoot
 & $python -m engine.discord.cli `
     --source $exportDir `
-    --db "data/jarvis_trader.db" `
+    --db "engine/data/jarvis_trader.db" `
     --trigger-commentary `
     2>&1 | Tee-Object -FilePath $logFile -Append
 $exitCode = $LASTEXITCODE
