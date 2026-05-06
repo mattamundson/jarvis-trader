@@ -211,8 +211,8 @@ MNQ_15M_CONFIG = {
 
 MES_TREND_PAPER_CONFIG = {
     #  Instrument — SMA(50,200) trend-following, 1h bars
-    #  Gate v2 verdict: PASS via ALT (dsr=0.667, rolling_wfo=STRONG, fixed_params_min_pf=1.275)
-    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rank7.json (created 2026-04-25)
+    #  Gate v2 verdict: PASS via ALT (dsr=1.0, rolling_wfo=STRONG, fixed_params_min_pf=1.3506)
+    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rank11.json (created 2026-05-05)
     #  WFO champion params: SMA(fast=50, slow=200, atr_trail_mult=2.0)
     #  Train PF 2.063 (2024-06→2025-06) | Test PF 1.689 (2025-06→2026-03) | WFE 0.819
     #  ALT routing applies: mc_95th_dd=5.40% ≤ 7.0% ceiling (requires $50K+ account sizing)
