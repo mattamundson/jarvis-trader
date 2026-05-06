@@ -633,6 +633,48 @@ Fetches historical OHLCV bars from IB Gateway paper account (`127.0.0.1:4002`) a
 
 Required for verdict refresh because Polygon futures data is blocklisted; IBKR is the only valid source. Auto-detects gap from cache cutoff to current date.
 
+#### `compare_verdicts.py` — Champion-param drift detection
+
+Diffs an old verdict against a freshly-rerun verdict to answer the binary question after a refresh: did the champion hold or did the regime shift?
+
+```bash
+.venv/Scripts/python -m backtest.compare_verdicts \
+    data/gate_v2_verdicts/archive/MES_trend_rank11.json \
+    data/gate_v2_verdicts/MES_trend_rank11.json
+```
+
+Detects: verdict transitions (PASS↔FAIL, alt↔core), >10% champion-param drift, metric deltas, OOS sample-size changes, and symbol/family mismatch sanity-check failures.
+
+Returns exit 0 if no drift (safe to commit refresh), 1 if review is needed.
+
+#### Verdict refresh end-to-end workflow
+
+Complete sequence when MES rank11 or MGC rank4 approach their 30-day TTL:
+
+```bash
+# 1. Bring up IB Gateway paper account (port 4002, API enabled, Read-Only OFF)
+
+# 2. Refresh both PASS-verdict caches with fresh IBKR data
+.venv/Scripts/python -m backtest.export_ibkr_history --refresh-all-pass-verdicts
+
+# 3. Re-run each PASS verdict against the extended cache
+.venv/Scripts/python -m backtest.run_mes_trend_rank11
+.venv/Scripts/python -m backtest.run_mgc_trend_rank4
+
+# 4. Diff the new verdict against the previous PASS to surface drift
+.venv/Scripts/python -m backtest.compare_verdicts \
+    data/gate_v2_verdicts/archive/MES_trend_rank11.json \
+    data/gate_v2_verdicts/MES_trend_rank11.json
+
+# 5. If drift is acceptable: commit the refreshed verdict
+#    If champion params shifted significantly: design rank12 with new grid
+git add data/gate_v2_verdicts/MES_trend_rank11.json
+git commit -m "feat(backtest): refresh MES rank11 verdict — expiry extended"
+
+# 6. Final readiness check
+.venv/Scripts/python -m backtest.live_readiness
+```
+
 ### Trading Stack Scripts (Bash — `scripts/`)
 
 ### `start_paper_trading.sh`
