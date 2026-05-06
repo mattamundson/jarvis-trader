@@ -3,6 +3,7 @@
 Validates each of the 7 mission-accomplished checks in isolation, plus
 the aggregated pass/fail logic that determines exit code.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,6 @@ from pathlib import Path
 import pytest
 
 from backtest import live_readiness as lr
-
 
 # ---------------------------------------------------------- #
 # Helpers                                                    #
@@ -57,6 +57,7 @@ def tmp_verdicts_dir(tmp_path, monkeypatch):
 @pytest.fixture
 def healthy_engine(monkeypatch):
     """Stub _fetch_engine_health to return a fully-healthy response."""
+
     def _fake():
         return {
             "status": "ok",
@@ -66,6 +67,7 @@ def healthy_engine(monkeypatch):
             "kill_switch_active": False,
             "uptime_seconds": 3600,
         }
+
     monkeypatch.setattr(lr, "_fetch_engine_health", _fake)
 
 
@@ -87,8 +89,9 @@ def test_c1_fail_when_mes_verdict_missing(tmp_verdicts_dir):
 
 
 def test_c1_fail_when_paper_clock_under_30_days(tmp_verdicts_dir):
-    _write_verdict(tmp_verdicts_dir, symbol="MES", family="trend", rank=11,
-                   verdict="PASS", age_days=5.0)
+    _write_verdict(
+        tmp_verdicts_dir, symbol="MES", family="trend", rank=11, verdict="PASS", age_days=5.0
+    )
     result = lr.check_c1_mes_paper_validation()
     assert result.passed is False
     assert "day" in result.detail.lower()
@@ -96,8 +99,9 @@ def test_c1_fail_when_paper_clock_under_30_days(tmp_verdicts_dir):
 
 def test_c1_pass_when_paper_clock_complete(tmp_verdicts_dir):
     """MES verdict 31+ days old means paper-trade clock has matured."""
-    _write_verdict(tmp_verdicts_dir, symbol="MES", family="trend", rank=11,
-                   verdict="PASS", age_days=31.0)
+    _write_verdict(
+        tmp_verdicts_dir, symbol="MES", family="trend", rank=11, verdict="PASS", age_days=31.0
+    )
     result = lr.check_c1_mes_paper_validation()
     assert result.passed is True
 
@@ -122,8 +126,7 @@ def test_c2_fail_with_only_mes_pass(tmp_verdicts_dir):
 
 def test_c2_pass_when_mgc_also_passes(tmp_verdicts_dir):
     _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="PASS")
-    _write_verdict(tmp_verdicts_dir, symbol="MGC", family="trend", rank=4,
-                   verdict="PASS")
+    _write_verdict(tmp_verdicts_dir, symbol="MGC", family="trend", rank=4, verdict="PASS")
     result = lr.check_c2_second_symbol()
     assert result.passed is True
     assert "MGC" in result.detail
@@ -185,22 +188,32 @@ def test_c4_pass_when_all_healthy(healthy_engine):
 
 
 def test_c4_fail_when_status_not_ok(monkeypatch):
-    monkeypatch.setattr(lr, "_fetch_engine_health",
-                        lambda: {"status": "degraded",
-                                 "tv_mcp_status": "healthy",
-                                 "llm_path_healthy": True,
-                                 "kill_switch_active": False})
+    monkeypatch.setattr(
+        lr,
+        "_fetch_engine_health",
+        lambda: {
+            "status": "degraded",
+            "tv_mcp_status": "healthy",
+            "llm_path_healthy": True,
+            "kill_switch_active": False,
+        },
+    )
     result = lr.check_c4_engine_health()
     assert result.passed is False
     assert "status=degraded" in result.detail
 
 
 def test_c4_fail_when_llm_path_unhealthy(monkeypatch):
-    monkeypatch.setattr(lr, "_fetch_engine_health",
-                        lambda: {"status": "ok",
-                                 "tv_mcp_status": "healthy",
-                                 "llm_path_healthy": False,
-                                 "kill_switch_active": False})
+    monkeypatch.setattr(
+        lr,
+        "_fetch_engine_health",
+        lambda: {
+            "status": "ok",
+            "tv_mcp_status": "healthy",
+            "llm_path_healthy": False,
+            "kill_switch_active": False,
+        },
+    )
     result = lr.check_c4_engine_health()
     assert result.passed is False
     assert "llm_path" in result.detail
@@ -217,8 +230,9 @@ def test_c5_pass_when_kill_switch_inactive(healthy_engine):
 
 
 def test_c5_fail_when_kill_switch_active(monkeypatch):
-    monkeypatch.setattr(lr, "_fetch_engine_health",
-                        lambda: {"status": "ok", "kill_switch_active": True})
+    monkeypatch.setattr(
+        lr, "_fetch_engine_health", lambda: {"status": "ok", "kill_switch_active": True}
+    )
     result = lr.check_c5_kill_switch_inactive()
     assert result.passed is False
     assert "halted" in result.detail.lower()
@@ -248,8 +262,7 @@ def test_c6_pass_with_recent_verdict(tmp_verdicts_dir):
 
 def test_c6_fail_with_expired_verdict(tmp_verdicts_dir):
     """Verdict older than VERDICT_TTL_DAYS counts as expired."""
-    _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="PASS",
-                   age_days=lr.VERDICT_TTL_DAYS + 5)
+    _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="PASS", age_days=lr.VERDICT_TTL_DAYS + 5)
     result = lr.check_c6_verdicts_current()
     assert result.passed is False
     assert "expired" in result.detail.lower()
@@ -257,8 +270,7 @@ def test_c6_fail_with_expired_verdict(tmp_verdicts_dir):
 
 def test_c6_warns_about_expiring_soon(tmp_verdicts_dir):
     """Within 7 days of expiry → still PASS but warning shown."""
-    _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="PASS",
-                   age_days=lr.VERDICT_TTL_DAYS - 3)
+    _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="PASS", age_days=lr.VERDICT_TTL_DAYS - 3)
     result = lr.check_c6_verdicts_current()
     assert result.passed is True
     assert "expiring" in result.detail.lower()
@@ -298,10 +310,8 @@ def test_c7_fail_when_fail_only_symbol_not_blocked(tmp_verdicts_dir, monkeypatch
 
 def test_c7_pass_symbol_with_both_pass_and_fail_isnt_blocked(tmp_verdicts_dir, monkeypatch):
     """If a symbol has any PASS verdict, having a sibling FAIL doesn't require blocking."""
-    _write_verdict(tmp_verdicts_dir, symbol="MES", family="trend", rank=11,
-                   verdict="PASS")
-    _write_verdict(tmp_verdicts_dir, symbol="MES", family="orb", rank=1,
-                   verdict="FAIL")
+    _write_verdict(tmp_verdicts_dir, symbol="MES", family="trend", rank=11, verdict="PASS")
+    _write_verdict(tmp_verdicts_dir, symbol="MES", family="orb", rank=1, verdict="FAIL")
     monkeypatch.setattr("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset())
     result = lr.check_c7_do_not_trade_symbols()
     assert result.passed is True
@@ -328,6 +338,7 @@ def test_run_all_check_names_are_distinct(tmp_verdicts_dir, healthy_engine, monk
 def test_check_result_dataclass_serializes(tmp_verdicts_dir):
     """CheckResult must be JSON-serializable for --json mode."""
     from dataclasses import asdict
+
     r = lr.CheckResult(name="X", passed=True, detail="ok")
     d = asdict(r)
     assert json.loads(json.dumps(d))["name"] == "X"

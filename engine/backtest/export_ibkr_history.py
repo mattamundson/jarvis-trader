@@ -48,6 +48,7 @@ Implementation notes:
     - Cache filename convention: SYMBOL_YYYY-MM-DD_YYYY-MM-DD_INTERVAL.csv
       where the second date matches the latest bar inclusive.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -84,11 +85,11 @@ WHAT_TO_SHOW = "TRADES"
 
 # Per-symbol IB Future spec. Continuous-front-month routing handled at fetch time.
 SYMBOL_TO_IB_SPEC = {
-    "MES": {"symbol": "MES", "exchange": "CME",   "currency": "USD"},
-    "MNQ": {"symbol": "MNQ", "exchange": "CME",   "currency": "USD"},
+    "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD"},
+    "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD"},
     "MGC": {"symbol": "MGC", "exchange": "COMEX", "currency": "USD"},
     "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD"},
-    "M2K": {"symbol": "M2K", "exchange": "CME",   "currency": "USD"},
+    "M2K": {"symbol": "M2K", "exchange": "CME", "currency": "USD"},
 }
 
 
@@ -96,6 +97,7 @@ def _import_ib_async():
     """Import ib_async lazily so --help works without it installed."""
     try:
         from ib_async import IB, Future
+
         return IB, Future
     except ImportError as e:
         print(
@@ -195,7 +197,9 @@ async def _fetch_bars_async(
         if not qualified:
             raise RuntimeError(f"Could not qualify contract for {symbol}")
         active = qualified[0]
-        print(f"[IBKR] Active contract: {active.localSymbol} ({active.lastTradeDateOrContractMonth})")
+        print(
+            f"[IBKR] Active contract: {active.localSymbol} ({active.lastTradeDateOrContractMonth})"
+        )
 
         print(f"[IBKR] Requesting {bar_size} bars, duration={duration}, whatToShow={WHAT_TO_SHOW}")
         bars = await ib.reqHistoricalDataAsync(
@@ -209,7 +213,9 @@ async def _fetch_bars_async(
         )
 
         if not bars:
-            print(f"[IBKR] WARNING: zero bars returned. Check IB Gateway has historical data permission.")
+            print(
+                "[IBKR] WARNING: zero bars returned. Check IB Gateway has historical data permission."
+            )
             return pd.DataFrame()
 
         # Convert to DataFrame
@@ -231,7 +237,7 @@ async def _fetch_bars_async(
         return df
     finally:
         ib.disconnect()
-        print(f"[IBKR] Disconnected.")
+        print("[IBKR] Disconnected.")
 
 
 def _refresh_one(symbol: str, interval: str, duration: str | None, dry_run: bool) -> dict:
@@ -255,8 +261,10 @@ def _refresh_one(symbol: str, interval: str, duration: str | None, dry_run: bool
             existing_df = _load_existing_bars(existing_path)
             summary["n_existing"] = len(existing_df)
             last_bar = _last_bar_dt(existing_df)
-            print(f"[{symbol}-{interval}] Existing cache: {existing_path.name} "
-                  f"({len(existing_df)} bars, last={last_bar})")
+            print(
+                f"[{symbol}-{interval}] Existing cache: {existing_path.name} "
+                f"({len(existing_df)} bars, last={last_bar})"
+            )
         except Exception as e:
             print(f"[{symbol}-{interval}] WARN: cannot load existing cache: {e}")
 
@@ -323,14 +331,23 @@ def _list_pass_verdict_targets() -> list[tuple[str, str]]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--symbol", help="Symbol to refresh (MES/MGC/MNQ/MCL/M2K)")
-    parser.add_argument("--interval", default="1h", choices=list(INTERVAL_TO_IB_BARSIZE),
-                        help="Bar size (default: 1h)")
-    parser.add_argument("--duration", help='IB-style duration (e.g. "60 D", "2 Y"). '
-                        "Default: auto from cache gap.")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Connect + identify contract but skip fetch")
-    parser.add_argument("--refresh-all-pass-verdicts", action="store_true",
-                        help="Refresh cache for every symbol with a PASS verdict")
+    parser.add_argument(
+        "--interval",
+        default="1h",
+        choices=list(INTERVAL_TO_IB_BARSIZE),
+        help="Bar size (default: 1h)",
+    )
+    parser.add_argument(
+        "--duration", help='IB-style duration (e.g. "60 D", "2 Y"). Default: auto from cache gap.'
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Connect + identify contract but skip fetch"
+    )
+    parser.add_argument(
+        "--refresh-all-pass-verdicts",
+        action="store_true",
+        help="Refresh cache for every symbol with a PASS verdict",
+    )
     args = parser.parse_args()
 
     if args.refresh_all_pass_verdicts:
@@ -346,8 +363,10 @@ def main() -> int:
         print("\nFINAL SUMMARY:")
         for r in results:
             status = "OK" if r["ok"] else f"FAIL ({r.get('error', 'unknown')})"
-            print(f"  {r['symbol']} {r['interval']}: {status} "
-                  f"(existing={r['n_existing']}, fetched={r['n_fetched']}, merged={r['n_merged']})")
+            print(
+                f"  {r['symbol']} {r['interval']}: {status} "
+                f"(existing={r['n_existing']}, fetched={r['n_fetched']}, merged={r['n_merged']})"
+            )
         return 0 if all(r["ok"] for r in results) else 1
 
     if not args.symbol:

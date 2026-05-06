@@ -3,6 +3,7 @@
 Validates JSON parsing, sorting, filtering, and the days-until-expiry
 calculation that gates downstream cron alerts.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,6 @@ from pathlib import Path
 import pytest
 
 from backtest import show_verdict_history as svh
-
 
 # ---------------------------------------------------------- #
 # Helpers                                                    #
@@ -110,8 +110,9 @@ def test_load_verdict_succeeds_for_well_formed(tmp_verdicts_dir):
 
 
 def test_summarize_extracts_key_fields(tmp_verdicts_dir):
-    p = _write_verdict(tmp_verdicts_dir, symbol="MGC", verdict="PASS",
-                       passed_via="alt", age_days=2.0)
+    p = _write_verdict(
+        tmp_verdicts_dir, symbol="MGC", verdict="PASS", passed_via="alt", age_days=2.0
+    )
     v = svh._load_verdict(p)
     row = svh._summarize(v, p, archived=False)
     assert row["symbol"] == "MGC"
@@ -181,8 +182,7 @@ def test_collect_skips_unparseable_files(tmp_verdicts_dir):
 
 
 def test_sort_puts_pass_before_fail(tmp_verdicts_dir):
-    _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="FAIL",
-                   passed_via=None)
+    _write_verdict(tmp_verdicts_dir, symbol="MES", verdict="FAIL", passed_via=None)
     _write_verdict(tmp_verdicts_dir, symbol="MGC", verdict="PASS")
     rows = sorted(svh._collect(include_archive=False), key=svh._sort_key)
     assert rows[0]["verdict"] == "PASS"
