@@ -10,8 +10,10 @@ Routers and ValidationTracker import from here; do not duplicate literals.
 
 from __future__ import annotations
 
-# Tier-1 paper validation (WFE-approved for live paper); not MES/MGC.
-APPROVED_PAPER_SYMBOLS: tuple[str, ...] = ("MCL", "MNQ")
+# Tier-1 paper validation (WFE-approved for live paper).
+# MES added 2026-05-05: gate v2 ALT PASS (dsr=0.667, rolling_wfo=STRONG),
+# SMA(50,200)+2.0×ATR, verdict file: data/gate_v2_verdicts/MES_trend_rank7.json
+APPROVED_PAPER_SYMBOLS: tuple[str, ...] = ("MCL", "MNQ", "MES")
 
 # Same targets as CLAUDE.md "Validation gates" (PF >= 2.0, Sharpe >= 1.5, etc.)
 PAPER_VALIDATION_GATES: dict[str, float | int] = {

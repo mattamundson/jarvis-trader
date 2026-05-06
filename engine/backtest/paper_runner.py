@@ -83,9 +83,9 @@ def _import_signal_deps():
     from backtest.data_loader import FUTURES_MAP
     from backtest.paper_config import ACTIVE_INSTRUMENTS, PAPER_CONFIGS
     from backtest.paper_tracker import PaperTradeTracker
-    from backtest.signals import generate_signals
+    from backtest.signals import generate_signals, generate_instrument_signals
 
-    return FUTURES_MAP, ACTIVE_INSTRUMENTS, PAPER_CONFIGS, PaperTradeTracker, generate_signals
+    return FUTURES_MAP, ACTIVE_INSTRUMENTS, PAPER_CONFIGS, PaperTradeTracker, generate_signals, generate_instrument_signals
 
 
 # ── Position State I/O ────────────────────────────────────────────────────────
@@ -590,6 +590,7 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
         PAPER_CONFIGS,
         PaperTradeTracker,
         generate_signals,
+        generate_instrument_signals,
     ) = _import_signal_deps()
 
     if not quiet:
@@ -631,17 +632,31 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             continue
 
         # ── Compute signals ───────────────────────────────────────────────────
-        params = cfg["stc_params"]
         try:
-            df_signals = generate_signals(
-                df,
-                symbol=symbol,
-                stc_oversold=params["stc_os"],
-                stc_overbought=params["stc_ob"],
-                regime_filter=cfg.get("regime_filter", True),
-                adaptive_regime=cfg.get("adaptive_regime", False),
-                volume_filter=cfg.get("volume_filter", False),
-            )
+            if cfg.get("strategy") == "sma_trend":
+                # Route SMA trend instruments (MES) through generate_instrument_signals()
+                # which dispatches to trend_signals.generate_sma_trend_signals() via
+                # the TREND_INSTRUMENTS set. This also applies DO_NOT_TRADE and gate v2
+                # enforcement layers automatically.
+                sma_params = cfg.get("sma_params", {})
+                df_signals = generate_instrument_signals(
+                    df,
+                    symbol=symbol,
+                    fast=sma_params.get("fast", 50),
+                    slow=sma_params.get("slow", 200),
+                    atr_trail_mult=sma_params.get("atr_trail_mult", 2.0),
+                )
+            else:
+                params = cfg["stc_params"]
+                df_signals = generate_signals(
+                    df,
+                    symbol=symbol,
+                    stc_oversold=params["stc_os"],
+                    stc_overbought=params["stc_ob"],
+                    regime_filter=cfg.get("regime_filter", True),
+                    adaptive_regime=cfg.get("adaptive_regime", False),
+                    volume_filter=cfg.get("volume_filter", False),
+                )
         except Exception as exc:
             log.error(f"{symbol}: signal generation failed: {exc}", exc_info=True)
             summary[symbol] = {"action": "signal_error"}
@@ -733,11 +748,12 @@ def _cmd_status() -> None:
     """Print current open positions and per-instrument trade metrics."""
     _setup_logging()
     (
-        _,
+        _futures_map,
         ACTIVE_INSTRUMENTS,
         PAPER_CONFIGS,
         PaperTradeTracker,
-        _,
+        _gen_signals,
+        _gen_instrument_signals,
     ) = _import_signal_deps()
 
     positions = load_positions()
