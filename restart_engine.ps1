@@ -38,7 +38,7 @@ if ($pm2Managed) {
     $lastProgressPrint = 0
     while ((Get-Date) -lt $deadline) {
         try {
-            $r = Invoke-WebRequest -Uri "http://localhost:8010/health" -UseBasicParsing -TimeoutSec 3
+            $r = Invoke-WebRequest -Uri "http://127.0.0.1:8010/health" -UseBasicParsing -TimeoutSec 3
             if ($r.StatusCode -eq 200) { $healthy = $true; break }
         }
         catch {}
@@ -231,7 +231,7 @@ Write-Host "Waiting for engine to start..."
 Start-Sleep 15
 
 try {
-    $r = Invoke-WebRequest -Uri "http://localhost:8010/health" -UseBasicParsing -TimeoutSec 5
+    $r = Invoke-WebRequest -Uri "http://127.0.0.1:8010/health" -UseBasicParsing -TimeoutSec 5
     Write-Host "Engine UP: $($r.StatusCode)"
 }
 catch {
