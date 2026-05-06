@@ -274,7 +274,7 @@ Both models (`hermes3:latest` and `llama3.2:3b`) hit ~181s per call (p95). Root 
 |---|---|---|---|
 | MES | trend (rank 7) | **PASS (ALT)** | Core fails PF/p_edge; ALT passes DSR=0.667, WFO=STRONG |
 | MCL | meanrev (rank 1) | FAIL | mc_95th_dd=16.79%, DSR=0.0 (original); Hypothesis C rv_band: pf=0.2841, p_edge=0.0 |
-| MNQ | breakout (rank 1) | FAIL | pf_ci_lower=1.0696 (vs 1.1 threshold); fixed_params_min_pf=1.186 (vs 1.2) |
+| MNQ | breakout (rank 1-5) | FAIL | Rank2-5 all FAIL. Root cause: mid-2025 non-stationarity (windows 7-15 persistent losing streak). fixed_params_min_pf cleared at rank4 (1.2621) but WFO_CONSISTENCY=WEAK, pf_ci_lower=0.73, p_edge=0.36. Breakout family exhausted. Next: regime filter targeting 2025 volatility regime, or different MNQ strategy family. |
 | MNQ | trend (rank 1) | FAIL | pf=0.6752, mc_dd=13.46% |
 
 **MNQ_breakout is the closest to passing** — misses `pf_ci_lower` by 0.0304 and `fixed_params_min_pf` by 0.014. Worth a targeted parameter sweep before declaring it dead.
@@ -316,7 +316,7 @@ These were in the Top-10 ROI list but not reached or blocked. US-001 through US-
 ### Requires Amo Decision
 
 - [x] **Branch divergence resolution** — resolved via merge commit 4077e46; pushed to origin (US-002)
-- [ ] **MNQ_breakout parameter sweep** — rank2 vol_ma_period=20 sweep was a FAIL (0 OOS trades). Rank1 pf_ci_lower=1.0696 (gap 0.030), alt fixed_params_min_pf=1.186 (gap 0.014). Need new sweep approach or accept MNQ stays gated.
+- [ ] **MNQ_breakout family exhausted (rank1-5)** — All 5 sweeps FAIL. Root cause: mid-2025 non-stationarity (windows 7-15 losing streak). fixed_params_min_pf cleared at rank4 (1.2621) but WFO_CONSISTENCY=WEAK. Next: design regime filter for mid-2025 losing streak, OR pivot to MNQ trend-following family (not yet backtested).
 - [x] **TV Desktop install / verify** — TV Desktop confirmed running on port 9222 (US-004)
 - [ ] **Reboot test** — verify `Jarvis-PM2-AtLogon` actually resurrects pm2 on logon. Schedule a reboot when convenient.
 
@@ -423,6 +423,6 @@ Scheduled tasks:
 Working tree is clean, branch is merged and pushed (all ralph loop items done). Next priorities:
 
 1. **Load engine secrets into Windows Credential Manager** — `manage-jarvis-secrets.ps1 -Set` for each key in `engine/.env`. Interactive — needs Amo's input or 1Password CLI session.
-2. **MNQ_breakout — decide on next sweep** — rank1 is 0.030 below core threshold; rank2 was degenerate. Options: (a) try a vol_ma_period grid in [10,15,25], (b) relax gate to alt routing ($50K+ path), (c) declare MNQ gated and move to a new symbol.
+2. **MNQ breakout family exhausted (rank1-5)** — Next: design regime filter for mid-2025 losing streak, OR pivot to MNQ trend-following family (not yet backtested). Polygon WS reconnect backoff also fixed (commit 7555188).
 3. **Phase 0 secret rotation** — 15 services pending; unblocks D-drive cleanup and gbrain-staging scrub. Requires issuer console access.
 4. **Reboot test** — schedule when convenient to confirm `Jarvis-PM2-AtLogon` resurrects pm2 correctly.
