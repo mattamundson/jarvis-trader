@@ -264,9 +264,10 @@ docs/reports/backtests/
 engine/scripts/mnq_breakout_search_results.json
 "User asked whether we can pull from.md"
 
-# Gate v2 verdict subdirectory — ignore new verdicts by default; explicitly negate rank files
+# Gate v2 verdict subdirectory — ignore timestamped runs; keep rank + hypothesis files
 engine/data/gate_v2_verdicts/*.json
 !engine/data/gate_v2_verdicts/*_rank*.json
+!engine/data/gate_v2_verdicts/*_hyp_*.json
 
 # Backtest HTML chart outputs (generated artifacts — not source)
 engine/backtest/results/*.html
