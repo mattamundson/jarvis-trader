@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS discord_bot_signals (
     source_channel TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_bot_signals_symbol_ts
+  ON discord_bot_signals(symbol, timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS discord_ib_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
