@@ -98,6 +98,29 @@ CREATE TABLE IF NOT EXISTS discord_bookmarks (
 CREATE INDEX IF NOT EXISTS idx_bookmarks_posted ON discord_bookmarks(posted_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bookmarks_domain ON discord_bookmarks(domain);
 CREATE INDEX IF NOT EXISTS idx_bookmarks_source_type ON discord_bookmarks(source_type);
+
+CREATE TABLE IF NOT EXISTS discord_daily_sentiment (
+    date TEXT NOT NULL PRIMARY KEY,
+    sentiment_score REAL NOT NULL,
+    post_count INTEGER NOT NULL,
+    source TEXT DEFAULT 'discord_corey_commentary',
+    computed_at TEXT NOT NULL
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS discord_commentary_fts
+USING fts5(content, timestamp, channel);
+
+CREATE TRIGGER IF NOT EXISTS discord_commentary_fts_ai
+AFTER INSERT ON discord_corey_commentary BEGIN
+    INSERT INTO discord_commentary_fts(rowid, content, timestamp, channel)
+    VALUES (new.id, new.content, new.timestamp, new.channel);
+END;
+
+CREATE TRIGGER IF NOT EXISTS discord_commentary_fts_ad
+AFTER DELETE ON discord_corey_commentary BEGIN
+    INSERT INTO discord_commentary_fts(discord_commentary_fts, rowid, content, timestamp, channel)
+    VALUES ('delete', old.id, old.content, old.timestamp, old.channel);
+END;
 """
 
 # Columns added post-Phase-B (Workstream A, 2026-04-20). ALTER handles pre-existing DBs;
@@ -137,6 +160,25 @@ def init_tables(db_path: str) -> None:
                     # Racing a concurrent init is fine — the column now exists.
                     if "duplicate column name" not in str(e).lower():
                         raise
+        # Bootstrap FTS index for existing databases that had rows before the
+        # virtual table was added (CREATE TRIGGER only fires on new inserts).
+        try:
+            fts_count = conn.execute("SELECT COUNT(*) FROM discord_commentary_fts").fetchone()[0]
+            if fts_count == 0:
+                src_count = conn.execute(
+                    "SELECT COUNT(*) FROM discord_corey_commentary"
+                ).fetchone()[0]
+                if src_count > 0:
+                    conn.execute(
+                        """
+                        INSERT INTO discord_commentary_fts(rowid, content, timestamp, channel)
+                        SELECT id, content, timestamp, channel FROM discord_corey_commentary
+                        """
+                    )
+                    logger.info("Bootstrapped discord_commentary_fts with %d rows", src_count)
+        except sqlite3.OperationalError:
+            pass  # FTS5 unavailable in this SQLite build — LIKE fallback still works
+
         conn.commit()
     finally:
         conn.close()  # `with sqlite3.connect(...)` only commits, never closes — Windows holds file lock otherwise
