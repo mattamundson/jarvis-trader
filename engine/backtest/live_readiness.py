@@ -48,16 +48,17 @@ Why this exists:
 
     Build cron: schedule this script daily; alert on transitions from PASS to FAIL.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError, HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 engine_root = Path(__file__).parent.parent
@@ -80,7 +81,7 @@ class CheckResult:
     name: str
     passed: bool
     detail: str
-    blocking: bool = True   # if False, advisory-only
+    blocking: bool = True  # if False, advisory-only
     fix: str | None = None
 
 
@@ -120,6 +121,7 @@ def _load_verdicts() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Individual checks
 # ---------------------------------------------------------------------------
+
 
 def check_c1_mes_paper_validation() -> CheckResult:
     """30 days / 30 trades / forward-test PF >= 1.0 on MES."""
@@ -450,10 +452,10 @@ def _print_table(results: list[CheckResult]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--json", action="store_true",
-                        help="Emit JSON instead of formatted table")
-    parser.add_argument("--strict", action="store_true",
-                        help="Treat advisory checks (C3) as blocking")
+    parser.add_argument("--json", action="store_true", help="Emit JSON instead of formatted table")
+    parser.add_argument(
+        "--strict", action="store_true", help="Treat advisory checks (C3) as blocking"
+    )
     args = parser.parse_args()
 
     try:
@@ -470,12 +472,17 @@ def main() -> int:
             r.blocking = True
 
     if args.json:
-        print(json.dumps({
-            "results": [asdict(r) for r in results],
-            "blocking_pass": sum(1 for r in results if r.passed and r.blocking),
-            "blocking_total": sum(1 for r in results if r.blocking),
-            "authorized": all(r.passed for r in results if r.blocking),
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "results": [asdict(r) for r in results],
+                    "blocking_pass": sum(1 for r in results if r.passed and r.blocking),
+                    "blocking_total": sum(1 for r in results if r.blocking),
+                    "authorized": all(r.passed for r in results if r.blocking),
+                },
+                indent=2,
+            )
+        )
     else:
         _print_table(results)
 

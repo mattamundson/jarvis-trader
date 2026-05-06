@@ -29,6 +29,7 @@ Why this exists:
       - Public README data (validation-results table)
       - Strategic-direction decisions (which families exhausted vs untested)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -150,9 +151,11 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
     # Header
     print()
     print("=" * 120)
-    print(f"{'Symbol':<7}{'Family':<12}{'Rank':<8}{'Verdict':<10}{'p_edge':<9}"
-          f"{'pf_ci':<8}{'dsr':<7}{'mc_dd%':<8}{'wfo':<10}{'fixed_min':<10}"
-          f"{'cost':<14}{'OOS':<7}{'days_left':<10}")
+    print(
+        f"{'Symbol':<7}{'Family':<12}{'Rank':<8}{'Verdict':<10}{'p_edge':<9}"
+        f"{'pf_ci':<8}{'dsr':<7}{'mc_dd%':<8}{'wfo':<10}{'fixed_min':<10}"
+        f"{'cost':<14}{'OOS':<7}{'days_left':<10}"
+    )
     print("=" * 120)
 
     last_status = None
@@ -171,7 +174,7 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
         if days_left is None:
             days_str = "  -  "
         elif days_left < 0:
-            days_str = f"EXPIRED"
+            days_str = "EXPIRED"
         elif days_left <= 7:
             days_str = f"{days_left}d!"
         else:
@@ -180,29 +183,33 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
         archive_marker = "[A]" if row["archived"] else "   "
         symbol_str = f"{row['symbol']}{archive_marker}"
 
-        print(f"{symbol_str:<7}{str(row['family']):<12}{str(row['rank']):<8}"
-              f"{verdict_str:<10}{_format_metric(row['p_edge'],3):<9}"
-              f"{_format_metric(row['pf_ci_lower'],3):<8}"
-              f"{_format_metric(row['dsr'],3):<7}"
-              f"{_format_metric(row['mc_dd_pct'],2):<8}"
-              f"{str(row['wfo'] or '-'):<10}"
-              f"{_format_metric(row['fixed_min'],3):<10}"
-              f"{str(row['cost'] or '-'):<14}"
-              f"{str(row['n_oos_trades'] or '-'):<7}"
-              f"{days_str:<10}")
+        print(
+            f"{symbol_str:<7}{str(row['family']):<12}{str(row['rank']):<8}"
+            f"{verdict_str:<10}{_format_metric(row['p_edge'], 3):<9}"
+            f"{_format_metric(row['pf_ci_lower'], 3):<8}"
+            f"{_format_metric(row['dsr'], 3):<7}"
+            f"{_format_metric(row['mc_dd_pct'], 2):<8}"
+            f"{str(row['wfo'] or '-'):<10}"
+            f"{_format_metric(row['fixed_min'], 3):<10}"
+            f"{str(row['cost'] or '-'):<14}"
+            f"{str(row['n_oos_trades'] or '-'):<7}"
+            f"{days_str:<10}"
+        )
     print("=" * 120)
 
     # Summary line
     n_pass = sum(1 for r in rows if r["verdict"] == "PASS")
     n_fail = sum(1 for r in rows if r["verdict"] == "FAIL")
     n_expiring = sum(
-        1 for r in rows
+        1
+        for r in rows
         if r["verdict"] == "PASS"
         and r["days_until_expiry"] is not None
         and 0 <= r["days_until_expiry"] <= 7
     )
     n_expired = sum(
-        1 for r in rows
+        1
+        for r in rows
         if r["verdict"] == "PASS"
         and r["days_until_expiry"] is not None
         and r["days_until_expiry"] < 0
@@ -219,15 +226,19 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--include-archive", action="store_true",
-                        help="Include verdicts in gate_v2_verdicts/archive/")
-    parser.add_argument("--json", action="store_true",
-                        help="Emit JSON instead of formatted table")
+    parser.add_argument(
+        "--include-archive",
+        action="store_true",
+        help="Include verdicts in gate_v2_verdicts/archive/",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit JSON instead of formatted table")
     parser.add_argument("--symbol", help="Filter by symbol (e.g. MES)")
-    parser.add_argument("--status", choices=["PASS", "FAIL"],
-                        help="Filter by verdict status")
-    parser.add_argument("--expiring-soon", action="store_true",
-                        help="Only show PASS verdicts within 7 days of expiry")
+    parser.add_argument("--status", choices=["PASS", "FAIL"], help="Filter by verdict status")
+    parser.add_argument(
+        "--expiring-soon",
+        action="store_true",
+        help="Only show PASS verdicts within 7 days of expiry",
+    )
     args = parser.parse_args()
 
     rows = _collect(include_archive=args.include_archive)
@@ -238,7 +249,8 @@ def main() -> int:
         rows = [r for r in rows if r["verdict"] == args.status]
     if args.expiring_soon:
         rows = [
-            r for r in rows
+            r
+            for r in rows
             if r["verdict"] == "PASS"
             and r["days_until_expiry"] is not None
             and 0 <= r["days_until_expiry"] <= 7
