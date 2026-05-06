@@ -121,6 +121,17 @@ AFTER DELETE ON discord_corey_commentary BEGIN
     INSERT INTO discord_commentary_fts(discord_commentary_fts, rowid, content, timestamp, channel)
     VALUES ('delete', old.id, old.content, old.timestamp, old.channel);
 END;
+
+-- AFTER UPDATE trigger: keep FTS in lock-step if discord_corey_commentary rows
+-- are ever updated (no current update path exists, but adding this trigger
+-- prevents silent FTS drift if an edit-message feature is added later).
+CREATE TRIGGER IF NOT EXISTS discord_commentary_fts_au
+AFTER UPDATE ON discord_corey_commentary BEGIN
+    INSERT INTO discord_commentary_fts(discord_commentary_fts, rowid, content, timestamp, channel)
+    VALUES ('delete', old.id, old.content, old.timestamp, old.channel);
+    INSERT INTO discord_commentary_fts(rowid, content, timestamp, channel)
+    VALUES (new.id, new.content, new.timestamp, new.channel);
+END;
 """
 
 # Columns added post-Phase-B (Workstream A, 2026-04-20). ALTER handles pre-existing DBs;

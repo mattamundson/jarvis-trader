@@ -172,7 +172,15 @@ async def search_commentary(query: str, days: int = 7) -> list[dict]:
                     """,
                     (query, cutoff),
                 ).fetchall()
-            except sqlite3.OperationalError:
+            except sqlite3.OperationalError as exc:
+                # FTS5 unavailable (table missing) or query syntax error;
+                # fall back to LIKE search. Log so silent FTS corruption is
+                # visible (vs. the prior bare-except that hid all errors).
+                logger.warning(
+                    "[search_commentary] FTS5 fallback to LIKE for %r: %s",
+                    query,
+                    exc,
+                )
                 rows = conn.execute(
                     """
                     SELECT timestamp, content, channel

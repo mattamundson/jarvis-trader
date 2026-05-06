@@ -23,10 +23,11 @@ logger = logging.getLogger(__name__)
 
 
 def _default_db_path() -> str:
-    # __file__ = engine/discord/digest_generator.py → up 3 levels → repo root
+    # __file__ = engine/discord/digest_generator.py → up 2 levels → engine/
+    # Canonical DB is engine/data/jarvis_trader.db (NOT the stale 733KB
+    # repo-root data/jarvis_trader.db that was accidentally created).
     engine_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    repo_root = os.path.dirname(engine_root)
-    return os.path.join(repo_root, "data", "jarvis_trader.db")
+    return os.path.join(engine_root, "data", "jarvis_trader.db")
 
 
 def generate_digest(for_date: date, db_path: str) -> dict:
