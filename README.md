@@ -8,19 +8,70 @@
 
 ## Table of Contents
 
-1. [Quick Overview](#quick-overview)
-2. [Architecture](#architecture)
-3. [Tech Stack](#tech-stack)
-4. [Quick Start](#quick-start)
-5. [Project Structure](#project-structure)
-6. [API Endpoints](#api-endpoints)
-7. [Safety Layer](#safety-layer)
-8. [Strategy](#strategy)
-9. [Testing](#testing)
-10. [Configuration](#configuration)
-11. [Operational Scripts](#operational-scripts)
-12. [Documentation Index](#documentation-index)
-13. [Paper Trading](#paper-trading)
+1. [Validation Results — WFO Campaign](#validation-results--wfo-campaign)
+2. [Quick Overview](#quick-overview)
+3. [Architecture](#architecture)
+4. [Tech Stack](#tech-stack)
+5. [Quick Start](#quick-start)
+6. [Project Structure](#project-structure)
+7. [API Endpoints](#api-endpoints)
+8. [Safety Layer](#safety-layer)
+9. [Strategy](#strategy)
+10. [Testing](#testing)
+11. [Configuration](#configuration)
+12. [Operational Scripts](#operational-scripts)
+13. [Documentation Index](#documentation-index)
+14. [Paper Trading](#paper-trading)
+
+---
+
+## Validation Results — WFO Campaign
+
+This system uses a **gate v2** validation framework with seven independent statistical criteria. A strategy must pass walk-forward optimization (WFO) across 18 rolling 6-month/1-month train/test windows on real market data before any capital is risked. Failing any single gate is grounds for parking the strategy.
+
+### Gate v2 Criteria (ALT path, $50K+ accounts)
+
+| Metric | Threshold | What it tests |
+|--------|-----------|---------------|
+| `pf_ci_lower` | ≥ 1.10 | Lower 5% bound of bootstrapped OOS profit factor — robustness, not point estimate |
+| `p_edge` | ≥ 0.95 | Fraction of OOS windows with PF > 1.0 — guards against single-window cherry-picks |
+| `mc_95th_dd` | ≤ 7% | 95th-percentile Monte Carlo drawdown — bounds tail risk |
+| `dsr` (deflated Sharpe) | ≥ 0.30 | Adjusts for multiple testing across grid combos |
+| `wfo_consistency` | MODERATE/STRONG | ≥55% of windows profitable |
+| `fixed_params_min_pf` | ≥ 1.20 | Worst combo on full dataset still profitable |
+| `cost_survives_through` | ≥ realistic | Edge survives 4× expected commission + slippage |
+
+### Live Validated Strategies (PASS gate v2)
+
+| Symbol | Strategy | Champion Params | p_edge | DSR | MC DD | Consistency |
+|--------|----------|-----------------|--------|-----|-------|-------------|
+| **MES** (Micro S&P 500) | SMA Trend rank11 | fast=60, slow=200, ATR×2.0 | 0.75 | 1.0 | 0.81% | STRONG |
+| **MGC** (Micro Gold) | SMA Trend rank4 | fast=50, slow=120, ATR×2.0 | 0.75 | 1.0 | 1.24% | STRONG |
+
+Both pass via the ALT path (account size ≥$50K). Verdicts expire 30 days from creation and require IBKR data refresh + re-validation before extension.
+
+### Strategies Evaluated and Parked (FAIL)
+
+The campaign explored 7 distinct strategy/symbol combinations beyond the two PASSes. Each FAIL is documented with full verdict JSON in `engine/data/gate_v2_verdicts/`.
+
+| Symbol | Family | Result | Root Cause |
+|--------|--------|--------|------------|
+| MNQ | SMA Trend ranks 1–2 | FAIL | Period scale mismatch — SMA crossovers too sparse in 2024–2025 bull regime; even short-period grid produced 0 OOS trades |
+| MNQ | Breakout ranks 1–7 | FAIL | Non-stationarity confirmed (IS PF < 0.75 for windows 9–15); regime shift mid-2025 |
+| MNQ | ORB rank 1 | FAIL | ATR/OR_range = 5–8× — stops blown by routine intraday volatility |
+| MES | ORB rank 1 | FAIL | Despite favorable 2–3× ATR/OR ratio, p_edge = 0.18; ORB has no edge in current regime regardless of geometry |
+| M2K | SMA Trend ranks 1–2 | FAIL | Rate-sensitivity whipsaws produce noise crossovers that don't correspond to genuine direction changes |
+| MCL | Mean-Rev hyp A/B/C | FAIL | Crude is event-driven (OPEC, geopolitics), not technical-pattern-driven |
+| MCL | SMA Trend hyp D/E | FAIL | Sparse signal frequency — daily crossovers <2/year insufficient for WFO |
+
+**Why this matters for a public reader:** The two validated strategies are interesting, but the FAIL ledger is what demonstrates rigor. Most retail trading systems publish their wins. This system publishes every losing hypothesis with the metric values that killed it, because parameter tuning to rescue a fundamentally absent signal is the most common failure mode in quantitative trading.
+
+### Engineering Patterns Worth Calling Out
+
+- **Bootstrap CI on profit factor**, not point estimates — using the 5th-percentile lower bound of resampled PF means a strategy must be robust to which trades happened to land in the OOS window, not just lucky.
+- **Inf-cap before percentile** — windows with zero losing trades produce `PF=inf`, which propagates NaN through `np.percentile` interpolation. Capping at 5.0 before the bootstrap is a small but load-bearing fix (`engine/backtest/run_mes_trend_rank11.py:380`).
+- **Gate v2 ALT path for capital scale** — accounts ≥$50K can use looser drawdown/DSR thresholds because position-size diversification reduces tail-event impact. Smaller accounts must pass the stricter CORE gate. Single codebase, two thresholds, decided at runtime.
+- **Routing layer separation** — `gate_v2_policy.is_ungate_eligible()` returns True if ANY non-stale PASS verdict exists for a symbol across all families. This decouples the question "does an edge exist for this symbol" from "which family generates the signal" — fixed in this campaign after a FAIL in one family was incorrectly blocking a PASS in another for the same symbol.
 
 ---
 
