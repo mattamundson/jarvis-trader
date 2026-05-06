@@ -227,24 +227,23 @@ class CoreyCommentaryProcessor:
         """Fetch all commentary rows for the given date (market-updates + tathedog/general)."""
         date_str = for_date.isoformat()
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT content, timestamp, channel
-                FROM discord_corey_commentary
-                WHERE DATE(timestamp) = ?
-                  AND (
-                      channel = 'market-updates'
-                      OR (channel = 'general' AND author_id = ?)
-                  )
-                ORDER BY timestamp ASC
-                """,
-                (date_str, TATHEDOG_AUTHOR_ID),
-            )
-            rows = [dict(r) for r in cur.fetchall()]
-            conn.close()
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT content, timestamp, channel
+                    FROM discord_corey_commentary
+                    WHERE DATE(timestamp) = ?
+                      AND (
+                          channel = 'market-updates'
+                          OR (channel = 'general' AND author_id = ?)
+                      )
+                    ORDER BY timestamp ASC
+                    """,
+                    (date_str, TATHEDOG_AUTHOR_ID),
+                )
+                rows = [dict(r) for r in cur.fetchall()]
             return rows
         except Exception as e:
             logger.warning("[CoreyProcessor] DB fetch failed for %s: %s", date_str, e)
@@ -344,14 +343,13 @@ class CoreyCommentaryProcessor:
         """Return cached result for the date, or None if not cached."""
         date_str = for_date.isoformat()
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT * FROM corey_session_bias WHERE date = ?", (date_str,)
-            )
-            row = cur.fetchone()
-            conn.close()
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT * FROM corey_session_bias WHERE date = ?", (date_str,)
+                )
+                row = cur.fetchone()
             if row is None:
                 return None
             return CoreySessionBias(
