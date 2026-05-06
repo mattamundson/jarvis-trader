@@ -98,13 +98,7 @@ Recommendation: Park MNQ ORB and explore MGC SMA trend first (lower cost to try)
 
 1. **Commit MNQ ORB rank1 verdict** — `engine/data/gate_v2_verdicts/MNQ_orb_rank1.json` is untracked; commit with `feat(backtest): MNQ ORB rank1 FAIL — no ORB edge; IS best PF < 1.0 universally`
 
-2. **Run M2K trend rank2** — runner exists at `engine/backtest/run_m2k_trend_rank2.py`, needs commit + run. Command:
-   ```
-   cd engine && .venv/Scripts/python backtest/run_m2k_trend_rank2.py
-   ```
-   Expected ~20-30 min runtime (48 combos × 18 windows).
-
-3. **Commit M2K rank2 runner** before running it so the file is tracked.
+2. **Note:** M2K trend rank2 ALREADY RUN AND COMMITTED (7cf5621). Result: FAIL — pf_ci=0.52, p_edge=0.36, wfo=WEAK, 31 OOS trades / 14 windows. M2K trend family is EXHAUSTED (ranks 1-2 done).
 
 ### This week (strategy):
 
@@ -137,7 +131,7 @@ Recommendation: Park MNQ ORB and explore MGC SMA trend first (lower cost to try)
 | Breakout | MNQ | EXHAUSTED ranks 1-7 | Regime non-stationarity |
 | ORB | MNQ | FAIL rank1 | IS best PF<1.0; no edge |
 
-**Next new symbol to explore**: MGC (Micro Gold) — cache exists at `engine/backtest/cache/MGC_*.csv`. Gold has strong trend properties and is uncorrelated with equity indices.
+**Next symbol**: MGC (Micro Gold) — cache at `engine/backtest/cache/MGC_*.csv`. Gold uncorrelated with equity micros; strong trend properties.
 
 ---
 
@@ -172,21 +166,12 @@ git diff --stat: (no unstaged changes)
 
 ## 9. Suggested Next Action
 
-**Commit the two untracked files, then run M2K rank2:**
+**DONE THIS SESSION:** MNQ ORB verdict committed (0fce183). M2K rank2 ALREADY ran in prior session (7cf5621, FAIL).
 
-```bash
-cd /c/Users/mattm/ThinkorSwim/jarvis-trader
+**Next session: Create MGC (Micro Gold) SMA trend rank1 runner.**
 
-# 1. Commit MNQ ORB verdict
-git add engine/data/gate_v2_verdicts/MNQ_orb_rank1.json
-git commit -m "feat(backtest): MNQ ORB rank1 FAIL — IS best PF<1.0 in all windows, no edge"
+MGC cache exists at `engine/backtest/cache/MGC_*.csv`. Gold has stronger multi-week trend properties than equity micros; ORB failures were equity-specific.
 
-# 2. Commit M2K rank2 runner
-git add engine/backtest/run_m2k_trend_rank2.py
-git commit -m "feat(backtest): M2K trend rank2 — shorter SMA grid for Russell 2000"
+Specs: `SYMBOL="MGC"`, `MULTIPLIER=10.0` ($10/oz, 10oz contract), `TICK_SIZE=0.10` ($1.00/tick), `COMMISSION=0.62`. Grid: fast=[50,60,70] × slow=[190,200,210] × atr_trail=[1.5,2.0,2.5] = 27 combos. Model runner on `run_mes_trend_rank11.py`.
 
-# 3. Run rank2
-cd engine && .venv/Scripts/python backtest/run_m2k_trend_rank2.py
-```
-
-If M2K rank2 also fails, the next exploration frontier is **MGC (Micro Gold)** using the same SMA trend framework — gold has stronger multi-week trend properties than equity micros.
+Git is clean (no untracked/modified files) after this session's commits.
