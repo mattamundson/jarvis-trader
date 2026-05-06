@@ -125,10 +125,13 @@ def main():
             inserted = summary.get("total_inserted", 0)
             if inserted > 0:
                 import asyncio
+                from datetime import date
                 from .commentary_processor import CoreyCommentaryProcessor
 
                 logger.info("Triggering commentary processor (%d new rows)...", inserted)
-                bias = asyncio.run(CoreyCommentaryProcessor().get_session_bias())
+                processor = CoreyCommentaryProcessor()
+                processor.invalidate_cache(date.today())
+                bias = asyncio.run(processor.get_session_bias())
                 logger.info(
                     "Commentary processor complete — bias=%s conviction=%.2f quality=%s",
                     bias.directional_bias,

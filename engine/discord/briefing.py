@@ -244,23 +244,20 @@ def _fetch_recent_signal(
     since = datetime.utcnow() - timedelta(hours=lookback_hours)
     since_str = since.strftime("%Y-%m-%dT%H:%M:%S")
     try:
-        conn = sqlite3.connect(signal_ctx.db_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT symbol, direction, signal_type, entry_price,
-                   target1, target2, stop1, win_rate, timestamp
-            FROM discord_bot_signals
-            WHERE symbol = ?
-              AND timestamp >= ?
-            ORDER BY timestamp DESC
-            LIMIT 1
-            """,
-            (discord_symbol, since_str),
-        )
-        row = cur.fetchone()
-        conn.close()
+        with sqlite3.connect(signal_ctx.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT symbol, direction, signal_type, entry_price,
+                       target1, target2, stop1, win_rate, timestamp
+                FROM discord_bot_signals
+                WHERE symbol = ?
+                  AND timestamp >= ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                (discord_symbol, since_str),
+            ).fetchone()
         return dict(row) if row else None
     except Exception as exc:
         logger.warning(
