@@ -131,7 +131,13 @@ def _load_data(data_file: Path) -> pd.DataFrame:
     df = pd.read_csv(data_file)
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
-    df[ts_col] = pd.to_datetime(df[ts_col])
+    # IBKR cache timestamps are naive UTC. orb_signals.py expects Eastern Time
+    # (hour==9 for RTH open bar). Localize then convert so _detect_rth_open_bar()
+    # finds the correct 09:00-10:00 ET bar (13:00 UTC during EDT, 14:00 during EST).
+    ts = pd.to_datetime(df[ts_col])
+    if ts.dt.tz is None:
+        ts = ts.dt.tz_localize("UTC").dt.tz_convert("America/New_York")
+    df[ts_col] = ts
     df = df.set_index(ts_col).sort_index()
     required = {"open", "high", "low", "close"}
     missing = required - set(df.columns)
