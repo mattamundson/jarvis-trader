@@ -128,8 +128,17 @@ def main():
                 from .commentary_processor import CoreyCommentaryProcessor
 
                 logger.info("Triggering commentary processor (%d new rows)...", inserted)
-                asyncio.run(CoreyCommentaryProcessor().get_session_bias())
-                logger.info("Commentary processor complete.")
+                bias = asyncio.run(CoreyCommentaryProcessor().get_session_bias())
+                logger.info(
+                    "Commentary processor complete — bias=%s conviction=%.2f quality=%s",
+                    bias.directional_bias,
+                    bias.conviction,
+                    bias.data_quality,
+                )
+                if bias.data_quality == "none":
+                    logger.warning(
+                        "Commentary processor returned no-data result; check ANTHROPIC_API_KEY and DB."
+                    )
             else:
                 logger.info("Skipping commentary processor — 0 new rows inserted.")
 

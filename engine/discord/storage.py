@@ -116,7 +116,13 @@ def init_tables(db_path: str) -> None:
     """
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute("PRAGMA journal_mode=WAL")
+        mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+        if mode != "wal":
+            logger.warning(
+                "WAL mode not activated for %s (got %r) — concurrent writer lock contention possible",
+                db_path,
+                mode,
+            )
         conn.executescript(CREATE_TABLES_SQL)
         existing_cols = {
             row[1] for row in conn.execute("PRAGMA table_info(discord_bookmarks)").fetchall()
