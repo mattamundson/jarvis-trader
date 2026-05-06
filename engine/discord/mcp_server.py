@@ -86,21 +86,24 @@ async def get_recent_signals(symbol: str, hours: int = 4) -> list[dict]:
     cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
     db_path = _default_db_path()
 
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """
-            SELECT symbol, direction, signal_type, entry_price,
-                   target1, target2, stop1, win_rate, timestamp
-            FROM discord_bot_signals
-            WHERE symbol = ? AND timestamp >= ?
-            ORDER BY timestamp DESC
-            LIMIT 10
-            """,
-            (sym, cutoff),
-        ).fetchall()
-
-    return [dict(row) for row in rows]
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT symbol, direction, signal_type, entry_price,
+                       target1, target2, stop1, win_rate, timestamp
+                FROM discord_bot_signals
+                WHERE symbol = ? AND timestamp >= ?
+                ORDER BY timestamp DESC
+                LIMIT 10
+                """,
+                (sym, cutoff),
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except Exception as exc:
+        logger.warning("[get_recent_signals] DB error for %s: %s", symbol, exc)
+        return []
 
 
 @mcp.tool()
@@ -150,20 +153,23 @@ async def search_commentary(query: str, days: int = 7) -> list[dict]:
     cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
     db_path = _default_db_path()
 
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """
-            SELECT timestamp, content, channel
-            FROM discord_corey_commentary
-            WHERE content LIKE ? AND timestamp >= ?
-            ORDER BY timestamp DESC
-            LIMIT 20
-            """,
-            (f"%{query}%", cutoff),
-        ).fetchall()
-
-    return [dict(row) for row in rows]
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT timestamp, content, channel
+                FROM discord_corey_commentary
+                WHERE content LIKE ? AND timestamp >= ?
+                ORDER BY timestamp DESC
+                LIMIT 20
+                """,
+                (f"%{query}%", cutoff),
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except Exception as exc:
+        logger.warning("[search_commentary] DB error for %r: %s", query, exc)
+        return []
 
 
 # ---------------------------------------------------------------------------

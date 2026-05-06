@@ -194,11 +194,11 @@ def run_wfo():
     n_combos = len(grid)
 
     print(f"\n{'='*65}")
-    print(f"=== MNQ BREAKOUT RANK 7 — ATR+EMA REGIME FILTER ===")
+    print(f"=== MNQ BREAKOUT RANK 7 - ATR+EMA REGIME FILTER ===")
     print(f"Windows: {len(windows)} | Grid: {n_combos} combos")
     print(f"  donchian  : {DONCHIAN_PERIOD_VALUES}")
     print(f"  ema_period: {EMA_TREND_PERIOD_VALUES}  (0=disabled baseline)")
-    print(f"  atr_mult  : {ATR_REGIME_MULT_VALUES}  (rank6: [1.0,1.2] → p_edge=0.0)")
+    print(f"  atr_mult  : {ATR_REGIME_MULT_VALUES}  (rank6: [1.0,1.2] -> p_edge=0.0)")
     print(f"  vol_mult  : {VOL_MULT_VALUES}")
     print(f"{'='*65}")
 
