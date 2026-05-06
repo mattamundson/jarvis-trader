@@ -20,7 +20,7 @@ Continued multi-session WFO campaign. Primary work: completed MNQ ORB rank1, M2K
 | MNQ trend | EXHAUSTED (ranks 1-2) | 0 OOS trades; SMA crossover scarcity in 2024-2025 bull run |
 | MNQ breakout | EXHAUSTED (ranks 1-7) | Non-stationary regime; regime filter didn't rescue |
 | MNQ ORB | rank1 FAIL | pf_ci=0.62, p_edge=0.18, DD=28%; IS best PF < 1.0 in all windows |
-| M2K trend | rank1 FAIL | pf_ci=0.47, p_edge=0.27, wfo=WEAK, 15 OOS trades / 11 windows |
+| M2K trend | EXHAUSTED ranks 1-2 | rank1: pf_ci=0.47; rank2: pf_ci=0.52, p_edge=0.36, 31 trades |
 | Engine | unknown | Not restarted this session |
 | Career-ops | pipeline active | AtLogon + --live flag wired; 351 tests passing |
 
@@ -71,13 +71,13 @@ Second run (this session, with timezone fix already in place since commit 804462
 
 ## 4. In-Progress Work
 
-**M2K trend rank2**: Runner exists (`engine/backtest/run_m2k_trend_rank2.py`, uncommitted). Grid: fast=[20,30,40,50] × slow=[80,120,160,200] × atr=[1.0,1.5,2.0] = 48 combos. Not yet run.
+**Nothing is in-progress.** All in-flight WFO tasks completed this session.
 
-**MNQ ORB rank2**: Not yet created. Would need a fundamentally different approach — rank1 showed IS best PF < 1.0 universally, meaning no OR breakout parameter works for MNQ. Possible rank2 angles:
-- Add trend filter (only take ORB signals in direction of 200-bar SMA)
-- Use session gap breakouts instead of OR-based
-- Combine ORB with volume surge gate (stronger than 80% average)
-However, given IS failure, rank2 probability of success is low.
+**MNQ ORB rank2 decision needed**: rank1 showed IS best PF < 1.0 universally. Options:
+- Add trend filter (only take ORB signals in direction of 200-bar SMA) → rank2
+- Park ORB family for MNQ; move to MGC (Micro Gold) which has stronger trend properties
+- Consider MNQ time-of-day momentum (9:30-11 AM directional, not OR-based)
+Recommendation: Park MNQ ORB and explore MGC SMA trend first (lower cost to try).
 
 ---
 
