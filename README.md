@@ -587,7 +587,53 @@ Fails fast with clear error messages pointing to missing variables.
 
 ## Operational Scripts
 
-All scripts in `scripts/`:
+### Portfolio & Verdict Tooling (Python — `engine/backtest/`)
+
+These three tools are the operational interface to the gate v2 campaign. Run from `engine/` directory.
+
+#### `show_verdict_history.py` — Portfolio dashboard
+
+Single source of truth for what's currently validated, parked, or about to expire. Scans all gate v2 verdict files and prints a sorted summary table.
+
+```bash
+.venv/Scripts/python -m backtest.show_verdict_history
+.venv/Scripts/python -m backtest.show_verdict_history --status PASS
+.venv/Scripts/python -m backtest.show_verdict_history --expiring-soon
+.venv/Scripts/python -m backtest.show_verdict_history --json   # for tooling
+```
+
+Returns exit code 1 if any PASS verdict is within 7 days of expiry — usable as a daily cron gate.
+
+#### `live_readiness.py` — Phase 1 deployment gate
+
+Single canonical check for all 7 mission-accomplished criteria. Returns exit code 0 only when every blocking check passes. Designed as the deployment-decision guard between "WFO campaign complete" and "live capital authorized."
+
+```bash
+.venv/Scripts/python -m backtest.live_readiness          # human-readable table
+.venv/Scripts/python -m backtest.live_readiness --json   # for tooling
+.venv/Scripts/python -m backtest.live_readiness --strict # advisory checks become blocking
+```
+
+Criteria checked: MES paper validation (30d/30 trades), second symbol validated, Phase 0 rotation complete, engine health stable, kill switch INACTIVE, all verdicts within 30-day TTL, `DO_NOT_TRADE_SYMBOLS` reflects verdict state.
+
+#### `export_ibkr_history.py` — Verdict-refresh data prep
+
+Fetches historical OHLCV bars from IB Gateway paper account (`127.0.0.1:4002`) and extends existing cache files. **Live port 4001 is permanently blocked** — paper port only.
+
+```bash
+# Refresh every PASS-verdict symbol in one command
+.venv/Scripts/python -m backtest.export_ibkr_history --refresh-all-pass-verdicts
+
+# Single symbol
+.venv/Scripts/python -m backtest.export_ibkr_history --symbol MES --interval 1h
+
+# Smoke-test without fetching
+.venv/Scripts/python -m backtest.export_ibkr_history --refresh-all-pass-verdicts --dry-run
+```
+
+Required for verdict refresh because Polygon futures data is blocklisted; IBKR is the only valid source. Auto-detects gap from cache cutoff to current date.
+
+### Trading Stack Scripts (Bash — `scripts/`)
 
 ### `start_paper_trading.sh`
 
