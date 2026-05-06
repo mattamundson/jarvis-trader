@@ -57,6 +57,7 @@ def generate_sma_trend_signals(
     slow: int = 200,
     atr_trail_mult: float = 2.0,
     min_rv_annualized: float = 0.0,
+    rv_annual_factor: int | None = None,
 ) -> pd.DataFrame:
     """
     Generate SMA trend-following signals compatible with the JARVIS Backtester.
@@ -66,6 +67,8 @@ def generate_sma_trend_signals(
             vol (annualized %) at entry bar < threshold. Empirically the
             SMA trend edge concentrates at RV ≥ 9% (36-trade sample).
             0.0 (default) = filter disabled.
+        rv_annual_factor: Bars-per-year for RV annualization. Default None uses
+            _RV_ANNUAL_FACTOR (252*24 for 1h bars). Pass 252 for daily bars.
 
     Returns df with columns:
         entry_signal  : "ENTRY_NOW" | "NO_TRADE"
@@ -77,13 +80,14 @@ def generate_sma_trend_signals(
         rv_20_ann_pct : 20-bar annualized realized volatility (percent)
     """
     df = df.copy()
+    _rv_factor = rv_annual_factor if rv_annual_factor is not None else _RV_ANNUAL_FACTOR
 
     sma_f = df["close"].rolling(fast).mean()
     sma_s = df["close"].rolling(slow).mean()
     atr = _wilder_atr(df["high"], df["low"], df["close"], _ATR_PERIOD)
     # Realized vol: stddev of log returns over _RV_WINDOW bars, annualized as percent
     log_ret = np.log(df["close"] / df["close"].shift(1))
-    rv_ann = log_ret.rolling(_RV_WINDOW).std() * np.sqrt(_RV_ANNUAL_FACTOR) * 100.0
+    rv_ann = log_ret.rolling(_RV_WINDOW).std() * np.sqrt(_rv_factor) * 100.0
 
     # Force numpy bool dtype: NaN comparisons → False, shift with fill_value avoids
     # the object-dtype conversion that makes Python's ~bool give wrong results (Python 3.12+).
