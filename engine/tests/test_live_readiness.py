@@ -289,6 +289,54 @@ def test_c3_fail_when_high_findings_remain(monkeypatch, tmp_path):
     assert "12" in result.detail
 
 
+def test_c3_handles_findings_array_format(monkeypatch, tmp_path):
+    """scan-credentials.ps1 native output is a list of finding dicts."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    log_dir = tmp_path / ".claude" / "logs"
+    log_dir.mkdir(parents=True)
+    findings = [
+        {"severity": "HIGH", "type": "ForbiddenPath", "path": "/foo/.env"},
+        {"severity": "HIGH", "type": "Pattern:Anthropic", "path": "/bar/x"},
+        {"severity": "MEDIUM", "type": "PlaintextPassword", "path": "/baz/y"},
+    ]
+    (log_dir / "scan-credentials-latest.json").write_text(json.dumps(findings))
+    result = lr.check_c3_phase0_complete()
+    assert result.passed is False
+    assert "2" in result.detail  # 2 HIGH findings
+
+
+def test_c3_pass_with_findings_array_no_high(monkeypatch, tmp_path):
+    """Findings array with only MEDIUM severity → PASS."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    log_dir = tmp_path / ".claude" / "logs"
+    log_dir.mkdir(parents=True)
+    findings = [
+        {"severity": "MEDIUM", "type": "PlaintextPassword", "path": "/foo/bar"},
+    ]
+    (log_dir / "scan-credentials-latest.json").write_text(json.dumps(findings))
+    result = lr.check_c3_phase0_complete()
+    assert result.passed is True
+
+
+def test_c3_handles_dict_with_findings_subkey(monkeypatch, tmp_path):
+    """Some scanner formats nest findings under a 'findings' key."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    log_dir = tmp_path / ".claude" / "logs"
+    log_dir.mkdir(parents=True)
+    payload = {
+        "scanned_at": "2026-05-06",
+        "findings": [
+            {"severity": "HIGH", "type": "X"},
+            {"severity": "HIGH", "type": "Y"},
+            {"severity": "HIGH", "type": "Z"},
+        ],
+    }
+    (log_dir / "scan-credentials-latest.json").write_text(json.dumps(payload))
+    result = lr.check_c3_phase0_complete()
+    assert result.passed is False
+    assert "3" in result.detail
+
+
 # ---------------------------------------------------------- #
 # C4 — Engine health                                         #
 # ---------------------------------------------------------- #
