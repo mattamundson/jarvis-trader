@@ -49,6 +49,11 @@ def main():
         action="store_true",
         help="Show stats from existing DB and exit (requires --db)",
     )
+    parser.add_argument(
+        "--trigger-commentary",
+        action="store_true",
+        help="After import, fire CoreyCommentaryProcessor to refresh today's session bias (skipped if 0 new rows inserted)",
+    )
 
     args = parser.parse_args()
 
@@ -114,6 +119,19 @@ def main():
             if not args.dry_run:
                 print(f" | Inserted: {ch.get('inserted', 0):,}", end="")
             print()
+
+        # Commentary trigger — skipped in dry-run, skipped if 0 new rows
+        if args.trigger_commentary and not args.dry_run:
+            inserted = summary.get("total_inserted", 0)
+            if inserted > 0:
+                import asyncio
+                from .commentary_processor import CoreyCommentaryProcessor
+
+                logger.info("Triggering commentary processor (%d new rows)...", inserted)
+                asyncio.run(CoreyCommentaryProcessor().get_session_bias())
+                logger.info("Commentary processor complete.")
+            else:
+                logger.info("Skipping commentary processor — 0 new rows inserted.")
 
         return 0
 
