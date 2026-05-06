@@ -105,7 +105,12 @@ TREND_INSTRUMENTS = {"MES"}
 # PF 0.13 — net-negative. Paper-trading a negative-expectancy strategy
 # contaminates the learning/feedback feedback loop.
 # Decision frame: memory/project_per_symbol_strategy_decision.md (Option B).
-DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ"})
+#
+# Per-symbol exhaustion as of 2026-05-06:
+#   MCL — Mean-Rev hyp A/B/C + SMA Trend hyp D/E all FAIL (5 hypotheses exhausted)
+#   MNQ — SMA Trend ranks 1-2 + Breakout ranks 1-7 + ORB rank 1 all FAIL
+#   M2K — SMA Trend ranks 1-2 + ORB rank 1 all FAIL
+DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
 
 # Env-var feature flag for Phase 3 FULL (gate v2 routing enforcement).
 # Default OFF — ships dormant, user activates after verifying verdict
