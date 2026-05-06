@@ -390,19 +390,6 @@ def check_c3_phase0_complete() -> CheckResult:
 
     try:
         scan = json.loads(scan_log.read_text(encoding="utf-8"))
-        n_high = scan.get("n_high", -1)
-        if n_high == 0:
-            return CheckResult(
-                name="C3 Phase 0 credential rotation",
-                passed=True,
-                detail="0 HIGH findings",
-            )
-        return CheckResult(
-            name="C3 Phase 0 credential rotation",
-            passed=False,
-            detail=f"{n_high} HIGH findings remain",
-            fix="Complete Phase 0 rotation per ~/.claude/skills/ralph/projects/home-strategic-plan/PHASE0_ROTATION_PLAYBOOK.md",
-        )
     except (json.JSONDecodeError, OSError) as e:
         return CheckResult(
             name="C3 Phase 0 credential rotation",
@@ -410,6 +397,43 @@ def check_c3_phase0_complete() -> CheckResult:
             detail=f"Cannot parse scan log: {e}",
             blocking=False,
         )
+
+    # Two supported formats:
+    #   - Summary dict: {"n_high": N, ...}
+    #   - Findings array: [{"severity": "HIGH" | "MEDIUM", ...}, ...]
+    # The latter is the native output of ~/scripts/scan-credentials.ps1.
+    if isinstance(scan, list):
+        n_high = sum(
+            1 for f in scan if isinstance(f, dict) and str(f.get("severity", "")).upper() == "HIGH"
+        )
+    elif isinstance(scan, dict):
+        n_high = scan.get("n_high", -1)
+        if n_high == -1 and "findings" in scan and isinstance(scan["findings"], list):
+            n_high = sum(
+                1
+                for f in scan["findings"]
+                if isinstance(f, dict) and str(f.get("severity", "")).upper() == "HIGH"
+            )
+    else:
+        return CheckResult(
+            name="C3 Phase 0 credential rotation",
+            passed=False,
+            detail="Scan log format not recognized (expected list or dict)",
+            blocking=False,
+        )
+
+    if n_high == 0:
+        return CheckResult(
+            name="C3 Phase 0 credential rotation",
+            passed=True,
+            detail="0 HIGH findings",
+        )
+    return CheckResult(
+        name="C3 Phase 0 credential rotation",
+        passed=False,
+        detail=f"{n_high} HIGH findings remain",
+        fix="Complete Phase 0 rotation per ~/.claude/skills/ralph/projects/home-strategic-plan/PHASE0_ROTATION_PLAYBOOK.md",
+    )
 
 
 def check_c4_engine_health() -> CheckResult:
