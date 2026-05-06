@@ -104,16 +104,22 @@ def get_last_verdict(
 def is_ungate_eligible(
     symbol: str, verdicts_dir: Optional[Path] = None
 ) -> bool:
-    """Default-deny advisory: `True` iff the most recent non-stale verdict
-    for `symbol` is a PASS.
+    """Default-deny advisory: `True` iff ANY non-stale PASS verdict exists
+    for `symbol` across all families.
+
+    A FAIL in one family (e.g. trend_rv_filter) does not negate a PASS in
+    another (e.g. trend). The routing layer decides which family to trade;
+    this function asks "is there a valid green light for this symbol at all."
 
     Advisory only — does NOT block any routing decision. Call sites may
     log a warning when this disagrees with the actual routing state.
     """
-    snap = get_last_verdict(symbol, verdicts_dir=verdicts_dir)
-    if snap is None:
-        return False
-    return snap.verdict == "PASS"
+    sym_upper = symbol.upper()
+    return any(
+        v.verdict == "PASS"
+        for v in _iter_verdict_files(verdicts_dir)
+        if v.symbol.upper() == sym_upper and not v.is_stale()
+    )
 
 
 def list_verdicts(
