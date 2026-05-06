@@ -94,40 +94,44 @@ MNQ_PAPER_CONFIG = {
 }
 
 MGC_PAPER_CONFIG = {
-    #  Instrument
+    #  Instrument — SMA(50,120) trend-following, 1h bars
+    #  Gate v2 verdict: PASS via ALT (dsr=1.0, wfo=STRONG, fixed_params_min_pf=1.357)
+    #  Verdict file: engine/data/gate_v2_verdicts/MGC_trend_rank4.json (created 2026-05-06)
+    #  WFO champion params: SMA(fast=50, slow=120, atr_trail_mult=2.0) — fixed_params PF=2.987
+    #  rank4 grid fast=[40,50]×slow=[80,120]×atr=[1.5,2.0]: all 8 combos PF>1.35
+    #  ALT routing applies: mc_95th_dd=1.24% ≤ 7.0% ceiling (requires $50K+ account sizing)
     "symbol": "MGC",
-    "interval": "1d",
-    "enabled": False,  # WFE=0.00 (2022-2026 extended, 0/14 valid windows)  CLOSED (v2.9)
+    "interval": "1h",
+    "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
+    "enabled": True,  # Gate v2 ALT PASS — authorized for paper trading 2026-05-06
     #  Capital & Sizing
-    "initial_capital": 10_000.0,
-    "risk_per_trade": 0.0025,
-    #  Strategy Mode
-    "regime_filter": False,  # OFF: anti-predictive for gold daily
-    "adaptive_regime": False,  # OFF: no valid windows even with adaptive
+    "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
+    "risk_per_trade": 0.0025,  # 0.25% risk per trade
+    #  Strategy Mode — SMA trend uses its own param block
+    "regime_filter": False,
+    "adaptive_regime": False,
+    "composite": False,
     "volume_filter": False,
     "mtf_filter": False,
-    #  STC Signal Parameters (last known, NOT validated  strategy CLOSED)
-    "stc_params": {
-        "stc_os": 17,
-        "stc_ob": 88,
-        "stop_atr_mult": 0.30,
-        "t1_atr_mult": 1.50,
-        "t2_atr_mult": 2.618,
-        "t3_atr_mult": 4.00,
+    #  SMA Trend Parameters (walk-forward champion from WFO rank4)
+    "sma_params": {
+        "fast": 50,
+        "slow": 120,
+        "atr_trail_mult": 2.0,
     },
-    #  Kill Thresholds
+    #  Kill Thresholds — calibrated to ALT routing 7% MC DD ceiling
     "kill_threshold": {
-        "consecutive_losses": 2,
-        "consecutive_months_underperform": 1,
-        "monthly_loss_pct": -0.02,
-        "max_daily_loss": -0.01,
-        "rolling_wfe_minimum": 0.50,  # Threshold deliberately high since strategy is closed
+        "consecutive_losses": 4,
+        "consecutive_months_underperform": 2,
+        "monthly_loss_pct": -0.04,
+        "max_daily_loss": -0.02,
+        "rolling_wfe_minimum": 0.40,
     },
     #  Contract Specifications
-    "multiplier": 10.0,  # $10/troy oz for MGC (Micro Gold, 10 oz)
+    "multiplier": 10.0,  # $10/point for MGC (Micro Gold, 10 oz)
     "tick_size": 0.10,
-    "commission_per_contract": 2.50,
-    "slippage_ticks": 1,
+    "commission_per_contract": 0.62,
+    "slippage_ticks": 2,
     "max_concurrent_positions": 1,
 }
 

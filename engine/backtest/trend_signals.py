@@ -27,6 +27,10 @@ SMA_TREND_PARAMS: dict[str, dict] = {
     # ATR in dollar terms differs from MES — trail_mult grid [1.8, 2.0, 2.2]
     # in run_mnq_trend_rank1.py determines production value after rank1 verdict.
     "MNQ": {"fast": 50, "slow": 200, "atr_trail_mult": 2.0},
+    # MGC: rank4 champion (2026-05-06) — gate v2 ALT PASS
+    # 8-combo grid fast=[40,50]×slow=[80,120]×atr=[1.5,2.0]; all combos PF>1.35
+    # dsr=1.0, wfo=STRONG, mc_dd=1.24%, cost=catastrophic. ALT ($50K+).
+    "MGC": {"fast": 50, "slow": 120, "atr_trail_mult": 2.0},
 }
 
 _ATR_PERIOD = 14
