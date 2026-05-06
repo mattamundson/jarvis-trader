@@ -49,9 +49,52 @@ def _write_verdict(
 
 @pytest.fixture
 def tmp_verdicts_dir(tmp_path, monkeypatch):
-    """Isolate live_readiness.VERDICTS_DIR to a tmp dir."""
+    """Isolate live_readiness.VERDICTS_DIR + PAPER_TRADES_PATH to tmp dirs.
+
+    By default the paper-trades store points at a non-existent path so tests
+    exercise the verdict-date-proxy fallback. Tests that need real paper-trade
+    data should write to the path returned via the `paper_trades_path` fixture.
+    """
     monkeypatch.setattr(lr, "VERDICTS_DIR", tmp_path)
+    monkeypatch.setattr(lr, "PAPER_TRADES_PATH", tmp_path / "trades.jsonl")
     return tmp_path
+
+
+@pytest.fixture
+def paper_trades_path(tmp_path, monkeypatch):
+    """Isolate live_readiness.PAPER_TRADES_PATH so tests can write trade records."""
+    p = tmp_path / "trades_isolated.jsonl"
+    monkeypatch.setattr(lr, "PAPER_TRADES_PATH", p)
+    monkeypatch.setattr(lr, "VERDICTS_DIR", tmp_path / "verdicts")
+    return p
+
+
+def _write_trade(
+    path: Path,
+    *,
+    symbol: str,
+    is_open: bool = False,
+    entry_age_days: float = 1.0,
+    pnl: float | None = 0.0,
+) -> None:
+    """Append a paper-trade record to the JSONL store."""
+    entry_dt = datetime.now(tz=timezone.utc) - timedelta(days=entry_age_days)
+    rec = {
+        "trade_id": f"test-{symbol}-{entry_age_days}",
+        "symbol": symbol,
+        "action": "buy",
+        "quantity": 1.0,
+        "entry_price": 5800.0,
+        "entry_time": entry_dt.isoformat(),
+        "exit_price": None if is_open else 5810.0,
+        "exit_time": None if is_open else (entry_dt + timedelta(hours=2)).isoformat(),
+        "pnl": None if is_open else pnl,
+        "notes": "test",
+        "is_open": is_open,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec) + "\n")
 
 
 @pytest.fixture
@@ -82,28 +125,104 @@ def offline_engine(monkeypatch):
 # ---------------------------------------------------------- #
 
 
-def test_c1_fail_when_mes_verdict_missing(tmp_verdicts_dir):
+def test_c1_fail_when_no_verdict_and_no_trades(tmp_verdicts_dir):
+    """No verdict and no paper trades → can't authorize."""
     result = lr.check_c1_mes_paper_validation()
     assert result.passed is False
-    assert "verdict not found" in result.detail.lower() or "in progress" in result.detail.lower()
+    assert "missing" in result.detail.lower() or "no paper trades" in result.detail.lower()
 
 
-def test_c1_fail_when_paper_clock_under_30_days(tmp_verdicts_dir):
+def test_c1_falls_back_to_verdict_proxy_when_no_trades(tmp_verdicts_dir):
+    """Verdict exists but no paper trades yet → use verdict-creation-date as proxy.
+
+    This is the bootstrap state right after a refresh — verdict landed but
+    paper trades haven't fired yet. Should report FAIL with informative detail
+    about the IB Gateway / engine routing requirement.
+    """
     _write_verdict(
         tmp_verdicts_dir, symbol="MES", family="trend", rank=11, verdict="PASS", age_days=5.0
     )
     result = lr.check_c1_mes_paper_validation()
     assert result.passed is False
-    assert "day" in result.detail.lower()
+    # New behavior: even a 31+ day-old verdict won't pass without real trades
+    assert "no mes paper trades" in result.detail.lower()
 
 
-def test_c1_pass_when_paper_clock_complete(tmp_verdicts_dir):
-    """MES verdict 31+ days old means paper-trade clock has matured."""
-    _write_verdict(
-        tmp_verdicts_dir, symbol="MES", family="trend", rank=11, verdict="PASS", age_days=31.0
-    )
+def test_c1_fail_when_too_few_closed_trades(paper_trades_path):
+    """Real paper trades exist but n_closed < 30 → still FAIL."""
+    for i in range(5):
+        _write_trade(paper_trades_path, symbol="MES", entry_age_days=20 - i, pnl=10.0)
+    result = lr.check_c1_mes_paper_validation()
+    assert result.passed is False
+    assert "closed_trades=5" in result.detail
+
+
+def test_c1_fail_when_days_under_30(paper_trades_path):
+    """30+ closed trades but first entry < 30 days ago → FAIL on days criterion."""
+    for _ in range(35):
+        _write_trade(paper_trades_path, symbol="MES", entry_age_days=10, pnl=5.0)
+    result = lr.check_c1_mes_paper_validation()
+    assert result.passed is False
+    assert "days=10" in result.detail
+
+
+def test_c1_fail_when_forward_pf_below_threshold(paper_trades_path):
+    """Days + count OK but forward_pf < 1.0 → FAIL on edge criterion."""
+    # First trade 31 days ago, then 30 closed losers
+    _write_trade(paper_trades_path, symbol="MES", entry_age_days=31, pnl=-10.0)
+    for _ in range(29):
+        _write_trade(paper_trades_path, symbol="MES", entry_age_days=20, pnl=-10.0)
+    # Plus one tiny winner so forward_pf is computable but < 1.0
+    _write_trade(paper_trades_path, symbol="MES", entry_age_days=15, pnl=5.0)
+    result = lr.check_c1_mes_paper_validation()
+    assert result.passed is False
+    assert "forward_pf" in result.detail.lower()
+
+
+def test_c1_pass_when_all_thresholds_met(paper_trades_path):
+    """31 days elapsed + 30 closed + forward_pf > 1.0 → PASS."""
+    # First trade 31 days ago, mix of 20 winners + 10 losers
+    _write_trade(paper_trades_path, symbol="MES", entry_age_days=31, pnl=20.0)
+    for _ in range(19):
+        _write_trade(paper_trades_path, symbol="MES", entry_age_days=20, pnl=15.0)
+    for _ in range(10):
+        _write_trade(paper_trades_path, symbol="MES", entry_age_days=15, pnl=-5.0)
     result = lr.check_c1_mes_paper_validation()
     assert result.passed is True
+    assert "PASS" in result.detail
+
+
+def test_c1_only_counts_closed_trades(paper_trades_path):
+    """Open trades shouldn't satisfy the count threshold."""
+    # 35 open trades but 0 closed → fails on n_closed
+    for _ in range(35):
+        _write_trade(paper_trades_path, symbol="MES", is_open=True, entry_age_days=31)
+    result = lr.check_c1_mes_paper_validation()
+    assert result.passed is False
+    assert "closed_trades=0" in result.detail
+
+
+def test_c1_filters_by_symbol(paper_trades_path):
+    """Trades for other symbols shouldn't count toward MES validation.
+
+    Writes a MES verdict so we exercise the "no MES trades + verdict-proxy"
+    branch, then writes 35 MGC trades. Expected: FAIL because zero MES trades
+    counted toward the threshold (MGC trades are filtered out).
+    """
+    verdicts_dir = paper_trades_path.parent / "verdicts"
+    _write_verdict(
+        verdicts_dir,
+        symbol="MES",
+        family="trend",
+        rank=11,
+        verdict="PASS",
+        age_days=5.0,
+    )
+    for _ in range(35):
+        _write_trade(paper_trades_path, symbol="MGC", entry_age_days=31, pnl=10.0)
+    result = lr.check_c1_mes_paper_validation()
+    assert result.passed is False
+    assert "no mes paper trades" in result.detail.lower()
 
 
 # ---------------------------------------------------------- #
