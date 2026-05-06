@@ -46,6 +46,16 @@ class SignalEnum(str, Enum):
     bearish = "bearish"
 
 
+class TvMcpStatus(str, Enum):
+    """TradingView MCP connection status."""
+
+    not_running = "not_running"
+    connecting = "connecting"
+    healthy = "healthy"
+    degraded = "degraded"
+    disabled = "disabled"
+
+
 class OrderActionEnum(str, Enum):
     """Order action values."""
 
@@ -124,6 +134,7 @@ class HealthResponse(BaseModel):
     llm_path_details: Optional[Dict[str, Any]] = Field(None, description="Populated only when llm_path_healthy=false")
     tradingview_mcp_healthy: Optional[bool] = Field(True, description="Whether TradingView Desktop CDP port 9222 responds (false = TV MCP bar source unavailable)")
     tradingview_mcp_details: Optional[str] = Field(None, description="Short diagnostic populated only when tradingview_mcp_healthy=false")
+    tv_mcp_status: Optional[str] = Field(None, description="TV MCP status: not_running | connecting | healthy | degraded | disabled")
 
 
 class SubsystemStatus(BaseModel):

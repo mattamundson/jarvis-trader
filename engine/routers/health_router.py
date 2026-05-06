@@ -7,6 +7,7 @@ status information about all JARVIS TRADER subsystems.
 
 import logging
 import os
+import socket
 import sqlite3
 import time
 import urllib.error
@@ -31,7 +32,7 @@ _TV_MCP_CDP_URLS = [
     "http://[::1]:9222/json/version",
 ]
 _TV_MCP_CACHE_TTL_SEC = 30.0
-_tv_mcp_health_cache: dict = {"checked_at": 0.0, "healthy": False, "details": "not yet probed"}
+_tv_mcp_health_cache: dict = {"checked_at": 0.0, "healthy": False, "details": "not yet probed", "status": "connecting"}
 
 # Cost-DB observability cache + thresholds. The DB lives under engine/data
 # regardless of cwd; resolve relative to this file so the endpoint works whether
@@ -43,18 +44,40 @@ _LLM_LATENCY_P95_WARN_MS = int(os.getenv("LLM_LATENCY_P95_WARN_MS", "30000"))
 _LLM_COST_24H_WARN_USD = float(os.getenv("LLM_COST_24H_WARN_USD", "5.0"))
 
 
-def _check_tradingview_mcp_health() -> tuple[bool, str | None]:
-    """Probe TradingView Desktop CDP endpoint. Cached 30s to avoid hammering CDP
-    on every /health poll. Returns (healthy, details) — details is None on
-    success, a short diagnostic string on failure.
-    Tries IPv4 then IPv6 — Chrome binds to one or the other depending on launch."""
+def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
+    """Probe TradingView Desktop CDP endpoint. Two-stage: socket port check then HTTP.
+    Cached 30s. Returns (healthy, details, status) where status is one of:
+      not_running — port 9222 not listening (TV Desktop not launched)
+      connecting  — port open but CDP not responding correctly
+      healthy     — CDP /json/version returned 200
+      degraded    — port open, CDP responded with non-200
+    """
     now = time.monotonic()
     cached_at = _tv_mcp_health_cache.get("checked_at", 0.0)
     if now - cached_at < _TV_MCP_CACHE_TTL_SEC:
-        return _tv_mcp_health_cache["healthy"], _tv_mcp_health_cache["details"]
+        return (
+            _tv_mcp_health_cache["healthy"],
+            _tv_mcp_health_cache["details"],
+            _tv_mcp_health_cache.get("status", "connecting"),
+        )
 
+    # Stage 1: socket port check (0.5s timeout — instant fail if TV Desktop not running)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.5)
+    try:
+        port_result = sock.connect_ex(("127.0.0.1", 9222))
+    finally:
+        sock.close()
+
+    if port_result != 0:
+        details = "port 9222 not listening — TV Desktop is not running"
+        _tv_mcp_health_cache.update(checked_at=now, healthy=False, details=details, status="not_running")
+        return False, details, "not_running"
+
+    # Stage 2: CDP HTTP probe (port is open; Chrome may be still binding)
     details: str | None = None
     healthy = False
+    status = "connecting"
     for url in _TV_MCP_CDP_URLS:
         try:
             req = urllib.request.Request(url, method="GET")
@@ -62,16 +85,20 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None]:
                 if resp.status == 200:
                     healthy = True
                     details = None
+                    status = "healthy"
                     break
                 else:
                     details = f"CDP returned HTTP {resp.status}"
+                    status = "degraded"
         except urllib.error.URLError as exc:
             details = f"CDP port 9222 unreachable: {exc.reason}"
+            status = "connecting"
         except Exception as exc:
             details = f"CDP probe failed: {exc}"
+            status = "connecting"
 
-    _tv_mcp_health_cache.update(checked_at=now, healthy=healthy, details=details)
-    return healthy, details
+    _tv_mcp_health_cache.update(checked_at=now, healthy=healthy, details=details, status=status)
+    return healthy, details, status
 
 # Get limiter instance for rate limiting
 limiter = get_limiter()
@@ -203,7 +230,7 @@ async def _health_inner() -> dict:
         # If the client module hasn't been imported yet, assume healthy
         pass
 
-    tv_mcp_healthy, tv_mcp_details = _check_tradingview_mcp_health()
+    tv_mcp_healthy, tv_mcp_details, tv_mcp_status = _check_tradingview_mcp_health()
 
     status = "ok" if (db_ok and llm_path_healthy) else "degraded"
 
@@ -223,6 +250,7 @@ async def _health_inner() -> dict:
         "llm_available": True,
         "llm_path_healthy": llm_path_healthy,
         "tradingview_mcp_healthy": tv_mcp_healthy,
+        "tv_mcp_status": tv_mcp_status,
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
