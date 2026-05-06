@@ -345,6 +345,50 @@ async def get_bookmark_weekly_themes(
     return result.to_dict()
 
 
+@router.get("/analysis/correlation/{symbol}")
+async def get_correlation_analysis(
+    symbol: str,
+    lookback_days: int = Query(90, ge=7, le=365, description="Lookback window in days"),
+    db_path: str = Depends(get_db_path),
+):
+    """
+    Corey-bias × bot-signal win-rate correlation for a symbol.
+
+    Joins discord_bot_signals with corey_session_bias on date to answer:
+    does Corey's LLM-extracted directional bias compound with signal win rate?
+
+    Returns alignment breakdown, session-type performance, and conviction-threshold
+    analysis. Requires commentary processor to have run at least once.
+    """
+    from analysis.discord_correlation import get_corey_alignment_summary
+
+    try:
+        return get_corey_alignment_summary(
+            symbol.upper(), lookback_days=lookback_days, db_path=db_path
+        )
+    except Exception as exc:
+        logger.exception("correlation analysis failed for %s", symbol)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/analysis/time-patterns/{symbol}")
+async def get_time_patterns(
+    symbol: str,
+    db_path: str = Depends(get_db_path),
+):
+    """
+    Hour-of-day, day-of-week, and monthly win-rate patterns for a symbol's
+    Discord bot signals. Surfaces optimal trading windows and hours to avoid.
+    """
+    from analysis.discord_time_patterns import compute_time_patterns
+
+    try:
+        return compute_time_patterns(symbol.upper(), db_path=db_path)
+    except Exception as exc:
+        logger.exception("time-patterns analysis failed for %s", symbol)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/briefing")
 async def get_briefing(
     symbol: str = Query(..., description="JARVIS or Discord symbol (MCL, CL, MES, ES, ...)"),

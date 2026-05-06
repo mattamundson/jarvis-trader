@@ -28,6 +28,7 @@ Prints:  summary table to stdout
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -453,6 +454,275 @@ def _compute_cross_market_alignment(conn: sqlite3.Connection) -> pd.DataFrame:
             )
 
     return pd.DataFrame(results)
+
+
+# ── Corey session-bias correlation (Phase 3) ────────────────────────────────
+# These functions join discord_bot_signals with corey_session_bias on date —
+# quantifying whether Corey's LLM-extracted directional bias compounds with
+# bot signal win rate. Require the commentary processor to have run at least
+# once (corey_session_bias table populated). All accept db_path for FastAPI
+# compatibility; default falls back to DB_PATH resolved at module load.
+
+
+def _is_aligned(corey_bias: str, signal_direction: str) -> Optional[bool]:
+    """True=aligned, False=opposed, None=indeterminate (neutral Corey or unknown direction)."""
+    cb = (corey_bias or "").lower()
+    sd = (signal_direction or "").upper()
+    if cb == "neutral" or not cb or not sd:
+        return None
+    bullish = cb in ("bullish", "long", "buy")
+    bearish = cb in ("bearish", "short", "sell")
+    long_sig = sd in ("LONG", "BUY")
+    short_sig = sd in ("SHORT", "SELL")
+    if bullish and long_sig:
+        return True
+    if bearish and short_sig:
+        return True
+    if bullish and short_sig:
+        return False
+    if bearish and long_sig:
+        return False
+    return None
+
+
+def analyze_corey_alignment_win_rate(
+    symbol: str,
+    lookback_days: int = 90,
+    db_path: Optional[str] = None,
+    min_signals: int = 5,
+) -> List[dict]:
+    """
+    Join discord_bot_signals with corey_session_bias to quantify whether
+    Corey's directional bias compounds with bot signal win rate.
+
+    Returns list of dicts sorted by signal_count desc:
+        corey_bias, signal_direction, aligned (True/False/None),
+        signal_count, avg_win_rate (0.0–1.0), avg_rr
+    """
+    if db_path is None:
+        db_path = str(DB_PATH)
+    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT cs.directional_bias AS corey_bias,
+                   bs.direction         AS signal_direction,
+                   bs.win_rate,
+                   bs.rr
+            FROM discord_bot_signals bs
+            JOIN corey_session_bias cs ON DATE(bs.timestamp) = cs.date
+            WHERE bs.symbol = ?
+              AND bs.timestamp >= ?
+              AND bs.signal_type = 'ENTRY'
+              AND bs.win_rate IS NOT NULL
+              AND cs.data_quality IN ('fresh', 'stale')
+            """,
+            (symbol.upper(), cutoff),
+        ).fetchall()
+
+    if not rows:
+        return []
+
+    groups: Dict[tuple, Dict] = {}
+    for row in rows:
+        key = (row["corey_bias"] or "unknown", row["signal_direction"] or "unknown")
+        if key not in groups:
+            groups[key] = {"win_rates": [], "rrs": []}
+        groups[key]["win_rates"].append((row["win_rate"] or 0.0) / 100.0)
+        if row["rr"] is not None:
+            groups[key]["rrs"].append(row["rr"])
+
+    results = []
+    for (corey_bias, signal_direction), data in groups.items():
+        n = len(data["win_rates"])
+        if n < min_signals:
+            continue
+        results.append({
+            "corey_bias": corey_bias,
+            "signal_direction": signal_direction,
+            "aligned": _is_aligned(corey_bias, signal_direction),
+            "signal_count": n,
+            "avg_win_rate": round(sum(data["win_rates"]) / n, 4),
+            "avg_rr": round(sum(data["rrs"]) / len(data["rrs"]), 4) if data["rrs"] else None,
+        })
+
+    return sorted(results, key=lambda x: x["signal_count"], reverse=True)
+
+
+def analyze_session_type_performance(
+    symbol: str,
+    lookback_days: int = 90,
+    db_path: Optional[str] = None,
+    min_signals: int = 5,
+) -> List[dict]:
+    """
+    Win rate by Corey's session_type (range_day, trend_day, outside_bar, etc.).
+    Helps route signals differently on trend vs. range days.
+
+    Returns list of dicts: session_type, signal_count, avg_win_rate, avg_rr, avg_gain
+    """
+    if db_path is None:
+        db_path = str(DB_PATH)
+    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT cs.session_type,
+                   bs.win_rate,
+                   bs.rr,
+                   bs.gain
+            FROM discord_bot_signals bs
+            JOIN corey_session_bias cs ON DATE(bs.timestamp) = cs.date
+            WHERE bs.symbol = ?
+              AND bs.timestamp >= ?
+              AND bs.signal_type = 'ENTRY'
+              AND bs.win_rate IS NOT NULL
+              AND cs.data_quality IN ('fresh', 'stale')
+            """,
+            (symbol.upper(), cutoff),
+        ).fetchall()
+
+    if not rows:
+        return []
+
+    groups: Dict[str, Dict] = {}
+    for row in rows:
+        st = row["session_type"] or "unknown"
+        if st not in groups:
+            groups[st] = {"win_rates": [], "rrs": [], "gains": []}
+        groups[st]["win_rates"].append((row["win_rate"] or 0.0) / 100.0)
+        if row["rr"] is not None:
+            groups[st]["rrs"].append(row["rr"])
+        if row["gain"] is not None:
+            groups[st]["gains"].append(row["gain"])
+
+    results = []
+    for session_type, data in groups.items():
+        n = len(data["win_rates"])
+        if n < min_signals:
+            continue
+        results.append({
+            "session_type": session_type,
+            "signal_count": n,
+            "avg_win_rate": round(sum(data["win_rates"]) / n, 4),
+            "avg_rr": round(sum(data["rrs"]) / len(data["rrs"]), 4) if data["rrs"] else None,
+            "avg_gain": round(sum(data["gains"]) / len(data["gains"]), 4) if data["gains"] else None,
+        })
+
+    return sorted(results, key=lambda x: x["signal_count"], reverse=True)
+
+
+def analyze_conviction_threshold(
+    symbol: str,
+    lookback_days: int = 90,
+    db_path: Optional[str] = None,
+    min_signals: int = 5,
+) -> List[dict]:
+    """
+    Win rate by Corey's conviction bucket (0–0.3 low, 0.3–0.6 med, 0.6–1.0 high).
+    A monotone increase validates that the LLM extraction has genuine discriminative
+    power; a flat or inverted pattern suggests extraction noise.
+
+    Returns list of dicts: conviction_bucket, conviction_range, signal_count,
+        avg_win_rate, avg_rr
+    """
+    BUCKETS = [("low", 0.0, 0.3), ("medium", 0.3, 0.6), ("high", 0.6, 1.01)]
+    if db_path is None:
+        db_path = str(DB_PATH)
+    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT cs.conviction,
+                   bs.win_rate,
+                   bs.rr
+            FROM discord_bot_signals bs
+            JOIN corey_session_bias cs ON DATE(bs.timestamp) = cs.date
+            WHERE bs.symbol = ?
+              AND bs.timestamp >= ?
+              AND bs.signal_type = 'ENTRY'
+              AND bs.win_rate IS NOT NULL
+              AND cs.conviction IS NOT NULL
+              AND cs.data_quality IN ('fresh', 'stale')
+            """,
+            (symbol.upper(), cutoff),
+        ).fetchall()
+
+    if not rows:
+        return []
+
+    bucket_data: Dict[str, Dict] = {
+        label: {"win_rates": [], "rrs": [], "lo": lo, "hi": hi}
+        for label, lo, hi in BUCKETS
+    }
+    for row in rows:
+        conviction = row["conviction"] or 0.0
+        for label, lo, hi in BUCKETS:
+            if lo <= conviction < hi:
+                bucket_data[label]["win_rates"].append((row["win_rate"] or 0.0) / 100.0)
+                if row["rr"] is not None:
+                    bucket_data[label]["rrs"].append(row["rr"])
+                break
+
+    results = []
+    for label, data in bucket_data.items():
+        n = len(data["win_rates"])
+        if n < min_signals:
+            continue
+        results.append({
+            "conviction_bucket": label,
+            "conviction_range": f"{data['lo']:.1f}–{data['hi']:.1f}",
+            "signal_count": n,
+            "avg_win_rate": round(sum(data["win_rates"]) / n, 4),
+            "avg_rr": round(sum(data["rrs"]) / len(data["rrs"]), 4) if data["rrs"] else None,
+        })
+
+    return results
+
+
+def get_corey_alignment_summary(
+    symbol: str,
+    lookback_days: int = 90,
+    db_path: Optional[str] = None,
+) -> dict:
+    """Aggregate all three Corey-bias analyses into a single summary dict."""
+    alignment = analyze_corey_alignment_win_rate(symbol, lookback_days, db_path)
+    session_perf = analyze_session_type_performance(symbol, lookback_days, db_path)
+    conviction = analyze_conviction_threshold(symbol, lookback_days, db_path)
+
+    aligned_rows = [r for r in alignment if r["aligned"] is True]
+    opposed_rows = [r for r in alignment if r["aligned"] is False]
+
+    def _wavg_wr(rows: list) -> Optional[float]:
+        total = sum(r["signal_count"] for r in rows)
+        if total == 0:
+            return None
+        return round(sum(r["avg_win_rate"] * r["signal_count"] for r in rows) / total, 4)
+
+    aligned_wr = _wavg_wr(aligned_rows)
+    opposed_wr = _wavg_wr(opposed_rows)
+
+    return {
+        "symbol": symbol,
+        "lookback_days": lookback_days,
+        "alignment": alignment,
+        "session_type_performance": session_perf,
+        "conviction_threshold": conviction,
+        "summary": {
+            "aligned_avg_win_rate": aligned_wr,
+            "opposed_avg_win_rate": opposed_wr,
+            "aligned_signal_count": sum(r["signal_count"] for r in aligned_rows),
+            "opposed_signal_count": sum(r["signal_count"] for r in opposed_rows),
+            "edge_present": (
+                aligned_wr is not None
+                and opposed_wr is not None
+                and aligned_wr > opposed_wr
+            ),
+        },
+    }
 
 
 # ── Main study runner ─────────────────────────────────────────────────────────
