@@ -84,6 +84,8 @@ def _build_regime_gate(
     rv_min: float = 0.0,
     rv_max: float = 999.0,
     rv_lookback: int = 20,
+    sentiment_db_path: str = "",
+    sentiment_block_bearish: bool = True,
 ) -> pd.Series:
     """Return a boolean Series — True = entry allowed, False = suppressed.
 
@@ -175,6 +177,33 @@ def _build_regime_gate(
 
         return ((rv >= rv_min) & (rv <= rv_max)).fillna(False)
 
+    if mode == "sentiment_overlay":
+        if not sentiment_db_path:
+            return all_true
+        try:
+            import sqlite3
+            conn = sqlite3.connect(sentiment_db_path)
+            bias_df = pd.read_sql_query(
+                "SELECT date, directional_bias FROM corey_session_bias ORDER BY date",
+                conn,
+                parse_dates=["date"],
+            )
+            conn.close()
+        except Exception:
+            return all_true
+        if bias_df.empty:
+            return all_true
+        bias_df = bias_df.set_index("date")
+        if not isinstance(close.index, pd.DatetimeIndex):
+            return all_true
+        daily_bias = bias_df["directional_bias"].resample("1D").last()
+        if sentiment_block_bearish:
+            daily_allowed = (daily_bias != "bearish")
+        else:
+            daily_allowed = pd.Series(True, index=daily_bias.index)
+        allowed = daily_allowed.reindex(close.index, method="ffill").fillna(True)
+        return allowed.astype(bool)
+
     # Unknown mode — fail safe to all-True (no gating).
     return all_true
 
@@ -212,6 +241,8 @@ def generate_bollinger_rsi_signals(
     regime_filter_min_rv: float = 20.0,
     regime_filter_max_rv: float = 50.0,
     regime_filter_rv_lookback: int = 20,
+    sentiment_db_path: str = "",
+    sentiment_block_bearish: bool = True,
 ) -> pd.DataFrame:
     """Generate Bollinger + RSI mean-reversion signals.
 
@@ -293,6 +324,8 @@ def generate_bollinger_rsi_signals(
             rv_min=regime_filter_min_rv,
             rv_max=regime_filter_max_rv,
             rv_lookback=regime_filter_rv_lookback,
+            sentiment_db_path=sentiment_db_path,
+            sentiment_block_bearish=sentiment_block_bearish,
         )
         long_cond = long_cond & regime_gate
         short_cond = short_cond & regime_gate
