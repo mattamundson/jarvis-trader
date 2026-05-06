@@ -1,10 +1,10 @@
 """
 SMA trend-following signal generator for JARVIS TRADER.
 
-Validated on MES 1h via walk-forward optimization (2026-04-20):
-    SMA(50, 200) + 2.0×ATR trailing stop
-    Train PF 2.063 (2024-06→2025-06) | Test PF 1.689 (2025-06→2026-03)
-    WFE 0.819 | 6 WFO winners clustered near (fast=40-50, slow=180-200, trail=2.0-5.0)
+Validated on MES 1h via walk-forward optimization — rank11 champion (2026-05-06):
+    SMA(60, 200) + 2.0×ATR trailing stop
+    fixed_params PF: fast=60→2.156, fast=55→1.722, fast=50→1.351
+    gate v2 ALT PASS: dsr=1.0, wfo=STRONG, mc_dd=0.81%, fixed_params_min_pf=1.351
 
 Entry : fast SMA crosses above slow SMA (Golden Cross) — LONG only.
 Exit  : fast SMA crosses below slow SMA  OR  ATR trailing stop hit.
@@ -17,9 +17,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-# Walk-forward champion parameters
+# Walk-forward champion parameters — rank11 (2026-05-06)
 SMA_TREND_PARAMS: dict[str, dict] = {
-    "MES": {"fast": 50, "slow": 200, "atr_trail_mult": 2.0},
+    "MES": {"fast": 60, "slow": 200, "atr_trail_mult": 2.0},
 }
 
 _ATR_PERIOD = 14
@@ -46,7 +46,7 @@ def _wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
 
 def generate_sma_trend_signals(
     df: pd.DataFrame,
-    fast: int = 50,
+    fast: int = 60,
     slow: int = 200,
     atr_trail_mult: float = 2.0,
     min_rv_annualized: float = 0.0,

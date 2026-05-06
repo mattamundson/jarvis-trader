@@ -85,7 +85,7 @@ def test_regime_trending_bull_when_above():
 def test_get_sma_trend_params_mes():
     params = get_sma_trend_params("MES")
     assert params is not None
-    assert params["fast"] == 50
+    assert params["fast"] == 60
     assert params["slow"] == 200
     assert params["atr_trail_mult"] == 2.0
 
@@ -102,7 +102,8 @@ def test_no_nan_in_entry_signal():
 def test_generate_instrument_signals_routes_mes_to_trend():
     from backtest.signals import generate_instrument_signals, TREND_INSTRUMENTS
     assert "MES" in TREND_INSTRUMENTS
-    df = generate_instrument_signals(_make_trending_df(), symbol="MES")
+    # Use 700 bars: champion SMA(60,200) needs 200-bar warmup + decline + rise for golden cross
+    df = generate_instrument_signals(_make_trending_df(n=700), symbol="MES")
     assert "entry_signal" in df.columns
     assert "bias" in df.columns
     # Should have at least one ENTRY_NOW on trending data

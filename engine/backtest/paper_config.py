@@ -210,12 +210,12 @@ MNQ_15M_CONFIG = {
 }
 
 MES_TREND_PAPER_CONFIG = {
-    #  Instrument — SMA(50,200) trend-following, 1h bars
+    #  Instrument — SMA(60,200) trend-following, 1h bars
     #  Gate v2 verdict: PASS via ALT (dsr=1.0, rolling_wfo=STRONG, fixed_params_min_pf=1.3506)
-    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rank11.json (created 2026-05-05)
-    #  WFO champion params: SMA(fast=50, slow=200, atr_trail_mult=2.0)
-    #  Train PF 2.063 (2024-06→2025-06) | Test PF 1.689 (2025-06→2026-03) | WFE 0.819
-    #  ALT routing applies: mc_95th_dd=5.40% ≤ 7.0% ceiling (requires $50K+ account sizing)
+    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rank11.json (created 2026-05-06)
+    #  WFO champion params: SMA(fast=60, slow=200, atr_trail_mult=2.0)  — fixed_params PF=2.156
+    #  rank11 grid [50,55,60]×[200]×[2.0]: PF=[1.35,1.72,2.16]; fast=60 is the champion
+    #  ALT routing applies: mc_95th_dd=0.81% ≤ 7.0% ceiling (requires $50K+ account sizing)
     "symbol": "MES",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
@@ -229,9 +229,9 @@ MES_TREND_PAPER_CONFIG = {
     "composite": False,
     "volume_filter": False,
     "mtf_filter": False,
-    #  SMA Trend Parameters (walk-forward champion from WFO rank7)
+    #  SMA Trend Parameters (walk-forward champion from WFO rank11)
     "sma_params": {
-        "fast": 50,
+        "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.0,
     },
