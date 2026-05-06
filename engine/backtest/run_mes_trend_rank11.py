@@ -375,8 +375,11 @@ def _compute_gate_v2(
     oos_sharpes = [r.sharpe_ratio for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
     all_trades = sum(r.total_trades for r in oos_results)
 
-    # Core metrics
-    pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
+    # Core metrics — cap inf PFs (windows with 0 losses) at 5.0 before bootstrap.
+    # Without this cap, bootstrap means contain inf and np.percentile returns NaN
+    # via inf-inf interpolation (root cause of the rank11 verdict NaN).
+    oos_pfs_capped = [min(pf, 5.0) if pf != float("inf") else 5.0 for pf in oos_pfs]
+    pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs_capped)
     p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
     mc_95th_dd = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
 

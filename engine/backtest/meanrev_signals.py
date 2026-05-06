@@ -189,7 +189,13 @@ def _build_regime_gate(
                 parse_dates=["date"],
             )
             conn.close()
-        except Exception:
+        except Exception as exc:
+            import warnings
+            warnings.warn(
+                f"sentiment_overlay DB read failed (path={sentiment_db_path!r}): {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
             return all_true
         if bias_df.empty:
             return all_true
