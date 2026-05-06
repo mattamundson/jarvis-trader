@@ -28,7 +28,7 @@ Prints:  summary table to stdout
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -82,6 +82,22 @@ MARKET_PROXY_SYMBOL = "NQ"
 
 # Minimum signals per category to include in the final report
 MIN_SIGNALS_FOR_REPORT = 10
+
+# Conviction bucket split points for analyze_conviction_threshold().
+# Calibrate after 30+ days of data:
+#   SELECT MIN(conviction), AVG(conviction), MAX(conviction),
+#          COUNT(*) FILTER (WHERE conviction < 0.3) AS low_n,
+#          COUNT(*) FILTER (WHERE conviction BETWEEN 0.3 AND 0.6) AS med_n,
+#          COUNT(*) FILTER (WHERE conviction > 0.6) AS high_n
+#   FROM corey_session_bias WHERE data_quality IN ('fresh','stale');
+# If high_n < 20, lower CONVICTION_BUCKET_HIGH (try 0.5 or 0.4).
+CONVICTION_BUCKET_LOW: float = 0.3   # 0.0 – this value → "low"
+CONVICTION_BUCKET_HIGH: float = 0.6  # this value – 1.0 → "high"
+
+# Minimum per-category sample size for API responses (analysis functions).
+# 5 signals yields a ±40pp confidence interval — statistically meaningless.
+# 30 narrows to ±18pp; 100+ is required for real inference (see R5 p-values).
+MIN_SIGNALS_ANALYSIS = 30
 
 
 # ── Confidence tier helpers ───────────────────────────────────────────────────
@@ -489,7 +505,7 @@ def analyze_corey_alignment_win_rate(
     symbol: str,
     lookback_days: int = 90,
     db_path: Optional[str] = None,
-    min_signals: int = 5,
+    min_signals: int = MIN_SIGNALS_ANALYSIS,
 ) -> List[dict]:
     """
     Join discord_bot_signals with corey_session_bias to quantify whether
@@ -501,7 +517,7 @@ def analyze_corey_alignment_win_rate(
     """
     if db_path is None:
         db_path = str(DB_PATH)
-    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -554,7 +570,7 @@ def analyze_session_type_performance(
     symbol: str,
     lookback_days: int = 90,
     db_path: Optional[str] = None,
-    min_signals: int = 5,
+    min_signals: int = MIN_SIGNALS_ANALYSIS,
 ) -> List[dict]:
     """
     Win rate by Corey's session_type (range_day, trend_day, outside_bar, etc.).
@@ -564,7 +580,7 @@ def analyze_session_type_performance(
     """
     if db_path is None:
         db_path = str(DB_PATH)
-    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -618,7 +634,7 @@ def analyze_conviction_threshold(
     symbol: str,
     lookback_days: int = 90,
     db_path: Optional[str] = None,
-    min_signals: int = 5,
+    min_signals: int = MIN_SIGNALS_ANALYSIS,
 ) -> List[dict]:
     """
     Win rate by Corey's conviction bucket (0–0.3 low, 0.3–0.6 med, 0.6–1.0 high).
@@ -628,10 +644,14 @@ def analyze_conviction_threshold(
     Returns list of dicts: conviction_bucket, conviction_range, signal_count,
         avg_win_rate, avg_rr
     """
-    BUCKETS = [("low", 0.0, 0.3), ("medium", 0.3, 0.6), ("high", 0.6, 1.01)]
+    BUCKETS = [
+        ("low",    0.0,                    CONVICTION_BUCKET_LOW),
+        ("medium", CONVICTION_BUCKET_LOW,  CONVICTION_BUCKET_HIGH),
+        ("high",   CONVICTION_BUCKET_HIGH, 1.01),
+    ]
     if db_path is None:
         db_path = str(DB_PATH)
-    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -688,7 +708,15 @@ def get_corey_alignment_summary(
     lookback_days: int = 90,
     db_path: Optional[str] = None,
 ) -> dict:
-    """Aggregate all three Corey-bias analyses into a single summary dict."""
+    """Aggregate all three Corey-bias analyses into a single summary dict.
+
+    summary fields:
+      aligned_avg_win_rate / opposed_avg_win_rate  — weighted win rates (0.0–1.0)
+      aligned_signal_count / opposed_signal_count  — sample sizes
+      edge_present     — True when aligned_wr > opposed_wr (point estimate only)
+      p_value          — chi-squared p-value (None if n < 30 per group)
+      edge_significant — True when p_value < 0.05 (None if sample too small)
+    """
     alignment = analyze_corey_alignment_win_rate(symbol, lookback_days, db_path)
     session_perf = analyze_session_type_performance(symbol, lookback_days, db_path)
     conviction = analyze_conviction_threshold(symbol, lookback_days, db_path)
@@ -704,6 +732,30 @@ def get_corey_alignment_summary(
 
     aligned_wr = _wavg_wr(aligned_rows)
     opposed_wr = _wavg_wr(opposed_rows)
+    aligned_count = sum(r["signal_count"] for r in aligned_rows)
+    opposed_count = sum(r["signal_count"] for r in opposed_rows)
+
+    # Chi-squared significance test — requires ≥30 samples per group.
+    # Converts weighted win rates back to integer win/loss counts for the
+    # contingency table; rounding error is negligible at n≥30.
+    p_value: Optional[float] = None
+    edge_significant: Optional[bool] = None
+    if aligned_count >= 30 and opposed_count >= 30 and aligned_wr is not None and opposed_wr is not None:
+        try:
+            from scipy.stats import chi2_contingency  # noqa: PLC0415
+
+            a_wins = round(aligned_wr * aligned_count)
+            a_losses = aligned_count - a_wins
+            o_wins = round(opposed_wr * opposed_count)
+            o_losses = opposed_count - o_wins
+            if a_losses >= 0 and o_losses >= 0:
+                _, pv, _, _ = chi2_contingency(
+                    [[a_wins, a_losses], [o_wins, o_losses]]
+                )
+                p_value = round(float(pv), 4)
+                edge_significant = p_value < 0.05
+        except Exception:
+            pass  # scipy unavailable or degenerate table — silently omit
 
     return {
         "symbol": symbol,
@@ -714,13 +766,15 @@ def get_corey_alignment_summary(
         "summary": {
             "aligned_avg_win_rate": aligned_wr,
             "opposed_avg_win_rate": opposed_wr,
-            "aligned_signal_count": sum(r["signal_count"] for r in aligned_rows),
-            "opposed_signal_count": sum(r["signal_count"] for r in opposed_rows),
+            "aligned_signal_count": aligned_count,
+            "opposed_signal_count": opposed_count,
             "edge_present": (
                 aligned_wr is not None
                 and opposed_wr is not None
                 and aligned_wr > opposed_wr
             ),
+            "p_value": p_value,
+            "edge_significant": edge_significant,
         },
     }
 

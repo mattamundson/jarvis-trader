@@ -23,8 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 def _default_db_path() -> str:
+    # __file__ = engine/discord/digest_generator.py → up 3 levels → repo root
     engine_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(engine_root, "data", "jarvis_trader.db")
+    repo_root = os.path.dirname(engine_root)
+    return os.path.join(repo_root, "data", "jarvis_trader.db")
 
 
 def generate_digest(for_date: date, db_path: str) -> dict:
@@ -40,8 +42,10 @@ def generate_digest(for_date: date, db_path: str) -> dict:
         "date": date_str,
         "session_bias": None,
         "sentiment_score": None,
+        "sentiment_label": None,
         "top_signals": [],
         "corey_quote": None,
+        "commentary_health": [],
     }
 
     with sqlite3.connect(db_path) as conn:
@@ -69,7 +73,31 @@ def generate_digest(for_date: date, db_path: str) -> dict:
                 (date_str,),
             ).fetchone()
             if sent_row:
-                digest["sentiment_score"] = sent_row["sentiment_score"]
+                score = sent_row["sentiment_score"]
+                digest["sentiment_score"] = score
+                if score > 0.2:
+                    digest["sentiment_label"] = "bullish"
+                elif score < -0.2:
+                    digest["sentiment_label"] = "bearish"
+                else:
+                    digest["sentiment_label"] = "neutral"
+        except sqlite3.OperationalError:
+            pass
+
+        # Last 7 days of corey_session_bias as a pipeline health indicator.
+        # Use this to quickly detect if the commentary processor has been
+        # running (data_quality='fresh'/'stale') vs silently failing ('none').
+        try:
+            health_rows = conn.execute(
+                """
+                SELECT date, data_quality, directional_bias, conviction, message_count
+                FROM corey_session_bias
+                WHERE date >= DATE(?, '-7 days')
+                ORDER BY date DESC
+                """,
+                (date_str,),
+            ).fetchall()
+            digest["commentary_health"] = [dict(row) for row in health_rows]
         except sqlite3.OperationalError:
             pass
 
@@ -139,13 +167,18 @@ def main() -> int:
 
     # Log a one-line summary
     bias = digest.get("session_bias") or {}
+    health_fresh = sum(
+        1 for h in digest["commentary_health"] if h.get("data_quality") in ("fresh", "stale")
+    )
     logger.info(
-        "  %s | bias=%s conviction=%.2f | %d signals | sentiment=%s",
+        "  %s | bias=%s conviction=%.2f | %d signals | sentiment=%s (%s) | health=%d/7d",
         for_date,
         bias.get("directional_bias", "n/a"),
         bias.get("conviction") or 0.0,
         len(digest["top_signals"]),
         f"{digest['sentiment_score']:.3f}" if digest["sentiment_score"] is not None else "n/a",
+        digest["sentiment_label"] or "n/a",
+        health_fresh,
     )
     return 0
 

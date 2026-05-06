@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
-from datetime import date as date_type, datetime, timedelta
+from datetime import date as date_type, datetime, timedelta, timezone
 
 from mcp.server.fastmcp import FastMCP
 
@@ -83,7 +83,7 @@ async def get_recent_signals(symbol: str, hours: int = 4) -> list[dict]:
         entry_price, target1, target2, stop1, win_rate, timestamp
     """
     sym = symbol.upper()
-    cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     db_path = _default_db_path()
 
     try:
@@ -150,22 +150,39 @@ async def search_commentary(query: str, days: int = 7) -> list[dict]:
 
     Returns list of matching messages: timestamp, content, channel
     """
-    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     db_path = _default_db_path()
 
     try:
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                """
-                SELECT timestamp, content, channel
-                FROM discord_corey_commentary
-                WHERE content LIKE ? AND timestamp >= ?
-                ORDER BY timestamp DESC
-                LIMIT 20
-                """,
-                (f"%{query}%", cutoff),
-            ).fetchall()
+            try:
+                # FTS5 MATCH is 10–100× faster than LIKE on 280K+ rows.
+                # Falls back to LIKE if the FTS table doesn't exist yet or
+                # if the query contains FTS5 syntax that doesn't parse.
+                rows = conn.execute(
+                    """
+                    SELECT c.timestamp, c.content, c.channel
+                    FROM discord_corey_commentary c
+                    JOIN discord_commentary_fts fts ON fts.rowid = c.id
+                    WHERE discord_commentary_fts MATCH ?
+                      AND c.timestamp >= ?
+                    ORDER BY c.timestamp DESC
+                    LIMIT 20
+                    """,
+                    (query, cutoff),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = conn.execute(
+                    """
+                    SELECT timestamp, content, channel
+                    FROM discord_corey_commentary
+                    WHERE content LIKE ? AND timestamp >= ?
+                    ORDER BY timestamp DESC
+                    LIMIT 20
+                    """,
+                    (f"%{query}%", cutoff),
+                ).fetchall()
         return [dict(row) for row in rows]
     except Exception as exc:
         logger.warning("[search_commentary] DB error for %r: %s", query, exc)
