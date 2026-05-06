@@ -2,7 +2,7 @@
 # Generates a daily Discord intelligence digest JSON and commits it to git.
 # Schedule via: Jarvis-DiscordGitDigest (see install-discord-digest-task.ps1)
 #
-# Safe: stages ONLY data/discord-digests/YYYY-MM-DD.json — never git add -A.
+# Safe: stages ONLY data/discord-digests/YYYY-MM-DD.json -- never git add -A.
 
 # ---------------------------------------------------------------------------
 # 1. Paths
@@ -33,7 +33,7 @@ Write-Host "Generating Discord digest for $targetDate..."
 Push-Location $repoRoot
 & $python -m engine.discord.digest_generator `
     --date  $targetDate `
-    --db    "data/jarvis_trader.db" `
+    --db    "engine/data/jarvis_trader.db" `
     --output $outputFile `
     2>&1 | Tee-Object -FilePath $logFile -Append
 $genExit = $LASTEXITCODE
@@ -60,13 +60,13 @@ $staged = git diff --cached --name-only
 if ($staged) {
     git commit -m "data(discord): $targetDate digest"
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "git commit failed — check for pre-commit hook issues"
+        Write-Warning "git commit failed -- check for pre-commit hook issues"
         Pop-Location
         exit 1
     }
     Write-Host "Committed: $relPath"
 } else {
-    Write-Host "No changes staged — digest for $targetDate already committed."
+    Write-Host "No changes staged -- digest for $targetDate already committed."
 }
 
 Pop-Location
