@@ -111,7 +111,7 @@ def main():
         print("\n=== Per-Channel Breakdown ===")
         for ch in summary["channels"]:
             name = ch.get("file", "?")
-            print(f"  {name}")
+            print(f"  {name.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8')}")
             print(
                 f"    Messages: {ch.get('messages_total', 0):,} | Parsed: {ch.get('parsed', 0):,}",
                 end="",
