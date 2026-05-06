@@ -32,7 +32,12 @@ _TV_MCP_CDP_URLS = [
     "http://[::1]:9222/json/version",
 ]
 _TV_MCP_CACHE_TTL_SEC = 30.0
-_tv_mcp_health_cache: dict = {"checked_at": 0.0, "healthy": False, "details": "not yet probed", "status": "connecting"}
+_tv_mcp_health_cache: dict = {
+    "checked_at": 0.0,
+    "healthy": False,
+    "details": "not yet probed",
+    "status": "connecting",
+}
 
 # Cost-DB observability cache + thresholds. The DB lives under engine/data
 # regardless of cwd; resolve relative to this file so the endpoint works whether
@@ -71,7 +76,9 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
 
     if port_result != 0:
         details = "port 9222 not listening — TV Desktop is not running"
-        _tv_mcp_health_cache.update(checked_at=now, healthy=False, details=details, status="not_running")
+        _tv_mcp_health_cache.update(
+            checked_at=now, healthy=False, details=details, status="not_running"
+        )
         return False, details, "not_running"
 
     # Stage 2: CDP HTTP probe (port is open; Chrome may be still binding)
@@ -99,6 +106,7 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
 
     _tv_mcp_health_cache.update(checked_at=now, healthy=healthy, details=details, status=status)
     return healthy, details, status
+
 
 # Get limiter instance for rate limiting
 limiter = get_limiter()
@@ -701,6 +709,7 @@ async def pm2_status():
     """Query pm2 for jarvis-engine process stats. Returns empty on non-pm2 deployments."""
     import asyncio
     import json as _json
+
     try:
         proc = await asyncio.create_subprocess_shell(
             "pm2 jlist",
@@ -731,7 +740,7 @@ async def pm2_status():
 @router.get(
     "/health/llm",
     description="LLM call observability: per-model latency p50/p95, 24h cost, "
-                "Anthropic-fallback detection. Reads from llm_costs.db. Cached 30s.",
+    "Anthropic-fallback detection. Reads from llm_costs.db. Cached 30s.",
 )
 async def llm_health():
     """
@@ -792,9 +801,7 @@ async def llm_health():
 
     per_model_1h: dict = {}
     for model, latency_ms, cost_usd, ts in rows_1h:
-        bucket = per_model_1h.setdefault(
-            model, {"latencies": [], "cost_usd": 0.0, "last_ts": ts}
-        )
+        bucket = per_model_1h.setdefault(model, {"latencies": [], "cost_usd": 0.0, "last_ts": ts})
         bucket["latencies"].append(int(latency_ms or 0))
         bucket["cost_usd"] += float(cost_usd or 0.0)
         if ts and ts > bucket["last_ts"]:
@@ -868,3 +875,69 @@ async def trigger_backup_now():
     except Exception as e:
         logger.error(f"On-demand backup failed: {e}")
         raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}") from None
+
+
+@router.get(
+    "/health/readiness",
+    description="Phase-1 live-trading readiness gate. Returns the same 7-criteria "
+    "check as `python -m backtest.live_readiness --json`. Sets HTTP 200 "
+    "when all blocking checks PASS, 503 otherwise — usable as a "
+    "deployment-gate probe by external monitoring or CI.",
+)
+async def live_readiness_endpoint(strict: bool = False):
+    """Aggregate the 7 mission-accomplished criteria into a single response.
+
+    Query params:
+      strict — if true, advisory checks (currently only C3 Phase 0) are treated
+               as blocking. Default false matches CLI behavior.
+
+    Returns:
+      authorized   : bool — True iff all blocking checks PASS
+      blocking_pass: int  — number of blocking checks that passed
+      blocking_total: int — total number of blocking checks
+      results      : list of CheckResult dicts (name, passed, detail, blocking, fix)
+
+    Status codes:
+      200 — authorized=True (all blocking checks PASS, live trading authorized)
+      503 — authorized=False (one or more blocking checks FAIL — live BLOCKED)
+      500 — gate infrastructure error
+    """
+    from dataclasses import asdict
+
+    from fastapi.responses import JSONResponse
+
+    try:
+        from backtest.live_readiness import run_all_checks
+    except ImportError as exc:
+        logger.error("live_readiness module not importable: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"live_readiness import failed: {exc}"},
+        )
+
+    try:
+        results = run_all_checks()
+    except Exception as exc:
+        logger.exception("live_readiness check infrastructure failed")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"check infrastructure failed: {exc}"},
+        )
+
+    if strict:
+        for r in results:
+            r.blocking = True
+
+    authorized = all(r.passed for r in results if r.blocking)
+    blocking_pass = sum(1 for r in results if r.passed and r.blocking)
+    blocking_total = sum(1 for r in results if r.blocking)
+
+    body = {
+        "authorized": authorized,
+        "blocking_pass": blocking_pass,
+        "blocking_total": blocking_total,
+        "results": [asdict(r) for r in results],
+        "checked_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+    status_code = 200 if authorized else 503
+    return JSONResponse(status_code=status_code, content=body)
