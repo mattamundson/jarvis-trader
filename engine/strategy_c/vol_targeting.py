@@ -89,6 +89,13 @@ class VolatilityTargeter:
         composite_vol = (
             self.blend_es_nq * nq_vol + (1 - self.blend_es_nq) * es_vol
         )
+        # NaN guard — if std() returned NaN (e.g. transient yfinance fail with
+        # too few clean bars), fall through to a conservative default rather
+        # than silently writing NaN to the live signal which would default the
+        # vol-target scale to 1.0 (full exposure). Observed 2026-05-06 on a
+        # cold-cache first run; second run was clean.
+        if np.isnan(composite_vol) or composite_vol <= 0:
+            return max(self.vol_floor, 15.0)
         return max(composite_vol, self.vol_floor)
 
     def compute_scale(

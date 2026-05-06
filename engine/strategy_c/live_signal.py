@@ -16,6 +16,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Force UTF-8 stdout/stderr on Windows — _print_signal_alert and logger calls
+# use em-dashes, box-drawing chars, and block chars that fail under cp1252.
+# This must run before any print/logging.basicConfig.
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -88,7 +98,7 @@ def run_live_signal(
 def _print_signal_alert(signal: dict) -> None:
     """Print a human-readable signal alert for the weekly email/dashboard."""
     print("\n" + "=" * 60)
-    print("  ⚡ STRATEGY C+ WEEKLY SIGNAL")
+    print("  [*] STRATEGY C+ WEEKLY SIGNAL")
     print(f"  Generated: {signal.get('generated_at', 'unknown')}")
     print("=" * 60)
 
