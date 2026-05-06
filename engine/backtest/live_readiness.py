@@ -389,7 +389,10 @@ def check_c3_phase0_complete() -> CheckResult:
         )
 
     try:
-        scan = json.loads(scan_log.read_text(encoding="utf-8"))
+        # PowerShell's Set-Content -Encoding UTF8 writes a BOM. Use utf-8-sig
+        # so the BOM is silently consumed; falls back gracefully on non-BOM
+        # files since utf-8-sig accepts plain utf-8 too.
+        scan = json.loads(scan_log.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError) as e:
         return CheckResult(
             name="C3 Phase 0 credential rotation",
