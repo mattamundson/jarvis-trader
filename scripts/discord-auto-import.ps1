@@ -9,8 +9,11 @@
 $envFile = Join-Path $PSScriptRoot "..\engine\.env"
 if (Test-Path $envFile) {
     Get-Content $envFile | ForEach-Object {
-        if ($_ -match '^([A-Z_]+)=(.+)$') {
-            [System.Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+        if ($_ -match '^([A-Z_][A-Z0-9_]*)=(.*)$') {
+            $val = $Matches[2].Trim()
+            $val = $val -replace '\s*#.*$', ''          # strip inline comments
+            if ($val -match '^["\x27](.*)["\x27]$') { $val = $Matches[1] }  # strip surrounding quotes
+            [System.Environment]::SetEnvironmentVariable($Matches[1], $val, 'Process')
         }
     }
 }
@@ -24,8 +27,13 @@ if (-not $token) {
 # 2. Paths
 # ---------------------------------------------------------------------------
 # DCE installed via: winget install Tyrrrz.DiscordChatExporter.CLI
-# WinGet package path — stable across minor DCE updates (package dir won't change)
+# Path encodes WinGet source ID (stable across 'winget upgrade' but breaks if
+# source is re-registered). If the path changes: re-run winget install.
 $dceExe    = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\Tyrrrz.DiscordChatExporter.CLI_Microsoft.Winget.Source_8wekyb3d8bbwe\DiscordChatExporter.Cli.exe"
+if (-not (Test-Path $dceExe)) {
+    $fallback = Get-Command "DiscordChatExporter.Cli.exe" -ErrorAction SilentlyContinue
+    if ($fallback) { $dceExe = $fallback.Source }
+}
 $exportDir = Join-Path $PSScriptRoot "..\discord-export"
 $python    = Join-Path $PSScriptRoot "..\engine\.venv\Scripts\python.exe"
 $logFile   = Join-Path $PSScriptRoot "..\logs\discord-import-$(Get-Date -Format 'yyyyMMdd').log"
@@ -65,6 +73,7 @@ $channels = @(
     "1490851279180660819"   # jarvis-trader bookmarks
 )
 
+$successCount = 0
 foreach ($channelId in $channels) {
     & $dceExe export `
         --channel $channelId `
@@ -75,8 +84,16 @@ foreach ($channelId in $channels) {
         --overwrite
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "DCE export failed for channel $channelId (exit $LASTEXITCODE)"
+    } else {
+        $successCount++
     }
 }
+
+if ($successCount -eq 0) {
+    Write-Error "All $($channels.Count) DCE channel exports failed - skipping Python importer"
+    exit 1
+}
+Write-Host "DCE: $successCount/$($channels.Count) channels exported successfully"
 
 # ---------------------------------------------------------------------------
 # 5. Run Python importer with --trigger-commentary
