@@ -246,6 +246,7 @@ def _run_signals_and_backtest(
         t2_exit_pct=0.30,
         commission_per_contract=commission,
         slippage_ticks=slippage_ticks,
+        fixed_contracts=1,  # daily ATR too large for risk-based sizing on $10K
     )
     return bt.run(df_sig, symbol=SYMBOL, multiplier=MULTIPLIER)
 
