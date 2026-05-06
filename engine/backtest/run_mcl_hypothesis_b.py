@@ -106,6 +106,7 @@ MIN_OOS_TRADES_PER_WINDOW = 5
 def _find_sentiment_db() -> str:
     """Return path to the engine SQLite DB containing corey_session_bias, or ''."""
     candidates = [
+        engine_root / "data" / "jarvis_trader.db",
         engine_root / "data" / "jarvis.db",
         engine_root / "data" / "jarvis_db.sqlite",
         engine_root / "data" / "trading.db",
