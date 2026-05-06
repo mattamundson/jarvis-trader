@@ -104,12 +104,32 @@ def _parse_iso(ts: str | None) -> datetime | None:
     return dt
 
 
+_ENGINE_HEALTH_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_ENGINE_HEALTH_CACHE_TTL_SEC = 5.0
+
+
 def _fetch_engine_health() -> dict[str, Any] | None:
+    """Fetch engine /health with a 5s cache.
+
+    The cache exists so C4 (engine health) and C5 (kill switch) consult the
+    same response within a single run_all_checks() invocation. Without it,
+    C4 can FAIL on a transient timeout while C5 succeeds on a retry, producing
+    an inconsistent verdict where the gate reports kill_switch=false against
+    an "unreachable" engine.
+    """
+    import time
+
+    now = time.monotonic()
+    if now - _ENGINE_HEALTH_CACHE["ts"] < _ENGINE_HEALTH_CACHE_TTL_SEC:
+        return _ENGINE_HEALTH_CACHE["data"]
     try:
         with urlopen(ENGINE_HEALTH_URL, timeout=ENGINE_TIMEOUT_SEC) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            data = json.loads(resp.read().decode("utf-8"))
     except (URLError, HTTPError, json.JSONDecodeError, OSError):
-        return None
+        data = None
+    _ENGINE_HEALTH_CACHE["ts"] = now
+    _ENGINE_HEALTH_CACHE["data"] = data
+    return data
 
 
 def _load_verdicts() -> list[dict[str, Any]]:
