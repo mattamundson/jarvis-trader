@@ -41,9 +41,9 @@ Grid (MCL trend Hyp-E — daily bars):
     this, daily RV would be annualized using 6048x factor (1h default),
     making all daily bars appear extremely low-vol and disabling the rv gate.
 
-WFO config (matches MES rank11 and MCL prior hypotheses):
-    TRAIN_MONTHS = 6  (~126 daily bars -- enough for SMA(60) warmup)
-    TEST_MONTHS  = 1  (~22 daily bars -- expect 0-3 SMA(10,40) crossovers)
+WFO config (extended IS for daily bars):
+    TRAIN_MONTHS = 12  (~252 daily bars -- daily SMA trades take weeks to close; 6mo IS had 0 completed trades)
+    TEST_MONTHS  = 1   (~22 daily bars -- expect 1-3 SMA(10,40) crossovers)
     STEP_MONTHS  = 1
     N_WINDOWS    = up to 26 (4+ years of daily data from 2022-01-01)
 
@@ -98,7 +98,7 @@ TICK_SIZE = 0.01            # $0.01/barrel = $1/contract per tick
 COMMISSION = 0.85           # $/contract round-trip (IB micro crude oil)
 SLIPPAGE_TICKS = 1.0        # 1 tick = $0.01/barrel = $1/contract
 
-TRAIN_MONTHS = 6
+TRAIN_MONTHS = 12           # daily bars need longer IS: SMA trades take weeks to close
 TEST_MONTHS = 1
 STEP_MONTHS = 1
 N_WINDOWS = 26              # target; actual depends on data span (4+ years daily)
