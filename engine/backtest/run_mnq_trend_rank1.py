@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# NOTE (2026-05-06): This runner produced ZERO IS trades in all 18 windows.
+# SMA(fast=48-52, slow=195-205) on 1h MNQ never crosses during the 2024-2025 bull run.
+# This was a DEGENERATE run, not a FAIL — the grid was correct logic, wrong period scale.
+# Use run_mnq_trend_rank2.py (fast=[20,25,30], slow=[80,100,120]) for the real evaluation.
 """
 MNQ Trend Gate v2 — Rank 1 Verdict
 
