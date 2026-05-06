@@ -5,9 +5,12 @@ subscribing to 1-minute aggregations ('AM' messages) to provide high-frequency
 data without the overhead of HTTP polling or visual scraping.
 """
 import asyncio
+import inspect
 import json
 import logging
-from typing import Optional, List, Callable, Dict
+import time
+from collections.abc import Coroutine
+from typing import Optional, List, Callable, Dict, Union
 
 try:
     import websockets
@@ -21,6 +24,9 @@ except ImportError:
     from config import settings
 
 logger = logging.getLogger(__name__)
+
+_SubscriberT = Union[Callable[[Dict], None], Callable[[Dict], Coroutine]]
+
 
 class PolygonStreamer:
     # Using the standard stocks cluster for equities & ETFs
@@ -41,11 +47,18 @@ class PolygonStreamer:
         self.latest_bars: Dict[str, Dict] = {}
         # Exponential backoff state for reconnects
         self._reconnect_delay = self._RECONNECT_DELAY_INITIAL
+        self.last_message_ts: float = 0.0
 
     def subscribe(self, callback: Callable[[Dict], None]) -> None:
         """Register a callback for incoming AM (aggregate per minute) messages."""
         if callback not in self.subscribers:
             self.subscribers.append(callback)
+
+    def seconds_since_last_bar(self) -> float:
+        """Returns seconds elapsed since the last AM bar was received, or inf if never."""
+        if self.last_message_ts == 0.0:
+            return float("inf")
+        return time.monotonic() - self.last_message_ts
 
     async def connect(self) -> None:
         """Connect to Polygon WebSocket and authenticate."""
@@ -103,13 +116,20 @@ class PolygonStreamer:
                                     "close": item.get("c"),
                                     "volume": item.get("v"),
                                 }
-                                
+                                self.last_message_ts = time.monotonic()
+
                                 for cb in self.subscribers:
+                                    cb_name = getattr(cb, "__name__", repr(cb))
                                     try:
-                                        # Schedule lightly parsing or handling it within the callback
-                                        cb(item)
+                                        if inspect.iscoroutinefunction(cb):
+                                            await cb(item)
+                                        else:
+                                            cb(item)
                                     except Exception as e:
-                                        logger.error(f"[POLYGON-WS] Subscriber err: {e}")
+                                        logger.error(
+                                            f"[POLYGON-WS] Subscriber '{cb_name}' raised: {e}",
+                                            exc_info=True,
+                                        )
 
             except websockets.ConnectionClosed as e:
                 logger.warning(
