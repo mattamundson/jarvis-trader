@@ -68,7 +68,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path $logFile) | Out-Null
 # ---------------------------------------------------------------------------
 $afterDate = (Get-Date).AddDays(-2).ToString("yyyy-MM-dd")
 
-# market-updates is the sole feed for CoreyCommentaryProcessor — treated as
+# market-updates is the sole feed for CoreyCommentaryProcessor -- treated as
 # P1. All other channels are best-effort.
 $primaryChannel  = "806343100435660801"   # market-updates (Corey commentary)
 $secondaryChannels = @(
@@ -102,21 +102,20 @@ function Export-Channel {
             --token $token `
             --format Json `
             --output $exportDir `
-            --after $afterDate `
-            --overwrite
+            --after $afterDate | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -eq 0) { return $true }
         if ($attempt -lt $MaxRetries) {
-            Write-Warning "Channel $ChannelId export failed (attempt $attempt/$MaxRetries, exit $LASTEXITCODE) — retrying in ${RetrySleepSec}s..."
+            Write-Warning "Channel $ChannelId export failed (attempt $attempt/$MaxRetries, exit $LASTEXITCODE) -- retrying in ${RetrySleepSec}s..."
             Start-Sleep $RetrySleepSec
         }
     }
     return $false
 }
 
-# P1: export market-updates — hard fail if all retries exhausted
+# P1: export market-updates -- hard fail if all retries exhausted
 $primaryOk = Export-Channel -ChannelId $primaryChannel -MaxRetries 3 -RetrySleepSec 30
 if (-not $primaryOk) {
-    Write-Error "market-updates (P1) export failed after 3 attempts — aborting. Commentary processor will not run."
+    Write-Error "market-updates (P1) export failed after 3 attempts -- aborting. Commentary processor will not run."
     exit 1
 }
 
@@ -125,7 +124,7 @@ $successCount = 1  # market-updates already counted
 foreach ($channelId in $secondaryChannels) {
     $ok = Export-Channel -ChannelId $channelId -MaxRetries 2 -RetrySleepSec 15
     if ($ok) { $successCount++ }
-    else { Write-Warning "Channel $channelId export failed after retries — skipping" }
+    else { Write-Warning "Channel $channelId export failed after retries -- skipping" }
 }
 
 $total = 1 + $secondaryChannels.Count
