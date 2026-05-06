@@ -209,6 +209,48 @@ MNQ_15M_CONFIG = {
     "max_concurrent_positions": 1,
 }
 
+MES_TREND_PAPER_CONFIG = {
+    #  Instrument — SMA(50,200) trend-following, 1h bars
+    #  Gate v2 verdict: PASS via ALT (dsr=0.667, rolling_wfo=STRONG, fixed_params_min_pf=1.275)
+    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rank7.json (created 2026-04-25)
+    #  WFO champion params: SMA(fast=50, slow=200, atr_trail_mult=2.0)
+    #  Train PF 2.063 (2024-06→2025-06) | Test PF 1.689 (2025-06→2026-03) | WFE 0.819
+    #  ALT routing applies: mc_95th_dd=5.40% ≤ 7.0% ceiling (requires $50K+ account sizing)
+    "symbol": "MES",
+    "interval": "1h",
+    "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
+    "enabled": True,  # Gate v2 ALT PASS — authorized for paper trading 2026-05-05
+    #  Capital & Sizing
+    "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
+    "risk_per_trade": 0.0025,  # 0.25% risk per trade
+    #  Strategy Mode — SMA trend uses its own param block, not STC params
+    "regime_filter": False,  # SMA crossover IS the regime filter; external filter redundant
+    "adaptive_regime": False,
+    "composite": False,
+    "volume_filter": False,
+    "mtf_filter": False,
+    #  SMA Trend Parameters (walk-forward champion from WFO rank7)
+    "sma_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+    },
+    #  Kill Thresholds — calibrated to ALT routing 7% MC DD ceiling
+    "kill_threshold": {
+        "consecutive_losses": 4,       # SMA trend has lower win rate (~44%) — allow longer runs
+        "consecutive_months_underperform": 2,
+        "monthly_loss_pct": -0.04,     # Slightly wider than STC strategies (higher R:R profile)
+        "max_daily_loss": -0.02,
+        "rolling_wfe_minimum": 0.40,
+    },
+    #  Contract Specifications
+    "multiplier": 5.0,       # $5/point for MES (Micro E-mini S&P 500)
+    "tick_size": 0.25,
+    "commission_per_contract": 2.50,
+    "slippage_ticks": 1,
+    "max_concurrent_positions": 1,
+}
+
 MES_15M_CONFIG = {
     #  Instrument (15-minute timeframe)
     "symbol": "MES",
@@ -252,6 +294,7 @@ PAPER_CONFIGS = {
     "MCL": MCL_PAPER_CONFIG,
     "MNQ": MNQ_PAPER_CONFIG,
     "MGC": MGC_PAPER_CONFIG,
+    "MES": MES_TREND_PAPER_CONFIG,
 }
 
 #  15-minute configs (intraday scanner)
