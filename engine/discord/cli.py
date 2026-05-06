@@ -129,7 +129,7 @@ def main():
                 from .commentary_processor import CoreyCommentaryProcessor
 
                 logger.info("Triggering commentary processor (%d new rows)...", inserted)
-                processor = CoreyCommentaryProcessor()
+                processor = CoreyCommentaryProcessor(db_path=args.db)
                 processor.invalidate_cache(date.today())
                 bias = asyncio.run(processor.get_session_bias())
                 logger.info(
