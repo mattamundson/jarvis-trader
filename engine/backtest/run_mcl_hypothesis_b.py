@@ -68,7 +68,7 @@ if str(engine_root) not in sys.path:
 # ---------------------------------------------------------------------------
 
 SYMBOL = "MCL"
-MULTIPLIER = 100.0          # MCL = 100 barrels × $0.01/tick = $1/tick
+MULTIPLIER = 100.0  # MCL = 100 barrels × $0.01/tick = $1/tick
 CAPITAL = 10_000.0
 TICK_SIZE = 0.01
 COMMISSION = 0.85
@@ -102,6 +102,7 @@ MIN_OOS_TRADES_PER_WINDOW = 5
 # ---------------------------------------------------------------------------
 # DB detection
 # ---------------------------------------------------------------------------
+
 
 def _find_sentiment_db() -> str:
     """Return path to the engine SQLite DB containing corey_session_bias, or ''."""
@@ -142,9 +143,7 @@ def _check_sentiment_table(db_path: str) -> dict:
         return {"rows": 0, "min_date": None, "max_date": None}
     try:
         conn = sqlite3.connect(db_path)
-        cur = conn.execute(
-            "SELECT COUNT(*), MIN(date), MAX(date) FROM corey_session_bias"
-        )
+        cur = conn.execute("SELECT COUNT(*), MIN(date), MAX(date) FROM corey_session_bias")
         row = cur.fetchone()
         conn.close()
         return {"rows": row[0] or 0, "min_date": row[1], "max_date": row[2]}
@@ -155,6 +154,7 @@ def _check_sentiment_table(db_path: str) -> dict:
 # ---------------------------------------------------------------------------
 # Data loading + WFO windows
 # ---------------------------------------------------------------------------
+
 
 def _load_data(data_file: Path) -> pd.DataFrame:
     df = pd.read_csv(data_file)
@@ -187,15 +187,17 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
         df_train = df[(df.index >= train_start) & (df.index < train_end)]
         df_test = df[(df.index >= test_start) & (df.index <= test_end)]
         if len(df_train) >= 30 and len(df_test) >= 30:
-            windows.append({
-                "window_num": wnum,
-                "train_start": train_start,
-                "train_end": train_end,
-                "test_start": test_start,
-                "test_end": test_end,
-                "n_train": len(df_train),
-                "n_test": len(df_test),
-            })
+            windows.append(
+                {
+                    "window_num": wnum,
+                    "train_start": train_start,
+                    "train_end": train_end,
+                    "test_start": test_start,
+                    "test_end": test_end,
+                    "n_train": len(df_train),
+                    "n_test": len(df_test),
+                }
+            )
             wnum += 1
         cursor += pd.DateOffset(months=STEP_MONTHS)
         if cursor >= data_end:
@@ -206,6 +208,7 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Per-combo evaluation
 # ---------------------------------------------------------------------------
+
 
 def _run_signals_and_backtest(
     df: pd.DataFrame,
@@ -250,20 +253,24 @@ def _build_grid(fast: bool) -> list[dict]:
     # Baseline: no sentiment gate, stop swept
     stops = [1.5] if fast else STOP_ATR_VALUES
     for stop in stops:
-        combos.append({
-            "mode": "none",
-            "sentiment_block_bearish": False,  # irrelevant when mode=none
-            "stop_atr_mult": stop,
-        })
+        combos.append(
+            {
+                "mode": "none",
+                "sentiment_block_bearish": False,  # irrelevant when mode=none
+                "stop_atr_mult": stop,
+            }
+        )
 
     # Hypothesis: sentiment overlay, block_bearish swept, stop swept
     block_vals = [True] if fast else [True, False]
     for block, stop in itertools.product(block_vals, stops):
-        combos.append({
-            "mode": "sentiment_overlay",
-            "sentiment_block_bearish": block,
-            "stop_atr_mult": stop,
-        })
+        combos.append(
+            {
+                "mode": "sentiment_overlay",
+                "sentiment_block_bearish": block,
+                "stop_atr_mult": stop,
+            }
+        )
 
     return combos
 
@@ -311,6 +318,7 @@ def _best_is_params(
 # Gate v2 metrics
 # ---------------------------------------------------------------------------
 
+from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 
 
@@ -319,7 +327,9 @@ def _compute_gate_v2(oos_results: list, n_grid_combos: int) -> dict:
 
     oos_pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
     oos_dds = [r.max_drawdown_pct for r in oos_results]
-    oos_sharpes = [r.sharpe_ratio for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
+    oos_sharpes = [
+        r.sharpe_ratio for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW
+    ]
     all_trades = sum(r.total_trades for r in oos_results)
 
     pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
@@ -363,14 +373,11 @@ def _compute_gate_v2(oos_results: list, n_grid_combos: int) -> dict:
 # Main WFO loop
 # ---------------------------------------------------------------------------
 
+
 def run_wfo(fast: bool = False) -> dict:
-    data_file = engine_root / "backtest" / "cache" / "MCL_2024-01-01_2026-03-28_1h.csv"
-    if not data_file.exists():
-        candidates = sorted((engine_root / "backtest" / "cache").glob("MCL_*_1h.csv"))
-        if not candidates:
-            raise FileNotFoundError("No MCL 1h data found in engine/backtest/cache/")
-        data_file = candidates[-1]
-        print(f"[MCL-HypB] Primary cache not found; using {data_file.name}")
+    data_dir = engine_root / "backtest" / "cache"
+    data_file = _find_latest_cache(data_dir, "MCL")
+    print(f"[MCL-HypB] Selected {data_file.name}")
 
     print(f"[MCL-HypB] Loading {data_file.name} ...")
     df = _load_data(data_file)
@@ -380,17 +387,23 @@ def run_wfo(fast: bool = False) -> dict:
     sentiment_db = _find_sentiment_db()
     if sentiment_db:
         stats = _check_sentiment_table(sentiment_db)
-        print(f"[MCL-HypB] Sentiment DB: {Path(sentiment_db).name} | "
-              f"{stats['rows']} rows | {stats['min_date']} -> {stats['max_date']}")
+        print(
+            f"[MCL-HypB] Sentiment DB: {Path(sentiment_db).name} | "
+            f"{stats['rows']} rows | {stats['min_date']} -> {stats['max_date']}"
+        )
         if stats["rows"] == 0:
-            print("[MCL-HypB] WARN: corey_session_bias is EMPTY — sentiment gate will "
-                  "fall through to all-True. Run discord backfill first:\n"
-                  "  .venv/Scripts/python -m discord.cli "
-                  "--source <discord-export-dir> --trigger-commentary")
+            print(
+                "[MCL-HypB] WARN: corey_session_bias is EMPTY — sentiment gate will "
+                "fall through to all-True. Run discord backfill first:\n"
+                "  .venv/Scripts/python -m discord.cli "
+                "--source <discord-export-dir> --trigger-commentary"
+            )
     else:
-        print("[MCL-HypB] WARN: No DB with corey_session_bias found — "
-              "sentiment_overlay mode will behave identically to 'none'.\n"
-              "  Run discord backfill to populate the table before trusting these results.")
+        print(
+            "[MCL-HypB] WARN: No DB with corey_session_bias found — "
+            "sentiment_overlay mode will behave identically to 'none'.\n"
+            "  Run discord backfill to populate the table before trusting these results."
+        )
 
     windows = _generate_windows(df)
     if not windows:
@@ -418,9 +431,11 @@ def run_wfo(fast: bool = False) -> dict:
         os_ = win["test_start"]
         oe = win["test_end"]
 
-        print(f"\nWindow {wnum}: IS {ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}  "
-              f"OOS {os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}  "
-              f"({win['n_train']} / {win['n_test']} bars)")
+        print(
+            f"\nWindow {wnum}: IS {ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}  "
+            f"OOS {os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}  "
+            f"({win['n_train']} / {win['n_test']} bars)"
+        )
 
         df_train = df[(df.index >= ts) & (df.index < te)].copy()
         df_test = df[(df.index >= os_) & (df.index <= oe)].copy()
@@ -428,11 +443,15 @@ def run_wfo(fast: bool = False) -> dict:
         best_params, is_result = _best_is_params(df_train, grid, sentiment_db)
 
         if best_params is None:
-            print(f"  [SKIP] No valid IS params (all combos < {MIN_OOS_TRADES_PER_WINDOW} trades or errored)")
+            print(
+                f"  [SKIP] No valid IS params (all combos < {MIN_OOS_TRADES_PER_WINDOW} trades or errored)"
+            )
             continue
 
-        print(f"  Best IS: {_label(best_params)}  "
-              f"PF={is_result.profit_factor:.2f}  trades={is_result.total_trades}")
+        print(
+            f"  Best IS: {_label(best_params)}  "
+            f"PF={is_result.profit_factor:.2f}  trades={is_result.total_trades}"
+        )
 
         try:
             oos_result = _run_signals_and_backtest(
@@ -446,24 +465,28 @@ def run_wfo(fast: bool = False) -> dict:
             print(f"  [SKIP] OOS error: {exc}")
             continue
 
-        print(f"  OOS:     PF={oos_result.profit_factor:.2f}  "
-              f"DD={oos_result.max_drawdown_pct:.1%}  "
-              f"Sharpe={oos_result.sharpe_ratio:.2f}  "
-              f"trades={oos_result.total_trades}")
+        print(
+            f"  OOS:     PF={oos_result.profit_factor:.2f}  "
+            f"DD={oos_result.max_drawdown_pct:.1%}  "
+            f"Sharpe={oos_result.sharpe_ratio:.2f}  "
+            f"trades={oos_result.total_trades}"
+        )
 
         oos_results.append(oos_result)
-        window_records.append({
-            "window": wnum,
-            "is_period": f"{ts.strftime('%Y-%m')} -> {te.strftime('%Y-%m')}",
-            "oos_period": f"{os_.strftime('%Y-%m')} -> {oe.strftime('%Y-%m')}",
-            "best_params": best_params,
-            "is_pf": round(is_result.profit_factor, 3),
-            "is_trades": is_result.total_trades,
-            "oos_pf": round(oos_result.profit_factor, 3),
-            "oos_dd": round(oos_result.max_drawdown_pct, 4),
-            "oos_sharpe": round(oos_result.sharpe_ratio, 3),
-            "oos_trades": oos_result.total_trades,
-        })
+        window_records.append(
+            {
+                "window": wnum,
+                "is_period": f"{ts.strftime('%Y-%m')} -> {te.strftime('%Y-%m')}",
+                "oos_period": f"{os_.strftime('%Y-%m')} -> {oe.strftime('%Y-%m')}",
+                "best_params": best_params,
+                "is_pf": round(is_result.profit_factor, 3),
+                "is_trades": is_result.total_trades,
+                "oos_pf": round(oos_result.profit_factor, 3),
+                "oos_dd": round(oos_result.max_drawdown_pct, 4),
+                "oos_sharpe": round(oos_result.sharpe_ratio, 3),
+                "oos_trades": oos_result.total_trades,
+            }
+        )
 
     if not oos_results:
         print("\n[MCL-HypB] No OOS results — WFO aborted.")
@@ -475,9 +498,13 @@ def run_wfo(fast: bool = False) -> dict:
     print(f"=== GATE v2 VERDICT: {gate['verdict']} ===")
     print(f"  pf_ci_lower = {gate['pf_ci_lower']:.3f}  (need >= {GATE_PF_CI_LOWER})")
     print(f"  p_edge      = {gate['p_edge']:.3f}  (need >= {GATE_P_EDGE})")
-    print(f"  mc_95th_dd  = {gate['mc_95th_dd']:.3%}  (need <= {GATE_MC_DD:.0%} core / {GATE_MC_DD_ALT:.0%} alt)")
+    print(
+        f"  mc_95th_dd  = {gate['mc_95th_dd']:.3%}  (need <= {GATE_MC_DD:.0%} core / {GATE_MC_DD_ALT:.0%} alt)"
+    )
     print(f"  dsr         = {gate['dsr']:.4f}  (need >= {GATE_DSR})")
-    print(f"  OOS windows = {gate['n_oos_windows_with_trades']} with trades / {gate['n_oos_windows']} total")
+    print(
+        f"  OOS windows = {gate['n_oos_windows_with_trades']} with trades / {gate['n_oos_windows']} total"
+    )
     print(f"  Total OOS trades = {gate['total_oos_trades']}")
     print(f"{'=' * 65}")
 
@@ -494,8 +521,10 @@ def run_wfo(fast: bool = False) -> dict:
         "verdict": gate["verdict"],
         "core_verdict": gate["core_verdict"],
         "alt_verdict": gate["alt_verdict"],
-        "passed_via": "core" if gate["core_verdict"] == "PASS" else (
-            "alt" if gate["alt_verdict"] == "PASS" else None
+        "passed_via": (
+            "core"
+            if gate["core_verdict"] == "PASS"
+            else ("alt" if gate["alt_verdict"] == "PASS" else None)
         ),
         "created_at": datetime.now(tz=timezone.utc).isoformat(),
         "params": {
@@ -512,7 +541,7 @@ def run_wfo(fast: bool = False) -> dict:
             "table": "corey_session_bias",
             "field": "directional_bias",
             "empty_warning": not bool(sentiment_db)
-                or _check_sentiment_table(sentiment_db)["rows"] == 0,
+            or _check_sentiment_table(sentiment_db)["rows"] == 0,
         },
         "wfo_config": {
             "train_months": TRAIN_MONTHS,
@@ -555,10 +584,12 @@ def run_wfo(fast: bool = False) -> dict:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(description="MCL Hypothesis B Gate v2 WFO (Sentiment Overlay)")
     parser.add_argument(
-        "--fast", action="store_true",
+        "--fast",
+        action="store_true",
         help="Use reduced grid (3 combos vs 9) for faster iteration",
     )
     args = parser.parse_args()
@@ -572,7 +603,9 @@ def main():
     final = verdict.get("verdict", "FAIL")
     if final == "PASS":
         print("\n[PASS] Hypothesis B PASSES gate v2 (CORE).")
-        print("  Next: remove MCL from DO_NOT_TRADE_SYMBOLS and wire sentiment gate into live pipeline.")
+        print(
+            "  Next: remove MCL from DO_NOT_TRADE_SYMBOLS and wire sentiment gate into live pipeline."
+        )
     elif final == "PASS_ALT":
         print("\n[PASS-ALT] Hypothesis B PASSES gate v2 (ALT routing only).")
         print("  Next: decide whether to ungate MCL under ALT constraints.")
@@ -596,10 +629,12 @@ def main():
         sentiment_info = verdict.get("sentiment", {})
         if sentiment_info.get("empty_warning"):
             print("\n  NOTE: corey_session_bias was empty when this ran.")
-            print("  Run discord backfill, then re-run:\n"
-                  "    .venv/Scripts/python -m discord.cli "
-                  "--source <discord-export-dir> --trigger-commentary\n"
-                  "    .venv/Scripts/python -m backtest.run_mcl_hypothesis_b")
+            print(
+                "  Run discord backfill, then re-run:\n"
+                "    .venv/Scripts/python -m discord.cli "
+                "--source <discord-export-dir> --trigger-commentary\n"
+                "    .venv/Scripts/python -m backtest.run_mcl_hypothesis_b"
+            )
 
 
 def _check_metric(metric: str, val: float, thresholds: dict) -> bool:
