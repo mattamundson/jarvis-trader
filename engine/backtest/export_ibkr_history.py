@@ -96,9 +96,9 @@ SYMBOL_TO_IB_SPEC = {
 def _import_ib_async():
     """Import ib_async lazily so --help works without it installed."""
     try:
-        from ib_async import IB, Future
+        from ib_async import IB, ContFuture, Future
 
-        return IB, Future
+        return IB, Future, ContFuture
     except ImportError as e:
         print(
             f"ERROR: ib_async not available ({e}).\n"
@@ -171,7 +171,7 @@ async def _fetch_bars_async(
     end_dt: str = "",
 ) -> pd.DataFrame:
     """Connect to IB Gateway paper and fetch historical bars."""
-    IB, Future = _import_ib_async()
+    IB, Future, ContFuture = _import_ib_async()
 
     if symbol not in SYMBOL_TO_IB_SPEC:
         raise ValueError(f"Unknown symbol {symbol}; supported: {list(SYMBOL_TO_IB_SPEC)}")
@@ -186,17 +186,40 @@ async def _fetch_bars_async(
     await ib.connectAsync(IB_HOST, IB_PAPER_PORT, clientId=IB_CLIENT_ID_DATA, timeout=15)
 
     try:
-        # Continuous front-month: use Future without expiry date and let IB pick
-        contract = Future(
+        # Use ContFuture to get the continuous front-month contract directly.
+        # Plain Future() without lastTradeDateOrContractMonth was returning
+        # "Ambiguous contract" warnings and qualified=[None] from IBKR because
+        # it matches every active expiry. ContFuture resolves to the front
+        # month and lets us swap to its concrete localSymbol for historical
+        # data requests.
+        cont = ContFuture(
             symbol=spec["symbol"],
             exchange=spec["exchange"],
             currency=spec["currency"],
         )
-        # Resolve to specific contract — qualifyContractsAsync picks active month
-        qualified = await ib.qualifyContractsAsync(contract)
-        if not qualified:
-            raise RuntimeError(f"Could not qualify contract for {symbol}")
-        active = qualified[0]
+        qualified = await ib.qualifyContractsAsync(cont)
+        if not qualified or qualified[0] is None:
+            raise RuntimeError(f"Could not qualify continuous contract for {symbol}")
+        cont_active = qualified[0]
+
+        # ContFuture provides the conId of the active front month. Build a
+        # concrete Future contract from it for reqHistoricalDataAsync (which
+        # works with ContFuture too, but specific contracts are more reliable
+        # for historical data when you want bar-perfect coverage).
+        active = Future(
+            symbol=cont_active.symbol,
+            lastTradeDateOrContractMonth=cont_active.lastTradeDateOrContractMonth,
+            exchange=cont_active.exchange,
+            currency=cont_active.currency,
+            localSymbol=cont_active.localSymbol,
+            multiplier=cont_active.multiplier,
+        )
+        active_qualified = await ib.qualifyContractsAsync(active)
+        if not active_qualified or active_qualified[0] is None:
+            raise RuntimeError(
+                f"Could not qualify front-month {cont_active.localSymbol} for {symbol}"
+            )
+        active = active_qualified[0]
         print(
             f"[IBKR] Active contract: {active.localSymbol} ({active.lastTradeDateOrContractMonth})"
         )
