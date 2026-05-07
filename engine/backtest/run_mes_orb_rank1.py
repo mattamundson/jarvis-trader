@@ -293,25 +293,8 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple:
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
-
-def _bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = N_BOOTSTRAP) -> float:
-    if len(oos_pfs) < 2:
-        return float(np.mean(oos_pfs)) if oos_pfs else 0.0
-    rng = np.random.default_rng(42)
-    arr = np.array(oos_pfs, dtype=float)
-    boot = [rng.choice(arr, size=len(arr), replace=True).mean() for _ in range(n)]
-    return float(np.percentile(boot, 5.0))
-
-
-def _classify_wfo_consistency(oos_pfs: list[float]) -> str:
-    if not oos_pfs:
-        return "WEAK"
-    pct = sum(1 for pf in oos_pfs if pf > 1.0) / len(oos_pfs)
-    if pct >= 0.75:
-        return "STRONG"
-    elif pct >= 0.55:
-        return "MODERATE"
-    return "WEAK"
+from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
+from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
 
 
 # ---------------------------------------------------------------------------
@@ -430,10 +413,7 @@ def _compute_gate_v2(
     ]
     all_trades = sum(r.total_trades for r in oos_results)
 
-    # Cap inf PF at 5 for metric computations (doesn't change PASS/FAIL logic)
-    oos_pfs_capped = [min(pf, 5.0) if pf != float("inf") else 5.0 for pf in oos_pfs]
-
-    pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs_capped)
+    pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
     p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
     mc_95th_dd = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
     mean_sharpe = float(np.mean(oos_sharpes)) if oos_sharpes else 0.0
