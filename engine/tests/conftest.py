@@ -14,6 +14,17 @@ _tests_dir = Path(__file__).resolve().parent
 if str(_tests_dir) not in sys.path:
     sys.path.insert(0, str(_tests_dir))
 
+# Sanitize SSL_CERT_FILE / SSL_CERT_DIR before any TLS-using import. Anaconda's
+# activation hooks set these to paths that may not exist (e.g. forward-slash mix
+# `C:\Users\mattm\anaconda3/ssl/cacert.pem` vs the real `Library\ssl\cacert.pem`).
+# When the path doesn't exist, urllib/requests/httpx fail with bewildering errors
+# (e.g. SSL: CERTIFICATE_VERIFY_FAILED, FileNotFoundError on cert load) — the
+# triage agent observed 13 test_market_modules errors collapsing to this cause.
+for _cert_var in ("SSL_CERT_FILE", "SSL_CERT_DIR"):
+    _val = os.environ.get(_cert_var)
+    if _val and not Path(_val).exists():
+        os.environ.pop(_cert_var, None)
+
 # Read real API_KEY from engine/.env so live integration tests authenticate correctly.
 # Falls back to "test-key" if .env is absent (unit tests don't need the real key).
 _engine_env = Path(__file__).parent.parent / ".env"
