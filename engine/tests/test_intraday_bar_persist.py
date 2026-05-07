@@ -13,7 +13,7 @@ All tests mock MarketDataManager to keep these fully offline.
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo

@@ -122,8 +122,9 @@ def test_dashboard_json_handles_missing_reports_gracefully():
 
 def test_dashboard_html_serves_html_content_type():
     """The /operations/dashboard.html endpoint returns an HTMLResponse."""
-    from fastapi.testclient import TestClient
     from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
     from api.operations_dashboard import router
 
     app = FastAPI()
