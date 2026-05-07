@@ -2443,29 +2443,6 @@ app.websocket("/ws/events")(events_handler)
 # ── Safety / Kill Switch (shared routes live in routers/safety_router.py) ───
 
 
-@app.get("/safety/config", response_model=SafetyConfigResponse)
-async def get_safety_config():
-    """
-    Return current risk parameter configuration (read-only).
-    Sourced from settings singleton — reflects .env values at startup.
-    """
-    return {
-        "max_daily_loss_pct": settings.MAX_DAILY_LOSS_PCT,
-        "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
-        "max_position_size_pct": settings.MAX_POSITION_SIZE_PCT,
-        "max_contracts_per_instrument": settings.MAX_CONTRACTS_PER_INSTRUMENT,
-        "max_overnight_contracts": settings.MAX_OVERNIGHT_CONTRACTS,
-        "max_orders_per_minute": settings.MAX_ORDERS_PER_MINUTE,
-        "max_single_order_value": settings.MAX_SINGLE_ORDER_VALUE,
-        "max_margin_utilization": settings.MAX_MARGIN_UTILIZATION,
-        "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
-        "require_human_approval": settings.REQUIRE_HUMAN_APPROVAL,
-        "ibkr_host": settings.IBKR_HOST,
-        "ibkr_port": settings.IBKR_PORT,
-        "ibkr_client_id": settings.IBKR_CLIENT_ID,
-        "ibkr_paper_mode": settings.IBKR_PAPER_MODE,
-    }
-
 
 @app.get("/position-sizing/calculate")
 async def calculate_position_size_alias():
@@ -2491,122 +2468,7 @@ async def calculate_position_size_alias():
     }
 
 
-@app.get("/safety/loss-tracker")
-async def get_loss_tracker_status():
-    """
-    Return consecutive loss tracking state.\n
-    Returns:
-        global_consecutive_losses: Total consecutive losses (all symbols)
-        symbol_losses: Dict[symbol] -> consecutive loss count
-        position_size_multiplier: 1.0 / 0.5 / 0.25 / 0.0 based on loss streak
-        is_halted: True if trading is paused due to loss limit
-        halt_until: ISO timestamp when trading resumes (if halted)
-        last_trade_symbol: Which symbol was last traded
-        last_trade_timestamp: When the last trade executed
-        config: Loss threshold configuration
-    """
-    if not loss_tracker:
-        raise HTTPException(500, "Loss tracker not initialized")
-    try:
-        return loss_tracker.get_status()
-    except Exception as e:
-        logger.error(f"[LOSS-TRACKER] Status query failed: {e}")
-        raise HTTPException(500, f"Failed to get loss tracker status: {e}") from e
 
-
-# ── Risk Limits Settings ───────────────────────────────────────────────────
-
-
-@app.get("/settings/risk")
-async def get_risk_settings():
-    """Get current risk/circuit breaker settings."""
-    try:
-        # Get live circuit breaker state
-        cb_status = {}
-        if safety_layer:
-            cb_status = safety_layer.check_circuit_breakers()
-
-        # Get config defaults from env / TradingConfig
-        config = {
-            "daily_loss_limit": float(
-                os.getenv("DAILY_LOSS_LIMIT", str(settings.MAX_DAILY_LOSS_PCT * 10000))
-            ),
-            "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
-            "max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
-            "risk_per_trade_pct": float(os.getenv("RISK_PER_TRADE_PCT", "0.01")),
-            "atr_stop_multiplier": float(os.getenv("ATR_STOP_MULTIPLIER", "0.70")),
-            "atr_target_multiplier": float(os.getenv("ATR_TARGET_MULTIPLIER", "1.50")),
-        }
-
-        # Override with DB settings if available (DB values take precedence over env)
-        if db_manager:
-            for key in config:
-                val = db_manager.get_setting(key)
-                if val is not None:
-                    try:
-                        config[key] = type(config[key])(val)
-                    except (ValueError, TypeError):
-                        pass
-
-        return {
-            "config": config,
-            "circuit_breakers": cb_status,
-            "editable_keys": list(config.keys()),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@app.post("/settings/risk")
-async def update_risk_settings(payload: dict):
-    """Update risk settings (persists to DB settings table)."""
-    if not db_manager:
-        raise HTTPException(status_code=503, detail="Database not initialized")
-
-    ALLOWED_KEYS = {
-        "daily_loss_limit",
-        "max_drawdown_pct",
-        "max_contracts",
-        "risk_per_trade_pct",
-        "atr_stop_multiplier",
-        "atr_target_multiplier",
-    }
-
-    VALIDATORS = {
-        "daily_loss_limit": lambda v: float(v) > 0,
-        "max_drawdown_pct": lambda v: 0 < float(v) <= 1.0,
-        "max_contracts": lambda v: 1 <= int(v) <= 10,
-        "risk_per_trade_pct": lambda v: 0 < float(v) <= 0.05,
-        "atr_stop_multiplier": lambda v: 0.1 <= float(v) <= 3.0,
-        "atr_target_multiplier": lambda v: 0.1 <= float(v) <= 5.0,
-    }
-
-    updated = {}
-    errors = {}
-
-    for key, value in payload.items():
-        if key not in ALLOWED_KEYS:
-            errors[key] = "Unknown setting"
-            continue
-
-        validator = VALIDATORS.get(key)
-        try:
-            if validator and not validator(value):
-                errors[key] = f"Value {value} out of allowed range"
-                continue
-            db_manager.set_setting(key, str(value))
-            updated[key] = value
-        except Exception as e:
-            errors[key] = str(e)[:80]
-
-    return {
-        "updated": updated,
-        "errors": errors,
-        "count": len(updated),
-    }
-
-
-# ── Strategy Parameters ────────────────────────────────────────────────────────
 
 
 class StrategyParams(BaseModel):
@@ -2631,73 +2493,6 @@ class StrategyParams(BaseModel):
 _strategy_params = StrategyParams()
 
 
-@app.get("/strategy/params")
-async def get_strategy_params():
-    """
-    Get current strategy parameter configuration.\n
-    Returns:
-        ema_short: Short-term EMA period (default 8)
-        ema_long: Medium-term EMA period (default 21)
-        ema_smoother: Long-term EMA period (default 34)
-        atr_length: ATR indicator period (default 14)
-        atr_mult_stop: Stop loss as multiple of ATR (default 1.5x)
-        atr_mult_target: Profit target as multiple of ATR (default 3.0x)
-        min_volume_sma: Minimum volume SMA period (default 20)
-        rsi_length: RSI indicator period (default 14)
-        rsi_oversold: RSI oversold threshold (default 30)
-        rsi_overbought: RSI overbought threshold (default 70)
-        adaptive_regime: Apply regime-based filters (default True)
-        volume_filter: Apply volume filters (default False)
-        mtf_filter: Apply multi-timeframe filters (default False)
-    """
-    global _strategy_params
-    return _strategy_params.model_dump()
-
-
-@app.put("/strategy/params")
-async def update_strategy_params(params: StrategyParams):
-    """
-    Update strategy parameter configuration.\n
-    Changes take effect immediately for future backtests and live trading.
-    Existing positions are unaffected.\n
-    Request:
-        ema_short, ema_long, ema_smoother: EMA periods
-        atr_length, atr_mult_stop, atr_mult_target: ATR configuration
-        min_volume_sma, rsi_length, rsi_oversold, rsi_overbought: Indicator settings
-        adaptive_regime, volume_filter, mtf_filter: Feature flags
-    """
-    global _strategy_params
-    try:
-        # Validate parameters
-        if not (1 < params.ema_short < params.ema_long < params.ema_smoother < 200):
-            raise ValueError("EMA periods must satisfy: 1 < short < long < smoother < 200")
-        if not (1 <= params.atr_length <= 50):
-            raise ValueError("ATR length must be 1-50")
-        if not (0.5 <= params.atr_mult_stop <= 10.0):
-            raise ValueError("ATR stop multiplier must be 0.5-10.0")
-        if not (0.5 <= params.atr_mult_target <= 10.0):
-            raise ValueError("ATR target multiplier must be 0.5-10.0")
-        if not (1 <= params.rsi_length <= 50):
-            raise ValueError("RSI length must be 1-50")
-        if not (0 < params.rsi_oversold < 50):
-            raise ValueError("RSI oversold must be 0-50")
-        if not (50 < params.rsi_overbought < 100):
-            raise ValueError("RSI overbought must be 50-100")
-
-        old_params = _strategy_params.model_dump()
-        _strategy_params = params
-        logger.info(f"[STRATEGY] Parameters updated: {params.model_dump()}")
-
-        return {
-            "status": "updated",
-            "old_params": old_params,
-            "new_params": params.model_dump(),
-        }
-    except ValueError as e:
-        raise HTTPException(400, f"Invalid parameter: {e}") from e
-    except Exception as e:
-        logger.error(f"[STRATEGY] Update failed: {e}")
-        raise HTTPException(500, f"Failed to update strategy parameters: {e}") from e
 
 
 @app.get("/safety/circuit-breakers", response_model=CircuitBreakerStatus)
@@ -4252,61 +4047,6 @@ async def test_whatsapp():
 
 # ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────
 
-
-@app.post("/notifications/vix-alert-check")
-async def check_vix_alert():
-    """Check VIX and send WhatsApp alert if above key thresholds."""
-    try:
-        from analytics.vix_overlay import VIXOverlay
-        from notifications.whatsapp import send_whatsapp_message
-
-        vix = VIXOverlay(data_manager=data_manager)
-        state = await vix.get_state_async()
-
-        thresholds = [
-            (40, "EXTREME VIX", "Consider halting all trading"),
-            (30, "ELEVATED VIX", "Reduce position size, widen stops"),
-            (20, "CAUTION VIX", "Monitor closely, use regime filter"),
-        ]
-
-        alert_level = None
-        guidance = None
-        for level, label, advice in thresholds:
-            if state.vix_value >= level:
-                alert_level = label
-                guidance = advice
-                break
-
-        if alert_level is None:
-            return {
-                "sent": False,
-                "vix": state.vix_value,
-                "regime": state.regime,
-                "reason": "VIX normal — no alert needed",
-            }
-
-        msg = (
-            "JARVIS TRADER - VIX Alert\n\n"
-            f"VIX: {state.vix_value:.1f} - {alert_level}\n"
-            f"Classification: {state.classification}\n\n"
-            f"{guidance}\n\n"
-            f"Source: {state.source}"
-        )
-
-        success = await send_whatsapp_message(msg)
-        return {
-            "sent": success,
-            "vix": state.vix_value,
-            "regime": state.regime,
-            "alert_level": alert_level,
-            "guidance": guidance,
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-# ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────
 
 
 @app.post("/notifications/vix-alert-check")
