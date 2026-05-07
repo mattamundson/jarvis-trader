@@ -1321,10 +1321,10 @@ Respond with JSON in exactly this format:
                 continue
             # Try attribute access first (dataclass), then dict key access
             signal = None
-            for field in ("signal", "bias", "sentiment_score"):
-                signal = getattr(report, field, None)
+            for field_name in ("signal", "bias", "sentiment_score"):
+                signal = getattr(report, field_name, None)
                 if signal is None and isinstance(report, dict):
-                    signal = report.get(field)
+                    signal = report.get(field_name)
                 if signal is not None:
                     break
             if signal is None:

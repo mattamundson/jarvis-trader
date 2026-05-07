@@ -574,8 +574,12 @@ def compute_outlook(target_date: date, symbols: list[str] | None = None) -> dict
 # Markdown report renderer
 # ---------------------------------------------------------------------------
 
-_FMT_MONEY = lambda x: f"${x:+.2f}" if x is not None else "—"
-_FMT_PCT = lambda x: f"{x:.1f}%" if x is not None else "—"
+def _FMT_MONEY(x):
+    return f"${x:+.2f}" if x is not None else "—"
+
+
+def _FMT_PCT(x):
+    return f"{x:.1f}%" if x is not None else "—"
 
 
 def render_report(

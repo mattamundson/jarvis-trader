@@ -109,30 +109,35 @@ def _run(df: pd.DataFrame, bb_period: int, bb_std: float, atr_stop_mult: float,
                     pnl = (stop - entry) * mult * CONTRACTS - 2 * slip_usd - commission_round
                     trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
                                    "side": "long", "pnl": pnl, "reason": "stop"})
-                    in_pos = False; continue
+                    in_pos = False
+                    continue
                 if price >= sma.iloc[i] and prev_price < sma.iloc[i - 1]:
                     pnl = (price - entry) * mult * CONTRACTS - 2 * slip_usd - commission_round
                     trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
                                    "side": "long", "pnl": pnl, "reason": "mid_cross"})
-                    in_pos = False; continue
+                    in_pos = False
+                    continue
             else:
                 if float(df["high"].iloc[i]) >= stop:
                     pnl = (entry - stop) * mult * CONTRACTS - 2 * slip_usd - commission_round
                     trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
                                    "side": "short", "pnl": pnl, "reason": "stop"})
-                    in_pos = False; continue
+                    in_pos = False
+                    continue
                 if price <= sma.iloc[i] and prev_price > sma.iloc[i - 1]:
                     pnl = (entry - price) * mult * CONTRACTS - 2 * slip_usd - commission_round
                     trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
                                    "side": "short", "pnl": pnl, "reason": "mid_cross"})
-                    in_pos = False; continue
+                    in_pos = False
+                    continue
             # Time stop
             if i - entry_idx >= max_hold_bars:
                 pnl = ((price - entry) if side > 0 else (entry - price)) * mult * CONTRACTS - 2 * slip_usd - commission_round
                 trades.append({"entry_time": str(entry_time), "exit_time": str(bar_time),
                                "side": "long" if side > 0 else "short",
                                "pnl": pnl, "reason": "time_stop"})
-                in_pos = False; continue
+                in_pos = False
+                continue
         else:
             # Entry: close crosses outside band
             if prev_price >= lower.iloc[i - 1] and price < lower.iloc[i]:

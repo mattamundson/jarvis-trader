@@ -198,7 +198,7 @@ def compute_hp_ou_level(df: pd.DataFrame) -> tuple[Optional[float], list[float],
         c_idx = lows_idx[i]
         c_price = close.iloc[c_idx]
         # Find B (high) between A and C
-        a_candidates = [j for j in lows_idx[:i]]
+        a_candidates = list(lows_idx[:i])
         if not a_candidates:
             continue
         a_idx = a_candidates[-1]
@@ -239,7 +239,7 @@ def compute_hp_ou_level(df: pd.DataFrame) -> tuple[Optional[float], list[float],
     support_levels = [base - ab_range * f for f in [0.382, 0.618, 1.0]]
 
     all_raw = c_levels + d_levels + support_levels
-    level_ladder = sorted(set(round(l, 2) for l in all_raw if l > 0))  # noqa: E741  # OHLC convention
+    level_ladder = sorted({round(l, 2) for l in all_raw if l > 0})  # noqa: E741  # OHLC convention
 
     return swing_points.midpoint, level_ladder, swing_points
 

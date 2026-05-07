@@ -59,7 +59,8 @@ class PromotionEngine:
                 win_rate = wins / total
 
                 status = "eligible" if total >= 10 and win_rate > 0.55 else "monitoring"
-                if total < 10: status = "insufficient_data"
+                if total < 10:
+                    status = "insufficient_data"
 
                 performance[regime] = {
                     "count": total,

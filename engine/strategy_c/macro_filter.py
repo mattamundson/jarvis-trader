@@ -152,7 +152,6 @@ class MacroRegimeFilter:
                     from data.fred_data import get_live_macro_yfinance
                 except ImportError:
                     from engine.data.fred_data import get_live_macro_yfinance
-                if False: pass  # dummy
                 snap = get_live_macro_yfinance()
                 yc = snap.get("yield_curve_2_10", {}).get("value", None)
                 if yc is not None:
