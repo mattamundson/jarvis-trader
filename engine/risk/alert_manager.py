@@ -4,6 +4,7 @@ AlertManager — fires push alerts when trading thresholds are crossed.
 Deduplicates alerts: each threshold fires at most once per trading day.
 Provides an in-memory log of alerts sent today for the /safety/alerts/history endpoint.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -47,7 +48,7 @@ class AlertManager:
 
     def __init__(
         self,
-        notify_fn: Optional[Callable[[str], Awaitable[None]]] = None,
+        notify_fn: Optional[Callable[[str], Awaitable[bool]]] = None,
     ):
         """
         Parameters
@@ -186,10 +187,7 @@ class AlertManager:
         elif consecutive_losses >= int(ALERT_THRESHOLDS["consecutive_losses_2"]):
             _maybe(
                 "consecutive_losses_2",
-                (
-                    "JARVIS ALERT | 2 CONSECUTIVE LOSSES\n"
-                    "Pattern forming — monitor closely"
-                ),
+                ("JARVIS ALERT | 2 CONSECUTIVE LOSSES\n" "Pattern forming — monitor closely"),
             )
 
         # ── Daily profit levels (mutually exclusive — only fire the best) ─
@@ -251,9 +249,7 @@ class AlertManager:
                     try:
                         delivered = await self._notify(message)
                         if delivered:
-                            logger.info(
-                                "[AlertManager] Sent: %.80s", message.replace("\n", " | ")
-                            )
+                            logger.info("[AlertManager] Sent: %.80s", message.replace("\n", " | "))
                         else:
                             logger.warning(
                                 "[AlertManager] notify_fn returned falsy — delivery failed: %.80s",
