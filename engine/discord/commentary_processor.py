@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 # DB path helper (mirrors signal_context.py convention)
 # ---------------------------------------------------------------------------
 
+
 def _default_db_path() -> str:
     # DB lives at engine/data/jarvis_trader.db. Anchor at engine/ root, not
     # workspace root — the previous 3-levels-up walked past engine/ and
@@ -66,20 +67,21 @@ CREATE TABLE IF NOT EXISTS corey_session_bias (
 # Dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CoreySessionBias:
     """Structured session bias extracted from Corey's commentary."""
 
     date: date
-    session_type: str           # "range_day" | "trend_day" | "outside_bar" | "inside_bar" | "uncertain"
-    directional_bias: str       # "bullish" | "bearish" | "neutral"
-    key_levels: list[float]     # price levels mentioned in commentary
-    ib_bias: str                # "above_ib" | "below_ib" | "inside_ib" | "not_mentioned"
+    session_type: str  # "range_day" | "trend_day" | "outside_bar" | "inside_bar" | "uncertain"
+    directional_bias: str  # "bullish" | "bearish" | "neutral"
+    key_levels: list[float]  # price levels mentioned in commentary
+    ib_bias: str  # "above_ib" | "below_ib" | "inside_ib" | "not_mentioned"
     specific_triggers: list[str]  # max 5 actionable statements
-    conviction: float           # 0.0-1.0
-    corey_quote: str            # single most actionable sentence
-    message_count: int          # number of commentary messages used
-    data_quality: str           # "fresh" | "stale" | "none"
+    conviction: float  # 0.0-1.0
+    corey_quote: str  # single most actionable sentence
+    message_count: int  # number of commentary messages used
+    data_quality: str  # "fresh" | "stale" | "none"
 
     def to_dict(self) -> dict:
         return {
@@ -224,7 +226,8 @@ class CoreyCommentaryProcessor:
             if days_old > self.STALE_DAYS:
                 logger.info(
                     "[CoreyProcessor] Commentary is %d days old (from %s) — will be marked stale",
-                    days_old, actual_date,
+                    days_old,
+                    actual_date,
                 )
 
         # Call LLM
@@ -335,6 +338,11 @@ class CoreyCommentaryProcessor:
 
         except Exception as e:
             logger.error("[CoreyProcessor] LLM extraction failed: %s", e)
+            # data_quality must be 'none' on any LLM exception — the rows-present
+            # branch previously wrote 'fresh'/'stale' here, which downstream
+            # correlation queries (discord_correlation.py filters on data_quality
+            # IN ('fresh','stale')) would silently include as content-empty
+            # neutral noise. 'none' is the explicit "no LLM-extracted bias" sentinel.
             return CoreySessionBias(
                 date=for_date,
                 session_type="uncertain",
@@ -345,7 +353,7 @@ class CoreyCommentaryProcessor:
                 conviction=0.0,
                 corey_quote="",
                 message_count=len(rows),
-                data_quality=data_quality if rows else "none",
+                data_quality="none",
             )
 
     # ── Cache ───────────────────────────────────────────────────────────────
@@ -357,9 +365,7 @@ class CoreyCommentaryProcessor:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
-                cur.execute(
-                    "SELECT * FROM corey_session_bias WHERE date = ?", (date_str,)
-                )
+                cur.execute("SELECT * FROM corey_session_bias WHERE date = ?", (date_str,))
                 row = cur.fetchone()
             if row is None:
                 return None
@@ -407,7 +413,11 @@ class CoreyCommentaryProcessor:
                     ),
                 )
                 conn.commit()
-            logger.debug("[CoreyProcessor] Cached session bias for %s (quality=%s)", date_str, bias.data_quality)
+            logger.debug(
+                "[CoreyProcessor] Cached session bias for %s (quality=%s)",
+                date_str,
+                bias.data_quality,
+            )
         except Exception as e:
             logger.warning("[CoreyProcessor] Cache save failed: %s", e)
 
@@ -426,6 +436,7 @@ class CoreyCommentaryProcessor:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _build_message_block(rows: list[dict], max_chars: int = 6000) -> str:
     """Build a single text block from commentary rows, newest-first trimming if needed."""
