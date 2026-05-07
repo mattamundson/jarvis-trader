@@ -41,6 +41,7 @@ def run_startup_checks(config) -> list[CheckResult]:
     results.append(_check_polygon_key(config))
     results.append(_check_fred_key(config))
     results.append(_check_disk_space())
+    results.append(_check_paper_config_do_not_trade_sync())
 
     for r in results:
         if r.status == "fail":
@@ -208,6 +209,68 @@ def _check_fred_key(config) -> CheckResult:
         name="FRED API Key",
         status="pass",
         message="FRED API key configured",
+    )
+
+
+def _check_paper_config_do_not_trade_sync() -> CheckResult:
+    """
+    FAIL if any paper config has enabled=True for a symbol in DO_NOT_TRADE_SYMBOLS.
+
+    Root cause of the MNQ wiring leak (commit 0772e20, 2026-05-06/07): the
+    paper config had enabled=True while the symbol was in DO_NOT_TRADE_SYMBOLS.
+    The dispatcher trusted the config flag without cross-checking the verdict
+    blocklist, causing 55 erroneous trades. This check makes the misconfiguration
+    visible at cold-start before any signals can fire.
+    """
+    try:
+        from backtest.paper_config import PAPER_CONFIGS, FIFTEEN_MIN_CONFIGS
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+    except ImportError as exc:
+        return CheckResult(
+            name="Paper Config / DO_NOT_TRADE Sync",
+            status="warn",
+            message=f"Could not import paper_config or signals: {exc}",
+        )
+
+    violations: list[str] = []
+
+    all_configs = list(PAPER_CONFIGS.items()) + [
+        (sym, cfg) for sym, cfg in FIFTEEN_MIN_CONFIGS.items()
+        if sym not in PAPER_CONFIGS  # avoid double-counting same symbol
+    ]
+
+    for sym, cfg in all_configs:
+        if cfg.get("enabled", False) and sym in DO_NOT_TRADE_SYMBOLS:
+            interval = cfg.get("interval", "?")
+            violations.append(f"{sym} ({interval}): enabled=True but in DO_NOT_TRADE_SYMBOLS")
+
+    # Also check FIFTEEN_MIN_CONFIGS separately (same symbol may have multiple timeframes)
+    for sym, cfg in FIFTEEN_MIN_CONFIGS.items():
+        if cfg.get("enabled", False) and sym in DO_NOT_TRADE_SYMBOLS:
+            interval = cfg.get("interval", "?")
+            entry = f"{sym} ({interval}, 15m cfg): enabled=True but in DO_NOT_TRADE_SYMBOLS"
+            if entry not in violations:
+                violations.append(entry)
+
+    if violations:
+        return CheckResult(
+            name="Paper Config / DO_NOT_TRADE Sync",
+            status="fail",
+            message=(
+                f"{len(violations)} config(s) enabled for DO_NOT_TRADE symbol(s): "
+                + "; ".join(violations)
+                + ". Fix: set enabled=False in engine/backtest/paper_config.py "
+                "or remove the symbol from DO_NOT_TRADE_SYMBOLS in signals.py."
+            ),
+        )
+
+    return CheckResult(
+        name="Paper Config / DO_NOT_TRADE Sync",
+        status="pass",
+        message=(
+            f"All {len(all_configs)} paper configs are consistent with "
+            f"DO_NOT_TRADE_SYMBOLS ({set(DO_NOT_TRADE_SYMBOLS)})"
+        ),
     )
 
 

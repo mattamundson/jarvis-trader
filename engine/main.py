@@ -1073,9 +1073,38 @@ async def lifespan(app: FastAPI):
             logger.info("[MARKET_OPEN] Skipping — kill switch active")
             return
 
-        instruments_1h = [("MCL", True), ("MNQ", True)]
+        # Defense-in-depth (2026-05-07): cross-check PAPER_CONFIGS enabled flag
+        # AND DO_NOT_TRADE_SYMBOLS before dispatching. This catches future drift
+        # where a config gets re-enabled for a symbol that's still blocked
+        # at the verdict layer (root cause of the MNQ 55-trade wiring leak,
+        # commit 0772e20 — paper_config had enabled=True, dispatcher didn't
+        # cross-check the DO_NOT_TRADE blocklist).
+        from backtest.paper_config import PAPER_CONFIGS
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS as _DO_NOT_TRADE
+
+        _active_1h = []
+        for _sym, _cfg in PAPER_CONFIGS.items():
+            if not _cfg.get("enabled", False):
+                continue
+            if _sym in _DO_NOT_TRADE:
+                logger.warning(
+                    "[MARKET_OPEN] BLOCKED: %s has enabled=True in PAPER_CONFIGS "
+                    "but is in DO_NOT_TRADE_SYMBOLS — skipping signal dispatch. "
+                    "Fix: set enabled=False in paper_config.py for this symbol.",
+                    _sym,
+                )
+                continue
+            _active_1h.append((_sym, True))
+
+        instruments_1h = _active_1h
         instruments_15m = [("MCL", "15m"), ("MNQ", "15m")]
-        logger.info("[MARKET_OPEN] Starting parallel 1h+15m scans for MCL, MNQ")
+        if instruments_1h:
+            logger.info(
+                "[MARKET_OPEN] Starting parallel 1h+15m scans for: %s",
+                ", ".join(s for s, _ in instruments_1h),
+            )
+        else:
+            logger.info("[MARKET_OPEN] No enabled+ungated 1h instruments — skipping 1h scan")
 
         async def _scan_1h(symbol: str) -> None:
             import time as _time_mod
@@ -1121,6 +1150,16 @@ async def lifespan(app: FastAPI):
                 config = FIFTEEN_MIN_CONFIGS.get(symbol)
                 if not config or not config.get("enabled"):
                     logger.info(f"[MARKET_OPEN] {symbol} 15m not enabled, skipping")
+                    return
+                # Defense-in-depth: also block DO_NOT_TRADE symbols even if
+                # config.enabled is True (prevents wiring-leak class of bug).
+                from backtest.signals import DO_NOT_TRADE_SYMBOLS as _DO_NOT_TRADE_15M
+                if symbol in _DO_NOT_TRADE_15M:
+                    logger.warning(
+                        "[MARKET_OPEN] BLOCKED 15m: %s enabled=True but in "
+                        "DO_NOT_TRADE_SYMBOLS — skipping. Fix paper_config.py.",
+                        symbol,
+                    )
                     return
 
                 end_date = datetime.now().strftime("%Y-%m-%d")
@@ -1257,11 +1296,21 @@ async def lifespan(app: FastAPI):
                 logger.info("[INTRADAY_15M] Skipping — kill switch active")
                 return
 
+            from backtest.signals import DO_NOT_TRADE_SYMBOLS as _DO_NOT_TRADE_INTRA
             loader = BacktestDataLoader()
             for symbol in ["MCL", "MNQ"]:
                 try:
                     config = FIFTEEN_MIN_CONFIGS.get(symbol)
                     if not config or not config.get("enabled"):
+                        continue
+                    # Defense-in-depth: block DO_NOT_TRADE symbols even if
+                    # config.enabled slips back to True (wiring-leak prevention).
+                    if symbol in _DO_NOT_TRADE_INTRA:
+                        logger.warning(
+                            "[INTRADAY_15M] BLOCKED: %s enabled=True but in "
+                            "DO_NOT_TRADE_SYMBOLS — skipping. Fix paper_config.py.",
+                            symbol,
+                        )
                         continue
                     end_date = datetime.now().strftime("%Y-%m-%d")
                     start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
