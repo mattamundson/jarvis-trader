@@ -145,6 +145,11 @@ class JarvisLLMClient:
         "hermes3:latest": 4_096,
     }
 
+    # Class-level default — read at line 445/650 etc. Subclasses or callers that
+    # bypass __init__ (mocks, __new__, pickle) get the default rather than an
+    # AttributeError.  __init__ overwrites with the env-derived value.
+    provider: str = "ollama"
+
     def __init__(self, api_key: str, db_path: str = "data/llm_costs.db"):
         """
         Initialize the LLM client.
