@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# jarvis-trader pre-commit hook — ruff + mypy on changed .py files only.
+#
+# Opt-in: this file is NOT installed automatically. See README.md in this
+# directory for installation instructions.
+#
+# What it does:
+#   1. Collects .py files staged for commit (Added or Modified).
+#   2. Runs ruff lint check on those files using engine/ruff.toml config.
+#   3. Runs mypy type-check on those files using engine/pyproject.toml config.
+#   4. Aborts the commit if either tool reports errors.
+#
+# What it does NOT do:
+#   - Does not run on the full tree (only changed files — fast).
+#   - Does not auto-fix (ruff --fix is intentionally omitted so you see what broke).
+#   - Does not run ruff-format (formatting is enforced by the pre-commit framework
+#     in .pre-commit-config.yaml if you have that installed).
+#
+# Emergency bypass (one-time): git commit --no-verify
+# Per CLAUDE.md / git-hygiene rules: don't make --no-verify a habit.
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+PYTHON="${REPO_ROOT}/engine/.venv/Scripts/python.exe"
+RUFF_CONFIG="${REPO_ROOT}/engine/ruff.toml"
+MYPY_CONFIG="${REPO_ROOT}/engine/pyproject.toml"
+
+# Collect staged .py files (Added or Modified only; ignore Deleted).
+CHANGED=$(git diff --cached --name-only --diff-filter=AM | grep '\.py$' || true)
+
+if [ -z "$CHANGED" ]; then
+    # No Python files staged — nothing to check.
+    exit 0
+fi
+
+FILE_COUNT=$(echo "$CHANGED" | wc -l | tr -d ' ')
+echo "[pre-commit] Checking ${FILE_COUNT} staged .py file(s)..."
+
+# ── ruff lint ────────────────────────────────────────────────────────────────
+echo "[pre-commit] Running ruff..."
+if ! "$PYTHON" -m ruff check --config "$RUFF_CONFIG" $CHANGED; then
+    echo ""
+    echo "[pre-commit] FAIL: ruff found lint errors. Fix them or use --no-verify to skip."
+    exit 1
+fi
+echo "[pre-commit] ruff OK"
+
+# ── mypy type check ──────────────────────────────────────────────────────────
+echo "[pre-commit] Running mypy..."
+if ! "$PYTHON" -m mypy --config-file "$MYPY_CONFIG" $CHANGED; then
+    echo ""
+    echo "[pre-commit] FAIL: mypy found type errors. Fix them or use --no-verify to skip."
+    exit 1
+fi
+echo "[pre-commit] mypy OK"
+
+echo "[pre-commit] All checks passed."
+exit 0
