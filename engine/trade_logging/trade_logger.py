@@ -170,8 +170,9 @@ class TradeLogger:
                 entry_time=entry.entry_time,
             )
 
-            # Persist to trade_journal table
-            entry_id = self._db.add_journal_entry(
+            # Persist to trade_journal table (return id intentionally
+            # discarded — provenance is also persisted via _store_signal_provenance).
+            self._db.add_journal_entry(
                 trade_id=trade_id,
                 note=f"AUTO-ENTRY: {entry.side.upper()} {entry.quantity} {symbol} @ {entry.entry_price}",
                 tags="auto_logged,entry",

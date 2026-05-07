@@ -120,7 +120,6 @@ def _build_regime_gate(
     close = df["close"]
     high = df["high"]
     low = df["low"]
-    n = len(df)
     all_true = pd.Series(True, index=df.index)
 
     if mode == "adx":

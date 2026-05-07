@@ -98,7 +98,6 @@ def compute_hedge_ratio(y_prices: np.ndarray, x_prices: np.ndarray) -> tuple[flo
     y = np.asarray(y_prices, dtype=float)
     x = np.asarray(x_prices, dtype=float)
 
-    n = len(y)
     x_mean = x.mean()
     y_mean = y.mean()
 

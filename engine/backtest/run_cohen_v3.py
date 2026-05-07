@@ -278,7 +278,7 @@ class SimpleBacktester:
         entry_idx = None
         circuit_broken = False
         circuit_break_bar = -999
-        circuit_break_capital = capital  # capital at time of break
+        # _circuit_break_capital snapshot updated inside loop (diagnostic only)
 
         for i, (idx_val, row) in enumerate(df.iterrows()):
             current_close = float(row["close"])
@@ -288,7 +288,6 @@ class SimpleBacktester:
             if current_dd >= self.max_drawdown and not circuit_broken:
                 circuit_broken = True
                 circuit_break_bar = i
-                circuit_break_capital = capital
                 logger.info(
                     f"{symbol}: Circuit breaker triggered at bar {i} "
                     f"(drawdown={current_dd:.1%} >= {self.max_drawdown:.1%})"

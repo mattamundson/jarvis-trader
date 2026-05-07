@@ -136,7 +136,6 @@ def _run_wfo_window(df_full: pd.DataFrame, window: dict) -> dict:
         return {"name": window["name"], "error": "no valid combos on train"}
 
     fast_c, slow_c, atr_c = best_params
-    train_result = {"pf": best_pf, "fast": fast_c, "slow": slow_c, "atr_trail": atr_c}
 
     # Apply champion to test (out-of-sample)
     test_result = _backtest_window(df_test.copy(), fast_c, slow_c, atr_c)

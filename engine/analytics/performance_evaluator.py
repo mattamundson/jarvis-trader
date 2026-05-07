@@ -35,7 +35,6 @@ def evaluate_daily_performance(db: DatabaseManager):
     """
     logger.info("Initializing Performance Evaluator Cron...")
 
-    today = date.today().isoformat()
     snapshots = db.get_recent_summary(limit=5)
 
     if not snapshots or len(snapshots) < 3:

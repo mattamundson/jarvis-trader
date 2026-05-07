@@ -78,14 +78,12 @@ def _run(df: pd.DataFrame, symbol: str, fast: int, slow: int, trail: float) -> d
     in_pos = False
     entry = 0.0
     trail_stop = 0.0
-    entry_time = None
     trades = []
 
     for i in range(len(df)):
         if pd.isna(sma_slow.iloc[i]):
             continue
         price = float(df["close"].iloc[i])
-        bar_time = df.index[i]
 
         if in_pos:
             if trail > 0 and not pd.isna(atr.iloc[i]):
@@ -102,7 +100,6 @@ def _run(df: pd.DataFrame, symbol: str, fast: int, slow: int, trail: float) -> d
         else:
             if sma_fast.iloc[i] > sma_slow.iloc[i] and i > 0 and sma_fast.iloc[i-1] <= sma_slow.iloc[i-1]:
                 entry = price
-                entry_time = bar_time
                 trail_stop = price - trail * float(atr.iloc[i]) if trail > 0 and not pd.isna(atr.iloc[i]) else 0.0
                 in_pos = True
 

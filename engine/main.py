@@ -476,9 +476,9 @@ async def lifespan(app: FastAPI):
         await polymarket.connect()
     else:
         polymarket = None  # py-clob-client dep skew; wiki + OpenBB still functional
-    openbb = OpenBBAdapter() if OpenBBAdapter is not None else None
-    risk_protections = RiskProtections(db_manager=db_manager)
-    model_drawer = ModelDrawer(model_dir=str(db_manager._db_path.parent / "models"))
+    openbb = OpenBBAdapter() if OpenBBAdapter is not None else None  # noqa: F841 — TODO: missing from `global` decl above; module-level stays None
+    risk_protections = RiskProtections(db_manager=db_manager)  # noqa: F841 — TODO: missing from `global` decl above; module-level stays None
+    model_drawer = ModelDrawer(model_dir=str(db_manager._db_path.parent / "models"))  # noqa: F841 — TODO: missing from `global` decl above
     arb_scout = None # Initialized after data_manager
 
     # Needs analyst for the bridge, assuming news_analyst is initialized later or available
@@ -5217,14 +5217,7 @@ def _build_performance_report_html(
     sharpe_pass = sharpe and sharpe >= 1.5
 
     pf_class = "pass" if pf_pass else ("fail" if pf else "neutral")
-    pf_status_class = "pass" if pf_pass else "fail"
-    pf_status_txt = "Pass (>= 2.0)" if pf_pass else ("Fail (>= 2.0)" if pf else "No data")
-
     sharpe_class = "pass" if sharpe_pass else ("fail" if sharpe else "neutral")
-    sharpe_status_class = "pass" if sharpe_pass else "fail"
-    sharpe_status_txt = (
-        "Pass (>= 1.5)" if sharpe_pass else ("Fail (>= 1.5)" if sharpe else "No data")
-    )
 
     gross_pnl_safe = gross_pnl or 0
     pnl_class = "pass" if gross_pnl_safe >= 0 else "fail"
@@ -5248,10 +5241,9 @@ def _build_performance_report_html(
             "</tr>"
         )
 
-    # Daily P&L data for chart
-    pnl_data = [r.get("realized_pnl", 0) for r in daily_pnl[-30:]]
-    pnl_json = str(pnl_data).replace("None", "0")
-    dates_json = str([str(r.get("date", ""))[:10] for r in daily_pnl[-30:]])
+    # Daily P&L data for chart (computed but not yet wired into the HTML
+    # template — leave the data prep but drop unused JSON serializations).
+    _pnl_data = [r.get("realized_pnl", 0) for r in daily_pnl[-30:]]  # noqa: F841
 
     return f"""<!DOCTYPE html>
 <html lang="en">

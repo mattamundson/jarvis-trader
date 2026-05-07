@@ -256,8 +256,7 @@ def main():
         print(f"\nExcluding thin segments: {len(thick_pfs)} thick segments, "
               f"all profitable={thick_profitable}, min_pf={thick_min:.3f}", flush=True)
 
-    # Canonicalize params for filename
-    params_tag = "_".join(f"{k}={v}" for k, v in params.items())
+    # Filename tag based on symbol+family only (params recorded in JSON body)
     out_path = _ENGINE / "scripts" / "validation_reports" / \
                f"{symbol}_{args.family}_fixed_params_temporal.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)

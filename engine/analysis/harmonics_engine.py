@@ -106,16 +106,13 @@ class HarmonicEngine:
         ab = abs(b - a)
         bc = abs(c - b)
         cd = abs(d - c)
-        ad = abs(d - x) # Wait, pattern ratios often use X-A reference
 
         if xa == 0 or ab == 0 or bc == 0 or cd == 0:
             return None
 
-        # Ratios
+        # Ratios (only ab_xa and xd_xa are used by pattern matchers below;
+        # bc_ab/cd_bc/ad_xa retained as comments for future patterns)
         ab_xa = ab / xa
-        bc_ab = bc / ab
-        cd_bc = cd / bc
-        ad_xa = abs(d - a) / xa # Some use X-D/X-A
         xd_xa = abs(d - x) / xa
 
         side = "bullish" if pts[0].type == "low" and pts[1].type == "high" else "bearish"

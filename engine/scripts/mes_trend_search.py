@@ -82,7 +82,6 @@ def _run(df: pd.DataFrame, fast: int, slow: int, atr_trail_mult: float, spec: di
     in_pos = False
     entry = 0.0
     trail_stop = 0.0
-    peak = 0.0
     entry_time = None
     trades = []
 
@@ -128,7 +127,6 @@ def _run(df: pd.DataFrame, fast: int, slow: int, atr_trail_mult: float, spec: di
                     trail_stop = price - atr_trail_mult * float(atr.iloc[i])
                 else:
                     trail_stop = 0.0
-                peak = price
                 in_pos = True
 
     # Force-close any open position at the last bar
