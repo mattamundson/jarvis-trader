@@ -382,7 +382,16 @@ async def lifespan(app: FastAPI):
         cost_tracker, \
         loss_tracker, \
         validation_alert_manager, \
-        sdk_pipeline
+        sdk_pipeline, \
+        margin_monitor, \
+        breakout_analyst, \
+        harmonic_analyst, \
+        polymarket, \
+        openbb, \
+        risk_protections, \
+        model_drawer, \
+        arb_scout, \
+        sentiment_bridge
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -476,9 +485,9 @@ async def lifespan(app: FastAPI):
         await polymarket.connect()
     else:
         polymarket = None  # py-clob-client dep skew; wiki + OpenBB still functional
-    openbb = OpenBBAdapter() if OpenBBAdapter is not None else None  # noqa: F841 — TODO: missing from `global` decl above; module-level stays None
-    risk_protections = RiskProtections(db_manager=db_manager)  # noqa: F841 — TODO: missing from `global` decl above; module-level stays None
-    model_drawer = ModelDrawer(model_dir=str(db_manager._db_path.parent / "models"))  # noqa: F841 — TODO: missing from `global` decl above
+    openbb = OpenBBAdapter() if OpenBBAdapter is not None else None
+    risk_protections = RiskProtections(db_manager=db_manager)
+    model_drawer = ModelDrawer(model_dir=str(db_manager._db_path.parent / "models"))
     arb_scout = None # Initialized after data_manager
 
     # Needs analyst for the bridge, assuming news_analyst is initialized later or available
