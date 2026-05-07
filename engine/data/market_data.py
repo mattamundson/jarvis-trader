@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -223,15 +223,32 @@ class IBKRDataConnector:
         return c
 
     async def _resolve_front_month(self, symbol: str, exchange: str) -> Future:
-        """Resolve futures symbol to the nearest expiry (front month) contract."""
+        """Resolve futures symbol to the nearest non-expired (front month) contract.
+
+        IBKR's reqContractDetailsAsync returns *all* contracts including ones
+        whose `lastTradeDateOrContractMonth` is already in the past. Sorting
+        ascending and taking [0] therefore returns the most-recently-expired
+        contract (e.g. MGCJ6 after 2026-04-28), and any historical query
+        ending after that expiry returns "HMDS query returned no data".
+        Fix: drop expired contracts before picking the front month.
+        """
         from ib_async import Future
 
         generic = Future(symbol, exchange=exchange, currency="USD")
         try:
             details = await self._ib.reqContractDetailsAsync(generic)
             if details:
-                # Sort by expiry ascending, return the nearest (front month)
-                details.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth)
+                today_yyyymmdd = date.today().strftime("%Y%m%d")
+                live = [
+                    d for d in details
+                    if (d.contract.lastTradeDateOrContractMonth or "") >= today_yyyymmdd
+                ]
+                if live:
+                    live.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth)
+                    return live[0].contract
+                # Degenerate: nothing live. Fall back to the most-recent expired
+                # so historical queries that end before today still resolve.
+                details.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth, reverse=True)
                 return details[0].contract
         except Exception as e:
             logger.warning(f"Could not resolve front month for {symbol}: {e}")
