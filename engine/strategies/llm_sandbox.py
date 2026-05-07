@@ -110,7 +110,7 @@ def load_strategy_sandboxed(path: Path) -> Type[BaseStrategy]:
     except SandboxError:
         raise
     except Exception as e:
-        raise SandboxError(f"Failed to load strategy: {e}")
+        raise SandboxError(f"Failed to load strategy: {e}") from e
 
     # Step 3: Find BaseStrategy subclass
     candidates = []

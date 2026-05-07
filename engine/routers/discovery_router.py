@@ -89,7 +89,7 @@ async def load_strategy_file(filename: str):
             "strategy": instance.metadata(),
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/run-cycle")
@@ -102,7 +102,7 @@ async def run_discovery_cycle(symbol: str = "MCL", interval: str = "1h"):
         strategy_path = await generate_strategy(symbol=symbol, interval=interval)
     except Exception as e:
         logger.error(f"[discovery] generate_strategy raised: {e}")
-        raise HTTPException(status_code=500, detail=f"Strategy generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Strategy generation failed: {e}") from e
 
     if strategy_path is None:
         raise HTTPException(
@@ -117,7 +117,7 @@ async def run_discovery_cycle(symbol: str = "MCL", interval: str = "1h"):
         result = evaluate_strategy_file(filename=filename, symbol=symbol, interval=interval)
     except Exception as e:
         logger.error(f"[discovery] evaluate_strategy_file raised: {e}")
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {e}") from e
 
     eligible = result.get("verdict") == "ELIGIBLE"
     metrics = {

@@ -363,14 +363,14 @@ class SupervisorAgent:
         data: Any
         try:
             data = json.loads(text)
-        except Exception:
+        except Exception as exc:
             # Try to extract the first {...} substring.
             start = text.find("{")
             end = text.rfind("}")
             if start >= 0 and end > start:
                 data = json.loads(text[start : end + 1])
             else:
-                raise ValueError(f"non-JSON supervisor response: {text[:120]!r}")
+                raise ValueError(f"non-JSON supervisor response: {text[:120]!r}") from exc
 
         if not isinstance(data, dict) or "marker" not in data:
             raise ValueError(f"missing 'marker' field in response: {str(data)[:120]}")
@@ -378,8 +378,8 @@ class SupervisorAgent:
         raw_marker = str(data["marker"]).strip().upper()
         try:
             marker = SupervisorMarker(raw_marker)
-        except ValueError:
-            raise ValueError(f"invalid marker value: {raw_marker!r}")
+        except ValueError as exc:
+            raise ValueError(f"invalid marker value: {raw_marker!r}") from exc
 
         reason = str(data.get("reason", "")).strip()[:200]
         return marker, reason

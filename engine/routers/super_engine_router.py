@@ -61,5 +61,5 @@ async def get_poly_balance():
         # In a real implementation, we'd call the exchange API
         return {"balance": 1000.0, "currency": "USDC", "chain": "Polygon"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 

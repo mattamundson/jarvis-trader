@@ -393,8 +393,8 @@ async def smoke_bracket(
 
     try:
         from ib_async import LimitOrder, MarketOrder, StopOrder
-    except ImportError:
-        raise HTTPException(500, detail="ib_async not installed")
+    except ImportError as exc:
+        raise HTTPException(500, detail="ib_async not installed") from exc
 
     stop_price = reference_price - stop_offset
     target_price = reference_price + target_offset
@@ -406,7 +406,7 @@ async def smoke_bracket(
         if qualified:
             contract = qualified[0]
     except Exception as exc:
-        raise HTTPException(500, detail=f"Contract qualification failed for {symbol}: {exc}")
+        raise HTTPException(500, detail=f"Contract qualification failed for {symbol}: {exc}") from exc
 
     # Place entry MKT order
     entry_order = MarketOrder(action="BUY", totalQuantity=1)
