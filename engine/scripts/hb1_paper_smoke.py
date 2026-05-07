@@ -134,7 +134,7 @@ async def main() -> int:
                 return row
         return None
 
-    entry_row = _find(entry_id)
+    _entry_row = _find(entry_id)  # noqa: F841 — kept for parity/diagnostics
     stp_row = _find(stp_id)
     tp_row = _find(tp_id)
 

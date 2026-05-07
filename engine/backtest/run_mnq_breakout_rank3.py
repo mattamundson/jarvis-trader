@@ -521,7 +521,6 @@ def main():
 
     final = verdict.get("verdict", "FAIL")
     gate = verdict.get("gate_v2_metrics", {})
-    thresholds = verdict.get("thresholds", {})
 
     if final == "PASS":
         print("\n[PASS] MNQ Breakout Rank 3 PASSES gate v2 (CORE).")

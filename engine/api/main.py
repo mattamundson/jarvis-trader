@@ -579,7 +579,6 @@ def get_macro():
 def get_alerts():
     """Return system alert feed — reads from signal + execution log."""
     alerts = []
-    now_str = datetime.now().strftime("%H:%M:%S")
 
     # Try to build live alerts from signal
     if os.path.exists(SIGNAL_PATH):

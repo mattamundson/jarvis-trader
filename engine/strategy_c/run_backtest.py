@@ -345,10 +345,10 @@ def _plot_allocation_timeline(ax, alloc_df):
                 color=GRAY, transform=ax.transAxes)
         return
 
-    asset_colors = {
-        "QQQ": TEAL, "SPY": BLUE, "EFA": PURPLE, "IEF": ORANGE,
-        "SHY": GRAY, "USMV": GREEN, "MTUM": GOLD, "XLK": "#FF6B6B", "XLV": "#45B7D1",
-    }
+    # asset_colors palette retained inline below for the stacked-allocation
+    # plot when wired (currently only the regime bands are rendered):
+    # QQQ=TEAL SPY=BLUE EFA=PURPLE IEF=ORANGE SHY=GRAY USMV=GREEN MTUM=GOLD
+    # XLK=#FF6B6B XLV=#45B7D1.
 
     # Parse holdings strings to compute stacked allocation
     risk_on_weeks = (alloc_df["risk_regime"] == "RISK_ON").sum()

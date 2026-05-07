@@ -986,7 +986,6 @@ class TraderAgent:
         technical = analyst_reports.get("technical", {})
         news = analyst_reports.get("news", {})
         social = analyst_reports.get("social", {})
-        fundamental = analyst_reports.get("fundamental", {})
         forward_recorder = analyst_reports.get("forward_recorder_metric")
         regime_status = analyst_reports.get("regime_status")
 

@@ -176,7 +176,7 @@ def print_summary(report: dict) -> None:
           f"MaxDD {bt['max_drawdown_pct']:.2%}")
     print()
     print(f"Monte Carlo (clean, {mc_clean['n_simulations']:,} perms):")
-    pf_dist = mc_clean["distribution"].get("profit_factor")  # may not exist
+    # NOTE: profit_factor distribution not always present in mc_clean; skip for now.
     fc_dist = mc_clean["distribution"]["final_capital"]
     dd_dist = mc_clean["distribution"]["max_drawdown_pct"]
     sh_dist = mc_clean["distribution"]["sharpe_ratio"]
