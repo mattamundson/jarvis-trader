@@ -145,21 +145,22 @@ def _load_data(data_file: Path) -> pd.DataFrame:
 
 
 def _find_data_file(data_dir: Path) -> Path:
-    """Locate the widest-span MCL 1h file. Prefer 2024-01-01 start."""
-    primary = data_dir / "MCL_2024-01-01_2026-03-28_1h.csv"
-    if primary.exists():
-        return primary
+    """Locate the widest-span MCL 1h file by latest end date in filename."""
+    import re
     candidates = sorted(data_dir.glob("MCL_*_1h.csv"))
     if not candidates:
         raise FileNotFoundError(
             "No MCL 1h data found in engine/backtest/cache/\n"
-            "Expected: MCL_2024-01-01_2026-03-28_1h.csv\n"
+            "Expected: MCL_<start>_<end>_1h.csv\n"
             "Fetch via: engine/.venv/Scripts/python backtest/fetch_expanded_data.py "
-            "--symbol MCL --start 2024-01-01 --end 2026-03-28 --interval 1h"
+            "--symbol MCL --start 2024-04-26 --end 2026-05-07 --interval 1h"
         )
-    candidates_2024 = [c for c in candidates if "2024-01-01" in c.name]
-    chosen = candidates_2024[-1] if candidates_2024 else candidates[-1]
-    print(f"[MCL-HD-R2] Primary cache not found; using {chosen.name}")
+    # Pick the file with the latest end date parsed from filename pattern MCL_<start>_<end>_1h.csv
+    def _end_date(p: Path) -> str:
+        m = re.match(r"MCL_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})_1h", p.name)
+        return m.group(2) if m else "0000-00-00"
+    chosen = max(candidates, key=_end_date)
+    print(f"[MCL-HD-R2] Using freshest cache: {chosen.name}")
     return chosen
 
 

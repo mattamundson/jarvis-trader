@@ -138,21 +138,22 @@ def _load_data(data_file: Path) -> pd.DataFrame:
 
 
 def _find_data_file(data_dir: Path) -> Path:
-    """Locate the widest-span MNQ 1h file. Prefer 2024-01-01 start (matches MES)."""
-    primary = data_dir / "MNQ_2024-01-01_2026-03-28_1h.csv"
-    if primary.exists():
-        return primary
+    """Locate the widest-span MNQ 1h file by latest end date in filename."""
+    import re
     candidates = sorted(data_dir.glob("MNQ_*_1h.csv"))
     if not candidates:
         raise FileNotFoundError(
             "No MNQ 1h data found in engine/backtest/cache/\n"
-            "Expected: MNQ_2024-01-01_2026-03-28_1h.csv\n"
+            "Expected: MNQ_<start>_<end>_1h.csv\n"
             "Fetch via: engine/.venv/Scripts/python backtest/fetch_expanded_data.py "
-            "--symbol MNQ --start 2024-01-01 --end 2026-03-28 --interval 1h"
+            "--symbol MNQ --start 2024-01-01 --end 2026-05-07 --interval 1h"
         )
-    candidates_2024 = [c for c in candidates if "2024-01-01" in c.name]
-    chosen = candidates_2024[-1] if candidates_2024 else candidates[-1]
-    print(f"[MNQ-R2] Primary cache not found; using {chosen.name}")
+    # Pick the file with the latest end date parsed from filename pattern MNQ_<start>_<end>_1h.csv
+    def _end_date(p: Path) -> str:
+        m = re.match(r"MNQ_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})_1h", p.name)
+        return m.group(2) if m else "0000-00-00"
+    chosen = max(candidates, key=_end_date)
+    print(f"[MNQ-R2] Using freshest cache: {chosen.name}")
     return chosen
 
 

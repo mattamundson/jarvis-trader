@@ -8,11 +8,11 @@
   "alt_verdict": "FAIL",
   "n_core_passed": 1,
   "n_alt_passed": 2,
-  "created_at": "2026-05-06T09:19:11.897171+00:00",
+  "created_at": "2026-05-07T07:17:03.147135+00:00",
   "aux_freshness": {
-    "rolling_wfo": "2026-05-06T09:19:11.897171+00:00",
-    "fixed_params": "2026-05-06T09:19:11.897171+00:00",
-    "cost_sweep": "2026-05-06T09:19:11.897171+00:00"
+    "rolling_wfo": "2026-05-07T07:17:03.147135+00:00",
+    "fixed_params": "2026-05-07T07:17:03.147135+00:00",
+    "cost_sweep": "2026-05-07T07:17:03.147135+00:00"
   },
   "gate_v2": {
     "verdict": "FAIL",
@@ -24,9 +24,9 @@
     "n_alt_passed": 2,
     "n_alt_criteria": 5,
     "core_reasons": [
-      "FAIL pf_ci_lower=0.4369 >= 1.1",
+      "FAIL pf_ci_lower=0.4436 >= 1.1",
       "FAIL p_edge=0.2308 >= 0.95",
-      "mc_95th_dd_pct=1.1870 <= 5.0",
+      "mc_95th_dd_pct=1.1607 <= 5.0",
       "FAIL dsr=0.0000 >= 0.1"
     ],
     "alt_reasons": [
@@ -34,18 +34,18 @@
       "FAIL wfo_consistency=WEAK",
       "FAIL fixed_params_min_pf=0.0000 >= 1.2",
       "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct_alt=1.1870 <= 7.000000000000001"
+      "mc_95th_dd_pct_alt=1.1607 <= 7.000000000000001"
     ],
     "reasons": [
-      "FAIL pf_ci_lower=0.4369 >= 1.1",
+      "FAIL pf_ci_lower=0.4436 >= 1.1",
       "FAIL p_edge=0.2308 >= 0.95",
-      "mc_95th_dd_pct=1.1870 <= 5.0",
+      "mc_95th_dd_pct=1.1607 <= 5.0",
       "FAIL dsr=0.0000 >= 0.1",
       "FAIL dsr_alt=0.0000 >= 0.3",
       "FAIL wfo_consistency=WEAK",
       "FAIL fixed_params_min_pf=0.0000 >= 1.2",
       "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct_alt=1.1870 <= 7.000000000000001"
+      "mc_95th_dd_pct_alt=1.1607 <= 7.000000000000001"
     ],
     "n_passed": 1,
     "n_criteria": 4
@@ -54,8 +54,8 @@
     "train_months": 6,
     "test_months": 3,
     "step_months": 1,
-    "n_windows": 18,
-    "n_oos_windows": 18,
+    "n_windows": 19,
+    "n_oos_windows": 19,
     "n_oos_windows_with_trades": 13,
     "total_oos_trades": 23,
     "grid_combos": 54,
@@ -80,10 +80,10 @@
     ]
   },
   "gate_v2_metrics": {
-    "pf_ci_lower": 0.4369,
+    "pf_ci_lower": 0.4436,
     "p_edge": 0.2308,
-    "mc_95th_dd": 0.01187,
-    "mc_95th_dd_pct": 1.187,
+    "mc_95th_dd": 0.011607,
+    "mc_95th_dd_pct": 1.1607,
     "dsr": 0.0,
     "wfo_consistency": "WEAK",
     "fixed_params_min_pf": 0.0,
@@ -827,7 +827,7 @@
     {
       "window": 16,
       "is_period": "2025-07 -> 2026-01",
-      "oos_period": "2026-01 -> 2026-03",
+      "oos_period": "2026-01 -> 2026-04",
       "best_params": {
         "fast": 40,
         "slow": 200,
@@ -844,7 +844,7 @@
     {
       "window": 17,
       "is_period": "2025-08 -> 2026-02",
-      "oos_period": "2026-02 -> 2026-03",
+      "oos_period": "2026-02 -> 2026-05",
       "best_params": {
         "fast": 40,
         "slow": 200,
@@ -861,7 +861,7 @@
     {
       "window": 18,
       "is_period": "2025-09 -> 2026-03",
-      "oos_period": "2026-03 -> 2026-03",
+      "oos_period": "2026-03 -> 2026-05",
       "best_params": {
         "fast": 40,
         "slow": 200,
@@ -870,6 +870,23 @@
       },
       "is_pf": 2.551,
       "is_trades": 5,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 19,
+      "is_period": "2025-10 -> 2026-04",
+      "oos_period": "2026-04 -> 2026-05",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "min_rv_annualized": 20.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 1,
       "oos_pf": 0.0,
       "oos_dd": 0.0,
       "oos_sharpe": 0.0,

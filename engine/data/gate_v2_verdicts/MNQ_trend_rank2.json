@@ -8,11 +8,11 @@
   "alt_verdict": "FAIL",
   "n_core_passed": 1,
   "n_alt_passed": 2,
-  "created_at": "2026-05-06T09:11:20.624428+00:00",
+  "created_at": "2026-05-07T07:06:53.727506+00:00",
   "aux_freshness": {
-    "rolling_wfo": "2026-05-06T09:11:20.624428+00:00",
-    "fixed_params": "2026-05-06T09:11:20.624428+00:00",
-    "cost_sweep": "2026-05-06T09:11:20.624428+00:00"
+    "rolling_wfo": "2026-05-07T07:06:53.727506+00:00",
+    "fixed_params": "2026-05-07T07:06:53.727506+00:00",
+    "cost_sweep": "2026-05-07T07:06:53.727506+00:00"
   },
   "gate_v2": {
     "verdict": "FAIL",
@@ -54,8 +54,8 @@
     "train_months": 6,
     "test_months": 1,
     "step_months": 1,
-    "n_windows": 18,
-    "n_oos_windows": 7,
+    "n_windows": 20,
+    "n_oos_windows": 8,
     "n_oos_windows_with_trades": 0,
     "total_oos_trades": 0,
     "grid_combos": 54,
@@ -89,7 +89,7 @@
     "fixed_params_min_pf": 0.0,
     "fixed_params_mean_pf": Infinity,
     "fixed_params_max_pf": Infinity,
-    "n_combos_with_trades": 9,
+    "n_combos_with_trades": 8,
     "combo_results": [
       {
         "fast": 20,
@@ -112,7 +112,7 @@
         "slow": 80,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
-        "pf": 3.6959,
+        "pf": 3.7081,
         "trades": 3
       },
       {
@@ -137,21 +137,13 @@
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0,
         "pf": Infinity,
-        "trades": 2
+        "trades": 1
       },
       {
         "fast": 30,
         "slow": 80,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 9.0,
-        "pf": Infinity,
-        "trades": 1
-      },
-      {
-        "fast": 30,
-        "slow": 100,
-        "atr_trail_mult": 1.5,
-        "min_rv_annualized": 0.0,
         "pf": Infinity,
         "trades": 1
       },
@@ -167,22 +159,22 @@
     "cost_survives_through": "catastrophic",
     "cost_tier_results": {
       "optimistic": {
-        "pf": 3.7014,
+        "pf": 3.7136,
         "trades": 3,
         "passes": true
       },
       "realistic": {
-        "pf": 3.6959,
+        "pf": 3.7081,
         "trades": 3,
         "passes": true
       },
       "pessimistic": {
-        "pf": 3.6905,
+        "pf": 3.7026,
         "trades": 3,
         "passes": true
       },
       "catastrophic": {
-        "pf": 3.685,
+        "pf": 3.6972,
         "trades": 3,
         "passes": true
       }
@@ -231,12 +223,12 @@
       "is_period": "2024-05 -> 2024-11",
       "oos_period": "2024-11 -> 2024-12",
       "best_params": {
-        "fast": 20,
+        "fast": 30,
         "slow": 80,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0
       },
-      "is_pf": 0.0,
+      "is_pf": Infinity,
       "is_trades": 1,
       "oos_pf": 0.0,
       "oos_dd": 0.0,
@@ -248,12 +240,12 @@
       "is_period": "2024-06 -> 2024-12",
       "oos_period": "2024-12 -> 2025-01",
       "best_params": {
-        "fast": 25,
+        "fast": 20,
         "slow": 80,
         "atr_trail_mult": 1.5,
         "min_rv_annualized": 0.0
       },
-      "is_pf": Infinity,
+      "is_pf": 0.0,
       "is_trades": 1,
       "oos_pf": 0.0,
       "oos_dd": 0.0,
@@ -315,6 +307,23 @@
       "window": 7,
       "is_period": "2024-10 -> 2025-04",
       "oos_period": "2025-04 -> 2025-05",
+      "best_params": {
+        "fast": 25,
+        "slow": 80,
+        "atr_trail_mult": 1.5,
+        "min_rv_annualized": 0.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 1,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 8,
+      "is_period": "2024-11 -> 2025-05",
+      "oos_period": "2025-05 -> 2025-06",
       "best_params": {
         "fast": 25,
         "slow": 80,
