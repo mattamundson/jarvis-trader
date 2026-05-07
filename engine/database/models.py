@@ -7,8 +7,10 @@ for the Alembic async migration pipeline.
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Float, Integer, Boolean, DateTime, JSON, Text
+
+from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
 
 class Base(DeclarativeBase):
     pass
@@ -25,13 +27,13 @@ class PaperTrade(Base):
     entry_price: Mapped[float] = mapped_column(Float)
     stop_loss: Mapped[float] = mapped_column(Float)
     target_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    
+
     # Executions
     exit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     realized_pnl: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     entered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     exited_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    
+
     # Metadata
     reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     regime: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -45,15 +47,15 @@ class PipelineRun(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True) # UUID string
     symbol: Mapped[str] = mapped_column(String(20), index=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-    
+
     duration_ms: Mapped[float] = mapped_column(Float)
     source: Mapped[str] = mapped_column(String(50)) # e.g. 'market_open_15m'
-    
+
     l1_regime: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     l2_structure: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     l3_bias: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     final_action: Mapped[str] = mapped_column(String(20)) # LONG/SHORT/HOLD
-    
+
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
 class LLMCostRecord(Base):
@@ -64,7 +66,7 @@ class LLMCostRecord(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     agent_name: Mapped[str] = mapped_column(String(100), index=True)
     model: Mapped[str] = mapped_column(String(100))
-    
+
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
     total_cost: Mapped[float] = mapped_column(Float, default=0.0)

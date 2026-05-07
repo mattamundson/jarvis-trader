@@ -509,12 +509,12 @@ class TestTradeLogging(unittest.TestCase):
             print("\n[6] VERIFYING COMPLETE TRADE TRAIL...")
             trade = self.db_manager.trades.get(trade_id)
             print(f"    ✓ Trade status: {trade['symbol']} {trade['side'].upper()} {trade['quantity']} @ {trade['entry_price']}")
-            print(f"    ✓ Journal entry contains:")
-            print(f"       - Entry: BUY 2 MCL @ 84.50")
+            print("    ✓ Journal entry contains:")
+            print("       - Entry: BUY 2 MCL @ 84.50")
             print(f"       - Regime: {analyst_reports['technical']['regime']}")
             print(f"       - Bias: {analyst_reports['technical']['bias']}")
             print(f"       - Debate: Bull {debate_result['bull_score']} vs Bear {debate_result['bear_score']}")
-            print(f"       - Exit: 86.25 for +$350 P&L")
+            print("       - Exit: 86.25 for +$350 P&L")
             print(f"       - Full note trail: {len(exit_entry['note'])} chars")
 
             # Final assertions

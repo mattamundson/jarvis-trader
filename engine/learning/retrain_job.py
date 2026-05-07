@@ -5,12 +5,13 @@ Automates the lifecycle of fetching data (OpenBB),
 preparing features (DataKitchen), and retraining models.
 """
 
-import logging
 import asyncio
+import logging
 from datetime import datetime, timedelta
+
+from data.openbb_adapter import OpenBBAdapter
 from learning.freqai_kitchen import FreqaiDataKitchen
 from learning.model_drawer import ModelDrawer
-from data.openbb_adapter import OpenBBAdapter
 
 logger = logging.getLogger("jarvis_trader.learning.retrain_job")
 
@@ -28,10 +29,10 @@ class FreqaiRetrainJob:
         """
         if self.is_running:
             return
-        
+
         self.is_running = True
         logger.info(f"🚀 Starting FreqAI retraining cycle for {symbol}")
-        
+
         try:
             # 1. Fetch historical data via OpenBB Hub
             df = await self.openbb.get_historical_data(symbol, days=365)
@@ -41,19 +42,19 @@ class FreqaiRetrainJob:
 
             # 2. Prepare features via Kitchen
             X, y = self.kitchen.prepare_data(df, target_col="close")
-            
+
             # 3. Train XGBoost Model
             import xgboost as xgb
             model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5)
             model.fit(X, y)
-            
+
             # 4. Save via Drawer
             self.drawer.save_model(model, symbol)
             logger.info(f"Training complete. Features shape: {X.shape}, Model persisted.")
-            
+
             # 4. Save metadata to DB
             # self.db.save_model_metadata(symbol, version=datetime.now().isoformat())
-            
+
         except Exception as e:
             logger.error(f"Retraining cycle failed: {e}")
         finally:

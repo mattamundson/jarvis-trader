@@ -39,8 +39,8 @@ _ENGINE = _HERE.parent
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
-from backtest.data_loader import BacktestDataLoader  # noqa: E402
 from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
+from backtest.data_loader import BacktestDataLoader  # noqa: E402
 
 # SYMBOL_SPECS is derived from the canonical CONTRACT_SPECS source.
 # See engine/backtest/contract_specs.py for the single source of truth.

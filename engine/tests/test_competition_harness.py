@@ -32,7 +32,6 @@ from strategy_lab.competition_harness import (
     compute_sharpe,
 )
 
-
 # ── Pure helpers ─────────────────────────────────────────────────────────────
 
 def test_profit_factor_winners_only_returns_inf():

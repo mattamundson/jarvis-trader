@@ -9,10 +9,10 @@ No filesystem, no network, no os/sys/subprocess.
 
 from __future__ import annotations
 
-import logging
-import signal
 import importlib
 import importlib.util
+import logging
+import signal
 from pathlib import Path
 from typing import Optional, Type
 

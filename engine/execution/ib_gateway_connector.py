@@ -286,7 +286,7 @@ class IBGatewayConnector:
                                 f"{timeout_threshold}s limit! TRIGGERING DEADMAN SWITCH."
                             )
                             await self._trigger_deadman_switch()
-                            
+
                     # Simulated update of heartbeat for paper mode
                     self._last_heartbeat = now
                     logger.debug(
@@ -310,19 +310,19 @@ class IBGatewayConnector:
         """
         self._connection_state = ConnectionState.FAILED
         self._notify_connection_state(ConnectionState.FAILED)
-        
+
         positions = await self.get_positions()
         for pos in positions:
             qty = pos.get("position", 0)
             if qty == 0:
                 continue
-                
+
             symbol = pos.get("symbol")
             is_futures = pos.get("is_futures", False)
             # Inverse the quantity to flatten
             action = "SELL" if qty > 0 else "BUY"
             abs_qty = abs(qty)
-            
+
             logger.critical(f"DEADMAN SWITCH: Flattening {abs_qty} {symbol} ({action} MKT)")
             await self.submit_order({
                 "symbol": symbol,

@@ -20,18 +20,18 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+
 # Make the engine package importable when run as `python -m scripts.mes_sma_phase_a`
 ENGINE_DIR = Path(__file__).resolve().parent.parent
 if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
 from backtest import BacktestDataLoader, Backtester
-from backtest.trade_manager import BacktestResult
 from backtest.evaluation_harness import evaluate
 from backtest.monte_carlo import bootstrap_pf, run_monte_carlo, run_slippage_stress
 from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals
+from backtest.trade_manager import BacktestResult
 from backtest.trend_signals import get_sma_trend_params
-
 
 SYMBOL = "MES"
 INTERVAL = "1h"
@@ -169,7 +169,7 @@ def print_summary(report: dict) -> None:
 
     print()
     print("=" * 70)
-    print(f"MES SMA(50,200) — Phase A Stress-Test Report")
+    print("MES SMA(50,200) — Phase A Stress-Test Report")
     print("=" * 70)
     print(f"Backtest: {bt['total_trades']} trades | WR {bt['win_rate']:.1%} | "
           f"PF {bt['profit_factor']:.3f} | Sharpe {bt['sharpe_ratio']:.3f} | "
@@ -198,7 +198,7 @@ def print_summary(report: dict) -> None:
           f"{mc_clean['confidence']['prob_profitable']:.2f}%)")
     print(f"  verdict: {mc_slip['verdict']}")
     bpf = report["bootstrap_pf_ci"]
-    print(f"Bootstrap PF CI (10k IID resamples):")
+    print("Bootstrap PF CI (10k IID resamples):")
     print(f"  median={bpf.get('median_pf', 0.0):.3f}  "
           f"p5={bpf.get('pf_ci_95_low', 0.0):.3f}  "
           f"p95={bpf.get('pf_ci_95_high', 0.0):.3f}  "

@@ -123,7 +123,8 @@ def record_signal(
     _signals_deque.append(signal)
     # Publish signal event if not HOLD
     try:
-        from events.bus import publish as publish_event, detect_regime_change
+        from events.bus import detect_regime_change
+        from events.bus import publish as publish_event
         if entry_signal != "HOLD":
             publish_event(
                 'signal_fired',
@@ -131,7 +132,7 @@ def record_signal(
                 symbol=symbol,
                 severity='info'
             )
-        
+
         # Check for regime change
         if regime:
             old_regime = detect_regime_change(symbol, regime)
@@ -151,7 +152,7 @@ def record_signal(
                     pass
     except Exception:
         pass
-    
+
     logger.debug(f"[Scanner] Recorded {symbol} {timeframe} signal: {entry_signal}")
 
 

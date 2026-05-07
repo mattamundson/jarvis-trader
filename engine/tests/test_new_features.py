@@ -4,11 +4,12 @@ Tests for JARVIS TRADER new features — Tracks A, B, C, D, E, F, G, H.
 Run: pytest engine/tests/test_new_features.py -v
 """
 
-import pytest
-import sys
 import os
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Ensure engine is on path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -46,8 +47,8 @@ class TestTradingViewFeed:
 
     def test_get_bars_empty_when_unavailable(self):
         """get_bars returns empty DataFrame (not None) when TV is unavailable."""
-        from engine.data.tradingview_feed import TradingViewFeed
         import pandas as pd
+        from engine.data.tradingview_feed import TradingViewFeed
         with patch("shutil.which", return_value=None):
             feed = TradingViewFeed()
             df = feed.get_bars("MES", "1h", limit=100)
@@ -136,8 +137,9 @@ class TestMarketDataTVTier:
     @pytest.mark.asyncio
     async def test_tv_tier_fires_when_available(self):
         """When TV feed returns non-empty fresh data, get_bars returns it without falling through."""
-        import pandas as pd
         from datetime import datetime, timezone
+
+        import pandas as pd
 
         fake_bars = pd.DataFrame({
             "timestamp": pd.date_range(
@@ -153,8 +155,8 @@ class TestMarketDataTVTier:
         fake_tv.get_bars.return_value = fake_bars
 
         with patch("engine.data.market_data._tv_feed", fake_tv):
-            from engine.data.market_data import MarketDataManager
             from engine.config import TradingConfig
+            from engine.data.market_data import MarketDataManager
             mgr = MarketDataManager(TradingConfig())
             mgr.ibkr = None       # force no IBKR
             mgr.polygon = None    # force no Polygon
@@ -168,8 +170,9 @@ class TestMarketDataTVTier:
     @pytest.mark.asyncio
     async def test_tv_tier_falls_through_on_stale_bars(self):
         """When TV returns bars >72h old, waterfall does not return that stale data."""
+        from datetime import datetime, timedelta, timezone
+
         import pandas as pd
-        from datetime import datetime, timezone, timedelta
 
         stale_end = datetime.now(timezone.utc) - timedelta(hours=100)
         stale_bars = pd.DataFrame({
@@ -184,8 +187,8 @@ class TestMarketDataTVTier:
         fake_tv.get_bars.return_value = stale_bars
 
         with patch("engine.data.market_data._tv_feed", fake_tv):
-            from engine.data.market_data import MarketDataManager
             from engine.config import TradingConfig
+            from engine.data.market_data import MarketDataManager
             mgr = MarketDataManager(TradingConfig())
             mgr.ibkr = None
             mgr.polygon = None
@@ -202,8 +205,8 @@ class TestMarketDataTVTier:
         fake_tv.is_available.return_value = False
 
         with patch("engine.data.market_data._tv_feed", fake_tv):
-            from engine.data.market_data import MarketDataManager
             from engine.config import TradingConfig
+            from engine.data.market_data import MarketDataManager
             mgr = MarketDataManager(TradingConfig())
             mgr.ibkr = None
             mgr.polygon = None
@@ -236,6 +239,7 @@ class TestAnalyzeBarsIntervalAlias:
     async def test_interval_alone_is_honored(self, fake_df):
         """interval=1h with no timeframe → data_manager called with timeframe=1h."""
         from unittest.mock import AsyncMock
+
         from engine.routers import analysis_router as ar
         mock_dm = MagicMock()
         mock_dm.get_bars = AsyncMock(return_value=fake_df)
@@ -248,6 +252,7 @@ class TestAnalyzeBarsIntervalAlias:
     async def test_timeframe_wins_over_interval(self, fake_df):
         """When both are passed, explicit timeframe takes precedence."""
         from unittest.mock import AsyncMock
+
         from engine.routers import analysis_router as ar
         mock_dm = MagicMock()
         mock_dm.get_bars = AsyncMock(return_value=fake_df)
@@ -260,6 +265,7 @@ class TestAnalyzeBarsIntervalAlias:
     async def test_default_is_5m_when_both_omitted(self, fake_df):
         """No timeframe, no interval → default 5m (backward compat)."""
         from unittest.mock import AsyncMock
+
         from engine.routers import analysis_router as ar
         mock_dm = MagicMock()
         mock_dm.get_bars = AsyncMock(return_value=fake_df)
@@ -453,8 +459,9 @@ class TestStrategyOptimizer:
         assert params["atr_t1_mult"] == pytest.approx(1.50)
 
     def test_initial_search_mode_is_explore(self):
-        from engine.optimization.strategy_optimizer import StrategyOptimizer
         import tempfile
+
+        from engine.optimization.strategy_optimizer import StrategyOptimizer
         # Isolate state file — create optimizer with a symbol unlikely to have state
         opt = StrategyOptimizer(symbol="TEST_ISOLATED_XYZ", dry_run=True)
         # If no prior state, should start in explore
@@ -483,8 +490,9 @@ class TestStrategyOptimizer:
 
     def test_stc_constraint_os_less_than_ob(self):
         """Mutation should always produce stc_os < stc_ob."""
-        from engine.optimization.strategy_optimizer import StrategyOptimizer
         import random
+
+        from engine.optimization.strategy_optimizer import StrategyOptimizer
         random.seed(42)
         opt = StrategyOptimizer(dry_run=True)
         for _ in range(20):
@@ -504,7 +512,7 @@ class TestAgentFeedback:
         assert AgentFeedbackTracker is not None
 
     def test_default_weights_are_neutral_with_no_history(self):
-        from engine.analytics.agent_feedback import AgentFeedbackTracker, DEFAULT_WEIGHT
+        from engine.analytics.agent_feedback import DEFAULT_WEIGHT, AgentFeedbackTracker
         tracker = AgentFeedbackTracker()
         weights = tracker.get_agent_weights()
         # With no trade history (< 5 trades), compute_accuracy returns 0.5
@@ -543,9 +551,7 @@ class TestAgentFeedback:
             assert expected in AGENT_NAMES
 
     def test_weight_bounds_respected(self):
-        from engine.analytics.agent_feedback import (
-            AgentFeedbackTracker, MIN_WEIGHT, MAX_WEIGHT
-        )
+        from engine.analytics.agent_feedback import MAX_WEIGHT, MIN_WEIGHT, AgentFeedbackTracker
         tracker = AgentFeedbackTracker()
         weights = tracker.get_agent_weights()
         for agent, weight in weights.items():
@@ -561,14 +567,14 @@ class TestTokenOptimizer:
 
     def test_import(self):
         try:
-            from engine.utils.token_optimizer import TokenOptimizer, MODEL_HAIKU, MODEL_SONNET
+            from engine.utils.token_optimizer import MODEL_HAIKU, MODEL_SONNET, TokenOptimizer
             assert TokenOptimizer is not None
         except ImportError:
             pytest.skip("TokenOptimizer not yet implemented")
 
     def test_high_stakes_always_sonnet(self):
         try:
-            from engine.utils.token_optimizer import TokenOptimizer, MODEL_SONNET
+            from engine.utils.token_optimizer import MODEL_SONNET, TokenOptimizer
         except ImportError:
             pytest.skip("TokenOptimizer not yet implemented")
         opt = TokenOptimizer()
@@ -578,7 +584,7 @@ class TestTokenOptimizer:
 
     def test_haiku_routing_for_weak_signal(self):
         try:
-            from engine.utils.token_optimizer import TokenOptimizer, MODEL_HAIKU
+            from engine.utils.token_optimizer import MODEL_HAIKU, TokenOptimizer
         except ImportError:
             pytest.skip("TokenOptimizer not yet implemented")
         opt = TokenOptimizer()
@@ -587,7 +593,7 @@ class TestTokenOptimizer:
 
     def test_sonnet_for_strong_signal(self):
         try:
-            from engine.utils.token_optimizer import TokenOptimizer, MODEL_SONNET
+            from engine.utils.token_optimizer import MODEL_SONNET, TokenOptimizer
         except ImportError:
             pytest.skip("TokenOptimizer not yet implemented")
         opt = TokenOptimizer()
@@ -684,18 +690,18 @@ class TestDebateThresholds:
 
     def test_regime_thresholds_defined(self):
         """REGIME_DEBATE_THRESHOLDS should contain key regimes."""
-        from engine.agents.debate import REGIME_DEBATE_THRESHOLDS, DEFAULT_DEBATE_THRESHOLD
+        from engine.agents.debate import DEFAULT_DEBATE_THRESHOLD, REGIME_DEBATE_THRESHOLDS
         assert "COMPRESSION" in REGIME_DEBATE_THRESHOLDS
         assert "EXHAUSTED" in REGIME_DEBATE_THRESHOLDS
 
     def test_compression_threshold_below_default(self):
         """COMPRESSION regime needs tighter threshold (less signal needed to trade)."""
-        from engine.agents.debate import REGIME_DEBATE_THRESHOLDS, DEFAULT_DEBATE_THRESHOLD
+        from engine.agents.debate import DEFAULT_DEBATE_THRESHOLD, REGIME_DEBATE_THRESHOLDS
         assert REGIME_DEBATE_THRESHOLDS["COMPRESSION"] < DEFAULT_DEBATE_THRESHOLD
 
     def test_exhausted_threshold_above_default(self):
         """EXHAUSTED regime needs looser threshold (more signal needed — higher bar)."""
-        from engine.agents.debate import REGIME_DEBATE_THRESHOLDS, DEFAULT_DEBATE_THRESHOLD
+        from engine.agents.debate import DEFAULT_DEBATE_THRESHOLD, REGIME_DEBATE_THRESHOLDS
         assert REGIME_DEBATE_THRESHOLDS["EXHAUSTED"] > DEFAULT_DEBATE_THRESHOLD
 
     def test_all_threshold_values_are_positive(self):

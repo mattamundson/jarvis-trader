@@ -19,12 +19,11 @@ from pathlib import Path
 import pytest
 
 from backtest.gate_v2_policy import (
+    MAX_VERDICT_AGE_DAYS,
     get_last_verdict,
     is_ungate_eligible,
     list_verdicts,
-    MAX_VERDICT_AGE_DAYS,
 )
-
 
 # ---------------------------------------------------------- #
 # Fixtures                                                   #

@@ -58,10 +58,11 @@ def test_closed_trade_writes_feedback_and_brier_reads_it(tmp_path, monkeypatch):
     # from `analytics.agent_feedback`. Patch both to cover direct and
     # absolute-path resolution (unit tests use the short path; production uses
     # the engine. prefix).
-    import analytics.agent_feedback as af_short
-    import analytics.ic_ensemble as ic_short
     import engine.analytics.agent_feedback as af_eng
     import engine.analytics.ic_ensemble as ic_eng
+
+    import analytics.agent_feedback as af_short
+    import analytics.ic_ensemble as ic_short
 
     monkeypatch.setattr(af_short, "DB_PATH", feedback_db)
     monkeypatch.setattr(af_eng, "DB_PATH", feedback_db)
@@ -157,8 +158,9 @@ def test_close_without_analyst_signals_is_safe_noop(tmp_path, monkeypatch):
     feedback_db = tmp_path / "agent_feedback.db"
     _init_feedback_schema(feedback_db)
 
-    import analytics.agent_feedback as af_short
     import engine.analytics.agent_feedback as af_eng
+
+    import analytics.agent_feedback as af_short
     monkeypatch.setattr(af_short, "DB_PATH", feedback_db)
     monkeypatch.setattr(af_eng, "DB_PATH", feedback_db)
     monkeypatch.delenv("TESTING", raising=False)

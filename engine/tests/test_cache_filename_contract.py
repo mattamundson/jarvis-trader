@@ -30,7 +30,6 @@ if str(ENGINE_ROOT) not in sys.path:
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from backtest.export_ibkr_history import CACHE_FILENAME_CONTRACT  # noqa: E402
 
-
 # --------------------------------------------------------------------------- #
 # Contract regex tests                                                         #
 # --------------------------------------------------------------------------- #

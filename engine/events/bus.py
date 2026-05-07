@@ -1,6 +1,7 @@
 from collections import deque
-from uuid import uuid4
 from datetime import datetime, timezone
+from uuid import uuid4
+
 import pytz
 
 _events: deque = deque(maxlen=150)
@@ -50,7 +51,7 @@ def detect_regime_change(symbol: str, new_regime: str) -> str | None:
     """
     old_regime = _last_regime.get(symbol)
     _last_regime[symbol] = new_regime
-    
+
     if old_regime is None or old_regime == new_regime:
         return None
     return old_regime

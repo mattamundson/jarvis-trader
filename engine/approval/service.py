@@ -347,7 +347,7 @@ def cancel_expired_approvals(db_manager, timeout_minutes: int = 5) -> int:
         created_at_str = row.get("created_at")
         if not created_at_str:
             continue
-        
+
         try:
             if isinstance(created_at_str, datetime):
                 created_at = created_at_str
@@ -359,7 +359,7 @@ def cancel_expired_approvals(db_manager, timeout_minutes: int = 5) -> int:
             else:
                 created_at = created_at.astimezone(timezone.utc)
             age = (now - created_at).total_seconds() / 60
-            
+
             if age > timeout_minutes:
                 approval_id = row["approval_id"]
                 db_manager.resolve_pending_approval(

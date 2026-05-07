@@ -18,12 +18,11 @@ from __future__ import annotations
 import pytest
 
 from scripts.validate_strategy import (
-    _evaluate_gate_v2,
-    CORE_GATE,
     ALT_EVIDENCE_GATE,
+    CORE_GATE,
     COST_SURVIVAL_LEVELS,
+    _evaluate_gate_v2,
 )
-
 
 # ------------------------------------------------------------------ #
 # Fixtures                                                           #

@@ -33,7 +33,7 @@ class StarkTPOStrategy:
     Deterministic Auction Market Theory & TPO profile generator.
     Evaluates 15-minute and 1h intervals to output pure binary execution scores.
     """
-    
+
     def __init__(self, value_area_pct: float = 0.70):
         self.value_area_pct = value_area_pct
         self.tick_size = 0.25 # Default micro-futures tick size
@@ -54,20 +54,20 @@ class StarkTPOStrategy:
 
         if len(prices) == 0 or np.sum(volumes) == 0:
             return np.nan, np.nan, np.nan
-        
+
         # Determine strict bin edges based on min/max and tick size
         min_p = np.min(prices)
         max_p = np.max(prices)
-        
+
         # If flat, POC is just the price
         if min_p == max_p:
             return min_p, min_p, min_p
 
         bins = np.arange(min_p, max_p + self.tick_size, self.tick_size)
-        
+
         # Digitize prices into bins
         inds = np.digitize(prices, bins) - 1
-        
+
         # Sum volume per bin
         volume_profile = np.zeros(len(bins))
         for i in range(len(prices)):
@@ -81,19 +81,19 @@ class StarkTPOStrategy:
         # Calculate Value Area (capturing 70% of total volume)
         total_vol = np.sum(volume_profile)
         target_vol = total_vol * self.value_area_pct
-        
+
         accum_vol = volume_profile[poc_idx]
         upper_idx = poc_idx
         lower_idx = poc_idx
-        
+
         # Expand up and down from POC until 70% target reached
         while accum_vol < target_vol:
             up_vol = volume_profile[upper_idx + 1] if upper_idx + 1 < len(volume_profile) else 0
             dn_vol = volume_profile[lower_idx - 1] if lower_idx - 1 >= 0 else 0
-            
+
             if up_vol == 0 and dn_vol == 0:
                 break
-                
+
             if up_vol > dn_vol:
                 upper_idx += 1
                 accum_vol += up_vol
@@ -108,7 +108,7 @@ class StarkTPOStrategy:
 
         vah = bins[upper_idx]
         val = bins[lower_idx]
-        
+
         return float(poc), float(vah), float(val)
 
     def evaluate_structure(self, df_15m: pd.DataFrame) -> Dict[str, any]:
@@ -121,7 +121,7 @@ class StarkTPOStrategy:
 
         poc, vah, val = self._calculate_tpo_profile(df_15m)
         last_price = df_15m['close'].iloc[-1]
-        
+
         # Structural assessment
         if np.isnan(poc):
             struct = MarketStructure.UNKNOWN
@@ -156,18 +156,18 @@ class StarkTPOStrategy:
                 return "SHORT_VAH_REJECT"
             elif last_price <= val + (self.tick_size * 4):
                 return "LONG_VAL_BOUNCE"
-            
+
         elif struct == MarketStructure.BREAKOUT:
             if last_price > vah:
                 return "LONG_MOMENTUM"
             elif last_price < val:
                 return "SHORT_MOMENTUM"
-                
+
         elif struct == MarketStructure.GAP_IMBALANCE:
             # Gap pulls towards POC
             if last_price > vah:
                 return "SHORT_GAP_FILL"
             elif last_price < val:
                 return "LONG_GAP_FILL"
-                
+
         return "HOLD"

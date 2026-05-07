@@ -104,7 +104,7 @@ def print_summary(signal: dict, orders: list[dict]) -> None:
         print(f"  {o['symbol']:<8} {o['action']:<6} {o['weight_pct']:>7.2f}%  ${o['target_usd']:>9,.2f}  "
               f"{o['order_type']:<4}  {o['tif']:<5}")
     print(f"\n  Account:  {IBKR_ACCOUNT}  (PAPER)")
-    print(f"  Execute:  Monday MOO (Market On Open)")
+    print("  Execute:  Monday MOO (Market On Open)")
     print(f"  Safety:   LIVE_TRADING_ENABLED={LIVE_TRADING_ENABLED}  |  "
           f"REQUIRE_HUMAN_APPROVAL={REQUIRE_HUMAN_APPROVAL}")
     print("=" * 58 + "\n")

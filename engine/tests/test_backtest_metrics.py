@@ -5,8 +5,8 @@ Tests for VaR/CVaR computation in BacktestResult.
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -14,9 +14,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from backtest.trade_manager import BacktestResult, Trade
 from backtest.metrics import calculate_metrics
-
+from backtest.trade_manager import BacktestResult, Trade
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -150,7 +150,7 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
     or stale verdict forces NO_TRADE, never an implicit allow.
     """
     if symbol in TREND_INSTRUMENTS:
-        from backtest.trend_signals import get_sma_trend_params, generate_sma_trend_signals
+        from backtest.trend_signals import generate_sma_trend_signals, get_sma_trend_params
 
         params = get_sma_trend_params(symbol)
         if params:

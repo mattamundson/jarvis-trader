@@ -7,9 +7,10 @@ Prevents pipeline execution on corrupted or 'garbage' data.
 from __future__ import annotations
 
 import logging
-import pandas as pd
-import numpy as np
 from typing import Dict, Tuple
+
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger("jarvis_trader.data_validation")
 
@@ -90,7 +91,7 @@ class DataValidator:
             scores.append(1.0)
 
         final_score = sum(scores) / len(scores) if scores else 1.0
-        
+
         if final_score < 0.95:
             logger.warning("[DataValidator] Quality Score: %.2f | Issues: %s", final_score, issues)
         else:

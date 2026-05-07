@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
+
 from analysis.harmonics_engine import HarmonicEngine, HarmonicPattern
 
 logger = logging.getLogger("jarvis_trader.agents.harmonic_agent")
@@ -61,13 +62,13 @@ class HarmonicAgent:
         df = await self._data.get_bars(
             symbol, lookback_days=10, timeframe=timeframe, is_futures=is_futures
         )
-        
+
         if df.empty or len(df) < 100:
             return self._empty_report(symbol)
 
         # Detect patterns
         patterns = self._engine.detect_patterns(df)
-        
+
         if not patterns:
             return self._empty_report(symbol)
 
@@ -75,16 +76,16 @@ class HarmonicAgent:
         # Determine if it's "active" (latest swing is D)
         last_swing_idx = df.index[-1]
         active_patterns = [p for p in patterns if (last_swing_idx - p.points[-1][0]) < 10]
-        
+
         if not active_patterns:
             return self._empty_report(symbol, "Patterns detected but none active near current price.")
 
         best_pattern = active_patterns[-1]
-        
+
         # Bullish patterns (Gartley/Bat/Butterfly/Crab) signal a buy at D
         signal = 0.7 if best_pattern.type == "bullish" else -0.7
         confidence = best_pattern.confidence
-        
+
         pattern_list = []
         for p in active_patterns:
             pattern_list.append({

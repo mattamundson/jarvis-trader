@@ -11,7 +11,6 @@ from analysis.hidden_pivots import (
     full_hidden_pivots_scan,
 )
 
-
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
 def _make_df(n: int = 150, trend: str = "up", seed: int = 42) -> pd.DataFrame:

@@ -518,7 +518,7 @@ def run_v3_backtest(symbol: str, config: dict) -> dict:
 
     data_source = "yfinance"
     if df is None or df.empty or len(df) < 100:
-        print(f"  [INFO] Live data unavailable — using synthetic data")
+        print("  [INFO] Live data unavailable — using synthetic data")
         # 2 years of hourly bars (252 trading days × 6.5 hours)
         n_bars = int(252 * 6.5 * config["data_window_years"])
         df = generate_synthetic_data(symbol, n_bars=n_bars)
@@ -528,7 +528,7 @@ def run_v3_backtest(symbol: str, config: dict) -> dict:
     print(f"  Price rng: {df['close'].min():.2f} – {df['close'].max():.2f}")
 
     # ── Generate composite signals ────────────────────────────────────────
-    print(f"  Generating v3 composite signals...")
+    print("  Generating v3 composite signals...")
 
     try:
         from backtest.composite_signals_v3 import generate_composite_signals
@@ -583,7 +583,7 @@ def run_v3_backtest(symbol: str, config: dict) -> dict:
 def print_results_table(results: dict[str, dict]) -> None:
     """Print clean results table."""
     print(f"\n{'='*75}")
-    print(f"  COHEN v3 BACKTEST RESULTS")
+    print("  COHEN v3 BACKTEST RESULTS")
     print(f"{'='*75}")
     header = f"{'Symbol':<8} {'Trades':>7} {'Win Rate':>10} {'PF':>8} {'Sharpe':>8} {'Max DD':>8} {'CAGR':>8}"
     print(header)
@@ -637,7 +637,7 @@ def print_comparison_table(v3_results: dict[str, dict]) -> None:
         v3_agg = None
 
     print(f"\n{'='*80}")
-    print(f"  VERSION COMPARISON: v1 vs v2 vs v3")
+    print("  VERSION COMPARISON: v1 vs v2 vs v3")
     print(f"{'='*80}")
     print(
         f"{'Version':<10} {'Trades':>7} {'Win Rate':>10} {'PF':>8} "

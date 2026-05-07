@@ -186,8 +186,8 @@ def _run_signals_and_backtest(
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
 ) -> object:
-    from backtest.meanrev_signals import generate_bollinger_rsi_signals
     from backtest.backtester import Backtester
+    from backtest.meanrev_signals import generate_bollinger_rsi_signals
 
     df_sig = generate_bollinger_rsi_signals(
         df,
@@ -248,7 +248,6 @@ def _best_is_params(
 from backtest._gate_v2_helpers import _find_latest_cache
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
-
 
 # ---------------------------------------------------------------------------
 # Fixed-params sweep
@@ -438,7 +437,7 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MGC MEAN-REV RANK 1 -- BB+RSI BASELINE, NO REGIME GATE ===")
+    print("=== MGC MEAN-REV RANK 1 -- BB+RSI BASELINE, NO REGIME GATE ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo")
     print(f"Grid: {n_combos} combos")
     print(f"  bb_period       : {BB_PERIOD_VALUES}")
@@ -451,7 +450,7 @@ def run_wfo() -> dict:
     print(f"  TEST_MONTHS     : {TEST_MONTHS}  (matches MGC trend rank4)")
     print(f"ALT thresholds : dsr>={GATE_DSR_ALT}, wfo in {GATE_WFO_CONSISTENCY_VALUES}, "
           f"fixed>={GATE_FIXED_PARAMS_MIN_PF}, mc_dd<={GATE_MC_DD_ALT*100:.0f}%")
-    print(f"Lineage: rank1 baseline (no gate). If FAIL, rank2 layers rv_band per MCL hyp-C.")
+    print("Lineage: rank1 baseline (no gate). If FAIL, rank2 layers rv_band per MCL hyp-C.")
     print(f"{'=' * 70}")
 
     oos_results    = []
@@ -471,7 +470,7 @@ def run_wfo() -> dict:
 
         best_params, is_result = _best_is_params(df_train, grid)
         if best_params is None:
-            print(f"  [SKIP] No valid IS params")
+            print("  [SKIP] No valid IS params")
             continue
 
         print(f"  Best IS: bb={best_params['bb_period']}  std={best_params['bb_std']}  "

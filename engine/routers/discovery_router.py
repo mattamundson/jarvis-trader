@@ -96,7 +96,7 @@ async def load_strategy_file(filename: str):
 @router.post("/run-cycle")
 async def run_discovery_cycle(symbol: str = "MCL", interval: str = "1h"):
     """Trigger one LLM strategy generation + evaluation loop."""
-    from strategies.discovery_loop import generate_strategy, evaluate_strategy_file
+    from strategies.discovery_loop import evaluate_strategy_file, generate_strategy
 
     # Step 1: Generate strategy via LLM
     try:
@@ -140,12 +140,12 @@ async def run_discovery_cycle(symbol: str = "MCL", interval: str = "1h"):
 async def get_evaluation_gates():
     """Return current evaluation harness gate thresholds."""
     from backtest.evaluation_harness import (
-        MIN_TRADES,
-        MIN_EXPOSURE_PCT,
-        MIN_SHARPE,
-        MIN_CALMAR,
-        MIN_PROFIT_FACTOR,
         MAX_DRAWDOWN_PCT,
+        MIN_CALMAR,
+        MIN_EXPOSURE_PCT,
+        MIN_PROFIT_FACTOR,
+        MIN_SHARPE,
+        MIN_TRADES,
     )
 
     return {

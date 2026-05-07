@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
 import logging
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/events", tags=["events"])
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ async def get_recent_events(limit: Optional[int] = Query(20, ge=1, le=100)):
     """
     try:
         from events.bus import get_recent
-        
+
         events = get_recent(limit)
         return {
             "events": events,

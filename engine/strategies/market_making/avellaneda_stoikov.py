@@ -5,10 +5,11 @@ A professional market making strategy that adjusts bid/ask spreads
 based on inventory risk and market volatility.
 """
 
-import numpy as np
 import logging
 from datetime import datetime
 from typing import Dict, Tuple
+
+import numpy as np
 
 logger = logging.getLogger("jarvis_trader.strategies.mm.avellaneda")
 
@@ -75,9 +76,9 @@ class AvellanedaStoikovStrategy:
         elapsed = min(max(elapsed, 0.0), 1.0)
 
         bid, ask = self.calculate_quotes(mid_price, current_inventory, elapsed, news_sentiment)
-        
+
         logger.info(f"MM: Mid={mid_price:.2f} Inv={current_inventory} -> Bid={bid:.2f} Ask={ask:.2f}")
-        
+
         return {
             "bid": bid,
             "ask": ask,

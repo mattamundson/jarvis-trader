@@ -59,6 +59,7 @@ class TestLowLevelCallDropsTemperature:
 
     def _make_client_with_mock(self, monkeypatch):
         import asyncio
+
         from llm.client import JarvisLLMClient
 
         client = JarvisLLMClient.__new__(JarvisLLMClient)

@@ -2,8 +2,8 @@
 Inference provider configuration for Hermes/Ollama routing.
 """
 
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 
 
 class InferenceProvider(str, Enum):

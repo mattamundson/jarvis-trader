@@ -53,15 +53,15 @@ class RegimeClassifierV2:
         """
         df = df.copy()
         regimes = []
-        
+
         # Ensure required indicators exist
         if "atr" not in df.columns:
             from backtest.indicators import wilder_atr
             df["atr"] = wilder_atr(df["high"], df["low"], df["close"], period=14)
-        
+
         atr_median = df["atr"].rolling(50).median()
         atr_norm = (df["atr"] / atr_median.replace(0, np.nan)).fillna(1.0)
-        
+
         # EMA alignment for trend
         # We assume these exist or we compute them
         for p in [8, 21, 34]:
@@ -79,26 +79,26 @@ class RegimeClassifierV2:
         for i in range(len(df)):
             row = df.iloc[i]
             vix = row.get("vix", 0)
-            
+
             # 1. CRISIS Check
             if vix > self._vix_crisis_threshold:
                 current = MarketRegime.CRISIS
             elif row["close"] < row["ema_34"] and atr_norm.iloc[i] > 2.5:
                 current = MarketRegime.CRISIS
-            
+
             # 2. VOLATILE Check
             elif atr_norm.iloc[i] > self._atr_volatile_threshold:
                 current = MarketRegime.VOLATILE
-                
+
             # 3. TREND Check
             elif (row["ema_8"] > row["ema_21"] > row["ema_34"]) or \
                  (row["ema_8"] < row["ema_21"] < row["ema_34"]):
                 current = MarketRegime.TREND
-                
+
             # 4. MEANREV Check (Compression)
             elif bbw_norm.iloc[i] < 0.8:
                 current = MarketRegime.MEANREV
-                
+
             # 5. RANGE (Default)
             else:
                 current = MarketRegime.RANGE
@@ -113,7 +113,7 @@ class RegimeClassifierV2:
                 else:
                     self._last_regime = current
                     self._regime_counter = 1
-            
+
             regimes.append(current)
 
         df["regime_v2"] = [r.value for r in regimes]

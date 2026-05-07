@@ -191,8 +191,8 @@ def _run_signals_and_backtest(
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
 ) -> object:
-    from backtest.trend_signals import generate_sma_trend_signals
     from backtest.backtester import Backtester
+    from backtest.trend_signals import generate_sma_trend_signals
 
     df_sig = generate_sma_trend_signals(
         df,
@@ -249,7 +249,6 @@ def _best_is_params(
 
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
-
 
 # ---------------------------------------------------------------------------
 # Fixed-params sweep
@@ -435,7 +434,7 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MGC TREND RANK 3 -- 2-MONTH OOS WINDOW, TIGHTER GRID ===")
+    print("=== MGC TREND RANK 3 -- 2-MONTH OOS WINDOW, TIGHTER GRID ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo")
     print(f"Grid: {n_combos} combos")
     print(f"  fast_period    : {FAST_PERIOD_VALUES}  (exclude fast=20 choppy region)")
@@ -447,7 +446,7 @@ def run_wfo() -> dict:
     print(f"  TEST_MONTHS    : {TEST_MONTHS}  (2mo OOS window captures 4-6 crossovers)")
     print(f"ALT thresholds: dsr>={GATE_DSR_ALT}, wfo in {GATE_WFO_CONSISTENCY_VALUES}, "
           f"fixed>={GATE_FIXED_PARAMS_MIN_PF}, mc_dd<={GATE_MC_DD_ALT*100:.0f}%")
-    print(f"Rank1: wfo=MODERATE, 5 OOS trades. Rank2: wfo=STRONG, 4 OOS trades.")
+    print("Rank1: wfo=MODERATE, 5 OOS trades. Rank2: wfo=STRONG, 4 OOS trades.")
     print(f"{'=' * 70}")
 
     oos_results    = []
@@ -467,7 +466,7 @@ def run_wfo() -> dict:
 
         best_params, is_result = _best_is_params(df_train, grid)
         if best_params is None:
-            print(f"  [SKIP] No valid IS params")
+            print("  [SKIP] No valid IS params")
             continue
 
         print(f"  Best IS: fast={best_params['fast']}  slow={best_params['slow']}  "

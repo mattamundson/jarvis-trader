@@ -19,11 +19,10 @@ from pathlib import Path
 import pytest
 
 from scripts.gate_v2_orchestrator import (
+    VerdictSnapshot,
     orchestrate_gate_v2,
     resolve_aux_paths,
-    VerdictSnapshot,
 )
-
 
 # ---------------------------------------------------------- #
 # Fixtures                                                   #

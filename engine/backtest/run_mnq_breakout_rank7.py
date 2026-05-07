@@ -107,8 +107,8 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
 
 
 def _run(df: pd.DataFrame, donchian_period, ema_trend_period, atr_regime_mult, vol_mult):
-    from backtest.breakout_signals import generate_donchian_breakout_signals
     from backtest.backtester import Backtester
+    from backtest.breakout_signals import generate_donchian_breakout_signals
     sig = generate_donchian_breakout_signals(
         df, donchian_period=donchian_period, vol_ma_period=VOL_MA_PERIOD,
         vol_mult=vol_mult, stop_atr_mult=STOP_ATR_MULT,
@@ -188,7 +188,7 @@ def run_wfo():
     n_combos = len(grid)
 
     print(f"\n{'='*65}")
-    print(f"=== MNQ BREAKOUT RANK 7 - ATR+EMA REGIME FILTER ===")
+    print("=== MNQ BREAKOUT RANK 7 - ATR+EMA REGIME FILTER ===")
     print(f"Windows: {len(windows)} | Grid: {n_combos} combos")
     print(f"  donchian  : {DONCHIAN_PERIOD_VALUES}")
     print(f"  ema_period: {EMA_TREND_PERIOD_VALUES}  (0=disabled baseline)")
@@ -208,7 +208,7 @@ def run_wfo():
 
         best_p, is_r = _best_is(df_tr, grid)
         if best_p is None:
-            print(f"  [SKIP] No valid IS params")
+            print("  [SKIP] No valid IS params")
             continue
         don, ema, atr_m, vm = best_p
         print(f"  Best IS: don={don} ema={ema} atr_m={atr_m} vol={vm}  "

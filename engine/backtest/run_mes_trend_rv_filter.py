@@ -154,8 +154,8 @@ def _run_signals_and_backtest(
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
 ) -> object:
-    from backtest.trend_signals import generate_sma_trend_signals
     from backtest.backtester import Backtester
+    from backtest.trend_signals import generate_sma_trend_signals
 
     df_sig = generate_sma_trend_signals(
         df,
@@ -216,7 +216,6 @@ def _best_is_params(
 
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
-
 
 # ---------------------------------------------------------------------------
 # Fixed-params sweep
@@ -445,8 +444,8 @@ def run_wfo() -> dict:
 
     print(f"\n{'=' * 70}")
     print(f"=== MES TREND RV FILTER (rv_filter_rank1) — min_rv_annualized={MIN_RV_ANNUALIZED}% ===")
-    print(f"Baseline rank11 (no filter): 36 trades, PF ~2.06")
-    print(f"Empirical evidence (36-trade sample):  22 trades at RV>=9%, PF 2.54 (+23%)")
+    print("Baseline rank11 (no filter): 36 trades, PF ~2.06")
+    print("Empirical evidence (36-trade sample):  22 trades at RV>=9%, PF 2.54 (+23%)")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo")
     print(f"Grid: {n_combos} combos (identical to rank11)")
     print(f"  fast_period      : {FAST_PERIOD_VALUES}")
@@ -691,10 +690,10 @@ def main():
     if final == "PASS":
         print(f"\n[PASS via {passed_via.upper()}] MES Trend RV Filter PASSES gate v2.")
         if total_trades < rank11_trades * 0.5:
-            print(f"  WARNING: trade count dropped >50% vs baseline. "
-                  f"Live confirmation period extends — need 60+ live trades before enabling.")
+            print("  WARNING: trade count dropped >50% vs baseline. "
+                  "Live confirmation period extends — need 60+ live trades before enabling.")
         else:
-            print(f"  RV filter validated. Enable in MES_TREND_PAPER_CONFIG when 60+ live trades confirm.")
+            print("  RV filter validated. Enable in MES_TREND_PAPER_CONFIG when 60+ live trades confirm.")
     else:
         print("\n[FAIL] MES Trend RV Filter FAILS gate v2.")
         fpmf = gate.get("fixed_params_min_pf", 0.0)
@@ -702,9 +701,9 @@ def main():
         print(f"  fixed_params_min_pf={fpmf:.4f}  wfo_consistency={wfo}")
         if total_trades < 10:
             print(f"  ROOT CAUSE: Only {total_trades} total OOS trades — RV filter too aggressive.")
-            print(f"  RECOMMENDATION: Try MIN_RV_ANNUALIZED = 7.0")
+            print("  RECOMMENDATION: Try MIN_RV_ANNUALIZED = 7.0")
         else:
-            print(f"  RECOMMENDATION: Disable filter (rank11 baseline already passes gate v2)")
+            print("  RECOMMENDATION: Disable filter (rank11 baseline already passes gate v2)")
 
 
 if __name__ == "__main__":

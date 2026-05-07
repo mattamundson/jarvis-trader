@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from notifications.openclaw_notifier import send_raw as send_openclaw_whatsapp
 from notifications.telegram import get_notifier as get_telegram_notifier
 from notifications.whatsapp import send_whatsapp_message
-from services.telegram_poller import start_telegram_poller, stop_telegram_poller
 from services.agent_gateway import (
     GatewayConfig,
     GatewaySessionStore,
@@ -20,6 +19,7 @@ from services.agent_gateway import (
     OpenAICompatBackendConfig,
     SharedAgentGateway,
 )
+from services.telegram_poller import start_telegram_poller, stop_telegram_poller
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/messaging", tags=["messaging"])
@@ -262,12 +262,12 @@ async def whatsapp_webhook(request: Request) -> dict[str, Any]:
                         get_latest_pending_approval_row,
                         reject_pending_trade,
                     )
-                    
+
                     row = get_latest_pending_approval_row(_db_manager)
                     aid = row["approval_id"]
                     sym = row["symbol"]
                     act = row["action"]
-                    
+
                     if cmd == "Y":
                         res = await approve_pending_trade(
                             approval_id=aid,

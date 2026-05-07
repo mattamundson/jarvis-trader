@@ -8,6 +8,7 @@ Ensures the engine stays safe during extreme volatility or poor performance.
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+
 from config import settings
 
 logger = logging.getLogger("jarvis_trader.risk.protections")
@@ -39,17 +40,17 @@ class RiskProtections:
         """
         if not pnl_history:
             return False
-            
+
         peak = pnl_history[0]
         max_dd = 0.0
-        
+
         for val in pnl_history:
             if val > peak:
                 peak = val
             dd = (peak - val) / peak
             if dd > max_dd:
                 max_dd = dd
-                
+
         if max_dd > max_drawdown_pct:
             logger.warning(f"🚨 Protection: Max Drawdown ({max_dd:.2%}) exceeded limit ({max_drawdown_pct:.2%})")
             return True
@@ -59,14 +60,14 @@ class RiskProtections:
         """Check for too many consecutive losses."""
         if len(last_trades) < limit:
             return False
-            
+
         consecutive = 0
         for trade in last_trades[:limit]:
             if trade.get('pnl', 0) < 0:
                 consecutive += 1
             else:
                 break
-                
+
         if consecutive >= limit:
             logger.warning(f"🚨 Protection: {consecutive} consecutive losses detected.")
             return True

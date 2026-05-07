@@ -54,8 +54,8 @@ def run_strategy_loop(
         logger.error("anthropic package not installed. Run: pip install anthropic")
         return {'error': 'anthropic not installed', 'eligible_count': 0}
 
-    from strategy_lab.strategy_generator import generate_strategy_variant
     from strategy_lab.strategy_evaluator import evaluate_strategy_variant
+    from strategy_lab.strategy_generator import generate_strategy_variant
 
     client = Anthropic()
     results: list = []
@@ -68,7 +68,7 @@ def run_strategy_loop(
     print(f"\n{'='*60}")
     print(f"[STRATEGY LAB] Autonomous loop — {max_iterations} iterations on {symbol}")
     print(f"[STRATEGY LAB] Period: {start} -> {end}")
-    print(f"[STRATEGY LAB] Gates: Risk (DD<15%) | Profit (Sharpe>=1.2, Calmar>=0.8, PF>=1.8)")
+    print("[STRATEGY LAB] Gates: Risk (DD<15%) | Profit (Sharpe>=1.2, Calmar>=0.8, PF>=1.8)")
     print(f"{'='*60}\n")
 
     for i in range(max_iterations):

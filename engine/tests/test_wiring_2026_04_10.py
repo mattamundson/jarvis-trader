@@ -23,8 +23,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from agents.advisor_client import AdvisorClient, AdvisorVerdict
-from utils.token_proxy import TokenProxy, get_token_proxy
 from analytics.ic_ensemble import ICWeightedEnsemble
+from utils.token_proxy import TokenProxy, get_token_proxy
 
 
 class TestAdvisorClientGracefulDegradation:

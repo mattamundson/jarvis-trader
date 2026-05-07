@@ -152,8 +152,8 @@ def _run_signals_and_backtest(
     donchian_period: int,
     stop_atr_mult: float,
 ) -> object:
-    from backtest.breakout_signals import generate_donchian_breakout_signals
     from backtest.backtester import Backtester
+    from backtest.breakout_signals import generate_donchian_breakout_signals
 
     df_sig = generate_donchian_breakout_signals(
         df,
@@ -363,16 +363,16 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MNQ BREAKOUT RANK 4 — TIGHT-GRID ALT-PATH SWEEP ===")
+    print("=== MNQ BREAKOUT RANK 4 — TIGHT-GRID ALT-PATH SWEEP ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo")
     print(f"Grid: {n_combos} combos (TIGHT — ±10% around rank1 consensus)")
     print(f"  donchian_period : {DONCHIAN_PERIOD_VALUES}  (consensus: 20)")
     print(f"  stop_atr_mult   : {STOP_ATR_MULT_VALUES}  (consensus: 2.0)")
     print(f"  vol_mult        : {VOL_MULT} (DISABLED — rank 2 lesson)")
     print(f"  vol_ma_period   : {VOL_MA_PERIOD} (fixed, irrelevant)")
-    print(f"Rank 1 baseline  : fixed_params_min_pf=1.186 (need >= 1.20 for ALT, gap=0.014)")
-    print(f"Rank 4 hypothesis: tight grid means worst combo is still near sweet spot")
-    print(f"  -> every combo PF near 1.186 -> floor should clear 1.20")
+    print("Rank 1 baseline  : fixed_params_min_pf=1.186 (need >= 1.20 for ALT, gap=0.014)")
+    print("Rank 4 hypothesis: tight grid means worst combo is still near sweet spot")
+    print("  -> every combo PF near 1.186 -> floor should clear 1.20")
     print(f"{'=' * 70}")
 
     oos_results = []
@@ -437,7 +437,7 @@ def run_wfo() -> dict:
 
     # Fixed-params sweep on full dataset (ALT metric) — THE KEY METRIC FOR RANK 4
     print(f"\n[MNQ-R4] Running fixed-params sweep on full dataset ({n_combos} tight combos)...")
-    print(f"  (Tight grid = every combo near rank1 best; should raise min_pf floor)")
+    print("  (Tight grid = every combo near rank1 best; should raise min_pf floor)")
     fixed_params_metrics = _run_fixed_params_sweep(df, grid)
     print(f"  fixed_params_min_pf  = {fixed_params_metrics['fixed_params_min_pf']:.4f}  "
           f"(need >= {GATE_FIXED_PARAMS_MIN_PF}, rank1 was 1.186, gap was 0.014)")
@@ -446,7 +446,7 @@ def run_wfo() -> dict:
     print(f"  combos with trades   = {fixed_params_metrics['n_combos_with_trades']} / {n_combos}")
 
     if fixed_params_metrics["fixed_params_min_pf"] >= GATE_FIXED_PARAMS_MIN_PF:
-        print(f"  -> CLEAR: fixed_params_min_pf PASSES ALT threshold!")
+        print("  -> CLEAR: fixed_params_min_pf PASSES ALT threshold!")
     else:
         gap = GATE_FIXED_PARAMS_MIN_PF - fixed_params_metrics["fixed_params_min_pf"]
         print(f"  -> BLOCKED: still {gap:.4f} short of ALT threshold")

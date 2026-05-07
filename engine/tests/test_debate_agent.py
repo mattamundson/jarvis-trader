@@ -27,18 +27,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents.bear_researcher import BearReport  # noqa: E402
 from agents.bull_researcher import BullReport  # noqa: E402
 from agents.debate import (  # noqa: E402
+    _CREDIT_EXHAUSTED_SENTINEL,
     BRIER_BLEND_ALPHA,
     DEFAULT_DEBATE_THRESHOLD,
     REGIME_DEBATE_THRESHOLDS,
     DebateOrchestrator,
     DebateResult,
     _apply_evidence_weight,
-    _CREDIT_EXHAUSTED_SENTINEL,
     _extract_case_text,
     _is_credit_error,
     _parse_evidence_fields,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DebateResult.to_dict

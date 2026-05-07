@@ -5,19 +5,19 @@ without conflicts and produce the expected signal columns.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import datetime, timedelta, timezone
 
-from backtest.ib_signals import compute_initial_balance
-from backtest.tpo_profile import compute_tpo_profile
-from backtest.tpo_score import compute_tpo_score
-from backtest.rangefinder import compute_rangefinder
-from backtest.singlefinder import compute_single_prints
 from backtest.gapfinder import compute_gaps
 from backtest.gaps_chetan import compute_chetan_gaps
-
+from backtest.ib_signals import compute_initial_balance
+from backtest.rangefinder import compute_rangefinder
+from backtest.singlefinder import compute_single_prints
+from backtest.tpo_profile import compute_tpo_profile
+from backtest.tpo_score import compute_tpo_score
 
 # ---------------------------------------------------------------------------
 # Synthetic fixture — 3 RTH days at 5-min resolution, gap-up on day 2

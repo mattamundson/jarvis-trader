@@ -83,7 +83,7 @@ def _import_signal_deps():
     from backtest.data_loader import FUTURES_MAP
     from backtest.paper_config import ACTIVE_INSTRUMENTS, PAPER_CONFIGS
     from backtest.paper_tracker import PaperTradeTracker
-    from backtest.signals import generate_signals, generate_instrument_signals
+    from backtest.signals import generate_instrument_signals, generate_signals
 
     return FUTURES_MAP, ACTIVE_INSTRUMENTS, PAPER_CONFIGS, PaperTradeTracker, generate_signals, generate_instrument_signals
 

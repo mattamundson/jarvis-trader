@@ -26,8 +26,8 @@ _ENGINE = _HERE.parent
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
-from backtest.data_loader import BacktestDataLoader  # noqa: E402
 from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
+from backtest.data_loader import BacktestDataLoader  # noqa: E402
 
 SYMBOLS = ["MES", "MCL", "MNQ"]
 INTERVAL = "1h"
@@ -199,7 +199,7 @@ def main():
         per_sym_results.sort(key=lambda x: x["min_pf"], reverse=True)
         winners = [r for r in per_sym_results if r["min_pf"] >= 1.5 and r["train_n"] >= 10 and r["test_n"] >= 10]
         print(f"  {len(winners)} WF winners (min_PF>=1.5, n>=10 each window)", flush=True)
-        print(f"  Top 5:", flush=True)
+        print("  Top 5:", flush=True)
         print(f"  {'min_PF':>7} {'tr_PF':>6} {'te_PF':>6} {'tr_n':>4} {'te_n':>4} {'tr_ret':>7} {'te_ret':>7}  params", flush=True)
         for r in per_sym_results[:5]:
             p = r["params"]

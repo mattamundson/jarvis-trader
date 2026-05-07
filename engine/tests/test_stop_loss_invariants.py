@@ -24,7 +24,6 @@ from pathlib import Path
 
 import pytest
 
-
 ENGINE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = ENGINE_DIR / "data" / "jarvis_trader.db"
 JSONL_PATH = ENGINE_DIR / "portfolio" / "trades.jsonl"

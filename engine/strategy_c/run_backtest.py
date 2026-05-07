@@ -18,9 +18,10 @@ import warnings
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -31,7 +32,7 @@ warnings.filterwarnings("ignore")
 REPO_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from engine.strategy_c.engine import StrategyCEngine, StrategyCConfig
+from engine.strategy_c.engine import StrategyCConfig, StrategyCEngine
 
 OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -240,8 +241,8 @@ def _plot_metrics_table(ax, full, is_m, oos_m, retention):
         rows.append(["──────────", "──────", "──────", "──────"])
         sr_ret = retention.get("sharpe_retention_pct", 0)
         cagr_ret = retention.get("cagr_retention_pct", 0)
-        rows.append([f"OOS Sharpe Ret", f"{sr_ret:.0f}%", "", ""])
-        rows.append([f"OOS CAGR Ret  ", f"{cagr_ret:.0f}%", "", ""])
+        rows.append(["OOS Sharpe Ret", f"{sr_ret:.0f}%", "", ""])
+        rows.append(["OOS CAGR Ret  ", f"{cagr_ret:.0f}%", "", ""])
 
     table = ax.table(
         cellText=rows[1:],

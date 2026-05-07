@@ -6,7 +6,8 @@ Replaces multiple independent data providers with a single standardized hub.
 """
 
 import logging
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
+
 import pandas as pd
 from openbb import obb
 

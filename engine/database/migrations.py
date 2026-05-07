@@ -966,6 +966,44 @@ def migration_022(conn: sqlite3.Connection) -> None:
     logger.info("Migration 022 applied — mes_session_hypothesis table created.")
 
 
+def migration_024(conn: sqlite3.Connection) -> None:
+    """
+    024 — Market data bars persistence table.
+
+    Stores OHLCV bars fetched by MarketDataManager.get_bars() so the daily
+    post-trade report can re-run signal generators on actual bar history
+    (counterfactual + tomorrow's outlook sections).
+
+    PRIMARY KEY (symbol, interval, ts_utc) makes double-inserts a no-op via
+    INSERT OR IGNORE.  WAL mode on the main DB keeps bar writes non-blocking.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_data_bars (
+            symbol      TEXT    NOT NULL,
+            interval    TEXT    NOT NULL,
+            ts_utc      TEXT    NOT NULL,
+            open        REAL    NOT NULL,
+            high        REAL    NOT NULL,
+            low         REAL    NOT NULL,
+            close       REAL    NOT NULL,
+            volume      REAL,
+            source      TEXT    NOT NULL,
+            fetched_at  TEXT    NOT NULL,
+            PRIMARY KEY (symbol, interval, ts_utc)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_market_data_bars_symbol_interval_ts
+            ON market_data_bars(symbol, interval, ts_utc)
+        """
+    )
+    conn.commit()
+    logger.info("Migration 024 applied — market_data_bars table created.")
+
+
 def migration_023(conn: sqlite3.Connection) -> None:
     """
     023 — trading_patterns schema alignment.
@@ -1041,6 +1079,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_021,  # version 21
     migration_022,  # version 22
     migration_023,  # version 23
+    migration_024,  # version 24
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1067,6 +1106,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Paper trades: stop_loss and take_profit columns for insert_paper_trade / fresh DB compatibility",
     "MES session hypothesis: forward-recorder table for Corey bias + gamma levels daily snapshots + session outcomes",
     "Trading patterns alignment: adding pattern_type, win_count, loss_count, avg_return, and is_active columns.",
+    "Market data bars: market_data_bars OHLCV persistence table for counterfactual + outlook sections.",
 ]
 
 

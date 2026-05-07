@@ -150,7 +150,7 @@ async def notify_signal(
         return False
     # Supervisor gate (Hermes pattern) — ACK clean signals, escalate only noisy ones.
     try:
-        from .supervisor import get_supervisor, SupervisorEvent, SupervisorMarker
+        from .supervisor import SupervisorEvent, SupervisorMarker, get_supervisor
         _sup = get_supervisor()
         if _sup.enabled:
             _decision = await _sup.review(SupervisorEvent(
@@ -205,7 +205,7 @@ async def notify_kill_switch(
         return False
     # Supervisor gate — ALWAYS_ESCALATE event, logs decision but never swallows.
     try:
-        from .supervisor import get_supervisor, SupervisorEvent
+        from .supervisor import SupervisorEvent, get_supervisor
         _sup = get_supervisor()
         if _sup.enabled:
             await _sup.review(SupervisorEvent(
@@ -242,7 +242,7 @@ async def notify_approval_required(
         return False
     # Supervisor gate — ACK clean approvals (high confidence, in-regime, in size band).
     try:
-        from .supervisor import get_supervisor, SupervisorEvent, SupervisorMarker
+        from .supervisor import SupervisorEvent, SupervisorMarker, get_supervisor
         _sup = get_supervisor()
         if _sup.enabled:
             _decision = await _sup.review(SupervisorEvent(
@@ -293,7 +293,7 @@ async def notify_trade_closed(
         return False
     # Supervisor gate — trade closes are FYI; supervisor can ACK small wins and only escalate losses.
     try:
-        from .supervisor import get_supervisor, SupervisorEvent
+        from .supervisor import SupervisorEvent, get_supervisor
         _sup = get_supervisor()
         if _sup.enabled:
             _decision = await _sup.review(SupervisorEvent(
@@ -345,7 +345,7 @@ async def notify_target(
         return False
     # Supervisor gate — route target vs drawdown distinctly so the classifier sees both.
     try:
-        from .supervisor import get_supervisor, SupervisorEvent
+        from .supervisor import SupervisorEvent, get_supervisor
         _sup = get_supervisor()
         if _sup.enabled:
             _decision = await _sup.review(SupervisorEvent(
@@ -385,7 +385,7 @@ async def notify_ib_disconnect(last_connected_at: str = "") -> bool:
         return False
     # Supervisor gate — ALWAYS_ESCALATE event, logs decision but never swallows.
     try:
-        from .supervisor import get_supervisor, SupervisorEvent
+        from .supervisor import SupervisorEvent, get_supervisor
         _sup = get_supervisor()
         if _sup.enabled:
             await _sup.review(SupervisorEvent(

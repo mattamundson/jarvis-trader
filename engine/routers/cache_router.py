@@ -11,8 +11,8 @@ from typing import Optional
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from cache.signal_cache import invalidate_all, invalidate_signal
 from cache import get_cache_stats
+from cache.signal_cache import invalidate_all, invalidate_signal
 
 logger = logging.getLogger(__name__)
 

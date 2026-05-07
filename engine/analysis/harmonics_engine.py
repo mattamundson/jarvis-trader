@@ -7,10 +7,12 @@ using swing highs/lows and Fibonacci ratios.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple
+
 
 @dataclass
 class SwingPoint:
@@ -62,7 +64,7 @@ class HarmonicEngine:
         # Consolidate: if multiple highs/lows in a row, take the most extreme
         if not swings:
             return []
-            
+
         consolidated = [swings[0]]
         for s in swings[1:]:
             last = consolidated[-1]
@@ -72,7 +74,7 @@ class HarmonicEngine:
                     consolidated[-1] = s
             else:
                 consolidated.append(s)
-                
+
         return consolidated
 
     def detect_patterns(self, df: pd.DataFrame) -> List[HarmonicPattern]:
@@ -90,7 +92,7 @@ class HarmonicEngine:
             pattern = self._check_points(pts)
             if pattern:
                 patterns.append(pattern)
-                
+
         return patterns
 
     def _check_points(self, pts: List[SwingPoint]) -> Optional[HarmonicPattern]:
@@ -99,7 +101,7 @@ class HarmonicEngine:
         X=0, A=1, B=2, C=3, D=4
         """
         x, a, b, c, d = pts[0].price, pts[1].price, pts[2].price, pts[3].price, pts[4].price
-        
+
         # Calculate legs
         xa = abs(a - x)
         ab = abs(b - a)
@@ -119,19 +121,19 @@ class HarmonicEngine:
 
         side = "bullish" if pts[0].type == "low" and pts[1].type == "high" else "bearish"
         # Mirror for bearish: X(high), A(low), B(high), C(low), D(high)
-        
+
         # Gartley
         if self._is_near(ab_xa, 0.618) and self._is_near(xd_xa, 0.786):
             return HarmonicPattern("Gartley", side, [(p.index, p.price) for p in pts], 0.9, {"AB/XA": ab_xa, "XD/XA": xd_xa})
-            
+
         # Bat
         if self._is_near(ab_xa, 0.382, 0.50) and self._is_near(xd_xa, 0.886):
             return HarmonicPattern("Bat", side, [(p.index, p.price) for p in pts], 0.9, {"AB/XA": ab_xa, "XD/XA": xd_xa})
-            
+
         # Butterfly
         if self._is_near(ab_xa, 0.786) and self._is_near(xd_xa, 1.27, 1.618):
             return HarmonicPattern("Butterfly", side, [(p.index, p.price) for p in pts], 0.9, {"AB/XA": ab_xa, "XD/XA": xd_xa})
-            
+
         # Crab
         if self._is_near(ab_xa, 0.382, 0.618) and self._is_near(xd_xa, 1.618):
             return HarmonicPattern("Crab", side, [(p.index, p.price) for p in pts], 0.9, {"AB/XA": ab_xa, "XD/XA": xd_xa})

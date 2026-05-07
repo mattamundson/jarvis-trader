@@ -40,11 +40,11 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
-from .signals import StrategyCSignals
-from .vol_targeting import VolatilityTargeter
-from .vix_composite import VIXComposite
 from .macro_filter import MacroRegimeFilter
 from .mtf_filter import MTFFilter
+from .signals import StrategyCSignals
+from .vix_composite import VIXComposite
+from .vol_targeting import VolatilityTargeter
 
 logger = logging.getLogger(__name__)
 
@@ -743,18 +743,18 @@ class StrategyCEngine:
         fmt(oos, "OUT-OF-SAMPLE (OOS)")
 
         if retention:
-            print(f"\n  ── OOS Retention ──")
+            print("\n  ── OOS Retention ──")
             for k, v in retention.items():
                 print(f"     {k}: {v:.1f}%")
 
         if dsr and "dsr" in dsr:
-            print(f"\n  ── Deflated Sharpe (Bailey-LdP 2014) ──")
+            print("\n  ── Deflated Sharpe (Bailey-LdP 2014) ──")
             print(f"     Raw Sharpe:      {dsr.get('raw_sharpe', 0):.4f}")
             print(f"     Expected Max SR: {dsr.get('expected_max_sharpe', 0):.4f} ({dsr.get('n_trials', 0)} trials)")
             print(f"     DSR p-value:     {dsr.get('dsr', 0):.4f}  "
                   f"{'✓ PASSES' if dsr.get('passes_at_10pct') else '✗ FAILS'} at 10%")
 
-        print(f"\n  ── Vol Targeting Stats ──")
+        print("\n  ── Vol Targeting Stats ──")
         print(f"     Target:          {vol_stats.get('vol_target_pct', 0):.1f}%")
         print(f"     Mean scale:      {vol_stats.get('mean_scale', 0):.4f}")
         print(f"     At max (1.0):    {vol_stats.get('pct_at_max', 0):.1f}% of weeks")

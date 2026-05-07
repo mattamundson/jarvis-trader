@@ -147,8 +147,8 @@ def _run_signals_and_backtest(
     donchian_period: int,
     stop_atr_mult: float,
 ) -> object:
-    from backtest.breakout_signals import generate_donchian_breakout_signals
     from backtest.backtester import Backtester
+    from backtest.breakout_signals import generate_donchian_breakout_signals
 
     df_sig = generate_donchian_breakout_signals(
         df,
@@ -335,15 +335,15 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MNQ BREAKOUT RANK 3 — ALT-PATH SWEEP ===")
+    print("=== MNQ BREAKOUT RANK 3 — ALT-PATH SWEEP ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo")
     print(f"Grid: {n_combos} combos")
     print(f"  donchian_period : {DONCHIAN_PERIOD_VALUES}")
     print(f"  stop_atr_mult   : {STOP_ATR_MULT_VALUES}")
     print(f"  vol_mult        : {VOL_MULT} (DISABLED — rank 2 lesson)")
     print(f"  vol_ma_period   : {VOL_MA_PERIOD} (fixed, irrelevant)")
-    print(f"Rank 1 baseline  : fixed_params_min_pf=1.186 (need >= 1.20 for ALT)")
-    print(f"Hypothesis       : tighter stop_atr_mult raises R:R -> improves worst windows")
+    print("Rank 1 baseline  : fixed_params_min_pf=1.186 (need >= 1.20 for ALT)")
+    print("Hypothesis       : tighter stop_atr_mult raises R:R -> improves worst windows")
     print(f"{'=' * 70}")
 
     oos_results = []

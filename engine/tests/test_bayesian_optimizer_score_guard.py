@@ -19,9 +19,9 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.bayesian_optimizer import (  # noqa: E402
-    MIN_TRADES_FOR_SCORE,
     _LOSING_STRATEGY_PENALTY,
     _NO_TRADE_PENALTY,
+    MIN_TRADES_FOR_SCORE,
     _score_result,
 )
 

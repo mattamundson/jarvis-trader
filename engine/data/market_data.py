@@ -16,11 +16,20 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 if TYPE_CHECKING:
     from ib_async import Future
+
     from execution.schwab_connector import SchwabConnector
 
 import pandas as pd
 
 from data.polygon_stream import PolygonStreamer
+
+# Lazy import — bars_repository requires sqlite3 which is always available,
+# but importing at module level makes the hot path slightly heavier; use a
+# try/except so a missing file never crashes startup.
+try:
+    from data.bars_repository import save_bars as _save_bars
+except Exception:  # pragma: no cover
+    _save_bars = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -690,7 +699,7 @@ class MarketDataManager:
         if self._config.POLYGON_API_KEY:
             self.polygon = PolygonDataConnector(self._config.POLYGON_API_KEY)
             self.polygon.connect()
-            
+
             # Tier 2.5: Real-time stream for equities (skips futures blocklist)
             # Default watchlist for streaming - can be expanded or made dynamic
             watchlist = ["SPY", "QQQ", "AAPL", "TSLA", "NVDA", "MSFT", "AMD", "META"]
@@ -736,6 +745,8 @@ class MarketDataManager:
                         f"TV returned {len(tv_df)} bars for {symbol} "
                         f"({timeframe}, last bar {age_hours:.1f}h old)"
                     )
+                    if _save_bars is not None:
+                        _save_bars(tv_df, symbol, timeframe, "tv")
                     return tv_df
                 logger.warning(
                     f"[{symbol}] TV returned stale bars ({age_hours:.1f}h old) — falling through"
@@ -759,6 +770,8 @@ class MarketDataManager:
                 logger.info(f"IBKR returned {len(df)} bars for {symbol}")
                 df.attrs["source"] = "ibkr"
                 df.attrs["symbol"] = symbol
+                if _save_bars is not None:
+                    _save_bars(df, symbol, timeframe, "ibkr")
                 return df
 
         # Tier 2: Polygon — SKIPPED for futures (Polygon free plan returns
@@ -784,6 +797,8 @@ class MarketDataManager:
                 logger.info(f"Polygon returned {len(df)} bars for {symbol}")
                 df.attrs["source"] = "polygon"
                 df.attrs["symbol"] = symbol
+                if _save_bars is not None:
+                    _save_bars(df, symbol, timeframe, "polygon")
                 return df
             logger.warning(f"Polygon returned no data for {symbol} ({timespan}/{multiplier})")
         elif self.polygon and symbol.upper() in POLYGON_FUTURES_BLOCKLIST:

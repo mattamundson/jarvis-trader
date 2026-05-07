@@ -610,21 +610,21 @@ class TradingConfig(BaseSettings):
         """
         import json
         from pathlib import Path
-        
+
         baseline = {"stc_os": self.STC_OVERSOLD, "stc_ob": self.STC_OVERBOUGHT}
         state_path = Path(__file__).parent / "data" / "adaptive_config.json"
-        
+
         if not state_path.exists():
             return baseline
-            
+
         try:
             with open(state_path, "r") as f:
                 state = json.load(f)
-            
+
             # Navigate schema: state["MNQ"]["15m"]
             symbol_data = state.get(symbol.upper(), {})
             tf_data = symbol_data.get(timeframe.lower(), {})
-            
+
             if "stc_os" in tf_data and "stc_ob" in tf_data:
                 return {
                     "stc_os": float(tf_data["stc_os"]),

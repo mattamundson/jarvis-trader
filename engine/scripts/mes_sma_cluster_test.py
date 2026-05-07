@@ -177,7 +177,7 @@ def main():
         },
         "all_results": results_sorted,
     }
-    out_path = ENGINE_DIR / "backtest" / "results" / f"MES_1h_SMA_cluster_test.json"
+    out_path = ENGINE_DIR / "backtest" / "results" / "MES_1h_SMA_cluster_test.json"
     out_path.write_text(json.dumps(out, indent=2, default=str))
     print(f"\n[cluster] Saved: {out_path.name}")
     return 0 if all_pass else 1

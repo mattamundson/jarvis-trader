@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import asdict, is_dataclass
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import APIKeyHeader
 

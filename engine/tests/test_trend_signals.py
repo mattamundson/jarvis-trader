@@ -3,7 +3,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.trend_signals import generate_sma_trend_signals, get_sma_trend_params, SMA_TREND_PARAMS
+from backtest.trend_signals import (
+    SMA_TREND_PARAMS,
+    generate_sma_trend_signals,
+    get_sma_trend_params,
+)
 
 
 def _make_df(n: int = 300, base: float = 5000.0, seed: int = 42) -> pd.DataFrame:
@@ -100,7 +104,7 @@ def test_no_nan_in_entry_signal():
 
 
 def test_generate_instrument_signals_routes_mes_to_trend():
-    from backtest.signals import generate_instrument_signals, TREND_INSTRUMENTS
+    from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals
     assert "MES" in TREND_INSTRUMENTS
     # Use 700 bars: champion SMA(60,200) needs 200-bar warmup + decline + rise for golden cross
     df = generate_instrument_signals(_make_trending_df(n=700), symbol="MES")

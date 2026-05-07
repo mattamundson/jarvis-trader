@@ -33,6 +33,7 @@ if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
 import os  # noqa: E402
+
 os.environ.setdefault("ALLOW_PAPER_SIMULATED_ORDERS", "true")  # enable paper bracket path
 
 from config import settings  # noqa: E402

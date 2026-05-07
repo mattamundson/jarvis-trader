@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime, time as dtime, timezone
+from datetime import datetime, timezone
+from datetime import time as dtime
 from unittest import mock
 
 import pytest
@@ -26,7 +27,6 @@ from utils.scheduler_safety import (
     quiet_hours_from_env,
     staggered_offset,
 )
-
 
 # ---------------------------------------------------------------------------
 # staggered_offset

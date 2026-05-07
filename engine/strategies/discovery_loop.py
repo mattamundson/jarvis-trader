@@ -93,8 +93,8 @@ def evaluate_strategy_file(
 
     Returns dict with verdict, metrics, and thoughts.
     """
-    from strategies.llm_sandbox import load_strategy_sandboxed, SandboxError
-    from backtest.evaluation_harness import evaluate, Verdict
+    from backtest.evaluation_harness import Verdict, evaluate
+    from strategies.llm_sandbox import SandboxError, load_strategy_sandboxed
 
     result_record = {
         "strategy_file": filename,

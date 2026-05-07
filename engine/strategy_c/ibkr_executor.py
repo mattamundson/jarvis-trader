@@ -366,7 +366,7 @@ class StrategyCExecutor:
 def _print_signal_summary(signal: dict) -> None:
     """Print a compact signal summary to console."""
     print("\n" + "=" * 55)
-    print(f"  STRATEGY C+  WEEKLY SIGNAL")
+    print("  STRATEGY C+  WEEKLY SIGNAL")
     print(f"  {signal.get('generated_at', 'unknown')}")
     print("=" * 55)
     layers = signal.get("layers", {})
@@ -377,7 +377,7 @@ def _print_signal_summary(signal: dict) -> None:
     print(f"  Combined Scale:{signal.get('combined_scale', 0):.3f}")
     print(f"  Vol Scale:     {vol.get('scale', 0):.3f}  (realized {vol.get('realized_vol_pct', 0):.1f}%)")
     print(f"  VIX:           {vix.get('vix', 0):.1f}  ({vix.get('vix_regime', '?')})  score={vix.get('composite_score', 0):.3f}")
-    print(f"\n  Holdings:")
+    print("\n  Holdings:")
     for tk, wt in sorted(signal.get("holdings", {}).items(), key=lambda x: -x[1]):
         bar = "█" * max(1, int(wt * 25))
         print(f"    {tk:<6} {wt:.1%}  {bar}")

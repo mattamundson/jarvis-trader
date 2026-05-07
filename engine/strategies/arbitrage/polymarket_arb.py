@@ -27,31 +27,31 @@ class ArbScout:
     async def scan(self) -> List[Dict]:
         """Scan all pairs for arbitrage opportunities."""
         opportunities = []
-        
+
         for pair in self.paired_assets:
             # 1. Get Polymarket Price (Implied Probability)
             # Polymarket prices are 0-1 (e.g. 0.65 = 65% prob)
             poly_book = self.poly.get_order_book(pair["poly_token"])
             if not poly_book or not poly_book.bids:
                 continue
-            
+
             poly_price = float(poly_book.bids[0].price)
-            
+
             # 2. Get Equity Price / Sentiment Proxy
             # This is complex: need a model to turn SPY price into "Event Probability"
             # For now, we use simple correlation direction.
             equity_data = await self.data.get_latest_price(pair["equity_ticker"])
             if not equity_data:
                 continue
-                
+
             equity_price = equity_data["price"]
-            
+
             # 3. Detect Discrepancy (Placeholder logic)
             # Real version: Use a logit model or historical correlation mapping.
             # Example: If Polymarket says 90% chance of approval but stock hasn't moved.
-            
+
             logger.info(f"Arb Scan [{pair['equity_ticker']}]: Poly={poly_price} Eq={equity_price}")
-            
+
             # Dummy logic trigger
             if poly_price > 0.8 and equity_data["change_pct"] < 0.01:
                 opportunities.append({
@@ -62,5 +62,5 @@ class ArbScout:
                     "confidence": 0.7,
                     "reason": "Polymarket sentiment leading equity price response"
                 })
-                
+
         return opportunities

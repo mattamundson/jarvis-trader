@@ -157,7 +157,7 @@ async def test_run_returns_none_when_binary_missing():
 @pytest.mark.asyncio
 async def test_rate_limit_backoff_exhausts_retries():
     """Persistent 429 → _run retries up to _MAX_RETRIES then gives up."""
-    from markets.crypto.kraken_adapter import KrakenAdapter, _MAX_RETRIES
+    from markets.crypto.kraken_adapter import _MAX_RETRIES, KrakenAdapter
 
     mock_proc = _make_mock_proc(stderr=b"429 Too Many Requests", returncode=1)
     with patch(

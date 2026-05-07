@@ -4,8 +4,8 @@ Proactively monitors IBKR account margin and portfolio drawdown.
 Triggers alerts and safety overrides if institutional-grade risk limits are breached.
 """
 
-import logging
 import asyncio
+import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -30,7 +30,7 @@ class MarginMonitorAgent:
         self._util_warning = utilization_warning
         self._util_halt = utilization_halt
         self._max_dd_pct = max_drawdown_pct
-        
+
         self._peak_equity = 0.0
         self._current_metrics: Dict[str, float] = {}
         self._last_check: Optional[datetime] = None
@@ -53,7 +53,7 @@ class MarginMonitorAgent:
 
         equity = float(summary.get("equity", 0.0))
         buying_power = float(summary.get("buying_power", 0.0))
-        
+
         # Calculate Utilization
         # Rough proxy: 1 / (BuyingPower / Equity) assuming 4:1 max
         # or more directly if MarginUsed is available
@@ -68,7 +68,7 @@ class MarginMonitorAgent:
         # Update Peak and Drawdown
         if equity > self._peak_equity:
             self._peak_equity = equity
-        
+
         drawdown = 0.0
         if self._peak_equity > 0:
             drawdown = (self._peak_equity - equity) / self._peak_equity * 100
@@ -92,7 +92,7 @@ class MarginMonitorAgent:
         elif utilization >= self._util_warning:
             status = "WARNING"
             message = f"Margin utilization {utilization:.1%} entering warning zone."
-        
+
         if drawdown >= self._max_dd_pct:
             status = "CRITICAL"
             message = f"DRAWDOWN {drawdown:.1f}% EXCEEDS MAX LIMIT {self._max_dd_pct}%"
@@ -104,7 +104,7 @@ class MarginMonitorAgent:
             utilization * 100.0,
             drawdown,
         )
-        
+
         return {
             "status": status,
             "message": message,

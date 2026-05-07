@@ -6,8 +6,9 @@ Inspired by Hummingbot's Connector architecture.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
 from datetime import datetime
+from typing import Dict, List, Optional
+
 
 class ConnectorBase(ABC):
     @property

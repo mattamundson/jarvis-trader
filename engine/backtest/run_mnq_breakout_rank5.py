@@ -158,8 +158,8 @@ def _run_signals_and_backtest(
     donchian_period: int,
     stop_atr_mult: float,
 ) -> object:
-    from backtest.breakout_signals import generate_donchian_breakout_signals
     from backtest.backtester import Backtester
+    from backtest.breakout_signals import generate_donchian_breakout_signals
 
     df_sig = generate_donchian_breakout_signals(
         df,
@@ -365,7 +365,7 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MNQ BREAKOUT RANK 5 — $25K CAPITAL SIZING ARTIFACT TEST ===")
+    print("=== MNQ BREAKOUT RANK 5 — $25K CAPITAL SIZING ARTIFACT TEST ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo")
     print(f"Capital: ${CAPITAL:,.0f} (testing position-sizer rounding artifact hypothesis)")
     print(f"Grid: {n_combos} combos (same tight grid as rank4)")
@@ -373,8 +373,8 @@ def run_wfo() -> dict:
     print(f"  stop_atr_mult   : {STOP_ATR_MULT_VALUES}  (consensus: 2.0)")
     print(f"  vol_mult        : {VOL_MULT} (DISABLED — rank 2 lesson)")
     print(f"  vol_ma_period   : {VOL_MA_PERIOD} (fixed, irrelevant)")
-    print(f"Rank 4 baseline  : pf_ci_lower=0.73 p_edge=0.36 wfo=WEAK fixed_min_pf=1.2621")
-    print(f"Rank 5 hypothesis: $25K -> 3-5 contracts/trade -> better OOS representation")
+    print("Rank 4 baseline  : pf_ci_lower=0.73 p_edge=0.36 wfo=WEAK fixed_min_pf=1.2621")
+    print("Rank 5 hypothesis: $25K -> 3-5 contracts/trade -> better OOS representation")
     print(f"{'=' * 70}")
 
     oos_results = []
@@ -447,7 +447,7 @@ def run_wfo() -> dict:
     print(f"  combos with trades   = {fixed_params_metrics['n_combos_with_trades']} / {n_combos}")
 
     if fixed_params_metrics["fixed_params_min_pf"] >= GATE_FIXED_PARAMS_MIN_PF:
-        print(f"  -> CLEAR: fixed_params_min_pf PASSES ALT threshold!")
+        print("  -> CLEAR: fixed_params_min_pf PASSES ALT threshold!")
     else:
         gap = GATE_FIXED_PARAMS_MIN_PF - fixed_params_metrics["fixed_params_min_pf"]
         print(f"  -> BLOCKED: still {gap:.4f} short of ALT threshold")
@@ -603,7 +603,7 @@ def main():
         "fixed_params_min_pf": 1.2621,
     }
 
-    print(f"\n  Per-metric vs rank4 delta:")
+    print("\n  Per-metric vs rank4 delta:")
     checks = [
         ("pf_ci_lower",          gate.get("pf_ci_lower", 0),          GATE_PF_CI_LOWER,          ">="),
         ("p_edge",               gate.get("p_edge", 0),               GATE_P_EDGE,               ">="),

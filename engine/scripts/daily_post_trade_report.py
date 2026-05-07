@@ -276,14 +276,40 @@ def compute_strategy_breakdown(trades: list[ClosedTrade]) -> dict[str, dict]:
 
 def _load_bars_from_db(symbol: str, target_date: date, db_path: Path = _DB_PATH) -> pd.DataFrame | None:
     """
-    Try to load today's 1h OHLCV bars from the SQLite market_data table.
-    Returns None if the table doesn't exist or has no data for this date.
+    Load today's 1h OHLCV bars from SQLite.
+
+    Priority:
+      1. market_data_bars — populated by MarketDataManager.get_bars() via bars_repository
+      2. legacy table names (market_data, bars, ohlcv) for backward compat
+    Returns None if no table has data for this date.
     """
     if not db_path.exists():
         return None
     try:
         con = sqlite3.connect(str(db_path))
-        # Try common table names used across engine versions
+
+        # Tier 1: canonical persistence table (migration_024)
+        cur = con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='market_data_bars'"
+        )
+        if cur.fetchone():
+            df = pd.read_sql_query(
+                """
+                SELECT ts_utc AS timestamp, open, high, low, close, volume
+                FROM market_data_bars
+                WHERE symbol = ? AND interval = '1h'
+                  AND DATE(ts_utc) = ?
+                ORDER BY ts_utc
+                """,
+                con,
+                params=(symbol.upper(), str(target_date)),
+                parse_dates=["timestamp"],
+            )
+            if not df.empty:
+                con.close()
+                return df
+
+        # Tier 2: legacy table names used in earlier engine versions
         for tbl in ("market_data", "bars", "ohlcv"):
             cur = con.execute(
                 f"SELECT name FROM sqlite_master WHERE type='table' AND name='{tbl}'"
@@ -301,8 +327,8 @@ def _load_bars_from_db(symbol: str, target_date: date, db_path: Path = _DB_PATH)
                     params=(symbol, str(target_date)),
                     parse_dates=["timestamp"],
                 )
-                con.close()
                 if not df.empty:
+                    con.close()
                     return df
         con.close()
     except Exception as exc:
@@ -325,7 +351,10 @@ def compute_counterfactual(
         symbols = ["MES", "MGC"]
 
     try:
-        from backtest.trend_signals import generate_sma_trend_signals, SMA_TREND_PARAMS  # noqa: E402
+        from backtest.trend_signals import (  # noqa: E402
+            SMA_TREND_PARAMS,
+            generate_sma_trend_signals,
+        )
     except ImportError:
         logger.warning("trend_signals not importable — skipping counterfactual")
         return {}
@@ -447,7 +476,10 @@ def compute_outlook(target_date: date, symbols: list[str] | None = None) -> dict
         symbols = ["MES", "MGC"]
 
     try:
-        from backtest.trend_signals import generate_sma_trend_signals, SMA_TREND_PARAMS  # noqa: E402
+        from backtest.trend_signals import (  # noqa: E402
+            SMA_TREND_PARAMS,
+            generate_sma_trend_signals,
+        )
     except ImportError:
         return {sym: "trend_signals not importable" for sym in symbols}
 
@@ -464,26 +496,48 @@ def compute_outlook(target_date: date, symbols: list[str] | None = None) -> dict
                 continue
 
             df = None
-            for tbl in ("market_data", "bars", "ohlcv"):
-                cur = con.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{tbl}'"
+            # Tier 1: canonical bar persistence table (migration_024)
+            cur = con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='market_data_bars'"
+            )
+            if cur.fetchone():
+                _df = pd.read_sql_query(
+                    f"""
+                    SELECT ts_utc AS timestamp, open, high, low, close, volume
+                    FROM market_data_bars
+                    WHERE symbol = ? AND interval = '1h'
+                    ORDER BY ts_utc DESC
+                    LIMIT {params['slow'] * 2}
+                    """,
+                    con,
+                    params=(sym.upper(),),
+                    parse_dates=["timestamp"],
                 )
-                if cur.fetchone():
-                    df = pd.read_sql_query(
-                        f"""
-                        SELECT timestamp, open, high, low, close, volume
-                        FROM {tbl}
-                        WHERE symbol = ? AND interval = '1h'
-                        ORDER BY timestamp DESC
-                        LIMIT {params['slow'] * 2}
-                        """,
-                        con,
-                        params=(sym,),
-                        parse_dates=["timestamp"],
+                if not _df.empty:
+                    df = _df.sort_values("timestamp").reset_index(drop=True)
+
+            # Tier 2: legacy table names
+            if df is None or df.empty:
+                for tbl in ("market_data", "bars", "ohlcv"):
+                    cur = con.execute(
+                        f"SELECT name FROM sqlite_master WHERE type='table' AND name='{tbl}'"
                     )
-                    if not df.empty:
-                        df = df.sort_values("timestamp").reset_index(drop=True)
-                        break
+                    if cur.fetchone():
+                        _df = pd.read_sql_query(
+                            f"""
+                            SELECT timestamp, open, high, low, close, volume
+                            FROM {tbl}
+                            WHERE symbol = ? AND interval = '1h'
+                            ORDER BY timestamp DESC
+                            LIMIT {params['slow'] * 2}
+                            """,
+                            con,
+                            params=(sym,),
+                            parse_dates=["timestamp"],
+                        )
+                        if not _df.empty:
+                            df = _df.sort_values("timestamp").reset_index(drop=True)
+                            break
 
             if df is None or df.empty or len(df) < params["slow"]:
                 outlooks[sym] = "insufficient bar history for SMA outlook"
@@ -568,8 +622,8 @@ def render_report(
     total_pnl = m["total_pnl"]
     goal_pct = m["goal_progress_pct"]
     gauge_bar = "█" * min(int(goal_pct / 5), 20) + "░" * (20 - min(int(goal_pct / 5), 20))
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|--------|-------|")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|-------|")
     lines.append(f"| Total PnL | {_FMT_MONEY(total_pnl)} |")
     lines.append(f"| $250/day goal | `{gauge_bar}` {goal_pct:.1f}% |")
     lines.append(f"| Total Trades | {m['total_trades']} |")

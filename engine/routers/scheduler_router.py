@@ -98,6 +98,7 @@ async def trigger_morning_brief(background_tasks: BackgroundTasks) -> dict:
             logger.info("[MorningBrief] Manual trigger complete")
             try:
                 import asyncio
+
                 from notifications.discord_notifier import discord_morning_brief
                 asyncio.create_task(discord_morning_brief(brief))
             except Exception as exc:

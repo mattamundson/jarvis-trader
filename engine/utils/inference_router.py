@@ -7,7 +7,8 @@ import asyncio
 import logging
 import os
 import time
-from typing import Optional, Dict
+from typing import Dict, Optional
+
 import httpx
 
 try:
@@ -70,7 +71,7 @@ class OllamaClient:
                 "temperature": self.temperature,
             },
         }
-        
+
         for attempt in range(self.retry_attempts):
             try:
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -154,7 +155,7 @@ class InferenceRouter:
         if provider == InferenceProvider.OLLAMA:
             result = await self._call_ollama(prompt)
             latency = time.time() - start_time
-            
+
             if result is not None:
                 self._record_metric(task_name, "ollama", latency)
                 logger.info(f"[{task_name}] Ollama OK ({latency:.2f}s)")
@@ -190,7 +191,7 @@ class InferenceRouter:
         if self.provider == "ollama" or self.anthropic_client is None:
             logger.error("Anthropic client not configured")
             return None
-        
+
         try:
             # Assumes anthropic_client has a generate() or similar method
             response = await self.anthropic_client.generate(prompt)
@@ -203,13 +204,13 @@ class InferenceRouter:
         """Record latency metric for monitoring."""
         if task_name not in self.metrics:
             self.metrics[task_name] = []
-        
+
         self.metrics[task_name].append({
             "provider": provider,
             "latency_ms": latency_seconds * 1000,
             "timestamp": time.time(),
         })
-        
+
         # Keep only last 100 metrics per task to avoid memory bloat
         if len(self.metrics[task_name]) > 100:
             self.metrics[task_name] = self.metrics[task_name][-100:]

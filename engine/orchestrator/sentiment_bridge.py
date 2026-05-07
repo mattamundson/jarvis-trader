@@ -25,13 +25,13 @@ class SentimentBridge:
         If expired or missing, trigger an async update.
         """
         now = datetime.now()
-        
+
         if symbol in self.cache:
             if now < self.cache[symbol]["expiry"]:
                 return self.cache[symbol]["score"]
             else:
                 logger.info(f"Sentiment for {symbol} expired. refreshing...")
-        
+
         # Fresh fetch (Blocking for this call, but usually run in background)
         try:
             report = await self.analyst.analyze(symbol)

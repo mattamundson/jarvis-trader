@@ -55,7 +55,7 @@ if _ENGINE_ROOT not in sys.path:
 
 def _build_manager_with_mocked_ib():
     """Return an IBGatewayManager with a fake _ib that records placeOrder args."""
-    from execution.ib_gateway import IBGatewayConfig, IBGatewayManager, IBConnectionStatus
+    from execution.ib_gateway import IBConnectionStatus, IBGatewayConfig, IBGatewayManager
 
     mgr = IBGatewayManager(IBGatewayConfig(host="127.0.0.1", port=4002, client_id=99))
 

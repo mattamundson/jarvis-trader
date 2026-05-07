@@ -209,8 +209,8 @@ def _run_signals_and_backtest(
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
 ) -> object:
-    from backtest.meanrev_signals import generate_bollinger_rsi_signals
     from backtest.backtester import Backtester
+    from backtest.meanrev_signals import generate_bollinger_rsi_signals
 
     df_sig = generate_bollinger_rsi_signals(
         df,
@@ -274,7 +274,6 @@ def _best_is_params(
 from backtest._gate_v2_helpers import _find_latest_cache
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
-
 
 # ---------------------------------------------------------------------------
 # Fixed-params sweep
@@ -463,7 +462,7 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MGC MEAN-REV RANK 2 -- BB+RSI + RV_BAND REGIME GATE ===")
+    print("=== MGC MEAN-REV RANK 2 -- BB+RSI + RV_BAND REGIME GATE ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo")
     print(f"Grid: {n_combos} RV-bracket combos (BB+stop pinned at rank1 champion)")
     print(f"  rv_brackets     : {RV_BRACKETS}")
@@ -477,7 +476,7 @@ def run_wfo() -> dict:
     print(f"  TEST_MONTHS     : {TEST_MONTHS}  (matches MGC trend rank4 + rank1)")
     print(f"ALT thresholds : dsr>={GATE_DSR_ALT}, wfo in {GATE_WFO_CONSISTENCY_VALUES}, "
           f"fixed>={GATE_FIXED_PARAMS_MIN_PF}, mc_dd<={GATE_MC_DD_ALT*100:.0f}%")
-    print(f"Lineage: rank2 layers rv_band per MCL hyp-C wiring; rank1 baseline FAILed.")
+    print("Lineage: rank2 layers rv_band per MCL hyp-C wiring; rank1 baseline FAILed.")
     print(f"{'=' * 70}")
 
     oos_results    = []
@@ -497,7 +496,7 @@ def run_wfo() -> dict:
 
         best_params, is_result = _best_is_params(df_train, grid)
         if best_params is None:
-            print(f"  [SKIP] No valid IS params")
+            print("  [SKIP] No valid IS params")
             continue
 
         print(f"  Best IS: rv=[{best_params['rv_min']},{best_params['rv_max']}]  "
@@ -700,11 +699,11 @@ def main():
 
         if n_trades < 30:
             print(f"  SPARSITY FAIL: only {n_trades} OOS trades across all windows.")
-            print(f"  Next step: rank3 with WIDER RV bracket (gate too restrictive).")
+            print("  Next step: rank3 with WIDER RV bracket (gate too restrictive).")
         elif p_edge_val < GATE_P_EDGE:
             print(f"  p_edge={p_edge_val:.4f}: {n_oos_with_trades}/{gate.get('n_oos_windows',0)} OOS windows had trades")
-            print(f"  EDGE FAIL: regime gate did not rescue mean-rev edge on MGC.")
-            print(f"  Next step: pivot to MES mean-rev (Agent C's next-best from NEXT_STRATEGY_HUNT_2026-05-06.md).")
+            print("  EDGE FAIL: regime gate did not rescue mean-rev edge on MGC.")
+            print("  Next step: pivot to MES mean-rev (Agent C's next-best from NEXT_STRATEGY_HUNT_2026-05-06.md).")
         if dsr_val < GATE_DSR_ALT:
             print(f"  dsr={dsr_val:.6f} below ALT floor {GATE_DSR_ALT} -- multiple testing deflated edge.")
         if fixed_pf < GATE_FIXED_PARAMS_MIN_PF:

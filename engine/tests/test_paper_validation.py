@@ -22,10 +22,10 @@ import pytest
 
 from paper.validation_gate_config import PAPER_VALIDATION_GATES
 from paper.validation_tracker import (
-    PASS_THRESHOLDS,
     _TRACKED_INSTRUMENTS,
-    _thresholds_for,
+    PASS_THRESHOLDS,
     ValidationTracker,
+    _thresholds_for,
 )
 
 

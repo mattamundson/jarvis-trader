@@ -70,8 +70,8 @@ async def test_phase3_gate_position_cap_boundaries(
     mock_safety_layer, cap_value, expected_pass
 ) -> None:
     """position_limits_verified passes for 0 < cap <= $100k, else fails."""
-    from routers import phase3_readiness_router as r
     from config import settings
+    from routers import phase3_readiness_router as r
 
     r.inject_dependencies(mock_safety_layer)
 

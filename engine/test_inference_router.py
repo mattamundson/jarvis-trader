@@ -5,13 +5,13 @@ Verifies Ollama connection and basic inference capability.
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 # Add engine to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from utils.inference_router import get_inference_router, InferenceProvider
+from utils.inference_router import InferenceProvider, get_inference_router
 
 
 async def main():

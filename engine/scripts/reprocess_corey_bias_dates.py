@@ -48,6 +48,21 @@ async def reprocess(dates: list[str]) -> int:
         print("ERROR: ANTHROPIC_API_KEY not in env — LLM call will return neutral bias.")
         return 1
 
+    # Patch httpx to surface 400 response bodies (otherwise raise_for_status hides them)
+    import httpx as _httpx_mod
+
+    _orig_raise = _httpx_mod.Response.raise_for_status
+
+    def _raise_with_body(self):
+        if self.status_code >= 400:
+            try:
+                print(f"  [httpx body for {self.status_code}] {self.text[:1500]}")
+            except Exception:
+                pass
+        return _orig_raise(self)
+
+    _httpx_mod.Response.raise_for_status = _raise_with_body
+
     proc = CoreyCommentaryProcessor()
     print(f"DB path: {proc.db_path}")
 

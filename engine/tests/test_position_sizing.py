@@ -1,6 +1,8 @@
-import pytest
-import sys
 import os
+import sys
+
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.position_sizing import calculate_half_kelly_size, compute_rolling_edge

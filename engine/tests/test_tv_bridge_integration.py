@@ -19,7 +19,6 @@ from data.tv_indicator_bridge import (
     get_tv_bridge,
 )
 
-
 # ──────────────────────────────────────────────────────────────────────────
 # Helpers — build a mocked bridge whose _run_tv / _read_* return canned data
 # ──────────────────────────────────────────────────────────────────────────
