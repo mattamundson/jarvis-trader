@@ -230,6 +230,9 @@ def _load_paper_trades_window(days: list[date]) -> list[dict]:
 # Helper: pair buy/sell into closed round-trips and compute per-day PnL
 # ---------------------------------------------------------------------------
 
+# NOTE: _INSTRUMENT_MULTIPLIERS is kept here only for backward compatibility
+# with test code that patches it.  The canonical multipliers live in
+# analytics.paper_trade_pairing.DEFAULT_MULTIPLIERS.
 _INSTRUMENT_MULTIPLIERS: dict[str, float] = {
     "MES": 5.0,
     "MGC": 10.0,
@@ -243,41 +246,35 @@ def _pair_trades_to_roundtrips(trades: list[dict]) -> list[dict]:
     """
     FIFO pairing of buy/sell sides into closed round-trips.
 
+    Delegates to analytics.paper_trade_pairing.pair_trades which ALWAYS
+    recomputes PnL from entry/exit prices × contract multiplier.
+
+    IMPORTANT: the stored ``pnl`` field on sell entries in paper_trades.json
+    is in price-point units (writer bug — multiplier was omitted).  Trusting
+    that field caused G2 win_rate to read 0.0% even on profitable sessions.
+    The shared helper ignores stored_pnl entirely.
+
     Returns list of dicts with keys: symbol, pnl, exit_date (date)
     """
-    from collections import defaultdict
+    import sys
+    from pathlib import Path
 
-    stacks: dict[str, list[dict]] = defaultdict(list)
-    closed: list[dict] = []
+    # Ensure engine root is on path so the analytics package is importable
+    _engine_root = Path(__file__).parent.parent
+    if str(_engine_root) not in sys.path:
+        sys.path.insert(0, str(_engine_root))
 
-    for t in sorted(trades, key=lambda x: x.get("timestamp", "")):
-        sym = t.get("symbol", "")
-        side = (t.get("side") or "").lower()
-        if side in ("buy", "buy_to_open"):
-            stacks[sym].append(t)
-        elif side in ("sell", "sell_to_close", "exit_long"):
-            if stacks[sym]:
-                opener = stacks[sym].pop(0)
-                stored_pnl = t.get("pnl")
-                if stored_pnl is not None:
-                    pnl = float(stored_pnl)
-                else:
-                    entry_p = float(opener.get("filled_price") or opener.get("trade_value") or 0)
-                    exit_p = float(t.get("filled_price") or t.get("trade_value") or 0)
-                    qty = float(t.get("quantity") or opener.get("quantity") or 1)
-                    mult = _INSTRUMENT_MULTIPLIERS.get(sym, 1.0)
-                    pnl = (exit_p - entry_p) * qty * mult
+    from analytics.paper_trade_pairing import pair_trades as _pair_raw
 
-                try:
-                    exit_dt = datetime.fromisoformat(
-                        t["timestamp"].replace("Z", "+00:00")
-                    )
-                    exit_d = exit_dt.date()
-                except (KeyError, ValueError):
-                    exit_d = date.today()
-
-                closed.append({"symbol": sym, "pnl": pnl, "exit_date": exit_d})
-    return closed
+    closed_rts = _pair_raw(trades)
+    return [
+        {
+            "symbol": rt.symbol,
+            "pnl": rt.pnl,
+            "exit_date": rt.exit_time.date(),
+        }
+        for rt in closed_rts
+    ]
 
 
 # ---------------------------------------------------------------------------
