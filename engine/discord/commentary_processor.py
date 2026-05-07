@@ -173,13 +173,24 @@ class CoreyCommentaryProcessor:
         self._ensure_cache_table()
 
     def _ensure_cache_table(self) -> None:
-        """Create the cache table if it doesn't exist."""
+        """Create the cache table if it doesn't exist.
+
+        R-I-5: Logs include the resolved db_path so a wrong-path failure
+        (e.g., split-brain DB pointing at the stale repo-root copy) is
+        diagnosable from the warning text alone, instead of surfacing
+        later as an obscure 'no such table: corey_session_bias' from
+        downstream code.
+        """
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(_CREATE_CACHE_TABLE)
                 conn.commit()
         except Exception as e:
-            logger.warning("[CoreyProcessor] Could not create cache table: %s", e)
+            logger.warning(
+                "[CoreyProcessor] Could not create cache table at %s: %s",
+                self.db_path,
+                e,
+            )
 
     # ── Public API ─────────────────────────────────────────────────────────
 
