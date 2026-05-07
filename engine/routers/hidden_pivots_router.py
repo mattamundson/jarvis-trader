@@ -261,7 +261,7 @@ async def get_hp_levels(
         raise
     except Exception as e:
         logger.error("HP levels failed for %s: %s", symbol, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/screen", response_model=ScanResponse)

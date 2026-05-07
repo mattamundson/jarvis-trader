@@ -165,7 +165,7 @@ def get_signal():
         data["last_updated"] = _now_iso()
         return data
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"error": str(e)})
+        raise HTTPException(status_code=500, detail={"error": str(e)}) from e
 
 
 @app.get("/api/search")
@@ -219,7 +219,7 @@ def search(q: str = Query(..., description="Ticker symbol to search")):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=404, detail={"error": str(e)})
+        raise HTTPException(status_code=404, detail={"error": str(e)}) from e
 
 
 @app.get("/api/options")
@@ -289,7 +289,7 @@ def get_options(symbol: str = Query("SPY"), expiry: str = Query("nearest")):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"error": str(e)})
+        raise HTTPException(status_code=500, detail={"error": str(e)}) from e
 
 
 @app.get("/api/pnl")

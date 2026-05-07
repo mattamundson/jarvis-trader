@@ -4202,7 +4202,7 @@ async def get_thinkscript_registry():
     try:
         return load_registry()
     except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 
 @app.get("/thinkscript/registry/{script_id}", response_model=ScriptWithDocs)
@@ -4211,7 +4211,7 @@ async def get_thinkscript_registry_entry(script_id: str):
     try:
         registry = load_registry()
     except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     entry = next((s for s in registry.scripts if s.id == script_id), None)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"script_id '{script_id}' not found")

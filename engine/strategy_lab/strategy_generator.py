@@ -103,7 +103,7 @@ def generate_strategy_variant(
     try:
         variant = json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ValueError(f"LLM returned invalid JSON: {e}\nRaw response: {raw[:200]}")
+        raise ValueError(f"LLM returned invalid JSON: {e}\nRaw response: {raw[:200]}") from e
 
     # Validate required fields
     required = ['strategy_name', 'parameters']

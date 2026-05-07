@@ -36,4 +36,4 @@ async def get_recent_events(limit: Optional[int] = Query(20, ge=1, le=100)):
         }
     except Exception as e:
         logger.error(f"Error retrieving recent events: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

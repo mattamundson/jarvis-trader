@@ -34,5 +34,5 @@ def margin_requirement(symbol: str) -> float:
     key = symbol.upper()
     try:
         return FUTURES_MARGIN_TABLE[key]
-    except KeyError:
-        raise UnknownFuturesSymbolError(f"Unknown futures symbol for margin: {symbol}")
+    except KeyError as exc:
+        raise UnknownFuturesSymbolError(f"Unknown futures symbol for margin: {symbol}") from exc

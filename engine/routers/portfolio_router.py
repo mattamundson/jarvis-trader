@@ -476,7 +476,7 @@ async def get_paper_trades(limit: int = 50, status: str = None):
         return {"trades": trades, "count": len(trades)}
     except Exception as exc:
         logger.error("get_paper_trades failed: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/paper/performance")
