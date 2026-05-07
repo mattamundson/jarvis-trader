@@ -155,7 +155,7 @@ def compute_single_prints(
 
     bull_top = bull_bot = bear_top = bear_bot = np.nan
 
-    for sess_date, grp in out.groupby("_session", sort=True):
+    for _sess_date, grp in out.groupby("_session", sort=True):
         counts = _build_tpo_histogram(grp, tick)
         if not counts:
             continue

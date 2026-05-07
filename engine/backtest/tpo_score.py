@@ -109,7 +109,7 @@ def compute_tpo_score(df: pd.DataFrame) -> pd.DataFrame:
     out["tpo_score_label"] = [_score_label(s) for s in scores]
     out["price_zone_label"] = [
         _zone_label(c, h, l)
-        for c, h, l in zip(
+        for c, h, l in zip(  # noqa: E741  # OHLC convention
             out["close"].to_numpy(),
             out["va_high"].to_numpy(),
             out["va_low"].to_numpy(), strict=False,

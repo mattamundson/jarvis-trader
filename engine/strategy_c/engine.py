@@ -39,11 +39,11 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
-from .macro_filter import MacroRegimeFilter
-from .mtf_filter import MTFFilter
-from .signals import StrategyCSignals
-from .vix_composite import VIXComposite
-from .vol_targeting import VolatilityTargeter
+from .macro_filter import MacroRegimeFilter  # noqa: E402
+from .mtf_filter import MTFFilter  # noqa: E402
+from .signals import StrategyCSignals  # noqa: E402
+from .vix_composite import VIXComposite  # noqa: E402
+from .vol_targeting import VolatilityTargeter  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

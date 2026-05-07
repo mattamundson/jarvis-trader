@@ -25,7 +25,7 @@ _ENGINE = _HERE.parent
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
-import importlib.util
+import importlib.util  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("mt", str(_HERE / "mes_trend_search.py"))
 mt = importlib.util.module_from_spec(spec)

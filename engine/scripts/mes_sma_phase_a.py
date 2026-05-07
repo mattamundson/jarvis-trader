@@ -26,12 +26,12 @@ ENGINE_DIR = Path(__file__).resolve().parent.parent
 if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
-from backtest import BacktestDataLoader, Backtester
-from backtest.evaluation_harness import evaluate
-from backtest.monte_carlo import bootstrap_pf, run_monte_carlo, run_slippage_stress
-from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals
-from backtest.trade_manager import BacktestResult
-from backtest.trend_signals import get_sma_trend_params
+from backtest import BacktestDataLoader, Backtester  # noqa: E402
+from backtest.evaluation_harness import evaluate  # noqa: E402
+from backtest.monte_carlo import bootstrap_pf, run_monte_carlo, run_slippage_stress  # noqa: E402
+from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals  # noqa: E402
+from backtest.trade_manager import BacktestResult  # noqa: E402
+from backtest.trend_signals import get_sma_trend_params  # noqa: E402
 
 SYMBOL = "MES"
 INTERVAL = "1h"

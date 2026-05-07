@@ -86,7 +86,7 @@ def get_recent_hit_rate(
 
     hits = 0
     samples = 0
-    for side, delta in rows:
+    for _side, delta in rows:
         if delta is None:
             continue
         samples += 1

@@ -29,7 +29,7 @@ except Exception:
     _ib_provider = None  # type: ignore[assignment]
     _IB_AVAILABLE = False
 
-from .indicators import (
+from .indicators import (  # noqa: E402
     cci,
     classify_trin,
     compute_adx,

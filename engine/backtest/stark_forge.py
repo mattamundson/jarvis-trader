@@ -30,7 +30,7 @@ if engine_dir not in sys.path:
     sys.path.insert(0, engine_dir)
 
 try:
-    from strategies.stark_tpo_strategy import MarketStructure, StarkTPOStrategy
+    from strategies.stark_tpo_strategy import StarkTPOStrategy
 except ImportError as e:
     print(f"ERROR: Could not import StarkTPOStrategy. Ensure execution from workspace root. ({e})")
     sys.exit(1)

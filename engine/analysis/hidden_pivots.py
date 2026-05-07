@@ -239,7 +239,7 @@ def compute_hp_ou_level(df: pd.DataFrame) -> tuple[Optional[float], list[float],
     support_levels = [base - ab_range * f for f in [0.382, 0.618, 1.0]]
 
     all_raw = c_levels + d_levels + support_levels
-    level_ladder = sorted(set(round(l, 2) for l in all_raw if l > 0))
+    level_ladder = sorted(set(round(l, 2) for l in all_raw if l > 0))  # noqa: E741  # OHLC convention
 
     return swing_points.midpoint, level_ladder, swing_points
 
@@ -463,7 +463,7 @@ def detect_symmetrical_triangle(df: pd.DataFrame) -> tuple[Optional[float], str,
 
     window = 40
     h = high.tail(window).values
-    l = low.tail(window).values
+    l = low.tail(window).values  # noqa: E741  # OHLC convention
     x = np.arange(window)
 
     # Fit trendlines to highs and lows
@@ -513,7 +513,7 @@ def detect_descending_channel_reversal(df: pd.DataFrame) -> tuple[Optional[float
 
     window = 30
     h = high.tail(window).values
-    l = low.tail(window).values
+    l = low.tail(window).values  # noqa: E741  # OHLC convention
     x = np.arange(window)
 
     h_slope, h_intercept = np.polyfit(x, h, 1)
@@ -640,11 +640,11 @@ def compute_stops_and_targets(
     if bias == "LONG":
         tight_stop = trigger_price - 1.0 * atr_value
         riskier_stop = trigger_price - 1.5 * atr_value
-        candidate_targets = sorted([l for l in hp_levels if l > trigger_price])
+        candidate_targets = sorted([l for l in hp_levels if l > trigger_price])  # noqa: E741  # OHLC convention
     else:  # SHORT
         tight_stop = trigger_price + 1.0 * atr_value
         riskier_stop = trigger_price + 1.5 * atr_value
-        candidate_targets = sorted([l for l in hp_levels if l < trigger_price], reverse=True)
+        candidate_targets = sorted([l for l in hp_levels if l < trigger_price], reverse=True)  # noqa: E741  # OHLC convention
 
     targets = candidate_targets[:3]  # T1, T2, T3
 
@@ -815,7 +815,7 @@ def full_hidden_pivots_scan(
         riskier_stop=round(riskier_stop, 4) if riskier_stop else None,
         targets=[round(t, 4) for t in targets],
         hp_ou_level=round(hp_ou, 4) if hp_ou else None,
-        hp_levels=[round(l, 4) for l in hp_levels],
+        hp_levels=[round(l, 4) for l in hp_levels],  # noqa: E741  # OHLC convention
         ema_alignment=ema_alignment,
         rs_rw_score=round(rs_score, 3),
         rs_rw_label=rs_label,

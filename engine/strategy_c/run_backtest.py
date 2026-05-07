@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore")
 REPO_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from engine.strategy_c.engine import StrategyCConfig, StrategyCEngine
+from engine.strategy_c.engine import StrategyCConfig, StrategyCEngine  # noqa: E402
 
 OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -251,7 +251,7 @@ def _plot_metrics_table(ax, full, is_m, oos_m, retention):
     table.set_fontsize(8)
     table.scale(1.0, 1.4)
 
-    for (row, col), cell in table.get_celld().items():
+    for (row, _col), cell in table.get_celld().items():
         cell.set_facecolor(PANEL_BG if row % 2 == 0 else "#1c2330")
         cell.set_edgecolor("#333333")
         if row == 0:

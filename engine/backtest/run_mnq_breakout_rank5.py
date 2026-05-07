@@ -215,8 +215,10 @@ def _best_is_params(
 # Gate v2 metrics — including fixed_params sweep for ALT metric
 # ---------------------------------------------------------------------------
 
-from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
-from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
+from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
+from backtest._gate_v2_helpers import (  # noqa: E402
+    classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
+)
 
 
 def _run_fixed_params_sweep(df: pd.DataFrame, grid: list[tuple]) -> dict:

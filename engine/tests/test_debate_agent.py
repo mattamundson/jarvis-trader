@@ -46,7 +46,7 @@ from agents.debate import (  # noqa: E402
 
 class TestDebateResultSerialization:
     def _result(self, **overrides) -> DebateResult:
-        defaults = dict(symbol="MES", timestamp=datetime(2026, 4, 24, 12, 0, 0))
+        defaults = {"symbol": "MES", "timestamp": datetime(2026, 4, 24, 12, 0, 0)}
         defaults.update(overrides)
         return DebateResult(**defaults)
 

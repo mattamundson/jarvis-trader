@@ -19,7 +19,7 @@ except ImportError:
     pass
 
 try:
-    from engine.config import settings
+    from engine.config import settings  # noqa: F401  (presence-check only)
 except ImportError:
     pass
 

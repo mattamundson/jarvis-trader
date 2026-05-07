@@ -84,24 +84,24 @@ def trader():
 
 class TestTradeDecisionSerialization:
     def _decision(self, **overrides) -> TradeDecision:
-        defaults = dict(
-            symbol="MES",
-            action="buy",
-            quantity=2,
-            order_type="market",
-            time_in_force="day",
-            limit_price=None,
-            stop_price=5750.0,
-            entry_price=5800.0,
-            target_1=5850.0,
-            target_2=5900.0,
-            atr_used=5.0,
-            rr_ratio=1.0,
-            signal_score=0.5,
-            confidence=0.7,
-            reasoning="bullish breakout",
-            risk_notes="watch VIX",
-        )
+        defaults = {
+            "symbol": "MES",
+            "action": "buy",
+            "quantity": 2,
+            "order_type": "market",
+            "time_in_force": "day",
+            "limit_price": None,
+            "stop_price": 5750.0,
+            "entry_price": 5800.0,
+            "target_1": 5850.0,
+            "target_2": 5900.0,
+            "atr_used": 5.0,
+            "rr_ratio": 1.0,
+            "signal_score": 0.5,
+            "confidence": 0.7,
+            "reasoning": "bullish breakout",
+            "risk_notes": "watch VIX",
+        }
         defaults.update(overrides)
         return TradeDecision(**defaults)
 

@@ -90,7 +90,7 @@ def test_no_entry_on_flat_market():
 def test_stop_below_entry_for_long():
     df = generate_adx_ema_signals(_make_trend_df(), adx_threshold=20.0)
     longs = df[(df["entry_signal"] == "ENTRY_NOW") & (df["bias"] == "STRONG_BULL")]
-    for idx, row in longs.iterrows():
+    for _idx, row in longs.iterrows():
         assert row["stop_level"] < row["close"], \
             f"Long stop ({row['stop_level']:.2f}) must be below entry ({row['close']:.2f})"
 
@@ -98,7 +98,7 @@ def test_stop_below_entry_for_long():
 def test_stop_above_entry_for_short():
     df = generate_adx_ema_signals(_make_trend_df(), adx_threshold=20.0)
     shorts = df[(df["entry_signal"] == "ENTRY_NOW") & (df["bias"] == "STRONG_BEAR")]
-    for idx, row in shorts.iterrows():
+    for _idx, row in shorts.iterrows():
         assert row["stop_level"] > row["close"], \
             f"Short stop ({row['stop_level']:.2f}) must be above entry ({row['close']:.2f})"
 
