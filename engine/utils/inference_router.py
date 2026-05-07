@@ -93,6 +93,7 @@ class OllamaClient:
             except Exception as e:
                 logger.error(f"Ollama error: {e}")
                 return None
+        return None
 
 
 class InferenceRouter:
@@ -146,7 +147,9 @@ class InferenceRouter:
         provider = force_provider or get_provider_for_task(task_name)
         if self.provider == "ollama":
             provider = InferenceProvider.OLLAMA
-        elif provider != InferenceProvider.OLLAMA and not INFERENCE_CONFIG.get("anthropic_fallback_enabled", False):
+        elif provider != InferenceProvider.OLLAMA and not INFERENCE_CONFIG.get(
+            "anthropic_fallback_enabled", False
+        ):
             logger.warning(f"[{task_name}] Anthropic requested but disabled; routing to Ollama")
             provider = InferenceProvider.OLLAMA
 
@@ -161,15 +164,15 @@ class InferenceRouter:
                 logger.info(f"[{task_name}] Ollama OK ({latency:.2f}s)")
                 return result
             else:
-                if self.provider != "ollama" and INFERENCE_CONFIG.get("anthropic_fallback_enabled", False):
-                    logger.warning(
-                        f"[{task_name}] Ollama failed, falling back to Anthropic"
-                    )
+                if self.provider != "ollama" and INFERENCE_CONFIG.get(
+                    "anthropic_fallback_enabled", False
+                ):
+                    logger.warning(f"[{task_name}] Ollama failed, falling back to Anthropic")
                     result = await self._call_anthropic(prompt)
                     latency = time.time() - start_time
                     self._record_metric(task_name, "anthropic_fallback", latency)
                     logger.info(f"[{task_name}] Anthropic fallback ({latency:.2f}s)")
-                    return result
+                    return result or ""
 
                 self._record_metric(task_name, "ollama_failed", latency)
                 logger.error(f"[{task_name}] Ollama failed; Anthropic fallback disabled")
@@ -180,7 +183,7 @@ class InferenceRouter:
             latency = time.time() - start_time
             self._record_metric(task_name, "anthropic", latency)
             logger.info(f"[{task_name}] Anthropic OK ({latency:.2f}s)")
-            return result
+            return result or ""
 
     async def _call_ollama(self, prompt: str) -> Optional[str]:
         """Call Ollama API."""
@@ -205,11 +208,13 @@ class InferenceRouter:
         if task_name not in self.metrics:
             self.metrics[task_name] = []
 
-        self.metrics[task_name].append({
-            "provider": provider,
-            "latency_ms": latency_seconds * 1000,
-            "timestamp": time.time(),
-        })
+        self.metrics[task_name].append(
+            {
+                "provider": provider,
+                "latency_ms": latency_seconds * 1000,
+                "timestamp": time.time(),
+            }
+        )
 
         # Keep only last 100 metrics per task to avoid memory bloat
         if len(self.metrics[task_name]) > 100:
@@ -253,7 +258,3 @@ async def route_task(
     """Convenience function to route a task."""
     router = get_inference_router()
     return await router.route_task(task_name, prompt, force_provider)
-
-
-
-
