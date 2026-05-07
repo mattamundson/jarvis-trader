@@ -98,12 +98,6 @@ ATR_TRAIL_MULT_VALUES = [1.8, 2.0, 2.2]
 MIN_RV_ANNUALIZED_VALUES = [0.0, 9.0]
 
 # Gate v2 thresholds (ALT path -- matches MES rank11 runner)
-GATE_PF_CI_LOWER = 1.10
-GATE_P_EDGE = 0.95
-GATE_MC_DD_CORE = 0.05
-GATE_MC_DD_ALT = 0.07  # 7% ALT ceiling
-GATE_DSR = 0.10
-GATE_DSR_ALT = 0.30  # ALT floor
 GATE_FIXED_PARAMS_MIN_PF = 1.20
 GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
@@ -116,7 +110,6 @@ COST_SWEEP_TIERS = {
 }
 COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
-N_BOOTSTRAP = 2000
 MIN_OOS_TRADES_PER_WINDOW = 1  # SMA trend generates 1-3 trades per 1-2 month OOS
 
 

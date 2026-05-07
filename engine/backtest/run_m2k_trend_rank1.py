@@ -94,12 +94,6 @@ ATR_TRAIL_MULT_VALUES = [1.5, 2.0, 2.5]
 MIN_RV_ANNUALIZED = 0.0  # disabled for rank1 baseline (add rv gate in rank2+ if needed)
 
 # Gate v2 thresholds (ALT path -- same as MES rank11)
-GATE_PF_CI_LOWER = 1.10
-GATE_P_EDGE = 0.95
-GATE_MC_DD_CORE = 0.05
-GATE_MC_DD_ALT = 0.07
-GATE_DSR = 0.10
-GATE_DSR_ALT = 0.30
 GATE_FIXED_PARAMS_MIN_PF = 1.20
 GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
@@ -112,7 +106,6 @@ COST_SWEEP_TIERS = {
 }
 COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
-N_BOOTSTRAP = 2000
 MIN_OOS_TRADES_PER_WINDOW = 1
 
 

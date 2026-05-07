@@ -81,12 +81,6 @@ ATR_TRAIL_MULT_VALUES = [2.0]  # champion value, fixed
 MIN_RV_ANNUALIZED = 0.0
 
 # Gate v2 thresholds
-GATE_PF_CI_LOWER = 1.10
-GATE_P_EDGE = 0.95
-GATE_MC_DD_CORE = 0.05
-GATE_MC_DD_ALT = 0.07  # ALT ceiling (0.07 = 7%)
-GATE_DSR = 0.10
-GATE_DSR_ALT = 0.30  # ALT floor (rank9 had 0.999 >> this)
 
 # ALT-specific thresholds
 GATE_FIXED_PARAMS_MIN_PF = 1.20  # rank9 had 0.686 (fail); rank7 had 1.275
@@ -101,7 +95,6 @@ COST_SWEEP_TIERS = {
 }
 COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
-N_BOOTSTRAP = 2000
 MIN_OOS_TRADES_PER_WINDOW = 1  # was 5 — SMA trend generates 1-3 trades per 2-month OOS
 
 

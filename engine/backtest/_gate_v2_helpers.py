@@ -1,9 +1,48 @@
-"""Shared gate v2 metric helpers — single source of truth for runner files."""
+"""Shared gate v2 metric helpers — single source of truth for runner files.
+
+Gate v2 threshold constants
+----------------------------
+Import these into runner files instead of re-defining them locally:
+
+    from backtest._gate_v2_helpers import (
+        GATE_PF_CI_LOWER, GATE_P_EDGE, GATE_MC_DD_CORE, GATE_MC_DD_ALT,
+        GATE_DSR, GATE_DSR_ALT, N_BOOTSTRAP,
+    )
+
+Any future change to a threshold is a single-line edit here; no runner
+files need to change.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import numpy as np
+
+# ---------------------------------------------------------------------------
+# Gate v2 threshold constants — canonical values; do not redefine per-runner
+# ---------------------------------------------------------------------------
+
+#: Bootstrap 5th-percentile OOS PF lower bound (CORE and ALT paths).
+GATE_PF_CI_LOWER: float = 1.10
+
+#: Fraction of OOS windows with PF > 1.0 required for edge confirmation.
+GATE_P_EDGE: float = 0.95
+
+#: 95th-percentile OOS max-drawdown ceiling — CORE path.
+GATE_MC_DD_CORE: float = 0.05
+
+#: 95th-percentile OOS max-drawdown ceiling — ALT path ($50K+ accounts).
+GATE_MC_DD_ALT: float = 0.07
+
+#: Deflated Sharpe ratio floor — CORE path.
+GATE_DSR: float = 0.10
+
+#: Deflated Sharpe ratio floor — ALT path (trend strategies on daily bars).
+GATE_DSR_ALT: float = 0.30
+
+#: Bootstrap sample count for PF CI estimation.
+N_BOOTSTRAP: int = 2000
 
 
 def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> Path:
@@ -78,9 +117,14 @@ def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> 
 def bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = 5000) -> float:
     """Bootstrap 5th-percentile of mean PF distribution; inf-cap baked in."""
     # Cap inf/-inf before bootstrapping — np.percentile returns NaN via inf-inf interpolation
-    capped = [min(max(pf, 0.0), 5.0) if not (pf == float("inf") or pf == float("-inf"))
-              else (5.0 if pf == float("inf") else 0.0)
-              for pf in oos_pfs]
+    capped = [
+        (
+            min(max(pf, 0.0), 5.0)
+            if not (pf == float("inf") or pf == float("-inf"))
+            else (5.0 if pf == float("inf") else 0.0)
+        )
+        for pf in oos_pfs
+    ]
     if len(capped) < 2:
         return float(np.mean(capped)) if capped else 0.0
     rng = np.random.default_rng(42)
