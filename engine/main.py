@@ -155,6 +155,7 @@ from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
 from websocket.events import set_ws_manager
 from websocket.manager import WebSocketManager
+
 try:
     from execution.polymarket_connector import PolymarketConnector
 except ImportError as _pm_err:
@@ -352,9 +353,7 @@ async def _deliver_pipeline_whatsapp_if_eligible(
         return False, f"cooldown_active_since_{tail}"
 
     logger.info("WhatsApp alert for %s suppressed — WhatsApp not configured", symbol)
-    _log_pipeline_whatsapp_to_alert_log(
-        symbol, msg, "suppressed", error="whatsapp_not_configured"
-    )
+    _log_pipeline_whatsapp_to_alert_log(symbol, msg, "suppressed", error="whatsapp_not_configured")
     return False, "whatsapp_not_configured"
 
 
@@ -365,34 +364,7 @@ _macro_cache: Dict[str, dict] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global \
-        data_manager, \
-        safety_layer, \
-        technical_analyst, \
-        trading_pipeline, \
-        scheduler, \
-        paper_tracker, \
-        db_manager, \
-        pnl_monitor, \
-        eod_scheduler, \
-        order_manager, \
-        ib_paper_connector, \
-        schwab_connector, \
-        order_router, \
-        ws_manager, \
-        cost_tracker, \
-        loss_tracker, \
-        validation_alert_manager, \
-        sdk_pipeline, \
-        margin_monitor, \
-        breakout_analyst, \
-        harmonic_analyst, \
-        polymarket, \
-        openbb, \
-        risk_protections, \
-        model_drawer, \
-        arb_scout, \
-        sentiment_bridge
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ib_paper_connector, schwab_connector, order_router, ws_manager, cost_tracker, loss_tracker, validation_alert_manager, sdk_pipeline, margin_monitor, breakout_analyst, harmonic_analyst, polymarket, openbb, risk_protections, model_drawer, arb_scout, sentiment_bridge
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -489,20 +461,20 @@ async def lifespan(app: FastAPI):
     openbb = OpenBBAdapter() if OpenBBAdapter is not None else None
     risk_protections = RiskProtections(db_manager=db_manager)
     model_drawer = ModelDrawer(model_dir=str(db_manager._db_path.parent / "models"))
-    arb_scout = None # Initialized after data_manager
+    arb_scout = None  # Initialized after data_manager
 
     # Needs analyst for the bridge, assuming news_analyst is initialized later or available
     # For now, initialize stub if news_analyst is not yet ready
     sentiment_bridge = SentimentBridge(news_analyst=None)
 
     # Inject into API registry
-    inject_super_engine({
-        "polymarket": polymarket,
-        "openbb": openbb,
-        "sentiment_bridge": sentiment_bridge
-    })
+    inject_super_engine(
+        {"polymarket": polymarket, "openbb": openbb, "sentiment_bridge": sentiment_bridge}
+    )
 
-    logger.info("✅ Super-Engine components initialized (Polymarket, OpenBB, Protections, SentimentBridge)")
+    logger.info(
+        "✅ Super-Engine components initialized (Polymarket, OpenBB, Protections, SentimentBridge)"
+    )
 
     # Paper IB connector — JSON audit + optional PortfolioTracker mirror; wired into SafetyLayer
     ib_paper_connector = None
@@ -537,9 +509,12 @@ async def lifespan(app: FastAPI):
     # HB-4: Position Reconciliation on Restart
     if ib_paper_connector is not None:
         from execution.position_reconciler import PositionReconciler
+
         reconciler = PositionReconciler(ib_paper_connector)
         asyncio.create_task(reconciler.reconcile())
-        logger.info("✅ PositionReconciler initialized and scheduled to check for orphaned positions")
+        logger.info(
+            "✅ PositionReconciler initialized and scheduled to check for orphaned positions"
+        )
 
     # Schwab connector — initialized only when credentials are present.
     # SCHWAB_READY=False guard inside SchwabConnector prevents accidental activation.
@@ -609,14 +584,16 @@ async def lifespan(app: FastAPI):
     arb_scout.add_pair("0x...", "MES")
 
     # Update super-engine injection with all components now ready
-    inject_super_engine({
-        "polymarket": polymarket,
-        "openbb": openbb,
-        "sentiment_bridge": sentiment_bridge,
-        "model_drawer": model_drawer,
-        "arb_scout": arb_scout,
-        "regime_guard": regime_guard
-    })
+    inject_super_engine(
+        {
+            "polymarket": polymarket,
+            "openbb": openbb,
+            "sentiment_bridge": sentiment_bridge,
+            "model_drawer": model_drawer,
+            "arb_scout": arb_scout,
+            "regime_guard": regime_guard,
+        }
+    )
 
     inject_institutional_data_manager(data_manager)
 
@@ -658,6 +635,7 @@ async def lifespan(app: FastAPI):
         _brave_client = None
         if getattr(settings, "BRAVE_API_KEY", None):
             from data.brave_search import BraveSearchClient
+
             _brave_client = BraveSearchClient(api_key=settings.BRAVE_API_KEY)
             logger.info("✅ Brave Search wired into news analyst")
         else:
@@ -725,7 +703,9 @@ async def lifespan(app: FastAPI):
         except Exception as _sdk_exc:
             logger.warning("⚠️  SDK Pipeline init failed (non-fatal): %s", _sdk_exc)
     else:
-        logger.warning("⚠️  No local/provider LLM configured — LLM agents disabled. Set JARVIS_LLM_PROVIDER=ollama or configure a hosted key.")
+        logger.warning(
+            "⚠️  No local/provider LLM configured — LLM agents disabled. Set JARVIS_LLM_PROVIDER=ollama or configure a hosted key."
+        )
 
     # Scheduled analysis (runs during market hours)
     scheduler = AsyncIOScheduler(timezone="America/Chicago")
@@ -740,16 +720,9 @@ async def lifespan(app: FastAPI):
             return
 
         # Futures + equities — sequential to avoid OOM from parallel 10-agent LLM pipelines
-        symbols_to_scan = (
-            [
-                (sym, True)
-                for sym in settings.FUTURES_WATCHLIST  # MES, MNQ, MCL
-            ]
-            + [
-                (sym, False)
-                for sym in settings.OPTIONS_WATCHLIST[:3]  # SPY, QQQ, AAPL
-            ]
-        )
+        symbols_to_scan = [(sym, True) for sym in settings.FUTURES_WATCHLIST] + [  # MES, MNQ, MCL
+            (sym, False) for sym in settings.OPTIONS_WATCHLIST[:3]  # SPY, QQQ, AAPL
+        ]
 
         logger.info(f"Scheduled scan: {[s[0] for s in symbols_to_scan]}")
 
@@ -794,7 +767,7 @@ async def lifespan(app: FastAPI):
                 # MES shorts were entered at $70.57 (real MES ~$6000).
                 # Ranges are deliberately wide — only catch obvious absurdities.
                 _PLAUSIBLE_PRICE_RANGE = {
-                    "MCL": (40.0, 130.0),   # WTI crude: ~$60-100 typical
+                    "MCL": (40.0, 130.0),  # WTI crude: ~$60-100 typical
                     "MES": (3000.0, 8000.0),  # S&P 500 mini: ~$4000-7000
                     "MNQ": (10000.0, 30000.0),  # Nasdaq mini
                     "MGC": (1500.0, 5000.0),  # Gold
@@ -933,10 +906,12 @@ async def lifespan(app: FastAPI):
                 "⛔ WATCHLIST_SCAN_ENABLED=false — hourly watchlist auto-scan is DISABLED. "
                 "Re-enable in .env after data layer + scanner guards are verified."
             )
+
         # ── Approval Expiry Background Job (Phase 1 Protection) ──────────
         async def run_approval_expiry():
             """Auto-cancel pending trades older than 5 minutes."""
             from approval.service import cancel_expired_approvals
+
             try:
                 cancelled = cancel_expired_approvals(db_manager)
                 if cancelled > 0:
@@ -958,6 +933,7 @@ async def lifespan(app: FastAPI):
         async def delayed_approval_expiry():
             await asyncio.sleep(5)
             await run_approval_expiry()
+
         asyncio.create_task(delayed_approval_expiry())
 
         scheduler.start()
@@ -1054,6 +1030,7 @@ async def lifespan(app: FastAPI):
     # Messaging health monitor — check Ollama every 60s
     try:
         from services.messaging_health import run_health_check
+
         scheduler.add_job(
             run_health_check,
             "interval",
@@ -1164,6 +1141,7 @@ async def lifespan(app: FastAPI):
                 # Defense-in-depth: also block DO_NOT_TRADE symbols even if
                 # config.enabled is True (prevents wiring-leak class of bug).
                 from backtest.signals import DO_NOT_TRADE_SYMBOLS as _DO_NOT_TRADE_15M
+
                 if symbol in _DO_NOT_TRADE_15M:
                     logger.warning(
                         "[MARKET_OPEN] BLOCKED 15m: %s enabled=True but in "
@@ -1307,6 +1285,7 @@ async def lifespan(app: FastAPI):
                 return
 
             from backtest.signals import DO_NOT_TRADE_SYMBOLS as _DO_NOT_TRADE_INTRA
+
             loader = BacktestDataLoader()
             for symbol in ["MCL", "MNQ"]:
                 try:
@@ -1422,9 +1401,7 @@ async def lifespan(app: FastAPI):
         _pnl_alert_manager = _AlertManager(notify_fn=_oc_send_raw)
         _pnl_alert_manager.start()
         safety_layer.inject_alert_manager(_pnl_alert_manager)
-        logger.info(
-            "✅ AlertManager started — P&L push alerts active via OpenClaw WhatsApp"
-        )
+        logger.info("✅ AlertManager started — P&L push alerts active via OpenClaw WhatsApp")
     except Exception as _am_err:
         logger.warning("AlertManager init failed (non-fatal — no P&L push alerts): %s", _am_err)
 
@@ -1434,6 +1411,7 @@ async def lifespan(app: FastAPI):
     # Inject AlertManager into safety router for /safety/alerts/history
     try:
         from routers.safety_router import inject_alert_manager as _inject_am
+
         if _pnl_alert_manager is not None:
             _inject_am(_pnl_alert_manager)
     except Exception as _am_inject_err:
@@ -1452,11 +1430,14 @@ async def lifespan(app: FastAPI):
     inject_discord_data_manager(data_manager)
     inject_backtest_deps(data_manager)
     from routers.market_router import inject_dependencies as inject_market_deps
+
     inject_market_deps(data_manager=data_manager)
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_scheduler_router_scheduler(scheduler)
-    inject_pipeline_deps(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline)
+    inject_pipeline_deps(
+        scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline
+    )
     inject_messaging_deps(db_manager, paper_tracker=paper_tracker, safety_layer=safety_layer)
     # Morning brief deps
     inject_morning_brief_deps(data_manager, paper_tracker, safety_layer)
@@ -1468,7 +1449,9 @@ async def lifespan(app: FastAPI):
 
         # Use FUTURES_WATCHLIST from settings so MCL, MNQ, MES are all included.
         # Fallback to ["MCL", "MNQ"] if setting is empty.
-        _scan_symbols = list(settings.FUTURES_WATCHLIST) if settings.FUTURES_WATCHLIST else ["MCL", "MNQ"]
+        _scan_symbols = (
+            list(settings.FUTURES_WATCHLIST) if settings.FUTURES_WATCHLIST else ["MCL", "MNQ"]
+        )
         _scanner_initial_delay = int(getattr(settings, "SCANNER_INITIAL_DELAY_SECONDS", 60))
         signal_scanner = SignalScanner(
             trading_pipeline=trading_pipeline,
@@ -1622,6 +1605,7 @@ async def lifespan(app: FastAPI):
     # Initialize Weekly Adaptive Calibration (Saturday 00:00)
     try:
         from backtest.auto_calibrate import run_weekly_calibration
+
         scheduler.add_job(
             run_weekly_calibration,
             CronTrigger(day_of_week="sat", hour=0, minute=0, timezone="America/Chicago"),
@@ -1706,12 +1690,15 @@ async def lifespan(app: FastAPI):
                 _send_brief = True
                 try:
                     from notifications.supervisor import get_supervisor, SupervisorEvent
+
                     _sup = get_supervisor()
                     if _sup.enabled:
-                        _decision = await _sup.review(SupervisorEvent(
-                            event_type="morning_brief",
-                            payload={"length": len(brief_text), "preview": brief_text[:500]},
-                        ))
+                        _decision = await _sup.review(
+                            SupervisorEvent(
+                                event_type="morning_brief",
+                                payload={"length": len(brief_text), "preview": brief_text[:500]},
+                            )
+                        )
                         _send_brief = _decision.pass_through
                         if not _send_brief:
                             logger.info("Supervisor ACK'd morning brief: %s", _decision.reason)
@@ -1798,9 +1785,7 @@ async def lifespan(app: FastAPI):
                 from routers.discord_router import _get_bookmark_clusterer
 
                 clusterer = _get_bookmark_clusterer()
-                result = await clusterer.cluster_recent(
-                    lookback_days=7, force_refresh=True
-                )
+                result = await clusterer.cluster_recent(lookback_days=7, force_refresh=True)
                 logger.info(
                     "[BookmarkClusterer] refreshed: %d themes, %d bookmarks, "
                     "actionable=%s, cost=$%.4f, error=%s",
@@ -1828,9 +1813,7 @@ async def lifespan(app: FastAPI):
                 replace_existing=True,
                 misfire_grace_time=3600,
             )
-            logger.info(
-                "✅ Bookmark clusterer registered — fires Sun at 18:00 CT"
-            )
+            logger.info("✅ Bookmark clusterer registered — fires Sun at 18:00 CT")
     except Exception as _bm_err:
         logger.warning(f"Bookmark clusterer init failed (non-fatal): {_bm_err}")
 
@@ -1841,9 +1824,7 @@ async def lifespan(app: FastAPI):
     try:
         from scripts.render_bookmarks_to_vault import render_vault as _render_vault
 
-        _BOOKMARK_DB_PATH = os.environ.get(
-            "JARVIS_TRADER_DB_PATH", "engine/data/jarvis_trader.db"
-        )
+        _BOOKMARK_DB_PATH = os.environ.get("JARVIS_TRADER_DB_PATH", "engine/data/jarvis_trader.db")
         _BOOKMARK_VAULT_DIR = os.environ.get(
             "BOOKMARK_VAULT_DIR",
             r"C:\Users\mattm\second-brain\wiki\discord-bookmarks",
@@ -1860,9 +1841,7 @@ async def lifespan(app: FastAPI):
                     stats.get("by_kind", {}),
                 )
             except Exception as exc:
-                logger.error(
-                    "[BookmarkVaultRender] daily render failed: %s", exc, exc_info=True
-                )
+                logger.error("[BookmarkVaultRender] daily render failed: %s", exc, exc_info=True)
 
         if scheduler is not None:
             scheduler.add_job(
@@ -1874,13 +1853,9 @@ async def lifespan(app: FastAPI):
                 replace_existing=True,
                 misfire_grace_time=3600,
             )
-            logger.info(
-                "✅ Bookmark vault renderer registered — fires daily 03:00 CT"
-            )
+            logger.info("✅ Bookmark vault renderer registered — fires daily 03:00 CT")
     except Exception as _bvr_err:
-        logger.warning(
-            f"Bookmark vault renderer init failed (non-fatal): {_bvr_err}"
-        )
+        logger.warning(f"Bookmark vault renderer init failed (non-fatal): {_bvr_err}")
 
     # MES session forward-recorder — observational experiment that accumulates
     # (Corey bias + gamma levels + IB levels → hypothesis → session outcome)
@@ -2002,9 +1977,7 @@ async def lifespan(app: FastAPI):
                         last_message_date=last_dt.strftime("%Y-%m-%d %H:%M CT"),
                     )
                 else:
-                    logger.debug(
-                        "[CoreyStale] OK — last msg %.1f days ago", days_stale
-                    )
+                    logger.debug("[CoreyStale] OK — last msg %.1f days ago", days_stale)
             except Exception as exc:
                 logger.error("[CoreyStale] check failed (non-fatal): %s", exc, exc_info=True)
 
@@ -2077,7 +2050,11 @@ async def lifespan(app: FastAPI):
                     )
                     return
                 state = pnl_monitor.get_current_pnl_state()
-                equity = state.current_balance if state.current_balance > 0 else safety_layer._current_equity
+                equity = (
+                    state.current_balance
+                    if state.current_balance > 0
+                    else safety_layer._current_equity
+                )
                 daily_pnl = pnl_monitor.get_daily_pnl()
                 safety_layer.sync_from_broker(equity, daily_pnl)
             except Exception as exc:
@@ -2126,6 +2103,7 @@ async def lifespan(app: FastAPI):
 
     # ── Weekly strategy discovery ──────────────────────────────────────────────
     try:
+
         async def _run_weekly_discovery() -> None:
             """Saturday midnight: generate + evaluate one LLM strategy per active instrument."""
             try:
@@ -2171,9 +2149,9 @@ async def lifespan(app: FastAPI):
     try:
         # (symbol, family, rank, results_file_relative_to_engine/)
         _GATE_V2_TRACKED: list[tuple[str, str, int, str]] = [
-            ("MES", "trend",   7, "scripts/mes_trend_search_results.json"),
+            ("MES", "trend", 7, "scripts/mes_trend_search_results.json"),
             ("MCL", "meanrev", 1, "scripts/mcl_meanrev_search_results.json"),
-            ("MNQ", "trend",   1, "scripts/mnq_trend_search_results.json"),
+            ("MNQ", "trend", 1, "scripts/mnq_trend_search_results.json"),
         ]
 
         async def _run_weekly_gate_v2() -> None:
@@ -2191,27 +2169,40 @@ async def lifespan(app: FastAPI):
                     if not _results_file.exists():
                         logger.warning(
                             "[GateV2Weekly] missing results file %s — skipping %s/%s rank=%d",
-                            _results_file, _sym, _fam, _rank,
+                            _results_file,
+                            _sym,
+                            _fam,
+                            _rank,
                         )
                         continue
                     try:
                         _snap = orchestrate_gate_v2(
                             results_file=_results_file,
-                            symbol=_sym, family=_fam, rank=_rank,
+                            symbol=_sym,
+                            family=_fam,
+                            rank=_rank,
                             reports_dir=reports_dir,
                             output_dir=output_dir,
                         )
                         logger.info(
                             "[GateV2Weekly] %s/%s rank=%d verdict=%s via=%s "
                             "(core %d/4, alt %d/5)",
-                            _sym, _fam, _rank, _snap.verdict,
+                            _sym,
+                            _fam,
+                            _rank,
+                            _snap.verdict,
                             _snap.passed_via or "-",
-                            _snap.n_core_passed, _snap.n_alt_passed,
+                            _snap.n_core_passed,
+                            _snap.n_alt_passed,
                         )
                     except Exception as _inner_err:
                         logger.error(
                             "[GateV2Weekly] %s/%s rank=%d failed: %s",
-                            _sym, _fam, _rank, _inner_err, exc_info=True,
+                            _sym,
+                            _fam,
+                            _rank,
+                            _inner_err,
+                            exc_info=True,
                         )
             except Exception as _gv2_err:
                 logger.error(f"[GateV2Weekly] cycle failed: {_gv2_err}", exc_info=True)
@@ -2227,13 +2218,12 @@ async def lifespan(app: FastAPI):
             )
             logger.info("Weekly gate v2 orchestrator registered (Saturday 01:00 Chicago)")
     except Exception as _gv2_init_err:
-        logger.warning(
-            f"Weekly gate v2 job init failed (non-fatal): {_gv2_init_err}"
-        )
+        logger.warning(f"Weekly gate v2 job init failed (non-fatal): {_gv2_init_err}")
 
     # ── Telegram long-polling service ──────────────────────────────────────────
     try:
         from routers.messaging_router import start_messaging_services
+
         await start_messaging_services()
         logger.info("✅ Messaging services started (Telegram poller)")
     except Exception as _msg_err:
@@ -2253,6 +2243,7 @@ async def lifespan(app: FastAPI):
             )
             # Re-raise as KeyboardInterrupt so uvicorn's normal shutdown path runs
             raise KeyboardInterrupt(f"Signal {sig_name} received")
+
         return _handler
 
     try:
@@ -2308,6 +2299,7 @@ async def lifespan(app: FastAPI):
     # Stop Telegram poller
     try:
         from routers.messaging_router import stop_messaging_services
+
         await stop_messaging_services()
     except Exception:
         pass
@@ -2455,7 +2447,7 @@ async def get_strategy_lab_results():
                 try:
                     r = json.loads(line)
                     total_evaluated += 1
-                    if r.get('verdict') == 'ELIGIBLE':
+                    if r.get("verdict") == "ELIGIBLE":
                         eligible_count += 1
                 except Exception:
                     pass
@@ -2467,9 +2459,7 @@ async def get_strategy_lab_results():
             "eligible_count": eligible_count,
             "best_pf": max(
                 (
-                    s.get('metrics', {}).get('profit_factor')
-                    or s.get('metrics', {}).get('pf')
-                    or 0
+                    s.get("metrics", {}).get("profit_factor") or s.get("metrics", {}).get("pf") or 0
                     for s in best
                 ),
                 default=0,
@@ -2503,7 +2493,6 @@ app.websocket("/ws/events")(events_handler)
 # ── Safety / Kill Switch (shared routes live in routers/safety_router.py) ───
 
 
-
 @app.get("/position-sizing/calculate")
 async def calculate_position_size_alias():
     """Top-level alias for position sizing calculation."""
@@ -2528,9 +2517,6 @@ async def calculate_position_size_alias():
     }
 
 
-
-
-
 class StrategyParams(BaseModel):
     """Strategy parameter configuration."""
 
@@ -2551,8 +2537,6 @@ class StrategyParams(BaseModel):
 
 # In-memory strategy params (would be persisted in production)
 _strategy_params = StrategyParams()
-
-
 
 
 @app.get("/safety/circuit-breakers", response_model=CircuitBreakerStatus)
@@ -3060,7 +3044,10 @@ async def submit_paper_trade(req: PaperTradeRequest):
             raise HTTPException(409, "Direct paper-trade open disabled in live mode")
         if safety_layer and safety_layer.get_status().get("kill_switch_active"):
             raise HTTPException(409, "Kill switch active — cannot open direct paper trade")
-        if req.symbol.upper() in FUTURES_SYMBOLS and req.symbol.upper() not in approved_watchlist_symbols():
+        if (
+            req.symbol.upper() in FUTURES_SYMBOLS
+            and req.symbol.upper() not in approved_watchlist_symbols()
+        ):
             raise HTTPException(
                 400,
                 f"Symbol {req.symbol.upper()} not on approved futures watchlist",
@@ -3848,8 +3835,13 @@ async def run_pipeline(req: PipelineRequest):
                     side=final_action,
                     quantity=float(final_qty),
                     entry_price=float(entry_price),
-                    stop_loss=float(trade_dec.get("stop_price")) if trade_dec.get("stop_price") else None,
-                    take_profit=float(trade_dec.get("target_price") or trade_dec.get("take_profit") or 0) or None,
+                    stop_loss=(
+                        float(trade_dec.get("stop_price")) if trade_dec.get("stop_price") else None
+                    ),
+                    take_profit=float(
+                        trade_dec.get("target_price") or trade_dec.get("take_profit") or 0
+                    )
+                    or None,
                     strategy_params={
                         "source": "pipeline",
                         "summary": result.get("summary", ""),
@@ -4106,7 +4098,6 @@ async def test_whatsapp():
 
 
 # ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────
-
 
 
 @app.post("/notifications/vix-alert-check")
@@ -5450,6 +5441,8 @@ async def get_trades_by_day():
     """Day-of-week breakdown of paper trade performance.
     Returns win rate, avg pnl, count for each day (Mon-Fri).
     """
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
     try:
         with db_manager._lock:
             conn = sqlite3.connect(str(db_manager._db_path))
@@ -5500,6 +5493,8 @@ async def get_trades_by_day():
 @app.get("/analytics/trades/by-symbol")
 async def get_trades_by_symbol():
     """Per-symbol breakdown of paper trade performance."""
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
     try:
         with db_manager._lock:
             conn = sqlite3.connect(str(db_manager._db_path))
@@ -5563,12 +5558,14 @@ async def get_alert_stats():
         with db_manager._lock:
             conn = sqlite3.connect(str(db_manager._db_path))
             try:
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT alert_type, status, COUNT(*) as count
                     FROM alert_log
                     GROUP BY alert_type, status
                     ORDER BY count DESC
-                """)
+                """
+                )
                 rows = [
                     {"alert_type": r[0], "status": r[1], "count": r[2]} for r in cursor.fetchall()
                 ]
@@ -5590,6 +5587,8 @@ async def import_paper_trades(request: Request):
                        "exit_time": "2026-03-01T10:00:00Z"}, ...]}
     Returns: {"imported": N, "skipped": 0, "errors": []}
     """
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
     try:
         body = await request.json()
         trades = body.get("trades", [])
@@ -5641,5 +5640,3 @@ async def import_paper_trades(request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
-
-
