@@ -96,23 +96,25 @@ mypy_path = "engine"
 explicit_package_bases = true
 namespace_packages = true
 
-# Exclude patterns — venv + build dirs + experimental sandbox + WIP scripts.
-# `exclude` is a single regex (not a list of paths) — careful with separators.
+# Exclude patterns — venv + build dirs + experimental sandbox + tests.
+# `exclude` is a single regex matched against module paths (cwd-relative).
+# We run mypy from engine/ so paths look like `tests/foo.py` not `engine/tests/foo.py`.
 exclude = '''(?x)(
-    ^\.venv/
-    | ^engine/\.venv/
+    /\.venv/
+    | ^\.venv/
     | ^venv/
     | ^build/
     | ^dist/
-    | ^\.git/
-    | ^engine/learning/_experimental/   # WIP code, not part of runtime path
-    | ^engine/tests/                    # tests excluded from baseline (high noise)
-    | ^engine/strategies/generated/     # auto-generated strategy code
-    | ^engine/backtest/test_           # ad-hoc test harness scripts in backtest/
+    | /\.git/
+    | ^learning/_experimental/    # WIP code, not part of runtime path
+    | ^tests/                     # tests excluded from baseline (1500+ noise errors)
+    | /test_[^/]+\.py$            # ad-hoc test harness scripts anywhere
+    | ^strategies/generated/      # auto-generated strategy code
+    | ^\.tmp/                     # local mypy log dir
 )'''
 
-# Run mypy against the engine source tree only.
-files = ["engine"]
+# Run mypy from engine/ directory; explicit list lets us exclude tests cleanly.
+files = ["."]
 
 # Plugin configuration
 plugins = []
