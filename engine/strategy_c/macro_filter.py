@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 class MacroRegimeFilter:
     """
     Macro overlay filter for Strategy C.
-    
+
     Parameters
     ----------
     use_cot : bool
@@ -93,7 +93,7 @@ class MacroRegimeFilter:
     def get_live_multiplier(self) -> tuple[float, dict]:
         """
         Fetch live macro data and compute the position multiplier.
-        
+
         Returns
         -------
         (multiplier: float, detail: dict)
@@ -230,17 +230,17 @@ class MacroRegimeFilter:
     ) -> pd.Series:
         """
         Build a historical macro multiplier series for backtesting.
-        
+
         For backtesting we only use yield curve (CoT is weekly point-in-time,
         not easily vectorized historically without an expensive data pull).
-        
+
         Parameters
         ----------
         weekly_index : pd.DatetimeIndex
             Weekly rebalancing dates
         yield_curve_series : pd.Series, optional
             Pre-loaded 10Y-2Y spread series (from FRED or yfinance)
-            
+
         Returns
         -------
         pd.Series of float multipliers indexed by weekly_index

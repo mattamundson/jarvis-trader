@@ -1060,8 +1060,8 @@ Return null for entry_price, stop_price, target_1, target_2, atr_used, rr_ratio 
 TPO Algorithmic Signal: {technical.get("stark_signal", "HOLD")}
 TPO Sub-Structure: {technical.get("stark_structure", "UNKNOWN")}
 
-CRITICAL DIRECTIVE: You are NO LONGER responsible for numerical technical analysis. The Stark-TPO algorithm has computed the raw math edge. 
-If the TPO Algorithmic Signal is 'HOLD', you MUST output 'hold'. 
+CRITICAL DIRECTIVE: You are NO LONGER responsible for numerical technical analysis. The Stark-TPO algorithm has computed the raw math edge.
+If the TPO Algorithmic Signal is 'HOLD', you MUST output 'hold'.
 If the TPO Algorithmic Signal is 'LONG' or 'SHORT', you may review the News and Social sentiment to verify there is no extreme black-swan event contradicting the math.
 
 === DETERMINISTIC REGIME-BASED ROUTER (PHASE 4) ===

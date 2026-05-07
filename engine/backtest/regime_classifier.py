@@ -25,7 +25,7 @@ class MarketRegime(str, Enum):
 class RegimeClassifierV2:
     """
     Classifies market state into 5 distinct regimes for strategy routing.
-    
+
     Logic:
     1. CRISIS: VIX > 35 or extreme volatility with negative trend.
     2. VOLATILE: High ATR relative to median.

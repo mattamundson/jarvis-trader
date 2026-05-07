@@ -170,7 +170,7 @@ def main():
     print("STAGE 2: focused WFO grid per symbol (100 combos each)", flush=True)
     print("=" * 72, flush=True)
 
-    combos = [dict(zip(GRID.keys(), vals)) for vals in product(*GRID.values())]
+    combos = [dict(zip(GRID.keys(), vals, strict=False)) for vals in product(*GRID.values())]
     combos = [c for c in combos if c["fast"] < c["slow"]]
 
     for sym in SYMBOLS:

@@ -1,7 +1,7 @@
 """
 Avellaneda-Stoikov Market Making
 ================================
-A professional market making strategy that adjusts bid/ask spreads 
+A professional market making strategy that adjusts bid/ask spreads
 based on inventory risk and market volatility.
 """
 
@@ -37,7 +37,7 @@ class AvellanedaStoikovStrategy:
     ) -> Tuple[float, float]:
         """
         Calculate optimal bid and ask prices.
-        
+
         :param mid_price: Current market mid-price
         :param inventory: Current number of shares held
         :param time_elapsed: Current time in session (0-1)

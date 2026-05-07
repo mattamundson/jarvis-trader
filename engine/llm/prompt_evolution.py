@@ -298,7 +298,7 @@ class GEPAOptimizer:
     def _assign_brevity(self, candidates: list[PromptCandidate]) -> None:
         token_counts = [self.token_counter(c.prompt_text) for c in candidates]
         norms = _normalise_brevity(token_counts)
-        for c, b in zip(candidates, norms):
+        for c, b in zip(candidates, norms, strict=False):
             c.brevity = b
 
     # ── Main loop ────────────────────────────────────────────────────────

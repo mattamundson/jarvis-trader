@@ -1,7 +1,7 @@
 """
 JARVIS ANALYSIS — Harmonic Pattern Engine
 =========================================
-Identifies XABCD harmonic patterns (Gartley, Bat, Butterfly, etc.) 
+Identifies XABCD harmonic patterns (Gartley, Bat, Butterfly, etc.)
 using swing highs/lows and Fibonacci ratios.
 """
 

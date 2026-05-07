@@ -346,7 +346,7 @@ class TestTokenProxySingletonAndCache:
         assert proxy1.metrics is proxy2.metrics, "Metrics must be shared"
 
 
-class TestICWeightedEnsembleEqualWeightFallback:
+class TestICWeightedEnsembleEqualWeightFallbackNonexistent:
     """ICWeightedEnsemble.get_ensemble_weights on nonexistent DB."""
 
     def test_ic_weighted_ensemble_equal_weight_fallback(self):

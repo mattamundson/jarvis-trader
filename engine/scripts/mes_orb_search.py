@@ -76,7 +76,7 @@ def main():
     print(f"Loaded {len(df_base)} bars for {SYMBOL} {INTERVAL} {START}->{END}", flush=True)
 
     combos = [
-        dict(zip(GRID.keys(), vals)) for vals in product(*GRID.values())
+        dict(zip(GRID.keys(), vals, strict=False)) for vals in product(*GRID.values())
     ]
     print(f"ORB grid: {len(combos)} combos", flush=True)
 

@@ -62,7 +62,7 @@ def main():
     print(f"Train: {len(df_train)} bars {TRAIN[0]}→{TRAIN[1]}", flush=True)
     print(f"Test : {len(df_test)} bars {TEST[0]}→{TEST[1]}", flush=True)
 
-    combos = [dict(zip(GRID.keys(), vals)) for vals in product(*GRID.values())]
+    combos = [dict(zip(GRID.keys(), vals, strict=False)) for vals in product(*GRID.values())]
     combos = [c for c in combos if c["fast"] < c["slow"]]
     print(f"Grid: {len(combos)} valid combos", flush=True)
 

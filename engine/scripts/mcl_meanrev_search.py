@@ -200,7 +200,7 @@ def main():
         return 1
     print(f"Loaded {len(df)} bars for {symbol} {args.interval} {args.start}->{args.end}", flush=True)
 
-    combos = [dict(zip(GRID.keys(), vals)) for vals in product(*GRID.values())]
+    combos = [dict(zip(GRID.keys(), vals, strict=False)) for vals in product(*GRID.values())]
     print(f"Mean-reversion grid: {len(combos)} combos", flush=True)
 
     results = []

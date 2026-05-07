@@ -16,7 +16,7 @@ logger = logging.getLogger("jarvis_trader.strategy_router")
 class StrategyRouter:
     """
     Orchestrates the multi-strategy system.
-    
+
     Mapping (per Battle Plan):
     - TREND    -> Strategy A (Trend Following)
     - MEANREV  -> Strategy B (Mean Reversion)
@@ -42,7 +42,7 @@ class StrategyRouter:
     ) -> dict:
         """
         Adjusts the trade decision based on regime and portfolio state.
-        
+
         Returns a modified decision dict.
         """
         action = raw_decision.get("final_action", "hold").lower()

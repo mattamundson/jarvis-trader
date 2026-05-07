@@ -1,7 +1,7 @@
 """
 VIX Composite Signal — 4-Component Regime Filter
 =================================================
-Extends the jarvis-trader VIX overlay (analytics/vix_overlay.py) 
+Extends the jarvis-trader VIX overlay (analytics/vix_overlay.py)
 for weekly strategic regime rotation.
 
 Components:
@@ -57,7 +57,7 @@ def classify_vix_level(vix: float) -> tuple[str, float]:
 class VIXComposite:
     """
     4-component VIX composite signal for weekly regime filtering.
-    
+
     Parameters
     ----------
     vix_ma_period : int
@@ -85,7 +85,7 @@ class VIXComposite:
     ) -> pd.DataFrame:
         """
         Compute the 4-component VIX composite for each week.
-        
+
         Parameters
         ----------
         weekly_vix : pd.Series
@@ -93,7 +93,7 @@ class VIXComposite:
         weekly_realized_vol : pd.Series, optional
             Weekly realized vol (%) for fear premium component.
             If None, this component defaults to neutral (0.5).
-            
+
         Returns
         -------
         DataFrame with columns:
@@ -174,7 +174,7 @@ class VIXComposite:
     ) -> dict:
         """
         Get the latest composite signal for live use.
-        
+
         Returns dict with current VIX regime, score, and position multiplier.
         """
         df = self.compute(weekly_vix, weekly_realized_vol)

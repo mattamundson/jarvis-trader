@@ -261,7 +261,7 @@ class IBGatewayConnector:
         """
         Monitor connection health every 5 seconds.
 
-        Checks if connection is still active. 
+        Checks if connection is still active.
         If TCP dropout exceeds 15 seconds, triggers DEADMAN SWITCH to flatten positions.
         """
         heartbeat_interval = 5
@@ -305,7 +305,7 @@ class IBGatewayConnector:
     async def _trigger_deadman_switch(self) -> None:
         """
         Emergency liquidation protocol.
-        Loops through all active positions and hits the bid/ask with MARKET orders 
+        Loops through all active positions and hits the bid/ask with MARKET orders
         to neutralize margin exposure immediately due to communication loss.
         """
         self._connection_state = ConnectionState.FAILED
