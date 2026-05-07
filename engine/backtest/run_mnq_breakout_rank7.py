@@ -136,13 +136,7 @@ def _best_is(df_train, grid):
     return best_p, best_r
 
 
-def _bootstrap_pf(pfs, n=N_BOOTSTRAP):
-    if len(pfs) < 2:
-        return float(np.mean(pfs)) if pfs else 0.0
-    rng = np.random.default_rng(42)
-    arr = np.array(pfs, dtype=float)
-    return float(np.percentile(
-        [rng.choice(arr, size=len(arr), replace=True).mean() for _ in range(n)], 5.0))
+from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf
 
 
 def _gate_v2(oos_results, n_combos, fixed_metrics):

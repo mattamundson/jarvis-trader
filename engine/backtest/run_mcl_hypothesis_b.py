@@ -311,13 +311,7 @@ def _best_is_params(
 # Gate v2 metrics
 # ---------------------------------------------------------------------------
 
-def _bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = N_BOOTSTRAP) -> float:
-    if len(oos_pfs) < 2:
-        return float(np.mean(oos_pfs)) if oos_pfs else 0.0
-    rng = np.random.default_rng(42)
-    arr = np.array(oos_pfs, dtype=float)
-    boot_means = [rng.choice(arr, size=len(arr), replace=True).mean() for _ in range(n)]
-    return float(np.percentile(boot_means, 5.0))
+from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 
 
 def _compute_gate_v2(oos_results: list, n_grid_combos: int) -> dict:
