@@ -233,6 +233,7 @@ def _best_is_params(
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._gate_v2_helpers import _find_latest_cache
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
 
@@ -465,14 +466,7 @@ def run_wfo() -> dict:
     # Pick the MES 1h cache covering the latest end-date so a refreshed
     # IBKR pull (named MES_<start>_<end>_1h.csv) always wins over older files.
     data_dir = engine_root / "backtest" / "cache"
-    candidates = sorted(data_dir.glob("MES_*_1h.csv"))
-    if not candidates:
-        raise FileNotFoundError("No MES 1h data found in engine/backtest/cache/")
-    def _end_date(p: Path) -> str:
-        # Filename: MES_YYYY-MM-DD_YYYY-MM-DD_1h.csv -> the second date
-        parts = p.stem.split("_")
-        return parts[2] if len(parts) >= 3 else ""
-    data_file = max(candidates, key=_end_date)
+    data_file = _find_latest_cache(data_dir, "MES")
     print(f"[MES-R11] Selected {data_file.name}")
 
     print(f"[MES-R11] Loading {data_file.name} ...")

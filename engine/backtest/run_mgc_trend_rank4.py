@@ -124,14 +124,7 @@ def _load_data(data_file: Path) -> pd.DataFrame:
 def _find_data_file(data_dir: Path) -> Path:
     # Pick the MGC 1h cache covering the latest end-date so a refreshed
     # IBKR pull (named MGC_<start>_<end>_1h.csv) always wins over older files.
-    candidates = sorted(data_dir.glob("MGC_*_1h.csv"))
-    if not candidates:
-        raise FileNotFoundError("No MGC 1h data found in engine/backtest/cache/")
-    def _end_date(p: Path) -> str:
-        # Filename: MGC_YYYY-MM-DD_YYYY-MM-DD_1h.csv -> the second date
-        parts = p.stem.split("_")
-        return parts[2] if len(parts) >= 3 else ""
-    chosen = max(candidates, key=_end_date)
+    chosen = _find_latest_cache(data_dir, "MGC")
     print(f"[MGC-R4] Selected {chosen.name}")
     return chosen
 
@@ -242,6 +235,7 @@ def _best_is_params(
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._gate_v2_helpers import _find_latest_cache
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
 
