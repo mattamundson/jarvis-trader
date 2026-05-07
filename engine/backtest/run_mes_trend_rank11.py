@@ -485,18 +485,18 @@ def _compute_gate_v2(
 # ---------------------------------------------------------------------------
 
 def run_wfo() -> dict:
-    # Use the widest available MES 1h dataset
+    # Pick the MES 1h cache covering the latest end-date so a refreshed
+    # IBKR pull (named MES_<start>_<end>_1h.csv) always wins over older files.
     data_dir = engine_root / "backtest" / "cache"
-    data_file = data_dir / "MES_2024-01-01_2026-03-28_1h.csv"
-    if not data_file.exists():
-        candidates = sorted(data_dir.glob("MES_*_1h.csv"))
-        if not candidates:
-            raise FileNotFoundError("No MES 1h data found in engine/backtest/cache/")
-        # Prefer widest span: highest data coverage
-        # Rank by estimated date range (earliest start)
-        candidates_2024 = [c for c in candidates if "2024-01-01" in c.name]
-        data_file = candidates_2024[-1] if candidates_2024 else candidates[-1]
-        print(f"[MES-R11] Primary cache not found; using {data_file.name}")
+    candidates = sorted(data_dir.glob("MES_*_1h.csv"))
+    if not candidates:
+        raise FileNotFoundError("No MES 1h data found in engine/backtest/cache/")
+    def _end_date(p: Path) -> str:
+        # Filename: MES_YYYY-MM-DD_YYYY-MM-DD_1h.csv -> the second date
+        parts = p.stem.split("_")
+        return parts[2] if len(parts) >= 3 else ""
+    data_file = max(candidates, key=_end_date)
+    print(f"[MES-R11] Selected {data_file.name}")
 
     print(f"[MES-R11] Loading {data_file.name} ...")
     df = _load_data(data_file)
