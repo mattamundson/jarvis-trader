@@ -365,3 +365,34 @@ These are non-critical enhancements that do not block paper trading phase.
   - Migration numbering: 010 was taken by trade journal provenance columns, so conviction sizing is 011
   - base_risk_pct=0.02 is the canonical risk parameter — matches TradingConfig defaults
 ---
+
+---
+
+## 2026-05-06 — US-F2 Verification (Ralph Loop)
+
+**Status:** Already implemented; PRD note was stale. Marked passing.
+
+**Files inspected:**
+- engine/agents/social_analyst.py (line 677: `_scan_institutional_flow`)
+- engine/routers/options_router.py (existing /iv-rank endpoint)
+- engine/backtest/options_backtester.py
+- engine/tests/test_options_backtester.py
+
+**Acceptance criteria — all met:**
+- `_scan_institutional_flow()` at social_analyst.py:677
+- 6 steps implemented (large trades → trend filter → IV rank → bullish/bearish → directional bias → concentration penalty)
+- IV rank > 70 returns flow_bias=0 (lines 696-702)
+- Flow data injected into LLM prompt context (lines 166-170)
+- Graceful fallback when options data unavailable (lines 687-688, 749, 738-739)
+- 38/38 tests pass (test_options_backtester + test_social_analyst_praw)
+
+**Learnings:**
+- Some PRD stories may be implemented but never marked `passes: true`. Always
+  verify against code before assuming work is open.
+- The 6-step pipeline references @xynth_m's institutional desk workflow; the
+  IV-rank-too-high gate (>70) is the safety guard against premium-chasing.
+- `_get_large_options_trades()` falls back through MarketDataManager;
+  graceful return of [] when no options data source — this is what allows
+  the rest of the pipeline to handle "no data" cleanly.
+
+---
