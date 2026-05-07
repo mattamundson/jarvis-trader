@@ -8,11 +8,11 @@
   "alt_verdict": "PASS",
   "n_core_passed": 3,
   "n_alt_passed": 5,
-  "created_at": "2026-05-07T02:29:53.322255+00:00",
+  "created_at": "2026-05-07T04:32:59.944780+00:00",
   "aux_freshness": {
-    "rolling_wfo": "2026-05-07T02:29:53.322255+00:00",
-    "fixed_params": "2026-05-07T02:29:53.322255+00:00",
-    "cost_sweep": "2026-05-07T02:29:53.322255+00:00"
+    "rolling_wfo": "2026-05-07T04:32:59.944780+00:00",
+    "fixed_params": "2026-05-07T04:32:59.944780+00:00",
+    "cost_sweep": "2026-05-07T04:32:59.944780+00:00"
   },
   "gate_v2": {
     "verdict": "PASS",
@@ -26,26 +26,26 @@
     "core_reasons": [
       "mbb_pf_ci_lower=2.4942 >= 1.1",
       "FAIL p_positive_edge=0.7500 < 0.95",
-      "mc_95th_dd_pct=0.8116 <= 5.0",
+      "mc_95th_dd_pct=0.8055 <= 5.0",
       "dsr=1.000000 >=  0.1 (not selection-bias)"
     ],
     "alt_reasons": [
       "dsr=1.000000 >=  0.3 (alt floor)",
       "rolling_wfo=STRONG in ['MODERATE', 'STRONG']",
-      "fixed_params_min_pf=1.351 >= 1.2",
+      "fixed_params_min_pf=1.524 >= 1.2",
       "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct=0.8116 <= 7.0 (alt ceiling)"
+      "mc_95th_dd_pct=0.8055 <= 7.0 (alt ceiling)"
     ],
     "reasons": [
       "mbb_pf_ci_lower=2.4942 >= 1.1",
       "FAIL p_positive_edge=0.7500 < 0.95",
-      "mc_95th_dd_pct=0.8116 <= 5.0",
+      "mc_95th_dd_pct=0.8055 <= 5.0",
       "dsr=1.000000 >=  0.1 (not selection-bias)",
       "dsr=1.000000 >=  0.3 (alt floor)",
       "rolling_wfo=STRONG in ['MODERATE', 'STRONG']",
-      "fixed_params_min_pf=1.351 >= 1.2",
+      "fixed_params_min_pf=1.524 >= 1.2",
       "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct=0.8116 <= 7.0 (alt ceiling)"
+      "mc_95th_dd_pct=0.8055 <= 7.0 (alt ceiling)"
     ],
     "n_passed": 3,
     "n_criteria": 4
@@ -54,8 +54,8 @@
     "train_months": 6,
     "test_months": 1,
     "step_months": 1,
-    "n_windows": 18,
-    "n_oos_windows": 18,
+    "n_windows": 19,
+    "n_oos_windows": 19,
     "n_oos_windows_with_trades": 12,
     "total_oos_trades": 16,
     "grid_combos": 3,
@@ -74,57 +74,57 @@
   "gate_v2_metrics": {
     "pf_ci_lower": 2.4942,
     "p_edge": 0.75,
-    "mc_95th_dd": 0.008116,
-    "mc_95th_dd_pct": 0.8116,
+    "mc_95th_dd": 0.008055,
+    "mc_95th_dd_pct": 0.8055,
     "dsr": 1.0,
     "wfo_consistency": "STRONG",
-    "fixed_params_min_pf": 1.3506,
-    "fixed_params_mean_pf": 1.7428,
-    "fixed_params_max_pf": 2.1558,
+    "fixed_params_min_pf": 1.5237,
+    "fixed_params_mean_pf": 1.8743,
+    "fixed_params_max_pf": 2.2596,
     "n_combos_with_trades": 3,
     "combo_results": [
       {
         "fast": 50,
         "slow": 200,
         "atr_trail_mult": 2.0,
-        "pf": 1.3506,
-        "trades": 35
+        "pf": 1.5237,
+        "trades": 36
       },
       {
         "fast": 55,
         "slow": 200,
         "atr_trail_mult": 2.0,
-        "pf": 1.7219,
-        "trades": 35
+        "pf": 1.8396,
+        "trades": 36
       },
       {
         "fast": 60,
         "slow": 200,
         "atr_trail_mult": 2.0,
-        "pf": 2.1558,
-        "trades": 29
+        "pf": 2.2596,
+        "trades": 30
       }
     ],
     "cost_survives_through": "catastrophic",
     "cost_tier_results": {
       "optimistic": {
-        "pf": 2.1406,
-        "trades": 29,
+        "pf": 2.2426,
+        "trades": 30,
         "passes": true
       },
       "realistic": {
-        "pf": 2.1558,
-        "trades": 29,
+        "pf": 2.2596,
+        "trades": 30,
         "passes": true
       },
       "pessimistic": {
-        "pf": 2.0799,
-        "trades": 29,
+        "pf": 2.178,
+        "trades": 30,
         "passes": true
       },
       "catastrophic": {
-        "pf": 2.056,
-        "trades": 29,
+        "pf": 2.1527,
+        "trades": 30,
         "passes": true
       }
     }
@@ -425,13 +425,29 @@
     {
       "window": 18,
       "is_period": "2025-09 -> 2026-03",
-      "oos_period": "2026-03 -> 2026-03",
+      "oos_period": "2026-03 -> 2026-04",
       "best_params": {
         "fast": 50,
         "slow": 200,
         "atr_trail_mult": 2.0
       },
-      "is_pf": 3.697,
+      "is_pf": 3.69,
+      "is_trades": 10,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 19,
+      "is_period": "2025-10 -> 2026-04",
+      "oos_period": "2026-04 -> 2026-05",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 4.252,
       "is_trades": 10,
       "oos_pf": 0.0,
       "oos_dd": 0.0,
