@@ -149,6 +149,7 @@ from routers.decisions_router import router as decisions_router
 from routers.decisions_router import set_db_manager as set_decisions_db
 from routers.cache_router import router as cache_router
 from routers.polymarket_router import router as polymarket_router
+from api.operations_dashboard import router as operations_dashboard_router
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -2383,6 +2384,7 @@ app.include_router(decisions_router)
 app.include_router(cache_router)
 app.include_router(polymarket_router)
 app.include_router(super_engine_router)
+app.include_router(operations_dashboard_router)
 app.include_router(institutional_router)
 app.include_router(orders_router)
 app.include_router(v1_router)
