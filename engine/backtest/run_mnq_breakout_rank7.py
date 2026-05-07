@@ -58,21 +58,21 @@ STEP_MONTHS = 1
 
 ATR_REGIME_MULT_VALUES = [0.5, 0.75, 1.0, 1.25]
 EMA_TREND_PERIOD_VALUES = [0, 50, 100, 200]
-DONCHIAN_PERIOD_VALUES  = [20, 30]
-VOL_MULT_VALUES         = [0.8, 1.0]
-STOP_ATR_MULT           = 2.0
-VOL_MA_PERIOD           = 20
+DONCHIAN_PERIOD_VALUES = [20, 30]
+VOL_MULT_VALUES = [0.8, 1.0]
+STOP_ATR_MULT = 2.0
+VOL_MA_PERIOD = 20
 
-GATE_PF_CI_LOWER          = 1.10
-GATE_P_EDGE               = 0.95
-GATE_MC_DD_CORE           = 0.05
-GATE_MC_DD_ALT            = 0.07
-GATE_DSR                  = 0.10
-GATE_FIXED_PARAMS_MIN_PF  = 1.20
-GATE_WFO_CONSISTENCY      = ["MODERATE", "STRONG"]
+GATE_PF_CI_LOWER = 1.10
+GATE_P_EDGE = 0.95
+GATE_MC_DD_CORE = 0.05
+GATE_MC_DD_ALT = 0.07
+GATE_DSR = 0.10
+GATE_FIXED_PARAMS_MIN_PF = 1.20
+GATE_WFO_CONSISTENCY = ["MODERATE", "STRONG"]
 
-N_BOOTSTRAP               = 2000
-MIN_OOS_TRADES            = 5
+N_BOOTSTRAP = 2000
+MIN_OOS_TRADES = 5
 
 
 def _load_data(data_file: Path) -> pd.DataFrame:
@@ -97,8 +97,17 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
         tr = df[(df.index >= cursor) & (df.index < te)]
         te_ = df[(df.index >= os_) & (df.index <= oe)]
         if len(tr) >= 30 and len(te_) >= 30:
-            windows.append({"num": n, "ts": cursor, "te": te, "os": os_, "oe": oe,
-                                "n_train": len(tr), "n_test": len(te_)})
+            windows.append(
+                {
+                    "num": n,
+                    "ts": cursor,
+                    "te": te,
+                    "os": os_,
+                    "oe": oe,
+                    "n_train": len(tr),
+                    "n_test": len(te_),
+                }
+            )
             n += 1
         cursor += pd.DateOffset(months=STEP_MONTHS)
         if cursor >= end:
@@ -109,15 +118,26 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
 def _run(df: pd.DataFrame, donchian_period, ema_trend_period, atr_regime_mult, vol_mult):
     from backtest.backtester import Backtester
     from backtest.breakout_signals import generate_donchian_breakout_signals
+
     sig = generate_donchian_breakout_signals(
-        df, donchian_period=donchian_period, vol_ma_period=VOL_MA_PERIOD,
-        vol_mult=vol_mult, stop_atr_mult=STOP_ATR_MULT,
-        ema_trend_period=ema_trend_period, atr_regime_mult=atr_regime_mult,
+        df,
+        donchian_period=donchian_period,
+        vol_ma_period=VOL_MA_PERIOD,
+        vol_mult=vol_mult,
+        stop_atr_mult=STOP_ATR_MULT,
+        ema_trend_period=ema_trend_period,
+        atr_regime_mult=atr_regime_mult,
     )
-    bt = Backtester(initial_capital=CAPITAL, risk_per_trade=0.01,
-                    max_daily_loss=0.02, max_drawdown=0.05,
-                    t1_exit_pct=0.50, t2_exit_pct=0.30,
-                    commission_per_contract=COMMISSION, slippage_ticks=SLIPPAGE_TICKS)
+    bt = Backtester(
+        initial_capital=CAPITAL,
+        risk_per_trade=0.01,
+        max_daily_loss=0.02,
+        max_drawdown=0.05,
+        t1_exit_pct=0.50,
+        t2_exit_pct=0.30,
+        commission_per_contract=COMMISSION,
+        slippage_ticks=SLIPPAGE_TICKS,
+    )
     return bt.run(sig, symbol=SYMBOL, multiplier=MULTIPLIER)
 
 
@@ -137,54 +157,79 @@ def _best_is(df_train, grid):
 
 
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf  # noqa: E402
+from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 
 
 def _gate_v2(oos_results, n_combos, fixed_metrics):
     from backtest.deflated_sharpe import deflated_sharpe_ratio
+
     pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES]
     dds = [r.max_drawdown_pct for r in oos_results]
     shs = [r.sharpe_ratio for r in oos_results if r.total_trades >= MIN_OOS_TRADES]
     tot = sum(r.total_trades for r in oos_results)
 
-    pf_ci  = _bootstrap_pf(pfs)
+    pf_ci = _bootstrap_pf(pfs)
     p_edge = float(sum(1 for p in pfs if p > 1.0) / max(1, len(pfs)))
-    mc_dd  = float(np.percentile(dds, 95.0)) if dds else 1.0
-    dsr_r  = deflated_sharpe_ratio(sharpe=float(np.mean(shs)) if shs else 0.0,
-                                   n_trials=n_combos, n_obs=max(tot, 30))
-    dsr    = dsr_r.get("dsr", 0.0) if isinstance(dsr_r, dict) else float(dsr_r)
-    wfo    = ("STRONG" if sum(1 for p in pfs if p > 1.0) / max(1, len(pfs)) >= 0.75
-              else "MODERATE" if sum(1 for p in pfs if p > 1.0) / max(1, len(pfs)) >= 0.55
-              else "WEAK")
-    fpm    = fixed_metrics.get("fixed_params_min_pf", 0.0)
+    mc_dd = float(np.percentile(dds, 95.0)) if dds else 1.0
+    dsr_r = deflated_sharpe_ratio(
+        sharpe=float(np.mean(shs)) if shs else 0.0, n_trials=n_combos, n_obs=max(tot, 30)
+    )
+    dsr = dsr_r.get("dsr", 0.0) if isinstance(dsr_r, dict) else float(dsr_r)
+    wfo = (
+        "STRONG"
+        if sum(1 for p in pfs if p > 1.0) / max(1, len(pfs)) >= 0.75
+        else "MODERATE" if sum(1 for p in pfs if p > 1.0) / max(1, len(pfs)) >= 0.55 else "WEAK"
+    )
+    fpm = fixed_metrics.get("fixed_params_min_pf", 0.0)
 
-    core = pf_ci >= GATE_PF_CI_LOWER and p_edge >= GATE_P_EDGE and mc_dd <= GATE_MC_DD_CORE and dsr >= GATE_DSR
-    alt  = pf_ci >= GATE_PF_CI_LOWER and p_edge >= GATE_P_EDGE and mc_dd <= GATE_MC_DD_ALT  and dsr >= GATE_DSR and fpm >= GATE_FIXED_PARAMS_MIN_PF and wfo in GATE_WFO_CONSISTENCY
-    return {"pf_ci_lower": round(pf_ci,4), "p_edge": round(p_edge,4),
-                "mc_95th_dd": round(mc_dd,6), "dsr": round(dsr,4),
-                "wfo_consistency": wfo, "fixed_params_min_pf": fpm,
-                "fixed_params_mean_pf": fixed_metrics.get("fixed_params_mean_pf",0.0),
-                "n_oos_windows": len(oos_results),
-                "n_oos_windows_with_trades": len(pfs),
-                "total_oos_trades": tot,
-                "core_verdict": "PASS" if core else "FAIL",
-                "alt_verdict": "PASS" if alt else "FAIL",
-                "verdict": "PASS" if core else ("PASS_ALT" if alt else "FAIL")}
+    core = (
+        pf_ci >= GATE_PF_CI_LOWER
+        and p_edge >= GATE_P_EDGE
+        and mc_dd <= GATE_MC_DD_CORE
+        and dsr >= GATE_DSR
+    )
+    alt = (
+        pf_ci >= GATE_PF_CI_LOWER
+        and p_edge >= GATE_P_EDGE
+        and mc_dd <= GATE_MC_DD_ALT
+        and dsr >= GATE_DSR
+        and fpm >= GATE_FIXED_PARAMS_MIN_PF
+        and wfo in GATE_WFO_CONSISTENCY
+    )
+    return {
+        "pf_ci_lower": round(pf_ci, 4),
+        "p_edge": round(p_edge, 4),
+        "mc_95th_dd": round(mc_dd, 6),
+        "dsr": round(dsr, 4),
+        "wfo_consistency": wfo,
+        "fixed_params_min_pf": fpm,
+        "fixed_params_mean_pf": fixed_metrics.get("fixed_params_mean_pf", 0.0),
+        "n_oos_windows": len(oos_results),
+        "n_oos_windows_with_trades": len(pfs),
+        "total_oos_trades": tot,
+        "core_verdict": "PASS" if core else "FAIL",
+        "alt_verdict": "PASS" if alt else "FAIL",
+        "verdict": "PASS" if core else ("PASS_ALT" if alt else "FAIL"),
+    }
 
 
 def run_wfo():
+    # Pick the MNQ 1h cache covering the latest end-date so a refreshed
+    # IBKR pull (named MNQ_<start>_<end>_1h.csv) always wins over older files.
     cache_dir = engine_root / "backtest" / "cache"
-    candidates = sorted(cache_dir.glob("MNQ_*_1h.csv"))
-    if not candidates:
-        raise FileNotFoundError("No MNQ 1h CSV in engine/backtest/cache/")
-    data_file = next((c for c in candidates if "2024-01-01" in c.name), candidates[-1])
+    data_file = _find_latest_cache(cache_dir, "MNQ")
+    print(f"[MNQ-R7] Selected {data_file.name}")
 
     print(f"[MNQ-R7] Loading {data_file.name} ...")
     df = _load_data(data_file)
     print(f"[MNQ-R7] {len(df)} bars | {df.index.min().date()} -> {df.index.max().date()}")
 
     windows = _generate_windows(df)
-    grid = list(itertools.product(DONCHIAN_PERIOD_VALUES, EMA_TREND_PERIOD_VALUES,
-                                  ATR_REGIME_MULT_VALUES, VOL_MULT_VALUES))
+    grid = list(
+        itertools.product(
+            DONCHIAN_PERIOD_VALUES, EMA_TREND_PERIOD_VALUES, ATR_REGIME_MULT_VALUES, VOL_MULT_VALUES
+        )
+    )
     n_combos = len(grid)
 
     print(f"\n{'='*65}")
@@ -199,9 +244,11 @@ def run_wfo():
     oos_results, win_records = [], []
     for win in windows:
         n, ts, te, os_, oe = win["num"], win["ts"], win["te"], win["os"], win["oe"]
-        print(f"\nWindow {n}: IS {ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}  "
-              f"OOS {os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}  "
-              f"({win['n_train']}/{win['n_test']} bars)")
+        print(
+            f"\nWindow {n}: IS {ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}  "
+            f"OOS {os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}  "
+            f"({win['n_train']}/{win['n_test']} bars)"
+        )
 
         df_tr = df[(df.index >= ts) & (df.index < te)].copy()
         df_te = df[(df.index >= os_) & (df.index <= oe)].copy()
@@ -211,8 +258,10 @@ def run_wfo():
             print("  [SKIP] No valid IS params")
             continue
         don, ema, atr_m, vm = best_p
-        print(f"  Best IS: don={don} ema={ema} atr_m={atr_m} vol={vm}  "
-              f"PF={is_r.profit_factor:.2f} trades={is_r.total_trades}")
+        print(
+            f"  Best IS: don={don} ema={ema} atr_m={atr_m} vol={vm}  "
+            f"PF={is_r.profit_factor:.2f} trades={is_r.total_trades}"
+        )
 
         try:
             oos_r = _run(df_te, don, ema, atr_m, vm)
@@ -220,17 +269,31 @@ def run_wfo():
             print(f"  [SKIP] OOS error: {e}")
             continue
 
-        print(f"  OOS: PF={oos_r.profit_factor:.2f}  DD={oos_r.max_drawdown_pct:.1%}  "
-              f"Sharpe={oos_r.sharpe_ratio:.2f}  trades={oos_r.total_trades}")
+        print(
+            f"  OOS: PF={oos_r.profit_factor:.2f}  DD={oos_r.max_drawdown_pct:.1%}  "
+            f"Sharpe={oos_r.sharpe_ratio:.2f}  trades={oos_r.total_trades}"
+        )
         oos_results.append(oos_r)
-        win_records.append({"window": n,
-            "is_period": f"{ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}",
-            "oos_period": f"{os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}",
-            "best_params": {"donchian_period": don, "ema_trend_period": ema,
-                             "atr_regime_mult": atr_m, "vol_mult": vm, "stop_atr_mult": STOP_ATR_MULT},
-            "is_pf": round(is_r.profit_factor,3), "is_trades": is_r.total_trades,
-            "oos_pf": round(oos_r.profit_factor,3), "oos_dd": round(oos_r.max_drawdown_pct,4),
-            "oos_sharpe": round(oos_r.sharpe_ratio,3), "oos_trades": oos_r.total_trades})
+        win_records.append(
+            {
+                "window": n,
+                "is_period": f"{ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}",
+                "oos_period": f"{os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}",
+                "best_params": {
+                    "donchian_period": don,
+                    "ema_trend_period": ema,
+                    "atr_regime_mult": atr_m,
+                    "vol_mult": vm,
+                    "stop_atr_mult": STOP_ATR_MULT,
+                },
+                "is_pf": round(is_r.profit_factor, 3),
+                "is_trades": is_r.total_trades,
+                "oos_pf": round(oos_r.profit_factor, 3),
+                "oos_dd": round(oos_r.max_drawdown_pct, 4),
+                "oos_sharpe": round(oos_r.sharpe_ratio, 3),
+                "oos_trades": oos_r.total_trades,
+            }
+        )
 
     if not oos_results:
         print("[MNQ-R7] No OOS results.")
@@ -251,39 +314,62 @@ def run_wfo():
         "fixed_params_mean_pf": round(float(np.mean(fp_pfs)), 4) if fp_pfs else 0.0,
         "fixed_params_max_pf": round(float(max(fp_pfs)), 4) if fp_pfs else 0.0,
     }
-    print(f"  min_pf={fixed_metrics['fixed_params_min_pf']}  "
-          f"mean_pf={fixed_metrics['fixed_params_mean_pf']}  "
-          f"max_pf={fixed_metrics['fixed_params_max_pf']}")
+    print(
+        f"  min_pf={fixed_metrics['fixed_params_min_pf']}  "
+        f"mean_pf={fixed_metrics['fixed_params_mean_pf']}  "
+        f"max_pf={fixed_metrics['fixed_params_max_pf']}"
+    )
 
     gate = _gate_v2(oos_results, n_combos, fixed_metrics)
 
     print(f"\n{'='*65}")
     print(f"=== GATE v2: {gate['verdict']} ===")
-    for k, need in [("pf_ci_lower", f">= {GATE_PF_CI_LOWER}"),
-                    ("p_edge",      f">= {GATE_P_EDGE}"),
-                    ("mc_95th_dd",  f"<= {GATE_MC_DD_CORE}"),
-                    ("dsr",         f">= {GATE_DSR}")]:
+    for k, need in [
+        ("pf_ci_lower", f">= {GATE_PF_CI_LOWER}"),
+        ("p_edge", f">= {GATE_P_EDGE}"),
+        ("mc_95th_dd", f"<= {GATE_MC_DD_CORE}"),
+        ("dsr", f">= {GATE_DSR}"),
+    ]:
         print(f"  {k:20s} = {gate[k]:.4f}  (need {need})")
     print(f"  wfo_consistency      = {gate['wfo_consistency']}")
-    print(f"  fixed_params_min_pf  = {gate['fixed_params_min_pf']:.4f}  (ALT needs >= {GATE_FIXED_PARAMS_MIN_PF})")
+    print(
+        f"  fixed_params_min_pf  = {gate['fixed_params_min_pf']:.4f}  (ALT needs >= {GATE_FIXED_PARAMS_MIN_PF})"
+    )
     print(f"{'='*65}")
 
     verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
     verdicts_dir.mkdir(parents=True, exist_ok=True)
     verdict_doc = {
-        "symbol": "MNQ", "family": "breakout", "rank": 7,
-        "verdict": gate["verdict"], "core_verdict": gate["core_verdict"], "alt_verdict": gate["alt_verdict"],
+        "symbol": "MNQ",
+        "family": "breakout",
+        "rank": 7,
+        "verdict": gate["verdict"],
+        "core_verdict": gate["core_verdict"],
+        "alt_verdict": gate["alt_verdict"],
         "created_at": datetime.now(tz=timezone.utc).isoformat(),
         "params_fixed": {"stop_atr_mult": STOP_ATR_MULT, "vol_ma_period": VOL_MA_PERIOD},
-        "wfo_config": {"train_months": TRAIN_MONTHS, "test_months": TEST_MONTHS,
-                        "step_months": STEP_MONTHS, "n_windows": len(windows),
-                        "grid_combos": n_combos,
-                        "grid": {"donchian": DONCHIAN_PERIOD_VALUES, "ema": EMA_TREND_PERIOD_VALUES,
-                                  "atr_mult": ATR_REGIME_MULT_VALUES, "vol_mult": VOL_MULT_VALUES}},
+        "wfo_config": {
+            "train_months": TRAIN_MONTHS,
+            "test_months": TEST_MONTHS,
+            "step_months": STEP_MONTHS,
+            "n_windows": len(windows),
+            "grid_combos": n_combos,
+            "grid": {
+                "donchian": DONCHIAN_PERIOD_VALUES,
+                "ema": EMA_TREND_PERIOD_VALUES,
+                "atr_mult": ATR_REGIME_MULT_VALUES,
+                "vol_mult": VOL_MULT_VALUES,
+            },
+        },
         "gate_v2_metrics": {**gate, **fixed_metrics},
-        "thresholds": {"pf_ci_lower": GATE_PF_CI_LOWER, "p_edge": GATE_P_EDGE,
-                        "mc_95th_dd_core": GATE_MC_DD_CORE, "mc_95th_dd_alt": GATE_MC_DD_ALT,
-                        "dsr": GATE_DSR, "fixed_params_min_pf_alt": GATE_FIXED_PARAMS_MIN_PF},
+        "thresholds": {
+            "pf_ci_lower": GATE_PF_CI_LOWER,
+            "p_edge": GATE_P_EDGE,
+            "mc_95th_dd_core": GATE_MC_DD_CORE,
+            "mc_95th_dd_alt": GATE_MC_DD_ALT,
+            "dsr": GATE_DSR,
+            "fixed_params_min_pf_alt": GATE_FIXED_PARAMS_MIN_PF,
+        },
         "windows": win_records,
         "lineage": {
             "rank6": "FAIL — pf_ci_lower=0.41, p_edge=0.0, wfo_consistency=WEAK",
