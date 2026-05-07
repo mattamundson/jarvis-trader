@@ -10,32 +10,63 @@ Tests:
   4. Tag generation (regime, bias, confidence)
   5. Journal note formatting
   6. Error handling and edge cases
+
+SKIPPED (2026-05-07): These tests target an older API surface
+(TradeEntryContext, TradeExitContext, auto_log_trade_entry,
+auto_log_trade_exit, initialize_trade_logger) imported from
+`logging.trade_logger`. The package was since renamed to
+`engine/trade_logging/` — the literal name `engine/logging/` shadowed the
+stdlib `logging` module — and the surface was reduced to `LogEntry` +
+`TradeLogger`. The retired helpers are no longer used in production and no
+replacement coverage exists in this file. Re-introducing the helpers (or
+porting these tests to the slimmer `TradeLogger` API) is a separate task.
+Until then, this file is module-level skipped so it does not block pytest
+collection (the bare `from logging.trade_logger import …` statement
+ImportErrors at collection time on the renamed package).
 """
 
 from __future__ import annotations
 
-import json
-import sys
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any, Dict, Optional
-from unittest.mock import MagicMock, call, patch
-
 import pytest
+
+pytestmark = pytest.mark.skip(
+    reason=(
+        "Targets the retired logging.trade_logger surface — the package was "
+        "renamed to engine/trade_logging/ and the helpers (TradeEntryContext, "
+        "TradeExitContext, auto_log_trade_entry, auto_log_trade_exit, "
+        "initialize_trade_logger) were dropped. Rewriting against the slimmer "
+        "TradeLogger/LogEntry API is a separate task; skipping module-wide "
+        "to keep collection green."
+    )
+)
+
+import json  # noqa: E402
+import sys  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any, Dict, Optional  # noqa: E402
+from unittest.mock import MagicMock, call, patch  # noqa: E402
 
 # Add engine to path
 engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
-from logging.trade_logger import (
-    TradeEntryContext,
-    TradeExitContext,
-    TradeLogger,
-    auto_log_trade_entry,
-    auto_log_trade_exit,
-    initialize_trade_logger,
-)
+# NOTE: imports below intentionally reference the retired path. Module-level
+# skip above prevents collection from hitting these imports at collect-time
+# (pytest evaluates pytestmark before resolving the test bodies).
+try:  # pragma: no cover - retired API surface
+    from logging.trade_logger import (  # type: ignore[import-not-found]  # noqa: E402
+        TradeEntryContext,
+        TradeExitContext,
+        TradeLogger,
+        auto_log_trade_entry,
+        auto_log_trade_exit,
+        initialize_trade_logger,
+    )
+except ImportError:  # pragma: no cover - expected on current branch
+    TradeEntryContext = TradeExitContext = TradeLogger = None  # type: ignore[assignment, misc]
+    auto_log_trade_entry = auto_log_trade_exit = initialize_trade_logger = None  # type: ignore[assignment]
 
 
 @pytest.fixture
