@@ -223,7 +223,7 @@ def _check_paper_config_do_not_trade_sync() -> CheckResult:
     visible at cold-start before any signals can fire.
     """
     try:
-        from backtest.paper_config import PAPER_CONFIGS, FIFTEEN_MIN_CONFIGS
+        from backtest.paper_config import FIFTEEN_MIN_CONFIGS, PAPER_CONFIGS
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
     except ImportError as exc:
         return CheckResult(

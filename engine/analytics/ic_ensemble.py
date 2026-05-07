@@ -255,7 +255,7 @@ class ICWeightedEnsemble:
         if total <= 0.0:
             # Equal-weight fallback — every agent gets 1/n.
             n = len(agent_list)
-            return {agent: 1.0 / n for agent in agent_list}
+            return dict.fromkeys(agent_list, 1.0 / n)
 
         return {agent: value / total for agent, value in positive.items()}
 
@@ -456,7 +456,7 @@ class BrierCalibrationTracker:
         total = sum(inverse.values())
         if total <= 0.0:
             n = len(agent_list)
-            return {a: 1.0 / n for a in agent_list}
+            return dict.fromkeys(agent_list, 1.0 / n)
         return {a: v / total for a, v in inverse.items()}
 
     def get_brier_summary(self) -> Dict[str, float]:

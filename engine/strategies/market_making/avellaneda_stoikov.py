@@ -15,7 +15,7 @@ logger = logging.getLogger("jarvis_trader.strategies.mm.avellaneda")
 
 class AvellanedaStoikovStrategy:
     def __init__(
-        self, 
+        self,
         gamma: float = 0.1,     # Risk aversion parameter
         sigma: float = 0.01,    # Volatility (standard deviation of returns)
         T: float = 1.0,         # Total time (e.g., 1 trading day)
@@ -29,9 +29,9 @@ class AvellanedaStoikovStrategy:
         self.A = A
 
     def calculate_quotes(
-        self, 
-        mid_price: float, 
-        inventory: int, 
+        self,
+        mid_price: float,
+        inventory: int,
         time_elapsed: float,
         news_sentiment: float = 0.0 # -1.0 to 1.0 (from FinGPT analyst)
     ) -> Tuple[float, float]:

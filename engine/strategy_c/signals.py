@@ -98,7 +98,7 @@ class StrategyCSignals:
         Returns pd.Series of scores indexed by asset ticker.
         """
         if as_of_idx < max(MOM_WEIGHTS.keys()):
-            return pd.Series({a: np.nan for a in assets})
+            return pd.Series(dict.fromkeys(assets, np.nan))
 
         scores = {}
         for asset in assets:
@@ -208,7 +208,7 @@ class StrategyCSignals:
             # ── Step 3: Select top-N assets ────────────────────────────────────
             top_assets = scores.nlargest(min(self.top_n, len(scores))).index.tolist()
             weight = 1.0 / len(top_assets)
-            holdings = {a: weight for a in top_assets}
+            holdings = dict.fromkeys(top_assets, weight)
 
             records.append({
                 "date": date,

@@ -7,9 +7,8 @@ Prevents pipeline execution on corrupted or 'garbage' data.
 from __future__ import annotations
 
 import logging
-from typing import Dict, Tuple
+from typing import Tuple
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger("jarvis_trader.data_validation")
@@ -42,9 +41,9 @@ class DataValidator:
 
         # 2. Logic Check (L <= O, L <= C, H >= O, H >= C)
         logic_fail = (
-            (df["low"] > df["open"]) | 
-            (df["low"] > df["close"]) | 
-            (df["high"] < df["open"]) | 
+            (df["low"] > df["open"]) |
+            (df["low"] > df["close"]) |
+            (df["high"] < df["open"]) |
             (df["high"] < df["close"])
         ).any()
         if logic_fail:

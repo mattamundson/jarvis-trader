@@ -11,7 +11,7 @@ Formula: dX_t = theta * (mu - X_t) * dt + sigma * dW_t
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd

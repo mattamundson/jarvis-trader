@@ -10,7 +10,7 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Dict, List
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cost_propagation")
@@ -63,7 +63,7 @@ def propagate_costs(
     cost_delta = (new_commission + new_slippage) - (old_commission + old_slippage)
 
     results = data.get("results", [])
-    logger.info("Propagating cost delta -$%.2f per trade across %d combinations in %s", 
+    logger.info("Propagating cost delta -$%.2f per trade across %d combinations in %s",
                 cost_delta, len(results), file_path.name)
 
     for combo in results:

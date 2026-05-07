@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 

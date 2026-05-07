@@ -8,7 +8,6 @@ import logging
 import os
 from typing import Optional
 
-import joblib
 import xgboost as xgb
 
 logger = logging.getLogger("jarvis_trader.learning.model_drawer")

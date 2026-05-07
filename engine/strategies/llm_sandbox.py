@@ -12,9 +12,8 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import logging
-import signal
 from pathlib import Path
-from typing import Optional, Type
+from typing import Type
 
 from strategies.base_strategy import BaseStrategy
 

@@ -7,7 +7,7 @@ Handles conflict resolution and portfolio exposure caps.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
+from typing import List
 
 from backtest.regime_classifier import MarketRegime
 

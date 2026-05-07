@@ -262,7 +262,7 @@ def get_live_macro_yfinance() -> dict:
 
     # yfinance ticker → (fred_key, label, scale_factor)
     # ^TNX = 10Y yield in percent-points (e.g. 4.294 = 4.294%)
-    # ^IRX = 13-week T-bill annualised yield in percent-points  
+    # ^IRX = 13-week T-bill annualised yield in percent-points
     # ^VIX = VIX index
     TICKER_MAP = {
         "^TNX": ("GS10",    "10-Year Treasury Yield", 1.0),

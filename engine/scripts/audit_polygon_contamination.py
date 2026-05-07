@@ -18,7 +18,6 @@ Exit 0 on clean cache, 1 if any file is flagged.
 from __future__ import annotations
 
 import csv
-import os
 import sys
 from pathlib import Path
 

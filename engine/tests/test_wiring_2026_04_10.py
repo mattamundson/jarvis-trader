@@ -284,7 +284,6 @@ class TestAdvisorConsultDebateMocked:
 
     def test_advisor_consult_debate_mocked(self):
         """Mock consult_debate_tiebreak; verify non-HOLD verdict flows through."""
-        from unittest import mock
 
         client = AdvisorClient()
         mocked_verdict = AdvisorVerdict(

@@ -666,7 +666,7 @@ class TVIndicatorBridge:
           1. Label's numeric `price` field (chart y-axis coordinate) — preferred
           2. First float found in the label text — fallback when `price` absent
         """
-        out: Dict[str, Optional[float]] = {k: None for k in _GAMMA_ALIASES}
+        out: Dict[str, Optional[float]] = dict.fromkeys(_GAMMA_ALIASES)
 
         for label in labels:
             if not isinstance(label, dict):

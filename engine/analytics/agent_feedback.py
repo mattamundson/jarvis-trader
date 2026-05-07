@@ -19,7 +19,7 @@ import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -137,9 +137,9 @@ class AgentFeedbackTracker:
         return self._compute_weights(regime, window_days_short, window_days_long)
 
     def _compute_weights(
-        self, 
-        regime: Optional[str], 
-        window_days_short: int = 30, 
+        self,
+        regime: Optional[str],
+        window_days_short: int = 30,
         window_days_long: int = 90
     ) -> Dict[str, float]:
         weights = {}
@@ -236,7 +236,7 @@ class AgentFeedbackTracker:
     def load_weights(self) -> Dict[str, float]:
         """Load saved weights from JSON file."""
         if not WEIGHTS_FILE.exists():
-            return {agent: DEFAULT_WEIGHT for agent in AGENT_NAMES}
+            return dict.fromkeys(AGENT_NAMES, DEFAULT_WEIGHT)
 
         with open(WEIGHTS_FILE) as f:
             data = json.load(f)

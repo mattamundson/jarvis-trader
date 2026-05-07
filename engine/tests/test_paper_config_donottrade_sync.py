@@ -23,10 +23,9 @@ that's still blocked at the verdict layer.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Test 1: no paper config currently has enabled=True for a DO_NOT_TRADE symbol
@@ -100,8 +99,9 @@ class TestNoEnabledConfigForDoNotTradeSymbol:
         This is intentionally a sanity check, not a hard gate, because the
         engine can run in degraded mode without verdict files on disk.
         """
-        from backtest.paper_config import PAPER_CONFIGS
         import os
+
+        from backtest.paper_config import PAPER_CONFIGS
 
         VERDICTS_DIR = os.path.join(
             os.path.dirname(__file__), "..", "data", "gate_v2_verdicts"

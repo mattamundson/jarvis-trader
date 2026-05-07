@@ -31,7 +31,7 @@ import sys
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 # Allow running as a script (`python optimization/strategy_optimizer.py`)
 # in addition to module form (`python -m engine.optimization.strategy_optimizer`).

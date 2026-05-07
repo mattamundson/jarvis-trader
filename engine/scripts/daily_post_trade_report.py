@@ -25,16 +25,14 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sqlite3
 import sys
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import numpy as np
 import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -481,11 +479,11 @@ def compute_outlook(target_date: date, symbols: list[str] | None = None) -> dict
             generate_sma_trend_signals,
         )
     except ImportError:
-        return {sym: "trend_signals not importable" for sym in symbols}
+        return dict.fromkeys(symbols, "trend_signals not importable")
 
     outlooks: dict[str, str] = {}
     if not _DB_PATH.exists():
-        return {sym: "DB unavailable" for sym in symbols}
+        return dict.fromkeys(symbols, "DB unavailable")
 
     try:
         con = sqlite3.connect(str(_DB_PATH))

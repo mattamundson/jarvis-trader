@@ -13,7 +13,7 @@ this script automatically suppresses contract limits.
 import logging
 import os
 import sys
-from datetime import date, datetime
+from datetime import date
 
 try:
     from database.db_manager import DatabaseManager
@@ -50,8 +50,8 @@ def evaluate_daily_performance(db: DatabaseManager):
 
     logger.info(f"Trailing 5-Day Alpha metrics -> Win Rate: {win_rate*100:.1f}% | Net PnL: ${total_trailing_pnl:.2f}")
 
-    # The Mathematical Modulation 
-    # If the environment is toxic to our strategy, we dynamically halve size. 
+    # The Mathematical Modulation
+    # If the environment is toxic to our strategy, we dynamically halve size.
     # This prevents total drawdown during sustained VIX compression bridging.
     if win_rate < 0.40 and total_trailing_pnl < 0:
         logger.warning("ALGORITHMIC ROT DETECTED: Modulating max contract limits down.")

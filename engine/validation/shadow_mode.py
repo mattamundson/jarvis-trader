@@ -89,13 +89,13 @@ class ShadowModeTracker:
         """Compute metrics for shadow trades."""
         trades = self._db.get_closed_trades(limit=1000)
         shadow_trades = [
-            t for t in trades 
+            t for t in trades
             if isinstance(t.get("strategy_params"), dict) and t["strategy_params"].get("is_shadow")
         ]
 
         if strategy_name:
             shadow_trades = [
-                t for t in shadow_trades 
+                t for t in shadow_trades
                 if t["strategy_params"].get("strategy_name") == strategy_name
             ]
 

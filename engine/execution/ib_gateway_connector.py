@@ -326,7 +326,7 @@ class IBGatewayConnector:
             logger.critical(f"DEADMAN SWITCH: Flattening {abs_qty} {symbol} ({action} MKT)")
             await self.submit_order({
                 "symbol": symbol,
-                "quantity": -qty if qty > 0 else abs_qty, 
+                "quantity": -qty if qty > 0 else abs_qty,
                 "order_type": "market",
                 "is_futures": is_futures
             }, self._account_summary["equity"])
