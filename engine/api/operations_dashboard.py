@@ -73,7 +73,8 @@ def _load_paper_trades_today(target_date: Optional[date] = None) -> List[Dict[st
         trades = data if isinstance(data, list) else data.get("trades", [])
         day_str = target_date.isoformat()
         return [
-            t for t in trades
+            t
+            for t in trades
             if isinstance(t, dict) and (t.get("timestamp") or "").startswith(day_str)
         ]
     except Exception as exc:
@@ -94,7 +95,9 @@ def _compute_today_pnl(target_date: Optional[date] = None) -> Dict[str, Any]:
             "total_trades": metrics["total_trades"],
             "wins": metrics["wins"],
             "losses": metrics["losses"],
-            "win_rate": round(metrics["win_rate"] * 100, 1) if metrics["win_rate"] is not None else None,
+            "win_rate": (
+                round(metrics["win_rate"] * 100, 1) if metrics["win_rate"] is not None else None
+            ),
             "source": "paper_trade_pairing",
         }
     except Exception as exc:
@@ -117,9 +120,7 @@ def _get_open_positions_count() -> int:
     try:
         conn = sqlite3.connect(str(_DB_PATH), timeout=5)
         try:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM paper_trades WHERE status='open'"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) FROM paper_trades WHERE status='open'").fetchone()
             return int(row[0]) if row else 0
         finally:
             conn.close()
@@ -138,8 +139,16 @@ def _get_engine_health() -> Dict[str, Any]:
             "status": body.get("status", "unknown"),
             "tradingview_mcp_healthy": body.get("tradingview_mcp_healthy", False),
             "llm_path_healthy": body.get("llm_path_healthy", False),
-            "ibkr_exec": body.get("execution_ib", {}) if isinstance(body.get("execution_ib"), dict) else {"connected": body.get("execution_ib")},
-            "ibkr_data": body.get("data_ib", {}) if isinstance(body.get("data_ib"), dict) else {"connected": body.get("data_ib")},
+            "ibkr_exec": (
+                body.get("execution_ib", {})
+                if isinstance(body.get("execution_ib"), dict)
+                else {"connected": body.get("execution_ib")}
+            ),
+            "ibkr_data": (
+                body.get("data_ib", {})
+                if isinstance(body.get("data_ib"), dict)
+                else {"connected": body.get("data_ib")}
+            ),
             "kill_switch_active": body.get("kill_switch_active", False),
             "polled_at": _utcnow(),
         }
@@ -219,6 +228,7 @@ def _get_uptime_7d() -> List[bool]:
         for i in range(6, -1, -1):
             day = datetime.utcnow().date()
             from datetime import timedelta
+
             day = day - timedelta(days=i)
             result.append(day.isoformat() in known_days)
         return result
@@ -262,6 +272,7 @@ def _get_career_ops_recap() -> Optional[Dict[str, Any]]:
     ]
     today = _today_et().isoformat()
     from datetime import timedelta
+
     yesterday = (_today_et() - timedelta(days=1)).isoformat()
     for d in candidate_dirs:
         if not d.exists():
@@ -305,9 +316,37 @@ def build_dashboard_data(target_date: Optional[date] = None) -> Dict[str, Any]:
     live_readiness_report = _read_latest_report(_LIVE_READINESS_REPORTS_DIR)
     career_recap = _get_career_ops_recap()
 
+    # Flatten the 4 key health booleans for header widget consumption.
+    # Values are None (unknown) when the engine is unreachable.
+    def _health_bool(val: Any) -> Optional[bool]:
+        """Coerce a health field to bool | None."""
+        if val is None:
+            return None
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, dict):
+            connected = val.get("connected")
+            return bool(connected) if connected is not None else None
+        return bool(val)
+
+    _reachable = engine_health.get("reachable", False)
+    health_widget: Dict[str, Optional[bool]] = {
+        "tv_mcp_healthy": (
+            _health_bool(engine_health.get("tradingview_mcp_healthy")) if _reachable else None
+        ),
+        "llm_path_healthy": (
+            _health_bool(engine_health.get("llm_path_healthy")) if _reachable else None
+        ),
+        "ibkr_data_connected": _health_bool(engine_health.get("ibkr_data")) if _reachable else None,
+        "ibkr_execution_connected": (
+            _health_bool(engine_health.get("ibkr_exec")) if _reachable else None
+        ),
+    }
+
     return {
         "generated_at": _utcnow(),
         "report_date": target_date.isoformat(),
+        "health": health_widget,
         "today": {
             "pnl": pnl["pnl"],
             "pnl_target": DAILY_PNL_TARGET,
@@ -348,6 +387,6 @@ def get_dashboard_html() -> HTMLResponse:
     # Fallback: redirect hint if file not found
     return HTMLResponse(
         content="<h1>operations.html not found</h1>"
-                "<p>Expected at: engine/dashboard/operations.html</p>",
+        "<p>Expected at: engine/dashboard/operations.html</p>",
         status_code=404,
     )

@@ -235,12 +235,57 @@
       border-radius: 4px;
       letter-spacing: 0.04em;
     }
+
+    /* ── Header health dots ── */
+    .header-health-dots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .health-dot-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .health-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .health-dot.healthy   { background: #4ade80; }
+    .health-dot.unhealthy { background: #ef4444; }
+    .health-dot.unknown   { background: #6b7280; }
+    .health-dot-label {
+      font-size: 10px;
+      color: var(--dim);
+      letter-spacing: 0.03em;
+    }
   </style>
 </head>
 <body>
 
 <header>
   <h1>JARVIS OPS</h1>
+  <div class="header-health-dots" id="header-health-dots">
+    <div class="health-dot-group">
+      <span class="health-dot unknown" id="dot-tv" title="tv_mcp_healthy"></span>
+      <span class="health-dot-label">TV</span>
+    </div>
+    <div class="health-dot-group">
+      <span class="health-dot unknown" id="dot-llm" title="llm_path_healthy"></span>
+      <span class="health-dot-label">LLM</span>
+    </div>
+    <div class="health-dot-group">
+      <span class="health-dot unknown" id="dot-ibkr-data" title="ibkr_data_connected"></span>
+      <span class="health-dot-label">IBKR-DATA</span>
+    </div>
+    <div class="health-dot-group">
+      <span class="health-dot unknown" id="dot-ibkr-exec" title="ibkr_execution_connected"></span>
+      <span class="health-dot-label">IBKR-EXEC</span>
+    </div>
+  </div>
   <div class="header-meta">
     <span id="last-updated">Loading…</span>
     <label class="refresh-toggle">
@@ -525,6 +570,24 @@ function escHtml(s) {
 }
 
 // ════════════════════════════════════════════════════════════
+// Header health dots
+// ════════════════════════════════════════════════════════════
+function renderHeaderHealthDots(health) {
+  // health may be null/undefined when engine is unreachable
+  const dotMap = {
+    "dot-tv":        health ? health.tv_mcp_healthy : null,
+    "dot-llm":       health ? health.llm_path_healthy : null,
+    "dot-ibkr-data": health ? health.ibkr_data_connected : null,
+    "dot-ibkr-exec": health ? health.ibkr_execution_connected : null,
+  };
+  Object.entries(dotMap).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = "health-dot " + (val === null || val === undefined ? "unknown" : val ? "healthy" : "unhealthy");
+  });
+}
+
+// ════════════════════════════════════════════════════════════
 // Fetch + render
 // ════════════════════════════════════════════════════════════
 async function refresh() {
@@ -536,6 +599,7 @@ async function refresh() {
 
     banner.style.display = "none";
 
+    renderHeaderHealthDots(data.health || null);
     renderToday(data.today || {});
     renderReadiness(data.live_readiness || {});
     renderHealth(data.engine_health || {}, data.uptime_7d || []);
