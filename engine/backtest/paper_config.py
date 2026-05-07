@@ -18,7 +18,7 @@ MCL_PAPER_CONFIG = {
     #  Instrument
     "symbol": "MCL",
     "interval": "1h",
-    "enabled": True,  # WFE=0.82 EXCELLENT  APPROVED
+    "enabled": False,  # 2026-05-07: MCL hypotheses A-E exhausted; in DO_NOT_TRADE_SYMBOLS
     #  Capital & Sizing
     "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk (conservative)
@@ -58,7 +58,7 @@ MNQ_PAPER_CONFIG = {
     #  Instrument
     "symbol": "MNQ",
     "interval": "1h",
-    "enabled": True,  # WFE=0.57 GOOD  APPROVED (adaptive regime only)
+    "enabled": False,  # 2026-05-07: MNQ trend/breakout/ORB all FAIL gate v2; in DO_NOT_TRADE_SYMBOLS. The 55 trades / 0 wins on 2026-05-06/07 came from this config firing despite the verdict gate; disabling at config layer ensures sync with verdict layer.
     #  Capital & Sizing
     "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk
@@ -139,7 +139,7 @@ MCL_15M_CONFIG = {
     #  Instrument (15-minute timeframe)
     "symbol": "MCL",
     "interval": "15m",
-    "enabled": True,  # Enabled for trade frequency validation
+    "enabled": False,  # 2026-05-07: MCL parked at all timeframes; in DO_NOT_TRADE_SYMBOLS
     #  Capital & Sizing
     "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk (conservative)
@@ -178,7 +178,7 @@ MNQ_15M_CONFIG = {
     #  Instrument (15-minute timeframe)
     "symbol": "MNQ",
     "interval": "15m",
-    "enabled": True,  # Enabled for trade frequency validation
+    "enabled": False,  # 2026-05-07: params explicitly say "need WF validation before live"; not validated; in DO_NOT_TRADE_SYMBOLS
     #  Capital & Sizing
     "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk
