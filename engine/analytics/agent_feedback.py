@@ -62,6 +62,16 @@ class AgentFeedbackTracker:
                     regime TEXT
                 )
             """)
+            # Idempotent migration: pre-2026-04-25 DBs lack breakout_signal,
+            # harmonic_signal, regime. ADD COLUMN raises if column exists; swallow.
+            existing = {r[1] for r in conn.execute("PRAGMA table_info(trade_outcomes)")}
+            for col, decl in (
+                ("breakout_signal", "REAL"),
+                ("harmonic_signal", "REAL"),
+                ("regime", "TEXT"),
+            ):
+                if col not in existing:
+                    conn.execute(f"ALTER TABLE trade_outcomes ADD COLUMN {col} {decl}")
 
     def record_outcome(
         self,
@@ -93,7 +103,7 @@ class AgentFeedbackTracker:
                 (trade_id, timestamp, symbol, direction, pnl_usd, pnl_pct, outcome,
                  technical_signal, news_signal, social_signal, fundamental_signal, corey_signal,
                  breakout_signal, harmonic_signal, regime)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade_id, ts, symbol, direction, pnl_usd, 0.0, outcome,
                 analyst_signals.get("technical", 0.0),
@@ -107,6 +117,12 @@ class AgentFeedbackTracker:
             ))
 
         logger.debug("Recorded trade outcome: %s %s PnL=%.2f", trade_id, outcome, pnl_usd)
+
+    def get_weights(
+        self, window_days_short: int = 30, window_days_long: int = 90
+    ) -> Dict[str, float]:
+        """
+        Compute analyst weights across all regimes.
 
         Returns: dict of {agent_name: weight_multiplier}
         """
