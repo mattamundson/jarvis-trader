@@ -661,7 +661,7 @@ class SafetyLayer:
 
     def _check_trade_loss_gate(self, order: OrderRequest) -> RiskCheckResult:
         """
-        Damage control: reject any order where requested stop distance * qty 
+        Damage control: reject any order where requested stop distance * qty
         exceeds MAX_TRADE_LOSS_USD ($50).
         """
         if order.stop_price is None:

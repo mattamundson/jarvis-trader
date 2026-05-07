@@ -18,10 +18,10 @@ class EventsResponse:
 @router.get("/recent")
 async def get_recent_events(limit: Optional[int] = Query(20, ge=1, le=100)):
     """Get recent events from the ring buffer.
-    
+
     Args:
         limit: Maximum number of events to return (1-100, default 20)
-    
+
     Returns:
         JSON with events list, count, and buffer capacity
     """

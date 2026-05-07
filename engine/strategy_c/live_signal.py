@@ -39,14 +39,14 @@ def run_live_signal(
 ) -> dict:
     """
     Run the Strategy C+ live signal generator.
-    
+
     Parameters
     ----------
     save_path : str, optional
         Override output path for live signal JSON
     notify : bool
         Whether to send console alert with signal summary
-        
+
     Returns
     -------
     dict : Complete live signal

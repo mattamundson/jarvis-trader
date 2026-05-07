@@ -16,7 +16,7 @@ class OpenBBAdapter:
     def __init__(self):
         """
         Initialize OpenBB Platform.
-        Requires personal access tokens for specific providers to be set in .env 
+        Requires personal access tokens for specific providers to be set in .env
         or OpenBB Hub config (e.g., OPENBB_TOKEN_POLYGON, OPENBB_TOKEN_FRED).
         """
         self.obb = obb

@@ -141,7 +141,7 @@ def test_no_entry_repeats_on_adjacent_bars():
     if len(entries) >= 2:
         # Bar positions of entries should not include two consecutive bars
         positions = [df.index.get_loc(idx) for idx in entries.index]
-        for a, b in zip(positions, positions[1:]):
+        for a, b in zip(positions, positions[1:], strict=False):
             assert b - a > 1, "Entries fired on adjacent bars — edge-detect gate broken"
 
 

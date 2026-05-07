@@ -8,7 +8,7 @@ Signal stack (applied multiplicatively to position sizing):
   Layer 2: ES/NQ realized vol targeting → scale [0.0, 1.0]
   Layer 3: VIX composite (4-component) → multiplier [0.0, 1.0]
   Layer 4: Macro regime filter (yield curve + CoT) → multiplier [0.5, 1.1]
-  
+
 Final weight = DM_weight × vol_scale × vix_multiplier × macro_multiplier
 
 Target statistics (from reverse-engineered dashboard):
@@ -112,7 +112,7 @@ class StrategyCConfig:
 class StrategyCEngine:
     """
     Strategy C+ full backtest and live signal engine.
-    
+
     Usage:
         engine = StrategyCEngine()
         results = engine.run_backtest()
@@ -216,7 +216,7 @@ class StrategyCEngine:
     ) -> dict:
         """
         Run the full Strategy C+ backtest.
-        
+
         Returns comprehensive results dict including:
           - Equity curve
           - Per-period metrics (CAGR, Sharpe, Sortino, Calmar, MDD)
@@ -356,7 +356,7 @@ class StrategyCEngine:
     ) -> tuple[pd.Series, pd.DataFrame]:
         """
         Compute weekly portfolio returns from layered signals.
-        
+
         Each week:
           1. Look up held assets from signal_df (holdings dict)
           2. Compute asset return (this week's close / last week's close - 1)
@@ -506,7 +506,7 @@ class StrategyCEngine:
     def _compute_deflated_sharpe(self, equity: pd.Series) -> dict:
         """
         Compute Bailey-López de Prado Deflated Sharpe Ratio.
-        
+
         Accounts for the multiple testing penalty from grid search over
         vol targeting and VIX composite parameters.
         """
@@ -534,7 +534,7 @@ class StrategyCEngine:
     def get_live_signal(self) -> dict:
         """
         Generate the live signal for the current week.
-        
+
         Returns a full signal dict suitable for the IBKR execution layer
         and the dashboard widget.
         """
@@ -642,7 +642,7 @@ class StrategyCEngine:
     def _generate_ibkr_instructions(self, scaled_holdings: dict) -> dict:
         """
         Generate IBKR execution instructions from scaled holdings.
-        
+
         Maps ETF holdings to executable IBKR orders.
         Respects paper trading constraint (LIVE_TRADING_ENABLED = False).
         """

@@ -223,7 +223,7 @@ def main():
     print(f"Contract spec: mult={spec['multiplier']} tick={spec['tick_size']} "
           f"commission={spec['commission']} slippage_ticks={spec['slippage_ticks']}", flush=True)
 
-    combos = [dict(zip(GRID.keys(), vals)) for vals in product(*GRID.values())]
+    combos = [dict(zip(GRID.keys(), vals, strict=False)) for vals in product(*GRID.values())]
     print(f"Breakout grid: {len(combos)} combos", flush=True)
 
     results = []

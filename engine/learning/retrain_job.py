@@ -1,7 +1,7 @@
 """
 FreqAI Retraining Job
 =====================
-Automates the lifecycle of fetching data (OpenBB), 
+Automates the lifecycle of fetching data (OpenBB),
 preparing features (DataKitchen), and retraining models.
 """
 

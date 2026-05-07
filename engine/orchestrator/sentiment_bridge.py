@@ -1,9 +1,9 @@
 """
 Sentiment Bridge
 ================
-Polled caching layer that connects News Analyst (LLM) to 
-Execution Strategies (Low Latency). 
-Updates sentiment scores periodically so strategies stay current 
+Polled caching layer that connects News Analyst (LLM) to
+Execution Strategies (Low Latency).
+Updates sentiment scores periodically so strategies stay current
 without blocking on LLM calls.
 """
 
@@ -21,7 +21,7 @@ class SentimentBridge:
 
     async def get_sentiment(self, symbol: str) -> float:
         """
-        Get the current sentiment score for a symbol. 
+        Get the current sentiment score for a symbol.
         If expired or missing, trigger an async update.
         """
         now = datetime.now()

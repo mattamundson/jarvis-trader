@@ -190,7 +190,7 @@ def main():
     print(f"Contract spec: mult={spec['multiplier']} tick={spec['tick_size']} "
           f"tick_value=${spec['multiplier']*spec['tick_size']:.2f}", flush=True)
 
-    combos = [dict(zip(GRID.keys(), vals)) for vals in product(*GRID.values())]
+    combos = [dict(zip(GRID.keys(), vals, strict=False)) for vals in product(*GRID.values())]
     combos = [c for c in combos if c["fast"] < c["slow"]]
     print(f"Trend grid: {len(combos)} valid combos", flush=True)
 

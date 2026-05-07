@@ -1036,7 +1036,7 @@ def inject_ib_levels(df: pd.DataFrame, symbol: str, db_path: str | None = None) 
             if lv:
                 for k, c in zip(
                     ("ibu50", "ibu100", "ibd50", "ibd100"),
-                    ("discord_ibu50", "discord_ibu100", "discord_ibd50", "discord_ibd100"),
+                    ("discord_ibu50", "discord_ibu100", "discord_ibd50", "discord_ibd100"), strict=False,
                 ):
                     df.at[df.index[i], c] = lv.get(k)
     except Exception as exc:

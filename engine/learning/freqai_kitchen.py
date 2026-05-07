@@ -1,7 +1,7 @@
 """
 FreqAI "Data Kitchen" Pattern
 ============================
-Handles specialized data preparation, normalization, and windowing 
+Handles specialized data preparation, normalization, and windowing
 for machine learning models in the JARVIS engine.
 """
 

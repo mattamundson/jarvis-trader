@@ -20,8 +20,7 @@ import pytest
 # Make engine root importable when pytest runs from the engine directory
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.backfill_market_data_bars import backfill_symbol, _load_csv
-
+from scripts.backfill_market_data_bars import _load_csv, backfill_symbol
 
 # ---------------------------------------------------------------------------
 # Helpers

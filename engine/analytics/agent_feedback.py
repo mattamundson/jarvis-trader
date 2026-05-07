@@ -163,7 +163,7 @@ class AgentFeedbackTracker:
 
     def _compute_accuracy_internal(self, agent_name: str, window_days: int, regime: Optional[str]) -> float:
         """
-        Compute directional accuracy for an agent over a rolling window, 
+        Compute directional accuracy for an agent over a rolling window,
         optionally filtered by regime.
         """
         cutoff = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()

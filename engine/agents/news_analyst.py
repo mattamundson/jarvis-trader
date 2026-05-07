@@ -99,7 +99,7 @@ class NewsAnalystAgent:
         "GC": ("GLD", "gold / GC futures"),
     }
 
-    SYSTEM_PROMPT = """You are a state-of-the-art Financial Intelligence Agent (FinGPT-pattern). 
+    SYSTEM_PROMPT = """You are a state-of-the-art Financial Intelligence Agent (FinGPT-pattern).
 Your goal is to perform deep-reasoning news analysis for JARVIS TRADER.
 
 ### ANALYSIS FRAMEWORK:

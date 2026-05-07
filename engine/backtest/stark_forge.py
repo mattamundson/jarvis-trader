@@ -41,7 +41,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 def fetch_historical_data(symbol: str = "ES=F", days: int = 60) -> pd.DataFrame:
     """
-    Fetch trailing high-res 15m data using yfinance. 
+    Fetch trailing high-res 15m data using yfinance.
     ES=F is the E-mini S&P 500 continuous contract, perfectly correlating with /MES.
     Max 60 days allowed for 15m intervals in yf.
     """

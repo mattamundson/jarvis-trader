@@ -402,7 +402,7 @@ def _plot_vol_regime_dist(ax, vol_df):
     counts = [(rv.between(lo, hi)).mean() * 100 for lo, hi in thresholds]
     bars = ax.bar(labels, counts, color=colors, alpha=0.8)
 
-    for bar, count in zip(bars, counts):
+    for bar, count in zip(bars, counts, strict=False):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
                 f"{count:.0f}%", ha="center", va="bottom", fontsize=7.5, color=WHITE)
 

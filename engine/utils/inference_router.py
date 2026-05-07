@@ -133,12 +133,12 @@ class InferenceRouter:
     ) -> str:
         """
         Route task to primary provider, fallback on failure.
-        
+
         Args:
             task_name: Name of the task (e.g., "morning_briefing")
             prompt: The prompt to send
             force_provider: Override routing config for this call
-            
+
         Returns:
             Generated response text
         """

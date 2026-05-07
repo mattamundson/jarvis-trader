@@ -112,7 +112,7 @@ def compute_tpo_score(df: pd.DataFrame) -> pd.DataFrame:
         for c, h, l in zip(
             out["close"].to_numpy(),
             out["va_high"].to_numpy(),
-            out["va_low"].to_numpy(),
+            out["va_low"].to_numpy(), strict=False,
         )
     ]
     return out

@@ -567,7 +567,7 @@ class SharedAgentGateway:
 
         sections: list[str] = []
         any_error = False
-        for agent, result in zip(agents, results):
+        for agent, result in zip(agents, results, strict=False):
             header = f"**{agent.capitalize()}:**"
             if isinstance(result, BaseException):
                 any_error = True

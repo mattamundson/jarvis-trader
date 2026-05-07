@@ -107,7 +107,7 @@ def daily_volatility_from_closes(closes: list[float]) -> float:
     if len(closes) < 3:
         return 0.0
     rets = []
-    for a, b in zip(closes[:-1], closes[1:]):
+    for a, b in zip(closes[:-1], closes[1:], strict=False):
         if a > 0:
             rets.append((b - a) / a)
     if not rets:

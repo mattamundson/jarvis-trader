@@ -15,10 +15,10 @@ Architecture:
 Usage:
     # Check current signal only (no orders):
     python -m engine.strategy_c.ibkr_executor --check-only
-    
+
     # Generate orders (requires human approval):
     python -m engine.strategy_c.ibkr_executor --submit
-    
+
     # Paper execute (no IBKR needed, logs to paper_trades.db):
     python -m engine.strategy_c.ibkr_executor --paper
 
@@ -64,7 +64,7 @@ EXECUTION_LOG = Path(__file__).parent / "output" / "execution_log.json"
 class StrategyCExecutor:
     """
     IBKR execution manager for Strategy C+ weekly rebalancing.
-    
+
     All orders are submitted through the jarvis-trader engine API,
     which enforces the safety layer and human approval gate.
     """
@@ -146,19 +146,19 @@ class StrategyCExecutor:
     ) -> list[dict]:
         """
         Convert Strategy C+ signal into IBKR rebalance orders.
-        
+
         For each holding:
           - Compute target dollar amount = account_value × weight
           - Look up current price to compute shares
           - Generate BUY/SELL orders to reach target weights
-          
+
         Parameters
         ----------
         signal : dict
             Live signal from StrategyCEngine.get_live_signal()
         account_value_usd : float
             Total account value for position sizing
-            
+
         Returns
         -------
         list[dict] : List of order dicts in jarvis-trader order format
@@ -214,10 +214,10 @@ class StrategyCExecutor:
     def submit_for_approval(self, orders: list[dict]) -> dict:
         """
         Submit orders to the jarvis-trader approval queue.
-        
+
         Orders are NOT executed until a human approves via the dashboard
         (http://localhost:3010) or the /v1/approvals/approve endpoint.
-        
+
         This is the REQUIRE_HUMAN_APPROVAL safety invariant.
         """
         if not orders:

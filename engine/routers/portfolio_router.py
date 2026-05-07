@@ -502,7 +502,7 @@ async def paper_performance():
                 *[_data_manager.get_current_price(sym) for sym in symbols],
                 return_exceptions=True,
             )
-            for pos, price_result in zip(open_positions, price_results):
+            for pos, price_result in zip(open_positions, price_results, strict=False):
                 current_price = (
                     price_result.get("last_price")
                     if isinstance(price_result, dict)

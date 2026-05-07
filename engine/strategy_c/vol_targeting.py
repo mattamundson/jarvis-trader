@@ -13,7 +13,7 @@ Key insight from backtest analysis:
   - Crisis (2020, 2022): vol ≈ 40-60% annualized → scale ≈ 0.13-0.30
   - Scale during cash periods: forced to 0.0 (no equity exposure)
 
-This is the primary Sharpe bridge: CAGR preserved because scaling up during 
+This is the primary Sharpe bridge: CAGR preserved because scaling up during
 low-vol preserves upside; scaling down during crises limits MDD dramatically.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ import pandas as pd
 class VolatilityTargeter:
     """
     Computes daily realized volatility and target position scaling factor.
-    
+
     Parameters
     ----------
     vol_target : float
@@ -65,7 +65,7 @@ class VolatilityTargeter:
         """
         Compute blended ES/NQ realized annualized volatility as of a date.
         Uses close-to-close daily log returns, 10-day window.
-        
+
         Returns annualized vol in percent (e.g., 12.5 = 12.5%).
         """
         if as_of_date is not None:
@@ -107,7 +107,7 @@ class VolatilityTargeter:
     ) -> tuple[float, float]:
         """
         Compute position scale factor [0.0, max_scale] to hit vol_target.
-        
+
         Returns (scale: float, realized_vol: float)
         """
         realized_vol = self.compute_realized_vol(es_prices, nq_prices, as_of_date)
@@ -123,10 +123,10 @@ class VolatilityTargeter:
     ) -> pd.DataFrame:
         """
         Build weekly scale factors and realized vol for the full backtest period.
-        
+
         Operates on FRIDAY close prices (weekly rebalancing).
         Looks back `lookback_days` DAILY bars from each Friday.
-        
+
         Returns DataFrame with columns: date, scale, realized_vol
         """
         records = []
@@ -140,7 +140,7 @@ class VolatilityTargeter:
     def vol_regime(self, realized_vol: float) -> str:
         """
         Classify vol regime — aligned with jarvis-trader VIX overlay thresholds.
-        
+
         Returns one of: CALM / NORMAL / ELEVATED / CRISIS
         """
         if realized_vol < 10:
