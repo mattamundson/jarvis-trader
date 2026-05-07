@@ -72,7 +72,8 @@ _DB_PATH = _ENGINE_DIR / "data" / "jarvis_trader.db"
 # Report renderer
 # ---------------------------------------------------------------------------
 
-_FMT_MONEY = lambda x: f"${x:+.2f}" if x is not None else "—"
+def _FMT_MONEY(x):
+    return f"${x:+.2f}" if x is not None else "—"
 
 
 def _status_emoji(status: str) -> str:

@@ -210,7 +210,7 @@ def _last_n_rows(conn: sqlite3.Connection, n: int) -> list[dict]:
         (n,),
     )
     cols = [d[0] for d in cur.description]
-    rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    rows = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
     rows.reverse()
     return rows
 

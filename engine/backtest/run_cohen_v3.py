@@ -724,7 +724,7 @@ def main():
     json_payload = {
         "version": "v3",
         "run_timestamp": datetime.now().isoformat(),
-        "config": {k: v for k, v in V3_CONFIG.items()},
+        "config": dict(V3_CONFIG.items()),
         "instruments": {s: serialise(r) for s, r in all_results.items()},
         "aggregate": v3_agg,
         "comparison": {

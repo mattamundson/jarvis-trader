@@ -51,7 +51,9 @@ class ConnectorBase(ABC):
         """Retrieve L2/L3 order book data."""
         pass
 
-    def log_trade(self, trade_data: Dict):
-        """Standardized trade logging across all connectors."""
-        # This can be implemented in the base class to ensure consistency
-        pass
+    def log_trade(self, trade_data: Dict):  # noqa: B027 — intentional default no-op (subclasses opt in)
+        """Standardized trade logging across all connectors.
+
+        Default no-op; subclasses can override to add trade-event logging.
+        """
+        return None
