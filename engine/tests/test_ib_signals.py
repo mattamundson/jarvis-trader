@@ -137,12 +137,12 @@ def test_fresh_breakout_fires_once():
 
     fresh = result["ib_high_fresh_breakout"].tolist()
     # [IB window bar, no-break, FIRST break, still above, dip, re-break]
-    assert fresh[0] == False  # IB bar — ib_high is NaN here
-    assert fresh[1] == False  # close=105 <= 110
-    assert fresh[2] == True   # first cross
-    assert fresh[3] == False  # already fired
-    assert fresh[4] == False  # dipped back
-    assert fresh[5] == False  # re-break — NOT a fresh signal again
+    assert not fresh[0]  # IB bar — ib_high is NaN here
+    assert not fresh[1]  # close=105 <= 110
+    assert fresh[2]   # first cross
+    assert not fresh[3]  # already fired
+    assert not fresh[4]  # dipped back
+    assert not fresh[5]  # re-break — NOT a fresh signal again
 
 
 # ---------------------------------------------------------------------------
@@ -223,9 +223,9 @@ def test_ib_low_fresh_breakout_fires_once():
     result = compute_initial_balance(_make_bars(bars), open_minutes=1)
 
     fresh = result["ib_low_fresh_breakout"].tolist()
-    assert fresh[0] == False
-    assert fresh[1] == False
-    assert fresh[2] == True
-    assert fresh[3] == False
-    assert fresh[4] == False
-    assert fresh[5] == False
+    assert not fresh[0]
+    assert not fresh[1]
+    assert fresh[2]
+    assert not fresh[3]
+    assert not fresh[4]
+    assert not fresh[5]

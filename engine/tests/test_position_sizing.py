@@ -48,7 +48,7 @@ def test_half_kelly_zero_win_loss_ratio_returns_fallback():
 
 def test_rolling_edge_insufficient_data():
     result = compute_rolling_edge([{'pnl': 100}] * 5)
-    assert result['sufficient_data'] == False
+    assert not result['sufficient_data']
     assert result['n_trades'] == 5
 
 
@@ -56,7 +56,7 @@ def test_rolling_edge_with_20_trades():
     # 8 wins at $150, 12 losses at $60 → 40% win rate, avg_win/avg_loss = 2.5
     trades = [{'pnl': 150.0}] * 8 + [{'pnl': -60.0}] * 12
     result = compute_rolling_edge(trades)
-    assert result['sufficient_data'] == True
+    assert result['sufficient_data']
     assert abs(result['win_rate'] - 0.40) < 0.01
     assert abs(result['avg_win_loss_ratio'] - 2.5) < 0.01
 
@@ -64,5 +64,5 @@ def test_rolling_edge_with_20_trades():
 def test_rolling_edge_only_wins():
     trades = [{'pnl': 100.0}] * 20
     result = compute_rolling_edge(trades)
-    assert result['sufficient_data'] == True
+    assert result['sufficient_data']
     assert result['win_rate'] == 1.0
