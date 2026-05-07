@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-06T13:41:23.322214",
+  "generated_at": "2026-05-06T20:30:32.932882",
   "strategy": "Strategy_C_Plus",
   "effective_date": "2026-05-06",
   "execution_note": "T+1 lag: execute Monday open after Friday signal",
