@@ -22,7 +22,8 @@ import logging
 import os
 import sqlite3
 import sys
-from datetime import date as date_type, datetime, timedelta, timezone
+from datetime import date as date_type
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # When invoked as a script (per ~/.claude.json mcpServers config), Python adds

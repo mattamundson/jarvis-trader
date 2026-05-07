@@ -51,7 +51,7 @@ def run_live_signal(
     -------
     dict : Complete live signal
     """
-    from .engine import StrategyCEngine, StrategyCConfig
+    from .engine import StrategyCConfig, StrategyCEngine
 
     logger.info("=" * 60)
     logger.info("STRATEGY C+ WEEKLY SIGNAL — %s", datetime.now().strftime("%Y-%m-%d %H:%M CT"))
@@ -111,7 +111,7 @@ def _print_signal_alert(signal: dict) -> None:
     print(f"\n  RISK REGIME:     {mom.get('risk_regime', 'UNKNOWN')}")
     print(f"  COMBINED SCALE:  {signal.get('combined_scale', 0):.1%}")
 
-    print(f"\n  ── Signal Layers ──")
+    print("\n  ── Signal Layers ──")
     print(f"  Momentum:        {mom.get('risk_regime', '?')} | "
           f"Abs mom pass: {mom.get('absolute_mom_pass', False)}")
     print(f"  Vol Targeting:   scale={vol.get('scale', 0):.3f} | "
@@ -124,13 +124,13 @@ def _print_signal_alert(signal: dict) -> None:
     print(f"  Macro Filter:    mult={macro.get('multiplier', 1.0):.3f} | "
           f"yield_curve={macro.get('yield_curve', 'N/A')}")
 
-    print(f"\n  ── Final Holdings ──")
+    print("\n  ── Final Holdings ──")
     holdings = signal.get("holdings", {})
     for ticker, weight in sorted(holdings.items(), key=lambda x: -x[1]):
         bar = "█" * int(weight * 20)
         print(f"  {ticker:<6} {weight:.1%}  {bar}")
 
-    print(f"\n  ── IBKR Execution ──")
+    print("\n  ── IBKR Execution ──")
     ibkr = signal.get("ibkr_instructions", {})
     print(f"  Account: {ibkr.get('account', 'N/A')} ({ibkr.get('mode', 'N/A')})")
     print(f"  Timing:  {ibkr.get('execution_timing', 'N/A')}")

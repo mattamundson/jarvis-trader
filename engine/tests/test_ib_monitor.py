@@ -1,11 +1,12 @@
 """Tests for IB Gateway health monitor."""
 
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
-import health.ib_monitor as ib_monitor_module
 
+import pytest
+
+import health.ib_monitor as ib_monitor_module
 
 CT = ZoneInfo("America/Chicago")
 

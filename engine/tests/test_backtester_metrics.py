@@ -33,7 +33,6 @@ import pytest
 from backtest.metrics import calculate_metrics
 from backtest.trade_manager import BacktestResult, Trade
 
-
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 

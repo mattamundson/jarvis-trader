@@ -177,7 +177,7 @@ def main():
     if breakeven:
         print(f"\nEdge survives up through: {breakeven}", flush=True)
     else:
-        print(f"\nEdge does NOT survive even the optimistic cost scenario.", flush=True)
+        print("\nEdge does NOT survive even the optimistic cost scenario.", flush=True)
 
     out_path = _ENGINE / "scripts" / "validation_reports" / \
                f"{symbol}_{args.family}_rank{args.rank}_cost_sweep.json"

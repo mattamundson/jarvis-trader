@@ -13,11 +13,12 @@ this script automatically suppresses contract limits.
 import logging
 import os
 import sys
-from datetime import datetime, date
+from datetime import date, datetime
 
 try:
-    from config import settings
     from database.db_manager import DatabaseManager
+
+    from config import settings
 except ImportError as e:
     print(f"Must run from engine root: {e}")
     sys.exit(1)
@@ -36,7 +37,7 @@ def evaluate_daily_performance(db: DatabaseManager):
 
     today = date.today().isoformat()
     snapshots = db.get_recent_summary(limit=5)
-    
+
     if not snapshots or len(snapshots) < 3:
         logger.info("Insufficient trailing data (<3 days). Holding base risk limits steady.")
         return
@@ -44,9 +45,9 @@ def evaluate_daily_performance(db: DatabaseManager):
     # Calculate trailing win rate based on daily PnL positivity
     winning_days = sum(1 for snap in snapshots if snap.get("daily_pnl", 0) > 0)
     win_rate = winning_days / len(snapshots)
-    
+
     total_trailing_pnl = sum(snap.get("daily_pnl", 0) for snap in snapshots)
-    
+
     logger.info(f"Trailing 5-Day Alpha metrics -> Win Rate: {win_rate*100:.1f}% | Net PnL: ${total_trailing_pnl:.2f}")
 
     # The Mathematical Modulation 
@@ -68,7 +69,7 @@ def _modulate_env_risk(scaler: float):
     to prevent the system from betting full size in a toxic regime.
     """
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
-    
+
     if not os.path.exists(env_path):
         logger.error(f"Cannot modulate risk: .env not found at {env_path}")
         return
@@ -79,8 +80,8 @@ def _modulate_env_risk(scaler: float):
     logger.info(f"Modulation Signal Sent: Scale Base Risk by {scaler}x")
     # Active .env rewrites are dangerous without process restarts, so normally this is
     # picked up by the Database state or the `PositionSizer` automatically.
-    
-    
+
+
 def main():
     print("=========================================")
     print("JARVIS TRADER :: PERFORMANCE EVALUATOR")

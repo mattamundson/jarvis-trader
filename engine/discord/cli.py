@@ -126,6 +126,7 @@ def main():
             if inserted > 0:
                 import asyncio
                 from datetime import date
+
                 from .commentary_processor import CoreyCommentaryProcessor
 
                 logger.info("Triggering commentary processor (%d new rows)...", inserted)

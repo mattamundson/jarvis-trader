@@ -15,11 +15,11 @@ Usage:
 """
 
 import json
-import sqlite3
 import logging
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -168,10 +168,10 @@ class AgentFeedbackTracker:
         """
         cutoff = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
         signal_col = f"{agent_name}_signal"
-        
+
         query = f"SELECT direction, outcome, {signal_col} FROM trade_outcomes WHERE timestamp > ? AND {signal_col} != 0"
         params = [cutoff]
-        
+
         if regime:
             query += " AND regime = ?"
             params.append(regime)

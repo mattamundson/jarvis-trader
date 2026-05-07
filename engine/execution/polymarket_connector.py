@@ -7,9 +7,11 @@ Enables event-driven prediction market trading.
 
 import logging
 from typing import Dict, List, Optional
+
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderArgs, MarketOrderArgs, OrderType, BookParams
+from py_clob_client.clob_types import BookParams, MarketOrderArgs, OrderArgs, OrderType
 from py_clob_client.order_builder.constants import BUY, SELL
+
 from config import settings
 
 logger = logging.getLogger("jarvis_trader.execution.polymarket")
@@ -20,7 +22,7 @@ class PolymarketConnector:
         self.chain_id = getattr(settings, "POLYMARKET_CHAIN_ID", 137) # Polygon
         self.private_key = getattr(settings, "POLYMARKET_PRIVATE_KEY", None)
         self.funder = getattr(settings, "POLYMARKET_FUNDER_ADDRESS", None)
-        
+
         self.client: Optional[ClobClient] = None
         self.authenticated = False
 
@@ -39,7 +41,7 @@ class PolymarketConnector:
                 signature_type=getattr(settings, "POLYMARKET_SIGNATURE_TYPE", 1), # Default to email/Magic
                 funder=self.funder
             )
-            
+
             # Authenticate
             creds = self.client.create_or_derive_api_creds()
             self.client.set_api_creds(creds)

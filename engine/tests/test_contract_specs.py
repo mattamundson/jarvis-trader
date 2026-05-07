@@ -33,9 +33,9 @@ def test_cme_spec_arithmetic_is_self_consistent(symbol, spec):
 @pytest.mark.parametrize("symbol,spec", CME_SPECS.items())
 def test_trader_tick_value_map_matches_cme(symbol, spec):
     """The tick_value_map inside trader.py's position-sizing branch must equal CME spec."""
-    from agents import trader as trader_mod
-
     import inspect
+
+    from agents import trader as trader_mod
 
     source = inspect.getsource(trader_mod)
     # Look for the literal dict we care about; this is an explicit source-level
@@ -153,6 +153,7 @@ class TestCanonicalContractSpecs:
     def test_specs_are_immutable(self):
         """Frozen dataclass prevents accidental mutation during backtests."""
         from dataclasses import FrozenInstanceError
+
         from backtest.contract_specs import get_spec
         spec = get_spec("MES")
         with pytest.raises(FrozenInstanceError):

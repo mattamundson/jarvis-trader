@@ -39,7 +39,6 @@ from llm.prompt_evolution import (
     select_pareto_frontier,
 )
 
-
 # ── Pareto frontier ─────────────────────────────────────────────────────────
 
 def test_pareto_frontier_empty():

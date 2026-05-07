@@ -208,8 +208,8 @@ def _run_signals_and_backtest(
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
 ) -> object:
-    from backtest.trend_signals import generate_sma_trend_signals
     from backtest.backtester import Backtester
+    from backtest.trend_signals import generate_sma_trend_signals
 
     df_sig = generate_sma_trend_signals(
         df,
@@ -274,7 +274,6 @@ def _best_is_params(
 
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
-
 
 # ---------------------------------------------------------------------------
 # Fixed-params sweep (ALT metric: fixed_params_min_pf)
@@ -474,7 +473,7 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MNQ TREND RANK 2 — SHORTER PERIODS, FIRST REAL EVALUATION ===")
+    print("=== MNQ TREND RANK 2 — SHORTER PERIODS, FIRST REAL EVALUATION ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo")
     print(f"Grid: {n_combos} combos")
     print(f"  fast_period       : {FAST_PERIOD_VALUES}  (rank1 used [48,50,52] — degenerate, no IS crosses)")
@@ -485,7 +484,7 @@ def run_wfo() -> dict:
     print(f"  multiplier        : ${MULTIPLIER:.1f}/point  (MNQ Micro Nasdaq-100)")
     print(f"ALT thresholds: dsr>={GATE_DSR_ALT}, wfo in {GATE_WFO_CONSISTENCY_VALUES}, "
           f"fixed>={GATE_FIXED_PARAMS_MIN_PF}, mc_dd<={GATE_MC_DD_ALT * 100:.0f}%")
-    print(f"MES R11 baseline: pf_ci_lower=2.156, dsr=1.0, wfo=STRONG, mc_dd=0.81%")
+    print("MES R11 baseline: pf_ci_lower=2.156, dsr=1.0, wfo=STRONG, mc_dd=0.81%")
     print(f"{'=' * 70}")
 
     oos_results    = []
@@ -505,7 +504,7 @@ def run_wfo() -> dict:
 
         best_params, is_result = _best_is_params(df_train, grid)
         if best_params is None:
-            print(f"  [SKIP] No valid IS params")
+            print("  [SKIP] No valid IS params")
             continue
 
         print(f"  Best IS: fast={best_params['fast']}  slow={best_params['slow']}  "
@@ -702,11 +701,11 @@ def main():
         dsr_val = gate.get("dsr", 0.0)
         if dsr_val < GATE_DSR_ALT:
             print(f"  dsr={dsr_val:.6f} below ALT floor {GATE_DSR_ALT}")
-            print(f"  Consider rank3 with fast=[10,12,15], slow=[40,50,60] for more signal density")
+            print("  Consider rank3 with fast=[10,12,15], slow=[40,50,60] for more signal density")
         wfo = gate.get("wfo_consistency", "WEAK")
         if wfo not in GATE_WFO_CONSISTENCY_VALUES:
             print(f"  wfo_consistency={wfo} -- MNQ trend may not survive 2024-2025 regime transitions")
-            print(f"  If MCL family shows edge, prioritize MCL Hyp-D (SMA trend) next")
+            print("  If MCL family shows edge, prioritize MCL Hyp-D (SMA trend) next")
 
 
 if __name__ == "__main__":

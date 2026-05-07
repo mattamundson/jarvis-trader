@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
+
 from analysis.breakout_engine import VolumeProfileEngine
 
 logger = logging.getLogger("jarvis_trader.agents.breakout_agent")
@@ -69,7 +70,7 @@ class BreakoutAgent:
         df = await self._data.get_bars(
             symbol, lookback_days=5, timeframe=timeframe, is_futures=is_futures
         )
-        
+
         if df.empty or len(df) < 50:
             return self._empty_report(symbol)
 
@@ -80,14 +81,14 @@ class BreakoutAgent:
 
         # Detect breakout
         decision = self._engine.detect_breakout(df, profile)
-        
+
         status = decision["status"]
         side = decision["side"]
         current_price = df["close"].iloc[-1]
-        
+
         signal = 0.0
         confidence = 0.0
-        
+
         if status == "breakout":
             signal = 0.8 if side == "bullish" else -0.8
             confidence = 0.75
@@ -99,7 +100,7 @@ class BreakoutAgent:
             # For now, stay neutral
             signal = 0.0
             confidence = 0.3
-            
+
         summary = f"Price at ${current_price:.2f} is {status} ({side}) relative to Value Area."
         reasoning = (
             f"VAH: ${profile['vah']:.2f}, VAL: ${profile['val']:.2f}, POC: ${profile['poc']:.2f}. "

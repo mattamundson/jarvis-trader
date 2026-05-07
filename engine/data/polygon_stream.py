@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from collections.abc import Coroutine
-from typing import Optional, List, Callable, Dict, Union
+from typing import Callable, Dict, List, Optional, Union
 
 try:
     import websockets
@@ -31,7 +31,7 @@ _SubscriberT = Union[Callable[[Dict], None], Callable[[Dict], Coroutine]]
 class PolygonStreamer:
     # Using the standard stocks cluster for equities & ETFs
     WS_URL = "wss://socket.polygon.io/stocks"
-    
+
     _RECONNECT_DELAY_INITIAL = 5    # seconds
     _RECONNECT_DELAY_MAX = 300      # cap at 5 minutes
     _RECONNECT_MULTIPLIER = 2
@@ -72,7 +72,7 @@ class PolygonStreamer:
                 logger.info(f"[POLYGON-WS] Connecting to {self.WS_URL}...")
                 async with websockets.connect(self.WS_URL) as ws:
                     self.connection = ws
-                    
+
                     # Authenticate
                     auth_message = {"action": "auth", "params": self.api_key}
                     await ws.send(json.dumps(auth_message))
@@ -98,7 +98,7 @@ class PolygonStreamer:
                     await ws.send(json.dumps(sub_message))
                     sub_response = await ws.recv()
                     logger.info(f"[POLYGON-WS] Sub Response: {sub_response}")
-                    
+
                     # Listen indefinitely
                     while self.running:
                         message = await ws.recv()

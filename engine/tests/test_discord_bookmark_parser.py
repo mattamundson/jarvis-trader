@@ -26,7 +26,6 @@ from discord.models import Bookmark
 from discord.parser import CHANNEL_MAP
 from discord.storage import init_tables, insert_bookmark
 
-
 JARVIS_CHANNEL = "1490851279180660819"
 
 
@@ -397,6 +396,7 @@ def test_process_file_backfills_context_on_second_import():
     populate those fields via UPDATE, even though INSERT OR IGNORE skips the row.
     """
     import json
+
     from discord.parser import process_file
 
     sample_messages = [

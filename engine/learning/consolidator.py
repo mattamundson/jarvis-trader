@@ -233,7 +233,7 @@ class TradingMemoryConsolidator:
                 new_win = existing["win_count"] + pattern["win_count"]
                 new_loss = existing["loss_count"] + pattern["loss_count"]
                 new_win_rate = round(new_win / (new_win + new_loss), 3) if (new_win + new_loss) > 0 else 0.0
-                
+
                 self._db.execute(
                     "UPDATE trading_patterns SET win_count=?, loss_count=?, win_rate=?, avg_return=?, "
                     "sample_count=win_count+loss_count, last_seen=?, is_active=1 WHERE pattern_hash=?",

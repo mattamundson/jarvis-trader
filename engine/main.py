@@ -594,10 +594,10 @@ async def lifespan(app: FastAPI):
     # JARVIS Super-Engine: Initialize ArbScout and RegimeGuard once data_manager is ready
     arb_scout = ArbScout(polymarket_connector=polymarket, data_manager=data_manager)
     regime_guard = RegimeGuard(data_manager=data_manager)
-    
+
     # Add initial pairs for cross-market monitoring
     arb_scout.add_pair("0x...", "MES") 
-    
+
     # Update super-engine injection with all components now ready
     inject_super_engine({
         "polymarket": polymarket,
@@ -907,7 +907,7 @@ async def lifespan(app: FastAPI):
                 misfire_grace_time=300,
             )
             logger.info("⏰ Watchlist auto-scan registered — every 30min (9:30am-4pm CT weekdays)")
-            
+
             # HB-3: Decouple initial scan from lifespan (<10s boot constraint)
             async def delayed_watchlist_scan():
                 await asyncio.sleep(10)
@@ -916,7 +916,7 @@ async def lifespan(app: FastAPI):
                     await run_watchlist_analysis()
                 except Exception as e:
                     logger.error(f"Initial watchlist scan failed: {e}")
-            
+
             asyncio.create_task(delayed_watchlist_scan())
         else:
             logger.warning(

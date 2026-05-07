@@ -346,7 +346,7 @@ async def check_confluence(
         import httpx
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(
-                f"http://localhost:8010/decisions/recent",
+                "http://localhost:8010/decisions/recent",
                 params={"limit": 5},
             )
             if resp.status_code == 200:

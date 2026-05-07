@@ -23,15 +23,15 @@ import datetime as _dt
 import logging
 import os
 import uuid
-from pathlib import Path
 import zoneinfo
 from datetime import datetime, timezone
-from typing import Any, Optional, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from database import repository
 from analysis.regime_engine import RegimeEngine
+from database import repository
 
 try:
     from profiling.pipeline_profiler import PipelineProfiler
@@ -57,7 +57,7 @@ except Exception:  # pragma: no cover — optional dependency
     _WA_AVAILABLE = False
 
 try:
-    from analysis.hidden_pivots import full_hidden_pivots_scan, HPScanResult
+    from analysis.hidden_pivots import HPScanResult, full_hidden_pivots_scan
 
     _HP_AVAILABLE = True
 except Exception:  # pragma: no cover — optional dependency
@@ -627,8 +627,9 @@ class TradingPipeline:
 
         # ── A1: Wire IBLevelProvider — Discord IB report levels ──────────────
         try:
-            from discord.ib_levels import IBLevelProvider
             from datetime import date as _date
+
+            from discord.ib_levels import IBLevelProvider
             _ib_provider = IBLevelProvider()
             _ib_data = _ib_provider.get_levels(symbol, _date.today())
             if _ib_data:
@@ -1349,10 +1350,10 @@ class TradingPipeline:
         df = None
         if _data_mgr:
             df = await _data_mgr.get_bars(symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures)
-        
+
         regime_status = self._regime_engine.classify(df) if df is not None else None
         if regime_status:
-            logger.info(f"[Pipeline] %s — Regime classified as %s (%s)", symbol, regime_status.regime.value, regime_status.description)
+            logger.info("[Pipeline] %s — Regime classified as %s (%s)", symbol, regime_status.regime.value, regime_status.description)
 
         # Stage 1a: Run technical analyst first to extract price+ATR for Corey proximity boost
         technical_coro = self._call_agent_analyze(

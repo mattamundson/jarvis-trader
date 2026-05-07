@@ -15,7 +15,8 @@ from api.models import (
     RedditSentimentResponse,
     TechnicalAnalysisResponse,
 )
-from backtest.indicators import compute_vwap, stc as compute_stc
+from backtest.indicators import compute_vwap
+from backtest.indicators import stc as compute_stc
 
 logger = logging.getLogger(__name__)
 

@@ -24,10 +24,10 @@ from discord.models import Bookmark
 from discord.storage import init_tables, insert_bookmark
 from scripts.render_bookmarks_to_vault import (
     github_slug,
-    x_post_slug,
     other_slug,
     render_page_for_bookmark,
     render_vault,
+    x_post_slug,
 )
 
 JARVIS_CHANNEL = "1490851279180660819"

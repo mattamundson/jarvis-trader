@@ -165,7 +165,7 @@ def main():
         print(f"  WARNING: {unmatched} trades could not be matched to OHLCV bars", flush=True)
 
     # Bucket by regime_type
-    print(f"\n=== Decomposition by RegimeClassifier label ===", flush=True)
+    print("\n=== Decomposition by RegimeClassifier label ===", flush=True)
     print(f"{'regime':>12}  {'n':>4}  {'PF':>6}  {'WR%':>5}  {'Sharpe':>7}  {'avg_pnl':>8}  {'ret%':>7}", flush=True)
     regime_stats = {}
     for regime in ["TRENDING", "RANGING", "VOLATILE", "UNKNOWN"]:
@@ -178,7 +178,7 @@ def main():
               f"{s['sharpe']:>7.2f}  ${s['avg_pnl']:>7.2f}  {s['ret_pct']:>+7.2f}", flush=True)
 
     # Bucket by ADX strength
-    print(f"\n=== Decomposition by ADX strength ===", flush=True)
+    print("\n=== Decomposition by ADX strength ===", flush=True)
     print(f"{'adx_bucket':>15}  {'n':>4}  {'PF':>6}  {'WR%':>5}  {'Sharpe':>7}  {'avg_pnl':>8}  {'ret%':>7}", flush=True)
     adx_stats = {}
     for label, lo, hi in ADX_BUCKETS:
@@ -206,19 +206,19 @@ def main():
         if pct > 70:
             concentrations.append(f"{regime} ({pct:.0f}%)")
 
-    print(f"\n=== Summary ===", flush=True)
+    print("\n=== Summary ===", flush=True)
     if flags:
-        print(f"CONDITIONAL FAILURES:", flush=True)
+        print("CONDITIONAL FAILURES:", flush=True)
         for f in flags:
             print(f"  - {f}", flush=True)
     else:
-        print(f"No conditional failures detected (all material buckets PF >= 1.0).", flush=True)
+        print("No conditional failures detected (all material buckets PF >= 1.0).", flush=True)
 
     if concentrations:
         print(f"REGIME CONCENTRATION: {', '.join(concentrations)}", flush=True)
-        print(f"  → Edge depends on current regime persisting. If regime shifts, edge may evaporate.", flush=True)
+        print("  → Edge depends on current regime persisting. If regime shifts, edge may evaporate.", flush=True)
     else:
-        print(f"No severe regime concentration (no regime > 70% of trades).", flush=True)
+        print("No severe regime concentration (no regime > 70% of trades).", flush=True)
 
     out_path = _ENGINE / "scripts" / "validation_reports" / \
                f"{symbol}_rank{args.rank}_regime_decomposition.json"

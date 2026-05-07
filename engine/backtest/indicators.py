@@ -391,8 +391,8 @@ def compute_adx(df: "pd.DataFrame", period: int = 14) -> "pd.DataFrame":
 
     Returns DataFrame with columns: adx, adx_norm (0-1), plus_di, minus_di
     """
-    import pandas as pd
     import numpy as np
+    import pandas as pd
 
     high = df['high']
     low = df['low']

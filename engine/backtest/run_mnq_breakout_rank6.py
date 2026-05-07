@@ -154,8 +154,8 @@ def _run_signals_and_backtest(
     ema_trend_period: int,
     atr_regime_mult: float,
 ) -> object:
-    from backtest.breakout_signals import generate_donchian_breakout_signals
     from backtest.backtester import Backtester
+    from backtest.breakout_signals import generate_donchian_breakout_signals
 
     df_sig = generate_donchian_breakout_signals(
         df,
@@ -377,7 +377,7 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MNQ BREAKOUT RANK 6 — REGIME FILTER (EMA TREND + ATR EXPANSION) ===")
+    print("=== MNQ BREAKOUT RANK 6 — REGIME FILTER (EMA TREND + ATR EXPANSION) ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo")
     print(f"Capital: ${CAPITAL:,.0f}")
     print(f"Grid: {n_combos} combos")
@@ -386,8 +386,8 @@ def run_wfo() -> dict:
     print(f"  ema_trend_period   : {EMA_TREND_PERIOD_VALUES}  (NEW: 0=disabled in ranks 1-5)")
     print(f"  atr_regime_mult    : {ATR_REGIME_MULT_VALUES}   (NEW: 0.0=disabled in ranks 1-5)")
     print(f"  vol_mult           : {VOL_MULT} (DISABLED — rank2 lesson)")
-    print(f"Root cause (ranks 1-5): IS_PF < 0.75 in W9-W15 (mid-2025 MNQ chop regime)")
-    print(f"Hypothesis: EMA+ATR regime filter suppresses chop signals -> OOS PF improves")
+    print("Root cause (ranks 1-5): IS_PF < 0.75 in W9-W15 (mid-2025 MNQ chop regime)")
+    print("Hypothesis: EMA+ATR regime filter suppresses chop signals -> OOS PF improves")
     print(f"{'=' * 70}")
 
     oos_results = []

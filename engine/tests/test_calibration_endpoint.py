@@ -79,10 +79,11 @@ def client_with_db(tmp_path, monkeypatch):
     # Patch both import paths — router imports via `analytics.*`, but the
     # debate module (loaded by _is_brier_enabled() indirectly) may use the
     # `engine.*` path. Patch both to be safe.
-    import analytics.agent_feedback as af_short
-    import analytics.ic_ensemble as ic_short
     import engine.analytics.agent_feedback as af_eng
     import engine.analytics.ic_ensemble as ic_eng
+
+    import analytics.agent_feedback as af_short
+    import analytics.ic_ensemble as ic_short
 
     monkeypatch.setattr(af_short, "DB_PATH", db_path)
     monkeypatch.setattr(af_eng, "DB_PATH", db_path)

@@ -182,8 +182,8 @@ def _run_signals_and_backtest(
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
 ) -> object:
-    from backtest.trend_signals import generate_sma_trend_signals
     from backtest.backtester import Backtester
+    from backtest.trend_signals import generate_sma_trend_signals
 
     df_sig = generate_sma_trend_signals(
         df,
@@ -240,7 +240,6 @@ def _best_is_params(
 
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
-
 
 # ---------------------------------------------------------------------------
 # Fixed-params sweep
@@ -426,7 +425,7 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MGC TREND RANK 1 -- SMA TREND FOLLOWING ON MICRO GOLD ===")
+    print("=== MGC TREND RANK 1 -- SMA TREND FOLLOWING ON MICRO GOLD ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo")
     print(f"Grid: {n_combos} combos")
     print(f"  fast_period    : {FAST_PERIOD_VALUES}  (bracket MES champion 60)")
@@ -456,7 +455,7 @@ def run_wfo() -> dict:
 
         best_params, is_result = _best_is_params(df_train, grid)
         if best_params is None:
-            print(f"  [SKIP] No valid IS params")
+            print("  [SKIP] No valid IS params")
             continue
 
         print(f"  Best IS: fast={best_params['fast']}  slow={best_params['slow']}  "
@@ -646,7 +645,7 @@ def main():
                   f"multiple testing ({n_combos} combos) deflated edge.")
         if fixed_pf < GATE_FIXED_PARAMS_MIN_PF:
             print(f"  fixed_params_min_pf={fixed_pf:.4f} -- some grid combos are lossy.")
-            print(f"  Consider rank2 with tighter grid around best combos, or M2K ORB next.")
+            print("  Consider rank2 with tighter grid around best combos, or M2K ORB next.")
         print(f"  wfo_consistency={wfo}")
 
 

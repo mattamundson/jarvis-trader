@@ -46,7 +46,7 @@ class StrategyRouter:
         Returns a modified decision dict.
         """
         action = raw_decision.get("final_action", "hold").lower()
-        
+
         # 1. Portfolio Exposure Check
         if action in ["buy", "sell"] and len(active_positions) >= self._max_positions:
             if symbol not in active_positions:
@@ -57,7 +57,7 @@ class StrategyRouter:
         if regime == MarketRegime.CRISIS:
             if action in ["buy", "sell"] and symbol not in active_positions:
                 return self._veto(raw_decision, "Regime=CRISIS. New entries blocked.")
-                
+
         elif regime == MarketRegime.VOLATILE:
             # Downgrade to Shadow Mode if not already a high-confidence signal
             confidence = raw_decision.get("trade_decision", {}).get("confidence", 0)

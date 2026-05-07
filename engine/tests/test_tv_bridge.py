@@ -8,9 +8,10 @@ Tests:
 5. _parse_label_str extracts correct string values
 6. Pine Script files exist in scripts/tradingview/pine/
 """
-import pytest
 import os
 import sys
+
+import pytest
 
 # Add engine to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

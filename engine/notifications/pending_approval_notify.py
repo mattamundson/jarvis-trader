@@ -75,7 +75,7 @@ async def notify_pending_approval_queued(
         tgt_str = f" | TGT: {float(target_price):.4f}" if target_price else ""
         conf_str = f" | Conf: {float(confidence):.2f}" if confidence else ""
         px_clean = f" @ {float(entry_price):.4f}" if entry_price else ""
-        
+
         msg = (
             f"JARVIS: {sym} {act}{px_clean}{stp_str}{tgt_str}{conf_str}\n"
             f"ID: {approval_id[:8]}…\n"

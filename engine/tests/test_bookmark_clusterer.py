@@ -34,7 +34,6 @@ from agents.bookmark_clusterer import (
 from discord.models import Bookmark
 from discord.storage import init_tables, insert_bookmark
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # parse_cluster_response
 # ──────────────────────────────────────────────────────────────────────────────

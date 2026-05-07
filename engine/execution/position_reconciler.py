@@ -31,7 +31,7 @@ class PositionReconciler:
                 return
 
             open_orders = await self.ib_gateway.get_open_orders()
-            
+
             # Group active STP orders by symbol
             stp_orders = {}
             for o in open_orders:
@@ -57,7 +57,7 @@ class PositionReconciler:
                     logger.warning(f"[RECONCILER] Orphaned position detected: {symbol} Qty: {quantity}")
                     await self._handle_orphaned_position(symbol, quantity, avg_cost)
                     orphaned += 1
-            
+
             if orphaned == 0:
                 logger.info("[RECONCILER] All open positions are bracketed correctly.")
 
@@ -73,7 +73,7 @@ class PositionReconciler:
         else:
             stop_price = avg_cost * (1 + emergency_pct)
             action = "BUY"
-            
+
         # Tick size rounding (assume minimum 0.25 tick size for CME micros)
         stop_price = round(stop_price / 0.25) * 0.25
 
@@ -86,7 +86,7 @@ class PositionReconciler:
                 order_type="STP",
                 aux_price=stop_price,
             )
-            
+
             # Send notification
             try:
                 from notifications.whatsapp import get_notifier
@@ -98,6 +98,6 @@ class PositionReconciler:
                     )
             except ImportError:
                 pass
-                
+
         except Exception as e:
             logger.error(f"[RECONCILER] Failed to attach emergency stop for {symbol}: {e}")

@@ -20,6 +20,7 @@ def test_hard_cap_clamps_env_override_above_2(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("MAX_CONTRACTS_PER_INSTRUMENT", "5")
     # Need to force-reload config module since it's cached
     import importlib
+
     import config
 
     importlib.reload(config)
@@ -31,6 +32,7 @@ def test_hard_cap_clamps_extreme_env_value(monkeypatch: pytest.MonkeyPatch) -> N
     """Even an absurd env override is clamped."""
     monkeypatch.setenv("MAX_CONTRACTS_PER_INSTRUMENT", "999")
     import importlib
+
     import config
 
     importlib.reload(config)
@@ -42,6 +44,7 @@ def test_hard_cap_passes_through_valid_value(monkeypatch: pytest.MonkeyPatch) ->
     """A value of 2 should pass through unchanged."""
     monkeypatch.setenv("MAX_CONTRACTS_PER_INSTRUMENT", "2")
     import importlib
+
     import config
 
     importlib.reload(config)

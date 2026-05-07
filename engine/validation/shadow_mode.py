@@ -37,14 +37,14 @@ class ShadowModeTracker:
     ) -> str:
         """Log a shadow entry and return the shadow_trade_id."""
         shadow_id = f"shadow_{uuid.uuid4().hex[:8]}"
-        
+
         strategy_params = {
             "strategy_name": strategy_name,
             "is_shadow": True,
             "reasoning": reasoning,
             "original_quantity": quantity
         }
-        
+
         try:
             self._db.insert_paper_trade(
                 trade_id=shadow_id,
@@ -92,19 +92,19 @@ class ShadowModeTracker:
             t for t in trades 
             if isinstance(t.get("strategy_params"), dict) and t["strategy_params"].get("is_shadow")
         ]
-        
+
         if strategy_name:
             shadow_trades = [
                 t for t in shadow_trades 
                 if t["strategy_params"].get("strategy_name") == strategy_name
             ]
-            
+
         if not shadow_trades:
             return {"count": 0, "total_pnl": 0.0}
-            
+
         pnl_vals = [float(t.get("pnl", 0.0) or 0.0) for t in shadow_trades]
         wins = [p for p in pnl_vals if p > 0]
-        
+
         return {
             "count": len(shadow_trades),
             "total_pnl": sum(pnl_vals),

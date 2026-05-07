@@ -24,6 +24,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -130,8 +131,8 @@ def _run_signals_and_backtest(
     vol_mult: float,
     stop_atr_mult: float,
 ) -> BacktestResult:  # noqa: F821 - lazy: imported inside fn body
-    from backtest.breakout_signals import generate_donchian_breakout_signals
     from backtest.backtester import Backtester
+    from backtest.breakout_signals import generate_donchian_breakout_signals
 
     df_sig = generate_donchian_breakout_signals(
         df,

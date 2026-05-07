@@ -74,14 +74,14 @@ class WhatsAppNotifier:
                     data = resp.json()
                     logger.info(f"WhatsApp sent SID={data.get('sid')}")
                     return True
-                
+
                 # Diagnostic for 401 Unauthorized
                 error_msg = f"Twilio error {resp.status_code}: {resp.text[:200]}"
                 if resp.status_code == 401:
                     sid_status = "HIDDEN" if self.account_sid and self.account_sid.startswith("AC") else "INVALID_OR_MISSING_AC_PREFIX"
                     token_status = "PRESENT" if self.auth_token else "MISSING"
                     error_msg += f" | SID Status: {sid_status} | Token Status: {token_status}"
-                
+
                 logger.warning(error_msg)
                 return False
         except Exception as e:

@@ -6,11 +6,11 @@ Ensures that 'Gate v2' verdicts remain accurate under shifting market friction.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-import argparse
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cost_propagation")
@@ -19,16 +19,16 @@ def recalculate_stats(pnls: List[float]) -> Dict[str, float]:
     """Recalculate aggregate stats from a list of PnLs."""
     if not pnls:
         return {"pf": 0.0, "net_pnl": 0.0, "expectancy": 0.0}
-    
+
     wins = [p for p in pnls if p > 0]
     losses = [p for p in pnls if p < 0]
     gross_win = sum(wins)
     gross_loss = abs(sum(losses))
-    
+
     pf = gross_win / gross_loss if gross_loss > 0 else 99.9  # cap inf
     net_pnl = sum(pnls)
     expectancy = net_pnl / len(pnls)
-    
+
     return {
         "pf": round(pf, 3),
         "net_pnl": round(net_pnl, 2),
@@ -59,9 +59,9 @@ def propagate_costs(
     # Most JARVIS backtest results store raw PnL after costs.
     # We need to know if the PnL is in POINTS or DOLLARS.
     # Usually it is in DOLLARS for the 'results' array.
-    
+
     cost_delta = (new_commission + new_slippage) - (old_commission + old_slippage)
-    
+
     results = data.get("results", [])
     logger.info("Propagating cost delta -$%.2f per trade across %d combinations in %s", 
                 cost_delta, len(results), file_path.name)
@@ -70,14 +70,14 @@ def propagate_costs(
         trades = combo.get("trades", [])
         if not trades:
             continue
-        
+
         new_pnls = []
         for trade in trades:
             # Adjust the PnL of each trade
             # Note: We subtract the delta because higher cost = lower PnL
             trade["pnl"] = round(trade["pnl"] - cost_delta, 2)
             new_pnls.append(trade["pnl"])
-        
+
         # Update combo stats
         stats = recalculate_stats(new_pnls)
         combo["pf"] = stats["pf"]

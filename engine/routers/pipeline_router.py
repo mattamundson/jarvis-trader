@@ -874,6 +874,6 @@ async def get_shadow_metrics(strategy_name: Optional[str] = None):
     """Fetch performance metrics for shadow trades."""
     if _sdk_pipeline is None:
         raise HTTPException(503, "SDK pipeline not available")
-    
+
     metrics = _sdk_pipeline._shadow_tracker.get_shadow_performance(strategy_name=strategy_name)
     return metrics

@@ -927,17 +927,18 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
     import sqlite3 as _sqlite
 
     try:
-        from analytics.agent_feedback import AGENT_NAMES, DB_PATH as FB_DB_PATH
-        from analytics.ic_ensemble import (
-            BRIER_NEUTRAL,
-            BrierCalibrationTracker,
-            ICWeightedEnsemble,
-            DEFAULT_WINDOW_DAYS,
-            MIN_TRADES_FOR_IC,
-        )
         # Pull live blend alpha from debate module so the endpoint tracks the
         # constant if it's ever tuned per-regime.
         from agents.debate import BRIER_BLEND_ALPHA, _is_brier_enabled
+        from analytics.agent_feedback import AGENT_NAMES
+        from analytics.agent_feedback import DB_PATH as FB_DB_PATH
+        from analytics.ic_ensemble import (
+            BRIER_NEUTRAL,
+            DEFAULT_WINDOW_DAYS,
+            MIN_TRADES_FOR_IC,
+            BrierCalibrationTracker,
+            ICWeightedEnsemble,
+        )
     except Exception as exc:
         logger.error("[Calibration] import failed: %s", exc)
         raise HTTPException(status_code=503, detail=f"calibration deps unavailable: {exc}") from exc
@@ -966,7 +967,9 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
     total_outcomes = 0
     try:
         if FB_DB_PATH.exists():
-            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+            from datetime import datetime as _dt
+            from datetime import timedelta as _td
+            from datetime import timezone as _tz
             cutoff = (_dt.now(_tz.utc) - _td(days=DEFAULT_WINDOW_DAYS)).isoformat()
             with _sqlite.connect(str(FB_DB_PATH)) as conn:
                 total_outcomes = conn.execute(

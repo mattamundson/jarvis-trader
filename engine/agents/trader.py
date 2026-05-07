@@ -22,8 +22,8 @@ import httpx
 from utils.position_sizing import (
     INSTRUMENT_MULTIPLIERS,
     PositionSizeResult,
-    calculate_position_size,
     calculate_half_kelly_size,
+    calculate_position_size,
     compute_rolling_edge,
 )
 
@@ -332,7 +332,7 @@ class TraderAgent:
         # result if PositionSizer is unavailable or raises.
         if _POSITION_SIZER_AVAILABLE and atr and atr > 0:
             try:
-                from utils.position_sizing import INSTRUMENT_MULTIPLIERS, _DEFAULT_MULTIPLIER
+                from utils.position_sizing import _DEFAULT_MULTIPLIER, INSTRUMENT_MULTIPLIERS
 
                 point_value = INSTRUMENT_MULTIPLIERS.get(symbol, _DEFAULT_MULTIPLIER)
                 sizer = _PositionSizer(

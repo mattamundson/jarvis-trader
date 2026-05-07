@@ -35,7 +35,7 @@ from pydantic import BaseModel
 
 from backtest.backtester import BacktestResult, Trade
 from backtest.monte_carlo import run_monte_carlo
-from paper.validation_gate_config import PAPER_VALIDATION_GATES, APPROVED_PAPER_SYMBOLS
+from paper.validation_gate_config import APPROVED_PAPER_SYMBOLS, PAPER_VALIDATION_GATES
 from paper.validation_tracker import ValidationTracker
 
 logger = logging.getLogger(__name__)
@@ -416,7 +416,7 @@ def _check_wr_trend(rows: list[sqlite3.Row], lifetime_wr: float) -> ValidationCh
             name="WR Trend",
             status="insufficient_data",
             value=f"{len(rows)} trades",
-            threshold=f"Need 20 trades for trend analysis",
+            threshold="Need 20 trades for trend analysis",
             message=f"Insufficient trades for trend analysis ({len(rows)}/20)",
         )
 

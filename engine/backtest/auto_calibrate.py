@@ -10,10 +10,10 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
-from backtest.walk_forward import WalkForwardValidator
 from backtest.data_loader import BacktestDataLoader
+from backtest.walk_forward import WalkForwardValidator
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ async def run_weekly_calibration() -> None:
 
     symbols = ["MCL", "MNQ"]
     timeframes = ["15m", "1h"]
-    
+
     loader = BacktestDataLoader()
     end_date = datetime.now()
     start_date = end_date - timedelta(days=120)  # Roughly 4 months
@@ -43,7 +43,7 @@ async def run_weekly_calibration() -> None:
     validator = WalkForwardValidator(train_months=3, test_months=1, step_months=1)
 
     adaptive_results: Dict[str, Any] = {}
-    
+
     for symbol in symbols:
         adaptive_results[symbol] = {}
         for tf in timeframes:
@@ -53,9 +53,9 @@ async def run_weekly_calibration() -> None:
                 if df is None or df.empty:
                     logger.warning(f"No data for {symbol} - {tf}, skipping.")
                     continue
-                
+
                 multiplier = loader.get_multiplier(symbol)
-                
+
                 result_payload = validator.run(
                     df=df,
                     symbol=symbol,
@@ -66,13 +66,13 @@ async def run_weekly_calibration() -> None:
                     volume_filter=False,
                     mtf_filter=False
                 )
-                
+
                 # Extract best params from the most recent valid window
                 windows = result_payload.get("windows", [])
                 if windows:
                     latest_window = windows[-1]
                     best_params = latest_window.get("best_params", {})
-                    
+
                     if best_params:
                         adaptive_results[symbol][tf] = {
                             "stc_os": best_params.get("stc_oversold", 15.0),

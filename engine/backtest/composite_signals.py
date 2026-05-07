@@ -216,27 +216,27 @@ def generate_composite_signals(
         high = result["high"]
         low = result["low"]
         close_s = result["close"]
-        
+
         # True Range
         tr1 = high - low
         tr2 = (high - close_s.shift(1)).abs()
         tr3 = (low - close_s.shift(1)).abs()
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        
+
         # Directional Movement
         up_move = high.diff()
         down_move = -low.diff()
         plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
         minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-        
+
         # Smooth with Wilder EMA (alpha = 1/period)
         atr_wilder = tr.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
         plus_di = 100 * pd.Series(plus_dm, index=result.index).ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr_wilder
         minus_di = 100 * pd.Series(minus_dm, index=result.index).ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr_wilder
-        
+
         dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
         adx = dx.ewm(alpha=1/period, min_periods=period, adjust=False).mean().fillna(0)
-        
+
         result["adx"] = adx.round(2)
         adx_pass = adx >= adx_threshold
         logger.info(f"{symbol}: ADX filter — {adx_pass.sum()} / {len(adx_pass)} bars pass ADX≥{adx_threshold} ({adx_pass.mean():.1%})")

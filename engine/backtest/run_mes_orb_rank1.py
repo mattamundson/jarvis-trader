@@ -296,7 +296,6 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple:
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
 
-
 # ---------------------------------------------------------------------------
 # Fixed-params sweep
 # ---------------------------------------------------------------------------

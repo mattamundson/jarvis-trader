@@ -24,7 +24,6 @@ from typing import Any, Dict, Optional, Tuple
 
 import pytest
 
-
 # ── Re-implementation of the guard logic from main.py ──────────────────────
 
 _PLAUSIBLE_PRICE_RANGE = {

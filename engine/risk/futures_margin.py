@@ -1,6 +1,5 @@
 from typing import Dict
 
-
 # CME maintenance margin table (per contract, USD).
 # Values are IBKR intraday maintenance requirements — refresh periodically.
 FUTURES_MARGIN_TABLE: Dict[str, float] = {

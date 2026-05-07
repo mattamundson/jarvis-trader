@@ -17,12 +17,11 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.trader import (  # noqa: E402
-    TraderAgent,
     TradeDecision,
+    TraderAgent,
     _detect_corey_contradiction,
 )
 from utils.position_sizing import PositionSizeResult  # noqa: E402
-
 
 # ── Shared factories ───────────────────────────────────────────────────────────
 

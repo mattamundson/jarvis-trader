@@ -24,10 +24,10 @@ Aligned with jarvis-trader thresholds:
 """
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
 from typing import Optional
 
+import numpy as np
+import pandas as pd
 
 # Match jarvis-trader vix_overlay.py thresholds exactly
 VIX_LEVEL_SCORES = {

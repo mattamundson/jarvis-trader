@@ -45,7 +45,6 @@ from experiments.mes_session_recorder import (
     record_session,
 )
 
-
 # ── Test fixtures / fakes ────────────────────────────────────────────────────
 
 

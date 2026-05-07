@@ -1,6 +1,7 @@
 import asyncio
 
 from agents import trader as trader_module
+from agents.advisor_client import AdvisorRefinement
 from agents.trader import TradeDecision, TraderAgent
 from risk.tool_inspector import (
     InspectionResult,
@@ -11,7 +12,6 @@ from risk.tool_inspector import (
     VolatilityInspector,
 )
 from utils.position_sizing import PositionSizeResult
-from agents.advisor_client import AdvisorRefinement
 
 
 class DummyLLM:

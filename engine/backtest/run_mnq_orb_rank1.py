@@ -273,7 +273,6 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple:
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
 
-
 # ---------------------------------------------------------------------------
 # Fixed-params sweep
 # ---------------------------------------------------------------------------
@@ -474,7 +473,7 @@ def run_wfo() -> dict:
     n_combos = len(grid)  # = 16
 
     print(f"\n{'=' * 70}")
-    print(f"=== MNQ ORB RANK 1 — OPENING RANGE BREAKOUT, FIRST EVALUATION ===")
+    print("=== MNQ ORB RANK 1 — OPENING RANGE BREAKOUT, FIRST EVALUATION ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo")
     print(f"Grid: {n_combos} combos")
     print(f"  volume_filter     : {VOLUME_FILTER_VALUES}")
@@ -482,10 +481,10 @@ def run_wfo() -> dict:
     print(f"  min_or_range_pct  : {MIN_OR_RANGE_PCT_VALUES}")
     print(f"  capital           : ${CAPITAL:,.0f}  (backtest sizing; live gate in engine routing)")
     print(f"  multiplier        : ${MULTIPLIER:.1f}/point  (MNQ Micro Nasdaq-100)")
-    print(f"  signal frequency  : ~1-2 per RTH day (~21-42 per 1-month OOS window)")
+    print("  signal frequency  : ~1-2 per RTH day (~21-42 per 1-month OOS window)")
     print(f"ALT thresholds: dsr>={GATE_DSR_ALT}, wfo in {GATE_WFO_CONSISTENCY_VALUES}, "
           f"fixed>={GATE_FIXED_PARAMS_MIN_PF}, mc_dd<={GATE_MC_DD_ALT * 100:.0f}%")
-    print(f"MES R11 baseline: pf_ci_lower=2.156, dsr=1.0, wfo=STRONG, mc_dd=0.81%")
+    print("MES R11 baseline: pf_ci_lower=2.156, dsr=1.0, wfo=STRONG, mc_dd=0.81%")
     print(f"{'=' * 70}")
 
     oos_results    = []
@@ -749,11 +748,11 @@ def main():
             print(f"  dsr={dsr_val:.6f} below ALT floor {GATE_DSR_ALT}")
         if wfo not in GATE_WFO_CONSISTENCY_VALUES:
             print(f"  wfo_consistency={wfo} — MNQ ORB shows regime instability")
-            print(f"  Consider rank2 with narrower OR range or higher min_or_range_pct filter")
+            print("  Consider rank2 with narrower OR range or higher min_or_range_pct filter")
         if fpmf < GATE_FIXED_PARAMS_MIN_PF:
             print(f"  fixed_params_min_pf={fpmf:.4f} — no parameter set wins consistently on full dataset")
-            print(f"  Try rank2: wider min_or_range_pct values (0.0015, 0.002) to filter micro-range traps")
-        print(f"  If ORB fails: consider M2K (Russell 2000) — different regime from Nasdaq")
+            print("  Try rank2: wider min_or_range_pct values (0.0015, 0.002) to filter micro-range traps")
+        print("  If ORB fails: consider M2K (Russell 2000) — different regime from Nasdaq")
 
 
 if __name__ == "__main__":

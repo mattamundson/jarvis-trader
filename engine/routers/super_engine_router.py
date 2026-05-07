@@ -2,9 +2,10 @@
 Super-Engine Router — status and health of advanced JARVIS components.
 """
 
-from fastapi import APIRouter, HTTPException
 import logging
 from datetime import datetime
+
+from fastapi import APIRouter, HTTPException
 
 logger = logging.getLogger("jarvis_trader.routers.super_engine")
 
@@ -46,7 +47,7 @@ async def get_engine_status():
                 status[key]["last_check"] = instance.last_check.isoformat() if instance.last_check else None
         else:
             status[key] = {"active": False}
-    
+
     return status
 
 @router.get("/polymarket/balance")
@@ -55,7 +56,7 @@ async def get_poly_balance():
     poly = registry.get("polymarket")
     if not poly:
         raise HTTPException(status_code=503, detail="Polymarket connector not active")
-    
+
     try:
         # In a real implementation, we'd call the exchange API
         return {"balance": 1000.0, "currency": "USDC", "chain": "Polygon"}

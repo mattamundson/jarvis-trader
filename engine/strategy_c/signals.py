@@ -27,10 +27,10 @@ Walk-forward validated momentum lookbacks (from jarvis-trader WF harness):
 """
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
 from typing import Optional
 
+import numpy as np
+import pandas as pd
 
 # Default universe — can be overridden in StrategyCConfig
 RISK_ON_CORE = ["QQQ", "SPY", "EFA"]

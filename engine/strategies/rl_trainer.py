@@ -21,6 +21,7 @@ from typing import Optional
 
 import pandas as pd
 
+from discord.signal_context import DiscordSignalContext
 from strategies.rl_agent import RLTradingAgent
 from strategies.rl_config import (
     DEFAULT_INTERVAL,
@@ -32,7 +33,6 @@ from strategies.rl_config import (
     TRAIN_LOOKBACK_DAYS,
     VALIDATION_GATES,
 )
-from discord.signal_context import DiscordSignalContext
 from strategies.rl_environment import build_env, prepare_dataframe
 
 logger = logging.getLogger(__name__)

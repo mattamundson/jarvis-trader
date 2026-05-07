@@ -172,8 +172,8 @@ def _run_signals_and_backtest(
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
 ) -> object:
-    from backtest.trend_signals import generate_sma_trend_signals
     from backtest.backtester import Backtester
+    from backtest.trend_signals import generate_sma_trend_signals
 
     df_sig = generate_sma_trend_signals(
         df,
@@ -235,7 +235,6 @@ def _best_is_params(
 
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
-
 
 # ---------------------------------------------------------------------------
 # Fixed-params sweep (ALT metric: fixed_params_min_pf)
@@ -490,7 +489,7 @@ def run_wfo() -> dict:
     n_combos = len(grid)
 
     print(f"\n{'=' * 70}")
-    print(f"=== MES TREND RANK 10 — DROP slow=210 OUTLIER (PF 0.686 with fast=50) ===")
+    print("=== MES TREND RANK 10 — DROP slow=210 OUTLIER (PF 0.686 with fast=50) ===")
     print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo")
     print(f"Grid: {n_combos} combos")
     print(f"  fast_period     : {FAST_PERIOD_VALUES}  (champion: 50)")
@@ -498,7 +497,7 @@ def run_wfo() -> dict:
     print(f"  atr_trail_mult  : {ATR_TRAIL_MULT_VALUES}  (champion: 2.0, fixed)")
     print(f"  min_oos_trades  : {MIN_OOS_TRADES_PER_WINDOW}  (was 5 — SMA generates 1-3 trades/window)")
     print(f"  min_rv_annualized: {MIN_RV_ANNUALIZED} (disabled — baseline comparison with rank7)")
-    print(f"Rank 9 baseline: dsr=0.999, rolling_wfo=STRONG, fixed_params=0.686 (FAIL), mc_dd=0.87%")
+    print("Rank 9 baseline: dsr=0.999, rolling_wfo=STRONG, fixed_params=0.686 (FAIL), mc_dd=0.87%")
     print(f"ALT thresholds : dsr>={GATE_DSR_ALT}, wfo in {GATE_WFO_CONSISTENCY_VALUES}, fixed>={GATE_FIXED_PARAMS_MIN_PF}, mc_dd<={GATE_MC_DD_ALT * 100:.0f}%")
     print(f"{'=' * 70}")
 
@@ -567,7 +566,7 @@ def run_wfo() -> dict:
     # Fixed-params sweep on full dataset (ALT metric: fixed_params_min_pf)
     # -----------------------------------------------------------------------
     print(f"\n[MES-R10] Running fixed-params sweep on full dataset ({n_combos} tight combos)...")
-    print(f"  (slow=210 removed — rank9 had PF 0.686 for fast=50+slow=210 combo)")
+    print("  (slow=210 removed — rank9 had PF 0.686 for fast=50+slow=210 combo)")
     fixed_params_metrics = _run_fixed_params_sweep(df, grid)
     print(f"  fixed_params_min_pf  = {fixed_params_metrics['fixed_params_min_pf']:.4f}  "
           f"(need >= {GATE_FIXED_PARAMS_MIN_PF}, rank9 was 0.686 FAIL)")
@@ -587,7 +586,7 @@ def run_wfo() -> dict:
     champion_params = {"fast": most_selected[0], "slow": most_selected[1], "atr_trail_mult": most_selected[2]}
     print(f"\n[MES-R10] Running cost sweep (champion: fast={champion_params['fast']}, "
           f"slow={champion_params['slow']}, trail={champion_params['atr_trail_mult']})...")
-    print(f"  (rank9 survived through 'pessimistic' — baseline to match)")
+    print("  (rank9 survived through 'pessimistic' — baseline to match)")
     cost_sweep_metrics = _run_cost_sweep(df, champion_params)
     print(f"  cost_survives_through = {cost_sweep_metrics['cost_survives_through']}  "
           f"(need >= 'realistic' for ALT gate)")
@@ -765,7 +764,7 @@ def main():
             print(f"  cost_survives_through={cost} does not meet 'realistic' minimum")
 
     # Detailed per-metric report vs rank9 baseline
-    print(f"\n  Metric comparison vs rank9:")
+    print("\n  Metric comparison vs rank9:")
     checks = [
         ("dsr",                    gate.get("dsr", 0),                  GATE_DSR_ALT,               ">=",  0.999),
         ("wfo_consistency",        gate.get("wfo_consistency", "?"),     None,                       None,  "STRONG"),

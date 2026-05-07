@@ -1,5 +1,6 @@
 """Tests for US-2504 — discord_context wired into rl_trainer build_env calls."""
 import inspect
+
 import numpy as np
 import pandas as pd
 import pytest

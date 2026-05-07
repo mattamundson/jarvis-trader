@@ -3,6 +3,7 @@
 All tests use tmp_path (pytest fixture) for isolated SQLite files.
 """
 import pytest
+
 from db.session_manager import SessionManager
 
 

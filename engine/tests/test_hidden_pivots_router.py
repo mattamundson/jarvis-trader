@@ -4,14 +4,15 @@ Uses FastAPI TestClient with a mocked data_manager so no network calls are made.
 Auth is handled by main.py middleware, not the router — standalone tests skip auth checks.
 """
 from unittest.mock import AsyncMock, MagicMock
+
 import numpy as np
 import pandas as pd
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from routers.hidden_pivots_router import router as hp_router, inject_dependencies
-
+from routers.hidden_pivots_router import inject_dependencies
+from routers.hidden_pivots_router import router as hp_router
 
 # ─── Fake data helpers ───────────────────────────────────────────────────────
 

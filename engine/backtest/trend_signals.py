@@ -130,25 +130,25 @@ def generate_sma_trend_signals(
                 rv_i = rv_ann.iloc[i]
                 if pd.isna(rv_i) or float(rv_i) < min_rv_annualized:
                     continue  # leave entry_signal as NO_TRADE
-            
+
             entry_signal[i] = "ENTRY_NOW"
             initial_stop = price - atr_trail_mult * atr_i
             stop_level[i]  = initial_stop
             current_trail = initial_stop
             in_trade = True
-            
+
             target_1[i]    = price + _T1_MULT * atr_i
             target_2[i]    = price + _T2_MULT * atr_i
             target_3[i]    = price + _T3_MULT * atr_i
-        
+
         elif in_trade:
             # Update trail: only moves UP
             new_trail = price - atr_trail_mult * atr_i
             if new_trail > current_trail:
                 current_trail = new_trail
-            
+
             trailing_stop[i] = current_trail
-            
+
             # Exit check
             if low_i <= current_trail or cross_dn.iloc[i]:
                 exit_signal[i] = "EXIT_NOW"

@@ -5,10 +5,12 @@ High-performance, clean-API technical indicators.
 Focuses on event-driven calculation safety and performance.
 """
 
+from typing import List, Union
+
 import numpy as np
 import pandas as pd
 import pandas_ta as ta
-from typing import Union, List
+
 
 class JesseIndicators:
     @staticmethod

@@ -7,12 +7,13 @@ Exposes Volume Profile and Harmonic patterns for the dashboard.
 from __future__ import annotations
 
 import logging
-from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any
+from typing import Any, Dict
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from analysis.breakout_engine import VolumeProfileEngine
 from analysis.harmonics_engine import HarmonicEngine
-from analysis.regime_engine import RegimeEngine, MarketRegime
+from analysis.regime_engine import MarketRegime, RegimeEngine
 from data.market_data import MarketDataManager
 
 logger = logging.getLogger("jarvis_trader.routers.institutional")
@@ -34,19 +35,19 @@ async def get_institutional_profile(symbol: str, timeframe: str = "15m"):
 
     symbol = symbol.upper()
     is_futures = not symbol.startswith(("SPY", "QQQ", "IWM"))
-    
+
     # Fetch data
     df = await _data_manager.get_bars(
         symbol, lookback_days=10, timeframe=timeframe, is_futures=is_futures
     )
-    
+
     if df.empty:
         raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
 
     # Volume Profile
     vp_engine = VolumeProfileEngine()
     profile = vp_engine.calculate_profile(df)
-    
+
     # Harmonics
     h_engine = HarmonicEngine()
     patterns = h_engine.detect_patterns(df)
@@ -54,7 +55,7 @@ async def get_institutional_profile(symbol: str, timeframe: str = "15m"):
     # Regime
     r_engine = RegimeEngine()
     regime = r_engine.classify(df)
-    
+
     # Format patterns for JSON
     pattern_data = []
     for p in patterns:
@@ -67,7 +68,7 @@ async def get_institutional_profile(symbol: str, timeframe: str = "15m"):
         })
 
     current_price = df["close"].iloc[-1]
-    
+
     return {
         "symbol": symbol,
         "current_price": current_price,

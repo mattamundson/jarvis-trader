@@ -402,6 +402,7 @@ async def get_briefing(
     5-minute TTL cache at the facade layer.
     """
     from datetime import date as _date
+
     from discord.briefing import get_discord_briefing
 
     parsed_date = None

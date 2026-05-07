@@ -7,11 +7,13 @@ using ADX, ATR, and price action density.
 
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Any
+from typing import Any, Dict
+
+import numpy as np
+import pandas as pd
+
 
 class MarketRegime(Enum):
     TRENDING = "trending"
@@ -45,12 +47,12 @@ class RegimeEngine:
 
         # 1. ADX Calculation (Simplified)
         adx = self._calculate_adx(df)
-        
+
         # 2. Volatility (ATR Ratio)
         atr = self._calculate_atr(df)
         avg_atr = df["high"].sub(df["low"]).rolling(100).mean().iloc[-1]
         atr_ratio = atr / avg_atr if avg_atr > 0 else 1.0
-        
+
         # 3. StdDev Volatility
         vol = df["close"].pct_change().std() * np.sqrt(252) # Annualized
 
@@ -75,30 +77,30 @@ class RegimeEngine:
         high = df["high"]
         low = df["low"]
         close = df["close"]
-        
+
         plus_dm = high.diff()
         minus_dm = low.diff()
-        
+
         plus_dm[plus_dm < 0] = 0
         plus_dm[plus_dm <= minus_dm] = 0
-        
+
         minus_dm[minus_dm > 0] = 0
         minus_dm[minus_dm >= plus_dm] = 0
         minus_dm = minus_dm.abs()
-        
+
         tr = pd.concat([
             high - low,
             (high - close.shift()).abs(),
             (low - close.shift()).abs()
         ], axis=1).max(axis=1)
-        
+
         atr = tr.rolling(period).mean()
         plus_di = 100 * (plus_dm.rolling(period).mean() / atr)
         minus_di = 100 * (minus_dm.rolling(period).mean() / atr)
-        
+
         dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
         adx = dx.rolling(period).mean().iloc[-1]
-        
+
         return adx if not np.isnan(adx) else 0.0
 
     def _calculate_atr(self, df: pd.DataFrame, period: int = 14) -> float:

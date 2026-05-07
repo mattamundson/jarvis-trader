@@ -1,13 +1,14 @@
 import asyncio
+import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
+
+from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
-from alembic import context
-import os
-from dotenv import load_dotenv
 
-import sys
-from pathlib import Path
+from alembic import context
 
 # Append engine directory to sys.path so we can import 'database'
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))

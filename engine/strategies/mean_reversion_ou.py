@@ -11,9 +11,10 @@ Formula: dX_t = theta * (mu - X_t) * dt + sigma * dW_t
 from __future__ import annotations
 
 import logging
+from typing import Any, Dict, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Optional
 
 logger = logging.getLogger("jarvis_trader.strategies.mean_rev_ou")
 
@@ -40,20 +41,20 @@ class MeanReversionOU:
         # OLS
         from sklearn.linear_model import LinearRegression
         model = LinearRegression().fit(y_lag.reshape(-1, 1), y_curr)
-        
+
         alpha = model.intercept_
         beta = model.coef_[0]
-        
+
         # Discretized to Continuous parameters
         # beta = e^(-theta * dt), assume dt = 1
         theta = -np.log(beta) if beta > 0 else 0.001
         mu = alpha / (1 - beta) if abs(1 - beta) > 1e-6 else np.mean(y)
-        
+
         # Resid
         y_pred = model.predict(y_lag.reshape(-1, 1))
         sigma_eps = np.std(y_curr - y_pred)
         sigma = sigma_eps * np.sqrt(2 * theta / (1 - beta**2)) if beta < 1 else sigma_eps
-        
+
         return {
             "theta": theta,
             "mu": mu,
@@ -67,7 +68,7 @@ class MeanReversionOU:
         """
         prices = df["close"]
         current_price = prices.iloc[-1]
-        
+
         params = self.estimate_params(prices)
         if not params:
             return {"action": "hold", "confidence": 0}
@@ -83,7 +84,7 @@ class MeanReversionOU:
 
         action = "hold"
         confidence = 0.0
-        
+
         # Thresholds: |Z| > 2.0 (Extreme)
         if z_score > 2.0 and theta > 0.1: # theta check ensures it actually reverts
             action = "sell"

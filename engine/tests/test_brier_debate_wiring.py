@@ -19,7 +19,6 @@ import pytest
 
 import agents.debate as debate
 
-
 # ── Pure function: _brier_blended_signal ────────────────────────────────────
 
 

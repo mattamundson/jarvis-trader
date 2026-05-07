@@ -29,7 +29,6 @@ from execution.ib_gateway import (
     _broker_label,
 )
 
-
 # ── Constants -----------------------------------------------------------------
 
 

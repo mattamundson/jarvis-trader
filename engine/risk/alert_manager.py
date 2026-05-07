@@ -178,17 +178,17 @@ class AlertManager:
             _maybe(
                 "consecutive_losses_3",
                 (
-                    f"JARVIS ALERT | 3 CONSECUTIVE LOSSES\n"
-                    f"Position scaling factor reduced\n"
-                    f"Review open positions — consider pausing"
+                    "JARVIS ALERT | 3 CONSECUTIVE LOSSES\n"
+                    "Position scaling factor reduced\n"
+                    "Review open positions — consider pausing"
                 ),
             )
         elif consecutive_losses >= int(ALERT_THRESHOLDS["consecutive_losses_2"]):
             _maybe(
                 "consecutive_losses_2",
                 (
-                    f"JARVIS ALERT | 2 CONSECUTIVE LOSSES\n"
-                    f"Pattern forming — monitor closely"
+                    "JARVIS ALERT | 2 CONSECUTIVE LOSSES\n"
+                    "Pattern forming — monitor closely"
                 ),
             )
 

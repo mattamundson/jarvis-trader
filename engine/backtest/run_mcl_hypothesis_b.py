@@ -54,6 +54,7 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -213,8 +214,8 @@ def _run_signals_and_backtest(
     sentiment_block_bearish: bool,
     stop_atr_mult: float,
 ) -> BacktestResult:  # noqa: F821 - lazy: imported inside fn body
-    from backtest.meanrev_signals import generate_bollinger_rsi_signals
     from backtest.backtester import Backtester
+    from backtest.meanrev_signals import generate_bollinger_rsi_signals
 
     df_sig = generate_bollinger_rsi_signals(
         df,

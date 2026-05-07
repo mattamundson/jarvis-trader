@@ -26,6 +26,7 @@ if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
 import importlib.util
+
 spec = importlib.util.spec_from_file_location("mt", str(_HERE / "mes_trend_search.py"))
 mt = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mt)
@@ -116,7 +117,7 @@ def main():
         }, f, indent=2)
 
     print(f"\n=== {len(winners)} walk-forward winners (min_PF >= 1.5, n >= 10 in both) ===", flush=True)
-    print(f"\nTOP 15 by min_PF:", flush=True)
+    print("\nTOP 15 by min_PF:", flush=True)
     print(f"{'rank':>4} {'min_PF':>7} {'tr_PF':>6} {'te_PF':>6} {'tr_n':>4} {'te_n':>4} {'tr_ret':>7} {'te_ret':>7}  params", flush=True)
     for i, r in enumerate(results[:15], 1):
         p = r["params"]

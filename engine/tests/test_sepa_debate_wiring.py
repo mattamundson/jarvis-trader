@@ -20,7 +20,6 @@ import pytest
 import agents.debate as debate
 from analytics.sepa_trend_template import SEPAResult, evaluate_sepa
 
-
 # ── Env-var gate: _is_sepa_enabled ──────────────────────────────────────────
 
 

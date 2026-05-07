@@ -143,7 +143,7 @@ async def _fetch_symbol_trades(db_manager: object, symbol: str) -> list[dict]:
             )
             trades = db_manager.query(query, (symbol,))
         else:
-            logger.warning(f"[Confidence] db_manager has no query method, returning []")
+            logger.warning("[Confidence] db_manager has no query method, returning []")
             return []
 
         # Ensure trades is a list of dicts

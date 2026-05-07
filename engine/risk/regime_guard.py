@@ -6,9 +6,11 @@ Ensures that strategies (like Market Making) only run in suitable environments.
 """
 
 import logging
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
+
 from analysis.jesse_indicators import JesseIndicators
 
 logger = logging.getLogger("jarvis_trader.risk.regime_guard")
@@ -33,21 +35,21 @@ class RegimeGuard:
                 return "unknown"
 
             df = pd.DataFrame([b.__dict__ if hasattr(b, "__dict__") else b for b in bars])
-            
+
             # Calculate ADX
             adx_df = self.indicators.adx(
                 df['high'].values, 
                 df['low'].values, 
                 df['close'].values
             )
-            
+
             if adx_df is None or adx_df.empty:
                 return "unknown"
 
             # ADX column is usually named 'ADX_14' by pandas_ta
             adx_col = [c for c in adx_df.columns if 'ADX' in c][0]
             current_adx = adx_df[adx_col].iloc[-1]
-            
+
             if current_adx > self.adx_threshold:
                 regime = "trending"
             else:
@@ -55,7 +57,7 @@ class RegimeGuard:
 
             self.last_regime = regime
             self.last_check = datetime.now()
-            
+
             logger.info(f"RegimeGuard: {symbol} ADX={current_adx:.2f} -> {regime}")
             return regime
 

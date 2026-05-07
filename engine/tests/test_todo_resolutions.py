@@ -22,7 +22,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db.session_manager import SessionManager  # noqa: E402
 from services.agent_gateway import GatewaySessionStore  # noqa: E402
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # session_manager.py — close_session works, gateway uses SessionManager
 # ─────────────────────────────────────────────────────────────────────────────

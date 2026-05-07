@@ -15,13 +15,13 @@ Tests:
 from __future__ import annotations
 
 import json
-import pytest
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
-from unittest.mock import MagicMock, patch, call
-
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Dict, Optional
+from unittest.mock import MagicMock, call, patch
+
+import pytest
 
 # Add engine to path
 engine_root = Path(__file__).parent.parent
@@ -29,12 +29,12 @@ if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
 from logging.trade_logger import (
-    TradeLogger,
     TradeEntryContext,
     TradeExitContext,
-    initialize_trade_logger,
+    TradeLogger,
     auto_log_trade_entry,
     auto_log_trade_exit,
+    initialize_trade_logger,
 )
 
 
@@ -135,7 +135,7 @@ class TestTradeLoggerBasics:
     def test_initialize_trade_logger(self, mock_db_manager):
         """initialize_trade_logger sets module-level instance."""
         import logging.trade_logger as tl_module
-        
+
         logger = initialize_trade_logger(mock_db_manager)
         assert tl_module._logger is logger
         assert isinstance(logger, TradeLogger)
@@ -154,10 +154,10 @@ class TestEntryLogging:
             entry_price=85.50,
             entry_time="2026-04-22T15:30:00Z",
         )
-        
+
         # Verify cache entry created
         assert "trade-001" in trade_logger._entry_cache
-        
+
         # Verify journal entry added
         mock_db_manager.add_journal_entry.assert_called_once()
         call_kwargs = mock_db_manager.add_journal_entry.call_args[1]
@@ -171,7 +171,7 @@ class TestEntryLogging:
     ):
         """on_trade_opened enriches entry with decision context from decisions table."""
         trade_logger._db = mock_db_with_decision
-        
+
         trade_logger.on_trade_opened(
             trade_id="trade-001",
             symbol="MCL",
@@ -180,14 +180,14 @@ class TestEntryLogging:
             entry_price=85.50,
             entry_time="2026-04-22T15:30:00Z",
         )
-        
+
         # Verify context enriched
         context = trade_logger._entry_cache["trade-001"]
         assert context.regime == "TRENDING_BULL"
         assert context.bias == "bullish"
         assert context.bull_score == 0.85
         assert context.debate_confidence == 0.83
-        
+
         # Verify journal includes decision metadata
         mock_db_with_decision.add_journal_entry.assert_called_once()
         call_kwargs = mock_db_with_decision.add_journal_entry.call_args[1]
@@ -198,7 +198,7 @@ class TestEntryLogging:
     def test_on_trade_opened_error_handling(self, trade_logger, mock_db_manager):
         """on_trade_opened handles database errors gracefully."""
         mock_db_manager.get_decisions.side_effect = Exception("Database error")
-        
+
         # Should not raise
         trade_logger.on_trade_opened(
             trade_id="trade-001",
@@ -208,7 +208,7 @@ class TestEntryLogging:
             entry_price=85.50,
             entry_time="2026-04-22T15:30:00Z",
         )
-        
+
         # Entry still cached even if decision fetch fails
         assert "trade-001" in trade_logger._entry_cache
 
@@ -222,17 +222,17 @@ class TestExitLogging:
         """on_trade_closed logs exit with P&L."""
         # Pre-populate cache
         trade_logger._entry_cache[sample_entry_context.trade_id] = sample_entry_context
-        
+
         trade_logger.on_trade_closed(
             trade_id=sample_entry_context.trade_id,
             exit_price=87.25,
             exit_time="2026-04-22T16:45:00Z",
             pnl=175.0,
         )
-        
+
         # Verify cache cleared
         assert sample_entry_context.trade_id not in trade_logger._entry_cache
-        
+
         # Verify exit journal entry added
         assert mock_db_manager.add_journal_entry.call_count == 1
         call_kwargs = mock_db_manager.add_journal_entry.call_args[1]
@@ -243,7 +243,7 @@ class TestExitLogging:
     def test_on_trade_closed_mood_generation(self, trade_logger, sample_entry_context):
         """on_trade_closed generates appropriate mood based on P&L."""
         trade_logger._entry_cache[sample_entry_context.trade_id] = sample_entry_context
-        
+
         # Winning trade
         trade_logger.on_trade_closed(
             trade_id=sample_entry_context.trade_id,
@@ -251,21 +251,21 @@ class TestExitLogging:
             exit_time="2026-04-22T16:45:00Z",
             pnl=175.0,
         )
-        
+
         call_kwargs = trade_logger._db.add_journal_entry.call_args[1]
         assert call_kwargs["mood"] == "confident"
 
     def test_on_trade_closed_losing_trade_mood(self, trade_logger, sample_entry_context):
         """on_trade_closed marks large losses as frustrated."""
         trade_logger._entry_cache[sample_entry_context.trade_id] = sample_entry_context
-        
+
         trade_logger.on_trade_closed(
             trade_id=sample_entry_context.trade_id,
             exit_price=80.00,
             exit_time="2026-04-22T16:45:00Z",
             pnl=-550.0,  # Large loss
         )
-        
+
         call_kwargs = trade_logger._db.add_journal_entry.call_args[1]
         assert call_kwargs["mood"] == "frustrated"
 
@@ -277,7 +277,7 @@ class TestNoteFormatting:
         """Entry note includes symbol, side, price, regime, bias, scores."""
         logger = TradeLogger(MagicMock())
         note = logger._format_entry_note(sample_entry_context)
-        
+
         assert "MCL" in note
         assert "buy" in note.lower()
         assert "85.50" in note
@@ -290,7 +290,7 @@ class TestNoteFormatting:
         """Entry tags include regime, bias, confidence, stage."""
         logger = TradeLogger(MagicMock())
         tags = logger._format_entry_tags(sample_entry_context)
-        
+
         assert "entry" in tags
         assert "regime_bull" in tags
         assert "bias_bull" in tags
@@ -301,7 +301,7 @@ class TestNoteFormatting:
         """Exit note includes P&L, time in trade, and exit reason."""
         logger = TradeLogger(MagicMock())
         note = logger._format_exit_note(sample_entry_context, sample_exit_context)
-        
+
         assert "87.25" in note
         assert "+175.00" in note  # Positive P&L
         assert "Exit Reason" in note
@@ -310,7 +310,7 @@ class TestNoteFormatting:
         """Exit tags include winning_trade."""
         logger = TradeLogger(MagicMock())
         tags = logger._format_exit_tags(sample_entry_context, sample_exit_context)
-        
+
         assert "exit" in tags
         assert "winning_trade" in tags
 
@@ -324,7 +324,7 @@ class TestNoteFormatting:
             pnl=-250.0,
         )
         tags = logger._format_exit_tags(sample_entry_context, exit_ctx)
-        
+
         assert "exit" in tags
         assert "losing_trade" in tags
 
@@ -354,7 +354,7 @@ class TestPostTradeAnalysis:
         """compute_post_analysis generates multi-part commentary."""
         logger = TradeLogger(MagicMock())
         analysis = logger._compute_post_analysis(sample_entry_context, sample_exit_context)
-        
+
         # Should have multiple signals
         assert "|" in analysis
         assert "✓" in analysis or "✗" in analysis
@@ -363,7 +363,7 @@ class TestPostTradeAnalysis:
         """compute_time_in_trade returns human-readable duration."""
         logger = TradeLogger(MagicMock())
         duration = logger._compute_time_in_trade(sample_entry_context, sample_exit_context)
-        
+
         # Should be something like "1h 15m"
         assert "h" in duration or "m" in duration
 
@@ -374,7 +374,7 @@ class TestEndToEnd:
     def test_full_trade_lifecycle(self, mock_db_with_decision):
         """Full trade lifecycle: entry logged, then exit logged."""
         logger = TradeLogger(mock_db_with_decision)
-        
+
         # Open trade
         logger.on_trade_opened(
             trade_id="trade-e2e-001",
@@ -384,11 +384,11 @@ class TestEndToEnd:
             entry_price=85.50,
             entry_time="2026-04-22T15:30:00Z",
         )
-        
+
         # Verify entry cached and logged
         assert "trade-e2e-001" in logger._entry_cache
         assert mock_db_with_decision.add_journal_entry.call_count == 1
-        
+
         # Close trade
         logger.on_trade_closed(
             trade_id="trade-e2e-001",
@@ -396,20 +396,20 @@ class TestEndToEnd:
             exit_time="2026-04-22T16:45:00Z",
             pnl=175.0,
         )
-        
+
         # Verify exit logged and cache cleared
         assert "trade-e2e-001" not in logger._entry_cache
         assert mock_db_with_decision.add_journal_entry.call_count == 2
-        
+
         # Inspect both journal calls
         calls = mock_db_with_decision.add_journal_entry.call_args_list
-        
+
         # First call (entry)
         entry_call = calls[0][1]
         assert entry_call["trade_id"] == "trade-e2e-001"
         assert "ENTRY" in entry_call["note"]
         assert entry_call["tags"] and "entry" in entry_call["tags"]
-        
+
         # Second call (exit)
         exit_call = calls[1][1]
         assert exit_call["trade_id"] == "trade-e2e-001"
@@ -419,14 +419,14 @@ class TestEndToEnd:
     def test_multiple_concurrent_trades(self, mock_db_with_decision):
         """TradeLogger can handle multiple concurrent open trades."""
         logger = TradeLogger(mock_db_with_decision)
-        
+
         # Open 3 concurrent trades
         trades = [
             ("trade-001", "MCL", 85.50),
             ("trade-002", "MNQ", 16500.00),
             ("trade-003", "MES", 5200.00),
         ]
-        
+
         for trade_id, symbol, price in trades:
             logger.on_trade_opened(
                 trade_id=trade_id,
@@ -436,10 +436,10 @@ class TestEndToEnd:
                 entry_price=price,
                 entry_time="2026-04-22T15:30:00Z",
             )
-        
+
         # All cached
         assert len(logger._entry_cache) == 3
-        
+
         # Close middle trade
         logger.on_trade_closed(
             trade_id="trade-002",
@@ -447,7 +447,7 @@ class TestEndToEnd:
             exit_time="2026-04-22T16:45:00Z",
             pnl=5000.0,
         )
-        
+
         # Other two still cached
         assert len(logger._entry_cache) == 2
         assert "trade-001" in logger._entry_cache
@@ -460,13 +460,13 @@ class TestModuleLevelConvenience:
     def test_auto_log_trade_entry(self, mock_db_manager):
         """auto_log_trade_entry uses module-level logger."""
         import logging.trade_logger as tl_module
-        
+
         # Clear module state
         tl_module._logger = None
-        
+
         # Initialize
         initialize_trade_logger(mock_db_manager)
-        
+
         # Call convenience function
         auto_log_trade_entry(
             trade_id="trade-001",
@@ -476,18 +476,18 @@ class TestModuleLevelConvenience:
             entry_price=85.50,
             entry_time="2026-04-22T15:30:00Z",
         )
-        
+
         # Verify logged
         mock_db_manager.add_journal_entry.assert_called_once()
 
     def test_auto_log_trade_exit(self, mock_db_manager):
         """auto_log_trade_exit uses module-level logger."""
         import logging.trade_logger as tl_module
-        
+
         # Clear and reinitialize
         tl_module._logger = None
         logger = initialize_trade_logger(mock_db_manager)
-        
+
         # Pre-populate cache
         logger._entry_cache["trade-001"] = TradeEntryContext(
             trade_id="trade-001",
@@ -497,7 +497,7 @@ class TestModuleLevelConvenience:
             entry_price=85.50,
             entry_time="2026-04-22T15:30:00Z",
         )
-        
+
         # Call convenience function
         auto_log_trade_exit(
             trade_id="trade-001",
@@ -505,7 +505,7 @@ class TestModuleLevelConvenience:
             exit_time="2026-04-22T16:45:00Z",
             pnl=175.0,
         )
-        
+
         # Verify logged
         mock_db_manager.add_journal_entry.assert_called_once()
 

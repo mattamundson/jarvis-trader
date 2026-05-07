@@ -634,7 +634,7 @@ class SafetyLayer:
         )
         total_pnl = pnl_state.total_pnl if pnl_state else self._daily_realized_pnl
         realized_pnl = pnl_state.daily_realized_pnl if pnl_state else self._daily_realized_pnl
-        
+
         # 1. Check relative limit (e.g. -2%) against TOTAL P&L (standard)
         rel_limit = -(portfolio_equity * self._config.MAX_DAILY_LOSS_PCT)
         if total_pnl < rel_limit:
@@ -674,7 +674,7 @@ class SafetyLayer:
             return RiskCheckResult(approved=True) # Cannot compute risk without entry price
 
         points_at_risk = abs(entry_px - order.stop_price)
-        
+
         if order.is_futures:
             multiplier = _FUTURES_POINT_VALUE.get(order.symbol.upper(), 1.0)
             dollar_risk = points_at_risk * multiplier * abs(order.quantity)
@@ -693,7 +693,7 @@ class SafetyLayer:
                     f"({order.symbol} @ {entry_px:.2f}, stop {order.stop_price:.2f})"
                 )
             )
-            
+
         return RiskCheckResult(approved=True)
 
     def _check_order_value_limits(
@@ -1052,7 +1052,7 @@ class SafetyLayer:
                 order_type=order_type.upper(),
                 limit_price=limit_price,
             )
-            
+
             # HB-1: Broker-side Stop Orders atomically linked
             if order_id is not None and stop_price is not None:
                 stp_action = "SELL" if action_upper == "BUY" else "BUY"
@@ -1239,8 +1239,8 @@ class SafetyLayer:
         # (mirror path drops notes; some INSERT paths hardcode notes='').
         if stp_id is not None:
             try:
-                from pathlib import Path as _Path
                 import json as _json
+                from pathlib import Path as _Path
                 _sidecar = (
                     _Path(__file__).resolve().parent.parent
                     / "data"

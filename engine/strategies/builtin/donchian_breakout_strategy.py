@@ -59,11 +59,11 @@ class DonchianBreakoutStrategy(BaseStrategy):
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """Generate Donchian breakout signals with 5-gate confirmation."""
         from backtest.indicators import (
+            atr_regime,
             donchian_channels,
             ema_slope,
-            atr_regime,
-            volume_regime,
             rsi,
+            volume_regime,
             wilder_atr,
         )
 

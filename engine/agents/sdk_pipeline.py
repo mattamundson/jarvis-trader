@@ -34,12 +34,11 @@ from datetime import datetime
 
 import claude_agent_sdk as sdk
 
-from tools.market_mcp_server import create_market_mcp_server
-
 from backtest.regime_classifier import MarketRegime, RegimeClassifierV2
-from orchestrator.strategy_router import StrategyRouter
-from validation.shadow_mode import ShadowModeTracker
 from orchestrator.sentiment_bridge import SentimentBridge
+from orchestrator.strategy_router import StrategyRouter
+from tools.market_mcp_server import create_market_mcp_server
+from validation.shadow_mode import ShadowModeTracker
 
 logger = logging.getLogger(__name__)
 
