@@ -153,19 +153,11 @@ def _load_data(data_file: Path) -> pd.DataFrame:
 
 
 def _find_data_file(data_dir: Path) -> Path:
-    """Locate the widest-span M2K 1h cache file."""
-    primary = data_dir / "M2K_2024-01-01_2026-03-28_1h.csv"
-    if primary.exists():
-        return primary
-    candidates = sorted(data_dir.glob("M2K_*_1h.csv"))
-    if not candidates:
-        raise FileNotFoundError(
-            "No M2K 1h data found in engine/backtest/cache/\n"
-            "Expected: M2K_2024-01-01_2026-03-28_1h.csv"
-        )
-    candidates_2024 = [c for c in candidates if "2024-01-01" in c.name]
-    chosen = candidates_2024[-1] if candidates_2024 else candidates[-1]
-    print(f"[M2K-ORB-R1] Primary cache not found; using {chosen.name}")
+    """Locate the M2K 1h cache with the latest end-date."""
+    # Pick the cache covering the latest end-date so a refreshed IBKR pull
+    # (named M2K_<start>_<end>_1h.csv) always wins over older files.
+    chosen = _find_latest_cache(data_dir, "M2K")
+    print(f"[M2K-ORB-R1] Selected {chosen.name}")
     return chosen
 
 
@@ -284,6 +276,7 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple:
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
@@ -599,9 +592,9 @@ def run_wfo() -> dict:
                 "is_period": f"{ts.strftime('%Y-%m')} -> {te.strftime('%Y-%m')}",
                 "oos_period": f"{os_.strftime('%Y-%m')} -> {oe.strftime('%Y-%m')}",
                 "best_params": best_params,
-                "is_pf": is_result.profit_factor
-                if is_result.profit_factor != float("inf")
-                else 99.0,
+                "is_pf": (
+                    is_result.profit_factor if is_result.profit_factor != float("inf") else 99.0
+                ),
                 "is_trades": is_result.total_trades,
                 "oos_pf": round(pf_oos, 3) if pf_oos != float("inf") else 99.0,
                 "oos_dd": round(oos_result.max_drawdown_pct, 4),
