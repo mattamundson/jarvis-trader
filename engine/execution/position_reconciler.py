@@ -8,7 +8,7 @@ when the engine process restarts.
 import logging
 
 try:
-    from config import settings
+    from config import settings  # noqa: F401  (presence-check only)
 except ImportError:
     pass
 

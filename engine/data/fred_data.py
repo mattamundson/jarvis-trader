@@ -273,7 +273,7 @@ def get_live_macro_yfinance() -> dict:
     values: dict[str, float] = {}
     try:
         import yfinance as yf
-        for ticker, (fred_key, label, scale) in TICKER_MAP.items():
+        for ticker, (fred_key, _label, scale) in TICKER_MAP.items():
             try:
                 hist = yf.Ticker(ticker).history(period="5d")
                 if not hist.empty:

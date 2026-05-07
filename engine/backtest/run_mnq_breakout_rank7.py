@@ -97,8 +97,8 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
         tr = df[(df.index >= cursor) & (df.index < te)]
         te_ = df[(df.index >= os_) & (df.index <= oe)]
         if len(tr) >= 30 and len(te_) >= 30:
-            windows.append(dict(num=n, ts=cursor, te=te, os=os_, oe=oe,
-                                n_train=len(tr), n_test=len(te_)))
+            windows.append({"num": n, "ts": cursor, "te": te, "os": os_, "oe": oe,
+                                "n_train": len(tr), "n_test": len(te_)})
             n += 1
         cursor += pd.DateOffset(months=STEP_MONTHS)
         if cursor >= end:
@@ -136,7 +136,7 @@ def _best_is(df_train, grid):
     return best_p, best_r
 
 
-from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf
+from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf  # noqa: E402
 
 
 def _gate_v2(oos_results, n_combos, fixed_metrics):
@@ -159,16 +159,16 @@ def _gate_v2(oos_results, n_combos, fixed_metrics):
 
     core = pf_ci >= GATE_PF_CI_LOWER and p_edge >= GATE_P_EDGE and mc_dd <= GATE_MC_DD_CORE and dsr >= GATE_DSR
     alt  = pf_ci >= GATE_PF_CI_LOWER and p_edge >= GATE_P_EDGE and mc_dd <= GATE_MC_DD_ALT  and dsr >= GATE_DSR and fpm >= GATE_FIXED_PARAMS_MIN_PF and wfo in GATE_WFO_CONSISTENCY
-    return dict(pf_ci_lower=round(pf_ci,4), p_edge=round(p_edge,4),
-                mc_95th_dd=round(mc_dd,6), dsr=round(dsr,4),
-                wfo_consistency=wfo, fixed_params_min_pf=fpm,
-                fixed_params_mean_pf=fixed_metrics.get("fixed_params_mean_pf",0.0),
-                n_oos_windows=len(oos_results),
-                n_oos_windows_with_trades=len(pfs),
-                total_oos_trades=tot,
-                core_verdict="PASS" if core else "FAIL",
-                alt_verdict="PASS" if alt else "FAIL",
-                verdict="PASS" if core else ("PASS_ALT" if alt else "FAIL"))
+    return {"pf_ci_lower": round(pf_ci,4), "p_edge": round(p_edge,4),
+                "mc_95th_dd": round(mc_dd,6), "dsr": round(dsr,4),
+                "wfo_consistency": wfo, "fixed_params_min_pf": fpm,
+                "fixed_params_mean_pf": fixed_metrics.get("fixed_params_mean_pf",0.0),
+                "n_oos_windows": len(oos_results),
+                "n_oos_windows_with_trades": len(pfs),
+                "total_oos_trades": tot,
+                "core_verdict": "PASS" if core else "FAIL",
+                "alt_verdict": "PASS" if alt else "FAIL",
+                "verdict": "PASS" if core else ("PASS_ALT" if alt else "FAIL")}
 
 
 def run_wfo():
@@ -223,14 +223,14 @@ def run_wfo():
         print(f"  OOS: PF={oos_r.profit_factor:.2f}  DD={oos_r.max_drawdown_pct:.1%}  "
               f"Sharpe={oos_r.sharpe_ratio:.2f}  trades={oos_r.total_trades}")
         oos_results.append(oos_r)
-        win_records.append(dict(window=n,
-            is_period=f"{ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}",
-            oos_period=f"{os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}",
-            best_params=dict(donchian_period=don, ema_trend_period=ema,
-                             atr_regime_mult=atr_m, vol_mult=vm, stop_atr_mult=STOP_ATR_MULT),
-            is_pf=round(is_r.profit_factor,3), is_trades=is_r.total_trades,
-            oos_pf=round(oos_r.profit_factor,3), oos_dd=round(oos_r.max_drawdown_pct,4),
-            oos_sharpe=round(oos_r.sharpe_ratio,3), oos_trades=oos_r.total_trades))
+        win_records.append({"window": n,
+            "is_period": f"{ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}",
+            "oos_period": f"{os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}",
+            "best_params": {"donchian_period": don, "ema_trend_period": ema,
+                             "atr_regime_mult": atr_m, "vol_mult": vm, "stop_atr_mult": STOP_ATR_MULT},
+            "is_pf": round(is_r.profit_factor,3), "is_trades": is_r.total_trades,
+            "oos_pf": round(oos_r.profit_factor,3), "oos_dd": round(oos_r.max_drawdown_pct,4),
+            "oos_sharpe": round(oos_r.sharpe_ratio,3), "oos_trades": oos_r.total_trades})
 
     if not oos_results:
         print("[MNQ-R7] No OOS results.")
@@ -246,11 +246,11 @@ def run_wfo():
                 fp_pfs.append(r.profit_factor)
         except Exception:
             pass
-    fixed_metrics = dict(
-        fixed_params_min_pf=round(float(min(fp_pfs)), 4) if fp_pfs else 0.0,
-        fixed_params_mean_pf=round(float(np.mean(fp_pfs)), 4) if fp_pfs else 0.0,
-        fixed_params_max_pf=round(float(max(fp_pfs)), 4) if fp_pfs else 0.0,
-    )
+    fixed_metrics = {
+        "fixed_params_min_pf": round(float(min(fp_pfs)), 4) if fp_pfs else 0.0,
+        "fixed_params_mean_pf": round(float(np.mean(fp_pfs)), 4) if fp_pfs else 0.0,
+        "fixed_params_max_pf": round(float(max(fp_pfs)), 4) if fp_pfs else 0.0,
+    }
     print(f"  min_pf={fixed_metrics['fixed_params_min_pf']}  "
           f"mean_pf={fixed_metrics['fixed_params_mean_pf']}  "
           f"max_pf={fixed_metrics['fixed_params_max_pf']}")
@@ -270,27 +270,27 @@ def run_wfo():
 
     verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
     verdicts_dir.mkdir(parents=True, exist_ok=True)
-    verdict_doc = dict(
-        symbol="MNQ", family="breakout", rank=7,
-        verdict=gate["verdict"], core_verdict=gate["core_verdict"], alt_verdict=gate["alt_verdict"],
-        created_at=datetime.now(tz=timezone.utc).isoformat(),
-        params_fixed=dict(stop_atr_mult=STOP_ATR_MULT, vol_ma_period=VOL_MA_PERIOD),
-        wfo_config=dict(train_months=TRAIN_MONTHS, test_months=TEST_MONTHS,
-                        step_months=STEP_MONTHS, n_windows=len(windows),
-                        grid_combos=n_combos,
-                        grid=dict(donchian=DONCHIAN_PERIOD_VALUES, ema=EMA_TREND_PERIOD_VALUES,
-                                  atr_mult=ATR_REGIME_MULT_VALUES, vol_mult=VOL_MULT_VALUES)),
-        gate_v2_metrics={**gate, **fixed_metrics},
-        thresholds=dict(pf_ci_lower=GATE_PF_CI_LOWER, p_edge=GATE_P_EDGE,
-                        mc_95th_dd_core=GATE_MC_DD_CORE, mc_95th_dd_alt=GATE_MC_DD_ALT,
-                        dsr=GATE_DSR, fixed_params_min_pf_alt=GATE_FIXED_PARAMS_MIN_PF),
-        windows=win_records,
-        lineage=dict(
-            rank6="FAIL — pf_ci_lower=0.41, p_edge=0.0, wfo_consistency=WEAK",
-            rank6_root_cause="atr_regime_mult>=1.0 cut signal so hard p_edge=0.0 across all windows",
-            rank7_hypothesis="Lower ATR floor [0.5,0.75] + ema=0 baseline + wider donchian + vol_mult grid",
-        ),
-    )
+    verdict_doc = {
+        "symbol": "MNQ", "family": "breakout", "rank": 7,
+        "verdict": gate["verdict"], "core_verdict": gate["core_verdict"], "alt_verdict": gate["alt_verdict"],
+        "created_at": datetime.now(tz=timezone.utc).isoformat(),
+        "params_fixed": {"stop_atr_mult": STOP_ATR_MULT, "vol_ma_period": VOL_MA_PERIOD},
+        "wfo_config": {"train_months": TRAIN_MONTHS, "test_months": TEST_MONTHS,
+                        "step_months": STEP_MONTHS, "n_windows": len(windows),
+                        "grid_combos": n_combos,
+                        "grid": {"donchian": DONCHIAN_PERIOD_VALUES, "ema": EMA_TREND_PERIOD_VALUES,
+                                  "atr_mult": ATR_REGIME_MULT_VALUES, "vol_mult": VOL_MULT_VALUES}},
+        "gate_v2_metrics": {**gate, **fixed_metrics},
+        "thresholds": {"pf_ci_lower": GATE_PF_CI_LOWER, "p_edge": GATE_P_EDGE,
+                        "mc_95th_dd_core": GATE_MC_DD_CORE, "mc_95th_dd_alt": GATE_MC_DD_ALT,
+                        "dsr": GATE_DSR, "fixed_params_min_pf_alt": GATE_FIXED_PARAMS_MIN_PF},
+        "windows": win_records,
+        "lineage": {
+            "rank6": "FAIL — pf_ci_lower=0.41, p_edge=0.0, wfo_consistency=WEAK",
+            "rank6_root_cause": "atr_regime_mult>=1.0 cut signal so hard p_edge=0.0 across all windows",
+            "rank7_hypothesis": "Lower ATR floor [0.5,0.75] + ema=0 baseline + wider donchian + vol_mult grid",
+        },
+    }
     vf = verdicts_dir / "MNQ_breakout_rank7.json"
     vf.write_text(json.dumps(verdict_doc, indent=2, default=str))
     print(f"[MNQ-R7] Verdict -> {vf}")

@@ -364,7 +364,7 @@ class StrategyOptimizer:
         logger.info("Starting optimization loop: symbol=%s, interval=%s, max_iter=%d",
                     self.symbol, self.interval, max_iterations)
 
-        for i in range(max_iterations):
+        for _i in range(max_iterations):
             result = self.run_one_iteration()
 
             if result["status"] == "CRASH":

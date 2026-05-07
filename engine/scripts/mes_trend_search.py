@@ -61,7 +61,7 @@ GRID = {
 
 
 def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    h, l, c = df["high"], df["low"], df["close"]
+    h, l, c = df["high"], df["low"], df["close"]  # noqa: E741  # OHLC convention
     prev_c = c.shift(1)
     tr = pd.concat([(h - l), (h - prev_c).abs(), (l - prev_c).abs()], axis=1).max(axis=1)
     return tr.rolling(period).mean()

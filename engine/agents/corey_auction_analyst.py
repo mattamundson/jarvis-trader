@@ -438,7 +438,7 @@ class CoreyAuctionAnalystAgent:
             f"Data quality: {bias.data_quality} | Messages used: {bias.message_count}",
         ]
         if bias.key_levels:
-            levels_str = ", ".join(f"{l:.2f}" for l in bias.key_levels[:5])
+            levels_str = ", ".join(f"{l:.2f}" for l in bias.key_levels[:5])  # noqa: E741  # OHLC convention
             lines.append(f"Key levels: {levels_str}")
         if bias.specific_triggers:
             lines.append("Triggers:")

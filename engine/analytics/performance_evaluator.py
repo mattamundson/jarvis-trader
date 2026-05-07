@@ -13,12 +13,11 @@ this script automatically suppresses contract limits.
 import logging
 import os
 import sys
-from datetime import date
 
 try:
     from database.db_manager import DatabaseManager
 
-    from config import settings
+    from config import settings  # noqa: F401  (presence-check only)
 except ImportError as e:
     print(f"Must run from engine root: {e}")
     sys.exit(1)

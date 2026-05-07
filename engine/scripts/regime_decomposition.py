@@ -181,7 +181,7 @@ def main():
     print("\n=== Decomposition by ADX strength ===", flush=True)
     print(f"{'adx_bucket':>15}  {'n':>4}  {'PF':>6}  {'WR%':>5}  {'Sharpe':>7}  {'avg_pnl':>8}  {'ret%':>7}", flush=True)
     adx_stats = {}
-    for label, lo, hi in ADX_BUCKETS:
+    for label, _lo, _hi in ADX_BUCKETS:
         bucket = [t for t in tagged_trades if t.get("adx_bucket") == label]
         if not bucket:
             continue

@@ -12,7 +12,7 @@ from backtest.rangefinder import compute_rangefinder
 def _make_df(highs, lows, closes=None, opens=None):
     n = len(highs)
     if closes is None:
-        closes = [(h + l) / 2 for h, l in zip(highs, lows, strict=False)]
+        closes = [(h + l) / 2 for h, l in zip(highs, lows, strict=False)]  # noqa: E741  # OHLC convention
     if opens is None:
         opens = closes
     return pd.DataFrame(

@@ -37,8 +37,11 @@ import sys
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
+
+if TYPE_CHECKING:
+    from backtest.roi_readiness import ROIReadinessResult
 
 # ---------------------------------------------------------------------------
 # Path bootstrap — works both as -m engine.scripts.daily_live_readiness (from
@@ -133,10 +136,10 @@ def render_report(result: "ROIReadinessResult", report_date: date) -> str:
     target = 14
     filled = min(streak, target)
     bar = "█" * filled + "░" * (target - filled)
-    lines.append(f"```")
+    lines.append("```")
     lines.append(f"Progress: [{bar}] {streak}/{target} days")
     lines.append(f"Days remaining: {result.days_to_live}")
-    lines.append(f"```")
+    lines.append("```")
     lines.append("")
     lines.append(
         "> A single gate failure on any day resets the streak to 0. "
@@ -147,9 +150,9 @@ def render_report(result: "ROIReadinessResult", report_date: date) -> str:
     # Footer
     lines.append("---")
     lines.append(
-        f"*JARVIS live-readiness gauge — paper trading validation period. "
-        f"Gate v2 PASS strategies: MES R11, MGC R4. "
-        f"DO_NOT_TRADE: MCL, MNQ, M2K.*"
+        "*JARVIS live-readiness gauge — paper trading validation period. "
+        "Gate v2 PASS strategies: MES R11, MGC R4. "
+        "DO_NOT_TRADE: MCL, MNQ, M2K.*"
     )
 
     return "\n".join(lines)

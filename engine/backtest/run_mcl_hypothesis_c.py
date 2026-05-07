@@ -200,7 +200,7 @@ def _best_is_params(
 # Gate v2 metrics
 # ---------------------------------------------------------------------------
 
-from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
+from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 
 
 def _compute_gate_v2(oos_results: list[BacktestResult], n_grid_combos: int) -> dict:  # noqa: F821

@@ -28,8 +28,8 @@ ENGINE_DIR = Path(__file__).resolve().parent.parent
 if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
-from backtest import BacktestDataLoader, Backtester
-from backtest.trend_signals import generate_sma_trend_signals
+from backtest import BacktestDataLoader, Backtester  # noqa: E402
+from backtest.trend_signals import generate_sma_trend_signals  # noqa: E402
 
 SYMBOL = "MES"
 INTERVAL = "1h"

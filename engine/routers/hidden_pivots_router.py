@@ -249,7 +249,7 @@ async def get_hp_levels(
             "symbol": symbol.upper(),
             "timeframe": timeframe,
             "hp_ou_level": round(hp_ou, 4) if hp_ou else None,
-            "level_ladder": [round(l, 4) for l in levels],
+            "level_ladder": [round(l, 4) for l in levels],  # noqa: E741  # OHLC convention
             "swing_structure": {
                 "a_price": round(swing.a_price, 4),
                 "b_price": round(swing.b_price, 4),

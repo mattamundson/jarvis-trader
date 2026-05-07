@@ -56,14 +56,14 @@ def test_entry_only_on_golden_cross():
 def test_stop_below_entry_for_long():
     df = generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100, atr_trail_mult=2.0)
     entries = df[df["entry_signal"] == "ENTRY_NOW"]
-    for idx, row in entries.iterrows():
+    for _idx, row in entries.iterrows():
         assert row["stop_level"] < row["close"], f"Stop {row['stop_level']} >= close {row['close']}"
 
 
 def test_target_above_entry_for_long():
     df = generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100)
     entries = df[df["entry_signal"] == "ENTRY_NOW"]
-    for idx, row in entries.iterrows():
+    for _idx, row in entries.iterrows():
         assert row["target_1"] > row["close"]
         assert row["target_2"] > row["target_1"]
         assert row["target_3"] > row["target_2"]

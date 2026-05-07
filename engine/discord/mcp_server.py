@@ -36,7 +36,7 @@ _ENGINE_ROOT = str(Path(__file__).resolve().parent.parent)
 if _ENGINE_ROOT not in sys.path:
     sys.path.insert(0, _ENGINE_ROOT)
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

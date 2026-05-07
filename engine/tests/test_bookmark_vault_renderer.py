@@ -86,17 +86,17 @@ def test_other_slug_uses_domain_and_message_id():
 # ── Page rendering ────────────────────────────────────────────────────────────
 
 def _bm(**kwargs) -> Bookmark:
-    defaults = dict(
-        message_id="m1",
-        channel_id=JARVIS_CHANNEL,
-        posted_at="2026-04-18T12:00:00+00:00",
-        url="https://github.com/foo/bar",
-        domain="github.com",
-        source_type="github",
-        content="check this out https://github.com/foo/bar",
-        author_id="592060613732204544",
-        author_name="AmoSZN",
-    )
+    defaults = {
+        "message_id": "m1",
+        "channel_id": JARVIS_CHANNEL,
+        "posted_at": "2026-04-18T12:00:00+00:00",
+        "url": "https://github.com/foo/bar",
+        "domain": "github.com",
+        "source_type": "github",
+        "content": "check this out https://github.com/foo/bar",
+        "author_id": "592060613732204544",
+        "author_name": "AmoSZN",
+    }
     defaults.update(kwargs)
     return Bookmark(**defaults)
 
