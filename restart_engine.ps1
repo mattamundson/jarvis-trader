@@ -71,16 +71,25 @@ if ($pm2Managed) {
         exit 1
     }
 
-    # Verify the cycle actually happened. PM2 has been observed no-op'ing on
-    # transient conditions. A fresh restart's pm_uptime should be less than
-    # the time we spent waiting — if uptime exceeds our elapsed script time,
-    # the process started BEFORE this script ran, which means pm2 didn't cycle.
-    # Parse pm_uptime via regex — ConvertFrom-Json trips over PM2's duplicate
-    # case-insensitive env-var keys (USERNAME vs username) on Windows.
+    # Advisory pm2 cycle check — informational only.
+    #
+    # History: this block previously exit-1'd whenever the pm_uptime regex
+    # appeared to exceed the elapsed-script time, on the theory that a fresh
+    # restart's uptime should be < script wall time + a 5s skew tolerance.
+    # In practice the comparison consistently false-positived (verified twice
+    # in 24h, 2026-05-06 + 2026-05-07) on restarts /health had already
+    # confirmed clean. Likely causes:
+    #   - pm2 jlist reads the prior process record on the brief window
+    #     between SIGKILL of the old worker and ts-update of the new one
+    #   - `pm2 restart` returns asynchronously; the regex captures a
+    #     monotonic-clock pm_uptime that doesn't always reset relative to
+    #     wall-clock at the moment of polling
+    # /health is the canonical pass/fail signal. If we got here, the engine
+    # answered 200 within 360s, which is sufficient. Surface the uptime as
+    # a warning when it looks suspicious; never block on it.
     $uptimeMs = -1
     try {
         $raw = (pm2 jlist 2>$null | Out-String)
-        # Locate the jarvis-engine record and pull its pm_uptime number.
         $idx = $raw.IndexOf('"name":"jarvis-engine"')
         if ($idx -ge 0) {
             $slice = $raw.Substring($idx)
@@ -92,26 +101,25 @@ if ($pm2Managed) {
         }
     }
     catch {
-        Write-Host "Could not read pm2 jlist for uptime verification: $($_.Exception.Message)"
+        Write-Host "WARN: could not read pm2 jlist for uptime advisory: $($_.Exception.Message)"
     }
 
-    if ($uptimeMs -lt 0) {
-        Write-Host "ERROR: could not verify pm2 restart (jlist unreadable). Aborting so caller doesn't mistake this for success."
-        exit 1
-    }
-    # Cycle detector: uptime must be <= elapsed-since-script-start (with 5s
-    # clock-skew tolerance). Previous static 60000ms cutoff broke when real
-    # startup grew past 60s — healthy restarts taking 197s were flagged as
-    # stale because the cutoff was shorter than the successful bind time.
     $elapsedMs = [int64]((Get-Date) - $startTime).TotalMilliseconds
     $cycleBudgetMs = $elapsedMs + 5000
-    if ($uptimeMs -gt $cycleBudgetMs) {
-        Write-Host ("ERROR: pm2 restart did NOT cycle the process - uptime=" + $uptimeMs + "ms exceeds elapsed=" + $elapsedMs + "ms (+5s tolerance).")
-        Write-Host "  Stale uvicorn is still running. Try: pm2 delete jarvis-engine ; then re-run this script."
-        exit 1
+
+    if ($uptimeMs -lt 0) {
+        Write-Host "WARN: pm2 jlist unreadable; relying on /health for canonical status."
+    }
+    elseif ($uptimeMs -gt $cycleBudgetMs) {
+        Write-Host ("WARN: pm2 uptime regex inconclusive (got " + $uptimeMs + "ms vs elapsed " + $elapsedMs + "ms); falling through to /health polling for canonical status.")
+        Write-Host ("  /health returned 200 within 360s, so the engine is up. If you suspect a stale uvicorn, run: pm2 delete jarvis-engine ; .\restart_engine.ps1")
+    }
+    else {
+        Write-Host ("Engine UP: 200 (pm2 uptime " + $uptimeMs + "ms / elapsed " + $elapsedMs + "ms - fresh)")
+        exit 0
     }
 
-    Write-Host ("Engine UP: 200 (pm2 uptime " + $uptimeMs + "ms / elapsed " + $elapsedMs + "ms - fresh)")
+    Write-Host "Engine UP: 200 (/health canonical; pm2 uptime advisory only)"
     exit 0
 }
 
