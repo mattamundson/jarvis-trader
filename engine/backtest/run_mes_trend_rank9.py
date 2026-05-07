@@ -235,27 +235,8 @@ def _best_is_params(
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
-def _bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = N_BOOTSTRAP) -> float:
-    """95% CI lower bound on mean PF via bootstrap (replicated from rank4 pattern)."""
-    if len(oos_pfs) < 2:
-        return float(np.mean(oos_pfs)) if oos_pfs else 0.0
-    rng = np.random.default_rng(42)
-    arr = np.array(oos_pfs, dtype=float)
-    boot_means = [rng.choice(arr, size=len(arr), replace=True).mean() for _ in range(n)]
-    return float(np.percentile(boot_means, 5.0))
-
-
-def _classify_wfo_consistency(oos_pfs: list[float]) -> str:
-    """Classify WFO consistency from OOS window PF list."""
-    if not oos_pfs:
-        return "WEAK"
-    pct_profitable = sum(1 for pf in oos_pfs if pf > 1.0) / len(oos_pfs)
-    if pct_profitable >= 0.75:
-        return "STRONG"
-    elif pct_profitable >= 0.55:
-        return "MODERATE"
-    else:
-        return "WEAK"
+from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
+from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
 
 
 # ---------------------------------------------------------------------------
