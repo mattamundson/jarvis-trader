@@ -169,7 +169,7 @@ def _run_signals_and_backtest(
 
     # Count regime-suppressed signals for diagnostics
     n_suppressed = int(
-        (df_sig.get("atr_regime_active", True) == False).sum()
+        (~df_sig.get("atr_regime_active", True)).sum()
         if "atr_regime_active" in df_sig.columns else 0
     )
 
