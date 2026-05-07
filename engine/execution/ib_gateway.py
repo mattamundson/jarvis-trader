@@ -1,15 +1,23 @@
 """
-JARVIS TRADER — IB Gateway Connection Module
-=============================================
-Paper trading only. Port 4002. Live trading (port 4001) is permanently disabled.
+JARVIS TRADER — IB API Connection Module
+========================================
+Paper trading only. Supports both IB Gateway (port 4002) and TWS (port 7497).
+Live trading ports — Gateway 4001 and TWS 7496 — are permanently disabled.
 
 Library: ib_async (successor to ib_insync — same API, actively maintained).
          Imported as `ib_insync` alias for backward compatibility.
 
 Usage:
+    # IB Gateway paper (default)
     config = IBGatewayConfig(account="DU1234567")
     gw = IBGatewayManager(config)
     await gw.connect()
+
+    # TWS paper
+    config = IBGatewayConfig(port=7497, account="DU1234567")
+    gw = IBGatewayManager(config)
+    await gw.connect()
+
     order_id = await gw.place_paper_order("MES", "BUY", 1)
     await gw.disconnect()
 """
@@ -182,38 +190,55 @@ FUTURES_SYMBOL_MAP: dict[str, dict] = {
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-# SAFETY: Live trading (port 4001) is permanently disabled in this module.
-LIVE_TRADING_PORT = 4001  # Referenced only to explicitly reject it
-PAPER_TRADING_PORT = 4002  # The only permitted port
+# SAFETY: Live trading ports are permanently disabled in this module.
+# Gateway live = 4001, TWS live = 7496. Both are rejected at construction.
+LIVE_TRADING_PORTS = frozenset({4001, 7496})
+PAPER_TRADING_PORTS = frozenset({4002, 7497})  # Gateway paper, TWS paper
+
+# Backward-compat singletons — point at the original Gateway-only values for
+# any external caller importing them. Internal logic uses the *_PORTS sets.
+LIVE_TRADING_PORT = 4001
+PAPER_TRADING_PORT = 4002
+
+
+def _broker_label(port: int) -> str:
+    """Return 'Gateway' or 'TWS' for log messages based on configured port."""
+    if port in (4001, 4002):
+        return "Gateway"
+    if port in (7496, 7497):
+        return "TWS"
+    return "IB"
 
 
 @dataclass
 class IBGatewayConfig:
     """
-    Configuration for IB Gateway paper-trading connection.
+    Configuration for an IB API paper-trading connection.
 
-    Port is hardcoded to 4002 (paper). Attempting to set 4001 raises ValueError.
+    Default port is 4002 (Gateway paper). Set port=7497 to target TWS paper.
+    Live ports — 4001 (Gateway) and 7496 (TWS) — raise ValueError at construction.
     """
 
     host: str = "127.0.0.1"
-    port: int = PAPER_TRADING_PORT  # Paper trading ONLY — do not change to 4001
+    port: int = PAPER_TRADING_PORT  # 4002 (Gateway paper) by default; 7497 = TWS paper
     client_id: int = 1
     timeout: float = 10.0
     readonly: bool = False
     account: str = ""  # IB paper account ID, e.g. "DU1234567"
 
     def __post_init__(self) -> None:
-        # SAFETY: Live trading (port 4001) is permanently disabled in this module.
-        if self.port == LIVE_TRADING_PORT:
+        # SAFETY: Live trading ports (Gateway 4001, TWS 7496) are permanently disabled.
+        if self.port in LIVE_TRADING_PORTS:
             raise ValueError(
-                "SAFETY VIOLATION: Port 4001 (live trading) is permanently disabled "
-                "in IBGatewayManager. Paper trading only — use port 4002."
+                f"SAFETY VIOLATION: Port {self.port} (live trading) is permanently "
+                "disabled in IBGatewayManager. Paper trading only — use 4002 (Gateway) "
+                "or 7497 (TWS)."
             )
-        if self.port != PAPER_TRADING_PORT:
+        if self.port not in PAPER_TRADING_PORTS:
             logger.warning(
-                "Non-standard IB Gateway port %d. Expected %d (paper).",
+                "Non-standard IB API port %d. Expected one of %s (paper).",
                 self.port,
-                PAPER_TRADING_PORT,
+                sorted(PAPER_TRADING_PORTS),
             )
 
 
@@ -251,11 +276,12 @@ class IBGatewayManager:
         if config is None:
             config = IBGatewayConfig()
 
-        # SAFETY: Live trading (port 4001) is permanently disabled in this module.
-        if config.port == LIVE_TRADING_PORT:
+        # SAFETY: Live trading ports (Gateway 4001, TWS 7496) are permanently disabled.
+        if config.port in LIVE_TRADING_PORTS:
             raise ValueError(
-                "SAFETY VIOLATION: Port 4001 (live trading) is permanently disabled "
-                "in IBGatewayManager. Paper trading only — use port 4002."
+                f"SAFETY VIOLATION: Port {config.port} (live trading) is permanently "
+                "disabled in IBGatewayManager. Paper trading only — use 4002 (Gateway) "
+                "or 7497 (TWS)."
             )
 
         self._config = config
@@ -265,7 +291,8 @@ class IBGatewayManager:
         self._last_error: Optional[str] = None
 
         logger.info(
-            "IBGatewayManager created | host=%s port=%d client_id=%d account=%s",
+            "IBGatewayManager created | broker=%s host=%s port=%d client_id=%d account=%s",
+            _broker_label(config.port),
             config.host,
             config.port,
             config.client_id,
@@ -276,16 +303,21 @@ class IBGatewayManager:
 
     async def connect(self) -> bool:
         """
-        Connect to IB Gateway (paper trading, port 4002).
+        Connect to the configured IB API endpoint (Gateway paper 4002 or TWS paper 7497).
 
         Returns True on success, False on failure.
         Sets self._status to CONNECTED or ERROR accordingly.
         """
-        # SAFETY: Live trading (port 4001) is permanently disabled in this module.
-        if self._config.port == LIVE_TRADING_PORT:
-            logger.critical("SAFETY VIOLATION in connect(): port 4001 rejected. Aborting.")
+        # SAFETY: Live trading ports (Gateway 4001, TWS 7496) are permanently disabled.
+        if self._config.port in LIVE_TRADING_PORTS:
+            logger.critical(
+                "SAFETY VIOLATION in connect(): port %d (live trading) rejected. Aborting.",
+                self._config.port,
+            )
             self._status = IBConnectionStatus.ERROR
-            self._last_error = "Port 4001 (live trading) is permanently disabled"
+            self._last_error = (
+                f"Port {self._config.port} (live trading) is permanently disabled"
+            )
             return False
 
         if not IB_INSYNC_AVAILABLE:
@@ -304,7 +336,8 @@ class IBGatewayManager:
 
         self._status = IBConnectionStatus.CONNECTING
         logger.info(
-            "Connecting to IB Gateway | %s:%d client_id=%d",
+            "Connecting to IB %s | %s:%d client_id=%d",
+            _broker_label(self._config.port),
             self._config.host,
             self._config.port,
             self._config.client_id,
@@ -469,8 +502,11 @@ class IBGatewayManager:
         self, action: str, quantity: int
     ) -> Optional[tuple[str, str]]:
         """Validate safety and input preconditions. Returns (action_upper, order_type_upper) or None."""
-        if self._config.port == LIVE_TRADING_PORT:
-            logger.critical("place_paper_order: port 4001 rejected — live trading disabled")
+        if self._config.port in LIVE_TRADING_PORTS:
+            logger.critical(
+                "place_paper_order: port %d rejected — live trading disabled",
+                self._config.port,
+            )
             return None
         if not IB_INSYNC_AVAILABLE:
             logger.error("place_paper_order: ib_async not installed")
