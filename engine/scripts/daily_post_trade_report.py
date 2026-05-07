@@ -152,65 +152,34 @@ def _pair_trades(raw: list[dict]) -> list[ClosedTrade]:
     """
     Match buy/sell entries into ClosedTrade pairs.
 
-    Strategy: per-symbol FIFO stack. Each 'buy' (or equivalent open side)
-    pushes onto a stack; each 'sell' (or equivalent close side) pops it.
-    PnL = (exit - entry) * qty * multiplier.
+    Delegates to analytics.paper_trade_pairing.pair_trades which ALWAYS
+    recomputes PnL from entry/exit prices × contract multiplier.
+
+    IMPORTANT: the stored ``pnl`` field on sell entries in paper_trades.json
+    is in price-point units (writer bug — multiplier was omitted).  Trusting
+    that field caused win_rate to read 0.0% even on profitable sessions.
+    The shared helper ignores stored_pnl entirely.
     """
-    from collections import defaultdict
+    from analytics.paper_trade_pairing import pair_trades as _pair_raw
 
-    stacks: dict[str, list[dict]] = defaultdict(list)
-    closed: list[ClosedTrade] = []
-
-    for t in sorted(raw, key=lambda x: x.get("timestamp", "")):
-        sym = t.get("symbol", "")
-        side = (t.get("side") or "").lower()
-        if side in ("buy", "buy_to_open"):
-            stacks[sym].append(t)
-        elif side in ("sell", "sell_to_close", "exit_long"):
-            if stacks[sym]:
-                opener = stacks[sym].pop(0)
-                entry_p = opener.get("filled_price") or opener.get("trade_value") or 0.0
-                exit_p = t.get("filled_price") or t.get("trade_value") or 0.0
-                qty = t.get("quantity") or opener.get("quantity") or 1.0
-                mult = INSTRUMENT_MULTIPLIERS.get(sym, 1.0)
-                # Use stored pnl if present; otherwise compute
-                stored_pnl = t.get("pnl")
-                if stored_pnl is not None:
-                    pnl = float(stored_pnl)
-                else:
-                    pnl = (exit_p - entry_p) * qty * mult
-
-                try:
-                    entry_dt = datetime.fromisoformat(
-                        opener["timestamp"].replace("Z", "+00:00")
-                    )
-                    exit_dt = datetime.fromisoformat(
-                        t["timestamp"].replace("Z", "+00:00")
-                    )
-                except (KeyError, ValueError):
-                    continue
-
-                sp = {}
-                try:
-                    sp = json.loads(opener.get("strategy_params") or "{}")
-                except Exception:
-                    pass
-
-                closed.append(
-                    ClosedTrade(
-                        symbol=sym,
-                        side="buy",
-                        quantity=qty,
-                        entry_price=entry_p,
-                        exit_price=exit_p,
-                        entry_time=entry_dt,
-                        exit_time=exit_dt,
-                        pnl=pnl,
-                        slippage_ticks=int(t.get("slippage_ticks") or 0),
-                        strategy_params=sp,
-                    )
-                )
-    return closed
+    raw_closed = _pair_raw(raw)
+    result: list[ClosedTrade] = []
+    for rt in raw_closed:
+        result.append(
+            ClosedTrade(
+                symbol=rt.symbol,
+                side=rt.side,
+                quantity=rt.quantity,
+                entry_price=rt.entry_price,
+                exit_price=rt.exit_price,
+                entry_time=rt.entry_time,
+                exit_time=rt.exit_time,
+                pnl=rt.pnl,
+                slippage_ticks=rt.slippage_ticks_exit,
+                strategy_params={},
+            )
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
