@@ -109,24 +109,35 @@ _ENGINE_HEALTH_CACHE_TTL_SEC = 5.0
 
 
 def _fetch_engine_health() -> dict[str, Any] | None:
-    """Fetch engine /health with a 5s cache.
+    """Fetch engine /health with a 5s cache and retry-on-transient.
 
     The cache exists so C4 (engine health) and C5 (kill switch) consult the
     same response within a single run_all_checks() invocation. Without it,
     C4 can FAIL on a transient timeout while C5 succeeds on a retry, producing
     an inconsistent verdict where the gate reports kill_switch=false against
     an "unreachable" engine.
+
+    Retries up to 3 attempts before caching a None result. Cold-start TCP
+    handshake on Windows occasionally takes >5s (observed 2026-05-06); the
+    retry loop turns flaky single-call timeouts into a benign extra second.
     """
     import time
 
     now = time.monotonic()
     if now - _ENGINE_HEALTH_CACHE["ts"] < _ENGINE_HEALTH_CACHE_TTL_SEC:
         return _ENGINE_HEALTH_CACHE["data"]
-    try:
-        with urlopen(ENGINE_HEALTH_URL, timeout=ENGINE_TIMEOUT_SEC) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except (URLError, HTTPError, json.JSONDecodeError, OSError):
-        data = None
+
+    data = None
+    for attempt in range(3):
+        try:
+            with urlopen(ENGINE_HEALTH_URL, timeout=ENGINE_TIMEOUT_SEC) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            break
+        except (URLError, HTTPError, json.JSONDecodeError, OSError):
+            if attempt < 2:
+                time.sleep(1.0)
+            # else: fall through with data=None
+
     _ENGINE_HEALTH_CACHE["ts"] = now
     _ENGINE_HEALTH_CACHE["data"] = data
     return data
