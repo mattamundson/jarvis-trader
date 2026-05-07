@@ -122,18 +122,17 @@ def _load_data(data_file: Path) -> pd.DataFrame:
 
 
 def _find_data_file(data_dir: Path) -> Path:
-    primary = data_dir / "MGC_2024-01-01_2026-03-28_1h.csv"
-    if primary.exists():
-        return primary
+    # Pick the MGC 1h cache covering the latest end-date so a refreshed
+    # IBKR pull (named MGC_<start>_<end>_1h.csv) always wins over older files.
     candidates = sorted(data_dir.glob("MGC_*_1h.csv"))
     if not candidates:
-        raise FileNotFoundError(
-            "No MGC 1h data found in engine/backtest/cache/\n"
-            "Expected: MGC_2024-01-01_2026-03-28_1h.csv"
-        )
-    candidates_2024 = [c for c in candidates if "2024-01-01" in c.name]
-    chosen = candidates_2024[-1] if candidates_2024 else candidates[-1]
-    print(f"[MGC-R4] Primary cache not found; using {chosen.name}")
+        raise FileNotFoundError("No MGC 1h data found in engine/backtest/cache/")
+    def _end_date(p: Path) -> str:
+        # Filename: MGC_YYYY-MM-DD_YYYY-MM-DD_1h.csv -> the second date
+        parts = p.stem.split("_")
+        return parts[2] if len(parts) >= 3 else ""
+    chosen = max(candidates, key=_end_date)
+    print(f"[MGC-R4] Selected {chosen.name}")
     return chosen
 
 
