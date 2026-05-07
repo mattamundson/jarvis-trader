@@ -54,11 +54,28 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
+# Cache filename contract — single source of truth.
+#
+# Format: <SYMBOL>_<START_DATE>_<END_DATE>_<INTERVAL>.csv
+#   - SYMBOL:   2-4 uppercase letters (e.g. MES, MGC, MNQ, MCL, M2K)
+#   - START / END: ISO YYYY-MM-DD
+#   - INTERVAL: digits + 'h' or 'd' (e.g. 1h, 4h, 1d)
+#
+# The downstream selector engine/backtest/_gate_v2_helpers.py::_find_latest_cache
+# splits on "_" and uses parts[2] (the END_DATE) as the lex-sort key. If this
+# pattern ever drifts (e.g. a contract-month suffix, or a non-ISO date), the
+# selector silently picks the wrong file. The assertion in _save_merged below
+# is the canary that catches drift at write-time, not weeks later at WFO time.
+CACHE_FILENAME_CONTRACT = re.compile(
+    r"^[A-Z][A-Z0-9]{1,3}_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}_\d{1,2}[hd]\.csv$"
+)
 
 engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
@@ -152,10 +169,25 @@ def _ib_duration_from_gap(last_bar: datetime | None, interval: str) -> str:
 
 
 def _save_merged(symbol: str, interval: str, merged: pd.DataFrame) -> Path:
-    """Write merged DF to canonical filename convention."""
+    """Write merged DF to canonical filename convention.
+
+    Filenames must match :data:`CACHE_FILENAME_CONTRACT`
+    (``<SYMBOL>_<START_DATE>_<END_DATE>_<INTERVAL>.csv`` with ISO dates) so
+    that ``_gate_v2_helpers._find_latest_cache`` can pick the freshest cache
+    by lex-sorting on the end-date segment. A contract violation here would
+    silently break verdict refresh, so we assert at write-time.
+    """
     start_date = merged.index.min().date().isoformat()
     end_date = merged.index.max().date().isoformat()
-    out = CACHE_DIR / f"{symbol}_{start_date}_{end_date}_{interval}.csv"
+    filename = f"{symbol}_{start_date}_{end_date}_{interval}.csv"
+    if not CACHE_FILENAME_CONTRACT.match(filename):
+        raise ValueError(
+            f"Cache filename '{filename}' violates the contract "
+            f"(expected '<SYMBOL>_<YYYY-MM-DD>_<YYYY-MM-DD>_<INTERVAL>.csv'). "
+            f"Downstream _find_latest_cache parses parts[2] as the end-date "
+            f"sort key — drift here breaks verdict refresh silently."
+        )
+    out = CACHE_DIR / filename
     out_df = merged.reset_index()
     # Canonical column name = "timestamp"
     if "datetime" in out_df.columns and "timestamp" not in out_df.columns:

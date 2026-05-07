@@ -9,17 +9,31 @@ import numpy as np
 def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> Path:
     """Pick the cache file whose filename's second date segment is the latest.
 
-    Filename contract:
+    Filename contract (LOAD-BEARING — see ``export_ibkr_history.py``
+    ``CACHE_FILENAME_CONTRACT`` for the canonical regex):
+
         ``<PREFIX>_<START_DATE>_<END_DATE><SUFFIX>``
+
     where ``<START_DATE>`` and ``<END_DATE>`` are ISO ``YYYY-MM-DD`` strings.
-    Lexicographic max on the second segment is equivalent to chronological max
-    because ISO dates sort correctly as strings.
+    Lexicographic max on the second underscore-split segment (``parts[2]``,
+    the end-date) is equivalent to chronological max because ISO dates sort
+    correctly as strings. ``parts[0]`` is the prefix, ``parts[1]`` is the
+    start-date, ``parts[2]`` is the end-date — the sort key.
 
     A refreshed IBKR pull (e.g. ``MES_2024-01-01_2026-05-07_1h.csv``) will
     therefore always win over an older copy (e.g.
     ``MES_2024-01-01_2026-03-28_1h.csv``). Centralizes the bug-class fix from
     commit 55739db so future runners (MES, MGC, MNQ, MCL, M2K, ...) cannot
     silently revert to a hardcoded path.
+
+    Contract drift policy: filenames matching the glob ``<prefix>*<suffix>``
+    but violating the underscore-split contract (fewer than 3 segments) sort
+    to the empty string and end up at the bottom of the lex order, so they
+    never beat a contract-conforming sibling. They will only be selected if
+    no conforming file exists, in which case the helper falls back to the
+    glob-sort tail and a warning is logged. The companion runtime assertion
+    in ``export_ibkr_history._save_merged`` is the canary that prevents new
+    drift from entering the cache directory.
 
     Args:
         data_dir: Directory to search (typically ``engine/backtest/cache/``).
@@ -32,6 +46,8 @@ def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> 
     Raises:
         FileNotFoundError: If no files match ``<prefix>*<suffix>`` in ``data_dir``.
     """
+    import logging
+
     candidates = sorted(data_dir.glob(f"{prefix}*{suffix}"))
     if not candidates:
         raise FileNotFoundError(
@@ -40,9 +56,21 @@ def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> 
         )
 
     def _end_date(p: Path) -> str:
-        # Filename: <PREFIX>_YYYY-MM-DD_YYYY-MM-DD<SUFFIX> -> the second date
+        # Filename: <PREFIX>_YYYY-MM-DD_YYYY-MM-DD<SUFFIX> -> the second date.
+        # Off-contract files have <3 parts and return "" (sort to the bottom).
         parts = p.stem.split("_")
         return parts[2] if len(parts) >= 3 else ""
+
+    # Surface contract-violating files so drift is visible in logs.
+    off_contract = [p for p in candidates if not _end_date(p)]
+    if off_contract:
+        logging.getLogger(__name__).warning(
+            "Cache filename contract drift detected in %s: %s "
+            "(expected '<PREFIX>_<YYYY-MM-DD>_<YYYY-MM-DD>%s')",
+            data_dir,
+            [p.name for p in off_contract],
+            suffix,
+        )
 
     return max(candidates, key=_end_date)
 
