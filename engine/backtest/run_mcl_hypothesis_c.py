@@ -28,7 +28,6 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
@@ -138,7 +137,7 @@ def _run_signals_and_backtest(
     rv_min: float,
     rv_max: float,
     rv_lookback: int,
-) -> "BacktestResult":
+) -> BacktestResult:  # noqa: F821 - lazy: imported inside fn body
     from backtest.meanrev_signals import generate_bollinger_rsi_signals
     from backtest.backtester import Backtester
 
@@ -171,7 +170,7 @@ def _run_signals_and_backtest(
 
 def _best_is_params(
     df_train: pd.DataFrame, grid: list[tuple]
-) -> tuple[dict, "BacktestResult"] | tuple[None, None]:
+) -> tuple[dict, BacktestResult] | tuple[None, None]:  # noqa: F821
     """Grid-search on IS data; return (best_params_dict, best_result)."""
     best_pf = -1.0
     best_params = None
@@ -203,7 +202,7 @@ def _best_is_params(
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
 
 
-def _compute_gate_v2(oos_results: list["BacktestResult"], n_grid_combos: int) -> dict:
+def _compute_gate_v2(oos_results: list[BacktestResult], n_grid_combos: int) -> dict:  # noqa: F821
     """Compute all four gate v2 metrics from OOS BacktestResult objects."""
     from backtest.deflated_sharpe import deflated_sharpe_ratio
 

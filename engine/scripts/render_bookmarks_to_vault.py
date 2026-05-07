@@ -326,7 +326,7 @@ def _target_path(vault_dir: Path, bm) -> Optional[Path]:
         return None
 
 
-def _bookmark_from_row(row) -> "Bookmark":
+def _bookmark_from_row(row) -> "Bookmark":  # noqa: F821 - lazy import below
     # Local import to avoid a hard dependency when only the slug helpers are used
     from discord.models import Bookmark
     return Bookmark(**dict(row))

@@ -20,13 +20,13 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-
 # Make the engine package importable when run as `python -m scripts.mes_sma_phase_a`
 ENGINE_DIR = Path(__file__).resolve().parent.parent
 if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
 from backtest import BacktestDataLoader, Backtester
+from backtest.trade_manager import BacktestResult
 from backtest.evaluation_harness import evaluate
 from backtest.monte_carlo import bootstrap_pf, run_monte_carlo, run_slippage_stress
 from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals
@@ -43,7 +43,7 @@ N_SIMULATIONS = 10_000
 SEED = 42
 
 
-def run_mes_backtest() -> "BacktestResult":
+def run_mes_backtest() -> BacktestResult:
     """Reproduce the exact backtest the /backtest/run API runs for MES."""
     loader = BacktestDataLoader()
     df = loader.load(SYMBOL, START, END, INTERVAL)

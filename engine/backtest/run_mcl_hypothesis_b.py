@@ -54,7 +54,6 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
@@ -213,7 +212,7 @@ def _run_signals_and_backtest(
     sentiment_db_path: str,
     sentiment_block_bearish: bool,
     stop_atr_mult: float,
-) -> "BacktestResult":
+) -> BacktestResult:  # noqa: F821 - lazy: imported inside fn body
     from backtest.meanrev_signals import generate_bollinger_rsi_signals
     from backtest.backtester import Backtester
 
@@ -279,7 +278,7 @@ def _best_is_params(
     df_train: pd.DataFrame,
     grid: list[dict],
     sentiment_db_path: str,
-) -> tuple[dict | None, "BacktestResult | None"]:
+) -> tuple[dict | None, BacktestResult | None]:  # noqa: F821
     best_pf = -1.0
     best_params = None
     best_result = None

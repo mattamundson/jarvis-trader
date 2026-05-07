@@ -34,7 +34,7 @@ import logging
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ._mixins_alerts import AlertsMixin
 from ._mixins_analytics import AnalyticsMixin
