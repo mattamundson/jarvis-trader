@@ -152,8 +152,8 @@
         "All existing tests pass"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Not implemented this session. Awaiting Anthropic Managed Agents API stabilization. Owner: future session."
+      "passes": true,
+      "notes": "IMPLEMENTED 2026-05-06: ManagedAgentBridge in engine/agents/managed_agent_bridge.py. USE_MANAGED_AGENTS env var toggles modes (truthy: true/1/yes/on; falsy default). New unified run_stage1() dispatches to either custom_runner (default) or run_stage1_managed (when env enabled). Both paths log active route. 25 unit tests cover mode detection (parametrized truthy/falsy), custom dispatch, managed dispatch, error cases, logging, status reporting. Existing managed-path scaffolding kept (managed-agents-2026-04-08 beta header, prompt builders for technical/news/social/fundamental/corey)."
     },
     {
       "id": "US-F3",
