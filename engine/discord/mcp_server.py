@@ -21,7 +21,19 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import sys
 from datetime import date as date_type, datetime, timedelta, timezone
+from pathlib import Path
+
+# When invoked as a script (per ~/.claude.json mcpServers config), Python adds
+# only this file's directory to sys.path — so `from discord.commentary_processor`
+# fails to find `engine.discord` as a package. Add `engine/` (parent of this
+# file's parent) to sys.path so sibling-package imports resolve.
+# Observed 2026-05-06: `get_session_bias` raised "No module named 'discord'"
+# while `get_recent_signals` worked (it doesn't import discord.* siblings).
+_ENGINE_ROOT = str(Path(__file__).resolve().parent.parent)
+if _ENGINE_ROOT not in sys.path:
+    sys.path.insert(0, _ENGINE_ROOT)
 
 from mcp.server.fastmcp import FastMCP
 
