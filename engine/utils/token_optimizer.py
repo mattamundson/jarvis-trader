@@ -32,7 +32,7 @@ Integration with JarvisLLMClient:
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)

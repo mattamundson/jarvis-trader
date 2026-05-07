@@ -596,7 +596,7 @@ async def lifespan(app: FastAPI):
     regime_guard = RegimeGuard(data_manager=data_manager)
 
     # Add initial pairs for cross-market monitoring
-    arb_scout.add_pair("0x...", "MES") 
+    arb_scout.add_pair("0x...", "MES")
 
     # Update super-engine injection with all components now ready
     inject_super_engine({
@@ -1951,7 +1951,7 @@ async def lifespan(app: FastAPI):
             """Alert on WhatsApp if Corey's commentary feed is >48h stale on a weekday."""
             try:
                 import sqlite3
-                from datetime import datetime, timedelta
+                from datetime import datetime
                 from zoneinfo import ZoneInfo
                 from config import settings
                 from notifications.openclaw_notifier import notify_corey_stale

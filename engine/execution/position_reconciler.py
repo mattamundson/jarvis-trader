@@ -5,13 +5,12 @@ Issues alerts and forcefully attaches stop-losses to protect the account
 when the engine process restarts.
 """
 
-import asyncio
 import logging
 
 try:
     from config import settings
 except ImportError:
-    from engine.config import settings
+    pass
 
 logger = logging.getLogger(__name__)
 

@@ -76,7 +76,7 @@ def simulate_forge(df: pd.DataFrame) -> pd.Series:
 
     # We will step through the dataframe starting at day 1 to allow TPO trailing footprint
     # A rolling 24h window (roughly 96 15-minute bars)
-    window_size = 96 
+    window_size = 96
 
     returns = np.zeros(len(df))
     in_position = 0      # 1 for Long, -1 for Short, 0 = Flat
@@ -166,9 +166,9 @@ def generate_quantstats_tearsheet(returns: pd.Series, output_path: str):
     daily_returns = daily_returns[daily_returns != 0.0] # drop flat days
 
     qs.reports.html(
-        daily_returns, 
-        benchmark="SPY", 
-        title="Stark-TPO Math Alpha (ES=F 60-Day)", 
+        daily_returns,
+        benchmark="SPY",
+        title="Stark-TPO Math Alpha (ES=F 60-Day)",
         output=output_path
     )
     logger.info("Tearsheet success.")

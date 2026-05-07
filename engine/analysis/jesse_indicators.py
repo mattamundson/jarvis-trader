@@ -5,7 +5,7 @@ High-performance, clean-API technical indicators.
 Focuses on event-driven calculation safety and performance.
 """
 
-from typing import List, Union
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -39,10 +39,10 @@ class JesseIndicators:
         Returns a DataFrame with [SUPERT_7_3.0, SUPERTd_7_3.0, SUPERTl_7_3.0, SUPERTs_7_3.0]
         """
         st = ta.supertrend(
-            pd.Series(high), 
-            pd.Series(low), 
-            pd.Series(close), 
-            length=period, 
+            pd.Series(high),
+            pd.Series(low),
+            pd.Series(close),
+            length=period,
             multiplier=multiplier
         )
         return st

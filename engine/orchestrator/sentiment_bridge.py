@@ -9,7 +9,7 @@ without blocking on LLM calls.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict
 
 logger = logging.getLogger("jarvis_trader.orchestrator.sentiment_bridge")
 

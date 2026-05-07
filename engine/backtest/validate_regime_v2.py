@@ -5,10 +5,8 @@ Validates the new MarketRegime classification against historical data.
 
 from __future__ import annotations
 
-import pandas as pd
-
 from backtest.data_loader import BacktestDataLoader
-from backtest.regime_classifier import MarketRegime, RegimeClassifierV2
+from backtest.regime_classifier import RegimeClassifierV2
 
 
 def main():

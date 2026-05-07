@@ -3,9 +3,8 @@
 Lightweight dataclass-validated YAML recipes. No templating engine.
 Standalone — no engine imports besides stdlib and PyYAML.
 """
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import yaml
 

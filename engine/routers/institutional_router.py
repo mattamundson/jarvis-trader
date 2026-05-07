@@ -7,13 +7,12 @@ Exposes Volume Profile and Harmonic patterns for the dashboard.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from analysis.breakout_engine import VolumeProfileEngine
 from analysis.harmonics_engine import HarmonicEngine
-from analysis.regime_engine import MarketRegime, RegimeEngine
+from analysis.regime_engine import RegimeEngine
 from data.market_data import MarketDataManager
 
 logger = logging.getLogger("jarvis_trader.routers.institutional")

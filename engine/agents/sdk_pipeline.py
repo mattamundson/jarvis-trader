@@ -338,7 +338,7 @@ class SDKTradingPipeline:
 
         # Super-Engine Orchestration (Phase 6)
         # Note: news_analyst is wired in from the orchestrator map if needed
-        self._sentiment_bridge = SentimentBridge(news_analyst=None) 
+        self._sentiment_bridge = SentimentBridge(news_analyst=None)
 
         # Build the in-process MCP server
         self._mcp_server = create_market_mcp_server(

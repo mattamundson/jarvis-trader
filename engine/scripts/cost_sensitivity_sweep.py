@@ -26,8 +26,6 @@ import sys
 import time
 from pathlib import Path
 
-import pandas as pd
-
 _HERE = Path(__file__).resolve().parent
 _ENGINE = _HERE.parent
 if str(_ENGINE) not in sys.path:

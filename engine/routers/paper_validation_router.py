@@ -966,7 +966,7 @@ async def get_validation_checkpoint():
     - ON_TRACK otherwise
     """
     try:
-        from datetime import date, datetime
+        from datetime import datetime
 
         db = get_db()
 

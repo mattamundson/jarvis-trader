@@ -7,7 +7,7 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 logger = logging.getLogger("jarvis_trader.promotion")
 
@@ -27,16 +27,16 @@ class PromotionEngine:
         """
         Check how well a shadow strategy is doing across different regimes.
         """
-        # Note: Shadow trades are stored in the main paper_trades table 
+        # Note: Shadow trades are stored in the main paper_trades table
         # but their results are also reflected in trade_outcomes if record_outcome was called.
-        # However, for shadow-specific promotion, we should look at the paper_trades table 
+        # However, for shadow-specific promotion, we should look at the paper_trades table
         # or the pipeline_runs if we want to see 'would-be' trades that weren't even logged.
 
         # Let's look at trade_outcomes but we need a way to distinguish 'shadow' vs 'live' there.
         # Currently record_outcome doesn't store 'is_shadow'.
 
-        # Strategy: For Phase 5, we'll evaluate the accuracy of the 'Agent Ensemble' 
-        # as a whole within specific regimes. If ensemble accuracy > 60%, we increase 
+        # Strategy: For Phase 5, we'll evaluate the accuracy of the 'Agent Ensemble'
+        # as a whole within specific regimes. If ensemble accuracy > 60%, we increase
         # the 'Promotion Score'.
 
         performance = {}
@@ -46,7 +46,7 @@ class PromotionEngine:
             conn.row_factory = sqlite3.Row
             for regime in regimes:
                 rows = conn.execute(
-                    "SELECT outcome FROM trade_outcomes WHERE regime = ?", 
+                    "SELECT outcome FROM trade_outcomes WHERE regime = ?",
                     (regime,)
                 ).fetchall()
 

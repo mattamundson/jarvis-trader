@@ -242,7 +242,7 @@ async def notify_approval_required(
         return False
     # Supervisor gate — ACK clean approvals (high confidence, in-regime, in size band).
     try:
-        from .supervisor import SupervisorEvent, SupervisorMarker, get_supervisor
+        from .supervisor import SupervisorEvent, get_supervisor
         _sup = get_supervisor()
         if _sup.enabled:
             _decision = await _sup.review(SupervisorEvent(

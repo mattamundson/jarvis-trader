@@ -21,7 +21,7 @@ except ImportError:
 try:
     from engine.config import settings
 except ImportError:
-    from config import settings
+    pass
 
 logger = logging.getLogger(__name__)
 

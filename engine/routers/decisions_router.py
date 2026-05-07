@@ -2,14 +2,12 @@
 Trading decisions endpoints
 """
 
-import json
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
-from database import repository as db_repository
 from schemas.decision_log import DecisionRecord, parse_decision_row
 
 logger = logging.getLogger(__name__)

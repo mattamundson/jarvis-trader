@@ -35,7 +35,7 @@ from pydantic import BaseModel
 
 from backtest.backtester import BacktestResult, Trade
 from backtest.monte_carlo import run_monte_carlo
-from paper.validation_gate_config import APPROVED_PAPER_SYMBOLS, PAPER_VALIDATION_GATES
+from paper.validation_gate_config import PAPER_VALIDATION_GATES
 from paper.validation_tracker import ValidationTracker
 
 logger = logging.getLogger(__name__)

@@ -9,8 +9,8 @@ import logging
 from typing import Dict, List, Optional
 
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import BookParams, MarketOrderArgs, OrderArgs, OrderType
-from py_clob_client.order_builder.constants import BUY, SELL
+from py_clob_client.clob_types import MarketOrderArgs, OrderArgs, OrderType
+from py_clob_client.order_builder.constants import BUY
 
 from config import settings
 
@@ -59,11 +59,11 @@ class PolymarketConnector:
         return self.client.get_order_book(token_id)
 
     async def place_order(
-        self, 
-        token_id: str, 
-        price: float, 
-        size: float, 
-        side: str = BUY, 
+        self,
+        token_id: str,
+        price: float,
+        size: float,
+        side: str = BUY,
         order_type: OrderType = OrderType.GTC
     ) -> Dict:
         """Place a limit order."""
@@ -82,9 +82,9 @@ class PolymarketConnector:
         return resp
 
     async def place_market_order(
-        self, 
-        token_id: str, 
-        amount: float, 
+        self,
+        token_id: str,
+        amount: float,
         side: str = BUY
     ) -> Dict:
         """Place a market order (buy by $ amount)."""

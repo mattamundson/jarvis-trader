@@ -7,7 +7,7 @@ Ex: Polymarket Fed Rate Hike Odds vs Treasury Bill Futures.
 """
 
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 logger = logging.getLogger("jarvis_trader.strategies.arbitrage.polymarket")
 

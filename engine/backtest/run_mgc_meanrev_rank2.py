@@ -59,7 +59,6 @@ Usage (from jarvis-trader/ root):
 """
 from __future__ import annotations
 
-import itertools
 import json
 import sys
 from collections import Counter

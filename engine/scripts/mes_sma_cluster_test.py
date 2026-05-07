@@ -29,8 +29,7 @@ if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
 from backtest import BacktestDataLoader, Backtester
-from backtest.signals import generate_instrument_signals
-from backtest.trend_signals import _wilder_atr, generate_sma_trend_signals
+from backtest.trend_signals import generate_sma_trend_signals
 
 SYMBOL = "MES"
 INTERVAL = "1h"

@@ -888,7 +888,7 @@ class MarketDataManager:
                 logger.debug(f"TradingView Tier 2.5 failed for {symbol}: {_tv_err}")
 
         # Tier 3: Polygon Stream Cache (Fastest Tier 2 fallback)
-        if (self.polygon_streamer and 
+        if (self.polygon_streamer and
             symbol.upper() not in POLYGON_FUTURES_BLOCKLIST):
             stream_bar = self.polygon_streamer.get_latest_bar(symbol.upper())
             if stream_bar and stream_bar.get("close"):
@@ -966,7 +966,7 @@ class MarketDataManager:
                 logger.debug(f"[get_tick_price] Schwab failed for {symbol}: {_schwab_err}")
 
         # Tier 3: Polygon Stream Cache
-        if (self.polygon_streamer and 
+        if (self.polygon_streamer and
             symbol.upper() not in POLYGON_FUTURES_BLOCKLIST):
             stream_bar = self.polygon_streamer.get_latest_bar(symbol.upper())
             if stream_bar and stream_bar.get("close"):

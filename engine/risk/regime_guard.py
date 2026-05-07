@@ -8,7 +8,6 @@ Ensures that strategies (like Market Making) only run in suitable environments.
 import logging
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 from analysis.jesse_indicators import JesseIndicators
@@ -38,8 +37,8 @@ class RegimeGuard:
 
             # Calculate ADX
             adx_df = self.indicators.adx(
-                df['high'].values, 
-                df['low'].values, 
+                df['high'].values,
+                df['low'].values,
                 df['close'].values
             )
 

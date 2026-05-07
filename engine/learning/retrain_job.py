@@ -5,11 +5,8 @@ Automates the lifecycle of fetching data (OpenBB),
 preparing features (DataKitchen), and retraining models.
 """
 
-import asyncio
 import logging
-from datetime import datetime, timedelta
 
-from data.openbb_adapter import OpenBBAdapter
 from learning.freqai_kitchen import FreqaiDataKitchen
 from learning.model_drawer import ModelDrawer
 
@@ -64,10 +61,10 @@ class FreqaiRetrainJob:
     def schedule_nightly(self, scheduler):
         """Register the job with the APScheduler."""
         scheduler.add_job(
-            self.run_training_cycle, 
-            "cron", 
-            hour=1, 
-            minute=0, 
+            self.run_training_cycle,
+            "cron",
+            hour=1,
+            minute=0,
             args=["SPY"], # Example
             id="freqai_retrain_spy"
         )

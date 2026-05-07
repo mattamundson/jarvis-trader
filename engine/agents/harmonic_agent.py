@@ -10,11 +10,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List
 
-import pandas as pd
-
-from analysis.harmonics_engine import HarmonicEngine, HarmonicPattern
+from analysis.harmonics_engine import HarmonicEngine
 
 logger = logging.getLogger("jarvis_trader.agents.harmonic_agent")
 

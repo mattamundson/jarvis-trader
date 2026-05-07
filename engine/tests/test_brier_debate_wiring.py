@@ -38,7 +38,7 @@ def test_brier_zero_ic_uniform_weights_is_identity():
     """With IC=0 and uniform Brier (1/N), every agent gets the raw signal back."""
     signal = 0.5
     ic_scores = {"a": 0.0, "b": 0.0, "c": 0.0, "d": 0.0, "e": 0.0}
-    brier_weights = {k: 0.2 for k in ic_scores}  # uniform → centered == 1.0
+    brier_weights = dict.fromkeys(ic_scores, 0.2)  # uniform → centered == 1.0
     out = debate._brier_blended_signal(signal, "a", ic_scores, brier_weights, alpha=0.5)
     assert out == pytest.approx(signal)
 

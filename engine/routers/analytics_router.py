@@ -923,7 +923,6 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
     and ICWeightedEnsemble. Both trackers degrade gracefully when the table
     is missing or empty — the endpoint never returns 500 on cold-start.
     """
-    import os as _os
     import sqlite3 as _sqlite
 
     try:
@@ -953,17 +952,17 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
         brier_weights = brier.get_calibration_weights(agents)
     except Exception as exc:
         logger.warning("[Calibration] Brier compute failed: %s", exc)
-        brier_scores = {a: BRIER_NEUTRAL for a in agents}
+        brier_scores = dict.fromkeys(agents, BRIER_NEUTRAL)
         brier_weights = {a: 1.0 / len(agents) for a in agents}
 
     try:
         ic_scores = {a: ic.compute_ic(a) for a in agents}
     except Exception as exc:
         logger.warning("[Calibration] IC compute failed: %s", exc)
-        ic_scores = {a: 0.0 for a in agents}
+        ic_scores = dict.fromkeys(agents, 0.0)
 
     # Per-agent sample count — direct SQL so it stays cheap.
-    sample_counts: dict[str, int] = {a: 0 for a in agents}
+    sample_counts: dict[str, int] = dict.fromkeys(agents, 0)
     total_outcomes = 0
     try:
         if FB_DB_PATH.exists():

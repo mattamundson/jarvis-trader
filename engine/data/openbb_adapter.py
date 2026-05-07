@@ -6,7 +6,6 @@ Replaces multiple independent data providers with a single standardized hub.
 """
 
 import logging
-from typing import Dict, Optional, Union
 
 import pandas as pd
 from openbb import obb
@@ -24,9 +23,9 @@ class OpenBBAdapter:
         logger.info("✅ OpenBB: Adapter initialized")
 
     def get_price_history(
-        self, 
-        symbol: str, 
-        interval: str = "1d", 
+        self,
+        symbol: str,
+        interval: str = "1d",
         provider: str = "yfinance",
         **kwargs
     ) -> pd.DataFrame:

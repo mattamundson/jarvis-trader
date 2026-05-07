@@ -18,7 +18,6 @@ import time
 from itertools import product
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 _HERE = Path(__file__).resolve().parent

@@ -60,8 +60,8 @@ class MarginMonitorAgent:
         margin_used = float(summary.get("margin_used", 0.0))
         utilization = 0.0
         if buying_power > 0:
-            # IB Buying power is often 4x Excess Liquidity for stocks, 
-            # for futures it varies by SPAN. 
+            # IB Buying power is often 4x Excess Liquidity for stocks,
+            # for futures it varies by SPAN.
             # We'll use (Equity - Excess) / Equity as utilization if available.
             utilization = margin_used / equity if equity > 0 else 0.0
 

@@ -7,9 +7,7 @@ Ensures the engine stays safe during extreme volatility or poor performance.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
-
-from config import settings
+from typing import Dict, List
 
 logger = logging.getLogger("jarvis_trader.risk.protections")
 

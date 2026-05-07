@@ -19,10 +19,8 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

@@ -15,118 +15,15 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
-# ─── Track C: TradingView Feed ────────────────────────────────────────────────
-
-class TestTradingViewFeed:
-    """Tests for Track C: TradingViewFeed optional data source."""
-
-    def test_import(self):
-        from engine.data.tradingview_feed import TradingViewFeed
-        assert TradingViewFeed is not None
-
-    def test_unavailable_when_no_cli(self):
-        """Should report unavailable gracefully when 'tv' CLI not found."""
-        from engine.data.tradingview_feed import TradingViewFeed
-        with patch("shutil.which", return_value=None):
-            feed = TradingViewFeed()
-            assert feed.is_available() is False
-
-    def test_get_quote_returns_none_when_unavailable(self):
-        from engine.data.tradingview_feed import TradingViewFeed
-        with patch("shutil.which", return_value=None):
-            feed = TradingViewFeed()
-            result = feed.get_quote("MES")
-            assert result is None
-
-    def test_reset_availability(self):
-        from engine.data.tradingview_feed import TradingViewFeed
-        feed = TradingViewFeed()
-        feed._available = True
-        feed.reset_availability()
-        assert feed._available is None
-
-    def test_get_bars_empty_when_unavailable(self):
-        """get_bars returns empty DataFrame (not None) when TV is unavailable."""
-        import pandas as pd
-        from engine.data.tradingview_feed import TradingViewFeed
-        with patch("shutil.which", return_value=None):
-            feed = TradingViewFeed()
-            df = feed.get_bars("MES", "1h", limit=100)
-            assert isinstance(df, pd.DataFrame)
-            assert df.empty
-            assert df.attrs.get("source") == "tradingview"
-
-    def test_get_bars_rejects_unknown_symbol(self):
-        """Symbols without a TV_SYMBOL_MAP entry return empty without calling tv CLI."""
-        from engine.data.tradingview_feed import TradingViewFeed
-        feed = TradingViewFeed()
-        feed._available = True  # pretend TV is up
-        df = feed.get_bars("UNKNOWN_TICKER", "1h", limit=50)
-        assert df.empty
-
-    def test_get_bars_rejects_unknown_timeframe(self):
-        """Timeframes not in TV_TIMEFRAME_MAP return empty without calling tv CLI."""
-        from engine.data.tradingview_feed import TradingViewFeed
-        feed = TradingViewFeed()
-        feed._available = True
-        df = feed.get_bars("MES", "2h", limit=50)  # 2h is not mapped
-        assert df.empty
-
-    def test_symbol_map_covers_primary_futures(self):
-        """MES/MNQ/MCL/MGC must all map to TV tickers (breaks pipeline if missing)."""
-        from engine.data.tradingview_feed import TV_SYMBOL_MAP
-        for sym in ["MES", "MNQ", "MCL", "MGC"]:
-            assert sym in TV_SYMBOL_MAP, f"{sym} missing from TV_SYMBOL_MAP"
-            assert TV_SYMBOL_MAP[sym], f"{sym} mapped to empty ticker"
-
-
-# ─── TV chart-switch race fix (poll vs fixed sleep) ──────────────────────────
-
-class TestTVChartStatePolling:
-    """`_wait_for_chart_state` replaces the old 600ms fixed sleep.
-
-    Root cause: `tv symbol` returns success=true before the chart finishes
-    repainting. The old fixed 0.6s sleep was both (a) a floor slower than
-    needed on fast charts and (b) a ceiling not generous enough on heavy
-    charts (gamma overlay + Corey profile + TAPivots can take ~11s).
-    The poll returns as soon as `tv state` reports the expected symbol.
-    """
-
-    def test_returns_true_quickly_when_state_matches(self):
-        from engine.data.tradingview_feed import TradingViewFeed
-        feed = TradingViewFeed()
-        feed._available = True
-        with patch.object(feed, "_get_state", return_value={"symbol": "CME_MINI:ES1!", "resolution": "60"}):
-            assert feed._wait_for_chart_state(expected_symbol="CME_MINI:ES1!", max_wait=2.0) is True
-
-    def test_returns_false_when_deadline_expires(self):
-        from engine.data.tradingview_feed import TradingViewFeed
-        feed = TradingViewFeed()
-        feed._available = True
-        with patch.object(feed, "_get_state", return_value={"symbol": "WRONG"}):
-            assert feed._wait_for_chart_state(expected_symbol="CME_MINI:ES1!", max_wait=0.3) is False
-
-    def test_tolerates_get_state_returning_none(self):
-        """If `tv state` momentarily fails, keep polling until deadline."""
-        from engine.data.tradingview_feed import TradingViewFeed
-        feed = TradingViewFeed()
-        feed._available = True
-        calls = {"n": 0}
-        def fake_state():
-            calls["n"] += 1
-            if calls["n"] < 2:
-                return None
-            return {"symbol": "CME_MINI:ES1!"}
-        with patch.object(feed, "_get_state", side_effect=fake_state):
-            assert feed._wait_for_chart_state(expected_symbol="CME_MINI:ES1!", max_wait=2.0) is True
-
-    def test_resolution_match_checked_when_requested(self):
-        from engine.data.tradingview_feed import TradingViewFeed
-        feed = TradingViewFeed()
-        feed._available = True
-        with patch.object(feed, "_get_state", return_value={"symbol": "X", "resolution": "60"}):
-            assert feed._wait_for_chart_state(expected_resolution="60", max_wait=1.0) is True
-            assert feed._wait_for_chart_state(expected_resolution="240", max_wait=0.3) is False
+# ─── Track C: TradingView Feed (RETIRED) ──────────────────────────────────────
+#
+# `TestTradingViewFeed` and `TestTVChartStatePolling` covered the CLI-based
+# `engine/data/tradingview_feed.py` module. That module was removed in commit
+# 484b4d6 (2026-04-25, "chore(tv-mcp): retire CLI-based TradingViewFeed, wire
+# MCP server path"). The replacement TV MCP path is covered by
+# `test_health_tradingview_mcp.py` and the MCP-tier tests in
+# `TestMarketDataTVTier` below — no replacement needed for the deleted classes.
+# Removed 2026-05-07 as part of pytest triage cleanup.
 
 
 # ─── Track C+: Market Data Waterfall ──────────────────────────────────────────
