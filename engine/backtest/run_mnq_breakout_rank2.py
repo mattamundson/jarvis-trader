@@ -64,13 +64,7 @@ FAST_VOL_MULT = [1.5, 2.0]
 FAST_STOP_ATR = [1.5, 2.0, 2.5]
 
 # Gate v2 thresholds
-GATE_PF_CI_LOWER = 1.10
-GATE_P_EDGE = 0.95
-GATE_MC_DD = 0.05
-GATE_MC_DD_ALT = 0.07
-GATE_DSR = 0.10
 
-N_BOOTSTRAP = 2000
 MIN_OOS_TRADES_PER_WINDOW = 5
 
 
@@ -220,7 +214,7 @@ def _compute_gate_v2(oos_results: list, n_grid_combos: int) -> dict:
     core_pass = (
         pf_ci_lower >= GATE_PF_CI_LOWER
         and p_edge >= GATE_P_EDGE
-        and mc_95th_dd <= GATE_MC_DD
+        and mc_95th_dd <= GATE_MC_DD_CORE
         and dsr >= GATE_DSR
     )
     alt_pass = (
@@ -370,7 +364,7 @@ def run_wfo(fast: bool = False) -> dict:
     print(f"  pf_ci_lower = {gate['pf_ci_lower']:.4f}  (need >= {GATE_PF_CI_LOWER})")
     print(f"  p_edge      = {gate['p_edge']:.4f}  (need >= {GATE_P_EDGE})")
     print(
-        f"  mc_95th_dd  = {gate['mc_95th_dd']:.4%}  (need <= {GATE_MC_DD:.0%} core / {GATE_MC_DD_ALT:.0%} alt)"
+        f"  mc_95th_dd  = {gate['mc_95th_dd']:.4%}  (need <= {GATE_MC_DD_CORE:.0%} core / {GATE_MC_DD_ALT:.0%} alt)"
     )
     print(f"  dsr         = {gate['dsr']:.4f}  (need >= {GATE_DSR})")
     print(
@@ -421,7 +415,7 @@ def run_wfo(fast: bool = False) -> dict:
         "thresholds": {
             "pf_ci_lower": GATE_PF_CI_LOWER,
             "p_edge": GATE_P_EDGE,
-            "mc_95th_dd_core": GATE_MC_DD,
+            "mc_95th_dd_core": GATE_MC_DD_CORE,
             "mc_95th_dd_alt": GATE_MC_DD_ALT,
             "dsr": GATE_DSR,
         },

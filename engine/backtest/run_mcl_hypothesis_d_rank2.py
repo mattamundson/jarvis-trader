@@ -105,12 +105,6 @@ ATR_TRAIL_MULT_VALUES = [1.5, 2.0, 2.5]
 MIN_RV_ANNUALIZED_VALUES = [0.0, 20.0]  # crude normal RV 25-35%; 20% filters ultra-low-vol
 
 # Gate v2 thresholds (ALT path -- matches MES rank11 runner)
-GATE_PF_CI_LOWER = 1.10
-GATE_P_EDGE = 0.95
-GATE_MC_DD_CORE = 0.05
-GATE_MC_DD_ALT = 0.07
-GATE_DSR = 0.10
-GATE_DSR_ALT = 0.30
 GATE_FIXED_PARAMS_MIN_PF = 1.20
 GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
@@ -123,7 +117,6 @@ COST_SWEEP_TIERS = {
 }
 COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
-N_BOOTSTRAP = 2000
 MIN_OOS_TRADES_PER_WINDOW = 1
 
 
@@ -274,6 +267,15 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | N
 # ---------------------------------------------------------------------------
 
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
+from backtest._gate_v2_helpers import (  # noqa: E402
+    GATE_DSR,
+    GATE_DSR_ALT,
+    GATE_MC_DD_ALT,
+    GATE_MC_DD_CORE,
+    GATE_P_EDGE,
+    GATE_PF_CI_LOWER,
+    N_BOOTSTRAP,
+)  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
