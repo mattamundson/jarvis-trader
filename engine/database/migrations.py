@@ -1004,6 +1004,42 @@ def migration_024(conn: sqlite3.Connection) -> None:
     logger.info("Migration 024 applied — market_data_bars table created.")
 
 
+def migration_025(conn: sqlite3.Connection) -> None:
+    """
+    025 — Health watchdog snapshots table.
+
+    Records every poll of the /health endpoint made by
+    engine/scripts/health_watchdog.py.  One row per 5-minute interval during
+    trading hours.  Powers the intraday uptime calculation and Discord alerting
+    on degradation transitions.
+
+    reachable=0 means the engine did not respond (timeout / refused).  All
+    health-field columns are NULL when reachable=0.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS health_snapshots (
+            ts_utc           TEXT NOT NULL PRIMARY KEY,
+            status           TEXT NOT NULL,
+            reachable        INTEGER NOT NULL,
+            llm_healthy      INTEGER,
+            tv_mcp_healthy   INTEGER,
+            ibkr_data        INTEGER,
+            ibkr_exec        INTEGER,
+            kill_switch      INTEGER,
+            uptime_seconds   REAL,
+            raw_json         TEXT,
+            fetched_at       TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_health_snapshots_ts ON health_snapshots(ts_utc)"
+    )
+    conn.commit()
+    logger.info("Migration 025 applied — health_snapshots table created.")
+
+
 def migration_023(conn: sqlite3.Connection) -> None:
     """
     023 — trading_patterns schema alignment.
@@ -1080,6 +1116,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_022,  # version 22
     migration_023,  # version 23
     migration_024,  # version 24
+    migration_025,  # version 25
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1107,6 +1144,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "MES session hypothesis: forward-recorder table for Corey bias + gamma levels daily snapshots + session outcomes",
     "Trading patterns alignment: adding pattern_type, win_count, loss_count, avg_return, and is_active columns.",
     "Market data bars: market_data_bars OHLCV persistence table for counterfactual + outlook sections.",
+    "Health watchdog snapshots: health_snapshots table for 5-minute /health poll history and intraday uptime.",
 ]
 
 
