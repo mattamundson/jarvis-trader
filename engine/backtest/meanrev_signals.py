@@ -52,8 +52,19 @@ import numpy as np
 import pandas as pd
 
 # Default MCL-targeted params — refined via backtest in P1.1
+# MGC: rank1 baseline (2026-05-07) — pending gate v2 verdict
+#      Same defaults as MCL; rank1 sweeps BB_period × BB_std × stop_atr_mult.
+#      Production champion params will replace this block after rank1 PASS.
 MEANREV_PARAMS: dict[str, dict] = {
     "MCL": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "rsi_period": 14,
+        "rsi_long": 30.0,
+        "rsi_short": 70.0,
+        "stop_atr_mult": 1.5,
+    },
+    "MGC": {
         "bb_period": 20,
         "bb_std": 2.0,
         "rsi_period": 14,
