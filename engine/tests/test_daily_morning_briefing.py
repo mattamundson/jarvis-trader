@@ -20,10 +20,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scripts.daily_morning_briefing import (
-    DO_NOT_TRADE_SYMBOLS,
     _OVERNIGHT_HOURS,
-    _VERDICT_WARN_DAYS,
     _VERDICT_TTL_DAYS,
+    _VERDICT_WARN_DAYS,
+    DO_NOT_TRADE_SYMBOLS,
     compute_attention_items,
     compute_overnight_regime,
     compute_strategy_expectations,
