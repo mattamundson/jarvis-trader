@@ -517,6 +517,10 @@ def _eval_g6_engine_uptime(
     Proxy: pnl_snapshots has a row for ≥ 95% of the 14 trading days.
     If today is in the window and has no snapshot yet, falls back to a live
     /health call to determine whether the engine is currently healthy.
+
+    TODO: refactor to use scripts.health_uptime.compute_uptime() once
+    health_snapshots has accumulated enough intraday data (migration_025).
+    That will give 5-min granularity uptime instead of day-level proxy.
     """
     today = date.today()
     expected = len(days)
