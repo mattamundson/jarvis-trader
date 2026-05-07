@@ -233,27 +233,8 @@ def _best_is_params(
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
-def _bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = N_BOOTSTRAP) -> float:
-    """95% CI lower bound on mean PF via bootstrap (replicated from rank4 pattern)."""
-    if len(oos_pfs) < 2:
-        return float(np.mean(oos_pfs)) if oos_pfs else 0.0
-    rng = np.random.default_rng(42)
-    arr = np.array(oos_pfs, dtype=float)
-    boot_means = [rng.choice(arr, size=len(arr), replace=True).mean() for _ in range(n)]
-    return float(np.percentile(boot_means, 5.0))
-
-
-def _classify_wfo_consistency(oos_pfs: list[float]) -> str:
-    """Classify WFO consistency from OOS window PF list."""
-    if not oos_pfs:
-        return "WEAK"
-    pct_profitable = sum(1 for pf in oos_pfs if pf > 1.0) / len(oos_pfs)
-    if pct_profitable >= 0.75:
-        return "STRONG"
-    elif pct_profitable >= 0.55:
-        return "MODERATE"
-    else:
-        return "WEAK"
+from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower
+from backtest._gate_v2_helpers import classify_wfo_consistency as _classify_wfo_consistency
 
 
 # ---------------------------------------------------------------------------
@@ -375,11 +356,7 @@ def _compute_gate_v2(
     oos_sharpes = [r.sharpe_ratio for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
     all_trades = sum(r.total_trades for r in oos_results)
 
-    # Core metrics — cap inf PFs (windows with 0 losses) at 5.0 before bootstrap.
-    # Without this cap, bootstrap means contain inf and np.percentile returns NaN
-    # via inf-inf interpolation (root cause of the rank11 verdict NaN).
-    oos_pfs_capped = [min(pf, 5.0) if pf != float("inf") else 5.0 for pf in oos_pfs]
-    pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs_capped)
+    pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
     p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
     mc_95th_dd = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
 
