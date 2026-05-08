@@ -3,6 +3,7 @@
 
 # Environment files (SECRETS)
 .env
+.env.*
 .env.local
 .env.*.local
 *.env
