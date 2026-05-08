@@ -7,6 +7,11 @@ Import these into runner files instead of re-defining them locally:
     from backtest._gate_v2_helpers import (
         GATE_PF_CI_LOWER, GATE_P_EDGE, GATE_MC_DD_CORE, GATE_MC_DD_ALT,
         GATE_DSR, GATE_DSR_ALT, N_BOOTSTRAP,
+        # WFO window defaults
+        WFO_TRAIN_MONTHS, WFO_TEST_MONTHS, WFO_STEP_MONTHS,
+        MIN_OOS_TRADES_PER_WINDOW,
+        # Cost sweep tiers
+        COST_SWEEP_TIERS, COST_TIER_ORDER,
     )
 
 Any future change to a threshold is a single-line edit here; no runner
@@ -43,6 +48,39 @@ GATE_DSR_ALT: float = 0.30
 
 #: Bootstrap sample count for PF CI estimation.
 N_BOOTSTRAP: int = 2000
+
+# ---------------------------------------------------------------------------
+# Walk-forward optimisation window defaults — canonical; do not redefine
+# ---------------------------------------------------------------------------
+
+#: In-sample training window length in calendar months.
+WFO_TRAIN_MONTHS: int = 6
+
+#: Out-of-sample test window length in calendar months.
+WFO_TEST_MONTHS: int = 1
+
+#: Roll-forward step size in calendar months.
+WFO_STEP_MONTHS: int = 1
+
+#: Minimum OOS trades required for a window to count toward gate v2.
+MIN_OOS_TRADES_PER_WINDOW: int = 5
+
+# ---------------------------------------------------------------------------
+# Cost sweep tiers — canonical; do not redefine per-runner
+# ---------------------------------------------------------------------------
+
+#: Four-tier cost grid for ORB-family runners (MES/M2K).
+#: Trend runners use higher slippage assumptions and define COST_SWEEP_TIERS locally.
+#: Keys: commission per side (USD) and slippage in ticks.
+COST_SWEEP_TIERS: dict[str, dict[str, float]] = {
+    "optimistic": {"commission": 0.31, "slippage_ticks": 1.0},
+    "realistic": {"commission": 0.62, "slippage_ticks": 1.0},
+    "pessimistic": {"commission": 1.24, "slippage_ticks": 2.0},
+    "catastrophic": {"commission": 2.48, "slippage_ticks": 3.0},
+}
+
+#: Ordered tier names from best to worst — used for threshold checking.
+COST_TIER_ORDER: list[str] = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 
 def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> Path:

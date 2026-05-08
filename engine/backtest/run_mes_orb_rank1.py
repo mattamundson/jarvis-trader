@@ -96,13 +96,6 @@ GATE_FIXED_PARAMS_MIN_PF = 1.20
 GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
 # Cost tiers (same structure as MNQ ORB for cross-symbol consistency)
-COST_SWEEP_TIERS = {
-    "optimistic": {"commission": 0.31, "slippage_ticks": 1.0},
-    "realistic": {"commission": 0.62, "slippage_ticks": 1.0},
-    "pessimistic": {"commission": 1.24, "slippage_ticks": 2.0},
-    "catastrophic": {"commission": 2.48, "slippage_ticks": 3.0},
-}
-COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 MIN_OOS_TRADES_PER_WINDOW = 5  # ORB fires ~21-42/month; 5 is a soft sanity floor
 
@@ -283,6 +276,7 @@ from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_
 from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
 )
+from backtest._gate_v2_helpers import COST_SWEEP_TIERS, COST_TIER_ORDER  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixed-params sweep
