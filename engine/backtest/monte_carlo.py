@@ -16,6 +16,7 @@ from typing import List
 import numpy as np
 
 from backtest.backtester import BacktestResult, Trade
+from backtest.contract_specs import CONTRACT_SPECS
 
 # ---------------------------------------------------------------------------
 # Core simulation
@@ -23,22 +24,9 @@ from backtest.backtester import BacktestResult, Trade
 
 
 def _get_tick_value(symbol: str) -> float:
-    """Get tick value in dollars for a given symbol.
-
-    Args:
-        symbol: Futures symbol (MES, MNQ, SPY, etc.)
-
-    Returns:
-        Dollar value per tick
-    """
-    tick_values = {
-        "MES": 1.25,  # Micro E-mini S&P 500
-        "MNQ": 0.50,  # Micro E-mini Nasdaq-100
-        "SPY": 0.01,  # SPY per-share resolution
-        "ES": 50.0,  # E-mini S&P 500
-        "NQ": 20.0,  # E-mini Nasdaq-100
-    }
-    return tick_values.get(symbol, 0.01)
+    """Dollar value of one tick for *symbol* — delegates to CONTRACT_SPECS."""
+    spec = CONTRACT_SPECS.get(symbol.upper())
+    return spec.tick_value if spec is not None else 0.01
 
 
 def _compute_sharpe(equity: np.ndarray, ann_factor: float = 252.0) -> float:
@@ -279,8 +267,11 @@ def bootstrap_pf(
     n = len(pnls_arr)
     if n == 0:
         return {
-            "median_pf": 0.0, "pf_ci_95_low": 0.0, "pf_ci_95_high": 0.0,
-            "p_positive_edge": 0.0, "n_trades": 0,
+            "median_pf": 0.0,
+            "pf_ci_95_low": 0.0,
+            "pf_ci_95_high": 0.0,
+            "p_positive_edge": 0.0,
+            "n_trades": 0,
         }
 
     rng = np.random.default_rng(seed)
@@ -338,8 +329,12 @@ def moving_block_bootstrap(
     n = len(pnls_arr)
     if n == 0:
         return {
-            "median_pf": 0.0, "pf_ci_95_low": 0.0, "pf_ci_95_high": 0.0,
-            "p_positive_edge": 0.0, "block_size": 0, "n_trades": 0,
+            "median_pf": 0.0,
+            "pf_ci_95_low": 0.0,
+            "pf_ci_95_high": 0.0,
+            "p_positive_edge": 0.0,
+            "block_size": 0,
+            "n_trades": 0,
         }
 
     if block_size is None:
@@ -353,7 +348,7 @@ def moving_block_bootstrap(
     pfs = np.empty(n_resamples, dtype=float)
     for i in range(n_resamples):
         starts = rng.integers(0, max_start, size=n_blocks)
-        sample = np.concatenate([pnls_arr[s:s + block_size] for s in starts])[:n]
+        sample = np.concatenate([pnls_arr[s : s + block_size] for s in starts])[:n]
         pfs[i] = _pf_from_pnls(sample)
 
     finite = pfs[np.isfinite(pfs)]
@@ -402,8 +397,11 @@ def bootstrap_sharpe(
     n = len(pnls_arr)
     if n < 2:
         return {
-            "median_sharpe": 0.0, "sharpe_ci_95_low": 0.0, "sharpe_ci_95_high": 0.0,
-            "p_positive_sharpe": 0.0, "n_trades": n,
+            "median_sharpe": 0.0,
+            "sharpe_ci_95_low": 0.0,
+            "sharpe_ci_95_high": 0.0,
+            "p_positive_sharpe": 0.0,
+            "n_trades": n,
         }
 
     rng = np.random.default_rng(seed)
@@ -447,8 +445,13 @@ def bootstrap_max_dd(
     pnls_arr = np.asarray(pnls, dtype=float)
     n = len(pnls_arr)
     if n < 2:
-        return {"observed_max_dd_pct": 0.0, "mc_50th": 0.0,
-                "mc_95th": 0.0, "mc_99th": 0.0, "n_trades": n}
+        return {
+            "observed_max_dd_pct": 0.0,
+            "mc_50th": 0.0,
+            "mc_95th": 0.0,
+            "mc_99th": 0.0,
+            "n_trades": n,
+        }
 
     observed_equity = np.concatenate([[initial_capital], initial_capital + np.cumsum(pnls_arr)])
     observed_dd = _compute_max_dd(observed_equity)
@@ -512,12 +515,14 @@ def run_slippage_stress(
         gl = float(abs(losses.sum())) if len(losses) else 0.0
         pf = gp / gl if gl > 0 else float("inf")
         profitable = pf > 1.0
-        scenarios.append({
-            "extra_ticks": extra_ticks,
-            "added_cost_per_trade": round(added_cost, 2),
-            "pf": round(pf, 3),
-            "profitable": profitable,
-        })
+        scenarios.append(
+            {
+                "extra_ticks": extra_ticks,
+                "added_cost_per_trade": round(added_cost, 2),
+                "pf": round(pf, 3),
+                "profitable": profitable,
+            }
+        )
         # Linear interpolation for breakeven (where PF crosses 1.0)
         if prev_pf is not None and prev_pf > 1.0 and pf <= 1.0 and breakeven_ticks is None:
             frac = (prev_pf - 1.0) / (prev_pf - pf)

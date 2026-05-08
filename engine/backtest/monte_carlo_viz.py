@@ -40,7 +40,7 @@ def generate_equity_curves_for_sims(
         - equity_curves: shape (n_simulations, n_trades+1)
         - x_axis: shape (n_trades+1,) — trade indices 0..n_trades
     """
-    from backtest.monte_carlo import _get_tick_value
+    from backtest.contract_specs import CONTRACT_SPECS
 
     pnls = np.array([t["pnl"] for t in trades_list], dtype=np.float64)
     n_trades = len(pnls)
@@ -61,7 +61,8 @@ def generate_equity_curves_for_sims(
 
     # Apply slippage
     if max_slippage_ticks > 0:
-        tick_value = _get_tick_value(symbol)
+        spec = CONTRACT_SPECS.get(symbol.upper())
+        tick_value = spec.tick_value if spec is not None else 0.01
         slippage_ticks = rng.uniform(0, max_slippage_ticks, size=(n_simulations, n_trades))
         slippage_dollars = slippage_ticks * tick_value
         shuffled_pnls = shuffled_pnls - slippage_dollars
