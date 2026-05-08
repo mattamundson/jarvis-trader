@@ -84,13 +84,13 @@ class ClosedTrade:
     """Matched buy/sell pair representing one completed round-trip."""
 
     symbol: str
-    side: str          # "buy" = entered long
+    side: str  # "buy" = entered long
     quantity: float
     entry_price: float
     exit_price: float
     entry_time: datetime
     exit_time: datetime
-    pnl: float         # dollar PnL
+    pnl: float  # dollar PnL
     slippage_ticks: int = 0
     strategy_params: dict = field(default_factory=dict)
 
@@ -241,7 +241,9 @@ def compute_strategy_breakdown(trades: list[ClosedTrade]) -> dict[str, dict]:
 # ---------------------------------------------------------------------------
 
 
-def _load_bars_from_db(symbol: str, target_date: date, db_path: Path = _DB_PATH) -> pd.DataFrame | None:
+def _load_bars_from_db(
+    symbol: str, target_date: date, db_path: Path = _DB_PATH
+) -> pd.DataFrame | None:
     """
     Load today's 1h OHLCV bars from SQLite.
 
@@ -256,6 +258,9 @@ def _load_bars_from_db(symbol: str, target_date: date, db_path: Path = _DB_PATH)
         con = sqlite3.connect(str(db_path))
 
         # Tier 1: canonical persistence table (migration_024)
+        # Fetch a 14-day rolling window so the SMA slow period (200 bars) has
+        # enough history; callers filter signal events back to target_date after
+        # computing indicators on the full window.
         cur = con.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='market_data_bars'"
         )
@@ -265,8 +270,8 @@ def _load_bars_from_db(symbol: str, target_date: date, db_path: Path = _DB_PATH)
                 SELECT ts_utc AS timestamp, open, high, low, close, volume
                 FROM market_data_bars
                 WHERE symbol = ? AND interval = '1h'
-                  AND DATE(ts_utc) = ?
-                ORDER BY ts_utc
+                  AND ts_utc >= datetime(?, '-14 days')
+                ORDER BY ts_utc ASC
                 """,
                 con,
                 params=(symbol.upper(), str(target_date)),
@@ -278,17 +283,15 @@ def _load_bars_from_db(symbol: str, target_date: date, db_path: Path = _DB_PATH)
 
         # Tier 2: legacy table names used in earlier engine versions
         for tbl in ("market_data", "bars", "ohlcv"):
-            cur = con.execute(
-                f"SELECT name FROM sqlite_master WHERE type='table' AND name='{tbl}'"
-            )
+            cur = con.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{tbl}'")
             if cur.fetchone():
                 df = pd.read_sql_query(
                     f"""
                     SELECT timestamp, open, high, low, close, volume
                     FROM {tbl}
                     WHERE symbol = ? AND interval = '1h'
-                      AND DATE(timestamp) = ?
-                    ORDER BY timestamp
+                      AND timestamp >= datetime(?, '-14 days')
+                    ORDER BY timestamp ASC
                     """,
                     con,
                     params=(symbol, str(target_date)),
@@ -335,13 +338,18 @@ def compute_counterfactual(
 
         df = _load_bars_from_db(sym, target_date)
         if df is None or df.empty:
-            result[sym] = [{"type": "no_data", "note": f"No 1h bars found for {sym} on {target_date}"}]
+            result[sym] = [
+                {"type": "no_data", "note": f"No 1h bars found for {sym} on {target_date}"}
+            ]
             continue
 
         # Need enough bars for the slow SMA — if today is sparse, skip
         if len(df) < params["slow"]:
             result[sym] = [
-                {"type": "insufficient_bars", "note": f"Only {len(df)} bars; need {params['slow']} for SMA"}
+                {
+                    "type": "insufficient_bars",
+                    "note": f"Only {len(df)} bars; need {params['slow']} for SMA",
+                }
             ]
             continue
 
@@ -352,19 +360,25 @@ def compute_counterfactual(
             atr_trail_mult=params["atr_trail_mult"],
         )
 
-        signal_entries = df_sig[df_sig["entry_signal"] == "ENTRY_NOW"]
-        actual_entry_times = {
-            t.entry_time.replace(tzinfo=None) for t in trades if t.symbol == sym
-        }
+        # Filter signal entries to target_date only — the full df window was loaded
+        # to provide enough history for the slow SMA, but we only report on today.
+        signal_entries_all = df_sig[df_sig["entry_signal"] == "ENTRY_NOW"].copy()
+        target_date_ts = pd.Timestamp(target_date)
+        signal_entries = signal_entries_all[
+            signal_entries_all["timestamp"].dt.normalize() == target_date_ts
+        ]
+
+        actual_entry_times = {t.entry_time.replace(tzinfo=None) for t in trades if t.symbol == sym}
 
         events: list[dict] = []
         for _, row in signal_entries.iterrows():
-            bar_ts = pd.Timestamp(row.name).to_pydatetime().replace(tzinfo=None)
+            # Use the timestamp column directly — row.name is a RangeIndex integer,
+            # which would produce a 1970-epoch datetime.
+            bar_ts = pd.Timestamp(row["timestamp"]).to_pydatetime().replace(tzinfo=None)
             bar_ts_floor = bar_ts.replace(minute=0, second=0, microsecond=0)
             # Consider "filled" if any actual entry was within ±30 minutes of the signal bar
             matched = any(
-                abs((act - bar_ts_floor).total_seconds()) <= 1800
-                for act in actual_entry_times
+                abs((act - bar_ts_floor).total_seconds()) <= 1800 for act in actual_entry_times
             )
             if matched:
                 events.append(
@@ -543,6 +557,7 @@ def compute_outlook(target_date: date, symbols: list[str] | None = None) -> dict
 # Markdown report renderer
 # ---------------------------------------------------------------------------
 
+
 def _FMT_MONEY(x):
     return f"${x:+.2f}" if x is not None else "—"
 
@@ -571,12 +586,8 @@ def render_report(
     if not trades:
         lines.append("*No completed round-trips for this session.*")
     else:
-        lines.append(
-            "| Symbol | Side | Qty | Entry | Exit | PnL | Hold |"
-        )
-        lines.append(
-            "|--------|------|-----|-------|------|-----|------|"
-        )
+        lines.append("| Symbol | Side | Qty | Entry | Exit | PnL | Hold |")
+        lines.append("|--------|------|-----|-------|------|-----|------|")
         for t in sorted(trades, key=lambda x: x.entry_time):
             hold = f"{t.hold_minutes:.0f}m"
             pnl_fmt = _FMT_MONEY(t.pnl)
@@ -598,15 +609,15 @@ def render_report(
     lines.append(f"| Total PnL | {_FMT_MONEY(total_pnl)} |")
     lines.append(f"| $250/day goal | `{gauge_bar}` {goal_pct:.1f}% |")
     lines.append(f"| Total Trades | {m['total_trades']} |")
-    lines.append(f"| Win Rate | {_FMT_PCT(m['win_rate'] * 100 if m['win_rate'] is not None else None)} |")
+    lines.append(
+        f"| Win Rate | {_FMT_PCT(m['win_rate'] * 100 if m['win_rate'] is not None else None)} |"
+    )
     lines.append(f"| Wins / Losses | {m['wins']} / {m['losses']} |")
     lines.append(f"| Avg Trade PnL | {_FMT_MONEY(m['avg_trade_pnl'])} |")
     lines.append(f"| Biggest Win | {_FMT_MONEY(m['biggest_win'])} |")
     lines.append(f"| Biggest Loss | {_FMT_MONEY(m['biggest_loss'])} |")
     avg_hold = m["avg_hold_minutes"]
-    lines.append(
-        f"| Avg Hold Time | {f'{avg_hold:.0f}m' if avg_hold is not None else '—'} |"
-    )
+    lines.append(f"| Avg Hold Time | {f'{avg_hold:.0f}m' if avg_hold is not None else '—'} |")
     lines.append("")
 
     # --- 3. Per-strategy breakdown ---

@@ -69,13 +69,13 @@ class ClosedRoundTrip:
     """One completed buy→sell (long) or sell→buy (short) round-trip."""
 
     symbol: str
-    side: str                    # "buy" = entered long, "sell" = entered short
+    side: str  # "buy" = entered long, "sell" = entered short
     quantity: float
     entry_price: float
     exit_price: float
     entry_time: datetime
     exit_time: datetime
-    pnl: float                   # dollar PnL (multiplier applied, no commission)
+    pnl: float  # dollar PnL (multiplier applied, no commission)
     slippage_ticks_entry: int = 0
     slippage_ticks_exit: int = 0
 
@@ -141,7 +141,7 @@ def pair_trades(
     sorted_trades = sorted(raw_trades, key=lambda x: x.get("timestamp", ""))
 
     # Per-symbol stacks of open (unmatched) sides
-    long_stack: dict[str, list[dict]] = defaultdict(list)   # awaiting sell-to-close
+    long_stack: dict[str, list[dict]] = defaultdict(list)  # awaiting sell-to-close
     short_stack: dict[str, list[dict]] = defaultdict(list)  # awaiting buy-to-cover
 
     closed: list[ClosedRoundTrip] = []
@@ -158,29 +158,47 @@ def pair_trades(
         if side in ("buy", "buy_to_open"):
             # Could be entering long OR covering a short
             if short_stack[sym]:
-                # Cover the oldest short
-                opener = short_stack[sym].pop(0)
-                entry_p = float(opener.get("filled_price") or opener.get("trade_value") or 0.0)
-                entry_ts = _parse_ts(opener.get("timestamp", ""))
-                entry_slip = int(opener.get("slippage_ticks") or 0)
-                if entry_ts is None or ts is None:
-                    continue
-                # Short PnL: entry (sell) price - exit (buy) price
-                pnl = (entry_p - price) * qty * mult
-                closed.append(
-                    ClosedRoundTrip(
-                        symbol=sym,
-                        side="sell",
-                        quantity=qty,
-                        entry_price=entry_p,
-                        exit_price=price,
-                        entry_time=entry_ts,
-                        exit_time=ts,
-                        pnl=pnl,
-                        slippage_ticks_entry=entry_slip,
-                        slippage_ticks_exit=slip,
+                # Cover oldest short(s) — consume as many openers as needed for qty
+                remaining_exit = qty
+                while remaining_exit > 0 and short_stack[sym]:
+                    opener = short_stack[sym][0]
+                    opener_qty = float(opener.get("quantity") or opener.get("quantity") or 1.0)
+                    entry_p = float(opener.get("filled_price") or opener.get("trade_value") or 0.0)
+                    entry_ts = _parse_ts(opener.get("timestamp", ""))
+                    entry_slip = int(opener.get("slippage_ticks") or 0)
+                    if entry_ts is None or ts is None:
+                        short_stack[sym].pop(0)
+                        break
+                    fill_qty = min(remaining_exit, opener_qty)
+                    # Short PnL: entry (sell) price - exit (buy) price
+                    pnl = (entry_p - price) * fill_qty * mult
+                    closed.append(
+                        ClosedRoundTrip(
+                            symbol=sym,
+                            side="sell",
+                            quantity=fill_qty,
+                            entry_price=entry_p,
+                            exit_price=price,
+                            entry_time=entry_ts,
+                            exit_time=ts,
+                            pnl=pnl,
+                            slippage_ticks_entry=entry_slip,
+                            slippage_ticks_exit=slip,
+                        )
                     )
-                )
+                    remaining_exit -= fill_qty
+                    if fill_qty < opener_qty:
+                        # Partial fill — push back residual opener with reduced qty
+                        residual = dict(opener)
+                        residual["quantity"] = opener_qty - fill_qty
+                        short_stack[sym][0] = residual
+                    else:
+                        short_stack[sym].pop(0)
+                if remaining_exit > 0:
+                    # Any excess exit qty opens a new long
+                    residual_t = dict(t)
+                    residual_t["quantity"] = remaining_exit
+                    long_stack[sym].append(residual_t)
             else:
                 # Open a new long
                 long_stack[sym].append(t)
@@ -188,29 +206,47 @@ def pair_trades(
         elif side in ("sell", "sell_to_close", "exit_long"):
             # Could be closing a long OR opening a short
             if long_stack[sym]:
-                # Close the oldest long
-                opener = long_stack[sym].pop(0)
-                entry_p = float(opener.get("filled_price") or opener.get("trade_value") or 0.0)
-                entry_ts = _parse_ts(opener.get("timestamp", ""))
-                entry_slip = int(opener.get("slippage_ticks") or 0)
-                if entry_ts is None or ts is None:
-                    continue
-                # Long PnL: exit (sell) price - entry (buy) price
-                pnl = (price - entry_p) * qty * mult
-                closed.append(
-                    ClosedRoundTrip(
-                        symbol=sym,
-                        side="buy",
-                        quantity=qty,
-                        entry_price=entry_p,
-                        exit_price=price,
-                        entry_time=entry_ts,
-                        exit_time=ts,
-                        pnl=pnl,
-                        slippage_ticks_entry=entry_slip,
-                        slippage_ticks_exit=slip,
+                # Close oldest long(s) — consume as many openers as needed for qty
+                remaining_exit = qty
+                while remaining_exit > 0 and long_stack[sym]:
+                    opener = long_stack[sym][0]
+                    opener_qty = float(opener.get("quantity") or opener.get("quantity") or 1.0)
+                    entry_p = float(opener.get("filled_price") or opener.get("trade_value") or 0.0)
+                    entry_ts = _parse_ts(opener.get("timestamp", ""))
+                    entry_slip = int(opener.get("slippage_ticks") or 0)
+                    if entry_ts is None or ts is None:
+                        long_stack[sym].pop(0)
+                        break
+                    fill_qty = min(remaining_exit, opener_qty)
+                    # Long PnL: exit (sell) price - entry (buy) price
+                    pnl = (price - entry_p) * fill_qty * mult
+                    closed.append(
+                        ClosedRoundTrip(
+                            symbol=sym,
+                            side="buy",
+                            quantity=fill_qty,
+                            entry_price=entry_p,
+                            exit_price=price,
+                            entry_time=entry_ts,
+                            exit_time=ts,
+                            pnl=pnl,
+                            slippage_ticks_entry=entry_slip,
+                            slippage_ticks_exit=slip,
+                        )
                     )
-                )
+                    remaining_exit -= fill_qty
+                    if fill_qty < opener_qty:
+                        # Partial fill — push back residual opener with reduced qty
+                        residual = dict(opener)
+                        residual["quantity"] = opener_qty - fill_qty
+                        long_stack[sym][0] = residual
+                    else:
+                        long_stack[sym].pop(0)
+                if remaining_exit > 0:
+                    # Any excess exit qty opens a new short
+                    residual_t = dict(t)
+                    residual_t["quantity"] = remaining_exit
+                    short_stack[sym].append(residual_t)
             else:
                 # Open a new short
                 short_stack[sym].append(t)

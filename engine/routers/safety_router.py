@@ -392,7 +392,7 @@ async def smoke_bracket(
         raise HTTPException(503, detail="IBKRDataConnector._ib is None — not initialised")
 
     try:
-        from ib_async import LimitOrder, MarketOrder, StopOrder
+        from ib_async import LimitOrder, StopOrder
     except ImportError as exc:
         raise HTTPException(500, detail="ib_async not installed") from exc
 
@@ -406,10 +406,16 @@ async def smoke_bracket(
         if qualified:
             contract = qualified[0]
     except Exception as exc:
-        raise HTTPException(500, detail=f"Contract qualification failed for {symbol}: {exc}") from exc
+        raise HTTPException(
+            500, detail=f"Contract qualification failed for {symbol}: {exc}"
+        ) from exc
 
-    # Place entry MKT order
-    entry_order = MarketOrder(action="BUY", totalQuantity=1)
+    # Use a far-OTM limit order (50% below market) as the entry instead of a MarketOrder.
+    # This ensures the smoke test never fills during market hours — cancelling an unfilled
+    # limit order leaves zero position risk, whereas cancelling a filled MKT order does not
+    # offset the position.
+    far_otm_price = round(reference_price * 0.50, 2)
+    entry_order = LimitOrder(action="BUY", totalQuantity=1, lmtPrice=far_otm_price)
     entry_trade = _ib.placeOrder(contract, entry_order)
     entry_id: int = entry_trade.order.orderId
 
@@ -435,9 +441,7 @@ async def smoke_bracket(
     stp_linked = any(
         t.order.orderId == stp_id and t.order.parentId == entry_id for t in open_trades
     )
-    tp_linked = any(
-        t.order.orderId == tp_id and t.order.parentId == entry_id for t in open_trades
-    )
+    tp_linked = any(t.order.orderId == tp_id and t.order.parentId == entry_id for t in open_trades)
 
     # Cancel all orders to leave zero open risk
     cancelled = []

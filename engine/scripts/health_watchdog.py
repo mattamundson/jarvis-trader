@@ -134,9 +134,7 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_health_snapshots_ts ON health_snapshots(ts_utc)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_health_snapshots_ts ON health_snapshots(ts_utc)")
     conn.commit()
 
 
@@ -152,13 +150,8 @@ def _insert_snapshot(
         llm = _bool_col(payload.get("llm_path_healthy"))
         tv = _bool_col(payload.get("tradingview_mcp_healthy"))
 
-        brokers = payload.get("brokers", {}) or {}
-        data_ib = payload.get("data_ib_connected")
-        exec_ib = payload.get("execution_ib_connected")
-        if data_ib is None:
-            data_ib = brokers.get("data_ib_connected")
-        if exec_ib is None:
-            exec_ib = brokers.get("execution_ib_connected")
+        data_ib = payload.get("ibkr_data_connected")
+        exec_ib = payload.get("ibkr_execution_connected")
 
         ks = _bool_col(payload.get("kill_switch_active"))
         uptime = payload.get("uptime_seconds")
@@ -294,7 +287,9 @@ def _send_discord_alert(message: str, no_discord: bool) -> None:
     if not _DISCORD_WEBHOOK:
         logger.debug("JARVIS_DISCORD_APPROVAL_WEBHOOK not set — Discord alert skipped")
         return
-    payload = json.dumps({"content": f":rotating_light: **JARVIS WATCHDOG** — {message}", "username": "JARVIS"})
+    payload = json.dumps(
+        {"content": f":rotating_light: **JARVIS WATCHDOG** — {message}", "username": "JARVIS"}
+    )
     try:
         req = urllib.request.Request(
             _DISCORD_WEBHOOK,

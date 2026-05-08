@@ -14,7 +14,7 @@ import logging
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Known futures roots — orders for these symbols must go through SafetyLayer.
 _FUTURES_ROOTS: frozenset[str] = frozenset(
@@ -62,12 +62,11 @@ class ManualOrderRequest(BaseModel):
     def normalize_symbol(cls, v: str) -> str:
         return v.strip().upper()
 
-    @field_validator("limit_price")
-    @classmethod
-    def limit_price_required_for_limit_order(cls, v, info):
-        if info.data.get("order_type") == "LIMIT" and v is None:
+    @model_validator(mode="after")
+    def validate_limit_price(self) -> "ManualOrderRequest":
+        if self.order_type == "LIMIT" and self.limit_price is None:
             raise ValueError("limit_price is required when order_type is LIMIT")
-        return v
+        return self
 
 
 class ManualOrderResponse(BaseModel):

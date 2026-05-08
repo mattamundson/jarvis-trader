@@ -119,8 +119,8 @@ def render_engine_status(health: dict[str, Any]) -> list[str]:
     fields = [
         ("LLM path", "llm_path_healthy"),
         ("TradingView MCP", "tradingview_mcp_healthy"),
-        ("IBKR data", "ibkr_data_healthy"),
-        ("IBKR exec", "ibkr_exec_healthy"),
+        ("IBKR data", "ibkr_data_connected"),
+        ("IBKR exec", "ibkr_execution_connected"),
         ("Kill switch", "kill_switch_active"),
     ]
     for label, key in fields:
@@ -254,12 +254,8 @@ def render_active_strategies(strategies: list[dict[str, Any]]) -> list[str]:
         lines.append("")
         return lines
 
-    lines.append(
-        "| Symbol | Strategy | Params | Verdict | Via | Created | Expires In |"
-    )
-    lines.append(
-        "|--------|----------|--------|---------|-----|---------|------------|"
-    )
+    lines.append("| Symbol | Strategy | Params | Verdict | Via | Created | Expires In |")
+    lines.append("|--------|----------|--------|---------|-----|---------|------------|")
     for s in strategies:
         sym = s["symbol"]
         strat = s.get("strategy", "?")
@@ -290,9 +286,19 @@ def compute_overnight_regime(symbols: list[str], db_path: Path | None = None) ->
         from analytics.regime import compute_bar_regime, load_recent_bars
     except ImportError:
         logger.warning("analytics.regime not importable — regime section unavailable")
-        return {sym: {"regime": "IMPORT_ERROR", "bias": "UNKNOWN", "close": None, "atr": None,
-                      "sma_fast": None, "sma_slow": None, "fast": 0, "slow": 0}
-                for sym in symbols}
+        return {
+            sym: {
+                "regime": "IMPORT_ERROR",
+                "bias": "UNKNOWN",
+                "close": None,
+                "atr": None,
+                "sma_fast": None,
+                "sma_slow": None,
+                "fast": 0,
+                "slow": 0,
+            }
+            for sym in symbols
+        }
 
     result = {}
     for sym in symbols:
@@ -447,17 +453,19 @@ def compute_strategy_expectations(
             else:
                 crossover_proximity = "DISTANT"
 
-        result.append({
-            "symbol": sym,
-            "fast": strat.get("fast", "?"),
-            "slow": strat.get("slow", "?"),
-            "regime": regime,
-            "bias": bias,
-            "spread_pct": spread_pct,
-            "crossover_proximity": crossover_proximity,
-            "sma_fast": sma_f,
-            "sma_slow": sma_s,
-        })
+        result.append(
+            {
+                "symbol": sym,
+                "fast": strat.get("fast", "?"),
+                "slow": strat.get("slow", "?"),
+                "regime": regime,
+                "bias": bias,
+                "spread_pct": spread_pct,
+                "crossover_proximity": crossover_proximity,
+                "sma_fast": sma_f,
+                "sma_slow": sma_s,
+            }
+        )
     return result
 
 
@@ -597,6 +605,7 @@ def compute_attention_items(
     # 3. DO_NOT_TRADE drift — check if any enabled strategy is in the blocked list
     try:
         from backtest.paper_config import PAPER_CONFIGS
+
         for sym, cfg in PAPER_CONFIGS.items():
             if cfg.get("enabled", False) and sym in DO_NOT_TRADE_SYMBOLS:
                 items.append(
@@ -801,6 +810,7 @@ def main() -> None:
     # Discord
     if not args.no_discord:
         import asyncio
+
         asyncio.run(
             _post_discord_headline(
                 briefing_date, health, active_strategies, attention_items, report_path
