@@ -16,6 +16,7 @@ Run:
     cd engine
     .venv\\Scripts\\python.exe -m pytest tests/test_broker_parent_linkage_verification.py -v
 """
+
 from __future__ import annotations
 
 import os
@@ -62,6 +63,7 @@ def paper_safety():
             "ALLOW_PAPER_SIMULATED_ORDERS": True,
             "MAX_SINGLE_ORDER_VALUE": 500_000.0,
             "MAX_POSITION_SIZE_PCT": 5.0,
+            "MAX_TRADE_LOSS_USD": 500.0,
         }
     )
     return SafetyLayer(cfg, pnl_monitor=None)
@@ -178,18 +180,20 @@ class TestSubmitEntryFlagDrift:
             target_price=7190.0,
         )
 
-        # Child orders still got IDs (broker accepted) — but linkage is broken
+        # STP child got an ID (broker accepted) — but linkage is broken
         assert result["stp_order_id"] is not None
-        assert result["tp_order_id"] is not None
-        assert result["stp_linked"] is False, (
-            "stp_linked must be False when broker did not echo parent_order_id"
-        )
-        assert result["tp_linked"] is False, (
-            "tp_linked must be False when broker did not echo parent_order_id"
-        )
+        # TP is intentionally skipped in paper mode (paper connector fills LMT immediately)
+        assert result["tp_order_id"] is None
+        assert (
+            result["stp_linked"] is False
+        ), "stp_linked must be False when broker did not echo parent_order_id"
+        # tp_linked is False because no TP was placed (tp_order_id is None)
+        assert result["tp_linked"] is False
 
     @pytest.mark.asyncio
-    async def test_stp_linked_true_when_broker_echoes_parent_correctly(self, paper_safety, tmp_path):
+    async def test_stp_linked_true_when_broker_echoes_parent_correctly(
+        self, paper_safety, tmp_path
+    ):
         """
         Happy path regression: when the broker honors parent_order_id,
         stp_linked + tp_linked should be True. This re-asserts the existing
@@ -213,4 +217,6 @@ class TestSubmitEntryFlagDrift:
         )
 
         assert result["stp_linked"] is True
-        assert result["tp_linked"] is True
+        # TP is skipped in paper mode (paper connector fills LMT immediately)
+        assert result["tp_order_id"] is None
+        assert result["tp_linked"] is False

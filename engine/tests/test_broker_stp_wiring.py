@@ -75,6 +75,7 @@ def _paper_offline_cfg():
             "ALLOW_PAPER_SIMULATED_ORDERS": True,
             "MAX_SINGLE_ORDER_VALUE": 500_000.0,
             "MAX_POSITION_SIZE_PCT": 5.0,
+            "MAX_TRADE_LOSS_USD": 500.0,
         }
     )
 
@@ -126,15 +127,15 @@ async def test_entry_fill_triggers_stp_child_order(tmp_path) -> None:
     assert result["approved"] is True, f"Entry rejected: {result.get('reason')}"
     assert result["routed_to_ib"] is True, "Entry order did not reach IB"
     assert result.get("entry_order_id") is not None, "Entry order_id missing"
-    assert result.get("stp_order_id") is not None, (
-        "STP child order was not submitted — HB-1 regression"
-    )
-    assert result.get("stp_linked") is True, (
-        "STP not linked to parent entry — stop would be orphaned on entry cancel"
-    )
-    assert result["entry_order_id"] != result["stp_order_id"], (
-        "Entry and STP collapsed to same ID — Stage 2 must place them as 2 orders"
-    )
+    assert (
+        result.get("stp_order_id") is not None
+    ), "STP child order was not submitted — HB-1 regression"
+    assert (
+        result.get("stp_linked") is True
+    ), "STP not linked to parent entry — stop would be orphaned on entry cancel"
+    assert (
+        result["entry_order_id"] != result["stp_order_id"]
+    ), "Entry and STP collapsed to same ID — Stage 2 must place them as 2 orders"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -182,12 +183,15 @@ async def test_stp_child_order_linked_to_parent_entry(tmp_path) -> None:
 
     stp_status = await conn.get_order_status(stp_id)
 
-    assert stp_status.get("status") in {"filled", "pending", "working"}, (
-        f"STP order not in live state: {stp_status}"
-    )
-    assert stp_status.get("order_type") in {"STP", "stop"}, (
-        f"Child order not typed as stop: {stp_status.get('order_type')}"
-    )
+    assert stp_status.get("status") in {
+        "filled",
+        "pending",
+        "working",
+    }, f"STP order not in live state: {stp_status}"
+    assert stp_status.get("order_type") in {
+        "STP",
+        "stop",
+    }, f"Child order not typed as stop: {stp_status.get('order_type')}"
     assert stp_status.get("parent_order_id") == entry_id, (
         f"STP parent linkage broken: expected {entry_id}, "
         f"got {stp_status.get('parent_order_id')}"
@@ -252,7 +256,5 @@ def test_flatten_all_endpoint_closes_open_positions() -> None:
     assert "flattened" in body, "Response missing 'flattened' list"
     assert "order_ids" in body, "Response missing 'order_ids' list"
     assert isinstance(body["flattened"], list)
-    assert "MES" in body["flattened"], (
-        "Mock safety layer reported MES open but it wasn't flattened"
-    )
+    assert "MES" in body["flattened"], "Mock safety layer reported MES open but it wasn't flattened"
     mock_safety.flatten_all_positions.assert_awaited_once()
