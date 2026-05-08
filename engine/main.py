@@ -557,8 +557,10 @@ async def lifespan(app: FastAPI):
         logger.info("Schwab credentials not set — SchwabConnector skipped (Phase 3 feature)")
 
     set_schwab_connector(schwab_connector)
-    # Inject the fully-wired order_router into the orders_router API bridge
-    inject_orders_deps(order_router)
+    # Inject the fully-wired order_router and safety_layer into the orders_router API bridge.
+    # safety_layer is required so futures orders route through SafetyLayer.submit_paper_order()
+    # rather than bypassing risk checks via OrderRouter.route_order() directly.
+    inject_orders_deps(order_router, safety_layer=safety_layer)
     logger.info(
         "✅ OrderRouter ready — IBKR: %s | Schwab: %s",
         "connected" if order_router.ibkr else "not wired",
@@ -569,6 +571,9 @@ async def lifespan(app: FastAPI):
     data_manager = MarketDataManager(settings)
     await data_manager.initialize()
     set_analytics_data_manager(data_manager)
+    # Re-inject with data_manager now available so /orders/status can fall back to
+    # data_manager.ibkr for IBKR connected-state when safety_layer has no gateway attached.
+    inject_orders_deps(order_router, safety_layer=safety_layer, data_manager=data_manager)
 
     # Start PolygonStreamer background task if available
     if data_manager.polygon_streamer:
