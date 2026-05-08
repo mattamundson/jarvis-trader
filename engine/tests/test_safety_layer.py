@@ -472,6 +472,9 @@ class TestFuturesContractLimit:
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
         mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        # Bypass overnight cap so the test is wall-clock-independent
+        # (default MAX_OVERNIGHT_CONTRACTS=1 rejects 2 MES after 15:00 CT).
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5
         safety = SafetyLayer(mock_settings)
 
         order = OrderRequest(
@@ -875,6 +878,9 @@ class TestFuturesMarginGate:
 
     def test_two_mes_contracts_approve_on_10k_account(self, mock_settings):
         """2 MES: margin 2,640 / 10,000 = 26.4% < 30% → approve."""
+        # Bypass overnight cap (MAX_OVERNIGHT_CONTRACTS=1 default) so the test
+        # passes regardless of wall-clock time when CT is past 15:00 (overnight).
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5
         safety = self._live_safety(mock_settings)
         order = OrderRequest(
             symbol="MES",
@@ -944,8 +950,7 @@ class TestFuturesMarginGate:
         assert result.approved is False
         # Falls back to notional: should hit MAX_SINGLE_ORDER_VALUE first
         assert (
-            "exceeds max" in result.rejection_reason
-            or "Position size" in result.rejection_reason
+            "exceeds max" in result.rejection_reason or "Position size" in result.rejection_reason
         )
 
     def test_non_futures_unchanged_by_fix(self, mock_settings):
