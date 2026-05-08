@@ -1397,9 +1397,13 @@ class TradingPipeline:
         _data_mgr = getattr(_tech_agent, "_data", None)
         df = None
         if _data_mgr:
-            df = await _data_mgr.get_bars(
-                symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures
-            )
+            try:
+                df = await _data_mgr.get_bars(
+                    symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures
+                )
+            except Exception as exc:
+                logger.warning("regime prefetch failed — continuing without regime data: %s", exc)
+                df = None
 
         regime_status = self._regime_engine.classify(df) if df is not None else None
         if regime_status:
