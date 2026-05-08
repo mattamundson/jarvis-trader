@@ -17,7 +17,6 @@ import pytest
 
 from notifications.validation_alerts import GateAlert, ValidationAlertManager
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
