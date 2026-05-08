@@ -71,6 +71,13 @@ class TechnicalReport:
     mtf_alignment: str = ""  # One-line MTF summary: "4h and 1h STC aligned bullish" etc.
     regime_readiness: str = "UNKNOWN"  # READY | CAUTION | NOT_READY based on 5-layer alignment
 
+    # StarkTPO deterministic signals (populated when bar data is available)
+    stark_signal: str = ""  # e.g. "LONG_VAL_BOUNCE", "SHORT_VAH_REJECT", "HOLD", ""
+    stark_structure: str = ""  # e.g. "INSIDE_VALUE", "BREAKOUT", "GAP_IMBALANCE", ""
+    stark_poc: float = 0.0
+    stark_vah: float = 0.0
+    stark_val: float = 0.0
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -95,6 +102,11 @@ class TechnicalReport:
             "stc_context": self.stc_context,
             "mtf_alignment": self.mtf_alignment,
             "regime_readiness": self.regime_readiness,
+            "stark_signal": self.stark_signal,
+            "stark_structure": self.stark_structure,
+            "stark_poc": self.stark_poc,
+            "stark_vah": self.stark_vah,
+            "stark_val": self.stark_val,
         }
 
 
@@ -238,6 +250,43 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 logger.info(f"Composite metadata added for {symbol}: {composite_meta}")
         except Exception as e:
             logger.debug(f"Composite signals not available for {symbol}: {e}")
+
+        # 2c. StarkTPO deterministic signal (non-blocking)
+        # Runs the Auction Market Theory / TPO profile on the intraday bar data.
+        # Results are stored in indicators so they survive to _llm_synthesize and
+        # are also hoisted to the top-level TechnicalReport fields (stark_signal,
+        # stark_structure) so trader.py can access them via technical.get("stark_signal").
+        _stark_result: dict = {}
+        try:
+            from strategies.stark_tpo_strategy import StarkTPOStrategy
+
+            _stark = StarkTPOStrategy()
+            # Normalise column names to lowercase before passing to StarkTPO
+            _df_tpo = df.copy()
+            _df_tpo.columns = [c.lower() for c in _df_tpo.columns]
+            _stark_result = _stark.evaluate_structure(_df_tpo)
+            if _stark_result.get("ready"):
+                indicators["stark_signal"] = _stark_result.get("actionable_signal", "HOLD")
+                indicators["stark_structure"] = _stark_result.get("structure", "UNKNOWN")
+                indicators["stark_poc"] = _stark_result.get("tpo_poc", 0.0)
+                indicators["stark_vah"] = _stark_result.get("tpo_vah", 0.0)
+                indicators["stark_val"] = _stark_result.get("tpo_val", 0.0)
+                logger.info(
+                    "[TechnicalAnalyst] %s — StarkTPO: signal=%s structure=%s "
+                    "poc=%.2f vah=%.2f val=%.2f",
+                    symbol,
+                    indicators["stark_signal"],
+                    indicators["stark_structure"],
+                    indicators["stark_poc"] or 0.0,
+                    indicators["stark_vah"] or 0.0,
+                    indicators["stark_val"] or 0.0,
+                )
+            else:
+                logger.debug(
+                    "[TechnicalAnalyst] %s — StarkTPO: not ready (insufficient bars)", symbol
+                )
+        except Exception as _stark_err:
+            logger.debug("[TechnicalAnalyst] StarkTPO skipped (non-fatal): %s", _stark_err)
 
         # 3. Always ensure current_price is populated.
         #    _compute_indicators sets it from the last close, but if that's still
@@ -396,8 +445,8 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         stc_val_fmt = f"{stc_val:.1f}"
 
         # Detect crossover events (prev bar on opposite side of threshold)
-        cross_below_ob = (stc_prev is not None and stc_prev > STC_OB and stc_val <= STC_OB)
-        cross_above_os = (stc_prev is not None and stc_prev < STC_OS and stc_val >= STC_OS)
+        cross_below_ob = stc_prev is not None and stc_prev > STC_OB and stc_val <= STC_OB
+        cross_above_os = stc_prev is not None and stc_prev < STC_OS and stc_val >= STC_OS
 
         if cross_below_ob:
             stc_state = (
@@ -443,7 +492,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                     f"(${stop_dollar:.0f} per 1 {sym_upper} contract)"
                 )
             else:
-                atr_lines = f"\nATR CONTEXT: ATR(14)={atr:.2f} | 0.70x ATR stop = {stop_distance:.2f}"
+                atr_lines = (
+                    f"\nATR CONTEXT: ATR(14)={atr:.2f} | 0.70x ATR stop = {stop_distance:.2f}"
+                )
 
         return f"\nSTC SIGNAL STATE: {stc_state}{atr_lines}\n"
 
@@ -557,6 +608,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         # is wrong we just skip VWAP rather than spamming logs every ~5 minutes.
         # Background: 2026-04-16 log-noise audit (Roadmap T1.3).
         import pandas as _pd
+
         if isinstance(df.index, _pd.DatetimeIndex):
             df.ta.vwap(append=True)
         # else: VWAP unavailable for this frame — leave indicators["vwap"] as None below
@@ -624,7 +676,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             prox_entry = features.get("discord_proximity_entry", 0.0)
             prox_target = features.get("discord_proximity_target", 0.0)
             alignment = features.get("discord_alignment", 0.0)
-            align_str = "ALIGNED" if alignment > 0.5 else ("OPPOSED" if alignment < -0.5 else "NEUTRAL")
+            align_str = (
+                "ALIGNED" if alignment > 0.5 else ("OPPOSED" if alignment < -0.5 else "NEUTRAL")
+            )
             return (
                 f"\nDISCORD INTELLIGENCE (Corey Auction Tools — 30-day context):\n"
                 f"- Signal Active: YES | Bot Win Rate: {win_rate:.0%}\n"
@@ -686,7 +740,11 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             sentiment_score = _sp.get_sentiment(today)
             sentiment_mult = _sp.get_regime_multiplier(today)
             if sentiment_score != 0.0:
-                bias_word = "BULLISH" if sentiment_score > 0.1 else ("BEARISH" if sentiment_score < -0.1 else "NEUTRAL")
+                bias_word = (
+                    "BULLISH"
+                    if sentiment_score > 0.1
+                    else ("BEARISH" if sentiment_score < -0.1 else "NEUTRAL")
+                )
                 discord_sentiment_line = (
                     f"\nDISCORD EXPERT SENTIMENT (Corey Auction Tools): {bias_word} "
                     f"(score {sentiment_score:+.2f}) | Regime Confidence Multiplier: {sentiment_mult:.2f}x"
@@ -847,6 +905,12 @@ Respond with JSON in exactly this format:
                 stc_context=stc_context_str.strip(),
                 mtf_alignment=result.get("mtf_alignment", ""),
                 regime_readiness=result.get("regime_readiness", "UNKNOWN"),
+                # StarkTPO fields — sourced from indicators (set in step 2c)
+                stark_signal=indicators.get("stark_signal", ""),
+                stark_structure=indicators.get("stark_structure", ""),
+                stark_poc=float(indicators.get("stark_poc") or 0.0),
+                stark_vah=float(indicators.get("stark_vah") or 0.0),
+                stark_val=float(indicators.get("stark_val") or 0.0),
             )
 
         except Exception as e:
@@ -893,8 +957,8 @@ Respond with JSON in exactly this format:
             volume_score=0.0,
             summary="No price data — technical analyst abstaining",
             reasoning="current_price is None or 0.0; cannot compute meaningful technical signal. "
-                      "This is an abstention, not a bearish signal. Downstream agents should "
-                      "ignore this report when computing confidence.",
+            "This is an abstention, not a bearish signal. Downstream agents should "
+            "ignore this report when computing confidence.",
             indicators={"weight": 0.0, "reason": "no_price_data", "current_price": 0.0},
         )
 
