@@ -304,6 +304,7 @@ _FUND_MANAGER_PROMPT = (
 
 # ── SDKTradingPipeline ────────────────────────────────────────────────────────
 
+
 class SDKTradingPipeline:
     """
     Claude Agent SDK-powered trading pipeline.
@@ -334,7 +335,9 @@ class SDKTradingPipeline:
         # Phase 2 Components
         self._classifier = RegimeClassifierV2()
         self._router = StrategyRouter()
-        self._shadow_tracker = ShadowModeTracker(data_manager._db if hasattr(data_manager, "_db") else None)
+        self._shadow_tracker = ShadowModeTracker(
+            data_manager._db if hasattr(data_manager, "_db") else None
+        )
 
         # Super-Engine Orchestration (Phase 6)
         # Note: news_analyst is wired in from the orchestrator map if needed
@@ -445,7 +448,9 @@ class SDKTradingPipeline:
         logger.info("[SDKPipeline] Starting %s %s", symbol, interval)
 
         # 1. Regime Detection (Phase 2)
-        bars = await self._data_manager.get_price_bars(symbol, interval, limit=100)
+        bars = await self._data_manager.get_bars(
+            symbol, lookback_days=10, timeframe=interval, is_futures=is_futures
+        )
         df_regime = self._classifier.classify(bars)
         current_regime = MarketRegime(df_regime["regime_v2"].iloc[-1])
         logger.info("[SDKPipeline] Detected Regime: %s", current_regime)
@@ -499,18 +504,22 @@ class SDKTradingPipeline:
             symbol=symbol,
             regime=current_regime,
             raw_decision=pipeline_result,
-            active_positions=active_symbols
+            active_positions=active_symbols,
         )
 
         # 4. Shadow Logging (Phase 2)
-        if pipeline_result.get("is_shadow") and pipeline_result.get("final_action") in ["buy", "sell"]:
+        if pipeline_result.get("is_shadow") and pipeline_result.get("final_action") in [
+            "buy",
+            "sell",
+        ]:
             self._shadow_tracker.log_shadow_entry(
                 symbol=symbol,
                 side=pipeline_result["final_action"],
                 quantity=pipeline_result["final_quantity"],
-                price=pipeline_result["trade_decision"].get("limit_price") or bars["close"].iloc[-1],
+                price=pipeline_result["trade_decision"].get("limit_price")
+                or bars["close"].iloc[-1],
                 strategy_name="SDK_Shadow",
-                reasoning=pipeline_result.get("reasoning", "")
+                reasoning=pipeline_result.get("reasoning", ""),
             )
 
         logger.info(

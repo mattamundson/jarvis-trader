@@ -63,7 +63,8 @@ def _build_gateway() -> SharedAgentGateway:
         max_history_messages=int(os.getenv("MESSAGING_MAX_HISTORY_MESSAGES", "10")),
         allowed_telegram_chat_ids=_parse_csv(os.getenv("MESSAGING_ALLOWED_TELEGRAM_CHAT_IDS", "")),
         allowed_whatsapp_numbers=tuple(
-            _normalize_whatsapp_sender(v) for v in _parse_csv(os.getenv("MESSAGING_ALLOWED_WHATSAPP_NUMBERS", ""))
+            _normalize_whatsapp_sender(v)
+            for v in _parse_csv(os.getenv("MESSAGING_ALLOWED_WHATSAPP_NUMBERS", ""))
         ),
     )
     store = GatewaySessionStore(str(_db_manager._db_path))
@@ -181,6 +182,7 @@ async def messaging_health() -> dict[str, Any]:
     """Detailed health check for all messaging backends."""
     from services.messaging_health import check_ollama
     from services.telegram_poller import get_poller
+
     ollama = await check_ollama()
     gateway = _get_gateway()
     poller = get_poller()
@@ -229,14 +231,27 @@ async def whatsapp_webhook(request: Request) -> dict[str, Any]:
         form = await request.form()
         payload = dict(form)
 
-    raw_text = (payload.get("message") or payload.get("text") or payload.get("body") or payload.get("Body") or "").strip()
-    raw_sender = str(payload.get("from") or payload.get("from_number") or payload.get("sender") or payload.get("From") or "")
+    raw_text = (
+        payload.get("message")
+        or payload.get("text")
+        or payload.get("body")
+        or payload.get("Body")
+        or ""
+    ).strip()
+    raw_sender = str(
+        payload.get("from")
+        or payload.get("from_number")
+        or payload.get("sender")
+        or payload.get("From")
+        or ""
+    )
     sender = _normalize_whatsapp_sender(raw_sender)
     if not sender:
         raise HTTPException(status_code=400, detail="whatsapp sender missing")
 
     # ── Phase 1: Hardcoded Safety Commands (Matt Only) ────────────────────────
     from config import settings as _cfg
+
     admin_normalized = _normalize_whatsapp_sender(_cfg.WHATSAPP_TO)
     is_admin = sender == admin_normalized
     cmd = raw_text.strip().upper()
@@ -245,9 +260,12 @@ async def whatsapp_webhook(request: Request) -> dict[str, Any]:
         # Command: CONFIRM KILL
         if cmd == "CONFIRM KILL":
             if _safety_layer:
-                from engine.risk.safety_layer import KillSwitchReason
+                from risk.safety_layer import KillSwitchReason
+
                 _safety_layer.activate_kill_switch(KillSwitchReason.MANUAL, "WhatsApp Remote Kill")
-                await _send_whatsapp_reply(sender, "JARVIS: ⛔ KILL SWITCH ACTIVATED. All trading halted.")
+                await _send_whatsapp_reply(
+                    sender, "JARVIS: ⛔ KILL SWITCH ACTIVATED. All trading halted."
+                )
                 return {"ok": True, "action": "kill_switch"}
             else:
                 await _send_whatsapp_reply(sender, "JARVIS: Safety layer not available.")
@@ -276,7 +294,10 @@ async def whatsapp_webhook(request: Request) -> dict[str, Any]:
                             safety_layer=_safety_layer,
                             resolved_by="whatsapp_remote",
                         )
-                        await _send_whatsapp_reply(sender, f"JARVIS: ✅ {sym} {act} APPROVED. Trade {res['paper_trade_id'][:8]} open.")
+                        await _send_whatsapp_reply(
+                            sender,
+                            f"JARVIS: ✅ {sym} {act} APPROVED. Trade {res['paper_trade_id'][:8]} open.",
+                        )
                     else:
                         reject_pending_trade(
                             approval_id=aid,
@@ -288,7 +309,9 @@ async def whatsapp_webhook(request: Request) -> dict[str, Any]:
                     return {"ok": True, "action": "approval_resolve"}
                 except Exception as e:
                     logger.error(f"WhatsApp approval resolution failed: {e}")
-                    await _send_whatsapp_reply(sender, f"JARVIS: Error resolving approval: {str(e)[:100]}")
+                    await _send_whatsapp_reply(
+                        sender, f"JARVIS: Error resolving approval: {str(e)[:100]}"
+                    )
                     return {"ok": False, "error": str(e)}
 
     # Fallback to LLM Gateway
