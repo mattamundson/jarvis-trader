@@ -249,6 +249,7 @@ def test_extract_snapshot_price_nested_trade_decision_dict() -> None:
 def test_extract_snapshot_price_nested_trade_decision_json_string() -> None:
     """SQLite stores trade_decision as a JSON string; service must deserialize it."""
     import json
+
     from approval.service import _extract_snapshot_price
 
     td = {"stop_price": 5980.0, "target_1": 6050.0}

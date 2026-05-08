@@ -9,8 +9,8 @@ import os
 from typing import Optional
 
 try:
-    import xgboost as xgb
     import joblib  # noqa: F401 — imported for availability check
+    import xgboost as xgb
 
     _ML_DEPS_AVAILABLE = True
 except ImportError:
