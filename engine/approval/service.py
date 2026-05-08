@@ -26,9 +26,7 @@ def approved_watchlist_symbols() -> set[str]:
     return {s.upper() for s in (settings.FUTURES_WATCHLIST or [])}
 
 
-def _extract_snapshot_price(
-    snapshot: dict[str, Any], keys: tuple[str, ...]
-) -> Optional[float]:
+def _extract_snapshot_price(snapshot: dict[str, Any], keys: tuple[str, ...]) -> Optional[float]:
     """Return the first key in ``keys`` that resolves to a positive float on
     ``snapshot``.  Used to lift stop_price / target_price from Trader output
     for HB-1 broker-side bracket wiring."""
@@ -45,7 +43,28 @@ def _extract_snapshot_price(
             continue
         if fv > 0:
             return fv
-    # Also check nested 'decision' dict (TraderAgent emits TradeDecision fields under 'decision')
+    # Check nested 'trade_decision' dict (pipeline_result_for_approval_snapshot stores
+    # TraderAgent output under 'trade_decision'; SQLite may persist it as a JSON string)
+    trade_decision = snapshot.get("trade_decision")
+    if isinstance(trade_decision, str):
+        import json as _json
+
+        try:
+            trade_decision = _json.loads(trade_decision)
+        except Exception:
+            trade_decision = {}
+    if isinstance(trade_decision, dict):
+        for k in keys:
+            v = trade_decision.get(k)
+            if v is None:
+                continue
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                continue
+            if fv > 0:
+                return fv
+    # Also check legacy 'decision' dict for backwards compatibility
     decision = snapshot.get("decision")
     if isinstance(decision, dict):
         for k in keys:
@@ -171,10 +190,7 @@ async def execute_approved_trade(
     if safety_layer is None:
         raise ApprovalFlowError(503, "Safety layer not available")
 
-    use_bracket = (
-        getattr(settings, "ENABLE_BROKER_BRACKETS", False)
-        and stop_price is not None
-    )
+    use_bracket = getattr(settings, "ENABLE_BROKER_BRACKETS", False) and stop_price is not None
 
     if use_bracket:
         result = await safety_layer.submit_entry_with_stop(
@@ -248,7 +264,9 @@ async def approve_pending_trade(
     # execute_approved_trade routes through SafetyLayer.submit_entry_with_stop.
     # target_price uses target_1 first (nearer profit target), target_2 fallback.
     stop_price = _extract_snapshot_price(snapshot, ("stop_price", "stop_loss"))
-    target_price = _extract_snapshot_price(snapshot, ("target_1", "target_price", "take_profit", "target_2"))
+    target_price = _extract_snapshot_price(
+        snapshot, ("target_1", "target_price", "take_profit", "target_2")
+    )
 
     execution_result = await execute_approved_trade(
         safety_layer=safety_layer,
@@ -286,7 +304,9 @@ async def approve_pending_trade(
     try:
         write_trade_journal_entry(db_manager, trade_id, snapshot)
     except Exception as exc:
-        logger.warning("Could not create journal entry with attribution for %s: %s", trade_id[:8], exc)
+        logger.warning(
+            "Could not create journal entry with attribution for %s: %s", trade_id[:8], exc
+        )
 
     return {
         "status": "approved",
@@ -368,10 +388,13 @@ def cancel_expired_approvals(db_manager, timeout_minutes: int = 5) -> int:
                     resolved_by="system_timeout",
                     rejection_reason=f"Expired after {timeout_minutes}m",
                 )
-                logger.info("[APPROVAL] Auto-expired stale approval %s (%s)", approval_id[:8], row["symbol"])
+                logger.info(
+                    "[APPROVAL] Auto-expired stale approval %s (%s)", approval_id[:8], row["symbol"]
+                )
                 expired_count += 1
         except Exception as e:
-            logger.warning("[APPROVAL] Failed to check expiry for %s: %s", row.get("approval_id", "??"), e)
+            logger.warning(
+                "[APPROVAL] Failed to check expiry for %s: %s", row.get("approval_id", "??"), e
+            )
 
     return expired_count
-

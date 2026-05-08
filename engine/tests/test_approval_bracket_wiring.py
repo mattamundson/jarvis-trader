@@ -21,6 +21,7 @@ Run with:
     cd engine
     .venv\\Scripts\\python.exe -m pytest tests/test_approval_bracket_wiring.py -v
 """
+
 from __future__ import annotations
 
 import os
@@ -55,6 +56,7 @@ if _ENGINE_ROOT not in sys.path:
 
 
 # ─── execute_approved_trade: bracket ON/OFF flag behavior ─────────────
+
 
 @pytest.mark.asyncio
 async def test_execute_approved_trade_flag_off_uses_legacy_naked_entry() -> None:
@@ -184,6 +186,7 @@ async def test_execute_approved_trade_bracket_without_target_ok() -> None:
 
 # ─── _extract_snapshot_price helper ───────────────────────────────────
 
+
 def test_extract_snapshot_price_top_level_key() -> None:
     from approval.service import _extract_snapshot_price
 
@@ -232,3 +235,34 @@ def test_extract_snapshot_price_handles_none_and_non_dict() -> None:
 
     assert _extract_snapshot_price(None, ("stop_price",)) is None  # type: ignore[arg-type]
     assert _extract_snapshot_price("not a dict", ("stop_price",)) is None  # type: ignore[arg-type]
+
+
+def test_extract_snapshot_price_nested_trade_decision_dict() -> None:
+    """pipeline_result_for_approval_snapshot stores Trader output under 'trade_decision'."""
+    from approval.service import _extract_snapshot_price
+
+    snap = {"trade_decision": {"stop_price": 5980.0, "target_1": 6050.0}}
+    assert _extract_snapshot_price(snap, ("stop_price",)) == 5980.0
+    assert _extract_snapshot_price(snap, ("target_1",)) == 6050.0
+
+
+def test_extract_snapshot_price_nested_trade_decision_json_string() -> None:
+    """SQLite stores trade_decision as a JSON string; service must deserialize it."""
+    import json
+    from approval.service import _extract_snapshot_price
+
+    td = {"stop_price": 5980.0, "target_1": 6050.0}
+    snap = {"trade_decision": json.dumps(td)}
+    assert _extract_snapshot_price(snap, ("stop_price",)) == 5980.0
+    assert _extract_snapshot_price(snap, ("target_1",)) == 6050.0
+
+
+def test_extract_snapshot_price_trade_decision_takes_priority_over_legacy_decision() -> None:
+    """trade_decision is checked before the legacy 'decision' key."""
+    from approval.service import _extract_snapshot_price
+
+    snap = {
+        "trade_decision": {"stop_price": 5980.0},
+        "decision": {"stop_price": 5000.0},
+    }
+    assert _extract_snapshot_price(snap, ("stop_price",)) == 5980.0
