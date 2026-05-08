@@ -115,6 +115,10 @@ export interface HealthResponse {
   ibkr_data_connected?: boolean | null;
   schwab_connected: boolean;
   uptime_seconds: number;
+  tradingview_mcp_healthy?: boolean | null;
+  tradingview_mcp_details?: string | null;
+  llm_path_healthy?: boolean | null;
+  llm_available?: boolean | null;
 }
 
 export interface SafetyStatus {

@@ -34,6 +34,7 @@ import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidge
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
 import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
+import { EngineHealthWidget } from "@/components/EngineHealthWidget";
 import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
@@ -215,6 +216,9 @@ export default function DashboardPage() {
 
           {/* Super-Engine Infrastructure Status */}
           <SuperEngineStatusWidget />
+
+          {/* Engine Health — live /health subsystem checks (TV MCP, LLM, IBKR) */}
+          <EngineHealthWidget />
 
           {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
           <Pm2StabilityWidget />
