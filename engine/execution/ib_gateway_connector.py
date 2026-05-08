@@ -324,12 +324,15 @@ class IBGatewayConnector:
             abs_qty = abs(qty)
 
             logger.critical(f"DEADMAN SWITCH: Flattening {abs_qty} {symbol} ({action} MKT)")
-            await self.submit_order({
-                "symbol": symbol,
-                "quantity": -qty if qty > 0 else abs_qty,
-                "order_type": "market",
-                "is_futures": is_futures
-            }, self._account_summary["equity"])
+            await self.submit_order(
+                {
+                    "symbol": symbol,
+                    "quantity": -qty if qty > 0 else abs_qty,
+                    "order_type": "market",
+                    "is_futures": is_futures,
+                },
+                self._account_summary["equity"],
+            )
 
     def _notify_connection_state(self, state: ConnectionState) -> None:
         """
@@ -869,6 +872,28 @@ class IBGatewayConnector:
         )
 
     # ── Kill Switch Support ───────────────────────────────────────────────────
+
+    async def get_open_orders(self) -> list[dict]:
+        """
+        Return all open (non-filled, non-cancelled) orders.
+
+        In paper trading mode: returns pending entries from ``_open_orders``.
+        In live mode: Would query IB Gateway for open orders.
+
+        Returns:
+            List of order dicts; each has at minimum ``order_id``, ``symbol``,
+            ``order_type``, and ``status`` keys.
+        """
+        if not self.is_connected():
+            return []
+
+        if self._settings.PAPER_TRADING:
+            return list(self._open_orders.values())
+
+        raise NotImplementedError(
+            "IB Gateway live connection not yet implemented. "
+            "Set PAPER_TRADING=True for paper trading mode."
+        )
 
     async def cancel_all_orders(self) -> int:
         """
