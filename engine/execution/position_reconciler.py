@@ -14,6 +14,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 class PositionReconciler:
     def __init__(self, ib_gateway):
         self.ib_gateway = ib_gateway
@@ -36,7 +37,11 @@ class PositionReconciler:
             for o in open_orders:
                 order_type = str(o.get("order_type", "")).upper()
                 status = str(o.get("status", "")).upper()
-                if order_type in ("STP", "STP_LMT") and status not in ("FILLED", "CANCELLED", "INACTIVE"):
+                if order_type in ("STP", "STP_LMT", "STOP", "STOP_LMT") and status not in (
+                    "FILLED",
+                    "CANCELLED",
+                    "INACTIVE",
+                ):
                     sym = o.get("symbol")
                     if sym not in stp_orders:
                         stp_orders[sym] = []
@@ -53,7 +58,9 @@ class PositionReconciler:
                     continue
 
                 if symbol not in stp_orders or len(stp_orders[symbol]) == 0:
-                    logger.warning(f"[RECONCILER] Orphaned position detected: {symbol} Qty: {quantity}")
+                    logger.warning(
+                        f"[RECONCILER] Orphaned position detected: {symbol} Qty: {quantity}"
+                    )
                     await self._handle_orphaned_position(symbol, quantity, avg_cost)
                     orphaned += 1
 
@@ -89,6 +96,7 @@ class PositionReconciler:
             # Send notification
             try:
                 from notifications.whatsapp import get_notifier
+
                 notifier = get_notifier()
                 if getattr(notifier, "enabled", False):
                     await notifier.send(
