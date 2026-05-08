@@ -22,6 +22,7 @@ Run with:
     cd engine
     .venv\\Scripts\\python.exe -m pytest tests/test_broker_bracket_tp_wiring.py -v
 """
+
 from __future__ import annotations
 
 import os
@@ -65,6 +66,9 @@ def _paper_offline_cfg():
             "ALLOW_PAPER_SIMULATED_ORDERS": True,
             "MAX_SINGLE_ORDER_VALUE": 500_000.0,
             "MAX_POSITION_SIZE_PCT": 5.0,
+            # Test stops are 30–90 pts on MES ($5/pt) = $150–$450; allow up to $500
+            # so the trade-loss gate passes without suppressing these bracket tests.
+            "MAX_TRADE_LOSS_USD": 500.0,
         }
     )
 
@@ -88,7 +92,7 @@ async def test_submit_entry_with_stop_and_target_places_tp_child(tmp_path) -> No
         action="BUY",
         quantity=1,
         price=7130.0,
-        stop_price=7100.0,   # -30 pt stop
+        stop_price=7100.0,  # -30 pt stop
         target_price=7190.0,  # +60 pt target (2:1 RRR)
     )
 
@@ -97,18 +101,19 @@ async def test_submit_entry_with_stop_and_target_places_tp_child(tmp_path) -> No
     assert result["entry_order_id"] is not None
     assert result["stp_order_id"] is not None
     assert result["stp_linked"] is True
-    assert result["tp_order_id"] is not None, (
-        "TP child was not submitted when target_price provided — HB-1 Stage 3 regression"
-    )
-    assert result["tp_linked"] is True, (
-        "TP not linked to parent entry — target would be orphaned on entry cancel"
-    )
-    # All three IDs must be distinct (entry, STP, TP)
-    assert len({result["entry_order_id"], result["stp_order_id"], result["tp_order_id"]}) == 3
+    # TP is skipped in paper mode (LIVE_TRADING_ENABLED=False) to prevent the
+    # paper connector from immediately filling the LMT child as a second exit.
+    assert (
+        result["tp_order_id"] is None
+    ), "TP child should be None in paper mode — TP placement is gated on LIVE_TRADING_ENABLED"
+    assert result["tp_linked"] is False
 
 
 @pytest.mark.asyncio
 async def test_tp_child_linked_to_parent_entry(tmp_path) -> None:
+    """In paper mode (LIVE_TRADING_ENABLED=False) TP is not placed, so tp_order_id
+    is None and there is no order to verify linkage on.  This test confirms that
+    the STP child IS linked and that tp_order_id is None (paper-mode invariant)."""
     from execution.ib_gateway_connector import IBGatewayConnector
     from portfolio.tracker import PortfolioTracker
     from risk.safety_layer import SafetyLayer
@@ -131,17 +136,24 @@ async def test_tp_child_linked_to_parent_entry(tmp_path) -> None:
     )
 
     entry_id = result["entry_order_id"]
-    tp_id = result["tp_order_id"]
+    stp_id = result["stp_order_id"]
 
-    tp_status = await conn.get_order_status(tp_id)
+    # Verify STP is linked to the entry parent
+    stp_status = await conn.get_order_status(stp_id)
+    assert stp_status.get("parent_order_id") == entry_id, (
+        f"STP parent linkage broken: expected {entry_id}, "
+        f"got {stp_status.get('parent_order_id')}"
+    )
+    assert stp_status.get("order_type") in {
+        "STP",
+        "stop",
+    }, f"Child order not typed as stop: {stp_status.get('order_type')}"
 
-    assert tp_status.get("parent_order_id") == entry_id, (
-        f"TP parent linkage broken: expected {entry_id}, "
-        f"got {tp_status.get('parent_order_id')}"
-    )
-    assert tp_status.get("order_type") in {"LMT", "limit"}, (
-        f"Child order not typed as limit: {tp_status.get('order_type')}"
-    )
+    # TP must be absent in paper mode
+    assert (
+        result["tp_order_id"] is None
+    ), "TP should not be placed in paper mode (LIVE_TRADING_ENABLED=False)"
+    assert result["tp_linked"] is False
 
 
 @pytest.mark.asyncio
@@ -170,18 +182,17 @@ async def test_without_target_preserves_stp_only_backward_compat(tmp_path) -> No
 
     assert result["stp_order_id"] is not None
     assert result["stp_linked"] is True
-    assert result["tp_order_id"] is None, (
-        "TP was placed without target_price being provided"
-    )
+    assert result["tp_order_id"] is None, "TP was placed without target_price being provided"
     assert result["tp_linked"] is False
 
 
 @pytest.mark.asyncio
 async def test_short_entry_places_both_children_linked_to_parent(tmp_path) -> None:
-    """SHORT entry should still produce STP + TP children linked to parent.
-    Direction-correctness of children is enforced in SafetyLayer code
-    (child_action = opposite of entry action); this test verifies the
-    full bracket reaches the broker for the SHORT case end-to-end."""
+    """SHORT entry should still produce a STP child linked to parent.
+    TP is skipped in paper mode (LIVE_TRADING_ENABLED=False) — paper connector
+    would immediately fill the LMT child as a second unintended exit.
+    Direction-correctness of the STP child is enforced in SafetyLayer code
+    (child_action = opposite of entry action)."""
     from execution.ib_gateway_connector import IBGatewayConnector
     from portfolio.tracker import PortfolioTracker
     from risk.safety_layer import SafetyLayer
@@ -199,17 +210,16 @@ async def test_short_entry_places_both_children_linked_to_parent(tmp_path) -> No
         action="SELL",
         quantity=1,
         price=7130.0,
-        stop_price=7160.0,   # STP ABOVE entry for a short
-        target_price=7070.0,  # TP BELOW entry for a short
+        stop_price=7160.0,  # STP ABOVE entry for a short
+        target_price=7070.0,  # TP BELOW entry for a short (skipped in paper mode)
     )
 
     assert result["approved"] is True
     assert result["stp_linked"] is True
-    assert result["tp_linked"] is True
-    assert len({result["entry_order_id"], result["stp_order_id"], result["tp_order_id"]}) == 3
+    # TP skipped in paper mode
+    assert result["tp_order_id"] is None
+    assert result["tp_linked"] is False
 
-    tp_status = await conn.get_order_status(result["tp_order_id"])
     stp_status = await conn.get_order_status(result["stp_order_id"])
     entry_id = result["entry_order_id"]
-    assert tp_status.get("parent_order_id") == entry_id
     assert stp_status.get("parent_order_id") == entry_id
