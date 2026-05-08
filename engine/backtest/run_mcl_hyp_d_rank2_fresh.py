@@ -1,10 +1,11 @@
 """
-Wrapper: runs MCL Hypothesis-D rank2 WFO against the fresh merged cache file
-(2024-04-26 to 2026-05-07) instead of the default primary ending 2026-03-27.
+Wrapper: runs MCL Hypothesis-D rank2 WFO against the latest cache file.
 
-This script monkey-patches _find_data_file before importing run_mcl_hypothesis_d_rank2
-so no existing files are modified.
+Monkey-patches _find_data_file in run_mcl_hypothesis_d_rank2 to always pick
+the freshest cache via _find_latest_cache so this script stays valid after
+each IBKR cache refresh without needing a manual path update.
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,15 +16,14 @@ if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
 import backtest.run_mcl_hypothesis_d_rank2 as _r2  # noqa: E402
+from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 
-# Override _find_data_file to point at the fresh merged file
-FRESH_FILE = engine_root / "backtest" / "cache" / "MCL_2024-04-26_2026-05-07_1h.csv"
 
 def _find_data_file_fresh(data_dir: Path) -> Path:
-    if FRESH_FILE.exists():
-        print(f"[MCL-HD-R2-FRESH] Using fresh merged file: {FRESH_FILE.name}")
-        return FRESH_FILE
-    raise FileNotFoundError(f"Fresh merged file not found: {FRESH_FILE}")
+    chosen = _find_latest_cache(data_dir, "MCL")
+    print(f"[MCL-HD-R2-FRESH] Using latest cache: {chosen.name}")
+    return chosen
+
 
 _r2._find_data_file = _find_data_file_fresh
 
