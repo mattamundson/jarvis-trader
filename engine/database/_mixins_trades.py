@@ -373,6 +373,42 @@ class TradesMixin:
             finally:
                 conn.close()
 
+    def update_paper_trade_strategy_params(
+        self,
+        trade_id: str,
+        strategy_params: dict,
+    ) -> bool:
+        """
+        Merge ``strategy_params`` into an existing paper_trades row.
+
+        Reads the current strategy_params JSON blob, merges the supplied dict
+        (supplied keys win on collision), and writes back atomically.  No-ops
+        gracefully when the trade_id is not found (returns False).
+
+        Returns True when exactly one row was updated.
+        """
+        sql_read = "SELECT strategy_params FROM paper_trades WHERE trade_id = ?"
+        sql_write = "UPDATE paper_trades SET strategy_params = ? WHERE trade_id = ?"
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(sql_read, (trade_id,)).fetchone()
+                if row is None:
+                    logger.warning(
+                        "[DB] update_paper_trade_strategy_params: trade_id=%s not found",
+                        trade_id[:8] if trade_id else "?",
+                    )
+                    return False
+                existing = _from_json(row[0]) if row[0] else {}
+                if not isinstance(existing, dict):
+                    existing = {}
+                existing.update(strategy_params)
+                cur = conn.execute(sql_write, (_to_json(existing), trade_id))
+                conn.commit()
+                return cur.rowcount == 1
+            finally:
+                conn.close()
+
     def get_paper_trades(
         self,
         limit: int = 50,

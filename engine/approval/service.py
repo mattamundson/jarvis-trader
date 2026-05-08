@@ -291,6 +291,25 @@ async def approve_pending_trade(
         logger.exception("approve_pending_trade open_trade failed for %s", approval_id[:8])
         raise ApprovalFlowError(500, str(exc)) from exc
 
+    # Persist bracket order IDs so the position survives restarts with its STP intact.
+    # Only populated when ENABLE_BROKER_BRACKETS is True and STP placement succeeded.
+    broker_meta: dict[str, Any] = {}
+    if execution_result.get("entry_order_id") is not None:
+        broker_meta["entry_order_id"] = str(execution_result["entry_order_id"])
+    if execution_result.get("stp_order_id") is not None:
+        broker_meta["stp_order_id"] = str(execution_result["stp_order_id"])
+    if execution_result.get("tp_order_id") is not None:
+        broker_meta["tp_order_id"] = str(execution_result["tp_order_id"])
+    if broker_meta and hasattr(paper_tracker, "set_broker_metadata"):
+        try:
+            paper_tracker.set_broker_metadata(trade_id, broker_meta)
+        except Exception as exc:
+            logger.warning(
+                "approve_pending_trade: set_broker_metadata failed for %s: %s",
+                trade_id[:8],
+                exc,
+            )
+
     ok = db_manager.resolve_pending_approval(
         approval_id,
         new_status="approved",
