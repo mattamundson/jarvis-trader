@@ -65,6 +65,9 @@ data/*.parquet
 data/*.csv
 data/*.h5
 data/*.pkl
+# Exception: small human-authored journals (not raw IBKR data)
+!engine/data/mgc_wfo_journal.csv
+!engine/data/mes_wfo_journal.csv
 
 # RL training artifacts (large; regenerate locally)
 engine/data/rl_cache/
