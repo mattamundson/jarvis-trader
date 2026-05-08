@@ -106,20 +106,20 @@ _OVERNIGHT_CUTOFF_HOUR = 15  # 15:00 CT â€” CME RTH close for equity future
 # overnight figures â€” day-trade margin is lower. Update when IBKR revises.
 _FUTURES_MARGIN_BY_ROOT: dict[str, float] = {
     # Micros
-    "MES": 1320.0,   # E-mini S&P 500 micro
-    "MNQ": 1780.0,   # E-mini Nasdaq-100 micro
-    "M2K":  900.0,   # E-mini Russell 2000 micro
-    "MCL": 1100.0,   # WTI crude micro
-    "MGC": 1400.0,   # Gold micro
-    "MHG":  600.0,   # Copper micro
-    "MSI": 1500.0,   # Silver micro
+    "MES": 1320.0,  # E-mini S&P 500 micro
+    "MNQ": 1780.0,  # E-mini Nasdaq-100 micro
+    "M2K": 900.0,  # E-mini Russell 2000 micro
+    "MCL": 1100.0,  # WTI crude micro
+    "MGC": 1400.0,  # Gold micro
+    "MHG": 600.0,  # Copper micro
+    "MSI": 1500.0,  # Silver micro
     # Minis (roughly 10x the micros)
-    "ES":  13200.0,
-    "NQ":  17800.0,
-    "RTY":  9000.0,
-    "CL":  11000.0,
-    "GC":  14000.0,
-    "HG":   6000.0,
+    "ES": 13200.0,
+    "NQ": 17800.0,
+    "RTY": 9000.0,
+    "CL": 11000.0,
+    "GC": 14000.0,
+    "HG": 6000.0,
 }
 
 # Points-to-USD multiplier for futures loss estimation.
@@ -167,7 +167,15 @@ class SafetyLayer:
     Instantiated once at startup and shared across all agents.
     """
 
-    def __init__(self, config, ib_gateway=None, pnl_monitor=None, loss_tracker=None, db_path: Optional[str] = None, db_manager=None):
+    def __init__(
+        self,
+        config,
+        ib_gateway=None,
+        pnl_monitor=None,
+        loss_tracker=None,
+        db_path: Optional[str] = None,
+        db_manager=None,
+    ):
         """
         Parameters
         ----------
@@ -371,7 +379,9 @@ class SafetyLayer:
         try:
             today = date.today().isoformat()
             consecutive_losses = 0
-            if self._loss_tracker is not None and hasattr(self._loss_tracker, "get_consecutive_losses"):
+            if self._loss_tracker is not None and hasattr(
+                self._loss_tracker, "get_consecutive_losses"
+            ):
                 consecutive_losses = self._loss_tracker.get_consecutive_losses()
             self._db_manager.upsert_pnl_snapshot(
                 date=today,
@@ -396,6 +406,7 @@ class SafetyLayer:
             return
         try:
             import sqlite3
+
             conn = sqlite3.connect(self._db_path, timeout=5)
             conn.row_factory = sqlite3.Row
             try:
@@ -456,7 +467,8 @@ class SafetyLayer:
                 conn.commit()
                 logger.debug(
                     "SafetyLayer: kill switch state persisted to DB (active=%s reason=%s)",
-                    active_str, reason_str,
+                    active_str,
+                    reason_str,
                 )
             finally:
                 conn.close()
@@ -520,9 +532,9 @@ class SafetyLayer:
         """Return safety layer status for agents."""
         return {
             "is_killed": self._kill_switch_active,
-            "kill_switch_reason": self._kill_switch_reason.value
-            if self._kill_switch_reason
-            else None,
+            "kill_switch_reason": (
+                self._kill_switch_reason.value if self._kill_switch_reason else None
+            ),
             "daily_realized_pnl": self._daily_realized_pnl,
             "equity_peak": self._equity_peak,
             "current_equity": self._current_equity,
@@ -629,9 +641,7 @@ class SafetyLayer:
 
     def _check_daily_loss_limit(self, portfolio_equity: float) -> RiskCheckResult:
         """Check daily loss limit (both PCT and absolute USD)."""
-        pnl_state = (
-            self._pnl_monitor.get_current_pnl_state() if self._pnl_monitor else None
-        )
+        pnl_state = self._pnl_monitor.get_current_pnl_state() if self._pnl_monitor else None
         total_pnl = pnl_state.total_pnl if pnl_state else self._daily_realized_pnl
         realized_pnl = pnl_state.daily_realized_pnl if pnl_state else self._daily_realized_pnl
 
@@ -643,7 +653,8 @@ class SafetyLayer:
                 f"Daily total P&L {total_pnl:.2f} exceeded pct limit ({self._config.MAX_DAILY_LOSS_PCT:.1%})",
             )
             return RiskCheckResult(
-                approved=False, rejection_reason="Daily loss pct limit reached - kill switch activated"
+                approved=False,
+                rejection_reason="Daily loss pct limit reached - kill switch activated",
             )
 
         # 2. Check absolute limit (e.g. -$100) against REALIZED P&L (per Battle Plan)
@@ -654,7 +665,8 @@ class SafetyLayer:
                 f"Daily realized loss {realized_pnl:.2f} exceeded flat USD limit (${abs(abs_limit):.0f})",
             )
             return RiskCheckResult(
-                approved=False, rejection_reason="Daily realized loss limit reached - kill switch activated"
+                approved=False,
+                rejection_reason="Daily realized loss limit reached - kill switch activated",
             )
 
         return RiskCheckResult(approved=True)
@@ -669,9 +681,10 @@ class SafetyLayer:
             # but usually blocked earlier by strategy policy for directional trades.
             return RiskCheckResult(approved=True)
 
-        entry_px = order.limit_price or order.estimated_value / order.quantity if order.quantity != 0 else 0
+        abs_qty = abs(order.quantity)
+        entry_px = order.limit_price or order.estimated_value / abs_qty if abs_qty != 0 else 0
         if entry_px == 0:
-            return RiskCheckResult(approved=True) # Cannot compute risk without entry price
+            return RiskCheckResult(approved=True)  # Cannot compute risk without entry price
 
         points_at_risk = abs(entry_px - order.stop_price)
 
@@ -691,7 +704,7 @@ class SafetyLayer:
                     f"TRADE_LOSS_LIMIT: Potential loss ${dollar_risk:.2f} "
                     f"exceeds max ${max_risk:.2f} per ticket "
                     f"({order.symbol} @ {entry_px:.2f}, stop {order.stop_price:.2f})"
-                )
+                ),
             )
 
         return RiskCheckResult(approved=True)
@@ -783,7 +796,9 @@ class SafetyLayer:
                 if abs(order.quantity) > limit:
                     logger.warning(
                         "OVERNIGHT_CONTRACT_LIMIT: %s rejected %d contracts after 15:00 CT (max %d)",
-                        sym, abs(order.quantity), limit,
+                        sym,
+                        abs(order.quantity),
+                        limit,
                     )
                     return RiskCheckResult(
                         approved=False,
@@ -799,11 +814,19 @@ class SafetyLayer:
         if order.stark_signal:
             sig = order.stark_signal.upper()
             if sig == "HOLD" and order.quantity != 0:
-                return RiskCheckResult(approved=False, rejection_reason="STARK_TPO_CONSTRAINT: Math edge demands HOLD.")
+                return RiskCheckResult(
+                    approved=False, rejection_reason="STARK_TPO_CONSTRAINT: Math edge demands HOLD."
+                )
             if "LONG" in sig and order.quantity < 0:
-                return RiskCheckResult(approved=False, rejection_reason=f"STARK_TPO_CONSTRAINT: Math demands {sig} but order is SHORT.")
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason=f"STARK_TPO_CONSTRAINT: Math demands {sig} but order is SHORT.",
+                )
             if "SHORT" in sig and order.quantity > 0:
-                return RiskCheckResult(approved=False, rejection_reason=f"STARK_TPO_CONSTRAINT: Math demands {sig} but order is LONG.")
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason=f"STARK_TPO_CONSTRAINT: Math demands {sig} but order is LONG.",
+                )
         return RiskCheckResult(approved=True)
 
     def check_order(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
@@ -1167,6 +1190,7 @@ class SafetyLayer:
             price=price,
             order_type="MKT",
             limit_price=None,
+            stop_price=stop_price,
         )
         if not entry_res.get("approved") or not entry_res.get("routed_to_ib"):
             return {
@@ -1204,9 +1228,56 @@ class SafetyLayer:
             )
             stp_id = None
 
+        if stp_id is None:
+            logger.critical(
+                "submit_entry_with_stop: STP child failed — attempting to cancel entry "
+                "order %s to prevent unprotected position (symbol=%s)",
+                entry_id,
+                symbol,
+            )
+            if self._ib_gateway is not None and hasattr(self._ib_gateway, "cancel_order"):
+                try:
+                    await self._ib_gateway.cancel_order(entry_id)
+                    logger.critical(
+                        "submit_entry_with_stop: entry order %s cancel submitted after STP failure (symbol=%s)",
+                        entry_id,
+                        symbol,
+                    )
+                except Exception as _ce:
+                    logger.critical(
+                        "submit_entry_with_stop: cancel of entry %s ALSO failed — position may be live without stop (symbol=%s): %s",
+                        entry_id,
+                        symbol,
+                        _ce,
+                    )
+            else:
+                logger.critical(
+                    "submit_entry_with_stop: no cancel_order available — entry %s may be live without stop (symbol=%s)",
+                    entry_id,
+                    symbol,
+                )
+            return {
+                "approved": False,
+                "reason": "STP child placement failed — entry cancelled to prevent unprotected position",
+                "entry_order_id": entry_id,
+                "stp_order_id": None,
+                "stp_linked": False,
+                "tp_order_id": None,
+                "tp_linked": False,
+                "routed_to_ib": True,
+            }
+
         # --- Child TP (take-profit) — opt-in via target_price ---
         tp_id: Optional[str] = None
-        if target_price is not None:
+        _live_trading = bool(getattr(settings, "LIVE_TRADING_ENABLED", False))
+        if target_price is not None and not _live_trading:
+            logger.info(
+                "submit_entry_with_stop: TP placement skipped in paper mode "
+                "(paper connector fills LMT immediately) — symbol=%s target=%.2f",
+                symbol,
+                float(target_price),
+            )
+        elif target_price is not None and _live_trading:
             try:
                 tp_id_raw = await self._ib_gateway.place_paper_order(
                     symbol=symbol,
@@ -1241,10 +1312,9 @@ class SafetyLayer:
             try:
                 import json as _json
                 from pathlib import Path as _Path
+
                 _sidecar = (
-                    _Path(__file__).resolve().parent.parent
-                    / "data"
-                    / "bracket_trade_count.json"
+                    _Path(__file__).resolve().parent.parent / "data" / "bracket_trade_count.json"
                 )
                 _sidecar.parent.mkdir(parents=True, exist_ok=True)
                 _state: dict = {}
@@ -1259,9 +1329,7 @@ class SafetyLayer:
                 _state["last_at"] = datetime.now(timezone.utc).isoformat()
                 _sidecar.write_text(_json.dumps(_state), encoding="utf-8")
             except Exception as exc:  # noqa: BLE001 — counter must never block trade
-                logger.warning(
-                    "submit_entry_with_stop: bracket sidecar bump failed: %s", exc
-                )
+                logger.warning("submit_entry_with_stop: bracket sidecar bump failed: %s", exc)
 
         return {
             "approved": True,
@@ -1283,12 +1351,20 @@ class SafetyLayer:
         to liquidate them.
         """
         if self._ib_gateway is None:
-            return {"flattened": [], "order_ids": [], "errors": [{"error": "No IB gateway attached"}]}
+            return {
+                "flattened": [],
+                "order_ids": [],
+                "errors": [{"error": "No IB gateway attached"}],
+            }
 
         try:
             positions = await self._ib_gateway.get_positions()
         except Exception as exc:
-            return {"flattened": [], "order_ids": [], "errors": [{"error": f"get_positions raised: {exc}"}]}
+            return {
+                "flattened": [],
+                "order_ids": [],
+                "errors": [{"error": f"get_positions raised: {exc}"}],
+            }
 
         flattened: list[str] = []
         order_ids: list[str] = []
@@ -1351,9 +1427,13 @@ class SafetyLayer:
                 daily_pnl_pct = (daily_pnl / equity) if equity > 0 else 0.0
                 drawdown_pct = 0.0
                 if self._pnl_monitor is not None and hasattr(self._pnl_monitor, "get_drawdown_pct"):
-                    drawdown_pct = self._pnl_monitor.get_drawdown_pct()  # already negative (e.g. -0.08 = 8% down)
+                    drawdown_pct = (
+                        self._pnl_monitor.get_drawdown_pct()
+                    )  # already negative (e.g. -0.08 = 8% down)
                 elif self._equity_peak > 0:
-                    drawdown_pct = -(self._equity_peak - equity) / self._equity_peak  # negative fraction
+                    drawdown_pct = (
+                        -(self._equity_peak - equity) / self._equity_peak
+                    )  # negative fraction
                 consecutive_losses = 0
                 if self._loss_tracker is not None and hasattr(
                     self._loss_tracker, "get_consecutive_losses"
@@ -1410,13 +1490,9 @@ class SafetyLayer:
 
         # Daily loss circuit breaker
         daily_limit = (
-            -(equity_for_limits * self._config.MAX_DAILY_LOSS_PCT)
-            if equity_for_limits > 0
-            else 0
+            -(equity_for_limits * self._config.MAX_DAILY_LOSS_PCT) if equity_for_limits > 0 else 0
         )
-        daily_pnl_pct = (
-            (daily_pnl_for_check / equity_for_limits) if equity_for_limits > 0 else 0
-        )
+        daily_pnl_pct = (daily_pnl_for_check / equity_for_limits) if equity_for_limits > 0 else 0
         daily_limit_pct = -self._config.MAX_DAILY_LOSS_PCT
         daily_limit_breached = daily_pnl_for_check < daily_limit
 
@@ -1439,9 +1515,9 @@ class SafetyLayer:
             "drawdown_limit_pct": drawdown_limit_pct,
             "drawdown_breached": drawdown_breached,
             "kill_switch_active": self._kill_switch_active,
-            "kill_switch_reason": self._kill_switch_reason.value
-            if self._kill_switch_reason
-            else None,
+            "kill_switch_reason": (
+                self._kill_switch_reason.value if self._kill_switch_reason else None
+            ),
         }
 
     # â”€â”€ Loss Tracking API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
