@@ -243,7 +243,9 @@ async def get_discord_intelligence(
 
     bias = (jarvis_bias or "NEUTRAL").upper()
     if bias not in ("LONG", "SHORT", "NEUTRAL"):
-        raise HTTPException(status_code=400, detail="jarvis_bias must be LONG, SHORT, or NEUTRAL") from None
+        raise HTTPException(
+            status_code=400, detail="jarvis_bias must be LONG, SHORT, or NEUTRAL"
+        ) from None
 
     ctx = DiscordSignalContext(db_path=db_path)
     now_ct = datetime.now(ZoneInfo("America/Chicago"))
@@ -281,9 +283,7 @@ async def get_bookmark_stats(
     try:
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
-            total = conn.execute(
-                "SELECT COUNT(*) as cnt FROM discord_bookmarks"
-            ).fetchone()["cnt"]
+            total = conn.execute("SELECT COUNT(*) as cnt FROM discord_bookmarks").fetchone()["cnt"]
             recent = conn.execute(
                 "SELECT COUNT(*) as cnt FROM discord_bookmarks "
                 "WHERE posted_at >= datetime('now', ?)",
@@ -296,8 +296,7 @@ async def get_bookmark_stats(
                 (f"-{lookback_days} days",),
             ).fetchall()
             latest = conn.execute(
-                "SELECT posted_at FROM discord_bookmarks "
-                "ORDER BY posted_at DESC LIMIT 1"
+                "SELECT posted_at FROM discord_bookmarks " "ORDER BY posted_at DESC LIMIT 1"
             ).fetchone()
         return {
             "total": total,
@@ -319,6 +318,7 @@ def _get_bookmark_clusterer():
     global _bookmark_clusterer_singleton
     if _bookmark_clusterer_singleton is None:
         from agents.bookmark_clusterer import BookmarkClusterer
+
         _bookmark_clusterer_singleton = BookmarkClusterer()
     return _bookmark_clusterer_singleton
 
@@ -360,9 +360,9 @@ async def get_correlation_analysis(
     Returns alignment breakdown, session-type performance, and conviction-threshold
     analysis. Requires commentary processor to have run at least once.
     """
-    from analysis.discord_correlation import get_corey_alignment_summary
-
     try:
+        from analysis.discord_correlation import get_corey_alignment_summary
+
         return get_corey_alignment_summary(
             symbol.upper(), lookback_days=lookback_days, db_path=db_path
         )

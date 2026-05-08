@@ -14,6 +14,7 @@ logger = logging.getLogger("jarvis_trader.promotion")
 # Use the same DB as agent feedback for consistency
 DB_PATH = Path(__file__).parent.parent / "data" / "agent_feedback.db"
 
+
 class PromotionEngine:
     """
     Evaluates performance of shadow trades and strategies.
@@ -45,13 +46,28 @@ class PromotionEngine:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             for regime in regimes:
-                rows = conn.execute(
-                    "SELECT outcome FROM trade_outcomes WHERE regime = ?",
-                    (regime,)
-                ).fetchall()
+                try:
+                    rows = conn.execute(
+                        "SELECT outcome FROM trade_outcomes WHERE regime = ?",
+                        (regime,),
+                    ).fetchall()
+                except Exception as e:
+                    if "no such table" in str(e).lower():
+                        logger.info(
+                            "[Promotion] trade_outcomes table not yet created — returning insufficient_data"
+                        )
+                        return {
+                            "status": "insufficient_data",
+                            "reason": "trade_outcomes table not yet created",
+                        }
+                    raise
 
                 if not rows:
-                    performance[regime] = {"count": 0, "win_rate": 0.0, "status": "insufficient_data"}
+                    performance[regime] = {
+                        "count": 0,
+                        "win_rate": 0.0,
+                        "status": "insufficient_data",
+                    }
                     continue
 
                 wins = sum(1 for r in rows if r["outcome"] == "WIN")
@@ -65,7 +81,7 @@ class PromotionEngine:
                 performance[regime] = {
                     "count": total,
                     "win_rate": round(win_rate, 3),
-                    "status": status
+                    "status": status,
                 }
 
         return performance
@@ -82,11 +98,16 @@ class PromotionEngine:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "performance_by_regime": perf,
             "promotion_candidates": candidates,
-            "recommendation": "Promote to LIVE for: " + ", ".join(candidates) if candidates else "Maintain shadow mode for all regimes."
+            "recommendation": (
+                "Promote to LIVE for: " + ", ".join(candidates)
+                if candidates
+                else "Maintain shadow mode for all regimes."
+            ),
         }
 
         logger.info(f"[PROMOTION] Report generated. Candidates: {candidates}")
         return report
+
 
 def get_promotion_engine(db_manager=None):
     return PromotionEngine(db_manager)
