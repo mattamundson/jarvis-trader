@@ -42,8 +42,8 @@ def test_bracket_sidecar_increments_gate_count(gate_client_isolated):
     assert bracket["pass"] is False
     assert bracket["value"] == "0/5"
 
-    # Simulate 5 bracket trades.
-    sidecar.write_text(json.dumps({"count": 5}), encoding="utf-8")
+    # Simulate 5 bracket trades (per-symbol format).
+    sidecar.write_text(json.dumps({"MES": {"count": 5}}), encoding="utf-8")
     resp = client.get("/system/mes-sprint-gate")
     bracket = next(c for c in resp.json()["checks"] if c["name"] == "bracket_trades")
     assert bracket["pass"] is True
@@ -93,9 +93,8 @@ async def test_safety_layer_submit_entry_bumps_sidecar(tmp_path, monkeypatch):
     assert result["routed_to_ib"] is True
     assert result["stp_order_id"] is not None
 
-    # Sidecar should now show count=1 with last_symbol=MES.
+    # Sidecar should now show MES count=1 (per-symbol format).
     assert sidecar.exists(), "sidecar was not written"
     state = json.loads(sidecar.read_text(encoding="utf-8"))
-    assert state["count"] == 1
-    assert state["last_symbol"] == "MES"
-    assert state["last_entry_order_id"] == 1001
+    assert state["MES"]["count"] == 1
+    assert state["MES"]["last_entry_order_id"] == 1001
