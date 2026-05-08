@@ -203,11 +203,12 @@ class PortfolioTracker:
         # Publish trade opened event
         try:
             from events.bus import publish as publish_event
+
             publish_event(
-                'trade_opened',
-                f'{symbol.upper()} {action.upper()} {quantity} @ {price}',
+                "trade_opened",
+                f"{symbol.upper()} {action.upper()} {quantity} @ {price}",
                 symbol=symbol.upper(),
-                severity='info'
+                severity="info",
             )
         except Exception:
             pass
@@ -348,12 +349,13 @@ class PortfolioTracker:
         # Publish trade closed event
         try:
             from events.bus import publish as publish_event
-            severity = 'warn' if trade.pnl and trade.pnl < 0 else 'info'
+
+            severity = "warn" if trade.pnl and trade.pnl < 0 else "info"
             publish_event(
-                'trade_closed',
-                f'{trade.symbol} closed pnl={trade.pnl}',
+                "trade_closed",
+                f"{trade.symbol} closed pnl={trade.pnl}",
                 symbol=trade.symbol,
-                severity=severity
+                severity=severity,
             )
         except Exception:
             pass
@@ -401,10 +403,7 @@ class PortfolioTracker:
         for tid in drop:
             self._open.pop(tid, None)
 
-        return [
-            t.to_dict()
-            for t in sorted(valid, key=lambda t: t.entry_time, reverse=True)
-        ]
+        return [t.to_dict() for t in sorted(valid, key=lambda t: t.entry_time, reverse=True)]
 
     def get_performance(self) -> dict:
         """
@@ -436,7 +435,9 @@ class PortfolioTracker:
                     t.pnl = row.get("pnl") or row.get("realized_pnl")
                     closed.append(t)
             except Exception as exc:
-                logger.warning("[TRACKER] get_performance: SQLite read failed, using in-memory: %s", exc)
+                logger.warning(
+                    "[TRACKER] get_performance: SQLite read failed, using in-memory: %s", exc
+                )
                 closed = self._closed
         else:
             closed = self._closed
@@ -517,6 +518,7 @@ class PortfolioTracker:
         initial: float = 10_000.0
         try:
             from config import settings  # type: ignore[import]
+
             initial = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0) or 10_000.0)
         except Exception:
             pass
@@ -527,14 +529,13 @@ class PortfolioTracker:
             if self._db is not None:
                 rows = self._db.get_closed_trades(limit=100_000)
                 total_pnl = sum(
-                    float(r.get("pnl") or 0.0)
-                    for r in rows
-                    if r.get("pnl") is not None
+                    float(r.get("pnl") or 0.0) for r in rows if r.get("pnl") is not None
                 )
             else:
                 # Fallback: query the SQLite file directly using SQLITE_DB_PATH
                 try:
                     from config import settings as _cfg  # type: ignore[import]
+
                     db_path = getattr(_cfg, "SQLITE_DB_PATH", None)
                 except Exception:
                     db_path = None
@@ -555,7 +556,9 @@ class PortfolioTracker:
         self._starting_balance_cache: float = balance
         logger.debug(
             "[TRACKER] starting_balance computed: initial=%.2f + pnl=%.2f = %.2f",
-            initial, total_pnl, balance,
+            initial,
+            total_pnl,
+            balance,
         )
         return balance
 
@@ -698,10 +701,12 @@ class PortfolioTracker:
           * AgentFeedbackTracker import or write fails (best-effort, never blocks close)
         """
         import os as _os_af
+
         if _os_af.getenv("TESTING"):
             return
         try:
             from engine.analytics.agent_feedback import AgentFeedbackTracker
+
             analyst_signals: dict = {}
             regime: Optional[str] = None
             if self._db is not None:
@@ -711,6 +716,7 @@ class PortfolioTracker:
                 if isinstance(sp, str) and sp:
                     try:
                         import json as _json_af
+
                         sp = _json_af.loads(sp)
                     except Exception:
                         sp = None
@@ -727,7 +733,7 @@ class PortfolioTracker:
                 direction=direction,
                 pnl_usd=float(trade.pnl or 0.0),
                 analyst_signals={k: float(v) for k, v in analyst_signals.items()},
-                regime=regime
+                regime=regime,
             )
             logger.info(
                 "[FEEDBACK] Recorded outcome for %s pnl=%+.2f signals=%s",
@@ -737,6 +743,72 @@ class PortfolioTracker:
             )
         except Exception as _af_exc:
             logger.debug("[FEEDBACK] record_outcome skipped: %s", _af_exc)
+
+    def set_broker_metadata(self, trade_id: str, metadata: dict) -> bool:
+        """
+        Attach broker order IDs (entry_order_id, stp_order_id, etc.) to an
+        open trade record so the portfolio survives restarts without losing
+        bracket linkage.
+
+        Persists by updating the ``strategy_params`` JSON blob in SQLite (merged
+        with any existing params) and mirroring the values onto the in-memory
+        PaperTrade object's ``notes`` field for the JSONL audit trail.
+
+        Parameters
+        ----------
+        trade_id : str
+            UUID of the open trade returned by open_trade().
+        metadata : dict
+            Arbitrary key/value pairs to store (e.g.
+            {"entry_order_id": "1234", "stp_order_id": "1235"}).
+
+        Returns
+        -------
+        True if the update succeeded (in-memory + DB), False if trade_id is
+        unknown or DB write failed (logged at WARNING level).
+        """
+        trade = self._open.get(trade_id)
+        if trade is None:
+            logger.warning("[TRACKER] set_broker_metadata: unknown trade_id %s", trade_id[:8])
+            return False
+
+        # Update in-memory notes (append JSON blob so JSONL log is readable)
+        try:
+            existing_notes = json.loads(trade.notes) if trade.notes else {}
+        except (json.JSONDecodeError, TypeError):
+            existing_notes = {"_notes": trade.notes} if trade.notes else {}
+        existing_notes.update(metadata)
+        trade.notes = json.dumps(existing_notes)
+
+        # Persist to SQLite when db_manager is available
+        if self._db is not None:
+            try:
+                # Merge with whatever strategy_params the row already holds
+                row = self._db.get_trade_by_id(trade_id) or {}
+                sp = row.get("strategy_params")
+                if isinstance(sp, str) and sp:
+                    try:
+                        sp = json.loads(sp)
+                    except Exception:
+                        sp = {}
+                if not isinstance(sp, dict):
+                    sp = {}
+                sp.update(metadata)
+                self._db.update_paper_trade_strategy_params(trade_id, sp)
+            except Exception as exc:
+                logger.warning(
+                    "[TRACKER] set_broker_metadata: DB update failed for %s: %s",
+                    trade_id[:8],
+                    exc,
+                )
+                return False
+
+        logger.info(
+            "[TRACKER] Broker metadata set for trade %s: %s",
+            trade_id[:8],
+            list(metadata.keys()),
+        )
+        return True
 
     def update_position(
         self,
@@ -1037,7 +1109,8 @@ class PortfolioTracker:
                 except Exception as exc:
                     logger.warning(
                         "flatten_all_positions: market_price_fn raised for %s: %s",
-                        trade.symbol, exc,
+                        trade.symbol,
+                        exc,
                     )
             if price is None and exit_price is not None:
                 price = float(exit_price)
