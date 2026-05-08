@@ -74,11 +74,21 @@ async def assemble_morning_brief(
                     dm.get_current_price("MNQ"),
                     return_exceptions=True,
                 )
+
                 def _extract_price(r) -> float | None:
                     if isinstance(r, Exception) or r is None:
                         return None
                     if isinstance(r, dict):
-                        return float(r.get("close") or r.get("price") or r.get("last") or 0) or None
+                        return (
+                            float(
+                                r.get("last_price")
+                                or r.get("close")
+                                or r.get("price")
+                                or r.get("last")
+                                or 0
+                            )
+                            or None
+                        )
                     return float(r)
 
                 prices["MCL"] = _extract_price(results[0])
@@ -146,7 +156,7 @@ async def assemble_morning_brief(
         if pt is not None:
             try:
                 midnight_ct = now_ct.replace(hour=0, minute=0, second=0, microsecond=0)
-                all_closed = pt.get_closed_trades() if hasattr(pt, 'get_closed_trades') else []
+                all_closed = pt.get_closed_trades() if hasattr(pt, "get_closed_trades") else []
                 for t in all_closed:
                     closed_str = t.get("exit_time") or t.get("closed_at") or ""
                     if closed_str and closed_str >= midnight_ct.isoformat()[:10]:
@@ -214,7 +224,9 @@ async def assemble_morning_brief(
                 cur = pos_price_map.get(sym)
                 unr = _compute_unrealized(pos, cur)
                 unr_str = f"${unr:+.2f}" if unr is not None else "open"
-                lines.append(f"  OPEN: {sym} {action} x{qty} @ ${entry:.2f} | unrealized: {unr_str}")
+                lines.append(
+                    f"  OPEN: {sym} {action} x{qty} @ ${entry:.2f} | unrealized: {unr_str}"
+                )
             lines.append("")
 
         pnl_str = f"${daily_pnl:+.2f}" if daily_pnl is not None else "N/A"

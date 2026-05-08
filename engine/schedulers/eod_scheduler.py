@@ -39,7 +39,9 @@ async def _check_wfe_decay(symbol: str, wfe_value: float) -> None:
             f"Strategy edge is weakening. Monitor closely."
         )
 
-    logger.warning("[EOD] WFE decay alert for %s: severity=%s wfe=%.2f", symbol, severity, wfe_value)
+    logger.warning(
+        "[EOD] WFE decay alert for %s: severity=%s wfe=%.2f", symbol, severity, wfe_value
+    )
 
     # Discord alert
     try:
@@ -89,7 +91,9 @@ async def _save_wfe_snapshots() -> None:
                         if wfe_val is not None:
                             await _check_wfe_decay(symbol, float(wfe_val))
                     except Exception as _parse_exc:
-                        logger.debug("[EOD] WFE decay check parse error for %s: %s", symbol, _parse_exc)
+                        logger.debug(
+                            "[EOD] WFE decay check parse error for %s: %s", symbol, _parse_exc
+                        )
         except Exception as exc:
             logger.warning("[EOD] WFE snapshot failed for %s: %s", symbol, exc)
 
@@ -658,16 +662,15 @@ class EODScheduler:
                             continue
                         if isinstance(result, dict):
                             price = (
-                                result.get("price")
+                                result.get("last_price")
+                                or result.get("price")
                                 or result.get("last")
                                 or result.get("close")
                             )
                         else:
                             price = result
                         try:
-                            snapshot[sym] = (
-                                float(price) if price not in (None, 0, 0.0) else None
-                            )
+                            snapshot[sym] = float(price) if price not in (None, 0, 0.0) else None
                         except (TypeError, ValueError):
                             snapshot[sym] = None
                     resolved = sum(1 for v in snapshot.values() if v is not None)
