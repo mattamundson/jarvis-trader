@@ -72,6 +72,7 @@ except Exception:  # pragma: no cover — optional dependency
 
 try:
     from services.recipe_loader import RecipeLoader
+
     _RECIPE_LOADER_AVAILABLE = True
 except Exception:  # pragma: no cover — optional dependency
     _RECIPE_LOADER_AVAILABLE = False
@@ -317,7 +318,9 @@ async def pre_filter_signal(
                 }
             )
             return _make_hold_result(
-                symbol, is_futures, f"VIX > {float(vix_extreme_threshold):g} — fear extreme, no directional edge"
+                symbol,
+                is_futures,
+                f"VIX > {float(vix_extreme_threshold):g} — fear extreme, no directional edge",
             )
 
         # ── Check 2: ATR spike ────────────────────────────────────────────
@@ -337,8 +340,10 @@ async def pre_filter_signal(
             )
 
         # ── Check 3: MTF misalignment ─────────────────────────────────────
-        if _data_mgr is not None and _cfg.MTF_FILTER_ENABLED and await _check_mtf_misalignment(
-            symbol, timeframe, is_futures, _data_mgr
+        if (
+            _data_mgr is not None
+            and _cfg.MTF_FILTER_ENABLED
+            and await _check_mtf_misalignment(symbol, timeframe, is_futures, _data_mgr)
         ):
             logger.info("[pre_filter_signal] %s SKIP — MTF misalignment (4h vs 1h STC)", symbol)
             record_signal_debug(
@@ -367,10 +372,14 @@ async def pre_filter_signal(
                         logger.info(
                             "[pre_filter_signal] %s SKIP — low conviction hour %02d:00 ET "
                             "(win_rate=%.2f < %.2f threshold)",
-                            symbol, _current_hour_et, _hour_conviction, _TIME_OF_DAY_MIN_CONVICTION,
+                            symbol,
+                            _current_hour_et,
+                            _hour_conviction,
+                            _TIME_OF_DAY_MIN_CONVICTION,
                         )
                         return _make_hold_result(
-                            symbol, is_futures,
+                            symbol,
+                            is_futures,
                             f"low conviction hour — {_current_hour_et:02d}:00 ET win_rate={_hour_conviction:.2f}",
                         )
             except Exception as _tod_err:
@@ -556,11 +565,13 @@ class TradingPipeline:
 
         # ── Pre-Filter Gate (STC, VIX, ATR spike, MTF) ────────────────────────
         recipe_vix_threshold = (
-            float(active_recipe.parameters.entry_max_vix)
-            if active_recipe is not None else 35.0
+            float(active_recipe.parameters.entry_max_vix) if active_recipe is not None else 35.0
         )
         pre_filter_result = await pre_filter_signal(
-            symbol, timeframe, is_futures, self._agents,
+            symbol,
+            timeframe,
+            is_futures,
+            self._agents,
             vix_extreme_threshold=recipe_vix_threshold,
         )
         if pre_filter_result is not None:
@@ -599,8 +610,11 @@ class TradingPipeline:
                         }
                         logger.info(
                             "[Pipeline] %s HiddenPivots: bias=%s pattern=%s ema=%s confidence=%.2f",
-                            symbol, hp_result.bias, hp_result.pattern,
-                            hp_result.ema_alignment, hp_result.confidence,
+                            symbol,
+                            hp_result.bias,
+                            hp_result.pattern,
+                            hp_result.ema_alignment,
+                            hp_result.confidence,
                         )
                     else:
                         hp_result = None
@@ -630,6 +644,7 @@ class TradingPipeline:
             from datetime import date as _date
 
             from discord.ib_levels import IBLevelProvider
+
             _ib_provider = IBLevelProvider()
             _ib_data = _ib_provider.get_levels(symbol, _date.today())
             if _ib_data:
@@ -645,8 +660,12 @@ class TradingPipeline:
                     "source": "discord_ib_report",
                 }
                 # Cross-validate with TV IB if available
-                _tv_ib_high = (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_high")
-                _tv_ib_low = (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_low")
+                _tv_ib_high = (
+                    (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_high")
+                )
+                _tv_ib_low = (
+                    (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_low")
+                )
                 if _tv_ib_high and _ib_data.get("ib_high"):
                     _discord_ib = float(_ib_data["ib_high"])
                     _tv_ib = float(_tv_ib_high)
@@ -654,9 +673,14 @@ class TradingPipeline:
                     if _pct_diff > 0.5:
                         logger.warning(
                             "[Pipeline] %s IB cross-validation: Discord=%.2f vs TV=%.2f (%.1f%% diff)",
-                            symbol, _discord_ib, _tv_ib, _pct_diff
+                            symbol,
+                            _discord_ib,
+                            _tv_ib,
+                            _pct_diff,
                         )
-                        analyst_reports["ib_levels"]["cross_validation"] = f"Discord/TV diff={_pct_diff:.1f}%"
+                        analyst_reports["ib_levels"][
+                            "cross_validation"
+                        ] = f"Discord/TV diff={_pct_diff:.1f}%"
                 logger.info(
                     "[Pipeline] %s IBLevels: H=%.2f L=%.2f range=%.2f",
                     symbol,
@@ -673,12 +697,14 @@ class TradingPipeline:
         # Facade has a 5-min TTL; per-bar cost is negligible after first call.
         try:
             from discord.briefing import get_discord_briefing
+
             _briefing = await get_discord_briefing(symbol, lookback_hours=24)
             analyst_reports["discord_briefing"] = _briefing.to_dict()
             if _briefing.warnings:
                 logger.debug(
                     "[Pipeline] Discord briefing warnings for %s: %s",
-                    symbol, _briefing.warnings,
+                    symbol,
+                    _briefing.warnings,
                 )
         except Exception as _brief_err:
             logger.debug("[Pipeline] Discord briefing failed (non-fatal): %s", _brief_err)
@@ -693,9 +719,7 @@ class TradingPipeline:
         # If all three LLM analysts (news, social, fundamental) failed with
         # Anthropic 400 errors AND technical has a clear STC signal, skip the
         # LLM debate/trader and synthesize directly from technicals.
-        _tech_fallback = self._check_technical_only_fallback(
-            symbol, analyst_reports, errors
-        )
+        _tech_fallback = self._check_technical_only_fallback(symbol, analyst_reports, errors)
         if _tech_fallback is not None:
             pipeline_result.update(_tech_fallback)
             pipeline_result["completed_at"] = datetime.now().isoformat()
@@ -786,17 +810,19 @@ class TradingPipeline:
 
             min_confluence = float(active_recipe.parameters.min_confluence)
             if float(trade_decision.get("confidence", 0.0) or 0.0) < min_confluence:
-                trade_decision.update({
-                    "action": "hold",
-                    "quantity": 0,
-                    "reasoning": (
-                        f"{trade_decision.get('reasoning', '')}\n\n[Recipe] confidence below min_confluence "
-                        f"({float(trade_decision.get('confidence', 0.0) or 0.0):.2f} < {min_confluence:.2f}); forcing HOLD."
-                    ).strip(),
-                    "risk_notes": (
-                        f"{trade_decision.get('risk_notes', '')} | Recipe confluence floor triggered"
-                    ).strip(" |"),
-                })
+                trade_decision.update(
+                    {
+                        "action": "hold",
+                        "quantity": 0,
+                        "reasoning": (
+                            f"{trade_decision.get('reasoning', '')}\n\n[Recipe] confidence below min_confluence "
+                            f"({float(trade_decision.get('confidence', 0.0) or 0.0):.2f} < {min_confluence:.2f}); forcing HOLD."
+                        ).strip(),
+                        "risk_notes": (
+                            f"{trade_decision.get('risk_notes', '')} | Recipe confluence floor triggered"
+                        ).strip(" |"),
+                    }
+                )
                 pipeline_result["recipe_confluence_gate"] = {
                     "min_confluence": min_confluence,
                     "trade_confidence": float(trade_decision.get("confidence", 0.0) or 0.0),
@@ -853,6 +879,7 @@ class TradingPipeline:
         if final_action not in ("hold", "HOLD"):
             try:
                 from config import settings as _cfg
+
                 raw_confidence = float(trade_decision.get("confidence", 0.0))
                 if is_futures:
                     boosted = raw_confidence + float(_cfg.FUTURES_CONFIDENCE_BOOST)
@@ -883,7 +910,7 @@ class TradingPipeline:
                 try:
                     from learning.confidence_scorer import get_confidence_adjustment
 
-                    adjustment = await get_confidence_adjustment(symbol, self.db_manager)
+                    adjustment = await get_confidence_adjustment(symbol, self._db)
                     adjusted_confidence = boosted * adjustment
                     logger.info(
                         "Confidence adjusted %.2f → %.2f (multiplier: %.2f)",
@@ -909,7 +936,11 @@ class TradingPipeline:
                     logger.info(
                         "[Pipeline] %s: confidence %.2f (boosted from %.2f) below threshold %.2f "
                         "— downgrading %s → HOLD",
-                        symbol, boosted, raw_confidence, min_thresh, final_action.upper(),
+                        symbol,
+                        boosted,
+                        raw_confidence,
+                        min_thresh,
+                        final_action.upper(),
                     )
                     final_action = "hold"
                     final_quantity = 0
@@ -922,7 +953,11 @@ class TradingPipeline:
                     logger.debug(
                         "[Pipeline] %s: confidence %.2f (boosted %.2f) ≥ threshold %.2f — "
                         "%s passes gate",
-                        symbol, raw_confidence, boosted, min_thresh, final_action.upper(),
+                        symbol,
+                        raw_confidence,
+                        boosted,
+                        min_thresh,
+                        final_action.upper(),
                     )
             except Exception as _cg_err:
                 logger.warning("[Pipeline] Confidence gate error (non-fatal): %s", _cg_err)
@@ -939,13 +974,11 @@ class TradingPipeline:
             _hp_bias = hp_result.bias  # "LONG" | "SHORT" | "WATCH" | "SOH"
             _action_is_long = final_action.lower() == "buy"
             _action_is_short = final_action.lower() == "sell"
-            _hp_conflicts = (
-                (_hp_bias == "LONG" and _action_is_short)
-                or (_hp_bias == "SHORT" and _action_is_long)
+            _hp_conflicts = (_hp_bias == "LONG" and _action_is_short) or (
+                _hp_bias == "SHORT" and _action_is_long
             )
-            _hp_confirms = (
-                (_hp_bias == "LONG" and _action_is_long)
-                or (_hp_bias == "SHORT" and _action_is_short)
+            _hp_confirms = (_hp_bias == "LONG" and _action_is_long) or (
+                _hp_bias == "SHORT" and _action_is_short
             )
             _old_boosted = pipeline_result.get("boosted_confidence", 0.0)
             if _hp_conflicts:
@@ -957,7 +990,11 @@ class TradingPipeline:
                 logger.warning(
                     "[Pipeline] %s HiddenPivots CONFLICT: HP=%s but final_action=%s — "
                     "reducing conviction %.2f → %.2f (-0.15, not overriding verdict)",
-                    symbol, _hp_bias, final_action.upper(), _old_boosted, _new_boosted,
+                    symbol,
+                    _hp_bias,
+                    final_action.upper(),
+                    _old_boosted,
+                    _new_boosted,
                 )
             elif _hp_confirms:
                 _new_boosted = min(1.0, _old_boosted + 0.10)
@@ -968,7 +1005,11 @@ class TradingPipeline:
                 logger.info(
                     "[Pipeline] %s HiddenPivots CONFIRMS: HP=%s aligns with final_action=%s — "
                     "boosting conviction %.2f → %.2f (+0.10)",
-                    symbol, _hp_bias, final_action.upper(), _old_boosted, _new_boosted,
+                    symbol,
+                    _hp_bias,
+                    final_action.upper(),
+                    _old_boosted,
+                    _new_boosted,
                 )
             else:
                 # WATCH / SOH — neutral, no adjustment
@@ -1033,13 +1074,14 @@ class TradingPipeline:
         # Publish pipeline result event
         try:
             from events.bus import publish as publish_event
-            _ev_action = pipeline_result.get('final_action', 'HOLD').upper()
-            _ev_conviction = pipeline_result.get('boosted_confidence', 0.0)
+
+            _ev_action = pipeline_result.get("final_action", "HOLD").upper()
+            _ev_conviction = pipeline_result.get("boosted_confidence", 0.0)
             publish_event(
-                'pipeline_run',
-                f'{symbol} → {_ev_action} confidence={_ev_conviction:.0%}',
+                "pipeline_run",
+                f"{symbol} → {_ev_action} confidence={_ev_conviction:.0%}",
                 symbol=symbol,
-                severity='info'
+                severity="info",
             )
         except Exception as e:
             logger.warning(f"Failed to publish pipeline event: {e}")
@@ -1049,12 +1091,8 @@ class TradingPipeline:
             try:
                 from notifications.whatsapp import get_notifier
 
-                asyncio.create_task(
-                    get_notifier().alert_pipeline_result(symbol, pipeline_result)
-                )
-                logger.info(
-                    f"[Pipeline] WhatsApp alert queued for {symbol} {final_action.upper()}"
-                )
+                asyncio.create_task(get_notifier().alert_pipeline_result(symbol, pipeline_result))
+                logger.info(f"[Pipeline] WhatsApp alert queued for {symbol} {final_action.upper()}")
             except Exception as _wa_err:
                 logger.warning(f"[Pipeline] WhatsApp alert failed (non-fatal): {_wa_err}")
 
@@ -1076,7 +1114,9 @@ class TradingPipeline:
         has_anthropic_url = "api.anthropic.com" in low or "anthropic" in low
         has_4xx = "400" in low or "bad request" in low or "client error" in low
         # Explicit credit/billing mention regardless of status code
-        has_credit_ref = any(kw in low for kw in ("credit", "billing", "credit_balance", "insufficient"))
+        has_credit_ref = any(
+            kw in low for kw in ("credit", "billing", "credit_balance", "insufficient")
+        )
         return (has_anthropic_url and has_4xx) or (has_anthropic_url and has_credit_ref)
 
     @staticmethod
@@ -1135,6 +1175,7 @@ class TradingPipeline:
                 get_last_session_hypothesis,
                 get_recent_hit_rate,
             )
+
             hit_rate, samples = get_recent_hit_rate(n=10, max_age_days=14)
             last = get_last_session_hypothesis()
             analyst_reports["forward_recorder_metric"] = {
@@ -1144,9 +1185,7 @@ class TradingPipeline:
                 "last_hypothesis": last,
             }
         except Exception as exc:
-            logger.debug(
-                "[Pipeline] forward_recorder_metric failed (non-fatal): %s", exc
-            )
+            logger.debug("[Pipeline] forward_recorder_metric failed (non-fatal): %s", exc)
 
     def _check_technical_only_fallback(
         self,
@@ -1165,9 +1204,14 @@ class TradingPipeline:
         Returns a partial pipeline_result update dict if fallback fires, or None to continue.
         """
         # Count how many of the three LLM analyst errors look like Anthropic 400s
-        llm_agent_names = ("news analyst failed", "social analyst failed", "fundamental analyst failed")
+        llm_agent_names = (
+            "news analyst failed",
+            "social analyst failed",
+            "fundamental analyst failed",
+        )
         llm_400_errors = [
-            e for e in errors
+            e
+            for e in errors
             if any(name in e.lower() for name in llm_agent_names)
             and self._is_anthropic_400_error(e)
         ]
@@ -1190,13 +1234,16 @@ class TradingPipeline:
         logger.warning(
             "[Pipeline] %s — LLM credits exhausted, using technical-only fallback. "
             "STC=%.1f, signal=%s, conviction=3/10",
-            symbol, stc_val, stc_signal,
+            symbol,
+            stc_val,
+            stc_signal,
         )
 
         if stc_action == "hold":
             logger.info(
                 "[Pipeline] %s — technical-only fallback: STC=%.1f is NEUTRAL → HOLD",
-                symbol, stc_val,
+                symbol,
+                stc_val,
             )
             return {
                 "final_action": "hold",
@@ -1320,7 +1367,8 @@ class TradingPipeline:
                     logger.warning(
                         "[Pipeline] %s analyst abstained (weight=0.0, reason=%s) — "
                         "excluded from confidence computation",
-                        name, reason,
+                        name,
+                        reason,
                     )
                 return result
             except Exception as e:
@@ -1349,11 +1397,18 @@ class TradingPipeline:
         _data_mgr = getattr(_tech_agent, "_data", None)
         df = None
         if _data_mgr:
-            df = await _data_mgr.get_bars(symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures)
+            df = await _data_mgr.get_bars(
+                symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures
+            )
 
         regime_status = self._regime_engine.classify(df) if df is not None else None
         if regime_status:
-            logger.info("[Pipeline] %s — Regime classified as %s (%s)", symbol, regime_status.regime.value, regime_status.description)
+            logger.info(
+                "[Pipeline] %s — Regime classified as %s (%s)",
+                symbol,
+                regime_status.regime.value,
+                regime_status.description,
+            )
 
         # Stage 1a: Run technical analyst first to extract price+ATR for Corey proximity boost
         technical_coro = self._call_agent_analyze(
@@ -1373,9 +1428,7 @@ class TradingPipeline:
         news_coro = self._call_agent_analyze("news", symbol)
         social_coro = self._call_agent_analyze("social", symbol)
         fundamental_coro = self._call_agent_analyze("fundamental", symbol)
-        corey_coro = self._call_agent_analyze(
-            "corey", symbol, current_price=current_price, atr=atr
-        )
+        corey_coro = self._call_agent_analyze("corey", symbol, current_price=current_price, atr=atr)
         breakout_coro = self._call_agent_analyze(
             "breakout", symbol, is_futures=is_futures, timeframe=timeframe
         )
@@ -1517,7 +1570,9 @@ class TradingPipeline:
                         logger.warning(
                             "[Pipeline] %s — LLM credits exhausted, using technical-only "
                             "fallback (TraderAgent). STC=%.1f, signal=%s, conviction=3/10",
-                            symbol, stc_val, stc_signal,
+                            symbol,
+                            stc_val,
+                            stc_signal,
                         )
                         return {
                             "symbol": symbol,
