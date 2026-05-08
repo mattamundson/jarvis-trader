@@ -139,16 +139,8 @@ def _get_engine_health() -> Dict[str, Any]:
             "status": body.get("status", "unknown"),
             "tradingview_mcp_healthy": body.get("tradingview_mcp_healthy", False),
             "llm_path_healthy": body.get("llm_path_healthy", False),
-            "ibkr_exec": (
-                body.get("execution_ib", {})
-                if isinstance(body.get("execution_ib"), dict)
-                else {"connected": body.get("execution_ib")}
-            ),
-            "ibkr_data": (
-                body.get("data_ib", {})
-                if isinstance(body.get("data_ib"), dict)
-                else {"connected": body.get("data_ib")}
-            ),
+            "ibkr_exec": body.get("ibkr_execution_connected", False),
+            "ibkr_data": body.get("ibkr_data_connected", False),
             "kill_switch_active": body.get("kill_switch_active", False),
             "polled_at": _utcnow(),
         }
