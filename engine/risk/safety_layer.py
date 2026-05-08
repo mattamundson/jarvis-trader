@@ -1323,10 +1323,11 @@ class SafetyLayer:
                         _state = _json.loads(_sidecar.read_text(encoding="utf-8")) or {}
                     except Exception:
                         _state = {}
-                _state["count"] = int(_state.get("count", 0) or 0) + 1
-                _state["last_symbol"] = symbol
-                _state["last_entry_order_id"] = entry_id
-                _state["last_at"] = datetime.now(timezone.utc).isoformat()
+                sym_upper = symbol.upper()
+                sym_state = _state.setdefault(sym_upper, {"count": 0})
+                sym_state["count"] = int(sym_state.get("count", 0) or 0) + 1
+                sym_state["last_entry_order_id"] = entry_id
+                sym_state["last_at"] = datetime.now(timezone.utc).isoformat()
                 _sidecar.write_text(_json.dumps(_state), encoding="utf-8")
             except Exception as exc:  # noqa: BLE001 — counter must never block trade
                 logger.warning("submit_entry_with_stop: bracket sidecar bump failed: %s", exc)

@@ -217,13 +217,11 @@ async def mes_sprint_gate() -> dict:
     # (paper_trade_logger → portfolio_tracker → DB) currently drops notes
     # (writes empty string). The sidecar is incremented at the bracket call site.
     bracket_count = 0
-    bracket_sidecar = (
-        _Path(__file__).resolve().parent.parent / "data" / "bracket_trade_count.json"
-    )
+    bracket_sidecar = _Path(__file__).resolve().parent.parent / "data" / "bracket_trade_count.json"
     try:
         if bracket_sidecar.exists():
             sc = _json.loads(bracket_sidecar.read_text(encoding="utf-8"))
-            bracket_count = int(sc.get("count", 0) or 0)
+            bracket_count = int(sc.get("MES", {}).get("count", 0) or 0)
     except Exception as exc:  # noqa: BLE001 — gate must never raise
         logger.warning("mes-sprint-gate: bracket sidecar read failed: %s", exc)
     bracket_ok = bracket_count >= 5
@@ -233,9 +231,7 @@ async def mes_sprint_gate() -> dict:
             "pass": bracket_ok,
             "value": f"{bracket_count}/5",
             "detail": (
-                f"Need {max(0, 5 - bracket_count)} more bracket trades"
-                if not bracket_ok
-                else "OK"
+                f"Need {max(0, 5 - bracket_count)} more bracket trades" if not bracket_ok else "OK"
             ),
         }
     )
@@ -338,9 +334,7 @@ async def mes_sprint_gate() -> dict:
             "name": "drawdown",
             "pass": dd_ok,
             "value": f"{daily_drawdown * 100:.2f}%",
-            "detail": (
-                f"Today's drawdown: {daily_drawdown * 100:.2f}% (limit 2%, intra-session)"
-            ),
+            "detail": (f"Today's drawdown: {daily_drawdown * 100:.2f}% (limit 2%, intra-session)"),
         }
     )
     if not dd_ok:
