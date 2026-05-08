@@ -484,7 +484,22 @@ async def lifespan(app: FastAPI):
             safety_layer,
             portfolio_tracker=paper_tracker,
         )
-        _paper_ib_ok = await ib_paper_connector.connect()
+        # Retry loop addresses transient connect() failures observed in
+        # IBKR_EXECUTION_REGRESSION_REPORT_2026-05-07.md (engine left with
+        # _ib_gateway=None when first connect() returns False after Gateway hiccup).
+        # Cap at 3 attempts × 30s backoff = ≤60s extra startup; well under the
+        # 480s timeout in restart_engine.ps1.
+        _paper_ib_ok = False
+        for _attempt in range(3):
+            _paper_ib_ok = await ib_paper_connector.connect()
+            if _paper_ib_ok:
+                break
+            if _attempt < 2:
+                logger.warning(
+                    "IB connector attempt %d/3 failed; retrying in 30s",
+                    _attempt + 1,
+                )
+                await asyncio.sleep(30)
         if _paper_ib_ok:
             safety_layer.attach_ib_gateway(ib_paper_connector)
             logger.info(
@@ -493,7 +508,8 @@ async def lifespan(app: FastAPI):
             )
         else:
             logger.warning(
-                "⚠️ IBGatewayConnector.connect() returned False — paper orders stay dry-run"
+                "⚠️ IBGatewayConnector.connect() returned False after 3 attempts "
+                "(with 30s backoff) — paper orders stay dry-run"
             )
 
     order_manager = IBOrderManager(
