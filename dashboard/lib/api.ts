@@ -1415,6 +1415,8 @@ export interface OpenPositionsResponse {
     stop_loss?: number;
     broker_stp_order_id?: string;
     unrealized_pnl?: number;
+    // strategy_params are JSON-encoded into notes by add_paper_trade()
+    notes?: string;
   }>;
   count: number;
 }

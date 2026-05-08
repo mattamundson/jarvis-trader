@@ -48,7 +48,16 @@ export const Pm2StabilityWidget: React.FC = () => {
   const unstable = pm2?.unstable_restarts ?? 0;
   const openCount = positions?.count ?? 0;
   const stpCount =
-    positions?.positions.filter((p) => !!p.broker_stp_order_id).length ?? 0;
+    positions?.positions.filter((p) => {
+      // broker_stp_order_id is stored in strategy_params JSON-encoded in the notes field
+      if (!p.notes) return false;
+      try {
+        const meta = typeof p.notes === "string" ? JSON.parse(p.notes) : p.notes;
+        return !!meta?.broker_stp_order_id;
+      } catch {
+        return false;
+      }
+    }).length ?? 0;
 
   const pm2StatusVariant: "bull" | "bear" | "warn" | "neutral" =
     !pm2?.found
