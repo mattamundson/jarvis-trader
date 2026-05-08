@@ -80,7 +80,7 @@ class OllamaClient:
                         json=payload,
                     )
                     response.raise_for_status()
-                    result = response.json().get("response", "")
+                    result: str = response.json().get("response", "")
                     logger.debug(f"Ollama generated {len(result)} chars")
                     return result
             except (httpx.TimeoutException, httpx.ConnectError) as e:
@@ -197,7 +197,7 @@ class InferenceRouter:
 
         try:
             # Assumes anthropic_client has a generate() or similar method
-            response = await self.anthropic_client.generate(prompt)
+            response: str | None = await self.anthropic_client.generate(prompt)
             return response
         except Exception as e:
             logger.error(f"Anthropic error: {e}")

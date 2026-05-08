@@ -68,7 +68,7 @@ class AlertManager:
         self._history: list[dict] = []
 
         self._alert_queue: asyncio.Queue[str] = asyncio.Queue()
-        self._worker_task: Optional[asyncio.Task] = None  # type: ignore[type-arg]
+        self._worker_task: Optional[asyncio.Task[None]] = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 

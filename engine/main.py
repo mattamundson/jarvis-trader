@@ -520,7 +520,8 @@ async def lifespan(app: FastAPI):
     logger.info("✅ IBOrderManager initialized")
 
     # Wire IBKR into the order router now that it is available
-    order_router.attach_ibkr(ib_paper_connector)
+    if ib_paper_connector is not None:
+        order_router.attach_ibkr(ib_paper_connector)
 
     # HB-4: Position Reconciliation on Restart
     if ib_paper_connector is not None:
@@ -654,10 +655,11 @@ async def lifespan(app: FastAPI):
 
         # Wire Brave Search into news analyst if key is configured
         _brave_client = None
-        if getattr(settings, "BRAVE_API_KEY", None):
+        _brave_api_key: str | None = getattr(settings, "BRAVE_API_KEY", None)
+        if _brave_api_key:
             from data.brave_search import BraveSearchClient
 
-            _brave_client = BraveSearchClient(api_key=settings.BRAVE_API_KEY)
+            _brave_client = BraveSearchClient(api_key=_brave_api_key)
             logger.info("✅ Brave Search wired into news analyst")
         else:
             logger.warning("BRAVE_API_KEY not set — news analyst running without live web search")
