@@ -278,7 +278,6 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | N
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
-from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_DSR,
     GATE_DSR_ALT,
@@ -287,6 +286,7 @@ from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_P_EDGE,
     GATE_PF_CI_LOWER,
     N_BOOTSTRAP,
+    _find_latest_cache,  # noqa: E402
 )  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402

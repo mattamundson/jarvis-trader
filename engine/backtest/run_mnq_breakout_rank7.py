@@ -150,8 +150,8 @@ def _best_is(df_train, grid):
     return best_p, best_r
 
 
-from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf  # noqa: E402
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
+from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf  # noqa: E402
 
 
 def _gate_v2(oos_results, n_combos, fixed_metrics):
