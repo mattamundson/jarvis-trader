@@ -681,6 +681,29 @@ def _write_state_file(
     tmp.replace(path)
 
 
+def _run_once(args: Any, state_path: Path | None) -> tuple[list[CheckResult], int]:
+    """Run all checks once; return (results, exit_code)."""
+    try:
+        results = run_all_checks()
+    except Exception as exc:
+        err_msg = str(exc)
+        if args.json:
+            print(json.dumps({"error": err_msg, "exit_code": 2}))
+        else:
+            print(f"ERROR: live-readiness check infrastructure failed: {exc}")
+        if state_path:
+            _write_state_file(state_path, [], 2, error=err_msg)
+        return [], 2
+
+    if args.strict:
+        for r in results:
+            r.blocking = True
+
+    blocking_failures = sum(1 for r in results if not r.passed and r.blocking)
+    exit_code = 0 if blocking_failures == 0 else 1
+    return results, exit_code
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of formatted table")
@@ -699,48 +722,112 @@ def main() -> int:
         action="store_true",
         help="Skip writing the state file (stdout only)",
     )
+    parser.add_argument(
+        "--monitor",
+        action="store_true",
+        help=(
+            "Hands-off monitor mode: run checks on a repeating interval, print "
+            "full table on first run and on any status change, print one-line "
+            "heartbeat otherwise. Use with --interval to set cadence."
+        ),
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=3600,
+        metavar="SECONDS",
+        help="Seconds between checks in --monitor mode (default: 3600 = 1 hour).",
+    )
     args = parser.parse_args()
 
     state_path = Path(args.state_file) if not args.no_state_file else None
 
-    try:
-        results = run_all_checks()
-    except Exception as exc:
-        err_msg = str(exc)
+    # ── Single-run mode (default) ────────────────────────────────────────────
+    if not args.monitor:
+        results, exit_code = _run_once(args, state_path)
+        if not results and exit_code == 2:
+            return 2
+
         if args.json:
-            print(json.dumps({"error": err_msg, "exit_code": 2}))
-        else:
-            print(f"ERROR: live-readiness check infrastructure failed: {exc}")
-        if state_path:
-            _write_state_file(state_path, [], 2, error=err_msg)
-        return 2
-
-    if args.strict:
-        for r in results:
-            r.blocking = True
-
-    blocking_failures = sum(1 for r in results if not r.passed and r.blocking)
-    exit_code = 0 if blocking_failures == 0 else 1
-
-    if args.json:
-        print(
-            json.dumps(
-                {
-                    "results": [asdict(r) for r in results],
-                    "blocking_pass": sum(1 for r in results if r.passed and r.blocking),
-                    "blocking_total": sum(1 for r in results if r.blocking),
-                    "authorized": exit_code == 0,
-                },
-                indent=2,
+            print(
+                json.dumps(
+                    {
+                        "results": [asdict(r) for r in results],
+                        "blocking_pass": sum(1 for r in results if r.passed and r.blocking),
+                        "blocking_total": sum(1 for r in results if r.blocking),
+                        "authorized": exit_code == 0,
+                    },
+                    indent=2,
+                )
             )
-        )
-    else:
-        _print_table(results)
+        else:
+            _print_table(results)
 
-    if state_path:
-        _write_state_file(state_path, results, exit_code)
+        if state_path:
+            _write_state_file(state_path, results, exit_code)
 
-    return exit_code
+        return exit_code
+
+    # ── Monitor mode: loop until Ctrl-C ─────────────────────────────────────
+    import time
+
+    print(
+        f"[monitor] Starting live-readiness monitor (interval={args.interval}s). " "Ctrl-C to stop."
+    )
+    prev_pass_map: dict[str, bool] = {}  # criterion_name → passed
+    iteration = 0
+
+    while True:
+        now_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        results, exit_code = _run_once(args, state_path)
+
+        if not results and exit_code == 2:
+            print(f"[monitor] {now_str} -- ERROR: checks failed; retrying in {args.interval}s")
+        else:
+            # Detect transitions
+            curr_pass_map = {r.name: r.passed for r in results}
+            changed = {
+                name: (prev_pass_map[name], curr_pass_map[name])
+                for name in curr_pass_map
+                if name in prev_pass_map and prev_pass_map[name] != curr_pass_map[name]
+            }
+
+            authorized = exit_code == 0
+            status_str = "AUTHORIZED" if authorized else "BLOCKED"
+            blocking_fail = sum(1 for r in results if not r.passed and r.blocking)
+
+            if iteration == 0 or changed:
+                # First run or status change: print full table
+                if changed:
+                    print(f"\n[monitor] {now_str} -- STATUS CHANGE DETECTED:")
+                    for name, (was, now_val) in changed.items():
+                        direction = "PASS→FAIL" if was else "FAIL→PASS"
+                        symbol = "⚠" if was else "✓"
+                        print(f"  {symbol} {name}: {direction}")
+                    print()
+                _print_table(results)
+                print(f"\n[{status_str}] {now_str} | blocking failures: {blocking_fail}")
+            else:
+                # Heartbeat: one-line summary only
+                print(
+                    f"[monitor] {now_str} | {status_str} | "
+                    f"failures: {blocking_fail} | next: {args.interval}s"
+                )
+
+            if state_path:
+                _write_state_file(state_path, results, exit_code)
+
+            prev_pass_map = curr_pass_map
+
+        iteration += 1
+
+        try:
+            time.sleep(args.interval)
+        except KeyboardInterrupt:
+            print("\n[monitor] Stopped.")
+            break
+
+    return 0
 
 
 if __name__ == "__main__":
