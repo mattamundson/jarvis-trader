@@ -50,6 +50,7 @@ import pandas as pd
 # Make engine/ importable when run as a module (-m backtest.refresh_...)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from data.market_data import IBKRDataConnector  # noqa: E402
 
 logging.basicConfig(
@@ -69,16 +70,16 @@ ARCHIVE_DIR = CACHE_DIR / "archive"
 
 
 def find_latest_csv(symbol: str, interval: str = "1h") -> Optional[Path]:
-    """Find the most recent cached CSV for a symbol+interval pair."""
-    pattern = f"{symbol}_*_{interval}.csv"
-    matches = sorted(CACHE_DIR.glob(pattern))
-    if not matches:
-        # Try the fully-qualified ES_F naming for ES variants
+    """Thin wrapper around the canonical _find_latest_cache selector."""
+    try:
+        return _find_latest_cache(CACHE_DIR, symbol, f"_{interval}.csv")
+    except FileNotFoundError:
         if symbol == "MES":
-            return find_latest_csv("ES_F", interval)
+            try:
+                return _find_latest_cache(CACHE_DIR, "ES_F", f"_{interval}.csv")
+            except FileNotFoundError:
+                pass
         return None
-    # Pick the one with the latest end-date in its filename
-    return matches[-1]
 
 
 def parse_csv_date_range(path: Path) -> tuple[datetime, datetime]:
@@ -184,7 +185,10 @@ async def refresh_symbol(
                 chunk_idx += 1
                 logger.info(
                     "[%s] chunk %d: %d D ending %s",
-                    symbol, chunk_idx, this_days, end_dt.isoformat(),
+                    symbol,
+                    chunk_idx,
+                    this_days,
+                    end_dt.isoformat(),
                 )
                 # Use connector's underlying _ib + reqHistoricalDataAsync with explicit endDateTime
                 contract = await connector._qualified_contract(symbol, True)  # type: ignore[attr-defined]
@@ -244,11 +248,13 @@ async def refresh_symbol(
         old_df = old_df.rename(columns={"datetime": "timestamp"})
 
     new_bars = new_bars.copy()
+
     # IBKR bars come back tz-aware (UTC); cached CSVs are tz-naive. Strip tz
     # from both before concat to avoid "Cannot compare tz-naive and tz-aware".
     def _strip_tz(series: pd.Series) -> pd.Series:
         ts = pd.to_datetime(series, utc=True, errors="coerce")
         return ts.dt.tz_convert("UTC").dt.tz_localize(None)
+
     new_bars["timestamp"] = _strip_tz(new_bars["timestamp"])
     old_df["timestamp"] = _strip_tz(old_df["timestamp"])
 
@@ -291,9 +297,13 @@ async def refresh_symbol(
 
 async def main() -> int:
     parser = argparse.ArgumentParser(description="Refresh IBKR futures CSV cache")
-    parser.add_argument("--dry-run", action="store_true", help="Report what would happen, don't fetch")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report what would happen, don't fetch"
+    )
     parser.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS, help="Symbols to refresh")
-    parser.add_argument("--port", type=int, default=4002, help="IB Gateway port (4002 paper, 4001 live)")
+    parser.add_argument(
+        "--port", type=int, default=4002, help="IB Gateway port (4002 paper, 4001 live)"
+    )
     parser.add_argument("--client-id", type=int, default=42, help="IBKR client ID (any unique int)")
     parser.add_argument("--interval", default="1h", help="Bar interval (1h or 1d)")
     parser.add_argument(
@@ -311,9 +321,7 @@ async def main() -> int:
     args = parser.parse_args()
 
     if args.port == 4001:
-        logger.error(
-            "Live port 4001 is permanently blocked per CLAUDE.md. Use paper port 4002."
-        )
+        logger.error("Live port 4001 is permanently blocked per CLAUDE.md. Use paper port 4002.")
         return 2
 
     logger.info("Connecting to IBKR at 127.0.0.1:%d (client_id=%d)...", args.port, args.client_id)
