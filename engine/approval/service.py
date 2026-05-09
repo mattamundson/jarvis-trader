@@ -249,6 +249,8 @@ async def approve_pending_trade(
     """Approve a pending trade via the canonical shared control path."""
     if paper_tracker is None:
         raise ApprovalFlowError(503, "Paper tracker not available")
+    if safety_layer is None:
+        raise ApprovalFlowError(503, "Safety layer not available")
 
     row = get_pending_approval_row(db_manager, approval_id)
     ensure_approval_allowed(row, safety_layer)
