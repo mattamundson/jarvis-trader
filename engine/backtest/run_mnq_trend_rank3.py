@@ -274,7 +274,11 @@ from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_P_EDGE,
     GATE_PF_CI_LOWER,
     _find_latest_cache,
+)
+from backtest._gate_v2_helpers import (
     bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower,
+)
+from backtest._gate_v2_helpers import (
     classify_wfo_consistency as _classify_wfo_consistency,
 )
 

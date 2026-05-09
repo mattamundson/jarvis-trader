@@ -444,9 +444,9 @@ if __name__ == "__main__":
 
     if args.check_all:
         from backtest.paper_config import (
+            MCL_PAPER_CONFIG,
             MES_TREND_PAPER_CONFIG,
             MGC_PAPER_CONFIG,
-            MCL_PAPER_CONFIG,
             MNQ_PAPER_CONFIG,
         )
 

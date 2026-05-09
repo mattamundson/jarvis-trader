@@ -22,9 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, ".")
 
-from backtest.export_ibkr_history import CACHE_FILENAME_CONTRACT
 from backtest._gate_v2_helpers import _find_latest_cache
-
+from backtest.export_ibkr_history import CACHE_FILENAME_CONTRACT
 
 # ---------------------------------------------------------------------------
 # Regex acceptance tests
