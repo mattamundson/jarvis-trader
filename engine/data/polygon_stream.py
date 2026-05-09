@@ -4,6 +4,7 @@ Maintains a persistent connection to Polygon.io's WebSocket API,
 subscribing to 1-minute aggregations ('AM' messages) to provide high-frequency
 data without the overhead of HTTP polling or visual scraping.
 """
+
 import asyncio
 import inspect
 import json
@@ -32,8 +33,8 @@ class PolygonStreamer:
     # Using the standard stocks cluster for equities & ETFs
     WS_URL = "wss://socket.polygon.io/stocks"
 
-    _RECONNECT_DELAY_INITIAL = 5    # seconds
-    _RECONNECT_DELAY_MAX = 300      # cap at 5 minutes
+    _RECONNECT_DELAY_INITIAL = 5  # seconds
+    _RECONNECT_DELAY_MAX = 300  # cap at 5 minutes
     _RECONNECT_MULTIPLIER = 2
 
     def __init__(self, api_key: str, symbols: List[str]):
@@ -62,7 +63,7 @@ class PolygonStreamer:
 
     async def connect(self) -> None:
         """Connect to Polygon WebSocket and authenticate."""
-        if 'websockets' not in globals():
+        if "websockets" not in globals():
             logger.error("[POLYGON-WS] Install 'websockets' package to stream live data.")
             return
 
@@ -72,6 +73,10 @@ class PolygonStreamer:
                 logger.info(f"[POLYGON-WS] Connecting to {self.WS_URL}...")
                 async with websockets.connect(self.WS_URL) as ws:
                     self.connection = ws
+
+                    # Polygon sends an initial "connected" greeting on connect; consume
+                    # it before authenticating so the next recv() is the auth result.
+                    await ws.recv()
 
                     # Authenticate
                     auth_message = {"action": "auth", "params": self.api_key}

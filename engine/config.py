@@ -356,6 +356,10 @@ class TradingConfig(BaseSettings):
 
     # ── Market Data ───────────────────────────────────────────────────────
     POLYGON_API_KEY: Optional[str] = Field(default=None, description="Polygon.io API key")
+    POLYGON_STREAM_ENABLED: bool = Field(
+        default=True,
+        description="Enable Polygon WebSocket streamer; requires a Polygon plan with WebSocket access",
+    )
     FRED_API_KEY: Optional[str] = Field(default=None, description="Federal Reserve FRED API key")
     FINNHUB_API_KEY: Optional[str] = Field(default=None, description="Finnhub API key")
     BRAVE_API_KEY: Optional[str] = Field(
