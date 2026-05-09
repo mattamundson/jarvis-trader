@@ -3,9 +3,9 @@
 Reads all verdict JSON files from ``engine/data/gate_v2_verdicts/``, formats
 them into a ranked markdown table, and writes to ``engine/data/SCOREBOARD.md``.
 
-Usage (from jarvis-trader root):
-    engine/.venv/Scripts/python.exe -m engine.backtest.scoreboard
-    engine/.venv/Scripts/python.exe -m engine.backtest.scoreboard --no-write
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/scoreboard.py
+    .venv/Scripts/python backtest/scoreboard.py --no-write
 
 Columns: Symbol | Family | Rank | Verdict | pf_ci_lower | p_edge | mc_dd% | dsr | fixed_min_pf | refresh_date
 Grouping: by symbol, then by family, then by rank (ascending).
