@@ -403,10 +403,22 @@ export interface DiscordIntelligenceStatus {
 // ── History / persistence types (new SQLite endpoints) ────────────────────
 
 export interface TradeRecord {
-  id: number;
+  trade_id: string;
   symbol: string;
-  side: "BUY" | "SELL";
   quantity: number;
+  timestamp: string;
+  /** New canonical field: BUY | SELL | HOLD */
+  action: "BUY" | "SELL" | "HOLD";
+  /** Most recent price (exit if closed, else entry) */
+  price: number;
+  pnl: number | null;
+  /** LLM review grade A/B/C/D/F — null if not yet complete */
+  grade: string | null;
+  /** pending | complete | failed | null */
+  review_status: string | null;
+  // Legacy aliases returned by the API for backwards-compat with existing widgets
+  id: number;
+  side: "BUY" | "SELL";
   entry_price: number;
   exit_price: number | null;
   realized_pnl: number | null;
