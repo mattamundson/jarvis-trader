@@ -263,3 +263,115 @@ def test_find_latest_cache_symbol_too_long_not_in_glob(tmp_path: Path) -> None:
     # Only the exact-prefix match should be returned
     result = _find_latest_cache(tmp_path, "MES")
     assert result == right_symbol
+
+
+# --------------------------------------------------------------------------- #
+# Property-based tests (Hypothesis)                                           #
+# --------------------------------------------------------------------------- #
+
+import tempfile  # noqa: E402
+
+from hypothesis import given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+# Valid components — symbol must match [A-Z][A-Z0-9]{1,3} per CACHE_FILENAME_CONTRACT
+_letter = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_alphanum = _letter + "0123456789"
+_symbol_st = st.builds(
+    lambda first, rest: first + rest,
+    first=st.text(alphabet=_letter, min_size=1, max_size=1),
+    rest=st.text(alphabet=_alphanum, min_size=1, max_size=3),
+)
+_year_st = st.integers(min_value=2000, max_value=2099).map(str)
+_month_st = st.integers(min_value=1, max_value=12).map(lambda m: f"{m:02d}")
+_day_st = st.integers(min_value=1, max_value=28).map(lambda d: f"{d:02d}")
+_interval_st = st.sampled_from(["1h", "4h", "12h", "1d"])
+
+
+def _build_filename(sym: str, y1: str, m1: str, d1: str, y2: str, m2: str, d2: str, iv: str) -> str:
+    return f"{sym}_{y1}-{m1}-{d1}_{y2}-{m2}-{d2}_{iv}.csv"
+
+
+@given(
+    sym=_symbol_st,
+    y1=_year_st,
+    m1=_month_st,
+    d1=_day_st,
+    y2=_year_st,
+    m2=_month_st,
+    d2=_day_st,
+    iv=_interval_st,
+)
+@settings(max_examples=300)
+def test_valid_constructed_filename_always_matches_contract(
+    sym: str, y1: str, m1: str, d1: str, y2: str, m2: str, d2: str, iv: str
+) -> None:
+    """Any filename built from the canonical template must match the contract regex."""
+    fn = _build_filename(sym, y1, m1, d1, y2, m2, d2, iv)
+    assert CACHE_FILENAME_CONTRACT.match(fn), (
+        f"Generated filename {fn!r} failed the contract regex — "
+        "the regex is more restrictive than the generation strategy"
+    )
+
+
+@given(
+    sym=_symbol_st,
+    y1=_year_st,
+    m1=_month_st,
+    d1=_day_st,
+    y2=_year_st,
+    m2=_month_st,
+    d2=_day_st,
+    iv=_interval_st,
+    n_extra=st.integers(min_value=1, max_value=4),
+    extra_end_years=st.lists(
+        st.integers(min_value=2000, max_value=2099).map(str),
+        min_size=1,
+        max_size=4,
+    ),
+)
+@settings(max_examples=200)
+def test_find_latest_cache_selects_max_end_date_under_hypothesis(
+    sym: str,
+    y1: str,
+    m1: str,
+    d1: str,
+    y2: str,
+    m2: str,
+    d2: str,
+    iv: str,
+    n_extra: int,
+    extra_end_years: list[str],
+) -> None:
+    """For any set of conforming filenames, _find_latest_cache must return the
+    one whose end-date segment is lexicographically greatest.
+
+    Uses an inline TemporaryDirectory (not the tmp_path fixture) so the
+    directory is fresh for each Hypothesis example.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        base_fn = _build_filename(sym, y1, m1, d1, y2, m2, d2, iv)
+        base_file = tmp / base_fn
+        base_file.write_text("ts\n", encoding="utf-8")
+
+        extra_files = []
+        for ey in extra_end_years[:n_extra]:
+            fn = _build_filename(sym, y1, m1, d1, ey, m2, d2, iv)
+            p = tmp / fn
+            if not p.exists():
+                p.write_text("ts\n", encoding="utf-8")
+                extra_files.append(p)
+
+        all_files = [base_file] + extra_files
+
+        def _end_date(p: Path) -> str:
+            parts = p.stem.split("_")
+            return parts[2] if len(parts) >= 3 else ""
+
+        expected = max(all_files, key=_end_date)
+        result = _find_latest_cache(tmp, sym, suffix=f"_{iv}.csv")
+        assert result == expected, (
+            f"Expected {expected.name!r} but got {result.name!r}. "
+            f"All candidates: {[f.name for f in all_files]}"
+        )
