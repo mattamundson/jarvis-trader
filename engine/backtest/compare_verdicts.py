@@ -20,6 +20,7 @@ Usage (from engine/ directory):
         engine/data/gate_v2_verdicts/MES_trend_rank11.json
     .venv/Scripts/python -m backtest.compare_verdicts old.json new.json --json
     .venv/Scripts/python -m backtest.compare_verdicts old.json new.json --alert-on-rating-drop
+    .venv/Scripts/python -m backtest.compare_verdicts old.json new.json --config engine/data/compare_verdicts_config.yaml
 
 Exit codes:
     0 — no significant drift; safe to commit refreshed verdict
@@ -33,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +52,57 @@ METRIC_FIELDS = [
     ("wfo_consistency", "wfo"),
     ("cost_survives_through", "cost"),
 ]
+
+
+@dataclass
+class ThresholdConfig:
+    """Thresholds controlling compare() sensitivity. Loadable from YAML per-symbol."""
+
+    param_drift: float = PARAM_DRIFT_THRESHOLD
+    rating_drop_pf_ci: float = 0.15  # pf_ci drop fraction that triggers rating_drop
+    rating_drop_dsr: float = 0.20  # dsr drop fraction that triggers rating_drop
+    rating_drop_mc_dd: float = 0.50  # mc_dd rise fraction that triggers rating_drop
+
+
+_DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "data" / "compare_verdicts_config.yaml"
+
+
+def _load_config(path: Path | None = None, symbol: str | None = None) -> ThresholdConfig:
+    """Load ThresholdConfig from YAML; returns dataclass defaults if file absent or PyYAML unavailable.
+
+    YAML format::
+
+        default:
+          param_drift_threshold: 0.10
+          rating_drop_pf_ci: 0.15
+          rating_drop_dsr: 0.20
+          rating_drop_mc_dd: 0.50
+        MES:
+          param_drift_threshold: 0.15
+    """
+    resolved = path if path is not None else _DEFAULT_CONFIG_PATH
+    if not resolved.exists():
+        return ThresholdConfig()
+    try:
+        import yaml  # type: ignore[import-untyped]
+    except ImportError:
+        return ThresholdConfig()
+    data = yaml.safe_load(resolved.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ThresholdConfig()
+    base: dict = data.get("default", {}) or {}
+    sym_override: dict = (data.get(symbol, {}) or {}) if symbol else {}
+    merged = {**base, **sym_override}
+    cfg = ThresholdConfig()
+    if "param_drift_threshold" in merged:
+        cfg.param_drift = float(merged["param_drift_threshold"])
+    if "rating_drop_pf_ci" in merged:
+        cfg.rating_drop_pf_ci = float(merged["rating_drop_pf_ci"])
+    if "rating_drop_dsr" in merged:
+        cfg.rating_drop_dsr = float(merged["rating_drop_dsr"])
+    if "rating_drop_mc_dd" in merged:
+        cfg.rating_drop_mc_dd = float(merged["rating_drop_mc_dd"])
+    return cfg
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -79,16 +132,18 @@ def _is_drifted(old: float | int | None, new: float | int | None, threshold: flo
     return abs(new - old) / abs(old) > threshold
 
 
-def _is_rating_drop(diff: dict[str, Any]) -> bool:
+def _is_rating_drop(diff: dict[str, Any], cfg: ThresholdConfig | None = None) -> bool:
     """Return True if the new verdict represents a degradation vs. the old one.
 
     Degradation criteria (any one is sufficient):
     - Verdict dropped: PASS -> FAIL
     - Path downgraded: PASS-core -> PASS-alt (loss of core margin)
-    - pf_ci_lower fell by more than 15%
-    - dsr fell by more than 20%
-    - mc_95th_dd_pct rose by more than 50% (drawdown ceiling worsened)
+    - pf_ci_lower fell by more than cfg.rating_drop_pf_ci (default 15%)
+    - dsr fell by more than cfg.rating_drop_dsr (default 20%)
+    - mc_95th_dd_pct rose by more than cfg.rating_drop_mc_dd (default 50%)
     """
+    if cfg is None:
+        cfg = ThresholdConfig()
     # Verdict-level drop
     old_v = diff.get("old_verdict")
     new_v = diff.get("new_verdict")
@@ -108,7 +163,7 @@ def _is_rating_drop(diff: dict[str, Any]) -> bool:
         and isinstance(pf_d.get("old"), (int, float))
         and isinstance(pf_d.get("delta"), (int, float))
     ):
-        if pf_d["old"] > 0 and pf_d["delta"] / pf_d["old"] < -0.15:
+        if pf_d["old"] > 0 and pf_d["delta"] / pf_d["old"] < -cfg.rating_drop_pf_ci:
             return True
     dsr_d = deltas.get("dsr")
     if (
@@ -116,7 +171,7 @@ def _is_rating_drop(diff: dict[str, Any]) -> bool:
         and isinstance(dsr_d.get("old"), (int, float))
         and isinstance(dsr_d.get("delta"), (int, float))
     ):
-        if dsr_d["old"] > 0 and dsr_d["delta"] / dsr_d["old"] < -0.20:
+        if dsr_d["old"] > 0 and dsr_d["delta"] / dsr_d["old"] < -cfg.rating_drop_dsr:
             return True
     mc_d = deltas.get("mc_dd%")
     if (
@@ -124,14 +179,16 @@ def _is_rating_drop(diff: dict[str, Any]) -> bool:
         and isinstance(mc_d.get("old"), (int, float))
         and isinstance(mc_d.get("delta"), (int, float))
     ):
-        if mc_d["old"] > 0 and mc_d["delta"] / mc_d["old"] > 0.50:
+        if mc_d["old"] > 0 and mc_d["delta"] / mc_d["old"] > cfg.rating_drop_mc_dd:
             return True
 
     return False
 
 
-def compare(old: dict, new: dict) -> dict[str, Any]:
+def compare(old: dict, new: dict, cfg: ThresholdConfig | None = None) -> dict[str, Any]:
     """Compute a structured diff between two verdicts."""
+    if cfg is None:
+        cfg = ThresholdConfig()
     # Top-level identity
     summary = {
         "old_file": old.get("__file"),
@@ -189,7 +246,7 @@ def compare(old: dict, new: dict) -> dict[str, Any]:
                     "old": ov,
                     "new": nv,
                     "drift_pct": round(drift_pct, 2),
-                    "exceeds_threshold": _is_drifted(ov, nv, PARAM_DRIFT_THRESHOLD),
+                    "exceeds_threshold": _is_drifted(ov, nv, cfg.param_drift),
                 }
             )
         else:
@@ -228,12 +285,12 @@ def compare(old: dict, new: dict) -> dict[str, Any]:
     significant_drift = any(d.get("exceeds_threshold") for d in summary["champion_drift"])
     verdict_changed = summary["verdict_transition"] != "no transition"
     summary["needs_review"] = bool(verdict_changed or significant_drift or summary["warnings"])
-    summary["rating_drop"] = _is_rating_drop(summary)
+    summary["rating_drop"] = _is_rating_drop(summary, cfg)
 
     return summary
 
 
-def _print_table(diff: dict[str, Any]) -> None:
+def _print_table(diff: dict[str, Any], cfg: ThresholdConfig | None = None) -> None:
     print()
     print("=" * 80)
     print(f"VERDICT COMPARISON: {diff['old_symbol']} {diff['old_family']}")
@@ -305,9 +362,8 @@ def _print_table(diff: dict[str, Any]) -> None:
             print(f"  - Verdict changed: {diff['verdict_transition']}")
         drifted = [d for d in diff["champion_drift"] if d.get("exceeds_threshold")]
         if drifted:
-            print(
-                f"  - {len(drifted)} champion param(s) drifted >{PARAM_DRIFT_THRESHOLD * 100:.0f}%"
-            )
+            _cfg = cfg if cfg is not None else ThresholdConfig()
+            print(f"  - {len(drifted)} champion param(s) drifted >{_cfg.param_drift * 100:.0f}%")
         if diff["warnings"]:
             print(f"  - {len(diff['warnings'])} warning(s)")
     else:
@@ -332,6 +388,15 @@ def main() -> int:
             "Useful for CI gates that should only block on degradation."
         ),
     )
+    parser.add_argument(
+        "--config",
+        metavar="YAML",
+        help=(
+            "Path to threshold config YAML. Defaults to "
+            "engine/data/compare_verdicts_config.yaml if present. "
+            "Supports per-symbol overrides under a key matching the symbol name."
+        ),
+    )
     args = parser.parse_args()
 
     old_path = Path(args.old)
@@ -349,12 +414,16 @@ def main() -> int:
         print(f"ERROR: cannot load NEW verdict {new_path}: {e}", file=sys.stderr)
         return 2
 
-    diff = compare(old, new)
+    config_path = Path(args.config) if getattr(args, "config", None) else None
+    symbol = old.get("symbol") or new.get("symbol")
+    cfg = _load_config(config_path, symbol)
+
+    diff = compare(old, new, cfg)
 
     if args.json:
         print(json.dumps(diff, indent=2, default=str))
     else:
-        _print_table(diff)
+        _print_table(diff, cfg)
 
     if getattr(args, "alert_on_rating_drop", False):
         return 1 if diff["rating_drop"] else 0
