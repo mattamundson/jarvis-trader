@@ -4187,6 +4187,26 @@ async def check_vix_alert():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.get("/safety/regime-alert")
+async def get_regime_alert():
+    """P3-15 regime detector: MES daily RSI and VIX sustained-threshold alerts.
+
+    Checks two conditions:
+      C1 PERSISTENT_OVERSOLD: MES daily RSI(14) < 30 for >= 5 consecutive days.
+      C2 HIGH_VIX: VIX > 25 for >= 3 consecutive trading days.
+
+    Returns RegimeAlertReport as JSON. `any_alert=true` means at least one
+    condition is active — escalate (reduce size, widen stops, or pause signals).
+    """
+    try:
+        from analytics.regime_detector import check_regime_alerts
+
+        report = check_regime_alerts()
+        return report.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 # ── ThinkScript Generation ─────────────────────────────────────────────────
 
 thinkscript_generator: ThinkScriptGeneratorAgent | None = None
