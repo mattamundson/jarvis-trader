@@ -1,0 +1,120 @@
+{
+  "date": "2026-05-08",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "bullish",
+    "conviction": 0.65,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 10
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7421.75,
+      "target2": 7428.5,
+      "stop1": null,
+      "win_rate": 83.63,
+      "rr": 0.59,
+      "timestamp": "2026-05-08T09:54:01.086-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7418.75,
+      "target2": 7425.5,
+      "stop1": null,
+      "win_rate": 83.6,
+      "rr": 0.59,
+      "timestamp": "2026-05-08T09:40:01.724-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7418.0,
+      "target2": 7424.75,
+      "stop1": null,
+      "win_rate": 83.59,
+      "rr": 0.59,
+      "timestamp": "2026-05-08T14:08:01.118-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7418.0,
+      "target2": 7424.75,
+      "stop1": null,
+      "win_rate": 83.56,
+      "rr": 0.59,
+      "timestamp": "2026-05-08T09:14:01.133-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7426.5,
+      "target2": 7433.25,
+      "stop1": null,
+      "win_rate": 83.56,
+      "rr": 0.59,
+      "timestamp": "2026-05-08T13:14:01.296-05:00"
+    }
+  ],
+  "corey_quote": "This is how markets generate liquidity before the next directional move\u2014trap longs, rotate, trap shorts, rally, repeat.",
+  "commentary_health": [
+    {
+      "date": "2026-05-09",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 10
+    },
+    {
+      "date": "2026-05-08",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 10
+    },
+    {
+      "date": "2026-05-07",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 9
+    },
+    {
+      "date": "2026-05-06",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 13
+    },
+    {
+      "date": "2026-05-05",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 7
+    },
+    {
+      "date": "2026-05-04",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 29
+    }
+  ]
+}
