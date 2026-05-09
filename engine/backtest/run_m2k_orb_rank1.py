@@ -262,7 +262,9 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple:
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
-from backtest._gate_v2_helpers import (  # noqa: E402
+from backtest._gate_v2_helpers import (  # noqa: E402  # noqa: E402
+    COST_SWEEP_TIERS,
+    COST_TIER_ORDER,
     GATE_DSR,
     GATE_DSR_ALT,
     GATE_MC_DD_ALT,
@@ -276,7 +278,6 @@ from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_
 from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
 )
-from backtest._gate_v2_helpers import COST_SWEEP_TIERS, COST_TIER_ORDER  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixed-params sweep

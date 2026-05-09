@@ -54,7 +54,7 @@ class OllamaClient:
         try:
             async with httpx.AsyncClient(timeout=2) as client:
                 response = await client.get(f"{self.host}/api/tags")
-                return response.status_code == 200
+                return bool(response.status_code == 200)
         except Exception as e:
             logger.warning(f"Ollama health check failed: {e}")
             return False

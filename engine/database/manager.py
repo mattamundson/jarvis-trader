@@ -44,9 +44,9 @@ from ._mixins_llm_costs import LLMCostsMixin
 from ._mixins_pending_approvals import PendingApprovalsMixin
 from ._mixins_pnl import DailyPnLMixin
 from ._mixins_positions import PositionsMixin
+from ._mixins_reviews import ReviewsMixin
 from ._mixins_settings import SettingsMixin
 from ._mixins_system_state import SystemStateMixin
-from ._mixins_reviews import ReviewsMixin
 from ._mixins_trades import TradesMixin
 from .migrations import run_migrations
 

@@ -140,12 +140,10 @@ class TradingConfig(BaseSettings):
     MAX_MARGIN_UTILIZATION: float = Field(0.40, description="Never exceed 40% of available margin")
 
     # ── Futures-Specific ─────────────────────────────────────────────────
-    # MAX_CONTRACTS_PER_INSTRUMENT has a HARD CAP of 2 enforced by the
-    # `_enforce_max_contracts_hard_cap` validator below. The .env file cannot
-    # raise this limit — any value > 2 is clamped to 2 with a warning. This
-    # was added 2026-04-10 after a runaway scanner created multiple
-    # 3-contract MES shorts on stale price data; root cause was .env:95
-    # silently overriding the config default.
+    # MAX_CONTRACTS_PER_INSTRUMENT hard cap is 20 (Phase 3 authorization).
+    # Originally capped at 2 (2026-04-10 safety incident: runaway scanner
+    # created 3-contract MES shorts on stale price data), raised to 20 for
+    # multi-contract live trading expansion.
     MAX_CONTRACTS_PER_INSTRUMENT: int = Field(
         2,
         description="Max micro contracts per instrument (Phase 3: up to 20 authorized)",
@@ -168,16 +166,15 @@ class TradingConfig(BaseSettings):
         1.42,
         description="MES/MNQ CME round-trip commission ($0.72 exchange + $0.70 clearing)",
     )
-    SLIPPAGE_TICKS: float = Field(
-        1.0, description="Conservative 1-tick adverse slippage per fill"
-    )
+    SLIPPAGE_TICKS: float = Field(1.0, description="Conservative 1-tick adverse slippage per fill")
     COMMISSION_ENABLED: bool = Field(True, description="Apply commission in backtests")
     SLIPPAGE_ENABLED: bool = Field(True, description="Apply slippage in backtests")
 
     # Bid-ask spread modeling (separate from adverse-tick slippage)
     # MES typical spread: 0.25 pts = 1 tick. Half-spread = 0.5 ticks paid on each side.
     SPREAD_TICKS: float = Field(
-        0.5, description="Half-spread ticks — paid on entry AND exit (0.5 ticks = 1 full tick round-trip)"
+        0.5,
+        description="Half-spread ticks — paid on entry AND exit (0.5 ticks = 1 full tick round-trip)",
     )
     SPREAD_ENABLED: bool = Field(True, description="Apply bid-ask spread simulation in backtests")
 
@@ -251,7 +248,8 @@ class TradingConfig(BaseSettings):
         83.0, description="STC above this = overbought / potential short setup"
     )
     STC_REQUIRED: bool = Field(
-        True, description="Require STC signal alignment before pipeline generates a directional signal"
+        True,
+        description="Require STC signal alignment before pipeline generates a directional signal",
     )
 
     # ── Futures-Specific Confidence Tuning ───────────────────────────────
@@ -260,12 +258,12 @@ class TradingConfig(BaseSettings):
     FUTURES_CONFIDENCE_BOOST: float = Field(
         0.05,
         description="Additive boost applied to raw confidence for futures instruments "
-                    "(compensates for fewer available analyst inputs vs. equities)",
+        "(compensates for fewer available analyst inputs vs. equities)",
     )
     FUTURES_MIN_CONFIDENCE_TO_TRADE: float = Field(
         0.55,
         description="Minimum pipeline confidence required before a futures BUY/SELL is issued "
-                    "(lower than equity threshold because futures signals are more direct)",
+        "(lower than equity threshold because futures signals are more direct)",
     )
     EQUITY_MIN_CONFIDENCE_TO_TRADE: float = Field(
         0.62,
@@ -290,7 +288,7 @@ class TradingConfig(BaseSettings):
     # (naked entry, engine-side stop polling). Flip on only after a paper smoke test
     # on IBKR port 4002 per the 2026-04-23 HB-1 audit.
     ENABLE_BROKER_BRACKETS: bool = Field(
-        True,   # was False — HB-1 audit cleared, smoke test required before flip
+        True,  # was False — HB-1 audit cleared, smoke test required before flip
         description=(
             "Route approved trades through SafetyLayer.submit_entry_with_stop "
             "to place broker-side STP + TP children atomically with the entry. "
@@ -360,7 +358,9 @@ class TradingConfig(BaseSettings):
     POLYGON_API_KEY: Optional[str] = Field(default=None, description="Polygon.io API key")
     FRED_API_KEY: Optional[str] = Field(default=None, description="Federal Reserve FRED API key")
     FINNHUB_API_KEY: Optional[str] = Field(default=None, description="Finnhub API key")
-    BRAVE_API_KEY: Optional[str] = Field(default=None, description="Brave Search API key for news analyst live web search")
+    BRAVE_API_KEY: Optional[str] = Field(
+        default=None, description="Brave Search API key for news analyst live web search"
+    )
     ALPACA_API_KEY: Optional[str] = Field(default=None, description="Alpaca Markets API key")
     ALPACA_SECRET_KEY: Optional[str] = Field(default=None, description="Alpaca Markets secret key")
     ALPACA_PAPER: bool = Field(default=True, description="Use Alpaca paper trading")
@@ -570,12 +570,7 @@ class TradingConfig(BaseSettings):
     @field_validator("MAX_CONTRACTS_PER_INSTRUMENT")
     @classmethod
     def _enforce_max_contracts_hard_cap(cls, v: int) -> int:
-        """
-        Enforce a hard ceiling of 2 micro contracts per instrument. The .env
-        file cannot raise this limit. Added 2026-04-10 after a runaway
-        scanner created 3-contract MES shorts despite the config default
-        being 2 — root cause was .env override silently winning.
-        """
+        """Clamp to [1, 20]. Phase 3 authorizes up to 20 micro contracts per instrument."""
         import logging as _logging
 
         try:
@@ -626,10 +621,7 @@ class TradingConfig(BaseSettings):
             tf_data = symbol_data.get(timeframe.lower(), {})
 
             if "stc_os" in tf_data and "stc_ob" in tf_data:
-                return {
-                    "stc_os": float(tf_data["stc_os"]),
-                    "stc_ob": float(tf_data["stc_ob"])
-                }
+                return {"stc_os": float(tf_data["stc_os"]), "stc_ob": float(tf_data["stc_ob"])}
             return baseline
         except Exception:
             return baseline
@@ -661,4 +653,3 @@ settings = TradingConfig()
 
 # Validate required environment variables on module load
 _validate_required_env_vars()
-
