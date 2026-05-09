@@ -84,7 +84,7 @@ def _load_config(path: Path | None = None, symbol: str | None = None) -> Thresho
     if not resolved.exists():
         return ThresholdConfig()
     try:
-        import yaml  # type: ignore[import-untyped]
+        import yaml
     except ImportError:
         return ThresholdConfig()
     data = yaml.safe_load(resolved.read_text(encoding="utf-8"))
@@ -108,7 +108,8 @@ def _load_config(path: Path | None = None, symbol: str | None = None) -> Thresho
 def _load(path: Path) -> dict[str, Any]:
     """Load a verdict JSON, returning the parsed dict or raising FileNotFoundError/JSONDecodeError."""
     text = path.read_text(encoding="utf-8")
-    return json.loads(text)
+    result: dict[str, Any] = json.loads(text)
+    return result
 
 
 def _safe_get(d: dict, *keys, default=None):
@@ -190,7 +191,7 @@ def compare(old: dict, new: dict, cfg: ThresholdConfig | None = None) -> dict[st
     if cfg is None:
         cfg = ThresholdConfig()
     # Top-level identity
-    summary = {
+    summary: dict[str, Any] = {
         "old_file": old.get("__file"),
         "new_file": new.get("__file"),
         "old_symbol": old.get("symbol"),
