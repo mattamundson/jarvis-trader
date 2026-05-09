@@ -257,7 +257,7 @@ class TestOptionsAutoRoller:
         action = roller.evaluate_position(
             position_id="pos1",
             symbol="SPY",
-            expiry_date="2026-05-15",
+            expiry_date="2027-06-01",  # far future — DTE always > 21
             initial_credit=100.0,
             current_debit_to_close=50.0,  # 50% profit
         )
@@ -269,7 +269,7 @@ class TestOptionsAutoRoller:
         action = roller.evaluate_position(
             position_id="pos1",
             symbol="SPY",
-            expiry_date="2026-05-15",
+            expiry_date="2027-06-01",  # far future — DTE always > 21
             initial_credit=100.0,
             current_debit_to_close=75.0,  # 25% profit
         )
@@ -280,7 +280,7 @@ class TestOptionsAutoRoller:
         action = roller.evaluate_position(
             position_id="pos1",
             symbol="SPY",
-            expiry_date="2026-05-15",
+            expiry_date="2027-06-01",  # far future — DTE always > 21
             initial_credit=100.0,
             current_debit_to_close=200.0,  # 2x loss
         )
