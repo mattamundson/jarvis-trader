@@ -269,6 +269,9 @@ def generate_bollinger_rsi_signals(
     regime_filter_rv_lookback: int = 20,
     sentiment_db_path: str = "",
     sentiment_block_bearish: bool = True,
+    htf_rsi_period: int = 0,
+    htf_rsi_upper: float = 60.0,
+    htf_rsi_lower: float = 40.0,
 ) -> pd.DataFrame:
     """Generate Bollinger + RSI mean-reversion signals.
 
@@ -303,6 +306,23 @@ def generate_bollinger_rsi_signals(
             (default 50.0 — above this, market is trending/shocked, not ranging).
         regime_filter_rv_lookback: rolling window (bars) for RV computation in
             "rv_band" mode (default 20 = ~1 month of 1h bars on CME futures).
+        htf_rsi_period: Wilder RSI period computed on daily bars for HTF
+            conditioning. 0 = disabled (default, backward-compatible). When
+            > 0, the 1h close is resampled to daily, RSI is computed on daily
+            bars, then forward-filled back to the 1h index. This gates entries
+            by daily RSI to avoid buying intraday dips against a daily
+            overbought reading (LONG) or shorting bounces into a daily oversold
+            reading (SHORT). Hypothesis F for MCL — the six prior hypotheses
+            (A-E) show mean-rev edge exists intraday but is destroyed by
+            multi-day trending regimes; HTF RSI filtering targets exactly that.
+        htf_rsi_upper: LONG entries are suppressed when the forward-filled
+            daily RSI >= this threshold (default 60.0 — avoids buying 1h dips
+            when the daily chart is already overbought). Only active when
+            htf_rsi_period > 0.
+        htf_rsi_lower: SHORT entries are suppressed when the forward-filled
+            daily RSI <= this threshold (default 40.0 — avoids shorting 1h
+            bounces when the daily chart is already oversold). Only active when
+            htf_rsi_period > 0.
 
     Returns:
         Copy of df with added columns documented in the module docstring.
@@ -365,6 +385,28 @@ def generate_bollinger_rsi_signals(
         )
         long_cond = long_cond & regime_gate
         short_cond = short_cond & regime_gate
+
+    # ── HTF RSI filter (optional) ────────────────────────────────────────
+    # Daily RSI conditioning: resample 1h close → daily, compute Wilder RSI,
+    # forward-fill to 1h index, then AND into directional entry conditions.
+    # htf_rsi_period=0 skips entirely (default, backward-compatible).
+    if htf_rsi_period > 0:
+        try:
+            daily_close = df["close"].resample("1D").last().dropna()
+            htf_rsi_daily = _wilder_rsi(daily_close, period=htf_rsi_period)
+            # Forward-fill daily values to every 1h bar (each 1h bar inherits
+            # the most recent daily close's RSI value).
+            htf_rsi_1h = htf_rsi_daily.reindex(df.index, method="ffill")
+        except (TypeError, AttributeError):
+            # Non-DatetimeIndex or other resampling failure — fail safe to
+            # neutral (50.0) which passes all threshold comparisons.
+            htf_rsi_1h = pd.Series(50.0, index=df.index)
+
+        htf_warm = htf_rsi_1h.notna()
+        # LONG: only when daily is not overbought (RSI < htf_rsi_upper).
+        long_cond = long_cond & (htf_rsi_1h < htf_rsi_upper).fillna(False) & htf_warm
+        # SHORT: only when daily is not oversold (RSI > htf_rsi_lower).
+        short_cond = short_cond & (htf_rsi_1h > htf_rsi_lower).fillna(False) & htf_warm
 
     # ── Exit logic: midband cross ─────────────────────────────────────────
     # Midband cross in either direction — simple reversion-complete signal.
