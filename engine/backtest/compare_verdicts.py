@@ -19,10 +19,12 @@ Usage (from engine/ directory):
         engine/data/gate_v2_verdicts/archive/MES_trend_rank11.json \\
         engine/data/gate_v2_verdicts/MES_trend_rank11.json
     .venv/Scripts/python -m backtest.compare_verdicts old.json new.json --json
+    .venv/Scripts/python -m backtest.compare_verdicts old.json new.json --alert-on-rating-drop
 
 Exit codes:
     0 — no significant drift; safe to commit refreshed verdict
     1 — verdict transition or significant param drift; manual review needed
+        (with --alert-on-rating-drop: exit 1 ONLY on degradation, not improvements)
     2 — file read or parse error
 """
 
@@ -75,6 +77,57 @@ def _is_drifted(old: float | int | None, new: float | int | None, threshold: flo
     if old == 0:
         return new != 0
     return abs(new - old) / abs(old) > threshold
+
+
+def _is_rating_drop(diff: dict[str, Any]) -> bool:
+    """Return True if the new verdict represents a degradation vs. the old one.
+
+    Degradation criteria (any one is sufficient):
+    - Verdict dropped: PASS -> FAIL
+    - Path downgraded: PASS-core -> PASS-alt (loss of core margin)
+    - pf_ci_lower fell by more than 15%
+    - dsr fell by more than 20%
+    - mc_95th_dd_pct rose by more than 50% (drawdown ceiling worsened)
+    """
+    # Verdict-level drop
+    old_v = diff.get("old_verdict")
+    new_v = diff.get("new_verdict")
+    if old_v == "PASS" and new_v == "FAIL":
+        return True
+    # Core -> alt downgrade
+    old_via = diff.get("old_passed_via")
+    new_via = diff.get("new_passed_via")
+    if old_via == "core" and new_via == "alt":
+        return True
+
+    # Metric degradation
+    deltas = diff.get("metric_deltas", {})
+    pf_d = deltas.get("pf_ci")
+    if (
+        pf_d
+        and isinstance(pf_d.get("old"), (int, float))
+        and isinstance(pf_d.get("delta"), (int, float))
+    ):
+        if pf_d["old"] > 0 and pf_d["delta"] / pf_d["old"] < -0.15:
+            return True
+    dsr_d = deltas.get("dsr")
+    if (
+        dsr_d
+        and isinstance(dsr_d.get("old"), (int, float))
+        and isinstance(dsr_d.get("delta"), (int, float))
+    ):
+        if dsr_d["old"] > 0 and dsr_d["delta"] / dsr_d["old"] < -0.20:
+            return True
+    mc_d = deltas.get("mc_dd%")
+    if (
+        mc_d
+        and isinstance(mc_d.get("old"), (int, float))
+        and isinstance(mc_d.get("delta"), (int, float))
+    ):
+        if mc_d["old"] > 0 and mc_d["delta"] / mc_d["old"] > 0.50:
+            return True
+
+    return False
 
 
 def compare(old: dict, new: dict) -> dict[str, Any]:
@@ -175,6 +228,7 @@ def compare(old: dict, new: dict) -> dict[str, Any]:
     significant_drift = any(d.get("exceeds_threshold") for d in summary["champion_drift"])
     verdict_changed = summary["verdict_transition"] != "no transition"
     summary["needs_review"] = bool(verdict_changed or significant_drift or summary["warnings"])
+    summary["rating_drop"] = _is_rating_drop(summary)
 
     return summary
 
@@ -235,8 +289,18 @@ def _print_table(diff: dict[str, Any]) -> None:
     # Decision
     print()
     print("=" * 80)
+    if diff["rating_drop"]:
+        print("ALERT: RATING DROP DETECTED")
+        if diff["verdict_transition"] != "no transition":
+            print(f"  - Verdict: {diff['verdict_transition']}")
+        deltas = diff.get("metric_deltas", {})
+        for label in ("pf_ci", "dsr", "mc_dd%"):
+            d = deltas.get(label)
+            if d and isinstance(d.get("delta"), (int, float)) and d["delta"] != 0:
+                print(f"  - {label}: {d['old']} -> {d['new']} ({d['delta']:+.4f})")
     if diff["needs_review"]:
-        print("DECISION: MANUAL REVIEW NEEDED")
+        if not diff["rating_drop"]:
+            print("DECISION: MANUAL REVIEW NEEDED")
         if diff["verdict_transition"] != "no transition":
             print(f"  - Verdict changed: {diff['verdict_transition']}")
         drifted = [d for d in diff["champion_drift"] if d.get("exceeds_threshold")]
@@ -247,7 +311,8 @@ def _print_table(diff: dict[str, Any]) -> None:
         if diff["warnings"]:
             print(f"  - {len(diff['warnings'])} warning(s)")
     else:
-        print("DECISION: NO SIGNIFICANT DRIFT — safe to commit refreshed verdict")
+        if not diff["rating_drop"]:
+            print("DECISION: NO SIGNIFICANT DRIFT — safe to commit refreshed verdict")
     print("=" * 80)
     print()
 
@@ -257,6 +322,16 @@ def main() -> int:
     parser.add_argument("old", help="Path to OLD verdict JSON (typically archived)")
     parser.add_argument("new", help="Path to NEW verdict JSON (refreshed)")
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of formatted table")
+    parser.add_argument(
+        "--alert-on-rating-drop",
+        action="store_true",
+        help=(
+            "Exit with code 1 ONLY when a rating drop is detected (PASS->FAIL, "
+            "core->alt, or >15%% pf_ci / >20%% dsr / >50%% mc_dd degradation). "
+            "Improvements and neutral param drift do NOT trigger exit 1. "
+            "Useful for CI gates that should only block on degradation."
+        ),
+    )
     args = parser.parse_args()
 
     old_path = Path(args.old)
@@ -281,6 +356,8 @@ def main() -> int:
     else:
         _print_table(diff)
 
+    if getattr(args, "alert_on_rating_drop", False):
+        return 1 if diff["rating_drop"] else 0
     return 1 if diff["needs_review"] else 0
 
 
