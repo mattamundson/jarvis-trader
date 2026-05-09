@@ -71,7 +71,7 @@ def test_approval_router_approve_flow(tmp_db: Path):
     mock_pt = MagicMock()
     mock_pt.open_trade.return_value = "paper-uuid-123"
     cfg = TradingConfig()
-    cfg.FUTURES_WATCHLIST = ["MCL", "MNQ"]
+    cfg.FUTURES_WATCHLIST = ["MES", "MGC"]
     cfg.ALLOW_PAPER_SIMULATED_ORDERS = True
     safety = SafetyLayer(cfg)
 
@@ -82,11 +82,11 @@ def test_approval_router_approve_flow(tmp_db: Path):
     client = TestClient(app, headers={"X-API-Key": "test-key"})
 
     aid = dbm.insert_pending_approval(
-        symbol="MCL",
+        symbol="MES",
         action="buy",
         quantity=2.0,
         entry_price=None,
-        pipeline_snapshot={"trade_decision": {"limit_price": 65.0}},
+        pipeline_snapshot={"trade_decision": {"limit_price": 5823.50}},
     )
 
     r = client.post(f"/pipeline/pending-approvals/{aid}/approve", json={})

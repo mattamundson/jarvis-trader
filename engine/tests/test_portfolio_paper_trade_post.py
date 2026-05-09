@@ -42,10 +42,10 @@ def test_paper_trade_open_returns_trade_id(paper_trade_client: TestClient) -> No
         "/portfolio/paper/trade",
         json={
             "action": "open",
-            "symbol": "MCL",
+            "symbol": "MES",
             "side": "long",
             "quantity": 1,
-            "entry_price": 72.5,
+            "entry_price": 5823.50,
             "notes": "contract_test",
         },
     )
@@ -53,7 +53,7 @@ def test_paper_trade_open_returns_trade_id(paper_trade_client: TestClient) -> No
     body = r.json()
     assert body.get("status") == "open"
     assert "trade_id" in body and body["trade_id"]
-    assert body.get("symbol") == "MCL"
+    assert body.get("symbol") == "MES"
 
 
 def test_paper_trade_open_blocked_by_kill_switch() -> None:
