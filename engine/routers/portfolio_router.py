@@ -64,7 +64,9 @@ def _guard_direct_paper_open(symbol: str) -> None:
         raise HTTPException(status_code=409, detail="Direct paper-trade open disabled in live mode")
 
     if _safety_layer is not None and _safety_layer.get_status().get("kill_switch_active"):
-        raise HTTPException(status_code=409, detail="Kill switch active — cannot open direct paper trade")
+        raise HTTPException(
+            status_code=409, detail="Kill switch active — cannot open direct paper trade"
+        )
 
     if _is_futures_symbol(symbol) and symbol.upper() not in approved_watchlist_symbols():
         raise HTTPException(
@@ -166,12 +168,14 @@ async def portfolio_summary():
                     )
                     current_prices = [
                         (
-                            r.get("last_price")
-                            if isinstance(r, dict)
-                            else (float(r) if isinstance(r, (int, float)) else None)
+                            (
+                                r.get("last_price")
+                                if isinstance(r, dict)
+                                else (float(r) if isinstance(r, (int, float)) else None)
+                            )
+                            if not isinstance(r, Exception) and r is not None
+                            else None
                         )
-                        if not isinstance(r, Exception) and r is not None
-                        else None
                         for r in results
                     ]
                 else:
@@ -466,7 +470,10 @@ async def update_position(trade_id: str, req: UpdatePositionRequest):
     }
 
 
-@router.get("/paper/trades", description="Paper trade history from SQLite. Optional status filter: 'open' or 'closed'.")
+@router.get(
+    "/paper/trades",
+    description="Paper trade history from SQLite. Optional status filter: 'open' or 'closed'.",
+)
 async def get_paper_trades(limit: int = 50, status: str = None):
     """Get paper trade history from SQLite."""
     if not db_manager:
@@ -504,9 +511,7 @@ async def paper_performance():
             )
             for pos, price_result in zip(open_positions, price_results, strict=False):
                 current_price = (
-                    price_result.get("last_price")
-                    if isinstance(price_result, dict)
-                    else None
+                    price_result.get("last_price") if isinstance(price_result, dict) else None
                 )
                 computed = _compute_unrealized(pos, current_price, INSTRUMENT_POINT_VALUES)
                 upnl = computed.get("unrealized_pnl") or 0.0
@@ -555,9 +560,9 @@ async def paper_performance():
                     performance = {
                         "total_pnl": total_closed_pnl,
                         "win_rate": round(len(wins) / len(pnls), 4) if pnls else 0.0,
-                        "profit_factor": round(profit_factor, 4)
-                        if profit_factor is not None
-                        else None,
+                        "profit_factor": (
+                            round(profit_factor, 4) if profit_factor is not None else None
+                        ),
                         "num_trades": len(pnls),
                         "num_open": len(open_positions),
                         "avg_win": round(sum(wins) / len(wins), 4) if wins else 0.0,
@@ -566,9 +571,7 @@ async def paper_performance():
                         "best_trade": round(max(pnls), 4) if pnls else None,
                         "worst_trade": round(min(pnls), 4) if pnls else None,
                         "unrealized_pnl": round(unrealized_pnl, 4),
-                        "total_pnl_including_open": round(
-                            total_closed_pnl + unrealized_pnl, 4
-                        ),
+                        "total_pnl_including_open": round(total_closed_pnl + unrealized_pnl, 4),
                         "open_positions": open_positions_detail,
                     }
                     return {"performance": performance}
@@ -578,9 +581,7 @@ async def paper_performance():
     # Fallback to in-memory tracker — augment with unrealized
     perf = paper_tracker.get_performance()
     perf["unrealized_pnl"] = round(unrealized_pnl, 4)
-    perf["total_pnl_including_open"] = round(
-        (perf.get("total_pnl") or 0.0) + unrealized_pnl, 4
-    )
+    perf["total_pnl_including_open"] = round((perf.get("total_pnl") or 0.0) + unrealized_pnl, 4)
     perf["open_positions"] = open_positions_detail
     return {"performance": perf}
 
@@ -759,7 +760,9 @@ async def get_daily_pnl():
         try:
             rows = db_manager.get_trade_history(limit=5000)
         except Exception as exc:
-            logger.warning("get_daily_pnl: SQLite get_trade_history failed, using in-memory: %s", exc)
+            logger.warning(
+                "get_daily_pnl: SQLite get_trade_history failed, using in-memory: %s", exc
+            )
             rows = []
 
     if not rows:
@@ -1027,7 +1030,7 @@ async def get_streaks():
 
 @router.get("/history/trades")
 async def portfolio_history_trades(limit: int = 50):
-    """Recent closed paper trades for dashboards."""
+    """Recent closed paper trades for dashboards, including review grade."""
     if not paper_tracker or not hasattr(paper_tracker, "get_trade_history"):
         return []
     rows = paper_tracker.get_trade_history(limit=min(max(limit, 1), 500))
@@ -1045,15 +1048,41 @@ async def portfolio_history_trades(limit: int = 50):
             action = "SELL"
         else:
             action = "HOLD"
+
+        trade_id = d.get("trade_id")
+        grade: str | None = None
+        review_status: str | None = None
+        if db_manager and trade_id:
+            try:
+                review_row = db_manager.get_trade_review(trade_id)
+                if review_row:
+                    grade = review_row.get("grade")
+                    review_status = review_row.get("review_status")
+            except Exception:
+                pass
+
         out.append(
             {
+                # New canonical field names
                 "timestamp": ts,
-                "symbol": d.get("symbol", ""),
                 "action": action,
-                "quantity": float(d.get("quantity") or 0),
                 "price": float(price or 0),
                 "pnl": d.get("pnl"),
-                "trade_id": d.get("trade_id"),
+                "trade_id": trade_id,
+                "grade": grade,
+                "review_status": review_status,
+                # Legacy aliases — kept for BestWorstTradeWidget / TradeCalendarWidget
+                "symbol": d.get("symbol", ""),
+                "side": action,
+                "quantity": float(d.get("quantity") or 0),
+                "entry_price": float(d.get("entry_price") or 0),
+                "exit_price": d.get("exit_price"),
+                "realized_pnl": d.get("pnl"),
+                "status": "OPEN" if d.get("is_open") else "CLOSED",
+                "entry_time": d.get("entry_time") or ts,
+                "exit_time": d.get("exit_time"),
+                "notes": d.get("notes"),
+                "id": d.get("id"),
             }
         )
     return out
@@ -1470,12 +1499,14 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
             )
             current_prices = [
                 (
-                    r.get("last_price")
-                    if isinstance(r, dict)
-                    else (float(r) if isinstance(r, (int, float)) else None)
+                    (
+                        r.get("last_price")
+                        if isinstance(r, dict)
+                        else (float(r) if isinstance(r, (int, float)) else None)
+                    )
+                    if not isinstance(r, Exception) and r is not None
+                    else None
                 )
-                if not isinstance(r, Exception) and r is not None
-                else None
                 for r in results
             ]
         else:

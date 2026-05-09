@@ -867,9 +867,7 @@ def migration_019(conn: sqlite3.Connection) -> None:
     risk_decision, fund_decision, confidence gate, etc.) is persisted
     alongside each decision row.  Existing rows get NULL for the new column.
     """
-    conn.execute(
-        "ALTER TABLE decisions ADD COLUMN full_pipeline_json TEXT"
-    )
+    conn.execute("ALTER TABLE decisions ADD COLUMN full_pipeline_json TEXT")
     conn.commit()
     logger.info("Migration 019 applied — full_pipeline_json column added to decisions.")
 
@@ -902,8 +900,7 @@ def migration_020(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_supervisor_decisions_ts "
-        "ON supervisor_decisions(ts DESC)"
+        "CREATE INDEX IF NOT EXISTS idx_supervisor_decisions_ts " "ON supervisor_decisions(ts DESC)"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_supervisor_decisions_event_type "
@@ -1033,11 +1030,67 @@ def migration_025(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_health_snapshots_ts ON health_snapshots(ts_utc)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_health_snapshots_ts ON health_snapshots(ts_utc)")
     conn.commit()
     logger.info("Migration 025 applied — health_snapshots table created.")
+
+
+def migration_026(conn: sqlite3.Connection) -> None:
+    """
+    026 — Trade reviews: automated post-trade LLM analysis.
+
+    One row per closed trade (1:1 with paper_trades).  Populated asynchronously
+    by TradeReviewService after every trade close.  Stores the LLM-generated
+    grade, setup quality assessment, strengths/weaknesses arrays, rule
+    violations, a narrative lesson, and improvement tags.
+
+    review_status lifecycle: pending → complete | failed
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trade_reviews (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_id         TEXT NOT NULL UNIQUE,
+            symbol           TEXT NOT NULL,
+            direction        TEXT NOT NULL,
+            entry_time       TEXT,
+            exit_time        TEXT,
+            pnl_usd          REAL,
+            pnl_pct          REAL,
+            hold_minutes     REAL,
+            entry_price      REAL,
+            exit_price       REAL,
+            stop_loss        REAL,
+            take_profit      REAL,
+            atr_value        REAL,
+            rr_ratio         REAL,
+            actual_r         REAL,
+            regime           TEXT,
+            conviction       REAL,
+            bull_score       REAL,
+            bear_score       REAL,
+            pipeline_summary TEXT,
+            grade            TEXT,
+            setup_quality    TEXT,
+            strengths        TEXT,
+            weaknesses       TEXT,
+            rule_violations  TEXT,
+            lessons          TEXT,
+            improvement_tags TEXT,
+            llm_model        TEXT,
+            review_status    TEXT NOT NULL DEFAULT 'pending',
+            created_at       TEXT NOT NULL DEFAULT (datetime('now', 'utc')),
+            updated_at       TEXT NOT NULL DEFAULT (datetime('now', 'utc'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_reviews_trade_id ON trade_reviews(trade_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_reviews_grade ON trade_reviews(grade)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trade_reviews_status ON trade_reviews(review_status)"
+    )
+    conn.commit()
+    logger.info("Migration 026 applied — trade_reviews table created.")
 
 
 def migration_023(conn: sqlite3.Connection) -> None:
@@ -1117,6 +1170,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_023,  # version 23
     migration_024,  # version 24
     migration_025,  # version 25
+    migration_026,  # version 26
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1145,6 +1199,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Trading patterns alignment: adding pattern_type, win_count, loss_count, avg_return, and is_active columns.",
     "Market data bars: market_data_bars OHLCV persistence table for counterfactual + outlook sections.",
     "Health watchdog snapshots: health_snapshots table for 5-minute /health poll history and intraday uptime.",
+    "Trade reviews: trade_reviews table for automated post-trade LLM analysis (grade A-F, strengths, weaknesses, lessons).",
 ]
 
 

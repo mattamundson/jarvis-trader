@@ -139,6 +139,7 @@ from routers.tradingview_router import router as tradingview_router
 from routers.scheduler_router import router as scheduler_router
 from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
 from routers.trades_router import router as trades_router
+from routers.trades_router import inject_dependencies as inject_trades_deps
 from routers.wfe_router import router as wfe_router
 from routers.discovery_router import router as discovery_router
 from routers.orders_router import router as orders_router
@@ -725,6 +726,16 @@ async def lifespan(app: FastAPI):
             logger.info("✅ SDK Pipeline initialized — /pipeline/run/sdk available")
         except Exception as _sdk_exc:
             logger.warning("⚠️  SDK Pipeline init failed (non-fatal): %s", _sdk_exc)
+
+        # Trade Review Service — post-trade LLM analysis
+        try:
+            from analytics.trade_review import init_review_service
+
+            init_review_service(llm_client, db_manager)
+            inject_trades_deps(db_manager, llm_client)
+            logger.info("✅ Trade Review Service initialised — post-trade LLM grading active")
+        except Exception as _rv_init_exc:
+            logger.warning("⚠️  Trade Review Service init failed (non-fatal): %s", _rv_init_exc)
     else:
         logger.warning(
             "⚠️  No local/provider LLM configured — LLM agents disabled. Set JARVIS_LLM_PROVIDER=ollama or configure a hosted key."

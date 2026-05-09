@@ -360,6 +360,20 @@ class PortfolioTracker:
         except Exception:
             pass
 
+        # Queue post-trade LLM review (non-blocking, best-effort)
+        try:
+            import asyncio as _asyncio_rv
+            import os as _os_rv
+
+            from analytics.trade_review import queue_trade_review as _queue_review
+
+            if not _os_rv.getenv("TESTING"):
+                _loop_rv = _asyncio_rv.get_event_loop()
+                if _loop_rv.is_running():
+                    _loop_rv.create_task(_queue_review(trade))
+        except Exception as _rv_exc:
+            logger.debug("[REVIEW] Post-trade review skipped: %s", _rv_exc)
+
         return trade
 
     def get_open_positions(self) -> List[dict]:
