@@ -21,38 +21,47 @@ import pytest
 
 def test_hard_cap_clamps_env_override_above_20(monkeypatch: pytest.MonkeyPatch) -> None:
     """Even if .env says 25, the config must clamp to 20."""
+    from unittest.mock import patch
+
     monkeypatch.setenv("MAX_CONTRACTS_PER_INSTRUMENT", "25")
-    # Need to force-reload config module since it's cached
     import importlib
 
     import config
 
-    importlib.reload(config)
-    tc = config.TradingConfig()
+    # Suppress load_dotenv so it doesn't override the monkeypatched env var.
+    with patch("dotenv.load_dotenv"):
+        importlib.reload(config)
+        tc = config.TradingConfig()
     assert tc.MAX_CONTRACTS_PER_INSTRUMENT == 20
 
 
 def test_hard_cap_clamps_extreme_env_value(monkeypatch: pytest.MonkeyPatch) -> None:
     """Even an absurd env override is clamped to 20."""
+    from unittest.mock import patch
+
     monkeypatch.setenv("MAX_CONTRACTS_PER_INSTRUMENT", "999")
     import importlib
 
     import config
 
-    importlib.reload(config)
-    tc = config.TradingConfig()
+    with patch("dotenv.load_dotenv"):
+        importlib.reload(config)
+        tc = config.TradingConfig()
     assert tc.MAX_CONTRACTS_PER_INSTRUMENT == 20
 
 
 def test_hard_cap_passes_through_valid_value(monkeypatch: pytest.MonkeyPatch) -> None:
     """A value of 5 (within the 1..20 band) should pass through unchanged."""
+    from unittest.mock import patch
+
     monkeypatch.setenv("MAX_CONTRACTS_PER_INSTRUMENT", "5")
     import importlib
 
     import config
 
-    importlib.reload(config)
-    tc = config.TradingConfig()
+    with patch("dotenv.load_dotenv"):
+        importlib.reload(config)
+        tc = config.TradingConfig()
     assert tc.MAX_CONTRACTS_PER_INSTRUMENT == 5
 
 
