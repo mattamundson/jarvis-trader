@@ -70,6 +70,10 @@ VERDICT_TTL_DAYS = 30
 ENGINE_HEALTH_URL = "http://127.0.0.1:8010/health"
 ENGINE_TIMEOUT_SEC = 5
 
+# Machine-readable go/no-go state file written on every run.
+# Consumers (dashboard, alerts, cron scripts) read this instead of re-running checks.
+DEFAULT_STATE_FILE = engine_root / "data" / "live_readiness_state.json"
+
 # C1 thresholds
 PAPER_MIN_DAYS = 30
 PAPER_MIN_TRADES = 30
@@ -645,26 +649,78 @@ def _print_table(results: list[CheckResult]) -> None:
     print()
 
 
+def _write_state_file(
+    path: Path,
+    results: list[CheckResult],
+    exit_code: int,
+    *,
+    error: str | None = None,
+) -> None:
+    """Write machine-readable go/no-go state to disk.
+
+    Consumers (dashboard, scheduled alerts, cron scripts) can read this file
+    without re-running the full checks. The file is written atomically via a
+    temp file + rename to avoid partial reads.
+    """
+    blocking_pass = sum(1 for r in results if r.passed and r.blocking)
+    blocking_total = sum(1 for r in results if r.blocking)
+    payload: dict[str, Any] = {
+        "authorized": blocking_pass == blocking_total and not error,
+        "blocking_pass": blocking_pass,
+        "blocking_total": blocking_total,
+        "exit_code": exit_code,
+        "run_at": datetime.now(tz=timezone.utc).isoformat(),
+        "results": [asdict(r) for r in results],
+    }
+    if error:
+        payload["error"] = error
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of formatted table")
     parser.add_argument(
         "--strict", action="store_true", help="Treat advisory checks (C3) as blocking"
     )
+    parser.add_argument(
+        "--state-file",
+        default=str(DEFAULT_STATE_FILE),
+        help=(
+            "Path to write machine-readable go/no-go state JSON " f"(default: {DEFAULT_STATE_FILE})"
+        ),
+    )
+    parser.add_argument(
+        "--no-state-file",
+        action="store_true",
+        help="Skip writing the state file (stdout only)",
+    )
     args = parser.parse_args()
+
+    state_path = Path(args.state_file) if not args.no_state_file else None
 
     try:
         results = run_all_checks()
     except Exception as exc:
+        err_msg = str(exc)
         if args.json:
-            print(json.dumps({"error": str(exc), "exit_code": 2}))
+            print(json.dumps({"error": err_msg, "exit_code": 2}))
         else:
             print(f"ERROR: live-readiness check infrastructure failed: {exc}")
+        if state_path:
+            _write_state_file(state_path, [], 2, error=err_msg)
         return 2
 
     if args.strict:
         for r in results:
             r.blocking = True
+
+    blocking_failures = sum(1 for r in results if not r.passed and r.blocking)
+    exit_code = 0 if blocking_failures == 0 else 1
 
     if args.json:
         print(
@@ -673,7 +729,7 @@ def main() -> int:
                     "results": [asdict(r) for r in results],
                     "blocking_pass": sum(1 for r in results if r.passed and r.blocking),
                     "blocking_total": sum(1 for r in results if r.blocking),
-                    "authorized": all(r.passed for r in results if r.blocking),
+                    "authorized": exit_code == 0,
                 },
                 indent=2,
             )
@@ -681,8 +737,10 @@ def main() -> int:
     else:
         _print_table(results)
 
-    blocking_failures = sum(1 for r in results if not r.passed and r.blocking)
-    return 0 if blocking_failures == 0 else 1
+    if state_path:
+        _write_state_file(state_path, results, exit_code)
+
+    return exit_code
 
 
 if __name__ == "__main__":
