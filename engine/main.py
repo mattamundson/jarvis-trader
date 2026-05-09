@@ -4207,6 +4207,25 @@ async def get_regime_alert():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.get("/safety/retirement-status")
+async def get_retirement_status(symbol: str = "MES"):
+    """P3-39 strategy retirement criteria: rolling win rate, PF, loss streak, drawdown.
+
+    Evaluates 8 checks (R1-R4 RETIRE, P1-P4 PAUSE) against paper trade history.
+    Returns RetirementStatus with recommendation: RETIRE | PAUSE | HOLD.
+
+    Query params:
+        symbol: futures symbol (default MES)
+    """
+    try:
+        from backtest.strategy_retirement import check_retirement_from_db
+
+        status = check_retirement_from_db(symbol.upper())
+        return status.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 # ── ThinkScript Generation ─────────────────────────────────────────────────
 
 thinkscript_generator: ThinkScriptGeneratorAgent | None = None
