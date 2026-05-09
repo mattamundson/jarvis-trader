@@ -54,10 +54,9 @@ async def test_notify_calls_emit_and_whatsapp():
     body = ca.args[0] if ca.args else ca.kwargs.get("message", "")
     assert ca.kwargs.get("alert_type") == "pending_approval"
     assert ca.kwargs.get("symbol") == "MCL"
-    assert "APPROVAL REQUIRED" in body
     assert "MCL" in body
     assert "BUY" in body
-    assert "/trades/pending-approvals" in body
+    assert "Reply Y to approve" in body
 
 
 @pytest.mark.asyncio

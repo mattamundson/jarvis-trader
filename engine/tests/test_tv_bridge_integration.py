@@ -188,6 +188,9 @@ def test_cache_expires_after_ttl():
 # ──────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(
+    reason="tradingview_feed.py retired (commit 484b4d6) — TradingViewFeed class removed"
+)
 def test_tradingview_feed_get_all_indicators_flat_dict():
     """The flat get_all_indicators() contract used by TechnicalAnalystAgent."""
     from data import tradingview_feed
@@ -195,8 +198,9 @@ def test_tradingview_feed_get_all_indicators_flat_dict():
     # tradingview_feed imports get_tv_bridge lazily inside methods,
     # so we patch the canonical source module instead. Also stub
     # is_available() since it normally checks the `tv` CLI is on PATH.
-    with patch("data.tv_indicator_bridge.get_tv_bridge") as mock_get, patch.object(
-        tradingview_feed.TradingViewFeed, "is_available", return_value=True
+    with (
+        patch("data.tv_indicator_bridge.get_tv_bridge") as mock_get,
+        patch.object(tradingview_feed.TradingViewFeed, "is_available", return_value=True),
     ):
         bridge = _make_bridge_with_manifest()
         mock_get.return_value = bridge
@@ -215,6 +219,9 @@ def test_tradingview_feed_get_all_indicators_flat_dict():
 # ──────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(
+    reason="tradingview_feed.py retired (commit 484b4d6) — TradingViewFeed class removed"
+)
 def test_tradingview_feed_unavailable_returns_empty_dict():
     """When TV is offline, get_all_indicators should not raise."""
     from data import tradingview_feed

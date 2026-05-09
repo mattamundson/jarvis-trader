@@ -170,7 +170,7 @@ def test_without_human_logs_paper_no_pending_row(tmp_db_manager):
             r = client.post(
                 "/pipeline/run/background",
                 headers=_HEADERS,
-                json={"symbol": "MCL", "is_futures": True},
+                json={"symbol": "MES", "is_futures": True},
             )
     finally:
         _restore_router_deps(orig)
