@@ -134,8 +134,7 @@ def _build_regime_gate(
         # bars. rank normalized to [0, 100]. Allow entry when rank <= pct
         # (current vol is in the calm-to-normal range, not top-pct%).
         rank = bb_width.rolling(bbwidth_lookback, min_periods=max(5, bbwidth_lookback // 4)).apply(
-            lambda w: 100.0 * (w.iloc[-1] <= w).sum() / len(w)
-            if len(w) > 0 else 50.0,
+            lambda w: 100.0 * (w.iloc[-1] <= w).sum() / len(w) if len(w) > 0 else 50.0,
             raw=False,
         )
         # Above definition gives the "rank of current value among window"
@@ -146,7 +145,11 @@ def _build_regime_gate(
 
     if mode == "keltner":
         kc_upper, _kc_basis, kc_lower = keltner_channels(
-            close, high, low, sma_len=20, atr_factor=keltner_atr_mult,
+            close,
+            high,
+            low,
+            sma_len=20,
+            atr_factor=keltner_atr_mult,
         )
         outside_bb_up = close > bb_upper
         outside_bb_dn = close < bb_lower
@@ -173,16 +176,20 @@ def _build_regime_gate(
         if daily_close is not None and len(daily_close) >= max(5, rv_lookback // 2):
             daily_log_ret = np.log(daily_close / daily_close.shift(1))
             daily_rv = (
-                daily_log_ret.rolling(rv_lookback, min_periods=max(5, rv_lookback // 2))
-                .std() * np.sqrt(252) * 100.0
+                daily_log_ret.rolling(rv_lookback, min_periods=max(5, rv_lookback // 2)).std()
+                * np.sqrt(252)
+                * 100.0
             )
             # Forward-fill daily RV back to the original (intraday) index.
             rv = daily_rv.reindex(close.index, method="ffill")
         else:
             daily_log_ret = np.log(close / close.shift(1))
             rv = (
-                daily_log_ret.rolling(rv_lookback * 23, min_periods=max(10, rv_lookback * 23 // 2))
-                .std() * np.sqrt(252 * 23) * 100.0
+                daily_log_ret.rolling(
+                    rv_lookback * 23, min_periods=max(10, rv_lookback * 23 // 2)
+                ).std()
+                * np.sqrt(252 * 23)
+                * 100.0
             )
 
         return ((rv >= rv_min) & (rv <= rv_max)).fillna(False)
@@ -192,6 +199,7 @@ def _build_regime_gate(
             return all_true
         try:
             import sqlite3
+
             conn = sqlite3.connect(sentiment_db_path)
             bias_df = pd.read_sql_query(
                 "SELECT date, directional_bias FROM corey_session_bias ORDER BY date",
@@ -201,6 +209,7 @@ def _build_regime_gate(
             conn.close()
         except Exception as exc:
             import warnings
+
             warnings.warn(
                 f"sentiment_overlay DB read failed (path={sentiment_db_path!r}): {exc}",
                 RuntimeWarning,
@@ -214,7 +223,7 @@ def _build_regime_gate(
             return all_true
         daily_bias = bias_df["directional_bias"].resample("1D").last()
         if sentiment_block_bearish:
-            daily_allowed = (daily_bias != "bearish")
+            daily_allowed = daily_bias != "bearish"
         else:
             daily_allowed = pd.Series(True, index=daily_bias.index)
         allowed = daily_allowed.reindex(close.index, method="ffill").fillna(True)
@@ -236,7 +245,7 @@ def _wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     rsi = 100.0 - (100.0 / (1.0 + rs))
     # "No losses in window" → RSI = 100 (definitional).
     # Warmup bars (avg_loss NaN) must stay NaN so downstream warm-guards skip them.
-    no_losses = (avg_loss == 0.0)
+    no_losses = avg_loss == 0.0
     rsi = rsi.mask(no_losses, 100.0)
     return rsi
 
@@ -249,6 +258,7 @@ def generate_bollinger_rsi_signals(
     rsi_long: float = 30.0,
     rsi_short: float = 70.0,
     stop_atr_mult: float = 1.5,
+    signal_direction: str = "both",
     regime_filter_mode: str = "none",
     regime_filter_adx_threshold: float = 20.0,
     regime_filter_bbwidth_pct: float = 40.0,
@@ -322,6 +332,16 @@ def generate_bollinger_rsi_signals(
     conflict = long_cond & short_cond
     long_cond = long_cond & ~conflict
     short_cond = short_cond & ~conflict
+
+    # ── Direction filter ─────────────────────────────────────────────────
+    # "both" (default) keeps symmetric LONG+SHORT behavior.
+    # "short_only" zeroes longs — isolates fade-highs edge when the underlying
+    #   has a persistent uptrend (e.g. MES bull regime from rank11 PASS).
+    # "long_only" zeroes shorts — for persistent-downtrend underlyings.
+    if signal_direction == "short_only":
+        long_cond = long_cond & False
+    elif signal_direction == "long_only":
+        short_cond = short_cond & False
 
     # ── Regime filter (optional) ─────────────────────────────────────────
     # Default "none" preserves original behavior. Non-default modes AND an
