@@ -4,6 +4,9 @@ Wrapper: runs MCL Hypothesis-D rank2 WFO against the latest cache file.
 Monkey-patches _find_data_file in run_mcl_hypothesis_d_rank2 to always pick
 the freshest cache via _find_latest_cache so this script stays valid after
 each IBKR cache refresh without needing a manual path update.
+
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/run_mcl_hyp_d_rank2_fresh.py
 """
 
 from __future__ import annotations
