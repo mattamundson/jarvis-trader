@@ -253,8 +253,11 @@ class TestAnalystStages:
         assert "social" in reports
         assert "fundamental" in reports
 
-        # Each report should be a dict (from to_dict() or raw)
+        # Each analyst report should be a dict (regime_status is a regime object, not a report)
+        non_report_keys = {"regime_status"}
         for name, report in reports.items():
+            if name in non_report_keys:
+                continue
             assert isinstance(report, dict), f"{name} report should be dict"
 
     @pytest.mark.asyncio

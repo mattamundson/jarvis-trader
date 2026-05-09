@@ -542,11 +542,13 @@ class TestApprovalToOrderE2E:
         main.db_manager = db
         main.safety_layer = sl
 
+        # Use MES (in default config watchlist), not MGC (only in .env override).
+        # Tests run from project root where engine/.env isn't on load_dotenv() path.
         approval_id = db.insert_pending_approval(
-            symbol="MGC",
+            symbol="MES",
             action="BUY",
             quantity=2,
-            entry_price=3200.0,
+            entry_price=5823.50,
             pipeline_snapshot={"signal": "long"},
         )
 
