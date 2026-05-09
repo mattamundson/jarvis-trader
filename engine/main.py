@@ -4472,7 +4472,7 @@ class RegimeAnalysisRequest(BaseModel):
     """Request for regime analysis on backtest results."""
 
     results_file: str  # Path to JSON results file (relative to backtest/results/)
-    symbol: str = None  # Auto-detected if None
+    symbol: Optional[str] = None  # Auto-detected if None
 
 
 @app.post("/backtest/regime-analysis")

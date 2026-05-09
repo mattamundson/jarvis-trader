@@ -122,10 +122,14 @@ def test_all_pass_returns_green(tmp_path):
             (tmp_path / fname).write_text(json.dumps(vdata), encoding="utf-8")
 
         # Also patch the signals import for G5
-        with patch.dict("sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}):
+        with patch.dict(
+            "sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}
+        ):
             result = evaluate(_TODAY)
 
-    assert result.status == "GREEN", f"Expected GREEN, got {result.status}; gates: {[(g.gate_id, g.passed) for g in result.gates]}"
+    assert (
+        result.status == "GREEN"
+    ), f"Expected GREEN, got {result.status}; gates: {[(g.gate_id, g.passed) for g in result.gates]}"
     assert result.pass_count == 7
 
 
@@ -162,7 +166,9 @@ def test_5_pass_returns_yellow(tmp_path):
     ):
         for fname, vdata in fresh_verdicts.items():
             (tmp_path / fname).write_text(json.dumps(vdata), encoding="utf-8")
-        with patch.dict("sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}):
+        with patch.dict(
+            "sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}
+        ):
             result = evaluate(_TODAY)
 
     assert result.status == "YELLOW", f"Expected YELLOW, got {result.status}"
@@ -219,7 +225,9 @@ def test_3_pass_returns_red(tmp_path):
     ):
         for fname, vdata in fresh_verdicts.items():
             (tmp_path / fname).write_text(json.dumps(vdata), encoding="utf-8")
-        with patch.dict("sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}):
+        with patch.dict(
+            "sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}
+        ):
             result = evaluate(_TODAY)
 
     assert result.status == "RED", f"Expected RED, got {result.status}"
@@ -265,7 +273,9 @@ def test_consecutive_pass_streak_correctly_counted(tmp_path):
     ):
         for fname, vdata in fresh_verdicts.items():
             (tmp_path / fname).write_text(json.dumps(vdata), encoding="utf-8")
-        with patch.dict("sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}):
+        with patch.dict(
+            "sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}
+        ):
             streak = compute_consecutive_passing_days(
                 as_of=_TODAY,
                 days=days,
@@ -301,7 +311,9 @@ def test_zero_donottrade_trades_passes_when_clean():
         },
     ]
 
-    with patch.dict("sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}):
+    with patch.dict(
+        "sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}
+    ):
         result = _eval_g5_no_donottrade(paper_trades)
 
     assert result.passed, f"G5 should pass with only MES/MGC trades; got: {result.observed}"
@@ -325,7 +337,9 @@ def test_donottrade_trade_fails_gate():
         }
     ]
 
-    with patch.dict("sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}):
+    with patch.dict(
+        "sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}
+    ):
         result = _eval_g5_no_donottrade(paper_trades)
 
     assert not result.passed, "G5 should fail when MNQ trade is present"
@@ -418,10 +432,10 @@ def test_g7_passes_with_fresh_verdicts(tmp_path):
 
 
 def test_g7_fails_with_stale_verdict(tmp_path):
-    # Use TTL_DAYS + 2 to ensure the age is unambiguously past the limit
-    # regardless of the time-of-day difference between created_at and the
-    # evaluator's midnight-anchored now.
-    old_ts = (datetime.now(_UTC) - timedelta(days=VERDICT_TTL_DAYS + 2)).isoformat()
+    # Anchor to _TODAY (fixed test date) so the age calculation is deterministic
+    # regardless of when the test suite is run. TTL_DAYS + 2 gives clear margin.
+    today_dt = datetime.combine(_TODAY, datetime.min.time()).replace(tzinfo=_UTC)
+    old_ts = (today_dt - timedelta(days=VERDICT_TTL_DAYS + 2)).isoformat()
     for fname in ["MES_trend_rank11.json", "MGC_trend_rank4.json"]:
         v = {"symbol": "MES", "verdict": "PASS", "created_at": old_ts}
         (tmp_path / fname).write_text(json.dumps(v))
@@ -461,7 +475,9 @@ def test_evaluate_does_not_crash_on_empty_data(tmp_path):
         patch("backtest.roi_readiness._VERDICTS_DIR", tmp_path),
         patch("backtest.roi_readiness._fetch_engine_health", return_value=None),
     ):
-        with patch.dict("sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}):
+        with patch.dict(
+            "sys.modules", {"backtest.signals": MagicMock(DO_NOT_TRADE_SYMBOLS=_FAKE_DNTS)}
+        ):
             result = evaluate(_TODAY)
 
     assert result.status in ("GREEN", "YELLOW", "RED")
