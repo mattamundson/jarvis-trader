@@ -237,13 +237,41 @@ else {
 }
 
 Write-Host "Waiting for engine to start..."
-Start-Sleep 15
-
-try {
-    $r = Invoke-WebRequest -Uri "http://127.0.0.1:8010/health" -UseBasicParsing -TimeoutSec 5
-    Write-Host "Engine UP: $($r.StatusCode)"
+# Poll /health for up to 480s — matches the PM2-path ceiling. Non-PM2 starts
+# via task scheduler or direct Start-Process both boot asynchronously; the
+# 15s sleep used previously would always time-out on a 229s typical startup.
+$startTime2 = Get-Date
+$deadline2 = $startTime2.AddSeconds(480)
+$healthy2 = $false
+$lastProgressPrint2 = 0
+while ((Get-Date) -lt $deadline2) {
+    try {
+        $r = Invoke-WebRequest -Uri "http://127.0.0.1:8010/health" -UseBasicParsing -TimeoutSec 3
+        if ($r.StatusCode -eq 200) { $healthy2 = $true; break }
+    }
+    catch {}
+    Start-Sleep -Seconds 2
+    $elapsed2 = [int]((Get-Date) - $startTime2).TotalSeconds
+    if ($elapsed2 -ge 60 -and $lastProgressPrint2 -lt 60) {
+        Write-Host "  [60s] still booting (normal up to ~230s)"
+        $lastProgressPrint2 = 60
+    }
+    elseif ($elapsed2 -ge 240 -and $lastProgressPrint2 -lt 240) {
+        Write-Host "  [240s] still booting (scanner retry or Polygon WS)"
+        $lastProgressPrint2 = 240
+    }
+    elseif ($elapsed2 -ge 420 -and $lastProgressPrint2 -lt 420) {
+        Write-Host "  [420s] still booting (check engine-boot-error.log for crash)"
+        $lastProgressPrint2 = 420
+    }
 }
-catch {
-    Write-Host "Engine not responding"
+if (-not $healthy2) {
+    Write-Host "ERROR: engine did not respond on /health within 480s."
+    $bootErrLog2 = Join-Path $repoRoot "engine\logs\engine-boot-error.log"
+    if (Test-Path $bootErrLog2) {
+        Write-Host "Last 20 lines of engine-boot-error.log:"
+        Get-Content $bootErrLog2 -Tail 20 | Out-Host
+    }
     exit 1
 }
+Write-Host "Engine UP: 200 (/health)"
