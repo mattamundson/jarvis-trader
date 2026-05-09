@@ -38,7 +38,9 @@ GATE_P_EDGE: float = 0.95
 GATE_MC_DD_CORE: float = 0.05
 
 #: 95th-percentile OOS max-drawdown ceiling — ALT path ($50K+ accounts).
-GATE_MC_DD_ALT: float = 0.07
+#: Tightened from 0.07 (7%) to 0.04 (4%) on 2026-05-09; both active PASS-alt
+#: strategies (MES R11 at 0.81%, MGC R4 at ~1.2%) sit well under the new ceiling.
+GATE_MC_DD_ALT: float = 0.04
 
 #: Deflated Sharpe ratio floor — CORE path.
 GATE_DSR: float = 0.10

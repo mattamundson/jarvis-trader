@@ -104,13 +104,8 @@ SLOW_PERIOD_VALUES = [40, 50, 60]
 ATR_TRAIL_MULT_VALUES = [1.5, 2.0, 2.5]
 MIN_RV_ANNUALIZED_VALUES = [0.0, 12.0]
 
-# Gate v2 thresholds (ALT path)
-GATE_PF_CI_LOWER = 1.10
-GATE_P_EDGE = 0.95
-GATE_MC_DD_CORE = 0.05
-GATE_MC_DD_ALT = 0.07
-GATE_DSR = 0.10
-GATE_DSR_ALT = 0.30
+# Gate v2 thresholds: runner-specific ALT overrides only.
+# Core thresholds imported from _gate_v2_helpers (single source of truth).
 GATE_FIXED_PARAMS_MIN_PF = 1.20
 GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
@@ -271,10 +266,16 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | N
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
-from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
-from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
-    classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
+    GATE_DSR,
+    GATE_DSR_ALT,
+    GATE_MC_DD_ALT,
+    GATE_MC_DD_CORE,
+    GATE_P_EDGE,
+    GATE_PF_CI_LOWER,
+    _find_latest_cache,
+    bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower,
+    classify_wfo_consistency as _classify_wfo_consistency,
 )
 
 # ---------------------------------------------------------------------------
