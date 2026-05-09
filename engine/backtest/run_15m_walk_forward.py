@@ -2,7 +2,8 @@
 JARVIS TRADER — 15-minute Walk-Forward Validation Script
 
 Validates 15m WFE for MCL, MNQ, and MES using shorter intraday windows.
-Usage: python -m backtest.run_15m_walk_forward --symbol all
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/run_15m_walk_forward.py --symbol all
 """
 
 from __future__ import annotations
