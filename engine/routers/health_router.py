@@ -267,6 +267,49 @@ async def _health_inner() -> dict:
     return response
 
 
+@router.post(
+    "/data/reconnect",
+    description="Reconnect the IBKR market-data connector without restarting the engine. "
+    "Safe to call at any time — no-ops if already connected.",
+)
+async def reconnect_data_connector():
+    """Re-establish the IBKR market-data (IBKRDataConnector) connection if it dropped."""
+    if data_manager is None:
+        raise HTTPException(status_code=503, detail="data_manager not initialized")
+
+    if data_manager.ibkr is not None and data_manager.ibkr.is_connected:
+        return {"reconnected": False, "message": "already connected"}
+
+    # Clean up stale connector before replacing it
+    if data_manager.ibkr is not None:
+        try:
+            await data_manager.ibkr.disconnect()
+        except Exception:
+            pass
+
+    from data.market_data import IBKRDataConnector
+
+    data_manager.ibkr = IBKRDataConnector(
+        host=data_manager._config.IBKR_HOST,
+        port=data_manager._config.IBKR_PORT,
+        client_id=data_manager._config.IBKR_CLIENT_ID,
+        # Use a more generous timeout than startup (15s vs 5s) since this is manual recovery
+        connect_timeout=max(
+            getattr(data_manager._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0), 15.0
+        ),
+    )
+    connected = await data_manager.ibkr.connect()
+
+    if not connected:
+        raise HTTPException(
+            status_code=503,
+            detail="IBKR data reconnect failed — is IB Gateway running on port 4002?",
+        )
+
+    logger.info("IBKR data connector reconnected via POST /data/reconnect")
+    return {"reconnected": True, "message": "IBKR data connector reconnected"}
+
+
 @router.get(
     "/health/full",
     response_model=FullHealthResponse,
@@ -374,9 +417,9 @@ async def _full_health_inner() -> dict:
     return {
         "overall": overall,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "uptime_seconds": (datetime.now(timezone.utc) - _start_time).total_seconds()
-        if _start_time
-        else 0,
+        "uptime_seconds": (
+            (datetime.now(timezone.utc) - _start_time).total_seconds() if _start_time else 0
+        ),
         "subsystems": status,
         "version": "1.1.0",
         "phase": "paper_trading",
