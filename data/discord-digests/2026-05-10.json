@@ -1,0 +1,134 @@
+{
+  "date": "2026-05-10",
+  "session_bias": {
+    "session_type": "uncertain",
+    "directional_bias": "neutral",
+    "conviction": 0.0,
+    "ib_bias": "not_mentioned",
+    "data_quality": "none",
+    "message_count": 1
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7406.25,
+      "target2": 7413.0,
+      "stop1": null,
+      "win_rate": 83.53,
+      "rr": 0.59,
+      "timestamp": "2026-05-10T18:49:01.243-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7401.0,
+      "target2": 7407.75,
+      "stop1": null,
+      "win_rate": 83.5,
+      "rr": 0.59,
+      "timestamp": "2026-05-10T17:45:01.61-05:00"
+    },
+    {
+      "symbol": "NQ",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 29344.0,
+      "target2": 29371.0,
+      "stop1": null,
+      "win_rate": 81.368,
+      "rr": 0.59,
+      "timestamp": "2026-05-10T18:25:37.97-05:00"
+    },
+    {
+      "symbol": "NQ",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 29333.0,
+      "target2": 29360.0,
+      "stop1": null,
+      "win_rate": 81.336,
+      "rr": 0.59,
+      "timestamp": "2026-05-10T18:16:31.116-05:00"
+    },
+    {
+      "symbol": "NQ",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 29273.25,
+      "target2": 29300.25,
+      "stop1": null,
+      "win_rate": 81.304,
+      "rr": 0.59,
+      "timestamp": "2026-05-10T17:41:00.872-05:00"
+    }
+  ],
+  "corey_quote": "",
+  "commentary_health": [
+    {
+      "date": "2026-05-11",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 1
+    },
+    {
+      "date": "2026-05-10",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 1
+    },
+    {
+      "date": "2026-05-09",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 10
+    },
+    {
+      "date": "2026-05-08",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 10
+    },
+    {
+      "date": "2026-05-07",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 9
+    },
+    {
+      "date": "2026-05-06",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 13
+    },
+    {
+      "date": "2026-05-05",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 7
+    },
+    {
+      "date": "2026-05-04",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 29
+    }
+  ]
+}
