@@ -36,6 +36,21 @@ _ENGINE_ROOT = str(Path(__file__).resolve().parent.parent)
 if _ENGINE_ROOT not in sys.path:
     sys.path.insert(0, _ENGINE_ROOT)
 
+# Load engine/.env so ANTHROPIC_API_KEY is available regardless of the parent
+# process env. Without this, the MCP server inherits whatever env Claude Code
+# was launched with — and on 2026-05-19 that meant the processor's
+# get_session_bias call silently fell through to the empty-key neutral branch
+# while the engine itself (which loads .env via uvicorn startup) extracted
+# correctly. Loading here keeps the MCP server's env aligned with the engine.
+try:
+    from dotenv import load_dotenv  # type: ignore  # noqa: E402
+
+    _ENV_PATH = Path(_ENGINE_ROOT) / ".env"
+    if _ENV_PATH.exists():
+        load_dotenv(_ENV_PATH)
+except ImportError:
+    pass
+
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 logger = logging.getLogger(__name__)
