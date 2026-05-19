@@ -232,6 +232,16 @@ class CoreyCommentaryProcessor:
 
         # Call LLM
         result = await self._llm_extract(for_date, rows)
+        # Don't pin LLM failures to the day-level cache: if Anthropic returns 4xx
+        # (credit balance, transient bad-request) the cached "none" would persist
+        # until midnight even after billing/connectivity is restored mid-session.
+        # Successful extractions and the "no rows exist" branch above still cache.
+        if result.data_quality == "none" and len(rows) > 0:
+            logger.info(
+                "[CoreyProcessor] Skipping cache for %s — LLM failed with rows present; will retry next call",
+                for_date,
+            )
+            return result
         self._save_to_cache(result)
         return result
 
@@ -337,7 +347,20 @@ class CoreyCommentaryProcessor:
             )
 
         except Exception as e:
-            logger.error("[CoreyProcessor] LLM extraction failed: %s", e)
+            # Surface the actual Anthropic response body when available — a bare
+            # "400 Bad Request" hides "credit balance is too low" vs other 400s.
+            body_excerpt = ""
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                try:
+                    body_excerpt = (resp.text or "")[:400]
+                except Exception:
+                    body_excerpt = ""
+            logger.error(
+                "[CoreyProcessor] LLM extraction failed: %s%s",
+                e,
+                f" | body={body_excerpt!r}" if body_excerpt else "",
+            )
             # data_quality must be 'none' on any LLM exception — the rows-present
             # branch previously wrote 'fresh'/'stale' here, which downstream
             # correlation queries (discord_correlation.py filters on data_quality

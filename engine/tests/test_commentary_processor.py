@@ -121,3 +121,74 @@ async def test_llm_extract_returns_data_quality_none_with_empty_rows():
 
     assert result.data_quality == "none"
     assert result.message_count == 0
+
+
+async def test_get_session_bias_skips_cache_on_llm_failure_with_rows():
+    """When LLM fails but commentary rows exist, the failure must NOT be cached.
+
+    Bug: previously, a single Anthropic 400 (credit balance) at the start of the
+    day cached data_quality='none' against the date PK, so even after billing
+    was restored mid-session the cached neutral persisted until midnight. The
+    fix skips the cache write when (data_quality == "none" AND rows > 0); the
+    "no rows for the date" branch above still caches because the answer is
+    truthful and stable.
+    """
+    fresh_rows = [
+        {
+            "content": "MES holding above 5800",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "channel": "market-updates",
+        }
+    ]
+    proc = CoreyCommentaryProcessor(api_key="test-key", db_path=":memory:")
+
+    with (
+        patch.object(proc, "_fetch_commentary", return_value=fresh_rows),
+        patch.object(proc, "_save_to_cache") as save_mock,
+        patch.object(
+            proc, "_llm_extract", new=AsyncMock(side_effect=lambda d, r: _failure_result(d, len(r)))
+        ),
+    ):
+        result = await proc.get_session_bias(date.today())
+
+    assert result.data_quality == "none"
+    assert result.message_count == 1
+    save_mock.assert_not_called()
+
+
+async def test_get_session_bias_still_caches_no_rows_branch():
+    """Counterpart: the 'no commentary anywhere' branch must still cache.
+
+    Caching here is the right behavior — the answer (no data) is stable for the
+    day and avoids repeated DB scans on every pipeline call.
+    """
+    proc = CoreyCommentaryProcessor(api_key="test-key", db_path=":memory:")
+
+    with (
+        patch.object(proc, "_fetch_commentary", return_value=[]),
+        patch.object(proc, "_fetch_recent_commentary", return_value=([], date.today())),
+        patch.object(proc, "_save_to_cache") as save_mock,
+    ):
+        result = await proc.get_session_bias(date.today())
+
+    assert result.data_quality == "none"
+    assert result.message_count == 0
+    save_mock.assert_called_once()
+
+
+def _failure_result(for_date, n_rows):
+    """Build the same neutral-with-none result the real _llm_extract returns on exception."""
+    from discord.commentary_processor import CoreySessionBias
+
+    return CoreySessionBias(
+        date=for_date,
+        session_type="uncertain",
+        directional_bias="neutral",
+        key_levels=[],
+        ib_bias="not_mentioned",
+        specific_triggers=[],
+        conviction=0.0,
+        corey_quote="",
+        message_count=n_rows,
+        data_quality="none",
+    )
