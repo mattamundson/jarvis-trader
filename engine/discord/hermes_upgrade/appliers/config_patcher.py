@@ -42,12 +42,76 @@ KEY_VALUE_RE = re.compile(
     r"\s*:\s*(?P<value>.+?)\s*$",
 )
 
-# Match `set X.Y(.Z…) to <value>` shape. Trailing sentence punctuation is
-# stripped post-match in _extract_config_change (see below).
+# Match `set/change/switch/update X.Y(.Z…) to <value>` shape. Also handles the
+# `change X from A to B` and `switch X in <path> from A to B` forms by
+# permitting optional intermediate "in <path>" and/or "from <old>" clauses
+# between the key and the "to <value>" segment.
+# Trailing sentence punctuation + trailing preposition clauses are stripped
+# post-match in _extract_config_change (see _trim_value_clause).
 SET_RE = re.compile(
-    r"(?i)\bset\s+(?P<key>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+)"
+    r"(?i)\b(?:set|change|switch|update)\s+(?:the\s+)?"
+    r"(?P<key>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+)"
+    r"(?:\s+(?:in|at|on)\s+\S+)?"
+    r"(?:\s+from\s+\S+)?"
     r"\s+to\s+(?P<value>.+?)\s*$",
+    re.MULTILINE,
 )
+
+# Match `<value> at|in key.path` form. Strict: the trailing segment must look
+# like a config-key suffix (not a TLD like .com/.org/.io). Common config-key
+# leaves are alphanumeric snake_case (provider, base_url, default, etc.).
+AT_KEY_RE = re.compile(
+    r"(?i)(?P<value>['\"][^'\"]+['\"]|\S+)\s+(?:at|in)\s+"
+    r"(?P<key>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+)",
+)
+
+# TLDs we treat as "hostnames not config paths" to suppress AT_KEY_RE FPs
+# like "config changes at github.com/...".
+_HOSTNAME_TLDS = frozenset(
+    {"com", "org", "io", "net", "ai", "dev", "co", "gov", "edu", "us", "uk", "tv", "me", "app"}
+)
+
+# Match an ENV_VAR=value line. These belong to .env files, not config.yaml.
+ENV_LINE_RE = re.compile(
+    r"(?m)^\s*[-*\d.)\s]*(?P<var>[A-Z][A-Z0-9_]+)\s*=\s*\S+",
+)
+
+# Detect .env-targeting text. Used as an early-bail to keep ConfigPatcher's
+# scope to ~/.hermes/config.yaml only.
+ENV_TARGET_RE = re.compile(r"(?i)(?:engine[/\\]\.env\b|\b\.env\s+file\b|\bENV_VAR\b)")
+
+
+def _trim_value_clause(raw: str) -> str:
+    """Strip trailing prepositional clauses + sentence punctuation.
+
+    Examples:
+        "anthropic in the config." -> "anthropic"
+        "anthropic from ollama" -> "anthropic" (also "anthropic" w/ from already consumed)
+        "\"anthropic\"" -> "\"anthropic\"" (quotes preserved for _coerce_value)
+        "https://api.example.com/v1/" -> "https://api.example.com/v1/"
+    """
+    s = raw.strip()
+    # Strip trailing sentence punctuation.
+    s = s.rstrip(".,;:")
+    # If quoted, return as-is (let _coerce_value handle quote stripping).
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        return s
+    # If it starts with a quote but the trim chopped off the closing quote,
+    # extract the quoted portion.
+    qmatch = re.match(r"^(['\"])([^'\"]+)\1", s)
+    if qmatch:
+        return qmatch.group(0)
+    # Walk word-by-word; cut at the first preposition-introduced clause that
+    # follows real content. URLs (http/https) consume the whole tail.
+    # Preserve URLs: they may contain "in" or "for" only as part of host/path,
+    # so if the first token is a URL we return the whole string.
+    first = s.split(None, 1)[0] if s else s
+    if first.startswith(("http://", "https://")):
+        return s.split()[0]
+    # Cut at trailing " in <rest>", " for <rest>", " at <rest>", " on <rest>",
+    # " from <rest>" (only when SET_RE already consumed the leading from-clause).
+    s = re.sub(r"\s+(?:in|for|at|on|from)\s+.+$", "", s, flags=re.IGNORECASE)
+    return s.strip().rstrip(".,;:")
 
 
 def _coerce_value(raw: str) -> Any:
@@ -94,28 +158,79 @@ class ConfigPatcher(BaseApplier):
         """Return ``{key_path, new_value, reason}`` or None.
 
         Search order:
-          1. ``set X.Y to Z`` shape (more explicit).
-          2. ``X.Y: Z`` shape in implementation_steps.
+          1. ``set/change/switch/update X.Y to Z`` natural-language shape.
+          2. ``X.Y: Z`` literal-yaml shape.
+          3. ``<value> at|in key.path`` inverted shape.
+
+        Returns None when:
+          - No pattern matches.
+          - The text targets ``engine/.env`` or another non-config.yaml file
+            (this is a different applier's responsibility — ConfigPatcher
+            only handles ``~/.hermes/config.yaml``).
         """
         steps = entry.implementation_steps or []
         reason = entry.rationale or entry.notes or "<from entry>"
 
-        for step in steps:
-            m = SET_RE.search(step)
+        # All searchable fields — steps + notes + extracted_content + title.
+        all_fields = list(steps)
+        if entry.notes:
+            all_fields.append(entry.notes)
+        if entry.extracted_content:
+            all_fields.append(entry.extracted_content)
+        if entry.title:
+            all_fields.append(entry.title)
+
+        haystack = "\n".join(all_fields)
+
+        # Early bail: if the change targets engine/.env or generic .env files,
+        # this isn't config_patcher-applicable. Return None (the LLM may have
+        # misclassified — a different applier should handle .env mutations).
+        if ENV_TARGET_RE.search(haystack):
+            return None
+
+        # Bail when the only signal is an ENV_VAR=value line.
+        if ENV_LINE_RE.search(haystack) and not any(
+            r.search(haystack) for r in (SET_RE, KEY_VALUE_RE, AT_KEY_RE)
+        ):
+            return None
+
+        # 1. set/change/switch/update X.Y to Z
+        for field in all_fields:
+            m = SET_RE.search(field)
             if m:
-                raw_value = m.group("value").strip().rstrip(".,;:")
+                raw_value = _trim_value_clause(m.group("value"))
                 return {
                     "key_path": m.group("key").strip(),
                     "new_value": _coerce_value(raw_value),
                     "reason": reason,
                 }
 
-        for step in steps:
-            m = KEY_VALUE_RE.search(step)
+        # 2. X.Y: Z (literal-yaml shape) — skip hostnames.
+        for field in all_fields:
+            m = KEY_VALUE_RE.search(field)
             if m:
+                key = m.group("key").strip()
+                terminal = key.rsplit(".", 1)[-1].lower()
+                if terminal in _HOSTNAME_TLDS:
+                    continue
                 return {
-                    "key_path": m.group("key").strip(),
+                    "key_path": key,
                     "new_value": _coerce_value(m.group("value")),
+                    "reason": reason,
+                }
+
+        # 3. <value> at|in key.path — strict: skip hostnames.
+        for field in all_fields:
+            m = AT_KEY_RE.search(field)
+            if m:
+                key = m.group("key").strip()
+                terminal = key.rsplit(".", 1)[-1].lower()
+                if terminal in _HOSTNAME_TLDS:
+                    continue  # looks like a URL host, not a config path
+                raw_value = m.group("value").strip().rstrip(".,;:")
+                return {
+                    "key_path": key,
+                    "new_value": _coerce_value(raw_value),
                     "reason": reason,
                 }
 
