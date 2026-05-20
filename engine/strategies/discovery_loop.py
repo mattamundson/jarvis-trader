@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -107,14 +108,16 @@ def evaluate_strategy_file(
         strategy_cls = load_strategy_sandboxed(path)
         strategy = strategy_cls(symbol=symbol)
     except SandboxError as e:
-        result_record.update({
-            "verdict": Verdict.CRASH.value,
-            "thoughts": f"Sandbox validation failed: {e}",
-            "sharpe": 0.0,
-            "calmar": 0.0,
-            "pf": 0.0,
-            "num_trades": 0,
-        })
+        result_record.update(
+            {
+                "verdict": Verdict.CRASH.value,
+                "thoughts": f"Sandbox validation failed: {e}",
+                "sharpe": 0.0,
+                "calmar": 0.0,
+                "pf": 0.0,
+                "num_trades": 0,
+            }
+        )
         log_result(result_record)
         discard_strategy(filename)
         return result_record
@@ -128,14 +131,16 @@ def evaluate_strategy_file(
         if df is None or df.empty:
             raise ValueError(f"No data for {symbol}")
     except Exception as e:
-        result_record.update({
-            "verdict": Verdict.CRASH.value,
-            "thoughts": f"Data load failed: {e}",
-            "sharpe": 0.0,
-            "calmar": 0.0,
-            "pf": 0.0,
-            "num_trades": 0,
-        })
+        result_record.update(
+            {
+                "verdict": Verdict.CRASH.value,
+                "thoughts": f"Data load failed: {e}",
+                "sharpe": 0.0,
+                "calmar": 0.0,
+                "pf": 0.0,
+                "num_trades": 0,
+            }
+        )
         log_result(result_record)
         return result_record
 
@@ -143,14 +148,16 @@ def evaluate_strategy_file(
     try:
         signals_df = strategy.generate_signals(df)
     except Exception as e:
-        result_record.update({
-            "verdict": Verdict.CRASH.value,
-            "thoughts": f"Signal generation crashed: {e}",
-            "sharpe": 0.0,
-            "calmar": 0.0,
-            "pf": 0.0,
-            "num_trades": 0,
-        })
+        result_record.update(
+            {
+                "verdict": Verdict.CRASH.value,
+                "thoughts": f"Signal generation crashed: {e}",
+                "sharpe": 0.0,
+                "calmar": 0.0,
+                "pf": 0.0,
+                "num_trades": 0,
+            }
+        )
         log_result(result_record)
         discard_strategy(filename)
         return result_record
@@ -169,14 +176,16 @@ def evaluate_strategy_file(
         bt_result = backtester.run(signals_df, symbol=symbol)
         bt_result.total_bars = len(signals_df)
     except Exception as e:
-        result_record.update({
-            "verdict": Verdict.CRASH.value,
-            "thoughts": f"Backtest crashed: {e}",
-            "sharpe": 0.0,
-            "calmar": 0.0,
-            "pf": 0.0,
-            "num_trades": 0,
-        })
+        result_record.update(
+            {
+                "verdict": Verdict.CRASH.value,
+                "thoughts": f"Backtest crashed: {e}",
+                "sharpe": 0.0,
+                "calmar": 0.0,
+                "pf": 0.0,
+                "num_trades": 0,
+            }
+        )
         log_result(result_record)
         discard_strategy(filename)
         return result_record
@@ -184,26 +193,28 @@ def evaluate_strategy_file(
     # Step 5: Evaluate with harness
     eval_result = evaluate(bt_result)
 
-    result_record.update({
-        "verdict": eval_result.verdict.value,
-        "layer1_passed": eval_result.layer1_passed,
-        "layer2_passed": eval_result.layer2_passed,
-        "violations": eval_result.violations,
-        "sharpe": bt_result.sharpe_ratio,
-        "calmar": bt_result.calmar_ratio,
-        "pf": bt_result.profit_factor,
-        "num_trades": bt_result.total_trades,
-        "win_rate": bt_result.win_rate,
-        "max_drawdown_pct": bt_result.max_drawdown_pct,
-        "exposure_pct": bt_result.exposure_time_pct,
-        "total_pnl": bt_result.total_pnl,
-        "thoughts": (
-            f"Strategy {strategy.name}: {eval_result.summary()}. "
-            f"Trades={bt_result.total_trades}, PF={bt_result.profit_factor:.2f}, "
-            f"Sharpe={bt_result.sharpe_ratio:.2f}, DD={bt_result.max_drawdown_pct:.2%}"
-        ),
-        "description": strategy.description,
-    })
+    result_record.update(
+        {
+            "verdict": eval_result.verdict.value,
+            "layer1_passed": eval_result.layer1_passed,
+            "layer2_passed": eval_result.layer2_passed,
+            "violations": eval_result.violations,
+            "sharpe": bt_result.sharpe_ratio,
+            "calmar": bt_result.calmar_ratio,
+            "pf": bt_result.profit_factor,
+            "num_trades": bt_result.total_trades,
+            "win_rate": bt_result.win_rate,
+            "max_drawdown_pct": bt_result.max_drawdown_pct,
+            "exposure_pct": bt_result.exposure_time_pct,
+            "total_pnl": bt_result.total_pnl,
+            "thoughts": (
+                f"Strategy {strategy.name}: {eval_result.summary()}. "
+                f"Trades={bt_result.total_trades}, PF={bt_result.profit_factor:.2f}, "
+                f"Sharpe={bt_result.sharpe_ratio:.2f}, DD={bt_result.max_drawdown_pct:.2%}"
+            ),
+            "description": strategy.description,
+        }
+    )
 
     # Step 6: Classify
     if eval_result.verdict == Verdict.ELIGIBLE:
@@ -226,13 +237,12 @@ async def generate_strategy(
     """
     Use Claude to generate a novel trading strategy Python file.
     Returns path to the written file, or None on failure.
-    """
-    try:
-        import anthropic
-    except ImportError:
-        logger.warning("anthropic library not installed — cannot generate strategies via LLM")
-        return None
 
+    Routes through JarvisLLMClient so Anthropic credit-exhaustion silently
+    falls over to Gemini (when GOOGLE_API_KEY is set) and the call is tracked
+    in the cost DB. Anthropic library availability is checked inside the
+    client, not here.
+    """
     # Build top strategies summary for the prompt
     top_strategies = top_n_results or get_top_strategies(3)
     if top_strategies:
@@ -281,14 +291,21 @@ async def generate_strategy(
     out_path = GENERATED_DIR / f"llm_strategy_{next_n}.py"
 
     try:
-        client = anthropic.AsyncAnthropic()
-        message = await client.messages.create(
+        from llm.client import JarvisLLMClient
+
+        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+        db_path = os.getenv("JARVIS_LLM_COST_DB", "data/llm_costs.db")
+        llm = JarvisLLMClient(api_key=api_key, db_path=db_path)
+        result = await llm.call(
             model="claude-sonnet-4-6",
-            max_tokens=4000,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
+            max_tokens=4000,
+            agent_name="discovery_loop",
         )
-        code = message.content[0].text
+        if not result.success:
+            raise RuntimeError(result.error or "LLM call failed without error message")
+        code = result.content
     except Exception as e:
         logger.error(f"LLM strategy generation API call failed: {e}")
         return None
