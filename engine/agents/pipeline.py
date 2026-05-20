@@ -1513,8 +1513,9 @@ class TradingPipeline:
             )
             if df is None or df.empty or len(df) < 20:
                 return {"signal": 0.0, "confidence": 0.0, "summary": "insufficient bars"}
-            # Pass the DataFrame directly — classify() validates shape internally.
-            result = await kronos.classify(df)
+            # Pass the DataFrame and symbol directly — classify() validates shape
+            # internally and uses the per-instrument calibrated threshold.
+            result = await kronos.classify(df, symbol=symbol)
             return result
         except Exception as e:
             logger.warning("[Pipeline] Kronos classify failed: %s", e)

@@ -74,8 +74,22 @@ class KronosClassifier:
     """
 
     MIN_BARS: int = 10
-    # 0.20% predicted return — calibration TBD, see runbook for threshold rationale
-    BULL_BEAR_THRESHOLD_BPS: float = 20.0
+
+    # Per-instrument calibrated thresholds (bps) from calibrate_kronos_threshold.py
+    # first-pass commit 22250bb.  Updated 2026-05-20.
+    #
+    # Callers SHOULD pass ``symbol`` to ``classify()`` for accurate thresholds.
+    # A bare ``classify(bars)`` call (symbol=None) uses BULL_BEAR_THRESHOLD_BPS_DEFAULT
+    # (63 bps), which is the p75 of the median across calibrated instruments.
+    # This is a deliberate behavior change from the pre-refactor stub (which used 20 bps).
+    BULL_BEAR_THRESHOLD_BPS_BY_SYMBOL: dict[str, float] = {
+        "MES": 48.0,
+        "MNQ": 63.0,
+        "MCL": 207.0,
+    }
+    BULL_BEAR_THRESHOLD_BPS_DEFAULT: float = (
+        63.0  # global fallback (p75 of median across calibrated instruments)
+    )
 
     def __init__(self, model_name: str = "kronos-mini", lookback: int = 400) -> None:
         self.model_name = model_name
@@ -84,13 +98,29 @@ class KronosClassifier:
         if not is_kronos_enabled():
             logger.debug("[KronosClassifier] ENABLE_KRONOS is not set — stub will return neutral.")
 
-    async def classify(self, bars: KronosBars) -> dict:
+    def _threshold_for(self, symbol: str | None) -> float:
+        """Return the calibrated bull/bear threshold (bps) for a given symbol.
+
+        Falls back to ``BULL_BEAR_THRESHOLD_BPS_DEFAULT`` when symbol is None
+        or not in the per-instrument table.
+        """
+        if symbol is None:
+            return self.BULL_BEAR_THRESHOLD_BPS_DEFAULT
+        return self.BULL_BEAR_THRESHOLD_BPS_BY_SYMBOL.get(
+            symbol, self.BULL_BEAR_THRESHOLD_BPS_DEFAULT
+        )
+
+    async def classify(self, bars: KronosBars, symbol: str | None = None) -> dict:
         """Classify an OHLC(V) DataFrame.  Always returns a dict.
 
         Args:
-            bars: ``pd.DataFrame`` with at minimum columns
-                  ``open``, ``high``, ``low``, ``close`` and ``MIN_BARS`` rows.
-                  ``volume`` is accepted but not required.
+            bars:   ``pd.DataFrame`` with at minimum columns
+                    ``open``, ``high``, ``low``, ``close`` and ``MIN_BARS`` rows.
+                    ``volume`` is accepted but not required.
+            symbol: Instrument symbol (e.g. ``"MES"``, ``"MNQ"``, ``"MCL"``) used
+                    to select the per-instrument calibrated threshold.  When
+                    ``None`` the global default (63 bps) is used.  Callers should
+                    always pass the symbol for accurate threshold selection.
 
         Returns:
             ``{"signal": float, "confidence": float, "summary": str}``
@@ -98,6 +128,12 @@ class KronosClassifier:
             * ``signal`` — ``[-1.0, +1.0]`` (negative = bearish, positive = bullish)
             * ``confidence`` — ``[0.0, 1.0]``
             * ``summary`` — human-readable explanation for debate-stack logging
+
+        Note on backward compatibility:
+            Before this refactor the threshold was a hard-coded class constant of
+            20 bps.  Callers that pass no ``symbol`` now receive the 63-bps default
+            instead of 20 bps — a deliberate tightening that reduces false signals
+            on uncalibrated instruments.
         """
         if not isinstance(bars, pd.DataFrame):
             return {
@@ -122,7 +158,7 @@ class KronosClassifier:
         # Delegate through the async wrapper so the FastAPI event loop is not blocked
         # when the real predictor is wired.
         forecast = await self._predict_async(bars)
-        return self._forecast_to_verdict(forecast, bars)
+        return self._forecast_to_verdict(forecast, bars, symbol)
 
     async def _predict_async(self, bars: KronosBars) -> Optional[pd.DataFrame]:
         """Run the synchronous predictor in an executor to avoid blocking the loop.
@@ -146,6 +182,7 @@ class KronosClassifier:
         self,
         forecast: Optional[pd.DataFrame],
         bars: KronosBars,
+        symbol: str | None = None,
     ) -> dict:
         """Map a forecast DataFrame to the contract dict.
 
@@ -154,10 +191,11 @@ class KronosClassifier:
 
         Signal derivation:
           * Compute predicted return in basis points vs. last observed close.
-          * If ``abs(ret_bps) <= BULL_BEAR_THRESHOLD_BPS`` → neutral (signal=0).
+          * Threshold is instrument-specific via ``_threshold_for(symbol)``.
+          * If ``abs(ret_bps) <= threshold`` -> neutral (signal=0).
           * Otherwise scale linearly, clamped to ``[-1.0, +1.0]``.
         Confidence proxy (until MC sample_count > 1 is wired):
-          * ``min(1.0, abs(ret_bps) / (5 * BULL_BEAR_THRESHOLD_BPS))``
+          * ``min(1.0, abs(ret_bps) / (5 * threshold))``
         """
         if forecast is None:
             return {
@@ -166,14 +204,15 @@ class KronosClassifier:
                 "summary": "stub — predictor not wired",
             }
 
+        threshold = self._threshold_for(symbol)
         last_close = float(bars["close"].iloc[-1])
         pred_close = float(forecast["close"].iloc[-1])
         ret_bps = (pred_close - last_close) / last_close * 10_000
 
-        scale = 5.0 * self.BULL_BEAR_THRESHOLD_BPS
-        if ret_bps > self.BULL_BEAR_THRESHOLD_BPS:
+        scale = 5.0 * threshold
+        if ret_bps > threshold:
             signal = min(1.0, ret_bps / scale)
-        elif ret_bps < -self.BULL_BEAR_THRESHOLD_BPS:
+        elif ret_bps < -threshold:
             signal = max(-1.0, ret_bps / scale)
         else:
             signal = 0.0
@@ -193,5 +232,6 @@ class KronosClassifier:
 # 1. Implement _predict_sync to call KronosPredictor.predict(bars).
 #    The paper requires pd.DataFrame input (confirmed e72ae23); no HF endpoint.
 # 2. Wire MC rollout sample_count > 1 into _forecast_to_verdict confidence.
-# 3. Calibrate BULL_BEAR_THRESHOLD_BPS — see runbook § calibration.
+# 3. Per-instrument thresholds already calibrated (commit 22250bb); expand table
+#    when new instruments are added (see BULL_BEAR_THRESHOLD_BPS_BY_SYMBOL).
 # 4. Add ENABLE_KRONOS= to engine/.env.example (Amo does this step).
