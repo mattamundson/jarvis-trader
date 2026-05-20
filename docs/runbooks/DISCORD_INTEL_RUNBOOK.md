@@ -224,6 +224,7 @@ mcp__discord-personal__get_channel_info {}
 
 ## Related runbooks
 
+- `[[DISCORD_BRIEFING_RUNBOOK]]` — composed `/discord/briefing` facade (Corey bias + IB levels + sentiment + recent signal, 5-min TTL cache); use for pre-session prep and Hermes morning calls
 - `[[HEALTH_API_CONTRACT]]` — `/health` and `/safety/*` stable key contracts
 - `[[SECOND_BRAIN_VAULT_OPERATIONS_RUNBOOK]]` — Obsidian vault + gbrain ingest pipeline
 - `[[CLAUDE_CODE_AND_HERMES_INTEGRATION_MAP]]` — Hermes gateway, MCP wiring, session coordination
