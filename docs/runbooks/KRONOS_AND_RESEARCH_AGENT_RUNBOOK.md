@@ -81,25 +81,133 @@ score it from scratch on first backtest run.
 
 ---
 
-## 5. Pre-flight before going live
+## 5. Kronos schema verified (2026-05-20)
+
+**Source:** arxiv 2508.02739 ("Kronos: A Foundation Model for the Language of
+Financial Markets", AAAI 2026) + GitHub `shiyu-coder/Kronos` README + paper
+HTML methods section. Fetched 2026-05-20.
+
+### Confirmed input schema
+
+| Field | Confirmed value |
+|-------|-----------------|
+| Input type | **Pandas DataFrame** — NOT a list of dicts |
+| Required columns | `open`, `high`, `low`, `close` (mandatory); `volume`, `amount` optional (filled with zeros if missing) |
+| Normalization | **z-score** applied per-dimension independently, then clipped to **[-5, 5]**. Done internally by `KronosPredictor` — caller passes **raw OHLCV values** (NOT pre-normalized) |
+| Max sequence length | **512 K-lines** for Kronos-small/base/large (tokenizer: `Kronos-Tokenizer-base`); **2048 K-lines** for Kronos-mini (tokenizer: `Kronos-Tokenizer-2k`) |
+| Recommended lookback | 400 bars (per README examples) |
+| Timestamp required | Yes — two `pandas.Series`: `x_timestamp` (historical) + `y_timestamp` (future periods to predict) |
+| Additional required arg | `pred_len` (int): number of future bars to forecast |
+
+### Confirmed output schema
+
+| Field | Confirmed value |
+|-------|-----------------|
+| Output type | **Pandas DataFrame** (NOT a dict with `signal`/`confidence`/`reasoning` keys) |
+| Output columns | `open`, `high`, `low`, `close`, `volume`, `amount` — forecasted future bar values |
+| Task type | **Regression / generative forecasting** — NOT classification (no bull/bear/neutral labels) |
+| Confidence score | **None natively** — probabilistic uncertainty available only via `sample_count > 1` (multiple Monte Carlo rollouts averaged; std dev across samples = implicit uncertainty) |
+| Sampling params | `T` (temperature, default 1.0), `top_p` (nucleus, default 0.9), `sample_count` (default 1) |
+
+### Confirmed inference model
+
+| Field | Confirmed value |
+|-------|-----------------|
+| Inference mode | **Local model load** — `KronosPredictor(model, tokenizer, max_context=512)` |
+| HF model IDs | `NeoQuasar/Kronos-mini`, `NeoQuasar/Kronos-small`, `NeoQuasar/Kronos-base` |
+| HF tokenizer IDs | `NeoQuasar/Kronos-Tokenizer-2k` (mini), `NeoQuasar/Kronos-Tokenizer-base` (small/base/large) |
+| HF Inference API | **NOT used** — no hosted serverless endpoint; local `from_pretrained` load required |
+| GPU requirement | Multi-GPU finetuning via `torchrun`; inference can run CPU but will be slow |
+| License | **MIT** |
+
+### Tokenizer architecture details
+
+Binary Spherical Quantization (BSQ): 20-bit vocabulary (two 10-bit subspaces).
+Transformer-based autoencoder (3 layers, 256 dimensions). Tokenizer files are
+**required** and must be loaded from HF Hub separately from the model weights —
+the two `from_pretrained` calls cannot be skipped.
+
+### Changes required to the stub before flipping live
+
+The current stub signature is:
+```python
+async def classify(self, bars: list[dict]) -> VisionClassification
+```
+
+The real Kronos contract requires **all of the following changes** before wiring:
+
+1. **Input type mismatch — CRITICAL.** Stub accepts `list[dict]` with
+   `open/high/low/close/volume/timestamp` keys. Kronos requires a
+   `pandas.DataFrame` with columns `['open','high','low','close']` plus separate
+   `pandas.Series` for `x_timestamp` and `y_timestamp`. The `list[dict]`
+   conversion must happen inside `_call_kronos_api` before the predictor call.
+
+2. **No classification output — CRITICAL.** Kronos produces forecasted future
+   OHLCV bars, not a `signal`/`confidence`/`reasoning` dict. A translation layer
+   must convert forecast returns to a directional signal:
+   - Compute predicted return: `(pred_close[-1] - input_close[-1]) / input_close[-1]`
+   - Map return to signal in `[-1.0, +1.0]` via a chosen scaling function
+   - Derive confidence from `sample_count > 1` std dev (requires `sample_count >= 5`)
+   - This translation is **not provided by Kronos** — it must be implemented in the stub
+
+3. **No HF Inference API — CRITICAL.** The runbook currently references
+   `KRONOS_ENDPOINT` as an HF Inference REST endpoint. Kronos has no hosted
+   serverless endpoint. Inference requires loading model weights locally via
+   `KronosPredictor`. The `HF_API_TOKEN` is needed only for `from_pretrained`
+   downloads, not for per-request API calls.
+
+4. **No pre-normalization.** Stub comment says "keys: open/high/low/close/volume"
+   without specifying normalization. Raw OHLCV values should be passed —
+   `KronosPredictor` applies z-score + clip internally. Caller must NOT
+   pre-normalize.
+
+5. **Minimum bar count.** Stub says "N TBD from paper schema." Confirmed minimum
+   practical lookback is **at least 1 bar** (no hard lower bound documented),
+   with 400 bars recommended. Empty list `[]` will fail at DataFrame construction.
+   Add a guard: `if len(bars) < 10: return self._disabled_verdict()`.
+
+6. **`amount` column.** Stub does not include `amount` in its dict schema. If
+   bars dict lacks `amount`, it must be added as zeros before DataFrame
+   construction or the predictor will fill it automatically.
+
+7. **Inference is blocking / CPU-intensive.** `KronosPredictor.predict()` is
+   synchronous and CPU/GPU bound. Must be wrapped in `asyncio.get_event_loop()
+   .run_in_executor(None, ...)` to avoid blocking the FastAPI event loop.
+
+---
+
+## 6. Pre-flight before going live
 
 ### Kronos
 
-- [ ] HF Inference API token obtained and stored in `engine/.env` as
-      `HF_API_TOKEN=...` (read via `os.environ["HF_API_TOKEN"]` in the real
-      `classify()` body — do not hardcode).
-- [ ] Kronos paper input schema confirmed (arxiv 2509.09995): bar count per
-      request, feature encoding (`open/high/low/close/volume` vs normalized),
-      expected JSON response shape (`signal`, `confidence`, `reasoning` keys or
-      different).
-- [ ] Model endpoint URL pinned in `engine/.env` as `KRONOS_ENDPOINT=...` (or
-      equivalent) — avoids re-deploying when HF model ID drifts.
-- [ ] Rate-limit budget confirmed: HF Inference free tier caps at 1,000 calls/day.
-      Estimate pipeline call frequency (symbols × runs/hour) and confirm it fits
-      before enabling.
+- [x] **DONE** — Kronos paper input schema confirmed (arxiv 2508.02739, AAAI 2026):
+      raw OHLCV DataFrame, z-score normalized internally, 400-bar recommended
+      lookback, max 512 tokens for small/base, local inference only.
+- [x] **DONE** — Output schema confirmed: forecasted OHLCV DataFrame, no native
+      classification or confidence score; signal derivation requires custom
+      post-processing.
+- [x] **DONE** — Inference mode confirmed: local `KronosPredictor`, not HF
+      Inference API. Remove `KRONOS_ENDPOINT` from the planned env vars; the
+      `HF_API_TOKEN` is only for model download.
+- [ ] Model weights downloaded and cached locally. Recommended: `NeoQuasar/Kronos-small`
+      (24.7M params, 512-token context) as the first live candidate. Cache to a
+      path outside the engine venv (e.g. `~/.cache/huggingface/`).
+- [ ] Signal-derivation layer implemented and tested: predicted return → `[-1,+1]`
+      signal, `sample_count >= 5` → std dev → confidence proxy. Thresholds
+      for bull/bear boundary must be decided (suggest ±0.002 = 0.2% predicted
+      return as initial boundary; validate on paper data first).
+- [ ] Executor wrapper implemented in `classify()` to avoid blocking the
+      asyncio event loop during model inference.
+- [ ] `list[dict]` → `pd.DataFrame` conversion validated with real engine bar data
+      (confirm column names, timestamp dtype, no NaN in OHLCV).
+- [ ] Rate-limit budget confirmed: local inference has no per-call API rate limit,
+      but inference latency on CPU will be significant. Measure wall-clock time for
+      a 400-bar `predict()` call on this machine before enabling in the hot path.
 - [ ] Baseline pipeline runs captured: record `analyst_reports.kronos.confidence`
       for 24h with flag off (should be `0.0` throughout) to establish the A/B
       baseline before flipping on.
+- [ ] `HF_API_TOKEN` stored in `engine/.env` for model download only (not per-call
+      auth). Remove `KRONOS_ENDPOINT` from `.env.example` — it does not exist.
 
 ### ResearchAgent
 
