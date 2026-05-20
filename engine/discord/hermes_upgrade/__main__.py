@@ -16,9 +16,22 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from collections import Counter
 from pathlib import Path
+
+# Load engine/.env so ANTHROPIC_API_KEY is available when this CLI is run
+# standalone (no engine process to inherit env from). Mirrors the pattern in
+# engine/discord/mcp_server.py.
+try:
+    from dotenv import load_dotenv  # type: ignore
+
+    _ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+    if _ENV_PATH.exists():
+        load_dotenv(_ENV_PATH)
+except ImportError:
+    pass
 
 from .backlog import (
     assign_tier,
