@@ -110,6 +110,7 @@ from routers.portfolio_router import inject_dependencies as inject_portfolio_dep
 from routers.portfolio_router import router as portfolio_router
 from routers.profiling_router import router as profiling_router
 from routers.profiling_router import set_profiler_instance
+from routers.reports_router import router as reports_router
 from routers.safety_router import inject_dependencies as inject_safety_router_deps
 from routers.safety_router import router as safety_router
 from routers.schwab_router import router as schwab_router
@@ -2395,6 +2396,7 @@ app.include_router(learning_router)
 app.include_router(events_router)
 app.include_router(kairos_router)
 app.include_router(profiling_router)
+app.include_router(reports_router)
 app.include_router(schwab_router)
 app.include_router(instruments_router)
 app.include_router(brokers_router)
