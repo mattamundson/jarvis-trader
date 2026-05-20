@@ -77,16 +77,22 @@ def _build_gateway() -> SharedAgentGateway:
         "openclaw",
         primary=OllamaBackendConfig(
             backend="ollama-direct",
-            model=os.getenv("OPENCLAW_LOCAL_MODEL", "qwen2.5:7b").removeprefix("ollama/"),
+            model=os.getenv("OPENCLAW_LOCAL_MODEL", "llama3.2:3b").removeprefix("ollama/"),
             base_url=ollama_base,
+            timeout_seconds=float(os.getenv("OPENCLAW_LOCAL_TIMEOUT_SECONDS", "60")),
+            num_ctx=int(os.getenv("OPENCLAW_LOCAL_NUM_CTX", "4096")),
+            max_history_messages=int(os.getenv("OPENCLAW_LOCAL_HISTORY_MESSAGES", "4")),
         ),
     )
     hermes_adapter = OllamaAgentAdapter(
         "hermes",
         primary=OllamaBackendConfig(
             backend="ollama-direct",
-            model=os.getenv("HERMES_LOCAL_MODEL", "qwen2.5:7b"),
+            model=os.getenv("HERMES_LOCAL_MODEL", "llama3.2:3b"),
             base_url=ollama_base,
+            timeout_seconds=float(os.getenv("HERMES_LOCAL_TIMEOUT_SECONDS", "60")),
+            num_ctx=int(os.getenv("HERMES_LOCAL_NUM_CTX", "4096")),
+            max_history_messages=int(os.getenv("HERMES_LOCAL_HISTORY_MESSAGES", "4")),
         ),
         fallback=(
             OpenAICompatBackendConfig(
@@ -270,6 +276,96 @@ async def whatsapp_webhook(request: Request) -> dict[str, Any]:
             else:
                 await _send_whatsapp_reply(sender, "JARVIS: Safety layer not available.")
                 return {"ok": False, "error": "safety_layer_unavailable"}
+
+        # Command: CONFIRM CLEAR (clear kill switch — destructive, admin-only)
+        if cmd == "CONFIRM CLEAR":
+            if _safety_layer:
+                try:
+                    if not _safety_layer.is_killed:
+                        await _send_whatsapp_reply(
+                            sender, "JARVIS: kill switch is not active — nothing to clear"
+                        )
+                        return {"ok": True, "action": "kill_switch_cleared_noop"}
+                    _safety_layer.deactivate_kill_switch(authorized_by="whatsapp_remote")
+                    await _send_whatsapp_reply(
+                        sender, "JARVIS: ✅ KILL SWITCH CLEARED. Trading resumed."
+                    )
+                    return {"ok": True, "action": "kill_switch_cleared"}
+                except Exception as e:
+                    logger.error(f"CONFIRM CLEAR failed: {e}")
+                    await _send_whatsapp_reply(sender, f"JARVIS: clear error — {str(e)[:100]}")
+                    return {"ok": False, "error": str(e)}
+            else:
+                await _send_whatsapp_reply(sender, "JARVIS: Safety layer not available.")
+                return {"ok": False, "error": "safety_layer_unavailable"}
+
+        # Read-only commands (informational, no confirmation needed)
+        if cmd == "STATUS":
+            try:
+                sl = _safety_layer.get_status() if _safety_layer else {}
+                mode = "LIVE" if getattr(_cfg, "LIVE_TRADING_ENABLED", False) else "PAPER"
+                killed = bool(sl.get("is_killed"))
+                kill_reason = sl.get("kill_switch_reason") or ""
+                positions = _paper_tracker.get_open_positions() if _paper_tracker else []
+                realized = float(sl.get("daily_realized_pnl") or 0.0)
+                lines = [
+                    "JARVIS STATUS",
+                    f"Mode: {mode}",
+                    f"Kill: {'ACTIVE' if killed else 'armed'}"
+                    + (f" ({kill_reason})" if killed and kill_reason else ""),
+                    f"Open positions: {len(positions)}",
+                    f"Today realized: ${realized:+.2f}",
+                ]
+                await _send_whatsapp_reply(sender, "\n".join(lines))
+                return {"ok": True, "action": "status"}
+            except Exception as e:
+                logger.error(f"STATUS command failed: {e}")
+                await _send_whatsapp_reply(sender, f"JARVIS: status error — {str(e)[:100]}")
+                return {"ok": False, "error": str(e)}
+
+        if cmd == "PNL":
+            try:
+                sl = _safety_layer.get_status() if _safety_layer else {}
+                realized = float(sl.get("daily_realized_pnl") or 0.0)
+                positions = _paper_tracker.get_open_positions() if _paper_tracker else []
+                unrealized = sum(float(p.get("unrealized_pnl") or 0.0) for p in positions)
+                total = realized + unrealized
+                await _send_whatsapp_reply(
+                    sender,
+                    "JARVIS P&L (today)\n"
+                    f"Realized:   ${realized:+.2f}\n"
+                    f"Unrealized: ${unrealized:+.2f}  ({len(positions)} open)\n"
+                    f"Total:      ${total:+.2f}",
+                )
+                return {"ok": True, "action": "pnl"}
+            except Exception as e:
+                logger.error(f"PNL command failed: {e}")
+                await _send_whatsapp_reply(sender, f"JARVIS: pnl error — {str(e)[:100]}")
+                return {"ok": False, "error": str(e)}
+
+        if cmd == "POSITIONS":
+            try:
+                positions = _paper_tracker.get_open_positions() if _paper_tracker else []
+                if not positions:
+                    await _send_whatsapp_reply(sender, "JARVIS: no open positions")
+                else:
+                    lines = ["JARVIS POSITIONS"]
+                    for p in positions[:10]:
+                        sym = str(p.get("symbol") or "?").upper()
+                        act = str(p.get("action") or p.get("side") or "?").upper()
+                        qty = p.get("quantity") or p.get("qty") or 0
+                        entry = float(p.get("entry_price") or 0.0)
+                        upnl = p.get("unrealized_pnl")
+                        upnl_str = f"  ${float(upnl):+.2f}" if upnl is not None else ""
+                        lines.append(f"  {sym} {act} x{qty} @ ${entry:.2f}{upnl_str}")
+                    if len(positions) > 10:
+                        lines.append(f"  ... +{len(positions) - 10} more")
+                    await _send_whatsapp_reply(sender, "\n".join(lines))
+                return {"ok": True, "action": "positions"}
+            except Exception as e:
+                logger.error(f"POSITIONS command failed: {e}")
+                await _send_whatsapp_reply(sender, f"JARVIS: positions error — {str(e)[:100]}")
+                return {"ok": False, "error": str(e)}
 
         # Command: Y / N (Approval)
         if cmd in ("Y", "N"):
