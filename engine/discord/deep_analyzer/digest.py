@@ -45,8 +45,14 @@ def _priority(row: dict) -> int:
 
 
 def _render_page(rows: list[dict]) -> str:
-    rows_sorted = sorted(rows, key=_priority, reverse=True)
-    total_cost = sum(float(r.get("cost_usd") or 0) for r in rows_sorted)
+    # Filter P0 (FAILED / broken-extract) out of the digest entirely. These
+    # rows still have vault pages written for searchability, but they don't
+    # belong in the morning brief. Counted separately so Amo sees the noise
+    # floor without having to scroll past it.
+    p0_rows = [r for r in rows if _priority(r) == 0]
+    signal_rows = [r for r in rows if _priority(r) > 0]
+    rows_sorted = sorted(signal_rows, key=_priority, reverse=True)
+    total_cost = sum(float(r.get("cost_usd") or 0) for r in rows)
     by_type: dict[str, int] = {}
     for r in rows_sorted:
         by_type[r["artifact_type"]] = by_type.get(r["artifact_type"], 0) + 1
@@ -57,6 +63,7 @@ def _render_page(rows: list[dict]) -> str:
         "",
         f"Total: {len(rows_sorted)}  |  Cost: ${total_cost:.4f}",
         f"By type: {', '.join(f'{k}={v}' for k, v in by_type.items()) or '(none)'}",
+        f"Filtered (P0 / broken extracts): {len(p0_rows)}",
         "",
         "### Top items",
         "",
