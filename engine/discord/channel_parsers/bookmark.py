@@ -82,6 +82,16 @@ def parse_channel(messages: list, source_channel: str = "jarvis-trader-general")
             or None
         )
 
+        # Discord-uploaded attachments (images, voice memos, PDFs). Each entry
+        # in DiscordChatExporter's JSON has `url` + `fileName` + `fileSizeBytes`.
+        # We concatenate URLs with spaces — deep_analyzer.handlers._split_urls
+        # accepts space- or comma-separated.
+        attachments = msg.get("attachments") or []
+        attachment_urls_list = [
+            a.get("url") for a in attachments if isinstance(a, dict) and a.get("url")
+        ]
+        attachment_urls = " ".join(attachment_urls_list)[:4000] if attachment_urls_list else None
+
         result = {
             "message_id": str(msg.get("id", "")),
             "channel_id": JARVIS_TRADER_GENERAL_ID,
@@ -94,6 +104,7 @@ def parse_channel(messages: list, source_channel: str = "jarvis-trader-general")
             "content": content[:5000],
             "author_id": author_id,
             "author_name": author_name,
+            "attachment_urls": attachment_urls,
         }
         results.append(result)
 
