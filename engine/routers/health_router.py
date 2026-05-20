@@ -48,6 +48,40 @@ _llm_health_cache: dict = {"checked_at": 0.0, "data": None}
 _LLM_LATENCY_P95_WARN_MS = int(os.getenv("LLM_LATENCY_P95_WARN_MS", "30000"))
 _LLM_COST_24H_WARN_USD = float(os.getenv("LLM_COST_24H_WARN_USD", "5.0"))
 
+# Brier-calibration surface cache. Recomputing the 30d rolling mean on every
+# /health hit would re-scan trade_outcomes per agent — cache for 30s like the
+# other diagnostics. Returns None when no agent has enough closed signals.
+_BRIER_CACHE_TTL_SEC = 30.0
+_brier_cache: dict = {"checked_at": 0.0, "value": None}
+
+
+def _compute_brier_30d_rolling() -> float | None:
+    """Cached 30d rolling Brier surface.
+
+    Calls BrierCalibrationTracker.compute_rolling_brier(), which returns the
+    mean across agents with ≥ min_trades closed signals (excludes the cold-start
+    BRIER_NEUTRAL sentinel) — or None when no agent has enough data.
+
+    Best-effort: returns None on any import/DB error rather than 5xxing /health.
+    """
+    now = time.monotonic()
+    if now - _brier_cache.get("checked_at", 0.0) < _BRIER_CACHE_TTL_SEC:
+        return _brier_cache.get("value")
+
+    try:
+        try:
+            from engine.analytics.ic_ensemble import BrierCalibrationTracker
+        except ImportError:
+            from analytics.ic_ensemble import BrierCalibrationTracker
+        value = BrierCalibrationTracker().compute_rolling_brier()
+        value = round(float(value), 6) if value is not None else None
+    except Exception as exc:
+        logger.debug("brier_30d_rolling compute failed: %s", exc)
+        value = None
+
+    _brier_cache.update(checked_at=now, value=value)
+    return value
+
 
 def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
     """Probe TradingView Desktop CDP endpoint. Two-stage: socket port check then HTTP.
@@ -259,6 +293,7 @@ async def _health_inner() -> dict:
         "llm_path_healthy": llm_path_healthy,
         "tradingview_mcp_healthy": tv_mcp_healthy,
         "tv_mcp_status": tv_mcp_status,
+        "brier_30d_rolling": _compute_brier_30d_rolling(),
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
