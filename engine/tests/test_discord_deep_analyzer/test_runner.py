@@ -107,9 +107,10 @@ async def test_runner_writes_failure_row_on_handler_exception(text_only_db, tmp_
 async def test_runner_routes_url_row_to_url_handler(seeded_db, tmp_path, monkeypatch):
     storage.migrate(seeded_db)
 
-    # Keep only the X-post row (m2, id=2)
+    # Keep only the github row (m3) — generic URL routing.
+    # (The x.com row m2 now routes to XPostHandler instead of UrlHandler.)
     conn = sqlite3.connect(seeded_db)
-    conn.execute("DELETE FROM discord_bookmarks WHERE message_id != 'm2'")
+    conn.execute("DELETE FROM discord_bookmarks WHERE message_id != 'm3'")
     conn.commit()
     conn.close()
 
@@ -120,8 +121,8 @@ async def test_runner_routes_url_row_to_url_handler(seeded_db, tmp_path, monkeyp
         return AnalysisResult(
             bookmark_id=str(row["message_id"]),
             artifact_type=ArtifactType.URL,
-            summary="X post summary",
-            structured={"source_kind": "x_post"},
+            summary="GH repo summary",
+            structured={"source_kind": "github"},
             model_used="gemini-2.5-flash",
             usage=LLMUsage(input_tokens=20, output_tokens=10),
             cost_usd=0.0001,
@@ -139,6 +140,44 @@ async def test_runner_routes_url_row_to_url_handler(seeded_db, tmp_path, monkeyp
     a = conn.execute("SELECT artifact_type FROM discord_analyses").fetchone()
     conn.close()
     assert a[0] == "url"
+
+
+@pytest.mark.asyncio
+async def test_runner_routes_x_url_to_x_post_handler(seeded_db, tmp_path, monkeypatch):
+    """The x.com row in seeded_db must dispatch to XPostHandler, not UrlHandler."""
+    storage.migrate(seeded_db)
+
+    conn = sqlite3.connect(seeded_db)
+    conn.execute("DELETE FROM discord_bookmarks WHERE message_id != 'm2'")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("GBRAIN_RAW_DIR", str(tmp_path / "raw"))
+    (tmp_path / "raw").mkdir()
+
+    async def fake_x_analyze(self, row):
+        return AnalysisResult(
+            bookmark_id=str(row["message_id"]),
+            artifact_type=ArtifactType.X_POST,
+            summary="X post summary",
+            structured={"source_kind": "x_post"},
+            model_used="claude-haiku-4-5",
+            usage=LLMUsage(input_tokens=20, output_tokens=10),
+            cost_usd=0.0001,
+        )
+
+    monkeypatch.setattr(
+        "discord.deep_analyzer.handlers.x_post.XPostHandler.analyze",
+        fake_x_analyze,
+    )
+
+    n = await runner.run_once(db_path=seeded_db, vault_root=tmp_path, limit=5)
+    assert n == 1
+
+    conn = sqlite3.connect(seeded_db)
+    a = conn.execute("SELECT artifact_type FROM discord_analyses").fetchone()
+    conn.close()
+    assert a[0] == "x_post"
 
 
 def test_infer_artifact_type_image_from_attachment_ext():
