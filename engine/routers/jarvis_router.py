@@ -272,18 +272,29 @@ def _handle_health(question: str, context: dict | None) -> tuple[str, list[str],
         status = data.get("status", "unknown")
         tv = data.get("tradingview_mcp_healthy", False)
         llm = data.get("llm_path_healthy", False)
-        ib_exec = data.get("execution_ib", {})
-        ib_data = data.get("data_ib", {})
-
-        ib_exec_ok = ib_exec.get("connected", False) if isinstance(ib_exec, dict) else bool(ib_exec)
-        ib_data_ok = ib_data.get("connected", False) if isinstance(ib_data, dict) else bool(ib_data)
+        # /health emits flat ibkr_*_connected booleans (not nested dicts).
+        # Fall back to legacy execution_ib/data_ib dict shape just in case.
+        ib_exec_ok = data.get("ibkr_execution_connected")
+        if ib_exec_ok is None:
+            ib_exec = data.get("execution_ib", {})
+            ib_exec_ok = (
+                ib_exec.get("connected", False) if isinstance(ib_exec, dict) else bool(ib_exec)
+            )
+        ib_data_ok = data.get("ibkr_data_connected")
+        if ib_data_ok is None:
+            ib_data = data.get("data_ib", {})
+            ib_data_ok = (
+                ib_data.get("connected", False) if isinstance(ib_data, dict) else bool(ib_data)
+            )
+        ks = data.get("kill_switch_active", False)
 
         summary = (
             f"Engine status: {status.upper()}. "
             f"TradingView MCP: {'healthy' if tv else 'down'}. "
             f"LLM path: {'healthy' if llm else 'down'}. "
             f"IB execution: {'connected' if ib_exec_ok else 'disconnected'}. "
-            f"IB data: {'connected' if ib_data_ok else 'disconnected'}."
+            f"IB data: {'connected' if ib_data_ok else 'disconnected'}. "
+            f"Kill switch: {'ACTIVE' if ks else 'inactive'}."
         )
         return summary, [url], []
 
@@ -330,13 +341,20 @@ def _handle_bookmark_search(
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """
-                SELECT title, url, summary, channel_name, bookmarked_at
+                SELECT embed_title AS title, url, embed_description AS summary,
+                       source_type AS channel_name, posted_at AS bookmarked_at
                 FROM discord_bookmarks
-                WHERE title LIKE ? OR summary LIKE ? OR url LIKE ?
-                ORDER BY bookmarked_at DESC
+                WHERE embed_title LIKE ? OR embed_description LIKE ?
+                   OR content LIKE ? OR url LIKE ?
+                ORDER BY posted_at DESC
                 LIMIT 5
                 """,
-                (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"),
+                (
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                ),
             ).fetchall()
 
         if not rows:
@@ -383,9 +401,10 @@ def _handle_bookmark_recent(
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """
-                SELECT title, url, channel_name, bookmarked_at
+                SELECT embed_title AS title, url,
+                       source_type AS channel_name, posted_at AS bookmarked_at
                 FROM discord_bookmarks
-                ORDER BY bookmarked_at DESC
+                ORDER BY posted_at DESC
                 LIMIT ?
                 """,
                 (limit,),
