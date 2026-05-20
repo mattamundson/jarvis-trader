@@ -4,7 +4,7 @@ Start-Transcript -Path "$env:TEMP\deep_analyzer_digest.log" -Append
 
 $repo   = "C:\Users\mattm\ThinkorSwim\jarvis-trader"
 $python = "$repo\engine\.venv\Scripts\python.exe"
-$db     = "$repo\data\discord.db"
+$db     = "$repo\engine\data\jarvis_trader.db"
 
 Push-Location "$repo\engine"
 & $python -c @"

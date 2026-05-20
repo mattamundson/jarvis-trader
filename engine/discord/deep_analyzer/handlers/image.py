@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any
 
+import certifi
 import httpx
+
+if not os.path.exists(os.environ.get("SSL_CERT_FILE", "")):
+    os.environ["SSL_CERT_FILE"] = certifi.where()
 
 from ..llm import call_vision
 from ..models import AnalysisResult, ArtifactType
