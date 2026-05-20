@@ -123,12 +123,27 @@ Is this deep work in a dev session?
 
 ## 6. Ready-Made Hermes Skills
 
-### Shipping today
+### Skill filesystem path (authoritative)
+
+Hermes runs as WSL user `mattm` and reads skills from:
+```
+/home/mattm/.hermes/skills/<skill-name>/
+```
+**The Windows path `C:\Users\mattm\.hermes\skills\` is NOT read by Hermes.** When authoring or installing new skills, write directly to the WSL path (or copy via `wsl -u mattm -- cp -r /mnt/c/... /home/mattm/.hermes/skills/...`). The Windows path is kept as a backup only.
+
+### Live skills (9 migrated 2026-05-20)
 
 | Skill | What it does |
 |---|---|
 | `jarvis-discord-bookmarks` | Calls `GET /discord/bookmarks/recent` or `/search`, formats as Telegram message, optionally writes to vault |
 | `jarvis-quantstats-tearsheet` | Calls `GET /reports/quantstats?days=90`, renders Markdown tearsheet, posts summary to Telegram, writes file to `_hermes-cron-<date>/` |
+| `jarvis-morning-brief` | Aggregates session bias, overnight signals, gate verdicts, P&L snapshot into a Telegram morning brief |
+| `jarvis-pipeline-status` | Polls `/pipeline/status` for all instruments; posts gate v2 verdicts to Telegram |
+| `jarvis-regime-check` | Calls regime endpoint; posts current market regime label and confidence to Telegram |
+| `jarvis-kill-switch-status` | Checks `/health` and kill-switch state; alerts if thresholds are within 50% of trigger |
+| `jarvis-positions` | Calls `/brokers/positions`; formats current open positions as a Telegram card |
+| `jarvis-paper-roi` | Pulls paper-account P&L metrics; posts ROI summary and drawdown stats to Telegram |
+| `jarvis-self-review` | Runs a self-diagnostic on engine health, pipeline recency, and data freshness; posts findings to Telegram |
 
 ### Suggested next skills (not built)
 

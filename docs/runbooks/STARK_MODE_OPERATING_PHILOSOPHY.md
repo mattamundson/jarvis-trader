@@ -40,6 +40,11 @@ When Matt is not in a Claude Code session, Hermes skills are always preferred ov
 manual API calls from a phone. "pipeline mes" in Telegram beats opening a browser
 and crafting a `curl`. Hermes is the remote control.
 
+**Skill path (authoritative):** Hermes runs as WSL user `mattm` and reads skills
+from `/home/mattm/.hermes/skills/`. The Windows path `C:\Users\mattm\.hermes\skills\`
+is not read by Hermes — write new skills directly to the WSL path. Nine `jarvis-*`
+skills are live as of 2026-05-20; see `CLAUDE_CODE_AND_HERMES_INTEGRATION_MAP.md §6`.
+
 ### Axiom 2 — The safety layer is sacrosanct
 
 No surface — not even Claude Code — can override `engine/risk/safety_layer.py`.
