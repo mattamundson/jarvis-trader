@@ -139,3 +139,33 @@ async def test_runner_routes_url_row_to_url_handler(seeded_db, tmp_path, monkeyp
     a = conn.execute("SELECT artifact_type FROM discord_analyses").fetchone()
     conn.close()
     assert a[0] == "url"
+
+
+def test_infer_artifact_type_image_from_attachment_ext():
+    from discord.deep_analyzer.runner import _infer_artifact_type
+
+    assert _infer_artifact_type({"attachment_urls": "https://x.com/a.png"}) == ArtifactType.IMAGE
+
+
+def test_infer_artifact_type_audio_from_attachment_ext():
+    from discord.deep_analyzer.runner import _infer_artifact_type
+
+    assert _infer_artifact_type({"attachment_urls": "https://x.com/a.wav"}) == ArtifactType.AUDIO
+
+
+def test_infer_artifact_type_document_from_attachment_ext():
+    from discord.deep_analyzer.runner import _infer_artifact_type
+
+    assert _infer_artifact_type({"attachment_urls": "https://x.com/a.pdf"}) == ArtifactType.DOCUMENT
+
+
+def test_infer_artifact_type_url_when_url_only():
+    from discord.deep_analyzer.runner import _infer_artifact_type
+
+    assert _infer_artifact_type({"url": "https://example.com"}) == ArtifactType.URL
+
+
+def test_infer_artifact_type_text_when_neither():
+    from discord.deep_analyzer.runner import _infer_artifact_type
+
+    assert _infer_artifact_type({"content": "hello"}) == ArtifactType.TEXT

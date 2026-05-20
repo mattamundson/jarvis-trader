@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from . import gbrain_sink, storage, vault
+from .handlers.audio import AudioHandler
+from .handlers.document import DocumentHandler
+from .handlers.image import ImageHandler
 from .handlers.text import TextHandler
 from .handlers.url import UrlHandler
 from .models import ArtifactType
@@ -17,17 +20,26 @@ logger = logging.getLogger(__name__)
 DISCORD_GUILD = "1490851278601982165"
 DISCORD_CHANNEL = "1490851279180660819"
 
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+_AUDIO_EXTS = (".wav", ".mp3", ".m4a", ".ogg", ".oga", ".webm", ".flac")
+_DOC_EXTS = (".pdf",)
+
 
 def _infer_artifact_type(row: dict[str, Any]) -> ArtifactType:
-    """Decide which handler should process this row.
-
-    Phase 1 only routes text; URL and attachment rows are skipped
-    (logged, not failed) until later phases wire those handlers.
-    """
-    if row.get("attachment_urls"):
-        return ArtifactType.IMAGE  # placeholder — handler not yet wired
+    """Route on attachment extension first, then URL, then text."""
+    raw = row.get("attachment_urls") or ""
+    if raw:
+        first = raw.split()[0].split(",")[0].lower().split("?", 1)[0]
+        if any(first.endswith(e) for e in _IMAGE_EXTS):
+            return ArtifactType.IMAGE
+        if any(first.endswith(e) for e in _AUDIO_EXTS):
+            return ArtifactType.AUDIO
+        if any(first.endswith(e) for e in _DOC_EXTS):
+            return ArtifactType.DOCUMENT
+        # Unknown attachment type — default to image (vision LLM handles unknowns best)
+        return ArtifactType.IMAGE
     if row.get("url"):
-        return ArtifactType.URL  # placeholder — handler not yet wired
+        return ArtifactType.URL
     return ArtifactType.TEXT
 
 
@@ -69,6 +81,9 @@ async def run_once(
     handlers = {
         ArtifactType.TEXT: TextHandler(),
         ArtifactType.URL: UrlHandler(),
+        ArtifactType.IMAGE: ImageHandler(),
+        ArtifactType.AUDIO: AudioHandler(),
+        ArtifactType.DOCUMENT: DocumentHandler(),
     }
     written = 0
 
