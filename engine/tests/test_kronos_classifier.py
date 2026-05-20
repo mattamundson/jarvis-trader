@@ -229,11 +229,11 @@ def test_forecast_to_verdict_bearish_signal() -> None:
 
 
 def test_forecast_to_verdict_neutral_within_threshold() -> None:
-    """Return within ±BULL_BEAR_THRESHOLD_BPS produces signal=0."""
+    """Return within ±default threshold (63 bps) produces signal=0."""
     from agents.kronos_classifier import KronosClassifier
 
     clf = KronosClassifier()
-    # 10 bps move — below default 20 bps threshold
+    # 10 bps move — well below the 63-bps default threshold
     bars = pd.DataFrame({"close": [100.0] * 15})
     forecast = pd.DataFrame({"close": [100.10] * 5})
     result = clf._forecast_to_verdict(forecast, bars)
@@ -355,9 +355,13 @@ async def test_pipeline_kronos_enabled_returns_classify_result(
     assert result["signal"] == pytest.approx(0.0)
     assert result["confidence"] == pytest.approx(0.0)
     assert result["summary"] == "stub — predictor not wired"
-    # verify classify was called with a DataFrame (not a list of dicts)
-    call_args = kronos.classify.call_args[0][0]
-    assert isinstance(call_args, pd.DataFrame)
+    # verify classify was called with a DataFrame (not a list of dicts) AND symbol
+    call_args = kronos.classify.call_args[0]
+    call_kwargs = kronos.classify.call_args[1]
+    assert isinstance(call_args[0], pd.DataFrame)
+    assert call_kwargs.get("symbol") == "MES" or (
+        len(call_args) > 1 and call_args[1] == "MES"
+    ), f"Expected symbol='MES' passed to classify; call_args={call_args}, call_kwargs={call_kwargs}"
 
 
 async def test_pipeline_kronos_handles_missing_data_manager(
@@ -380,3 +384,64 @@ async def test_pipeline_kronos_handles_missing_data_manager(
     result = await pipeline._call_agent_analyze_kronos("MES", True, "1h")
 
     assert result == {"signal": 0.0, "confidence": 0.0, "summary": "data unavailable"}
+
+
+# ---------------------------------------------------------------------------
+# _threshold_for() — per-instrument threshold selection
+# ---------------------------------------------------------------------------
+
+
+def test_threshold_for_known_symbols() -> None:
+    """Known symbols return their calibrated thresholds."""
+    from agents.kronos_classifier import KronosClassifier
+
+    clf = KronosClassifier()
+    assert clf._threshold_for("MES") == pytest.approx(48.0)
+    assert clf._threshold_for("MNQ") == pytest.approx(63.0)
+    assert clf._threshold_for("MCL") == pytest.approx(207.0)
+
+
+def test_threshold_for_unknown_symbol_falls_back() -> None:
+    """An unknown symbol falls back to BULL_BEAR_THRESHOLD_BPS_DEFAULT (63 bps)."""
+    from agents.kronos_classifier import KronosClassifier
+
+    clf = KronosClassifier()
+    assert clf._threshold_for("XYZ") == pytest.approx(clf.BULL_BEAR_THRESHOLD_BPS_DEFAULT)
+    assert clf._threshold_for("XYZ") == pytest.approx(63.0)
+
+
+def test_threshold_for_none_falls_back() -> None:
+    """symbol=None falls back to BULL_BEAR_THRESHOLD_BPS_DEFAULT (63 bps)."""
+    from agents.kronos_classifier import KronosClassifier
+
+    clf = KronosClassifier()
+    assert clf._threshold_for(None) == pytest.approx(clf.BULL_BEAR_THRESHOLD_BPS_DEFAULT)
+    assert clf._threshold_for(None) == pytest.approx(63.0)
+
+
+def test_classify_with_symbol_uses_specific_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
+    """classify() uses per-instrument threshold — 50 bps triggers MES (48) but not MCL (207).
+
+    We inject a real forecast directly into _forecast_to_verdict to avoid the
+    async _predict_async stub path (which always returns None -> neutral).
+    """
+    from agents.kronos_classifier import KronosClassifier
+
+    clf = KronosClassifier()
+
+    # 50 bps move: above MES threshold (48) → should produce a non-zero signal
+    bars = pd.DataFrame({"close": [100.0] * 15})
+    forecast_50bps = pd.DataFrame({"close": [100.50] * 5})
+
+    mes_result = clf._forecast_to_verdict(forecast_50bps, bars, symbol="MES")
+    assert mes_result["signal"] > 0.0, (
+        f"50 bps should exceed MES threshold (48 bps) and produce bull signal; "
+        f"got signal={mes_result['signal']}"
+    )
+
+    # Same 50 bps move against MCL threshold (207) → should stay neutral
+    mcl_result = clf._forecast_to_verdict(forecast_50bps, bars, symbol="MCL")
+    assert mcl_result["signal"] == pytest.approx(0.0), (
+        f"50 bps is below MCL threshold (207 bps) and should produce neutral signal; "
+        f"got signal={mcl_result['signal']}"
+    )
