@@ -23,7 +23,7 @@ Capital $10K total, $5K/instrument (MCL + MNQ). Paper mode on IB Gateway port 40
 - Live IB Gateway port 4001 is permanently blocked — paper only (port 4002, account DUP662235).
 - Any change to `engine/config.py`, `engine/risk/`, or kill-switch code requires `[safety-review]` PR tag.
 - `LIVE_TRADING_ENABLED = False` and `REQUIRE_HUMAN_APPROVAL = True` are invariants. Kill switch: -2% daily P&L / -10% drawdown. Hardcoded, no LLM route.
-- API auth header: `X-API-Key: xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc` (from `engine/.env`). Port 8010.
+- API auth header: `X-API-Key: <current value in `engine/.env`>` (value rotates — read at use time, do not hardcode here). Port 8010.
 
 ## Dev quick-start
 
