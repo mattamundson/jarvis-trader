@@ -32,6 +32,7 @@ import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
+import { BookmarkFeedPanel } from "@/components/BookmarkFeedPanel";
 import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
 import { EngineHealthWidget } from "@/components/EngineHealthWidget";
@@ -317,6 +318,9 @@ export default function DashboardPage() {
 
             {/* Bookmark Themes — Claude-clustered weekly themes from Discord bookmarks */}
             <BookmarkThemesPanel />
+
+            {/* Bookmark Feed — recent and searchable Discord bookmark rows */}
+            <BookmarkFeedPanel />
 
             {/* Strategy Parameters */}
             <StrategyParamsPanel />
