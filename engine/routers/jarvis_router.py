@@ -639,8 +639,28 @@ def _handle_regime(question: str, context: dict | None) -> tuple[str, list[str],
         )
 
 
+def _fetch_health_for_preflight() -> dict:
+    """Fetch /health and return a parsed dict.  Raises on network/parse error."""
+    import urllib.request
+    from config import settings as _cfg
+
+    health_url = "http://127.0.0.1:8010/health"
+    req = urllib.request.Request(health_url, headers={"X-API-Key": _cfg.API_KEY})
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return json.loads(resp.read().decode())
+
+
 def _handle_pipeline_run(question: str, context: dict | None) -> tuple[str, list[str], list[str]]:
-    """Trigger POST /pipeline/run for a symbol in paper mode."""
+    """Trigger POST /pipeline/run for a symbol in paper mode.
+
+    Safety pre-flight (evaluated before the POST):
+      - kill_switch_active=True  → refused
+      - status != "ok"           → refused
+      - live_trading=True        → refused (paranoid guard; should always be False)
+
+    If the /health fetch itself fails, the pre-flight is skipped and the pipeline
+    run proceeds (fail-open) with a warning logged.
+    """
     import urllib.request
     import urllib.error
     from config import settings as _cfg
@@ -650,6 +670,34 @@ def _handle_pipeline_run(question: str, context: dict | None) -> tuple[str, list
         sym_match.group(1).upper() if sym_match else ((context or {}).get("symbol", "MES").upper())
     )
 
+    health_url = "http://127.0.0.1:8010/health"
+
+    # ── Safety pre-flight ────────────────────────────────────────────────────
+    try:
+        health_data = _fetch_health_for_preflight()
+        status = health_data.get("status", "unknown")
+        ks = bool(health_data.get("kill_switch_active", False))
+        lt = bool(health_data.get("live_trading", False))
+
+        if ks or status != "ok" or lt:
+            reason = (
+                f"status={status}, kill_switch_active={ks}, live_trading={lt}. "
+                "Resolve via engine/risk/safety_layer.py and engine restart."
+            )
+            logger.warning("[jarvis/ask] pipeline_run refused by safety pre-flight: %s", reason)
+            return (
+                f"Refused: pipeline_run blocked by safety pre-flight. {reason}",
+                [health_url],
+                [],
+            )
+    except Exception as _pf_exc:
+        logger.warning(
+            "[jarvis/ask] pipeline_run safety pre-flight could not reach /health "
+            "(proceeding fail-open): %s",
+            _pf_exc,
+        )
+
+    # ── Execute pipeline run ─────────────────────────────────────────────────
     url = "http://127.0.0.1:8010/pipeline/run"
     payload = json.dumps({"symbol": symbol, "is_futures": True, "interval": "1h"}).encode()
     try:
