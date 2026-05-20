@@ -103,3 +103,72 @@ def test_render_digest_returns_stats(populated_db, tmp_path):
     text = path.read_text(encoding="utf-8")
     assert "Total: 3" in text
     assert "Cost: $" in text
+
+
+@pytest.fixture
+def db_with_p0(tmp_db: Path) -> Path:
+    """Seed a db with one P0 (broken extract) and one P4 row."""
+    storage.migrate(tmp_db)
+    conn = sqlite3.connect(tmp_db)
+    conn.executemany(
+        """
+        INSERT INTO discord_bookmarks
+          (message_id, channel_id, posted_at, url, domain, source_type, content)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            ("p0_id", "c1", "2026-05-20T10:00:00Z", "https://x.com/a/1", "x.com", "x_post", None),
+            ("p4_id", "c1", "2026-05-20T10:01:00Z", "https://x.com/a/2", "x.com", "x_post", None),
+        ],
+    )
+    now = datetime.utcnow()
+    conn.executemany(
+        "INSERT INTO discord_analyses "
+        "(bookmark_id, artifact_type, summary, structured_json, cost_usd, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (
+                "p0_id",
+                "url",
+                "Page could not be retrieved (privacy extension).",
+                '{"priority":0,"tickers":[]}',
+                0.0002,
+                now.strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+            (
+                "p4_id",
+                "url",
+                "Bull thesis on MES into FOMC.",
+                '{"priority":4,"tickers":["MES"]}',
+                0.0010,
+                now.strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    return tmp_db
+
+
+def test_render_digest_filters_p0_from_top_items(db_with_p0, tmp_path):
+    path = digest.render(db_path=db_with_p0, vault_root=tmp_path)
+    text = path.read_text(encoding="utf-8")
+    # P0 broken-extract summary must NOT appear in top items
+    assert "could not be retrieved" not in text
+    # P4 signal row must still appear
+    assert "Bull thesis on MES" in text
+
+
+def test_render_digest_reports_p0_count_separately(db_with_p0, tmp_path):
+    path = digest.render(db_path=db_with_p0, vault_root=tmp_path)
+    text = path.read_text(encoding="utf-8")
+    # Total reflects signal rows only (1), P0 reported separately (1)
+    assert "Total: 1" in text
+    assert "Filtered (P0 / broken extracts): 1" in text
+
+
+def test_render_digest_cost_includes_p0(db_with_p0, tmp_path):
+    path = digest.render(db_path=db_with_p0, vault_root=tmp_path)
+    text = path.read_text(encoding="utf-8")
+    # Cost line should reflect BOTH rows (0.0002 + 0.0010 = 0.0012)
+    assert "Cost: $0.0012" in text
