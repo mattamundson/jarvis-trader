@@ -33,7 +33,8 @@ Today the channel feeds a SQLite `discord_bookmarks` table (393+ rows) via a dai
 | `engine/discord/` package | Production | Hosts the new `deep_analyzer/` submodule |
 | `discord_bookmarks` SQLite table | 393+ rows | Source of artifacts to analyze; gets 3 new columns |
 | `refresh_discord_bookmarks.ps1` scheduled task | Daily | Continues to populate `discord_bookmarks`; unchanged |
-| Hermes gateway (system service, Gemini 2.5-flash primary, Anthropic Haiku fallback) | Active | LLM gateway for the analyzer |
+| `engine/llm/client.py` `JarvisLLMClient` | Production | LLM gateway — Anthropic primary, Gemini failover, cost tracker, `llm_path_healthy` signal. Already wired. |
+| Hermes gateway (Telegram/Discord adapter, separate process) | Active | Used only for the daily Discord DM digest delivery — NOT for LLM calls (Hermes has no REST LLM endpoint). |
 | `~/my-vault` Obsidian vault | Active | Output surface 1 — durable markdown per artifact |
 | gbrain trading brain (1248p / 2251 chunks, Ollama 768-dim embeddings) | Active | Output surface 2 — semantic retrieval |
 
