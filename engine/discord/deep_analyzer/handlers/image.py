@@ -43,14 +43,14 @@ class ImageHandler:
         urls = _split_urls(row.get("attachment_urls") or "")
         image_urls = [u for u in urls if _looks_like_image(u)]
         if not image_urls:
-            raise ValueError(f"no image attachment in row {row.get('id')}")
+            raise ValueError(f"no image attachment in row {row.get('message_id')}")
 
         data, mime = await _download(image_urls[0])
         resp = await call_vision(prompt=IMAGE_SYSTEM, image_bytes=data, mime=mime)
         summary, structured = _parse_json_reply(resp.reply)
 
         return AnalysisResult(
-            bookmark_id=int(row["id"]),
+            bookmark_id=str(row["message_id"]),
             artifact_type=ArtifactType.IMAGE,
             summary=summary,
             structured=structured,

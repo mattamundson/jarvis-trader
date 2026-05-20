@@ -13,7 +13,7 @@ from discord.deep_analyzer.vault import write_page
 @pytest.fixture
 def sample_result() -> AnalysisResult:
     return AnalysisResult(
-        bookmark_id=42,
+        bookmark_id="42",
         artifact_type=ArtifactType.TEXT,
         summary="Trader thinking about MES short.",
         structured={"tickers": ["MES"], "priority": 4, "sentiment": "bearish"},

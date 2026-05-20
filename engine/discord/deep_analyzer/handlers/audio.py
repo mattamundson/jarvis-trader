@@ -70,7 +70,7 @@ class AudioHandler:
         urls = _split_urls(row.get("attachment_urls") or "")
         audio_urls = [u for u in urls if _looks_like_audio(u)]
         if not audio_urls:
-            raise ValueError(f"no audio attachment in row {row.get('id')}")
+            raise ValueError(f"no audio attachment in row {row.get('message_id')}")
 
         local = await _download_to_temp(audio_urls[0])
         try:
@@ -89,7 +89,7 @@ class AudioHandler:
         structured.setdefault("transcript_chars", len(transcript))
 
         return AnalysisResult(
-            bookmark_id=int(row["id"]),
+            bookmark_id=str(row["message_id"]),
             artifact_type=ArtifactType.AUDIO,
             summary=summary,
             structured=structured,

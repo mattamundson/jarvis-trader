@@ -32,7 +32,7 @@ class TextHandler:
         content = row.get("content") or ""
         if not content.strip():
             return AnalysisResult(
-                bookmark_id=int(row["id"]),
+                bookmark_id=str(row["message_id"]),
                 artifact_type=ArtifactType.TEXT,
                 summary="(empty text — nothing to analyze)",
                 structured={},
@@ -45,7 +45,7 @@ class TextHandler:
         summary, structured = _parse_json_reply(resp.reply)
 
         return AnalysisResult(
-            bookmark_id=int(row["id"]),
+            bookmark_id=str(row["message_id"]),
             artifact_type=ArtifactType.TEXT,
             summary=summary,
             structured=structured,

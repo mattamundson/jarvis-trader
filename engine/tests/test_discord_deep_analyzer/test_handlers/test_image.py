@@ -55,7 +55,7 @@ async def test_image_handler_downloads_and_analyzes(fake_vision_llm):
         ):
             out = await ImageHandler().analyze(
                 {
-                    "id": 5,
+                    "message_id": "m5",
                     "attachment_urls": "https://cdn.discord.com/red.png",
                 }
             )
@@ -81,7 +81,7 @@ async def test_image_handler_picks_first_attachment_when_multiple():
         ):
             out = await ImageHandler().analyze(
                 {
-                    "id": 5,
+                    "message_id": "m5",
                     "attachment_urls": "https://cdn.discord.com/a.png https://cdn.discord.com/b.png",
                 }
             )

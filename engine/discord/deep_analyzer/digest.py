@@ -25,9 +25,9 @@ def _fetch_last_24h(db_path: Path | str) -> list[dict]:
     try:
         rows = conn.execute(
             """
-            SELECT a.*, b.message_id, b.posted_at
+            SELECT a.*, b.posted_at
             FROM discord_analyses a
-            JOIN discord_bookmarks b ON a.bookmark_id = b.id
+            JOIN discord_bookmarks b ON a.bookmark_id = b.message_id
             WHERE datetime(a.created_at) >= datetime('now', '-24 hours')
             ORDER BY a.created_at DESC
             """

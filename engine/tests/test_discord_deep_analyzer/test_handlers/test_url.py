@@ -44,7 +44,7 @@ async def test_url_handler_fetches_and_summarizes_article(fake_llm):
             "discord.deep_analyzer.handlers.url.call_text", AsyncMock(return_value=fake_llm)
         ):
             out = await UrlHandler().analyze(
-                {"id": 9, "url": "https://example.com/article", "content": None}
+                {"message_id": "m9", "url": "https://example.com/article", "content": None}
             )
     assert out.artifact_type == "url"
     assert out.structured["source_kind"] == "github"
@@ -59,7 +59,7 @@ async def test_url_handler_handles_x_js_required_fallback(fake_llm):
             "discord.deep_analyzer.handlers.url.call_text", AsyncMock(return_value=fake_llm)
         ):
             out = await UrlHandler().analyze(
-                {"id": 9, "url": "https://x.com/foo/status/1", "content": None}
+                {"message_id": "m9", "url": "https://x.com/foo/status/1", "content": None}
             )
     assert out.summary  # got an analysis even with JS-required body
 
@@ -72,6 +72,6 @@ async def test_url_handler_handles_404(fake_llm):
             "discord.deep_analyzer.handlers.url.call_text", AsyncMock(return_value=fake_llm)
         ):
             out = await UrlHandler().analyze(
-                {"id": 9, "url": "https://example.com/gone", "content": None}
+                {"message_id": "m9", "url": "https://example.com/gone", "content": None}
             )
     assert out.summary  # 404 doesn't kill the row — LLM gets URL as context

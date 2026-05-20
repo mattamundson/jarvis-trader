@@ -15,7 +15,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS discord_analyses (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    bookmark_id     INTEGER NOT NULL REFERENCES discord_bookmarks(id),
+    bookmark_id     TEXT NOT NULL REFERENCES discord_bookmarks(message_id),
     artifact_type   TEXT    NOT NULL,
     summary         TEXT    NOT NULL,
     structured_json TEXT    NOT NULL,
@@ -82,16 +82,17 @@ def pick_unanalyzed(db_path: Path | str, limit: int = 5) -> list[dict[str, Any]]
         conn.close()
 
 
-def claim_rows(db_path: Path | str, ids: list[int]) -> int:
+def claim_rows(db_path: Path | str, message_ids: list[str]) -> int:
     """Mark rows as claimed_at = now(). Returns rowcount."""
-    if not ids:
+    if not message_ids:
         return 0
-    placeholders = ",".join("?" * len(ids))
+    placeholders = ",".join("?" * len(message_ids))
     conn = sqlite3.connect(db_path)
     try:
         cur = conn.execute(
-            f"UPDATE discord_bookmarks SET claimed_at = datetime('now') WHERE id IN ({placeholders})",
-            ids,
+            f"UPDATE discord_bookmarks SET claimed_at = datetime('now') "
+            f"WHERE message_id IN ({placeholders})",
+            message_ids,
         )
         conn.commit()
         return cur.rowcount
@@ -102,7 +103,7 @@ def claim_rows(db_path: Path | str, ids: list[int]) -> int:
 def insert_analysis(
     db_path: Path | str,
     *,
-    bookmark_id: int,
+    bookmark_id: str,
     artifact_type: str,
     summary: str,
     structured_json: dict,
@@ -142,12 +143,13 @@ def insert_analysis(
         conn.close()
 
 
-def mark_analyzed(db_path: Path | str, bookmark_id: int, analysis_id: int) -> None:
+def mark_analyzed(db_path: Path | str, bookmark_id: str, analysis_id: int) -> None:
     """Finalize a row — sets analyzed_at = now() and links analysis_id."""
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
-            "UPDATE discord_bookmarks SET analyzed_at = datetime('now'), analysis_id = ? WHERE id = ?",
+            "UPDATE discord_bookmarks SET analyzed_at = datetime('now'), analysis_id = ? "
+            "WHERE message_id = ?",
             (analysis_id, bookmark_id),
         )
         conn.commit()

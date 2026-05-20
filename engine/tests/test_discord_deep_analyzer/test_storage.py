@@ -82,7 +82,7 @@ def test_daily_cost_returns_sum(seeded_db: Path):
     conn = sqlite3.connect(seeded_db)
     conn.executemany(
         "INSERT INTO discord_analyses (bookmark_id, artifact_type, summary, structured_json, cost_usd) "
-        "VALUES (1, 'text', 's', '{}', ?)",
+        "VALUES ('m1', 'text', 's', '{}', ?)",
         [(0.50,), (0.30,)],
     )
     conn.commit()

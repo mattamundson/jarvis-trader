@@ -59,7 +59,7 @@ async def test_document_handler_extracts_and_analyzes(fake_doc_llm):
         ):
             out = await DocumentHandler().analyze(
                 {
-                    "id": 11,
+                    "message_id": "m11",
                     "attachment_urls": "https://cdn.discord.com/x.pdf",
                 }
             )

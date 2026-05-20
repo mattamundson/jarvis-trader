@@ -31,7 +31,7 @@ class AnalysisResult(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    bookmark_id: int
+    bookmark_id: str
     artifact_type: ArtifactType
     summary: str
     structured: dict[str, Any] = Field(default_factory=dict)

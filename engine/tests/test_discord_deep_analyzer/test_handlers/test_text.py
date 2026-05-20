@@ -31,8 +31,10 @@ async def test_text_handler_returns_structured_result():
     )
     with patch("discord.deep_analyzer.handlers.text.call_text", AsyncMock(return_value=fake)):
         h = TextHandler()
-        out = await h.analyze({"id": 1, "content": "thinking about shorting MES if it breaks 5800"})
-    assert out.bookmark_id == 1
+        out = await h.analyze(
+            {"message_id": "m1", "content": "thinking about shorting MES if it breaks 5800"}
+        )
+    assert out.bookmark_id == "m1"
     assert out.artifact_type == "text"
     assert out.structured["tickers"] == ["MES"]
     assert "MES" in out.summary
@@ -49,7 +51,7 @@ async def test_text_handler_handles_non_json_reply_gracefully():
     )
     with patch("discord.deep_analyzer.handlers.text.call_text", AsyncMock(return_value=fake)):
         h = TextHandler()
-        out = await h.analyze({"id": 1, "content": "noise"})
+        out = await h.analyze({"message_id": "m1", "content": "noise"})
     # Falls back to using the raw reply as summary
     assert out.summary == "plain prose not JSON"
     assert out.structured == {}

@@ -71,7 +71,7 @@ class UrlHandler:
         summary, structured = _parse_json_reply(resp.reply)
 
         return AnalysisResult(
-            bookmark_id=int(row["id"]),
+            bookmark_id=str(row["message_id"]),
             artifact_type=ArtifactType.URL,
             summary=summary,
             structured=structured,

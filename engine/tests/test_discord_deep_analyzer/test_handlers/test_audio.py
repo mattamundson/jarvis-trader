@@ -51,7 +51,7 @@ async def test_audio_handler_transcribes_and_analyzes(fake_audio_llm):
         ):
             out = await AudioHandler().analyze(
                 {
-                    "id": 6,
+                    "message_id": "m6",
                     "attachment_urls": "https://cdn.discord.com/memo.wav",
                 }
             )
