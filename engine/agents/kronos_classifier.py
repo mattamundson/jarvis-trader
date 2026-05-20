@@ -1,31 +1,43 @@
 """
 JARVIS TRADER — Kronos Financial Foundation Model Classifier (stub)
 ===================================================================
-Wraps the (future) Kronos paper-based financial foundation model as the 7th
-analyst in the debate pipeline. Produces a :class:`VisionClassification`-
-compatible verdict so it can slot alongside ``PatternVisionAnalyst`` without
-requiring pipeline.py changes.
+Wraps the (future) shiyu-coder/Kronos foundation model as the 7th analyst in
+the debate pipeline. The paper input schema requires a ``pd.DataFrame`` with
+columns ``open``, ``high``, ``low``, ``close`` (``volume`` optional) and a
+minimum of ``MIN_BARS`` rows.
 
-STUB ONLY — no HF Inference API or real LLM call yet. The paper schema for
-Kronos's output format has not been locked; wire in the real call once that
-lands. See ``docs/digest/`` for the integration card.
+``classify()`` is async-compatible (FastAPI-safe) and always returns a plain
+``dict`` with keys ``signal``, ``confidence``, ``summary``.
 
 Gated by ``ENABLE_KRONOS`` env var (default off — set to ``"1"`` to activate).
 Do NOT add this flag to ``engine/.env.example`` automatically; Amo will do that.
+
+STUB MODE: the real ``KronosPredictor.predict()`` call is not wired. When the
+predictor is ready, fill in ``_predict_sync`` only — no other interface change
+is needed for callers (``_predict_async`` calls it in an executor, ``classify``
+calls ``_predict_async``, ``_forecast_to_verdict`` maps the result to the
+contract dict).
+
+See ``docs/runbooks/KRONOS_AND_RESEARCH_AGENT_RUNBOOK.md`` for schema and
+calibration notes (confirmed in commit e72ae23).
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-from dataclasses import dataclass, field
-from typing import Any
+from typing import Optional
 
-# Re-use the shared VisionClassification dataclass from pattern_vision_analyst
-# so the debate stack receives identical output shape from both visual analysts.
-from agents.pattern_vision_analyst import VisionClassification, _clamp  # noqa: PLC2701
+import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Type alias
+# ---------------------------------------------------------------------------
+
+KronosBars = pd.DataFrame  # expected columns: open, high, low, close, volume (opt)
 
 # ---------------------------------------------------------------------------
 # Environment-flag helper
@@ -35,59 +47,15 @@ _ENV_FLAG = "ENABLE_KRONOS"
 
 
 def is_kronos_enabled() -> bool:
-    """Return True only when the ``ENABLE_KRONOS`` env var is set to ``"1"``.
+    """Return True only when ``ENABLE_KRONOS`` is set to the exact string ``"1"``.
 
-    Intentionally strict: any value other than the exact string ``"1"`` is
-    treated as disabled so that accidentally-set env vars don't activate a
-    stub that emits neutral verdicts and silently dilutes the debate stack.
+    Re-read from ``os.environ`` on every call (no module-level caching) so that
+    ``/admin/feature-flags`` toggles take effect without an engine restart.
+    The strict equality guards against accidentally-truthy values (``"true"``,
+    ``" 1"``, etc.) silently activating a neutral-verdict stub that would dilute
+    the debate stack with phantom signal.
     """
-    return os.environ.get(_ENV_FLAG, "") == "1"
-
-
-# ---------------------------------------------------------------------------
-# Output dataclass (pipeline-compatible)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class KronosVerdict:
-    """Structured output of the Kronos classifier, pipeline-compatible.
-
-    Mirrors the signal semantics of :class:`PatternVisionReport`:
-    ``signal`` in ``[-1.0, +1.0]``, ``confidence`` in ``[0.0, 1.0]``.
-    An abstention carries ``confidence=0.0`` and ``indicators["weight"] == 0.0``
-    so ``pipeline._run_analysts.safe_analyze`` excludes it from confidence math
-    (same convention as ``TechnicalReport._no_price_report``).
-    """
-
-    signal: float = 0.0
-    confidence: float = 0.0
-    direction: str = "neutral"
-    reasoning: str = ""
-    indicators: dict = field(default_factory=dict)
-
-    def to_vision_classification(self) -> VisionClassification:
-        """Convert to the shared :class:`VisionClassification` shape.
-
-        This lets the debate stack treat Kronos output identically to
-        PatternVisionAnalyst output without requiring a new protocol branch.
-        """
-        return VisionClassification(
-            pattern_type="no_clear_pattern",
-            signal=_clamp(self.signal, -1.0, 1.0),
-            confidence=_clamp(self.confidence, 0.0, 1.0),
-            reasoning=self.reasoning,
-            raw="",
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "signal": self.signal,
-            "confidence": self.confidence,
-            "direction": self.direction,
-            "reasoning": self.reasoning,
-            "indicators": self.indicators,
-        }
+    return os.environ.get(_ENV_FLAG, "").strip() == "1"
 
 
 # ---------------------------------------------------------------------------
@@ -96,114 +64,134 @@ class KronosVerdict:
 
 
 class KronosClassifier:
-    """7th analyst stub for the debate pipeline — Kronos foundation model.
+    """Stub for the shiyu-coder/Kronos foundation model.
 
-    Interface contract mirrors :class:`agents.pattern_vision_analyst.VisionClassifier`
-    in spirit: an ``async classify`` method that accepts time-series bars and
-    returns a structured verdict. The signature differs slightly because Kronos
-    operates on raw OHLCV bars rather than rendered PNG bytes.
+    Real implementation fills in ``_predict_sync`` only — callers see no
+    interface change because ``classify`` always delegates through
+    ``_predict_async`` → ``_predict_sync`` → ``_forecast_to_verdict``.
 
-    Real implementation will:
-    1. Serialize ``bars`` to the Kronos paper's input schema (to be locked).
-    2. Call the HF Inference API endpoint (model id TBD).
-    3. Parse the response into a :class:`KronosVerdict`.
-    4. Return ``verdict.to_vision_classification()`` for debate-stack compat.
-
-    Until those steps are ready, ``classify`` returns a hardcoded neutral
-    verdict with ``confidence=0.0`` so it contributes zero weight to the
-    debate outcome. Graceful-degradation contract: never raises.
+    Graceful-degradation contract: ``classify`` never raises.
     """
 
-    def __init__(self) -> None:
-        if not is_kronos_enabled():
-            logger.debug(
-                "[KronosClassifier] ENABLE_KRONOS is not set — classifier instantiated "
-                "but will return neutral abstentions on every call."
-            )
+    MIN_BARS: int = 10
+    # 0.20% predicted return — calibration TBD, see runbook for threshold rationale
+    BULL_BEAR_THRESHOLD_BPS: float = 20.0
 
-    async def classify(self, bars: list[dict]) -> VisionClassification:
-        """Classify a list of OHLCV bar dicts.
+    def __init__(self, model_name: str = "kronos-mini", lookback: int = 400) -> None:
+        self.model_name = model_name
+        self.lookback = lookback
+        self._predictor = None  # Loaded lazily; stays None in stub mode
+        if not is_kronos_enabled():
+            logger.debug("[KronosClassifier] ENABLE_KRONOS is not set — stub will return neutral.")
+
+    async def classify(self, bars: KronosBars) -> dict:
+        """Classify an OHLC(V) DataFrame.  Always returns a dict.
 
         Args:
-            bars: List of bar dicts (keys: ``open``, ``high``, ``low``,
-                  ``close``, ``volume``, ``timestamp``). Empty list is valid
-                  for testing; the real model will require at least N bars
-                  (N TBD from paper schema).
+            bars: ``pd.DataFrame`` with at minimum columns
+                  ``open``, ``high``, ``low``, ``close`` and ``MIN_BARS`` rows.
+                  ``volume`` is accepted but not required.
 
         Returns:
-            A :class:`VisionClassification` with ``confidence=0.0`` and
-            ``reasoning`` set to the stub message until the real call is wired.
-            The ``pattern_type`` is always ``"no_clear_pattern"`` in stub mode.
+            ``{"signal": float, "confidence": float, "summary": str}``
+
+            * ``signal`` — ``[-1.0, +1.0]`` (negative = bearish, positive = bullish)
+            * ``confidence`` — ``[0.0, 1.0]``
+            * ``summary`` — human-readable explanation for debate-stack logging
         """
-        if not is_kronos_enabled():
-            return self._disabled_verdict()
+        if not isinstance(bars, pd.DataFrame):
+            return {
+                "signal": 0.0,
+                "confidence": 0.0,
+                "summary": "bars not DataFrame",
+            }
+        if len(bars) < self.MIN_BARS:
+            return {
+                "signal": 0.0,
+                "confidence": 0.0,
+                "summary": f"need >={self.MIN_BARS} bars, got {len(bars)}",
+            }
+        for col in ("open", "high", "low", "close"):
+            if col not in bars.columns:
+                return {
+                    "signal": 0.0,
+                    "confidence": 0.0,
+                    "summary": f"missing column {col}",
+                }
 
-        # TODO: replace stub body with real HF Inference API call
-        # once Kronos paper schema is locked.  Remove the stub once verified.
-        logger.info(
-            "[KronosClassifier] ENABLE_KRONOS=1 but real model not yet wired — "
-            "returning neutral stub verdict."
-        )
-        return self._stub_verdict()
+        # Delegate through the async wrapper so the FastAPI event loop is not blocked
+        # when the real predictor is wired.
+        forecast = await self._predict_async(bars)
+        return self._forecast_to_verdict(forecast, bars)
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
+    async def _predict_async(self, bars: KronosBars) -> Optional[pd.DataFrame]:
+        """Run the synchronous predictor in an executor to avoid blocking the loop.
 
-    @staticmethod
-    def _stub_verdict() -> VisionClassification:
-        """Neutral stub verdict returned when flag is set but model not wired."""
-        return VisionClassification(
-            pattern_type="no_clear_pattern",
-            signal=0.0,
-            confidence=0.0,
-            reasoning="stub — Kronos not yet wired",
-            raw="",
-        )
+        Stub returns ``None``.  Real implementation::
 
-    @staticmethod
-    def _disabled_verdict() -> VisionClassification:
-        """Neutral abstention returned when ENABLE_KRONOS is not set."""
-        return VisionClassification(
-            pattern_type="no_clear_pattern",
-            signal=0.0,
-            confidence=0.0,
-            reasoning="Kronos disabled (ENABLE_KRONOS not set)",
-            raw="",
-        )
-
-    async def classify_to_verdict(self, bars: list[dict]) -> KronosVerdict:
-        """Convenience wrapper returning the richer :class:`KronosVerdict` shape.
-
-        Useful for tests or callers that want the ``direction`` and
-        ``indicators`` fields before the debate stack normalises to
-        :class:`VisionClassification`.
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, self._predict_sync, bars)
         """
-        vc = await self.classify(bars)
-        direction = "neutral"
-        if vc.signal > 0.05:
-            direction = "bullish"
-        elif vc.signal < -0.05:
-            direction = "bearish"
-        return KronosVerdict(
-            signal=vc.signal,
-            confidence=vc.confidence,
-            direction=direction,
-            reasoning=vc.reasoning,
-            indicators={"weight": vc.confidence},
-        )
+        return None  # stub — no predictor loaded
+
+    def _predict_sync(self, bars: KronosBars) -> pd.DataFrame:
+        """Synchronous wrapper around ``KronosPredictor.predict()``.
+
+        Stub raises ``NotImplementedError``.  Real implementation calls the
+        predictor and returns a forecast DataFrame with the same OHLC schema.
+        """
+        raise NotImplementedError("Kronos predictor not loaded; this is a stub")
+
+    def _forecast_to_verdict(
+        self,
+        forecast: Optional[pd.DataFrame],
+        bars: KronosBars,
+    ) -> dict:
+        """Map a forecast DataFrame to the contract dict.
+
+        When ``forecast`` is ``None`` (stub or load failure) the method returns
+        a neutral dict so ``_predict_async`` returning ``None`` is safe.
+
+        Signal derivation:
+          * Compute predicted return in basis points vs. last observed close.
+          * If ``abs(ret_bps) <= BULL_BEAR_THRESHOLD_BPS`` → neutral (signal=0).
+          * Otherwise scale linearly, clamped to ``[-1.0, +1.0]``.
+        Confidence proxy (until MC sample_count > 1 is wired):
+          * ``min(1.0, abs(ret_bps) / (5 * BULL_BEAR_THRESHOLD_BPS))``
+        """
+        if forecast is None:
+            return {
+                "signal": 0.0,
+                "confidence": 0.0,
+                "summary": "stub — predictor not wired",
+            }
+
+        last_close = float(bars["close"].iloc[-1])
+        pred_close = float(forecast["close"].iloc[-1])
+        ret_bps = (pred_close - last_close) / last_close * 10_000
+
+        scale = 5.0 * self.BULL_BEAR_THRESHOLD_BPS
+        if ret_bps > self.BULL_BEAR_THRESHOLD_BPS:
+            signal = min(1.0, ret_bps / scale)
+        elif ret_bps < -self.BULL_BEAR_THRESHOLD_BPS:
+            signal = max(-1.0, ret_bps / scale)
+        else:
+            signal = 0.0
+
+        confidence = min(1.0, abs(ret_bps) / scale)
+
+        return {
+            "signal": signal,
+            "confidence": confidence,
+            "summary": f"predicted {ret_bps:+.1f} bps over {len(forecast)} bars",
+        }
 
 
 # ---------------------------------------------------------------------------
-# NEXT STEPS (live-wiring follow-up, not in scope for this stub)
+# NEXT STEPS (live-wiring follow-up — not in scope for this stub)
 # ---------------------------------------------------------------------------
-# 1. Lock the Kronos paper input/output schema (bar count, feature encoding).
-# 2. Implement ``_call_kronos_api(bars)`` that:
-#    - POSTs serialised bars to HF Inference endpoint
-#    - Parses ``{"signal": float, "confidence": float, "reasoning": str}``
-#    - Validates signal/confidence ranges with ``_clamp``
-# 3. Replace ``_stub_verdict()`` / ``_disabled_verdict()`` calls in
-#    ``classify()`` with ``_call_kronos_api(bars)`` results.
-# 4. Wire into ``pipeline._run_analysts`` as 7th analyst, gated on
-#    ``is_kronos_enabled()`` at pipeline init (not per-call, for perf).
-# 5. Add ``ENABLE_KRONOS=`` to ``engine/.env.example`` (Amo does this step).
+# 1. Implement _predict_sync to call KronosPredictor.predict(bars).
+#    The paper requires pd.DataFrame input (confirmed e72ae23); no HF endpoint.
+# 2. Wire MC rollout sample_count > 1 into _forecast_to_verdict confidence.
+# 3. Calibrate BULL_BEAR_THRESHOLD_BPS — see runbook § calibration.
+# 4. Add ENABLE_KRONOS= to engine/.env.example (Amo does this step).
