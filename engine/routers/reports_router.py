@@ -5,10 +5,18 @@ from datetime import datetime, timedelta
 from datetime import timezone as _tz
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 logger = logging.getLogger(__name__)
+
+
+def get_db_path() -> str:
+    """Return the SQLite database path (mirrors discord_router pattern)."""
+    import os
+
+    return os.environ.get("DB_PATH", "data/jarvis_trader.db")
+
 
 # Global references (injected from main.py)
 _db_manager = None
@@ -69,3 +77,33 @@ async def get_7d_performance() -> dict[str, Any]:
     except Exception as e:
         logger.error(f"[REPORTS] 7d performance error: {e}")
         raise HTTPException(500, f"Failed to get 7d performance: {e}") from e
+
+
+@router.get("/quantstats")
+async def get_quantstats(
+    run_id: str | None = Query(
+        None, description="Optional run identifier to filter paper_trades by notes field"
+    ),
+    days: int = Query(90, ge=7, le=365, description="Look-back window in calendar days"),
+    db_path: str = Depends(get_db_path),
+) -> dict[str, Any]:
+    """Return a QuantStats metrics blob for the paper trading window.
+
+    Prefers ``pnl_snapshots`` (equity-curve based); falls back to aggregating
+    ``paper_trades.pnl`` by exit date.  Returns the shell with nulls (200) when
+    no trades exist in the window — never raises on empty data.
+    """
+    try:
+        from reports.quantstats_metrics import _load_pnl_series, compute_quantstats_metrics
+
+        series, source, n_trades, start, end = _load_pnl_series(db_path, run_id, days)
+        metrics = compute_quantstats_metrics(series, source=source)
+        metrics.update(
+            {"n_trades": n_trades, "start_date": start, "end_date": end, "source": source}
+        )
+        return metrics
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[REPORTS] quantstats error: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
