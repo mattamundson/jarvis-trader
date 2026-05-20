@@ -27,14 +27,121 @@ _CRON_RE = re.compile(
 )
 
 # Natural-language schedule fallback (e.g. "every day 8am Central", "weekly Mon 9am").
+# Note: longer day variants must precede shorter ones in alternation (weekday > week,
+# monday > mon) because regex alternation is greedy left-to-right.
 _NL_SCHEDULE_RE = re.compile(
-    r"(?i)\b(every (?:day|hour|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
-    r"(?:\s+at\s+\S+(?:\s+(?:am|pm))?)?(?:\s+\S+)?"
-    r"|daily(?:\s+at\s+\S+)?"
+    r"(?i)\b(every (?:weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|day|hour|week)"
+    r"(?:s)?"
+    r"(?:\s+at)?(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?"
+    r"|daily(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?"
     r"|weekly(?:\s+\S+)?"
     r"|hourly"
-    r"|nightly(?:\s+at\s+\S+)?)",
+    r"|nightly(?:\s+at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?"
+    r"|every\s+\d+\s+(?:minute|min|hour|day|week)s?)",
 )
+
+# "every N minutes/hours" → cron `*/N * * * *` / `0 */N * * *`.
+_EVERY_N_RE = re.compile(r"(?i)\bevery\s+(\d+)\s+(minute|min|hour|day|week)s?\b")
+
+# Day-of-week to cron index (0=Sun … 6=Sat).
+_DOW = {
+    "sunday": 0,
+    "sun": 0,
+    "monday": 1,
+    "mon": 1,
+    "tuesday": 2,
+    "tue": 2,
+    "tues": 2,
+    "wednesday": 3,
+    "wed": 3,
+    "thursday": 4,
+    "thu": 4,
+    "thurs": 4,
+    "friday": 5,
+    "fri": 5,
+    "saturday": 6,
+    "sat": 6,
+}
+
+# "every day at 8am" / "daily 6am" / "every weekday at 8am".
+_DAILY_AT_RE = re.compile(
+    r"(?i)\b(?:every\s+(?:week)?day|daily|nightly)"
+    r"(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b",
+)
+
+# "weekly on Monday at 10am" / "every Sunday 7pm".
+_WEEKLY_DOW_RE = re.compile(
+    r"(?i)\b(?:weekly\s+on|every)\s+"
+    r"(sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thurs|friday|fri|saturday|sat)"
+    r"s?"
+    r"(?:\s+at)?\s*(\d{1,2})?(?::(\d{2}))?\s*(am|pm)?\b",
+)
+
+
+def _phrase_to_cron(phrase: str) -> str | None:
+    """Convert common natural-language schedule phrases to cron form.
+
+    Returns None if the phrase isn't recognized — caller can fall back to
+    leaving the phrase as-is and letting Hermes parse it.
+    """
+    text = phrase.strip()
+
+    # "every N minute/hour/day/week" → standard cron.
+    m = _EVERY_N_RE.search(text)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2).lower()
+        if unit in ("minute", "min"):
+            return f"*/{n} * * * *"
+        if unit == "hour":
+            return f"0 */{n} * * *"
+        if unit == "day":
+            return f"0 0 */{n} * *"
+        if unit == "week":
+            # cron has no /week field — use `0 0 * * 0` for weekly Sunday default.
+            return "0 0 * * 0"
+
+    # "weekly on <dow> at <H>(am|pm)" / "every <dow> <H>am".
+    m = _WEEKLY_DOW_RE.search(text)
+    if m:
+        dow_word = m.group(1).lower()
+        dow_idx = _DOW.get(dow_word)
+        if dow_idx is not None:
+            hour = int(m.group(2)) if m.group(2) else 0
+            minute = int(m.group(3)) if m.group(3) else 0
+            ampm = (m.group(4) or "").lower()
+            if ampm == "pm" and hour < 12:
+                hour += 12
+            elif ampm == "am" and hour == 12:
+                hour = 0
+            return f"{minute} {hour} * * {dow_idx}"
+
+    # "every weekday at <H>(am|pm)" — Mon-Fri (1-5).
+    if re.search(r"(?i)\bevery\s+weekday\b", text):
+        m = _DAILY_AT_RE.search(text)
+        if m:
+            hour = int(m.group(1))
+            minute = int(m.group(2)) if m.group(2) else 0
+            ampm = (m.group(3) or "").lower()
+            if ampm == "pm" and hour < 12:
+                hour += 12
+            elif ampm == "am" and hour == 12:
+                hour = 0
+            return f"{minute} {hour} * * 1-5"
+
+    # "every day at <H>(am|pm)" / "daily 6am" / "nightly at 11pm".
+    m = _DAILY_AT_RE.search(text)
+    if m:
+        hour = int(m.group(1))
+        minute = int(m.group(2)) if m.group(2) else 0
+        ampm = (m.group(3) or "").lower()
+        if ampm == "pm" and hour < 12:
+            hour += 12
+        elif ampm == "am" and hour == 12:
+            hour = 0
+        return f"{minute} {hour} * * *"
+
+    return None
 
 
 def _extract_quoted_after(text: str, token: str) -> Optional[str]:
@@ -60,10 +167,16 @@ class CronRegister(BaseApplier):
         """Parse a cron spec out of implementation_steps / extracted_content.
 
         Returns a dict with keys: name, schedule, prompt, profile. Returns None
-        if any required field cannot be determined.
+        if a required field (schedule + prompt) cannot be determined.
         """
         steps = entry.implementation_steps or []
-        haystack_parts = list(steps) + [entry.extracted_content or "", entry.notes or ""]
+        haystack_parts = [
+            *steps,
+            entry.extracted_content or "",
+            entry.notes or "",
+            entry.title or "",
+            entry.rationale or "",
+        ]
         haystack = "\n".join(p for p in haystack_parts if p)
 
         # 1. Try to find a `hermes cron add ...` invocation we can parse.
@@ -87,11 +200,13 @@ class CronRegister(BaseApplier):
         if not schedule:
             return None
 
-        prompt = self._find_prompt(steps, entry.extracted_content or "")
+        prompt = self._find_prompt(steps, entry.extracted_content or "", entry.rationale or "")
         if not prompt:
             return None
 
-        name = self._derive_name(entry, prompt)
+        # Name can come from an explicit --name or name: marker anywhere; else
+        # we slugify the entry title or the prompt.
+        name = self._find_explicit_name(haystack) or self._derive_name(entry, prompt)
         if not name:
             return None
 
@@ -103,17 +218,40 @@ class CronRegister(BaseApplier):
             "profile": profile if profile in _VALID_PROFILES else "default",
         }
 
+    @staticmethod
+    def _find_explicit_name(haystack: str) -> Optional[str]:
+        """Look for an explicit ``--name <x>`` flag or ``name: <x>`` label."""
+        m = re.search(r"--name[=\s]+['\"]?([A-Za-z0-9_\-]+)['\"]?", haystack)
+        if m:
+            return m.group(1)
+        m = re.search(r"(?i)\bname\s*[:=]\s*['\"]?([A-Za-z0-9_\-]{2,60})['\"]?", haystack)
+        if m:
+            return m.group(1)
+        return None
+
     def _find_schedule(self, text: str) -> Optional[str]:
-        """Find a cron-shaped or natural-language schedule string."""
-        # Prefer real cron expressions.
+        """Find a cron-shaped or natural-language schedule string.
+
+        Resolution order:
+            1. Cron-shaped line (with optional `Schedule:` / `Cron:` / `When:` label)
+            2. Cron-shaped substring anywhere in the text
+            3. "every N minutes/hours/days/weeks" → standard cron form
+            4. "every weekday at 8am" / "daily 6am" / "weekly on Monday at 10am" →
+               natural-language phrase preserved (Hermes' English cron parser
+               handles them natively)
+            5. Generic natural-language fallback (e.g., "hourly", "nightly")
+        """
+        # 1. Labeled or bare cron-shaped lines.
         for line in text.splitlines():
             stripped = line.strip()
             # Skip command-shaped lines that contain the cron tool itself.
             if stripped.startswith("#") or not stripped:
                 continue
-            # Strip a `Schedule:` / `Cron:` label prefix if present.
+            # Strip a `Schedule:` / `Cron:` / `When:` label prefix if present.
             label = re.match(r"(?i)(?:schedule|cron|when)\s*[:=]\s*", stripped)
             candidate_line = stripped[label.end() :] if label else stripped
+            # Strip surrounding quotes/backticks from a quoted cron line.
+            candidate_line = candidate_line.strip("`\"' ")
             tokens = candidate_line.split()
             if len(tokens) == 5 and all(self._is_cron_token(t) for t in tokens):
                 return candidate_line
@@ -122,7 +260,14 @@ class CronRegister(BaseApplier):
             candidate = m.group(1).strip()
             if all(self._is_cron_token(t) for t in candidate.split()):
                 return candidate
-        # Fall back to natural-language schedule.
+        # 2. "every N minute/hour/..." → cron expression.
+        every_m = _EVERY_N_RE.search(text)
+        if every_m:
+            phrase = every_m.group(0)
+            converted = _phrase_to_cron(phrase)
+            if converted:
+                return converted
+        # 3. Natural-language phrase — preserved verbatim for Hermes' English parser.
         m = _NL_SCHEDULE_RE.search(text)
         if m:
             return m.group(1).strip()
@@ -137,19 +282,60 @@ class CronRegister(BaseApplier):
         """
         return bool(re.fullmatch(r"(?:[\d\*\-,/]+(?:[A-Z]{3})?|[A-Z]{3}(?:-[A-Z]{3})?)", token))
 
-    def _find_prompt(self, steps: list[str], extracted: str) -> Optional[str]:
-        """Find the natural-language instruction Hermes should run."""
-        # Look for an explicit `prompt:` / `Prompt:` line.
+    def _find_prompt(
+        self,
+        steps: list[str],
+        extracted: str,
+        rationale: str = "",
+    ) -> Optional[str]:
+        """Find the natural-language instruction Hermes should run.
+
+        Resolution order:
+            1. ``Prompt:`` / ``Instruction:`` / ``Cron task:`` labeled line
+            2. Multi-line single- or triple-quoted block
+            3. Any quoted 20-400 char string in the body
+            4. ``entry.rationale`` as a last resort
+        """
+        # Look for an explicit labeled line.
+        prompt_label_re = re.compile(
+            r"\s*(?:prompt|instruction|cron\s+task|task)\s*[:=]\s*(.+)$",
+            re.IGNORECASE,
+        )
         for source in [*steps, extracted]:
             for line in source.splitlines():
-                m = re.match(r"\s*(?:prompt|instruction)\s*[:=]\s*(.+)$", line, re.IGNORECASE)
+                m = prompt_label_re.match(line)
                 if m:
-                    return m.group(1).strip().strip("\"'")
-        # Look for a fenced quote inside the source body.
+                    return m.group(1).strip().strip("`\"' ")
+        # Look for a triple-quoted block.
         for source in [extracted, *steps]:
-            m = re.search(r"['\"]([^'\"\n]{20,400})['\"]", source)
+            m = re.search(r"\"{3}([\s\S]+?)\"{3}|'{3}([\s\S]+?)'{3}", source)
             if m:
-                return m.group(1).strip()
+                block = (m.group(1) or m.group(2) or "").strip()
+                if len(block) >= 10:
+                    return block
+        # Look for a single-line single- or double-quoted string in the body.
+        # Use a two-pass strategy: first try non-overlapping findall (skips
+        # candidates ending in `:` which are label artifacts), then fall back
+        # to overlapping search via re.finditer with lookahead so we can find
+        # quoted bodies whose opening quote follows a possessive ('Hermes' ...).
+        for source in [extracted, *steps]:
+            non_overlapping = re.findall(r"['\"]([^'\"\n]{20,400})['\"]", source)
+            viable = [c for c in non_overlapping if not c.rstrip().endswith(":")]
+            if viable:
+                return max(viable, key=len).strip()
+            # Overlap-tolerant pass: same body shape, but allow restarting at
+            # every quote so a missed match after a possessive is found.
+            overlap = [m.group(1) for m in re.finditer(r"(?=['\"]([^'\"\n]{20,400})['\"])", source)]
+            overlap_viable = [c for c in overlap if not c.rstrip().endswith(":")]
+            if overlap_viable:
+                return max(overlap_viable, key=len).strip()
+            if non_overlapping:
+                return max(non_overlapping, key=len).strip()
+        # Final fallback: the entry's rationale (often a usable single-sentence prompt).
+        if rationale:
+            text = rationale.strip()
+            if 10 <= len(text) <= 400:
+                return text
         return None
 
     @staticmethod
