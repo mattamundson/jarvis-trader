@@ -26,11 +26,13 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -57,6 +59,17 @@ _MARKET_CLOSE_M = 5
 
 _SUSTAINED_ALERT_POLLS = 3
 
+# pm2 restart-rate alerting.
+# Phase 6.2 (2026-05-20): alert when the engine has restarted too many times
+# inside a rolling window — distinguishes operator-driven restarts (1-2/hr is
+# normal during dev) from actual instability (>=4 inside 60 min).
+# History is a JSON list of {"ts_utc": ISO, "restart_count": int} entries,
+# capped at _PM2_HISTORY_MAX_ENTRIES and self-trimming on each write.
+_PM2_HISTORY_FILE = _ENGINE_DIR / "data" / "pm2_restart_history.json"
+_PM2_WINDOW_MINUTES = 60
+_PM2_RESTART_THRESHOLD = 4
+_PM2_HISTORY_MAX_ENTRIES = 36  # 3h at 5-min poll cadence
+
 _DISCORD_WEBHOOK = (
     os.getenv("JARVIS_DISCORD_APPROVAL_WEBHOOK") or os.getenv("DISCORD_WEBHOOK_URL") or ""
 ).strip()
@@ -74,6 +87,146 @@ def _within_trading_hours(now_et: datetime) -> bool:
     close_mins = _MARKET_CLOSE_H * 60 + _MARKET_CLOSE_M
     now_mins = now_et.hour * 60 + now_et.minute
     return open_mins <= now_mins <= close_mins
+
+
+# ---------------------------------------------------------------------------
+# pm2 restart-rate tracking
+# ---------------------------------------------------------------------------
+
+
+def _resolve_pm2_cmd() -> str | None:
+    """Locate the pm2 CLI. Returns None if unavailable.
+
+    Tries PATH first, then the known pnpm-installed Windows path.
+    """
+    found = shutil.which("pm2") or shutil.which("pm2.cmd")
+    if found:
+        return found
+    win_pnpm_path = Path(os.path.expandvars(r"%LOCALAPPDATA%\pnpm\pm2.CMD"))
+    if win_pnpm_path.exists():
+        return str(win_pnpm_path)
+    return None
+
+
+def _get_pm2_restart_count(app_name: str = "jarvis-engine") -> int | None:
+    """Return restart count for `app_name` per `pm2 jlist`, or None if unknown.
+
+    None is treated as "unknown" (skip alerting) rather than 0 to avoid
+    false-positive deltas when pm2 is unreachable or the daemon is mid-cycle.
+
+    Windows note: pm2 ships as a `.CMD` shim that hangs when invoked via
+    Python's subprocess with a plain list-arg form. Routing through `cmd.exe`
+    (or `shell=True` on win32) lets the shim execute cleanly.
+    """
+    pm2 = _resolve_pm2_cmd()
+    if not pm2:
+        return None
+
+    if sys.platform == "win32":
+        cmd: list[str] | str = f'"{pm2}" jlist'
+        kwargs: dict = {"shell": True}
+    else:
+        cmd = [pm2, "jlist"]
+        kwargs = {}
+
+    try:
+        out = subprocess.check_output(
+            cmd,
+            text=True,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            timeout=15,
+            **kwargs,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    try:
+        apps = json.loads(out)
+    except json.JSONDecodeError:
+        return None
+    for app in apps:
+        if not isinstance(app, dict):
+            continue
+        if app.get("name") == app_name:
+            # pm2 stores restart count in pm2_env.restart_time
+            env = app.get("pm2_env") or {}
+            count = env.get("restart_time")
+            if isinstance(count, int):
+                return count
+    return None
+
+
+def _load_pm2_history() -> list[dict]:
+    if not _PM2_HISTORY_FILE.exists():
+        return []
+    try:
+        data = json.loads(_PM2_HISTORY_FILE.read_text())
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _save_pm2_history(history: list[dict]) -> None:
+    _PM2_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _PM2_HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    except OSError as exc:
+        logger.warning("pm2 history write failed: %s", exc)
+
+
+def detect_pm2_instability(
+    now_utc: datetime,
+    current_count: int | None,
+    history: list[dict],
+    window_minutes: int = _PM2_WINDOW_MINUTES,
+    threshold: int = _PM2_RESTART_THRESHOLD,
+) -> tuple[list[str], list[dict]]:
+    """Return (alerts, updated_history).
+
+    Alert fires when restart_count delta inside `window_minutes` is >= `threshold`.
+    The delta is computed against the oldest history entry still inside the window.
+    A single alert fires per crossing — the alert message includes the delta.
+    """
+    if current_count is None:
+        return ([], history)
+
+    entry = {"ts_utc": now_utc.isoformat(), "restart_count": current_count}
+    new_history = history + [entry]
+    cutoff = now_utc - timedelta(minutes=window_minutes + 60)  # keep a bit beyond window
+    new_history = [
+        e
+        for e in new_history
+        if datetime.fromisoformat(e["ts_utc"].replace("Z", "+00:00")) >= cutoff
+    ][-_PM2_HISTORY_MAX_ENTRIES:]
+
+    window_start = now_utc - timedelta(minutes=window_minutes)
+    in_window = [
+        e
+        for e in new_history
+        if datetime.fromisoformat(e["ts_utc"].replace("Z", "+00:00")) >= window_start
+    ]
+    if len(in_window) < 2:
+        return ([], new_history)
+
+    delta = current_count - in_window[0]["restart_count"]
+    if delta < threshold:
+        return ([], new_history)
+
+    # Suppress repeated alerts for the same incident: only alert if the
+    # previous poll's delta was below threshold (edge-triggered on crossing).
+    if len(in_window) >= 3:
+        prev_delta = in_window[-2]["restart_count"] - in_window[0]["restart_count"]
+        if prev_delta >= threshold:
+            return ([], new_history)
+
+    msg = (
+        f"ENGINE INSTABILITY — pm2 restart_count rose by {delta} "
+        f"in last {window_minutes}m (threshold: {threshold}). "
+        f"Current count: {current_count}. Likely cause: cascading "
+        f"crash/auto-restart cycle. Check pm2 logs jarvis-engine and "
+        f"engine-out.log for the trigger."
+    )
+    return ([msg], new_history)
 
 
 # ---------------------------------------------------------------------------
@@ -321,9 +474,23 @@ def run(
     now_utc = datetime.now(timezone.utc)
     now_et = now_utc.astimezone(_ET)
 
+    # pm2 restart-rate alerting — runs unconditionally (engine instability
+    # outside trading hours still affects next-session readiness)
+    pm2_count = _get_pm2_restart_count()
+    pm2_history = _load_pm2_history()
+    pm2_alerts, pm2_history = detect_pm2_instability(now_utc, pm2_count, pm2_history)
+    _save_pm2_history(pm2_history)
+    for alert in pm2_alerts:
+        _send_discord_alert(alert, no_discord=no_discord)
+
     if not force and not _within_trading_hours(now_et):
         logger.debug("Outside trading hours (%s ET) — exiting.", now_et.strftime("%H:%M"))
-        return {"skipped": True, "reason": "outside_trading_hours"}
+        return {
+            "skipped": True,
+            "reason": "outside_trading_hours",
+            "pm2_alerts": pm2_alerts,
+            "pm2_restart_count": pm2_count,
+        }
 
     ts_utc = now_utc.strftime("%Y-%m-%dT%H:%M:00Z")
     fetched_at = now_utc.isoformat()
@@ -342,15 +509,16 @@ def run(
     finally:
         conn.close()
 
-    alerts = detect_transitions(rows)
-    for alert in alerts:
+    rth_alerts = detect_transitions(rows)
+    for alert in rth_alerts:
         _send_discord_alert(alert, no_discord=no_discord)
 
     return {
         "ts_utc": ts_utc,
         "reachable": reachable,
-        "alerts": alerts,
+        "alerts": rth_alerts + pm2_alerts,
         "status": payload.get("status") if payload else None,
+        "pm2_restart_count": pm2_count,
     }
 
 
