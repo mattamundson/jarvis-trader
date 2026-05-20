@@ -72,6 +72,7 @@ _DB_PATH = _ENGINE_DIR / "data" / "jarvis_trader.db"
 # Report renderer
 # ---------------------------------------------------------------------------
 
+
 def _FMT_MONEY(x):
     return f"${x:+.2f}" if x is not None else "—"
 
@@ -85,9 +86,7 @@ def render_report(result: "ROIReadinessResult", report_date: date) -> str:
 
     lines: list[str] = []
     lines.append(f"# JARVIS Live-Readiness Gauge — {report_date.isoformat()}")
-    lines.append(
-        f"*Generated {datetime.now().astimezone(_ET).strftime('%Y-%m-%dT%H:%M %Z')}*"
-    )
+    lines.append(f"*Generated {datetime.now().astimezone(_ET).strftime('%Y-%m-%dT%H:%M %Z')}*")
     lines.append("")
 
     # Top-line status
@@ -285,7 +284,8 @@ def main() -> int:
         out = asdict(result)
         out["snapshot_date"] = result.snapshot_date.isoformat()
         print(json.dumps(out, indent=2, default=str))
-        return 0 if result.status == "GREEN" else 1
+        # Exit 0 on successful evaluation; status is in the JSON payload.
+        return 0
 
     # Render markdown report
     try:
@@ -322,7 +322,12 @@ def main() -> int:
         marker = "PASS" if g.passed else "FAIL"
         print(f"  [{marker}] {g.gate_id}: {g.observed}")
 
-    return 0 if result.status == "GREEN" else 1
+    # Exit 0 on successful evaluation (report saved + headline emitted).
+    # Gate status (GREEN/YELLOW/RED) is data, not a task-runner failure signal.
+    # A RED status during paper validation is a normal expected outcome and
+    # should not surface as a Last Result = 1 in Task Scheduler. The exit
+    # code only reflects whether the worker itself failed (return 2 above).
+    return 0
 
 
 if __name__ == "__main__":
