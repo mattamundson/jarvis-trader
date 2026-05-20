@@ -1,7 +1,10 @@
 """
 LLM-powered strategy variation generator.
-Uses claude-sonnet-4-6 to generate parameter variants of the baseline STC+ATR strategy.
+Uses claude-sonnet-4-6 (via JarvisLLMClient → Gemini fallback) to generate
+parameter variants of the baseline STC+ATR strategy.
 """
+
+import asyncio
 import json
 import logging
 
@@ -51,7 +54,7 @@ Focus for this iteration: {focus_area}"""
 
 
 def generate_strategy_variant(
-    client,
+    llm_client,
     previous_attempts: list,
     focus_area: str = "improve win rate",
 ) -> dict:
@@ -59,7 +62,8 @@ def generate_strategy_variant(
     Ask Claude to generate a new strategy parameter variant.
 
     Args:
-        client: anthropic.Anthropic instance
+        llm_client: JarvisLLMClient instance (provides retry + Gemini fallback +
+            cost tracking; see engine/llm/client.py)
         previous_attempts: List of previous result dicts (used to avoid duplicates)
         focus_area: Optimization objective for this iteration
 
@@ -68,12 +72,13 @@ def generate_strategy_variant(
 
     Raises:
         ValueError: If LLM response cannot be parsed as valid JSON
+        RuntimeError: If JarvisLLMClient.call() returns success=False
     """
     prev_summary = [
         {
-            'name': a.get('strategy_name', 'unknown'),
-            'verdict': a.get('verdict', 'pending'),
-            'params': a.get('parameters', {}),
+            "name": a.get("strategy_name", "unknown"),
+            "verdict": a.get("verdict", "pending"),
+            "params": a.get("parameters", {}),
         }
         for a in previous_attempts[-10:]  # Last 10 to control context size
     ]
@@ -83,13 +88,21 @@ def generate_strategy_variant(
         focus_area=focus_area,
     )
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=600,
-        messages=[{"role": "user", "content": prompt}]
+    # JarvisLLMClient.call() is async; this function is sync (called from a
+    # CLI/cron loop, not inside an event loop), so we drive it with asyncio.run.
+    result = asyncio.run(
+        llm_client.call(
+            model="claude-sonnet-4-6",
+            system="",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            agent_name="strategy_lab",
+        )
     )
+    if not result.success:
+        raise RuntimeError(result.error or "LLM call failed without error message")
 
-    raw = response.content[0].text.strip()
+    raw = result.content.strip()
 
     # Strip markdown code fences if present
     for fence in ["```json", "```"]:
@@ -106,13 +119,19 @@ def generate_strategy_variant(
         raise ValueError(f"LLM returned invalid JSON: {e}\nRaw response: {raw[:200]}") from e
 
     # Validate required fields
-    required = ['strategy_name', 'parameters']
+    required = ["strategy_name", "parameters"]
     missing = [f for f in required if f not in variant]
     if missing:
         raise ValueError(f"LLM response missing fields: {missing}")
 
-    required_params = ['stc_oversold', 'stc_overbought', 'atr_stop_mult', 'atr_target_mult', 'timeframe']
-    missing_params = [p for p in required_params if p not in variant.get('parameters', {})]
+    required_params = [
+        "stc_oversold",
+        "stc_overbought",
+        "atr_stop_mult",
+        "atr_target_mult",
+        "timeframe",
+    ]
+    missing_params = [p for p in required_params if p not in variant.get("parameters", {})]
     if missing_params:
         raise ValueError(f"LLM parameters missing: {missing_params}")
 
