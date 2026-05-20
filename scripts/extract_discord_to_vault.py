@@ -5,7 +5,11 @@ Extracts all Discord tables from jarvis_trader.db into the Obsidian vault at
 second-brain/raw/.  Idempotent — skip files that already exist.
 
 Usage:
-    python scripts/extract_discord_to_vault.py [--dry-run]
+    python scripts/extract_discord_to_vault.py [--dry-run] [--output-path PATH]
+
+# Recommended invocation (writes directly to gbrain-ingested root):
+#   engine/.venv/Scripts/python scripts/extract_discord_to_vault.py \
+#     --output-path C:/Users/mattm/master-jarvis/second-brain/raw/_session-YYYY-MM-DD-amo
 
 Tables handled:
     discord_bookmarks          → raw/discord-bookmarks/<author>-<id>.md
@@ -19,6 +23,8 @@ Tables handled:
 Attachments: cdn.discordapp.com / media.discordapp.net URLs found in content
     → raw/discord-attachments/<message_id>/<filename>
     Time-boxed at 5 minutes total.
+
+Canonical paths: see SECOND_BRAIN_VAULT_OPERATIONS_RUNBOOK for output-path conventions.
 """
 
 import argparse
@@ -43,7 +49,7 @@ if hasattr(sys.stderr, "reconfigure"):
 # ── Configuration ────────────────────────────────────────────────────────────
 
 DB_PATH = Path(r"C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\data\jarvis_trader.db")
-VAULT_RAW = Path(r"C:\Users\mattm\second-brain\raw")
+DEFAULT_VAULT_RAW = Path(r"C:\Users\mattm\second-brain\raw")
 CAPTURED_AT = "2026-05-20"
 ATTACHMENT_TIMEOUT = 300  # 5 minutes
 ATTACHMENT_UA = "jarvis-trader-vault/1.0"
@@ -52,6 +58,32 @@ PROGRESS_EVERY = 250
 CDN_RE = re.compile(
     r"https://(?:cdn\.discordapp\.com|media\.discordapp\.net)/[^\s\)\]\">]+"
 )
+
+
+# ── Output-path resolver ──────────────────────────────────────────────────────
+
+
+def resolve_output_path(raw_path: str) -> Path:
+    """Resolve, validate, and return the output directory as a Path.
+
+    Raises SystemExit with a clear message if the path does not exist,
+    is not a directory, or is not writable.  This is called from argparse
+    so errors surface before any DB work starts.
+    """
+    p = Path(raw_path).expanduser().resolve()
+    if not p.exists():
+        sys.exit(f"[ERROR] --output-path does not exist: {p}")
+    if not p.is_dir():
+        sys.exit(f"[ERROR] --output-path is not a directory: {p}")
+    # Probe writability with a no-op temp file
+    probe = p / ".write_probe"
+    try:
+        probe.touch()
+        probe.unlink()
+    except OSError as exc:
+        sys.exit(f"[ERROR] --output-path is not writable ({exc}): {p}")
+    return p
+
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -922,13 +954,19 @@ tags:
 
 
 def write_last_extract(vault: Path, summary: dict, dry_run: bool) -> None:
-    dest = vault / "discord-bookmarks" / "_LAST_EXTRACT.json"
+    # _LAST_EXTRACT.json lives at the output root so the idempotency check
+    # is scoped to whichever --output-path was supplied, not a hardcoded subdir.
+    # Prior to --output-path support it lived in discord-bookmarks/; it now
+    # lives at vault/_LAST_EXTRACT.json so each target directory tracks its
+    # own extraction state independently.
+    dest = vault / "_LAST_EXTRACT.json"
     if dry_run:
         return
     dest.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "last_run": datetime.now(timezone.utc).isoformat(),
         "dry_run": dry_run,
+        "output_path": str(vault),
         "tables": summary,
     }
     dest.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -939,22 +977,49 @@ def write_last_extract(vault: Path, summary: dict, dry_run: bool) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Extract Discord tables to Obsidian vault"
+        description=(
+            "Extract Discord tables from jarvis_trader.db into the Obsidian vault. "
+            "Idempotent — skips files that already exist in the target directory. "
+            "Each output directory maintains its own _LAST_EXTRACT.json so multiple "
+            "target directories track their extraction state independently. "
+            "See SECOND_BRAIN_VAULT_OPERATIONS_RUNBOOK for canonical --output-path conventions."
+        )
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print what would be written without writing",
+        help="Print what would be written without writing any files.",
+    )
+    parser.add_argument(
+        "--output-path",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Absolute path to the output root directory. "
+            "Must exist, be a directory, and be writable. "
+            "Default: C:\\Users\\mattm\\second-brain\\raw "
+            "(preserves prior run behavior). "
+            "Example: --output-path "
+            "C:\\Users\\mattm\\master-jarvis\\second-brain\\raw\\_session-2026-05-20-amo"
+        ),
     )
     args = parser.parse_args()
     dry_run = args.dry_run
+
+    # Resolve the output path: caller-supplied or the historical default.
+    if args.output_path is not None:
+        vault_raw = resolve_output_path(args.output_path)
+        print(f"Output path: {vault_raw}")
+    else:
+        vault_raw = DEFAULT_VAULT_RAW
+        print(f"Output path (default): {vault_raw}")
 
     if dry_run:
         print("=== DRY RUN MODE - no files will be written ===")
 
     t0 = time.time()
     attach_deadline = t0 + ATTACHMENT_TIMEOUT
-    attach_dir = VAULT_RAW / "discord-attachments"
+    attach_dir = vault_raw / "discord-attachments"
 
     # Create output dirs
     for d in [
@@ -968,7 +1033,7 @@ def main():
         "discord-attachments",
     ]:
         if not dry_run:
-            (VAULT_RAW / d).mkdir(parents=True, exist_ok=True)
+            (vault_raw / d).mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(DB_PATH)
     conn.text_factory = lambda b: b.decode("utf-8", errors="replace")
@@ -977,43 +1042,43 @@ def main():
     summary = {}
 
     print("\n[1/7] Extracting discord_bookmarks ...")
-    s = extract_bookmarks(cur, VAULT_RAW, dry_run, attach_dir, attach_deadline)
+    s = extract_bookmarks(cur, vault_raw, dry_run, attach_dir, attach_deadline)
     summary["discord_bookmarks"] = s
     print(
         f"  done: written={s['written']} skipped={s['skipped']} failed={s['failed']} | attach_dl={s['attach']['downloaded']} attach_bytes={s['attach']['bytes']}"
     )
 
     print("\n[2/7] Extracting discord_corey_commentary ...")
-    s = extract_commentary(cur, VAULT_RAW, dry_run, attach_dir, attach_deadline)
+    s = extract_commentary(cur, vault_raw, dry_run, attach_dir, attach_deadline)
     summary["discord_corey_commentary"] = s
     print(
         f"  done: written(days)={s['written']} skipped={s['skipped']} failed={s['failed']}"
     )
 
     print("\n[3/7] Extracting discord_corey_alerts ...")
-    s = extract_corey_alerts(cur, VAULT_RAW, dry_run, attach_dir, attach_deadline)
+    s = extract_corey_alerts(cur, vault_raw, dry_run, attach_dir, attach_deadline)
     summary["discord_corey_alerts"] = s
     print(f"  done: written={s['written']} skipped={s['skipped']} failed={s['failed']}")
 
     print("\n[4/7] Extracting discord_ib_reports ...")
-    s = extract_ib_reports(cur, VAULT_RAW, dry_run)
+    s = extract_ib_reports(cur, vault_raw, dry_run)
     summary["discord_ib_reports"] = s
     print(f"  done: written={s['written']} skipped={s['skipped']} failed={s['failed']}")
 
     print("\n[5/7] Extracting discord_bot_signals ...")
-    s = extract_bot_signals(cur, VAULT_RAW, dry_run)
+    s = extract_bot_signals(cur, vault_raw, dry_run)
     summary["discord_bot_signals"] = s
     print(
         f"  done: written(group-files)={s['written']} skipped={s['skipped']} failed={s['failed']}"
     )
 
     print("\n[6/7] Extracting discord_analyses ...")
-    s = extract_analyses(cur, VAULT_RAW, dry_run)
+    s = extract_analyses(cur, vault_raw, dry_run)
     summary["discord_analyses"] = s
     print(f"  done: written={s['written']} skipped={s['skipped']} failed={s['failed']}")
 
     print("\n[7/7] Extracting discord_daily_sentiment ...")
-    s = extract_daily_sentiment(cur, VAULT_RAW, dry_run)
+    s = extract_daily_sentiment(cur, vault_raw, dry_run)
     summary["discord_daily_sentiment"] = s
     print(
         f"  done: written(months)={s['written']} skipped={s['skipped']} failed={s['failed']}"
@@ -1021,8 +1086,8 @@ def main():
 
     conn.close()
 
-    # Write counter file
-    write_last_extract(VAULT_RAW, summary, dry_run)
+    # Write counter file (lives at vault_raw root, scoped to this output path)
+    write_last_extract(vault_raw, summary, dry_run)
 
     elapsed = time.time() - t0
     print(
