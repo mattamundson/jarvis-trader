@@ -1479,3 +1479,39 @@ export async function fetchBookmarksSearch(opts: {
   if (opts.limit != null) q.set("limit", String(opts.limit));
   return fetchEngine<BookmarkFeedResponse>(`/discord/bookmarks/search?${q.toString()}`);
 }
+
+// ── QuantStats / Portfolio Tearsheet ─────────────────────────────────────────
+
+export interface RollingSharpPoint {
+  date: string;
+  value: number;
+}
+
+/** GET /reports/quantstats — institutional-grade portfolio metrics */
+export interface QuantStatsMetrics {
+  n_trades: number;
+  start_date: string;
+  end_date: string;
+  source: "pnl_snapshots" | "paper_trades";
+  sortino: number | null;
+  sharpe: number | null;
+  calmar: number | null;
+  /** Negative number, e.g. -0.12 means -12% max drawdown */
+  max_dd: number | null;
+  max_dd_duration_days: number;
+  win_rate: number | null;
+  profit_factor: number | null;
+  monthly_returns: Record<string, number>;
+  rolling_sharpe_30d: RollingSharpPoint[];
+}
+
+export async function fetchQuantStats(opts?: {
+  days?: number;
+  run_id?: string;
+}): Promise<QuantStatsMetrics> {
+  const q = new URLSearchParams();
+  if (opts?.days != null) q.set("days", String(opts.days));
+  if (opts?.run_id != null) q.set("run_id", opts.run_id);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return fetchEngine<QuantStatsMetrics>(`/reports/quantstats${suffix}`);
+}
