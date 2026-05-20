@@ -101,3 +101,41 @@ async def test_runner_writes_failure_row_on_handler_exception(text_only_db, tmp_
     assert a is not None
     assert "transient" in (a["error_text"] or "")
     assert row["analyzed_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_runner_routes_url_row_to_url_handler(seeded_db, tmp_path, monkeypatch):
+    storage.migrate(seeded_db)
+
+    # Keep only the X-post row (m2, id=2)
+    conn = sqlite3.connect(seeded_db)
+    conn.execute("DELETE FROM discord_bookmarks WHERE message_id != 'm2'")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("GBRAIN_RAW_DIR", str(tmp_path / "raw"))
+    (tmp_path / "raw").mkdir()
+
+    async def fake_url_analyze(self, row):
+        return AnalysisResult(
+            bookmark_id=int(row["id"]),
+            artifact_type=ArtifactType.URL,
+            summary="X post summary",
+            structured={"source_kind": "x_post"},
+            model_used="gemini-2.5-flash",
+            usage=LLMUsage(input_tokens=20, output_tokens=10),
+            cost_usd=0.0001,
+        )
+
+    monkeypatch.setattr(
+        "discord.deep_analyzer.handlers.url.UrlHandler.analyze",
+        fake_url_analyze,
+    )
+
+    n = await runner.run_once(db_path=seeded_db, vault_root=tmp_path, limit=5)
+    assert n == 1
+
+    conn = sqlite3.connect(seeded_db)
+    a = conn.execute("SELECT artifact_type FROM discord_analyses").fetchone()
+    conn.close()
+    assert a[0] == "url"
