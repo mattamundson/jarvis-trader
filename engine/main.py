@@ -150,6 +150,7 @@ from routers.hidden_pivots_router import router as hidden_pivots_router
 from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
 from routers.decisions_router import router as decisions_router
 from routers.decisions_router import set_db_manager as set_decisions_db
+from routers.admin_router import router as admin_router
 from routers.cache_router import router as cache_router
 from routers.polymarket_router import router as polymarket_router
 from api.operations_dashboard import router as operations_dashboard_router
@@ -2395,6 +2396,7 @@ app.include_router(options_backtest_router)
 app.include_router(learning_router)
 app.include_router(events_router)
 app.include_router(kairos_router)
+app.include_router(admin_router)
 app.include_router(profiling_router)
 app.include_router(reports_router)
 app.include_router(schwab_router)
