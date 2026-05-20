@@ -87,6 +87,7 @@ from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.analytics_router import set_data_manager as set_analytics_data_manager
 from routers.backtest_router import router as backtest_router
 from routers.backtest_router import inject_dependencies as inject_backtest_deps
+from routers.options_backtest_router import router as options_backtest_router
 from routers.discord_router import inject_data_manager as inject_discord_data_manager
 from routers.discord_router import router as discord_router
 from routers.experiments_router import router as experiments_router
@@ -2389,6 +2390,7 @@ app.include_router(webhook_router)
 app.include_router(discord_router)
 app.include_router(experiments_router)
 app.include_router(backtest_router)
+app.include_router(options_backtest_router)
 app.include_router(learning_router)
 app.include_router(events_router)
 app.include_router(kairos_router)
