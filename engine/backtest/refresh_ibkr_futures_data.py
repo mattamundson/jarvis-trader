@@ -83,12 +83,24 @@ def find_latest_csv(symbol: str, interval: str = "1h") -> Optional[Path]:
 
 
 def parse_csv_date_range(path: Path) -> tuple[datetime, datetime]:
-    """Read first and last timestamp from a cached CSV."""
+    """Read first and last timestamp from a cached CSV. Returns tz-naive UTC.
+
+    Cache CSVs have inconsistent timestamp formats per symbol:
+      MES + MGC store '+00:00' offsets (tz-aware after pd.to_datetime)
+      MNQ + MCL store naive datetimes
+    Downstream `now - last_dt` uses a naive UTC datetime, so any tz-aware
+    parse causes 'can't subtract offset-naive and offset-aware' ValueError.
+    Normalize to tz-naive UTC here once so callers don't have to.
+    """
     df = pd.read_csv(path)
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
     first = pd.to_datetime(df[ts_col].iloc[0])
     last = pd.to_datetime(df[ts_col].iloc[-1])
+    if first.tzinfo is not None:
+        first = first.tz_convert("UTC").tz_localize(None)
+    if last.tzinfo is not None:
+        last = last.tz_convert("UTC").tz_localize(None)
     return first.to_pydatetime(), last.to_pydatetime()
 
 
