@@ -7,6 +7,19 @@ import os
 from pathlib import Path
 from typing import Any
 
+# Load engine/.env so ANTHROPIC_API_KEY, GOOGLE_API_KEY, etc. are populated
+# when the runner is invoked from a scheduled-task PS1 wrapper or any other
+# entry point that didn't already source the env file. Idempotent — never
+# overrides an already-set var.
+try:
+    from dotenv import load_dotenv
+
+    _engine_env = Path(__file__).resolve().parents[2] / ".env"
+    if _engine_env.exists():
+        load_dotenv(_engine_env, override=False)
+except ImportError:  # pragma: no cover — dotenv is a runtime dep
+    pass
+
 from . import gbrain_sink, storage, vault
 from .handlers.audio import AudioHandler
 from .handlers.document import DocumentHandler
