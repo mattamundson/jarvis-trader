@@ -26,13 +26,15 @@ _DOC_EXTS = (".pdf",)
 
 
 def _infer_artifact_type(row: dict[str, Any]) -> ArtifactType:
-    """Route on attachment extension first (when present), then URL, then text.
+    """Route by precedence: URL (canonical) > attachment (supplementary) > text.
 
-    The production discord_bookmarks schema does not yet capture attachments
-    (only embed URLs). The attachment branches remain in place for the future
-    fetch_channel.py extension that will populate `attachment_urls`. For now
-    every real row routes to URL or TEXT.
+    Rationale: when a message has BOTH a URL and an attachment, the URL is
+    almost always the primary signal (a shared link with a screenshot preview),
+    and the attachment is supplementary. Analyzing the URL gives richer
+    context. Attachment-only messages route on file extension.
     """
+    if row.get("url"):
+        return ArtifactType.URL
     raw = row.get("attachment_urls") or ""
     if raw:
         first = raw.split()[0].split(",")[0].lower().split("?", 1)[0]
@@ -44,8 +46,6 @@ def _infer_artifact_type(row: dict[str, Any]) -> ArtifactType:
             return ArtifactType.DOCUMENT
         # Unknown attachment type — default to image (vision LLM handles unknowns best)
         return ArtifactType.IMAGE
-    if row.get("url"):
-        return ArtifactType.URL
     return ArtifactType.TEXT
 
 

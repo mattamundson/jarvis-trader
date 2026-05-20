@@ -169,3 +169,19 @@ def test_infer_artifact_type_text_when_neither():
     from discord.deep_analyzer.runner import _infer_artifact_type
 
     assert _infer_artifact_type({"content": "hello"}) == ArtifactType.TEXT
+
+
+def test_infer_artifact_type_prefers_url_when_both_present():
+    """Path B: when a message has BOTH url and attachment, URL wins.
+
+    Common case: user shares an article link; Discord auto-attaches a
+    preview image. The URL is the primary signal — analyzing the linked
+    page gives richer context than OCRing the screenshot.
+    """
+    from discord.deep_analyzer.runner import _infer_artifact_type
+
+    row = {
+        "url": "https://example.com/article",
+        "attachment_urls": "https://cdn.discordapp.com/a/b/preview.png",
+    }
+    assert _infer_artifact_type(row) == ArtifactType.URL

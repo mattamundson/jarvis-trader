@@ -93,7 +93,8 @@ CREATE TABLE IF NOT EXISTS discord_bookmarks (
     content TEXT,
     author_id TEXT,
     author_name TEXT,
-    imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    attachment_urls TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_bookmarks_posted ON discord_bookmarks(posted_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bookmarks_domain ON discord_bookmarks(domain);
@@ -134,12 +135,14 @@ AFTER UPDATE ON discord_corey_commentary BEGIN
 END;
 """
 
-# Columns added post-Phase-B (Workstream A, 2026-04-20). ALTER handles pre-existing DBs;
-# CREATE TABLE above handles fresh ones. Both paths converge on the same shape.
+# Columns added post-Phase-B (Workstream A, 2026-04-20) and post-Path-B
+# (2026-05-20, attachment_urls). ALTER handles pre-existing DBs; CREATE TABLE
+# above handles fresh ones. Both paths converge on the same shape.
 _BOOKMARK_MIGRATION_COLUMNS = [
     ("content", "TEXT"),
     ("author_id", "TEXT"),
     ("author_name", "TEXT"),
+    ("attachment_urls", "TEXT"),
 ]
 
 
@@ -406,7 +409,11 @@ def get_stats(db_path: str) -> dict:
         bm_row = conn.execute(
             "SELECT COUNT(*), MIN(posted_at), MAX(posted_at) FROM discord_bookmarks"
         ).fetchone()
-        stats["discord_bookmarks"] = {"count": bm_row[0], "earliest": bm_row[1], "latest": bm_row[2]}
+        stats["discord_bookmarks"] = {
+            "count": bm_row[0],
+            "earliest": bm_row[1],
+            "latest": bm_row[2],
+        }
         bm_sources = conn.execute(
             "SELECT source_type, COUNT(*) FROM discord_bookmarks GROUP BY source_type ORDER BY COUNT(*) DESC"
         ).fetchall()

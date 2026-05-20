@@ -94,3 +94,7 @@ class Bookmark(BaseModel):
     content: Optional[str] = None  # message body around the URL (commentary)
     author_id: Optional[str] = None
     author_name: Optional[str] = None
+    # Space-separated CDN URLs of Discord-uploaded files (images, voice memos,
+    # PDFs, etc). Populated when the source message has `attachments`. None
+    # when absent. Format matches what deep_analyzer.handlers expect.
+    attachment_urls: Optional[str] = None
