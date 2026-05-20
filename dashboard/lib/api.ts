@@ -1436,3 +1436,46 @@ export interface OpenPositionsResponse {
 export async function fetchOpenPositions(): Promise<OpenPositionsResponse> {
   return fetchEngine<OpenPositionsResponse>("/portfolio/paper/positions");
 }
+
+// ── Discord Bookmark Feed (recent + search) ──────────────────────────────────
+
+export interface BookmarkRow {
+  posted_at: string;
+  url: string;
+  domain: string | null;
+  source_type: string | null;
+  embed_title: string | null;
+  embed_description: string | null;
+  content: string | null;
+  author_name?: string | null;
+}
+
+export interface BookmarkFeedResponse {
+  data: BookmarkRow[];
+  hours?: number;
+  limit?: number;
+  query?: string;
+  days?: number;
+}
+
+export async function fetchBookmarksRecent(opts?: {
+  hours?: number;
+  limit?: number;
+}): Promise<BookmarkFeedResponse> {
+  const q = new URLSearchParams();
+  if (opts?.hours != null) q.set("hours", String(opts.hours));
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return fetchEngine<BookmarkFeedResponse>(`/discord/bookmarks/recent${suffix}`);
+}
+
+export async function fetchBookmarksSearch(opts: {
+  query: string;
+  days?: number;
+  limit?: number;
+}): Promise<BookmarkFeedResponse> {
+  const q = new URLSearchParams({ query: opts.query });
+  if (opts.days != null) q.set("days", String(opts.days));
+  if (opts.limit != null) q.set("limit", String(opts.limit));
+  return fetchEngine<BookmarkFeedResponse>(`/discord/bookmarks/search?${q.toString()}`);
+}
