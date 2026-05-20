@@ -1,0 +1,84 @@
+{
+  "calibrated_at": "2026-05-20T22:04:32Z",
+  "horizon_bars": 5,
+  "lookback_days": 90,
+  "per_instrument": {
+    "MES": {
+      "status": "ok",
+      "n_closes": 1488,
+      "n_bars": 1483,
+      "mean_return_bps": 2.434,
+      "std_return_bps": 50.508,
+      "percentiles_signed": {
+        "p10": -57.285,
+        "p25": -20.35,
+        "p50": 3.035,
+        "p75": 24.767,
+        "p90": 56.622
+      },
+      "percentiles": {
+        "p10": 3.035,
+        "p25": 9.769,
+        "p50": 22.405,
+        "p75": 48.377,
+        "p90": 80.521
+      },
+      "recommended_threshold_bps": 48.38,
+      "recommendation_method": "p75-of-absolute"
+    },
+    "MCL": {
+      "status": "ok",
+      "n_closes": 2068,
+      "n_bars": 2063,
+      "mean_return_bps": 10.37,
+      "std_return_bps": 269.645,
+      "percentiles_signed": {
+        "p10": -233.515,
+        "p25": -57.796,
+        "p50": 0.0,
+        "p75": 94.804,
+        "p90": 273.998
+      },
+      "percentiles": {
+        "p10": 0.0,
+        "p25": 0.0,
+        "p50": 74.267,
+        "p75": 207.424,
+        "p90": 420.665
+      },
+      "recommended_threshold_bps": 207.42,
+      "recommendation_method": "p75-of-absolute"
+    },
+    "MNQ": {
+      "status": "ok",
+      "n_closes": 1419,
+      "n_bars": 1414,
+      "mean_return_bps": 5.528,
+      "std_return_bps": 63.575,
+      "percentiles_signed": {
+        "p10": -69.581,
+        "p25": -25.057,
+        "p50": 3.704,
+        "p75": 34.105,
+        "p90": 76.99
+      },
+      "percentiles": {
+        "p10": 4.46,
+        "p25": 13.379,
+        "p50": 30.535,
+        "p75": 63.221,
+        "p90": 98.41
+      },
+      "recommended_threshold_bps": 63.22,
+      "recommendation_method": "p75-of-absolute"
+    }
+  },
+  "global_recommendation_bps": 63.22,
+  "notes": [
+    "Per-instrument thresholds are strongly preferred; instrument volatility regimes (MES/MNQ = equity index; MCL = crude oil) differ substantially.",
+    "Return distributions are non-stationary across regimes. This p75-of-absolute threshold is calibrated on the full lookback sample and will underweight quiet regimes while overweighting high-vol events. Revisit after 30 days of live Kronos verdicts.",
+    "Lookback window: last 90 calendar days of 1-hour bars (smoke-test rows excluded). Horizon N=5 bars.",
+    "Log returns used for distribution symmetry; kronos_classifier.py uses simple returns. At small magnitudes (<100 bps) the difference is < 1 bps.",
+    "MNQ absent from paper_trades as of calibration date; bar data is present and sufficient for calibration."
+  ]
+}

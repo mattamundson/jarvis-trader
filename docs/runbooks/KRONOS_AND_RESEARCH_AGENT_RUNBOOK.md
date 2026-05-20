@@ -374,7 +374,42 @@ pipeline degrades to neutral rather than raising.
 
 ---
 
-## 12. Related runbooks
+## 12. Calibration (2026-05-20)
+
+Empirical threshold calibration run against 90 days of 1-hour bar data
+(smoke-test and corrupt-close rows excluded).  Method: p75 of the
+absolute 5-bar-ahead log-return distribution.  Script:
+`scripts/calibrate_kronos_threshold.py`.  Full JSON:
+`scripts/data/kronos_threshold_calibration.json`.
+
+| Instrument | Bars | p50 abs (bps) | p75 abs (bps) | **Recommended threshold** |
+|------------|------|---------------|---------------|--------------------------|
+| MES        | 1,483 | 22.4          | 48.4          | **48 bps**               |
+| MNQ        | 1,414 | 30.5          | 63.2          | **63 bps**               |
+| MCL        | 2,063 | 74.3          | 207.4         | **207 bps**              |
+
+**Global median:** 63.2 bps (prefer per-instrument values).
+
+**Current `BULL_BEAR_THRESHOLD_BPS` default:** 20 bps — this is below the
+median 5-bar move for all three instruments.  Setting it to the per-instrument
+p75 values above will prevent the classifier from declaring bull/bear on
+routine noise while still catching structurally significant moves.
+
+**Action required before flipping `ENABLE_KRONOS=1`:**
+Update `KronosClassifier.BULL_BEAR_THRESHOLD_BPS` (or wire per-instrument
+overrides) based on the values above.  The recommended single-value conservative
+starting point is **48 bps** (MES, the lowest-vol instrument), which ensures
+Kronos stays quiet except on genuine moves for all three instruments.
+
+**Methodology caveat:** The p75-of-absolute threshold is calibrated on a single
+90-day sample.  Return distributions are non-stationary across regimes —
+trending periods inflate the threshold, choppy periods deflate it.  Revisit
+after 30 days of live Kronos verdicts to validate the chosen value is
+correctly separating signal from noise.
+
+---
+
+## 13. Related runbooks
 
 - [HEALTH_API_CONTRACT.md](HEALTH_API_CONTRACT.md) — `/health` endpoint fields
   and pass criteria; use to verify pipeline is healthy after flag flip.
