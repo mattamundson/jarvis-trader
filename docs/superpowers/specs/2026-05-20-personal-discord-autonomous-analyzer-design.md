@@ -166,7 +166,7 @@ CREATE INDEX idx_discord_analyses_created  ON discord_analyses(created_at);
 
 ## Audio handler — local Whisper
 
-`faster-whisper` (GPU-accelerated CTranslate2 build of OpenAI Whisper) with `large-v3` model. One-time ~3 GB model download; then free per-minute. Beats paid OpenAI Whisper API on cost ($0/min vs $0.006/min) and on privacy (audio doesn't leave the box).
+`faster-whisper` (GPU-accelerated CTranslate2 build of OpenAI Whisper). Default model: **`medium`** (~1.5 GB VRAM) — chosen for safe coexistence with Ollama's running embedding model on shared GPU. `large-v3` is available as a toggle via `DEEP_ANALYZER_WHISPER_MODEL=large-v3` once VRAM headroom is verified (Phase 3 includes a VRAM-check task). Beats paid OpenAI Whisper API on cost ($0/min vs $0.006/min) and on privacy (audio doesn't leave the box).
 
 ## Vault page format
 
@@ -204,8 +204,8 @@ tags: [discord-feed, image, chart, MES]
 At 06:00, `digest.py` reads last 24h of `discord_analyses`, ranks by priority (heuristic: trading-relevant tickers + sentiment magnitude + has-action-item flag), and writes:
 
 - Section appended to `~/my-vault/Daily/YYYY-MM-DD.md` "Overnight feed"
-- Optional Hermes DM to Amo with link to that page
-- Top 10 items + summary stats (total count, by type, total cost)
+- **Discord DM to Amo via Hermes** containing top-3 items + count + vault page link (no email — already noisy)
+- Top 10 items + summary stats (total count, by type, total cost) in the vault page
 
 ## Testing
 
@@ -247,8 +247,15 @@ Each phase independently revertible. The scheduled task can be disabled via `sch
 - Hermes `/health` shows `llm_path_healthy=true` continuously through the rollout window.
 - Daily cost (`SUM(cost_usd)`) under `DEEP_ANALYZER_DAILY_USD` budget.
 
-## Open issues to address in plan
+## Decisions locked
 
-- Pre-existing Gemini `thinking_config` HTTP 400 in Hermes logs (separate, doesn't block this work but should be tracked).
-- Decision on whether Hermes DM uses Discord DM or a different channel — both work; Discord DM avoids feedback loop concerns since DM ≠ source channel.
-- Whether `faster-whisper` `large-v3` model fits GPU VRAM alongside Ollama embeddings (need to verify; may need to use `medium` model).
+- **Vault path:** `~/my-vault/Discord-Feed/YYYY-MM-DD/<bookmark_id>--<slug>.md`
+- **Digest delivery:** vault page + Discord DM via Hermes; no email.
+- **Whisper model:** default `medium`, `large-v3` available via toggle after Phase 3 VRAM check.
+- **Rollout order:** text → URL → attachments (validate pipeline at lowest LLM cost first).
+
+## Open issues parked for future iteration
+
+- Pre-existing Gemini `thinking_config` HTTP 400 in Hermes logs (separate ticket; doesn't block this work).
+- Option C (hybrid orchestrator/agent escalation) — defer until A is shipped and we have signal on which items merit agent-level reasoning.
+- Extending to additional Discord channels — dispatcher is already pluggable; out of scope for this spec.
