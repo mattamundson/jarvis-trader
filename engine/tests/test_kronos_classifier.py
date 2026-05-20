@@ -190,3 +190,107 @@ def test_kronos_verdict_clamps_out_of_range_values() -> None:
 
     assert vc2.signal == pytest.approx(-1.0), "signal should be clamped to -1.0"
     assert vc2.confidence == pytest.approx(0.0), "confidence should be clamped to 0.0"
+
+
+# ---------------------------------------------------------------------------
+# Pipeline helper — _call_agent_analyze_kronos
+# ---------------------------------------------------------------------------
+
+
+async def test_pipeline_kronos_disabled_returns_neutral(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When ENABLE_KRONOS is unset, _call_agent_analyze_kronos returns neutral dict."""
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+
+    import sys
+
+    # Re-import pipeline with the env flag absent so _kronos is None
+    if "agents.pipeline" in sys.modules:
+        del sys.modules["agents.pipeline"]
+
+    from agents.pipeline import TradingPipeline
+
+    pipeline = TradingPipeline.__new__(TradingPipeline)
+    pipeline._agents = {}
+    pipeline._kronos = None  # explicitly disabled
+
+    result = await pipeline._call_agent_analyze_kronos("MES", True, "1h")
+
+    assert result == {"signal": 0.0, "confidence": 0.0, "summary": "Kronos disabled"}
+
+
+async def test_pipeline_kronos_enabled_returns_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When ENABLE_KRONOS=1 and bars are available, classify() result propagates."""
+    import asyncio
+    import pandas as pd
+    from unittest.mock import AsyncMock, MagicMock
+
+    monkeypatch.setenv(_ENV_FLAG, "1")
+
+    from agents.kronos_classifier import KronosClassifier
+    from agents.pattern_vision_analyst import VisionClassification
+    from agents.pipeline import TradingPipeline
+
+    # Build minimal fake bar DataFrame (20 rows required)
+    df = pd.DataFrame(
+        {
+            "open": [100.0] * 20,
+            "high": [101.0] * 20,
+            "low": [99.0] * 20,
+            "close": [100.5] * 20,
+            "volume": [1000] * 20,
+        }
+    )
+
+    fake_data_mgr = MagicMock()
+    fake_data_mgr.get_bars = AsyncMock(return_value=df)
+
+    fake_tech = MagicMock()
+    fake_tech._data = fake_data_mgr
+
+    kronos = KronosClassifier()
+    # Stub classify to return a known verdict
+    expected_vc = VisionClassification(
+        pattern_type="no_clear_pattern",
+        signal=0.0,
+        confidence=0.0,
+        reasoning="stub — Kronos not yet wired",
+        raw="",
+    )
+    kronos.classify = AsyncMock(return_value=expected_vc)
+
+    pipeline = TradingPipeline.__new__(TradingPipeline)
+    pipeline._agents = {"technical": fake_tech}
+    pipeline._kronos = kronos
+
+    result = await pipeline._call_agent_analyze_kronos("MES", True, "1h")
+
+    assert result["signal"] == pytest.approx(0.0)
+    assert result["confidence"] == pytest.approx(0.0)
+    assert result["summary"] == "stub — Kronos not yet wired"
+    assert result["pattern_type"] == "no_clear_pattern"
+
+
+async def test_pipeline_kronos_handles_missing_data_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When technical agent has no _data attribute, returns 'data unavailable' dict."""
+    from unittest.mock import MagicMock
+
+    monkeypatch.setenv(_ENV_FLAG, "1")
+
+    from agents.kronos_classifier import KronosClassifier
+    from agents.pipeline import TradingPipeline
+
+    fake_tech = MagicMock(spec=[])  # no _data attribute
+
+    pipeline = TradingPipeline.__new__(TradingPipeline)
+    pipeline._agents = {"technical": fake_tech}
+    pipeline._kronos = KronosClassifier()
+
+    result = await pipeline._call_agent_analyze_kronos("MES", True, "1h")
+
+    assert result == {"signal": 0.0, "confidence": 0.0, "summary": "data unavailable"}
