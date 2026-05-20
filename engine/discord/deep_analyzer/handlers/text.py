@@ -23,7 +23,10 @@ def _parse_json_reply(reply: str) -> tuple[str, dict[str, Any]]:
     except json.JSONDecodeError:
         logger.warning("deep_analyzer.text: non-JSON reply; using raw text as summary")
         return reply, {}
-    summary = data.pop("summary", reply)
+    # `data.pop("summary", reply)` returns None when the JSON has
+    # `"summary": null`, which would crash Pydantic validation. Fall back
+    # explicitly to the raw reply (or a placeholder if the reply is empty).
+    summary = data.pop("summary", None) or reply or "(empty)"
     return summary, data
 
 
