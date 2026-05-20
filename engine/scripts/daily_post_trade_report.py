@@ -786,7 +786,10 @@ def main() -> None:
 
     # Discord
     if not args.no_discord:
-        asyncio.run(_post_to_discord(report_date, metrics, report_path))
+        try:
+            asyncio.run(_post_to_discord(report_date, metrics, report_path))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Discord post failed: %s", exc)
     else:
         logger.info("Discord post skipped (--no-discord)")
 
