@@ -26,6 +26,7 @@ from .handlers.document import DocumentHandler
 from .handlers.image import ImageHandler
 from .handlers.text import TextHandler
 from .handlers.url import UrlHandler
+from .handlers.x_post import X_URL_RE, XPostHandler
 from .models import ArtifactType
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,8 @@ def _infer_artifact_type(row: dict[str, Any]) -> ArtifactType:
     context. Attachment-only messages route on file extension.
     """
     if row.get("url"):
+        if X_URL_RE.match(row["url"]):
+            return ArtifactType.X_POST
         return ArtifactType.URL
     raw = row.get("attachment_urls") or ""
     if raw:
@@ -100,6 +103,7 @@ async def run_once(
     handlers = {
         ArtifactType.TEXT: TextHandler(),
         ArtifactType.URL: UrlHandler(),
+        ArtifactType.X_POST: XPostHandler(),
         ArtifactType.IMAGE: ImageHandler(),
         ArtifactType.AUDIO: AudioHandler(),
         ArtifactType.DOCUMENT: DocumentHandler(),

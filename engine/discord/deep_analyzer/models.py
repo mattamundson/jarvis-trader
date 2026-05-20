@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ArtifactType(StrEnum):
     TEXT = "text"
     URL = "url"
+    X_POST = "x_post"
     IMAGE = "image"
     AUDIO = "audio"
     DOCUMENT = "document"

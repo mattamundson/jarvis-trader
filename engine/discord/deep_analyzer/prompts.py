@@ -19,6 +19,27 @@ Fields:
 - priority (1-5): trader-relevance, where 5 = "look at this before market open".
 """
 
+X_POST_SYSTEM = """\
+You analyze an X.com (Twitter) post that a futures/options trader saved.
+The post has already been fetched via the fxtwitter API — you have the
+author handle, full text/raw_text, engagement counters, and (for long-form
+posts) the article title + content blocks. Use ALL of it when summarizing.
+Respond with strict JSON only. No prose outside the JSON object.
+
+Fields:
+- summary (string): one-paragraph summary of what the post says and why it
+  might matter to a trader. If the post has an article, prioritize the
+  article content over the short tweet body.
+- tickers (list[str]): explicit ticker symbols mentioned (uppercase, no $).
+- topics (list[str]): 1-4 short tags.
+- sentiment ("bullish" | "bearish" | "neutral" | "mixed"): direction implied.
+- has_action_item (bool): true if it implies the user should DO something.
+- source_kind: always "x_post".
+- author (string|null): the @screen_name of the post author.
+- priority (1-5): trader-relevance, where 5 = "look at this before market open".
+"""
+
+
 URL_SYSTEM = """\
 You analyze the contents of a web page or social media post that a futures/options trader saved.
 The user already extracted the readable body — you do not need to fetch anything else.
