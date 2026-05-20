@@ -9,6 +9,7 @@ from typing import Any
 
 from . import gbrain_sink, storage, vault
 from .handlers.text import TextHandler
+from .handlers.url import UrlHandler
 from .models import ArtifactType
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,10 @@ async def run_once(
         return 0
     storage.claim_rows(db_path, [r["id"] for r in rows])
 
-    handlers = {ArtifactType.TEXT: TextHandler()}
+    handlers = {
+        ArtifactType.TEXT: TextHandler(),
+        ArtifactType.URL: UrlHandler(),
+    }
     written = 0
 
     for row in rows:
