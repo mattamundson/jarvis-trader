@@ -10,6 +10,9 @@ Tools (all read-only, no DB writes):
   get_recent_signals     — Recent Discord bot signals for a symbol
   get_daily_sentiment    — Keyword-based daily sentiment score
   search_commentary      — Full-text search Corey's raw commentary
+  get_recent_bookmarks   — Recent URLs dropped into Matt's #general bookmark channel
+  search_bookmarks       — Full-text search bookmark URL / title / description / content
+  get_bookmark_stats     — Counts by source_type + domain for the bookmark feed
 
 Run as MCP server:
   python -m discord.mcp_server
@@ -223,6 +226,159 @@ async def search_commentary(query: str, days: int = 7) -> list[dict]:
     except Exception as exc:
         logger.warning("[search_commentary] DB error for %r: %s", query, exc)
         return []
+
+
+# ---------------------------------------------------------------------------
+# Bookmark tools — Matt's personal #general dump (channel 1490851279180660819)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_recent_bookmarks(
+    hours: int = 168,
+    source_type: str = "",
+    domain: str = "",
+) -> list[dict]:
+    """
+    Get recent bookmarks from Matt's jarvis-trader #general channel.
+
+    Args:
+        hours: Lookback window in hours (default 168 = 7 days)
+        source_type: Optional filter — "x_post", "github", "video", "other"
+        domain: Optional substring filter on domain (e.g. "x.com", "github.com")
+
+    Returns list of bookmark dicts with: posted_at, url, domain, source_type,
+        embed_title, embed_description, content, author_name
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    db_path = _default_db_path()
+
+    clauses = ["posted_at >= ?"]
+    params: list = [cutoff]
+    if source_type:
+        clauses.append("source_type = ?")
+        params.append(source_type)
+    if domain:
+        clauses.append("domain LIKE ?")
+        params.append(f"%{domain}%")
+    where = " AND ".join(clauses)
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""
+                SELECT posted_at, url, domain, source_type, embed_title,
+                       embed_description, content, author_name
+                FROM discord_bookmarks
+                WHERE {where}
+                ORDER BY posted_at DESC
+                LIMIT 50
+                """,
+                params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except Exception as exc:
+        logger.warning("[get_recent_bookmarks] DB error: %s", exc)
+        return []
+
+
+@mcp.tool()
+async def search_bookmarks(
+    query: str,
+    days: int = 30,
+    source_type: str = "",
+) -> list[dict]:
+    """
+    Full-text search the bookmark feed across URL, embed title, embed
+    description, and message content.
+
+    Args:
+        query: Search string (case-insensitive)
+        days: How many days back to search (default 30)
+        source_type: Optional filter — "x_post", "github", "video", "other"
+
+    Returns list of bookmark dicts with: posted_at, url, domain, source_type,
+        embed_title, embed_description, content
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    db_path = _default_db_path()
+    like = f"%{query}%"
+
+    clauses = [
+        "posted_at >= ?",
+        "(url LIKE ? OR embed_title LIKE ? OR embed_description LIKE ? OR content LIKE ?)",
+    ]
+    params: list = [cutoff, like, like, like, like]
+    if source_type:
+        clauses.append("source_type = ?")
+        params.append(source_type)
+    where = " AND ".join(clauses)
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""
+                SELECT posted_at, url, domain, source_type, embed_title,
+                       embed_description, content
+                FROM discord_bookmarks
+                WHERE {where}
+                ORDER BY posted_at DESC
+                LIMIT 30
+                """,
+                params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except Exception as exc:
+        logger.warning("[search_bookmarks] DB error for %r: %s", query, exc)
+        return []
+
+
+@mcp.tool()
+async def get_bookmark_stats(days: int = 30) -> dict:
+    """
+    Aggregate stats for the bookmark feed over the last N days.
+
+    Args:
+        days: Lookback window in days (default 30)
+
+    Returns dict with: total, by_source_type (dict), top_domains (list of
+        {domain, count}), latest_posted_at, oldest_posted_at
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    db_path = _default_db_path()
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            totals = conn.execute(
+                "SELECT COUNT(*) c, MIN(posted_at) lo, MAX(posted_at) hi "
+                "FROM discord_bookmarks WHERE posted_at >= ?",
+                (cutoff,),
+            ).fetchone()
+            by_type = conn.execute(
+                "SELECT source_type, COUNT(*) c FROM discord_bookmarks "
+                "WHERE posted_at >= ? GROUP BY source_type ORDER BY c DESC",
+                (cutoff,),
+            ).fetchall()
+            top_domains = conn.execute(
+                "SELECT domain, COUNT(*) c FROM discord_bookmarks "
+                "WHERE posted_at >= ? AND domain IS NOT NULL "
+                "GROUP BY domain ORDER BY c DESC LIMIT 10",
+                (cutoff,),
+            ).fetchall()
+        return {
+            "days": days,
+            "total": totals["c"] if totals else 0,
+            "oldest_posted_at": totals["lo"] if totals else None,
+            "latest_posted_at": totals["hi"] if totals else None,
+            "by_source_type": {r["source_type"]: r["c"] for r in by_type},
+            "top_domains": [{"domain": r["domain"], "count": r["c"]} for r in top_domains],
+        }
+    except Exception as exc:
+        logger.warning("[get_bookmark_stats] DB error: %s", exc)
+        return {"days": days, "total": 0, "error": str(exc)}
 
 
 # ---------------------------------------------------------------------------
