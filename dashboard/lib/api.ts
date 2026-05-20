@@ -1515,3 +1515,45 @@ export async function fetchQuantStats(opts?: {
   const suffix = q.toString() ? `?${q.toString()}` : "";
   return fetchEngine<QuantStatsMetrics>(`/reports/quantstats${suffix}`);
 }
+
+// ── Jarvis Ask (command-center /jarvis/ask) ───────────────────────────────────
+
+export interface JarvisAskResponse {
+  answer: string;
+  sources: string[];
+  actions_taken: string[];
+  elapsed_ms: number;
+  intent: string;
+}
+
+export async function fetchJarvisAsk(question: string): Promise<JarvisAskResponse> {
+  return postEngine<JarvisAskResponse>("/jarvis/ask", { question });
+}
+
+// ── Discord Briefing (command-center /discord/briefing) ──────────────────────
+
+export interface BriefingIBLevels {
+  high?: number | null;
+  low?: number | null;
+  range?: number | null;
+  [key: string]: unknown;
+}
+
+export interface BriefingRecentSignal {
+  direction?: string | null;
+  confidence?: number | null;
+  timestamp?: string | null;
+  [key: string]: unknown;
+}
+
+export interface BriefingResponse {
+  symbol: string;
+  headline?: string | null;
+  corey_bias?: string | null;
+  ib_levels?: BriefingIBLevels | null;
+  recent_signal?: BriefingRecentSignal | null;
+}
+
+export async function fetchDiscordBriefing(symbol: string): Promise<BriefingResponse> {
+  return fetchEngine<BriefingResponse>(`/discord/briefing?symbol=${encodeURIComponent(symbol)}`);
+}
