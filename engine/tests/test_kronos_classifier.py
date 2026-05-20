@@ -3,26 +3,47 @@
 Covered:
   - is_kronos_enabled() returns False when env var is absent / non-"1"
   - is_kronos_enabled() returns True when ENABLE_KRONOS="1"
-  - classify([]) returns neutral VisionClassification when flag is off
-  - classify([]) returns neutral VisionClassification when flag is on (stub)
-  - classify_to_verdict([]) direction field is "neutral" for zero signal
-  - KronosVerdict.to_vision_classification() preserves signal/confidence
+  - classify(pd.DataFrame) returns neutral dict when flag is off
+  - classify(pd.DataFrame) returns neutral dict when flag is on (stub mode)
+  - classify rejects non-DataFrame input gracefully
+  - classify rejects fewer-than-MIN_BARS rows
+  - classify rejects DataFrames missing required columns
+  - _forecast_to_verdict with a real forecast DataFrame
+  - _kronos_or_none property: off → None, on → KronosClassifier, off again → None
+  - pipeline._call_agent_analyze_kronos: disabled, enabled, missing data manager
 
 Design:
   - Never touches production .env or any real API.
   - Uses monkeypatch.setenv / monkeypatch.delenv — no permanent env writes.
   - pytest-asyncio in auto mode (asyncio_mode = auto in pyproject.toml).
+  - Fixture ``bars_df`` is a 20-row synthetic OHLC DataFrame.
 """
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
+_ENV_FLAG = "ENABLE_KRONOS"
+
+
 # ---------------------------------------------------------------------------
-# Helpers
+# Shared fixture
 # ---------------------------------------------------------------------------
 
-_ENV_FLAG = "ENABLE_KRONOS"
+
+@pytest.fixture()
+def bars_df() -> pd.DataFrame:
+    """20-row synthetic OHLCV fixture — passes all classify() guards."""
+    return pd.DataFrame(
+        {
+            "open": [100.0 + i * 0.1 for i in range(20)],
+            "high": [101.0 + i * 0.1 for i in range(20)],
+            "low": [99.0 + i * 0.1 for i in range(20)],
+            "close": [100.5 + i * 0.1 for i in range(20)],
+            "volume": [1000] * 20,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -33,17 +54,20 @@ _ENV_FLAG = "ENABLE_KRONOS"
 def test_kronos_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Flag absent -> is_kronos_enabled() is False."""
     monkeypatch.delenv(_ENV_FLAG, raising=False)
-
     from agents.kronos_classifier import is_kronos_enabled
 
     assert is_kronos_enabled() is False
 
 
 def test_kronos_disabled_for_non_one_values(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Values other than the exact string '1' must not enable Kronos."""
+    """Values other than '1' (after strip) must not enable Kronos.
+
+    is_kronos_enabled() calls .strip() so bare '1' with leading/trailing
+    whitespace IS treated as enabled.  Only non-'1' stripped values are tested here.
+    """
     from agents.kronos_classifier import is_kronos_enabled
 
-    for bad_value in ("0", "true", "True", "yes", "on", "1 ", " 1", ""):
+    for bad_value in ("0", "true", "True", "yes", "on", ""):
         monkeypatch.setenv(_ENV_FLAG, bad_value)
         assert (
             is_kronos_enabled() is False
@@ -53,143 +77,227 @@ def test_kronos_disabled_for_non_one_values(monkeypatch: pytest.MonkeyPatch) -> 
 def test_kronos_enabled_when_flag_set(monkeypatch: pytest.MonkeyPatch) -> None:
     """ENABLE_KRONOS='1' -> is_kronos_enabled() is True."""
     monkeypatch.setenv(_ENV_FLAG, "1")
-
     from agents.kronos_classifier import is_kronos_enabled
 
     assert is_kronos_enabled() is True
 
 
 # ---------------------------------------------------------------------------
-# classify() interface tests
+# classify() — DataFrame input, stub returns neutral dict
 # ---------------------------------------------------------------------------
 
 
-async def test_classify_returns_neutral_stub_when_disabled(
+async def test_classify_returns_neutral_dict_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
+    bars_df: pd.DataFrame,
 ) -> None:
-    """When flag is off, classify([]) returns a neutral VisionClassification."""
+    """Disabled flag: classify(df) returns neutral dict with diagnostic summary."""
     monkeypatch.delenv(_ENV_FLAG, raising=False)
-
     from agents.kronos_classifier import KronosClassifier
-    from agents.pattern_vision_analyst import VisionClassification
 
     clf = KronosClassifier()
-    result = await clf.classify([])
+    result = await clf.classify(bars_df)
 
-    assert isinstance(result, VisionClassification)
-    assert result.signal == 0.0
-    assert result.confidence == 0.0
-    assert result.pattern_type == "no_clear_pattern"
-    # Reasoning string must mention "disabled" or "not set" so callers can tell
-    # this is an intentional abstention, not a model output.
-    assert (
-        "disabled" in result.reasoning.lower() or "not set" in result.reasoning.lower()
-    ), f"Expected disabled-related message in reasoning; got: {result.reasoning!r}"
+    assert isinstance(result, dict)
+    assert result["signal"] == pytest.approx(0.0)
+    assert result["confidence"] == pytest.approx(0.0)
+    assert isinstance(result["summary"], str) and len(result["summary"]) > 0
 
 
-async def test_classify_returns_neutral_stub_when_enabled(
+async def test_classify_returns_neutral_dict_when_enabled_stub(
     monkeypatch: pytest.MonkeyPatch,
+    bars_df: pd.DataFrame,
 ) -> None:
-    """When flag is on (stub mode), classify([]) returns neutral VisionClassification."""
+    """Enabled flag (stub): classify(df) returns neutral dict mentioning stub."""
     monkeypatch.setenv(_ENV_FLAG, "1")
-
-    from agents.kronos_classifier import KronosClassifier
-    from agents.pattern_vision_analyst import VisionClassification
-
-    clf = KronosClassifier()
-    result = await clf.classify([])
-
-    assert isinstance(result, VisionClassification)
-    assert result.signal == 0.0
-    assert result.confidence == 0.0
-    assert result.pattern_type == "no_clear_pattern"
-    # Reasoning string must mention "stub" so debate stack can detect un-wired model.
-    assert (
-        "stub" in result.reasoning.lower()
-    ), f"Expected 'stub' in reasoning; got: {result.reasoning!r}"
-
-
-async def test_classify_returns_neutral_stub(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Primary contract test: neutral + low confidence + sensible reasoning string."""
-    monkeypatch.delenv(_ENV_FLAG, raising=False)
-
     from agents.kronos_classifier import KronosClassifier
 
     clf = KronosClassifier()
-    result = await clf.classify([])
+    result = await clf.classify(bars_df)
 
-    # Signal neutral
-    assert result.signal == 0.0, f"Expected signal=0.0, got {result.signal}"
-    # Low confidence (must be 0.0 for stub — contributes zero weight to debate)
-    assert result.confidence == 0.0, f"Expected confidence=0.0, got {result.confidence}"
-    # Reasoning is a non-empty string — debate stack logs it
+    assert result["signal"] == pytest.approx(0.0)
+    assert result["confidence"] == pytest.approx(0.0)
     assert (
-        isinstance(result.reasoning, str) and len(result.reasoning) > 0
-    ), "reasoning must be a non-empty string"
+        "stub" in result["summary"].lower()
+    ), f"Expected 'stub' in summary; got: {result['summary']!r}"
 
 
 # ---------------------------------------------------------------------------
-# classify_to_verdict() direction field
+# classify() — input validation / rejection tests
 # ---------------------------------------------------------------------------
 
 
-async def test_classify_to_verdict_direction_neutral(
+async def test_classify_rejects_list_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """classify_to_verdict([]) -> KronosVerdict with direction='neutral'."""
+    """list[dict] input must be rejected gracefully with a diagnostic summary."""
     monkeypatch.delenv(_ENV_FLAG, raising=False)
-
-    from agents.kronos_classifier import KronosClassifier, KronosVerdict
+    from agents.kronos_classifier import KronosClassifier
 
     clf = KronosClassifier()
-    verdict = await clf.classify_to_verdict([])
+    # Pass a list-of-dicts (old stub interface) — must not raise
+    result = await clf.classify([{"open": 1, "high": 2, "low": 0, "close": 1}])  # type: ignore[arg-type]
 
-    assert isinstance(verdict, KronosVerdict)
-    assert verdict.direction == "neutral"
-    assert verdict.signal == 0.0
-    assert verdict.confidence == 0.0
+    assert result["signal"] == pytest.approx(0.0)
+    assert result["confidence"] == pytest.approx(0.0)
+    assert (
+        "not dataframe" in result["summary"].lower()
+    ), f"Expected diagnostic message; got: {result['summary']!r}"
+
+
+async def test_classify_rejects_fewer_than_min_bars(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DataFrame with fewer than MIN_BARS rows must be rejected."""
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    from agents.kronos_classifier import KronosClassifier
+
+    clf = KronosClassifier()
+    tiny_df = pd.DataFrame({"open": [1.0], "high": [2.0], "low": [0.5], "close": [1.5]})
+    result = await clf.classify(tiny_df)
+
+    assert result["signal"] == pytest.approx(0.0)
+    assert result["confidence"] == pytest.approx(0.0)
+    assert (
+        str(clf.MIN_BARS) in result["summary"]
+    ), f"Expected MIN_BARS ({clf.MIN_BARS}) in summary; got: {result['summary']!r}"
+
+
+async def test_classify_rejects_missing_column(
+    monkeypatch: pytest.MonkeyPatch,
+    bars_df: pd.DataFrame,
+) -> None:
+    """DataFrame missing a required column (e.g. 'close') must be rejected."""
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    from agents.kronos_classifier import KronosClassifier
+
+    clf = KronosClassifier()
+    bad_df = bars_df.drop(columns=["close"])
+    result = await clf.classify(bad_df)
+
+    assert result["signal"] == pytest.approx(0.0)
+    assert result["confidence"] == pytest.approx(0.0)
+    assert (
+        "close" in result["summary"]
+    ), f"Expected missing column name in summary; got: {result['summary']!r}"
 
 
 # ---------------------------------------------------------------------------
-# KronosVerdict.to_vision_classification() round-trip
+# _forecast_to_verdict() — direct unit test with fake forecast DataFrame
 # ---------------------------------------------------------------------------
 
 
-def test_kronos_verdict_to_vision_classification() -> None:
-    """KronosVerdict.to_vision_classification() preserves signal and confidence."""
-    from agents.kronos_classifier import KronosVerdict
+def test_forecast_to_verdict_none_returns_neutral() -> None:
+    """_forecast_to_verdict(None, bars) returns neutral dict."""
+    from agents.kronos_classifier import KronosClassifier
 
-    verdict = KronosVerdict(
-        signal=0.42,
-        confidence=0.75,
-        direction="bullish",
-        reasoning="test round-trip",
-    )
-    vc = verdict.to_vision_classification()
+    clf = KronosClassifier()
+    bars = pd.DataFrame({"close": [100.0] * 15})
+    result = clf._forecast_to_verdict(None, bars)
 
-    assert vc.signal == pytest.approx(0.42)
-    assert vc.confidence == pytest.approx(0.75)
-    assert vc.pattern_type == "no_clear_pattern"
-    assert vc.reasoning == "test round-trip"
+    assert result["signal"] == pytest.approx(0.0)
+    assert result["confidence"] == pytest.approx(0.0)
+    assert "stub" in result["summary"].lower()
 
 
-def test_kronos_verdict_clamps_out_of_range_values() -> None:
-    """VisionClassification from KronosVerdict must clamp signal/confidence."""
-    from agents.kronos_classifier import KronosVerdict
+def test_forecast_to_verdict_bullish_signal() -> None:
+    """Large positive predicted return maps to positive signal."""
+    from agents.kronos_classifier import KronosClassifier
 
-    # Over-range signal and confidence
-    verdict = KronosVerdict(signal=5.0, confidence=3.0, direction="bullish", reasoning="x")
-    vc = verdict.to_vision_classification()
+    clf = KronosClassifier()
+    # Last observed close = 100.0; predicted close = 102.0 → +200 bps
+    bars = pd.DataFrame({"close": [100.0] * 15})
+    forecast = pd.DataFrame({"close": [102.0] * 5})  # 5-bar forecast
+    result = clf._forecast_to_verdict(forecast, bars)
 
-    assert vc.signal == pytest.approx(1.0), "signal should be clamped to 1.0"
-    assert vc.confidence == pytest.approx(1.0), "confidence should be clamped to 1.0"
+    assert result["signal"] > 0.0, f"Expected positive signal; got {result['signal']}"
+    assert result["confidence"] > 0.0
+    assert "+200" in result["summary"] or "200" in result["summary"]
 
-    # Under-range
-    verdict2 = KronosVerdict(signal=-5.0, confidence=-1.0, direction="bearish", reasoning="x")
-    vc2 = verdict2.to_vision_classification()
 
-    assert vc2.signal == pytest.approx(-1.0), "signal should be clamped to -1.0"
-    assert vc2.confidence == pytest.approx(0.0), "confidence should be clamped to 0.0"
+def test_forecast_to_verdict_bearish_signal() -> None:
+    """Large negative predicted return maps to negative signal."""
+    from agents.kronos_classifier import KronosClassifier
+
+    clf = KronosClassifier()
+    bars = pd.DataFrame({"close": [100.0] * 15})
+    forecast = pd.DataFrame({"close": [98.0] * 5})  # -200 bps
+    result = clf._forecast_to_verdict(forecast, bars)
+
+    assert result["signal"] < 0.0, f"Expected negative signal; got {result['signal']}"
+    assert result["confidence"] > 0.0
+
+
+def test_forecast_to_verdict_neutral_within_threshold() -> None:
+    """Return within ±BULL_BEAR_THRESHOLD_BPS produces signal=0."""
+    from agents.kronos_classifier import KronosClassifier
+
+    clf = KronosClassifier()
+    # 10 bps move — below default 20 bps threshold
+    bars = pd.DataFrame({"close": [100.0] * 15})
+    forecast = pd.DataFrame({"close": [100.10] * 5})
+    result = clf._forecast_to_verdict(forecast, bars)
+
+    assert result["signal"] == pytest.approx(0.0)
+
+
+def test_forecast_to_verdict_signal_clamped() -> None:
+    """Signal is clamped to [-1.0, +1.0] regardless of predicted return magnitude."""
+    from agents.kronos_classifier import KronosClassifier
+
+    clf = KronosClassifier()
+    # Enormous move (10% = 1000 bps) — should clamp to 1.0
+    bars = pd.DataFrame({"close": [100.0] * 15})
+    forecast = pd.DataFrame({"close": [110.0] * 5})
+    result = clf._forecast_to_verdict(forecast, bars)
+
+    assert result["signal"] == pytest.approx(1.0)
+    assert result["confidence"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# _kronos_or_none property — lazy-init toggle test
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_kronos_lazy_init_off_then_on_then_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_kronos_or_none re-evaluates the flag on each access.
+
+    Uses a thin fake that holds the property logic so we avoid instantiating
+    the full TradingPipeline (heavy deps, DB, IB connections).
+    """
+    from agents.kronos_classifier import KronosClassifier, is_kronos_enabled
+
+    class _FakePipeline:
+        """Minimal host for the _kronos_or_none property logic."""
+
+        @property
+        def _kronos_or_none(self):
+            if not is_kronos_enabled():
+                self._kronos_cached = None
+                return None
+            if not hasattr(self, "_kronos_cached") or self._kronos_cached is None:
+                self._kronos_cached = KronosClassifier()
+            return self._kronos_cached
+
+    pipe = _FakePipeline()
+
+    # Flag off → None
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    assert pipe._kronos_or_none is None
+
+    # Flag on → KronosClassifier instance created and cached
+    monkeypatch.setenv(_ENV_FLAG, "1")
+    instance = pipe._kronos_or_none
+    assert isinstance(instance, KronosClassifier)
+    # Second access returns same cached instance
+    assert pipe._kronos_or_none is instance
+
+    # Flag off again → None and cache cleared
+    monkeypatch.delenv(_ENV_FLAG, raising=False)
+    assert pipe._kronos_or_none is None
 
 
 # ---------------------------------------------------------------------------
@@ -203,75 +311,53 @@ async def test_pipeline_kronos_disabled_returns_neutral(
     """When ENABLE_KRONOS is unset, _call_agent_analyze_kronos returns neutral dict."""
     monkeypatch.delenv(_ENV_FLAG, raising=False)
 
-    import sys
-
-    # Re-import pipeline with the env flag absent so _kronos is None
-    if "agents.pipeline" in sys.modules:
-        del sys.modules["agents.pipeline"]
-
     from agents.pipeline import TradingPipeline
 
     pipeline = TradingPipeline.__new__(TradingPipeline)
     pipeline._agents = {}
-    pipeline._kronos = None  # explicitly disabled
+    # Simulate disabled state without a cached instance
+    if hasattr(pipeline, "_kronos_cached"):
+        del pipeline._kronos_cached
 
     result = await pipeline._call_agent_analyze_kronos("MES", True, "1h")
 
     assert result == {"signal": 0.0, "confidence": 0.0, "summary": "Kronos disabled"}
 
 
-async def test_pipeline_kronos_enabled_returns_verdict(
+async def test_pipeline_kronos_enabled_returns_classify_result(
     monkeypatch: pytest.MonkeyPatch,
+    bars_df: pd.DataFrame,
 ) -> None:
     """When ENABLE_KRONOS=1 and bars are available, classify() result propagates."""
-    import asyncio
-    import pandas as pd
     from unittest.mock import AsyncMock, MagicMock
 
     monkeypatch.setenv(_ENV_FLAG, "1")
 
     from agents.kronos_classifier import KronosClassifier
-    from agents.pattern_vision_analyst import VisionClassification
     from agents.pipeline import TradingPipeline
 
-    # Build minimal fake bar DataFrame (20 rows required)
-    df = pd.DataFrame(
-        {
-            "open": [100.0] * 20,
-            "high": [101.0] * 20,
-            "low": [99.0] * 20,
-            "close": [100.5] * 20,
-            "volume": [1000] * 20,
-        }
-    )
-
     fake_data_mgr = MagicMock()
-    fake_data_mgr.get_bars = AsyncMock(return_value=df)
+    fake_data_mgr.get_bars = AsyncMock(return_value=bars_df)
 
     fake_tech = MagicMock()
     fake_tech._data = fake_data_mgr
 
     kronos = KronosClassifier()
-    # Stub classify to return a known verdict
-    expected_vc = VisionClassification(
-        pattern_type="no_clear_pattern",
-        signal=0.0,
-        confidence=0.0,
-        reasoning="stub — Kronos not yet wired",
-        raw="",
-    )
-    kronos.classify = AsyncMock(return_value=expected_vc)
+    expected_result = {"signal": 0.0, "confidence": 0.0, "summary": "stub — predictor not wired"}
+    kronos.classify = AsyncMock(return_value=expected_result)
 
     pipeline = TradingPipeline.__new__(TradingPipeline)
     pipeline._agents = {"technical": fake_tech}
-    pipeline._kronos = kronos
+    pipeline._kronos_cached = kronos  # inject cached instance directly
 
     result = await pipeline._call_agent_analyze_kronos("MES", True, "1h")
 
     assert result["signal"] == pytest.approx(0.0)
     assert result["confidence"] == pytest.approx(0.0)
-    assert result["summary"] == "stub — Kronos not yet wired"
-    assert result["pattern_type"] == "no_clear_pattern"
+    assert result["summary"] == "stub — predictor not wired"
+    # verify classify was called with a DataFrame (not a list of dicts)
+    call_args = kronos.classify.call_args[0][0]
+    assert isinstance(call_args, pd.DataFrame)
 
 
 async def test_pipeline_kronos_handles_missing_data_manager(
@@ -289,7 +375,7 @@ async def test_pipeline_kronos_handles_missing_data_manager(
 
     pipeline = TradingPipeline.__new__(TradingPipeline)
     pipeline._agents = {"technical": fake_tech}
-    pipeline._kronos = KronosClassifier()
+    pipeline._kronos_cached = KronosClassifier()  # inject so _kronos_or_none returns it
 
     result = await pipeline._call_agent_analyze_kronos("MES", True, "1h")
 

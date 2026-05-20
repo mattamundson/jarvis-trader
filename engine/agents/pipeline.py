@@ -479,7 +479,8 @@ class TradingPipeline:
         self._regime_engine = RegimeEngine()
         self.context_manager = context_manager
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
-        self._kronos = KronosClassifier() if is_kronos_enabled() else None
+        # _kronos is NOT set here — use _kronos_or_none property so that
+        # /admin/feature-flags toggles take effect without an engine restart.
 
     async def analyze_and_decide(
         self,
@@ -1473,17 +1474,34 @@ class TradingPipeline:
             return {"signal": 0.0, "confidence": 0.0, "summary": f"{agent_name} unavailable"}
         return await agent.analyze(symbol, **kwargs)
 
+    @property
+    def _kronos_or_none(self) -> "KronosClassifier | None":
+        """Return a ``KronosClassifier`` instance when ``ENABLE_KRONOS=1``, else ``None``.
+
+        Re-checks the env flag on every access (no startup caching) so that
+        ``/admin/feature-flags`` toggles take effect without an engine restart.
+        The instance itself is cached in ``_kronos_cached`` until the flag flips
+        off, avoiding repeated construction overhead during a single run.
+        """
+        if not is_kronos_enabled():
+            self._kronos_cached = None  # type: ignore[attr-defined]
+            return None
+        if not hasattr(self, "_kronos_cached") or self._kronos_cached is None:
+            self._kronos_cached = KronosClassifier()  # type: ignore[attr-defined]
+        return self._kronos_cached  # type: ignore[attr-defined]
+
     async def _call_agent_analyze_kronos(
         self, symbol: str, is_futures: bool, timeframe: str
     ) -> dict:
         """Run the Kronos classifier and return a debate-compatible dict.
 
-        Returns a neutral dict when Kronos is disabled (ENABLE_KRONOS != "1"),
-        when data is unavailable, or when fewer than 20 bars are returned.
-        classify() returns a VisionClassification dataclass (no to_dict()); this
-        method converts it explicitly so safe_analyze receives a plain dict.
+        Returns a neutral dict when Kronos is disabled (``ENABLE_KRONOS != "1"``),
+        when data is unavailable, or when fewer than ``MIN_BARS`` rows are present.
+        ``classify()`` now accepts a ``pd.DataFrame`` directly (paper schema);
+        no ``.to_dict("records")`` conversion needed.
         """
-        if self._kronos is None:
+        kronos = self._kronos_or_none
+        if kronos is None:
             return {"signal": 0.0, "confidence": 0.0, "summary": "Kronos disabled"}
         try:
             _tech = self._agents.get("technical")
@@ -1495,15 +1513,9 @@ class TradingPipeline:
             )
             if df is None or df.empty or len(df) < 20:
                 return {"signal": 0.0, "confidence": 0.0, "summary": "insufficient bars"}
-            bars = df[["open", "high", "low", "close", "volume"]].to_dict("records")
-            vc = await self._kronos.classify(bars)
-            # VisionClassification is a plain dataclass — convert manually
-            return {
-                "signal": vc.signal,
-                "confidence": vc.confidence,
-                "summary": vc.reasoning,
-                "pattern_type": vc.pattern_type,
-            }
+            # Pass the DataFrame directly — classify() validates shape internally.
+            result = await kronos.classify(df)
+            return result
         except Exception as e:
             logger.warning("[Pipeline] Kronos classify failed: %s", e)
             return {"signal": 0.0, "confidence": 0.0, "summary": f"Kronos error: {e}"}
