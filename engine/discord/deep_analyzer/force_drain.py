@@ -65,12 +65,14 @@ def _default_db_path() -> Path:
 
 
 def _default_vault_root() -> Path:
-    # Mirror runner's vault target — Discord-Feed/<date> pages live under this root.
-    # Defaults to engine/data/discord-vault; override via DEEP_ANALYZER_VAULT_ROOT.
+    # Mirror runner's vault target — Discord-Feed/<date> pages must land in the
+    # SAME Obsidian vault as URL/text analyses so the channel is searchable
+    # as one corpus. runner.py / vault.py default to ~/my-vault; match that.
+    # Override via DEEP_ANALYZER_VAULT_ROOT only if you want a separate sink.
     override = os.getenv("DEEP_ANALYZER_VAULT_ROOT")
     if override:
         return Path(override)
-    return _engine_root() / "data" / "discord-vault"
+    return Path(os.path.expanduser("~/my-vault"))
 
 
 def _default_log_path() -> Path:
