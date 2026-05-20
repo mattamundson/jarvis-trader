@@ -53,6 +53,10 @@ def _get_applier(upgrade_type: UpgradeType) -> BaseApplier:
         from .appliers.config_patcher import ConfigPatcher
 
         return ConfigPatcher()
+    if upgrade_type == "gepa_target":
+        from .appliers.gepa_applier import GepaApplier
+
+        return GepaApplier()
     raise ValueError(f"No applier registered for upgrade_type={upgrade_type}")
 
 
@@ -209,6 +213,24 @@ async def apply_many(
                 dry_run_only=dry_run_only,
                 auto_approve=local_auto,
             )
+        except ValueError as exc:
+            # No applier registered for this upgrade_type (e.g., a future / unknown type).
+            # Graceful degrade — don't crash the whole batch.
+            logger.warning(
+                "no applier for upgrade_type=%s on %s: %s",
+                entry.upgrade_type,
+                entry.bookmark_id,
+                exc,
+            )
+            result = ApplyResult(
+                bookmark_id=entry.bookmark_id,
+                success=False,
+                pre_apply_diff="",
+                post_apply_verification="",
+                rollback_path="",
+                notes=f"no-applier-for-type: {entry.upgrade_type}",
+                error=str(exc),
+            )
         except Exception as exc:  # noqa: BLE001 — surface unexpected applier failures
             logger.exception("apply_one raised for %s", entry.bookmark_id)
             result = ApplyResult(
@@ -217,8 +239,8 @@ async def apply_many(
                 pre_apply_diff="",
                 post_apply_verification="",
                 rollback_path="",
-                notes="Orchestrator caught unexpected exception",
-                error=str(exc),
+                notes="apply_one raised",
+                error=f"{type(exc).__name__}: {exc}",
             )
 
         results.append(result)

@@ -420,9 +420,96 @@ def test_get_applier_raises_on_none_upgrade_type() -> None:
         _get_applier("none")  # type: ignore[arg-type]
 
 
-def test_get_applier_raises_on_unknown_upgrade_type() -> None:
+def test_get_applier_returns_gepa_applier_for_gepa_target() -> None:
+    from discord.hermes_upgrade.appliers.gepa_applier import GepaApplier
+
+    applier = _get_applier("gepa_target")  # type: ignore[arg-type]
+    assert isinstance(applier, GepaApplier)
+
+
+def test_get_applier_raises_on_truly_unknown_upgrade_type() -> None:
     with pytest.raises(ValueError, match="No applier registered"):
-        _get_applier("gepa_target")  # type: ignore[arg-type]
+        _get_applier("brand_new_made_up_type")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# apply_many graceful-degrade on unknown / failing appliers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_many_continues_after_value_error_from_get_applier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unknown upgrade_type must not crash the batch; produces a no-applier-for-type result."""
+    good = MockApplier()
+
+    def fake_get_applier(upgrade_type: str):
+        if upgrade_type == "skill":
+            return good
+        raise ValueError(f"No applier registered for upgrade_type={upgrade_type}")
+
+    monkeypatch.setattr(applier_module, "_get_applier", fake_get_applier)
+
+    entries = [
+        _make_entry("good1", upgrade_type="skill"),
+        _make_entry("bad1", upgrade_type="gepa_target"),  # will hit ValueError branch
+        _make_entry("good2", upgrade_type="skill"),
+    ]
+    backlog_path = tmp_path / "backlog.jsonl"
+    applied_log = tmp_path / "applied.jsonl"
+
+    results = await apply_many(
+        entries,
+        backlog_path=backlog_path,
+        applied_log_path=applied_log,
+        auto_approve_low_risk=True,
+    )
+
+    assert len(results) == 3
+    assert results[0].success is True and results[0].bookmark_id == "good1"
+    assert results[1].success is False and results[1].bookmark_id == "bad1"
+    assert "no-applier-for-type" in (results[1].notes or "")
+    assert results[2].success is True and results[2].bookmark_id == "good2"
+
+
+@pytest.mark.asyncio
+async def test_apply_many_continues_after_generic_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-ValueError exception from apply_one becomes a failed-ApplyResult, not a crash."""
+
+    class BlowupApplier(MockApplier):
+        async def apply(self, entry: BacklogEntry) -> ApplyResult:  # type: ignore[override]
+            raise RuntimeError("kaboom from applier")
+
+    bomb = BlowupApplier()
+    good = MockApplier()
+    counter = {"n": 0}
+
+    def fake_get_applier(_ut):
+        counter["n"] += 1
+        return bomb if counter["n"] == 1 else good
+
+    monkeypatch.setattr(applier_module, "_get_applier", fake_get_applier)
+
+    entries = [_make_entry("a"), _make_entry("b")]
+    backlog_path = tmp_path / "backlog.jsonl"
+    applied_log = tmp_path / "applied.jsonl"
+
+    results = await apply_many(
+        entries,
+        backlog_path=backlog_path,
+        applied_log_path=applied_log,
+        auto_approve_low_risk=True,
+    )
+
+    assert len(results) == 2
+    assert results[0].success is False
+    assert "apply_one raised" in (results[0].notes or "")
+    assert "RuntimeError" in (results[0].error or "")
+    assert "kaboom" in (results[0].error or "")
+    assert results[1].success is True
 
 
 # ---------------------------------------------------------------------------
