@@ -8,11 +8,11 @@
   "alt_verdict": "PASS",
   "n_core_passed": 3,
   "n_alt_passed": 5,
-  "created_at": "2026-05-07T05:39:28.338767+00:00",
+  "created_at": "2026-05-20T05:35:35.195291+00:00",
   "aux_freshness": {
-    "rolling_wfo": "2026-05-07T05:39:28.338767+00:00",
-    "fixed_params": "2026-05-07T05:39:28.338767+00:00",
-    "cost_sweep": "2026-05-07T05:39:28.338767+00:00"
+    "rolling_wfo": "2026-05-20T05:35:35.195291+00:00",
+    "fixed_params": "2026-05-20T05:35:35.195291+00:00",
+    "cost_sweep": "2026-05-20T05:35:35.195291+00:00"
   },
   "gate_v2": {
     "verdict": "PASS",
@@ -34,7 +34,7 @@
       "rolling_wfo=MODERATE in ['MODERATE', 'STRONG']",
       "fixed_params_min_pf=1.357 >= 1.2",
       "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct=1.2386 <= 7.0 (alt ceiling)"
+      "mc_95th_dd_pct=1.2386 <= 4.0 (alt ceiling)"
     ],
     "reasons": [
       "mbb_pf_ci_lower=2.5759 >= 1.1",
@@ -45,7 +45,7 @@
       "rolling_wfo=MODERATE in ['MODERATE', 'STRONG']",
       "fixed_params_min_pf=1.357 >= 1.2",
       "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct=1.2386 <= 7.0 (alt ceiling)"
+      "mc_95th_dd_pct=1.2386 <= 4.0 (alt ceiling)"
     ]
   },
   "wfo_config": {
@@ -167,7 +167,7 @@
     "pf_ci_lower": 1.1,
     "p_edge": 0.95,
     "mc_95th_dd_core": 0.05,
-    "mc_95th_dd_alt": 0.07,
+    "mc_95th_dd_alt": 0.04,
     "dsr_core": 0.1,
     "dsr_alt": 0.3,
     "fixed_params_min_pf_alt": 1.2,
