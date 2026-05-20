@@ -555,246 +555,234 @@ git commit -m "feat(discord): deep_analyzer result models (Pydantic v2)"
 
 ---
 
-## Task 3: `llm.py` — Hermes LLM client with Gemini → Anthropic fallback and cost tracking
+## Task 3: `llm.py` — adapter over engine's `JarvisLLMClient`
 
 **Files:**
 - Create: `engine/discord/deep_analyzer/llm.py`
 - Create: `engine/tests/test_discord_deep_analyzer/test_llm.py`
 
-**Notes for the engineer:** Hermes exposes an HTTP gateway. From `~/scripts/HERMES_RUNBOOK.md`, the agent endpoint accepts JSON `{"message": "...", "provider": "...", "model": "..."}` and returns `{"reply": "...", "usage": {"input_tokens": ..., "output_tokens": ...}, "model": "...", "provider": "..."}`. Default base URL is `http://127.0.0.1:8765` (set via env `HERMES_BASE_URL`). Use `127.0.0.1` not `localhost` (Windows IPv6 quirk).
+**Critical correction (vs original draft):** Hermes is a Telegram/Discord adapter with no REST LLM endpoint. Use the **existing** `engine.llm.client.JarvisLLMClient` (Anthropic primary, Gemini failover, cost tracking, `llm_path_healthy` health signal — all already wired). The deep_analyzer's `llm.py` is a thin async adapter exposing `call_text(prompt, system)` and `call_vision(prompt, image_bytes, mime)` that the handlers can call without each one knowing about messages-format details.
+
+Anthropic key comes from `engine/.env` (already loaded by `engine.config.settings`). Google failover key (`GOOGLE_API_KEY` / `GEMINI_API_KEY`) is read by `JarvisLLMClient` itself — no extra wiring needed.
 
 - [ ] **Step 1: Write the test**
 
 `engine/tests/test_discord_deep_analyzer/test_llm.py`:
 ```python
-"""Tests for deep_analyzer.llm."""
+"""Tests for deep_analyzer.llm — adapter over JarvisLLMClient."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-import respx
-from httpx import Response
 
 from engine.discord.deep_analyzer import llm
 from engine.discord.deep_analyzer.models import LLMUsage
+from engine.llm.client import LLMCallResult
 
 
 @pytest.fixture
-def hermes_base(monkeypatch):
-    monkeypatch.setenv("HERMES_BASE_URL", "http://127.0.0.1:8765")
-    return "http://127.0.0.1:8765"
+def fake_engine_client():
+    """Patch the underlying JarvisLLMClient instance for the test."""
+    fake = MagicMock()
+    fake.call = AsyncMock()
+    with patch("engine.discord.deep_analyzer.llm._get_engine_client", return_value=fake):
+        yield fake
 
 
 @pytest.mark.asyncio
-async def test_call_text_primary_path(hermes_base):
-    with respx.mock(base_url=hermes_base) as mock:
-        mock.post("/v1/agent/chat").mock(
-            return_value=Response(
-                200,
-                json={
-                    "reply": "answer",
-                    "usage": {"input_tokens": 10, "output_tokens": 5},
-                    "model": "gemini-2.5-flash",
-                    "provider": "google",
-                },
-            )
-        )
-        out = await llm.call_text(prompt="hello", system="be terse")
-    assert out.reply == "answer"
-    assert out.model == "gemini-2.5-flash"
-    assert out.usage.total_tokens == 15
-    assert out.cost_usd > 0  # priced
+async def test_call_text_returns_llmresponse(fake_engine_client):
+    fake_engine_client.call.return_value = LLMCallResult(
+        success=True,
+        model="claude-haiku-4-5-20251001",
+        input_tokens=10,
+        output_tokens=5,
+        cost_usd=0.000028,
+        latency_ms=120,
+        retries=0,
+        content="hello back",
+    )
+    resp = await llm.call_text(prompt="hi", system="be terse")
+    assert resp.reply == "hello back"
+    assert resp.model == "claude-haiku-4-5-20251001"
+    assert resp.usage.total_tokens == 15
+    assert resp.cost_usd == pytest.approx(0.000028)
 
 
 @pytest.mark.asyncio
-async def test_call_text_falls_back_on_500(hermes_base):
-    with respx.mock(base_url=hermes_base) as mock:
-        # First call (primary) fails, second (fallback) succeeds
-        route = mock.post("/v1/agent/chat")
-        route.side_effect = [
-            Response(500, json={"error": "upstream"}),
-            Response(
-                200,
-                json={
-                    "reply": "fallback answer",
-                    "usage": {"input_tokens": 8, "output_tokens": 4},
-                    "model": "claude-haiku-4-5",
-                    "provider": "anthropic",
-                },
-            ),
-        ]
-        out = await llm.call_text(prompt="hello")
-    assert out.model == "claude-haiku-4-5"
-    assert "fallback" in out.reply
+async def test_call_text_raises_on_failed_result(fake_engine_client):
+    fake_engine_client.call.return_value = LLMCallResult(
+        success=False,
+        model="claude-haiku-4-5-20251001",
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0,
+        latency_ms=10,
+        retries=3,
+        content="",
+        error="all retries exhausted",
+    )
+    with pytest.raises(llm.LLMError):
+        await llm.call_text(prompt="hi")
 
 
 @pytest.mark.asyncio
-async def test_call_text_raises_when_both_fail(hermes_base):
-    with respx.mock(base_url=hermes_base) as mock:
-        mock.post("/v1/agent/chat").mock(return_value=Response(500))
-        with pytest.raises(llm.LLMError):
-            await llm.call_text(prompt="hello")
+async def test_call_text_uses_haiku_by_default(fake_engine_client):
+    fake_engine_client.call.return_value = LLMCallResult(
+        success=True, model="claude-haiku-4-5-20251001",
+        input_tokens=1, output_tokens=1, cost_usd=0.0,
+        latency_ms=1, retries=0, content="x",
+    )
+    await llm.call_text(prompt="hi")
+    args, kwargs = fake_engine_client.call.call_args
+    assert kwargs["model"] == "claude-haiku-4-5-20251001"
+    assert kwargs["agent_name"] == "deep_analyzer"
 
 
-def test_price_for_known_model():
-    cost = llm._price(model="gemini-2.5-flash", usage=LLMUsage(input_tokens=1000, output_tokens=1000))
-    # gemini 2.5 flash: $0.30 / 1M in, $2.50 / 1M out  -> 0.0003 + 0.0025 = 0.0028
-    assert cost == pytest.approx(0.0028, rel=0.01)
+@pytest.mark.asyncio
+async def test_call_vision_passes_multimodal_content(fake_engine_client):
+    fake_engine_client.call.return_value = LLMCallResult(
+        success=True, model="claude-haiku-4-5-20251001",
+        input_tokens=100, output_tokens=20, cost_usd=0.000160,
+        latency_ms=200, retries=0, content="red square",
+    )
+    out = await llm.call_vision(prompt="describe", image_bytes=b"\x89PNG\r\n", mime="image/png")
+    assert out.reply == "red square"
+    # Confirm the user message has a content list (multimodal)
+    args, kwargs = fake_engine_client.call.call_args
+    msgs = kwargs["messages"]
+    assert isinstance(msgs[0]["content"], list)
+    assert any(part.get("type") == "image" for part in msgs[0]["content"])
 ```
 
-- [ ] **Step 2: Add `respx` test dep if missing**
-
-```bash
-cd engine && .venv/Scripts/python -m pip show respx || .venv/Scripts/python -m pip install respx
-```
-
-- [ ] **Step 3: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**
 
 ```bash
 cd engine && .venv/Scripts/python -m pytest tests/test_discord_deep_analyzer/test_llm.py -v
 ```
 Expected: ImportError.
 
-- [ ] **Step 4: Implement `llm.py`**
+- [ ] **Step 3: Implement `llm.py`**
 
 `engine/discord/deep_analyzer/llm.py`:
 ```python
-"""LLM gateway client — routes through Hermes (Gemini primary, Anthropic fallback)."""
+"""LLM adapter for deep_analyzer.
+
+Thin layer over `engine.llm.client.JarvisLLMClient` — reuses Anthropic retry +
+Gemini failover + cost tracking + `llm_path_healthy` health signal. Exposes
+`call_text` and `call_vision` so handlers don't need to know about the
+messages-format or model selection.
+"""
 from __future__ import annotations
 
+import base64
 import logging
 import os
 from dataclasses import dataclass
+from typing import Any
 
-import httpx
-
-from .models import LLMUsage
+from ..models import LLMUsage  # noqa: TID252 — package-local import
+from engine.llm.client import JarvisLLMClient
 
 logger = logging.getLogger(__name__)
 
 
 class LLMError(RuntimeError):
-    """All LLM providers failed or returned a permanent error."""
-
-
-# Per-model pricing in USD per token (input, output).
-# Verify quarterly against provider pricing pages — these are the prices as of 2026-05.
-PRICING_PER_TOKEN: dict[str, tuple[float, float]] = {
-    "gemini-2.5-flash":   (0.30 / 1_000_000, 2.50 / 1_000_000),
-    "gemini-2.5-pro":     (1.25 / 1_000_000, 10.0 / 1_000_000),
-    "claude-haiku-4-5":   (1.00 / 1_000_000, 5.00 / 1_000_000),
-    "claude-sonnet-4-6":  (3.00 / 1_000_000, 15.0 / 1_000_000),
-}
-
-PRIMARY = {"provider": "google",    "model": "gemini-2.5-flash"}
-FALLBACK = {"provider": "anthropic", "model": "claude-haiku-4-5"}
-
-DEFAULT_BASE = "http://127.0.0.1:8765"
-TIMEOUT = httpx.Timeout(60.0, read=120.0)
+    """LLM call failed (after retries + fallback)."""
 
 
 @dataclass(frozen=True)
 class LLMResponse:
     reply: str
     model: str
-    provider: str
     usage: LLMUsage
     cost_usd: float
 
 
-def _price(*, model: str, usage: LLMUsage) -> float:
-    """USD cost for a usage tuple, given model. Returns 0 if model unknown (logged)."""
-    if model not in PRICING_PER_TOKEN:
-        logger.warning("deep_analyzer.llm: unknown model %r — cost set to 0", model)
-        return 0.0
-    in_rate, out_rate = PRICING_PER_TOKEN[model]
-    return usage.input_tokens * in_rate + usage.output_tokens * out_rate
+# Singleton — JarvisLLMClient is expensive to construct (DB connection, anthropic client).
+_client_singleton: JarvisLLMClient | None = None
+
+# Default model for deep_analyzer: Haiku 4.5 (cheapest Claude tier).
+# Failover chain inside JarvisLLMClient: Haiku → no further Claude tier →
+# (if GOOGLE_API_KEY set) gemini-2.0-flash.
+DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+AGENT_NAME = "deep_analyzer"
 
 
-def _base_url() -> str:
-    return os.getenv("HERMES_BASE_URL", DEFAULT_BASE)
+def _get_engine_client() -> JarvisLLMClient:
+    global _client_singleton
+    if _client_singleton is None:
+        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+        db_path = os.getenv("JARVIS_LLM_COST_DB", "data/llm_costs.db")
+        _client_singleton = JarvisLLMClient(api_key=api_key, db_path=db_path)
+    return _client_singleton
 
 
-async def _post(payload: dict) -> dict:
-    async with httpx.AsyncClient(base_url=_base_url(), timeout=TIMEOUT) as cli:
-        r = await cli.post("/v1/agent/chat", json=payload)
-        if r.status_code >= 500:
-            raise httpx.HTTPStatusError("upstream 5xx", request=r.request, response=r)
-        if r.status_code == 429:
-            raise httpx.HTTPStatusError("rate limited", request=r.request, response=r)
-        r.raise_for_status()
-        return r.json()
-
-
-def _to_response(body: dict) -> LLMResponse:
-    usage = LLMUsage(
-        input_tokens=int(body.get("usage", {}).get("input_tokens", 0)),
-        output_tokens=int(body.get("usage", {}).get("output_tokens", 0)),
-    )
-    model = body.get("model", "unknown")
+def _to_response(r) -> "LLMResponse":
+    if not r.success:
+        raise LLMError(r.error or "LLM call failed without error message")
     return LLMResponse(
-        reply=body.get("reply", ""),
-        model=model,
-        provider=body.get("provider", "unknown"),
-        usage=usage,
-        cost_usd=_price(model=model, usage=usage),
+        reply=r.content,
+        model=r.model,
+        usage=LLMUsage(input_tokens=r.input_tokens, output_tokens=r.output_tokens),
+        cost_usd=float(r.cost_usd or 0.0),
     )
 
 
 async def call_text(*, prompt: str, system: str | None = None) -> LLMResponse:
-    """Send a text-only LLM call. Tries primary, falls back on transient failure."""
-    base_payload = {"message": prompt}
-    if system:
-        base_payload["system"] = system
-
-    for route_name, route in [("primary", PRIMARY), ("fallback", FALLBACK)]:
-        payload = {**base_payload, **route}
-        try:
-            body = await _post(payload)
-            return _to_response(body)
-        except httpx.HTTPStatusError as e:
-            logger.warning("deep_analyzer.llm: %s %s — trying next", route_name, e)
-            continue
-        except httpx.RequestError as e:
-            logger.warning("deep_analyzer.llm: %s network error %s — trying next", route_name, e)
-            continue
-
-    raise LLMError("Both primary and fallback LLM routes failed")
+    """Single text turn. Returns the model's text reply + usage + cost."""
+    client = _get_engine_client()
+    messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+    r = await client.call(
+        model=DEFAULT_MODEL,
+        system=system or "",
+        messages=messages,
+        max_tokens=1024,
+        agent_name=AGENT_NAME,
+        temperature=0.2,
+        tier="fast",
+        compact=False,  # deep_analyzer prompts are short; skip compaction overhead
+    )
+    return _to_response(r)
 
 
 async def call_vision(*, prompt: str, image_bytes: bytes, mime: str) -> LLMResponse:
-    """Vision LLM call — Gemini 2.5-flash has native multimodal."""
-    import base64
-    payload = {
-        "message": prompt,
-        "attachments": [{"mime": mime, "b64": base64.b64encode(image_bytes).decode("ascii")}],
-        **PRIMARY,
-    }
-    try:
-        body = await _post(payload)
-        return _to_response(body)
-    except (httpx.HTTPStatusError, httpx.RequestError) as e:
-        logger.warning("deep_analyzer.llm: vision primary failed %s — Anthropic vision fallback", e)
-        payload = {**payload, **FALLBACK}
-        try:
-            body = await _post(payload)
-            return _to_response(body)
-        except (httpx.HTTPStatusError, httpx.RequestError) as inner:
-            raise LLMError(f"Vision call failed on both routes: {inner}") from inner
+    """Vision turn — single image + text prompt. Uses Anthropic multimodal."""
+    client = _get_engine_client()
+    b64 = base64.b64encode(image_bytes).decode("ascii")
+    messages: list[dict[str, Any]] = [{
+        "role": "user",
+        "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}},
+            {"type": "text", "text": prompt},
+        ],
+    }]
+    r = await client.call(
+        model=DEFAULT_MODEL,
+        system="",
+        messages=messages,
+        max_tokens=1024,
+        agent_name=AGENT_NAME,
+        temperature=0.2,
+        tier="fast",
+        compact=False,
+    )
+    return _to_response(r)
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
 cd engine && .venv/Scripts/python -m pytest tests/test_discord_deep_analyzer/test_llm.py -v
 ```
 Expected: 4 passed.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add engine/discord/deep_analyzer/llm.py \
         engine/tests/test_discord_deep_analyzer/test_llm.py
-git commit -m "feat(discord): deep_analyzer LLM gateway client (Hermes routing + pricing)"
+git commit -m "feat(discord): deep_analyzer LLM adapter over JarvisLLMClient"
 ```
 
 ---
