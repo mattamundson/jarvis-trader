@@ -26,7 +26,13 @@ _DOC_EXTS = (".pdf",)
 
 
 def _infer_artifact_type(row: dict[str, Any]) -> ArtifactType:
-    """Route on attachment extension first, then URL, then text."""
+    """Route on attachment extension first (when present), then URL, then text.
+
+    The production discord_bookmarks schema does not yet capture attachments
+    (only embed URLs). The attachment branches remain in place for the future
+    fetch_channel.py extension that will populate `attachment_urls`. For now
+    every real row routes to URL or TEXT.
+    """
     raw = row.get("attachment_urls") or ""
     if raw:
         first = raw.split()[0].split(",")[0].lower().split("?", 1)[0]
@@ -76,7 +82,7 @@ async def run_once(
     rows = storage.pick_unanalyzed(db_path, limit=limit)
     if not rows:
         return 0
-    storage.claim_rows(db_path, [r["id"] for r in rows])
+    storage.claim_rows(db_path, [str(r["message_id"]) for r in rows])
 
     handlers = {
         ArtifactType.TEXT: TextHandler(),
@@ -90,20 +96,21 @@ async def run_once(
     for row in rows:
         a_type = _infer_artifact_type(row)
         handler = handlers.get(a_type)
+        message_id = str(row["message_id"])
         if handler is None:
             logger.info(
-                "deep_analyzer: skipping %s — handler for %s not wired in Phase 1",
-                row["id"],
+                "deep_analyzer: skipping %s — no handler for %s",
+                message_id,
                 a_type,
             )
             continue
         try:
             result = await handler.analyze(row)
         except Exception as exc:  # noqa: BLE001 — record failure, don't crash run
-            logger.exception("deep_analyzer: handler error on row %s", row["id"])
+            logger.exception("deep_analyzer: handler error on row %s", message_id)
             storage.insert_analysis(
                 db_path=db_path,
-                bookmark_id=int(row["id"]),
+                bookmark_id=message_id,
                 artifact_type=a_type.value,
                 summary=f"FAILED: {exc}",
                 structured_json={"error": str(exc)},
@@ -123,7 +130,7 @@ async def run_once(
 
         analysis_id = storage.insert_analysis(
             db_path=db_path,
-            bookmark_id=int(row["id"]),
+            bookmark_id=message_id,
             artifact_type=result.artifact_type.value,
             summary=result.summary,
             structured_json=result.structured,
@@ -132,7 +139,7 @@ async def run_once(
             model_used=result.model_used,
             cost_usd=result.cost_usd,
         )
-        storage.mark_analyzed(db_path, int(row["id"]), analysis_id)
+        storage.mark_analyzed(db_path, message_id, analysis_id)
         written += 1
 
     return written

@@ -13,7 +13,7 @@ from discord.deep_analyzer.models import AnalysisResult, ArtifactType, LLMUsage
 @pytest.fixture
 def sample() -> AnalysisResult:
     return AnalysisResult(
-        bookmark_id=7,
+        bookmark_id="m7",
         artifact_type=ArtifactType.TEXT,
         summary="hello",
         structured={"tickers": ["MES"]},

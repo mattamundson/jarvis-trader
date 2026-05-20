@@ -25,7 +25,7 @@ def text_only_db(seeded_db: Path) -> Path:
 @pytest.fixture
 def stub_text_result():
     return AnalysisResult(
-        bookmark_id=0,
+        bookmark_id="placeholder",
         artifact_type=ArtifactType.TEXT,
         summary="stub",
         structured={"tickers": ["MES"], "priority": 3},
@@ -44,7 +44,7 @@ async def test_runner_processes_text_row_end_to_end(
     (tmp_path / "raw").mkdir()
 
     async def fake_analyze(self, row):
-        return stub_text_result.model_copy(update={"bookmark_id": row["id"]})
+        return stub_text_result.model_copy(update={"bookmark_id": str(row["message_id"])})
 
     monkeypatch.setattr(
         "discord.deep_analyzer.handlers.text.TextHandler.analyze",
@@ -72,7 +72,7 @@ async def test_runner_halts_on_daily_budget_breach(text_only_db, tmp_path, monke
     conn = sqlite3.connect(text_only_db)
     conn.execute(
         "INSERT INTO discord_analyses (bookmark_id, artifact_type, summary, structured_json, cost_usd) "
-        "VALUES (1, 'text', 's', '{}', 5.00)"
+        "VALUES ('m1', 'text', 's', '{}', 5.00)"
     )
     conn.commit()
     conn.close()
@@ -96,7 +96,7 @@ async def test_runner_writes_failure_row_on_handler_exception(text_only_db, tmp_
     conn = sqlite3.connect(text_only_db)
     conn.row_factory = sqlite3.Row
     a = conn.execute("SELECT * FROM discord_analyses").fetchone()
-    row = conn.execute("SELECT analyzed_at FROM discord_bookmarks WHERE id=1").fetchone()
+    row = conn.execute("SELECT analyzed_at FROM discord_bookmarks WHERE message_id='m1'").fetchone()
     conn.close()
     assert a is not None
     assert "transient" in (a["error_text"] or "")
@@ -118,7 +118,7 @@ async def test_runner_routes_url_row_to_url_handler(seeded_db, tmp_path, monkeyp
 
     async def fake_url_analyze(self, row):
         return AnalysisResult(
-            bookmark_id=int(row["id"]),
+            bookmark_id=str(row["message_id"]),
             artifact_type=ArtifactType.URL,
             summary="X post summary",
             structured={"source_kind": "x_post"},

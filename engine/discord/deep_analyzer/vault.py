@@ -19,7 +19,7 @@ def _slugify(text: str, max_len: int = 60) -> str:
     return text[:max_len] or "untitled"
 
 
-def _build_filename(bookmark_id: int, slug_source: str) -> str:
+def _build_filename(bookmark_id: str, slug_source: str) -> str:
     slug = _slugify(slug_source)
     name = f"{bookmark_id}--{slug}.md"
     return name[:MAX_FILENAME_CHARS]

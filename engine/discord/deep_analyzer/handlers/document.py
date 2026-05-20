@@ -54,7 +54,7 @@ class DocumentHandler:
         urls = _split_urls(row.get("attachment_urls") or "")
         doc_urls = [u for u in urls if _looks_like_doc(u)]
         if not doc_urls:
-            raise ValueError(f"no document attachment in row {row.get('id')}")
+            raise ValueError(f"no document attachment in row {row.get('message_id')}")
 
         data = await _download(doc_urls[0])
         text = _extract_text(data)
@@ -66,7 +66,7 @@ class DocumentHandler:
         structured.setdefault("doc_chars", len(text))
 
         return AnalysisResult(
-            bookmark_id=int(row["id"]),
+            bookmark_id=str(row["message_id"]),
             artifact_type=ArtifactType.DOCUMENT,
             summary=summary,
             structured=structured,

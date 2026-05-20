@@ -19,47 +19,28 @@ def populated_db(tmp_db: Path) -> Path:
     conn.executemany(
         """
         INSERT INTO discord_bookmarks
-          (id, message_id, posted_at, content, attachment_urls, url, url_kind, channel)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          (message_id, channel_id, posted_at, url, domain, source_type, content)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
-                1,
                 "md1",
+                "c1",
                 "2026-05-20T10:00:00Z",
-                None,
-                None,
                 "https://x.com/a/1",
+                "x.com",
                 "x_post",
-                "general",
+                "https://x.com/a/1",
             ),
-            (
-                2,
-                "md2",
-                "2026-05-20T10:01:00Z",
-                None,
-                "https://cdn.discordapp.com/a.png",
-                None,
-                None,
-                "general",
-            ),
-            (3, "md3", "2026-05-20T10:02:00Z", "lunch?", None, None, None, "general"),
-            (
-                4,
-                "md4",
-                "2026-05-18T10:02:00Z",
-                None,
-                None,
-                "https://x.com/a/2",
-                "x_post",
-                "general",
-            ),
+            ("md2", "c1", "2026-05-20T10:01:00Z", None, None, None, "image dropped here"),
+            ("md3", "c1", "2026-05-20T10:02:00Z", None, None, None, "lunch?"),
+            ("md4", "c1", "2026-05-18T10:02:00Z", "https://x.com/a/2", "x.com", "x_post", None),
         ],
     )
     now = datetime.utcnow()
     rows = [
         (
-            1,
+            "md1",
             "url",
             "Bull on MES",
             '{"priority":5,"tickers":["MES"],"has_action_item":true}',
@@ -67,7 +48,7 @@ def populated_db(tmp_db: Path) -> Path:
             now,
         ),
         (
-            2,
+            "md2",
             "image",
             "Random meme",
             '{"priority":1,"tickers":[],"has_action_item":false}',
@@ -75,7 +56,7 @@ def populated_db(tmp_db: Path) -> Path:
             now,
         ),
         (
-            3,
+            "md3",
             "text",
             "Lunch options",
             '{"priority":2,"tickers":["SPY"],"has_action_item":false}',
@@ -83,7 +64,7 @@ def populated_db(tmp_db: Path) -> Path:
             now,
         ),
         (
-            4,
+            "md4",
             "url",
             "Yesterday item",
             '{"priority":4,"tickers":["NQ"],"has_action_item":true}',

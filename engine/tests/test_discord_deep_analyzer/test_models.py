@@ -8,7 +8,7 @@ from discord.deep_analyzer.models import AnalysisResult, ArtifactType, LLMUsage
 
 def test_analysis_result_minimal_construction():
     r = AnalysisResult(
-        bookmark_id=1,
+        bookmark_id="m1",
         artifact_type=ArtifactType.TEXT,
         summary="hi",
         structured={},
@@ -16,14 +16,14 @@ def test_analysis_result_minimal_construction():
         usage=LLMUsage(input_tokens=10, output_tokens=5),
         cost_usd=0.0001,
     )
-    assert r.bookmark_id == 1
+    assert r.bookmark_id == "m1"
     assert r.artifact_type == "text"
 
 
 def test_artifact_type_rejects_unknown():
     with pytest.raises(ValidationError):
         AnalysisResult(
-            bookmark_id=1,
+            bookmark_id="m1",
             artifact_type="unknown",  # type: ignore[arg-type]
             summary="x",
             structured={},
