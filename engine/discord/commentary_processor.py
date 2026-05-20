@@ -299,7 +299,7 @@ class CoreyCommentaryProcessor:
         data_quality = "fresh" if days_old <= self.STALE_DAYS else "stale"
 
         # Build message block (cap at 6000 chars to stay within Haiku token budget)
-        messages_text = _build_message_block(rows, max_chars=6000)
+        messages_text = _build_message_block(rows, max_chars=60000)
         prompt = _LLM_PROMPT_TEMPLATE.format(
             date=for_date.isoformat(),
             n_messages=len(rows),
@@ -461,21 +461,34 @@ class CoreyCommentaryProcessor:
 # ---------------------------------------------------------------------------
 
 
-def _build_message_block(rows: list[dict], max_chars: int = 6000) -> str:
-    """Build a single text block from commentary rows, newest-first trimming if needed."""
-    lines = []
+def _build_message_block(rows: list[dict], max_chars: int = 60000) -> str:
+    """Build a single text block from commentary rows for the LLM extractor.
+
+    Walks newest-first to fill the budget so end-of-session updates
+    (e.g., a Power Hour revision that pivots the bias) anchor the synthesis
+    rather than getting dropped when an earlier morning post exhausts the
+    budget. The output is then re-sorted chronologically (oldest→newest)
+    so the LLM still reads the day's narrative in sequence.
+
+    Input rows are expected ASC (oldest first) — see _fetch_commentary.
+    """
+    selected: list[tuple[str, str]] = []
     total = 0
-    for row in rows:
-        ts = row.get("timestamp", "")[:16]
+    for row in reversed(rows):
         content = (row.get("content") or "").strip()
         if not content:
             continue
+        ts_full = row.get("timestamp", "")
+        ts = ts_full[:16]
         line = f"[{ts}] {content}"
         if total + len(line) > max_chars:
             break
-        lines.append(line)
+        selected.append((ts_full, line))
         total += len(line)
-    return "\n".join(lines) if lines else "(no messages)"
+    if not selected:
+        return "(no messages)"
+    selected.sort(key=lambda x: x[0])
+    return "\n".join(line for _, line in selected)
 
 
 def _parse_date(ts_str: str) -> Optional[date]:
