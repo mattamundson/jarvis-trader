@@ -46,6 +46,7 @@ xgboost==3.2.0            # Used by engine/learning/model_drawer.py — Win amd6
 pandas>=2.2.3
 numpy>=2.2.6
 scipy>=1.15.2
+quantstats==0.0.81        # Portfolio analytics (Sortino/Calmar/max-DD/monthly returns). Used by engine/backtest/stark_forge.py + engine/reports/quantstats_metrics.py.
 
 # ── Databases ──────────────────────────────────────────────────────────────
 asyncpg==0.31.0           # Async PostgreSQL driver (pure Python, no build needed)
