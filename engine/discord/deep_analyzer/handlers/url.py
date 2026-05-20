@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any
 
+import certifi
 import httpx
 from readability import Document  # readability-lxml
+
+# Anaconda leaves SSL_CERT_FILE pointing at a path that doesn't exist on this
+# box. Force it to certifi's bundle so httpx can establish TLS connections.
+if not os.path.exists(os.environ.get("SSL_CERT_FILE", "")):
+    os.environ["SSL_CERT_FILE"] = certifi.where()
 
 from ..llm import call_text
 from ..models import AnalysisResult, ArtifactType
@@ -59,13 +66,29 @@ def _is_js_required(body: str) -> bool:
 class UrlHandler:
     async def analyze(self, row: dict[str, Any]) -> AnalysisResult:
         url = row.get("url") or ""
+        # Discord captures the post's preview text in `embed_description` (and
+        # sometimes the title in `embed_title`). For X.com posts and other
+        # JS-required pages this is far more useful than the empty fetched
+        # HTML body — use it as the LLM context.
+        embed_title = (row.get("embed_title") or "").strip()
+        embed_desc = (row.get("embed_description") or "").strip()
+        embed_block = "\n".join(p for p in (embed_title, embed_desc) if p)
+
         html = await _fetch_html(url) if url else None
         body = _extract_body(html) if html else ""
 
         if not body or _is_js_required(body):
-            prompt = f"URL only (fetch failed or JS-required): {url}"
+            if embed_block:
+                prompt = f"URL: {url}\n\nPreview text:\n{embed_block}"
+            else:
+                prompt = f"URL only (fetch failed or JS-required): {url}"
         else:
-            prompt = f"URL: {url}\n\nExtracted body:\n{body}"
+            # Prefer embed text when present — it's a clean human-written summary
+            ctx_parts = [f"URL: {url}"]
+            if embed_block:
+                ctx_parts.append(f"Preview text:\n{embed_block}")
+            ctx_parts.append(f"Extracted body:\n{body}")
+            prompt = "\n\n".join(ctx_parts)
 
         resp = await call_text(prompt=prompt, system=URL_SYSTEM)
         summary, structured = _parse_json_reply(resp.reply)

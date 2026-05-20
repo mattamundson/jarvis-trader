@@ -9,7 +9,7 @@ Start-Transcript -Path "$env:TEMP\deep_analyzer_backfill.log" -Append
 
 $repo   = "C:\Users\mattm\ThinkorSwim\jarvis-trader"
 $python = "$repo\engine\.venv\Scripts\python.exe"
-$db     = "$repo\data\discord.db"
+$db     = "$repo\engine\data\jarvis_trader.db"
 
 # 1. Pause the live loop
 Write-Host "Disabling JarvisTrader_DiscordDeepAnalyzer..."

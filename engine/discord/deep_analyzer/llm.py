@@ -43,11 +43,27 @@ AGENT_NAME = "deep_analyzer"
 
 
 def _get_engine_client() -> JarvisLLMClient:
+    """Singleton with provider locked to anthropic.
+
+    The engine-wide default `JARVIS_LLM_PROVIDER` is `ollama` (cost), but
+    deep_analyzer needs cloud routing for vision, large context, and
+    internet-fetched URL analysis. We force anthropic for this client
+    only — temporarily override the env var around construction so the
+    rest of the engine is unaffected.
+    """
     global _client_singleton
     if _client_singleton is None:
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         db_path = os.getenv("JARVIS_LLM_COST_DB", "data/llm_costs.db")
-        _client_singleton = JarvisLLMClient(api_key=api_key, db_path=db_path)
+        prev = os.environ.get("JARVIS_LLM_PROVIDER")
+        os.environ["JARVIS_LLM_PROVIDER"] = "anthropic"
+        try:
+            _client_singleton = JarvisLLMClient(api_key=api_key, db_path=db_path)
+        finally:
+            if prev is None:
+                os.environ.pop("JARVIS_LLM_PROVIDER", None)
+            else:
+                os.environ["JARVIS_LLM_PROVIDER"] = prev
     return _client_singleton
 
 
