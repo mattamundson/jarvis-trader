@@ -322,3 +322,76 @@ def test_ask_logs_jsonl(
     assert isinstance(entry["elapsed_ms"], int)
     assert isinstance(entry["sources_count"], int)
     assert isinstance(entry["actions_count"], int)
+
+
+# ── Test: pipeline_run pre-flight gate ───────────────────────────────────────
+
+
+def test_pipeline_run_refused_when_kill_switch_active(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pipeline_run intent is refused when kill_switch_active=True."""
+
+    def fake_fetch_health():
+        return {"status": "ok", "kill_switch_active": True, "live_trading": False}
+
+    monkeypatch.setattr(jarvis_router_mod, "_fetch_health_for_preflight", fake_fetch_health)
+
+    resp = client.post("/jarvis/ask", json={"question": "run pipeline for MES"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["intent"] == "pipeline_run"
+    assert "Refused" in data["answer"], f"Expected refusal in answer; got: {data['answer']!r}"
+    assert "kill_switch_active=True" in data["answer"]
+
+
+def test_pipeline_run_refused_when_engine_unhealthy(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pipeline_run intent is refused when engine status != 'ok'."""
+
+    def fake_fetch_health():
+        return {"status": "degraded", "kill_switch_active": False, "live_trading": False}
+
+    monkeypatch.setattr(jarvis_router_mod, "_fetch_health_for_preflight", fake_fetch_health)
+
+    resp = client.post("/jarvis/ask", json={"question": "trigger pipeline for MNQ"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["intent"] == "pipeline_run"
+    assert "Refused" in data["answer"], f"Expected refusal in answer; got: {data['answer']!r}"
+    assert "status=degraded" in data["answer"]
+
+
+def test_pipeline_run_proceeds_when_healthy(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pipeline_run proceeds to the POST when pre-flight passes and POST is mocked."""
+    import unittest.mock as mock
+
+    def fake_fetch_health():
+        return {"status": "ok", "kill_switch_active": False, "live_trading": False}
+
+    monkeypatch.setattr(jarvis_router_mod, "_fetch_health_for_preflight", fake_fetch_health)
+
+    # Stub the actual pipeline POST so no real HTTP call is made
+    def fake_pipeline_run(question, context):
+        return (
+            "Pipeline run for MES complete. Decision: HOLD (confidence 55%).",
+            ["http://127.0.0.1:8010/pipeline/run"],
+            ["pipeline_run:MES:hold"],
+        )
+
+    monkeypatch.setattr(
+        jarvis_router_mod,
+        "_HANDLERS",
+        {**jarvis_router_mod._HANDLERS, "pipeline_run": fake_pipeline_run},
+    )
+
+    resp = client.post("/jarvis/ask", json={"question": "run pipeline for MES"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["intent"] == "pipeline_run"
+    # Should NOT be refused
+    assert "Refused" not in data["answer"]
+    assert "Pipeline run" in data["answer"]
