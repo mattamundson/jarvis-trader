@@ -3,6 +3,7 @@
 from .base import BaseApplier
 from .config_patcher import ConfigPatcher
 from .cron_register import CronRegister
+from .gepa_applier import GepaApplier
 from .library_integrator import LibraryIntegrator
 from .mcp_adder import McpAdder
 from .skill_installer import SkillInstaller
@@ -12,6 +13,7 @@ __all__ = [
     "BaseApplier",
     "ConfigPatcher",
     "CronRegister",
+    "GepaApplier",
     "LibraryIntegrator",
     "McpAdder",
     "SkillInstaller",
