@@ -149,6 +149,150 @@ def test_extract_change_preserves_rationale_as_reason() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Broadened parsers — change/switch/update natural-language shapes
+# ---------------------------------------------------------------------------
+
+
+def test_extract_change_with_change_keyword() -> None:
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=["Change model.provider to anthropic in the config."],
+    )
+    chg = cp._extract_config_change(entry)
+    assert chg is not None
+    assert chg["key_path"] == "model.provider"
+    assert chg["new_value"] == "anthropic"
+
+
+def test_extract_change_with_switch_keyword() -> None:
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=[
+            "Switch model.provider in ~/.hermes/config.yaml from ollama to anthropic."
+        ],
+    )
+    chg = cp._extract_config_change(entry)
+    assert chg is not None
+    assert chg["key_path"] == "model.provider"
+    assert chg["new_value"] == "anthropic"
+
+
+def test_extract_change_with_update_keyword() -> None:
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=[
+            "Update fallback_model.base_url to https://generativelanguage.googleapis.com/v1beta/openai/"
+        ],
+    )
+    chg = cp._extract_config_change(entry)
+    assert chg is not None
+    assert chg["key_path"] == "fallback_model.base_url"
+    assert "generativelanguage" in str(chg["new_value"])
+
+
+def test_extract_change_from_a_to_b_shape() -> None:
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=["Change model.provider from ollama to anthropic in config.yaml."],
+    )
+    chg = cp._extract_config_change(entry)
+    assert chg is not None
+    assert chg["key_path"] == "model.provider"
+    assert chg["new_value"] == "anthropic"
+
+
+def test_extract_change_value_at_key() -> None:
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=["Set the value 'haiku' at model.default for cost optimization."],
+    )
+    chg = cp._extract_config_change(entry)
+    assert chg is not None
+    # Either SET_RE or AT_KEY_RE should match. The set/change form has priority.
+    assert chg["key_path"] in ("model.default",)
+
+
+def test_extract_change_from_extracted_content() -> None:
+    """Implementation steps narrative; the actual key:value lives in extracted_content."""
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=["Apply the recommended config change from the source."],
+        notes="Per upstream guide:",
+    )
+    entry.extracted_content = "model.provider: anthropic"
+    chg = cp._extract_config_change(entry)
+    assert chg is not None
+    assert chg["key_path"] == "model.provider"
+    assert chg["new_value"] == "anthropic"
+
+
+# ---------------------------------------------------------------------------
+# Bail-outs — .env target and ENV_VAR lines
+# ---------------------------------------------------------------------------
+
+
+def test_extract_change_bails_on_engine_dotenv_target() -> None:
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=[
+            "Add HERMES_HOME to engine/.env pointing at the new install path",
+            "model.provider: anthropic",  # Would otherwise match.
+        ],
+    )
+    assert cp._extract_config_change(entry) is None
+
+
+def test_extract_change_bails_on_generic_dotenv_file_mention() -> None:
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=["Add TELEGRAM_BOT_TOKEN to the .env file for the profile"],
+    )
+    assert cp._extract_config_change(entry) is None
+
+
+def test_extract_change_bails_on_env_var_only_line() -> None:
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=["TELEGRAM_BOT_TOKEN=abc123"],
+    )
+    assert cp._extract_config_change(entry) is None
+
+
+def test_extract_change_quoted_value() -> None:
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=['Set model.provider to "anthropic".'],
+    )
+    chg = cp._extract_config_change(entry)
+    assert chg is not None
+    assert chg["key_path"] == "model.provider"
+    assert chg["new_value"] == "anthropic"
+
+
+def test_extract_change_skips_hostname_false_positive() -> None:
+    """Real backlog regression: 'config changes at github.com/Orchestra-Research/...'
+    used to false-match as key=github.com, value=changes. Hostnames must be
+    suppressed."""
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=[
+            "Review PR #51 diff for Hermes CLI config changes at "
+            "github.com/Orchestra-Research/AI-Research-SKILLs/pull/51",
+        ],
+    )
+    assert cp._extract_config_change(entry) is None
+
+
+def test_extract_change_skips_hostname_in_key_value_shape() -> None:
+    """KEY_VALUE_RE could match `api.example.com: foo`; reject TLD terminals."""
+    cp = ConfigPatcher()
+    entry = _make_entry(
+        implementation_steps=["See api.example.com: docs for the schema"],
+    )
+    assert cp._extract_config_change(entry) is None
+
+
+# ---------------------------------------------------------------------------
 # dry_run
 # ---------------------------------------------------------------------------
 
