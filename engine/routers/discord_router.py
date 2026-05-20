@@ -309,6 +309,88 @@ async def get_bookmark_stats(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.get("/bookmarks/recent")
+async def get_bookmarks_recent(
+    hours: int = Query(168, ge=1, le=8760, description="Lookback window in hours (default 168=7d)"),
+    source_type: Optional[str] = Query(
+        None, description="Filter by source_type (x_post, github, video, other)"
+    ),
+    domain: Optional[str] = Query(None, description="Substring filter on domain"),
+    limit: int = Query(50, ge=1, le=500),
+    db_path: str = Depends(get_db_path),
+):
+    """Recent rows from the #general bookmark dump with optional filters.
+
+    Mirrors the discord-jarvis MCP `get_recent_bookmarks` tool so dashboard
+    widgets and external integrations don't need to talk to SQLite directly.
+    """
+    clauses = ["posted_at >= datetime('now', ?)"]
+    params: list = [f"-{hours} hours"]
+    if source_type:
+        clauses.append("source_type = ?")
+        params.append(source_type)
+    if domain:
+        clauses.append("domain LIKE ?")
+        params.append(f"%{domain}%")
+    where = " AND ".join(clauses)
+    sql = f"""
+        SELECT posted_at, url, domain, source_type, embed_title,
+               embed_description, content, author_name
+        FROM discord_bookmarks
+        WHERE {where}
+        ORDER BY posted_at DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    try:
+        return {"data": query_db(db_path, sql, tuple(params)), "hours": hours, "limit": limit}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/bookmarks/search")
+async def get_bookmarks_search(
+    query: str = Query(..., min_length=1, description="Case-insensitive substring query"),
+    days: int = Query(30, ge=1, le=365),
+    source_type: Optional[str] = Query(None),
+    limit: int = Query(30, ge=1, le=200),
+    db_path: str = Depends(get_db_path),
+):
+    """Substring search across URL / embed_title / embed_description / content.
+
+    Mirrors the discord-jarvis MCP `search_bookmarks` tool. LIKE-based — fine
+    at ~1K rows; revisit if the table grows past ~100K.
+    """
+    like = f"%{query}%"
+    clauses = [
+        "posted_at >= datetime('now', ?)",
+        "(url LIKE ? OR embed_title LIKE ? OR embed_description LIKE ? OR content LIKE ?)",
+    ]
+    params: list = [f"-{days} days", like, like, like, like]
+    if source_type:
+        clauses.append("source_type = ?")
+        params.append(source_type)
+    where = " AND ".join(clauses)
+    sql = f"""
+        SELECT posted_at, url, domain, source_type, embed_title,
+               embed_description, content
+        FROM discord_bookmarks
+        WHERE {where}
+        ORDER BY posted_at DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    try:
+        return {
+            "data": query_db(db_path, sql, tuple(params)),
+            "query": query,
+            "days": days,
+            "limit": limit,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 # Module-level singleton — preserves the clusterer's 6-hour in-memory cache
 # across requests so dashboard reloads don't burn LLM budget.
 _bookmark_clusterer_singleton = None
