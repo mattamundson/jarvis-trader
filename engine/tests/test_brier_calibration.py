@@ -58,11 +58,18 @@ def _seed_trades(db_path: Path, rows):
             )
 
 
-def _mk_rows(agent_col_index, signals_and_pnls, now_iso="2026-04-16T12:00:00+00:00"):
+def _mk_rows(agent_col_index, signals_and_pnls, now_iso=None):
     """
     Build rows varying only one agent's signal column.
     signals_and_pnls: iterable of (signal, pnl_usd) tuples.
+
+    `now_iso` defaults to the current UTC time so rows stay inside the
+    30-day rolling window the BrierCalibrationTracker applies. Pass an
+    explicit historical ISO string only when deliberately exercising the
+    out-of-window branch.
     """
+    if now_iso is None:
+        now_iso = _fresh_iso()
     rows = []
     defaults = [0.0, 0.0, 0.0, 0.0, 0.0]  # technical, news, social, fundamental, corey
     for i, (sig, pnl) in enumerate(signals_and_pnls):
