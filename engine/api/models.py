@@ -122,19 +122,46 @@ class HealthResponse(BaseModel):
     kill_switch_active: bool = Field(False, description="Whether kill switch is active")
     paper_mode: bool = Field(True, description="Whether paper trading mode is active")
     database: str = Field("disconnected", description="Database connection status")
-    ibkr_connected: bool = Field(False, description="Whether IBKR is connected (OR of execution + data connectors — kept for backward compat)")
-    ibkr_execution_connected: Optional[bool] = Field(None, description="Whether the IBKR execution (paper/live trading) connector is connected — this is the path /brokers/positions queries")
-    ibkr_data_connected: Optional[bool] = Field(None, description="Whether the IBKR market-data connector is connected — independent lifecycle from the execution connector")
+    ibkr_connected: bool = Field(
+        False,
+        description="Whether IBKR is connected (OR of execution + data connectors — kept for backward compat)",
+    )
+    ibkr_execution_connected: Optional[bool] = Field(
+        None,
+        description="Whether the IBKR execution (paper/live trading) connector is connected — this is the path /brokers/positions queries",
+    )
+    ibkr_data_connected: Optional[bool] = Field(
+        None,
+        description="Whether the IBKR market-data connector is connected — independent lifecycle from the execution connector",
+    )
     schwab_connected: bool = Field(False, description="Whether Schwab is connected")
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
     cache: Optional[CacheStatus] = Field(None, description="Cache status")
-    llm_available: Optional[bool] = Field(True, description="Whether Anthropic API key is configured")
-    llm_path_healthy: Optional[bool] = Field(True, description="Whether the last-observed LLM call succeeded (false = credits/auth outage)")
-    llm_path_details: Optional[Dict[str, Any]] = Field(None, description="Populated only when llm_path_healthy=false")
-    tradingview_mcp_healthy: Optional[bool] = Field(True, description="Whether TradingView Desktop CDP port 9222 responds (false = TV MCP bar source unavailable)")
-    tradingview_mcp_details: Optional[str] = Field(None, description="Short diagnostic populated only when tradingview_mcp_healthy=false")
-    tv_mcp_status: Optional[str] = Field(None, description="TV MCP status: not_running | connecting | healthy | degraded | disabled")
+    llm_available: Optional[bool] = Field(
+        True, description="Whether Anthropic API key is configured"
+    )
+    llm_path_healthy: Optional[bool] = Field(
+        True,
+        description="Whether the last-observed LLM call succeeded (false = credits/auth outage)",
+    )
+    llm_path_details: Optional[Dict[str, Any]] = Field(
+        None, description="Populated only when llm_path_healthy=false"
+    )
+    tradingview_mcp_healthy: Optional[bool] = Field(
+        True,
+        description="Whether TradingView Desktop CDP port 9222 responds (false = TV MCP bar source unavailable)",
+    )
+    tradingview_mcp_details: Optional[str] = Field(
+        None, description="Short diagnostic populated only when tradingview_mcp_healthy=false"
+    )
+    tv_mcp_status: Optional[str] = Field(
+        None, description="TV MCP status: not_running | connecting | healthy | degraded | disabled"
+    )
+    brier_30d_rolling: Optional[float] = Field(
+        None,
+        description="30-day rolling mean Brier score across agents with ≥ min_trades closed signals. 0 = perfect calibration, 1 = always confidently wrong. None when no agent has enough data.",
+    )
 
 
 class SubsystemStatus(BaseModel):
@@ -280,7 +307,9 @@ class BarsResponse(BaseModel):
 
     symbol: str = Field(..., description="Symbol")
     timeframe: str = Field(..., description="Timeframe")
-    bars: List[Dict[str, Any]] = Field(default_factory=list, description="OHLCV bars (each bar includes vwap and stc fields)")
+    bars: List[Dict[str, Any]] = Field(
+        default_factory=list, description="OHLCV bars (each bar includes vwap and stc fields)"
+    )
     count: int = Field(0, description="Number of bars")
     vwap_current: Optional[float] = Field(None, description="Current VWAP value (last bar)")
     vwap_trend: Optional[str] = Field(None, description="'above' or 'below' — price vs VWAP")
