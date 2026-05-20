@@ -1,7 +1,7 @@
-"""Installs Hermes skills via `hermes skill install <slug-or-url>` (WSL-side).
+"""Installs Hermes skills via `hermes skills install <slug-or-url>` (WSL-side).
 
 The applier is idempotent: a second apply() detects the skill is already
-present (via `hermes skill list`) and short-circuits with success.
+present (via `hermes skills list`) and short-circuits with success.
 
 Invocation contract:
     All Hermes commands run inside the Ubuntu WSL distro as user `mattm`,
@@ -9,7 +9,7 @@ Invocation contract:
     timeout is enforced on install; 30 seconds on the listing query.
 
 Rollback:
-    rollback() runs `hermes skill uninstall <target>` inside WSL. Errors are
+    rollback() runs `hermes skills uninstall <target>` inside WSL. Errors are
     swallowed (|| true) because the skill may already have been removed by
     another path.
 """
@@ -23,7 +23,7 @@ from ..models import ApplyResult, BacklogEntry, UpgradeType
 from .base import BaseApplier
 
 SKILL_SLUG_RE = re.compile(r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_./-]+$")
-# Plain URL match — used as a fallback when no `hermes skill install` token is found.
+# Plain URL match — used as a fallback when no `hermes skills install` token is found.
 GIT_URL_RE = re.compile(r"https?://(?:github\.com|gitlab\.com)/[^/\s]+/[^/\s)\"'`]+")
 # "Clone <url> ..." — first capture group is the URL.
 CLONE_URL_RE = re.compile(r"clone\s+(https?://(?:github|gitlab)\.com/[^\s)\"'`]+)", re.IGNORECASE)
@@ -46,7 +46,7 @@ class SkillInstaller(BaseApplier):
         """Pull a slug or git URL out of an entry.
 
         Priority order (first hit wins):
-          1. ``hermes skill install <X>`` token in any implementation_step
+          1. ``hermes skills install <X>`` token in any implementation_step
           2. github/gitlab URL inside any implementation_step
           3. github/gitlab URL inside extracted_content
           4. github/gitlab URL inside notes
@@ -57,9 +57,9 @@ class SkillInstaller(BaseApplier):
         The returned value is normalized — trailing slashes removed, surrounding
         quote/backtick/paren noise stripped, and (for the install-command path)
         ``.git`` suffix + ``?ref=...`` query strings removed because Hermes'
-        ``hermes skill install`` expects a slug-style identifier, not a raw URL.
+        ``hermes skills install`` expects a slug-style identifier, not a raw URL.
         """
-        # 1. Explicit `hermes skill install <X>` token wins.
+        # 1. Explicit `hermes skills install <X>` token wins.
         for step in entry.implementation_steps:
             m = re.search(r"hermes\s+skill\s+install\s+(\S+)", step)
             if m:
@@ -109,7 +109,7 @@ class SkillInstaller(BaseApplier):
     def _normalize_for_install(target: str) -> str:
         """Normalize a hermes-skill-install argument.
 
-        Hermes' ``hermes skill install`` expects a slug or a bare git URL; it
+        Hermes' ``hermes skills install`` expects a slug or a bare git URL; it
         does NOT need a trailing ``.git`` and chokes on query strings. Strip:
 
         * surrounding quotes / backticks / parens
@@ -149,9 +149,9 @@ class SkillInstaller(BaseApplier):
         slug_root = self._slug_root(target)
         return (
             "# Would run inside WSL Ubuntu (user mattm):\n"
-            f"hermes skill install {target}\n"
+            f"hermes skills install {target}\n"
             "# Then verify:\n"
-            f"hermes skill list | grep -F {slug_root}"
+            f"hermes skills list | grep -F {slug_root}"
         )
 
     async def apply(self, entry: BacklogEntry) -> ApplyResult:
@@ -175,12 +175,18 @@ class SkillInstaller(BaseApplier):
                 bookmark_id=entry.bookmark_id,
                 success=True,
                 pre_apply_diff=f"# {target} already installed",
-                post_apply_verification=f"hermes skill list | grep -F {slug_root}",
-                rollback_path=f"hermes skill uninstall {target}",
+                post_apply_verification=f"hermes skills list | grep -F {slug_root}",
+                rollback_path=f"hermes skills uninstall {target}",
                 notes="idempotent skip",
             )
 
-        cmd = self._wsl_cmd(f"hermes skill install '{target}' 2>&1")
+        # Convert github repo URL → owner/repo slug form (hermes skills install
+        # expects either a slug or a direct SKILL.md URL, not a repo root URL).
+        install_target = target
+        gh_match = re.match(r"https?://github\.com/([^/]+/[^/]+?)(?:\.git)?/?$", target)
+        if gh_match:
+            install_target = gh_match.group(1)
+        cmd = self._wsl_cmd(f"hermes skills install --yes '{install_target}' 2>&1")
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -194,7 +200,7 @@ class SkillInstaller(BaseApplier):
             return ApplyResult(
                 bookmark_id=entry.bookmark_id,
                 success=False,
-                pre_apply_diff=f"hermes skill install {target}",
+                pre_apply_diff=f"hermes skills install {target}",
                 post_apply_verification="",
                 rollback_path="",
                 error=f"install timed out after {INSTALL_TIMEOUT_S}s",
@@ -203,9 +209,9 @@ class SkillInstaller(BaseApplier):
         return ApplyResult(
             bookmark_id=entry.bookmark_id,
             success=success,
-            pre_apply_diff=f"hermes skill install {target}",
-            post_apply_verification=f"hermes skill list | grep -F {slug_root}",
-            rollback_path=f"hermes skill uninstall {target}",
+            pre_apply_diff=f"hermes skills install {target}",
+            post_apply_verification=f"hermes skills list | grep -F {slug_root}",
+            rollback_path=f"hermes skills uninstall {target}",
             notes=f"output: {output[-500:]}",
             error=None if success else f"non-zero exit ({proc.returncode}); see notes",
         )
@@ -222,7 +228,7 @@ class SkillInstaller(BaseApplier):
         target = self._extract_slug_or_url(entry)
         if not target:
             return False
-        cmd = self._wsl_cmd(f"hermes skill uninstall '{target}' 2>&1 || true")
+        cmd = self._wsl_cmd(f"hermes skills uninstall '{target}' 2>&1 || true")
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -243,8 +249,8 @@ class SkillInstaller(BaseApplier):
         return ["wsl.exe", "-d", "Ubuntu", "-u", "mattm", "-e", "bash", "-lc", bash_cmd]
 
     async def _list_installed_skills(self) -> list[str]:
-        """Return non-empty lines from `hermes skill list`; empty list on any error."""
-        cmd = self._wsl_cmd("hermes skill list 2>&1 || echo __HERMES_LIST_ERROR__")
+        """Return non-empty lines from `hermes skills list`; empty list on any error."""
+        cmd = self._wsl_cmd("hermes skills list 2>&1 || echo __HERMES_LIST_ERROR__")
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
