@@ -235,3 +235,119 @@ class TestLastCheckTracking:
 
         assert guard.last_check is not None
         assert isinstance(guard.last_check, datetime)
+
+
+class TestProductionDataFrameInterface:
+    """Regression-lock for the 2026-05-20 production bug.
+
+    The production `MarketDataManager.get_bars()` returns a `pd.DataFrame`
+    (engine/data/market_data.py:773). Earlier revisions of RegimeGuard assumed
+    a list-of-bar-objects interface and did `if not bars or len(bars) < 20`,
+    which raises ValueError on a DataFrame ("truth value is ambiguous"). The
+    bare except in get_market_regime swallowed that ValueError and returned
+    "unknown" for every call — silently blocking mean-reversion strategy
+    entry regardless of actual market regime. The existing tests above didn't
+    catch it because they mocked get_bars to return a list of SimpleNamespace.
+
+    These tests pass a REAL pd.DataFrame and verify regime classification
+    actually completes. If any of these starts returning 'unknown' from a
+    valid DataFrame, the production bug has been reintroduced.
+    """
+
+    @staticmethod
+    def _ohlcv_dataframe(count: int = 30, trending: bool = False) -> pd.DataFrame:
+        """Build a real OHLCV DataFrame in the shape get_bars() returns."""
+        import numpy as np
+
+        rng = np.random.default_rng(42)
+        if trending:
+            base_closes = 100.0 + np.linspace(0, 50, count)  # strong uptrend
+        else:
+            base_closes = 100.0 + rng.standard_normal(count) * 0.5  # chop
+        return pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2026-05-20", periods=count, freq="1h"),
+                "open": base_closes - 0.1,
+                "high": base_closes + 0.5,
+                "low": base_closes - 0.5,
+                "close": base_closes,
+                "volume": rng.integers(1000, 10000, count).astype(float),
+            }
+        )
+
+    async def test_dataframe_input_does_not_raise_truthiness_valueerror(self, monkeypatch):
+        """Production path: get_bars returns pd.DataFrame.
+
+        Pre-fix: `if not bars` on a DataFrame raised ValueError → silent unknown.
+        Post-fix: must classify normally and return 'trending' or 'ranging'.
+        """
+        mgr = MagicMock()
+        mgr.get_bars = AsyncMock(return_value=self._ohlcv_dataframe(30))
+        guard = RegimeGuard(data_manager=mgr)
+        monkeypatch.setattr(guard.indicators, "adx", lambda *a, **kw: _make_adx_df(15.0))
+
+        regime = await guard.get_market_regime("SPY")
+
+        # Must classify, not silently fall back to 'unknown'
+        assert regime in ("trending", "ranging"), (
+            f"DataFrame interface broken — got '{regime}' (expected trending/ranging). "
+            f"Likely a regression of the 2026-05-20 truthiness bug."
+        )
+        assert regime == "ranging"  # ADX 15 < threshold 25
+        assert guard.last_check is not None
+
+    async def test_dataframe_input_classifies_trending(self, monkeypatch):
+        """Real DataFrame + ADX > threshold → 'trending'."""
+        mgr = MagicMock()
+        mgr.get_bars = AsyncMock(return_value=self._ohlcv_dataframe(30, trending=True))
+        guard = RegimeGuard(data_manager=mgr)
+        monkeypatch.setattr(guard.indicators, "adx", lambda *a, **kw: _make_adx_df(35.0))
+
+        regime = await guard.get_market_regime("SPY")
+
+        assert regime == "trending"
+        assert guard.is_suitable_for_mm("SPY") is False
+
+    async def test_empty_dataframe_returns_unknown(self):
+        """Real empty DataFrame → 'unknown' (no truthiness exception)."""
+        mgr = MagicMock()
+        mgr.get_bars = AsyncMock(return_value=pd.DataFrame())
+        guard = RegimeGuard(data_manager=mgr)
+
+        regime = await guard.get_market_regime("SPY")
+
+        assert regime == "unknown"
+
+    async def test_short_dataframe_returns_unknown(self):
+        """DataFrame with <20 rows → 'unknown' (insufficient for stable ADX)."""
+        mgr = MagicMock()
+        mgr.get_bars = AsyncMock(return_value=self._ohlcv_dataframe(10))
+        guard = RegimeGuard(data_manager=mgr)
+
+        regime = await guard.get_market_regime("SPY")
+
+        assert regime == "unknown"
+
+    async def test_dataframe_missing_ohlc_columns_returns_unknown(self, monkeypatch):
+        """DataFrame without OHLC columns → 'unknown' (no KeyError crash).
+
+        Guards against CSV-cache schema drift or non-OHLCV connector returns.
+        """
+        mgr = MagicMock()
+        # DataFrame with 25 rows but missing 'high', 'low', 'close'
+        mgr.get_bars = AsyncMock(
+            return_value=pd.DataFrame(
+                {
+                    "timestamp": pd.date_range("2026-05-20", periods=25, freq="1h"),
+                    "value": range(25),
+                }
+            )
+        )
+        guard = RegimeGuard(data_manager=mgr)
+
+        regime = await guard.get_market_regime("SPY")
+
+        assert regime == "unknown"
+        # Must NOT have updated last_regime — the unknown is from the guard, not
+        # a successful classification.
+        assert guard.last_regime == "unknown"
