@@ -334,8 +334,9 @@ def insert_bookmark(conn: sqlite3.Connection, bookmark: Bookmark) -> bool:
             """
             INSERT OR IGNORE INTO discord_bookmarks
             (message_id, channel_id, posted_at, url, domain, source_type,
-             embed_title, embed_description, content, author_id, author_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             embed_title, embed_description, content, author_id, author_name,
+             attachment_urls)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 bookmark.message_id,
@@ -349,6 +350,7 @@ def insert_bookmark(conn: sqlite3.Connection, bookmark: Bookmark) -> bool:
                 bookmark.content,
                 bookmark.author_id,
                 bookmark.author_name,
+                bookmark.attachment_urls,
             ),
         )
         return conn.execute("SELECT changes()").fetchone()[0] > 0
