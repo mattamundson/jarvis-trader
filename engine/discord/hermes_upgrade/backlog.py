@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sqlite3
 from collections import Counter
 from datetime import datetime, timezone
@@ -22,6 +23,58 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import BacklogEntry, ClassifiedUpgrade, Tier
+
+# Trusted orgs whose Hermes-applicable artifacts (skills, MCPs) don't get the
+# community-source risk demotion. Anything OUTSIDE this list that points at a
+# github.com URL is treated as untrusted community source and bumped from
+# tier_1 -> tier_2 (still applicable, but requires manual review before apply
+# because Hermes' built-in security scanner will likely block it on first try).
+#
+# Empirically discovered via the 2026-05-20 AgentMemory probe — Hermes returned
+# "Decision: BLOCKED — community source + caution verdict, 2 findings". The LLM
+# classifier rated AgentMemory tier_1 + low risk; Hermes' deterministic scanner
+# rated it CAUTION. This list closes the gap between classifier optimism and
+# scanner reality.
+TRUSTED_SKILL_ORGS = frozenset(
+    {
+        "nous-research",
+        "nousresearch",
+        "anthropic",
+        "anthropics",
+        "openai",
+        "mattamundson",  # Amo's own repos
+        "amoSZN",  # Amo's prior github identity (deleted but historical references survive)
+    }
+)
+
+_GITHUB_URL_RE = re.compile(r"github\.com/([^/\s]+)(?:/|$)", re.IGNORECASE)
+
+
+def _is_community_source(upgrade: ClassifiedUpgrade) -> bool:
+    """Return True iff the upgrade's source URL is a community (untrusted) github org.
+
+    Applies to upgrade_type in (skill, mcp_server, library) — those are the
+    types Hermes/Claude will install code from. Other types (cron, soul,
+    config) don't fetch external code so this check is skipped.
+    """
+    if upgrade.upgrade_type not in ("skill", "mcp_server", "library"):
+        return False
+    # Look across all fields the classifier might have put a URL into.
+    haystack = " ".join(
+        [
+            upgrade.extracted_content or "",
+            " ".join(upgrade.implementation_steps or []),
+            upgrade.notes or "",
+            upgrade.title or "",
+        ]
+    )
+    m = _GITHUB_URL_RE.search(haystack)
+    if not m:
+        # No github URL found — can't determine source; trust other signals.
+        return False
+    org = m.group(1).lower().lstrip("@")
+    return org not in TRUSTED_SKILL_ORGS
+
 
 logger = logging.getLogger(__name__)
 
@@ -55,17 +108,26 @@ def default_backlog_dir() -> Path:
 
 
 def assign_tier(upgrade: ClassifiedUpgrade) -> Tier:
-    """Tier the upgrade based on leverage and risk.
+    """Tier the upgrade based on leverage, risk, and source-trust.
 
     Rules:
       - defer:  not applicable, OR leverage<=1 (noise)
-      - tier_1: applicable, leverage>=4, risk=low
-      - tier_2: applicable, leverage>=3, risk in (low|med), not already tier_1
+      - tier_1: applicable, leverage>=4, risk=low, NOT community-source github org
+      - tier_2: applicable, leverage>=3, risk in (low|med); OR would-be tier_1
+                demoted due to untrusted community source
       - tier_3: everything else applicable (leverage>=2, or any risk=high)
+
+    Community-source demotion (2026-05-20): skills/MCPs/libraries from github
+    orgs NOT in TRUSTED_SKILL_ORGS are demoted tier_1 -> tier_2 because Hermes'
+    deterministic security scanner BLOCKS community sources with CAUTION verdict
+    on first apply. The LLM classifier doesn't see scanner verdicts, so it rates
+    them low risk; this demotion closes the gap.
     """
     if not upgrade.applicable or upgrade.leverage_rank <= 1:
         return "defer"
     if upgrade.leverage_rank >= 4 and upgrade.risk == "low":
+        if _is_community_source(upgrade):
+            return "tier_2"
         return "tier_1"
     if upgrade.leverage_rank >= 3 and upgrade.risk in ("low", "med"):
         return "tier_2"
