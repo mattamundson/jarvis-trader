@@ -1,0 +1,377 @@
+"""Backlog generator. Triages ClassifiedUpgrade into Tiers and renders markdown.
+
+Phase 2 of the Hermes Self-Improvement Loop. Takes the output of
+`classifier.classify_batch()` and produces:
+
+  ~/.hermes/upgrade/backlog.md       — human-readable, sectioned by tier
+  ~/.hermes/upgrade/backlog.jsonl    — machine-readable sidecar for the applier
+
+The JSONL is the source of truth for apply_status across runs — re-running the
+scanner preserves any prior apply outcomes via `merge_with_existing()`.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sqlite3
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterable
+
+from .models import BacklogEntry, ClassifiedUpgrade, Tier
+
+logger = logging.getLogger(__name__)
+
+# Discord guild id used to build canonical discord.com message URLs.
+# (channel_id is per-call; this is the parent guild for the futures bookmark
+#  channel on Amo's server.)
+DEFAULT_GUILD_ID = "1490851279180660819"
+
+_TIER_HEADINGS: dict[Tier, str] = {
+    "tier_1": "Tier 1 — High leverage, low risk (do first)",
+    "tier_2": "Tier 2 — High leverage, medium risk",
+    "tier_3": "Tier 3 — Speculative",
+    "defer": "Deferred",
+}
+
+
+def default_backlog_dir() -> Path:
+    """Resolve ``~/.hermes/upgrade`` on this platform.
+
+    Python on Windows can't reliably expand ``~`` to the WSL mount, so we hand
+    Windows a literal path. Everywhere else we just expand.
+    """
+    if os.name == "nt":
+        return Path(r"C:\Users\mattm\.hermes\upgrade")
+    return Path(os.path.expanduser("~/.hermes/upgrade"))
+
+
+# ---------------------------------------------------------------------------
+# Tiering
+# ---------------------------------------------------------------------------
+
+
+def assign_tier(upgrade: ClassifiedUpgrade) -> Tier:
+    """Tier the upgrade based on leverage and risk.
+
+    Rules:
+      - defer:  not applicable, OR leverage<=1 (noise)
+      - tier_1: applicable, leverage>=4, risk=low
+      - tier_2: applicable, leverage>=3, risk in (low|med), not already tier_1
+      - tier_3: everything else applicable (leverage>=2, or any risk=high)
+    """
+    if not upgrade.applicable or upgrade.leverage_rank <= 1:
+        return "defer"
+    if upgrade.leverage_rank >= 4 and upgrade.risk == "low":
+        return "tier_1"
+    if upgrade.leverage_rank >= 3 and upgrade.risk in ("low", "med"):
+        return "tier_2"
+    return "tier_3"
+
+
+# ---------------------------------------------------------------------------
+# Hydration — pull bookmark / vault context out of the production sqlite db
+# ---------------------------------------------------------------------------
+
+
+def hydrate_entry(
+    upgrade: ClassifiedUpgrade,
+    db_path: str | Path,
+    channel_id: str = "1490851279180660819",
+    guild_id: str = DEFAULT_GUILD_ID,
+) -> BacklogEntry:
+    """Compose a BacklogEntry by joining the upgrade with bookmark + analysis rows.
+
+    Missing rows degrade gracefully — we fall back to empty strings rather than
+    raise, so the backlog still renders if a bookmark was deleted between scan
+    and render.
+    """
+    bookmark_url = ""
+    vault_path = ""
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute(
+                """
+                SELECT b.url, COALESCE(a.vault_path, '') AS vault_path
+                FROM discord_bookmarks b
+                LEFT JOIN discord_analyses a ON a.bookmark_id = b.message_id
+                WHERE b.message_id = ?
+                ORDER BY a.id DESC
+                LIMIT 1
+                """,
+                (upgrade.bookmark_id,),
+            ).fetchone()
+            if row:
+                bookmark_url = row[0] or ""
+                vault_path = row[1] or ""
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:  # pragma: no cover - defensive
+        logger.warning("hydrate_entry: sqlite read failed for %s: %s", upgrade.bookmark_id, exc)
+
+    discord_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{upgrade.bookmark_id}"
+
+    return BacklogEntry(
+        bookmark_id=upgrade.bookmark_id,
+        source_bookmark_url=bookmark_url,
+        source_discord_url=discord_url,
+        source_vault_path=vault_path,
+        upgrade_type=upgrade.upgrade_type,
+        title=upgrade.title,
+        rationale=upgrade.rationale,
+        implementation_steps=list(upgrade.implementation_steps),
+        leverage_rank=upgrade.leverage_rank,
+        risk=upgrade.risk,
+        dependencies=list(upgrade.dependencies),
+        estimated_cost_usd=upgrade.estimated_cost_usd,
+        extracted_content=upgrade.extracted_content,
+        notes=upgrade.notes,
+        tier="defer",  # caller overwrites via assign_tier()
+        apply_status="pending",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sorting + grouping
+# ---------------------------------------------------------------------------
+
+
+_TIER_ORDER: dict[Tier, int] = {"tier_1": 0, "tier_2": 1, "tier_3": 2, "defer": 3}
+
+
+def _sort_key(entry: BacklogEntry) -> tuple[int, int, float, str]:
+    """Sort: tier asc, leverage desc, cost asc, bookmark_id asc (stable).
+
+    Within a tier the highest-leverage, cheapest items come first.
+    """
+    return (
+        _TIER_ORDER.get(entry.tier, 99),
+        -entry.leverage_rank,
+        entry.estimated_cost_usd,
+        entry.bookmark_id,
+    )
+
+
+def _group_by_tier(entries: Iterable[BacklogEntry]) -> dict[Tier, list[BacklogEntry]]:
+    grouped: dict[Tier, list[BacklogEntry]] = {
+        "tier_1": [],
+        "tier_2": [],
+        "tier_3": [],
+        "defer": [],
+    }
+    for e in entries:
+        grouped[e.tier].append(e)
+    return grouped
+
+
+# ---------------------------------------------------------------------------
+# Markdown rendering
+# ---------------------------------------------------------------------------
+
+
+def _truncate(text: str, limit: int = 500) -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "..."
+
+
+def _render_entry(entry: BacklogEntry) -> list[str]:
+    lines: list[str] = []
+    title = entry.title or "(untitled upgrade)"
+    lines.append(f"### [{entry.bookmark_id}] {title}")
+    lines.append("")
+    lines.append(
+        f"- **Type:** {entry.upgrade_type}  "
+        f"**Leverage:** {entry.leverage_rank}/5  "
+        f"**Risk:** {entry.risk}  "
+        f"**Cost:** ${entry.estimated_cost_usd:.2f}"
+    )
+    if entry.rationale:
+        lines.append(f"- **Rationale:** {entry.rationale}")
+    if entry.implementation_steps:
+        lines.append("- **Implementation:**")
+        for i, step in enumerate(entry.implementation_steps, 1):
+            lines.append(f"  {i}. `{step}`")
+    if entry.dependencies:
+        deps = ", ".join(entry.dependencies)
+        lines.append(f"- **Dependencies:** {deps}")
+    src_parts: list[str] = []
+    if entry.source_bookmark_url:
+        src_parts.append(f"[bookmark]({entry.source_bookmark_url})")
+    if entry.source_discord_url:
+        src_parts.append(f"[Discord]({entry.source_discord_url})")
+    if entry.source_vault_path:
+        src_parts.append(f"[vault]({entry.source_vault_path})")
+    if src_parts:
+        lines.append("- **Source:** " + " | ".join(src_parts))
+    if entry.notes:
+        lines.append(f"- **Notes:** {entry.notes}")
+    if entry.apply_status and entry.apply_status != "pending":
+        ts = entry.apply_timestamp.isoformat() if entry.apply_timestamp else ""
+        outcome = f" — {entry.apply_outcome}" if entry.apply_outcome else ""
+        lines.append(f"- **Apply status:** {entry.apply_status} ({ts}){outcome}")
+    if entry.extracted_content:
+        lines.append("- **Extracted content:**")
+        quote = _truncate(entry.extracted_content, 500)
+        for qline in quote.splitlines() or [quote]:
+            lines.append(f"  > {qline}")
+    lines.append("")
+    return lines
+
+
+def _render_deferred_line(entry: BacklogEntry) -> str:
+    title = entry.title or "(untitled)"
+    reason = entry.rationale or entry.notes or "not applicable"
+    return f"- `[{entry.bookmark_id}]` {title} — {_truncate(reason, 140)}"
+
+
+def render_markdown(entries: list[BacklogEntry], *, now: datetime | None = None) -> str:
+    """Render the backlog as a single markdown document with sections per tier."""
+    now = now or datetime.now(timezone.utc)
+    grouped = _group_by_tier(sorted(entries, key=_sort_key))
+    tally = Counter({t: len(v) for t, v in grouped.items()})
+
+    out: list[str] = []
+    out.append(f"# Hermes Upgrade Backlog — generated {now.strftime('%Y-%m-%d %H:%M UTC')}")
+    out.append("")
+    out.append(
+        f"Total candidates: {len(entries)}  |  "
+        f"tier_1: {tally['tier_1']}  |  "
+        f"tier_2: {tally['tier_2']}  |  "
+        f"tier_3: {tally['tier_3']}  |  "
+        f"deferred: {tally['defer']}"
+    )
+    out.append("")
+
+    for tier in ("tier_1", "tier_2", "tier_3"):
+        heading = _TIER_HEADINGS[tier]
+        bucket = grouped[tier]
+        out.append(f"## {heading}")
+        out.append("")
+        if not bucket:
+            out.append("_None._")
+            out.append("")
+            continue
+        for entry in bucket:
+            out.extend(_render_entry(entry))
+
+    # Deferred — collapsed, one line per item
+    deferred = grouped["defer"]
+    out.append(f"## Deferred ({len(deferred)} items)")
+    out.append("")
+    if deferred:
+        for entry in deferred:
+            out.append(_render_deferred_line(entry))
+        out.append("")
+    else:
+        out.append("_None._")
+        out.append("")
+
+    out.append("---")
+    out.append("")
+    out.append("Apply with: `python -m discord.hermes_upgrade.applier --bookmark-id <id>`")
+    out.append(
+        "Apply all tier_1: "
+        "`python -m discord.hermes_upgrade.applier --tier tier_1 --auto-approve-low-risk`"
+    )
+    out.append("")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+
+
+def write_backlog(
+    entries: list[BacklogEntry],
+    *,
+    out_dir: Path | None = None,
+) -> tuple[Path, Path]:
+    """Write backlog.md and backlog.jsonl. Creates parent dir if missing.
+
+    Returns (md_path, jsonl_path).
+    """
+    out = out_dir or default_backlog_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    md_path = out / "backlog.md"
+    jsonl_path = out / "backlog.jsonl"
+
+    md_path.write_text(render_markdown(entries), encoding="utf-8")
+    with jsonl_path.open("w", encoding="utf-8") as f:
+        for e in entries:
+            f.write(json.dumps(e.model_dump(mode="json"), default=str) + "\n")
+    return md_path, jsonl_path
+
+
+def merge_with_existing(
+    new_entries: list[BacklogEntry],
+    jsonl_path: Path,
+) -> list[BacklogEntry]:
+    """Preserve apply state from the previous JSONL, keyed by bookmark_id.
+
+    If the prior entry was applied/skipped/failed/rolled_back, we keep its
+    ``apply_status``, ``apply_timestamp``, ``apply_outcome``, and
+    ``rollback_path``. Everything else (classification fields, rationale,
+    extracted_content, ...) comes from the fresh ``new_entries`` — the
+    classifier is authoritative for those.
+
+    Unknown bookmark_ids in the file are dropped; the new run defines the
+    universe.
+    """
+    if not jsonl_path.exists():
+        return new_entries
+
+    prior: dict[str, dict] = {}
+    try:
+        with jsonl_path.open("r", encoding="utf-8") as f:
+            for raw in f:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    row = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                bid = row.get("bookmark_id")
+                if bid:
+                    prior[bid] = row
+    except OSError as exc:  # pragma: no cover - defensive
+        logger.warning("merge_with_existing: failed to read %s: %s", jsonl_path, exc)
+        return new_entries
+
+    merged: list[BacklogEntry] = []
+    for entry in new_entries:
+        prev = prior.get(entry.bookmark_id)
+        if not prev:
+            merged.append(entry)
+            continue
+        prev_status = prev.get("apply_status", "pending")
+        if prev_status == "pending":
+            merged.append(entry)
+            continue
+        updated = entry.model_copy(
+            update={
+                "apply_status": prev_status,
+                "apply_timestamp": prev.get("apply_timestamp"),
+                "apply_outcome": prev.get("apply_outcome", ""),
+                "rollback_path": prev.get("rollback_path", ""),
+            }
+        )
+        merged.append(updated)
+    return merged
+
+
+__all__ = [
+    "assign_tier",
+    "default_backlog_dir",
+    "hydrate_entry",
+    "merge_with_existing",
+    "render_markdown",
+    "write_backlog",
+]
