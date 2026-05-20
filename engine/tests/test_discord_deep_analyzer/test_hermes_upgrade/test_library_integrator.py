@@ -34,6 +34,7 @@ def _make_entry(
     implementation_steps: list[str] | None = _UNSET,
     notes: str = "",
     extracted_content: str = "",
+    title: str = "Test entry",
 ) -> BacklogEntry:
     steps = _UNSET if implementation_steps is _UNSET else implementation_steps
     if steps is _UNSET:
@@ -44,7 +45,7 @@ def _make_entry(
         source_discord_url=f"https://discord.com/channels/0/0/{bookmark_id}",
         source_vault_path=f"vault/{bookmark_id}.md",
         upgrade_type=upgrade_type,
-        title="Test entry",
+        title=title,
         rationale="because tests",
         implementation_steps=steps,
         leverage_rank=4,
@@ -152,6 +153,146 @@ def test_extract_pip_spec_returns_none_for_empty_steps() -> None:
     li = LibraryIntegrator()
     entry = _make_entry(implementation_steps=[])
     assert li._extract_pip_spec(entry) is None
+
+
+# ---------------------------------------------------------------------------
+# _extract_pip_spec — broadened LLM-output patterns
+# ---------------------------------------------------------------------------
+
+
+def test_extract_pip_spec_uv_add() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(implementation_steps=["Install via uv add langchain"])
+    assert li._extract_pip_spec(entry) == ("hermes", "langchain")
+
+
+def test_extract_pip_spec_uv_pip_install() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(implementation_steps=["uv pip install openai==1.42.0"])
+    assert li._extract_pip_spec(entry) == ("hermes", "openai==1.42.0")
+
+
+def test_extract_pip_spec_requirements_file() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        implementation_steps=[
+            "Clone the repo",
+            "pip install -r requirements.txt from the cloned repo",
+        ],
+    )
+    assert li._extract_pip_spec(entry) == ("hermes", "-r requirements.txt")
+
+
+def test_extract_pip_spec_editable_install() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        implementation_steps=["pip install -e /home/mattm/Code/some-lib"],
+    )
+    assert li._extract_pip_spec(entry) == ("hermes", "-e /home/mattm/Code/some-lib")
+
+
+def test_extract_pip_spec_github_clone_plus_pip_install() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        implementation_steps=[
+            "git clone https://github.com/openai/whisper.git and then pip install .",
+        ],
+    )
+    spec = li._extract_pip_spec(entry)
+    assert spec is not None
+    target, pkg = spec
+    assert pkg.startswith("git+https://github.com/openai/whisper")
+
+
+def test_extract_pip_spec_install_prose_with_python_hint() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        title="LangGraph workflow library",
+        implementation_steps=["Install langgraph"],
+        notes="This Python library powers agent state machines.",
+    )
+    assert li._extract_pip_spec(entry) == ("hermes", "langgraph")
+
+
+def test_extract_pip_spec_title_derived_libname_pattern() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        title="langchain: LLM orchestration framework",
+        implementation_steps=["Read the docs"],
+        extracted_content="A popular Python library for chaining LLM calls.",
+    )
+    assert li._extract_pip_spec(entry) == ("hermes", "langchain")
+
+
+def test_extract_pip_spec_gepa_routing_from_extracted_content_only() -> None:
+    """target_venv inferred from extracted_content (not just steps/notes)."""
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        implementation_steps=["uv add dspy"],
+        extracted_content="Wire into the GEPA optimization loop for evolved prompts.",
+    )
+    assert li._extract_pip_spec(entry) == ("gepa", "dspy")
+
+
+def test_extract_pip_spec_gepa_routing_from_title_only() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        implementation_steps=["pip install dspy"],
+        title="GEPA-friendly: dspy",
+    )
+    assert li._extract_pip_spec(entry) == ("gepa", "dspy")
+
+
+def test_extract_pip_spec_finds_pip_install_in_extracted_content() -> None:
+    """Scan extracted_content + notes for pip install, not just steps."""
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        implementation_steps=["Read the upstream docs."],
+        extracted_content="Then run: pip install quantstats==0.0.62",
+    )
+    assert li._extract_pip_spec(entry) == ("hermes", "quantstats==0.0.62")
+
+
+# ---------------------------------------------------------------------------
+# apply — requirements / editable specs use flag+arg shape (no quoted blob)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_with_requirements_file_uses_flag_arg_shape() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        implementation_steps=["pip install -r requirements.txt"],
+    )
+    mock_exec = _make_subproc_mock(returncode=0)
+    with (
+        patch.object(li, "_is_installed", AsyncMock(return_value=False)),
+        patch("asyncio.create_subprocess_exec", mock_exec),
+    ):
+        result = await li.apply(entry)
+    assert result.success is True
+    bash_cmd = mock_exec.call_args.args[-1]
+    # `-r requirements.txt` must appear as a flag + quoted path, NOT as a
+    # single quoted token "'-r requirements.txt'" (which pip would reject).
+    assert " -r requirements.txt" in bash_cmd
+    assert "'-r requirements.txt'" not in bash_cmd
+
+
+@pytest.mark.asyncio
+async def test_apply_with_editable_install_uses_flag_arg_shape() -> None:
+    li = LibraryIntegrator()
+    entry = _make_entry(
+        implementation_steps=["pip install -e /home/mattm/Code/foo"],
+    )
+    mock_exec = _make_subproc_mock(returncode=0)
+    with (
+        patch.object(li, "_is_installed", AsyncMock(return_value=False)),
+        patch("asyncio.create_subprocess_exec", mock_exec),
+    ):
+        result = await li.apply(entry)
+    assert result.success is True
+    bash_cmd = mock_exec.call_args.args[-1]
+    assert " -e /home/mattm/Code/foo" in bash_cmd
 
 
 # ---------------------------------------------------------------------------

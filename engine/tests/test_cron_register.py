@@ -125,6 +125,128 @@ class TestExtractCronSpec:
         assert spec is not None
         assert spec["profile"] == "default"
 
+    # ------------------------------------------------------------------
+    # New NL-schedule patterns (LLM free-form output)
+    # ------------------------------------------------------------------
+
+    def test_parses_every_N_minutes_schedule(self) -> None:
+        entry = _make_entry(
+            title="Heartbeat",
+            implementation_steps=[
+                "Run every 15 minutes",
+                "prompt: ping the watchdog",
+            ],
+        )
+        spec = CronRegister()._extract_cron_spec(entry)
+        assert spec is not None
+        assert spec["schedule"] == "*/15 * * * *"
+        assert "watchdog" in spec["prompt"]
+
+    def test_parses_every_N_hours_schedule(self) -> None:
+        entry = _make_entry(
+            title="Periodic refresh",
+            implementation_steps=[
+                "Run every 2 hours",
+                "prompt: refresh the dashboard cache",
+            ],
+        )
+        spec = CronRegister()._extract_cron_spec(entry)
+        assert spec is not None
+        assert spec["schedule"] == "0 */2 * * *"
+
+    def test_parses_weekly_on_dow_at_time(self) -> None:
+        entry = _make_entry(
+            title="Sunday review",
+            extracted_content=(
+                "Schedule a weekly Sunday review using the researcher profile.\n"
+                "Prompt: 'review the week of trading signals'"
+            ),
+        )
+        spec = CronRegister()._extract_cron_spec(entry)
+        assert spec is not None
+        # Either preserved NL ("weekly Sunday") OR converted ("0 0 * * 0") is acceptable;
+        # both are recognized by Hermes' English cron parser.
+        sched = spec["schedule"].lower()
+        assert "sunday" in sched or "* * 0" in sched
+        assert "trading signals" in spec["prompt"]
+        assert spec["profile"] == "researcher"
+
+    def test_parses_every_weekday_at_time(self) -> None:
+        entry = _make_entry(
+            title="Weekday push",
+            implementation_steps=[
+                "Use Hermes' English-cron syntax: 'every weekday at 8am, push GitHub repos'",
+            ],
+        )
+        spec = CronRegister()._extract_cron_spec(entry)
+        assert spec is not None
+        # Either preserved NL ("every weekday at 8am") OR converted ("0 8 * * 1-5").
+        sched = spec["schedule"].lower()
+        assert "weekday" in sched or "* 1-5" in sched
+        assert "github" in spec["prompt"].lower()
+
+    def test_parses_daily_at_time_with_central_qualifier(self) -> None:
+        entry = _make_entry(
+            title="Morning research brief",
+            implementation_steps=[
+                "Add a daily 8am Central cron",
+                "prompt: 'generate the morning research brief'",
+            ],
+        )
+        spec = CronRegister()._extract_cron_spec(entry)
+        assert spec is not None
+        sched = spec["schedule"].lower()
+        assert "daily" in sched or "8" in sched
+
+    def test_profile_inferred_from_extracted_content_only(self) -> None:
+        """profile token appears only in extracted_content (not steps/notes/title)."""
+        entry = _make_entry(
+            title="Some cron",
+            implementation_steps=[
+                "Schedule: 0 9 * * 1",
+                "prompt: 'run the weekly tally'",
+            ],
+            extracted_content=("This applies to the designer profile per the upstream skill."),
+        )
+        spec = CronRegister()._extract_cron_spec(entry)
+        assert spec is not None
+        assert spec["profile"] == "designer"
+
+    def test_prompt_falls_back_to_rationale(self) -> None:
+        entry = BacklogEntry(
+            bookmark_id="bm-test-fb",
+            source_bookmark_url="https://x.com/test/status/1",
+            source_discord_url="https://discord.com/channels/1/2/3",
+            source_vault_path="vault/test.md",
+            upgrade_type="cron_pattern",
+            title="Rationale fallback",
+            rationale="Generate a daily portfolio digest summarizing PnL and risk.",
+            implementation_steps=["Schedule: 0 17 * * *"],
+            leverage_rank=3,
+            risk="low",
+            dependencies=[],
+            estimated_cost_usd=0.0,
+            extracted_content="",
+            notes="",
+            tier="tier_1",
+        )
+        spec = CronRegister()._extract_cron_spec(entry)
+        assert spec is not None
+        assert "portfolio digest" in spec["prompt"]
+
+    def test_explicit_name_label_overrides_title_slug(self) -> None:
+        entry = _make_entry(
+            title="A very long descriptive title that we do NOT want as the name",
+            implementation_steps=[
+                "name: heartbeat-15m",
+                "Schedule: */15 * * * *",
+                "prompt: 'ping the watchdog'",
+            ],
+        )
+        spec = CronRegister()._extract_cron_spec(entry)
+        assert spec is not None
+        assert spec["name"] == "heartbeat-15m"
+
 
 # ---------------------------------------------------------------------------
 # dry_run — returns command preview

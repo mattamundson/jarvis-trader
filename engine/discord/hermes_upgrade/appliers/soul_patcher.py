@@ -32,6 +32,25 @@ _MARKDOWN_FENCE_RE = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 
+# Heading that signals a SOUL/persona section worth lifting wholesale.
+_SOUL_HEADING_RE = re.compile(
+    r"(?im)^(#{1,6}\s+(?:soul|persona|operating\s+contract|system\s+prompt)\b.*)$",
+)
+
+# Phrasing introducing a block that should be appended ("Append this to SOUL.md").
+_APPEND_INTRO_RE = re.compile(
+    r"(?i)(append(?:\s+(?:this|the\s+following))?\s+to\s+(?:the\s+)?SOUL\.md"
+    r"|add(?:\s+(?:this|the\s+following))?\s+to\s+(?:the\s+)?SOUL\.md"
+    r"|use\s+this\s+(?:persona|template)"
+    r"|adopt\s+this\s+(?:persona|template))",
+)
+
+# Persona-like prose markers — detect a paragraph that reads as a system prompt
+# ("you are an X who Y").
+_PERSONA_PROSE_RE = re.compile(
+    r"(?i)\byou\s+are\s+(?:an?|the)\b.{20,}",
+)
+
 
 class SoulPatcher(BaseApplier):
     """Appends a proposed section to one of the 4 profile SOUL.md files."""
@@ -41,12 +60,19 @@ class SoulPatcher(BaseApplier):
     # ----- Helpers --------------------------------------------------------
 
     def _determine_profile(self, entry: BacklogEntry) -> str:
-        """Route to programmer/researcher/designer/default based on entry text."""
+        """Route to programmer/researcher/designer/default based on entry text.
+
+        Scans ALL textual fields (title, rationale, notes, extracted_content,
+        every implementation step) — previously notes/title/rationale/steps
+        only, which missed entries that named the profile only in
+        extracted_content.
+        """
         haystack = " ".join(
             [
                 entry.notes or "",
                 entry.title or "",
                 entry.rationale or "",
+                entry.extracted_content or "",
                 " ".join(entry.implementation_steps or []),
             ]
         ).lower()
@@ -56,14 +82,26 @@ class SoulPatcher(BaseApplier):
         return "default"
 
     def _extract_soul_addition(self, entry: BacklogEntry) -> Optional[str]:
-        """Pull the proposed SOUL section from extracted_content or steps.
+        """Pull the proposed SOUL section from any textual field.
 
-        Prefers fenced ``` markdown blocks; falls back to non-trivial prose
-        in extracted_content or a multi-line implementation step.
+        Resolution order:
+            1. Fenced ``` markdown blocks (any field)
+            2. ``# Soul`` / ``## Persona`` / ``# Operating contract`` headed
+               section + following content (any field)
+            3. "Append this to SOUL.md" / "Adopt this persona" intro → capture
+               the following content (next paragraph or remainder)
+            4. Persona-like paragraph ("you are a <role>, your job is to …")
+            5. Generic section header + body (existing fallback)
+            6. Long extracted_content prose (existing fallback)
         """
-        sources = [entry.extracted_content or "", *(entry.implementation_steps or [])]
+        sources = [
+            entry.extracted_content or "",
+            *(entry.implementation_steps or []),
+            entry.notes or "",
+            entry.rationale or "",
+        ]
 
-        # 1. Look for fenced markdown blocks.
+        # 1. Fenced markdown blocks anywhere.
         for source in sources:
             m = _MARKDOWN_FENCE_RE.search(source)
             if m:
@@ -71,7 +109,47 @@ class SoulPatcher(BaseApplier):
                 if block:
                     return block
 
-        # 2. Look for a clearly delimited section header followed by content.
+        # 2. SOUL/Persona headed section — capture from the heading up to next
+        #    same-or-higher-level heading (or end of source).
+        for source in sources:
+            m = _SOUL_HEADING_RE.search(source)
+            if m:
+                start = m.start()
+                # Find next heading of any level after this one (skip first line).
+                tail = source[m.end() :]
+                next_heading = re.search(r"\n#{1,6}\s+\S", tail)
+                end = m.end() + next_heading.start() if next_heading else len(source)
+                block = source[start:end].strip()
+                if len(block) >= 20:
+                    return block
+
+        # 3. "Append this to SOUL.md" / "Adopt this persona" intro phrase →
+        #    grab whatever follows that intro in the same source.
+        for source in sources:
+            m = _APPEND_INTRO_RE.search(source)
+            if m:
+                tail = source[m.end() :].strip()
+                # Strip leading colon / dash / quote characters.
+                tail = tail.lstrip(":-—–\"' \n\t")
+                if len(tail) >= 20:
+                    # Cap at the next blank-line paragraph break to keep things tight.
+                    para_end = tail.find("\n\n")
+                    block = (tail[:para_end] if para_end > 0 else tail).strip()
+                    if len(block) >= 20:
+                        return block
+
+        # 4. Persona-like prose paragraph.
+        for source in sources:
+            m = _PERSONA_PROSE_RE.search(source)
+            if m:
+                # Capture from the match start to the next blank-line break.
+                tail = source[m.start() :]
+                para_end = tail.find("\n\n")
+                block = (tail[:para_end] if para_end > 0 else tail).strip()
+                if len(block) >= 20:
+                    return block
+
+        # 5. Generic section header + body (existing fallback).
         for source in sources:
             m = re.search(
                 r"(^|\n)(#{1,6}\s+.+\n(?:.+\n?){1,200})",
@@ -82,7 +160,7 @@ class SoulPatcher(BaseApplier):
                 if len(block) >= 20:
                     return block
 
-        # 3. Fall back to extracted_content if it's substantial prose.
+        # 6. Long extracted_content prose (existing fallback).
         extracted = (entry.extracted_content or "").strip()
         if len(extracted) >= 40:
             return extracted

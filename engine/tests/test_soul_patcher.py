@@ -75,6 +75,20 @@ class TestDetermineProfile:
         entry = _make_entry(notes="for programmer and researcher both")
         assert SoulPatcher()._determine_profile(entry) == "programmer"
 
+    def test_routes_from_extracted_content(self) -> None:
+        """profile keyword appears only in extracted_content (broadened scan)."""
+        entry = _make_entry(
+            notes="",
+            title="System prompt template",
+            rationale="",
+            extracted_content="Use this persona template for the researcher profile.",
+        )
+        assert SoulPatcher()._determine_profile(entry) == "researcher"
+
+    def test_routes_from_title_only(self) -> None:
+        entry = _make_entry(title="Designer SOUL — UI guidelines")
+        assert SoulPatcher()._determine_profile(entry) == "designer"
+
 
 # ---------------------------------------------------------------------------
 # _extract_soul_addition — fenced blocks + prose
@@ -137,6 +151,93 @@ class TestExtractSoulAddition:
         entry = _make_entry(extracted_content="short", implementation_steps=[])
         out = SoulPatcher()._extract_soul_addition(entry)
         assert out is None
+
+    # ------------------------------------------------------------------
+    # New broadened LLM-output patterns
+    # ------------------------------------------------------------------
+
+    def test_extracts_soul_headed_section(self) -> None:
+        entry = _make_entry(
+            extracted_content=(
+                "Intro text here.\n\n"
+                "# Soul\n"
+                "You are an autonomous researcher. Your main job is to compound evidence.\n"
+                "Refuse useless agreement.\n\n"
+                "# Other section\n"
+                "Not part of the SOUL block."
+            ),
+        )
+        out = SoulPatcher()._extract_soul_addition(entry)
+        assert out is not None
+        assert "autonomous researcher" in out
+        assert "compound evidence" in out
+        assert "# Other section" not in out
+
+    def test_extracts_persona_headed_section(self) -> None:
+        entry = _make_entry(
+            extracted_content=(
+                "## Persona — Staff Engineer\n"
+                "You operate as a senior staff engineer with veto power on architecture.\n"
+                "You push back with evidence."
+            ),
+        )
+        out = SoulPatcher()._extract_soul_addition(entry)
+        assert out is not None
+        assert "staff engineer" in out.lower()
+        assert "veto power" in out.lower()
+
+    def test_extracts_operating_contract_section(self) -> None:
+        entry = _make_entry(
+            extracted_content=(
+                "Background prose.\n\n"
+                "### Operating contract\n"
+                "Claims vault schema, source plan structure, refresh cadence rules apply.\n"
+            ),
+        )
+        out = SoulPatcher()._extract_soul_addition(entry)
+        assert out is not None
+        assert "operating contract" in out.lower()
+        assert "claims vault" in out.lower()
+
+    def test_append_this_intro_captures_following_block(self) -> None:
+        entry = _make_entry(
+            implementation_steps=[
+                (
+                    "Append this to SOUL.md: You are a researcher who maintains a "
+                    "structured vault of claims, findings, and dossiers. Always cite sources."
+                ),
+            ],
+        )
+        out = SoulPatcher()._extract_soul_addition(entry)
+        assert out is not None
+        assert "structured vault" in out
+        assert "cite sources" in out
+
+    def test_adopt_this_persona_intro_captures_following_block(self) -> None:
+        entry = _make_entry(
+            extracted_content=(
+                "Adopt this persona: You are a designer with a strict sense of "
+                "visual hierarchy. You refuse to ship without contrast checks."
+            ),
+        )
+        out = SoulPatcher()._extract_soul_addition(entry)
+        assert out is not None
+        assert "visual hierarchy" in out
+
+    def test_persona_prose_paragraph_capture(self) -> None:
+        """Long 'you are a <role>' paragraph is captured even without headers/fences."""
+        entry = _make_entry(
+            extracted_content=(
+                "Some context.\n\n"
+                "You are a programmer who values tested code over clever code. "
+                "Your main job is to ship correct, boring software.\n\n"
+                "Other paragraph."
+            ),
+        )
+        out = SoulPatcher()._extract_soul_addition(entry)
+        assert out is not None
+        assert "tested code" in out
+        assert "Other paragraph" not in out
 
 
 # ---------------------------------------------------------------------------

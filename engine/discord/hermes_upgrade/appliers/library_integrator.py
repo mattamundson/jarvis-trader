@@ -39,12 +39,57 @@ PIP_INSTALL_RE = re.compile(
     r"pip\s+install\s+(?:--?[a-zA-Z0-9_-]+\s+)*([A-Za-z0-9_.\-\[\]=<>!~,*]+)",
 )
 
+# `uv add <spec>` / `uv pip install <spec>` — uv is a faster pip alternative.
+UV_INSTALL_RE = re.compile(
+    r"uv\s+(?:pip\s+install|add)\s+(?:--?[a-zA-Z0-9_-]+\s+)*([A-Za-z0-9_.\-\[\]=<>!~,*/]+)",
+)
+
+# `pip install -r <path>` — requirements file dispatch.
+PIP_REQUIREMENTS_RE = re.compile(
+    r"pip\s+install\s+-r\s+(\S+)",
+)
+
+# `pip install -e <path|url>` — editable install (clone + install pattern).
+PIP_EDITABLE_RE = re.compile(
+    r"pip\s+install\s+-e\s+(\S+)",
+)
+
+# GitHub clone + install pattern — captures "clone https://github.com/<org>/<repo>" near a
+# pip-related verb. We synthesize a VCS-style spec for it.
+GITHUB_CLONE_RE = re.compile(
+    r"(?i)(?:git\s+clone|clone)\s+(https?://github\.com/[\w.-]+/[\w.-]+?)(?:\.git)?(?:\s|$)",
+)
+
+# "Install <pkg>" prose pattern — matches "Install foo", "install via X foo", with python
+# library / package context.
+INSTALL_PROSE_RE = re.compile(
+    r"(?i)\binstall(?:\s+(?:via|using|with)\s+\S+)?\s+([A-Za-z][A-Za-z0-9_.\-]+)",
+)
+
+# Title-derived "<libname>: <description>" pattern.
+TITLE_LIBNAME_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_.\-]+)\s*[:\-]")
+
 # Package-name root used for `pip show` and `pip uninstall` (strips extras + version).
 _PKG_ROOT_RE = re.compile(r"^([A-Za-z0-9_.\-]+)")
 
+_PYTHON_LIBRARY_HINTS = ("python library", "python package", "pip install", "pypi", "py-package")
+
 
 def _pkg_root(spec: str) -> str:
-    """Strip ``[extras]`` and ``==version`` markers, leaving the bare distribution name."""
+    """Strip ``[extras]`` and ``==version`` markers, leaving the bare distribution name.
+
+    Special-cases:
+        ``-r <path>`` / ``-e <path-or-url>`` return the bare spec (no `pip show`
+        equivalent for these — the applier records the spec verbatim and skips
+        the idempotency probe).
+        VCS specs (``git+https://...``) return the inferred repo basename.
+    """
+    if spec.startswith("-r ") or spec.startswith("-e "):
+        return spec
+    if spec.startswith("git+"):
+        # Try to derive the bare repo name as the importable package guess.
+        m = re.search(r"/([^/]+?)(?:\.git)?$", spec)
+        return m.group(1) if m else spec
     m = _PKG_ROOT_RE.match(spec)
     return m.group(1) if m else spec
 
@@ -63,28 +108,93 @@ class LibraryIntegrator(BaseApplier):
         ``target_venv`` is ``"hermes"`` or ``"gepa"``. The package_spec is the
         raw token following ``pip install`` (preserving extras + version pin).
         Routing is determined by inspecting notes / implementation_steps /
-        extracted_content for "gepa" or "self-evolution".
+        extracted_content / title for "gepa" or "self-evolution".
+
+        Recognized patterns (tried in order, all-fields scan):
+            1. ``pip install <pkg>``
+            2. ``uv add <pkg>`` / ``uv pip install <pkg>``
+            3. ``pip install -r requirements.txt``
+            4. ``pip install -e <path-or-url>`` / git clone + install (synthesized)
+            5. ``Install <pkg>`` prose with python-library/package hint
+            6. ``<libname>: <description>`` title shape with python-library hint
         """
         steps = entry.implementation_steps or []
-        package: str | None = None
-        for step in steps:
-            m = PIP_INSTALL_RE.search(step)
-            if m:
-                package = m.group(1).strip("`\"' ")
-                break
+        title = entry.title or ""
+        notes = entry.notes or ""
+        extracted = entry.extracted_content or ""
+        # Search across ALL fields for the install verb (was steps-only previously).
+        sources: list[str] = [*steps, extracted, notes, title]
+
+        # Check -r/-e specials FIRST so they aren't swallowed by PIP_INSTALL_RE's
+        # generic flag-consumer.
+        package = None
+        req = self._first_match(sources, PIP_REQUIREMENTS_RE)
+        if req:
+            package = f"-r {req}"
+        if package is None:
+            editable = self._first_match(sources, PIP_EDITABLE_RE)
+            if editable:
+                package = f"-e {editable}"
+        if package is None:
+            # git clone + pip install . (no -e flag) — synthesize a VCS spec.
+            # Checked BEFORE PIP_INSTALL_RE so we don't capture the trailing "."
+            # as the package name.
+            for src in sources:
+                m = GITHUB_CLONE_RE.search(src)
+                if m and re.search(r"(?i)pip\s+install|setup\.py|pyproject\.toml", src):
+                    package = f"git+{m.group(1)}"
+                    break
+        if package is None:
+            package = self._first_match(sources, PIP_INSTALL_RE)
+        if package is None:
+            package = self._first_match(sources, UV_INSTALL_RE)
+        if package is None:
+            # Title-derived "<libname>: <description>" with python-library hint anywhere.
+            haystack_lower = "\n".join(sources).lower()
+            if any(hint in haystack_lower for hint in _PYTHON_LIBRARY_HINTS):
+                m = TITLE_LIBNAME_RE.match(title)
+                if m:
+                    package = m.group(1)
+        if package is None:
+            # Prose "install <pkg>" + python-library hint in any field.
+            haystack_lower = "\n".join(sources).lower()
+            if any(hint in haystack_lower for hint in _PYTHON_LIBRARY_HINTS):
+                for src in sources:
+                    m = INSTALL_PROSE_RE.search(src)
+                    if m:
+                        candidate = m.group(1).strip("`\"' ")
+                        # Skip noise verbs that match the prose regex.
+                        if candidate.lower() not in {
+                            "via",
+                            "using",
+                            "with",
+                            "the",
+                            "python",
+                            "pip",
+                            "uv",
+                        }:
+                            package = candidate
+                            break
 
         if not package:
             return None
+        package = package.strip("`\"' ")
 
-        haystack = "\n".join(
-            [
-                entry.notes or "",
-                entry.extracted_content or "",
-                *steps,
-            ]
-        ).lower()
+        # Route to gepa venv if any field references the GEPA / self-evolution context.
+        haystack = "\n".join(sources).lower()
         target_venv = "gepa" if ("gepa" in haystack or "self-evolution" in haystack) else "hermes"
         return target_venv, package
+
+    @staticmethod
+    def _first_match(sources: list[str], pattern: re.Pattern[str]) -> str | None:
+        """Return first capture group across `sources` for `pattern`, or None."""
+        for src in sources:
+            if not src:
+                continue
+            m = pattern.search(src)
+            if m:
+                return m.group(1).strip("`\"' ")
+        return None
 
     # ------------------------------------------------------------------
     # BaseApplier interface
@@ -130,7 +240,13 @@ class LibraryIntegrator(BaseApplier):
                 notes="idempotent skip",
             )
 
-        cmd_str = f"{pip_bin} install {shlex.quote(package)}"
+        # `-r <path>` / `-e <path>` are flag+arg pairs and must NOT be quoted as
+        # a single token. Split and quote the path piece independently.
+        if package.startswith("-r ") or package.startswith("-e "):
+            flag, _, target = package.partition(" ")
+            cmd_str = f"{pip_bin} install {flag} {shlex.quote(target)}"
+        else:
+            cmd_str = f"{pip_bin} install {shlex.quote(package)}"
         try:
             proc = await asyncio.create_subprocess_exec(
                 *self._wsl_cmd(cmd_str),
@@ -200,7 +316,15 @@ class LibraryIntegrator(BaseApplier):
         return ["wsl.exe", "-d", "Ubuntu", "-u", "mattm", "-e", "bash", "-lc", bash_cmd]
 
     async def _is_installed(self, pip_bin: str, package: str) -> bool:
-        """Return True iff `pip show <pkg_root>` reports the package."""
+        """Return True iff `pip show <pkg_root>` reports the package.
+
+        For ``-r`` / ``-e`` / ``git+`` specs, idempotency cannot be probed via
+        ``pip show`` (no single distribution name to look up), so we return
+        False unconditionally — the install will run, but pip itself is
+        idempotent for already-satisfied requirements.
+        """
+        if package.startswith("-r ") or package.startswith("-e ") or package.startswith("git+"):
+            return False
         pkg_root = _pkg_root(package)
         cmd = self._wsl_cmd(f"{pip_bin} show {shlex.quote(pkg_root)} 2>/dev/null")
         try:
