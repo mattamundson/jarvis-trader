@@ -35,6 +35,30 @@ class StubAdapter:
         )
 
 
+@dataclass
+class ProfileStubAdapter(StubAdapter):
+    async def send_with_model(
+        self,
+        history: list[dict],
+        message: str,
+        session_id: str,
+        *,
+        model: str,
+        backend: str,
+        timeout_seconds: float,
+        num_ctx: int,
+    ) -> AdapterResponse:
+        return AdapterResponse(
+            agent=self.agent_name,
+            backend=backend,
+            model=model,
+            session_id=session_id,
+            reply_text=f"{backend}:{model}:{num_ctx}:{int(timeout_seconds)}:{message}:{len(history)}",
+            latency_ms=1,
+            health_state="ok",
+        )
+
+
 def build_gateway(tmp_path, **config_overrides) -> tuple[SharedAgentGateway, GatewaySessionStore]:
     db_path = tmp_path / "gateway.db"
     store = GatewaySessionStore(db_path)
@@ -45,6 +69,21 @@ def build_gateway(tmp_path, **config_overrides) -> tuple[SharedAgentGateway, Gat
         adapters={
             "openclaw": StubAdapter("openclaw"),
             "hermes": StubAdapter("hermes"),
+        },
+    )
+    return gateway, store
+
+
+def build_profile_gateway(tmp_path, **config_overrides) -> tuple[SharedAgentGateway, GatewaySessionStore]:
+    db_path = tmp_path / "gateway.db"
+    store = GatewaySessionStore(db_path)
+    config = GatewayConfig(**config_overrides)
+    gateway = SharedAgentGateway(
+        store=store,
+        config=config,
+        adapters={
+            "openclaw": ProfileStubAdapter("openclaw"),
+            "hermes": ProfileStubAdapter("hermes"),
         },
     )
     return gateway, store
@@ -204,3 +243,33 @@ async def test_both_command_with_empty_prompt_returns_help(tmp_path) -> None:
 
     assert reply.backend == "gateway"
     assert "Send a prompt after /both" in reply.reply_text
+
+
+async def test_fast_command_uses_small_model_profile(tmp_path) -> None:
+    gateway, _ = build_profile_gateway(tmp_path)
+
+    reply = await gateway.handle(
+        InboundMessage(channel="api", user_id="u1", text="/fast ping", reply_target="u1")
+    )
+
+    assert reply.backend == "ollama-fast"
+    assert reply.model == "llama3.2:3b"
+    assert reply.reply_text.startswith("ollama-fast:llama3.2:3b:4096:45:ping")
+
+
+async def test_deep_and_code_commands_use_explicit_heavy_profiles(tmp_path) -> None:
+    gateway, _ = build_profile_gateway(tmp_path)
+
+    deep = await gateway.handle(
+        InboundMessage(channel="api", user_id="u1", text="/deep analyze this", reply_target="u1")
+    )
+    code = await gateway.handle(
+        InboundMessage(channel="api", user_id="u1", text="/code fix this", reply_target="u1")
+    )
+
+    assert deep.backend == "ollama-deep"
+    assert deep.model == "qwen2.5:7b"
+    assert ":8192:180:analyze this" in deep.reply_text
+    assert code.backend == "ollama-code"
+    assert code.model == "qwen2.5-coder:7b"
+    assert ":8192:180:fix this" in code.reply_text
