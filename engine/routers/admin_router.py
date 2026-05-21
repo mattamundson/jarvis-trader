@@ -2,6 +2,7 @@
 JARVIS TRADER — Admin Feature-Flags Router
 ==========================================
 Runtime toggle for analyst-stub feature flags (ENABLE_KRONOS, ENABLE_RESEARCH_AGENT).
+Also hosts QuestDB reconciliation endpoints (/admin/questdb/reconcile/*).
 
 SAFETY NOTICE
 -------------
@@ -39,21 +40,35 @@ active pipeline's Kronos wiring. The flag change IS reflected immediately in:
   - future ``is_kronos_enabled()`` calls
   - new TradingPipeline instances (e.g. created by a background task)
   - ``GET /admin/feature-flags`` reads
+
+QuestDB reconciliation endpoints
+---------------------------------
+``GET  /admin/questdb/reconcile/last``  — returns latest JSON snapshot (no-op/501
+    when ENABLE_QUESTDB_DUAL_WRITE=0).
+``POST /admin/questdb/reconcile/run``   — triggers a reconcile run on demand;
+    returns the fresh report (no-op/501 when ENABLE_QUESTDB_DUAL_WRITE=0).
+Both are read-only with respect to SQLite and QuestDB — they never modify data.
+Heal is not exposed via HTTP; use the CLI with ENABLE_QUESTDB_RECONCILE_HEAL=1.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from agents.kronos_classifier import is_kronos_enabled
 from agents.research_agent import is_research_agent_enabled
 
 logger = logging.getLogger(__name__)
+
+# Reconcile snapshot directory (mirrors SNAPSHOT_DIR in reconcile_questdb.py)
+_SNAPSHOT_DIR = Path(__file__).resolve().parent.parent / "data" / "reconcile_snapshots"
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -193,3 +208,119 @@ async def post_feature_flags(body: FeatureFlagsUpdateRequest) -> FeatureFlagsRes
         new_state.enable_research_agent,
     )
     return new_state
+
+
+# ---------------------------------------------------------------------------
+# QuestDB reconciliation helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_dual_write_enabled() -> bool:
+    """Read ENABLE_QUESTDB_DUAL_WRITE from env (never cached)."""
+    return os.environ.get("ENABLE_QUESTDB_DUAL_WRITE", "0").strip() == "1"
+
+
+def _load_latest_snapshot() -> dict[str, Any] | None:
+    """Load the most recent reconcile snapshot JSON, or None if none exist."""
+    if not _SNAPSHOT_DIR.exists():
+        return None
+    snapshots = sorted(_SNAPSHOT_DIR.glob("*.json"))
+    if not snapshots:
+        return None
+    try:
+        return json.loads(snapshots[-1].read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("Failed to read reconcile snapshot: %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# QuestDB reconcile routes
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/questdb/reconcile/last",
+    summary="Return the latest QuestDB reconcile snapshot",
+    response_model=None,
+)
+async def get_questdb_reconcile_last() -> dict[str, Any]:
+    """
+    Return the most recent reconcile snapshot written by
+    ``scripts/reconcile_questdb.py``.
+
+    Returns 501 when ``ENABLE_QUESTDB_DUAL_WRITE=0`` (dual-write is not active,
+    so there is nothing to reconcile).
+
+    Returns 404 when dual-write is enabled but no snapshot has been written yet
+    (run ``POST /admin/questdb/reconcile/run`` to generate the first one).
+    """
+    if not _is_dual_write_enabled():
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "QuestDB dual-write is disabled (ENABLE_QUESTDB_DUAL_WRITE=0). "
+                "Enable it first before using reconcile endpoints."
+            ),
+        )
+
+    snapshot = _load_latest_snapshot()
+    if snapshot is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No reconcile snapshot found. Run POST /admin/questdb/reconcile/run "
+                "or execute scripts/reconcile_questdb.py to generate the first snapshot."
+            ),
+        )
+    return snapshot
+
+
+@router.post(
+    "/questdb/reconcile/run",
+    summary="Trigger an on-demand QuestDB reconcile run",
+    response_model=None,
+)
+async def post_questdb_reconcile_run() -> dict[str, Any]:
+    """
+    Trigger a full reconciliation run against all four Discord shadow tables.
+
+    Returns 501 when ``ENABLE_QUESTDB_DUAL_WRITE=0``.
+
+    This endpoint is read-only with respect to both SQLite and QuestDB.
+    It calls ``reconcile_all()`` from ``scripts/reconcile_questdb.py`` and
+    returns the resulting report dict (also written to
+    ``engine/data/reconcile_snapshots/<date>.json``).
+
+    Heal is intentionally NOT exposed via HTTP — use the CLI with
+    ``ENABLE_QUESTDB_RECONCILE_HEAL=1``.
+    """
+    if not _is_dual_write_enabled():
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "QuestDB dual-write is disabled (ENABLE_QUESTDB_DUAL_WRITE=0). "
+                "Enable it first before using reconcile endpoints."
+            ),
+        )
+
+    try:
+        # Lazy import — reconcile_questdb lives in scripts/ not engine/
+        import sys
+        from pathlib import Path as _Path
+
+        _scripts = _Path(__file__).resolve().parent.parent.parent / "scripts"
+        if str(_scripts) not in sys.path:
+            sys.path.insert(0, str(_scripts))
+
+        import reconcile_questdb as _rq
+
+        report = _rq.reconcile_all()
+        logger.info("On-demand reconcile complete: overall_status=%s", report.get("overall_status"))
+        return report
+    except Exception as exc:
+        logger.error("On-demand reconcile failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Reconcile run failed: {exc}",
+        ) from exc
