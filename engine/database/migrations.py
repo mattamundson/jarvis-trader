@@ -1160,6 +1160,88 @@ def migration_028(conn: sqlite3.Connection) -> None:
     logger.info("Migration 028 applied — per_account_kill_state table created.")
 
 
+def migration_029(conn: sqlite3.Connection) -> None:
+    """
+    029 — realized_peak_equity column on pnl_snapshots.
+
+    Adds a sibling column to the existing peak_equity column.  The existing
+    peak_equity column (used by the safety-layer kill switch) is left
+    UNTOUCHED so the -10% drawdown halt continues to use mark-to-market
+    (MTM) peak — which correctly captures intraday exposure on open
+    positions.
+
+    realized_peak_equity tracks only CLOSED (realized) P&L.  It is used
+    exclusively by the Phase 3 C5 readiness criterion to prevent phantom
+    drawdowns caused by temporary open-position MTM swings from triggering
+    a NO-GO verdict when no actual realized loss occurred.
+
+    Backfill: existing rows receive realized_peak_equity = peak_equity as
+    a best approximation (pre-fix history cannot be reconstructed precisely;
+    the fix applies correctly to all future snapshots).
+
+    Idempotent: uses try/except on duplicate-column-name error.
+    """
+    try:
+        conn.execute("ALTER TABLE pnl_snapshots ADD COLUMN realized_peak_equity REAL DEFAULT NULL")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" not in str(exc).lower():
+            raise
+        # Column already exists — idempotent
+    conn.execute(
+        "UPDATE pnl_snapshots SET realized_peak_equity = peak_equity "
+        "WHERE realized_peak_equity IS NULL"
+    )
+    conn.commit()
+    logger.info(
+        "Migration 029 applied — realized_peak_equity column added to pnl_snapshots "
+        "(backfilled from peak_equity; kill switch peak_equity unchanged)."
+    )
+
+
+def migration_030(conn: sqlite3.Connection) -> None:
+    """
+    030 — Idempotency key column on paper_trades.
+
+    Adds ``idempotency_key TEXT NULL`` with a partial UNIQUE index so that
+    duplicate paper-order submissions (same symbol+side+quantity+price within
+    a 5-second window) can be detected and collapsed to a single row before
+    INSERT.
+
+    The column is nullable so that all existing rows (which carry no key)
+    remain valid.  New rows written by ``insert_paper_trade`` / ``insert_trade``
+    carry the SHA-256-derived 32-char hex key computed by
+    ``database._helpers.compute_order_idempotency_key``.
+
+    A partial UNIQUE index (WHERE idempotency_key IS NOT NULL) prevents NULL
+    rows from blocking the constraint — SQLite treats each NULL as distinct
+    even without the partial clause, but the explicit filter makes intent clear.
+
+    Root cause addressed: 2026-05-09 (analysed 2026-05-11) — 3 rapid-fire
+    /pipeline/run calls within 42 seconds produced 6 identical paper-trade
+    rows (12-contract exposure from a 2-contract intent).
+
+    Idempotent: skips gracefully if the column already exists.
+    """
+    try:
+        conn.execute("ALTER TABLE paper_trades ADD COLUMN idempotency_key TEXT")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" not in str(exc).lower():
+            raise
+        logger.debug("Migration 030: idempotency_key column already exists — skipping ALTER.")
+
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pt_idempotency_key
+            ON paper_trades(idempotency_key)
+            WHERE idempotency_key IS NOT NULL
+        """
+    )
+    conn.commit()
+    logger.info(
+        "Migration 030 applied — idempotency_key column + partial UNIQUE index on paper_trades."
+    )
+
+
 def migration_023(conn: sqlite3.Connection) -> None:
     """
     023 — trading_patterns schema alignment.
@@ -1240,6 +1322,8 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_026,  # version 26
     migration_027,  # version 27
     migration_028,  # version 28
+    migration_029,  # version 29
+    migration_030,  # version 30
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1271,6 +1355,8 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Trade reviews: trade_reviews table for automated post-trade LLM analysis (grade A-F, strengths, weaknesses, lessons).",
     "Multi-account paper testing: account_id columns on paper_trades and pnl_snapshots for parallel A/B config comparison.",
     "Per-account kill switch state: per_account_kill_state table for independent halt per paper account (ENABLE_PARALLEL_PAPER=1 only).",
+    "Realized peak equity: realized_peak_equity column on pnl_snapshots for Phase 3 C5 phantom-drawdown fix (kill switch peak_equity unchanged).",
+    "Order dedup: idempotency_key column + partial UNIQUE index on paper_trades to prevent duplicate submissions within a 5-second window.",
 ]
 
 

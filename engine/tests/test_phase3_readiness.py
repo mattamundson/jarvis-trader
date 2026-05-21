@@ -71,7 +71,8 @@ def _make_db(
             portfolio_equity REAL NOT NULL DEFAULT 0.0,
             peak_equity REAL NOT NULL DEFAULT 0.0,
             consecutive_losses INTEGER NOT NULL DEFAULT 0,
-            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'utc'))
+            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'utc')),
+            realized_peak_equity REAL DEFAULT NULL
         );
         CREATE TABLE system_state (
             key TEXT PRIMARY KEY,
@@ -105,14 +106,19 @@ def _make_db(
 
     if pnl_snapshots:
         for s in pnl_snapshots:
+            # realized_peak_equity defaults to peak_equity when not specified so
+            # the new C5 criterion uses the same value as the test data intends.
+            realized_pk = s.get("realized_peak_equity", s.get("peak_equity", 10000.0))
             conn.execute(
                 "INSERT OR REPLACE INTO pnl_snapshots "
-                "(date, daily_pnl, portfolio_equity, peak_equity) VALUES (?,?,?,?)",
+                "(date, daily_pnl, portfolio_equity, peak_equity, realized_peak_equity) "
+                "VALUES (?,?,?,?,?)",
                 (
                     s["date"],
                     s.get("daily_pnl", 0.0),
                     s.get("portfolio_equity", 10000.0),
                     s.get("peak_equity", 10000.0),
+                    realized_pk,
                 ),
             )
 

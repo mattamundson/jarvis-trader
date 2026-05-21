@@ -277,13 +277,29 @@ class ProfitFactorCriterion(Phase3Criterion):
 
 
 class MaxDrawdownCriterion(Phase3Criterion):
-    """C5 — max drawdown <= 8% from peak over the last 60 days."""
+    """C5 — max drawdown <= 8% from realized peak over the last 60 days.
+
+    Uses ``realized_peak_equity`` (migration_029) instead of ``peak_equity`` to
+    avoid phantom drawdowns caused by mark-to-market swings on open positions.
+
+    Distinction from the kill switch:
+    - Kill switch (safety_layer.py) uses ``peak_equity`` (MTM) for the -10%
+      drawdown halt.  That is INTENTIONAL — an open position with an unrealized
+      gain that then reverses IS a real intraday exposure risk.
+    - C5 (this criterion) uses ``realized_peak_equity`` to measure strategy
+      quality over 60 calendar days.  Phantom drawdowns from MTM swings that
+      fully reverse intraday are noise for strategy evaluation.
+    - Both columns coexist; safety_layer.py is never imported or modified here.
+    """
 
     name: str = "max_drawdown"
     description: str = (
-        "Maximum drawdown from equity peak must stay <= 8% over the last 60 "
-        "days (measured from pnl_snapshots). The 8% threshold is 20% stricter "
-        "than the hardcoded kill-switch at 10%, giving a safety buffer."
+        "Maximum drawdown from realized equity peak must stay <= 8% over the "
+        "last 60 days (measured from pnl_snapshots.realized_peak_equity). "
+        "Uses realized equity (closed trades only) to exclude phantom drawdowns "
+        "from mark-to-market swings on open positions. "
+        "The kill switch still uses peak_equity (MTM) — that is intentional and "
+        "unchanged. The 8% threshold is 20% stricter than the kill-switch's 10%."
     )
     severity: Literal["blocker", "warning", "info"] = "blocker"
 
@@ -293,7 +309,7 @@ class MaxDrawdownCriterion(Phase3Criterion):
             conn = _open_db(db_path)
             try:
                 rows = conn.execute(
-                    "SELECT date, portfolio_equity, peak_equity "
+                    "SELECT date, portfolio_equity, peak_equity, realized_peak_equity "
                     "FROM pnl_snapshots "
                     "WHERE date >= ? "
                     "ORDER BY date ASC",
@@ -307,16 +323,54 @@ class MaxDrawdownCriterion(Phase3Criterion):
         if not rows:
             return False, "No pnl_snapshots data in the last 60 days"
 
+        # Determine whether the realized_peak_equity column is populated.
+        # It is NULL for rows written before migration_029 ran.  Fall back
+        # to peak_equity for those rows so the check degrades gracefully on
+        # DBs that haven't run the migration yet.
+        has_realized = any(r["realized_peak_equity"] is not None for r in rows)
+        if not has_realized:
+            # Fallback: use MTM peak_equity (pre-migration_029 behaviour).
+            # Log a warning so the operator knows the phantom-drawdown fix is
+            # not yet active and should run migrations.
+            fallback_note = (
+                " [WARN: realized_peak_equity NULL for all rows — "
+                "migration_029 not applied; using MTM peak_equity as fallback]"
+            )
+            max_dd = 0.0
+            peak = 0.0
+            worst_date = None
+            for r in rows:
+                eq = float(r["portfolio_equity"] or 0.0)
+                pk = float(r["peak_equity"] or 0.0)
+                if pk > peak:
+                    peak = pk
+                if peak > 0.0:
+                    dd = (peak - eq) / peak
+                    if dd > max_dd:
+                        max_dd = dd
+                        worst_date = r["date"]
+            passed = max_dd <= _MAX_DRAWDOWN
+            return (
+                passed,
+                f"Max drawdown (MTM fallback): {max_dd:.1%} on {worst_date or 'N/A'}; "
+                f"threshold: {_MAX_DRAWDOWN:.0%}{fallback_note}",
+            )
+
+        # Primary path: use realized_peak_equity (migration_029).
+        # For rows where realized_peak_equity is still NULL (written before
+        # migration_029 ran the backfill), fall back to that row's peak_equity.
         max_dd = 0.0
-        peak = 0.0
+        realized_peak = 0.0
         worst_date = None
         for r in rows:
             eq = float(r["portfolio_equity"] or 0.0)
-            pk = float(r["peak_equity"] or 0.0)
-            if pk > peak:
-                peak = pk
-            if peak > 0.0:
-                dd = (peak - eq) / peak
+            # Prefer realized_peak_equity; fall back to peak_equity per row
+            rpk_raw = r["realized_peak_equity"]
+            rpk = float(rpk_raw) if rpk_raw is not None else float(r["peak_equity"] or 0.0)
+            if rpk > realized_peak:
+                realized_peak = rpk
+            if realized_peak > 0.0:
+                dd = (realized_peak - eq) / realized_peak
                 if dd > max_dd:
                     max_dd = dd
                     worst_date = r["date"]
@@ -324,8 +378,9 @@ class MaxDrawdownCriterion(Phase3Criterion):
         passed = max_dd <= _MAX_DRAWDOWN
         return (
             passed,
-            f"Max drawdown: {max_dd:.1%} on {worst_date or 'N/A'}; "
-            f"threshold: {_MAX_DRAWDOWN:.0%}",
+            f"Max drawdown (realized peak): {max_dd:.1%} on {worst_date or 'N/A'}; "
+            f"threshold: {_MAX_DRAWDOWN:.0%} "
+            f"(realized_peak={realized_peak:.2f}, excludes open-position MTM)",
         )
 
 

@@ -107,9 +107,9 @@ while still remaining positive-expectancy. Gate v2 uses PF 1.5 via `pf_ci_lower`
 
 ### C5 — `max_drawdown` (BLOCKER)
 
-**Formula:** `MAX((peak_equity - portfolio_equity) / peak_equity) <= 0.08`
+**Formula:** `MAX((realized_peak_equity - portfolio_equity) / realized_peak_equity) <= 0.08`
 
-**Threshold:** 8% from equity peak, over the last 60 days.
+**Threshold:** 8% from realized equity peak, over the last 60 days.
 
 **Rationale:** The hardcoded kill switch fires at 10% drawdown. The 8%
 readiness threshold provides a 20% safety buffer — if paper trading is
@@ -118,7 +118,36 @@ The 15% threshold in the old PHASE3_READINESS.md was higher than the
 kill-switch itself, which was logically inconsistent (you could be "ready"
 while already past your own stop-out point).
 
-**Data source:** `pnl_snapshots.portfolio_equity, peak_equity, date` (SQLite).
+**Phantom drawdown fix (2026-05-21, migration_029):**
+The original formula used `peak_equity`, which includes unrealized MTM
+from open positions. On 2026-05-11, an open short that was deeply in-profit
+set `peak_equity = 24_617`; when the market recovered intraday the equity
+"dropped" 40.2% on paper while every closed trade was profitable (+$60,617
+realized). C5 reported NO-GO due to this phantom drawdown.
+
+Fix: added `realized_peak_equity` column to `pnl_snapshots` (migration_029).
+C5 now uses `realized_peak_equity` (running max of closed-trade-only equity).
+This column is NOT the same as `peak_equity`.
+
+**Kill switch vs C5 — intentional difference:**
+- **Kill switch** (`safety_layer.py`) uses `peak_equity` (MTM).  This is correct:
+  an open position with a large unrealized gain that then reverses IS a real
+  intraday exposure risk.  If the engine gets caught long at the high and the
+  market crashes, the MTM drawdown matters before trades can be closed.  The
+  kill switch must act on MTM equity.
+- **C5 readiness** uses `realized_peak_equity` (closed trades only).  This
+  measures strategy quality over 60 calendar days; intraday MTM fluctuations
+  that fully reverse before close are noise for strategy evaluation.
+- The two peaks are independent.  If Matt manually clears the kill switch,
+  only `peak_equity` gets reset; `realized_peak_equity` is monotonically
+  non-decreasing and does NOT reset.
+
+**Data source:** `pnl_snapshots.portfolio_equity, realized_peak_equity, date` (SQLite).
+
+Fallback: if `realized_peak_equity` is NULL for all rows (pre-migration_029
+database), C5 falls back to MTM `peak_equity` and logs a warning in the
+evidence string.  Run `engine/.venv/Scripts/python -c "from database.migrations
+import run_migrations; import sqlite3; run_migrations(sqlite3.connect('data/jarvis_trader.db'))"` to apply migration_029 and eliminate the fallback.
 
 ---
 
