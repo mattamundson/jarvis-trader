@@ -55,8 +55,20 @@
 
 | Symbol | TF | WFE | Status |
 |--------|----|-----|--------|
-| MCL | 1h | 0.82 | APPROVED — paper active |
-| MNQ | 1h | 0.57 | APPROVED — paper active |
-| MGC | 1d | 0.14 | HALTED |
-| MES | 1h | 0.09 | PAPER — walk-forward in progress (authorized 2026-04-09, Tier 3) |
+| MCL | 1h | 0.82 | APPROVED — paper active (orders enabled) |
+| MNQ | 1h | 0.57 | APPROVED — paper active (orders enabled) |
+| MGC | 1d | 0.14 | HALTED-VALIDATION-ONLY — pipeline runs, NO paper orders (Wave 3, 2026-05-21) |
+| MES | 1h | 0.09 | REJECTED-VALIDATION-ONLY — pipeline runs, NO paper orders (Tier 3 authorized 2026-04-09) |
 | SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 |
+
+### Validation-only lifecycle
+
+MES and MGC are in `VALIDATION_ONLY_INSTRUMENTS` (defined in `engine/agents/pipeline.py`).
+The pipeline runs for these symbols so their verdicts appear in the dashboard and Discord
+briefing feed. The approval gate in `approval/service.py:ensure_approval_allowed()` blocks
+any paper order submission with HTTP 409.
+
+Flip-to-active criteria (remove from `VALIDATION_ONLY_INSTRUMENTS` when ALL met):
+1. WFE >= 0.6 on a fresh rolling walk-forward run
+2. Gate v2 PASS (`pf_ci_lower>=1.10`, `p_edge>=0.95`, `mc_95th_dd<=5%`, `dsr>=0.10`)
+3. Explicit Tier 3 authorization from Amo
