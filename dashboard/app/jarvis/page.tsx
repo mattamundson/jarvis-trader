@@ -18,6 +18,11 @@ import {
   type BriefingResponse,
   type BookmarkRow,
 } from "@/lib/api";
+import {
+  usePipelineSocket,
+  type PipelineWsEvent,
+  type VerdictEvent,
+} from "@/lib/pipeline_ws";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -95,11 +100,41 @@ function HeroStrip() {
     { refreshInterval: HERO_REFRESH_MS }
   );
 
+  // Live verdict flash state — symbol → flash active
+  const [flashedSymbols, setFlashedSymbols] = useState<Record<string, boolean>>({});
+
+  const handleWsEvent = useCallback((event: PipelineWsEvent) => {
+    if (event.type !== "verdict") return;
+    const { symbol } = event as VerdictEvent;
+    setFlashedSymbols((prev) => ({ ...prev, [symbol]: true }));
+    // Clear flash after 2 s
+    setTimeout(() => {
+      setFlashedSymbols((prev) => {
+        const next = { ...prev };
+        delete next[symbol];
+        return next;
+      });
+    }, 2000);
+  }, []);
+
+  // Subscribe — gracefully degrades to SWR polling if WS fails
+  usePipelineSocket(handleWsEvent);
+
   const isOnline = !error && !!health;
   const engineOk = health?.status === "ok" || health?.status === "healthy";
 
+  const anyFlash = Object.keys(flashedSymbols).length > 0;
+  const flashLabel = anyFlash
+    ? Object.keys(flashedSymbols).join(" ")
+    : null;
+
   return (
-    <div className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-5 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 backdrop-blur">
+    <div
+      className={[
+        "w-full rounded-xl border border-zinc-800 px-5 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 backdrop-blur transition-colors duration-700",
+        anyFlash ? "bg-emerald-500/10" : "bg-zinc-950/80",
+      ].join(" ")}
+    >
       {/* Left — identity */}
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10">
@@ -109,7 +144,15 @@ function HeroStrip() {
           <h1 className="font-bold text-zinc-100 tracking-tight leading-none">
             JARVIS COMMAND CENTER
           </h1>
-          <p className="text-[11px] text-zinc-500 mt-0.5">Stark Mode — unified live view</p>
+          <p className="text-[11px] text-zinc-500 mt-0.5">
+            {flashLabel ? (
+              <span className="text-emerald-400 font-mono">
+                verdict received: {flashLabel}
+              </span>
+            ) : (
+              "Stark Mode — unified live view"
+            )}
+          </p>
         </div>
       </div>
 
