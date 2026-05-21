@@ -86,7 +86,26 @@ logger = logging.getLogger(__name__)
 TIME_OF_DAY_FILTER_ENABLED: bool = True
 _TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipped
 
-__all__ = ["TradingPipeline", "pre_filter_signal"]
+# ── Validation-Only Instruments ────────────────────────────────────────────────
+# Instruments in this set are included in the pipeline for signal generation and
+# dashboard visibility, but their verdicts NEVER reach the order submission path.
+#
+# These are instruments whose WFE scores are below the paper-trading threshold,
+# kept in the watchlist for continued walk-forward validation only:
+#   MES — WFE=0.09 (REJECTED 2026-04-02); Tier 3 paper walk-forward authorized 2026-04-09
+#   MGC — WFE=0.14 (HALTED); pipeline-only for validation feedback
+#
+# Flip-to-active criteria (remove from this set when ALL met):
+#   1. WFE >= 0.6 on a fresh rolling walk-forward run
+#   2. Gate v2 PASS (pf_ci_lower>=1.10, p_edge>=0.95, mc_95th_dd<=5%, dsr>=0.10)
+#   3. Explicit Tier 3 authorization from Amo
+#
+# This constant is checked in approval/service.py:ensure_approval_allowed() — a
+# second layer above the safety layer's DO_NOT_TRADE_SYMBOLS blocklist. The safety
+# layer is canonical; any conflict resolves in favor of safety.
+VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset({"MES", "MGC"})
+
+__all__ = ["TradingPipeline", "pre_filter_signal", "VALIDATION_ONLY_INSTRUMENTS"]
 
 # ── Economic Calendar Blackout ─────────────────────────────────────────────────
 _ECONOMIC_BLACKOUT_EVENTS: list[dict] = [
@@ -720,6 +739,14 @@ class TradingPipeline:
 
         pipeline_result["analyst_reports"] = analyst_reports
 
+        # ── Pipeline WS: emit analyst signals (fire-and-forget, never blocks) ──
+        try:
+            from websocket.pipeline_ws import emit_analyst_signals
+
+            asyncio.create_task(emit_analyst_signals(symbol, analyst_reports))
+        except Exception:  # pragma: no cover
+            pass
+
         # ── Technical-Only Fallback: LLM credits exhausted ────────────────
         # If all three LLM analysts (news, social, fundamental) failed with
         # Anthropic 400 errors AND technical has a clear STC signal, skip the
@@ -1068,6 +1095,25 @@ class TradingPipeline:
             pass
         except Exception as e:
             logger.debug(f"Failed to emit pipeline_complete event: {e}")
+
+        # ── Pipeline WS: emit verdict to subscribed dashboard clients ────────
+        # Fire-and-forget via create_task — broadcast failure NEVER affects pipeline.
+        try:
+            from websocket.pipeline_ws import emit_verdict
+
+            _verdict_payload = {
+                "final_action": final_action,
+                "final_quantity": final_quantity,
+                "requires_human": requires_human,
+                "confidence": float(
+                    fund_decision.get("final_conviction", 0.0) if fund_decision else 0.0
+                ),
+                "regime": analyst_reports.get("technical", {}).get("regime", "UNKNOWN"),
+                "elapsed_seconds": elapsed,
+            }
+            asyncio.create_task(emit_verdict(symbol, _verdict_payload))
+        except Exception:  # pragma: no cover
+            pass
 
         # Add cache_hit flag for logging
         pipeline_result["cache_hit"] = False
