@@ -426,6 +426,63 @@ class TestVerifyRollback:
                     pre_apply_diff="",
                     post_apply_verification="",
                     rollback_path="/home/mattm/.hermes/SOUL.md.bak.20260101T000000Z",
+                    notes="",
                 ),
             )
         assert ok is True
+
+
+# ---------------------------------------------------------------------------
+# B11 regression — UTF-8 env passthrough to wsl.exe
+# ---------------------------------------------------------------------------
+
+
+class TestUtf8EnvPassthrough:
+    """Locks in fix for the Unicode arrow (U+2192) crash in soul_template entries.
+
+    Earlier behavior passed no env= kwarg to create_subprocess_exec, so the
+    WSL subprocess inherited the parent's cp1252 codepage on Windows and
+    crashed when the addition payload contained the right-arrow glyph. We
+    now pass an explicit env with PYTHONIOENCODING=utf-8 + WSLENV forwarding.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_wsl_passes_utf8_env(self) -> None:
+        applier = SoulPatcher()
+        proc = _mock_proc(returncode=0, stdout=b"EXISTS\n")
+        with patch(
+            "asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=proc),
+        ) as mock_subproc:
+            await applier._run_wsl("echo test")
+
+        assert mock_subproc.call_count == 1
+        kwargs = mock_subproc.call_args.kwargs
+        assert "env" in kwargs, "env= kwarg missing — Unicode crash regression"
+        env = kwargs["env"]
+        assert env.get("PYTHONIOENCODING") == "utf-8"
+        assert "PYTHONIOENCODING" in env.get(
+            "WSLENV", ""
+        ), "WSLENV must forward PYTHONIOENCODING into the WSL session"
+
+    @pytest.mark.asyncio
+    async def test_run_wsl_preserves_existing_env(self) -> None:
+        """env passthrough should include the existing OS env, not replace it."""
+        import os as _os
+
+        # Plant a marker var that should survive the env merge
+        marker_key = "JARVIS_B11_TEST_MARKER"
+        marker_val = "preserved"
+        _os.environ[marker_key] = marker_val
+        try:
+            applier = SoulPatcher()
+            proc = _mock_proc(returncode=0, stdout=b"OK\n")
+            with patch(
+                "asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=proc),
+            ) as mock_subproc:
+                await applier._run_wsl("true")
+            env = mock_subproc.call_args.kwargs["env"]
+            assert env.get(marker_key) == marker_val
+        finally:
+            _os.environ.pop(marker_key, None)

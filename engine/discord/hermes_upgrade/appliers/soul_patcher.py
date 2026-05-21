@@ -173,6 +173,13 @@ class SoulPatcher(BaseApplier):
 
     async def _run_wsl(self, cmd_str: str, timeout: float = 30) -> tuple[int, str]:
         """Run a bash command inside WSL Ubuntu as user mattm. Returns (rc, stdout)."""
+        import os
+
+        env = {
+            **os.environ,
+            "PYTHONIOENCODING": "utf-8",
+            "WSLENV": "PYTHONIOENCODING/u",
+        }
         try:
             proc = await asyncio.create_subprocess_exec(
                 "wsl.exe",
@@ -186,6 +193,7 @@ class SoulPatcher(BaseApplier):
                 cmd_str,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                env=env,
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:

@@ -12,6 +12,9 @@
 #   1 — pipeline failure (engine venv missing, python error, etc.)
 #   2 — no candidates surfaced (treated as informational, not failure)
 $ErrorActionPreference = "Stop"
+# Force UTF-8 so prints of entry titles containing → (U+2192) don't crash
+# the daily cron run on Windows cp1252 stdout.
+$env:PYTHONIOENCODING = "utf-8"
 Start-Transcript -Path "$env:TEMP\hermes_upgrade_scan.log" -Append
 
 $repo   = "C:\Users\mattm\ThinkorSwim\jarvis-trader"
