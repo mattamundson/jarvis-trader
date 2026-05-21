@@ -147,6 +147,8 @@ def resolve_entry_price(
 
 def ensure_approval_allowed(approval_row: dict[str, Any], safety_layer) -> None:
     """Validate approval-time safety gates before execution."""
+    from agents.pipeline import VALIDATION_ONLY_INSTRUMENTS
+
     symbol = str(approval_row["symbol"]).upper()
 
     if safety_layer and safety_layer.get_status().get("kill_switch_active"):
@@ -154,6 +156,17 @@ def ensure_approval_allowed(approval_row: dict[str, Any], safety_layer) -> None:
 
     if symbol not in approved_watchlist_symbols():
         raise ApprovalFlowError(400, f"Symbol {symbol} not on approved futures watchlist")
+
+    # Validation-only instruments: pipeline runs for signal/dashboard visibility,
+    # but orders are permanently blocked until WFE >= 0.6 + gate v2 PASS.
+    # This is a second layer above DO_NOT_TRADE_SYMBOLS; safety layer is canonical.
+    if symbol in VALIDATION_ONLY_INSTRUMENTS:
+        raise ApprovalFlowError(
+            409,
+            f"{symbol} is in VALIDATION_ONLY_INSTRUMENTS (WFE below paper threshold) — "
+            "pipeline verdicts are logged for validation feedback but no paper orders are submitted. "
+            "Remove from VALIDATION_ONLY_INSTRUMENTS after WFE >= 0.6 + gate v2 PASS.",
+        )
 
     if safety_layer is not None and hasattr(safety_layer, "get_lockout_status"):
         lockout = safety_layer.get_lockout_status(symbol)
