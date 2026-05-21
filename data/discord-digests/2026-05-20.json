@@ -1,0 +1,141 @@
+{
+  "date": "2026-05-20",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "neutral",
+    "conviction": 0.5,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 25
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 103.31,
+      "target2": 104.39,
+      "stop1": 101.51,
+      "win_rate": 82.26,
+      "rr": 0.59,
+      "timestamp": "2026-05-20T02:07:01.2-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 99.7,
+      "target2": 100.78,
+      "stop1": 97.9,
+      "win_rate": 82.16,
+      "rr": 0.61,
+      "timestamp": "2026-05-20T10:59:02.294-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 102.91,
+      "target2": 103.99,
+      "stop1": 101.11,
+      "win_rate": 82.11,
+      "rr": 0.59,
+      "timestamp": "2026-05-20T06:59:08.351-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 102.5,
+      "target2": 103.58,
+      "stop1": 100.7,
+      "win_rate": 82.05,
+      "rr": 0.59,
+      "timestamp": "2026-05-20T06:39:04.905-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 101.71,
+      "target2": 102.79,
+      "stop1": 99.91,
+      "win_rate": 81.99,
+      "rr": 0.59,
+      "timestamp": "2026-05-20T05:53:04.358-05:00"
+    }
+  ],
+  "corey_quote": "When the market stops trending and starts repeating, it's building the next move.",
+  "commentary_health": [
+    {
+      "date": "2026-05-21",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.45,
+      "message_count": 25
+    },
+    {
+      "date": "2026-05-20",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 25
+    },
+    {
+      "date": "2026-05-19",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 85
+    },
+    {
+      "date": "2026-05-18",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.75,
+      "message_count": 59
+    },
+    {
+      "date": "2026-05-17",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.8,
+      "message_count": 7
+    },
+    {
+      "date": "2026-05-16",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 37
+    },
+    {
+      "date": "2026-05-15",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 37
+    },
+    {
+      "date": "2026-05-14",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 33
+    },
+    {
+      "date": "2026-05-13",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 33
+    }
+  ]
+}
