@@ -238,18 +238,37 @@ async def get_recent_bookmarks(
     hours: int = 168,
     source_type: str = "",
     domain: str = "",
-) -> list[dict]:
+    before: str = "",
+    limit: int = 100,
+) -> dict:
     """
     Get recent bookmarks from Matt's jarvis-trader #general channel.
 
     Args:
-        hours: Lookback window in hours (default 168 = 7 days)
-        source_type: Optional filter — "x_post", "github", "video", "other"
-        domain: Optional substring filter on domain (e.g. "x.com", "github.com")
+        hours: Lookback window in hours (default 168 = 7 days).
+        source_type: Optional filter — "x_post", "github", "video", "other".
+        domain: Optional substring filter on domain (e.g. "x.com", "github.com").
+        before: ISO timestamp — return bookmarks strictly older than this. Use
+            the previous response's `next_before` value to walk the full corpus.
+            Empty string = start from newest.
+        limit: Page size, default 100, hard-capped at 200.
 
-    Returns list of bookmark dicts with: posted_at, url, domain, source_type,
-        embed_title, embed_description, content, author_name
+    Returns dict:
+        {
+            "bookmarks": [ {posted_at, url, domain, source_type, embed_title,
+                            embed_description, content, author_name}, ... ],
+            "next_before": "<ISO timestamp>" or None,   # feed back as `before`
+            "has_more": bool,
+            "page_size": int,
+        }
+
+    Note: response shape changed from `list[dict]` to `dict` to carry pagination
+    metadata. Old callers reading the result as a list will break; update them
+    to read `result["bookmarks"]`.
     """
+    # Clamp limit defensively — keep MCP payload bounded.
+    page_size = max(1, min(int(limit), 200))
+
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     db_path = _default_db_path()
 
@@ -261,7 +280,16 @@ async def get_recent_bookmarks(
     if domain:
         clauses.append("domain LIKE ?")
         params.append(f"%{domain}%")
+    if before:
+        # Strict `<` so the previous page's last row is not duplicated on the
+        # next page. Caller passes `next_before` from the previous response.
+        clauses.append("posted_at < ?")
+        params.append(before)
     where = " AND ".join(clauses)
+
+    # Fetch one extra row to detect has_more without a second COUNT query.
+    fetch_n = page_size + 1
+    params_with_limit = [*params, fetch_n]
 
     try:
         with sqlite3.connect(db_path) as conn:
@@ -273,14 +301,29 @@ async def get_recent_bookmarks(
                 FROM discord_bookmarks
                 WHERE {where}
                 ORDER BY posted_at DESC
-                LIMIT 50
+                LIMIT ?
                 """,
-                params,
+                params_with_limit,
             ).fetchall()
-        return [dict(row) for row in rows]
     except Exception as exc:
         logger.warning("[get_recent_bookmarks] DB error: %s", exc)
-        return []
+        return {
+            "bookmarks": [],
+            "next_before": None,
+            "has_more": False,
+            "page_size": page_size,
+        }
+
+    has_more = len(rows) > page_size
+    page_rows = rows[:page_size]
+    next_before = page_rows[-1]["posted_at"] if (has_more and page_rows) else None
+
+    return {
+        "bookmarks": [dict(row) for row in page_rows],
+        "next_before": next_before,
+        "has_more": has_more,
+        "page_size": page_size,
+    }
 
 
 @mcp.tool()

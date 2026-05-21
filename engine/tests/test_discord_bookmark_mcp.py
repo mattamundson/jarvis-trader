@@ -162,9 +162,13 @@ async def test_get_recent_bookmarks_basic(fixture_db: str) -> None:
     """5 seeded rows; default 168-hour window should return 4 (row-5 is 200h old)."""
     from discord.mcp_server import get_recent_bookmarks
 
-    results = await get_recent_bookmarks(hours=168)
+    response = await get_recent_bookmarks(hours=168)
+    results = response["bookmarks"]
 
     assert len(results) == 4, f"Expected 4 rows in window, got {len(results)}: {results}"
+    # All 4 fit within default page_size, so no more pages.
+    assert response["has_more"] is False
+    assert response["next_before"] is None
 
     # Newest-first ordering: row-1 is 1h ago, row-4 is 4h ago
     posted_ats = [r["posted_at"] for r in results]
@@ -175,7 +179,8 @@ async def test_get_recent_bookmarks_source_type_filter(fixture_db: str) -> None:
     """Filter by source_type='github' should return only row-2."""
     from discord.mcp_server import get_recent_bookmarks
 
-    results = await get_recent_bookmarks(hours=168, source_type="github")
+    response = await get_recent_bookmarks(hours=168, source_type="github")
+    results = response["bookmarks"]
 
     assert len(results) == 1
     assert results[0]["source_type"] == "github"
@@ -187,13 +192,128 @@ async def test_get_recent_bookmarks_domain_substring(fixture_db: str) -> None:
     """Filter by domain='x.com' should return both x.com rows (row-1, row-3)."""
     from discord.mcp_server import get_recent_bookmarks
 
-    results = await get_recent_bookmarks(hours=168, domain="x.com")
+    response = await get_recent_bookmarks(hours=168, domain="x.com")
+    results = response["bookmarks"]
 
     assert len(results) == 2
     for r in results:
         assert "x.com" in r["domain"]
     # Still newest-first
     assert results[0]["posted_at"] > results[1]["posted_at"]
+
+
+async def test_get_recent_bookmarks_pagination_walks_full_corpus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Seed 250 rows; walk pages of 100; assert 3 pages (100/100/50), no dupes, total=250.
+
+    Validates the keyset (`before` cursor) pagination contract:
+      - has_more flips to False on the last page
+      - next_before advances backwards in time
+      - no posted_at appears in more than one page
+      - cumulative rows == total seeded
+    """
+    from discord.mcp_server import get_recent_bookmarks
+
+    db_path = str(tmp_path / "pagination_bookmarks.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS discord_bookmarks (
+            message_id      TEXT PRIMARY KEY,
+            channel_id      TEXT NOT NULL,
+            posted_at       TEXT NOT NULL,
+            url             TEXT NOT NULL,
+            domain          TEXT,
+            source_type     TEXT,
+            embed_title     TEXT,
+            embed_description TEXT,
+            content         TEXT,
+            author_name     TEXT,
+            imported_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    now = _now_utc()
+    # 250 rows, each 1 minute apart, all within the lookback window.
+    rows = [
+        (
+            f"row-{i:04d}",
+            _JARVIS_CHANNEL,
+            _iso(now - timedelta(minutes=i + 1)),
+            f"https://x.com/foo/status/{i}",
+            "x.com",
+            "x_post",
+            f"Title {i}",
+            f"Desc {i}",
+            f"content {i}",
+            "amoszn",
+        )
+        for i in range(250)
+    ]
+    conn.executemany(
+        """
+        INSERT INTO discord_bookmarks
+            (message_id, channel_id, posted_at, url, domain, source_type,
+             embed_title, embed_description, content, author_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+    import discord.mcp_server as mcp_mod
+
+    monkeypatch.setattr(mcp_mod, "_default_db_path", lambda: db_path)
+
+    collected: list[dict] = []
+    seen_posted_ats: set[str] = set()
+    cursor = ""
+    pages = 0
+    max_pages = 10  # safety cap
+
+    while pages < max_pages:
+        response = await get_recent_bookmarks(hours=720, limit=100, before=cursor)
+        bookmarks = response["bookmarks"]
+        assert response["page_size"] == 100, "page_size should echo back the clamped limit"
+
+        for b in bookmarks:
+            assert (
+                b["posted_at"] not in seen_posted_ats
+            ), f"Duplicate posted_at across pages: {b['posted_at']}"
+            seen_posted_ats.add(b["posted_at"])
+
+        collected.extend(bookmarks)
+        pages += 1
+
+        if not response["has_more"]:
+            assert response["next_before"] is None
+            break
+        assert response["next_before"] is not None
+        cursor = response["next_before"]
+
+    assert pages == 3, f"Expected 3 pages (100/100/50), got {pages}"
+    assert len(collected) == 250, f"Expected 250 total rows, got {len(collected)}"
+
+    # Verify newest-first ordering preserved across page boundaries.
+    posted_ats = [b["posted_at"] for b in collected]
+    assert posted_ats == sorted(
+        posted_ats, reverse=True
+    ), "Cross-page ordering should remain newest-first"
+
+
+async def test_get_recent_bookmarks_limit_clamped_to_200(
+    fixture_db: str,
+) -> None:
+    """limit=999 should be clamped to 200; limit=0 should be clamped to 1."""
+    from discord.mcp_server import get_recent_bookmarks
+
+    response_high = await get_recent_bookmarks(hours=168, limit=999)
+    assert response_high["page_size"] == 200
+
+    response_low = await get_recent_bookmarks(hours=168, limit=0)
+    assert response_low["page_size"] == 1
 
 
 async def test_search_bookmarks_content_and_title(fixture_db: str) -> None:
