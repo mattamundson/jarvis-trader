@@ -144,6 +144,17 @@ def _phrase_to_cron(phrase: str) -> str | None:
     return None
 
 
+def _is_slug_shaped(s: str) -> bool:
+    """True iff `s` looks like a slug (lowercase letters/digits/hyphens/underscores,
+    no spaces, length 2-40). Used to disambiguate the first positional in
+    `hermes cron add 'NAME' 'SCHEDULE' 'PROMPT'` when --name flag is absent."""
+    if not s or " " in s or len(s) < 2 or len(s) > 40:
+        return False
+    # Cron expressions contain digits, spaces, *, /, -, , — they're not slug-shaped
+    # because they have spaces (caught above). But guard against pure-numeric input.
+    return bool(re.match(r"^[a-z0-9][a-z0-9_-]+$", s))
+
+
 def _extract_quoted_after(text: str, token: str) -> Optional[str]:
     """Extract the next single- or double-quoted string after `token` in `text`."""
     idx = text.find(token)
@@ -180,13 +191,62 @@ class CronRegister(BaseApplier):
         haystack = "\n".join(p for p in haystack_parts if p)
 
         # 1. Try to find a `hermes cron add ...` invocation we can parse.
+        # Two shapes the LLM emits:
+        #   (a) flag form: hermes cron add --name X --schedule Y --prompt Z   (legacy/wrong)
+        #   (b) positional: hermes cron add [--name X] 'schedule' 'prompt'    (real CLI shape)
+        # Try BOTH per step — first hit wins, with positional preferred since
+        # that's what real hermes invocations look like.
         for step in steps:
             if "hermes cron add" not in step:
                 continue
             name = _extract_quoted_after(step, "--name")
+            profile_flag = _extract_quoted_after(step, "--profile")
+            # Flag form (legacy)
             schedule = _extract_quoted_after(step, "--schedule")
             prompt = _extract_quoted_after(step, "--prompt")
-            profile = _extract_quoted_after(step, "--profile") or self._infer_profile(haystack)
+            # Positional form: capture quoted strings AFTER the 'hermes cron add'
+            # token, EXCLUDING any --flag=val or --flag val pairs.
+            if not schedule or not prompt:
+                # Strip the command prefix + any --flag value tokens, then grab
+                # remaining quoted positional args.
+                tail = step[step.index("hermes cron add") + len("hermes cron add") :]
+                # Remove flag-and-value pairs (--name X, --profile Y, --deliver Z, etc.)
+                stripped = re.sub(
+                    r"\s+--(?:name|profile|deliver|repeat|skill|script|workdir)(?:[=\s]+['\"][^'\"]*['\"]|[=\s]+\S+)?",
+                    " ",
+                    tail,
+                )
+                # Also remove --no-agent (boolean flag with no value)
+                stripped = re.sub(r"\s+--no-agent\b", " ", stripped)
+                # Find quoted strings in order
+                positionals = re.findall(r"['\"]([^'\"]+)['\"]", stripped)
+                # If no quoted strings, try bare-token form (e.g., "every 2h" without quotes)
+                if not positionals:
+                    bare = stripped.strip().split(None, 1)
+                    positionals = [t.strip() for t in bare if t.strip()]
+                if len(positionals) >= 2:
+                    if not schedule:
+                        schedule = positionals[0]
+                    if not prompt:
+                        prompt = positionals[1] if len(positionals) > 1 else ""
+
+            # Backfill missing name from positionals if name is the first positional
+            # and looks slug-shaped (e.g., 'weekly-audit')
+            if not name and schedule and _is_slug_shaped(schedule):
+                # Re-shift: positionals[0]=name, [1]=schedule, [2]=prompt
+                tail = step[step.index("hermes cron add") + len("hermes cron add") :]
+                stripped = re.sub(
+                    r"\s+--(?:name|profile|deliver|repeat|skill|script|workdir)(?:[=\s]+['\"][^'\"]*['\"]|[=\s]+\S+)?",
+                    " ",
+                    tail,
+                )
+                positionals = re.findall(r"['\"]([^'\"]+)['\"]", stripped)
+                if len(positionals) >= 3:
+                    name = positionals[0]
+                    schedule = positionals[1]
+                    prompt = positionals[2]
+
+            profile = profile_flag or self._infer_profile(haystack)
             if name and schedule and prompt:
                 return {
                     "name": name,
@@ -365,10 +425,11 @@ class CronRegister(BaseApplier):
         spec = self._extract_cron_spec(entry)
         if not spec:
             return f"ERROR: could not extract cron spec from {entry.bookmark_id}"
+        # hermes cron add uses POSITIONAL `<schedule> [prompt]`, not --schedule/--prompt flags.
+        # Optional flags: --name, --profile, --deliver, --repeat, --skill, --script.
         return (
             f"# Would register Hermes cron (profile={spec.get('profile', 'default')}):\n"
-            f"hermes cron add --name '{spec['name']}' --schedule '{spec['schedule']}' \\\n"
-            f"  --prompt '{spec['prompt']}'\n"
+            f"hermes cron add --name '{spec['name']}' '{spec['schedule']}' '{spec['prompt']}'\n"
         )
 
     async def apply(self, entry: BacklogEntry) -> ApplyResult:
@@ -397,13 +458,14 @@ class CronRegister(BaseApplier):
                 notes="idempotent skip",
             )
 
+        # `hermes cron add` is an alias for `cron create` with signature:
+        #   hermes cron add [--name N] [--profile P] [--deliver D] <schedule> [prompt]
+        # schedule and prompt are POSITIONAL, not flag-named.
         cmd_str = (
             f"hermes cron add --name {shlex.quote(spec['name'])} "
-            f"--schedule {shlex.quote(spec['schedule'])} "
-            f"--prompt {shlex.quote(spec['prompt'])}"
+            + (f"--profile {shlex.quote(profile)} " if profile and profile != "default" else "")
+            + f"{shlex.quote(spec['schedule'])} {shlex.quote(spec['prompt'])}"
         )
-        if profile and profile != "default":
-            cmd_str = f"HERMES_PROFILE={shlex.quote(profile)} {cmd_str}"
 
         try:
             proc = await asyncio.create_subprocess_exec(
