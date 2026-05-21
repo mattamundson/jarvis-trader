@@ -2324,6 +2324,37 @@ async def lifespan(app: FastAPI):
         # On Windows, SIGTERM is not always supported; log and continue
         logger.warning("Signal handler registration incomplete: %s", _sig_err)
 
+    # ── Predictive Maintenance Monitor (default OFF) ──────────────────────────
+    # Monitors memory growth, IB reconnects, LLM latency, and pm2 restart delta.
+    # Only starts when ENABLE_PREDICTIVE_MAINTENANCE=1 in .env.
+    # Auto-restart requires BOTH flags set to 1 (see docs/runbooks/PREDICTIVE_MAINTENANCE_RUNBOOK.md).
+    try:
+        from monitoring.predictive_maintenance import HealthMonitor as _HealthMonitor
+        from monitoring.predictive_maintenance import (
+            is_predictive_maintenance_enabled as _pm_enabled,
+        )
+
+        if _pm_enabled():
+            _health_monitor = _HealthMonitor()
+            asyncio.create_task(_health_monitor.monitor_loop())
+            logger.info(
+                "Predictive maintenance monitor started "
+                "(ENABLE_PREDICTIVE_MAINTENANCE=1, alert-only=%s)",
+                not bool(
+                    __import__("os")
+                    .environ.get("PREDICTIVE_MAINTENANCE_ALLOW_RESTART", "0")
+                    .strip()
+                    == "1"
+                ),
+            )
+        else:
+            logger.info(
+                "Predictive maintenance monitor: DISABLED "
+                "(set ENABLE_PREDICTIVE_MAINTENANCE=1 to enable — default off)"
+            )
+    except Exception as _pm_err:
+        logger.warning("Predictive maintenance monitor init failed (non-fatal): %s", _pm_err)
+
     yield  # Server runs here
 
     # Teardown

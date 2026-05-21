@@ -147,11 +147,16 @@ Pipeline stage 1 runs these analysts in parallel before the bull/bear debate:
 | breakout | always on | active | breakout pattern scanner |
 | harmonic | always on | active | harmonic pattern scanner |
 | kronos | `ENABLE_KRONOS=1` | stub (default off) | Kronos foundation model |
-| options (stage 6) | `ENABLE_OPTIONS_ANALYST=1` | stub (default off) | put/call skew, IV term structure, dealer gamma |
+| options (stage 6) | `ENABLE_OPTIONS_ANALYST=1` | capable (default off) | put/call skew, IV term structure, dealer gamma |
 | research | `ENABLE_RESEARCH_AGENT=1` | stub (default off) | autonomous strategy hypothesis |
 
 Options analyst (stage 6) — default off. Read-only signal contribution; never routes orders.
 Activation: set `ENABLE_OPTIONS_ANALYST=1` in `engine/.env`. Source: `engine/agents/options_analyst.py`.
+
+Sub-signal status (2026-05-20):
+- **Skew (weight 0.4):** wired — `get_pc_skew` fetches 25-delta put/call IV from Polygon, returns percentage-point spread. Positive = puts richer = bearish. Normalization: `signal = -skew / 50.0`. 5-min TTL cache. Returns None on missing data; analyst abstains gracefully.
+- **Term structure (weight 0.3):** wired — `get_term_structure` fetches ATM IV for front-week, front-month, second-month expiries. Slope = (front-week IV - front-month IV) × 100. Positive slope = backwardation (fear). Normalization: `signal = -slope / 20.0`. Returns None on missing data.
+- **Dealer gamma (weight 0.3):** pending — gamma sub-signal still returns 0.0 (neutral) as a placeholder until a dealer-gamma feed is available. Weight still counts toward data-coverage so partial signal from skew + term is not penalized.
 
 ---
 
