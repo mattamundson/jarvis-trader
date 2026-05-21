@@ -1,6 +1,7 @@
 # Engine — Python Backend Context
 
 > FastAPI trading engine, port 8010. See parent CLAUDE.md for full project overview.
+> Wave 3 instrument expansion (2026-05-21): MES + MGC added as VALIDATION_ONLY — pipeline runs, no paper orders.
 
 ## Entry Points
 

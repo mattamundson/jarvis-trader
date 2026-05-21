@@ -158,6 +158,7 @@ from routers.cache_router import router as cache_router
 from routers.readiness_router import router as readiness_router
 from routers.polymarket_router import router as polymarket_router
 from api.operations_dashboard import router as operations_dashboard_router
+from routers.attribution_router import router as attribution_router
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -2449,6 +2450,7 @@ app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
 app.include_router(market_router)
 app.include_router(analytics_router)
+app.include_router(attribution_router)
 app.include_router(safety_router)
 app.include_router(strategies_router)
 app.include_router(validation_router)
@@ -2468,7 +2470,7 @@ app.include_router(reports_router)
 app.include_router(schwab_router)
 app.include_router(instruments_router)
 app.include_router(brokers_router)
-app.include_router(options_router)
+app.include_router(options_router, prefix="/options", tags=["options"])
 app.include_router(approval_router)
 app.include_router(approval_queue_router)
 app.include_router(pipeline_router)

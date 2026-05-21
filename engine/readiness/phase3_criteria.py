@@ -636,7 +636,7 @@ class SafetyLayerTestCoverageCriterion(Phase3Criterion):
                     "-m",
                     "pytest",
                     "tests/test_safety_layer.py",
-                    "--cov=risk.safety_layer",
+                    "--cov=risk",
                     "--cov-report=term-missing",
                     "-q",
                     "--no-header",
