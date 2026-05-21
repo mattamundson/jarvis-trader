@@ -120,27 +120,79 @@ class DailyPnLMixin:
         portfolio_equity: float,
         peak_equity: float = 0.0,
         consecutive_losses: int = 0,
+        realized_peak_equity: Optional[float] = None,
     ) -> None:
         """
         Insert or replace the intraday P&L snapshot for the given date.
 
         Called by SafetyLayer every time daily_pnl updates so state
         survives engine restarts mid-session.
+
+        Parameters
+        ----------
+        date:
+            YYYY-MM-DD date string.
+        daily_pnl:
+            Realized P&L for the current trading day.
+        portfolio_equity:
+            Current total equity including unrealized MTM on open positions.
+            Used by the kill-switch drawdown halt — DO NOT conflate with
+            realized_peak_equity.
+        peak_equity:
+            Running maximum of portfolio_equity (MTM).  The safety layer
+            kill switch reads this column for the -10% drawdown halt.
+            MUST remain unchanged and match SafetyLayer._equity_peak.
+        consecutive_losses:
+            Count of consecutive losing trades for the loss-streak halt.
+        realized_peak_equity:
+            Running maximum of equity computed from CLOSED trades only
+            (excludes unrealized MTM).  Used exclusively by Phase 3 C5
+            readiness criterion.  When None, the column is not updated
+            (legacy callers that do not supply this value are safe).
         """
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-        sql = """
-            INSERT OR REPLACE INTO pnl_snapshots
-                (date, daily_pnl, portfolio_equity, peak_equity, consecutive_losses, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """
+
+        if realized_peak_equity is not None:
+            # migration_029 column is available — write it explicitly
+            sql = """
+                INSERT OR REPLACE INTO pnl_snapshots
+                    (date, daily_pnl, portfolio_equity, peak_equity,
+                     consecutive_losses, updated_at, realized_peak_equity)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """
+            params = (
+                date,
+                daily_pnl,
+                portfolio_equity,
+                peak_equity,
+                consecutive_losses,
+                now_utc,
+                realized_peak_equity,
+            )
+        else:
+            # Legacy path: realized_peak_equity column not supplied.
+            # INSERT OR REPLACE will reset realized_peak_equity to its DEFAULT
+            # (NULL) for this row.  Callers that track realized equity should
+            # always pass realized_peak_equity explicitly.
+            sql = """
+                INSERT OR REPLACE INTO pnl_snapshots
+                    (date, daily_pnl, portfolio_equity, peak_equity, consecutive_losses, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """
+            params = (date, daily_pnl, portfolio_equity, peak_equity, consecutive_losses, now_utc)
+
         with self._lock:
             conn = self._connect()
             try:
-                conn.execute(sql, (date, daily_pnl, portfolio_equity, peak_equity, consecutive_losses, now_utc))
+                conn.execute(sql, params)
                 conn.commit()
                 logger.debug(
-                    "[DB] upsert_pnl_snapshot date=%s daily_pnl=%+.2f equity=%.2f",
-                    date, daily_pnl, portfolio_equity,
+                    "[DB] upsert_pnl_snapshot date=%s daily_pnl=%+.2f equity=%.2f "
+                    "realized_peak=%s",
+                    date,
+                    daily_pnl,
+                    portfolio_equity,
+                    f"{realized_peak_equity:.2f}" if realized_peak_equity is not None else "n/a",
                 )
             finally:
                 conn.close()
