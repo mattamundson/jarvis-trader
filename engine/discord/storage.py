@@ -3,6 +3,7 @@ import sqlite3
 from typing import Optional
 
 from .models import Bookmark, BotSignal, CoreyAlert, CoreyCommentary, IBReport
+from . import storage_questdb as _qdb
 
 logger = logging.getLogger(__name__)
 
@@ -236,10 +237,18 @@ def insert_bot_signal(conn: sqlite3.Connection, signal: BotSignal) -> bool:
                 signal.source_channel,
             ),
         )
-        return conn.execute("SELECT changes()").fetchone()[0] > 0
+        inserted = conn.execute("SELECT changes()").fetchone()[0] > 0
     except sqlite3.Error as e:
         logger.error(f"Error inserting bot signal {signal.message_id}: {e}")
         return False
+    # Dual-write to QuestDB shadow (non-blocking; errors logged, not raised)
+    try:
+        _qdb.insert_bot_signal_ts(signal)
+    except Exception as exc:  # pragma: no cover — _qdb functions never raise, but belt+suspenders
+        logger.warning(
+            "QuestDB dual-write hook failed for bot signal %s: %s", signal.message_id, exc
+        )
+    return inserted
 
 
 def insert_ib_report(conn: sqlite3.Connection, report: IBReport) -> bool:
@@ -273,10 +282,18 @@ def insert_ib_report(conn: sqlite3.Connection, report: IBReport) -> bool:
                 report.source_channel,
             ),
         )
-        return conn.execute("SELECT changes()").fetchone()[0] > 0
+        inserted = conn.execute("SELECT changes()").fetchone()[0] > 0
     except sqlite3.Error as e:
         logger.error(f"Error inserting IB report {report.message_id}: {e}")
         return False
+    # Dual-write to QuestDB shadow (non-blocking; errors logged, not raised)
+    try:
+        _qdb.insert_ib_report_ts(report)
+    except Exception as exc:  # pragma: no cover
+        logger.warning(
+            "QuestDB dual-write hook failed for IB report %s: %s", report.message_id, exc
+        )
+    return inserted
 
 
 def insert_corey_alert(conn: sqlite3.Connection, alert: CoreyAlert) -> bool:
@@ -321,10 +338,18 @@ def insert_corey_commentary(conn: sqlite3.Connection, commentary: CoreyCommentar
                 commentary.author_id,
             ),
         )
-        return conn.execute("SELECT changes()").fetchone()[0] > 0
+        inserted = conn.execute("SELECT changes()").fetchone()[0] > 0
     except sqlite3.Error as e:
         logger.error(f"Error inserting commentary {commentary.message_id}: {e}")
         return False
+    # Dual-write to QuestDB shadow (non-blocking; errors logged, not raised)
+    try:
+        _qdb.insert_corey_commentary_ts(commentary)
+    except Exception as exc:  # pragma: no cover
+        logger.warning(
+            "QuestDB dual-write hook failed for commentary %s: %s", commentary.message_id, exc
+        )
+    return inserted
 
 
 def insert_bookmark(conn: sqlite3.Connection, bookmark: Bookmark) -> bool:
