@@ -157,6 +157,87 @@ Candidates are never deleted — they stay in the DB for audit and history.
 
 ---
 
+## Discord Webhook Integration
+
+Every new approval candidate and every approval/rejection result can be posted as a
+rich Discord embed to Matt's personal channel — eliminating the need to poll the
+dashboard or API to know when a candidate is waiting.
+
+### Setup
+
+1. In Discord: open the target channel → **Edit Channel → Integrations → Webhooks → New Webhook**.
+   Copy the webhook URL (format: `https://discord.com/api/webhooks/<id>/<token>`).
+
+2. Add to `engine/.env`:
+   ```
+   JARVIS_DISCORD_APPROVAL_WEBHOOK=https://discord.com/api/webhooks/<id>/<token>
+   ```
+
+3. Restart the engine: `.\restart_engine.ps1`
+
+No other configuration is needed. The feature is **default-OFF** — if the env var is absent
+or empty the system behaves exactly as before.
+
+### What you'll see
+
+**When a candidate is enqueued:**
+```
+New trade candidate (ID 17)
+Symbol: MCL  |  Direction: LONG  |  Confidence: 72%
+Entry: $73.45  |  Stop: $72.80   (when pipeline provides prices)
+Expires: 29 min remaining
+
+Approve via API:
+  curl -X POST "http://127.0.0.1:8010/approvals/17/approve" -H "X-API-Key: ..."
+
+Approve via Hermes:
+  jarvis-approval-queue "approve 17"
+```
+
+**When approved:**
+```
+Approved — candidate 17
+Symbol: MCL  |  Direction: LONG  |  Order ID: INV-12345
+```
+
+**When rejected:**
+```
+Rejected — candidate 17
+Symbol: MCL  |  Notes: too close to resistance
+```
+
+**When expired:**
+```
+Expired — candidate 17 (TTL)
+```
+
+### Design notes
+
+- **Best-effort:** webhook failures log a WARNING and are never re-tried. The enqueue,
+  approve, and reject flows are unaffected even if Discord is unreachable.
+- **Rate limits:** Discord webhooks allow ~30 requests/min per channel. With a 300 s
+  tick and 2–4 active symbols, the peak rate is ~4 posts per tick — well within limits.
+- **No expiry post (yet):** TTL-based expiry is handled by `_expire_stale()` inside
+  `list_pending()`. That function does not currently fire a Discord notification — the
+  expiry embed is a follow-up TODO once a dedicated TTL sweep task is added.
+- **Module:** `engine/notifications/discord_webhook.py` — reads `JARVIS_DISCORD_APPROVAL_WEBHOOK`
+  fresh on every call; never cached at module level.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| No posts in Discord | Confirm `JARVIS_DISCORD_APPROVAL_WEBHOOK` is set and non-empty in `engine/.env` |
+| HTTP 401 from Discord | Webhook URL is wrong or was deleted — regenerate in Discord channel settings |
+| HTTP 429 from Discord | Rate-limited; reduce symbols or increase `AUTONOMOUS_TICK_SECONDS` |
+| `discord_webhook post failed` in logs | Network issue or Discord outage — transient, self-resolving |
+
+### Cross-reference
+
+- `[[CLAUDE_CODE_AND_HERMES_INTEGRATION_MAP]]` — Hermes approval skill that reads the same queue
+
+---
+
 ## Environment Variables Reference
 
 | Variable | Default | Description |
@@ -167,6 +248,8 @@ Candidates are never deleted — they stay in the DB for audit and history.
 | `AUTONOMOUS_TICK_SECONDS` | `300` | Tick interval (floor = 60s) |
 | `AUTONOMOUS_MIN_TICK_SECONDS` | `60` | Race-condition floor — prevents tick < paper-order round-trip |
 | `AUTONOMOUS_ACTIVE_SYMBOLS` | `MCL,MNQ` | Comma-separated symbols to scan per tick |
+| `JARVIS_DISCORD_APPROVAL_WEBHOOK` | *(unset)* | Discord webhook URL; leave unset to disable |
+| `JARVIS_ENGINE_PUBLIC_URL` | `http://127.0.0.1:8010` | Engine URL used in Discord curl snippets |
 
 ---
 
@@ -187,8 +270,10 @@ the floor silently takes precedence and a warning is logged.
 | `engine/scheduler/__init__.py` | Package marker |
 | `engine/routers/approval_queue_router.py` | HTTP surface (/approvals/*) |
 | `engine/main.py` | Router wiring + background loop startup |
+| `engine/notifications/discord_webhook.py` | Approval-queue Discord embed poster (new) |
 | `engine/tests/test_pipeline_autonomous.py` | Scheduler unit tests |
 | `engine/tests/test_approval_queue_router.py` | Router unit tests |
+| `engine/tests/test_discord_webhook_notifications.py` | Discord webhook unit tests (new) |
 | `engine/data/approval_audit.jsonl` | Audit log (auto-created on first approve/reject) |
 
 ---
