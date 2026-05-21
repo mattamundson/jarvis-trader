@@ -157,6 +157,7 @@ Activation: set `ENABLE_OPTIONS_ANALYST=1` in `engine/.env`. Source: `engine/age
 
 ## 7. Cross-References
 
+- `[[AUTONOMOUS_PIPELINE_RUNBOOK]]` — autonomous pipeline scheduler + human approval queue (default-OFF, all orders human-gated)
 - `[[CLAUDE_CODE_AND_HERMES_INTEGRATION_MAP]]` — surface-by-surface wiring, HTTP routes, MCP gaps, auth
 - `[[KRONOS_AND_RESEARCH_AGENT_RUNBOOK]]` — Kronos classifier, ResearchAgent activation flags, test gate
 - `[[DISCORD_INTEL_RUNBOOK]]` — Discord MCP servers, ingest task, HTTP route reference, smoke tests

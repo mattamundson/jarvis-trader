@@ -1,0 +1,201 @@
+# AUTONOMOUS PIPELINE RUNBOOK
+
+> Status: **DEFAULT OFF** — requires explicit env-flag to activate.
+> Any change to this system is a `[safety-review]` scope commit.
+
+---
+
+## What It Does
+
+The autonomous pipeline scheduler (`engine/scheduler/pipeline_autonomous.py`) runs the
+5-stage JARVIS TRADER pipeline on a timed interval and **enqueues trade candidates** for
+human approval. It never auto-submits an order.
+
+The approval queue (`engine/routers/approval_queue_router.py`) exposes `/approvals/*` HTTP
+endpoints and the Hermes Telegram skill for human review.
+
+```
+[Scheduler tick]
+    → pre-flight (health + kill-switch + LIVE_TRADING gate)
+    → pipeline.analyze_and_decide(symbol)
+    → if GREEN + confidence >= threshold
+        → idempotency check (no duplicate for same symbol/direction with live TTL)
+        → INSERT into pipeline_approval_queue
+[Human sees queue via Hermes or dashboard]
+    → "approve N" → POST /approvals/N/approve
+        → re-check kill-switch + LIVE_TRADING_ENABLED
+        → safety_layer.submit_paper_order()
+        → row → status=approved, order_id recorded
+    → "reject N" → POST /approvals/N/reject → row status=rejected, reason logged
+[TTL expires] → row status=expired (auto at next list_pending or every 60s via APScheduler)
+```
+
+---
+
+## Safety Gates (Non-Negotiable)
+
+| Gate | Where enforced | What happens on failure |
+|---|---|---|
+| `ENABLE_AUTONOMOUS_PIPELINE != 1` | Every tick (read fresh) | No-op immediately, no pipeline call |
+| `LIVE_TRADING_ENABLED = True` | Pre-flight AND approve endpoint | Tick aborts; approve returns HTTP 409 |
+| `kill_switch_active = True` | Pre-flight AND approve endpoint | Tick aborts; approve returns HTTP 409 |
+| Engine unhealthy | Pre-flight (safety_layer.get_status) | Tick aborts |
+| Candidate TTL expired | approve endpoint + list_pending | approve returns HTTP 410; candidate auto-expired |
+| Duplicate (symbol, direction) with live TTL | Enqueue idempotency guard | Skips insert, logs SKIP |
+| Confidence < threshold | Tick verdict filter | Skips enqueue, logs SKIP |
+
+The `approve` endpoint makes **two** independent safety checks (pre-flight + safety_layer live
+re-check) with no caching between them. A kill-switch trip during the approval HTTP round-trip
+will cause the approve call to return 409 even if the pre-flight passed.
+
+---
+
+## How to Enable
+
+1. Add to `engine/.env`:
+   ```
+   ENABLE_AUTONOMOUS_PIPELINE=1
+   AUTONOMOUS_CONFIDENCE_THRESHOLD=0.65    # optional, default 0.65
+   AUTONOMOUS_CANDIDATE_TTL_SECONDS=1800   # optional, default 1800 (30 min)
+   AUTONOMOUS_TICK_SECONDS=300             # optional, default 300 (5 min)
+   AUTONOMOUS_ACTIVE_SYMBOLS=MCL,MNQ       # optional, default MCL,MNQ
+   ```
+2. Restart the engine: `.\restart_engine.ps1`
+3. Verify the log contains:
+   ```
+   ⏰ Autonomous pipeline loop started — tick=300s (ENABLE_AUTONOMOUS_PIPELINE=1 detected at boot)
+   ```
+4. Smoke-check: `GET http://127.0.0.1:8010/approvals/pending` returns `{"count": 0, "candidates": []}`.
+
+---
+
+## How to Disable
+
+**Runtime (takes effect on the next tick):**
+```bash
+# In the engine process environment — disable enqueue on next tick:
+# (requires engine restart to propagate .env change)
+ENABLE_AUTONOMOUS_PIPELINE=0
+```
+
+**Permanent:**
+1. Set `ENABLE_AUTONOMOUS_PIPELINE=0` (or remove) in `engine/.env`
+2. Restart: `.\restart_engine.ps1`
+3. Pending candidates in the queue will **expire naturally** (TTL-based). No manual cleanup needed.
+
+---
+
+## Emergency Stop
+
+Even if the flag is `1`:
+- Trigger the kill switch (via `/safety/kill-switch` or the dashboard) — the scheduler
+  refuses to enqueue on the next tick AND the approve endpoint refuses to submit.
+- Kill switches are checked **on every tick** and **on every approve call** — no restart needed.
+
+Sequence for immediate halt:
+```
+POST http://127.0.0.1:8010/safety/kill-switch   (X-API-Key header required)
+```
+The autonomous scheduler will see `kill_switch_active: True` on the next tick and abort.
+
+---
+
+## Viewing the Queue
+
+**Via Hermes (Telegram):**
+```
+list pending approvals
+```
+
+**Via API:**
+```bash
+curl -H "X-API-Key: <key>" http://127.0.0.1:8010/approvals/pending
+```
+
+**Via history:**
+```bash
+curl -H "X-API-Key: <key>" "http://127.0.0.1:8010/approvals/history?days=7"
+```
+
+---
+
+## Approving / Rejecting
+
+**Via Hermes:**
+```
+approve 17
+reject 17 because too close to support
+```
+
+**Via API:**
+```bash
+# Approve (entry_price optional — uses pipeline snapshot if absent)
+curl -X POST -H "X-API-Key: <key>" -H "Content-Type: application/json" \
+  -d '{"entry_price": 2150.50}' \
+  http://127.0.0.1:8010/approvals/17/approve
+
+# Reject
+curl -X POST -H "X-API-Key: <key>" -H "Content-Type: application/json" \
+  -d '{"reason": "not the right setup"}' \
+  http://127.0.0.1:8010/approvals/17/reject
+```
+
+Every approve/reject is logged to `engine/data/approval_audit.jsonl`.
+
+---
+
+## Candidate Lifecycle
+
+```
+ENQUEUED (status=pending, expires_at = now + TTL)
+  → APPROVED (status=approved, order_id=<fill_id>)
+  → REJECTED (status=rejected, reviewer_notes=<reason>)
+  → EXPIRED  (status=expired, auto at list_pending or TTL sweep)
+```
+
+Candidates are never deleted — they stay in the DB for audit and history.
+
+---
+
+## Environment Variables Reference
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_AUTONOMOUS_PIPELINE` | `0` | `1` to enable. Read fresh every tick. |
+| `AUTONOMOUS_CONFIDENCE_THRESHOLD` | `0.65` | Minimum confidence to enqueue |
+| `AUTONOMOUS_CANDIDATE_TTL_SECONDS` | `1800` | Candidate TTL (30 min) |
+| `AUTONOMOUS_TICK_SECONDS` | `300` | Tick interval (floor = 60s) |
+| `AUTONOMOUS_MIN_TICK_SECONDS` | `60` | Race-condition floor — prevents tick < paper-order round-trip |
+| `AUTONOMOUS_ACTIVE_SYMBOLS` | `MCL,MNQ` | Comma-separated symbols to scan per tick |
+
+---
+
+## Known Subtlety — Race Condition Floor
+
+The minimum tick interval is 60 seconds (`AUTONOMOUS_MIN_TICK_SECONDS`). This prevents the
+scheduler from firing a second tick before the first paper-order round-trip completes,
+which would race the idempotency guard. If `AUTONOMOUS_TICK_SECONDS < AUTONOMOUS_MIN_TICK_SECONDS`,
+the floor silently takes precedence and a warning is logged.
+
+---
+
+## Files
+
+| Path | Purpose |
+|---|---|
+| `engine/scheduler/pipeline_autonomous.py` | Scheduler tick logic + DB helpers |
+| `engine/scheduler/__init__.py` | Package marker |
+| `engine/routers/approval_queue_router.py` | HTTP surface (/approvals/*) |
+| `engine/main.py` | Router wiring + background loop startup |
+| `engine/tests/test_pipeline_autonomous.py` | Scheduler unit tests |
+| `engine/tests/test_approval_queue_router.py` | Router unit tests |
+| `engine/data/approval_audit.jsonl` | Audit log (auto-created on first approve/reject) |
+
+---
+
+## Cross-References
+
+- Kill switch: `engine/risk/safety_layer.py` (DO NOT MODIFY without Tier 3 + `[safety-review]`)
+- Existing approval flow: `engine/approval/service.py`, `engine/routers/approval_router.py`
+- Safety rules: `.claude/rules/safety.md`
+- Operating philosophy: `docs/runbooks/STARK_MODE_OPERATING_PHILOSOPHY.md`

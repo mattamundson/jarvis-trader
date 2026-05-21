@@ -128,6 +128,8 @@ from routers.brokers_router import inject_dependencies as inject_brokers_deps
 from routers.options_router import router as options_router
 from routers.approval_router import router as approval_router
 from routers.approval_router import inject_dependencies as inject_approval_deps
+from routers.approval_queue_router import router as approval_queue_router
+from routers.approval_queue_router import inject_approval_queue_deps
 from routers.pipeline_router import router as pipeline_router
 from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
 from routers.messaging_router import router as messaging_router
@@ -1471,6 +1473,36 @@ async def lifespan(app: FastAPI):
     inject_market_deps(data_manager=data_manager)
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
+
+    # ── Autonomous Pipeline Approval Queue ────────────────────────────────────
+    # Default-OFF: only activated when ENABLE_AUTONOMOUS_PIPELINE=1 in .env.
+    # The router is always registered (serves /approvals/* to review the queue).
+    # The background loop is only started when the flag is explicitly set.
+    inject_approval_queue_deps(safety_layer, db_path=str(db_manager._db_path))
+    logger.info("✅ Approval queue router wired (prefix=/approvals)")
+
+    _autonomous_enabled_at_boot = os.environ.get("ENABLE_AUTONOMOUS_PIPELINE", "0").strip() == "1"
+    if _autonomous_enabled_at_boot:
+        from scheduler.pipeline_autonomous import inject_autonomous_deps, run_autonomous_loop
+
+        inject_autonomous_deps(
+            trading_pipeline=trading_pipeline,
+            safety_layer=safety_layer,
+            db_path=str(db_manager._db_path),
+        )
+        _tick_interval = int(os.environ.get("AUTONOMOUS_TICK_SECONDS", "300"))
+        asyncio.create_task(run_autonomous_loop())
+        logger.info(
+            "⏰ Autonomous pipeline loop started — tick=%ds "
+            "(ENABLE_AUTONOMOUS_PIPELINE=1 detected at boot)",
+            _tick_interval,
+        )
+    else:
+        logger.info(
+            "Autonomous pipeline scheduler: DISABLED "
+            "(ENABLE_AUTONOMOUS_PIPELINE not set or =0 — default-off)"
+        )
+
     inject_scheduler_router_scheduler(scheduler)
     inject_pipeline_deps(
         scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline
@@ -2404,6 +2436,7 @@ app.include_router(instruments_router)
 app.include_router(brokers_router)
 app.include_router(options_router)
 app.include_router(approval_router)
+app.include_router(approval_queue_router)
 app.include_router(pipeline_router)
 app.include_router(messaging_router)
 app.include_router(scanner_router)
