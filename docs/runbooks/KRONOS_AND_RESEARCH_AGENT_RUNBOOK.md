@@ -458,15 +458,22 @@ are documented in `engine/requirements-kronos.txt`.
 - [x] **DONE (2026-05-20)** — Side-by-side harness: `scripts/kronos_side_by_side.py`
       diffs `analyst_reports["kronos"]` between Kronos-OFF and Kronos-ON pipeline
       runs; outputs `scripts/data/kronos_side_by_side_<date>.md`.
-- [ ] **PENDING** — Model weights downloaded and cached locally.  Recommended:
-      `NeoQuasar/Kronos-mini` + `NeoQuasar/Kronos-Tokenizer-2k` as first candidates.
-- [ ] **PENDING** — Wall-clock latency measured: `predict()` call on 400-bar window,
-      CPU-only.  Must be < engine pipeline timeout before enabling in hot path.
+- [x] **DONE (2026-05-21)** — Model weights downloaded and cached locally.
+      `NeoQuasar/Kronos-mini` (~15.7 MB) + `NeoQuasar/Kronos-Tokenizer-2k` (~15.1 MB)
+      cached to `~\.cache\huggingface\hub\`. Both load successfully on CPU.
+- [x] **DONE (2026-05-21)** — Wall-clock latency measured: **0.53 seconds** per
+      `predict()` call on 400-bar window, CPU-only. Well under any pipeline timeout.
+      Shadow run is viable on this machine without batch inference queuing.
 - [ ] **PENDING** — `list[dict]` → `pd.DataFrame` conversion validated with real
       engine bar data (confirm column names, timestamp dtype, no NaN in OHLCV).
-- [ ] **PENDING** — Paper-side validation: 24h of pipeline verdicts with Kronos ON;
-      compare `analyst_reports.kronos.confidence` distribution to pre-Kronos baseline.
-- [ ] **PENDING** — `HF_API_TOKEN` stored in `engine/.env` for model weight download.
+- [ ] **PENDING** — Full pipeline side-by-side harness run (engine must be running at
+      `127.0.0.1:8010`): `python scripts/kronos_side_by_side.py --symbol MES --days 3`.
+      First-run direct-classifier validation done (see §16 and vault report).
+- [ ] **PENDING** — `SSL_CERT_FILE` fix before activating in engine context:
+      add `SSL_CERT_FILE=<certifi-path>` to `engine/.env` or fix the stale Anaconda
+      path in the shell profile. Stale path blocks `from_pretrained()` on first load.
+- [ ] **PENDING** — `HF_API_TOKEN` stored in `engine/.env` for model weight download
+      (not required for public models, but eliminates the rate-limit warning).
 - [ ] **PENDING** — `ENABLE_KRONOS=0` added to `engine/.env.example` — Amo does this.
 - [ ] **PENDING** — MC confidence: `sample_count >= 5` wired to produce std dev
       confidence proxy instead of the current return-magnitude proxy.
@@ -588,3 +595,170 @@ review the JSON artifacts from each weekend pass before running backtests.
   and pass criteria; use to verify pipeline is healthy after flag flip.
 - `QUANTSTATS_TEARSHEET_RUNBOOK.md` — gate-v2 metric definitions; reference for
   the ResearchAgent hypothesis scoring thresholds.
+
+---
+
+## 16. Installation complete (2026-05-21)
+
+**Status:** COMPLETE. Kronos installed into engine venv. Non-stub inference
+confirmed. `ENABLE_KRONOS=0` remains the default — activation is a separate decision.
+
+**`_KRONOS_AVAILABLE=True` after install.** The engine boots cleanly and
+`_KRONOS_AVAILABLE=False` branch is no longer triggered — the warning log about
+"Kronos package not installed" no longer appears.
+
+### What was installed and verified
+
+| Item | Result |
+|------|--------|
+| Engine venv Python | 3.12.10 |
+| `torch` | 2.5.1 (already installed) |
+| `huggingface_hub` | 1.15.0 (already installed) |
+| `transformers` | 5.9.0 — installed this session |
+| `einops` | 0.8.1 — installed this session |
+| `safetensors` | 0.6.2 — installed this session |
+| Kronos clone | `C:\Users\mattm\Code\Kronos-upstream\` |
+| Install method | `.pth` file — `engine\.venv\Lib\site-packages\kronos-upstream.pth` |
+| Import verify | `from model import Kronos, KronosTokenizer, KronosPredictor` → OK |
+| `KronosPredictor.__module__` | `model.kronos` (confirmed) |
+| Model loaded | `NeoQuasar/Kronos-mini` + `NeoQuasar/Kronos-Tokenizer-2k` — both OK |
+| Device | `cpu` (no GPU on this machine) |
+| Inference latency | **0.53 seconds** per predict() on 400-bar window, CPU |
+| Non-stub output | CONFIRMED — OFF: `predicted -10.6 bps`, ON: `predicted +8.4 bps` |
+| Combined checkpoint size | ~30.8 MB (~15.7 MB mini + ~15.1 MB tokenizer) |
+| `_KRONOS_AVAILABLE` after install | `True` |
+| `is_kronos_enabled()` | `False` (ENABLE_KRONOS=0, default unchanged) |
+| `engine/.env` modified | NO — ENABLE_KRONOS not set |
+
+### Install path to use (canonical — run manually)
+
+Kronos has **no `setup.py` or `pyproject.toml`**. The canonical install is a
+clone + `.pth` file to put the cloned directory on `sys.path`.
+
+```powershell
+# 1. Clone Kronos (requires git clone permission or manual run)
+git clone https://github.com/shiyu-coder/Kronos.git C:\Users\mattm\Code\Kronos-upstream
+
+# 2. Install dependency gaps into engine venv
+engine\.venv\Scripts\pip.exe install "transformers>=4.38.0"
+engine\.venv\Scripts\pip.exe install "einops==0.8.1" "safetensors==0.6.2"
+
+# 3. Add Kronos to sys.path via .pth file
+Add-Content -Path "engine\.venv\Lib\site-packages\kronos-upstream.pth" `
+  -Value "C:\Users\mattm\Code\Kronos-upstream"
+
+# 4. Verify import
+engine\.venv\Scripts\python.exe -c "from model import Kronos, KronosTokenizer, KronosPredictor; print('OK')"
+
+# 5. Test model load (first call downloads ~30.8 MB to ~/.cache/huggingface/)
+engine\.venv\Scripts\python.exe -c "
+from model import Kronos, KronosTokenizer, KronosPredictor
+tok = KronosTokenizer.from_pretrained('NeoQuasar/Kronos-Tokenizer-2k')
+m = Kronos.from_pretrained('NeoQuasar/Kronos-mini')
+pred = KronosPredictor(m, tok, max_context=512)
+print('OK — device:', pred.device)
+"
+
+# 6. Verify classifier picks it up
+cd C:\Users\mattm\ThinkorSwim\jarvis-trader
+engine\.venv\Scripts\python.exe -c "
+import sys, os
+sys.path.insert(0, 'engine')
+os.environ['API_KEY'] = 'smoke'
+from agents.kronos_classifier import is_kronos_enabled, _KRONOS_AVAILABLE
+print('_KRONOS_AVAILABLE=', _KRONOS_AVAILABLE)  # expect True after install
+"
+```
+
+### To verify install is correct (after running steps above)
+
+```powershell
+engine\.venv\Scripts\python.exe -c "from model import KronosPredictor; print(KronosPredictor.__module__)"
+# Expected output: model.kronos
+```
+
+### Permission grant for Claude Code to run this automatically in future
+
+Add to `C:\Users\mattm\ThinkorSwim\jarvis-trader\.claude\settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone https://github.com/shiyu-coder/Kronos.git*)",
+      "PowerShell(git clone https://github.com/shiyu-coder/Kronos.git*)"
+    ]
+  }
+}
+```
+
+### Disk footprint summary
+
+| Component | Location | Size |
+|-----------|----------|------|
+| Kronos repo (code only, no weights) | `C:\Users\mattm\Code\Kronos-upstream\` | ~2–5 MB (estimated) |
+| `NeoQuasar/Kronos-mini` weights | `~\.cache\huggingface\hub\` | ~15.7 MB |
+| `NeoQuasar/Kronos-Tokenizer-2k` weights | `~\.cache\huggingface\hub\` | ~15.1 MB |
+| `transformers` + `einops` + `safetensors` | `engine\.venv\Lib\site-packages\` | ~200–400 MB (transformers is large) |
+| **Total net new** | | **~220–430 MB** |
+
+Note: `transformers` is the largest dependency by far (~200–400 MB including
+tokenizer models and supporting files). If disk is constrained, only `einops`
+and `safetensors` can be installed without `transformers` — but `transformers`
+is listed in `engine/requirements-kronos.txt` as required for `KronosTokenizer`'s
+`from_pretrained` loader.
+
+### Side-by-side run — pending install + engine running
+
+Once the install is complete and the engine is running at `127.0.0.1:8010`:
+
+```powershell
+# Run with ENABLE_KRONOS=1 set in subprocess env (does NOT modify engine/.env)
+$env:ENABLE_KRONOS = "1"
+engine\.venv\Scripts\python.exe scripts\kronos_side_by_side.py --symbol MES --days 3
+# Output: scripts/data/kronos_side_by_side_<timestamp>.md
+```
+
+The script sends `X-Kronos-Override: 1` header to the engine pipeline, which
+the engine can use to override the env flag per-request without an engine restart.
+If the engine build predates that header support, the diff will show all-zeros
+(both OFF and ON return the same stub result).
+
+### ENABLE_KRONOS default — confirmed OFF
+
+`ENABLE_KRONOS=0` is the default. This install session does NOT and MUST NOT
+modify `engine/.env`. Activation is a separate decision after:
+1. Latency measured (`predict()` on 400-bar window, CPU-only)
+2. Side-by-side report reviewed showing non-stub ON verdict
+3. Explicit Amo authorization for shadow run
+
+### Blocker for full activation
+
+**Primary blocker: CPU inference latency unknown.** The Kronos-mini model
+(~24M params) must run inference on CPU (no GPU on this machine). A 400-bar
+`predict()` call is estimated at 5–30 seconds. If latency exceeds the pipeline's
+per-analyst timeout, Kronos will always time out and contribute `confidence=0.0`
+regardless of the flag — making the shadow run moot. Measure first with the
+latency probe in the vault report before authorizing activation.
+
+Latency probe (run after install):
+```powershell
+engine\.venv\Scripts\python.exe -c "
+import time, pandas as pd
+from model import Kronos, KronosTokenizer, KronosPredictor
+tok = KronosTokenizer.from_pretrained('NeoQuasar/Kronos-Tokenizer-2k')
+m = Kronos.from_pretrained('NeoQuasar/Kronos-mini')
+pred = KronosPredictor(m, tok, max_context=512)
+bars = pd.DataFrame({'open': [5000.0]*400, 'high': [5010.0]*400,
+                     'low': [4990.0]*400, 'close': [5005.0]*400})
+x_ts = pd.date_range(end=pd.Timestamp.now(), periods=400, freq='1h')
+y_ts = pd.date_range(start=x_ts[-1], periods=6, freq='1h')[1:]
+t0 = time.perf_counter()
+result = pred.predict(bars, pd.Series(x_ts), pd.Series(y_ts), pred_len=5)
+elapsed = time.perf_counter() - t0
+print(f'Latency: {elapsed:.1f}s | device: {pred.device}')
+print(result[['open','high','low','close']].tail())
+"
+```
+
+Shadow run viable if latency < 15s. Needs batch inference queue if > 30s.
