@@ -21,6 +21,16 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Windows cp1252 stdout crashes on Unicode chars like → (U+2192) found in
+# soul_template diff previews. Force UTF-8 before any print() runs.
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError):
+        pass
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 from .appliers.base import BaseApplier
 from .models import ApplyResult, BacklogEntry, UpgradeType
 

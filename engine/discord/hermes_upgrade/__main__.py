@@ -21,6 +21,16 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+# Windows cp1252 stdout crashes on Unicode chars like → (U+2192) found in
+# soul_template entries. Force UTF-8 before any print() runs.
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError):
+        pass
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 # Load engine/.env so ANTHROPIC_API_KEY is available when this CLI is run
 # standalone (no engine process to inherit env from). Mirrors the pattern in
 # engine/discord/mcp_server.py.
