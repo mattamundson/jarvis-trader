@@ -154,6 +154,7 @@ from routers.decisions_router import router as decisions_router
 from routers.decisions_router import set_db_manager as set_decisions_db
 from routers.admin_router import router as admin_router
 from routers.cache_router import router as cache_router
+from routers.readiness_router import router as readiness_router
 from routers.polymarket_router import router as polymarket_router
 from api.operations_dashboard import router as operations_dashboard_router
 from schedulers.eod_scheduler import EODScheduler
@@ -2439,6 +2440,7 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 
 app.include_router(health_router)
 app.include_router(phase3_readiness_router)
+app.include_router(readiness_router)
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(jarvis_router)
 app.include_router(trades_router)
