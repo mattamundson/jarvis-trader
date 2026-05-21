@@ -67,6 +67,25 @@ Guidelines:
 - "risk": low=adds a skill or doc; med=touches config or needs an API key; high=changes safety surface, requires migration, or could break running services.
 - "estimated_cost_usd": ongoing monthly or one-shot. 0 for free skills/scripts.
 - "implementation_steps" must be CONCRETE (commands, file paths, env vars), not vague advice.
+
+CONCRETENESS GATE — leverage_rank cap based on actionability:
+A bookmark only qualifies for leverage_rank >= 4 if implementation_steps contain AT LEAST ONE of:
+  (a) a github.com or gitlab.com URL pointing at a specific repo
+  (b) a `hermes skills install <slug-or-url>` token
+  (c) a `pip install <package>` or `uv pip install <package>` token
+  (d) a fenced markdown block (```...```) for SOUL.md / skill template / persona content
+  (e) a `hermes cron add ...` invocation
+  (f) a specific config key + value (e.g., `model.provider: anthropic`)
+  (g) a Hermes / Claude Code MCP server name + command + args spec
+
+If implementation_steps are NARRATIVE only ("Review the X article and identify
+patterns", "Audit Y", "Consider integrating Z") with no concrete (a)-(g) token,
+CAP leverage_rank at 3 MAX, even if the underlying idea is brilliant. The applier
+can't execute narratives — those become tier_3 / human-curation items rather than
+falsely-tier_1 batch-apply candidates.
+
+Set upgrade_type="none" if the bookmark is purely informational with no upgrade
+intent (commentary, news, opinion). Don't stretch to fit a type.
 """
 
 
