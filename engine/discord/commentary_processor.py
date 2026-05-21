@@ -361,6 +361,16 @@ class CoreyCommentaryProcessor:
                 e,
                 f" | body={body_excerpt!r}" if body_excerpt else "",
             )
+            # WARNING — visible sentinel so silent degradation is always logged.
+            # data_quality='none' means the bias is unknown, NOT that it is neutral.
+            # Downstream consumers must not treat 'none' as a directional signal.
+            logger.warning(
+                "[CoreyProcessor] DEGRADED TO NEUTRAL for %s — "
+                "data_quality='none' because LLM extraction failed (%d messages present). "
+                "This date will NOT be cached; next call will retry the LLM.",
+                for_date.isoformat(),
+                len(rows),
+            )
             # data_quality must be 'none' on any LLM exception — the rows-present
             # branch previously wrote 'fresh'/'stale' here, which downstream
             # correlation queries (discord_correlation.py filters on data_quality
@@ -382,7 +392,17 @@ class CoreyCommentaryProcessor:
     # ── Cache ───────────────────────────────────────────────────────────────
 
     def _load_from_cache(self, for_date: date) -> Optional[CoreySessionBias]:
-        """Return cached result for the date, or None if not cached."""
+        """Return cached result for the date, or None if not cached.
+
+        Poisoned rows — data_quality='none' with message_count > 0 — are
+        treated as a cache miss and evicted. They represent a prior LLM
+        failure (e.g. billing outage) on a date that had real commentary.
+        Returning them would permanently suppress extraction for that date
+        even after the outage is resolved (2026-05-11 regression root cause).
+
+        Genuine no-data rows (data_quality='none' AND message_count=0) are
+        returned as-is; the answer is stable — there really was no commentary.
+        """
         date_str = for_date.isoformat()
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -392,6 +412,19 @@ class CoreyCommentaryProcessor:
                 row = cur.fetchone()
             if row is None:
                 return None
+
+            # Evict poisoned rows: failed LLM extraction on a date with real messages.
+            if row["data_quality"] == "none" and int(row["message_count"]) > 0:
+                logger.warning(
+                    "[CoreyProcessor] Evicting poisoned cache for %s "
+                    "(data_quality='none' but message_count=%d — prior LLM failure). "
+                    "Will re-extract.",
+                    date_str,
+                    int(row["message_count"]),
+                )
+                self._evict_cache(for_date)
+                return None
+
             return CoreySessionBias(
                 date=for_date,
                 session_type=row["session_type"],
@@ -454,6 +487,16 @@ class CoreyCommentaryProcessor:
             logger.info("[CoreyProcessor] Cache invalidated for %s", date_str)
         except Exception as e:
             logger.warning("[CoreyProcessor] Cache invalidation failed: %s", e)
+
+    def _evict_cache(self, for_date: date) -> None:
+        """Delete a poisoned cache row so the next call triggers fresh LLM extraction."""
+        date_str = for_date.isoformat()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("DELETE FROM corey_session_bias WHERE date = ?", (date_str,))
+                conn.commit()
+        except Exception as e:
+            logger.warning("[CoreyProcessor] Cache eviction failed for %s: %s", date_str, e)
 
 
 # ---------------------------------------------------------------------------
