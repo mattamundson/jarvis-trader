@@ -274,7 +274,15 @@ def _render_entry(entry: BacklogEntry) -> list[str]:
     if entry.notes:
         lines.append(f"- **Notes:** {entry.notes}")
     if entry.apply_status and entry.apply_status != "pending":
-        ts = entry.apply_timestamp.isoformat() if entry.apply_timestamp else ""
+        # apply_timestamp can be a datetime (from a fresh classify run) OR a
+        # string (when reloaded from JSONL via Pydantic model_validate). Handle
+        # both — call isoformat() only on the datetime branch.
+        if entry.apply_timestamp is None:
+            ts = ""
+        elif hasattr(entry.apply_timestamp, "isoformat"):
+            ts = entry.apply_timestamp.isoformat()
+        else:
+            ts = str(entry.apply_timestamp)
         outcome = f" — {entry.apply_outcome}" if entry.apply_outcome else ""
         lines.append(f"- **Apply status:** {entry.apply_status} ({ts}){outcome}")
     if entry.extracted_content:
