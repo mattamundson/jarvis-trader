@@ -1,7 +1,31 @@
 # AUTONOMOUS PIPELINE RUNBOOK
 
-> Status: **DEFAULT OFF** — requires explicit env-flag to activate.
+> Status: **ACTIVE** — enabled 2026-05-21 with conservative defaults.
 > Any change to this system is a `[safety-review]` scope commit.
+
+---
+
+## Activation Status (2026-05-21)
+
+Enabled by Amo, 2026-05-21 ~18:30 CDT.
+
+| Variable | Value |
+|---|---|
+| `ENABLE_AUTONOMOUS_PIPELINE` | `1` |
+| `AUTONOMOUS_TICK_SECONDS` | `600` (10 min — conservative) |
+| `AUTONOMOUS_CONFIDENCE_THRESHOLD` | `0.75` (above default 0.65) |
+| `AUTONOMOUS_ACTIVE_SYMBOLS` | `MCL,MNQ` |
+
+**Pre-flight:** all required gates passed. IB data disconnected (non-fatal — Polygon fallback).
+**Engine restarted:** 18:30 CDT. Loop confirmed started in logs at 18:30:53.
+**First tick:** MCL → HOLD (fund manager priority=skip, ranging regime ADX 17.8). MNQ → HOLD.
+**Approval queue:** empty (no candidates above 0.75 threshold). Expected at market close.
+
+**To deactivate:** set `ENABLE_AUTONOMOUS_PIPELINE=0` in `engine/.env` + `.\restart_engine.ps1`.
+Pending candidates auto-expire on TTL (30 min). Nothing auto-executes.
+
+Full activation record:
+`master-jarvis/second-brain/raw/_session-2026-05-21-amo/wiki/system/autonomous-scheduler-activated.md`
 
 ---
 
