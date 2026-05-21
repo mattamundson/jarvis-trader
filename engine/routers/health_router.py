@@ -956,6 +956,73 @@ async def trigger_backup_now():
 
 
 @router.get(
+    "/health/predictive",
+    description=(
+        "Predictive maintenance: latest degradation score, signal breakdown, "
+        "and last-hour sample history. Returns 501 when ENABLE_PREDICTIVE_MAINTENANCE=0."
+    ),
+)
+async def health_predictive():
+    """
+    Return the most recent predictive-maintenance sample + degradation score.
+
+    Degradation score components (each 0.0–1.0, weighted sum ≤ 1.0):
+      memory_growth_rate  0.30
+      ib_reconnect_spike  0.30
+      llm_latency_creep   0.20
+      pm2_restart_delta   0.20
+
+    Requires ENABLE_PREDICTIVE_MAINTENANCE=1 to return live data.
+    """
+    from fastapi.responses import JSONResponse
+
+    try:
+        from monitoring.predictive_maintenance import (
+            HealthMonitor,
+            is_predictive_maintenance_enabled,
+        )
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503, detail=f"predictive_maintenance not importable: {exc}"
+        ) from exc
+
+    if not is_predictive_maintenance_enabled():
+        return JSONResponse(
+            status_code=501,
+            content={
+                "enabled": False,
+                "note": (
+                    "Predictive maintenance is disabled. "
+                    "Set ENABLE_PREDICTIVE_MAINTENANCE=1 in .env to activate."
+                ),
+            },
+        )
+
+    # Collect a fresh sample for the response (lightweight — does not advance the loop)
+    monitor = HealthMonitor()
+    try:
+        sample = await monitor.sample_now()
+    except Exception as exc:
+        logger.warning("health/predictive: sample_now failed: %s", exc)
+        sample = {}
+
+    score = monitor.degradation_score(sample, [])
+    history_summary = monitor.get_history_summary()
+
+    return {
+        "enabled": True,
+        "degradation_score": score,
+        "threshold": monitor.score_threshold,
+        "alert_only": not bool(
+            __import__("os").environ.get("PREDICTIVE_MAINTENANCE_ALLOW_RESTART", "0").strip() == "1"
+        ),
+        "latest_sample": sample,
+        "history_summary": history_summary,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get(
     "/health/readiness",
     description="Phase-1 live-trading readiness gate. Returns the same 7-criteria "
     "check as `python -m backtest.live_readiness --json`. Sets HTTP 200 "
