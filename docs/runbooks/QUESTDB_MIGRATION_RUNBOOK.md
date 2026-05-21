@@ -204,6 +204,99 @@ ORDER BY ts DESC;
 
 ---
 
+---
+
+## Reconciliation
+
+The dual-write is non-atomic (see Durability Concern below).  A crash between
+the SQLite commit and the QuestDB HTTP call silently leaves a row missing from
+QuestDB.  Without reconciliation this is invisible — until reads flip to QuestDB
+and queries return less than expected.
+
+### Running the reconciler (read-only)
+
+```bash
+# Default: reconcile all 4 tables, write JSON snapshot + vault markdown
+python scripts/reconcile_questdb.py
+
+# Count-only dry run (no full/sample diff queries)
+python scripts/reconcile_questdb.py --dry-run
+
+# Single table
+python scripts/reconcile_questdb.py --table bot_signals
+```
+
+Outputs:
+- `engine/data/reconcile_snapshots/<YYYY-MM-DD>.json` — machine-readable trend data
+- `master-jarvis/second-brain/raw/_session-reconcile/reconcile-<YYYY-MM-DD>.md` — vault-ingestible with frontmatter; gbrain can semantic-search reconcile history
+
+### Status thresholds
+
+| Status | Threshold | Action |
+|---|---|---|
+| `ok` | diff_pct ≤ 0.1% | None required |
+| `divergent` | 0.1% < diff_pct ≤ 5% | Investigate; re-run backfill if growing |
+| `critical` | diff_pct > 5% | **Halt cut-over plan**; run backfill before proceeding |
+| `unreachable` | QuestDB did not respond | Check QuestDB docker container |
+
+### Heal mode (optional, requires explicit flag)
+
+Heal mode delegates to the existing idempotent backfill script.
+It is **disabled by default** and requires a separate env flag:
+
+```bash
+# In engine/.env (or environment):
+ENABLE_QUESTDB_RECONCILE_HEAL=1
+
+# Then:
+python scripts/reconcile_questdb.py --heal bot_signals
+```
+
+Each heal invocation is logged to `engine/logs/questdb_heal.log` (JSONL).
+
+Heal is intentionally **not** exposed via the HTTP API — it must be invoked
+explicitly from the command line to preserve the "read-only by default" contract.
+
+### HTTP endpoints (on-demand reconcile)
+
+Both endpoints are no-ops (501) when `ENABLE_QUESTDB_DUAL_WRITE=0`.
+
+```
+GET  /admin/questdb/reconcile/last   — returns latest JSON snapshot
+POST /admin/questdb/reconcile/run    — triggers a fresh reconcile run
+```
+
+Auth: `X-API-Key` header (same as all `/admin/*` routes).
+
+### Daily cron suggestion
+
+```powershell
+# Windows Task Scheduler (run from repo root, daily at 03:00)
+schtasks.exe /Create /SC DAILY /ST 03:00 /TN "Jarvis-QuestDBReconcile" /TR "engine\.venv\Scripts\python scripts\reconcile_questdb.py" /RL LIMITED
+```
+
+Enable the flag first:
+```
+ENABLE_QUESTDB_RECONCILE=1
+```
+
+### Sampling note (large tables)
+
+For tables with more than 10,000 rows (e.g. `discord_bot_signals` at 221K rows),
+reconciliation draws a 1,000-row random sample from SQLite and checks presence in
+QuestDB.  At n=1,000 the 95% Wilson score CI on the estimated divergence rate is
+±~0.6pp when the true rate is near 1%.  This means:
+
+- A true 1% divergence rate will be detected as divergent with high probability
+  (the CI upper bound exceeds the 0.1% threshold).
+- A true 0.05% rate (below the "divergent" threshold) will reliably show as "ok"
+  because even the CI upper bound stays under 0.2%.
+- The sample cannot give an exact missing-row list for large tables — it gives a
+  statistical estimate of the divergence rate.  For exact lists, use
+  `--dry-run` on small tables or run the backfill (which checks all ids).
+
+---
+
 ## Files Created by This Scaffold
 
 | File | Purpose |
