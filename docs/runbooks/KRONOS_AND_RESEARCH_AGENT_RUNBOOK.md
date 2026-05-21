@@ -409,6 +409,79 @@ correctly separating signal from noise.
 
 ---
 
+## 14. Predictor wired (2026-05-20)
+
+`_predict_sync` and `_predict_async` are now implemented in
+`engine/agents/kronos_classifier.py`.  The stub `NotImplementedError` is gone.
+
+### What changed
+
+| Item | Before | After |
+|------|--------|-------|
+| `_predict_async` | `return None` (stub) | `run_in_executor` wrapping `_predict_sync` |
+| `_predict_sync` | `raise NotImplementedError` | calls `KronosPredictor.predict(df, x_timestamp, y_timestamp, pred_len)` |
+| `__init__` params | `model_name`, `lookback` | `model_path`, `tokenizer_path`, `horizon_bars`, `lookback`, `max_context` |
+| Module-level singleton | none | `_get_or_load_predictor()` — weights loaded once, shared across all instances |
+| Import guard | none | `try: from model import ...` at module top; `_KRONOS_AVAILABLE` flag; engine boots without Kronos installed |
+
+### Verified install command (2026-05-20)
+
+The Kronos repo does **not** publish a pip package.  Canonical install:
+
+```bash
+git clone https://github.com/shiyu-coder/Kronos.git
+cd Kronos
+pip install -r requirements.txt
+```
+
+After cloning, add the Kronos directory to `sys.path` (or install editable:
+`pip install -e .` if a `setup.py`/`pyproject.toml` exists) so that
+`from model import Kronos, KronosTokenizer, KronosPredictor` resolves.
+
+All dependency details (including HuggingFace Hub, torch, transformers versions)
+are documented in `engine/requirements-kronos.txt`.
+
+### Pre-flight checklist — updated status
+
+- [x] **DONE (2026-05-20)** — `_predict_sync` wired: calls `KronosPredictor.predict()`
+      with raw OHLCV DataFrame, auto-built `x_timestamp`/`y_timestamp` Series,
+      `pred_len=horizon_bars`.  z-score normalisation applied internally.
+- [x] **DONE (2026-05-20)** — Module-level singleton: `_get_or_load_predictor()` loads
+      weights once from HF Hub; subsequent calls return cached instance.
+- [x] **DONE (2026-05-20)** — Graceful fallback: `ImportError` at startup sets
+      `_KRONOS_AVAILABLE=False`; `_predict_sync` returns `None`; engine boots
+      cleanly without Kronos installed.
+- [x] **DONE (2026-05-20)** — `run_in_executor` wrap: `_predict_async` off-loads the
+      synchronous, CPU-bound predictor call to a thread pool executor.
+- [x] **DONE (2026-05-20)** — `engine/requirements-kronos.txt` created with install
+      instructions and optional dep list (separate from requirements-core.txt).
+- [x] **DONE (2026-05-20)** — Side-by-side harness: `scripts/kronos_side_by_side.py`
+      diffs `analyst_reports["kronos"]` between Kronos-OFF and Kronos-ON pipeline
+      runs; outputs `scripts/data/kronos_side_by_side_<date>.md`.
+- [ ] **PENDING** — Model weights downloaded and cached locally.  Recommended:
+      `NeoQuasar/Kronos-mini` + `NeoQuasar/Kronos-Tokenizer-2k` as first candidates.
+- [ ] **PENDING** — Wall-clock latency measured: `predict()` call on 400-bar window,
+      CPU-only.  Must be < engine pipeline timeout before enabling in hot path.
+- [ ] **PENDING** — `list[dict]` → `pd.DataFrame` conversion validated with real
+      engine bar data (confirm column names, timestamp dtype, no NaN in OHLCV).
+- [ ] **PENDING** — Paper-side validation: 24h of pipeline verdicts with Kronos ON;
+      compare `analyst_reports.kronos.confidence` distribution to pre-Kronos baseline.
+- [ ] **PENDING** — `HF_API_TOKEN` stored in `engine/.env` for model weight download.
+- [ ] **PENDING** — `ENABLE_KRONOS=0` added to `engine/.env.example` — Amo does this.
+- [ ] **PENDING** — MC confidence: `sample_count >= 5` wired to produce std dev
+      confidence proxy instead of the current return-magnitude proxy.
+
+### Side-by-side script usage
+
+```powershell
+# From repo root, venv active, engine running at 127.0.0.1:8010
+cd C:\Users\mattm\ThinkorSwim\jarvis-trader
+engine\.venv\Scripts\python scripts\kronos_side_by_side.py --days 3 --symbol MES
+# Output: scripts/data/kronos_side_by_side_<timestamp>.md
+```
+
+---
+
 ## 13. Related runbooks
 
 - [HEALTH_API_CONTRACT.md](HEALTH_API_CONTRACT.md) — `/health` endpoint fields

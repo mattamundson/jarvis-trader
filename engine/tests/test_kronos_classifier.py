@@ -445,3 +445,100 @@ def test_classify_with_symbol_uses_specific_threshold(monkeypatch: pytest.Monkey
         f"50 bps is below MCL threshold (207 bps) and should produce neutral signal; "
         f"got signal={mcl_result['signal']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Real predictor wiring — graceful degradation when package is missing
+# ---------------------------------------------------------------------------
+
+
+def test_predict_sync_returns_none_when_package_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When Kronos package is absent, _predict_sync returns None (no raise)."""
+    import agents.kronos_classifier as kc_mod
+
+    # Force the availability flag off to simulate missing package
+    monkeypatch.setattr(kc_mod, "_KRONOS_AVAILABLE", False)
+    # Reset singleton so the availability check takes effect
+    monkeypatch.setattr(kc_mod, "_PREDICTOR_SINGLETON", None)
+    monkeypatch.setattr(kc_mod, "_PREDICTOR_MODEL_PATH", None)
+
+    clf = kc_mod.KronosClassifier()
+    bars = pd.DataFrame(
+        {
+            "open": [100.0 + i * 0.1 for i in range(20)],
+            "high": [101.0 + i * 0.1 for i in range(20)],
+            "low": [99.0 + i * 0.1 for i in range(20)],
+            "close": [100.5 + i * 0.1 for i in range(20)],
+        }
+    )
+    result = clf._predict_sync(bars)
+
+    assert result is None, f"Expected None when package missing; got {result!r}"
+
+
+async def test_async_predict_returns_neutral_when_sync_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When _predict_sync returns None, classify() returns a neutral dict."""
+    from unittest.mock import patch
+
+    import agents.kronos_classifier as kc_mod
+
+    # Force _predict_sync to always return None (simulates missing package)
+    monkeypatch.setattr(kc_mod, "_KRONOS_AVAILABLE", False)
+    monkeypatch.setattr(kc_mod, "_PREDICTOR_SINGLETON", None)
+    monkeypatch.setattr(kc_mod, "_PREDICTOR_MODEL_PATH", None)
+
+    clf = kc_mod.KronosClassifier()
+    bars = pd.DataFrame(
+        {
+            "open": [100.0 + i * 0.1 for i in range(20)],
+            "high": [101.0 + i * 0.1 for i in range(20)],
+            "low": [99.0 + i * 0.1 for i in range(20)],
+            "close": [100.5 + i * 0.1 for i in range(20)],
+        }
+    )
+
+    result = await clf.classify(bars)
+
+    assert result["signal"] == pytest.approx(0.0)
+    assert result["confidence"] == pytest.approx(0.0)
+    # The neutral path for a missing predictor produces the stub summary
+    assert isinstance(result["summary"], str) and len(result["summary"]) > 0
+
+
+def test_classifier_caches_predictor_singleton(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_get_or_load_predictor returns the cached singleton on the second call.
+
+    Tests the real caching function directly: seeds the module-level singleton
+    with a fake predictor object, then verifies a second call with the same
+    model_path returns the identical object without triggering from_pretrained.
+    """
+    from unittest.mock import MagicMock
+
+    import agents.kronos_classifier as kc_mod
+
+    fake_predictor = MagicMock(name="fake_predictor")
+    model_path = "NeoQuasar/Kronos-mini"
+    tokenizer_path = "NeoQuasar/Kronos-Tokenizer-2k"
+
+    # Seed the singleton as if a prior load succeeded
+    monkeypatch.setattr(kc_mod, "_KRONOS_AVAILABLE", True)
+    monkeypatch.setattr(kc_mod, "_PREDICTOR_SINGLETON", fake_predictor)
+    monkeypatch.setattr(kc_mod, "_PREDICTOR_MODEL_PATH", model_path)
+
+    # Patch the class constructors — if from_pretrained is called, the test fails loudly
+    bad_cls = MagicMock(name="should-not-be-called")
+    bad_cls.from_pretrained.side_effect = AssertionError("from_pretrained unexpectedly called")
+    monkeypatch.setattr(kc_mod, "_KronosModelClass", bad_cls)
+    monkeypatch.setattr(kc_mod, "_KronosTokenizerClass", bad_cls)
+    monkeypatch.setattr(kc_mod, "_KronosPredictorClass", bad_cls)
+
+    # First call: singleton already populated — must return it immediately
+    result1 = kc_mod._get_or_load_predictor(model_path, tokenizer_path)
+    # Second call with same path: still returns cached instance
+    result2 = kc_mod._get_or_load_predictor(model_path, tokenizer_path)
+
+    assert result1 is fake_predictor, "First call must return seeded singleton"
+    assert result2 is fake_predictor, "Second call must return cached singleton without reload"
+    bad_cls.from_pretrained.assert_not_called()
