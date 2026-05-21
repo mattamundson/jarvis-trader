@@ -409,14 +409,32 @@ async def autonomous_tick() -> dict:
                 row_id,
                 ttl,
             )
-            summary["enqueued"].append(
-                {
-                    "candidate_id": row_id,
+            enqueued_entry = {
+                "candidate_id": row_id,
+                "symbol": symbol,
+                "direction": direction,
+                "confidence": confidence,
+            }
+            summary["enqueued"].append(enqueued_entry)
+
+            # Fire-and-forget Discord notification — never blocks the enqueue path
+            try:
+                from notifications.discord_webhook import post_approval_candidate
+
+                _candidate_dict = {
+                    "id": row_id,
                     "symbol": symbol,
                     "direction": direction,
                     "confidence": confidence,
+                    "ttl_seconds": ttl,
+                    "verdict_json": _json.dumps(result, default=str),
                 }
-            )
+                asyncio.create_task(post_approval_candidate(_candidate_dict))
+            except Exception as _wh_exc:
+                logger.warning(
+                    "[AutonomousTick] Discord webhook task creation failed (non-fatal): %s",
+                    _wh_exc,
+                )
 
         except Exception as sym_exc:
             logger.error(

@@ -429,6 +429,27 @@ async def approve_candidate(candidate_id: int, body: ApproveBody = ApproveBody()
         entry_price,
         order_id,
     )
+
+    # Fire-and-forget Discord notification — never blocks the approve response
+    try:
+        import asyncio as _asyncio
+
+        from notifications.discord_webhook import post_approval_result as _post_result
+
+        _asyncio.create_task(
+            _post_result(
+                candidate_id,
+                "approved",
+                order_id=order_id or None,
+                symbol=symbol,
+                direction=direction,
+            )
+        )
+    except Exception as _wh_exc:
+        logger.warning(
+            "ApprovalQueue: Discord webhook task creation failed (non-fatal): %s", _wh_exc
+        )
+
     return {
         "status": "approved",
         "candidate_id": candidate_id,
@@ -458,6 +479,27 @@ async def reject_candidate(candidate_id: int, body: RejectBody = RejectBody()) -
         candidate_id,
         body.reason,
     )
+
+    # Fire-and-forget Discord notification — never blocks the reject response
+    try:
+        import asyncio as _asyncio
+
+        from notifications.discord_webhook import post_approval_result as _post_result
+
+        _asyncio.create_task(
+            _post_result(
+                candidate_id,
+                "rejected",
+                notes=body.reason or "",
+                symbol=row.get("symbol") or "",
+                direction=row.get("direction") or "",
+            )
+        )
+    except Exception as _wh_exc:
+        logger.warning(
+            "ApprovalQueue: Discord webhook task creation failed (non-fatal): %s", _wh_exc
+        )
+
     return {
         "status": "rejected",
         "candidate_id": candidate_id,
@@ -470,3 +512,100 @@ async def get_history(days: int = 7) -> dict[str, Any]:
     db = _require_db()
     rows = _list_history(db, days)
     return {"days": days, "count": len(rows), "history": rows}
+
+
+# ---------------------------------------------------------------------------
+# Extend endpoint — for Discord ⏸ reaction (adds TTL without approving/rejecting)
+# ---------------------------------------------------------------------------
+
+_EXTEND_MIN_MINUTES = 5
+_EXTEND_MAX_MINUTES = 120
+
+
+def _extend_candidate_ttl(db_path: str, candidate_id: int, minutes: int) -> str:
+    """
+    Push the expires_at timestamp forward by `minutes` from now.
+
+    Returns the new ISO-format expires_at string.
+    """
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    new_expiry = now + timedelta(minutes=minutes)
+    new_expiry_iso = new_expiry.isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE pipeline_approval_queue SET expires_at = ? WHERE id = ?",
+            (new_expiry_iso, candidate_id),
+        )
+        conn.commit()
+    return new_expiry_iso
+
+
+@router.post(
+    "/{candidate_id}/extend",
+    summary="Extend TTL of a pending candidate (Discord ⏸ reaction)",
+)
+async def extend_candidate(candidate_id: int, minutes: int = 30) -> dict[str, Any]:
+    """
+    Extend the expiry of a *pending* approval candidate.
+
+    Query parameter:
+      minutes (int, 5–120): how many minutes to add from now. Default 30.
+                            Values outside [5, 120] are clamped silently.
+
+    Cannot extend a candidate that has already been approved, rejected, or expired.
+
+    Requires X-API-Key authentication (enforced by APIKeyMiddleware in main.py).
+    """
+    db = _require_db()
+
+    # Clamp extension window
+    clamped = max(_EXTEND_MIN_MINUTES, min(minutes, _EXTEND_MAX_MINUTES))
+    if clamped != minutes:
+        logger.info(
+            "ApprovalQueue: extend candidate %d — minutes=%d clamped to %d",
+            candidate_id,
+            minutes,
+            clamped,
+        )
+
+    row = _get_candidate(db, candidate_id)
+    if row is None:
+        raise HTTPException(404, detail=f"Candidate {candidate_id} not found")
+
+    if row["status"] != "pending":
+        raise HTTPException(
+            409,
+            detail=(
+                f"Candidate {candidate_id} is already {row['status']} — "
+                "can only extend pending candidates"
+            ),
+        )
+
+    new_expiry = _extend_candidate_ttl(db, candidate_id, clamped)
+    _audit(
+        "extended",
+        candidate_id,
+        {
+            "minutes_requested": minutes,
+            "minutes_applied": clamped,
+            "new_expires_at": new_expiry,
+            "symbol": row.get("symbol"),
+            "direction": row.get("direction"),
+        },
+    )
+    logger.info(
+        "ApprovalQueue: candidate %d EXTENDED by %d min — new expiry %s",
+        candidate_id,
+        clamped,
+        new_expiry,
+    )
+    return {
+        "status": "extended",
+        "candidate_id": candidate_id,
+        "minutes_applied": clamped,
+        "expires_at": new_expiry,
+        "symbol": row.get("symbol"),
+        "direction": row.get("direction"),
+    }
