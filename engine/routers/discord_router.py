@@ -41,6 +41,15 @@ async def get_signals(
     symbol: Optional[str] = Query(None, description="Filter by symbol (ES, NQ, GC, etc.)"),
     direction: Optional[str] = Query(None, description="Filter by direction (LONG, SHORT)"),
     signal_type: Optional[str] = Query(None, description="Filter by type (ENTRY, EXIT)"),
+    channel_id: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by raw Discord channel snowflake. NO-OP today — "
+            "discord_bot_signals does not yet persist channel_id "
+            "(slug→snowflake migration is a separate patch). Field "
+            "is accepted now so callers can be written forward-compatibly."
+        ),
+    ),
     limit: int = Query(100, le=1000),
     offset: int = Query(0),
     db_path: str = Depends(get_db_path),
@@ -58,10 +67,13 @@ async def get_signals(
     if signal_type:
         conditions.append("signal_type = ?")
         params.append(signal_type.upper())
+    # TODO: requires slug→snowflake migration on discord_bot_signals
+    # (no channel_id column today). channel_id param accepted but not applied.
+    _ = channel_id
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     sql = f"""
-        SELECT * FROM discord_bot_signals
+        SELECT *, NULL AS channel_id FROM discord_bot_signals
         {where}
         ORDER BY timestamp DESC
         LIMIT ? OFFSET ?
@@ -80,6 +92,14 @@ async def get_signals(
 @router.get("/ib-reports")
 async def get_ib_reports(
     symbol: Optional[str] = Query(None),
+    channel_id: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by raw Discord channel snowflake. NO-OP today — "
+            "discord_ib_reports does not yet persist channel_id "
+            "(slug→snowflake migration is a separate patch)."
+        ),
+    ),
     limit: int = Query(50, le=500),
     offset: int = Query(0),
     db_path: str = Depends(get_db_path),
@@ -91,10 +111,13 @@ async def get_ib_reports(
     if symbol:
         conditions.append("symbol = ?")
         params.append(symbol.upper())
+    # TODO: requires slug→snowflake migration on discord_ib_reports
+    # (no channel_id column today). channel_id param accepted but not applied.
+    _ = channel_id
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     sql = f"""
-        SELECT * FROM discord_ib_reports
+        SELECT *, NULL AS channel_id FROM discord_ib_reports
         {where}
         ORDER BY timestamp DESC
         LIMIT ? OFFSET ?
@@ -113,6 +136,14 @@ async def get_ib_reports(
 @router.get("/corey-alerts")
 async def get_corey_alerts(
     symbol: Optional[str] = Query(None),
+    channel_id: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by raw Discord channel snowflake. NO-OP today — "
+            "discord_corey_alerts does not yet persist channel_id "
+            "(slug→snowflake migration is a separate patch)."
+        ),
+    ),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
     db_path: str = Depends(get_db_path),
@@ -124,10 +155,13 @@ async def get_corey_alerts(
     if symbol:
         conditions.append("symbol = ?")
         params.append(symbol.upper())
+    # TODO: requires slug→snowflake migration on discord_corey_alerts
+    # (no channel_id column today). channel_id param accepted but not applied.
+    _ = channel_id
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     sql = f"""
-        SELECT * FROM discord_corey_alerts
+        SELECT *, NULL AS channel_id FROM discord_corey_alerts
         {where}
         ORDER BY timestamp DESC
         LIMIT ? OFFSET ?
@@ -146,6 +180,15 @@ async def get_corey_alerts(
 @router.get("/commentary")
 async def get_commentary(
     channel: Optional[str] = Query(None, description="Filter by channel (general, market-updates)"),
+    channel_id: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by raw Discord channel snowflake. NO-OP today — "
+            "discord_corey_commentary keys by slug (`channel`), not by "
+            "snowflake (slug→snowflake migration is a separate patch). "
+            "Use ?channel=<slug> for filtering."
+        ),
+    ),
     limit: int = Query(50, le=500),
     offset: int = Query(0),
     db_path: str = Depends(get_db_path),
@@ -157,10 +200,13 @@ async def get_commentary(
     if channel:
         conditions.append("channel = ?")
         params.append(channel)
+    # TODO: requires slug→snowflake migration on discord_corey_commentary
+    # (no channel_id column today). channel_id param accepted but not applied.
+    _ = channel_id
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     sql = f"""
-        SELECT * FROM discord_corey_commentary
+        SELECT *, NULL AS channel_id FROM discord_corey_commentary
         {where}
         ORDER BY timestamp DESC
         LIMIT ? OFFSET ?
@@ -316,6 +362,14 @@ async def get_bookmarks_recent(
         None, description="Filter by source_type (x_post, github, video, other)"
     ),
     domain: Optional[str] = Query(None, description="Substring filter on domain"),
+    channel_id: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by raw Discord channel snowflake (e.g. "
+            "1490851279180660819). Populated — discord_bookmarks keys "
+            "by channel_id directly."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=500),
     db_path: str = Depends(get_db_path),
 ):
@@ -332,9 +386,12 @@ async def get_bookmarks_recent(
     if domain:
         clauses.append("domain LIKE ?")
         params.append(f"%{domain}%")
+    if channel_id:
+        clauses.append("channel_id = ?")
+        params.append(channel_id)
     where = " AND ".join(clauses)
     sql = f"""
-        SELECT posted_at, url, domain, source_type, embed_title,
+        SELECT posted_at, channel_id, url, domain, source_type, embed_title,
                embed_description, content, author_name
         FROM discord_bookmarks
         WHERE {where}
@@ -353,6 +410,13 @@ async def get_bookmarks_search(
     query: str = Query(..., min_length=1, description="Case-insensitive substring query"),
     days: int = Query(30, ge=1, le=365),
     source_type: Optional[str] = Query(None),
+    channel_id: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by raw Discord channel snowflake. Populated — "
+            "discord_bookmarks keys by channel_id directly."
+        ),
+    ),
     limit: int = Query(30, ge=1, le=200),
     db_path: str = Depends(get_db_path),
 ):
@@ -370,9 +434,12 @@ async def get_bookmarks_search(
     if source_type:
         clauses.append("source_type = ?")
         params.append(source_type)
+    if channel_id:
+        clauses.append("channel_id = ?")
+        params.append(channel_id)
     where = " AND ".join(clauses)
     sql = f"""
-        SELECT posted_at, url, domain, source_type, embed_title,
+        SELECT posted_at, channel_id, url, domain, source_type, embed_title,
                embed_description, content
         FROM discord_bookmarks
         WHERE {where}
