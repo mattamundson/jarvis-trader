@@ -34,9 +34,17 @@ class TradesMixin:
         status: str = "open",
         strategy_params: Optional[Any] = None,
         notes: str = "",
+        account_id: str = "A",
     ) -> int:
         """
         Insert a new trade record (typically called on trade open).
+
+        Parameters
+        ----------
+        account_id:
+            'A' = production config (default; backwards-compatible).
+            'B' = challenger config (set by parallel_paper.dual_emit_paper_trade
+            when ENABLE_PARALLEL_PAPER=1).
 
         Returns the auto-incremented ``id`` primary key.
         """
@@ -44,8 +52,8 @@ class TradesMixin:
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, strategy_params, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, strategy_params, notes, account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             trade_id,
@@ -57,6 +65,7 @@ class TradesMixin:
             status,
             _to_json(strategy_params),
             notes,
+            account_id,
         )
         with self._lock:
             conn = self._connect()

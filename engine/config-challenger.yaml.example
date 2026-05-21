@@ -1,0 +1,26 @@
+# Multi-account paper challenger config — applied when ENABLE_PARALLEL_PAPER=1
+# Account B (challenger) uses these overrides on top of production engine/.env values.
+# Account A always uses unmodified production config.
+#
+# Allowed keys are enforced by engine/config_challenger.py.  Any unknown key or
+# out-of-range value will prevent the engine from starting — fail loudly, not silently.
+#
+# To activate:
+#   1. Copy this file to engine/config-challenger.yaml (gitignored)
+#   2. Adjust the values below for your challenger hypothesis
+#   3. Set ENABLE_PARALLEL_PAPER=1 in engine/.env
+#   4. Restart the engine (.\restart_engine.ps1)
+#   5. Check /portfolio/paper/account/B/stats after 30+ days
+
+# Tighter position sizing than production default (0.05 = 5%).
+MAX_POSITION_SIZE_PCT: 0.03
+
+# One contract per instrument vs. production default (2).
+MAX_CONTRACTS_PER_INSTRUMENT: 1
+
+# Tighter daily loss halt: -3% vs. production -2%.
+# Note: challenger must stay within [0.01, 0.05] range.
+# MAX_DAILY_LOSS_PCT: 0.03
+
+# Tighter consecutive-loss halt: 5 losses vs. production 7.
+# CONSECUTIVE_LOSS_HALT: 5

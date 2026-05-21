@@ -1093,6 +1093,40 @@ def migration_026(conn: sqlite3.Connection) -> None:
     logger.info("Migration 026 applied — trade_reviews table created.")
 
 
+def migration_027(conn: sqlite3.Connection) -> None:
+    """
+    027 — Multi-account paper testing: account_id columns.
+
+    Adds account_id to paper_trades and pnl_snapshots so dual-emitted trades
+    can be tagged per-config (A = production, B = challenger).
+
+    Default 'A' keeps all existing rows valid without data migration.
+    Only populates 'B' rows when ENABLE_PARALLEL_PAPER=1.
+
+    Idempotent: uses try/except on duplicate column name.
+    """
+    for stmt in (
+        "ALTER TABLE paper_trades ADD COLUMN account_id TEXT NOT NULL DEFAULT 'A'",
+        "ALTER TABLE pnl_snapshots ADD COLUMN account_id TEXT NOT NULL DEFAULT 'A'",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_paper_trades_account "
+        "ON paper_trades(account_id, exit_time)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pnl_snapshots_account " "ON pnl_snapshots(account_id, date)"
+    )
+    conn.commit()
+    logger.info(
+        "Migration 027 applied — account_id columns added to paper_trades and pnl_snapshots."
+    )
+
+
 def migration_023(conn: sqlite3.Connection) -> None:
     """
     023 — trading_patterns schema alignment.
@@ -1171,6 +1205,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_024,  # version 24
     migration_025,  # version 25
     migration_026,  # version 26
+    migration_027,  # version 27
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1200,6 +1235,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Market data bars: market_data_bars OHLCV persistence table for counterfactual + outlook sections.",
     "Health watchdog snapshots: health_snapshots table for 5-minute /health poll history and intraday uptime.",
     "Trade reviews: trade_reviews table for automated post-trade LLM analysis (grade A-F, strengths, weaknesses, lessons).",
+    "Multi-account paper testing: account_id columns on paper_trades and pnl_snapshots for parallel A/B config comparison.",
 ]
 
 
