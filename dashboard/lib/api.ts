@@ -1586,3 +1586,64 @@ export async function fetchAccountStats(
     `/portfolio/paper/account/${accountId}/stats?days=${days}`
   );
 }
+
+// ── Risk Attribution ─────────────────────────────────────────────────────────
+
+/** Per-analyst window-level stats returned by GET /attribution/window */
+export interface AnalystWindowStats {
+  total: number;
+  mean: number;
+  std: number;
+  max_loss: number;
+  win_rate_top: number;
+}
+
+/** Per-day attribution entry nested inside WindowAttributionResponse.daily */
+export interface DailyAttributionEntry {
+  date: string;
+  total_pnl: number;
+  n_trades: number;
+  attribution: Record<string, number>;
+  top_contributor: string | null;
+  residual: number;
+  attributed_trade_count: number;
+  unattributed_trade_count: number;
+}
+
+/** GET /attribution/window — rolling N-day attribution */
+export interface RiskAttributionResponse {
+  start_date: string;
+  end_date: string;
+  days_with_trades: number;
+  total_pnl: number;
+  n_trades: number;
+  per_analyst: Record<string, AnalystWindowStats>;
+  top_contributor_by_abs: string;
+  daily: DailyAttributionEntry[];
+}
+
+/** GET /attribution/daily */
+export interface DailyAttributionResponse {
+  date: string;
+  total_pnl: number;
+  n_trades: number;
+  attribution: Record<string, number>;
+  top_contributor: string | null;
+  residual: number;
+  attributed_trade_count: number;
+  unattributed_trade_count: number;
+}
+
+export async function fetchRiskAttribution(opts?: {
+  days?: number;
+}): Promise<RiskAttributionResponse> {
+  const days = opts?.days ?? 30;
+  return fetchEngine<RiskAttributionResponse>(`/attribution/window?days=${days}`);
+}
+
+export async function fetchDailyAttribution(
+  date?: string
+): Promise<DailyAttributionResponse> {
+  const suffix = date ? `?date=${date}` : "";
+  return fetchEngine<DailyAttributionResponse>(`/attribution/daily${suffix}`);
+}
