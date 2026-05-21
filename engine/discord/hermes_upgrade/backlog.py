@@ -105,19 +105,71 @@ _CONCRETENESS_PATTERNS: dict[str, list[re.Pattern]] = {
 def _has_extractable_target(upgrade: ClassifiedUpgrade) -> bool:
     """True iff the entry contains a concrete artifact an applier can execute on.
 
-    Implements the same concreteness gate from the classifier prompt at the
-    backlog-tiering layer — a belt-and-suspenders check for entries where the
-    LLM rated them tier_1+low_risk but the implementation_steps are narrative
-    only ("Audit X", "Review Y", "Consider Z") with no actual command/URL.
+    GROUND TRUTH variant (2026-05-21): instead of parallel regex patterns that
+    can false-positive (e.g., a slug-shape substring buried in prose), this
+    delegates to the SAME extractor functions the appliers actually use. If
+    SkillInstaller._extract_slug_or_url returns None, the entry isn't a real
+    skill candidate — full stop.
 
-    Without this validator, ~40-60% of LLM-rated tier_1 items end up failing
-    at the applier's extractor step with "ERROR: could not extract slug/url".
-    This downcaps them to tier_3 instead, where they belong as human-curation
-    candidates rather than batch-apply targets.
+    Built from a minimal mock BacklogEntry since extractors only read the
+    classifier fields (implementation_steps, extracted_content, notes, title,
+    rationale).
+
+    Falls back to the regex patterns for upgrade_types whose extractors are
+    not available at import time (avoids hard-coupling backlog.py to every
+    applier import).
     """
-    patterns = _CONCRETENESS_PATTERNS.get(upgrade.upgrade_type)
+    upgrade_type = upgrade.upgrade_type
+    if upgrade_type == "none" or not upgrade_type:
+        return False
+
+    # gepa_target is always concrete — GepaApplier just writes a YAML from
+    # entry fields. Skip the extractor probe.
+    if upgrade_type == "gepa_target":
+        return True
+
+    # Build a minimal entry-shaped object the extractors can read.
+    mock_entry = _make_mock_entry(upgrade)
+
+    try:
+        if upgrade_type == "skill":
+            from .appliers.skill_installer import SkillInstaller
+
+            return SkillInstaller()._extract_slug_or_url(mock_entry) is not None
+        if upgrade_type == "mcp_server":
+            from .appliers.mcp_adder import McpAdder
+
+            return McpAdder()._parse_mcp_spec(mock_entry) is not None
+        if upgrade_type == "cron_pattern":
+            from .appliers.cron_register import CronRegister
+
+            return CronRegister()._extract_cron_spec(mock_entry) is not None
+        if upgrade_type == "soul_template":
+            from .appliers.soul_patcher import SoulPatcher
+
+            return SoulPatcher()._extract_soul_addition(mock_entry) is not None
+        if upgrade_type == "library":
+            from .appliers.library_integrator import LibraryIntegrator
+
+            return LibraryIntegrator()._extract_pip_spec(mock_entry) is not None
+        if upgrade_type == "config_improvement":
+            from .appliers.config_patcher import ConfigPatcher
+
+            return ConfigPatcher()._extract_config_change(mock_entry) is not None
+    except Exception as exc:
+        logger.warning(
+            "concreteness check raised for %s/%s: %s — fail-closed",
+            upgrade.bookmark_id,
+            upgrade_type,
+            exc,
+        )
+        return False
+
+    # Unknown upgrade_type — regex-pattern fallback (catches future types
+    # without requiring a code change here).
+    patterns = _CONCRETENESS_PATTERNS.get(upgrade_type)
     if not patterns:
-        return False  # unknown upgrade_type — fail closed
+        return False
     haystack = "\n".join(
         [
             upgrade.extracted_content or "",
@@ -128,6 +180,30 @@ def _has_extractable_target(upgrade: ClassifiedUpgrade) -> bool:
         ]
     )
     return any(p.search(haystack) for p in patterns)
+
+
+def _make_mock_entry(upgrade: ClassifiedUpgrade):
+    """Build a minimal object with the fields applier extractors need.
+
+    SkillInstaller / McpAdder / etc. read .implementation_steps, .extracted_content,
+    .notes, .title, .rationale, .bookmark_id from a BacklogEntry. They don't need
+    source URLs or apply_status during extraction. We can satisfy them with a
+    SimpleNamespace rather than constructing a full BacklogEntry.
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        bookmark_id=upgrade.bookmark_id,
+        title=upgrade.title or "",
+        rationale=upgrade.rationale or "",
+        implementation_steps=list(upgrade.implementation_steps or []),
+        extracted_content=upgrade.extracted_content or "",
+        notes=upgrade.notes or "",
+        upgrade_type=upgrade.upgrade_type,
+        leverage_rank=upgrade.leverage_rank,
+        risk=upgrade.risk,
+        dependencies=list(upgrade.dependencies or []),
+    )
 
 
 def _is_community_source(upgrade: ClassifiedUpgrade) -> bool:
