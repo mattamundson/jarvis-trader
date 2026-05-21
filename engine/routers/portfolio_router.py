@@ -1521,4 +1521,146 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
 
     except Exception as exc:
         logger.error("[UnrealizedPnL] Endpoint error: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ── Parallel paper A/B stats endpoint ────────────────────────────────────────
+
+
+class AccountStatsResponse(BaseModel):
+    """Stats for one paper account over a rolling window."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    account_id: str = Field(..., description="'A' or 'B'")
+    days: int
+    n_trades: int
+    win_rate: float | None = None
+    sortino: float | None = None
+    sharpe: float | None = None
+    calmar: float | None = None
+    max_dd: float | None = None
+    equity_curve: list[dict] = Field(default_factory=list, description="[{date, equity}]")
+
+
+@router.get(
+    "/paper/account/{account_id}/stats",
+    response_model=AccountStatsResponse,
+    tags=["portfolio", "parallel-paper"],
+    description=(
+        "Parallel paper testing stats for one account (A or B) over a rolling window. "
+        "Account B is only populated when ENABLE_PARALLEL_PAPER=1."
+    ),
+)
+async def get_paper_account_stats(
+    account_id: str,
+    days: int = 30,
+) -> AccountStatsResponse:
+    """
+    Return rolling performance stats for paper account A or B.
+
+    Reads closed trades from paper_trades WHERE account_id = ? over the
+    requested window, computes basic tearsheet metrics in-process.
+    No external dependency — pure SQLite + math.
+    """
+    import math
+    from datetime import date, timedelta
+
+    if account_id not in {"A", "B"}:
+        raise HTTPException(status_code=400, detail="account_id must be 'A' or 'B'")
+    if days < 1 or days > 730:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 730")
+
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+
+    try:
+        with db_manager._lock:
+            conn = db_manager._connect()
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT pnl, exit_time
+                    FROM paper_trades
+                    WHERE status = 'closed'
+                      AND account_id = ?
+                      AND exit_time >= ?
+                    ORDER BY exit_time ASC
+                    """,
+                    (account_id, cutoff),
+                ).fetchall()
+            finally:
+                conn.close()
+    except Exception as exc:
+        logger.error("[AccountStats] DB error: %s", exc)
+        raise HTTPException(status_code=503, detail="Database query failed") from exc
+
+    pnls = [float(r["pnl"] or 0.0) for r in rows]
+    n_trades = len(pnls)
+
+    if n_trades == 0:
+        return AccountStatsResponse(
+            account_id=account_id,
+            days=days,
+            n_trades=0,
+        )
+
+    wins = [p for p in pnls if p > 0]
+    win_rate = len(wins) / n_trades
+
+    # Equity curve — cumulative P&L grouped by date
+    equity_curve_map: dict[str, float] = {}
+    for r in rows:
+        day = str(r["exit_time"] or "")[:10]
+        pnl_val = float(r["pnl"] or 0.0)
+        equity_curve_map[day] = equity_curve_map.get(day, 0.0) + pnl_val
+
+    cumulative = 0.0
+    equity_curve: list[dict] = []
+    for day in sorted(equity_curve_map):
+        cumulative += equity_curve_map[day]
+        equity_curve.append({"date": day, "equity": round(cumulative, 4)})
+
+    # Max drawdown from peak equity
+    peak = 0.0
+    max_dd: float | None = None
+    for pt in equity_curve:
+        eq = pt["equity"]
+        if eq > peak:
+            peak = eq
+        dd = (eq - peak) / max(abs(peak), 1e-9)
+        if max_dd is None or dd < max_dd:
+            max_dd = dd
+
+    # Sortino (downside deviation; annualised assuming daily returns)
+    mean_pnl = sum(pnls) / n_trades
+    neg_sq = [(p - mean_pnl) ** 2 for p in pnls if p < mean_pnl]
+    downside_dev = math.sqrt(sum(neg_sq) / len(neg_sq)) if neg_sq else None
+    sortino: float | None = (mean_pnl / downside_dev * math.sqrt(252)) if downside_dev else None
+
+    # Sharpe (std dev of all returns)
+    if n_trades > 1:
+        variance = sum((p - mean_pnl) ** 2 for p in pnls) / (n_trades - 1)
+        std_dev = math.sqrt(variance)
+        sharpe: float | None = (mean_pnl / std_dev * math.sqrt(252)) if std_dev > 0 else None
+    else:
+        sharpe = None
+
+    # Calmar (annualised return / abs max drawdown)
+    calmar: float | None = None
+    if max_dd is not None and max_dd < 0:
+        ann_return = mean_pnl * 252
+        calmar = ann_return / abs(max_dd)
+
+    return AccountStatsResponse(
+        account_id=account_id,
+        days=days,
+        n_trades=n_trades,
+        win_rate=round(win_rate, 4),
+        sortino=round(sortino, 4) if sortino is not None else None,
+        sharpe=round(sharpe, 4) if sharpe is not None else None,
+        calmar=round(calmar, 4) if calmar is not None else None,
+        max_dd=round(max_dd, 4) if max_dd is not None else None,
+        equity_curve=equity_curve,
+    )
