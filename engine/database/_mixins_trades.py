@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from utils.trade_invariants import is_inverted_stop
 
-from ._helpers import _from_json, _to_json, _utcnow
+from ._helpers import _from_json, _to_json, _utcnow, compute_order_idempotency_key
 
 logger = logging.getLogger("jarvis_trader.database")
 
@@ -202,6 +202,7 @@ class TradesMixin:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         strategy_params: Optional[Any] = None,
+        idempotency_key: Optional[str] = None,
     ) -> int:
         """
         Insert a new paper trade record with status='open'.
@@ -210,6 +211,12 @@ class TradesMixin:
         ``PortfolioTracker``.  ``stop_loss`` and ``take_profit`` are written to
         their dedicated columns AND mirrored into ``strategy_params`` for
         backwards-compatible JSON reads.
+
+        Idempotency guard (migration_030):
+            If ``idempotency_key`` is provided and a row with that key already
+            exists in ``paper_trades``, the INSERT is skipped and the existing
+            row's SQLite ``id`` is returned.  A WARNING is logged so the caller
+            can detect the deduplicated submission in the audit log.
 
         Returns the auto-incremented ``id`` primary key (SQLite rowid).
         """
@@ -221,6 +228,30 @@ class TradesMixin:
                 f"entry_price={entry_price} stop_loss={stop_loss}. "
                 "See docs/incident-notes/2026-04-09-mcl-inverted-stop.md"
             )
+
+        # ── Idempotency pre-check ─────────────────────────────────────────────
+        # If a key is supplied, check for an existing row BEFORE attempting
+        # INSERT.  This avoids relying on UNIQUE constraint exceptions (which
+        # vary in SQLite versions) and gives us a clean WARNING + early-return.
+        if idempotency_key is not None:
+            with self._lock:
+                conn = self._connect()
+                try:
+                    existing = conn.execute(
+                        "SELECT id, trade_id FROM paper_trades WHERE idempotency_key = ?",
+                        (idempotency_key,),
+                    ).fetchone()
+                finally:
+                    conn.close()
+            if existing is not None:
+                logger.warning(
+                    "[DB] insert_paper_trade DEDUPLICATED — idempotency_key=%s already exists "
+                    "(existing id=%s trade_id=%s). Returning existing id without INSERT.",
+                    idempotency_key,
+                    existing[0],
+                    existing[1][:8] if existing[1] else "?",
+                )
+                return existing[0]  # type: ignore[return-value]
 
         # Mirror stop_loss / take_profit into strategy_params for backwards
         # compatibility, while also writing them to their dedicated columns.
@@ -237,8 +268,8 @@ class TradesMixin:
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, stop_loss, strategy_params, notes)
-            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, '')
+                 status, stop_loss, strategy_params, notes, idempotency_key)
+            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, '', ?)
         """
         params = (
             trade_id,
@@ -249,6 +280,7 @@ class TradesMixin:
             entry_time,
             stop_loss,
             _to_json(merged_params) if merged_params else None,
+            idempotency_key,
         )
         with self._lock:
             conn = self._connect()
@@ -258,7 +290,8 @@ class TradesMixin:
                 row_id: int = cur.lastrowid  # type: ignore[assignment]
                 logger.debug(
                     f"[DB] insert_paper_trade id={row_id} trade_id={trade_id[:8]} "
-                    f"symbol={symbol} side={side} qty={quantity} @{entry_price}"
+                    f"symbol={symbol} side={side} qty={quantity} @{entry_price} "
+                    f"idem_key={idempotency_key}"
                 )
                 return row_id
             finally:

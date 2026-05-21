@@ -31,6 +31,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("jarvis_trader.portfolio")
 
+try:
+    from database._helpers import compute_order_idempotency_key as _compute_idem_key
+except ImportError:
+    try:
+        from engine.database._helpers import compute_order_idempotency_key as _compute_idem_key
+    except ImportError:
+        _compute_idem_key = None  # type: ignore[assignment]
+
 # Default JSONL storage path — sits next to this file at engine/portfolio/trades.jsonl
 _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
 
@@ -159,6 +167,23 @@ class PortfolioTracker:
             ATR at entry time.  Stored on the trade for later use by
             check_and_move_breakeven().
         """
+        # ── Idempotency key: compute before generating trade_id so that a
+        # duplicate call within the same 5-second window can be collapsed to
+        # the existing row without creating a ghost trade_id.
+        idem_key: Optional[str] = None
+        if _compute_idem_key is not None:
+            try:
+                idem_key = _compute_idem_key(symbol, action, float(quantity), float(price))
+            except Exception as _ik_err:
+                logger.debug("[TRACKER] idempotency key compute failed (non-fatal): %s", _ik_err)
+
+        # If an idempotency key is available, check for an existing open trade
+        # in the in-memory dict first (fast path, avoids DB round-trip).
+        if idem_key is not None and self._db is not None:
+            # The DB mixin will do the definitive check; we just need to return
+            # the correct trade_id if the mixin deduplicates.
+            pass  # resolved below after insert_paper_trade returns
+
         trade_id = str(uuid.uuid4())
         trade = PaperTrade(
             trade_id=trade_id,
@@ -176,7 +201,7 @@ class PortfolioTracker:
         # If the DB write fails the exception propagates and in-memory is NOT updated,
         # preventing ghost positions on restart (Bug B9 / US-2004).
         if self._db is not None:
-            self._db.insert_paper_trade(
+            row_id = self._db.insert_paper_trade(
                 trade_id,
                 symbol=trade.symbol,
                 side=trade.action,
@@ -186,7 +211,38 @@ class PortfolioTracker:
                 stop_loss=None,
                 take_profit=None,
                 strategy_params={"notes": notes},
+                idempotency_key=idem_key,
             )
+            # Dedup check: if the DB returned a row_id for an EXISTING row but
+            # the trade_id we generated is NOT in _open, the mixin deduplicated
+            # this submission.  Return the existing trade_id from the DB row.
+            if idem_key is not None:
+                try:
+                    existing_row = self._db.get_trade_by_id(trade_id)
+                    if existing_row is None:
+                        # Our generated trade_id was not inserted — fetch the
+                        # deduplicated row by row_id to get its trade_id.
+                        with self._db._lock:
+                            _conn = self._db._connect()
+                            try:
+                                _r = _conn.execute(
+                                    "SELECT trade_id FROM paper_trades WHERE id = ?", (row_id,)
+                                ).fetchone()
+                            finally:
+                                _conn.close()
+                        if _r is not None:
+                            existing_trade_id: str = _r[0]
+                            logger.warning(
+                                "[TRACKER] open_trade DEDUPLICATED — returning existing trade_id=%s "
+                                "(idem_key=%s)",
+                                existing_trade_id[:8],
+                                idem_key,
+                            )
+                            return existing_trade_id
+                except Exception as _dedup_err:
+                    logger.debug(
+                        "[TRACKER] dedup resolution failed (non-fatal, continuing): %s", _dedup_err
+                    )
 
         # DB write succeeded (or no DB configured) — update in-memory and JSONL
         self._open[trade_id] = trade
@@ -597,6 +653,17 @@ class PortfolioTracker:
 
         Returns the trade_id string.
         """
+        # ── Idempotency key ───────────────────────────────────────────────────
+        idem_key: Optional[str] = None
+        if _compute_idem_key is not None:
+            try:
+                idem_key = _compute_idem_key(symbol, side, float(quantity), float(entry_price))
+            except Exception as _ik_err:
+                logger.debug(
+                    "[TRACKER] add_paper_trade: idempotency key compute failed (non-fatal): %s",
+                    _ik_err,
+                )
+
         notes = json.dumps(strategy_params) if strategy_params else ""
         trade_id = str(uuid.uuid4())
         trade = PaperTrade(
@@ -612,7 +679,7 @@ class PortfolioTracker:
 
         # SQLite-first: persist before updating in-memory (Bug B9 / US-2004).
         if self._db is not None:
-            self._db.insert_paper_trade(
+            row_id = self._db.insert_paper_trade(
                 trade_id,
                 symbol=trade.symbol,
                 side=side,
@@ -622,7 +689,36 @@ class PortfolioTracker:
                 stop_loss=stop_loss,
                 take_profit=take_profit,
                 strategy_params=strategy_params,
+                idempotency_key=idem_key,
             )
+            # Dedup check: if the DB mixin collapsed this to an existing row,
+            # return its trade_id instead of the freshly-generated one.
+            if idem_key is not None:
+                try:
+                    existing_row = self._db.get_trade_by_id(trade_id)
+                    if existing_row is None:
+                        with self._db._lock:
+                            _conn = self._db._connect()
+                            try:
+                                _r = _conn.execute(
+                                    "SELECT trade_id FROM paper_trades WHERE id = ?", (row_id,)
+                                ).fetchone()
+                            finally:
+                                _conn.close()
+                        if _r is not None:
+                            existing_trade_id: str = _r[0]
+                            logger.warning(
+                                "[TRACKER] add_paper_trade DEDUPLICATED — returning existing "
+                                "trade_id=%s (idem_key=%s)",
+                                existing_trade_id[:8],
+                                idem_key,
+                            )
+                            return existing_trade_id
+                except Exception as _dedup_err:
+                    logger.debug(
+                        "[TRACKER] add_paper_trade dedup resolution failed (non-fatal): %s",
+                        _dedup_err,
+                    )
 
         # DB write succeeded (or no DB configured) — update in-memory and JSONL
         self._open[trade_id] = trade
