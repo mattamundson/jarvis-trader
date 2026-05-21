@@ -88,9 +88,13 @@ def _auth_headers() -> dict[str, str]:
             "create a bot at https://discord.com/developers/applications, "
             "drop the token, then restart the MCP server."
         )
+    # Discord requires the `DiscordBot (url, version)` UA format at the edge
+    # (Cloudflare WAF). Generic UAs get a misleading 403 + code 40333
+    # "internal network error". Verified 2026-05-21 — PowerShell default UA
+    # was blocked guild-wide; the format below works.
     return {
         "Authorization": f"Bot {token}",
-        "User-Agent": "jarvis-trader-personal-mcp/1.0",
+        "User-Agent": "DiscordBot (https://github.com/mattamundson/jarvis-trader, 1.0)",
         "Content-Type": "application/json",
     }
 
