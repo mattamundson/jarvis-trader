@@ -1557,3 +1557,32 @@ export interface BriefingResponse {
 export async function fetchDiscordBriefing(symbol: string): Promise<BriefingResponse> {
   return fetchEngine<BriefingResponse>(`/discord/briefing?symbol=${encodeURIComponent(symbol)}`);
 }
+
+// ── Parallel Paper A/B Testing ────────────────────────────────────────────────
+
+export interface EquityCurvePoint {
+  date: string;
+  equity: number;
+}
+
+/** GET /portfolio/paper/account/{account_id}/stats */
+export interface AccountStatsResponse {
+  account_id: "A" | "B";
+  days: number;
+  n_trades: number;
+  win_rate: number | null;
+  sortino: number | null;
+  sharpe: number | null;
+  calmar: number | null;
+  max_dd: number | null;
+  equity_curve: EquityCurvePoint[];
+}
+
+export async function fetchAccountStats(
+  accountId: "A" | "B",
+  days: 30 | 90 | 180 = 30
+): Promise<AccountStatsResponse> {
+  return fetchEngine<AccountStatsResponse>(
+    `/portfolio/paper/account/${accountId}/stats?days=${days}`
+  );
+}
