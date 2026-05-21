@@ -1242,6 +1242,48 @@ def migration_030(conn: sqlite3.Connection) -> None:
     )
 
 
+def migration_031(conn: sqlite3.Connection) -> None:
+    """
+    031 — Bracket order IDs on paper_trades.
+
+    Adds three columns so approved bracket submissions can be fully traced
+    back from a paper_trades row without joining to JSON blobs or in-memory
+    state.
+
+    stop_order_id    — broker order ID of the STP child (TEXT, NULL when bracket
+                       not used or STP placement failed)
+    target_order_id  — broker order ID of the TP child  (TEXT, NULL when bracket
+                       not used or TP omitted)
+    bracket_status   — lifecycle label:
+                         'attached'         : all three legs placed successfully
+                         'partial'          : entry + STP placed, TP failed
+                         'failed'           : STP placement failed, entry rolled back
+                         'detached_manually': Matt manually cancelled children via TWS
+                       NULL when ENABLE_BRACKET_ORDERS=0 (single-order path).
+
+    All three columns are nullable for full backward compatibility with existing
+    rows written before migration_031.
+
+    Idempotent: skips gracefully if columns already exist.
+    """
+    for stmt in (
+        "ALTER TABLE paper_trades ADD COLUMN stop_order_id TEXT",
+        "ALTER TABLE paper_trades ADD COLUMN target_order_id TEXT",
+        "ALTER TABLE paper_trades ADD COLUMN bracket_status TEXT",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+            logger.debug("Migration 031: column already exists — skipping: %s", stmt)
+    conn.commit()
+    logger.info(
+        "Migration 031 applied — stop_order_id, target_order_id, bracket_status "
+        "columns added to paper_trades."
+    )
+
+
 def migration_023(conn: sqlite3.Connection) -> None:
     """
     023 — trading_patterns schema alignment.
@@ -1324,6 +1366,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_028,  # version 28
     migration_029,  # version 29
     migration_030,  # version 30
+    migration_031,  # version 31
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1357,6 +1400,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Per-account kill switch state: per_account_kill_state table for independent halt per paper account (ENABLE_PARALLEL_PAPER=1 only).",
     "Realized peak equity: realized_peak_equity column on pnl_snapshots for Phase 3 C5 phantom-drawdown fix (kill switch peak_equity unchanged).",
     "Order dedup: idempotency_key column + partial UNIQUE index on paper_trades to prevent duplicate submissions within a 5-second window.",
+    "Bracket order IDs: stop_order_id, target_order_id, bracket_status columns on paper_trades for atomic IB bracket traceability.",
 ]
 
 

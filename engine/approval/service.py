@@ -196,14 +196,26 @@ async def execute_approved_trade(
     HB-1 bracket wiring (2026-04-24): when ``settings.ENABLE_BROKER_BRACKETS`` is
     True AND the caller supplies ``stop_price``, route through
     ``SafetyLayer.submit_entry_with_stop`` so broker-side STP (and optional TP)
-    children are placed atomically linked to the parent entry.  Flag defaults
-    to False, so this change is a no-op until Matt flips it after a paper
-    smoke test on IBKR port 4002.
+    children are placed atomically linked to the parent entry.
+
+    The newer ``ENABLE_BRACKET_ORDERS`` env var (migration_031 / 2026-05-21) is
+    the canonical opt-out gate — read fresh from os.environ so the flag can be
+    toggled without an engine restart.  Both flags must be enabled for the bracket
+    path to activate; either can suppress it independently.
     """
+    import os as _os
+
     if safety_layer is None:
         raise ApprovalFlowError(503, "Safety layer not available")
 
-    use_bracket = getattr(settings, "ENABLE_BROKER_BRACKETS", False) and stop_price is not None
+    _raw_flag = _os.environ.get("ENABLE_BRACKET_ORDERS", "1").strip().lower()
+    _bracket_orders_env_enabled = _raw_flag not in ("0", "false", "no", "off")
+
+    use_bracket = (
+        _bracket_orders_env_enabled
+        and getattr(settings, "ENABLE_BROKER_BRACKETS", True)
+        and stop_price is not None
+    )
 
     if use_bracket:
         result = await safety_layer.submit_entry_with_stop(
@@ -321,6 +333,34 @@ async def approve_pending_trade(
         except Exception as exc:
             logger.warning(
                 "approve_pending_trade: set_broker_metadata failed for %s: %s",
+                trade_id[:8],
+                exc,
+            )
+
+    # Migration 031: persist bracket order IDs directly on paper_trades row so
+    # the position can be queried without deserialising strategy_params JSON.
+    # stop_order_id / target_order_id cover the STP + TP child legs.
+    # bracket_status mirrors the submit_bracket / submit_entry_with_stop outcome.
+    _stop_oid = execution_result.get("stp_order_id") or execution_result.get("stop_order_id")
+    _tp_oid = execution_result.get("tp_order_id") or execution_result.get("target_order_id")
+    _bstatus: Optional[str] = None
+    if _stop_oid is not None:
+        _bstatus = "attached" if _tp_oid is not None else "partial"
+    elif execution_result.get("routed_to_ib") and execution_result.get("approved"):
+        _bstatus = None  # single-order path — no bracket columns needed
+
+    if (_stop_oid is not None or _tp_oid is not None) and db_manager is not None:
+        try:
+            if hasattr(db_manager, "update_paper_trade_bracket_ids"):
+                db_manager.update_paper_trade_bracket_ids(
+                    trade_id=trade_id,
+                    stop_order_id=str(_stop_oid) if _stop_oid is not None else None,
+                    target_order_id=str(_tp_oid) if _tp_oid is not None else None,
+                    bracket_status=_bstatus,
+                )
+        except Exception as exc:
+            logger.warning(
+                "approve_pending_trade: update_paper_trade_bracket_ids failed for %s: %s",
                 trade_id[:8],
                 exc,
             )
