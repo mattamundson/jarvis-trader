@@ -118,6 +118,117 @@ ENABLE_PARALLEL_PAPER=0
 Restart the engine.  Account A trades continue as normal.  Account B rows
 remain in the DB for post-hoc analysis but no new B rows are written.
 
+## Per-account kill switch
+
+Migration 028 adds a `per_account_kill_state` table that lets Account A and
+Account B halt **independently** during parallel paper testing.
+
+### Dual-layer architecture
+
+```
+                   ┌────────────────────────────────┐
+                   │  GLOBAL kill switch             │
+                   │  (system_state table)           │
+                   │  Fires on: -2% daily / -10% DD  │
+                   │  Halts: ALL order emission      │
+                   └────────────────────────────────┘
+                            │ defense in depth
+                   ┌────────┴──────────┐
+            ┌──────┴──────┐    ┌───────┴─────┐
+            │  Account A  │    │  Account B  │
+            │  per-acct   │    │  per-acct   │
+            │  kill state │    │  kill state │
+            └─────────────┘    └─────────────┘
+           fires on A's own   fires on B's own
+           thresholds only    thresholds only
+```
+
+The GLOBAL kill switch is **canonical** and unchanged.  Per-account state is
+**additive**: either account can be halted independently, but the global switch
+always overrides both.
+
+### How it activates
+
+Per-account halt is triggered from the engine's internal risk checks only —
+there is no external trigger HTTP route (by design — kill switches must not
+be triggerable by external callers).  The engine calls:
+
+```python
+safety_layer.trigger_per_account_kill(
+    account_id="B",
+    metric="max_daily_loss",   # or "max_drawdown" | "consecutive_loss"
+    value=-112.50,
+    reason="Account B daily realized loss -$112.50 exceeded threshold",
+)
+```
+
+This sets `active=1` for Account B only.  Account A continues to emit.
+
+### Monitoring
+
+```powershell
+# Check Account A kill state
+Invoke-RestMethod http://127.0.0.1:8010/safety/account/A/kill-state `
+    -Headers @{'X-API-Key'='<API_KEY>'}
+
+# Check Account B kill state
+Invoke-RestMethod http://127.0.0.1:8010/safety/account/B/kill-state `
+    -Headers @{'X-API-Key'='<API_KEY>'}
+```
+
+Response shape:
+```json
+{
+  "account_id": "B",
+  "active": true,
+  "triggered_at": "2026-05-21T14:22:01",
+  "reason": "Account B daily realized loss -$112.50 exceeded threshold",
+  "trigger_metric": "max_daily_loss",
+  "trigger_value": -112.5,
+  "cleared_at": null
+}
+```
+
+### Recovery procedure
+
+1. **Identify the trigger**: read `trigger_metric` and `trigger_value` from
+   the state endpoint to understand why the account halted.
+2. **Clear the halt** (human-only):
+   ```powershell
+   Invoke-RestMethod http://127.0.0.1:8010/safety/account/B/kill-state/clear `
+       -Method POST `
+       -Headers @{'X-API-Key'='<API_KEY>'} `
+       -Body '{}' -ContentType application/json
+   ```
+3. **Verify**: re-poll the state endpoint — `active` must be `false` and
+   `cleared_at` must be populated.
+4. **Do NOT restart the engine** to clear a per-account halt — the per-account
+   state persists across restarts and the engine will re-read it on startup.
+
+### Guarantee
+
+> The GLOBAL kill switch is canonical.  If the global switch fires, BOTH
+> accounts halt regardless of their individual per-account state.  Clearing
+> a per-account halt does NOT affect the global kill switch.  To resume trading
+> after a global halt, use `POST /safety/kill-switch/deactivate` (separate endpoint).
+
+### Schema (migration_028)
+
+```sql
+CREATE TABLE IF NOT EXISTS per_account_kill_state (
+    account_id      TEXT    PRIMARY KEY,
+    active          INTEGER NOT NULL DEFAULT 0,
+    triggered_at    TEXT,
+    reason          TEXT,
+    trigger_metric  TEXT,    -- "max_daily_loss" | "max_drawdown" | "consecutive_loss"
+    trigger_value   REAL,
+    cleared_at      TEXT
+);
+```
+
+Default state: no rows.  A missing row for an account_id is equivalent to
+`active=0` (inactive) — the engine treats absence as not halted.
+
 ## Safety invariants
 
 - Only paper accounts.  `LIVE_TRADING_ENABLED=False` is not overridable by
@@ -126,13 +237,19 @@ remain in the DB for post-hoc analysis but no new B rows are written.
   broker connection.
 - Kill switch (`-2% daily / -10% drawdown`) remains at production thresholds
   for the engine-level safety layer.  Account B's `MAX_DAILY_LOSS_PCT` is a
-  per-account risk parameter, not a kill-switch override.
-- [RISK] If both accounts hit the daily loss halt simultaneously, the safety
-  layer's `kill_switch_active` fires on Account A (production) thresholds and
-  halts ALL order emission — including Account B.  Account B's tighter halt
-  threshold is advisory only (enforced in analytics, not in the safety layer).
-  The recovery flow resets the engine-level state; Account B resumes alongside
-  Account A.  Future work: per-account kill switch state in `system_state` table.
+  per-account risk parameter for the per-account kill check, not a global
+  kill-switch override.
+- Per-account kill state is default-inactive (migration_028 adds the table;
+  rows only appear when an account halts).
+- There is no external HTTP route to TRIGGER a per-account halt — only the
+  engine's internal risk checks call `trigger_per_account_kill()`.
+- Per-account state is only consulted when `ENABLE_PARALLEL_PAPER=1`.  When
+  the flag is off, all per-account functions are no-ops.
+- [RISK] Positions are per-account in the `paper_trades` table (account_id
+  column).  The two accounts share the same paper IB connection but their
+  P&L snapshots and kill states are fully independent.  There is no shared
+  position state between A and B — each account's trades are separately tagged
+  via `account_id` and aggregated independently.
 
 ## Cross-references
 

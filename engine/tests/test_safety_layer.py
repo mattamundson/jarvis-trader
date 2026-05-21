@@ -1018,3 +1018,60 @@ class TestFuturesMarginGate:
         )
         if reason_substr:
             assert reason_substr in result.rejection_reason
+
+
+class TestGlobalKillSwitchWithParallelDisabled:
+    """
+    Regression suite: when ENABLE_PARALLEL_PAPER=0 (default), the global kill
+    switch behaviour is unchanged and per-account functions are no-ops.
+    """
+
+    def test_global_kill_still_blocks_orders_when_parallel_disabled(
+        self, mock_safety_layer, mock_settings
+    ):
+        """ENABLE_PARALLEL_PAPER=0: global kill switch blocks all orders as before."""
+        with patch.dict(os.environ, {"ENABLE_PARALLEL_PAPER": "0"}):
+            safety = mock_safety_layer
+            safety.activate_kill_switch(KillSwitchReason.MANUAL, "regression test")
+
+            order = OrderRequest(
+                symbol="MES",
+                quantity=1,
+                order_type="market",
+                estimated_value=1000.0,
+            )
+            result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is False
+        assert "Kill switch" in result.rejection_reason
+
+    def test_is_account_halted_mirrors_global_when_parallel_disabled(self, mock_safety_layer):
+        """ENABLE_PARALLEL_PAPER=0: is_account_halted returns global state only."""
+        with patch.dict(os.environ, {"ENABLE_PARALLEL_PAPER": "0"}):
+            safety = mock_safety_layer
+            # Global off → both accounts not halted
+            assert safety.is_account_halted("A") is False
+            assert safety.is_account_halted("B") is False
+
+            safety.activate_kill_switch(KillSwitchReason.MANUAL, "global test")
+            # Global on → both accounts halted
+            assert safety.is_account_halted("A") is True
+            assert safety.is_account_halted("B") is True
+
+    def test_trigger_per_account_kill_is_noop_when_parallel_disabled(self, mock_safety_layer):
+        """ENABLE_PARALLEL_PAPER=0: trigger_per_account_kill does not raise and does nothing."""
+        with patch.dict(os.environ, {"ENABLE_PARALLEL_PAPER": "0"}):
+            safety = mock_safety_layer
+            # Should not raise — silently no-op
+            safety.trigger_per_account_kill("B", "max_daily_loss", -50.0, "test")
+            # Global is still off
+            assert safety.is_killed is False
+
+    def test_clear_per_account_kill_is_noop_when_parallel_disabled(self, mock_safety_layer):
+        """ENABLE_PARALLEL_PAPER=0: clear_per_account_kill does not raise and does nothing."""
+        with patch.dict(os.environ, {"ENABLE_PARALLEL_PAPER": "0"}):
+            safety = mock_safety_layer
+            safety.activate_kill_switch(KillSwitchReason.MANUAL, "global")
+            # Per-account clear must not deactivate global kill
+            safety.clear_per_account_kill("A")
+            assert safety.is_killed is True  # global unchanged

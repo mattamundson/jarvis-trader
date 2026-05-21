@@ -483,6 +483,68 @@ async def smoke_bracket(
 
 
 @router.get(
+    "/account/{account_id}/kill-state",
+    description=(
+        "Return per-account kill switch state for parallel-paper testing. "
+        "When ENABLE_PARALLEL_PAPER=0, mirrors the global kill switch state. "
+        "account_id must be 'A' or 'B'."
+    ),
+)
+async def get_account_kill_state(account_id: str) -> dict[str, Any]:
+    """Per-account kill switch state (parallel-paper infrastructure)."""
+    if _safety_layer is None:
+        raise HTTPException(status_code=503, detail="Safety layer not initialized")
+    if account_id not in ("A", "B"):
+        raise HTTPException(status_code=400, detail="account_id must be 'A' or 'B'")
+    try:
+        return _safety_layer.get_per_account_kill_state(account_id)
+    except Exception as exc:
+        logger.error("[SAFETY] get_account_kill_state(%s) failed: %s", account_id, exc)
+        raise HTTPException(500, f"Failed to get account kill state: {exc}") from exc
+
+
+@router.post(
+    "/account/{account_id}/kill-state/clear",
+    description=(
+        "Admin clear of a per-account kill switch halt. "
+        "Requires X-API-Key auth. Logged. "
+        "Does NOT affect the global kill switch. "
+        "account_id must be 'A' or 'B'."
+    ),
+)
+async def clear_account_kill_state(
+    account_id: str,
+    request: Request,
+    notes: str = "",
+) -> dict[str, Any]:
+    """Admin manual clear of a per-account halt (human-only path)."""
+    if _safety_layer is None:
+        raise HTTPException(status_code=503, detail="Safety layer not initialized")
+    if account_id not in ("A", "B"):
+        raise HTTPException(status_code=400, detail="account_id must be 'A' or 'B'")
+
+    # X-API-Key is enforced by the engine's global auth middleware.
+    # Log the caller for audit purposes.
+    caller_ip = request.client.host if request.client else "unknown"
+    logger.warning(
+        "[SAFETY] per-account kill cleared: account=%s notes=%r caller_ip=%s",
+        account_id,
+        notes,
+        caller_ip,
+    )
+    try:
+        _safety_layer.clear_per_account_kill(account_id=account_id, notes=notes)
+        return {
+            "status": "cleared",
+            "account_id": account_id,
+            "notes": notes,
+        }
+    except Exception as exc:
+        logger.error("[SAFETY] clear_account_kill_state(%s) failed: %s", account_id, exc)
+        raise HTTPException(500, f"Failed to clear account kill state: {exc}") from exc
+
+
+@router.get(
     "/position-size",
     description="Calculate recommended position size using ATR-based framework with hardcoded contract limits respecting drawdown state.",
 )

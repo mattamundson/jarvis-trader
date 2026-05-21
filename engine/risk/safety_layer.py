@@ -528,6 +528,224 @@ class SafetyLayer:
     def is_killed(self) -> bool:
         return self._kill_switch_active
 
+    # ── Per-Account Kill Switch (parallel-paper only) ──────────────────────────
+    # These functions are ADDITIVE — they do not modify the global kill switch.
+    # All four are no-ops (fall back to global state) when ENABLE_PARALLEL_PAPER
+    # is not set to "1", so existing single-account behavior is unchanged.
+
+    def _parallel_paper_enabled(self) -> bool:
+        """Return True iff ENABLE_PARALLEL_PAPER=1 is set in the environment."""
+        import os
+
+        return os.environ.get("ENABLE_PARALLEL_PAPER", "0") == "1"
+
+    def get_per_account_kill_state(self, account_id: str) -> dict:
+        """
+        Return current per-account kill state from the DB.
+
+        When ENABLE_PARALLEL_PAPER is not set, returns a synthetic record that
+        mirrors the global kill switch state so callers can treat the return
+        value uniformly.
+
+        Returns
+        -------
+        dict with keys:
+            account_id      (str)
+            active          (bool)
+            triggered_at    (str|None)
+            reason          (str|None)
+            trigger_metric  (str|None)
+            trigger_value   (float|None)
+            cleared_at      (str|None)
+        """
+        if not self._parallel_paper_enabled():
+            return {
+                "account_id": account_id,
+                "active": self._kill_switch_active,
+                "triggered_at": None,
+                "reason": (self._kill_switch_reason.value if self._kill_switch_reason else None),
+                "trigger_metric": None,
+                "trigger_value": None,
+                "cleared_at": None,
+            }
+        if self._db_path is None:
+            return {
+                "account_id": account_id,
+                "active": False,
+                "triggered_at": None,
+                "reason": None,
+                "trigger_metric": None,
+                "trigger_value": None,
+                "cleared_at": None,
+            }
+        try:
+            import sqlite3
+
+            conn = sqlite3.connect(self._db_path, timeout=5)
+            conn.row_factory = sqlite3.Row
+            try:
+                row = conn.execute(
+                    "SELECT * FROM per_account_kill_state WHERE account_id = ?",
+                    (account_id,),
+                ).fetchone()
+            finally:
+                conn.close()
+            if row is None:
+                return {
+                    "account_id": account_id,
+                    "active": False,
+                    "triggered_at": None,
+                    "reason": None,
+                    "trigger_metric": None,
+                    "trigger_value": None,
+                    "cleared_at": None,
+                }
+            return {
+                "account_id": account_id,
+                "active": bool(row["active"]),
+                "triggered_at": row["triggered_at"],
+                "reason": row["reason"],
+                "trigger_metric": row["trigger_metric"],
+                "trigger_value": row["trigger_value"],
+                "cleared_at": row["cleared_at"],
+            }
+        except Exception as exc:
+            logger.warning(
+                "SafetyLayer: get_per_account_kill_state(%s) failed: %s", account_id, exc
+            )
+            return {
+                "account_id": account_id,
+                "active": False,
+                "triggered_at": None,
+                "reason": None,
+                "trigger_metric": None,
+                "trigger_value": None,
+                "cleared_at": None,
+            }
+
+    def trigger_per_account_kill(
+        self, account_id: str, metric: str, value: float, reason: str
+    ) -> None:
+        """
+        Halt a single paper account.
+
+        Sets active=1 for account_id in per_account_kill_state.  Does NOT touch
+        the global kill switch.  No-op when ENABLE_PARALLEL_PAPER is not set.
+
+        Parameters
+        ----------
+        account_id:     'A' or 'B'
+        metric:         trigger metric — 'max_daily_loss' | 'max_drawdown' | 'consecutive_loss'
+        value:          actual metric value at trigger time (e.g. pnl=-$112.50)
+        reason:         human-readable description
+        """
+        if not self._parallel_paper_enabled():
+            logger.debug(
+                "trigger_per_account_kill: ENABLE_PARALLEL_PAPER not set — no-op for %s",
+                account_id,
+            )
+            return
+        if self._db_path is None:
+            logger.warning(
+                "trigger_per_account_kill: no DB path — cannot persist state for %s", account_id
+            )
+            return
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        try:
+            import sqlite3
+
+            conn = sqlite3.connect(self._db_path, timeout=5)
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO per_account_kill_state
+                        (account_id, active, triggered_at, reason, trigger_metric, trigger_value, cleared_at)
+                    VALUES (?, 1, ?, ?, ?, ?, NULL)
+                    ON CONFLICT(account_id) DO UPDATE SET
+                        active = 1,
+                        triggered_at = excluded.triggered_at,
+                        reason = excluded.reason,
+                        trigger_metric = excluded.trigger_metric,
+                        trigger_value = excluded.trigger_value,
+                        cleared_at = NULL
+                    """,
+                    (account_id, now, reason, metric, value),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            logger.critical(
+                "PER-ACCOUNT KILL: account=%s metric=%s value=%s reason=%s",
+                account_id,
+                metric,
+                value,
+                reason,
+            )
+        except Exception as exc:
+            logger.warning("trigger_per_account_kill(%s): DB write failed: %s", account_id, exc)
+
+    def clear_per_account_kill(self, account_id: str, notes: str = "") -> None:
+        """
+        Resume a halted paper account.
+
+        Sets active=0 and records cleared_at.  No-op when ENABLE_PARALLEL_PAPER
+        is not set.  Human-only path — should be called from the /safety/account
+        API route, not from automated risk checks.
+        """
+        if not self._parallel_paper_enabled():
+            logger.debug(
+                "clear_per_account_kill: ENABLE_PARALLEL_PAPER not set — no-op for %s",
+                account_id,
+            )
+            return
+        if self._db_path is None:
+            return
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        try:
+            import sqlite3
+
+            conn = sqlite3.connect(self._db_path, timeout=5)
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO per_account_kill_state
+                        (account_id, active, triggered_at, reason, trigger_metric, trigger_value, cleared_at)
+                    VALUES (?, 0, NULL, ?, NULL, NULL, ?)
+                    ON CONFLICT(account_id) DO UPDATE SET
+                        active = 0,
+                        cleared_at = excluded.cleared_at,
+                        reason = COALESCE(excluded.reason, reason)
+                    """,
+                    (account_id, notes or None, now),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            logger.info(
+                "SafetyLayer: per-account kill cleared for account=%s notes=%r",
+                account_id,
+                notes,
+            )
+        except Exception as exc:
+            logger.warning("clear_per_account_kill(%s): DB write failed: %s", account_id, exc)
+
+    def is_account_halted(self, account_id: str) -> bool:
+        """
+        Return True if this account should NOT emit orders.
+
+        An account is halted if EITHER:
+          1. The GLOBAL kill switch is active (defense in depth), OR
+          2. ENABLE_PARALLEL_PAPER=1 AND the per-account kill is active for this account.
+
+        When ENABLE_PARALLEL_PAPER is not set, this is equivalent to ``is_killed``.
+        """
+        if self._kill_switch_active:
+            return True
+        if not self._parallel_paper_enabled():
+            return False
+        state = self.get_per_account_kill_state(account_id)
+        return bool(state.get("active", False))
+
     def get_status(self) -> dict:
         """Return safety layer status for agents."""
         return {
