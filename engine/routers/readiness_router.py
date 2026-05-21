@@ -4,7 +4,10 @@ Phase 3 programmatic readiness router — GET /readiness/phase3
 Returns a structured GO / WAIT / NO-GO report based on the 10 codified
 criteria in engine/readiness/phase3_criteria.py.
 
-This route is INFORMATIONAL ONLY.  It never reads or writes
+Also exposes GET /readiness/gate-v2-calibration for the Bayesian
+threshold calibrator (read-only recommendations; never auto-applied).
+
+This router is INFORMATIONAL ONLY.  It never reads or writes
 LIVE_TRADING_ENABLED, safety_layer.py, or engine/.env.
 """
 
@@ -80,3 +83,85 @@ async def get_phase3_readiness(
         return PlainTextResponse(content=md, media_type="text/markdown")
 
     return report
+
+
+@router.get(
+    "/gate-v2-calibration",
+    summary="Bayesian gate-v2 threshold calibration — recommended values only",
+    response_model=None,
+    response_description=(
+        "Recommended thresholds based on accumulated verdict history. "
+        "NEVER auto-applied — human review required. "
+        "Use ?format=markdown for a vault-ingestible report."
+    ),
+)
+async def get_gate_v2_calibration(
+    days: Annotated[
+        Optional[int],
+        Query(
+            ge=7,
+            le=730,
+            description="Lookback window in days (default 90)",
+        ),
+    ] = 90,
+    format: Annotated[
+        Optional[str],
+        Query(description="Set to 'markdown' for vault-ingestible output"),
+    ] = None,
+    _api_key: str = Depends(verify_api_key),
+):
+    """
+    Run the Bayesian gate-v2 threshold calibrator and return recommended values.
+
+    **This endpoint is strictly read-only.**  It analyses accumulated verdict
+    history and paper-trade outcomes to suggest whether gate thresholds should
+    be tightened or loosened.  It does NOT modify ``GATE_V2_*`` env vars,
+    ``engine/.env``, or any config file.
+
+    **Recommendation strength:**
+    - ``weak`` — n < 50 verdicts; prior dominates; treat as directional only
+    - ``moderate`` — 50–199 verdicts; credible signal; review with intuition
+    - ``strong`` — >= 200 verdicts; data dominates; worth considering change
+
+    **When to act on recommendations:**  Only when strength is "strong" AND
+    the direction aligns with current market-regime intuition.  See
+    ``docs/runbooks/GATE_V2_CALIBRATOR_RUNBOOK.md`` for the full workflow.
+    """
+    from analytics.gate_v2_calibrator import (
+        collect_historical_verdicts,
+        diff_vs_current,
+        recommended_thresholds,
+        render_vault_markdown,
+    )
+
+    db_path = _default_db_path()
+    lookback = days or 90
+
+    try:
+        verdicts_df = collect_historical_verdicts(db_path=db_path, lookback_days=lookback)
+        rec = recommended_thresholds(verdicts_df)
+        diff = diff_vs_current(rec)
+    except Exception as exc:
+        logger.error("Gate-v2 calibration failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Calibration failed: {exc}") from exc
+
+    if format and format.lower() == "markdown":
+        md = render_vault_markdown(rec, diff)
+        return PlainTextResponse(content=md, media_type="text/markdown")
+
+    return {
+        "recommended_thresholds": {
+            k: v
+            for k, v in rec.items()
+            if k not in {"sample_size", "confidence", "recommendation_strength"}
+        },
+        "sample_size": rec["sample_size"],
+        "confidence": rec["confidence"],
+        "recommendation_strength": rec["recommendation_strength"],
+        "diff_vs_current": diff,
+        "lookback_days": lookback,
+        "note": (
+            "Read-only. Recommendations never auto-applied. "
+            "See docs/runbooks/GATE_V2_CALIBRATOR_RUNBOOK.md."
+        ),
+    }
