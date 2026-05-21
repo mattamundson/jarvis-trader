@@ -482,6 +482,106 @@ engine\.venv\Scripts\python scripts\kronos_side_by_side.py --days 3 --symbol MES
 
 ---
 
+## 15. ResearchAgent wired (2026-05-20)
+
+Real LLM calls wired in `engine/agents/research_agent.py`. Implementation summary:
+
+### What changed
+
+- `propose()` now calls `JarvisLLMClient` via `AdvisorClient`'s lazy-load pattern
+  when `ENABLE_RESEARCH_AGENT=1`. Default (flag off) still returns the hardcoded
+  MES mean-reversion stub immediately at zero cost.
+- Model tier: **haiku** (`claude-haiku-4-5-20251001`, $0.80/$4.00 per MTok).
+  Never escalates to Sonnet without explicit caller approval.
+- Parse pipeline: LLM output -> strip markdown fences -> extract JSON ->
+  `model_validate` -> on any failure, log warning + return hardcoded stub. Never raises.
+- Symbol field always forced to match the requested symbol, regardless of what the
+  LLM returns.
+
+### Cost gate
+
+| Item | Value |
+|---|---|
+| Table | `engine/data/jarvis_trader.db` -> `research_agent_costs` |
+| Schema | `(date TEXT PRIMARY KEY, usd_spent REAL DEFAULT 0)` |
+| Check timing | **Pre-call** — budget check fires before LLM is contacted |
+| Default budget | `$5.00/day` |
+| Override | `RESEARCH_AGENT_DAILY_BUDGET_USD=<value>` in `engine/.env` |
+| On exhaustion | Returns hardcoded stub + logs `WARNING: daily budget exhausted` |
+| Spend recording | Post-call upsert using actual token counts from `LLMCallResult` |
+| Typical cost/call | ~$0.00164 (600 input + 400 output tokens at haiku rates) |
+
+The $5/day budget allows approximately 3,000 calls/day at haiku rates — far
+more than the weekend cron will ever issue. The gate is a safety net against
+runaway caller loops, not a practical throttle.
+
+### Weekend cron
+
+New module: `engine/scheduler/research_agent_weekend.py`
+
+Function: `run_weekend_research_pass(symbols, n_hypotheses_per_symbol=3)`
+
+| Output | Path |
+|---|---|
+| Hypothesis JSON | `engine/data/research_hypotheses/<YYYY-MM-DD>/<SYMBOL>-<N>.json` |
+| Vault summary | `master-jarvis/second-brain/raw/_session-research/research-pass-<YYYY-MM-DD>.md` |
+
+Runner script: `scripts/run_research_agent_weekend.py`
+
+Reads `RESEARCH_AGENT_SYMBOLS` (comma-separated, default `MES,MNQ,MCL,MGC`) and
+`RESEARCH_AGENT_N_HYPOTHESES` (default `3`, max `5`) from the environment.
+
+**Suggested Windows Scheduled Task (Saturday 10:00 CT):**
+
+```powershell
+schtasks.exe /Create `
+  /TN "Jarvis-ResearchAgent-Weekend" `
+  /TR "\"$env:LOCALAPPDATA\Microsoft\WindowsApps\pwsh.exe\" -NonInteractive -File \"C:\Users\mattm\ThinkorSwim\jarvis-trader\scripts\run_research_agent_weekend.py\"" `
+  /SC WEEKLY /D SAT /ST 10:00 /RL LIMITED
+```
+
+Note: `ENABLE_RESEARCH_AGENT` must be present in `engine/.env` (set to `1`) for
+LLM calls to fire. Running the cron with the flag off still exercises the
+artifact-write path using the hardcoded stub — useful for smoke-testing the
+scheduled task itself.
+
+### Pre-flight before going live — ResearchAgent (updated checklist)
+
+- [x] **DONE** — LLM call wired (haiku tier, `JarvisLLMClient` via `AdvisorClient`).
+- [x] **DONE** — Daily cost gate implemented ($5.00 default, pre-call check, post-call
+      upsert in `research_agent_costs` table).
+- [x] **DONE** — Parse fallback: JSON extraction, `model_validate`, graceful degradation
+      to hardcoded stub on any failure.
+- [x] **DONE** — Weekend cron module + runner script written.
+- [x] **DONE** — 18/18 tests passing (6 new + 4 pre-existing strategy-tuner tests).
+- [ ] Set `ENABLE_RESEARCH_AGENT=1` in `engine/.env` when ready for first live run.
+- [ ] Install Jarvis-ResearchAgent-Weekend scheduled task (schtasks command above).
+- [ ] Validate the rejection path: trigger `generate_hypothesis("MES")` and confirm
+      the hypothesis is logged but NOT routed to any trade execution path.
+- [ ] After first live weekend pass, review `engine/data/research_hypotheses/<date>/`
+      and the vault summary before running any downstream backtest on the hypotheses.
+
+### Safety concern: signal feature name hallucination
+
+**LLM hallucination of signal feature names is the primary structural risk.**
+The system prompt constrains `signal_weights` keys to a whitelist of 10 known
+engine features (`stc_crossover`, `vwap_proximity`, etc.), but `signal_weights`
+is typed as `dict[str, float]` — it accepts arbitrary keys without raising a
+`ValidationError`.
+
+Downstream consequence: a backtest harness consuming `signal_weights` will
+silently ignore unknown keys (because the backtester looks up named features and
+skips unknowns), producing a hypothesis that appears to have fewer active signals
+than intended. This is a **silent degradation**, not an error — gate-v2 scores
+will be skewed.
+
+**Mitigation (future work):** Add a `model_validator(mode="after")` to
+`StrategyHypothesis` that checks all `signal_weights` keys against the known
+feature set and raises `ValidationError` for unknowns. Until that is added,
+review the JSON artifacts from each weekend pass before running backtests.
+
+---
+
 ## 13. Related runbooks
 
 - [HEALTH_API_CONTRACT.md](HEALTH_API_CONTRACT.md) — `/health` endpoint fields
