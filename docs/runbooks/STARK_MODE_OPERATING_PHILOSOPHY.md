@@ -133,7 +133,29 @@ deliberate hard limits enforced at the skill and engine level.
 
 ---
 
-## 6. Cross-References
+## 6. Analyst Inventory
+
+Pipeline stage 1 runs these analysts in parallel before the bull/bear debate:
+
+| Analyst | Flag | Status | Signal source |
+|---|---|---|---|
+| technical | always on | active | STC, ATR, regime |
+| news | always on | active | Claude LLM + news feed |
+| social | always on | active | Corey Discord #market-updates |
+| fundamental | always on | active | macro / fundamentals |
+| corey | always on | active | Corey auction-theory proximity |
+| breakout | always on | active | breakout pattern scanner |
+| harmonic | always on | active | harmonic pattern scanner |
+| kronos | `ENABLE_KRONOS=1` | stub (default off) | Kronos foundation model |
+| options (stage 6) | `ENABLE_OPTIONS_ANALYST=1` | stub (default off) | put/call skew, IV term structure, dealer gamma |
+| research | `ENABLE_RESEARCH_AGENT=1` | stub (default off) | autonomous strategy hypothesis |
+
+Options analyst (stage 6) — default off. Read-only signal contribution; never routes orders.
+Activation: set `ENABLE_OPTIONS_ANALYST=1` in `engine/.env`. Source: `engine/agents/options_analyst.py`.
+
+---
+
+## 7. Cross-References
 
 - `[[CLAUDE_CODE_AND_HERMES_INTEGRATION_MAP]]` — surface-by-surface wiring, HTTP routes, MCP gaps, auth
 - `[[KRONOS_AND_RESEARCH_AGENT_RUNBOOK]]` — Kronos classifier, ResearchAgent activation flags, test gate
