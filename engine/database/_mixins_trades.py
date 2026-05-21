@@ -451,6 +451,56 @@ class TradesMixin:
             finally:
                 conn.close()
 
+    def update_paper_trade_bracket_ids(
+        self,
+        trade_id: str,
+        stop_order_id: Optional[str],
+        target_order_id: Optional[str],
+        bracket_status: Optional[str],
+    ) -> bool:
+        """
+        Write bracket order IDs (migration_031 columns) onto an existing
+        paper_trades row.
+
+        Called by approval.service.approve_pending_trade after a bracket
+        submission so the stop/target order IDs are queryable directly from
+        the trade row rather than requiring JSON deserialisation of
+        strategy_params.
+
+        Returns True when exactly one row was updated.  No-ops gracefully
+        (returns False) when the trade_id is not found.
+        """
+        sql = """
+            UPDATE paper_trades
+               SET stop_order_id   = ?,
+                   target_order_id = ?,
+                   bracket_status  = ?
+             WHERE trade_id = ?
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                cur = conn.execute(sql, (stop_order_id, target_order_id, bracket_status, trade_id))
+                conn.commit()
+                found = cur.rowcount == 1
+                if not found:
+                    logger.warning(
+                        "[DB] update_paper_trade_bracket_ids: trade_id=%s not found",
+                        trade_id[:8] if trade_id else "?",
+                    )
+                else:
+                    logger.debug(
+                        "[DB] update_paper_trade_bracket_ids: trade_id=%s "
+                        "stop=%s target=%s status=%s",
+                        trade_id[:8],
+                        stop_order_id,
+                        target_order_id,
+                        bracket_status,
+                    )
+                return found
+            finally:
+                conn.close()
+
     def get_paper_trades(
         self,
         limit: int = 50,
