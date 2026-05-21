@@ -78,6 +78,7 @@ except Exception:  # pragma: no cover — optional dependency
     _RECIPE_LOADER_AVAILABLE = False
 
 from agents.kronos_classifier import KronosClassifier, is_kronos_enabled
+from agents.options_analyst import OptionsAnalyst, is_options_analyst_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -1444,6 +1445,7 @@ class TradingPipeline:
             "harmonic", symbol, is_futures=is_futures, timeframe=timeframe
         )
         kronos_coro = self._call_agent_analyze_kronos(symbol, is_futures, timeframe)
+        options_coro = self._call_agent_analyze_options(symbol, current_price)
 
         results = await asyncio.gather(
             safe_analyze("news", news_coro),
@@ -1453,6 +1455,7 @@ class TradingPipeline:
             safe_analyze("breakout", breakout_coro),
             safe_analyze("harmonic", harmonic_coro),
             safe_analyze("kronos", kronos_coro),
+            safe_analyze("options", options_coro),
         )
 
         return {
@@ -1464,6 +1467,7 @@ class TradingPipeline:
             "breakout": results[4],
             "harmonic": results[5],
             "kronos": results[6],
+            "options": results[7],
             "regime_status": regime_status,
         }
 
@@ -1520,6 +1524,48 @@ class TradingPipeline:
         except Exception as e:
             logger.warning("[Pipeline] Kronos classify failed: %s", e)
             return {"signal": 0.0, "confidence": 0.0, "summary": f"Kronos error: {e}"}
+
+    @property
+    def _options_analyst_or_none(self) -> "OptionsAnalyst | None":
+        """Return an ``OptionsAnalyst`` instance when ``ENABLE_OPTIONS_ANALYST=1``, else ``None``.
+
+        Re-checks the env flag on every access (no startup caching) so that
+        ``/admin/feature-flags`` toggles take effect without an engine restart.
+        The instance is cached in ``_options_analyst_cached`` until the flag
+        flips off, avoiding repeated construction overhead during a single run.
+        """
+        if not is_options_analyst_enabled():
+            self._options_analyst_cached = None  # type: ignore[attr-defined]
+            return None
+        if not hasattr(self, "_options_analyst_cached") or self._options_analyst_cached is None:
+            self._options_analyst_cached = OptionsAnalyst()  # type: ignore[attr-defined]
+        return self._options_analyst_cached  # type: ignore[attr-defined]
+
+    async def _call_agent_analyze_options(self, symbol: str, spot_price: Optional[float]) -> dict:
+        """Run the OptionsAnalyst and return a debate-compatible dict.
+
+        Returns a neutral dict when the analyst is disabled
+        (``ENABLE_OPTIONS_ANALYST != "1"``), when options data is unavailable,
+        or when the underlying module raises.  Never raises.
+        """
+        analyst = self._options_analyst_or_none
+        if analyst is None:
+            return {
+                "signal": 0.0,
+                "confidence": 0.0,
+                "summary": "options analyst disabled",
+                "indicators": {"weight": 0.0},
+            }
+        try:
+            return await analyst.analyze(symbol, spot_price=spot_price)
+        except Exception as exc:
+            logger.warning("[Pipeline] OptionsAnalyst failed: %s", exc)
+            return {
+                "signal": 0.0,
+                "confidence": 0.0,
+                "summary": f"options analyst error: {exc}",
+                "indicators": {"weight": 0.0},
+            }
 
     async def _run_debate(
         self,
