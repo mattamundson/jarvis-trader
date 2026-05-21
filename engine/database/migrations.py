@@ -1127,6 +1127,39 @@ def migration_027(conn: sqlite3.Connection) -> None:
     )
 
 
+def migration_028(conn: sqlite3.Connection) -> None:
+    """
+    028 — Per-account kill switch state for parallel-paper testing.
+
+    Adds the per_account_kill_state table so Account A and Account B can halt
+    independently during parallel paper testing (ENABLE_PARALLEL_PAPER=1).
+
+    The GLOBAL kill switch in system_state remains canonical and unchanged.
+    This table is additive: when the global switch fires, both accounts halt
+    regardless of their individual state.
+
+    Default-inactive: all new rows start with active=0.  Only consulted when
+    ENABLE_PARALLEL_PAPER=1 is set in the environment.
+
+    trigger_metric enum values: 'max_daily_loss' | 'max_drawdown' | 'consecutive_loss'
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS per_account_kill_state (
+            account_id      TEXT    PRIMARY KEY,
+            active          INTEGER NOT NULL DEFAULT 0,
+            triggered_at    TEXT,
+            reason          TEXT,
+            trigger_metric  TEXT,
+            trigger_value   REAL,
+            cleared_at      TEXT
+        )
+        """
+    )
+    conn.commit()
+    logger.info("Migration 028 applied — per_account_kill_state table created.")
+
+
 def migration_023(conn: sqlite3.Connection) -> None:
     """
     023 — trading_patterns schema alignment.
@@ -1206,6 +1239,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_025,  # version 25
     migration_026,  # version 26
     migration_027,  # version 27
+    migration_028,  # version 28
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1236,6 +1270,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Health watchdog snapshots: health_snapshots table for 5-minute /health poll history and intraday uptime.",
     "Trade reviews: trade_reviews table for automated post-trade LLM analysis (grade A-F, strengths, weaknesses, lessons).",
     "Multi-account paper testing: account_id columns on paper_trades and pnl_snapshots for parallel A/B config comparison.",
+    "Per-account kill switch state: per_account_kill_state table for independent halt per paper account (ENABLE_PARALLEL_PAPER=1 only).",
 ]
 
 

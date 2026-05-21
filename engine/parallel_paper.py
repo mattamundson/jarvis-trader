@@ -54,6 +54,7 @@ def dual_emit_paper_trade(
     take_profit: Optional[float] = None,
     strategy_params: Optional[Dict[str, Any]] = None,
     challenger_overrides: Optional[Dict[str, Any]] = None,
+    safety_layer: Optional[Any] = None,
 ) -> str:
     """
     Emit one or two paper-trade rows depending on ENABLE_PARALLEL_PAPER.
@@ -71,6 +72,11 @@ def dual_emit_paper_trade(
     challenger_overrides:
         The dict returned by get_challenger_config().  Stored in the B row's
         strategy_params so analysts can see which config was active.
+    safety_layer:
+        Optional SafetyLayer instance.  When provided AND ENABLE_PARALLEL_PAPER=1,
+        each account's per-account kill state is checked before emission.  If an
+        account is halted, its trade row is skipped and the other account is NOT
+        affected.  When None, halting is not checked (pre-migration behaviour).
 
     Returns
     -------
@@ -81,30 +87,24 @@ def dual_emit_paper_trade(
     """
     entry_time = entry_time or _utcnow()
 
-    # ── Account A — always written (production config) ────────────────────────
-    _write_trade(
-        db_manager=db_manager,
-        trade_id=trade_id,
-        symbol=symbol,
-        side=side,
-        quantity=quantity,
-        entry_price=entry_price,
-        entry_time=entry_time,
-        stop_loss=stop_loss,
-        take_profit=take_profit,
-        strategy_params=strategy_params,
-        account_id="A",
-    )
+    # ── Account A — always written unless per-account kill is active ──────────
+    a_halted = False
+    if _enabled() and safety_layer is not None:
+        try:
+            a_halted = safety_layer.is_account_halted("A")
+        except Exception as _exc:
+            logger.warning("[parallel_paper] is_account_halted('A') raised: %s", _exc)
 
-    # ── Account B — written only when parallel testing is enabled ─────────────
-    if _enabled():
-        b_trade_id = str(uuid.uuid4())
-        b_params: Dict[str, Any] = dict(strategy_params or {})
-        if challenger_overrides:
-            b_params["_challenger_overrides"] = challenger_overrides
+    if a_halted:
+        logger.warning(
+            "[parallel_paper] Account A halted — skipping emission for trade %s symbol=%s",
+            trade_id[:8],
+            symbol,
+        )
+    else:
         _write_trade(
             db_manager=db_manager,
-            trade_id=b_trade_id,
+            trade_id=trade_id,
             symbol=symbol,
             side=side,
             quantity=quantity,
@@ -112,15 +112,48 @@ def dual_emit_paper_trade(
             entry_time=entry_time,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            strategy_params=b_params,
-            account_id="B",
+            strategy_params=strategy_params,
+            account_id="A",
         )
-        logger.debug(
-            "[parallel_paper] dual-emit: A=%s B=%s symbol=%s",
-            trade_id[:8],
-            b_trade_id[:8],
-            symbol,
-        )
+
+    # ── Account B — written only when parallel testing is enabled ─────────────
+    if _enabled():
+        b_halted = False
+        if safety_layer is not None:
+            try:
+                b_halted = safety_layer.is_account_halted("B")
+            except Exception as _exc:
+                logger.warning("[parallel_paper] is_account_halted('B') raised: %s", _exc)
+
+        if b_halted:
+            logger.warning(
+                "[parallel_paper] Account B halted — skipping emission symbol=%s",
+                symbol,
+            )
+        else:
+            b_trade_id = str(uuid.uuid4())
+            b_params: Dict[str, Any] = dict(strategy_params or {})
+            if challenger_overrides:
+                b_params["_challenger_overrides"] = challenger_overrides
+            _write_trade(
+                db_manager=db_manager,
+                trade_id=b_trade_id,
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                entry_price=entry_price,
+                entry_time=entry_time,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                strategy_params=b_params,
+                account_id="B",
+            )
+            logger.debug(
+                "[parallel_paper] dual-emit: A=%s B=%s symbol=%s",
+                trade_id[:8],
+                b_trade_id[:8],
+                symbol,
+            )
 
     return trade_id
 
