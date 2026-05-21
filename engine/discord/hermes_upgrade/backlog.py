@@ -49,6 +49,86 @@ TRUSTED_SKILL_ORGS = frozenset(
 
 _GITHUB_URL_RE = re.compile(r"github\.com/([^/\s]+)(?:/|$)", re.IGNORECASE)
 
+# Per-upgrade-type regexes that detect a CONCRETE extractable target.
+# If none of the patterns match in implementation_steps/extracted_content/notes,
+# the entry is narrative-only and shouldn't qualify for tier_1.
+_CONCRETENESS_PATTERNS: dict[str, list[re.Pattern]] = {
+    "skill": [
+        re.compile(
+            r"https?://(?:github|gitlab)\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", re.IGNORECASE
+        ),
+        re.compile(r"hermes\s+skills?\s+install\s+\S+", re.IGNORECASE),
+        re.compile(r"\b[a-z0-9][a-z0-9_-]+/[a-z0-9][a-z0-9_./-]+\b"),  # slug shape org/repo
+    ],
+    "mcp_server": [
+        re.compile(
+            r"https?://(?:github|gitlab)\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", re.IGNORECASE
+        ),
+        re.compile(r"npx\s+-?y?\s*\S+", re.IGNORECASE),
+        re.compile(r"npm\s+install\s+-?g?\s*\S+", re.IGNORECASE),
+        re.compile(r"python\s+-m\s+\S+", re.IGNORECASE),
+        re.compile(r'"command"\s*:\s*"', re.IGNORECASE),
+    ],
+    "cron_pattern": [
+        re.compile(r"hermes\s+cron\s+add\b", re.IGNORECASE),
+        re.compile(r"\b\d{1,2}\s+\d{1,2}\s+\*\s+\*\s+\*"),  # cron expr like "0 9 * * *"
+        re.compile(r"every\s+\d+\s*(?:m|min|minute|h|hour|hr|d|day)\b", re.IGNORECASE),
+        re.compile(r"\b(?:30m|1h|2h|6h|12h|1d)\b"),  # hermes shorthand
+    ],
+    "soul_template": [
+        re.compile(r"```(?:markdown|md)?\s*\n[\s\S]{40,}\n```"),  # fenced markdown block >=40 chars
+        re.compile(r"(?im)^#{1,3}\s+(?:soul|persona|operating contract|guardrails)\b"),
+        re.compile(r"(?i)\byou are\b.*\byour\s+(?:main|primary|core)\s+(?:job|role|task)\b"),
+        re.compile(r"(?im)^(?:[-*]\s+)?(?:[A-Z][a-z]+\s+){2,8}(?:principle|rule|guardrail)s?\b"),
+    ],
+    "library": [
+        re.compile(r"pip\s+install\s+\S+", re.IGNORECASE),
+        re.compile(r"uv\s+(?:pip\s+install|add)\s+\S+", re.IGNORECASE),
+        re.compile(r"https?://(?:github|gitlab|pypi)\.\w+/\S+", re.IGNORECASE),
+    ],
+    "config_improvement": [
+        re.compile(
+            r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\s*[:=]\s*\S+"
+        ),  # key.path: value
+        re.compile(
+            r"(?i)(?:set|change|switch|update)\s+(?:the\s+)?[A-Za-z_][A-Za-z0-9_.]+\s+(?:to|from\s+\S+\s+to)\s+\S+"
+        ),
+        re.compile(r"^\s*[A-Z][A-Z0-9_]+=\S+", re.MULTILINE),  # ENV_VAR=value
+    ],
+    "gepa_target": [
+        # GepaApplier always writes a YAML from the entry; any non-empty rationale qualifies.
+        re.compile(r"."),
+    ],
+}
+
+
+def _has_extractable_target(upgrade: ClassifiedUpgrade) -> bool:
+    """True iff the entry contains a concrete artifact an applier can execute on.
+
+    Implements the same concreteness gate from the classifier prompt at the
+    backlog-tiering layer — a belt-and-suspenders check for entries where the
+    LLM rated them tier_1+low_risk but the implementation_steps are narrative
+    only ("Audit X", "Review Y", "Consider Z") with no actual command/URL.
+
+    Without this validator, ~40-60% of LLM-rated tier_1 items end up failing
+    at the applier's extractor step with "ERROR: could not extract slug/url".
+    This downcaps them to tier_3 instead, where they belong as human-curation
+    candidates rather than batch-apply targets.
+    """
+    patterns = _CONCRETENESS_PATTERNS.get(upgrade.upgrade_type)
+    if not patterns:
+        return False  # unknown upgrade_type — fail closed
+    haystack = "\n".join(
+        [
+            upgrade.extracted_content or "",
+            "\n".join(upgrade.implementation_steps or []),
+            upgrade.notes or "",
+            upgrade.title or "",
+            upgrade.rationale or "",
+        ]
+    )
+    return any(p.search(haystack) for p in patterns)
+
 
 def _is_community_source(upgrade: ClassifiedUpgrade) -> bool:
     """Return True iff the upgrade's source URL is a community (untrusted) github org.
@@ -126,10 +206,17 @@ def assign_tier(upgrade: ClassifiedUpgrade) -> Tier:
     if not upgrade.applicable or upgrade.leverage_rank <= 1:
         return "defer"
     if upgrade.leverage_rank >= 4 and upgrade.risk == "low":
+        # Concreteness gate — narrative-only entries can't be batch-applied.
+        if not _has_extractable_target(upgrade):
+            return "tier_3"
         if _is_community_source(upgrade):
             return "tier_2"
         return "tier_1"
     if upgrade.leverage_rank >= 3 and upgrade.risk in ("low", "med"):
+        # tier_2 also requires a concrete target; otherwise applier would
+        # immediately graceful-fail. Demote narrative items to tier_3.
+        if not _has_extractable_target(upgrade):
+            return "tier_3"
         return "tier_2"
     return "tier_3"
 
