@@ -159,6 +159,7 @@ from routers.readiness_router import router as readiness_router
 from routers.polymarket_router import router as polymarket_router
 from api.operations_dashboard import router as operations_dashboard_router
 from routers.attribution_router import router as attribution_router
+from routers.ib_scanner_router import router as ib_scanner_router
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -1506,6 +1507,30 @@ async def lifespan(app: FastAPI):
             "(ENABLE_AUTONOMOUS_PIPELINE not set or =0 — default-off)"
         )
 
+    # ── Discord Reaction Watcher — approval/reject/extend via emoji ───────────
+    # Default-OFF: no-ops gracefully if DISCORD_PERSONAL_BOT_TOKEN or
+    # DISCORD_PERSONAL_USER_ID are absent from .env.
+    _reaction_watcher_task = None
+    try:
+        from discord.reaction_watcher import (
+            is_reaction_watcher_enabled,
+            watch_approval_reactions,
+        )
+
+        if is_reaction_watcher_enabled():
+            _reaction_watcher_task = asyncio.create_task(watch_approval_reactions())
+            logger.info(
+                "Discord reaction watcher started — emoji reactions on bot-posted "
+                "approval messages will call /approvals/{id}/approve|reject|extend"
+            )
+        else:
+            logger.info(
+                "Discord reaction watcher: DISABLED "
+                "(DISCORD_PERSONAL_BOT_TOKEN or DISCORD_PERSONAL_USER_ID not set)"
+            )
+    except Exception as _rw_err:
+        logger.warning("Discord reaction watcher init failed (non-fatal): %s", _rw_err)
+
     inject_scheduler_router_scheduler(scheduler)
     inject_pipeline_deps(
         scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline
@@ -2406,6 +2431,13 @@ async def lifespan(app: FastAPI):
         await stop_messaging_services()
     except Exception:
         pass
+    # Cancel Discord reaction watcher gracefully
+    if _reaction_watcher_task is not None and not _reaction_watcher_task.done():
+        _reaction_watcher_task.cancel()
+        try:
+            await _reaction_watcher_task
+        except (asyncio.CancelledError, Exception):
+            pass
     logger.info("JARVIS TRADER shutdown complete")
 
 
@@ -2492,6 +2524,7 @@ app.include_router(orders_router)
 app.include_router(v1_router)
 app.include_router(observability_router)
 app.include_router(strategy_c_router)
+app.include_router(ib_scanner_router)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(webhook_router)
