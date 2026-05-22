@@ -288,9 +288,10 @@ class SignalScanner:
         rth_close = time(16, 0)
 
         in_banned_window = (
-            (current_time_et >= rth_open and current_time_et < rth_no_entry_start)  # First 5 min
-            or (current_time_et >= rth_no_entry_end and current_time_et <= rth_close)  # Last 15 min
-        )
+            current_time_et >= rth_open and current_time_et < rth_no_entry_start
+        ) or (  # First 5 min
+            current_time_et >= rth_no_entry_end and current_time_et <= rth_close
+        )  # Last 15 min
         if in_banned_window:
             logger.debug(
                 f"[Scanner] {symbol}: skipping — in banned session timing window ({current_time_et})"
@@ -348,7 +349,9 @@ class SignalScanner:
                 )
                 _summary = result.get("summary", "")
                 _reasoning = (result.get("trade_decision") or {}).get("reasoning", "")
-                _regime = (result.get("analyst_reports") or {}).get("technical", {}).get("regime") or None
+                _regime = (result.get("analyst_reports") or {}).get("technical", {}).get(
+                    "regime"
+                ) or None
                 self.db_manager.insert_decision(
                     symbol=symbol,
                     action=final_action,
@@ -390,19 +393,51 @@ class SignalScanner:
             # the trade is also immediately written to the DB so validation data exists.
             try:
                 from config import settings as _cfg
+
                 _is_paper_mode = not _cfg.LIVE_TRADING_ENABLED
             except Exception:
                 _is_paper_mode = True
 
             _confidence = float(result.get("confidence", 0.0))
+
+            # ── Validation-only strategy gate ──────────────────────────────────
+            # Block paper-mode bypass for strategy signals that have no WFO run
+            # or a gate v2 FAIL verdict.  The pending approval row is still
+            # created for audit/dashboard visibility; only the automatic
+            # paper_tracker write is skipped.
+            # Existing open positions are NOT touched — gate blocks NEW submissions only.
+            _technical_report_for_gate = (result.get("analyst_reports") or {}).get(
+                "technical"
+            ) or {}
+            _stark_signal = (
+                (_technical_report_for_gate.get("indicators") or {}).get("stark_signal") or ""
+            ).upper()
+            from agents.pipeline import VALIDATION_ONLY_STRATEGIES as _VOL_STRATS
+
+            if _stark_signal and _stark_signal in _VOL_STRATS:
+                logger.warning(
+                    "[VALIDATION_ONLY] skipping strategy=%s symbol=%s action=%s — "
+                    "no WFO run in wfe_snapshots and gate v2 verdict absent. "
+                    "Pending approval %s preserved for audit visibility.",
+                    _stark_signal,
+                    symbol,
+                    final_action,
+                    approval_id[:8],
+                )
+                _is_paper_mode = False  # short-circuit the bypass block below
+
             if _is_paper_mode and self._paper_tracker is not None and entry_price is not None:
                 try:
                     trade_dec = result.get("trade_decision") or {}
                     technical_report = (result.get("analyst_reports") or {}).get("technical") or {}
                     fund_decision = result.get("fund_decision") or {}
                     stop_price = trade_dec.get("stop_price") or None
-                    target_price = trade_dec.get("target_price") or trade_dec.get("take_profit") or None
-                    conviction = fund_decision.get("final_conviction", 0.0) or trade_dec.get("confidence", 0.0)
+                    target_price = (
+                        trade_dec.get("target_price") or trade_dec.get("take_profit") or None
+                    )
+                    conviction = fund_decision.get("final_conviction", 0.0) or trade_dec.get(
+                        "confidence", 0.0
+                    )
                     stc_val = (technical_report.get("indicators") or {}).get("stc_value")
 
                     trade_id = self._paper_tracker.add_paper_trade(
@@ -419,8 +454,12 @@ class SignalScanner:
                             "direction": final_action.upper(),
                             "summary": result.get("summary", ""),
                             "regime": technical_report.get("regime") or "unknown",
-                            "bias": technical_report.get("trend") or technical_report.get("bias") or "unknown",
-                            "entry_stc_value": round(float(stc_val), 2) if stc_val is not None else None,
+                            "bias": technical_report.get("trend")
+                            or technical_report.get("bias")
+                            or "unknown",
+                            "entry_stc_value": (
+                                round(float(stc_val), 2) if stc_val is not None else None
+                            ),
                             "pipeline_conviction": round(float(conviction), 4),
                             "predicted_direction": final_action.upper(),
                         },
@@ -428,7 +467,11 @@ class SignalScanner:
                     logger.info(
                         "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
                         "executed=True reason=paper_mode_bypass trade_id=%s",
-                        symbol, final_action, _confidence, 0.0, trade_id[:8]
+                        symbol,
+                        final_action,
+                        _confidence,
+                        0.0,
+                        trade_id[:8],
                     )
                 except Exception as _paper_exc:
                     logger.error(
@@ -438,13 +481,20 @@ class SignalScanner:
                 logger.info(
                     "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
                     "executed=False reason=live_mode_requires_human approval_id=%s",
-                    symbol, final_action, _confidence, 0.0, approval_id[:8]
+                    symbol,
+                    final_action,
+                    _confidence,
+                    0.0,
+                    approval_id[:8],
                 )
             else:
                 logger.warning(
                     "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
                     "executed=False reason=paper_tracker_not_available",
-                    symbol, final_action, _confidence, 0.0
+                    symbol,
+                    final_action,
+                    _confidence,
+                    0.0,
                 )
 
             from notifications.pending_approval_notify import (
