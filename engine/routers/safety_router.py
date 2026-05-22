@@ -581,3 +581,76 @@ async def get_position_size(
     except Exception as e:
         logger.error(f"[POSITION-SIZE] Calculate error: {e}")
         raise HTTPException(500, f"Failed to calculate position size: {e}") from e
+
+
+@router.get("/config")
+async def get_safety_config():
+    """Return current risk parameter configuration (read-only).
+    Sourced from settings singleton — reflects .env values at startup.
+    """
+    from config import settings
+
+    return {
+        "max_daily_loss_pct": settings.MAX_DAILY_LOSS_PCT,
+        "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
+        "max_position_size_pct": settings.MAX_POSITION_SIZE_PCT,
+        "max_contracts_per_instrument": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+        "max_overnight_contracts": settings.MAX_OVERNIGHT_CONTRACTS,
+        "max_orders_per_minute": settings.MAX_ORDERS_PER_MINUTE,
+        "max_single_order_value": settings.MAX_SINGLE_ORDER_VALUE,
+        "max_margin_utilization": settings.MAX_MARGIN_UTILIZATION,
+        "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
+        "require_human_approval": settings.REQUIRE_HUMAN_APPROVAL,
+        "ibkr_host": settings.IBKR_HOST,
+        "ibkr_port": settings.IBKR_PORT,
+        "ibkr_client_id": settings.IBKR_CLIENT_ID,
+        "ibkr_paper_mode": settings.IBKR_PAPER_MODE,
+    }
+
+
+@router.get("/loss-tracker")
+async def get_loss_tracker_summary():
+    """Return consecutive loss tracking state."""
+    if _loss_tracker is None:
+        raise HTTPException(500, "Loss tracker not initialized")
+    try:
+        return _loss_tracker.get_status()
+    except Exception as e:
+        logger.error(f"[LOSS-TRACKER] Status query failed: {e}")
+        raise HTTPException(500, f"Failed to get loss tracker status: {e}") from e
+
+
+@router.get("/regime-alert")
+async def get_regime_alert():
+    """P3-15 regime detector: MES daily RSI and VIX sustained-threshold alerts.
+
+    Checks two conditions:
+      C1 PERSISTENT_OVERSOLD: MES daily RSI(14) < 30 for >= 5 consecutive days.
+      C2 HIGH_VIX: VIX > 25 for >= 3 consecutive trading days.
+
+    Returns RegimeAlertReport as JSON. `any_alert=true` means at least one
+    condition is active — escalate (reduce size, widen stops, or pause signals).
+    """
+    try:
+        from analytics.regime_detector import check_regime_alerts
+
+        report = check_regime_alerts()
+        return report.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/retirement-status")
+async def get_retirement_status(symbol: str = "MES"):
+    """P3-39 strategy retirement criteria: rolling win rate, PF, loss streak, drawdown.
+
+    Evaluates 8 checks (R1-R4 RETIRE, P1-P4 PAUSE) against paper trade history.
+    Returns RetirementStatus with recommendation: RETIRE | PAUSE | HOLD.
+    """
+    try:
+        from backtest.strategy_retirement import check_retirement_from_db
+
+        status = check_retirement_from_db(symbol.upper())
+        return status.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e

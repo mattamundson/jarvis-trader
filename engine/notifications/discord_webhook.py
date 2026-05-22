@@ -28,6 +28,8 @@ posts at most 4 messages per tick — well inside the limit.
 
 from __future__ import annotations
 
+import hashlib
+import hmac as _hmac_module
 import logging
 import os
 from datetime import datetime, timezone
@@ -76,14 +78,35 @@ def _footer() -> dict:
     return {"text": "JARVIS Autonomous Pipeline"}
 
 
-async def _post(embed: dict) -> None:
+# ---------------------------------------------------------------------------
+# HMAC helpers — §6.2 forged-reaction protection
+# ---------------------------------------------------------------------------
+
+
+def _hmac_key() -> bytes | None:
+    """Return the signing key bytes from JARVIS_APPROVAL_HMAC_KEY, or None if not set."""
+    raw = os.environ.get("JARVIS_APPROVAL_HMAC_KEY", "").strip()
+    return raw.encode() if raw else None
+
+
+def _sign_candidate_id(candidate_id: int) -> str | None:
+    """Return a 16-char HMAC-SHA256 hex token for the given candidate ID, or None if key absent."""
+    key = _hmac_key()
+    if key is None:
+        return None
+    return _hmac_module.new(key, str(candidate_id).encode(), hashlib.sha256).hexdigest()[:16]
+
+
+async def _post(embed: dict, content: str = "") -> None:
     """POST a single rich embed to the approval webhook. Silently no-ops if not configured."""
     url = _webhook_url()
     if not url:
         logger.debug("[discord_webhook] JARVIS_DISCORD_APPROVAL_WEBHOOK not set — skipping")
         return
 
-    payload = {"username": "JARVIS", "embeds": [embed]}
+    payload: dict = {"username": "JARVIS", "embeds": [embed]}
+    if content:
+        payload["content"] = content
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
             resp = await client.post(url, json=payload)
@@ -240,7 +263,11 @@ async def post_approval_candidate(candidate: dict) -> None:
             "footer": _footer(),
             "timestamp": _iso_ts(),
         }
-        await _post(embed)
+        hmac_token = _sign_candidate_id(candidate_id)
+        content_str = f"approval candidate (ID {candidate_id})"
+        if hmac_token:
+            content_str += f" | auth:{hmac_token}"
+        await _post(embed, content=content_str)
 
     except Exception as exc:
         logger.warning("[discord_webhook] post_approval_candidate failed (non-fatal): %s", exc)

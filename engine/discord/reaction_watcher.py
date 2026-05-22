@@ -41,6 +41,8 @@ caught and retried.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac as _hmac_module
 import json
 import logging
 import os
@@ -89,6 +91,10 @@ EMOJI_EXTEND = "⏸"  # ⏸
 # Matches patterns like "New trade candidate (ID 17)" or "approval candidate (id 17)"
 _CANDIDATE_ID_RE = re.compile(r"(?:candidate|approval)[^(]*\((?:ID\s*)?(\d+)\)", re.IGNORECASE)
 
+# Regex to extract HMAC token embedded by discord_webhook.post_approval_candidate.
+# Matches "auth:<16-char-hex>" appended by _sign_candidate_id.
+_HMAC_TOKEN_RE = re.compile(r"auth:([0-9a-f]+)", re.IGNORECASE)
+
 # Back-off caps
 _MAX_BACKOFF_SECONDS = 60
 _INITIAL_BACKOFF_SECONDS = 2
@@ -118,6 +124,41 @@ def _get_channel_id() -> str:
 
 def _get_engine_base_url() -> str:
     return os.getenv("ENGINE_BASE_URL", "http://127.0.0.1:8010")
+
+
+# ---------------------------------------------------------------------------
+# HMAC helpers — §6.2 forged-reaction protection
+# ---------------------------------------------------------------------------
+
+
+def _get_hmac_key_bytes() -> bytes | None:
+    """Return the signing key bytes from JARVIS_APPROVAL_HMAC_KEY, or None if not set."""
+    raw = os.getenv("JARVIS_APPROVAL_HMAC_KEY", "").strip()
+    return raw.encode() if raw else None
+
+
+def _extract_approval_hmac(content: str) -> str | None:
+    """Extract the 'auth:<token>' HMAC token from a message content string, or None."""
+    m = _HMAC_TOKEN_RE.search(content)
+    return m.group(1) if m else None
+
+
+def _verify_approval_hmac(candidate_id: int, token: str) -> bool:
+    """
+    Verify the HMAC token for the given candidate ID.
+
+    Returns True when:
+      - JARVIS_APPROVAL_HMAC_KEY is not set (key absent → skip check, backward compat)
+      - Key is set AND token matches the expected HMAC-SHA256[:16] of str(candidate_id)
+
+    Returns False when:
+      - Key is set but token is wrong, empty, or missing
+    """
+    key = _get_hmac_key_bytes()
+    if key is None:
+        return True  # HMAC not configured — allow all (backward compat)
+    expected = _hmac_module.new(key, str(candidate_id).encode(), hashlib.sha256).hexdigest()[:16]
+    return _hmac_module.compare_digest(expected, (token or "").lower())
 
 
 def is_reaction_watcher_enabled() -> bool:
@@ -305,9 +346,19 @@ async def _handle_reaction(
         )
         return
 
-    # --- Extract candidate ID from message content ---
+    # --- Extract candidate ID from message content (preferred) or embed title (fallback) ---
+    # The content field carries the HMAC token; embed title is a backward-compat fallback
+    # for pre-HMAC messages (those won't pass HMAC check when key is configured).
     content = msg_data.get("content", "")
     candidate_id = _extract_candidate_id(content)
+
+    if candidate_id is None:
+        for embed in msg_data.get("embeds") or []:
+            title = embed.get("title") or ""
+            candidate_id = _extract_candidate_id(title)
+            if candidate_id is not None:
+                break
+
     if candidate_id is None:
         logger.info(
             "reaction_watcher: bot-authored message %s has no parseable candidate ID "
@@ -315,6 +366,20 @@ async def _handle_reaction(
             message_id,
             emoji_name,
             content[:120],
+        )
+        return
+
+    # --- HMAC verification (§6.2) ---
+    # Reject reactions to messages that lack a valid HMAC token when key is configured.
+    # This closes the forged-reaction attack: even bot-authored messages must carry a
+    # token that only the engine (holding JARVIS_APPROVAL_HMAC_KEY) could have produced.
+    hmac_token = _extract_approval_hmac(content)
+    if not _verify_approval_hmac(candidate_id, hmac_token or ""):
+        logger.warning(
+            "reaction_watcher: HMAC verification FAILED for candidate %d (message=%s) — "
+            "reaction rejected as potentially forged",
+            candidate_id,
+            message_id,
         )
         return
 

@@ -5,7 +5,7 @@ Sentiment data endpoints
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -45,4 +45,10 @@ async def get_sentiment_recent():
     return results
 
 
-# ── Watchlist ─────────────────────────────────────────────────────────────
+@router.get("/sentiment/news/{symbol}")
+async def get_news_sentiment(symbol: str):
+    """Get news sentiment for a symbol via Finnhub"""
+    if not data_manager or not data_manager.finnhub:
+        raise HTTPException(503, "Finnhub not connected (add FINNHUB_API_KEY to .env)")
+    sentiment = data_manager.finnhub.get_news_sentiment(symbol)
+    return {"symbol": symbol, "sentiment": sentiment}
