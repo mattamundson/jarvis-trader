@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,8 @@ def _init_schema(db_path: Path) -> None:
     with sqlite3.connect(db_path) as conn:
         # Schema mirrors AgentFeedbackTracker._init_db post 2026-04-25 migration:
         # 7 *_signal columns + regime, keeping cold-start parity with production.
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS trade_outcomes (
                 trade_id TEXT PRIMARY KEY,
                 timestamp TEXT,
@@ -51,7 +53,8 @@ def _init_schema(db_path: Path) -> None:
                 harmonic_signal REAL,
                 regime TEXT
             )
-        """)
+        """
+        )
 
 
 def _seed_rows(db_path: Path, agent_idx: int, n: int, now_iso: str | None = None):
@@ -60,7 +63,6 @@ def _seed_rows(db_path: Path, agent_idx: int, n: int, now_iso: str | None = None
     agent_idx must be in [0, len(_TEST_AGENTS)).
     """
     if now_iso is None:
-        from datetime import datetime, timezone
         now_iso = datetime.now(timezone.utc).isoformat()
     if not (0 <= agent_idx < len(_TEST_AGENTS)):
         raise ValueError(f"agent_idx {agent_idx} out of range; expected 0..{len(_TEST_AGENTS) - 1}")
@@ -129,9 +131,16 @@ def test_calibration_cold_db_returns_neutral(client_with_db):
 
     # Shape
     assert set(data.keys()) >= {
-        "brier_enabled", "brier_blend_alpha", "min_trades_threshold",
-        "window_days", "agents", "per_agent", "total_outcomes",
-        "ready_to_activate", "neutral_sentinel", "timestamp",
+        "brier_enabled",
+        "brier_blend_alpha",
+        "min_trades_threshold",
+        "window_days",
+        "agents",
+        "per_agent",
+        "total_outcomes",
+        "ready_to_activate",
+        "neutral_sentinel",
+        "timestamp",
     }
     # Cold state
     assert data["total_outcomes"] == 0
