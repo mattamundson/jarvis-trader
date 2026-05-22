@@ -92,6 +92,20 @@ class KillSwitchReason(Enum):
     DATA_FEED_LOSS = "data_feed_loss"
     BROKER_DISCONNECT = "broker_disconnect"
     ANOMALOUS_ORDER_RATE = "anomalous_order_rate"
+    EMERGENCY_FLATTEN = "emergency_flatten"
+
+
+class HaltLevel(Enum):
+    """Ordered escalation tiers for trading halt state.
+
+    NORMAL → SOFT_HALT → HARD_HALT → EMERGENCY_FLATTEN is the escalation path.
+    Downgrade (HARD_HALT → NORMAL) requires human deactivation via the API.
+    """
+
+    NORMAL = "normal"
+    SOFT_HALT = "soft_halt"  # Position size reduced by loss tracker
+    HARD_HALT = "hard_halt"  # Kill switch active — all new orders rejected
+    EMERGENCY_FLATTEN = "emergency_flatten"  # Hard halt + positions being liquidated
 
 
 # Symbols eligible to hold overnight (23h markets); subject to MAX_OVERNIGHT_CONTRACTS.
@@ -216,6 +230,7 @@ class SafetyLayer:
         )
         self._kill_switch_active = False
         self._kill_switch_reason: KillSwitchReason | None = None
+        self._emergency_flatten_activated: bool = False
 
         # Daily tracking (reset at market open)
         self._daily_realized_pnl: float = 0.0
@@ -437,6 +452,15 @@ class SafetyLayer:
                         "trading remains HALTED until human deactivates",
                         self._kill_switch_reason.value if self._kill_switch_reason else "unknown",
                     )
+                    flatten_row = conn.execute(
+                        "SELECT value FROM system_state WHERE key = 'emergency_flatten_activated'"
+                    ).fetchone()
+                    if flatten_row and flatten_row["value"] == "true":
+                        self._emergency_flatten_activated = True
+                        logger.critical(
+                            "SafetyLayer: emergency flatten state restored from DB - "
+                            "positions may still be open"
+                        )
                 else:
                     logger.debug("SafetyLayer: kill switch not active in DB - starting clean")
             finally:
@@ -469,6 +493,11 @@ class SafetyLayer:
                 conn.execute(
                     "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, ?)",
                     ("kill_switch_reason", reason_str, now),
+                )
+                flatten_str = "true" if self._emergency_flatten_activated else "false"
+                conn.execute(
+                    "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, ?)",
+                    ("emergency_flatten_activated", flatten_str, now),
                 )
                 conn.commit()
                 logger.debug(
@@ -518,6 +547,7 @@ class SafetyLayer:
         """Resume trading. Only callable by human action (not by agents)."""
         self._kill_switch_active = False
         self._kill_switch_reason = None
+        self._emergency_flatten_activated = False
         logger.info(f"Kill switch deactivated by: {authorized_by}")
         # Persist cleared state to SQLite (non-fatal if DB unavailable)
         self._persist_kill_switch_state(False, None)
@@ -533,6 +563,49 @@ class SafetyLayer:
     @property
     def is_killed(self) -> bool:
         return self._kill_switch_active
+
+    # ── Halt Level / Tiered Escalation ────────────────────────────────────────
+
+    @property
+    def current_halt_level(self) -> HaltLevel:
+        """Synthesize existing state into a single escalation tier.
+
+        Hierarchy (highest wins):
+          EMERGENCY_FLATTEN > HARD_HALT > SOFT_HALT > NORMAL
+        """
+        if self._emergency_flatten_activated:
+            return HaltLevel.EMERGENCY_FLATTEN
+        if self._kill_switch_active:
+            return HaltLevel.HARD_HALT
+        if self._loss_tracker is not None and hasattr(
+            self._loss_tracker, "get_position_size_multiplier"
+        ):
+            if self._loss_tracker.get_position_size_multiplier() < 1.0:
+                return HaltLevel.SOFT_HALT
+        return HaltLevel.NORMAL
+
+    async def emergency_flatten_and_halt(self, reason: str = "emergency") -> dict:
+        """Tiered escalation: hard halt + liquidate all open positions.
+
+        Step 1: Activate kill switch (blocks new orders immediately, synchronous).
+        Step 2: Mark emergency flatten activated (persisted to DB).
+        Step 3: Liquidate all positions via MKT orders (async, best-effort).
+
+        Returns a dict with halt_level, kill_switch_activated, flattened,
+        order_ids, and errors from flatten_all_positions().
+        """
+        self.activate_kill_switch(
+            KillSwitchReason.EMERGENCY_FLATTEN,
+            f"Emergency flatten triggered: {reason}",
+        )
+        self._emergency_flatten_activated = True
+        self._persist_kill_switch_state(True, self._kill_switch_reason)
+        flatten_result = await self.flatten_all_positions()
+        return {
+            "halt_level": HaltLevel.EMERGENCY_FLATTEN.value,
+            "kill_switch_activated": True,
+            **flatten_result,
+        }
 
     # ── Per-Account Kill Switch (parallel-paper only) ──────────────────────────
     # These functions are ADDITIVE — they do not modify the global kill switch.
