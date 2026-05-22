@@ -102,8 +102,43 @@ Do NOT cancel the parent entry if children are still live — IB will propagate 
 3. **Read-only or API-disabled account** — Orders fail at broker; safety layer still applies; positions must be reconciled via broker API when live path is enabled (future Tier 3).
 4. **Bracket STP fails on instant MKT fill** — IB paper account sometimes fills market orders before the STP child is registered. The rollback cancel path fires. If the cancel also fails, the position is live without a broker-side stop (engine-side safety layer still monitors). Set `ENABLE_BRACKET_ORDERS=0` as a workaround until the race is resolved in a future IB API version.
 
+## Entry Price Sanity Check (2026-05-21)
+
+Before an approved trade reaches IB submission, `approval/service.py:approve_pending_trade()`
+runs an entry price sanity check that rejects the order if:
+
+```
+|entry_price - market_price| / ATR > ENTRY_PRICE_SANITY_MAX_ATR_DELTA   (default 1.0)
+```
+
+**Motivation:** 2026-05-09 phantom-trade incident — a `stop_loss` field value (7398.5481)
+was copied into `entry_price` for 6 MES SHORT orders. Real market was ~7385;
+delta/ATR ≈ 1.35. No IB order fired (paper mode), but the corrupted entries were
+logged as legitimate positions. This check blocks such corrupted prices at the
+order surface.
+
+**HTTP response on failure:** `422 Unprocessable Entity` with a human-readable reason.
+The approval row status remains `pending` — no paper_trade row is created.
+
+**Module:** `engine/risk/entry_price_sanity.py` (additive — does NOT modify `safety_layer.py`).
+
+**Env vars:**
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ENABLE_ENTRY_PRICE_SANITY` | `1` | Opt-out: set `0` to disable |
+| `ENTRY_PRICE_SANITY_MAX_ATR_DELTA` | `1.0` | ATR-multiple threshold |
+
+**Check also runs at enqueue** in `scheduler/pipeline_autonomous.py` so corrupted
+verdicts are rejected before they enter the approval queue.
+
+**Edge case — low-volatility / overnight regimes:** When ATR is very small, a genuine
+rounding slip may exceed 1.0 ATR. Consider raising `ENTRY_PRICE_SANITY_MAX_ATR_DELTA`
+to 2.0 for overnight sessions, or add an absolute ATR floor in a future iteration.
+
 ## Related
 
 - [P0_PAPER_IB_VERIFICATION.md](P0_PAPER_IB_VERIFICATION.md) — operator checklist.
 - [PAPER_DATA_SOURCES.md](PAPER_DATA_SOURCES.md) — engine portfolio vs runner JSON.
 - [PAPER_TRADING_APPROVAL.md](PAPER_TRADING_APPROVAL.md) — full approval flow.
+- [AUTONOMOUS_PIPELINE_RUNBOOK.md](AUTONOMOUS_PIPELINE_RUNBOOK.md) — autonomous scheduler gates.

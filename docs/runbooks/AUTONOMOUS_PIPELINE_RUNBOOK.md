@@ -67,10 +67,48 @@ endpoints and the Hermes Telegram skill for human review.
 | Candidate TTL expired | approve endpoint + list_pending | approve returns HTTP 410; candidate auto-expired |
 | Duplicate (symbol, direction) with live TTL | Enqueue idempotency guard | Skips insert, logs SKIP |
 | Confidence < threshold | Tick verdict filter | Skips enqueue, logs SKIP |
+| **Entry price sanity** | Enqueue (tick) + approve endpoint | Enqueue: skips insert, logs ERROR; approve: HTTP 422 |
 
 The `approve` endpoint makes **two** independent safety checks (pre-flight + safety_layer live
 re-check) with no caching between them. A kill-switch trip during the approval HTTP round-trip
 will cause the approve call to return 409 even if the pre-flight passed.
+
+---
+
+## Entry Price Sanity Check
+
+Introduced 2026-05-21 to close the corrupted-price class of bug from the 2026-05-09
+phantom-trade incident (6 MES SHORT entries at price 7398.5481 — a `stop_loss` value
+mis-mapped into the `entry_price` field; real market was ~7385, delta/ATR ≈ 1.35).
+
+**Formula:** `|entry_price - market_price| / ATR > ENTRY_PRICE_SANITY_MAX_ATR_DELTA`
+
+If the ratio exceeds the threshold (default 1.0) the candidate is rejected at TWO points:
+1. **At enqueue** (`autonomous_tick`) — corrupted verdict never enters the approval queue.
+2. **At approve** (`approve_pending_trade`) — human-initiated approval for a stale corrupted row is blocked with HTTP 422.
+
+**Env vars:**
+| Variable | Default | Effect |
+|---|---|---|
+| `ENABLE_ENTRY_PRICE_SANITY` | `1` | Set to `0` to disable entirely (opt-out) |
+| `ENTRY_PRICE_SANITY_MAX_ATR_DELTA` | `1.0` | Raise to allow wider band; lower to tighten |
+
+**To disable temporarily** (e.g., during extreme vol when ATR is unreliable):
+```bash
+# In engine/.env:
+ENABLE_ENTRY_PRICE_SANITY=0
+# Then restart: .\restart_engine.ps1
+```
+
+**Log signatures to watch for:**
+- `[ENTRY_PRICE_SANITY] rejected: [MES] entry_price=7398.5481 is 1.35 ATR units from market=7385`
+- `[AutonomousTick][ENTRY_PRICE_SANITY] MES enqueue rejected: ...`
+
+**Edge case — low-volatility regimes:** When ATR is very small (e.g., MGC overnight at 0.5
+points), even a legitimately rounded entry (e.g., a 0.6-point slip from market) can fail
+the check. If false rejections are observed in flat overnight sessions, raise
+`ENTRY_PRICE_SANITY_MAX_ATR_DELTA` to 2.0 or add an absolute floor (minimum ATR = 1 tick).
+The current implementation has no absolute floor — consider this before tightening below 1.0.
 
 ---
 

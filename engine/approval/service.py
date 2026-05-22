@@ -270,6 +270,7 @@ async def approve_pending_trade(
     safety_layer,
     resolved_by: str,
     entry_price_override: Optional[float] = None,
+    data_manager=None,
 ) -> dict[str, Any]:
     """Approve a pending trade via the canonical shared control path."""
     if paper_tracker is None:
@@ -285,6 +286,34 @@ async def approve_pending_trade(
     quantity = float(row["quantity"])
     snapshot = row.get("pipeline_snapshot") or {}
     entry_price = resolve_entry_price(row, entry_price_override=entry_price_override)
+
+    # Entry price sanity check — rejects corrupted prices (e.g. stop_loss field copied
+    # into entry_price, as in the 2026-05-09 phantom-trade incident).
+    # Runs AFTER all other pre-submission gates but BEFORE IB submission.
+    from risk.entry_price_sanity import check_entry_price_sanity, is_entry_price_sanity_enabled
+
+    if is_entry_price_sanity_enabled() and data_manager is not None:
+        try:
+            is_sane, sanity_reason = await check_entry_price_sanity(
+                symbol=symbol,
+                entry_price=entry_price,
+                data_manager=data_manager,
+            )
+            if not is_sane:
+                raise ApprovalFlowError(
+                    422,
+                    f"Entry price sanity check failed: {sanity_reason}",
+                )
+        except ApprovalFlowError:
+            raise
+        except Exception as _sanity_exc:
+            # Log but do not block — unexpected errors in the check must not
+            # prevent human-authorized approvals from going through.
+            logger.error(
+                "[ENTRY_PRICE_SANITY] unexpected error during check for %s: %s — continuing",
+                approval_id[:8],
+                _sanity_exc,
+            )
 
     # HB-1 bracket params — lifted from the pipeline snapshot (Trader output).
     # When ENABLE_BROKER_BRACKETS is True and stop_price is non-None,
