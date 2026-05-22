@@ -164,7 +164,9 @@ async def _submit_broker_entry_with_stop(
     return result
 
 
-def inject_dependencies(scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker=None, sdk_pipeline=None):
+def inject_dependencies(
+    scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker=None, sdk_pipeline=None
+):
     """Inject global dependencies from main.py"""
     global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker, _sdk_pipeline
     _scheduler = scheduler
@@ -543,7 +545,11 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
         _confidence,
         _threshold,
         str(is_directional and not requires_human),
-        "hold" if not is_directional else ("queued_for_approval" if requires_human else "auto_logged"),
+        (
+            "hold"
+            if not is_directional
+            else ("queued_for_approval" if requires_human else "auto_logged")
+        ),
     )
 
     if is_directional and requires_human and _db_manager is not None:
@@ -647,7 +653,16 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                     name: float(rep.get("signal", 0.0))
                     for name, rep in (analyst_reports or {}).items()
                     if isinstance(rep, dict)
-                    and name in ("technical", "news", "social", "fundamental", "corey", "breakout", "harmonic")
+                    and name
+                    in (
+                        "technical",
+                        "news",
+                        "social",
+                        "fundamental",
+                        "corey",
+                        "breakout",
+                        "harmonic",
+                    )
                 }
                 trade_id = _paper_tracker.add_paper_trade(
                     symbol=symbol,
@@ -664,24 +679,24 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
                         "regime": regime_label,
                         "bias": regime_bias,
                         "regime_layers_aligned": regime_layers,
-                        "entry_stc_value": round(float(stc_val), 2)
-                        if stc_val is not None
-                        else None,
+                        "entry_stc_value": (
+                            round(float(stc_val), 2) if stc_val is not None else None
+                        ),
                         "pipeline_conviction": round(float(conviction), 4),
                         "predicted_direction": final_action.upper(),
                         "analyst_signals": _analyst_signals,
-                        "broker_entry_order_id": broker_order.get("entry_order_id")
-                        if broker_order
-                        else None,
-                        "broker_stp_order_id": broker_order.get("stp_order_id")
-                        if broker_order
-                        else None,
-                        "broker_stp_linked": broker_order.get("stp_linked")
-                        if broker_order
-                        else None,
-                        "broker_routed_to_ib": broker_order.get("routed_to_ib")
-                        if broker_order
-                        else None,
+                        "broker_entry_order_id": (
+                            broker_order.get("entry_order_id") if broker_order else None
+                        ),
+                        "broker_stp_order_id": (
+                            broker_order.get("stp_order_id") if broker_order else None
+                        ),
+                        "broker_stp_linked": (
+                            broker_order.get("stp_linked") if broker_order else None
+                        ),
+                        "broker_routed_to_ib": (
+                            broker_order.get("routed_to_ib") if broker_order else None
+                        ),
                     },
                 )
                 logger.info(
@@ -877,3 +892,25 @@ async def get_shadow_metrics(strategy_name: Optional[str] = None):
 
     metrics = _sdk_pipeline._shadow_tracker.get_shadow_performance(strategy_name=strategy_name)
     return metrics
+
+
+@router.get("/history")
+async def get_pipeline_history(limit: int = 50, symbol: str = ""):
+    """
+    Return historical pipeline run records from SQLite.
+    Query params:
+        limit  : max rows to return (default 50, capped at 200)
+        symbol : filter by ticker symbol (optional, case-insensitive)
+    """
+    if not _db_manager:
+        return {"runs": [], "count": 0, "note": "db_manager not initialized"}
+    try:
+        limit = min(max(1, limit), 200)
+        runs = _db_manager.get_pipeline_history(
+            limit=limit,
+            symbol=symbol.upper() if symbol else None,
+        )
+        return {"runs": runs, "count": len(runs)}
+    except Exception as exc:
+        logger.error(f"[DB] get_pipeline_history failed: {exc}")
+        return {"runs": [], "count": 0, "error": str(exc)}

@@ -2765,105 +2765,12 @@ async def get_portfolio():
 # ── Paper Trading Portfolio ───────────────────────────────────────────────
 
 
-class PaperTradeRequest(BaseModel):
-    symbol: str
-    action: str  # "buy" | "sell" | "sell_short" | "buy_to_cover"
-    quantity: float
-    price: float
-    notes: str = ""
-    close_trade_id: str | None = None  # If set, this call closes an existing trade
 
 
 # ── /portfolio/paper/positions — served by routers/portfolio_router.py (wired 2026-05-22) ──
 
 
-@app.post("/portfolio/paper/trade/manual", response_model=PaperTradeResponse)
-async def submit_paper_trade(req: PaperTradeRequest):
-    """
-    Open or close a paper trade.\n
-    - If close_trade_id is omitted (or null):  opens a new position.
-    - If close_trade_id is provided:           closes that position at req.price.\n
-    Body fields:
-        symbol        : ticker (e.g. "SPY", "MES")
-        action        : "buy" | "sell" | "sell_short" | "buy_to_cover"
-        quantity      : number of shares/contracts
-        price         : fill price
-        notes         : optional free-text (pipeline summary, reasoning, etc.)
-        close_trade_id: trade_id to close (optional)
-    """
-    if not paper_tracker:
-        raise HTTPException(503, "Paper tracker not initialized")
-
-    if req.close_trade_id:
-        try:
-            trade = paper_tracker.close_trade(req.close_trade_id, req.price)
-        except KeyError as e:
-            raise HTTPException(404, f"No open trade with id={req.close_trade_id!r}") from e
-
-        # Send WhatsApp notification for closed trade
-        try:
-            from notifications.whatsapp import format_trade_closed_alert, send_whatsapp_message
-
-            duration_min = None
-            if trade.entry_time:
-                try:
-                    from dateutil import parser as dtparser
-
-                    entry_dt = dtparser.parse(trade.entry_time)
-                    if entry_dt.tzinfo is None:
-                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
-                    duration_min = (datetime.now(timezone.utc) - entry_dt).total_seconds() / 60
-                except Exception:
-                    pass
-
-            msg = format_trade_closed_alert(
-                symbol=trade.symbol,
-                side=trade.action,
-                quantity=int(trade.quantity),
-                entry_price=float(trade.entry_price),
-                exit_price=float(trade.exit_price),
-                pnl=float(trade.pnl),
-                duration_minutes=duration_min,
-            )
-            asyncio.create_task(send_whatsapp_message(msg))
-        except Exception:
-            pass  # Never let notification failure break the trade close
-
-        return {
-            "status": "closed",
-            "trade": trade.to_dict(),
-        }
-    else:
-        from approval.service import approved_watchlist_symbols
-        from execution.order_router import FUTURES_SYMBOLS
-
-        if settings.LIVE_TRADING_ENABLED:
-            raise HTTPException(409, "Direct paper-trade open disabled in live mode")
-        if safety_layer and safety_layer.get_status().get("kill_switch_active"):
-            raise HTTPException(409, "Kill switch active — cannot open direct paper trade")
-        if (
-            req.symbol.upper() in FUTURES_SYMBOLS
-            and req.symbol.upper() not in approved_watchlist_symbols()
-        ):
-            raise HTTPException(
-                400,
-                f"Symbol {req.symbol.upper()} not on approved futures watchlist",
-            )
-        trade_id = paper_tracker.open_trade(
-            symbol=req.symbol,
-            action=req.action,
-            quantity=req.quantity,
-            price=req.price,
-            notes=req.notes,
-        )
-        return {
-            "status": "opened",
-            "trade_id": trade_id,
-            "symbol": req.symbol.upper(),
-            "action": req.action,
-            "quantity": req.quantity,
-            "entry_price": req.price,
-        }
+# -- /portfolio/paper/trade/manual -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 
 # -- /portfolio/paper/performance -- served by routers/portfolio_router.py (wired 2026-05-22) --
@@ -2900,169 +2807,29 @@ async def get_pending_signals():
 # -- /portfolio/history/trades -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 
-@app.get("/portfolio/history/daily-pnl", response_model=DailyPnLResponse)
-async def get_daily_pnl(days: int = 30):
-    """
-    Return daily P&L snapshots for the last N days.\n
-    Query params:
-        days : lookback window in calendar days (default 30)
-    """
-    if not db_manager:
-        return {"daily_pnl": [], "days": days, "note": "db_manager not initialized"}
-    try:
-        records = db_manager.get_daily_pnl(days=days)
-        return {"daily_pnl": records, "days": days, "count": len(records)}
-    except Exception as exc:
-        logger.error(f"[DB] get_daily_pnl failed: {exc}")
-        return {"daily_pnl": [], "days": days, "error": str(exc)}
+# -- /portfolio/history/daily-pnl -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 
-@app.get("/portfolio/history/decisions", response_model=DecisionHistoryResponse)
-async def get_decision_history(limit: int = 50, symbol: str = ""):
-    """
-    Return historical agent decisions from SQLite.\n
-    Query params:
-        limit  : max rows to return (default 50)
-        symbol : filter by ticker symbol (optional)
-    """
-    if not db_manager:
-        return {"decisions": [], "count": 0, "note": "db_manager not initialized"}
-    try:
-        decisions = db_manager.get_decisions(
-            limit=limit,
-            symbol=symbol.upper() if symbol else None,
-        )
-        return {"decisions": decisions, "count": len(decisions)}
-    except Exception as exc:
-        logger.error(f"[DB] get_decisions failed: {exc}")
-        return {"decisions": [], "count": 0, "error": str(exc)}
+# -- /portfolio/history/decisions -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 
-@app.get("/portfolio/stats/summary", response_model=StatsSummaryResponse)
-async def get_stats_summary():
-    """
-    Aggregate performance summary from SQLite — win rate, total P&L, trade counts,
-    best/worst trade, profit factor.
-    """
-    if not db_manager:
-        return {"note": "db_manager not initialized"}
-    try:
-        summary = db_manager.get_stats_summary()
-        return summary
-    except Exception as exc:
-        logger.error(f"[DB] get_stats_summary failed: {exc}")
-        return {"error": str(exc)}
+# -- /portfolio/stats/summary -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 
-@app.get("/portfolio/stats/drawdown", response_model=DrawdownResponse)
-async def get_drawdown():
-    """
-    Return max drawdown and the equity curve used to compute it (from SQLite trades).
-    """
-    if not db_manager:
-        return {"max_drawdown": 0.0, "equity_curve": [], "note": "db_manager not initialized"}
-    try:
-        drawdown = db_manager.get_drawdown()
-        return drawdown
-    except Exception as exc:
-        logger.error(f"[DB] get_drawdown failed: {exc}")
-        return {"max_drawdown": 0.0, "equity_curve": [], "error": str(exc)}
+# -- /portfolio/stats/drawdown -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 
 # ── Streak Stats ──────────────────────────────────────────────────────────
 
 
-@app.get("/portfolio/stats/streaks")
-async def get_trading_streaks():
-    """Calculate current and maximum win/loss streaks from closed trades."""
-    if not db_manager:
-        raise HTTPException(status_code=503, detail="Database not initialized")
+# -- /portfolio/stats/streaks -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
-    try:
-        import sqlite3
-
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            try:
-                rows = conn.execute(
-                    """SELECT pnl FROM paper_trades
-                       WHERE status = 'closed' AND pnl IS NOT NULL
-                       ORDER BY exit_time ASC"""
-                ).fetchall()
-            finally:
-                conn.close()
-
-        if not rows:
-            return {
-                "current_streak": 0,
-                "current_type": "none",
-                "max_win_streak": 0,
-                "max_loss_streak": 0,
-                "total_trades": 0,
-                "recent_results": [],
-            }
-
-        pnls = [r[0] for r in rows]
-        results = ["W" if p > 0 else "L" for p in pnls]
-
-        # Current streak
-        current_type = results[-1]
-        current = 0
-        for r in reversed(results):
-            if r == current_type:
-                current += 1
-            else:
-                break
-
-        # Max streaks
-        max_win = max_loss = win_run = loss_run = 0
-        for r in results:
-            if r == "W":
-                win_run += 1
-                loss_run = 0
-            else:
-                loss_run += 1
-                win_run = 0
-            max_win = max(max_win, win_run)
-            max_loss = max(max_loss, loss_run)
-
-        return {
-            "current_streak": current,
-            "current_type": "win" if current_type == "W" else "loss",
-            "max_win_streak": max_win,
-            "max_loss_streak": max_loss,
-            "total_trades": len(results),
-            "recent_results": results[-10:],
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ── Pipeline Run History ───────────────────────────────────────────────────
 
 
-@app.get("/pipeline/history")
-async def get_pipeline_history(limit: int = 50, symbol: str = ""):
-    """
-    Return historical pipeline run records from SQLite.\n
-    Each record corresponds to one TradingPipeline execution triggered by
-    a TradingView webhook or manual call.\n
-    Query params:
-        limit  : max rows to return (default 50, capped at 200)
-        symbol : filter by ticker symbol (optional, case-insensitive)
-    """
-    if not db_manager:
-        return {"runs": [], "count": 0, "note": "db_manager not initialized"}
-    try:
-        limit = min(max(1, limit), 200)
-        runs = db_manager.get_pipeline_history(
-            limit=limit,
-            symbol=symbol.upper() if symbol else None,
-        )
-        return {"runs": runs, "count": len(runs)}
-    except Exception as exc:
-        logger.error(f"[DB] get_pipeline_history failed: {exc}")
-        return {"runs": [], "count": 0, "error": str(exc)}
+# -- /pipeline/history -- served by routers/pipeline_router.py (wired 2026-05-22) --
 
 
 # ── Analytics / Performance Validation ────────────────────────────────────
@@ -3599,61 +3366,7 @@ async def get_mgc_paper_performance():
 # ── WebSocket Real-Time Events ────────────────────────────────────────────
 
 
-@app.websocket("/ws/events")
-async def websocket_endpoint(websocket):
-    """
-    WebSocket endpoint for real-time trading events.
-
-    Accepts connections at /ws/events.
-    Sends JSON events for:
-      - order_fill: Order execution
-      - kill_switch: Kill switch state changes
-      - circuit_breaker: Circuit breaker triggers
-      - pipeline_complete: Pipeline analysis completion
-      - safety_event: Safety/risk events
-      - price_update: Price updates
-      - ping: Keep-alive ping
-
-    Connection is kept alive with ping frames every 30 seconds.
-    Client is automatically removed on disconnect or send failure.
-    """
-    if not ws_manager:
-        await websocket.close(code=1011, reason="WebSocket manager not initialized")
-        return
-
-    await ws_manager.connect(websocket)
-
-    try:
-        # Keep the connection alive and listen for client frames
-        ping_interval = 30  # seconds
-        last_ping = datetime.now()
-
-        while True:
-            try:
-                # Receive with timeout to allow periodic ping
-                data = await asyncio.wait_for(websocket.receive_json(), timeout=ping_interval)
-                logger.debug(f"WebSocket received: {data.get('type', 'unknown')}")
-
-            except asyncio.TimeoutError:
-                # Send ping to keep connection alive
-                now = datetime.now()
-                if (now - last_ping).total_seconds() >= ping_interval:
-                    try:
-                        await websocket.send_json({"type": "ping", "timestamp": now.isoformat()})
-                        last_ping = now
-                    except Exception as e:
-                        logger.debug(f"Ping failed: {e}")
-                        break
-
-            except Exception as e:
-                logger.debug(f"WebSocket receive error: {e}")
-                break
-
-    except Exception as e:
-        logger.error(f"WebSocket connection error: {e}")
-    finally:
-        await ws_manager.disconnect(websocket)
-        logger.info("WebSocket connection closed")
+# -- /ws/events -- served by routers/websocket_router.py (wired 2026-05-22) --
 
 
 # ── WebSocket Status Endpoint ─────────────────────────────────────────────
@@ -3819,152 +3532,15 @@ th, td {{ text-align: left; padding: 8px 10px; border-bottom: 1px solid #262626;
 </html>"""
 
 
-@app.get("/portfolio/stats/session-today")
-async def get_todays_session():
-    """Get today's trading session stats (current calendar day in CT)."""
-    if not db_manager:
-        raise HTTPException(status_code=503, detail="Database not initialized")
-
-    try:
-        import sqlite3
-        from datetime import datetime, timezone
-
-        import pytz
-
-        ct = pytz.timezone("America/Chicago")
-        now_ct = datetime.now(ct)
-        today_ct = now_ct.strftime("%Y-%m-%d")
-
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            try:
-                cursor = conn.execute(
-                    """SELECT pnl, side, symbol, quantity, entry_price, exit_price, entry_time, exit_time
-                       FROM paper_trades
-                       WHERE status = 'closed'
-                         AND date(exit_time) = ?
-                       ORDER BY exit_time ASC""",
-                    (today_ct,),
-                )
-                cols = [d[0] for d in cursor.description]
-                trades = [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
-
-                # Open positions opened today
-                cursor2 = conn.execute(
-                    """SELECT symbol, side, quantity, entry_price, entry_time
-                       FROM paper_trades
-                       WHERE status = 'open'
-                         AND date(entry_time) = ?""",
-                    (today_ct,),
-                )
-                cols2 = [d[0] for d in cursor2.description]
-                open_today = [dict(zip(cols2, row, strict=False)) for row in cursor2.fetchall()]
-            finally:
-                conn.close()
-
-        pnls = [float(t.get("pnl", 0) or 0) for t in trades]
-        wins = [p for p in pnls if p > 0]
-        losses = [p for p in pnls if p < 0]
-
-        gross_pnl = sum(pnls)
-        win_count = len(wins)
-        loss_count = len(losses)
-        win_rate = win_count / len(pnls) if pnls else None
-
-        return {
-            "date": today_ct,
-            "session": "RTH" if 8 <= now_ct.hour < 15 else "EXTENDED",
-            "closed_trades": len(trades),
-            "open_trades": len(open_today),
-            "gross_pnl": round(gross_pnl, 2),
-            "wins": win_count,
-            "losses": loss_count,
-            "win_rate": round(win_rate, 3) if win_rate is not None else None,
-            "best_trade": round(max(pnls), 2) if pnls else None,
-            "worst_trade": round(min(pnls), 2) if pnls else None,
-            "avg_pnl": round(sum(pnls) / len(pnls), 2) if pnls else None,
-            "symbols_traded": list({t.get("symbol") for t in trades}),
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+# -- /portfolio/stats/session-today -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 
-@app.get("/portfolio/stats/weekly")
-async def get_weekly_stats():
-    """Rolling 7-day trade statistics for the paper trading phase."""
-    if db_manager is None:
-        raise HTTPException(status_code=503, detail="DB not initialized")
-    try:
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        with db_manager._lock:
-            conn = db_manager._connect()
-            try:
-                cursor = conn.execute(
-                    "SELECT pnl, symbol FROM paper_trades WHERE status = 'closed' AND exit_time >= ? ORDER BY exit_time DESC",
-                    (cutoff,),
-                )
-                cols = [d[0] for d in cursor.description]
-                trades = [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
-            finally:
-                conn.close()
 
-        pnls = [float(t.get("pnl", 0) or 0) for t in trades]
-        wins = [p for p in pnls if p > 0]
-        total = len(pnls)
-        win_rate = round(len(wins) / total, 4) if total else 0.0
-        return {
-            "period": "7d",
-            "total_trades": total,
-            "wins": len(wins),
-            "losses": len([p for p in pnls if p < 0]),
-            "win_rate": win_rate,
-            "gross_pnl": round(sum(pnls), 2),
-            "avg_pnl": round(sum(pnls) / total, 2) if total else 0.0,
-            "symbols": list({t.get("symbol") for t in trades}),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+# -- /portfolio/stats/weekly -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 
-@app.get("/portfolio/stats/commissions")
-async def get_commission_stats():
-    """
-    Estimate total commissions paid during paper trading phase.
-    MES: $1.57/contract/side (CME exchange + NFA + brokerage estimate)
-    MNQ: $1.57/contract/side
-    MCL: $2.05/contract/side
-    """
-    if db_manager is None:
-        raise HTTPException(status_code=503, detail="DB not initialized")
-    try:
-        RATES = {"MES": 1.57, "MNQ": 1.57, "MCL": 2.05, "DEFAULT": 1.57}
-        trades = db_manager.get_trade_history(limit=10000)
-        total_commissions = 0.0
-        by_symbol: dict[str, float] = {}
-        for t in trades:
-            sym = (t.get("symbol") or "").upper()
-            qty = int(t.get("quantity") or 1)
-            rate = RATES.get(sym, RATES["DEFAULT"])
-            commission = rate * qty * 2  # entry + exit
-            total_commissions += commission
-            by_symbol[sym] = by_symbol.get(sym, 0.0) + commission
+# -- /portfolio/stats/commissions -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
-        # Net PnL after commissions
-        gross_pnl = sum(float(t.get("pnl") or 0) for t in trades if t.get("status") == "closed")
-        net_pnl = gross_pnl - total_commissions
-
-        return {
-            "total_commissions": round(total_commissions, 2),
-            "gross_pnl": round(gross_pnl, 2),
-            "net_pnl": round(net_pnl, 2),
-            "by_symbol": {k: round(v, 2) for k, v in by_symbol.items()},
-            "trade_count": len(trades),
-            "avg_commission_per_trade": round(total_commissions / max(len(trades), 1), 2),
-            "rates": RATES,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # -- /analytics/trades/by-day + /analytics/trades/by-symbol -- served by routers/analytics_router.py --
@@ -4011,65 +3587,4 @@ async def get_alert_stats():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@app.post("/portfolio/import/trades")
-async def import_paper_trades(request: Request):
-    """Bulk import paper trades from JSON array.\n
-    Body: {"trades": [{"symbol": "MES", "action": "LONG", "entry_price": 5000.0,
-                       "exit_price": 5010.0, "quantity": 1, "pnl": 50.0,
-                       "entry_time": "2026-03-01T09:30:00Z",
-                       "exit_time": "2026-03-01T10:00:00Z"}, ...]}
-    Returns: {"imported": N, "skipped": 0, "errors": []}
-    """
-    if db_manager is None:
-        raise HTTPException(status_code=503, detail="DB not initialized")
-    try:
-        body = await request.json()
-        trades = body.get("trades", [])
-        if not isinstance(trades, list):
-            raise HTTPException(status_code=400, detail="'trades' must be a list")
-        if len(trades) > 1000:
-            raise HTTPException(status_code=400, detail="Max 1000 trades per import")
-
-        imported = 0
-        errors = []
-
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            try:
-                for i, t in enumerate(trades):
-                    try:
-                        import uuid as _uuid
-
-                        trade_id = t.get("trade_id") or str(_uuid.uuid4())
-                        conn.execute(
-                            """INSERT OR IGNORE INTO paper_trades
-                               (trade_id, symbol, side, entry_price, exit_price, quantity,
-                                pnl, status, entry_time, exit_time, strategy_params, notes)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                            (
-                                trade_id,
-                                str(t.get("symbol", "UNKNOWN")),
-                                str(t.get("action", t.get("side", "LONG"))),
-                                float(t.get("entry_price", 0)),
-                                float(t.get("exit_price", 0)),
-                                int(t.get("quantity", 1)),
-                                float(t.get("pnl", 0)),
-                                "CLOSED",
-                                str(t.get("entry_time", datetime.now(timezone.utc).isoformat())),
-                                str(t.get("exit_time", datetime.now(timezone.utc).isoformat())),
-                                str(t.get("strategy", t.get("strategy_params", "imported"))),
-                                str(t.get("notes", "")),
-                            ),
-                        )
-                        imported += 1
-                    except Exception as e:
-                        errors.append({"index": i, "error": str(e)})
-                conn.commit()
-            finally:
-                conn.close()
-
-        return {"imported": imported, "skipped": len(errors), "errors": errors[:10]}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+# -- /portfolio/import/trades -- served by routers/portfolio_router.py (wired 2026-05-22) --
