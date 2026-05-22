@@ -383,12 +383,18 @@ class SafetyLayer:
                 self._loss_tracker, "get_consecutive_losses"
             ):
                 consecutive_losses = self._loss_tracker.get_consecutive_losses()
+            # Preserve realized_peak_equity from the existing snapshot row so
+            # the C5 readiness criterion is not disrupted by upsert paths that
+            # don't compute the realized (closed-trades-only) peak.
+            existing_snap = self._db_manager.get_pnl_snapshot(today)
+            realized_peak = existing_snap.get("realized_peak_equity") if existing_snap else None
             self._db_manager.upsert_pnl_snapshot(
                 date=today,
                 daily_pnl=self._daily_realized_pnl,
                 portfolio_equity=self._current_equity,
                 peak_equity=self._equity_peak,
                 consecutive_losses=consecutive_losses,
+                realized_peak_equity=realized_peak,
             )
         except Exception as exc:
             logger.warning("SafetyLayer: failed to persist P&L snapshot to DB: %s", exc)
