@@ -59,6 +59,47 @@
 2. Update **dashboard** types / parsers in [dashboard/lib/api.ts](../../dashboard/lib/api.ts).
 3. Note the change in session log or PR description.
 
+## `paper_trades.idempotency_key` — NOT NULL since migration 032
+
+Since migration 032 (applied 2026-05-21), `paper_trades.idempotency_key` is `TEXT NOT NULL`.
+
+**Schema-level guarantee:** A caller that bypasses `insert_paper_trade()`'s runtime dedup check
+can no longer store a NULL key that would defeat the UNIQUE INDEX
+(`idx_pt_idempotency_key`, partial, `WHERE idempotency_key IS NOT NULL`).
+
+**Key computation:** Every new row must carry a key computed by
+`database._helpers.compute_order_idempotency_key(symbol, side, qty, price)`.
+Formula: `SHA-256(symbol|side|qty_int|price_2dp|floor(epoch/5))[:32]`.
+
+**Python-layer enforcement:** `insert_paper_trade()` now raises `TypeError` when
+`idempotency_key` is empty or missing — fail-fast before any DB round-trip.
+
+**Backfill note (existing rows):** The 16 rows that pre-dated migration 032 were backfilled
+using the same SHA-256 formula but with the row's historical `entry_time` epoch as the bucket
+source (not the current clock). This makes backfill keys:
+- Deterministic (re-runnable migration produces the same keys)
+- Historically grounded (bucket reflects actual trade entry time)
+- Non-recomputable by future callers (the 5s bucket has long expired)
+
+Rows where two historical entries fell in the same 5-second bucket received a `-<id>` suffix
+on the later row's key (e.g. `bacca7b2a2056a50725b576d6f977f25-153`) to preserve UNIQUE
+constraint compatibility. These suffixed keys are identifiable in forensic queries by the
+presence of a hyphen after the 32-char hex prefix.
+
+**Verify constraint is active:**
+```bash
+engine/.venv/Scripts/python -c "
+import sqlite3
+conn = sqlite3.connect('engine/data/jarvis_trader.db')
+for row in conn.execute('PRAGMA table_info(paper_trades)'):
+    if row[1] == 'idempotency_key':
+        print('notnull:', row[3])  # must be 1
+"
+```
+
+**Root cause closed:** 2026-05-09 6× phantom-trade incident (analysed 2026-05-11).
+See `engine/tests/test_idempotency_constraint.py` for regression tests.
+
 ## Metrics snapshot (repo hygiene)
 
 Regenerate [docs/strategic/METRICS_SNAPSHOT.json](../strategic/METRICS_SNAPSHOT.json) after large router refactors:
