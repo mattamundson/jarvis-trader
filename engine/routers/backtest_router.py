@@ -164,6 +164,7 @@ async def run_backtest(request: BacktestRequest):
             multiplier = loader.get_multiplier(request.symbol)
             from backtest.signals import TREND_INSTRUMENTS
             from backtest.trend_signals import get_sma_trend_params
+
             is_trend = request.symbol.upper() in TREND_INSTRUMENTS
             trend_params = get_sma_trend_params(request.symbol) if is_trend else None
             backtester = Backtester(
@@ -700,6 +701,114 @@ async def get_paper_runner_status():
         "active_instruments": [],
         "timestamp": None,
     }
+
+
+# ── Monte Carlo ──────────────────────────────────────────────────────────────
+
+
+class MonteCarloRequest(BaseModel):
+    """Request for Monte Carlo simulation on backtest results."""
+
+    results_file: str
+    simulations: int = 1_000
+    max_slippage_ticks: float = 0.0
+    symbol: str = None
+    initial_capital: float = 100_000.0
+
+
+@router.post("/backtest/monte-carlo")
+async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
+    """Run Monte Carlo simulation on backtest results to validate strategy robustness."""
+    try:
+        from backtest.monte_carlo import _load_result_from_json, run_monte_carlo
+
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent.parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = (
+                    Path(__file__).parent.parent / "backtest" / "results" / req.results_file
+                )
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        logger.info(f"[MONTE-CARLO] Loading {results_path.name}")
+        bt_result = _load_result_from_json(str(results_path))
+
+        symbol = req.symbol
+        if not symbol:
+            stem = results_path.stem
+            for part in stem.split("_"):
+                if part.isupper() and len(part) <= 4:
+                    symbol = part
+                    break
+        if not symbol:
+            symbol = "MES"
+
+        logger.info(f"[MONTE-CARLO] Running {req.simulations:,} simulations for {symbol}")
+        mc_results = run_monte_carlo(
+            bt_result,
+            n_simulations=req.simulations,
+            initial_capital=req.initial_capital,
+            max_slippage_ticks=req.max_slippage_ticks,
+            symbol=symbol,
+            seed=42,
+        )
+
+        return mc_results
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO] File error: {e}")
+        raise HTTPException(404, f"Results file not found: {e}") from e
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO] Simulation failed: {e}")
+        raise HTTPException(500, f"Monte Carlo simulation failed: {e}") from e
+
+
+@router.post("/backtest/monte-carlo/chart")
+async def generate_monte_carlo_chart(req: MonteCarloRequest) -> dict:
+    """Generate an interactive HTML equity curve fan chart from Monte Carlo results."""
+    try:
+        from backtest.monte_carlo_viz import save_fan_chart
+
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent.parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = (
+                    Path(__file__).parent.parent / "backtest" / "results" / req.results_file
+                )
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        stem = results_path.stem
+        mc_json_path = results_path.parent / f"{stem}_monte_carlo.json"
+        if not mc_json_path.exists():
+            raise FileNotFoundError(
+                f"Monte Carlo JSON not found. Run /backtest/monte-carlo first to generate {mc_json_path.name}"
+            )
+
+        logger.info(f"[MONTE-CARLO-VIZ] Generating chart from {mc_json_path.name}")
+        html_path = save_fan_chart(str(mc_json_path))
+
+        return {
+            "chart_path": str(html_path),
+            "status": "success",
+            "message": f"Chart generated: {Path(html_path).name}",
+        }
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO-VIZ] File error: {e}")
+        raise HTTPException(404, f"Error: {e}") from e
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO-VIZ] Chart generation failed: {e}")
+        raise HTTPException(500, f"Chart generation failed: {e}") from e
 
 
 # ── TOS Signal Comparison endpoints ──────────────────────────────────────────
