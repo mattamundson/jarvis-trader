@@ -173,6 +173,19 @@ from routers.sentiment_router import (
     router as sentiment_router,
     inject_dependencies as inject_sentiment_deps,
 )
+from routers.settings_router import (
+    router as settings_router,
+    inject_dependencies as inject_settings_deps,
+)
+from routers.prices_router import (
+    router as prices_router,
+    inject_dependencies as inject_prices_deps,
+)
+from routers.websocket_router import (
+    router as websocket_router,
+    inject_dependencies as inject_websocket_deps,
+)
+from data.price_cache import PriceCache
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -1490,6 +1503,9 @@ async def lifespan(app: FastAPI):
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
     inject_sentiment_deps(data_manager)
+    inject_settings_deps(settings, db_manager, safety_layer)
+    inject_prices_deps(PriceCache(), data_manager=data_manager)
+    inject_websocket_deps(ws_manager)
 
     # ── Autonomous Pipeline Approval Queue ────────────────────────────────────
     # Default-OFF: only activated when ENABLE_AUTONOMOUS_PIPELINE=1 in .env.
@@ -2542,6 +2558,9 @@ app.include_router(macro_router)
 app.include_router(analysis_router)
 app.include_router(watchlist_router)
 app.include_router(sentiment_router)
+app.include_router(settings_router)
+app.include_router(prices_router)
+app.include_router(websocket_router)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(webhook_router)
@@ -2756,191 +2775,7 @@ async def get_loss_tracker_status():
 # ── Risk Limits Settings ───────────────────────────────────────────────────
 
 
-@app.get("/settings/risk")
-async def get_risk_settings():
-    """Get current risk/circuit breaker settings."""
-    try:
-        # Get live circuit breaker state
-        cb_status = {}
-        if safety_layer:
-            cb_status = safety_layer.check_circuit_breakers()
-
-        # Get config defaults from env / TradingConfig
-        config = {
-            "daily_loss_limit": float(
-                os.getenv("DAILY_LOSS_LIMIT", str(settings.MAX_DAILY_LOSS_PCT * 10000))
-            ),
-            "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
-            "max_contracts": settings.MAX_CONTRACTS_PER_INSTRUMENT,
-            "risk_per_trade_pct": float(os.getenv("RISK_PER_TRADE_PCT", "0.01")),
-            "atr_stop_multiplier": float(os.getenv("ATR_STOP_MULTIPLIER", "0.70")),
-            "atr_target_multiplier": float(os.getenv("ATR_TARGET_MULTIPLIER", "1.50")),
-        }
-
-        # Override with DB settings if available (DB values take precedence over env)
-        if db_manager:
-            for key in config:
-                val = db_manager.get_setting(key)
-                if val is not None:
-                    try:
-                        config[key] = type(config[key])(val)
-                    except (ValueError, TypeError):
-                        pass
-
-        return {
-            "config": config,
-            "circuit_breakers": cb_status,
-            "editable_keys": list(config.keys()),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@app.post("/settings/risk")
-async def update_risk_settings(payload: dict):
-    """Update risk settings (persists to DB settings table)."""
-    if not db_manager:
-        raise HTTPException(status_code=503, detail="Database not initialized")
-
-    ALLOWED_KEYS = {
-        "daily_loss_limit",
-        "max_drawdown_pct",
-        "max_contracts",
-        "risk_per_trade_pct",
-        "atr_stop_multiplier",
-        "atr_target_multiplier",
-    }
-
-    VALIDATORS = {
-        "daily_loss_limit": lambda v: float(v) > 0,
-        "max_drawdown_pct": lambda v: 0 < float(v) <= 1.0,
-        "max_contracts": lambda v: 1 <= int(v) <= 10,
-        "risk_per_trade_pct": lambda v: 0 < float(v) <= 0.05,
-        "atr_stop_multiplier": lambda v: 0.1 <= float(v) <= 3.0,
-        "atr_target_multiplier": lambda v: 0.1 <= float(v) <= 5.0,
-    }
-
-    updated = {}
-    errors = {}
-
-    for key, value in payload.items():
-        if key not in ALLOWED_KEYS:
-            errors[key] = "Unknown setting"
-            continue
-
-        validator = VALIDATORS.get(key)
-        try:
-            if validator and not validator(value):
-                errors[key] = f"Value {value} out of allowed range"
-                continue
-            db_manager.set_setting(key, str(value))
-            updated[key] = value
-        except Exception as e:
-            errors[key] = str(e)[:80]
-
-    return {
-        "updated": updated,
-        "errors": errors,
-        "count": len(updated),
-    }
-
-
-# ── Strategy Parameters ────────────────────────────────────────────────────────
-
-
-class StrategyParams(BaseModel):
-    """Strategy parameter configuration."""
-
-    ema_short: int = 8
-    ema_long: int = 21
-    ema_smoother: int = 34
-    atr_length: int = 14
-    atr_mult_stop: float = 1.5
-    atr_mult_target: float = 3.0
-    min_volume_sma: int = 20
-    rsi_length: int = 14
-    rsi_oversold: int = 30
-    rsi_overbought: int = 70
-    adaptive_regime: bool = True
-    volume_filter: bool = False
-    mtf_filter: bool = False
-
-
-# In-memory strategy params (would be persisted in production)
-_strategy_params = StrategyParams()
-
-
-@app.get("/strategy/params")
-async def get_strategy_params():
-    """
-    Get current strategy parameter configuration.
-
-    Returns:
-        ema_short: Short-term EMA period (default 8)
-        ema_long: Medium-term EMA period (default 21)
-        ema_smoother: Long-term EMA period (default 34)
-        atr_length: ATR indicator period (default 14)
-        atr_mult_stop: Stop loss as multiple of ATR (default 1.5x)
-        atr_mult_target: Profit target as multiple of ATR (default 3.0x)
-        min_volume_sma: Minimum volume SMA period (default 20)
-        rsi_length: RSI indicator period (default 14)
-        rsi_oversold: RSI oversold threshold (default 30)
-        rsi_overbought: RSI overbought threshold (default 70)
-        adaptive_regime: Apply regime-based filters (default True)
-        volume_filter: Apply volume filters (default False)
-        mtf_filter: Apply multi-timeframe filters (default False)
-    """
-    global _strategy_params
-    return _strategy_params.model_dump()
-
-
-@app.put("/strategy/params")
-async def update_strategy_params(params: StrategyParams):
-    """
-    Update strategy parameter configuration.
-
-    Changes take effect immediately for future backtests and live trading.
-    Existing positions are unaffected.
-
-    Request:
-        ema_short, ema_long, ema_smoother: EMA periods
-        atr_length, atr_mult_stop, atr_mult_target: ATR configuration
-        min_volume_sma, rsi_length, rsi_oversold, rsi_overbought: Indicator settings
-        adaptive_regime, volume_filter, mtf_filter: Feature flags
-    """
-    global _strategy_params
-    try:
-        # Validate parameters
-        if not (1 < params.ema_short < params.ema_long < params.ema_smoother < 200):
-            raise ValueError("EMA periods must satisfy: 1 < short < long < smoother < 200")
-        if not (1 <= params.atr_length <= 50):
-            raise ValueError("ATR length must be 1-50")
-        if not (0.5 <= params.atr_mult_stop <= 10.0):
-            raise ValueError("ATR stop multiplier must be 0.5-10.0")
-        if not (0.5 <= params.atr_mult_target <= 10.0):
-            raise ValueError("ATR target multiplier must be 0.5-10.0")
-        if not (1 <= params.rsi_length <= 50):
-            raise ValueError("RSI length must be 1-50")
-        if not (0 < params.rsi_oversold < 50):
-            raise ValueError("RSI oversold must be 0-50")
-        if not (50 < params.rsi_overbought < 100):
-            raise ValueError("RSI overbought must be 50-100")
-
-        old_params = _strategy_params.model_dump()
-        _strategy_params = params
-        logger.info(f"[STRATEGY] Parameters updated: {params.model_dump()}")
-
-        return {
-            "status": "updated",
-            "old_params": old_params,
-            "new_params": params.model_dump(),
-        }
-    except ValueError as e:
-        raise HTTPException(400, f"Invalid parameter: {e}") from e
-    except Exception as e:
-        logger.error(f"[STRATEGY] Update failed: {e}")
-        raise HTTPException(500, f"Failed to update strategy parameters: {e}") from e
-
+# -- /settings/risk (GET+POST) + /strategy/params (GET+PUT) -- served by routers/settings_router.py (wired 2026-05-22) --
 
 # ── Analysis / LLM stats / Reddit sentiment — served by routers/analysis_router.py (wired 2026-05-22) ──
 
@@ -2981,15 +2816,7 @@ class PaperTradeRequest(BaseModel):
     close_trade_id: str | None = None  # If set, this call closes an existing trade
 
 
-@app.get("/portfolio/paper/positions", response_model=PaperPositionsResponse)
-async def get_paper_positions():
-    """Return all currently open paper-trade positions."""
-    if not paper_tracker:
-        raise HTTPException(503, "Paper tracker not initialized")
-    return {
-        "positions": paper_tracker.get_open_positions(),
-        "count": len(paper_tracker.get_open_positions()),
-    }
+# ── /portfolio/paper/positions — served by routers/portfolio_router.py (wired 2026-05-22) ──
 
 
 @app.post("/portfolio/paper/trade/manual", response_model=PaperTradeResponse)
@@ -3118,27 +2945,7 @@ async def get_pending_signals():
 # ── Historical Query Endpoints (SQLite) ───────────────────────────────────
 
 
-@app.get("/portfolio/history/trades", response_model=TradeHistoryResponse)
-async def get_trade_history(limit: int = 100, symbol: str = "", status: str = ""):
-    """
-    Return historical trades from SQLite.\n
-    Query params:
-        limit  : max rows to return (default 100)
-        symbol : filter by ticker symbol (optional)
-        status : filter by status — "open" | "closed" (optional)
-    """
-    if not db_manager:
-        return {"trades": [], "count": 0, "note": "db_manager not initialized"}
-    try:
-        trades = db_manager.get_trades(
-            limit=limit,
-            symbol=symbol.upper() if symbol else None,
-            status=status.lower() if status else None,
-        )
-        return {"trades": trades, "count": len(trades)}
-    except Exception as exc:
-        logger.error(f"[DB] get_trades failed: {exc}")
-        return {"trades": [], "count": 0, "error": str(exc)}
+# -- /portfolio/history/trades -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 
 @app.get("/portfolio/history/daily-pnl", response_model=DailyPnLResponse)
@@ -3408,35 +3215,7 @@ def _log_decision(
 # ── Live Prices ────────────────────────────────────────────────────────────
 
 
-@app.get("/prices/snapshot")
-async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
-    """
-    Get current prices and daily change % for comma-separated symbols.
-    Futures micro contracts (MES, MNQ, MCL etc) are mapped via data_manager.
-    """
-    if not data_manager:
-        raise HTTPException(503, "Data manager not initialized")
-
-    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-    if not symbol_list:
-        return {}
-
-    try:
-        batch = await data_manager.get_batch_prices(symbol_list)
-        result = {}
-        for sym in symbol_list:
-            price_dict = batch.get(sym, {})
-            result[sym] = {
-                "symbol": sym,
-                "last_price": price_dict.get("last_price"),
-                "prev_close": price_dict.get("prev_close"),
-                "change_pct": price_dict.get("change_pct"),
-                "source": price_dict.get("source"),
-            }
-        return result
-    except Exception as e:
-        raise HTTPException(500, f"Price fetch failed: {e}") from e
-
+# ── /prices/snapshot — served by routers/prices_router.py (wired 2026-05-22) ──
 
 # ── Earnings calendar awareness ──────────────────────────────────────────────────
 
@@ -4061,13 +3840,7 @@ async def websocket_endpoint(websocket):
 # ── WebSocket Status Endpoint ─────────────────────────────────────────────
 
 
-@app.get("/ws/status")
-async def websocket_status():
-    """Get WebSocket manager status — connected client count."""
-    if not ws_manager:
-        return {"status": "not_initialized", "connections": 0}
-    return {"status": "ok", "connections": ws_manager.get_connection_count()}
-
+# ── /ws/status — served by routers/websocket_router.py (wired 2026-05-22) ──
 
 # ── Performance Report Endpoint ───────────────────────────────────────────────
 
