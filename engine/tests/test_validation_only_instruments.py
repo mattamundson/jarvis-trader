@@ -106,9 +106,14 @@ def test_mgc_approval_blocked():
     assert "MGC" in str(exc_info.value.detail)
 
 
-def test_mcl_still_submits_orders():
-    """MCL approval must NOT be blocked by VALIDATION_ONLY_INSTRUMENTS (regression check)."""
-    from approval.service import ensure_approval_allowed
+def test_mcl_blocked_by_paper_config_not_validation_only():
+    """MCL is blocked by paper_config.enabled=False, NOT by VALIDATION_ONLY_INSTRUMENTS.
+
+    Regression: MCL must NOT appear in VALIDATION_ONLY_INSTRUMENTS (which allows
+    signal generation for dashboard feeds).  Its orders are blocked via
+    is_strategy_authorized() because paper_config.enabled=False (gate v2 FAIL).
+    """
+    from approval.service import ApprovalFlowError, ensure_approval_allowed
 
     row = _make_approval_row("MCL")
     safety = _make_mock_safety_layer()
@@ -116,13 +121,23 @@ def test_mcl_still_submits_orders():
     with patch(
         "approval.service.approved_watchlist_symbols", return_value={"MES", "MNQ", "MCL", "MGC"}
     ):
-        # Should not raise — MCL is order-eligible
-        ensure_approval_allowed(row, safety)
+        with pytest.raises(ApprovalFlowError) as exc_info:
+            ensure_approval_allowed(row, safety)
+
+    assert exc_info.value.status_code == 409
+    # Must NOT mention VALIDATION_ONLY_INSTRUMENTS — that's for MES/MGC
+    assert "VALIDATION_ONLY_INSTRUMENTS" not in str(exc_info.value.detail)
+    # Must mention the actual reason: paper_config gate
+    assert "not authorized" in str(exc_info.value.detail)
 
 
-def test_mnq_still_submits_orders():
-    """MNQ approval must NOT be blocked by VALIDATION_ONLY_INSTRUMENTS (regression check)."""
-    from approval.service import ensure_approval_allowed
+def test_mnq_blocked_by_paper_config_not_validation_only():
+    """MNQ is blocked by paper_config.enabled=False, NOT by VALIDATION_ONLY_INSTRUMENTS.
+
+    Same reasoning as MCL: MNQ is in DO_NOT_TRADE_SYMBOLS (gate v2 FAIL) and has
+    paper_config.enabled=False.  It must not be in VALIDATION_ONLY_INSTRUMENTS.
+    """
+    from approval.service import ApprovalFlowError, ensure_approval_allowed
 
     row = _make_approval_row("MNQ")
     safety = _make_mock_safety_layer()
@@ -130,8 +145,12 @@ def test_mnq_still_submits_orders():
     with patch(
         "approval.service.approved_watchlist_symbols", return_value={"MES", "MNQ", "MCL", "MGC"}
     ):
-        # Should not raise — MNQ is order-eligible
-        ensure_approval_allowed(row, safety)
+        with pytest.raises(ApprovalFlowError) as exc_info:
+            ensure_approval_allowed(row, safety)
+
+    assert exc_info.value.status_code == 409
+    assert "VALIDATION_ONLY_INSTRUMENTS" not in str(exc_info.value.detail)
+    assert "not authorized" in str(exc_info.value.detail)
 
 
 def test_validation_only_check_runs_after_kill_switch():

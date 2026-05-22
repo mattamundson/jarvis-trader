@@ -11,11 +11,15 @@ Contract:
   * `is_ungate_eligible(symbol) -> bool` — True iff the most recent non-stale
      verdict for `symbol` has `verdict == "PASS"`. Default-deny on missing.
   * `list_verdicts() -> list[VerdictSnapshot]` — all non-stale verdicts.
+  * `is_strategy_authorized(symbol) -> tuple[bool, str]` — single source of
+     truth for whether a symbol may submit paper orders.  Unifies
+     VALIDATION_ONLY_INSTRUMENTS, paper_config.enabled, and gate v2 verdict.
 
 Staleness: any verdict older than `MAX_VERDICT_AGE_DAYS` is treated as
 missing. This prevents a one-shot PASS from implicitly authorizing live
 trading forever without a fresh re-score.
 """
+
 from __future__ import annotations
 
 import json
@@ -44,10 +48,19 @@ class VerdictSnapshot:
     coupling the read path to the write path — routing code that reads
     verdicts should never have to import heavy numpy/statistics deps.
     """
+
     __slots__ = (
-        "symbol", "family", "rank", "verdict", "passed_via",
-        "core_verdict", "alt_verdict", "n_core_passed", "n_alt_passed",
-        "created_at", "aux_freshness",
+        "symbol",
+        "family",
+        "rank",
+        "verdict",
+        "passed_via",
+        "core_verdict",
+        "alt_verdict",
+        "n_core_passed",
+        "n_alt_passed",
+        "created_at",
+        "aux_freshness",
     )
 
     def __init__(self, doc: dict):
@@ -86,13 +99,12 @@ def _iter_verdict_files(verdicts_dir: Optional[Path] = None):
             logger.warning("gate_v2_policy: unreadable verdict file %s: %s", p, exc)
 
 
-def get_last_verdict(
-    symbol: str, verdicts_dir: Optional[Path] = None
-) -> Optional[VerdictSnapshot]:
+def get_last_verdict(symbol: str, verdicts_dir: Optional[Path] = None) -> Optional[VerdictSnapshot]:
     """Return the newest non-stale verdict for `symbol`, or None."""
     sym_upper = symbol.upper()
     candidates = [
-        v for v in _iter_verdict_files(verdicts_dir)
+        v
+        for v in _iter_verdict_files(verdicts_dir)
         if v.symbol.upper() == sym_upper and not v.is_stale()
     ]
     if not candidates:
@@ -101,9 +113,7 @@ def get_last_verdict(
     return candidates[0]
 
 
-def is_ungate_eligible(
-    symbol: str, verdicts_dir: Optional[Path] = None
-) -> bool:
+def is_ungate_eligible(symbol: str, verdicts_dir: Optional[Path] = None) -> bool:
     """Default-deny advisory: `True` iff ANY non-stale PASS verdict exists
     for `symbol` across all families.
 
@@ -129,3 +139,56 @@ def list_verdicts(
     fresh = [v for v in _iter_verdict_files(verdicts_dir) if not v.is_stale()]
     fresh.sort(key=lambda v: v.created_at, reverse=True)
     return fresh
+
+
+def is_strategy_authorized(
+    symbol: str,
+    verdicts_dir: Optional[Path] = None,
+) -> tuple[bool, str]:
+    """Single source of truth: is this symbol authorized to submit paper orders?
+
+    Three necessary conditions checked in order:
+    1. Not in VALIDATION_ONLY_INSTRUMENTS (pipeline-level WFE/phase block)
+    2. paper_config entry exists with enabled=True (gate v2 PASS has been recorded)
+    3. A non-stale gate v2 PASS verdict file exists on disk
+
+    Returns (authorized: bool, reason: str).
+
+    This answers "is trading authorized?" — it does NOT replace runtime safety
+    checks (kill switch, lockout, position limits).  Those remain in
+    ensure_approval_allowed() and are evaluated independently.
+    """
+    # Lazy imports avoid circular dependencies at module load time.
+    from agents.pipeline import VALIDATION_ONLY_INSTRUMENTS  # noqa: PLC0415
+    from backtest.paper_config import PAPER_CONFIGS  # noqa: PLC0415
+
+    sym_upper = symbol.upper()
+
+    # 1. Hard block: VALIDATION_ONLY_INSTRUMENTS (WFE below threshold or phase gate)
+    if sym_upper in VALIDATION_ONLY_INSTRUMENTS:
+        return (
+            False,
+            f"{sym_upper} is in VALIDATION_ONLY_INSTRUMENTS — "
+            "pipeline runs but no paper orders until WFE >= 0.6 + gate v2 PASS + Tier 3 auth",
+        )
+
+    # 2. paper_config.enabled must be True (records that gate v2 approval was granted)
+    cfg = PAPER_CONFIGS.get(sym_upper)
+    if cfg is None:
+        return False, f"{sym_upper} has no entry in PAPER_CONFIGS"
+    if not cfg.get("enabled", False):
+        return (
+            False,
+            f"{sym_upper} paper_config.enabled=False "
+            "(gate v2 FAIL or not yet validated — see paper_config.py)",
+        )
+
+    # 3. Non-stale gate v2 PASS verdict must exist on disk
+    if not is_ungate_eligible(sym_upper, verdicts_dir):
+        return (
+            False,
+            f"{sym_upper} has no valid non-stale gate v2 PASS verdict "
+            f"(verdicts expire after {MAX_VERDICT_AGE_DAYS} days — re-run gate_v2_orchestrator)",
+        )
+
+    return True, "authorized"

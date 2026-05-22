@@ -147,7 +147,8 @@ def resolve_entry_price(
 
 def ensure_approval_allowed(approval_row: dict[str, Any], safety_layer) -> None:
     """Validate approval-time safety gates before execution."""
-    from agents.pipeline import VALIDATION_ONLY_INSTRUMENTS, VALIDATION_ONLY_STRATEGIES
+    from agents.pipeline import VALIDATION_ONLY_STRATEGIES
+    from backtest.gate_v2_policy import is_strategy_authorized
 
     symbol = str(approval_row["symbol"]).upper()
 
@@ -157,15 +158,13 @@ def ensure_approval_allowed(approval_row: dict[str, Any], safety_layer) -> None:
     if symbol not in approved_watchlist_symbols():
         raise ApprovalFlowError(400, f"Symbol {symbol} not on approved futures watchlist")
 
-    # Validation-only instruments: pipeline runs for signal/dashboard visibility,
-    # but orders are permanently blocked until WFE >= 0.6 + gate v2 PASS.
-    # This is a second layer above DO_NOT_TRADE_SYMBOLS; safety layer is canonical.
-    if symbol in VALIDATION_ONLY_INSTRUMENTS:
+    # Single source of truth: checks VALIDATION_ONLY_INSTRUMENTS, paper_config.enabled,
+    # and gate v2 verdict in one call.  Replaces the previous inline VALIDATION_ONLY check.
+    authorized, reason = is_strategy_authorized(symbol)
+    if not authorized:
         raise ApprovalFlowError(
             409,
-            f"{symbol} is in VALIDATION_ONLY_INSTRUMENTS (WFE below paper threshold) — "
-            "pipeline verdicts are logged for validation feedback but no paper orders are submitted. "
-            "Remove from VALIDATION_ONLY_INSTRUMENTS after WFE >= 0.6 + gate v2 PASS.",
+            f"{symbol} is not authorized for paper orders: {reason}",
         )
 
     # Validation-only strategies: mirrors the scanner gate so manual human approval
