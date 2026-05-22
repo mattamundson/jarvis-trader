@@ -21,6 +21,7 @@ import pytest
 
 from backtest.gate_v2_policy import (
     MAX_VERDICT_AGE_DAYS,
+    VerdictSnapshot,
     get_last_verdict,
     is_strategy_authorized,
     is_ungate_eligible,
@@ -374,3 +375,85 @@ def test_is_strategy_authorized_stale_verdict_not_authorized(tmp_verdicts_dir):
 
     assert authorized is False
     assert "PASS verdict" in reason
+
+
+# ---------------------------------------------------------- #
+# VerdictSnapshot schema validation                          #
+# ---------------------------------------------------------- #
+
+_VALID_DOC = {
+    "symbol": "MES",
+    "family": "trend",
+    "rank": 7,
+    "verdict": "PASS",
+    "passed_via": "alt",
+    "core_verdict": "FAIL",
+    "alt_verdict": "PASS",
+    "n_core_passed": 2,
+    "n_alt_passed": 5,
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "aux_freshness": {},
+    "gate_v2": {},
+}
+
+
+def test_verdict_snapshot_from_dict_valid():
+    snap = VerdictSnapshot.from_dict(_VALID_DOC)
+    assert snap.symbol == "MES"
+    assert snap.verdict == "PASS"
+    assert snap.passed_via == "alt"
+    assert snap.rank == 7
+    assert snap.gate_v2 == {}
+
+
+def test_verdict_snapshot_rejects_invalid_verdict():
+    bad = {**_VALID_DOC, "verdict": "MAYBE"}
+    with pytest.raises(ValueError, match="verdict="):
+        VerdictSnapshot.from_dict(bad)
+
+
+def test_verdict_snapshot_rejects_invalid_passed_via():
+    bad = {**_VALID_DOC, "passed_via": "unknown_path"}
+    with pytest.raises(ValueError, match="passed_via="):
+        VerdictSnapshot.from_dict(bad)
+
+
+def test_verdict_snapshot_rejects_missing_required_field():
+    bad = {k: v for k, v in _VALID_DOC.items() if k != "symbol"}
+    with pytest.raises(ValueError, match="Missing required verdict field"):
+        VerdictSnapshot.from_dict(bad)
+
+
+def test_verdict_snapshot_rejects_invalid_created_at():
+    bad = {**_VALID_DOC, "created_at": "not-a-date"}
+    with pytest.raises(ValueError, match="created_at="):
+        VerdictSnapshot.from_dict(bad)
+
+
+def test_verdict_snapshot_equality():
+    snap1 = VerdictSnapshot.from_dict(_VALID_DOC)
+    snap2 = VerdictSnapshot.from_dict(_VALID_DOC)
+    assert snap1 == snap2
+
+
+def test_iter_verdict_files_skips_corrupt_file(tmp_verdicts_dir):
+    """A verdict file with an invalid enum value is skipped; valid files still load."""
+    # Write a valid verdict
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MES",
+        family="trend",
+        rank=7,
+        verdict="PASS",
+        passed_via="alt",
+    )
+    # Write a corrupt verdict (invalid verdict value)
+    corrupt = tmp_verdicts_dir / "MES_trend_rank99.json"
+    corrupt.write_text(
+        '{"symbol":"MES","family":"trend","rank":99,"verdict":"CORRUPTED","passed_via":null,"created_at":"2026-01-01T00:00:00+00:00"}'
+    )
+
+    results = list_verdicts(tmp_verdicts_dir)
+    # Only the valid file loads; corrupt one is silently skipped
+    assert len(results) == 1
+    assert results[0].rank == 7
