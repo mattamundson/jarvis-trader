@@ -165,6 +165,10 @@ from routers.analysis_router import (
     router as analysis_router,
     inject_dependencies as inject_analysis_deps,
 )
+from routers.watchlist_router import (
+    router as watchlist_router,
+    inject_dependencies as inject_watchlist_deps,
+)
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -1480,6 +1484,7 @@ async def lifespan(app: FastAPI):
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
+    inject_watchlist_deps(db_manager, data_manager=data_manager)
 
     # ── Autonomous Pipeline Approval Queue ────────────────────────────────────
     # Default-OFF: only activated when ENABLE_AUTONOMOUS_PIPELINE=1 in .env.
@@ -2529,6 +2534,8 @@ app.include_router(observability_router)
 app.include_router(strategy_c_router)
 app.include_router(ib_scanner_router)
 app.include_router(macro_router)
+app.include_router(analysis_router)
+app.include_router(watchlist_router)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(webhook_router)
@@ -3416,71 +3423,7 @@ async def get_mtf_analysis(symbol: str = "MES"):
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@app.get("/watchlist/scan")
-async def watchlist_scan(symbols: str = "MES,MNQ,MCL"):
-    """
-    Run MTF analysis on all watchlist symbols and return a consolidated signal summary.
-    symbols: comma-separated list (default: MES,MNQ,MCL)
-    """
-    try:
-        from analytics.mtf_analyzer import analyze_mtf
-
-        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-        if not symbol_list:
-            raise HTTPException(status_code=400, detail="No symbols provided")
-
-        results = []
-        for sym in symbol_list[:5]:  # cap at 5 to avoid abuse
-            try:
-                mtf_result = await analyze_mtf(sym, data_manager)
-                results.append(
-                    {
-                        "symbol": sym,
-                        "recommendation": mtf_result.recommendation,
-                        "alignment": mtf_result.alignment,
-                        "timeframes": {
-                            s.timeframe: {
-                                "stc_value": s.stc_value,
-                                "stc_signal": s.stc_signal,
-                            }
-                            for s in mtf_result.signals
-                        },
-                        "error": None,
-                    }
-                )
-            except Exception as sym_err:
-                results.append(
-                    {
-                        "symbol": sym,
-                        "recommendation": "WAIT",
-                        "alignment": "NEUTRAL",
-                        "timeframes": {},
-                        "error": str(sym_err),
-                    }
-                )
-
-        # Determine overall market bias
-        buy_count = sum(1 for r in results if r["recommendation"] == "BUY")
-        sell_count = sum(1 for r in results if r["recommendation"] == "SELL")
-        if buy_count > sell_count:
-            market_bias = "BULLISH"
-        elif sell_count > buy_count:
-            market_bias = "BEARISH"
-        else:
-            market_bias = "NEUTRAL"
-
-        return {
-            "symbols": results,
-            "market_bias": market_bias,
-            "buy_count": buy_count,
-            "sell_count": sell_count,
-            "wait_count": len(results) - buy_count - sell_count,
-            "scanned_at": datetime.now(timezone.utc).isoformat(),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+# ── watchlist/scan — served by routers/watchlist_router.py (wired 2026-05-22) ──
 
 
 # ── Recent decisions (for dashboard feed) ─────────────────────────────────
@@ -3596,101 +3539,7 @@ async def get_sentiment_recent():
     return results
 
 
-# ── Watchlist ─────────────────────────────────────────────────────────────
-
-
-@app.get("/watchlist")
-async def get_watchlist():
-    """Return configured watchlists as ticker items with live prices"""
-    all_symbols = list(settings.FUTURES_WATCHLIST) + list(settings.OPTIONS_WATCHLIST)
-    prices: dict = {}
-    if data_manager and all_symbols:
-        try:
-            batch = await data_manager.get_batch_prices(all_symbols)
-            for sym, price_dict in batch.items():
-                prices[sym] = {
-                    "last_price": price_dict.get("last_price"),
-                    "change_pct": price_dict.get("change_pct"),
-                }
-        except Exception:
-            pass
-
-    items = []
-    names = {
-        "MES": "Micro E-mini S&P 500",
-        "MNQ": "Micro E-mini Nasdaq",
-        "MCL": "Micro Crude Oil",
-        "MGC": "Micro Gold",
-        "MHG": "Micro Copper",
-        "MYM": "Micro Dow",
-        "M2K": "Micro Russell 2000",
-    }
-    for sym in settings.FUTURES_WATCHLIST:
-        p = prices.get(sym, {})
-        items.append(
-            {
-                "symbol": sym,
-                "name": names.get(sym, sym),
-                "type": "futures",
-                "last_price": p.get("last_price"),
-                "change_pct": p.get("change_pct"),
-            }
-        )
-    for sym in settings.OPTIONS_WATCHLIST:
-        p = prices.get(sym, {})
-        items.append(
-            {
-                "symbol": sym,
-                "name": sym,
-                "type": "options",
-                "last_price": p.get("last_price"),
-                "change_pct": p.get("change_pct"),
-            }
-        )
-    return items
-
-
-class WatchlistAddRequest(BaseModel):
-    symbol: str
-
-
-@app.post("/watchlist")
-async def add_to_watchlist(req: WatchlistAddRequest):
-    """Add a symbol to the appropriate watchlist (futures or equities)."""
-    symbol = req.symbol.strip().upper()
-    if not symbol:
-        raise HTTPException(400, "symbol must not be empty")
-
-    futures_symbols = {"MES", "MNQ", "MCL", "MGC", "MHG", "MYM", "M2K", "ES", "NQ", "CL", "GC"}
-    is_futures = symbol in futures_symbols
-
-    if is_futures:
-        if symbol not in settings.FUTURES_WATCHLIST:
-            settings.FUTURES_WATCHLIST = list(settings.FUTURES_WATCHLIST) + [symbol]
-    else:
-        if symbol not in settings.OPTIONS_WATCHLIST:
-            settings.OPTIONS_WATCHLIST = list(settings.OPTIONS_WATCHLIST) + [symbol]
-
-    return {"status": "added", "symbol": symbol, "type": "futures" if is_futures else "options"}
-
-
-@app.delete("/watchlist/{symbol}")
-async def remove_from_watchlist(symbol: str):
-    """Remove a symbol from the watchlist (futures or equities)."""
-    symbol = symbol.strip().upper()
-    removed = False
-
-    if symbol in settings.FUTURES_WATCHLIST:
-        settings.FUTURES_WATCHLIST = [s for s in settings.FUTURES_WATCHLIST if s != symbol]
-        removed = True
-    elif symbol in settings.OPTIONS_WATCHLIST:
-        settings.OPTIONS_WATCHLIST = [s for s in settings.OPTIONS_WATCHLIST if s != symbol]
-        removed = True
-
-    if not removed:
-        raise HTTPException(404, f"Symbol {symbol} not found in watchlist")
-
-    return {"status": "removed", "symbol": symbol}
+# ── Watchlist (GET/POST/DELETE + /scan) — served by routers/watchlist_router.py (wired 2026-05-22) ──
 
 
 # ── Live Prices ────────────────────────────────────────────────────────────
