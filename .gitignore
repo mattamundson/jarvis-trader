@@ -275,3 +275,6 @@ engine/data/gate_v2_verdicts/*.json
 
 # Backtest HTML chart outputs (generated artifacts — not source)
 engine/backtest/results/*.html
+
+# External vault mirror — OneDrive-synced second-brain content, never tracked here
+/master-jarvis/
