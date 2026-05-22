@@ -169,6 +169,10 @@ from routers.watchlist_router import (
     router as watchlist_router,
     inject_dependencies as inject_watchlist_deps,
 )
+from routers.sentiment_router import (
+    router as sentiment_router,
+    inject_dependencies as inject_sentiment_deps,
+)
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -1485,6 +1489,7 @@ async def lifespan(app: FastAPI):
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
+    inject_sentiment_deps(data_manager)
 
     # ── Autonomous Pipeline Approval Queue ────────────────────────────────────
     # Default-OFF: only activated when ENABLE_AUTONOMOUS_PIPELINE=1 in .env.
@@ -2536,6 +2541,7 @@ app.include_router(ib_scanner_router)
 app.include_router(macro_router)
 app.include_router(analysis_router)
 app.include_router(watchlist_router)
+app.include_router(sentiment_router)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(webhook_router)
@@ -2974,14 +2980,7 @@ async def update_strategy_params(params: StrategyParams):
 # ── Analysis / LLM stats / Reddit sentiment — served by routers/analysis_router.py (wired 2026-05-22) ──
 
 
-@app.get("/sentiment/news/{symbol}", response_model=NewsSentimentResponse)
-async def get_news_sentiment(symbol: str):
-    """Get news sentiment for a symbol via Finnhub"""
-    if not data_manager or not data_manager.finnhub:
-        raise HTTPException(503, "Finnhub not connected (add FINNHUB_API_KEY to .env)")
-
-    sentiment = data_manager.finnhub.get_news_sentiment(symbol)
-    return {"symbol": symbol, "sentiment": sentiment}
+# ── Sentiment (news/{symbol} + recent) — served by routers/sentiment_router.py (wired 2026-05-22) ──
 
 
 # ── Portfolio ─────────────────────────────────────────────────────────────
@@ -3513,30 +3512,7 @@ async def log_decision(decision: dict):
     return {"ok": True}
 
 
-# ── Sentiment feed ────────────────────────────────────────────────────────
-
-
-@app.get("/sentiment/recent")
-async def get_sentiment_recent():
-    """Return latest sentiment scores across sources"""
-    if not data_manager:
-        return []
-    results = []
-    try:
-        reddit_data = await data_manager.reddit.get_trending_tickers("all-stocks")
-        for item in reddit_data[:3]:
-            results.append(
-                {
-                    "symbol": item.get("ticker", ""),
-                    "score": (item.get("sentiment", 0.5) - 0.5) * 2,  # Normalize to -1..1
-                    "post_count": item.get("mentions", 0),
-                    "source": "reddit",
-                    "timestamp": datetime.now().isoformat(),
-                }
-            )
-    except Exception:
-        pass
-    return results
+# ── Sentiment (recent + news) — served by routers/sentiment_router.py (wired 2026-05-22) ──
 
 
 # ── Watchlist (GET/POST/DELETE + /scan) — served by routers/watchlist_router.py (wired 2026-05-22) ──
@@ -4782,147 +4758,7 @@ async def get_mgc_paper_performance():
         raise HTTPException(500, f"Failed to get MGC performance: {e}") from e
 
 
-# ── Monte Carlo Backtest Analysis ────────────────────────────────────────────
-
-
-class MonteCarloRequest(BaseModel):
-    """Request for Monte Carlo simulation on backtest results."""
-
-    results_file: str  # Path to JSON results file (relative to backtest/results/)
-    simulations: int = 1_000  # Number of simulations (default: 1000)
-    max_slippage_ticks: float = 0.0  # Max random slippage per trade in ticks (default: 0)
-    symbol: str = None  # Instrument symbol (auto-detected if None)
-    initial_capital: float = 100_000.0  # Starting capital for simulation
-
-
-@app.post("/backtest/monte-carlo")
-async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
-    """
-    Run Monte Carlo simulation on backtest results to validate strategy robustness.
-
-    Shuffles trade order N times with optional slippage modeling to generate a
-    distribution of possible outcomes. Returns percentile statistics across all
-    simulations plus confidence metrics (probability of ruin, 2x return target, etc).
-
-    Request:
-        results_file: Path to backtest JSON (e.g., "MES_1h_2024-06-01_2026-03-27.json")
-        simulations: Number of Monte Carlo runs (default: 1000)
-        max_slippage_ticks: Uniform random slippage 0-N ticks per trade (default: 0)
-        symbol: Instrument symbol for tick value lookup (auto if None)
-        initial_capital: Starting capital (default: 100000)
-
-    Returns:
-        percentile_statistics: p5, p25, median, p75, p95 for final capital, max drawdown, Sharpe
-        confidence_metrics: prob_profitable, prob_ruin, prob_2x, VaR 5%, CVaR
-        verdict: EXCELLENT/GOOD/MARGINAL/POOR based on distribution quality
-    """
-    try:
-        from pathlib import Path
-
-        from backtest.monte_carlo import _load_result_from_json, run_monte_carlo
-
-        # Resolve file path
-        results_path = Path(req.results_file)
-        if not results_path.is_absolute():
-            # Try relative to backtest/results/
-            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
-            if alt_path.exists():
-                results_path = alt_path
-            elif not results_path.exists():
-                results_path = Path(__file__).parent / "backtest" / "results" / req.results_file
-
-        if not results_path.exists():
-            raise FileNotFoundError(f"Results file not found: {results_path}")
-
-        # Load backtest result
-        logger.info(f"[MONTE-CARLO] Loading {results_path.name}")
-        bt_result = _load_result_from_json(str(results_path))
-
-        # Auto-detect symbol from filename if not provided
-        symbol = req.symbol
-        if not symbol:
-            stem = results_path.stem
-            for part in stem.split("_"):
-                if part.isupper() and len(part) <= 4:
-                    symbol = part
-                    break
-        if not symbol:
-            symbol = "MES"
-
-        # Run simulation
-        logger.info(f"[MONTE-CARLO] Running {req.simulations:,} simulations for {symbol}")
-        mc_results = run_monte_carlo(
-            bt_result,
-            n_simulations=req.simulations,
-            initial_capital=req.initial_capital,
-            max_slippage_ticks=req.max_slippage_ticks,
-            symbol=symbol,
-            seed=42,
-        )
-
-        return mc_results
-
-    except FileNotFoundError as e:
-        logger.error(f"[MONTE-CARLO] File error: {e}")
-        raise HTTPException(404, f"Results file not found: {e}") from e
-    except Exception as e:
-        logger.error(f"[MONTE-CARLO] Simulation failed: {e}")
-        raise HTTPException(500, f"Monte Carlo simulation failed: {e}") from e
-
-
-@app.post("/backtest/monte-carlo/chart")
-async def generate_monte_carlo_chart(req: MonteCarloRequest) -> dict:
-    """
-    Generate an interactive HTML equity curve fan chart from Monte Carlo results.
-
-    Creates a visualization showing median equity curve plus 25th-75th and 5th-95th
-    percentile bands. Useful for assessing visual robustness and trade sequencing risk.
-
-    Returns:
-        chart_path: Full file path to generated HTML
-        url: Relative URL if served via static files
-    """
-    try:
-        from pathlib import Path
-
-        from backtest.monte_carlo_viz import save_fan_chart
-
-        # Resolve file path (same as monte-carlo endpoint)
-        results_path = Path(req.results_file)
-        if not results_path.is_absolute():
-            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
-            if alt_path.exists():
-                results_path = alt_path
-            elif not results_path.exists():
-                results_path = Path(__file__).parent / "backtest" / "results" / req.results_file
-
-        if not results_path.exists():
-            raise FileNotFoundError(f"Results file not found: {results_path}")
-
-        # But we need the JSON results from run_monte_carlo first!
-        # Check if _monte_carlo.json exists
-        stem = results_path.stem
-        mc_json_path = results_path.parent / f"{stem}_monte_carlo.json"
-        if not mc_json_path.exists():
-            raise FileNotFoundError(
-                f"Monte Carlo JSON not found. Run /backtest/monte-carlo first to generate {mc_json_path.name}"
-            )
-
-        logger.info(f"[MONTE-CARLO-VIZ] Generating chart from {mc_json_path.name}")
-        html_path = save_fan_chart(str(mc_json_path))
-
-        return {
-            "chart_path": str(html_path),
-            "status": "success",
-            "message": f"Chart generated: {Path(html_path).name}",
-        }
-
-    except FileNotFoundError as e:
-        logger.error(f"[MONTE-CARLO-VIZ] File error: {e}")
-        raise HTTPException(404, f"Error: {e}") from e
-    except Exception as e:
-        logger.error(f"[MONTE-CARLO-VIZ] Chart generation failed: {e}")
-        raise HTTPException(500, f"Chart generation failed: {e}") from e
+# ── Monte Carlo — served by routers/backtest_router.py (wired 2026-05-22) ──
 
 
 # ── WebSocket Real-Time Events ────────────────────────────────────────────
