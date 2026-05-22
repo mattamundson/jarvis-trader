@@ -70,7 +70,7 @@ apscheduler==3.11.0
 
 # ── RL / session tests (full pytest on CI) ─────────────────────────────────
 gymnasium==1.0.0          # TradingEnvironment + test_rl_module
-torch==2.5.1              # stable-baselines3 backend (CPU wheels on Linux CI)
+torch>=2.5.1              # stable-baselines3 backend (CPU wheels on Linux CI)
 stable-baselines3==2.7.1  # RL tests; 2.4.x pins numpy<2.0 (conflicts with numpy>=2.2.x)
 pytz==2024.2              # journal/session routes (test_session4_*)
 
