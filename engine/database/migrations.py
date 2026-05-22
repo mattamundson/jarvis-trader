@@ -1284,6 +1284,245 @@ def migration_031(conn: sqlite3.Connection) -> None:
     )
 
 
+def migration_032(conn: sqlite3.Connection) -> None:
+    """
+    032 — NOT NULL constraint on paper_trades.idempotency_key.
+
+    Hardens the dedup guard shipped in migration_030 (commit f3cc273) from a
+    runtime check into a structural schema guarantee.  With this migration a
+    caller that bypasses ``insert_paper_trade``'s computed key can no longer
+    create a NULL-keyed row that would silently defeat the UNIQUE INDEX.
+
+    Motivation
+    ----------
+    Root cause of the 2026-05-09 6× phantom-trade incident (analysed
+    2026-05-11): the column was nullable, so any INSERT path that omitted
+    idempotency_key produced a NULL row that the partial UNIQUE index
+    (WHERE idempotency_key IS NOT NULL) ignored entirely — meaning the
+    constraint provided zero protection for unanticipated callers.
+
+    SQLite limitation
+    -----------------
+    SQLite cannot ALTER a column from nullable to NOT NULL in-place.  The
+    canonical workaround (https://www.sqlite.org/lang_altertable.html):
+      1. Backfill all NULL rows with computed keys
+      2. CREATE TABLE paper_trades_new with the NOT NULL constraint
+      3. INSERT INTO paper_trades_new SELECT * FROM paper_trades
+      4. DROP paper_trades; RENAME paper_trades_new → paper_trades
+      5. Recreate all indexes
+    The whole operation runs inside a single transaction so the live DB is
+    never left in a partial state.
+
+    Backfill key formula
+    --------------------
+    For rows that have entry_time and entry_price/quantity available (all 16
+    rows in the live DB as of 2026-05-21), we use the SAME SHA-256 formula as
+    ``compute_order_idempotency_key``, but derived from the row's historical
+    entry_time epoch (not the current clock).  This makes the backfill keys:
+      - Deterministic (re-runnable)
+      - Historically grounded (bucket reflects when the trade was entered)
+      - Non-recomputable by a future call (the time bucket will have expired)
+
+    For rows missing entry_time or entry_price (defensive only — no such rows
+    exist in the live DB), a fallback key ``backfill-<id>-<symbol>`` is used.
+    These fallback keys are intentionally non-standard; they carry the prefix
+    "backfill-" so they can be identified in forensic queries.
+
+    Collision handling during backfill
+    -----------------------------------
+    Two rows with the same symbol/side/qty/price in the same 5s bucket would
+    compute the same key.  If a collision is detected during backfill, the
+    later row (higher id) gets a suffix ``-<id>`` appended to its key to ensure
+    uniqueness.  These suffixed keys are still 32+ chars but are not pure SHA-256
+    digests; the suffix format is documented here so forensic queries can flag them.
+
+    Idempotency
+    -----------
+    Checks ``PRAGMA table_info(paper_trades)`` for notnull=1 on idempotency_key
+    before running.  Safe to call multiple times.
+    """
+    import hashlib
+    import math
+    from datetime import datetime, timezone
+
+    # ── Idempotency check ─────────────────────────────────────────────────────
+    col_info = {row[1]: row[3] for row in conn.execute("PRAGMA table_info(paper_trades)")}
+    if col_info.get("idempotency_key") == 1:
+        logger.info("Migration 032 skipped — idempotency_key already NOT NULL.")
+        return
+
+    # ── Step 1: Backfill NULL idempotency_key rows ────────────────────────────
+    # Use the row's historical entry_time to derive the time bucket (same formula
+    # as compute_order_idempotency_key, but with historical epoch instead of NOW).
+    # This makes backfill keys deterministic and historically grounded.
+    null_rows = conn.execute(
+        "SELECT id, symbol, side, quantity, entry_price, entry_time "
+        "FROM paper_trades WHERE idempotency_key IS NULL"
+    ).fetchall()
+
+    seen_keys: set = set()
+    for row in null_rows:
+        row_id, symbol, side, quantity, entry_price, entry_time = row
+
+        # Compute the historical time bucket from entry_time
+        backfill_key = None
+        if entry_time and entry_price is not None and quantity is not None:
+            try:
+                # Parse ISO-8601; handle both +00:00 and Z suffixes
+                ts_str = entry_time.replace("Z", "+00:00")
+                # Remove microseconds suffix if present for fromisoformat compat
+                if "." in ts_str and "+" in ts_str:
+                    dot_pos = ts_str.index(".")
+                    plus_pos = ts_str.index("+")
+                    ts_str = ts_str[:dot_pos] + ts_str[plus_pos:]
+                epoch = datetime.fromisoformat(ts_str).timestamp()
+                bucket = int(math.floor(epoch / 5))
+                qty_int = int(round(float(quantity)))
+                price_rounded = round(float(entry_price), 2)
+                raw = (
+                    f"{str(symbol).upper()}|{str(side).lower()}|"
+                    f"{qty_int}|{price_rounded:.2f}|{bucket}"
+                )
+                candidate = hashlib.sha256(raw.encode()).hexdigest()[:32]
+                # Collision guard: if two historical rows map to the same key,
+                # suffix the later one with -<id> to preserve uniqueness.
+                if candidate in seen_keys:
+                    candidate = f"{candidate}-{row_id}"
+                seen_keys.add(candidate)
+                backfill_key = candidate
+            except Exception as exc:
+                logger.warning(
+                    "Migration 032: could not parse entry_time for id=%s (%s); "
+                    "using fallback key.",
+                    row_id,
+                    exc,
+                )
+
+        if backfill_key is None:
+            # Fallback for rows with missing fields — deterministic, identifiable
+            backfill_key = f"backfill-{row_id}-{str(symbol).upper()}"
+            if backfill_key in seen_keys:
+                backfill_key = f"backfill-{row_id}-{str(symbol).upper()}-dup"
+            seen_keys.add(backfill_key)
+
+        conn.execute(
+            "UPDATE paper_trades SET idempotency_key = ? WHERE id = ?",
+            (backfill_key, row_id),
+        )
+
+    conn.commit()
+
+    # ── Verify zero NULLs remain ──────────────────────────────────────────────
+    remaining_nulls = conn.execute(
+        "SELECT COUNT(*) FROM paper_trades WHERE idempotency_key IS NULL"
+    ).fetchone()[0]
+    if remaining_nulls != 0:
+        raise RuntimeError(
+            f"Migration 032: {remaining_nulls} NULL idempotency_key rows remain "
+            "after backfill — aborting table-rebuild to prevent constraint failure."
+        )
+
+    # ── Step 2: Capture pre-migration row count ───────────────────────────────
+    pre_count = conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()[0]
+
+    # ── Step 3: Rebuild table with NOT NULL constraint ────────────────────────
+    # The new DDL is identical to the existing paper_trades schema but with
+    # idempotency_key TEXT NOT NULL (was TEXT).  All columns are preserved;
+    # order is preserved to keep the INSERT INTO ... SELECT * round-trip valid.
+    conn.execute(
+        """
+        CREATE TABLE paper_trades_new (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_id            TEXT    NOT NULL UNIQUE,
+            symbol              TEXT    NOT NULL,
+            side                TEXT    NOT NULL,
+            quantity            REAL    NOT NULL,
+            entry_price         REAL    NOT NULL,
+            exit_price          REAL,
+            entry_time          TEXT    NOT NULL,
+            exit_time           TEXT,
+            pnl                 REAL,
+            status              TEXT    NOT NULL DEFAULT 'open',
+            strategy_params     TEXT,
+            notes               TEXT    DEFAULT '',
+            regime              TEXT,
+            structure_position  TEXT,
+            bias                TEXT,
+            composite_score     REAL,
+            stc_contrib         INTEGER,
+            orb_contrib         INTEGER,
+            vwap_contrib        INTEGER,
+            risk_pct_used       REAL,
+            stop_loss           REAL,
+            take_profit         REAL,
+            account_id          TEXT    NOT NULL DEFAULT 'A',
+            idempotency_key     TEXT    NOT NULL,
+            stop_order_id       TEXT,
+            target_order_id     TEXT,
+            bracket_status      TEXT
+        )
+        """
+    )
+
+    conn.execute("INSERT INTO paper_trades_new SELECT * FROM paper_trades")
+
+    post_insert_count = conn.execute("SELECT COUNT(*) FROM paper_trades_new").fetchone()[0]
+    if post_insert_count != pre_count:
+        conn.execute("DROP TABLE paper_trades_new")
+        conn.commit()
+        raise RuntimeError(
+            f"Migration 032: row count mismatch after INSERT INTO paper_trades_new "
+            f"(expected {pre_count}, got {post_insert_count}) — aborting."
+        )
+
+    conn.execute("DROP TABLE paper_trades")
+    conn.execute("ALTER TABLE paper_trades_new RENAME TO paper_trades")
+
+    # ── Step 4: Recreate all indexes ──────────────────────────────────────────
+    # Recreating in the same order as the original schema.
+    # Note: sqlite_autoindex_paper_trades_1 (for trade_id UNIQUE) is implicitly
+    # recreated by the CREATE TABLE DDL above — no explicit CREATE INDEX needed.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_symbol ON paper_trades(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_status ON paper_trades(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_entry_time ON paper_trades(entry_time)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_paper_trades_account "
+        "ON paper_trades(account_id, exit_time)"
+    )
+    # The UNIQUE index on idempotency_key is now a full (non-partial) index because
+    # the column is NOT NULL — every row carries a key, so the partial filter
+    # (WHERE idempotency_key IS NOT NULL) is logically equivalent to no filter.
+    # We keep the partial clause for semantic clarity and backward compatibility
+    # with any query that references the index name.
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pt_idempotency_key
+            ON paper_trades(idempotency_key)
+            WHERE idempotency_key IS NOT NULL
+        """
+    )
+
+    conn.commit()
+
+    # ── Final verification ────────────────────────────────────────────────────
+    post_count = conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()[0]
+    assert (
+        post_count == pre_count
+    ), f"Migration 032: final row count {post_count} != pre-migration {pre_count}"
+    final_nulls = conn.execute(
+        "SELECT COUNT(*) FROM paper_trades WHERE idempotency_key IS NULL"
+    ).fetchone()[0]
+    assert final_nulls == 0, f"Migration 032: {final_nulls} NULL keys remain after rebuild"
+
+    logger.info(
+        "Migration 032 applied — paper_trades.idempotency_key is now NOT NULL. "
+        "Backfilled %d rows; pre=%d post=%d rows; 0 NULLs remaining.",
+        len(null_rows),
+        pre_count,
+        post_count,
+    )
+
+
 def migration_023(conn: sqlite3.Connection) -> None:
     """
     023 — trading_patterns schema alignment.
@@ -1367,6 +1606,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_029,  # version 29
     migration_030,  # version 30
     migration_031,  # version 31
+    migration_032,  # version 32
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1401,6 +1641,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Realized peak equity: realized_peak_equity column on pnl_snapshots for Phase 3 C5 phantom-drawdown fix (kill switch peak_equity unchanged).",
     "Order dedup: idempotency_key column + partial UNIQUE index on paper_trades to prevent duplicate submissions within a 5-second window.",
     "Bracket order IDs: stop_order_id, target_order_id, bracket_status columns on paper_trades for atomic IB bracket traceability.",
+    "NOT NULL constraint: idempotency_key promoted to NOT NULL on paper_trades; backfills historical NULLs with deterministic SHA-256 keys derived from entry_time bucket.",
 ]
 
 

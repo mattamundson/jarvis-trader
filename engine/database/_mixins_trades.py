@@ -202,7 +202,7 @@ class TradesMixin:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         strategy_params: Optional[Any] = None,
-        idempotency_key: Optional[str] = None,
+        idempotency_key: str = "",  # REQUIRED — empty string signals a missing key at call site
     ) -> int:
         """
         Insert a new paper trade record with status='open'.
@@ -212,14 +212,51 @@ class TradesMixin:
         their dedicated columns AND mirrored into ``strategy_params`` for
         backwards-compatible JSON reads.
 
-        Idempotency guard (migration_030):
-            If ``idempotency_key`` is provided and a row with that key already
-            exists in ``paper_trades``, the INSERT is skipped and the existing
-            row's SQLite ``id`` is returned.  A WARNING is logged so the caller
-            can detect the deduplicated submission in the audit log.
+        Idempotency guard (migration_030 / migration_032):
+            ``idempotency_key`` is now a REQUIRED parameter.  The schema-level
+            NOT NULL constraint added in migration_032 means a NULL key can no
+            longer be stored.  Callers MUST supply a key computed by
+            ``database._helpers.compute_order_idempotency_key``; omitting it
+            raises TypeError at the Python layer before any DB round-trip.
 
-        Returns the auto-incremented ``id`` primary key (SQLite rowid).
+            If a row with the supplied key already exists in ``paper_trades``,
+            the INSERT is skipped and the existing row's SQLite ``id`` is
+            returned.  A WARNING is logged so the caller can detect the
+            deduplicated submission in the audit log.
+
+        Args:
+            trade_id:          UUID string from PortfolioTracker.
+            symbol:            Instrument ticker (e.g. "MES").
+            side:              "buy" | "sell" | "buy_to_open" | "sell_to_open".
+            quantity:          Number of contracts.
+            entry_price:       Fill price.
+            entry_time:        ISO-8601 UTC string; defaults to current UTC time.
+            stop_loss:         Stop-loss price (optional).
+            take_profit:       Take-profit price (optional).
+            strategy_params:   Arbitrary dict or JSON-serialisable value (optional).
+            idempotency_key:   REQUIRED — 32-char hex key from
+                               ``compute_order_idempotency_key``.  Passing the
+                               empty-string default raises TypeError so callers
+                               discover the missing argument immediately.
+
+        Returns:
+            The auto-incremented ``id`` primary key (SQLite rowid).
+
+        Raises:
+            TypeError:   If ``idempotency_key`` is the empty string (i.e. the
+                         caller did not supply a key — fail-fast at the Python
+                         layer before touching the DB).
+            ValueError:  If ``stop_loss`` is on the wrong side of ``entry_price``
+                         for the given ``side`` (inverted-stop guard).
         """
+        if not idempotency_key:
+            raise TypeError(
+                "insert_paper_trade() requires a non-empty idempotency_key. "
+                "Compute one via database._helpers.compute_order_idempotency_key() "
+                "before calling this method. "
+                "See migration_032 and docs/runbooks/HEALTH_API_CONTRACT.md §paper_trades."
+            )
+
         entry_time = entry_time or _utcnow()
 
         if is_inverted_stop(side, entry_price, stop_loss):
@@ -230,28 +267,27 @@ class TradesMixin:
             )
 
         # ── Idempotency pre-check ─────────────────────────────────────────────
-        # If a key is supplied, check for an existing row BEFORE attempting
-        # INSERT.  This avoids relying on UNIQUE constraint exceptions (which
-        # vary in SQLite versions) and gives us a clean WARNING + early-return.
-        if idempotency_key is not None:
-            with self._lock:
-                conn = self._connect()
-                try:
-                    existing = conn.execute(
-                        "SELECT id, trade_id FROM paper_trades WHERE idempotency_key = ?",
-                        (idempotency_key,),
-                    ).fetchone()
-                finally:
-                    conn.close()
-            if existing is not None:
-                logger.warning(
-                    "[DB] insert_paper_trade DEDUPLICATED — idempotency_key=%s already exists "
-                    "(existing id=%s trade_id=%s). Returning existing id without INSERT.",
-                    idempotency_key,
-                    existing[0],
-                    existing[1][:8] if existing[1] else "?",
-                )
-                return existing[0]  # type: ignore[return-value]
+        # Check for an existing row BEFORE attempting INSERT.  This avoids
+        # relying on UNIQUE constraint exceptions (which vary in SQLite versions)
+        # and gives us a clean WARNING + early-return.
+        with self._lock:
+            conn = self._connect()
+            try:
+                existing = conn.execute(
+                    "SELECT id, trade_id FROM paper_trades WHERE idempotency_key = ?",
+                    (idempotency_key,),
+                ).fetchone()
+            finally:
+                conn.close()
+        if existing is not None:
+            logger.warning(
+                "[DB] insert_paper_trade DEDUPLICATED — idempotency_key=%s already exists "
+                "(existing id=%s trade_id=%s). Returning existing id without INSERT.",
+                idempotency_key,
+                existing[0],
+                existing[1][:8] if existing[1] else "?",
+            )
+            return existing[0]  # type: ignore[return-value]
 
         # Mirror stop_loss / take_profit into strategy_params for backwards
         # compatibility, while also writing them to their dedicated columns.
