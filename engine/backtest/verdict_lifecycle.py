@@ -104,8 +104,13 @@ def write_verdict(verdict_path: Path, verdict_doc: dict[str, Any]) -> Path:
 def compare_verdicts(
     old_path: Path | None,
     new_path: Path,
+    *,
+    symbol: str | None = None,
 ) -> dict[str, Any] | None:
     """Diff old vs. new verdict and return the compare_verdicts result dict.
+
+    Loads ThresholdConfig from data/compare_verdicts_config.yaml so that
+    symbol-specific drift thresholds are applied automatically.
 
     Returns None if old_path is None or does not exist (no prior verdict to
     compare against).
@@ -121,7 +126,8 @@ def compare_verdicts(
         print(f"[verdict_lifecycle] WARNING: could not parse for diff: {exc}", file=sys.stderr)
         return None
 
-    return cv.compare(old_doc, new_doc)
+    cfg = cv._load_config(symbol=symbol)
+    return cv.compare(old_doc, new_doc, cfg)
 
 
 def _refresh_journal_entry(verdicts_dir: Path, source_file: str) -> int:
@@ -255,8 +261,8 @@ def commit_verdict(
     # 2. Write the new verdict
     write_verdict(verdict_path, verdict_doc)
 
-    # 3. Compare old vs. new
-    diff = compare_verdicts(archived, verdict_path)
+    # 3. Compare old vs. new — passes symbol so per-symbol YAML thresholds apply
+    diff = compare_verdicts(archived, verdict_path, symbol=symbol)
     needs_review = bool(diff and diff.get("needs_review"))
 
     # 4. Append to journal (refresh-aware: replaces existing row if source_file already known)

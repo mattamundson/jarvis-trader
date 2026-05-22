@@ -242,3 +242,103 @@ def test_compare_returns_exit_1_when_review_needed(tmp_path: Path, capsys):
     sys.argv = ["compare_verdicts", str(old_p), str(new_p)]
     rc = cv.main()
     assert rc == 1
+
+
+# ---------------------------------------------------------- #
+# ThresholdConfig / _load_config                             #
+# ---------------------------------------------------------- #
+
+
+def _write_yaml_config(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+
+
+def test_load_config_returns_defaults_when_file_missing(tmp_path: Path):
+    missing = tmp_path / "no_such_config.yaml"
+    cfg = cv._load_config(path=missing)
+    assert cfg.param_drift == cv.PARAM_DRIFT_THRESHOLD
+    assert cfg.rating_drop_pf_ci == 0.15
+    assert cfg.rating_drop_dsr == 0.20
+    assert cfg.rating_drop_mc_dd == 0.50
+
+
+def test_load_config_reads_defaults_section(tmp_path: Path):
+    yaml_path = tmp_path / "cfg.yaml"
+    _write_yaml_config(
+        yaml_path,
+        "default:\n  param_drift_threshold: 0.05\n  rating_drop_pf_ci: 0.10\n",
+    )
+    cfg = cv._load_config(path=yaml_path)
+    assert cfg.param_drift == 0.05
+    assert cfg.rating_drop_pf_ci == 0.10
+    # Unspecified fields keep their defaults
+    assert cfg.rating_drop_dsr == 0.20
+
+
+def test_load_config_applies_symbol_override(tmp_path: Path):
+    yaml_path = tmp_path / "cfg.yaml"
+    _write_yaml_config(
+        yaml_path,
+        "default:\n  param_drift_threshold: 0.10\nMES:\n  param_drift_threshold: 0.20\n",
+    )
+    cfg_mes = cv._load_config(path=yaml_path, symbol="MES")
+    cfg_mgc = cv._load_config(path=yaml_path, symbol="MGC")
+    assert cfg_mes.param_drift == 0.20  # symbol override
+    assert cfg_mgc.param_drift == 0.10  # falls back to default
+
+
+def test_compare_with_tighter_threshold_catches_small_drift():
+    """A 5% param change passes default threshold (10%) but fails a tighter (3%) threshold."""
+    old = _make_verdict(champion={"fast": 60})
+    new = _make_verdict(champion={"fast": 63})  # +5%
+    tight_cfg = cv.ThresholdConfig(param_drift=0.03)
+    diff_default = cv.compare(old, new)
+    diff_tight = cv.compare(old, new, tight_cfg)
+    drift_default = next(d for d in diff_default["champion_drift"] if d["param"] == "fast")
+    drift_tight = next(d for d in diff_tight["champion_drift"] if d["param"] == "fast")
+    assert drift_default["exceeds_threshold"] is False  # 5% < 10%
+    assert drift_tight["exceeds_threshold"] is True  # 5% > 3%
+    assert diff_default["needs_review"] is False
+    assert diff_tight["needs_review"] is True
+
+
+# ---------------------------------------------------------- #
+# verdict_lifecycle.compare_verdicts — config wiring         #
+# ---------------------------------------------------------- #
+
+
+def test_lifecycle_compare_verdicts_uses_symbol_config(tmp_path: Path, monkeypatch):
+    """verdict_lifecycle.compare_verdicts() applies symbol-specific YAML thresholds.
+
+    Writes a config with a tight MES threshold (3%), then confirms that a 5%
+    param change is flagged for MES but not for MGC (which falls back to default 10%).
+    """
+    from backtest import verdict_lifecycle as lc
+
+    cfg_path = tmp_path / "cv_config.yaml"
+    _write_yaml_config(
+        cfg_path,
+        "default:\n  param_drift_threshold: 0.10\nMES:\n  param_drift_threshold: 0.03\n",
+    )
+    # Patch the default config path so verdict_lifecycle sees our tmp config
+    monkeypatch.setattr(cv, "_DEFAULT_CONFIG_PATH", cfg_path)
+
+    old_v = _make_verdict(symbol="MES", champion={"fast": 60})
+    new_v = _make_verdict(symbol="MES", champion={"fast": 63})  # +5%
+
+    old_p = tmp_path / "old.json"
+    new_p = tmp_path / "new.json"
+    old_p.write_text(json.dumps(old_v))
+    new_p.write_text(json.dumps(new_v))
+
+    diff_mes = lc.compare_verdicts(old_p, new_p, symbol="MES")
+    diff_mgc = lc.compare_verdicts(old_p, new_p, symbol="MGC")  # same files, different symbol key
+
+    assert diff_mes is not None
+    assert diff_mgc is not None
+    # MES: 5% > 3% tight threshold → flagged
+    mes_fast = next(d for d in diff_mes["champion_drift"] if d["param"] == "fast")
+    assert mes_fast["exceeds_threshold"] is True
+    # MGC: 5% < 10% default threshold → not flagged
+    mgc_fast = next(d for d in diff_mgc["champion_drift"] if d["param"] == "fast")
+    assert mgc_fast["exceeds_threshold"] is False
