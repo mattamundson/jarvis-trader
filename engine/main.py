@@ -2581,10 +2581,6 @@ app.include_router(alerts_router)
 app.include_router(notifications_router)
 app.include_router(strategy_lab_router)
 
-app.include_router(journal_router, prefix="/journal", tags=["journal"])
-app.include_router(webhook_router)
-app.include_router(v1_router)
-
 
 # ── WebSocket Price Feed ────────────────────────────────────────────────────────
 from websocket.price_feed import price_feed_endpoint
