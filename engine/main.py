@@ -3311,47 +3311,7 @@ async def get_pipeline_history(limit: int = 50, symbol: str = ""):
 # GET /analytics/validation-report — PASS/FAIL report: routers/analytics_router.py
 
 
-@app.get("/analytics/performance/rolling")
-async def get_rolling_performance(days: int = 30):
-    """Get rolling performance metrics for the last N days (7, 14, or 30)."""
-    if not db_manager:
-        raise HTTPException(status_code=503, detail="Database not initialized")
-    days = max(1, min(days, 90))  # clamp to 1-90 days
-    try:
-        from analytics.performance import PerformanceCalculator
-
-        calc = PerformanceCalculator(db_manager)
-        return calc.calculate_rolling(days=days)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@app.get("/analytics/performance/compare")
-async def get_analytics_performance_compare():
-    """
-    Compare current forward-test metrics against backtest targets.\n
-    Forward metrics (from live paper trading in SQLite) are compared to the
-    reference backtest results: PF=5.27, Sharpe=4.16.\n
-    Returns per-metric diffs, retention percentages, and a ``degradation_ok``
-    flag that is True when forward results still exceed the paper thresholds
-    (PF > 2.0 and Sharpe > 1.5).
-    """
-    if not db_manager:
-        return {
-            "forward": {},
-            "backtest": {"profit_factor": 5.27, "sharpe_ratio": 4.16},
-            "comparison": {},
-            "degradation_ok": False,
-            "note": "Database not initialized.",
-        }
-    try:
-        from analytics.performance import PerformanceCalculator
-
-        calc = PerformanceCalculator(db_manager)
-        return calc.compare_to_backtest()
-    except Exception as exc:
-        logger.error(f"[Analytics] compare_to_backtest failed: {exc}")
-        raise HTTPException(500, f"Analytics error: {exc}") from exc
+# ── /analytics/performance/rolling + /analytics/performance/compare — served by routers/analytics_router.py ──
 
 
 @app.get("/analytics/mtf")
@@ -3436,45 +3396,7 @@ def _log_decision(
             logger.warning(f"[DB] Failed to persist decision for {symbol}: {_db_err}")
 
 
-@app.get("/decisions/recent")
-async def get_recent_decisions(limit: int = 20):
-    """Return most recent agent decisions — queries SQLite first, falls back to in-memory."""
-    if db_manager:
-        try:
-            rows = db_manager.get_decisions(limit=limit)
-            if rows:
-                # Normalise to the same shape the dashboard expects
-                return [
-                    {
-                        "id": r.get("id"),
-                        "timestamp": r.get("timestamp"),
-                        "symbol": r.get("symbol"),
-                        "action": r.get("action"),
-                        "confidence": r.get("confidence"),
-                        "source": (r.get("signal_data_json") or {}).get("source", "db"),
-                        "summary": r.get("reasoning") or "",
-                    }
-                    for r in rows
-                ]
-        except Exception as _db_err:
-            logger.warning(f"[DB] get_decisions failed, falling back to in-memory: {_db_err}")
-    return _decision_log[-limit:]
-
-
-@app.post("/decisions/log")
-async def log_decision(decision: dict):
-    """Internal: agents call this to log decisions"""
-    _log_decision(
-        symbol=decision.get("symbol", "UNKNOWN"),
-        action=decision.get("action", "hold"),
-        confidence=float(decision.get("confidence", 0.0)),
-        source=decision.get("source", "api"),
-        summary=decision.get("summary", ""),
-        reasoning=decision.get("reasoning", ""),
-        regime=decision.get("regime"),
-        signal_data=decision,
-    )
-    return {"ok": True}
+# ── /decisions/recent + /decisions/log — served by routers/decisions_router.py ──
 
 
 # ── Sentiment (recent + news) — served by routers/sentiment_router.py (wired 2026-05-22) ──
@@ -3519,31 +3441,7 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
 # ── Earnings calendar awareness ──────────────────────────────────────────────────
 
 
-@app.get("/market/earnings")
-async def get_upcoming_earnings(days: int = 7):
-    """Check for upcoming earnings near our watched symbols."""
-    WATCHED = {
-        "SPY": "S&P 500 ETF",
-        "QQQ": "Nasdaq ETF",
-        "AAPL": "Apple (QQQ weight)",
-        "MSFT": "Microsoft (QQQ weight)",
-        "NVDA": "Nvidia (QQQ weight)",
-        "AMZN": "Amazon",
-        "META": "Meta",
-        "GOOGL": "Alphabet",
-    }
-
-    # Earnings calendar data requires a dedicated earnings data source (e.g. Polygon earnings
-    # endpoint). No equivalent is available on data_manager at this time.
-    return {
-        "upcoming_earnings": [],
-        "count": 0,
-        "days_lookahead": days,
-        "note": "Earnings calendar unavailable — no earnings data source configured",
-        "source": "unavailable",
-        "watched_symbols": list(WATCHED.keys()),
-    }
-
+# ── /market/earnings — served by routers/market_router.py ──
 
 # ── Pipeline ──────────────────────────────────────────────────────────────
 
@@ -4477,105 +4375,7 @@ async def get_commission_stats():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@app.get("/analytics/trades/by-day")
-async def get_trades_by_day():
-    """Day-of-week breakdown of paper trade performance.
-    Returns win rate, avg pnl, count for each day (Mon-Fri).
-    """
-    if db_manager is None:
-        raise HTTPException(status_code=503, detail="DB not initialized")
-    try:
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            try:
-                rows = conn.execute(
-                    """SELECT
-                         strftime('%w', exit_time) AS dow,
-                         COUNT(*) AS cnt,
-                         SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
-                         SUM(pnl) AS total_pnl,
-                         AVG(pnl) AS avg_pnl
-                       FROM paper_trades
-                       WHERE status = 'closed' AND exit_time IS NOT NULL
-                       GROUP BY dow
-                       ORDER BY dow"""
-                ).fetchall()
-            finally:
-                conn.close()
-
-        DAY_NAMES = {
-            "0": "Sun",
-            "1": "Mon",
-            "2": "Tue",
-            "3": "Wed",
-            "4": "Thu",
-            "5": "Fri",
-            "6": "Sat",
-        }
-        result = []
-        for row in rows:
-            dow, cnt, wins, total_pnl, avg_pnl = row
-            result.append(
-                {
-                    "day": DAY_NAMES.get(str(dow), str(dow)),
-                    "count": cnt,
-                    "wins": wins,
-                    "losses": cnt - wins,
-                    "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
-                    "total_pnl": round(total_pnl or 0, 2),
-                    "avg_pnl": round(avg_pnl or 0, 2),
-                }
-            )
-        return {"days": result, "total_days_analyzed": len(result)}
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-
-
-@app.get("/analytics/trades/by-symbol")
-async def get_trades_by_symbol():
-    """Per-symbol breakdown of paper trade performance."""
-    if db_manager is None:
-        raise HTTPException(status_code=503, detail="DB not initialized")
-    try:
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            try:
-                rows = conn.execute(
-                    """SELECT
-                         symbol,
-                         COUNT(*) AS cnt,
-                         SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
-                         SUM(pnl) AS total_pnl,
-                         AVG(pnl) AS avg_pnl,
-                         MAX(pnl) AS best_trade,
-                         MIN(pnl) AS worst_trade
-                       FROM paper_trades
-                       WHERE status = 'closed'
-                       GROUP BY symbol
-                       ORDER BY total_pnl DESC"""
-                ).fetchall()
-            finally:
-                conn.close()
-
-        result = []
-        for row in rows:
-            symbol, cnt, wins, total_pnl, avg_pnl, best, worst = row
-            result.append(
-                {
-                    "symbol": symbol,
-                    "count": cnt,
-                    "wins": wins,
-                    "losses": cnt - wins,
-                    "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
-                    "total_pnl": round(total_pnl or 0, 2),
-                    "avg_pnl": round(avg_pnl or 0, 2),
-                    "best_trade": round(best or 0, 2),
-                    "worst_trade": round(worst or 0, 2),
-                }
-            )
-        return {"symbols": result, "total_symbols": len(result)}
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+# -- /analytics/trades/by-day + /analytics/trades/by-symbol -- served by routers/analytics_router.py --
 
 
 @app.get("/alerts/history")
