@@ -15,11 +15,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
+
+from api import (
+    DailyPnLResponse,
+    DecisionHistoryResponse,
+    DrawdownResponse,
+    PaperTradeResponse,
+    StatsSummaryResponse,
+)
 
 from approval.service import approved_watchlist_symbols
 from config import settings
@@ -1664,3 +1673,406 @@ async def get_paper_account_stats(
         max_dd=round(max_dd, 4) if max_dd is not None else None,
         equity_curve=equity_curve,
     )
+
+
+# ── Paper Trade Manual Submit ─────────────────────────────────────────────
+
+
+class PaperTradeRequest(BaseModel):
+    symbol: str
+    action: str  # "buy" | "sell" | "sell_short" | "buy_to_cover"
+    quantity: float
+    price: float
+    notes: str = ""
+    close_trade_id: str | None = None
+
+
+@router.post("/paper/trade/manual", response_model=PaperTradeResponse)
+async def submit_paper_trade(req: PaperTradeRequest):
+    """
+    Open or close a paper trade.\n
+    - If close_trade_id is omitted (or null):  opens a new position.
+    - If close_trade_id is provided:           closes that position at req.price.\n
+    """
+    if not paper_tracker:
+        raise HTTPException(503, "Paper tracker not initialized")
+
+    if req.close_trade_id:
+        try:
+            trade = paper_tracker.close_trade(req.close_trade_id, req.price)
+        except KeyError as e:
+            raise HTTPException(404, f"No open trade with id={req.close_trade_id!r}") from e
+
+        try:
+            from notifications.whatsapp import format_trade_closed_alert, send_whatsapp_message
+
+            duration_min = None
+            if trade.entry_time:
+                try:
+                    from dateutil import parser as dtparser
+
+                    entry_dt = dtparser.parse(trade.entry_time)
+                    if entry_dt.tzinfo is None:
+                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+                    duration_min = (datetime.now(timezone.utc) - entry_dt).total_seconds() / 60
+                except Exception:
+                    pass
+
+            msg = format_trade_closed_alert(
+                symbol=trade.symbol,
+                side=trade.action,
+                quantity=int(trade.quantity),
+                entry_price=float(trade.entry_price),
+                exit_price=float(trade.exit_price),
+                pnl=float(trade.pnl),
+                duration_minutes=duration_min,
+            )
+            asyncio.create_task(send_whatsapp_message(msg))
+        except Exception:
+            pass
+
+        return {"status": "closed", "trade": trade.to_dict()}
+    else:
+        if settings.LIVE_TRADING_ENABLED:
+            raise HTTPException(409, "Direct paper-trade open disabled in live mode")
+        if _safety_layer and _safety_layer.get_status().get("kill_switch_active"):
+            raise HTTPException(409, "Kill switch active — cannot open direct paper trade")
+        if (
+            req.symbol.upper() in FUTURES_SYMBOLS
+            and req.symbol.upper() not in approved_watchlist_symbols()
+        ):
+            raise HTTPException(
+                400,
+                f"Symbol {req.symbol.upper()} not on approved futures watchlist",
+            )
+        trade_id = paper_tracker.open_trade(
+            symbol=req.symbol,
+            action=req.action,
+            quantity=req.quantity,
+            price=req.price,
+            notes=req.notes,
+        )
+        return {
+            "status": "opened",
+            "trade_id": trade_id,
+            "symbol": req.symbol.upper(),
+            "action": req.action,
+            "quantity": req.quantity,
+            "entry_price": req.price,
+        }
+
+
+# ── Historical Query Endpoints ─────────────────────────────────────────────
+
+
+@router.get("/history/daily-pnl", response_model=DailyPnLResponse)
+async def get_daily_pnl(days: int = 30):
+    """Return daily P&L snapshots for the last N days."""
+    if not db_manager:
+        return {"daily_pnl": [], "days": days, "note": "db_manager not initialized"}
+    try:
+        records = db_manager.get_daily_pnl(days=days)
+        return {"daily_pnl": records, "days": days, "count": len(records)}
+    except Exception as exc:
+        logger.error(f"[DB] get_daily_pnl failed: {exc}")
+        return {"daily_pnl": [], "days": days, "error": str(exc)}
+
+
+@router.get("/history/decisions", response_model=DecisionHistoryResponse)
+async def get_decision_history(limit: int = 50, symbol: str = ""):
+    """Return historical agent decisions from SQLite."""
+    if not db_manager:
+        return {"decisions": [], "count": 0, "note": "db_manager not initialized"}
+    try:
+        decisions = db_manager.get_decisions(
+            limit=limit,
+            symbol=symbol.upper() if symbol else None,
+        )
+        return {"decisions": decisions, "count": len(decisions)}
+    except Exception as exc:
+        logger.error(f"[DB] get_decisions failed: {exc}")
+        return {"decisions": [], "count": 0, "error": str(exc)}
+
+
+@router.get("/stats/summary", response_model=StatsSummaryResponse)
+async def get_stats_summary():
+    """Aggregate performance summary from SQLite — win rate, total P&L, trade counts."""
+    if not db_manager:
+        return {"note": "db_manager not initialized"}
+    try:
+        summary = db_manager.get_stats_summary()
+        return summary
+    except Exception as exc:
+        logger.error(f"[DB] get_stats_summary failed: {exc}")
+        return {"error": str(exc)}
+
+
+@router.get("/stats/drawdown", response_model=DrawdownResponse)
+async def get_drawdown():
+    """Return max drawdown and the equity curve used to compute it."""
+    if not db_manager:
+        return {"max_drawdown": 0.0, "equity_curve": [], "note": "db_manager not initialized"}
+    try:
+        drawdown = db_manager.get_drawdown()
+        return drawdown
+    except Exception as exc:
+        logger.error(f"[DB] get_drawdown failed: {exc}")
+        return {"max_drawdown": 0.0, "equity_curve": [], "error": str(exc)}
+
+
+@router.get("/stats/streaks")
+async def get_trading_streaks():
+    """Calculate current and maximum win/loss streaks from closed trades."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    try:
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                rows = conn.execute(
+                    """SELECT pnl FROM paper_trades
+                       WHERE status = 'closed' AND pnl IS NOT NULL
+                       ORDER BY exit_time ASC"""
+                ).fetchall()
+            finally:
+                conn.close()
+
+        if not rows:
+            return {
+                "current_streak": 0,
+                "current_type": "none",
+                "max_win_streak": 0,
+                "max_loss_streak": 0,
+                "total_trades": 0,
+                "recent_results": [],
+            }
+
+        pnls = [r[0] for r in rows]
+        results = ["W" if p > 0 else "L" for p in pnls]
+
+        current_type = results[-1]
+        current = 0
+        for r in reversed(results):
+            if r == current_type:
+                current += 1
+            else:
+                break
+
+        max_win = max_loss = win_run = loss_run = 0
+        for r in results:
+            if r == "W":
+                win_run += 1
+                loss_run = 0
+            else:
+                loss_run += 1
+                win_run = 0
+            max_win = max(max_win, win_run)
+            max_loss = max(max_loss, loss_run)
+
+        return {
+            "current_streak": current,
+            "current_type": "win" if current_type == "W" else "loss",
+            "max_win_streak": max_win,
+            "max_loss_streak": max_loss,
+            "total_trades": len(results),
+            "recent_results": results[-10:],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/stats/session-today")
+async def get_todays_session():
+    """Get today's trading session stats (current calendar day in CT)."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    try:
+        import pytz
+
+        ct = pytz.timezone("America/Chicago")
+        now_ct = datetime.now(ct)
+        today_ct = now_ct.strftime("%Y-%m-%d")
+
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                cursor = conn.execute(
+                    """SELECT pnl, side, symbol, quantity, entry_price, exit_price, entry_time, exit_time
+                       FROM paper_trades
+                       WHERE status = 'closed'
+                         AND date(exit_time) = ?
+                       ORDER BY exit_time ASC""",
+                    (today_ct,),
+                )
+                cols = [d[0] for d in cursor.description]
+                trades = [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
+
+                cursor2 = conn.execute(
+                    """SELECT symbol, side, quantity, entry_price, entry_time
+                       FROM paper_trades
+                       WHERE status = 'open'
+                         AND date(entry_time) = ?""",
+                    (today_ct,),
+                )
+                cols2 = [d[0] for d in cursor2.description]
+                open_today = [dict(zip(cols2, row, strict=False)) for row in cursor2.fetchall()]
+            finally:
+                conn.close()
+
+        pnls = [float(t.get("pnl", 0) or 0) for t in trades]
+        wins = [p for p in pnls if p > 0]
+        losses = [p for p in pnls if p < 0]
+
+        gross_pnl = sum(pnls)
+        win_count = len(wins)
+        loss_count = len(losses)
+        win_rate = win_count / len(pnls) if pnls else None
+
+        return {
+            "date": today_ct,
+            "session": "RTH" if 8 <= now_ct.hour < 15 else "EXTENDED",
+            "closed_trades": len(trades),
+            "open_trades": len(open_today),
+            "gross_pnl": round(gross_pnl, 2),
+            "wins": win_count,
+            "losses": loss_count,
+            "win_rate": round(win_rate, 3) if win_rate is not None else None,
+            "best_trade": round(max(pnls), 2) if pnls else None,
+            "worst_trade": round(min(pnls), 2) if pnls else None,
+            "avg_pnl": round(sum(pnls) / len(pnls), 2) if pnls else None,
+            "symbols_traded": list({t.get("symbol") for t in trades}),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/stats/weekly")
+async def get_weekly_stats():
+    """Rolling 7-day trade statistics for the paper trading phase."""
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        with db_manager._lock:
+            conn = db_manager._connect()
+            try:
+                cursor = conn.execute(
+                    "SELECT pnl, symbol FROM paper_trades WHERE status = 'closed' AND exit_time >= ? ORDER BY exit_time DESC",
+                    (cutoff,),
+                )
+                cols = [d[0] for d in cursor.description]
+                trades = [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
+            finally:
+                conn.close()
+
+        pnls = [float(t.get("pnl", 0) or 0) for t in trades]
+        wins = [p for p in pnls if p > 0]
+        total = len(pnls)
+        win_rate = round(len(wins) / total, 4) if total else 0.0
+        return {
+            "period": "7d",
+            "total_trades": total,
+            "wins": len(wins),
+            "losses": len([p for p in pnls if p < 0]),
+            "win_rate": win_rate,
+            "gross_pnl": round(sum(pnls), 2),
+            "avg_pnl": round(sum(pnls) / total, 2) if total else 0.0,
+            "symbols": list({t.get("symbol") for t in trades}),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/stats/commissions")
+async def get_commission_stats():
+    """Estimate total commissions paid during paper trading phase."""
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
+    try:
+        RATES = {"MES": 1.57, "MNQ": 1.57, "MCL": 2.05, "DEFAULT": 1.57}
+        trades = db_manager.get_trade_history(limit=10000)
+        total_commissions = 0.0
+        by_symbol: dict[str, float] = {}
+        for t in trades:
+            sym = (t.get("symbol") or "").upper()
+            qty = int(t.get("quantity") or 1)
+            rate = RATES.get(sym, RATES["DEFAULT"])
+            commission = rate * qty * 2
+            total_commissions += commission
+            by_symbol[sym] = by_symbol.get(sym, 0.0) + commission
+
+        gross_pnl = sum(float(t.get("pnl") or 0) for t in trades if t.get("status") == "closed")
+        net_pnl = gross_pnl - total_commissions
+
+        return {
+            "total_commissions": round(total_commissions, 2),
+            "gross_pnl": round(gross_pnl, 2),
+            "net_pnl": round(net_pnl, 2),
+            "by_symbol": {k: round(v, 2) for k, v in by_symbol.items()},
+            "trade_count": len(trades),
+            "avg_commission_per_trade": round(total_commissions / max(len(trades), 1), 2),
+            "rates": RATES,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/import/trades")
+async def import_paper_trades(request: Request):
+    """Bulk import paper trades from JSON array."""
+    if db_manager is None:
+        raise HTTPException(status_code=503, detail="DB not initialized")
+    try:
+        body = await request.json()
+        trades = body.get("trades", [])
+        if not isinstance(trades, list):
+            raise HTTPException(status_code=400, detail="'trades' must be a list")
+        if len(trades) > 1000:
+            raise HTTPException(status_code=400, detail="Max 1000 trades per import")
+
+        imported = 0
+        errors = []
+
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                for i, t in enumerate(trades):
+                    try:
+                        import uuid as _uuid
+
+                        trade_id = t.get("trade_id") or str(_uuid.uuid4())
+                        conn.execute(
+                            """INSERT OR IGNORE INTO paper_trades
+                               (trade_id, symbol, side, entry_price, exit_price, quantity,
+                                pnl, status, entry_time, exit_time, strategy_params, notes)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            (
+                                trade_id,
+                                str(t.get("symbol", "UNKNOWN")),
+                                str(t.get("action", t.get("side", "LONG"))),
+                                float(t.get("entry_price", 0)),
+                                float(t.get("exit_price", 0)),
+                                int(t.get("quantity", 1)),
+                                float(t.get("pnl", 0)),
+                                "CLOSED",
+                                str(t.get("entry_time", datetime.now(timezone.utc).isoformat())),
+                                str(t.get("exit_time", datetime.now(timezone.utc).isoformat())),
+                                str(t.get("strategy", t.get("strategy_params", "imported"))),
+                                str(t.get("notes", "")),
+                            ),
+                        )
+                        imported += 1
+                    except Exception as e:
+                        errors.append({"index": i, "error": str(e)})
+                conn.commit()
+            finally:
+                conn.close()
+
+        return {"imported": imported, "skipped": len(errors), "errors": errors[:10]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
