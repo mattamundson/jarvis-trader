@@ -2945,3 +2945,161 @@ class TestCircuitBreakerPnlMonitorException:
         safety._current_equity = 0.0  # force fallback attempt
         status = safety.check_circuit_breakers()
         assert status is not None  # did not raise
+
+
+# ---------------------------------------------------------------------------
+# §C10 — emergency flatten state restored from DB (lines 459–460)
+# ---------------------------------------------------------------------------
+
+
+class TestEmergencyFlattenRestoreFromDb:
+    def test_emergency_flatten_restored_on_startup(self, mock_settings, tmp_path):
+        """Kill switch + emergency_flatten_activated=true in DB → _emergency_flatten_activated set (lines 459–460)."""
+        db_path = str(tmp_path / "ef_test.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE system_state (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO system_state VALUES ('kill_switch_active', 'true', datetime('now'))"
+        )
+        conn.execute(
+            "INSERT INTO system_state VALUES ('kill_switch_reason', 'DAILY_LOSS_LIMIT', datetime('now'))"
+        )
+        conn.execute(
+            "INSERT INTO system_state VALUES ('emergency_flatten_activated', 'true', datetime('now'))"
+        )
+        conn.commit()
+        conn.close()
+        safety = SafetyLayer(mock_settings, db_path=db_path)
+        assert safety._emergency_flatten_activated is True
+
+
+# ---------------------------------------------------------------------------
+# §C10 — current_halt_level property (lines 576–585)
+# ---------------------------------------------------------------------------
+
+
+class TestCurrentHaltLevel:
+    def test_emergency_flatten_activated_returns_emergency_flatten(self, mock_settings):
+        """_emergency_flatten_activated=True → current_halt_level=EMERGENCY_FLATTEN (lines 576–577)."""
+        safety = SafetyLayer(mock_settings)
+        safety._emergency_flatten_activated = True
+        assert safety.current_halt_level.value == "emergency_flatten"
+
+    def test_kill_switch_active_returns_hard_halt(self, mock_settings):
+        """_kill_switch_active=True → current_halt_level=HARD_HALT (lines 578–579)."""
+        safety = SafetyLayer(mock_settings)
+        safety._kill_switch_active = True
+        assert safety.current_halt_level.value == "hard_halt"
+
+    def test_loss_tracker_multiplier_below_one_returns_soft_halt(self, mock_settings):
+        """loss_tracker.get_position_size_multiplier() < 1.0 → SOFT_HALT (lines 580–584)."""
+        safety = SafetyLayer(mock_settings)
+        mock_tracker = MagicMock()
+        mock_tracker.get_position_size_multiplier.return_value = 0.5
+        safety._loss_tracker = mock_tracker
+        assert safety.current_halt_level.value == "soft_halt"
+
+    def test_no_halts_returns_normal(self, mock_settings):
+        """No halt conditions active → NORMAL (line 585)."""
+        safety = SafetyLayer(mock_settings)
+        assert safety.current_halt_level.value == "normal"
+
+
+# ---------------------------------------------------------------------------
+# §C10 — emergency_flatten_and_halt async method (lines 597–604)
+# ---------------------------------------------------------------------------
+
+
+class TestEmergencyFlattenAndHalt:
+    @pytest.mark.asyncio
+    async def test_emergency_flatten_and_halt_activates_kill_switch(self, mock_settings):
+        """emergency_flatten_and_halt → kill switch active + flatten called (lines 597–604)."""
+        mock_db = MagicMock()
+        mock_db.get_pnl_snapshot.return_value = None
+        mock_settings.INITIAL_CAPITAL = 10_000.0
+        safety = SafetyLayer(mock_settings, db_manager=mock_db)
+        with patch.object(
+            safety,
+            "flatten_all_positions",
+            new=AsyncMock(return_value={"flattened": [], "errors": []}),
+        ):
+            result = await safety.emergency_flatten_and_halt("unit test")
+        assert result["halt_level"] == "emergency_flatten"
+        assert result["kill_switch_activated"] is True
+        assert safety.is_killed is True
+        assert safety._emergency_flatten_activated is True
+
+
+# ---------------------------------------------------------------------------
+# §C10 — check_order tuple result unpacking (line 1150)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckOrderTupleResultUnpacking:
+    def test_check_fn_returning_tuple_is_unpacked(self, mock_settings):
+        """check_fn returns (RiskCheckResult, extra) → unpacked at line 1150, no crash."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_DAILY_LOSS_PCT = 0.10
+        mock_settings.MAX_DRAWDOWN_PCT = 0.20
+        mock_settings.MAX_SINGLE_ORDER_VALUE = 50_000.0
+        mock_settings.MAX_FUTURES_MARGIN_PCT = 0.30
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 5
+        mock_settings.MAX_TRADE_LOSS_USD = 500.0
+        safety = SafetyLayer(mock_settings)
+        with patch.object(
+            safety, "_check_kill_switch", return_value=(RiskCheckResult(approved=True), None)
+        ):
+            order = OrderRequest(symbol="MES", quantity=1, order_type="market", is_futures=True)
+            result = safety.check_order(order, portfolio_equity=100_000.0)
+        assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# §C10 — submit_entry_with_stop sidecar exception paths (lines 1621–1622, 1629–1630)
+# ---------------------------------------------------------------------------
+
+
+class TestSubmitEntryWithStopSidecarExceptions:
+    def _live_gw(self, mock_settings):
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_DAILY_LOSS_PCT = 0.10
+        mock_settings.MAX_DRAWDOWN_PCT = 0.20
+        mock_settings.MAX_SINGLE_ORDER_VALUE = 50_000.0
+        mock_settings.MAX_FUTURES_MARGIN_PCT = 0.30
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 5
+        mock_settings.MAX_TRADE_LOSS_USD = 500.0
+        safety = SafetyLayer(mock_settings)
+        mock_gw = AsyncMock()
+        mock_gw.is_connected = Mock(return_value=True)
+        mock_gw.get_order_status = AsyncMock(return_value={"parent_order_id": "entry_id"})
+        safety._ib_gateway = mock_gw
+        return safety, mock_gw
+
+    @pytest.mark.asyncio
+    async def test_sidecar_json_read_exception_handled(self, mock_settings):
+        """Sidecar exists but read raises → inner except _state={} (lines 1621–1622), trade approved."""
+        safety, mock_gw = self._live_gw(mock_settings)
+        mock_gw.place_paper_order = AsyncMock(side_effect=["entry_id", "hb1_stp", "stp_id"])
+        mock_gw.get_order_status = AsyncMock(return_value={"parent_order_id": "entry_id"})
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.read_text", side_effect=ValueError("corrupt json")),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.mkdir"),
+        ):
+            result = await safety.submit_entry_with_stop("MES", "BUY", 1, 5800.0, 5785.0)
+        assert result["approved"] is True
+
+    @pytest.mark.asyncio
+    async def test_sidecar_outer_exception_handled(self, mock_settings):
+        """Sidecar mkdir raises → outer except logs warning, does not propagate (lines 1629–1630)."""
+        safety, mock_gw = self._live_gw(mock_settings)
+        mock_gw.place_paper_order = AsyncMock(side_effect=["entry_id", "hb1_stp", "stp_id"])
+        mock_gw.get_order_status = AsyncMock(return_value={"parent_order_id": "entry_id"})
+        with patch("pathlib.Path.mkdir", side_effect=PermissionError("no write")):
+            result = await safety.submit_entry_with_stop("MES", "BUY", 1, 5800.0, 5785.0)
+        assert result["approved"] is True
