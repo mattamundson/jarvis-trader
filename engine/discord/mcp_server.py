@@ -29,6 +29,8 @@ from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import aiohttp
+
 # When invoked as a script (per ~/.claude.json mcpServers config), Python adds
 # only this file's directory to sys.path — so `from discord.commentary_processor`
 # fails to find `engine.discord` as a package. Add `engine/` (parent of this
@@ -79,6 +81,10 @@ def _parse_date(s: str) -> date_type:
 # ---------------------------------------------------------------------------
 
 mcp = FastMCP("discord-intelligence")
+
+# Engine API — read from env (loaded above from engine/.env)
+_ENGINE_URL = os.environ.get("ENGINE_URL", "http://127.0.0.1:8010")
+_ENGINE_API_KEY = os.environ.get("ENGINE_API_KEY", "")
 
 
 @mcp.tool()
@@ -422,6 +428,67 @@ async def get_bookmark_stats(days: int = 30) -> dict:
     except Exception as exc:
         logger.warning("[get_bookmark_stats] DB error: %s", exc)
         return {"days": days, "total": 0, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Engine API tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_engine_health() -> dict:
+    """
+    Get JARVIS engine health — IBKR connections, TV MCP, LLM path, uptime, kill switch.
+
+    Call this at the start of any brief or position check to confirm the engine
+    is healthy before relying on its data. Returns 'status=error' with an
+    'error' key if the engine is unreachable.
+
+    Returns dict with: status, ibkr_connected, ibkr_execution_connected,
+        ibkr_data_connected, tradingview_mcp_healthy, llm_path_healthy,
+        uptime_seconds, kill_switch_active, paper_mode, version
+    """
+    url = os.environ.get("ENGINE_URL", _ENGINE_URL)
+    key = os.environ.get("ENGINE_API_KEY", _ENGINE_API_KEY)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{url}/health",
+                headers={"X-API-Key": key},
+                timeout=aiohttp.ClientTimeout(total=8),
+            ) as resp:
+                if resp.status != 200:
+                    return {"status": "error", "error": f"HTTP {resp.status}"}
+                return await resp.json()
+    except Exception as exc:
+        return {"status": "unreachable", "error": str(exc)}
+
+
+@mcp.tool()
+async def get_open_positions() -> dict:
+    """
+    Get currently open IBKR positions from the JARVIS engine.
+
+    Returns 'positions' list (empty when flat) with each position containing
+    symbol, position (qty), avg_cost, unrealized_pnl where available.
+    Returns 'error' key if the engine is unreachable.
+    """
+    url = os.environ.get("ENGINE_URL", _ENGINE_URL)
+    key = os.environ.get("ENGINE_API_KEY", _ENGINE_API_KEY)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{url}/brokers/positions",
+                headers={"X-API-Key": key},
+                timeout=aiohttp.ClientTimeout(total=8),
+            ) as resp:
+                if resp.status != 200:
+                    return {"positions": [], "error": f"HTTP {resp.status}"}
+                data = await resp.json()
+                positions = data if isinstance(data, list) else data.get("positions", [])
+                return {"positions": positions, "count": len(positions)}
+    except Exception as exc:
+        return {"positions": [], "error": str(exc)}
 
 
 # ---------------------------------------------------------------------------
