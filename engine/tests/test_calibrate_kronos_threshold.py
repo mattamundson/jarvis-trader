@@ -8,13 +8,12 @@ Run with::
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import math
 import sqlite3
 import sys
 from pathlib import Path
-
-import importlib.util
 
 import pytest
 
@@ -183,8 +182,8 @@ class TestPerInstrumentIsolation:
         high_vol_closes = [5000.0 + 20.0 * _math.sin(i * 0.3) for i in range(n)]
 
         rows = {
-            "LOW_VOL": list(zip(timestamps, low_vol_closes)),
-            "HIGH_VOL": list(zip(timestamps, high_vol_closes)),
+            "LOW_VOL": list(zip(timestamps, low_vol_closes, strict=False)),
+            "HIGH_VOL": list(zip(timestamps, high_vol_closes, strict=False)),
         }
         _create_minimal_db(db, rows)
 
@@ -212,7 +211,7 @@ class TestPerInstrumentIsolation:
         n = 50
         timestamps = _make_ts_sequence(n, start="2025-11-01T00:00:00")
         closes = [200.0 + i * 0.1 for i in range(n)]
-        rows = {"ALPHA": list(zip(timestamps, closes))}
+        rows = {"ALPHA": list(zip(timestamps, closes, strict=False))}
         _create_minimal_db(db, rows)
 
         result = run_calibration(db_path=db, horizon=5, lookback_days=365, instruments=["ALPHA"])
@@ -260,7 +259,7 @@ class TestHandlesEmptyData:
         n = 3  # fewer than MIN_BARS_REQUIRED + horizon = 25
         timestamps = _make_ts_sequence(n, start="2026-01-01T00:00:00")
         closes = [100.0 + i for i in range(n)]
-        _create_minimal_db(db, {"TINY": list(zip(timestamps, closes))})
+        _create_minimal_db(db, {"TINY": list(zip(timestamps, closes, strict=False))})
 
         result = run_calibration(db_path=db, horizon=5, lookback_days=365, instruments=["TINY"])
         tiny = result["per_instrument"]["TINY"]
@@ -301,7 +300,7 @@ class TestOutputJsonSchema:
         n = 60
         timestamps = _make_ts_sequence(n, start="2025-09-01T00:00:00")
         closes = [3000.0 + i * 0.5 for i in range(n)]
-        _create_minimal_db(db, {"FAKE": list(zip(timestamps, closes))})
+        _create_minimal_db(db, {"FAKE": list(zip(timestamps, closes, strict=False))})
 
         return run_calibration(db_path=db, horizon=5, lookback_days=365, instruments=["FAKE"])
 

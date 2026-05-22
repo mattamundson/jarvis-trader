@@ -44,9 +44,10 @@ from typing import Optional
 
 import pandas as pd
 
+from strategies.rl_config import MAX_EPISODE_BARS
+
 # Canonical environment — all logic lives there.
 from strategies.rl_environment import TradingEnvironment, build_env
-from strategies.rl_config import MAX_EPISODE_BARS
 
 # ── Public alias ──────────────────────────────────────────────────────────────
 

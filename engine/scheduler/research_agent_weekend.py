@@ -23,7 +23,6 @@ stub fallback runs (still exercises the artifact write path for smoke-testing).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from datetime import date, datetime, timezone

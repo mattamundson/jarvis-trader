@@ -14,11 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.error import URLError
 from urllib.request import urlopen
 
 from fastapi import APIRouter

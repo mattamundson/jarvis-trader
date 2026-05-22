@@ -19,14 +19,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from scheduler.pipeline_autonomous import (
-    is_autonomous_enabled,
-    autonomous_tick,
-    inject_autonomous_deps,
+    _FLAG_NAME,
     _ensure_table,
     _has_pending_candidate,
-    _FLAG_NAME,
+    autonomous_tick,
+    inject_autonomous_deps,
+    is_autonomous_enabled,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

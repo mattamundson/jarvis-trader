@@ -189,8 +189,8 @@ def train_ppo(
         raise ValueError(f"DataFrame too small for training ({len(df)} bars); need >= 60.")
 
     # ── Build environment ─────────────────────────────────────────────────
-    from strategies.rl_env import make_trading_env  # noqa: PLC0415
     from strategies.rl_config import PPO_CONFIG  # noqa: PLC0415
+    from strategies.rl_env import make_trading_env  # noqa: PLC0415
 
     env = make_trading_env(df=df, symbol=symbol)
 

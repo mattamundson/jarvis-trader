@@ -34,7 +34,6 @@ from typing import Optional
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -131,7 +130,6 @@ def _insert_null_key_row(conn: sqlite3.Connection, symbol: str, entry_time: str)
 class TestMigration032BackfillsNullKeys:
     def test_migration_032_backfills_null_keys(self, tmp_path):
         """After migration, no NULL idempotency_key rows should remain."""
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032
@@ -159,7 +157,6 @@ class TestMigration032BackfillsNullKeys:
         same keys (idempotency check skips the second run, but if it didn't
         re-run it would produce the same results).
         """
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032
@@ -182,7 +179,6 @@ class TestMigration032BackfillsNullKeys:
         Keys for rows with different entry_times should differ (assuming the
         times are in different 5s buckets — which they will be for times hours apart).
         """
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032
@@ -213,7 +209,6 @@ class TestMigration032BackfillsNullKeys:
 class TestMigration032Idempotent:
     def test_migration_032_idempotent(self, tmp_path):
         """Running migration_032 twice should not raise and should not change row count."""
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032
@@ -235,7 +230,6 @@ class TestMigration032Idempotent:
         """
         run_migrations() on a DB already at version 32 should be a no-op.
         """
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032, run_migrations
@@ -266,7 +260,6 @@ class TestMigration032Idempotent:
 class TestMigration032PreservesRows:
     def test_migration_032_preserves_all_existing_rows(self, tmp_path):
         """Pre-migration row count == post-migration row count."""
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032
@@ -299,7 +292,6 @@ class TestMigration032PreservesRows:
 
     def test_trade_fields_preserved_after_migration(self, tmp_path):
         """All field values should be identical after the table rebuild."""
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032
@@ -342,7 +334,6 @@ class TestMigration032PreservesRows:
 class TestMigration032RecreatesUniqueIndex:
     def test_migration_032_recreates_unique_index(self, tmp_path):
         """After migration, a second INSERT with the same key should violate UNIQUE."""
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032
@@ -373,7 +364,6 @@ class TestMigration032RecreatesUniqueIndex:
 
     def test_not_null_column_rejects_null_insert(self, tmp_path):
         """After migration, inserting NULL idempotency_key must raise IntegrityError."""
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032
@@ -399,7 +389,6 @@ class TestMigration032RecreatesUniqueIndex:
 
     def test_index_info_shows_idempotency_key_unique(self, tmp_path):
         """PRAGMA index_list should confirm the unique index exists after migration."""
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database.migrations import migration_032
@@ -428,7 +417,6 @@ class TestInsertPaperTradeRequiresKey:
         Build a minimal object that satisfies the TradesMixin interface using
         the given DB path.
         """
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database._mixins_trades import TradesMixin
@@ -532,7 +520,6 @@ class TestInsertPaperTradeRequiresKey:
 
     def test_insert_paper_trade_with_valid_key_succeeds(self, tmp_path):
         """A valid key allows the INSERT to proceed."""
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database._helpers import compute_order_idempotency_key
@@ -552,7 +539,6 @@ class TestInsertPaperTradeRequiresKey:
 
     def test_insert_paper_trade_dedup_still_works(self, tmp_path):
         """Duplicate key returns existing row_id and does not insert a second row."""
-        import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database._helpers import compute_order_idempotency_key

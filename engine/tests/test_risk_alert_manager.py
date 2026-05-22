@@ -8,6 +8,7 @@ get_fired_keys. Worker/notify path tested with a synchronous stub.
 from __future__ import annotations
 
 import asyncio
+
 import pytest
 
 from risk.alert_manager import AlertManager

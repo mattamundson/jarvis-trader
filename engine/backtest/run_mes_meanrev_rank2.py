@@ -246,7 +246,6 @@ from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_MC_DD_CORE,
     GATE_P_EDGE,
     GATE_PF_CI_LOWER,
-    N_BOOTSTRAP,
     _find_latest_cache,
 )
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
@@ -498,7 +497,7 @@ def run_wfo() -> dict:
     print(f"  bb_std          : {BB_STD_VALUES}")
     print(f"  stop_atr_mult   : {STOP_ATR_MULT_VALUES}")
     print(f"  rsi_short       : {RSI_SHORT} (SHORT entry threshold)")
-    print(f"  rsi_long        : suppressed (no LONG trades in rank2)")
+    print("  rsi_long        : suppressed (no LONG trades in rank2)")
     print(f"  capital         : ${CAPITAL:,.0f}  (ALT path, $50K+ accounts)")
     print(f"  multiplier      : ${MULTIPLIER:.0f}/point")
     print(f"  tick_size       : {TICK_SIZE} pts = ${TICK_SIZE*MULTIPLIER:.2f}/tick")

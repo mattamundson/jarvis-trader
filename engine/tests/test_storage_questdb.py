@@ -337,6 +337,7 @@ class TestQuestDBFailureLoggedNotRaised:
     def test_bot_signal_failure_logs_warning(self, caplog):
         """insert_bot_signal_ts logs a WARNING when QuestDB raises."""
         import logging
+
         from discord.storage_questdb import insert_bot_signal_ts
 
         mock_client = MagicMock()
@@ -395,7 +396,7 @@ class TestDdlIdempotent:
 
     def test_ensure_table_exists_called_once_per_table(self):
         """_ensure_table_exists only calls /exec once for the same table name."""
-        from discord.storage_questdb import _ensure_table_exists, _DDL_BOT_SIGNALS
+        from discord.storage_questdb import _DDL_BOT_SIGNALS, _ensure_table_exists
 
         mock_resp = _mock_ok_response()
         mock_client = MagicMock()
@@ -414,7 +415,7 @@ class TestDdlIdempotent:
 
     def test_ensure_table_ddl_failure_does_not_raise(self):
         """_ensure_table_exists swallows DDL errors gracefully."""
-        from discord.storage_questdb import _ensure_table_exists, _DDL_BOT_SIGNALS, _tables_ensured
+        from discord.storage_questdb import _DDL_BOT_SIGNALS, _ensure_table_exists, _tables_ensured
 
         mock_client = MagicMock()
         mock_client.get.side_effect = ConnectionError("QuestDB down")
@@ -428,9 +429,9 @@ class TestDdlIdempotent:
     def test_ensure_different_tables_each_get_one_ddl_call(self):
         """Each distinct table name gets exactly one DDL /exec call."""
         from discord.storage_questdb import (
-            _ensure_table_exists,
             _DDL_BOT_SIGNALS,
             _DDL_COREY_COMMENTARY,
+            _ensure_table_exists,
             _tables_ensured,
         )
 
@@ -499,8 +500,8 @@ class TestBackfillDryRun:
 
     def test_dry_run_does_not_write(self, capsys):
         """--dry-run mode prints counts but makes no HTTP write calls to QuestDB."""
-        import sys
         import importlib
+        import sys
 
         db_path = self._make_temp_sqlite()
         try:

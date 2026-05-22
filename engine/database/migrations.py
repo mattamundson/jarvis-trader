@@ -1343,7 +1343,7 @@ def migration_032(conn: sqlite3.Connection) -> None:
     """
     import hashlib
     import math
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     # ── Idempotency check ─────────────────────────────────────────────────────
     col_info = {row[1]: row[3] for row in conn.execute("PRAGMA table_info(paper_trades)")}

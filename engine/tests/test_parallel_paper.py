@@ -21,7 +21,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
@@ -159,6 +158,7 @@ def test_dual_emit_when_enabled_writes_two_trades():
 
     with patch.dict(os.environ, {"ENABLE_PARALLEL_PAPER": "1"}):
         import importlib
+
         import parallel_paper
 
         importlib.reload(parallel_paper)
@@ -223,6 +223,7 @@ def test_single_emit_when_disabled_writes_one_trade():
 
     with patch.dict(os.environ, {"ENABLE_PARALLEL_PAPER": "0"}):
         import importlib
+
         import parallel_paper
 
         importlib.reload(parallel_paper)
@@ -283,6 +284,7 @@ def test_account_stats_endpoint_returns_shape():
 
     # Patch the global db_manager in portfolio_router
     import importlib
+
     import routers.portfolio_router as pr
 
     importlib.reload(pr)

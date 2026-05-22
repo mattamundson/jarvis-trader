@@ -24,7 +24,6 @@ from risk.entry_price_sanity import (
     is_entry_price_sanity_enabled,
 )
 
-
 # ---------------------------------------------------------------------------
 # Pure predicate: is_entry_price_sane
 # ---------------------------------------------------------------------------

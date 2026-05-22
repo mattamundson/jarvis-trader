@@ -367,7 +367,6 @@ def test_pipeline_run_proceeds_when_healthy(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """pipeline_run proceeds to the POST when pre-flight passes and POST is mocked."""
-    import unittest.mock as mock
 
     def fake_fetch_health():
         return {"status": "ok", "kill_switch_active": False, "live_trading": False}

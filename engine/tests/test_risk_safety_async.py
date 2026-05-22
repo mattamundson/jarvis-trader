@@ -15,7 +15,6 @@ import pytest
 
 from risk.safety_layer import KillSwitchReason, OrderRequest, SafetyLayer
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 

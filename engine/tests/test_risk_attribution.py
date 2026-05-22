@@ -85,7 +85,7 @@ def _signals_json(**kwargs) -> str:
 class TestAttributeEmptyDay:
     def test_attribute_empty_day_returns_zeros(self) -> None:
         """No trades for the date → all zeros, top_contributor=None, residual=0."""
-        from analytics.risk_attribution import attribute_daily_pnl, ANALYST_SLOTS
+        from analytics.risk_attribution import ANALYST_SLOTS, attribute_daily_pnl
 
         db = _make_db([])  # empty table
         result = attribute_daily_pnl(date(2026, 5, 20), db_path=db)
@@ -199,7 +199,7 @@ class TestMultiAnalystProRata:
 class TestResidualCapturesUnexplainedPnL:
     def test_no_verdict_goes_to_residual(self) -> None:
         """Trade with no strategy_params → full P&L lands in residual."""
-        from analytics.risk_attribution import attribute_daily_pnl, ANALYST_SLOTS
+        from analytics.risk_attribution import ANALYST_SLOTS, attribute_daily_pnl
 
         db = _make_db(
             [
@@ -328,6 +328,7 @@ class TestRouteMarkdownResponse:
         """
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
+
         from routers.attribution_router import router
 
         app = FastAPI()

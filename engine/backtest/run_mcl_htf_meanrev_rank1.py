@@ -535,7 +535,7 @@ def run_wfo() -> dict:
     print(f"  htf_rsi_upper  : {HTF_RSI_UPPER_VALUES}  (max daily RSI for LONG filter)")
     print(f"  htf_rsi_lower  : {HTF_RSI_LOWER_VALUES}  (min daily RSI for SHORT filter)")
     print(f"  stop_atr_mult  : {STOP_ATR_MULT_VALUES}")
-    print(f"  bb_period=20, bb_std=2.0, rsi_period=14  (fixed)")
+    print("  bb_period=20, bb_std=2.0, rsi_period=14  (fixed)")
     print(f"  capital        : ${CAPITAL:,.0f}  (backtest sizing only)")
     print(f"  multiplier     : ${MULTIPLIER:.0f}/point (MCL Micro Crude 100bbl)")
     print(

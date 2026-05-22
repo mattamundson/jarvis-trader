@@ -34,7 +34,6 @@ import pytest
 from config import TradingConfig
 from risk.safety_layer import KillSwitchReason, SafetyLayer
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
@@ -200,6 +199,7 @@ def test_dual_emit_respects_per_account_halts(tmp_path: Path):
     When A is halted, dual_emit writes only Account B row.
     """
     import importlib
+
     import parallel_paper
 
     importlib.reload(parallel_paper)

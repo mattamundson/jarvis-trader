@@ -40,8 +40,6 @@ from urllib.error import URLError
 from urllib.request import urlopen
 from zoneinfo import ZoneInfo
 
-import pandas as pd
-
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("daily_morning_briefing")
 

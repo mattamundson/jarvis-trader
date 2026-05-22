@@ -40,7 +40,6 @@ class TestCooldown:
 
         p = _protections()
         # Manually set an already-expired cooldown
-        from datetime import datetime, timedelta
 
         p.cooldown_periods["MES"] = datetime.now() - timedelta(seconds=1)
         assert p.check_cooldown("MES") is False

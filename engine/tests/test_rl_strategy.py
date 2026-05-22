@@ -22,7 +22,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
 # ── Fixtures & synthetic data ─────────────────────────────────────────────────
 
 
@@ -246,8 +245,9 @@ class TestPolicyToHypothesis:
         """
         pytest.importorskip("stable_baselines3", reason="SB3 not installed")
         from stable_baselines3 import PPO
-        from strategies.rl_env import make_trading_env
+
         from strategies.rl_config import PPO_CONFIG
+        from strategies.rl_env import make_trading_env
 
         df = _synthetic_df(n_bars=150)
         env = make_trading_env(df, symbol=symbol)

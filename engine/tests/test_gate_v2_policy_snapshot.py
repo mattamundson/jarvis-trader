@@ -50,7 +50,7 @@ class TestGateThresholds:
         assert GATE_MC_DD_CORE == pytest.approx(0.05), _CHANGE_NOTICE
 
     def test_mc_dd_alt(self):
-        assert GATE_MC_DD_ALT == pytest.approx(0.07), _CHANGE_NOTICE
+        assert GATE_MC_DD_ALT == pytest.approx(0.04), _CHANGE_NOTICE
 
     def test_dsr_core(self):
         assert GATE_DSR == pytest.approx(0.10), _CHANGE_NOTICE

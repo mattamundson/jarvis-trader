@@ -12,9 +12,9 @@ The pipeline still runs to completion for validation-only symbols; their verdict
 feed the dashboard and briefing pipeline for walk-forward validation tracking.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
 
 # ── Constant integrity ─────────────────────────────────────────────────────────
 

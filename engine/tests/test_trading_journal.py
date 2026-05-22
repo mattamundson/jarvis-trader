@@ -14,14 +14,12 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
-
 from engine.journal.builder import (
     _parse_ask_log,
     build_journal_entry,
     render_markdown,
     write_to_vault,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

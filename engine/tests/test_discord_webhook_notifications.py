@@ -226,7 +226,8 @@ async def test_candidate_expiry_ttl_display(monkeypatch):
     """expires_at in the future parses to a human-readable 'X min remaining' string."""
     monkeypatch.setenv("JARVIS_DISCORD_APPROVAL_WEBHOOK", "https://discord.example/hook/ttl")
 
-    from datetime import timedelta, timezone, datetime as _dt
+    from datetime import datetime as _dt
+    from datetime import timedelta, timezone
 
     future = (_dt.now(timezone.utc) + timedelta(minutes=25)).isoformat()
     candidate = _basic_candidate()

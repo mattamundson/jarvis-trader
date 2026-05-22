@@ -17,12 +17,11 @@ Design:
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers — synthetic Polygon snapshot contract builder

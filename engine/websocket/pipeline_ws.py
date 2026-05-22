@@ -11,7 +11,7 @@ Failures in broadcast never propagate to the pipeline path.
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Set
+from typing import Set
 
 from fastapi import WebSocket
 

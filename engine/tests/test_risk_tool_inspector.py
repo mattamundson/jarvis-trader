@@ -19,7 +19,6 @@ from risk.tool_inspector import (
     VolatilityInspector,
 )
 
-
 # ── LiquidityInspector ────────────────────────────────────────────────────────
 
 
