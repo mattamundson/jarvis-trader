@@ -160,6 +160,7 @@ from routers.polymarket_router import router as polymarket_router
 from api.operations_dashboard import router as operations_dashboard_router
 from routers.attribution_router import router as attribution_router
 from routers.ib_scanner_router import router as ib_scanner_router
+from routers.macro_router import router as macro_router, inject_dependencies as inject_macro_deps
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -365,10 +366,6 @@ async def _deliver_pipeline_whatsapp_if_eligible(
     logger.info("WhatsApp alert for %s suppressed — WhatsApp not configured", symbol)
     _log_pipeline_whatsapp_to_alert_log(symbol, msg, "suppressed", error="whatsapp_not_configured")
     return False, "whatsapp_not_configured"
-
-
-# 5-minute macro snapshot cache (keyed by "snapshot", stores flattened dict + "_ts")
-_macro_cache: Dict[str, dict] = {}
 
 
 @asynccontextmanager
@@ -1472,6 +1469,7 @@ async def lifespan(app: FastAPI):
     )
     inject_discord_data_manager(data_manager)
     inject_backtest_deps(data_manager)
+    inject_macro_deps(data_manager=data_manager)
     from routers.market_router import inject_dependencies as inject_market_deps
 
     inject_market_deps(data_manager=data_manager)
@@ -2525,6 +2523,7 @@ app.include_router(v1_router)
 app.include_router(observability_router)
 app.include_router(strategy_c_router)
 app.include_router(ib_scanner_router)
+app.include_router(macro_router)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(webhook_router)
@@ -4402,70 +4401,7 @@ async def get_thinkscript_registry_entry(script_id: str):
     return ScriptWithDocs(entry=entry, doc_markdown=read_doc(entry.docs))
 
 
-# ── Macro Data (FRED) ──────────────────────────────────────────────────────
-
-
-@app.get("/macro/snapshot")
-async def get_macro_snapshot():
-    """
-    Current macro environment from FRED — flat snapshot for dashboard polling.\n
-    Returns:
-        {"vix": float, "fed_funds_rate": float, "ten_year_yield": float, "unemployment": float}\n
-    Uses a 5-minute in-memory cache so 60s dashboard polling doesn't hammer FRED.
-    The underlying FREDDataService already caches at 1h per series; this adds a
-    dedicated short-TTL cache for the flattened response shape.
-    """
-    from data.fred_data import get_fred_service
-
-    # 5-minute in-memory cache for the flattened snapshot
-    now = datetime.now()
-    cached = _macro_cache.get("snapshot")
-    if cached and (now - cached["_ts"]).total_seconds() < 300:
-        return {k: v for k, v in cached.items() if k != "_ts"}
-
-    service = get_fred_service()
-    try:
-        raw = service.get_macro_snapshot()
-    except Exception as e:
-        raise HTTPException(500, f"FRED data unavailable: {e}") from e
-
-    # The FREDDataService returns nested dicts: {"vix": {"value": 27.4, ...}, ...}
-    # Flatten to the shape the dashboard WatchlistBar expects.
-    def _val(key: str):
-        entry = raw.get(key)
-        if entry is None:
-            return None
-        if isinstance(entry, dict):
-            return entry.get("value")
-        try:
-            return float(entry)
-        except (TypeError, ValueError):
-            return None
-
-    flat = {
-        "vix": _val("vix"),
-        "fed_funds_rate": _val("fed_funds_rate"),
-        "ten_year_yield": _val("ten_year_yield"),
-        "unemployment": _val("unemployment"),
-        "timestamp": raw.get("timestamp", now.isoformat()),
-    }
-
-    # Store in cache with sentinel timestamp
-    _macro_cache["snapshot"] = {**flat, "_ts": now}
-
-    return flat
-
-
-@app.get("/macro/series/{series_id}")
-async def get_macro_series(series_id: str, periods: int = 24):
-    """Get historical data for a FRED series (e.g. FEDFUNDS, GS10, VIXCLS)"""
-    from data.fred_data import get_fred_service
-
-    service = get_fred_service()
-    history = service.get_series_history(series_id.upper(), periods)
-    if not history:
-        raise HTTPException(404, f"FRED series {series_id} not found or unavailable")
-    return {"series_id": series_id.upper(), "data": history, "count": len(history)}
+# ── Macro Data (FRED) — served by routers/macro_router.py (wired 2026-05-22) ──
 
 
 # ── Backtest endpoint ──────────────────────────────────────────────────────────
