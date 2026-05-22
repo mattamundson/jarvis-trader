@@ -2907,14 +2907,7 @@ async def submit_paper_trade(req: PaperTradeRequest):
             "entry_price": req.price,
         }
 
-
-@app.get("/portfolio/paper/performance", response_model=PaperPerformanceResponse)
-async def get_paper_performance():
-    """Return performance metrics for all closed paper trades."""
-    if not paper_tracker:
-        raise HTTPException(503, "Paper tracker not initialized")
-    return paper_tracker.get_performance()
-
+# -- /portfolio/paper/performance -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
 # ── Pending Signals (MGC daily scanner output) ────────────────────────────
 
