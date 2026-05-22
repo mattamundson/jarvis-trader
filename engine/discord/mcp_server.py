@@ -82,9 +82,12 @@ def _parse_date(s: str) -> date_type:
 
 mcp = FastMCP("discord-intelligence")
 
-# Engine API — read from env (loaded above from engine/.env)
+# Engine API — read from env (loaded above from engine/.env).
+# engine/.env uses API_KEY; Hermes .env uses ENGINE_API_KEY — accept both.
+# Prioritise API_KEY (loaded from engine/.env dotenv) as the ground truth;
+# ENGINE_API_KEY is the fallback for callers whose env doesn't include engine/.env.
 _ENGINE_URL = os.environ.get("ENGINE_URL", "http://127.0.0.1:8010")
-_ENGINE_API_KEY = os.environ.get("ENGINE_API_KEY", "")
+_ENGINE_API_KEY = os.environ.get("API_KEY") or os.environ.get("ENGINE_API_KEY", "")
 
 
 @mcp.tool()
@@ -449,7 +452,7 @@ async def get_engine_health() -> dict:
         uptime_seconds, kill_switch_active, paper_mode, version
     """
     url = os.environ.get("ENGINE_URL", _ENGINE_URL)
-    key = os.environ.get("ENGINE_API_KEY", _ENGINE_API_KEY)
+    key = os.environ.get("API_KEY") or os.environ.get("ENGINE_API_KEY", _ENGINE_API_KEY)
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -474,7 +477,7 @@ async def get_open_positions() -> dict:
     Returns 'error' key if the engine is unreachable.
     """
     url = os.environ.get("ENGINE_URL", _ENGINE_URL)
-    key = os.environ.get("ENGINE_API_KEY", _ENGINE_API_KEY)
+    key = os.environ.get("API_KEY") or os.environ.get("ENGINE_API_KEY", _ENGINE_API_KEY)
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
