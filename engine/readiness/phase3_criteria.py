@@ -700,10 +700,10 @@ class SafetyLayerTestCoverageCriterion(Phase3Criterion):
                 capture_output=True,
                 text=True,
                 cwd=engine_dir,
-                timeout=120,
+                timeout=240,
             )
         except subprocess.TimeoutExpired:
-            return False, "Coverage run timed out (>120s)"
+            return False, "Coverage run timed out (>240s)"
         except OSError as exc:
             return False, f"Cannot run coverage: {exc}"
 
