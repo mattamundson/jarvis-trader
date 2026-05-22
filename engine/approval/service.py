@@ -147,7 +147,7 @@ def resolve_entry_price(
 
 def ensure_approval_allowed(approval_row: dict[str, Any], safety_layer) -> None:
     """Validate approval-time safety gates before execution."""
-    from agents.pipeline import VALIDATION_ONLY_INSTRUMENTS
+    from agents.pipeline import VALIDATION_ONLY_INSTRUMENTS, VALIDATION_ONLY_STRATEGIES
 
     symbol = str(approval_row["symbol"]).upper()
 
@@ -166,6 +166,32 @@ def ensure_approval_allowed(approval_row: dict[str, Any], safety_layer) -> None:
             f"{symbol} is in VALIDATION_ONLY_INSTRUMENTS (WFE below paper threshold) — "
             "pipeline verdicts are logged for validation feedback but no paper orders are submitted. "
             "Remove from VALIDATION_ONLY_INSTRUMENTS after WFE >= 0.6 + gate v2 PASS.",
+        )
+
+    # Validation-only strategies: mirrors the scanner gate so manual human approval
+    # cannot bypass the strategy block (BLOCKER 5 — §6.3).
+    # stark_signal is nested at analyst_reports.technical.indicators.stark_signal
+    # (same path the scanner reads for its own gate in signal_scanner.py:_scan_symbol).
+    _snapshot = approval_row.get("pipeline_snapshot") or {}
+    if isinstance(_snapshot, str):
+        import json as _json
+
+        try:
+            _snapshot = _json.loads(_snapshot)
+        except Exception:
+            _snapshot = {}
+    _stark_signal = (
+        ((_snapshot.get("analyst_reports") or {}).get("technical") or {})
+        .get("indicators", {})
+        .get("stark_signal", "")
+        or ""
+    ).upper()
+    if _stark_signal and _stark_signal in VALIDATION_ONLY_STRATEGIES:
+        raise ApprovalFlowError(
+            409,
+            f"Strategy {_stark_signal} is in VALIDATION_ONLY_STRATEGIES — "
+            "manual approval is blocked until WFO validation + gate v2 PASS. "
+            "Remove from VALIDATION_ONLY_STRATEGIES to re-enable.",
         )
 
     if safety_layer is not None and hasattr(safety_layer, "get_lockout_status"):
