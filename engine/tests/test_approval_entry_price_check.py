@@ -97,16 +97,21 @@ async def test_approval_path_rejects_corrupted_entry(tmp_path: Path, monkeypatch
     )
     mock_dm.get_bars = AsyncMock(return_value=df)
 
-    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", set()):
-        with pytest.raises(ApprovalFlowError) as exc_info:
-            await approve_pending_trade(
-                approval_id=approval_id,
-                db_manager=db,
-                paper_tracker=tracker,
-                safety_layer=sl,
-                resolved_by="test",
-                data_manager=mock_dm,
-            )
+    with patch(
+        "approval.service.approved_watchlist_symbols", return_value={"MCL", "MES", "MNQ", "MGC"}
+    ):
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")
+        ):
+            with pytest.raises(ApprovalFlowError) as exc_info:
+                await approve_pending_trade(
+                    approval_id=approval_id,
+                    db_manager=db,
+                    paper_tracker=tracker,
+                    safety_layer=sl,
+                    resolved_by="test",
+                    data_manager=mock_dm,
+                )
 
     assert exc_info.value.status_code == 422
     assert (
@@ -159,15 +164,20 @@ async def test_approval_path_accepts_sane_entry(tmp_path: Path, monkeypatch):
         }
     )
 
-    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", set()):
-        result = await approve_pending_trade(
-            approval_id=approval_id,
-            db_manager=db,
-            paper_tracker=tracker,
-            safety_layer=sl,
-            resolved_by="test",
-            data_manager=mock_dm,
-        )
+    with patch(
+        "approval.service.approved_watchlist_symbols", return_value={"MCL", "MES", "MNQ", "MGC"}
+    ):
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")
+        ):
+            result = await approve_pending_trade(
+                approval_id=approval_id,
+                db_manager=db,
+                paper_tracker=tracker,
+                safety_layer=sl,
+                resolved_by="test",
+                data_manager=mock_dm,
+            )
 
     assert result["status"] == "approved"
     assert result["symbol"] == "MCL"
@@ -220,16 +230,21 @@ async def test_approval_path_disabled_flag_skips_check(tmp_path: Path, monkeypat
         }
     )
 
-    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", set()):
-        # Should NOT raise — sanity check is disabled
-        result = await approve_pending_trade(
-            approval_id=approval_id,
-            db_manager=db,
-            paper_tracker=tracker,
-            safety_layer=sl,
-            resolved_by="test",
-            data_manager=mock_dm,
-        )
+    with patch(
+        "approval.service.approved_watchlist_symbols", return_value={"MCL", "MES", "MNQ", "MGC"}
+    ):
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")
+        ):
+            # Should NOT raise — sanity check is disabled
+            result = await approve_pending_trade(
+                approval_id=approval_id,
+                db_manager=db,
+                paper_tracker=tracker,
+                safety_layer=sl,
+                resolved_by="test",
+                data_manager=mock_dm,
+            )
 
     assert result["status"] == "approved"
 
@@ -270,14 +285,19 @@ async def test_approval_path_no_data_manager_skips_check(tmp_path: Path, monkeyp
         }
     )
 
-    with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", set()):
-        result = await approve_pending_trade(
-            approval_id=approval_id,
-            db_manager=db,
-            paper_tracker=tracker,
-            safety_layer=sl,
-            resolved_by="test",
-            data_manager=None,  # <-- no data manager
-        )
+    with patch(
+        "approval.service.approved_watchlist_symbols", return_value={"MCL", "MES", "MNQ", "MGC"}
+    ):
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")
+        ):
+            result = await approve_pending_trade(
+                approval_id=approval_id,
+                db_manager=db,
+                paper_tracker=tracker,
+                safety_layer=sl,
+                resolved_by="test",
+                data_manager=None,  # <-- no data manager
+            )
 
     assert result["status"] == "approved"

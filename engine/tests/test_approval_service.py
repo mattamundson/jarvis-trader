@@ -9,9 +9,17 @@ _TEST_WATCHLIST = {"MCL", "MES", "MNQ", "MGC"}
 
 @pytest.fixture
 def mock_watchlist():
-    """Patch approved_watchlist_symbols so tests don't depend on env-loaded settings."""
+    """Patch watchlist and authorization so tests focus on the strategy gate.
+
+    is_strategy_authorized is bypassed here because these tests verify the
+    VALIDATION_ONLY_STRATEGIES gate, not the instrument authorization gate.
+    """
     with patch("approval.service.approved_watchlist_symbols", return_value=_TEST_WATCHLIST):
-        yield
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized",
+            return_value=(True, "authorized"),
+        ):
+            yield
 
 
 @pytest.mark.asyncio
