@@ -25,12 +25,17 @@ from routers import decisions_router
 class _FakeDBManager:
     def __init__(self, rows: dict[int, Optional[dict[str, Any]]]):
         self.rows = rows
+        self.inserted: list[dict] = []
 
     def get_decision_by_id(self, decision_id: int) -> Optional[dict[str, Any]]:
         return self.rows.get(decision_id)
 
     def get_decisions(self, symbol: Optional[str] = None, limit: int = 100):
         return list(self.rows.values())[:limit]
+
+    def insert_decision(self, **kwargs: Any) -> int:
+        self.inserted.append(kwargs)
+        return len(self.inserted)
 
 
 def _mk_client(rows: dict[int, Optional[dict[str, Any]]]) -> TestClient:
@@ -281,3 +286,54 @@ def test_detail_503_when_db_not_wired():
     finally:
         # Leave the module state clean for other tests in the process
         decisions_router._db_manager = None  # type: ignore[attr-defined]
+
+
+# ── /decisions/log POST persistence tests ────────────────────────────────────
+
+
+def _mk_client_with_db() -> tuple[TestClient, _FakeDBManager]:
+    """Build a test client with a _FakeDBManager wired in."""
+    db = _FakeDBManager({})
+    app = FastAPI()
+    app.include_router(decisions_router.router)
+    decisions_router.set_db_manager(db)
+    return TestClient(app), db
+
+
+def test_log_decision_persists_to_sqlite():
+    client, db = _mk_client_with_db()
+    payload = {
+        "symbol": "MES",
+        "action": "buy",
+        "confidence": 0.82,
+        "source": "pipeline",
+        "summary": "STC cross-above",
+        "reasoning": "trend confirmed",
+        "regime": "trending",
+    }
+    resp = client.post("/decisions/log", json=payload)
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert len(db.inserted) == 1
+    call = db.inserted[0]
+    assert call["symbol"] == "MES"
+    assert call["action"] == "buy"
+    assert abs(call["confidence"] - 0.82) < 1e-6
+    assert call["regime"] == "trending"
+    assert call["reasoning"] == "trend confirmed"
+
+
+def test_log_decision_memory_fallback_when_no_db():
+    """When _db_manager is None, decision lands in memory ring buffer only."""
+    app = FastAPI()
+    app.include_router(decisions_router.router)
+    decisions_router._db_manager = None  # type: ignore[attr-defined]
+    client = TestClient(app)
+    try:
+        decisions_router._decision_log.clear()
+        resp = client.post("/decisions/log", json={"symbol": "MGC", "action": "hold"})
+        assert resp.status_code == 200
+        assert any(e["symbol"] == "MGC" for e in decisions_router._decision_log)
+    finally:
+        decisions_router._db_manager = None  # type: ignore[attr-defined]
+        decisions_router._decision_log.clear()
