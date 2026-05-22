@@ -2191,6 +2191,20 @@ class TestPersistPnlSnapshot:
         safety = SafetyLayer(mock_settings, db_manager=mock_db)
         safety.sync_from_broker(equity=10_500.0, daily_pnl=500.0)  # must not raise
 
+    def test_persist_preserves_realized_peak_equity(self, mock_settings):
+        """Existing snapshot with realized_peak_equity → value passed back to upsert."""
+        mock_db = MagicMock()
+        mock_db.get_pnl_snapshot.return_value = {"realized_peak_equity": 173_920.77}
+        mock_settings.INITIAL_CAPITAL = 10_000.0
+        safety = SafetyLayer(mock_settings, db_manager=mock_db)
+        mock_db.upsert_pnl_snapshot.reset_mock()
+        safety.sync_from_broker(equity=10_500.0, daily_pnl=500.0)
+        kwargs = mock_db.upsert_pnl_snapshot.call_args.kwargs
+        assert kwargs.get("realized_peak_equity") == 173_920.77, (
+            "realized_peak_equity must be forwarded from the existing snapshot row "
+            "so successive writes do not overwrite it with NULL"
+        )
+
 
 # ---------------------------------------------------------------------------
 # §C10 — _check_drawdown with pnl_monitor (lines 767–777)
