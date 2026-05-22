@@ -161,6 +161,10 @@ from api.operations_dashboard import router as operations_dashboard_router
 from routers.attribution_router import router as attribution_router
 from routers.ib_scanner_router import router as ib_scanner_router
 from routers.macro_router import router as macro_router, inject_dependencies as inject_macro_deps
+from routers.analysis_router import (
+    router as analysis_router,
+    inject_dependencies as inject_analysis_deps,
+)
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -1475,6 +1479,7 @@ async def lifespan(app: FastAPI):
     inject_market_deps(data_manager=data_manager)
     inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
+    inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
 
     # ── Autonomous Pipeline Approval Queue ────────────────────────────────────
     # Default-OFF: only activated when ENABLE_AUTONOMOUS_PIPELINE=1 in .env.
@@ -2959,113 +2964,7 @@ async def update_strategy_params(params: StrategyParams):
         raise HTTPException(500, f"Failed to update strategy parameters: {e}") from e
 
 
-# ── Analysis ──────────────────────────────────────────────────────────────
-
-
-class AnalysisRequest(BaseModel):
-    symbol: str
-    timeframe: str = "15m"
-    is_futures: bool = False
-
-
-@app.post("/analyze/technical", response_model=TechnicalAnalysisResponse)
-async def run_technical_analysis(req: AnalysisRequest):
-    """Run the Technical Analyst agent on a symbol"""
-    if not technical_analyst:
-        raise HTTPException(503, "Technical analyst not available (no API key)")
-
-    report = await technical_analyst.analyze(req.symbol, req.timeframe, req.is_futures)
-
-    return {
-        "symbol": report.symbol,
-        "timestamp": report.timestamp.isoformat(),
-        "timeframe": report.timeframe,
-        "signal": report.signal,
-        "confidence": report.confidence,
-        "trend": report.trend,
-        "regime": report.regime,
-        "is_overbought": report.is_overbought,
-        "is_oversold": report.is_oversold,
-        "summary": report.summary,
-        "reasoning": report.reasoning,
-        "scores": {
-            "trend": report.trend_score,
-            "momentum": report.momentum_score,
-            "volatility": report.volatility_score,
-            "volume": report.volume_score,
-        },
-        "levels": {
-            "current_price": report.current_price,
-            "support": report.support_levels,
-            "resistance": report.resistance_levels,
-        },
-        "raw_indicators": report.indicators,
-    }
-
-
-@app.get("/analyze/bars/{symbol}", response_model=BarsResponse)
-async def get_bars(
-    symbol: str,
-    timeframe: str | None = None,
-    interval: str | None = None,
-    days: int = 7,
-    futures: bool = False,
-):
-    """Get OHLCV bars for a symbol.\n
-    `interval` is accepted as an alias for `timeframe` (pandas/ohlcv convention).
-    Precedence: explicit `timeframe` > `interval` > default `5m`.
-    """
-    if not data_manager:
-        raise HTTPException(503, "Data manager not initialized")
-
-    timeframe = timeframe or interval or "5m"
-
-    df = await data_manager.get_bars(
-        symbol, lookback_days=days, timeframe=timeframe, is_futures=futures
-    )
-    if df.empty:
-        raise HTTPException(404, f"No data available for {symbol}")
-
-    return {
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "bars": df.tail(200).to_dict(orient="records"),
-        "count": len(df),
-    }
-
-
-@app.get("/llm/stats")
-async def get_llm_stats(days_back: int = 0):
-    """
-    Get LLM API usage and cost statistics for a given day.\n
-    Query Parameters:
-        days_back: 0 for today, 1 for yesterday, etc. (default: 0)\n
-    Returns:
-        date: ISO date string
-        total_calls: Total LLM API calls made
-        total_cost_usd: Total cost in USD
-        success_rate: Percentage of successful calls (0-1)
-        avg_latency_ms: Average API latency in milliseconds
-        per_model: Dict[model_name] -> {calls, input_tokens, output_tokens, cost_usd}
-        per_agent: Dict[agent_name] -> {calls, cost_usd}
-    """
-    if not cost_tracker:
-        raise HTTPException(500, "Cost tracker not initialized")
-    try:
-        return await cost_tracker.get_daily_summary(days_back=days_back)
-    except Exception as e:
-        logger.error(f"[LLM-STATS] Daily summary failed: {e}")
-        raise HTTPException(500, f"Failed to get LLM stats: {e}") from e
-
-
-@app.get("/sentiment/reddit", response_model=RedditSentimentResponse)
-async def get_reddit_sentiment(filter: str = "all-stocks"):
-    """Get trending tickers from Reddit"""
-    if not data_manager:
-        raise HTTPException(503, "Data manager not initialized")
-
-    tickers = await data_manager.reddit.get_trending_tickers(filter)
-    return {"filter": filter, "tickers": tickers[:20]}
+# ── Analysis / LLM stats / Reddit sentiment — served by routers/analysis_router.py (wired 2026-05-22) ──
 
 
 @app.get("/sentiment/news/{symbol}", response_model=NewsSentimentResponse)
