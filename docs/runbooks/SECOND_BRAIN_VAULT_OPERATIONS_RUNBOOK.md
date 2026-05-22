@@ -170,6 +170,51 @@ See `rules/session_coordination.md` for the full coordination protocol.
 
 ---
 
+## OneNote Ingest — `Jarvis-VaultIngest-OneNote`
+
+**Schedule**: monthly, 1st @ 03:30 CT
+**Script**: `C:\Users\mattm\master-jarvis\scripts\ingest\onenote-ingest.ps1`
+**Task working directory**: `C:\onx` (set 2026-05-21 — required so exporter finds `Resources\trad.en.json`)
+**Exporter**: `C:\onx\OneNoteMdExporter.exe` v1.6.0 (COM-based, requires OneNote desktop)
+
+### Root cause of exit -532462766 (0xE0434352)
+
+The exporter crashes with a .NET CLR unhandled exception when OneNote's COM RPC server
+drops mid-export. This happens in unattended/scheduled context when the `AmoSZN` notebook's
+large `Quick Notes` section (1170+ pages) causes cascading RPC failures (0x800706BE/0x800706BA).
+
+**Fixed (2026-05-21)**:
+- Task `Start In` set to `C:\onx` so exporter always finds `Resources\trad.en.json`
+- Script updated to treat exit -532462766 as partial success when exported files exist: merge
+  proceeds with whatever pages were exported before the crash
+- 984 existing OneNote pages committed to `second-brain/raw/onenote/` in the correct
+  canonical vault path; gbrain ingested 558 new chunks (large sync, 2026-05-21)
+
+### Remaining credential issue (unresolved — Amo action required)
+
+**[RISK] Plaintext OpenAI admin key** found in:
+```
+raw/onenote/Matt's Notebook (2)/New Section 29/I need to create an AI agent that can communicate .md
+raw/onenote/Matt's Notebook (2)/New Section 29/QUARANTINED-page-1777955898-28487.md
+```
+These 2 files were NOT committed to git (pre-commit hook blocked). Action:
+1. Rotate the `sk-admin-trR5bsSfnuW2PR6YtEmjZAnUF-...` key at https://platform.openai.com/api-keys
+2. After rotation, redact the old key value in the two files (replace with `[ROTATED-OPENAI-ADMIN-KEY]`)
+3. Then `git add "raw/onenote/Matt's Notebook (2)/New Section 29/"` and commit
+
+**Also excluded (4 total files)**: Two `Trading Notes/The Mouthbreather's Guide to the Galaxy*.md`
+files contain satirical `sk-` patterns (fictional stock-ticker jokes, not real keys). These
+are also not committed. Review manually and commit once confirmed non-secret.
+
+### Ongoing limitation
+
+The `AmoSZN` notebook (1170+ pages, mostly GMS/personal content) consistently crashes the
+exporter at around page 55-60 of the `Quick Notes` section. With `--ignore-errors` the
+exporter continues page-by-page, but the COM session degrades and eventually dies. The
+partial-success fix ensures exported content before the crash is still merged.
+
+---
+
 ## Known Issues and Open Follow-ups
 
 | Issue | Impact | Resolution |
@@ -177,6 +222,8 @@ See `rules/session_coordination.md` for the full coordination protocol.
 | `extract_discord_to_vault.py` writes to `~/second-brain/raw/` by default | Output lands in legacy root, not ingested automatically | Add `--output-path` config flag pointing to `master-jarvis/second-brain/raw/_session-<DATE>-amo/`; until then, post-run robocopy is required |
 | `Jarvis-VaultGbrainSync` watches only `master-jarvis/second-brain/` | Content in `~/second-brain/raw/inbox/` is never auto-ingested | Consider extending the task if that dir becomes a working ingest area |
 | Enrichment marker is location-bound | Moving files post-enrichment leaves cross-links in the old location | Re-enrich at the destination if files are relocated after enrichment |
+| OneNote `New Section 29` files with plaintext OpenAI admin key | 2 files excluded from git, not in gbrain | Rotate key at platform.openai.com, then redact and commit (see OneNote section above) |
+| OneNote `AmoSZN` notebook crashes exporter at ~page 55/1170 | AmoSZN content not exported; only Matt's Notebook (984 pages) is indexed | Partial-success fix in place; AmoSZN content requires interactive OneNote session to export cleanly |
 
 ---
 
