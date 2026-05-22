@@ -171,13 +171,19 @@ class DailyPnLMixin:
             )
         else:
             # Legacy path: realized_peak_equity column not supplied.
-            # INSERT OR REPLACE will reset realized_peak_equity to its DEFAULT
-            # (NULL) for this row.  Callers that track realized equity should
-            # always pass realized_peak_equity explicitly.
+            # Use ON CONFLICT DO UPDATE (not INSERT OR REPLACE) so the existing
+            # realized_peak_equity value is preserved rather than being reset to
+            # NULL by the implicit DELETE that INSERT OR REPLACE performs.
             sql = """
-                INSERT OR REPLACE INTO pnl_snapshots
+                INSERT INTO pnl_snapshots
                     (date, daily_pnl, portfolio_equity, peak_equity, consecutive_losses, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    daily_pnl          = excluded.daily_pnl,
+                    portfolio_equity   = excluded.portfolio_equity,
+                    peak_equity        = excluded.peak_equity,
+                    consecutive_losses = excluded.consecutive_losses,
+                    updated_at         = excluded.updated_at
             """
             params = (date, daily_pnl, portfolio_equity, peak_equity, consecutive_losses, now_utc)
 
