@@ -27,6 +27,7 @@ from api import (
     DecisionHistoryResponse,
     DrawdownResponse,
     PaperTradeResponse,
+    PortfolioResponse,
     StatsSummaryResponse,
 )
 
@@ -56,6 +57,24 @@ def inject_dependencies(pt, dbm, dm=None, safety_layer=None):
     db_manager = dbm
     _data_manager = dm
     _safety_layer = safety_layer
+
+
+@router.get("", response_model=PortfolioResponse)
+async def get_portfolio():
+    """Current portfolio state — sourced from broker API, never from agent memory"""
+    if not _safety_layer:
+        raise HTTPException(503, "Safety layer not initialized")
+    status = _safety_layer.get_status()
+    return {
+        "total_equity": status.get("portfolio_equity", 0.0),
+        "cash_balance": status.get("portfolio_equity", 0.0),
+        "unrealized_pnl": 0.0,
+        "realized_pnl": 0.0,
+        "daily_pnl": status.get("daily_pnl", 0.0),
+        "margin_used": 0.0,
+        "margin_available": status.get("portfolio_equity", 0.0),
+        "positions": [],
+    }
 
 
 def _is_futures_symbol(symbol: str) -> bool:
