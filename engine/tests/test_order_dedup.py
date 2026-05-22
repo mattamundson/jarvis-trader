@@ -28,7 +28,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Minimal in-process DatabaseManager stand-in for the dedup path
 # ---------------------------------------------------------------------------
@@ -286,11 +285,11 @@ class TestInsertPaperTradeDedup:
 
         # Compute two keys from explicitly different buckets without patching datetime —
         # use a large window_seconds so bucket 0 and bucket 1 are guaranteed different.
-        from database._helpers import compute_order_idempotency_key
-
         # Force two distinct keys by using different synthetic timestamps via a tiny
         # helper that accepts an epoch directly instead of reading the clock.
         import hashlib
+
+        from database._helpers import compute_order_idempotency_key
 
         def _key_for_epoch(epoch: float, window: int = 5) -> str:
             bucket_val = int(math.floor(epoch / window))

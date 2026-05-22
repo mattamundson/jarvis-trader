@@ -145,21 +145,20 @@ if _engine_dir not in _sys.path:
     _sys.path.insert(0, _engine_dir)
 
 from readiness.phase3_criteria import (
+    _ALL_CRITERIA,
     ConsecutiveLossStreakCriterion,
     EngineUptimeStabilityCriterion,
     KillSwitchInvocationsCriterion,
     MaxDrawdownCriterion,
-    PaperTradingWindowCriterion,
     PaperTradesCountCriterion,
+    PaperTradingWindowCriterion,
+    Phase3Criterion,
     ProfitFactorCriterion,
     SafetyLayerTestCoverageCriterion,
     SortinoRatioCriterion,
     WinRateCriterion,
-    Phase3Criterion,
-    _ALL_CRITERIA,
     evaluate_all_criteria,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

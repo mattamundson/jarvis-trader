@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from utils.trade_invariants import is_inverted_stop
 
-from ._helpers import _from_json, _to_json, _utcnow, compute_order_idempotency_key
+from ._helpers import _from_json, _to_json, _utcnow
 
 logger = logging.getLogger("jarvis_trader.database")
 

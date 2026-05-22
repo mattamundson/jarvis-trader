@@ -54,11 +54,14 @@ def _init_schema(db_path: Path) -> None:
         """)
 
 
-def _seed_rows(db_path: Path, agent_idx: int, n: int, now_iso: str = "2026-04-17T00:00:00+00:00"):
+def _seed_rows(db_path: Path, agent_idx: int, n: int, now_iso: str | None = None):
     """Seed n rows where only the given agent column has a non-zero signal.
 
     agent_idx must be in [0, len(_TEST_AGENTS)).
     """
+    if now_iso is None:
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
     if not (0 <= agent_idx < len(_TEST_AGENTS)):
         raise ValueError(f"agent_idx {agent_idx} out of range; expected 0..{len(_TEST_AGENTS) - 1}")
     cols = [0.0] * len(_TEST_AGENTS)

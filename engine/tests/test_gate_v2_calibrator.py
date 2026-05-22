@@ -24,7 +24,6 @@ from analytics.gate_v2_calibrator import (
     render_vault_markdown,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers for building synthetic verdict DataFrames
 # ---------------------------------------------------------------------------

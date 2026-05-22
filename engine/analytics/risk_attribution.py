@@ -21,8 +21,8 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from statistics import mean, stdev
 from typing import Optional
@@ -81,7 +81,7 @@ class WindowAttribution:
 
 
 def _zero_attribution() -> dict[str, float]:
-    return {slot: 0.0 for slot in ANALYST_SLOTS}
+    return dict.fromkeys(ANALYST_SLOTS, 0.0)
 
 
 def _extract_analyst_weights(strategy_params_json: str | None) -> dict[str, float]:

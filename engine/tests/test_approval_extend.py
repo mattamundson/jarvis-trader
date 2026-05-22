@@ -98,6 +98,7 @@ def test_extend_clamped_high(tmp_path):
     also test the endpoint's clamping logic via extend_candidate.
     """
     from unittest.mock import patch
+
     from routers.approval_queue_router import extend_candidate, inject_approval_queue_deps
 
     db_path = _fresh_db(tmp_path)
@@ -123,6 +124,7 @@ def test_extend_clamped_high(tmp_path):
 def test_extend_clamped_low(tmp_path):
     """minutes=1 should be clamped to 5 by the endpoint."""
     from unittest.mock import patch
+
     from routers.approval_queue_router import extend_candidate, inject_approval_queue_deps
 
     db_path = _fresh_db(tmp_path)
@@ -139,6 +141,7 @@ def test_extend_clamped_low(tmp_path):
 def test_extend_rejects_already_approved(tmp_path):
     """Cannot extend a candidate whose status is 'approved' — should raise HTTP 409."""
     from fastapi import HTTPException
+
     from routers.approval_queue_router import extend_candidate, inject_approval_queue_deps
 
     db_path = _fresh_db(tmp_path)
@@ -157,6 +160,7 @@ def test_extend_rejects_already_approved(tmp_path):
 def test_extend_rejects_rejected(tmp_path):
     """Cannot extend a candidate whose status is 'rejected' — should raise HTTP 409."""
     from fastapi import HTTPException
+
     from routers.approval_queue_router import extend_candidate, inject_approval_queue_deps
 
     db_path = _fresh_db(tmp_path)
@@ -175,6 +179,7 @@ def test_extend_rejects_rejected(tmp_path):
 def test_extend_not_found(tmp_path):
     """Extending a non-existent candidate ID should raise HTTP 404."""
     from fastapi import HTTPException
+
     from routers.approval_queue_router import extend_candidate, inject_approval_queue_deps
 
     db_path = _fresh_db(tmp_path)

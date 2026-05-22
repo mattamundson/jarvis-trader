@@ -17,7 +17,7 @@ import logging
 import sqlite3
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 logger = logging.getLogger("jarvis_trader.routers.trades")

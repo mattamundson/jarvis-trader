@@ -232,7 +232,7 @@ def poll_once(
         debounce_ok = last_alert_ts is None or (now_ts - last_alert_ts) >= debounce_seconds
         if debounce_ok:
             _send_discord_alert(
-                f"TV CDP port 9222 recovered — TradingView Desktop is reachable again.",
+                "TV CDP port 9222 recovered — TradingView Desktop is reachable again.",
                 no_discord=no_discord,
             )
             last_alert_ts = now_ts

@@ -872,9 +872,9 @@ def _render_markdown(report: dict) -> str:
         "",
         "## Verdict",
         "",
-        f"```",
+        "```",
         f"  {overall}",
-        f"```",
+        "```",
         "",
         f"Pass: **{summary['pass']}/{summary['total']}**  "
         f"| Fail: **{summary['fail']}**  "

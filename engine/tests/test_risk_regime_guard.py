@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
 from risk.regime_guard import RegimeGuard

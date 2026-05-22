@@ -467,6 +467,9 @@ class CronRegister(BaseApplier):
             + f"{shlex.quote(spec['schedule'])} {shlex.quote(spec['prompt'])}"
         )
 
+        if profile and profile != "default":
+            cmd_str = f"HERMES_PROFILE={shlex.quote(profile)} {cmd_str}"
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 "wsl.exe",

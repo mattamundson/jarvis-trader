@@ -10,12 +10,12 @@ Covers:
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from agents.research_agent import StrategyHypothesis
 from learning._experimental.strategy_tuner import StrategyTuner
-
 
 # ---------------------------------------------------------------------------
 # Helpers

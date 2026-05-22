@@ -145,7 +145,10 @@ def test_compute_quantstats_metrics_empty_returns_shell():
 
 def test_load_pnl_series_prefers_pnl_snapshots(tmp_path):
     """When both tables exist, pnl_snapshots is used as source."""
-    from datetime import date as _date, timedelta as _td, datetime as _dt, timezone as _tz
+    from datetime import date as _date
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+    from datetime import timezone as _tz
 
     from reports.quantstats_metrics import _load_pnl_series
 
@@ -177,7 +180,9 @@ def test_load_pnl_series_prefers_pnl_snapshots(tmp_path):
 
 def test_load_pnl_series_falls_back_to_paper_trades(tmp_path):
     """When pnl_snapshots is absent, paper_trades is used."""
-    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+    from datetime import timezone as _tz
 
     from reports.quantstats_metrics import _load_pnl_series
 

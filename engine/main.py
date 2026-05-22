@@ -2683,7 +2683,7 @@ _strategy_params = StrategyParams()
 
 
 @app.get("/safety/circuit-breakers", response_model=CircuitBreakerStatus)
-async def get_circuit_breakers():
+async def api_get_circuit_breakers():
     """
     Current circuit breaker state for all safety limits.
 
@@ -2738,7 +2738,7 @@ async def get_safety_config():
 
 
 @app.post("/safety/reset-daily-pnl", response_model=dict)
-async def reset_daily_pnl():
+async def api_reset_daily_pnl():
     """Reset the in-memory daily P&L counter (useful for testing)."""
     if not safety_layer:
         raise HTTPException(500, "Safety layer not initialized")
@@ -3443,7 +3443,7 @@ async def get_pipeline_history(limit: int = 50, symbol: str = ""):
 
 
 @app.get("/analytics/performance/rolling")
-async def get_rolling_performance(days: int = 30):
+async def api_get_rolling_performance(days: int = 30):
     """Get rolling performance metrics for the last N days (7, 14, or 30)."""
     if not db_manager:
         raise HTTPException(status_code=503, detail="Database not initialized")
@@ -3632,7 +3632,7 @@ def _log_decision(
 
 
 @app.get("/decisions/recent")
-async def get_recent_decisions(limit: int = 20):
+async def api_get_recent_decisions(limit: int = 20):
     """Return most recent agent decisions — queries SQLite first, falls back to in-memory."""
     if db_manager:
         try:
@@ -3657,7 +3657,7 @@ async def get_recent_decisions(limit: int = 20):
 
 
 @app.post("/decisions/log")
-async def log_decision(decision: dict):
+async def api_log_decision(decision: dict):
     """Internal: agents call this to log decisions"""
     _log_decision(
         symbol=decision.get("symbol", "UNKNOWN"),
@@ -3832,7 +3832,7 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
 
 
 @app.get("/market/earnings")
-async def get_upcoming_earnings(days: int = 7):
+async def api_get_upcoming_earnings(days: int = 7):
     """Check for upcoming earnings near our watched symbols."""
     WATCHED = {
         "SPY": "S&P 500 ETF",
@@ -3867,7 +3867,7 @@ class PipelineRequest(BaseModel):
 
 
 @app.post("/pipeline/run")
-async def run_pipeline(req: PipelineRequest):
+async def api_run_pipeline(req: PipelineRequest):
     """Run the full 5-stage AI trading pipeline for a symbol"""
     if not trading_pipeline:
         raise HTTPException(503, "Pipeline not available (no ANTHROPIC_API_KEY)")
@@ -4486,7 +4486,7 @@ class BacktestRequest(BaseModel):
 
 
 @app.post("/backtest/run")
-async def run_backtest(request: BacktestRequest):
+async def api_run_backtest(request: BacktestRequest):
     """Run a backtest for a symbol over the specified date range."""
     from concurrent.futures import ThreadPoolExecutor
 
@@ -4526,7 +4526,7 @@ class WalkForwardRequest(BaseModel):
 
 
 @app.post("/backtest/walk-forward")
-async def run_walk_forward(request: WalkForwardRequest):
+async def api_run_walk_forward(request: WalkForwardRequest):
     """
     Execute walk-forward validation on a symbol over a date range.
 
@@ -4624,7 +4624,7 @@ class RegimeAnalysisRequest(BaseModel):
 
 
 @app.post("/backtest/regime-analysis")
-async def analyze_regime(request: RegimeAnalysisRequest):
+async def api_analyze_regime(request: RegimeAnalysisRequest):
     """
     Analyze backtest results broken down by market regime.
 
@@ -4772,7 +4772,7 @@ async def analyze_regime(request: RegimeAnalysisRequest):
 
 
 @app.get("/backtest/regime-status")
-async def get_regime_status():
+async def api_get_regime_status():
     """
     Current regime classification for tracked symbols.
 
@@ -4854,7 +4854,7 @@ async def get_regime_status():
 
 
 @app.get("/backtest/paper-status")
-async def get_paper_status():
+async def api_get_paper_status():
     """
     Walk-Forward Efficiency (WFE) and paper-trading readiness for each symbol.
 
@@ -4900,7 +4900,7 @@ class MGCTradeLogRequest(BaseModel):
 
 
 @app.get("/paper/mgc-signal")
-async def get_mgc_signal():
+async def api_get_mgc_signal():
     """
     Generate today's MGC (Gold Micro) signal using the walk-forward validated
     adaptive regime strategy (WFE=0.88).\n
@@ -4999,7 +4999,7 @@ async def get_mgc_signal():
 
 
 @app.post("/paper/mgc-log-trade")
-async def log_mgc_paper_trade(req: MGCTradeLogRequest):
+async def api_log_mgc_paper_trade(req: MGCTradeLogRequest):
     """
     Log a completed MGC paper trade and return updated performance metrics.
 
@@ -5619,7 +5619,7 @@ async def get_commission_stats():
 
 
 @app.get("/analytics/trades/by-day")
-async def get_trades_by_day():
+async def api_get_trades_by_day():
     """Day-of-week breakdown of paper trade performance.
     Returns win rate, avg pnl, count for each day (Mon-Fri).
     """
@@ -5673,7 +5673,7 @@ async def get_trades_by_day():
 
 
 @app.get("/analytics/trades/by-symbol")
-async def get_trades_by_symbol():
+async def api_get_trades_by_symbol():
     """Per-symbol breakdown of paper trade performance."""
     if db_manager is None:
         raise HTTPException(status_code=503, detail="DB not initialized")

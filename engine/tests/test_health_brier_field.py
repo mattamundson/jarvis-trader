@@ -80,7 +80,9 @@ def test_compute_brier_30d_rolling_caches_value():
             return 0.10
 
     # Patch the tracker class wherever the helper imports it from.
-    with patch("analytics.ic_ensemble.BrierCalibrationTracker", return_value=_StubTracker()):
+    # Health router tries both 'engine.analytics' and 'analytics' paths.
+    with patch("analytics.ic_ensemble.BrierCalibrationTracker", return_value=_StubTracker()), \
+         patch("engine.analytics.ic_ensemble.BrierCalibrationTracker", return_value=_StubTracker(), create=True):
         first = health_router._compute_brier_30d_rolling()
         second = health_router._compute_brier_30d_rolling()
     assert first == pytest.approx(0.10)
@@ -96,5 +98,6 @@ def test_compute_brier_30d_rolling_returns_none_on_tracker_error():
         def compute_rolling_brier(self):
             raise RuntimeError("DB locked")
 
-    with patch("analytics.ic_ensemble.BrierCalibrationTracker", return_value=_BrokenTracker()):
+    with patch("analytics.ic_ensemble.BrierCalibrationTracker", return_value=_BrokenTracker()), \
+         patch("engine.analytics.ic_ensemble.BrierCalibrationTracker", return_value=_BrokenTracker(), create=True):
         assert health_router._compute_brier_30d_rolling() is None

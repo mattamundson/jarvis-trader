@@ -19,7 +19,6 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from fastapi.routing import APIRouter as _APIRouter
 
 from config import settings
 from websocket.pipeline_ws import manager as pipeline_manager

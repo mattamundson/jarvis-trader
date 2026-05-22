@@ -213,8 +213,8 @@ def generate(report_path: Path, repo_root: Path) -> str:
     lines += [
         "## Summary",
         "",
-        f"| Stat | Count |",
-        f"|------|-------|",
+        "| Stat | Count |",
+        "|------|-------|",
         f"| Total tasks | {total} |",
         f"| Done (git-verified) | {n_done} |",
         f"| Open agent-doable | {len(agent_tasks)} |",

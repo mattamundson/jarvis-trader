@@ -24,13 +24,12 @@ import pytest
 # -- import the router module directly (no FastAPI app needed for unit tests) --
 from routers.approval_queue_router import (
     _ensure_schema,
+    _get_candidate,
     _insert_candidate_direct,  # noqa: F401  (re-used in final helper block)
     _list_pending,
-    _get_candidate,
-    _update_status,
     _safety_guard_for_approve,
+    _update_status,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -161,7 +160,7 @@ async def test_approve_submits_paper_order(tmp_path: Path) -> None:
         with (
             patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
         ):
-            from routers.approval_queue_router import approve_candidate, ApproveBody
+            from routers.approval_queue_router import ApproveBody, approve_candidate
 
             result = await approve_candidate(row_id, ApproveBody(entry_price=2010.0))
 
@@ -187,7 +186,8 @@ async def test_approve_submits_paper_order(tmp_path: Path) -> None:
 def test_reject_records_reason(tmp_path: Path) -> None:
     """reject_candidate sets status=rejected and records the reason."""
     import asyncio
-    from routers.approval_queue_router import reject_candidate, RejectBody
+
+    from routers.approval_queue_router import RejectBody, reject_candidate
 
     db_path = _fresh_db(tmp_path)
     row_id = _insert_via_sql(db_path)

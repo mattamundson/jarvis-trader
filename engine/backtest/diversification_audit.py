@@ -69,7 +69,7 @@ def _pearson(xs: list[float], ys: list[float]) -> float | None:
         return None
     mx = sum(xs) / n
     my = sum(ys) / n
-    num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    num = sum((x - mx) * (y - my) for x, y in zip(xs, ys, strict=False))
     denom_x = sum((x - mx) ** 2 for x in xs) ** 0.5
     denom_y = sum((y - my) ** 2 for y in ys) ** 0.5
     if denom_x == 0 or denom_y == 0:
@@ -168,10 +168,10 @@ def run_audit() -> str:
 
     # Statistics
     n = len(mes_pfs)
-    both_profitable = sum(1 for m, g in zip(mes_pfs, mgc_pfs) if m > 1.0 and g > 1.0)
-    mes_only = sum(1 for m, g in zip(mes_pfs, mgc_pfs) if m > 1.0 and g <= 1.0)
-    mgc_only = sum(1 for m, g in zip(mes_pfs, mgc_pfs) if m <= 1.0 and g > 1.0)
-    neither = sum(1 for m, g in zip(mes_pfs, mgc_pfs) if m <= 1.0 and g <= 1.0)
+    both_profitable = sum(1 for m, g in zip(mes_pfs, mgc_pfs, strict=False) if m > 1.0 and g > 1.0)
+    mes_only = sum(1 for m, g in zip(mes_pfs, mgc_pfs, strict=False) if m > 1.0 and g <= 1.0)
+    mgc_only = sum(1 for m, g in zip(mes_pfs, mgc_pfs, strict=False) if m <= 1.0 and g > 1.0)
+    neither = sum(1 for m, g in zip(mes_pfs, mgc_pfs, strict=False) if m <= 1.0 and g <= 1.0)
     opposite_count = mes_only + mgc_only
 
     r = _pearson(mes_pfs, mgc_pfs)

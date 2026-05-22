@@ -2,8 +2,8 @@ import logging
 import sqlite3
 from typing import Optional
 
-from .models import Bookmark, BotSignal, CoreyAlert, CoreyCommentary, IBReport
 from . import storage_questdb as _qdb
+from .models import Bookmark, BotSignal, CoreyAlert, CoreyCommentary, IBReport
 
 logger = logging.getLogger(__name__)
 

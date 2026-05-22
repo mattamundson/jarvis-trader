@@ -230,8 +230,8 @@ async def test_dry_run_returns_expected_shape():
     installer = SkillInstaller()
     entry = _entry(implementation_steps=["hermes skill install foo/bar"])
     out = await installer.dry_run(entry)
-    assert "hermes skill install foo/bar" in out
-    assert "hermes skill list" in out
+    assert "hermes skills install foo/bar" in out
+    assert "hermes skills list" in out
     assert "grep -F bar" in out
 
 
@@ -292,7 +292,7 @@ async def test_apply_invokes_wsl_subprocess_when_not_installed():
         result = await installer.apply(entry)
 
     assert result.success is True
-    assert result.rollback_path == "hermes skill uninstall foo/bar"
+    assert result.rollback_path == "hermes skills uninstall foo/bar"
     assert "installed bar v1.0" in result.notes
 
     args, _ = mock_exec.call_args
@@ -300,7 +300,7 @@ async def test_apply_invokes_wsl_subprocess_when_not_installed():
     assert "-d" in args and "Ubuntu" in args
     assert "-u" in args and "mattm" in args
     # bash command is the last positional arg
-    assert "hermes skill install 'foo/bar'" in args[-1]
+    assert "hermes skills install --yes 'foo/bar' 2>&1" in args[-1]
 
 
 async def test_apply_records_failure_on_nonzero_exit():
@@ -411,7 +411,7 @@ async def test_rollback_invokes_uninstall():
 
     assert ok is True
     args, _ = mock_exec.call_args
-    assert "hermes skill uninstall 'foo/bar'" in args[-1]
+    assert "hermes skills uninstall 'foo/bar'" in args[-1]
 
 
 async def test_rollback_false_when_no_target():

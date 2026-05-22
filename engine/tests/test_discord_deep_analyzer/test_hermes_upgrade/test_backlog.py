@@ -117,18 +117,30 @@ def test_assign_tier_defer_when_leverage_one_even_if_applicable():
 
 
 def test_assign_tier_tier_1_high_leverage_low_risk():
+    # Requires a concrete target (e.g. github URL) to pass the concreteness gate
     cu = _mk_classified("a", applicable=True, leverage_rank=5, risk="low")
+    cu.extracted_content = "https://github.com/mattamundson/repo"
     assert assign_tier(cu) == "tier_1"
+
     cu = _mk_classified("a", applicable=True, leverage_rank=4, risk="low")
+    cu.extracted_content = "https://github.com/mattamundson/repo"
     assert assign_tier(cu) == "tier_1"
 
 
 def test_assign_tier_tier_2_med_risk_or_lev_3():
-    # leverage 3, low risk
+    # leverage 3, low risk + concrete target
     cu = _mk_classified("a", applicable=True, leverage_rank=3, risk="low")
+    cu.extracted_content = "https://github.com/mattamundson/repo"
     assert assign_tier(cu) == "tier_2"
-    # leverage 4, med risk
+
+    # leverage 4, med risk + concrete target
     cu = _mk_classified("a", applicable=True, leverage_rank=4, risk="med")
+    cu.extracted_content = "https://github.com/mattamundson/repo"
+    assert assign_tier(cu) == "tier_2"
+
+    # community source demotion (tier_1 -> tier_2)
+    cu = _mk_classified("a", applicable=True, leverage_rank=5, risk="low")
+    cu.extracted_content = "https://github.com/untrusted/repo"
     assert assign_tier(cu) == "tier_2"
 
 

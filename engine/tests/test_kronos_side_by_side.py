@@ -22,7 +22,6 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from kronos_side_by_side import _diff_verdicts, _render_report
 
-
 # ---------------------------------------------------------------------------
 # _diff_verdicts — correctness tests
 # ---------------------------------------------------------------------------

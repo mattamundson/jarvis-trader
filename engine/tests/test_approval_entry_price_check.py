@@ -17,7 +17,6 @@ from approval.service import ApprovalFlowError, approve_pending_trade
 from database.manager import DatabaseManager
 from portfolio.tracker import PortfolioTracker
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -28,8 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from api.models import JarvisQuickAnalysisRequest, JarvisQuickAnalysisResponse
@@ -257,12 +256,11 @@ def _classify_intent(question: str) -> str:
 
 def _handle_health(question: str, context: dict | None) -> tuple[str, list[str], list[str]]:
     """Query /health endpoint and summarise the result."""
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     url = "http://127.0.0.1:8010/health"
     try:
-        import os
         from config import settings as _cfg
 
         req = urllib.request.Request(url, headers={"X-API-Key": _cfg.API_KEY})
@@ -546,9 +544,9 @@ def _handle_commentary(question: str, context: dict | None) -> tuple[str, list[s
 
 def _handle_briefing(question: str, context: dict | None) -> tuple[str, list[str], list[str]]:
     """Composed pre-session briefing for a symbol."""
-    import urllib.request
     import urllib.error
-    import os
+    import urllib.request
+
     from config import settings as _cfg
 
     # Extract symbol from question or context
@@ -588,8 +586,9 @@ def _handle_briefing(question: str, context: dict | None) -> tuple[str, list[str
 
 def _handle_tearsheet(question: str, context: dict | None) -> tuple[str, list[str], list[str]]:
     """Return a link to the quantstats tearsheet."""
-    import urllib.request
     import urllib.error
+    import urllib.request
+
     from config import settings as _cfg
 
     sym_match = re.search(r"\b(MES|MNQ|MCL|MGC|MYM|SPY|QQQ)\b", question, re.IGNORECASE)
@@ -625,8 +624,9 @@ def _handle_tearsheet(question: str, context: dict | None) -> tuple[str, list[st
 
 def _handle_regime(question: str, context: dict | None) -> tuple[str, list[str], list[str]]:
     """Return current market regime per symbol."""
-    import urllib.request
     import urllib.error
+    import urllib.request
+
     from config import settings as _cfg
 
     sym_match = re.search(r"\b(MES|MNQ|MCL|MGC|MYM|SPY|QQQ)\b", question, re.IGNORECASE)
@@ -661,6 +661,7 @@ def _handle_regime(question: str, context: dict | None) -> tuple[str, list[str],
 def _fetch_health_for_preflight() -> dict:
     """Fetch /health and return a parsed dict.  Raises on network/parse error."""
     import urllib.request
+
     from config import settings as _cfg
 
     health_url = "http://127.0.0.1:8010/health"
@@ -680,8 +681,9 @@ def _handle_pipeline_run(question: str, context: dict | None) -> tuple[str, list
     If the /health fetch itself fails, the pre-flight is skipped and the pipeline
     run proceeds (fail-open) with a warning logged.
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
+
     from config import settings as _cfg
 
     sym_match = re.search(r"\b(MES|MNQ|MCL|MGC|MYM|SPY|QQQ)\b", question, re.IGNORECASE)
@@ -755,8 +757,9 @@ def _handle_pipeline_run(question: str, context: dict | None) -> tuple[str, list
 
 def _handle_position(question: str, context: dict | None) -> tuple[str, list[str], list[str]]:
     """Return current paper positions."""
-    import urllib.request
     import urllib.error
+    import urllib.request
+
     from config import settings as _cfg
 
     url = "http://127.0.0.1:8010/portfolio/paper/positions"

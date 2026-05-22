@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import List, Tuple
 
 import pytest
-
 from engine.discord.bookmark_synthesizer import (  # noqa: E402
     BookmarkRow,
     _extract_github_repo,
@@ -24,7 +23,6 @@ from engine.discord.bookmark_synthesizer import (  # noqa: E402
     _summarize_xcom_authors,
     synthesize_delta,
 )
-
 
 # ── Fixture helpers ──────────────────────────────────────────────────────────
 

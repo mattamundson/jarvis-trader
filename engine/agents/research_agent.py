@@ -20,7 +20,7 @@ import logging
 import os
 import re
 import sqlite3
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 from typing import Any
 
