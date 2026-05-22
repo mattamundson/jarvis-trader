@@ -116,19 +116,23 @@ def _get_min_tick_seconds() -> int:
 _trading_pipeline = None
 _safety_layer = None
 _db_path: Optional[str] = None
+_data_manager = None
 
 
-def inject_autonomous_deps(trading_pipeline, safety_layer, db_path: str) -> None:
+def inject_autonomous_deps(trading_pipeline, safety_layer, db_path: str, data_manager=None) -> None:
     """Called from main.py during lifespan if ENABLE_AUTONOMOUS_PIPELINE=1."""
-    global _trading_pipeline, _safety_layer, _db_path
+    global _trading_pipeline, _safety_layer, _db_path, _data_manager
     _trading_pipeline = trading_pipeline
     _safety_layer = safety_layer
     _db_path = db_path
+    _data_manager = data_manager
     logger.info(
-        "AutonomousScheduler: dependencies injected " "(pipeline=%s, safety_layer=%s, db=%s)",
+        "AutonomousScheduler: dependencies injected "
+        "(pipeline=%s, safety_layer=%s, db=%s, data_manager=%s)",
         type(_trading_pipeline).__name__,
         type(_safety_layer).__name__,
         _db_path,
+        type(_data_manager).__name__ if _data_manager is not None else "None",
     )
 
 
@@ -392,6 +396,52 @@ async def autonomous_tick() -> dict:
                 continue
 
             import json as _json
+
+            # Entry price sanity check — early rejection of corrupted verdicts.
+            # Prevents phantom trades (e.g. 2026-05-09: stop_loss copied into entry_price).
+            # Runs at enqueue so corrupted candidates never reach the approval queue at all.
+            _entry_price_for_check = None
+            try:
+                _trade_dec = result.get("trade_decision") or {}
+                if isinstance(_trade_dec, str):
+                    _trade_dec = _json.loads(_trade_dec)
+                _ep_raw = _trade_dec.get("entry_price") or result.get("entry_price") or 0
+                _entry_price_for_check = float(_ep_raw) if _ep_raw else None
+            except Exception:
+                pass
+
+            if _entry_price_for_check is not None and _data_manager is not None:
+                try:
+                    from risk.entry_price_sanity import (
+                        check_entry_price_sanity,
+                        is_entry_price_sanity_enabled,
+                    )
+
+                    if is_entry_price_sanity_enabled():
+                        _is_sane, _sanity_reason = await check_entry_price_sanity(
+                            symbol=symbol,
+                            entry_price=_entry_price_for_check,
+                            data_manager=_data_manager,
+                        )
+                        if not _is_sane:
+                            logger.error(
+                                "[AutonomousTick][ENTRY_PRICE_SANITY] %s enqueue rejected: %s",
+                                symbol,
+                                _sanity_reason,
+                            )
+                            summary["errors"].append(
+                                {
+                                    "symbol": symbol,
+                                    "error": f"entry_price_sanity: {_sanity_reason}",
+                                }
+                            )
+                            continue
+                except Exception as _sanity_exc:
+                    logger.warning(
+                        "[AutonomousTick][ENTRY_PRICE_SANITY] check raised for %s: %s — allowing",
+                        symbol,
+                        _sanity_exc,
+                    )
 
             row_id = _insert_candidate(
                 db_path=_db_path,
