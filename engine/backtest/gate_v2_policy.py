@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -34,6 +35,11 @@ logger = logging.getLogger(__name__)
 # advisory eligibility flips to default-deny.
 MAX_VERDICT_AGE_DAYS = 14
 
+_VALID_VERDICTS = frozenset({"PASS", "FAIL"})
+_VALID_PASSED_VIA = frozenset({"core", "alt"})
+_VALID_CORE_VERDICTS = frozenset({"PASS", "FAIL"})
+_VALID_ALT_VERDICTS = frozenset({"PASS", "FAIL", "UNSCORED"})
+
 
 # Lazy-resolved to avoid circular imports and to let tests monkeypatch.
 def _default_verdicts_dir() -> Path:
@@ -41,40 +47,82 @@ def _default_verdicts_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "data" / "gate_v2_verdicts"
 
 
+@dataclass(slots=True)
 class VerdictSnapshot:
     """Read-side mirror of `scripts.gate_v2_orchestrator.VerdictSnapshot`.
+
+    Constructed via `VerdictSnapshot.from_dict(doc)`.  Raises `ValueError`
+    on malformed verdict files rather than silently returning wrong answers.
 
     Intentionally *not* importing the orchestrator's dataclass to avoid
     coupling the read path to the write path — routing code that reads
     verdicts should never have to import heavy numpy/statistics deps.
     """
 
-    __slots__ = (
-        "symbol",
-        "family",
-        "rank",
-        "verdict",
-        "passed_via",
-        "core_verdict",
-        "alt_verdict",
-        "n_core_passed",
-        "n_alt_passed",
-        "created_at",
-        "aux_freshness",
-    )
+    symbol: str
+    family: str
+    rank: int
+    verdict: str  # "PASS" | "FAIL"
+    passed_via: Optional[str]  # "core" | "alt" | None
+    core_verdict: str  # "PASS" | "FAIL"
+    alt_verdict: str  # "PASS" | "FAIL" | "UNSCORED"
+    n_core_passed: int
+    n_alt_passed: int
+    created_at: str  # ISO-8601
+    aux_freshness: dict
+    gate_v2: dict
 
-    def __init__(self, doc: dict):
-        self.symbol = doc["symbol"]
-        self.family = doc["family"]
-        self.rank = doc["rank"]
-        self.verdict = doc["verdict"]
-        self.passed_via = doc.get("passed_via")
-        self.core_verdict = doc.get("core_verdict", "FAIL")
-        self.alt_verdict = doc.get("alt_verdict", "UNSCORED")
-        self.n_core_passed = doc.get("n_core_passed", 0)
-        self.n_alt_passed = doc.get("n_alt_passed", 0)
-        self.created_at = doc["created_at"]
-        self.aux_freshness = doc.get("aux_freshness", {})
+    def __post_init__(self) -> None:
+        if not self.symbol:
+            raise ValueError("symbol must be non-empty")
+        if self.verdict not in _VALID_VERDICTS:
+            raise ValueError(f"verdict={self.verdict!r} must be one of {_VALID_VERDICTS}")
+        if self.passed_via is not None and self.passed_via not in _VALID_PASSED_VIA:
+            raise ValueError(
+                f"passed_via={self.passed_via!r} must be one of {_VALID_PASSED_VIA} or None"
+            )
+        if self.core_verdict not in _VALID_CORE_VERDICTS:
+            raise ValueError(
+                f"core_verdict={self.core_verdict!r} must be one of {_VALID_CORE_VERDICTS}"
+            )
+        if self.alt_verdict not in _VALID_ALT_VERDICTS:
+            raise ValueError(
+                f"alt_verdict={self.alt_verdict!r} must be one of {_VALID_ALT_VERDICTS}"
+            )
+        if self.n_core_passed < 0:
+            raise ValueError(f"n_core_passed={self.n_core_passed} must be >= 0")
+        if self.n_alt_passed < 0:
+            raise ValueError(f"n_alt_passed={self.n_alt_passed} must be >= 0")
+        try:
+            datetime.fromisoformat(self.created_at)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"created_at={self.created_at!r} is not a valid ISO datetime") from exc
+
+    @classmethod
+    def from_dict(cls, doc: dict) -> "VerdictSnapshot":
+        """Construct from a raw verdict JSON dict with schema validation.
+
+        Raises `ValueError` (with the offending field in the message) on any
+        missing required key or invalid enum value.  Called by
+        `_iter_verdict_files`; errors are caught there and logged as warnings.
+        """
+        try:
+            return cls(
+                symbol=doc["symbol"],
+                family=doc["family"],
+                rank=int(doc["rank"]),
+                verdict=doc["verdict"],
+                passed_via=doc.get("passed_via"),
+                core_verdict=doc.get("core_verdict", "FAIL"),
+                alt_verdict=doc.get("alt_verdict", "UNSCORED"),
+                n_core_passed=int(doc.get("n_core_passed", 0)),
+                n_alt_passed=int(doc.get("n_alt_passed", 0)),
+                created_at=doc["created_at"],
+                aux_freshness=doc.get("aux_freshness") or {},
+                gate_v2=doc.get("gate_v2") or {},
+            )
+        except KeyError as exc:
+            raise ValueError(f"Missing required verdict field: {exc}") from exc
 
     def age_days(self, now: Optional[datetime] = None) -> float:
         now = now or datetime.now(tz=timezone.utc)
@@ -94,7 +142,7 @@ def _iter_verdict_files(verdicts_dir: Optional[Path] = None):
     for p in d.glob("*.json"):
         try:
             doc = json.loads(p.read_text())
-            yield VerdictSnapshot(doc)
+            yield VerdictSnapshot.from_dict(doc)
         except Exception as exc:
             logger.warning("gate_v2_policy: unreadable verdict file %s: %s", p, exc)
 
