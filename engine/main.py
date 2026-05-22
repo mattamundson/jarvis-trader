@@ -307,6 +307,8 @@ polymarket: "PolymarketConnector | None" = None
 openbb: "OpenBBAdapter | None" = None
 risk_protections: RiskProtections | None = None
 sentiment_bridge: SentimentBridge | None = None
+model_drawer: ModelDrawer | None = None
+arb_scout: ArbScout | None = None
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -2584,8 +2586,6 @@ app.include_router(webhook_router)
 app.include_router(v1_router)
 
 
-
-
 # ── WebSocket Price Feed ────────────────────────────────────────────────────────
 from websocket.price_feed import price_feed_endpoint
 
@@ -2607,8 +2607,6 @@ app.websocket("/ws/events")(events_handler)
 
 
 # -- /position-sizing/calculate -- served by routers/settings_router.py (wired 2026-05-22) --
-
-
 
 
 # ── /safety/circuit-breakers — served by routers/safety_router.py ──
@@ -2759,14 +2757,6 @@ def _log_decision(
 
 # ── /market/earnings — served by routers/market_router.py ──
 # ── /pipeline/run/sdk — served by routers/pipeline_router.py ──
-
-
-
-
-
-
-
-
 
 
 # -- /notifications/whatsapp/test -- served by routers/notifications_router.py (wired 2026-05-22) --
