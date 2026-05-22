@@ -105,7 +105,35 @@ _TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipp
 # layer is canonical; any conflict resolves in favor of safety.
 VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset({"MES", "MGC"})
 
-__all__ = ["TradingPipeline", "pre_filter_signal", "VALIDATION_ONLY_INSTRUMENTS"]
+# ── Validation-Only Strategies (by stark_signal value) ────────────────────────
+# Strategy signals in this set are blocked from producing paper trades until
+# a full WFO run exists AND gate v2 returns PASS. The pipeline still runs to
+# completion and the stark_signal is visible in the dashboard; only the
+# scanner's paper-mode bypass (signal_scanner.py) is blocked.
+#
+# Current entries:
+#   SHORT_GAP_FILL — StarkTPOStrategy.GAP_IMBALANCE short-side signal.
+#     Gated 2026-05-21 following the 2026-05-09 to 2026-05-11 phantom-price
+#     drawdown incident.  Root-cause: NULL wfe_snapshots metrics indicate no
+#     completed WFO run; signal bypassed gate v2 entirely.
+#     Incident doc: docs/session-logs/drawdown-root-cause-may-9-to-11.md
+#
+# Flip-to-active criteria (remove from this set when ALL met):
+#   1. WFE >= 0.6 on a fresh rolling walk-forward run (wfe_snapshots non-NULL)
+#   2. Gate v2 PASS (pf_ci_lower>=1.10, p_edge>=0.95, mc_95th_dd<=5%, dsr>=0.10)
+#   3. Explicit Tier 3 authorization from Amo
+#
+# NOTE: this is a STRATEGY gate (blocks by stark_signal name), distinct from
+# VALIDATION_ONLY_INSTRUMENTS (blocks by symbol).  Existing open positions are
+# NOT force-closed — the gate only prevents NEW paper submissions.
+VALIDATION_ONLY_STRATEGIES: frozenset[str] = frozenset({"SHORT_GAP_FILL"})
+
+__all__ = [
+    "TradingPipeline",
+    "pre_filter_signal",
+    "VALIDATION_ONLY_INSTRUMENTS",
+    "VALIDATION_ONLY_STRATEGIES",
+]
 
 # ── Economic Calendar Blackout ─────────────────────────────────────────────────
 _ECONOMIC_BLACKOUT_EVENTS: list[dict] = [
