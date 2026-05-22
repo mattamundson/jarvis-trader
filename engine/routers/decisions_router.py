@@ -265,10 +265,33 @@ async def get_decision_detail(decision_id: int):
 
 @router.post("/decisions/log")
 async def log_decision(decision: dict):
-    """Internal: agents call this to log decisions to the in-memory fallback buffer"""
-    _decision_log.append({**decision, "id": len(_decision_log) + 1})
+    """Internal: agents call this to log decisions — persists to SQLite, falls back to memory."""
+    import datetime
+
+    entry = {
+        **decision,
+        "id": len(_decision_log) + 1,
+        "timestamp": decision.get("timestamp") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    _decision_log.append(entry)
     if len(_decision_log) > 100:
         _decision_log.pop(0)
+
+    if _db_manager is not None:
+        try:
+            _db_manager.insert_decision(
+                symbol=decision.get("symbol", "UNKNOWN"),
+                action=decision.get("action", "hold"),
+                confidence=float(decision.get("confidence", 0.0)),
+                regime=decision.get("regime"),
+                signal_data=decision,
+                reasoning=decision.get("reasoning") or decision.get("summary", ""),
+                timestamp=entry["timestamp"],
+                full_pipeline_data=decision.get("full_pipeline_data"),
+            )
+        except Exception as _db_err:
+            logger.warning("[DECISION] SQLite persist failed: %s", _db_err)
+
     return {"ok": True}
 
 
