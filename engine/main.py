@@ -185,6 +185,10 @@ from routers.websocket_router import (
     router as websocket_router,
     inject_dependencies as inject_websocket_deps,
 )
+from routers.thinkscript_router import (
+    router as thinkscript_router,
+    inject_dependencies as inject_thinkscript_deps,
+)
 from data.price_cache import PriceCache
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
@@ -1506,6 +1510,7 @@ async def lifespan(app: FastAPI):
     inject_settings_deps(settings, db_manager, safety_layer)
     inject_prices_deps(PriceCache(), data_manager=data_manager)
     inject_websocket_deps(ws_manager)
+    inject_thinkscript_deps(technical_analyst)
 
     # ── Autonomous Pipeline Approval Queue ────────────────────────────────────
     # Default-OFF: only activated when ENABLE_AUTONOMOUS_PIPELINE=1 in .env.
@@ -2561,6 +2566,7 @@ app.include_router(sentiment_router)
 app.include_router(settings_router)
 app.include_router(prices_router)
 app.include_router(websocket_router)
+app.include_router(thinkscript_router)
 
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
 app.include_router(webhook_router)
@@ -2720,58 +2726,10 @@ _strategy_params = StrategyParams()
 
 # ── /safety/circuit-breakers — served by routers/safety_router.py ──
 
-
-@app.get("/safety/config", response_model=SafetyConfigResponse)
-async def get_safety_config():
-    """
-    Return current risk parameter configuration (read-only).
-    Sourced from settings singleton — reflects .env values at startup.
-    """
-    return {
-        "max_daily_loss_pct": settings.MAX_DAILY_LOSS_PCT,
-        "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
-        "max_position_size_pct": settings.MAX_POSITION_SIZE_PCT,
-        "max_contracts_per_instrument": settings.MAX_CONTRACTS_PER_INSTRUMENT,
-        "max_overnight_contracts": settings.MAX_OVERNIGHT_CONTRACTS,
-        "max_orders_per_minute": settings.MAX_ORDERS_PER_MINUTE,
-        "max_single_order_value": settings.MAX_SINGLE_ORDER_VALUE,
-        "max_margin_utilization": settings.MAX_MARGIN_UTILIZATION,
-        "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
-        "require_human_approval": settings.REQUIRE_HUMAN_APPROVAL,
-        "ibkr_host": settings.IBKR_HOST,
-        "ibkr_port": settings.IBKR_PORT,
-        "ibkr_client_id": settings.IBKR_CLIENT_ID,
-        "ibkr_paper_mode": settings.IBKR_PAPER_MODE,
-    }
-
-
+# -- /safety/config -- served by routers/safety_router.py (wired 2026-05-22) --
 # ── /safety/reset-daily-pnl — served by routers/safety_router.py ──
 
-
-@app.get("/safety/loss-tracker")
-async def get_loss_tracker_status():
-    """
-    Return consecutive loss tracking state.
-
-    Returns:
-        global_consecutive_losses: Total consecutive losses (all symbols)
-        symbol_losses: Dict[symbol] -> consecutive loss count
-        position_size_multiplier: 1.0 / 0.5 / 0.25 / 0.0 based on loss streak
-        is_halted: True if trading is paused due to loss limit
-        halt_until: ISO timestamp when trading resumes (if halted)
-        last_trade_symbol: Which symbol was last traded
-        last_trade_timestamp: When the last trade executed
-        config: Loss threshold configuration
-    """
-    if not loss_tracker:
-        raise HTTPException(500, "Loss tracker not initialized")
-    try:
-        return loss_tracker.get_status()
-    except Exception as e:
-        logger.error(f"[LOSS-TRACKER] Status query failed: {e}")
-        raise HTTPException(500, f"Failed to get loss tracker status: {e}") from e
-
-
+# -- /safety/loss-tracker -- served by routers/safety_router.py (wired 2026-05-22) --
 # ── Risk Limits Settings ───────────────────────────────────────────────────
 
 
@@ -2906,6 +2864,7 @@ async def submit_paper_trade(req: PaperTradeRequest):
             "quantity": req.quantity,
             "entry_price": req.price,
         }
+
 
 # -- /portfolio/paper/performance -- served by routers/portfolio_router.py (wired 2026-05-22) --
 
@@ -3114,38 +3073,7 @@ async def get_pipeline_history(limit: int = 50, symbol: str = ""):
 # ── /analytics/performance/rolling + /analytics/performance/compare — served by routers/analytics_router.py ──
 
 
-@app.get("/analytics/mtf")
-async def get_mtf_analysis(symbol: str = "MES"):
-    """
-    Multi-timeframe STC analysis for a single symbol.
-    Returns 1h, 4h, and 1d STC signals with alignment and recommendation.
-    """
-    try:
-        from analytics.mtf_analyzer import analyze_mtf
-
-        sym = symbol.strip().upper()
-        result = await analyze_mtf(sym, data_manager)
-        return {
-            "symbol": result.symbol,
-            "recommendation": result.recommendation,
-            "alignment": result.alignment,
-            "confidence": result.confidence,
-            "aligned_timeframes": result.aligned_timeframes,
-            "total_timeframes": result.total_timeframes,
-            "source": result.source,
-            "timeframes": {
-                s.timeframe: {
-                    "stc_value": s.stc_value,
-                    "stc_signal": s.stc_signal,
-                    "price": s.price,
-                    "source": s.source,
-                }
-                for s in result.signals
-            },
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
+# ── /analytics/mtf — served by routers/analytics_router.py (wired 2026-05-22) ──
 
 # ── watchlist/scan — served by routers/watchlist_router.py (wired 2026-05-22) ──
 
@@ -3612,111 +3540,9 @@ async def check_vix_alert():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@app.get("/safety/regime-alert")
-async def get_regime_alert():
-    """P3-15 regime detector: MES daily RSI and VIX sustained-threshold alerts.
+# -- /safety/regime-alert + /safety/retirement-status -- served by routers/safety_router.py (wired 2026-05-22) --
 
-    Checks two conditions:
-      C1 PERSISTENT_OVERSOLD: MES daily RSI(14) < 30 for >= 5 consecutive days.
-      C2 HIGH_VIX: VIX > 25 for >= 3 consecutive trading days.
-
-    Returns RegimeAlertReport as JSON. `any_alert=true` means at least one
-    condition is active — escalate (reduce size, widen stops, or pause signals).
-    """
-    try:
-        from analytics.regime_detector import check_regime_alerts
-
-        report = check_regime_alerts()
-        return report.to_dict()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@app.get("/safety/retirement-status")
-async def get_retirement_status(symbol: str = "MES"):
-    """P3-39 strategy retirement criteria: rolling win rate, PF, loss streak, drawdown.
-
-    Evaluates 8 checks (R1-R4 RETIRE, P1-P4 PAUSE) against paper trade history.
-    Returns RetirementStatus with recommendation: RETIRE | PAUSE | HOLD.
-
-    Query params:
-        symbol: futures symbol (default MES)
-    """
-    try:
-        from backtest.strategy_retirement import check_retirement_from_db
-
-        status = check_retirement_from_db(symbol.upper())
-        return status.to_dict()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-# ── ThinkScript Generation ─────────────────────────────────────────────────
-
-thinkscript_generator: ThinkScriptGeneratorAgent | None = None
-
-
-class ThinkScriptRequest(BaseModel):
-    symbol: str
-    timeframe: str = "15m"
-    is_futures: bool = False
-
-
-@app.post("/thinkscript/generate")
-async def generate_thinkscript(req: ThinkScriptRequest):
-    """Generate ThinkScript code for ThinkorSwim from JARVIS analysis"""
-    gen = ThinkScriptGeneratorAgent(
-        llm_client=technical_analyst.llm_client if technical_analyst else None
-    )
-
-    # Get technical analysis first
-    tech_report = None
-    if technical_analyst:
-        try:
-            tech_report = await technical_analyst.analyze(req.symbol, req.timeframe, req.is_futures)
-        except Exception:
-            pass
-
-    result = await gen.generate(
-        symbol=req.symbol,
-        timeframe=req.timeframe,
-        technical_report=tech_report,
-        script_type="study",
-    )
-
-    return {
-        "symbol": result.symbol,
-        "timeframe": result.timeframe,
-        "title": result.title,
-        "code": result.code,
-        "description": result.description,
-        "usage_instructions": result.usage_instructions,
-        "signals_included": result.signals_included,
-        "timestamp": result.timestamp.isoformat(),
-    }
-
-
-@app.get("/thinkscript/registry", response_model=ScriptRegistry)
-async def get_thinkscript_registry():
-    """Return the full catalog of ThinkScript studies wired into JARVIS."""
-    try:
-        return load_registry()
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-
-
-@app.get("/thinkscript/registry/{script_id}", response_model=ScriptWithDocs)
-async def get_thinkscript_registry_entry(script_id: str):
-    """Return a single registry entry plus its full markdown documentation body."""
-    try:
-        registry = load_registry()
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-    entry = next((s for s in registry.scripts if s.id == script_id), None)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"script_id '{script_id}' not found")
-    return ScriptWithDocs(entry=entry, doc_markdown=read_doc(entry.docs))
-
+# -- /thinkscript/* -- served by routers/thinkscript_router.py (wired 2026-05-22) --
 
 # ── Macro Data (FRED) — served by routers/macro_router.py (wired 2026-05-22) ──
 
