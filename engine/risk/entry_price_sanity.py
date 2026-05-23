@@ -30,7 +30,9 @@ logger = logging.getLogger("jarvis_trader.risk.entry_price_sanity")
 
 _ENV_ENABLE = "ENABLE_ENTRY_PRICE_SANITY"
 _ENV_THRESHOLD = "ENTRY_PRICE_SANITY_MAX_ATR_DELTA"
+_ENV_MIN_ATR = "ENTRY_PRICE_SANITY_MIN_ATR"
 _DEFAULT_MAX_ATR_DELTA = 1.0
+_DEFAULT_MIN_ATR_FLOOR = 0.0  # 0 = no floor (backward compatible default)
 _ATR_PERIOD = 14
 
 
@@ -62,6 +64,25 @@ def _get_max_atr_delta() -> float:
     return _DEFAULT_MAX_ATR_DELTA
 
 
+def _get_min_atr_floor() -> float:
+    """Read ENTRY_PRICE_SANITY_MIN_ATR from env, default 0.0 (no floor).
+
+    When set to a positive value (e.g. 1.5 for MGC), the effective ATR used
+    in the sanity check is max(measured_atr, floor). This prevents the check
+    from over-triggering during low-volatility windows (e.g. MGC 10pm-2am CT
+    where 1h ATR can drop to 0.5-0.8 pts) while leaving the check fully intact
+    when the measured ATR is comfortably above the floor.
+    """
+    raw = os.environ.get(_ENV_MIN_ATR, "").strip()
+    try:
+        val = float(raw)
+        if val >= 0:
+            return val
+    except (TypeError, ValueError):
+        pass
+    return _DEFAULT_MIN_ATR_FLOOR
+
+
 # ---------------------------------------------------------------------------
 # Pure predicate — no I/O
 # ---------------------------------------------------------------------------
@@ -73,6 +94,7 @@ def is_entry_price_sane(
     market_price: float,
     atr: float,
     max_atr_delta: float = _DEFAULT_MAX_ATR_DELTA,
+    min_atr_floor: float = _DEFAULT_MIN_ATR_FLOOR,
 ) -> Tuple[bool, str]:
     """Check whether an entry price is plausible relative to market + ATR.
 
@@ -87,7 +109,13 @@ def is_entry_price_sane(
     atr:
         14-period ATR for the instrument (same unit as price).
     max_atr_delta:
-        Maximum allowed |entry - market| / ATR ratio.  Default 1.0.
+        Maximum allowed |entry - market| / effective_ATR ratio.  Default 1.0.
+    min_atr_floor:
+        Minimum ATR floor (default 0.0 = no floor). When set to a positive
+        value the effective ATR is max(atr, min_atr_floor), preventing the
+        check from over-triggering in low-vol sessions (e.g. MGC overnight).
+        Set via ENTRY_PRICE_SANITY_MIN_ATR env var; does not weaken the check
+        when measured ATR is above the floor.
 
     Returns
     -------
@@ -119,13 +147,23 @@ def is_entry_price_sane(
             f"entry {entry_price} rejected",
         )
 
+    # Apply optional ATR floor (low-vol regime guard — e.g. MGC 10pm-2am CT)
+    floor = float(min_atr_floor) if min_atr_floor and min_atr_floor > 0 else 0.0
+    effective_atr = max(atr_val, floor)
+
     # Core check
-    delta_atr = abs(float(entry_price) - mkt) / atr_val
+    delta_atr = abs(float(entry_price) - mkt) / effective_atr
     if delta_atr > max_atr_delta:
+        floor_note = (
+            f" (floored from ATR={atr_val:.4f} by min_atr_floor={floor:.4f})"
+            if effective_atr > atr_val
+            else ""
+        )
         return (
             False,
             f"[{symbol}] entry_price={entry_price} is {delta_atr:.2f} ATR units from "
-            f"market={mkt} (ATR={atr_val:.4f}); max allowed={max_atr_delta:.2f} — "
+            f"market={mkt} (effective_ATR={effective_atr:.4f}{floor_note}); "
+            f"max allowed={max_atr_delta:.2f} — "
             "possible field corruption (stop_loss copied into entry_price?)",
         )
 
@@ -208,6 +246,7 @@ async def check_entry_price_sanity(
     (is_sane: bool, reason: str)
     """
     max_atr_delta = _get_max_atr_delta()
+    min_atr_floor = _get_min_atr_floor()
 
     # -- Fetch market price --
     market_price: Optional[float] = None
@@ -233,6 +272,7 @@ async def check_entry_price_sanity(
         market_price=market_price,
         atr=atr,
         max_atr_delta=max_atr_delta,
+        min_atr_floor=min_atr_floor,
     )
 
     if not is_sane:

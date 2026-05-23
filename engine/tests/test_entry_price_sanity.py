@@ -367,3 +367,135 @@ class TestComputeAtrFromBars:
             }
         )
         assert _compute_atr_from_bars(df) is None
+
+
+# ---------------------------------------------------------------------------
+# Min-ATR floor guard (§6.5 — MGC low-vol overnight regime)
+# ---------------------------------------------------------------------------
+
+
+class TestMinAtrFloor:
+    """Tests for ENTRY_PRICE_SANITY_MIN_ATR / min_atr_floor parameter (§6.5).
+
+    MGC scenario: 1h ATR drops to 0.5-0.8 pts during the 10pm-2am CT window.
+    Without a floor, a valid entry 0.9 pts from market would be flagged
+    (delta/ATR = 0.9/0.7 ≈ 1.29 > 1.0).  With min_atr_floor=1.5, effective
+    ATR = max(0.7, 1.5) = 1.5, so delta/ATR = 0.9/1.5 = 0.60 ≤ 1.0 → passes.
+
+    The 2026-05-09 corruption case (delta=13.5) is unaffected:
+    13.5/max(10, 1.5) = 13.5/10 = 1.35 > 1.0 → still rejected.
+    """
+
+    def test_low_vol_entry_fails_without_floor(self):
+        """Entry 0.9 pts from market, ATR=0.7 → fails at default threshold."""
+        is_sane, reason = is_entry_price_sane(
+            symbol="MGC",
+            entry_price=3200.9,
+            market_price=3200.0,
+            atr=0.7,
+            max_atr_delta=1.0,
+            min_atr_floor=0.0,
+        )
+        # delta/ATR = 0.9/0.7 ≈ 1.29 > 1.0 → rejected
+        assert is_sane is False
+
+    def test_low_vol_entry_passes_with_floor(self):
+        """Same entry passes when min_atr_floor lifts effective ATR to 1.5."""
+        is_sane, reason = is_entry_price_sane(
+            symbol="MGC",
+            entry_price=3200.9,
+            market_price=3200.0,
+            atr=0.7,
+            max_atr_delta=1.0,
+            min_atr_floor=1.5,
+        )
+        # effective_ATR = max(0.7, 1.5) = 1.5; delta/ATR = 0.9/1.5 = 0.60 ≤ 1.0
+        assert is_sane is True
+        assert reason == ""
+
+    def test_floor_does_not_weaken_normal_vol_check(self):
+        """When measured ATR > floor, the floor has no effect."""
+        # ATR=2.5 >> floor=1.5 → effective_ATR=2.5, threshold unchanged
+        is_sane_no_floor, _ = is_entry_price_sane(
+            symbol="MGC",
+            entry_price=3205.0,
+            market_price=3200.0,
+            atr=2.5,
+            max_atr_delta=1.0,
+            min_atr_floor=0.0,
+        )
+        is_sane_with_floor, _ = is_entry_price_sane(
+            symbol="MGC",
+            entry_price=3205.0,
+            market_price=3200.0,
+            atr=2.5,
+            max_atr_delta=1.0,
+            min_atr_floor=1.5,
+        )
+        # Both should return identical results
+        assert is_sane_no_floor == is_sane_with_floor
+
+    def test_corruption_case_still_rejected_with_floor(self):
+        """2026-05-09 corruption (delta=13.5, ATR=10) is rejected even with floor=1.5."""
+        is_sane, reason = is_entry_price_sane(
+            symbol="MES",
+            entry_price=7398.5481,
+            market_price=7385.0,
+            atr=10.0,
+            max_atr_delta=1.0,
+            min_atr_floor=1.5,
+        )
+        # effective_ATR = max(10, 1.5) = 10; delta/ATR = 13.5481/10 = 1.35 > 1.0
+        assert is_sane is False
+        assert "7398.5481" in reason
+
+    def test_floor_note_in_rejection_reason(self):
+        """When the floor lifts effective ATR, the rejection reason says so."""
+        is_sane, reason = is_entry_price_sane(
+            symbol="MGC",
+            entry_price=3202.0,  # delta=2.0; effective_ATR=1.5 → 1.33 > 1.0
+            market_price=3200.0,
+            atr=0.7,
+            max_atr_delta=1.0,
+            min_atr_floor=1.5,
+        )
+        assert is_sane is False
+        assert "floored" in reason or "min_atr_floor" in reason
+
+    def test_env_var_min_atr_floor_read(self, monkeypatch):
+        """ENTRY_PRICE_SANITY_MIN_ATR env var is read by _get_min_atr_floor."""
+        from risk.entry_price_sanity import _get_min_atr_floor
+
+        monkeypatch.setenv("ENTRY_PRICE_SANITY_MIN_ATR", "1.5")
+        assert _get_min_atr_floor() == 1.5
+
+        monkeypatch.delenv("ENTRY_PRICE_SANITY_MIN_ATR", raising=False)
+        assert _get_min_atr_floor() == 0.0
+
+    @pytest.mark.asyncio
+    async def test_async_wrapper_reads_floor_from_env(self, monkeypatch):
+        """check_entry_price_sanity passes min_atr_floor from env to predicate."""
+        monkeypatch.setenv("ENTRY_PRICE_SANITY_MIN_ATR", "1.5")
+        monkeypatch.delenv("ENTRY_PRICE_SANITY_MAX_ATR_DELTA", raising=False)
+
+        mock_dm = MagicMock()
+        mock_dm.get_current_price = AsyncMock(return_value={"last_price": 3200.0})
+
+        # Build bars that yield ATR ≈ 0.7 (low-vol MGC overnight)
+        rows = 20
+        df = pd.DataFrame(
+            {
+                "high": [3200.5] * rows,
+                "low": [3199.8] * rows,
+                "close": [3200.0] * rows,
+            }
+        )
+        mock_dm.get_bars = AsyncMock(return_value=df)
+
+        # Entry 0.9 pts from market; ATR ≈ 0.7 → fails without floor, passes with floor=1.5
+        is_sane, reason = await check_entry_price_sanity(
+            symbol="MGC",
+            entry_price=3200.9,
+            data_manager=mock_dm,
+        )
+        assert is_sane is True, f"Expected floor=1.5 to allow MGC low-vol entry but got: {reason}"
