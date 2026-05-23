@@ -219,8 +219,9 @@ async def generate_performance_report(format: str = "html"):
     try:
         from datetime import datetime, timezone
 
-        from analytics.performance import PerformanceCalculator
         from fastapi.responses import HTMLResponse, Response
+
+        from analytics.performance import PerformanceCalculator
 
         calc = PerformanceCalculator(_db_manager)
         summary = calc.calculate_summary()
