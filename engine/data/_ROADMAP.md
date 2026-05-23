@@ -61,6 +61,9 @@
 - **P3-46** — `is_strategy_authorized()` unifies VALIDATION_ONLY + paper_config + gate v2 verdict
 - **P3-47** — Agent prompt forbidden-commands list in `rules/agent-deployment.md` template
 - **P3-49** — `~/.coldstore` naming in place; `~/.archive` removed
+- **P2-12** — Credential-guard hook tightened for `python -c` args (obfuscated-path + code-loading checks; 9/9 smoke tests; `895029b`)
+- **P2-14** — Cred-rotation audit trail script (`~/scripts/cred-rotation-audit.ps1`; CSV at `~/.claude/audit/cred-rotation-audit.csv`; `ec4c812`)
+- **P2-30** — `hermes-safe-restart.sh` verified at `/root/.hermes/bin/` (stream detection + systemctl; pre-existed)
 
 ## 🤖 Agent-Doable (open, sorted by estimate)
 
@@ -68,9 +71,6 @@
 |----|------|---------|
 | P0-5 | Verify `/health` post-restart (status=ok, ibkr_execution, tv_mcp, llm_path) | 5 min |
 | P2-9 | Engine alert wiring smoke test (trigger failure, wait for notification, confirm) | 30 min |
-| P2-12 | Tighten credential-guard hook for `python -c` arguments | 1 hr |
-| P2-14 | Cred-rotation audit trail script (CSV log: date, service, issuer, 1P item, files, scan-delta) | 1 hr |
-| P2-30 | Create `hermes-safe-restart.sh` at `/root/.hermes/bin/` (referenced by restart-guard hook) | 30 min |
 | P3-23 | dp600-stark-v2 pre-commit hook (husky + lint-staged) | 30 min |
 | P3-28 | Auto-generated cross-linking between handoffs (INDEX.md auto-populated) | 1 hr |
 | P3-29 | Session-coordination lockfile for shared files | 1-2 hr |
@@ -123,9 +123,9 @@
 | Stat | Count |
 |------|-------|
 | Total tasks | 103 |
-| Done (verified) | 57 |
-| Open agent-doable | 19 |
+| Done (verified) | 60 |
+| Open agent-doable | 16 |
 | Open Amo-gated | 27 |
-| Remaining | 46 |
+| Remaining | 43 |
 
 Run `backtest/gen_scoreboard.py` to refresh the strategy verdict table.
