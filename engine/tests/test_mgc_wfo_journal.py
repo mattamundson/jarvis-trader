@@ -23,7 +23,6 @@ from backtest.mgc_wfo_journal import (
     rebuild_journal,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures — minimal synthetic verdict dicts
 # ---------------------------------------------------------------------------

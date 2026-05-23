@@ -248,8 +248,8 @@ main.safety_layer = _fake_safety
 
 # Inject into routers that maintain their own module-level db_manager reference.
 # These are set by main.py's lifespan startup which doesn't run under TestClient.
-from routers import analytics_router as _analytics_router  # noqa: E402
 from routers import alerts_router as _alerts_router  # noqa: E402
+from routers import analytics_router as _analytics_router  # noqa: E402
 from routers import portfolio_router as _portfolio_router  # noqa: E402
 
 _analytics_router.set_db_manager(_fake_db)

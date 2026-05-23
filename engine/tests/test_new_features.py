@@ -470,9 +470,10 @@ class TestAgentFeedback:
         assert AgentFeedbackTracker is not None
 
     def test_default_weights_are_neutral_with_no_history(self, tmp_path):
+        from unittest.mock import patch
+
         import analytics.agent_feedback as _af_mod
         from analytics.agent_feedback import DEFAULT_WEIGHT, AgentFeedbackTracker
-        from unittest.mock import patch
 
         empty_db = tmp_path / "agent_feedback_test.db"
         with patch.object(_af_mod, "DB_PATH", empty_db):

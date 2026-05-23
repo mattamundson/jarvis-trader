@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from unittest.mock import patch
 
 from config import TradingConfig
 from database.manager import DatabaseManager
