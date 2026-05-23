@@ -488,7 +488,16 @@ async def get_open_positions() -> dict:
                 if resp.status != 200:
                     return {"positions": [], "error": f"HTTP {resp.status}"}
                 data = await resp.json()
-                positions = data if isinstance(data, list) else data.get("positions", [])
+                if isinstance(data, list):
+                    positions = data
+                elif isinstance(data, dict) and "ibkr" in data:
+                    # Engine returns {"ibkr": {"positions": [...]}, "paper": {...}, ...}
+                    ibkr_pos = data.get("ibkr", {}).get("positions", [])
+                    paper_pos = data.get("paper", {}).get("positions", [])
+                    paper_mode = data.get("ibkr", {}).get("connected") is False
+                    positions = paper_pos if paper_mode and not ibkr_pos else ibkr_pos
+                else:
+                    positions = data.get("positions", [])
                 return {"positions": positions, "count": len(positions)}
     except Exception as exc:
         return {"positions": [], "error": str(exc)}

@@ -145,6 +145,40 @@ async def test_get_open_positions_wrapped_dict() -> None:
     assert result["count"] == 2
 
 
+async def test_get_open_positions_ibkr_nested() -> None:
+    """Engine returns nested {"ibkr": {"connected": true, "positions": [...]}, ...}."""
+    from discord.mcp_server import get_open_positions
+
+    nested = {
+        "ibkr": {"connected": True, "positions": _POSITIONS_OPEN},
+        "schwab": {"connected": False, "positions": []},
+        "paper": {"positions": []},
+        "reconciliation": {"health": "ok"},
+    }
+    with patch("discord.mcp_server.aiohttp.ClientSession", return_value=_mock_session(200, nested)):
+        result = await get_open_positions()
+
+    assert result["count"] == 2
+    syms = {p["symbol"] for p in result["positions"]}
+    assert syms == {"MES", "MCL"}
+
+
+async def test_get_open_positions_ibkr_nested_flat() -> None:
+    """When IBKR connected=False and paper has positions, use paper."""
+    from discord.mcp_server import get_open_positions
+
+    nested = {
+        "ibkr": {"connected": False, "positions": []},
+        "schwab": {"connected": False, "positions": []},
+        "paper": {"positions": _POSITIONS_OPEN},
+        "reconciliation": {"health": "partial"},
+    }
+    with patch("discord.mcp_server.aiohttp.ClientSession", return_value=_mock_session(200, nested)):
+        result = await get_open_positions()
+
+    assert result["count"] == 2
+
+
 async def test_get_open_positions_http_error() -> None:
     from discord.mcp_server import get_open_positions
 
