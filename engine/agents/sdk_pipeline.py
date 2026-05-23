@@ -354,33 +354,38 @@ class SDKTradingPipeline:
 
     def _build_agent_definitions(self) -> dict[str, sdk.AgentDefinition]:
         """Build the 10 AgentDefinition objects for the pipeline stages."""
+        from llm.model_router import route_task
+        
+        # Check if local inference mode is active
+        use_local = os.getenv("OLLAMA_ENABLED", "False").lower() == "true"
+        
         return {
             # Stage 1 — Parallel analysts
             "technical-analyst": sdk.AgentDefinition(
                 description="Technical analysis agent: price bars, STC signals, regime detection",
                 prompt=_TECHNICAL_ANALYST_PROMPT,
-                model="claude-sonnet-4-6",
+                model=route_task("technical_analyst", use_local=use_local),
                 mcpServers=["market"],
                 effort="medium",
             ),
             "news-analyst": sdk.AgentDefinition(
                 description="News analyst: headline sentiment and event risk assessment",
                 prompt=_NEWS_ANALYST_PROMPT,
-                model="claude-sonnet-4-6",
+                model=route_task("news_analyst", use_local=use_local),
                 mcpServers=["market"],
                 effort="medium",
             ),
             "social-analyst": sdk.AgentDefinition(
                 description="Social sentiment analyst: Reddit trending and retail sentiment",
                 prompt=_SOCIAL_ANALYST_PROMPT,
-                model="claude-haiku-4-5-20251001",
+                model=route_task("social_analyst", use_local=use_local),
                 mcpServers=["market"],
                 effort="low",
             ),
             "fundamental-analyst": sdk.AgentDefinition(
                 description="Macroeconomic analyst: VIX, yields, Fed Funds, unemployment",
                 prompt=_FUNDAMENTAL_ANALYST_PROMPT,
-                model="claude-sonnet-4-6",
+                model=route_task("fundamental_analyst", use_local=use_local),
                 mcpServers=["market"],
                 effort="medium",
             ),
@@ -388,40 +393,40 @@ class SDKTradingPipeline:
             "bull-researcher": sdk.AgentDefinition(
                 description="Bull researcher: strongest bullish case for the trade",
                 prompt=_BULL_RESEARCHER_PROMPT,
-                model="claude-sonnet-4-6",
+                model=route_task("bull_researcher", use_local=use_local),
                 effort="medium",
             ),
             "bear-researcher": sdk.AgentDefinition(
                 description="Bear researcher: strongest bearish case against the trade",
                 prompt=_BEAR_RESEARCHER_PROMPT,
-                model="claude-sonnet-4-6",
+                model=route_task("bear_researcher", use_local=use_local),
                 effort="medium",
             ),
             "debate-orchestrator": sdk.AgentDefinition(
                 description="Debate orchestrator: scores bull vs. bear, returns verdict and conviction",
                 prompt=_DEBATE_ORCHESTRATOR_PROMPT,
-                model="claude-sonnet-4-6",
+                model=route_task("debate_orchestrator", use_local=use_local),
                 effort="medium",
             ),
             # Stage 3-5 — Decision chain
             "trader": sdk.AgentDefinition(
                 description="Trader: synthesises debate into BUY/SELL/HOLD with order parameters",
                 prompt=_TRADER_PROMPT,
-                model="claude-sonnet-4-6",
+                model=route_task("trader", use_local=use_local),
                 mcpServers=["market"],
                 effort="high",
             ),
             "risk-manager": sdk.AgentDefinition(
                 description="Risk manager: validates trade against portfolio risk limits",
                 prompt=_RISK_MANAGER_PROMPT,
-                model="claude-sonnet-4-6",
+                model=route_task("risk_manager", use_local=use_local),
                 mcpServers=["market"],
                 effort="high",
             ),
             "fund-manager": sdk.AgentDefinition(
                 description="Fund manager: final portfolio-level approval and sizing",
                 prompt=_FUND_MANAGER_PROMPT,
-                model="claude-sonnet-4-6",
+                model=route_task("fund_manager", use_local=use_local),
                 mcpServers=["market"],
                 effort="high",
             ),
