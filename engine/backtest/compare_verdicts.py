@@ -38,6 +38,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backtest.verdict_schema import VerdictSchema  # noqa: F401 — re-exported for callers
+from backtest.verdict_schema import load_verdict_validated  # noqa: F401 — public API
+
 # Param drift threshold: a champion param is "drifted" if it's > this fraction
 # different from the prior champion. 0.10 = 10%.
 PARAM_DRIFT_THRESHOLD = 0.10
