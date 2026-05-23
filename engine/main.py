@@ -2470,13 +2470,17 @@ async def lifespan(app: FastAPI):
     except Exception as _pm_err:
         logger.warning("Predictive maintenance monitor init failed (non-fatal): %s", _pm_err)
 
-    # ── Real-Time Data Fabric (Phase 2.1) ─────────────────────────────────────
+    # ── Real-Time Data Fabric (Phase 2.1 - 2.5) ──────────────────────────────
     try:
         from data.tradingview_stream import get_tv_streamer
 
-        tv_streamer = get_tv_streamer()
-        await tv_streamer.start()
-        logger.info("🚀 Real-time data fabric activated (TV -> Redis)")
+        # Optional: track Greeks for specific contracts if set in .env
+        greeks_watch = os.getenv("OPTIONS_GREEKS_WATCH", "").split(",")
+        greeks_watch = [s.strip() for s in greeks_watch if s.strip()]
+
+        tv_streamer = get_tv_streamer(greeks_symbols=greeks_watch)
+        await tv_streamer.start(data_manager=data_manager)
+        logger.info("🚀 Real-time data fabric activated (Ticks + Greeks)")
     except Exception as _tv_exc:
         logger.warning("⚠️  Real-time data fabric failed to start: %s", _tv_exc)
 

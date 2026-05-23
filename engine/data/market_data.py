@@ -1111,6 +1111,17 @@ class MarketDataManager:
 
         return {"value": None, "source": "unavailable"}
 
+    async def get_options_greeks(self, symbol: str) -> dict:
+        """
+        Get real-time Greeks for an option.
+        Waterfall: IBKR → (Polygon unimplemented).
+        """
+        # Tier 1: IBKR
+        if self.ibkr and self.ibkr.is_connected:
+            return await self.ibkr.get_options_greeks(symbol)
+
+        return {"error": "Options Greeks data source unavailable"}
+
     async def get_options_expirations(self, symbol: str) -> list:
         """
         Get available options expiration dates for a symbol.
