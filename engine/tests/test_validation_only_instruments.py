@@ -213,3 +213,148 @@ def test_validation_only_exported_in_all():
         "VALIDATION_ONLY_INSTRUMENTS must be in pipeline.__all__ so callers "
         "(approval/service.py, routers, tests) can import it cleanly."
     )
+
+
+# ── approval_queue_router VALIDATION_ONLY_STRATEGIES gate (BLOCKER 5 / §6.3) ──
+
+
+def _make_queue_row(symbol: str, stark_signal: str = "") -> dict:
+    """Minimal approval_queue row for approve_candidate() validation-only tests."""
+    verdict: dict = {}
+    if stark_signal:
+        verdict = {"analyst_reports": {"technical": {"indicators": {"stark_signal": stark_signal}}}}
+    return {
+        "id": 1,
+        "symbol": symbol,
+        "direction": "LONG",
+        "confidence": 0.85,
+        "verdict": verdict,
+        "expires_at": "2099-01-01T00:00:00+00:00",
+        "status": "pending",
+    }
+
+
+def test_approval_queue_blocks_validation_only_strategy(tmp_path):
+    """approve_candidate: VALIDATION_ONLY_STRATEGIES hit → HTTP 409 (BLOCKER 5 / §6.3).
+
+    Verifies that the approval_queue_router's approve path cannot bypass the strategy
+    gate that already exists in approval.service.ensure_approval_allowed().
+    """
+    import sqlite3
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    from routers.approval_queue_router import router, inject_approval_queue_deps
+
+    db_path = str(tmp_path / "aq_test.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE pipeline_approval_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            symbol TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            confidence REAL,
+            verdict_json TEXT,
+            expires_at TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            reviewed_at TEXT,
+            reviewer_notes TEXT,
+            order_id TEXT
+        )
+        """
+    )
+    import json as _json
+
+    # Insert a row with a VALIDATION_ONLY_STRATEGIES stark_signal
+    stark_signal = "TPO_SHORT_GAP_FILL"
+    verdict = {"analyst_reports": {"technical": {"indicators": {"stark_signal": stark_signal}}}}
+    conn.execute(
+        """
+        INSERT INTO pipeline_approval_queue
+            (symbol, direction, confidence, verdict_json, expires_at, status)
+        VALUES (?, 'LONG', 0.85, ?, '2099-01-01T00:00:00+00:00', 'pending')
+        """,
+        ("MCL", _json.dumps(verdict)),
+    )
+    conn.commit()
+    conn.close()
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+
+    app = FastAPI()
+    app.include_router(router)
+
+    with (
+        patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+        patch("agents.pipeline.VALIDATION_ONLY_STRATEGIES", {stark_signal}),
+    ):
+        inject_approval_queue_deps(mock_safety, db_path)
+        client = TestClient(app)
+        response = client.post("/approvals/1/approve", json={})
+
+    assert response.status_code == 409
+    assert "VALIDATION_ONLY_STRATEGIES" in response.json()["detail"]
+
+
+def test_approval_queue_allows_non_validation_only_strategy(tmp_path):
+    """approve_candidate: strategy NOT in VALIDATION_ONLY_STRATEGIES → gate passes."""
+    import sqlite3
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    from routers.approval_queue_router import router, inject_approval_queue_deps
+
+    db_path = str(tmp_path / "aq_pass_test.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE pipeline_approval_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            symbol TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            confidence REAL,
+            verdict_json TEXT,
+            expires_at TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            reviewed_at TEXT,
+            reviewer_notes TEXT,
+            order_id TEXT
+        )
+        """
+    )
+    import json as _json
+
+    verdict = {"analyst_reports": {"technical": {"indicators": {"stark_signal": "MOMENTUM_LONG"}}}}
+    conn.execute(
+        """
+        INSERT INTO pipeline_approval_queue
+            (symbol, direction, confidence, verdict_json, expires_at, status)
+        VALUES (?, 'LONG', 0.85, ?, '2099-01-01T00:00:00+00:00', 'pending')
+        """,
+        ("MCL", _json.dumps(verdict)),
+    )
+    conn.commit()
+    conn.close()
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+    mock_safety.submit_paper_order = MagicMock(
+        return_value={"approved": False, "reason": "blocked_by_safety_layer"}
+    )
+
+    app = FastAPI()
+    app.include_router(router)
+
+    with (
+        patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+        patch("agents.pipeline.VALIDATION_ONLY_STRATEGIES", set()),
+    ):
+        inject_approval_queue_deps(mock_safety, db_path)
+        client = TestClient(app)
+        # entry_price required since snapshot doesn't have one
+        response = client.post("/approvals/1/approve", json={"entry_price": 70.50})
+
+    # Gate passed (not 409); safety layer blocked downstream — that's fine for this test
+    assert response.status_code != 409 or "VALIDATION_ONLY" not in response.json().get("detail", "")

@@ -361,6 +361,34 @@ async def approve_candidate(candidate_id: int, body: ApproveBody = ApproveBody()
         _audit("approve_refused_expired", candidate_id, {})
         raise HTTPException(410, detail=f"Candidate {candidate_id} has expired")
 
+    # Validation-only strategies gate (BLOCKER 5 / §6.3): mirrors ensure_approval_allowed()
+    # in approval.service so this queue path cannot bypass the scanner's strategy block.
+    try:
+        from agents.pipeline import VALIDATION_ONLY_STRATEGIES
+
+        _verdict = row.get("verdict") or {}
+        _stark_signal = (
+            ((_verdict.get("analyst_reports") or {}).get("technical") or {})
+            .get("indicators", {})
+            .get("stark_signal", "")
+            or ""
+        ).upper()
+        if _stark_signal and _stark_signal in VALIDATION_ONLY_STRATEGIES:
+            _audit("approve_refused_validation_only", candidate_id, {"strategy": _stark_signal})
+            raise HTTPException(
+                409,
+                detail=(
+                    f"Strategy {_stark_signal} is in VALIDATION_ONLY_STRATEGIES — "
+                    "manual approval is blocked until WFO validation + gate v2 PASS."
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception as _vos_exc:
+        logger.warning(
+            "ApprovalQueue: VALIDATION_ONLY_STRATEGIES check raised (non-blocking): %s", _vos_exc
+        )
+
     symbol = row["symbol"]
     direction = row["direction"]
 
