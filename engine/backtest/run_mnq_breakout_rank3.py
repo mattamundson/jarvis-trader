@@ -35,7 +35,7 @@ The 10-bar donchian captures faster breakouts (potentially less noise in OOS).
 The 0.75 / 1.0 stop tests the R:R improvement hypothesis directly.
 
 Usage (from engine/ directory):
-    .venv/Scripts/python -m backtest.run_mnq_breakout_rank3
+    .venv/Scripts/python backtest/run_mnq_breakout_rank3.py
 """
 from __future__ import annotations
 
