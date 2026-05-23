@@ -503,10 +503,16 @@ class TestApprovalToOrderE2E:
             pipeline_snapshot={"signal": "long", "summary": "Bull regime"},
         )
 
-        r = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            headers=_AUTH,
-        )
+        # Patch the gate v2 authorization check: this test exercises the approval
+        # flow (DB row → paper trade), not the instrument authorization gate.
+        # VALIDATION_ONLY_INSTRUMENTS check is covered by test_approval_service.py.
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "test bypass")
+        ):
+            r = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                headers=_AUTH,
+            )
 
         assert r.status_code == 200, f"Approve returned {r.status_code}: {r.text}"
 
@@ -553,10 +559,13 @@ class TestApprovalToOrderE2E:
         )
 
         client = TestClient(app, raise_server_exceptions=False)
-        r = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            headers=_AUTH,
-        )
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "test bypass")
+        ):
+            r = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                headers=_AUTH,
+            )
 
         assert r.status_code == 200, f"Approve returned {r.status_code}: {r.text}"
         body = r.json()
@@ -614,18 +623,21 @@ class TestApprovalToOrderE2E:
             pipeline_snapshot={},
         )
 
-        # First approve
-        r1 = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            headers=_AUTH,
-        )
-        assert r1.status_code == 200, f"First approve failed: {r1.status_code} — {r1.text}"
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "test bypass")
+        ):
+            # First approve
+            r1 = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                headers=_AUTH,
+            )
+            assert r1.status_code == 200, f"First approve failed: {r1.status_code} — {r1.text}"
 
-        # Second approve — must be 409 (already resolved)
-        r2 = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            headers=_AUTH,
-        )
+            # Second approve — must be 409 (already resolved)
+            r2 = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                headers=_AUTH,
+            )
         assert (
             r2.status_code == 409
         ), f"Expected 409 on double-approve, got {r2.status_code} — {r2.text}"
@@ -698,11 +710,14 @@ class TestApprovalToOrderE2E:
         )
 
         client = TestClient(app, raise_server_exceptions=False)
-        r = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            json={"entry_price": 5825.0},
-            headers=_AUTH,
-        )
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "test bypass")
+        ):
+            r = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                json={"entry_price": 5825.0},
+                headers=_AUTH,
+            )
 
         assert r.status_code == 200, f"Approve with override returned {r.status_code}: {r.text}"
         body = r.json()
