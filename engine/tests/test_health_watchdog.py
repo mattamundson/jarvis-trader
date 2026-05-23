@@ -209,7 +209,10 @@ def test_run_smoke_reachable(tmp_db):
         "kill_switch_active": False,
         "uptime_seconds": 50.0,
     }
-    with patch("scripts.health_watchdog._poll_health", return_value=(True, fake_payload)):
+    with (
+        patch("scripts.health_watchdog._poll_health", return_value=(True, fake_payload)),
+        patch("scripts.health_watchdog._get_pm2_restart_count", return_value=None),
+    ):
         result = run(db_path=tmp_db, no_discord=True, force=True)
 
     assert result["reachable"] is True
@@ -247,6 +250,7 @@ def test_run_smoke_down_then_up(tmp_db):
 
     with (
         patch("scripts.health_watchdog._poll_health", return_value=(False, None)),
+        patch("scripts.health_watchdog._get_pm2_restart_count", return_value=None),
         patch(
             "scripts.health_watchdog.datetime",
             wraps=datetime,
@@ -268,6 +272,7 @@ def test_run_smoke_down_then_up(tmp_db):
 
     with (
         patch("scripts.health_watchdog._poll_health", return_value=(True, fake_ok)),
+        patch("scripts.health_watchdog._get_pm2_restart_count", return_value=None),
         patch(
             "scripts.health_watchdog.datetime",
             wraps=datetime,
