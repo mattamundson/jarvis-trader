@@ -94,7 +94,8 @@ _DB_PATH = ":memory:"
 def _create_test_db() -> sqlite3.Connection:
     """Create an in-memory SQLite connection with the required tables."""
     conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS paper_trades (
             trade_id    TEXT PRIMARY KEY,
             symbol      TEXT,
@@ -109,8 +110,10 @@ def _create_test_db() -> sqlite3.Connection:
             strategy_params TEXT,
             notes       TEXT
         )
-    """)
-    conn.execute("""
+    """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS alert_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             alert_type  TEXT,
@@ -118,7 +121,8 @@ def _create_test_db() -> sqlite3.Connection:
             message     TEXT,
             created_at  TEXT
         )
-    """)
+    """
+    )
     conn.commit()
     return conn
 
@@ -136,7 +140,8 @@ _TMP_DB_PATH = Path(_TMP_DB_FILE.name)
 
 # Initialise the temp file DB with the same schema
 _tmp_conn = sqlite3.connect(str(_TMP_DB_PATH))
-_tmp_conn.execute("""
+_tmp_conn.execute(
+    """
     CREATE TABLE IF NOT EXISTS paper_trades (
         trade_id    TEXT PRIMARY KEY,
         symbol      TEXT,
@@ -151,8 +156,10 @@ _tmp_conn.execute("""
         strategy_params TEXT,
         notes       TEXT
     )
-""")
-_tmp_conn.execute("""
+"""
+)
+_tmp_conn.execute(
+    """
     CREATE TABLE IF NOT EXISTS alert_log (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         alert_type  TEXT,
@@ -160,7 +167,8 @@ _tmp_conn.execute("""
         message     TEXT,
         created_at  TEXT
     )
-""")
+"""
+)
 _tmp_conn.commit()
 _tmp_conn.close()
 
@@ -238,10 +246,21 @@ _fake_safety = _FakeSafetyLayer()
 main.db_manager = _fake_db
 main.safety_layer = _fake_safety
 
-# Also inject into analytics_router so /analytics/performance/rolling finds a db
+# Inject into routers that maintain their own module-level db_manager reference.
+# These are set by main.py's lifespan startup which doesn't run under TestClient.
 from routers import analytics_router as _analytics_router  # noqa: E402
+from routers import alerts_router as _alerts_router  # noqa: E402
+from routers import portfolio_router as _portfolio_router  # noqa: E402
 
 _analytics_router.set_db_manager(_fake_db)
+_alerts_router.inject_dependencies(db_manager=_fake_db)
+# portfolio_router uses inject_dependencies(pt, dbm, dm=None, safety_layer=None)
+_portfolio_router.inject_dependencies(
+    pt=mock.MagicMock(),
+    dbm=_fake_db,
+    dm=None,
+    safety_layer=_fake_safety,
+)
 
 # ---------------------------------------------------------------------------
 # Shared client + auth header
@@ -258,6 +277,23 @@ _AUTH = {"X-API-Key": settings.API_KEY}
 
 class TestSession4OfflineStrict:
     """Offline strict tests: every endpoint MUST return HTTP 200."""
+
+    def setup_method(self, _method) -> None:
+        """Re-inject fake dependencies before each test.
+
+        Module-level injection can be overwritten by other test files whose
+        module-level code runs during pytest collection (alphabetically after
+        this file).  Re-injecting here makes each test independent of
+        cross-file ordering contamination.
+        """
+        _analytics_router.set_db_manager(_fake_db)
+        _alerts_router.inject_dependencies(db_manager=_fake_db)
+        _portfolio_router.inject_dependencies(
+            pt=mock.MagicMock(),
+            dbm=_fake_db,
+            dm=None,
+            safety_layer=_fake_safety,
+        )
 
     # ── GET /analytics/performance/rolling ────────────────────────────────
 

@@ -1,12 +1,11 @@
 """
 Offline tests for the /prices/snapshot endpoint.
 
-These are offline counterparts to the 4 tests in test_prices_router.py that
-skip when data_manager is None (503 response).  Instead of hitting a live
-data_manager we patch main.data_manager with a MagicMock — the same pattern
-used by test_get_price_snapshot_caching in test_prices_router.py.
+These tests patch routers.prices_router._data_manager directly (the module-
+level reference that get_price_snapshot reads) and mock get_current_price so
+no live IBKR/Polygon connection is needed.
 
-All 4 tests must PASS without any IBKR/Polygon connection.
+Note: the router uses get_current_price() per symbol, not get_batch_prices().
 """
 
 import os
@@ -18,6 +17,13 @@ from fastapi.testclient import TestClient
 from config import settings
 from main import app
 
+_PRICE_DATA = {
+    "SPY": {"last_price": 500.0, "prev_close": 498.0, "change_pct": 0.40, "source": "polygon"},
+    "QQQ": {"last_price": 430.0, "prev_close": 428.0, "change_pct": 0.47, "source": "polygon"},
+    "MES": {"last_price": 5200.0, "prev_close": 5180.0, "change_pct": 0.39, "source": "ibkr"},
+    "MNQ": {"last_price": 18100.0, "prev_close": 18050.0, "change_pct": 0.28, "source": "ibkr"},
+}
+
 
 @pytest.fixture
 def client():
@@ -26,39 +32,31 @@ def client():
     return TestClient(app, headers={"X-API-Key": key})
 
 
+@pytest.fixture(autouse=True)
+def _clear_price_cache():
+    """Clear the module-level PriceCache between tests to prevent cross-test contamination."""
+    import routers.prices_router as _pr
+
+    _pr._price_cache._cache.clear()
+    yield
+    _pr._price_cache._cache.clear()
+
+
 @pytest.fixture
 def mock_dm():
-    """Return a MagicMock data_manager whose get_batch_prices returns realistic data."""
+    """Return a MagicMock data_manager whose get_current_price returns per-symbol data."""
     dm = MagicMock()
-    dm.get_batch_prices = AsyncMock(
-        return_value={
-            "SPY": {
-                "last_price": 500.0,
-                "prev_close": 498.0,
-                "change_pct": 0.40,
-                "source": "polygon",
-            },
-            "QQQ": {
-                "last_price": 430.0,
-                "prev_close": 428.0,
-                "change_pct": 0.47,
-                "source": "polygon",
-            },
-            "MES": {
-                "last_price": 5200.0,
-                "prev_close": 5180.0,
-                "change_pct": 0.39,
-                "source": "ibkr",
-            },
-            "MNQ": {
-                "last_price": 18100.0,
-                "prev_close": 18050.0,
-                "change_pct": 0.28,
-                "source": "ibkr",
-            },
-        }
-    )
+
+    async def _get_current_price(sym, **_kw):
+        return _PRICE_DATA.get(sym.upper(), {"last_price": None})
+
+    dm.get_current_price = AsyncMock(side_effect=_get_current_price)
     return dm
+
+
+def _patch_dm(mock_dm):
+    """Context manager: inject mock_dm into the prices router's module-level ref."""
+    return patch("routers.prices_router._data_manager", mock_dm)
 
 
 def test_offline_get_price_snapshot_empty_symbols(client, mock_dm):
@@ -66,12 +64,9 @@ def test_offline_get_price_snapshot_empty_symbols(client, mock_dm):
     Offline: /prices/snapshot with empty symbols string returns {}.
 
     The endpoint short-circuits before calling data_manager when symbol_list
-    is empty, so the return value of get_batch_prices doesn't matter — but we
-    still patch data_manager so the 503 guard passes.
+    is empty, so get_current_price is never called.
     """
-    import main as main_mod
-
-    with patch.object(main_mod, "data_manager", mock_dm):
+    with _patch_dm(mock_dm):
         response = client.get("/prices/snapshot?symbols=")
 
     assert response.status_code == 200
@@ -80,9 +75,7 @@ def test_offline_get_price_snapshot_empty_symbols(client, mock_dm):
 
 def test_offline_get_price_snapshot_single_symbol(client, mock_dm):
     """Offline: /prices/snapshot with a single symbol returns that symbol's data."""
-    import main as main_mod
-
-    with patch.object(main_mod, "data_manager", mock_dm):
+    with _patch_dm(mock_dm):
         response = client.get("/prices/snapshot?symbols=SPY")
 
     assert response.status_code == 200
@@ -94,9 +87,7 @@ def test_offline_get_price_snapshot_single_symbol(client, mock_dm):
 
 def test_offline_get_price_snapshot_multiple_symbols(client, mock_dm):
     """Offline: /prices/snapshot with multiple symbols returns all requested symbols."""
-    import main as main_mod
-
-    with patch.object(main_mod, "data_manager", mock_dm):
+    with _patch_dm(mock_dm):
         response = client.get("/prices/snapshot?symbols=SPY,QQQ")
 
     assert response.status_code == 200
@@ -109,9 +100,7 @@ def test_offline_get_price_snapshot_multiple_symbols(client, mock_dm):
 
 def test_offline_get_price_snapshot_futures(client, mock_dm):
     """Offline: /prices/snapshot with futures symbols returns MES and MNQ data."""
-    import main as main_mod
-
-    with patch.object(main_mod, "data_manager", mock_dm):
+    with _patch_dm(mock_dm):
         response = client.get("/prices/snapshot?symbols=MES,MNQ")
 
     assert response.status_code == 200

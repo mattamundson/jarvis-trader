@@ -86,6 +86,9 @@ async def test_credit_exhausted_flips_health_state(client):
 
     client._call_with_retry = AsyncMock(side_effect=wrapped)
     client._try_fallback = AsyncMock(return_value=None)
+    # Also disable the internal Gemini credit-exhaustion fallback so it can't
+    # succeed and auto-clear the health state before the assertions run.
+    client._call_google = AsyncMock(side_effect=RuntimeError("Gemini also down"))
 
     with patch(
         "notifications.openclaw_notifier.notify_credits_exhausted",
@@ -173,6 +176,9 @@ async def test_notifier_failure_does_not_break_client(client):
 
     client._call_with_retry = AsyncMock(side_effect=wrapped)
     client._try_fallback = AsyncMock(return_value=None)
+    # Disable the internal Gemini credit-exhaustion fallback so the unhealthy
+    # path is exercised and the state flip happens before the notifier fires.
+    client._call_google = AsyncMock(side_effect=RuntimeError("Gemini also down"))
 
     with patch(
         "notifications.openclaw_notifier.notify_credits_exhausted",
