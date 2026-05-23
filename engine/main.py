@@ -63,6 +63,7 @@ from api.models import (
 )
 from config import settings
 from data.market_data import MarketDataManager
+from data.tradingview_stream import get_tv_streamer
 from database.schema import DatabaseManager, init_db
 from learning.model_drawer import ModelDrawer
 from strategies.arbitrage.polymarket_arb import ArbScout
@@ -82,6 +83,7 @@ from risk.pnl_monitor import PnLMonitor
 from risk.safety_layer import SafetyLayer
 from risk.margin_monitor import MarginMonitorAgent
 from risk.regime_guard import RegimeGuard
+from validation.shadow_mode import ShadowModeTracker
 from routers.analytics_router import router as analytics_router
 from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.analytics_router import set_data_manager as set_analytics_data_manager
@@ -314,6 +316,9 @@ risk_protections: RiskProtections | None = None
 sentiment_bridge: SentimentBridge | None = None
 model_drawer: ModelDrawer | None = None
 arb_scout: ArbScout | None = None
+shadow_tracker: ShadowModeTracker | None = None
+oms_manager: "OMSManager | None" = None
+tv_streamer: "TVStreamer | None" = None
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -414,7 +419,7 @@ async def _deliver_pipeline_whatsapp_if_eligible(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ib_paper_connector, schwab_connector, order_router, ws_manager, cost_tracker, loss_tracker, validation_alert_manager, sdk_pipeline, margin_monitor, breakout_analyst, harmonic_analyst, polymarket, openbb, risk_protections, model_drawer, arb_scout, sentiment_bridge
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ib_paper_connector, schwab_connector, order_router, ws_manager, cost_tracker, loss_tracker, validation_alert_manager, sdk_pipeline, margin_monitor, breakout_analyst, harmonic_analyst, polymarket, openbb, risk_protections, model_drawer, arb_scout, sentiment_bridge, shadow_tracker, oms_manager, tv_streamer
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -626,6 +631,12 @@ async def lifespan(app: FastAPI):
     # data_manager.ibkr for IBKR connected-state when safety_layer has no gateway attached.
     inject_orders_deps(order_router, safety_layer=safety_layer, data_manager=data_manager)
 
+    # ── OMS v2 (Phase 2.3) ──────────────────────────────────────────────────
+    from execution.oms_v2 import OMSManager
+
+    oms_manager = OMSManager(order_router, ib_order_manager=order_manager)
+    logger.info("✅ OMS v2 initialized (Bracket & OCO management active)")
+
     # Start PolygonStreamer background task if available
     if data_manager.polygon_streamer:
         asyncio.create_task(data_manager.polygon_streamer.connect())
@@ -739,6 +750,9 @@ async def lifespan(app: FastAPI):
 
         logger.info("✅ All 13 trading agents initialized (incl. Corey, Breakout, Harmonics)")
 
+        # Shadow Mode Tracker — logs 'would-be' trades for blocklisted instruments
+        shadow_tracker = ShadowModeTracker(db_manager)
+
         # Trading Pipeline — all agents wired
         trading_pipeline = TradingPipeline(
             agents={
@@ -757,6 +771,8 @@ async def lifespan(app: FastAPI):
                 "fund_manager": fund_agent,
             },
             safety_layer=safety_layer,
+            db_manager=db_manager,
+            shadow_tracker=shadow_tracker,
         )
 
         # Wire profiler instance into profiling_router
@@ -938,6 +954,22 @@ async def lifespan(app: FastAPI):
 
                 if action not in ("hold",):
                     logger.info(f"{symbol}: {action.upper()} qty={qty} confidence={confidence:.0%}")
+
+                    # ── OMS v2 Execution (Phase 2.3) ──
+                    if oms_manager and action.lower() in ("buy", "sell"):
+                        try:
+                            await oms_manager.execute_bracket(
+                                symbol=symbol,
+                                action=action,
+                                quantity=qty,
+                                entry_price=float(price_info or 0.0),
+                                stop_loss=trade_dec.get("stop_price"),
+                                take_profit=trade_dec.get("target_price"),
+                                entry_type="MKT" if not trade_dec.get("limit_price") else "LMT",
+                            )
+                        except Exception as oms_exc:
+                            logger.error("[Scheduler] OMS execution failed for %s: %s", symbol, oms_exc)
+
                     await _deliver_pipeline_whatsapp_if_eligible(
                         symbol=symbol,
                         action=action,
@@ -2434,9 +2466,27 @@ async def lifespan(app: FastAPI):
     except Exception as _pm_err:
         logger.warning("Predictive maintenance monitor init failed (non-fatal): %s", _pm_err)
 
+    # ── Real-Time Data Fabric (Phase 2.1) ─────────────────────────────────────
+    try:
+        from data.tradingview_stream import get_tv_streamer
+
+        tv_streamer = get_tv_streamer()
+        await tv_streamer.start()
+        logger.info("🚀 Real-time data fabric activated (TV -> Redis)")
+    except Exception as _tv_exc:
+        logger.warning("⚠️  Real-time data fabric failed to start: %s", _tv_exc)
+
     yield  # Server runs here
 
     # Teardown
+    # Stop TV streamer
+    if tv_streamer:
+        try:
+            await tv_streamer.stop()
+            logger.info("🛑 Real-time data fabric stopped")
+        except Exception:
+            pass
+
     # Stop AlertManager worker gracefully
     if _pnl_alert_manager is not None:
         try:

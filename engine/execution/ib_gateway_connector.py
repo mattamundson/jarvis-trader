@@ -117,6 +117,7 @@ class IBGatewayConnector:
         self._reconnect_attempts = 0
         self._max_reconnect_attempts = 3
         self._heartbeat_task: Optional[asyncio.Task] = None
+        self._sim_task: Optional[asyncio.Task] = None
         self._on_disconnect_callback: Optional[Callable] = None
         self._last_heartbeat: Optional[datetime] = None
 
@@ -155,6 +156,10 @@ class IBGatewayConnector:
             # Start heartbeat monitoring if not already running
             if self._heartbeat_task is None or self._heartbeat_task.done():
                 self._heartbeat_task = asyncio.create_task(self._heartbeat())
+
+            # Start paper sim loop if not already running (Phase 2.3)
+            if self._sim_task is None or self._sim_task.done():
+                self._sim_task = asyncio.create_task(self._paper_sim_loop())
 
             logger.info(
                 "IBGatewayConnector: Connected. Heartbeat started. State=%s",
@@ -299,8 +304,117 @@ class IBGatewayConnector:
             except asyncio.CancelledError:
                 logger.debug("IBGatewayConnector: Heartbeat task cancelled")
                 break
-            except Exception as exc:
-                logger.error("IBGatewayConnector: Heartbeat error: %s", exc, exc_info=True)
+
+    async def _paper_sim_loop(self) -> None:
+        """
+        Background task for paper trading simulation.
+        Checks open stop/limit orders against current prices and triggers fills.
+        Also implements OCO cancellation.
+        """
+        while True:
+            try:
+                if not self._settings.PAPER_TRADING or not self._connected:
+                    await asyncio.sleep(5)
+                    continue
+
+                # 1. Collect symbols needing quotes
+                symbols = {
+                    o["symbol"] for o in self._open_orders.values() if o["status"] == "pending"
+                }
+                if not symbols:
+                    await asyncio.sleep(2)
+                    continue
+
+                # 2. Update quotes
+                for symbol in symbols:
+                    quote = await self.get_quote(symbol)
+                    if not quote or "last" not in quote:
+                        continue
+
+                    price = quote["last"]
+
+                    # 3. Check for fills
+                    to_fill = []
+                    for oid, order in self._open_orders.items():
+                        if order["symbol"] != symbol or order["status"] != "pending":
+                            continue
+
+                        qty = order["quantity"]
+                        filled = False
+
+                        if order["order_type"] == "stop":
+                            stop_px = order.get("stop_price")
+                            if stop_px:
+                                if (qty > 0 and price >= stop_px) or (qty < 0 and price <= stop_px):
+                                    filled = True
+                        elif order["order_type"] == "limit":
+                            limit_px = order.get("limit_price")
+                            if limit_px:
+                                if (qty > 0 and price <= limit_px) or (qty < 0 and price >= limit_px):
+                                    filled = True
+
+                        if filled:
+                            to_fill.append((oid, price))
+
+                    # 4. Execute fills and OCO
+                    for oid, fill_px in to_fill:
+                        await self._fill_paper_order(oid, fill_px)
+
+                await asyncio.sleep(1)  # Poll every second for simulation
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"IBGatewayConnector: Simulation loop error: {e}")
+                await asyncio.sleep(5)
+
+    async def _fill_paper_order(self, order_id: str, price: float):
+        """Execute a paper fill for a pending stop/limit order."""
+        order = self._open_orders.get(order_id)
+        if not order or order["status"] != "pending":
+            return
+
+        order["status"] = "filled"
+        order["filled_price"] = price
+        order["fill_time"] = datetime.utcnow().isoformat() + "Z"
+
+        symbol = order["symbol"]
+        qty = order["quantity"]
+
+        # Update position
+        if symbol not in self._positions:
+            self._positions[symbol] = 0
+        self._positions[symbol] += qty
+
+        # Update cash
+        self._account_summary["cash"] -= qty * price
+
+        logger.info("[SIM] Paper order %s FILLED @ %.2f (OCO-active)", order_id, price)
+
+        # Log via PaperTradeLogger
+        try:
+            if self._paper_trade_logger:
+                await self._paper_trade_logger.log_trade(
+                    {
+                        "order_id": order_id,
+                        "symbol": symbol,
+                        "quantity": qty,
+                        "order_type": order["order_type"],
+                        "filled_price": price,
+                        "fill_time": order["fill_time"],
+                        "is_futures": order.get("is_futures", False),
+                    }
+                )
+        except Exception as exc:
+            logger.error("Failed to log sim fill: %s", exc)
+
+        # OCO Cancellation
+        oco_id = order.get("oco_peer_id")
+        if oco_id and oco_id in self._open_orders:
+            oco_order = self._open_orders[oco_id]
+            if oco_order["status"] == "pending":
+                oco_order["status"] = "cancelled"
+                logger.info("[SIM] OCO cancelled peer order: %s", oco_id)
 
     async def _trigger_deadman_switch(self) -> None:
         """
@@ -558,6 +672,76 @@ class IBGatewayConnector:
             result["warnings"] = warnings
 
         return result
+
+    async def place_bracket_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        entry_type: str = "MKT",
+        limit_price: Optional[float] = None,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+    ) -> dict:
+        """
+        Place an atomic bracket order: Entry + Stop-Loss + Take-Profit (OCO).
+        Implements Phase 2.3 OMS v2 logic for futures.
+        """
+        if not self.is_connected():
+            return {"status": "error", "error": "Not connected"}
+
+        # 1. Place the main entry order
+        entry_id = await self.place_paper_order(
+            symbol=symbol,
+            action=action,
+            quantity=quantity,
+            order_type=entry_type,
+            limit_price=limit_price,
+        )
+
+        if not entry_id:
+            return {"status": "error", "error": "Failed to place entry order"}
+
+        # 2. Setup the exit legs (linked via parent_order_id)
+        exit_action = "SELL" if action.upper() == "BUY" else "BUY"
+        sl_id = None
+        tp_id = None
+
+        if stop_loss:
+            sl_id = await self.place_paper_order(
+                symbol=symbol,
+                action=exit_action,
+                quantity=quantity,
+                order_type="STP",
+                aux_price=stop_loss,
+                parent_order_id=entry_id,
+            )
+
+        if take_profit:
+            tp_id = await self.place_paper_order(
+                symbol=symbol,
+                action=exit_action,
+                quantity=quantity,
+                order_type="LMT",
+                limit_price=take_profit,
+                parent_order_id=entry_id,
+            )
+
+        # 3. Mark the relationship for OCO simulation
+        if sl_id and tp_id:
+            # We track these locally in _open_orders to simulate OCO
+            self._open_orders[sl_id]["oco_peer_id"] = tp_id
+            self._open_orders[tp_id]["oco_peer_id"] = sl_id
+
+        return {
+            "status": "placed",
+            "entry_id": entry_id,
+            "sl_id": sl_id,
+            "tp_id": tp_id,
+            "symbol": symbol,
+            "action": action,
+            "quantity": quantity,
+        }
 
     async def place_paper_order(
         self,
