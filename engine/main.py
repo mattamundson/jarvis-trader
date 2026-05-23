@@ -582,7 +582,11 @@ async def lifespan(app: FastAPI):
     if ib_paper_connector is not None:
         from execution.position_reconciler import PositionReconciler
 
-        reconciler = PositionReconciler(ib_paper_connector)
+        # Load existing state into OMS first
+        if oms_manager:
+            await oms_manager.reload_from_db(db_manager)
+
+        reconciler = PositionReconciler(ib_paper_connector, oms_manager=oms_manager)
         asyncio.create_task(reconciler.reconcile())
         logger.info(
             "✅ PositionReconciler initialized and scheduled to check for orphaned positions"
