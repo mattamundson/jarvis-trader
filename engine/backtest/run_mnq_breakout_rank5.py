@@ -42,7 +42,7 @@ ALT gate v2 thresholds (all must pass):
     wfo_consistency     in [MODERATE, STRONG]
 
 Usage (from engine/ directory):
-    .venv/Scripts/python -m backtest.run_mnq_breakout_rank5
+    .venv/Scripts/python backtest/run_mnq_breakout_rank5.py
 """
 from __future__ import annotations
 

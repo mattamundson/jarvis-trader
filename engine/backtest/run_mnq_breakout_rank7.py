@@ -28,7 +28,7 @@ Gate v2 thresholds:
     pf_ci_lower >= 1.10 | p_edge >= 0.95 | mc_95th_dd <= 5% | dsr >= 0.10
 
 Usage (from engine/ directory):
-    .venv/Scripts/python -m backtest.run_mnq_breakout_rank7
+    .venv/Scripts/python backtest/run_mnq_breakout_rank7.py
 """
 from __future__ import annotations
 

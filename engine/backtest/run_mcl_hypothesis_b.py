@@ -42,8 +42,8 @@ WFO config (matches Hyp C):
     STEP_MONTHS  = 1
 
 Usage (from engine/ directory):
-    .venv/Scripts/python -m backtest.run_mcl_hypothesis_b
-    .venv/Scripts/python -m backtest.run_mcl_hypothesis_b --fast
+    .venv/Scripts/python backtest/run_mcl_hypothesis_b.py
+    .venv/Scripts/python backtest/run_mcl_hypothesis_b.py --fast
 """
 from __future__ import annotations
 

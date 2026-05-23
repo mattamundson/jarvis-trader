@@ -13,8 +13,8 @@ filters lower-conviction breakouts, raising PF.  Sweep donchian_period and
 stop_atr_mult simultaneously to keep grid under 30 combos.
 
 Usage (from engine/ directory):
-    .venv/Scripts/python -m backtest.run_mnq_breakout_rank2
-    .venv/Scripts/python -m backtest.run_mnq_breakout_rank2 --fast
+    .venv/Scripts/python backtest/run_mnq_breakout_rank2.py
+    .venv/Scripts/python backtest/run_mnq_breakout_rank2.py --fast
 """
 from __future__ import annotations
 

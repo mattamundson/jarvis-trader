@@ -34,7 +34,7 @@ rank1 best — so no combo should be far from the 1.186 baseline PF.
 Target: fixed_params_min_pf >= 1.20.
 
 Usage (from engine/ directory):
-    .venv/Scripts/python -m backtest.run_mnq_breakout_rank4
+    .venv/Scripts/python backtest/run_mnq_breakout_rank4.py
 """
 from __future__ import annotations
 

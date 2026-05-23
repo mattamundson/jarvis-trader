@@ -17,8 +17,8 @@ Gate v2 thresholds to beat:
     dsr          >= 0.10   (deflated Sharpe ratio)
 
 Usage (from engine/ directory):
-    .venv/Scripts/python -m backtest.run_mcl_hypothesis_c
-    .venv/Scripts/python -m backtest.run_mcl_hypothesis_c --fast
+    .venv/Scripts/python backtest/run_mcl_hypothesis_c.py
+    .venv/Scripts/python backtest/run_mcl_hypothesis_c.py --fast
 """
 from __future__ import annotations
 

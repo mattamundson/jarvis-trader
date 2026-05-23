@@ -61,7 +61,7 @@ Gate v2 thresholds (ALT path for Hyp-D first pass):
 Writes: engine/data/gate_v2_verdicts/MCL_trend_hyp_d.json
 
 Usage (from engine/ directory):
-    .venv/Scripts/python backtest/run_mcl_hypothesis_d.py
+    .venv/Scripts/python backtest/run_mcl_hypothesis_d_rank2.py
 """
 from __future__ import annotations
 
