@@ -31,7 +31,7 @@ except ModuleNotFoundError:
 
     INFERENCE_CONFIG = _inference_config.INFERENCE_CONFIG
     TASK_ROUTING = _inference_config.TASK_ROUTING
-    InferenceProvider = _inference_config.InferenceProvider  # type: ignore[misc]
+    InferenceProvider = _inference_config.InferenceProvider
     get_provider_for_task = _inference_config.get_provider_for_task
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ class InferenceRouter:
             },
             "anthropic": {
                 "available": self.provider != "ollama" and self.anthropic_client is not None,
-                "model": None if self.provider == "ollama" else INFERENCE_CONFIG["anthropic"].model,  # type: ignore[attr-defined]
+                "model": None if self.provider == "ollama" else INFERENCE_CONFIG["anthropic"].model,
             },
             "router_id": self._instance_id,
         }
