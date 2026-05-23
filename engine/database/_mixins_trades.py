@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from utils.trade_invariants import is_inverted_stop
 
-from ._helpers import _from_json, _to_json, _utcnow
+from ._helpers import _from_json, _to_json, _utcnow, compute_order_idempotency_key
 
 logger = logging.getLogger("jarvis_trader.database")
 
@@ -49,11 +49,12 @@ class TradesMixin:
         Returns the auto-incremented ``id`` primary key.
         """
         entry_time = entry_time or _utcnow()
+        idempotency_key = compute_order_idempotency_key(symbol, side, quantity, entry_price)
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, strategy_params, notes, account_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, strategy_params, notes, account_id, idempotency_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             trade_id,
@@ -66,6 +67,7 @@ class TradesMixin:
             _to_json(strategy_params),
             notes,
             account_id,
+            idempotency_key,
         )
         with self._lock:
             conn = self._connect()
