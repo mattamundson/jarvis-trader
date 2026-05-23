@@ -241,9 +241,11 @@ def test_approval_queue_blocks_validation_only_strategy(tmp_path):
     gate that already exists in approval.service.ensure_approval_allowed().
     """
     import sqlite3
-    from fastapi.testclient import TestClient
+
     from fastapi import FastAPI
-    from routers.approval_queue_router import router, inject_approval_queue_deps
+    from fastapi.testclient import TestClient
+
+    from routers.approval_queue_router import inject_approval_queue_deps, router
 
     db_path = str(tmp_path / "aq_test.db")
     conn = sqlite3.connect(db_path)
@@ -301,9 +303,11 @@ def test_approval_queue_blocks_validation_only_strategy(tmp_path):
 def test_approval_queue_allows_non_validation_only_strategy(tmp_path):
     """approve_candidate: strategy NOT in VALIDATION_ONLY_STRATEGIES → gate passes."""
     import sqlite3
-    from fastapi.testclient import TestClient
+
     from fastapi import FastAPI
-    from routers.approval_queue_router import router, inject_approval_queue_deps
+    from fastapi.testclient import TestClient
+
+    from routers.approval_queue_router import inject_approval_queue_deps, router
 
     db_path = str(tmp_path / "aq_pass_test.db")
     conn = sqlite3.connect(db_path)

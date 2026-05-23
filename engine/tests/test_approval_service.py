@@ -1,6 +1,7 @@
 import json
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from approval.service import ApprovalFlowError, approve_pending_trade, ensure_approval_allowed
 

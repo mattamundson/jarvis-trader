@@ -30,7 +30,6 @@ from api import (
     PortfolioResponse,
     StatsSummaryResponse,
 )
-
 from approval.service import approved_watchlist_symbols
 from config import settings
 from execution.order_router import FUTURES_SYMBOLS

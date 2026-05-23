@@ -91,8 +91,8 @@ def test_sign_is_deterministic(monkeypatch):
 
 def test_verify_passes_correct_token(monkeypatch):
     monkeypatch.setenv("JARVIS_APPROVAL_HMAC_KEY", _HMAC_KEY)
-    from notifications.discord_webhook import _sign_candidate_id
     from discord.reaction_watcher import _verify_approval_hmac
+    from notifications.discord_webhook import _sign_candidate_id
 
     token = _sign_candidate_id(CANDIDATE_ID)
     assert _verify_approval_hmac(CANDIDATE_ID, token) is True
@@ -114,8 +114,8 @@ def test_verify_rejects_empty_token(monkeypatch):
 
 def test_verify_rejects_wrong_candidate_id(monkeypatch):
     monkeypatch.setenv("JARVIS_APPROVAL_HMAC_KEY", _HMAC_KEY)
-    from notifications.discord_webhook import _sign_candidate_id
     from discord.reaction_watcher import _verify_approval_hmac
+    from notifications.discord_webhook import _sign_candidate_id
 
     token = _sign_candidate_id(CANDIDATE_ID)
     assert _verify_approval_hmac(CANDIDATE_ID + 1, token) is False
