@@ -1444,6 +1444,111 @@ class SafetyLayer:
                 "routed_to_ib": False,
             }
 
+    async def submit_paper_bracket_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        price: float,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+        order_type: str = "MKT",
+        limit_price: float | None = None,
+    ) -> dict:
+        """
+        Place an atomic bracket order: Entry + Stop-Loss + Take-Profit (OCO).
+        Runs safety checks for the entry order. If approved, exit legs are
+        automatically linked in the paper simulator.
+        """
+        # ── 0. Kill switch check ──────────
+        if self._kill_switch_active:
+            return {
+                "approved": False,
+                "reason": "Kill switch active",
+                "order_id": None,
+                "routed_to_ib": False,
+            }
+
+        # ── 1. Validate the entry order risk ──────────
+        action_upper = action.upper()
+        signed_qty = quantity if action_upper == "BUY" else -quantity
+        estimated_value = abs(quantity) * price
+
+        _FUTURES_ROOTS = {
+            "MES",
+            "MNQ",
+            "M2K",
+            "MCL",
+            "MGC",
+            "MHG",
+            "MSI",
+            "ES",
+            "NQ",
+            "RTY",
+            "CL",
+            "GC",
+            "HG",
+        }
+        is_futures = symbol.upper() in _FUTURES_ROOTS
+
+        req = OrderRequest(
+            symbol=symbol.upper(),
+            quantity=signed_qty,
+            order_type=order_type.lower(),
+            limit_price=limit_price,
+            is_futures=is_futures,
+            estimated_value=estimated_value,
+        )
+
+        portfolio_equity = self._current_equity if self._current_equity > 0 else estimated_value
+        check_result = self.check_order(req, portfolio_equity)
+
+        if not check_result.approved:
+            return {
+                "approved": False,
+                "reason": check_result.rejection_reason or "Safety check failed",
+                "order_id": None,
+                "routed_to_ib": False,
+            }
+
+        # ── 2. Route bracket to IB Gateway (paper) ──────────
+        if self._ib_gateway is None:
+            return {
+                "approved": False,
+                "reason": "Broker connector unavailable",
+                "order_id": None,
+                "routed_to_ib": False,
+            }
+
+        final_order = check_result.adjusted_order or req
+        result = await self._ib_gateway.place_bracket_order(
+            symbol=final_order.symbol,
+            action=action_upper,
+            quantity=abs(int(final_order.quantity)),
+            entry_type=final_order.order_type,
+            limit_price=final_order.limit_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+        )
+
+        if result.get("status") == "placed":
+            return {
+                "approved": True,
+                "reason": "Bracket approved and routed to IBKR",
+                "entry_id": result.get("entry_id"),
+                "sl_id": result.get("sl_id"),
+                "tp_id": result.get("tp_id"),
+                "routed_to_ib": True,
+                "warnings": check_result.warnings,
+            }
+
+        return {
+            "approved": True,
+            "reason": f"Safety check PASSED, but broker placement failed: {result.get('error')}",
+            "order_id": None,
+            "routed_to_ib": False,
+        }
+
     async def _verify_parent_linkage(
         self,
         child_order_id: Optional[str],
