@@ -116,8 +116,6 @@ MIN_RV_ANNUALIZED_VALUES = [0.0, 20.0]  # crude normal RV 25-35%; 20% filters ul
 RV_ANNUAL_FACTOR_DAILY = 252
 
 # Gate v2 thresholds (ALT path -- matches MCL Hyp-D and MES rank11 runner)
-GATE_FIXED_PARAMS_MIN_PF = 1.20
-GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
 # Cost-sweep tiers
 COST_SWEEP_TIERS = {
@@ -126,7 +124,6 @@ COST_SWEEP_TIERS = {
     "pessimistic": {"commission": 1.70, "slippage_ticks": 2.0},
     "catastrophic": {"commission": 3.40, "slippage_ticks": 3.0},
 }
-COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 MIN_OOS_TRADES_PER_WINDOW = 1
 
@@ -278,6 +275,11 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | N
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._constants import (  # noqa: E402
+    COST_TIER_ORDER,
+    GATE_FIXED_PARAMS_MIN_PF,
+    GATE_WFO_CONSISTENCY_VALUES,
+)
 from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_DSR,
     GATE_DSR_ALT,

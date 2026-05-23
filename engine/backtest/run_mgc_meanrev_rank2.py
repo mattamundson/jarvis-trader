@@ -110,8 +110,6 @@ RSI_LONG = 30.0
 RSI_SHORT = 70.0
 
 # Gate v2 thresholds (identical to rank1)
-GATE_FIXED_PARAMS_MIN_PF = 1.20
-GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
 COST_SWEEP_TIERS = {
     "optimistic": {"commission": 0.31, "slippage_ticks": 1.0},
@@ -119,7 +117,6 @@ COST_SWEEP_TIERS = {
     "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
     "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
 }
-COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 MIN_OOS_TRADES_PER_WINDOW = 1
 
@@ -267,6 +264,11 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | N
 # Gate v2 metric helpers (shared)
 # ---------------------------------------------------------------------------
 
+from backtest._constants import (  # noqa: E402
+    COST_TIER_ORDER,
+    GATE_FIXED_PARAMS_MIN_PF,
+    GATE_WFO_CONSISTENCY_VALUES,
+)
 from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_DSR,
     GATE_DSR_ALT,
