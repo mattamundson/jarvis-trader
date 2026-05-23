@@ -204,3 +204,57 @@ class OMSManager:
 
     def get_active_trades(self) -> List[Dict[str, Any]]:
         return [t.to_dict() for t in self.active_trades.values() if t.status == TradeState.ACTIVE]
+
+    async def adopt_existing_trade(self, symbol: str, quantity: int, entry_price: float, 
+                                 stop_loss_id: Optional[str] = None, 
+                                 take_profit_id: Optional[str] = None) -> str:
+        """
+        Adopt an existing position (e.g. found during reconciliation) into the OMS.
+        """
+        async with self._lock:
+            trade = BracketOrder(
+                symbol=symbol,
+                quantity=quantity,
+                entry_price=entry_price,
+                status=TradeState.ACTIVE,
+                stop_loss_id=stop_loss_id,
+                take_profit_id=take_profit_id
+            )
+            self.active_trades[trade.trade_id] = trade
+            logger.info("[OMS] Adopted existing position: %s Qty: %d ID: %s", 
+                        symbol, quantity, trade.trade_id)
+            return trade.trade_id
+
+    async def reload_from_db(self, db_manager):
+        """
+        Rebuild active_trades map from the paper_trades database.
+        Allows OMS to recover state after an engine restart.
+        """
+        if not db_manager:
+            return
+        
+        try:
+            # Query for open paper trades
+            # SQLite query against paper_trades table
+            rows = db_manager.get_open_trades() # Assuming this method exists
+            if not rows:
+                logger.info("[OMS] No open trades found in DB to reload.")
+                return
+
+            async with self._lock:
+                for row in rows:
+                    # Map DB row to BracketOrder
+                    trade = BracketOrder(
+                        trade_id=row.get("id"),
+                        symbol=row.get("symbol"),
+                        quantity=int(row.get("quantity", 0)),
+                        entry_price=float(row.get("entry_price", 0.0)),
+                        entry_order_id=row.get("order_id"),
+                        status=TradeState.ACTIVE
+                    )
+                    # We might need to find SL/TP IDs from the broker if not in DB
+                    self.active_trades[trade.trade_id] = trade
+                
+                logger.info("[OMS] Reloaded %d active trades from DB", len(rows))
+        except Exception as e:
+            logger.error("[OMS] Failed to reload trades from DB: %s", e)

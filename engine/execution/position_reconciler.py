@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 class PositionReconciler:
-    def __init__(self, ib_gateway):
+    def __init__(self, ib_gateway, oms_manager=None):
         self.ib_gateway = ib_gateway
+        self.oms_manager = oms_manager
 
     async def reconcile(self) -> None:
         if not self.ib_gateway or not self.ib_gateway.is_connected():
@@ -85,13 +86,22 @@ class PositionReconciler:
 
         logger.info(f"[RECONCILER] Attaching emergency Stop Loss for {symbol} at {stop_price}")
         try:
-            await self.ib_gateway.place_paper_order(
+            sl_id = await self.ib_gateway.place_paper_order(
                 symbol=symbol,
                 action=action,
                 quantity=abs(quantity),
                 order_type="STP",
                 aux_price=stop_price,
             )
+
+            # Adopt into OMS if available
+            if self.oms_manager:
+                await self.oms_manager.adopt_existing_trade(
+                    symbol=symbol,
+                    quantity=quantity,
+                    entry_price=avg_cost,
+                    stop_loss_id=sl_id
+                )
 
             # Send notification
             try:
