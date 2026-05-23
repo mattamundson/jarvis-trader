@@ -17,7 +17,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 _VERDICTS_DIR = Path(__file__).parent.parent / "data" / "gate_v2_verdicts"
 
 

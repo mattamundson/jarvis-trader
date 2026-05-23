@@ -17,8 +17,7 @@ _engine = Path(__file__).parent.parent
 if str(_engine) not in sys.path:
     sys.path.insert(0, str(_engine))
 
-from scripts.backup_database import backup, _prune_old_backups
-
+from scripts.backup_database import _prune_old_backups, backup
 
 # ---------------------------------------------------------------------------
 # Helpers

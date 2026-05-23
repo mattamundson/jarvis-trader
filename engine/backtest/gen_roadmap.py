@@ -96,14 +96,22 @@ def _estimate_to_weight(est: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Detect completed tasks via git log
+# Detect completed tasks via git log + supplemental overrides file
 # ---------------------------------------------------------------------------
+
+# Supplemental done-overrides: engine/data/_ROADMAP_DONE.txt
+# Format: one task ID per line; lines starting with # are comments.
+# Used for tasks verified via file inspection (not git commit message).
+_DONE_OVERRIDES = _ENGINE_ROOT / "data" / "_ROADMAP_DONE.txt"
 
 
 def _get_done_ids(repo_root: Path, task_ids: list[str]) -> set[str]:
-    """Scan git log messages for task ID mentions (e.g. 'P3-16')."""
+    """Scan git log messages and supplemental override file for Done task IDs."""
     if not task_ids:
         return set()
+
+    # 1. Git log scan
+    done: set[str] = set()
     try:
         result = subprocess.run(
             ["git", "log", "--oneline", "-500"],
@@ -113,14 +121,20 @@ def _get_done_ids(repo_root: Path, task_ids: list[str]) -> set[str]:
             timeout=10,
         )
         log = result.stdout
+        for task_id in task_ids:
+            if re.search(rf"\b{re.escape(task_id)}\b", log):
+                done.add(task_id)
     except Exception:
-        return set()
+        pass
 
-    done = set()
-    for task_id in task_ids:
-        # Match task ID anywhere in the commit line (e.g. "feat(readiness): P3-16 ...")
-        if re.search(rf"\b{re.escape(task_id)}\b", log):
-            done.add(task_id)
+    # 2. Supplemental overrides (file-verified tasks)
+    if _DONE_OVERRIDES.exists():
+        for line in _DONE_OVERRIDES.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                if re.match(r"^P\d+-\d+$", stripped):
+                    done.add(stripped)
+
     return done
 
 

@@ -18,8 +18,8 @@ import argparse
 import json
 import logging
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -31,7 +31,7 @@ _engine_dir = Path(__file__).parent.parent
 if str(_engine_dir) not in sys.path:
     sys.path.insert(0, str(_engine_dir))
 
-from risk.regime_detector import evaluate_regime, RegimeStatus
+from risk.regime_detector import RegimeStatus, evaluate_regime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("regime_alert")

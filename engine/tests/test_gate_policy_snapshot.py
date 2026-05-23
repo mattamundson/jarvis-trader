@@ -37,7 +37,6 @@ from backtest._gate_v2_helpers import (
     MIN_OOS_TRADES_PER_WINDOW,
 )
 
-
 # ---------------------------------------------------------------------------
 # Core path thresholds — strategies must exceed ALL of these to PASS core
 # ---------------------------------------------------------------------------
