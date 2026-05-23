@@ -8,11 +8,11 @@
   "alt_verdict": "PASS",
   "n_core_passed": 3,
   "n_alt_passed": 5,
-  "created_at": "2026-05-20T05:35:35.195291+00:00",
+  "created_at": "2026-05-23T09:06:04.643287+00:00",
   "aux_freshness": {
-    "rolling_wfo": "2026-05-20T05:35:35.195291+00:00",
-    "fixed_params": "2026-05-20T05:35:35.195291+00:00",
-    "cost_sweep": "2026-05-20T05:35:35.195291+00:00"
+    "rolling_wfo": "2026-05-23T09:06:04.643287+00:00",
+    "fixed_params": "2026-05-23T09:06:04.643287+00:00",
+    "cost_sweep": "2026-05-23T09:06:04.643287+00:00"
   },
   "gate_v2": {
     "verdict": "PASS",
@@ -24,7 +24,7 @@
     "n_alt_passed": 5,
     "n_alt_criteria": 5,
     "core_reasons": [
-      "mbb_pf_ci_lower=2.5759 >= 1.1",
+      "mbb_pf_ci_lower=2.5968 >= 1.1",
       "FAIL p_positive_edge=0.6842 >= 0.95",
       "mc_95th_dd_pct=1.2386 <= 5.0",
       "dsr=1.000000 >= 0.1 (not selection-bias)"
@@ -37,7 +37,7 @@
       "mc_95th_dd_pct=1.2386 <= 4.0 (alt ceiling)"
     ],
     "reasons": [
-      "mbb_pf_ci_lower=2.5759 >= 1.1",
+      "mbb_pf_ci_lower=2.5968 >= 1.1",
       "FAIL p_positive_edge=0.6842 >= 0.95",
       "mc_95th_dd_pct=1.2386 <= 5.0",
       "dsr=1.000000 >= 0.1 (not selection-bias)",
@@ -55,7 +55,7 @@
     "n_windows": 19,
     "n_oos_windows": 19,
     "n_oos_windows_with_trades": 19,
-    "total_oos_trades": 65,
+    "total_oos_trades": 67,
     "grid_combos": 8,
     "grid_fast_period": [
       40,
@@ -71,30 +71,30 @@
     ]
   },
   "gate_v2_metrics": {
-    "pf_ci_lower": 2.5759,
+    "pf_ci_lower": 2.5968,
     "p_edge": 0.6842,
     "mc_95th_dd": 0.012386,
     "mc_95th_dd_pct": 1.2386,
     "dsr": 1.0,
     "wfo_consistency": "MODERATE",
     "fixed_params_min_pf": 1.3574,
-    "fixed_params_mean_pf": 1.7706,
-    "fixed_params_max_pf": 3.1655,
+    "fixed_params_mean_pf": 1.7508,
+    "fixed_params_max_pf": 3.1797,
     "n_combos_with_trades": 8,
     "combo_results": [
       {
         "fast": 40,
         "slow": 80,
         "atr_trail_mult": 1.5,
-        "pf": 1.7433,
-        "trades": 75
+        "pf": 1.6274,
+        "trades": 76
       },
       {
         "fast": 40,
         "slow": 80,
         "atr_trail_mult": 2.0,
-        "pf": 1.9835,
-        "trades": 71
+        "pf": 1.9107,
+        "trades": 72
       },
       {
         "fast": 40,
@@ -128,37 +128,37 @@
         "fast": 50,
         "slow": 120,
         "atr_trail_mult": 1.5,
-        "pf": 1.5076,
-        "trades": 52
+        "pf": 1.5241,
+        "trades": 53
       },
       {
         "fast": 50,
         "slow": 120,
         "atr_trail_mult": 2.0,
-        "pf": 3.1655,
-        "trades": 49
+        "pf": 3.1797,
+        "trades": 50
       }
     ],
     "cost_survives_through": "catastrophic",
     "cost_tier_results": {
       "optimistic": {
-        "pf": 3.2143,
-        "trades": 49,
+        "pf": 3.2288,
+        "trades": 50,
         "passes": true
       },
       "realistic": {
-        "pf": 3.1655,
-        "trades": 49,
+        "pf": 3.1797,
+        "trades": 50,
         "passes": true
       },
       "pessimistic": {
-        "pf": 3.1875,
-        "trades": 49,
+        "pf": 3.2016,
+        "trades": 50,
         "passes": true
       },
       "catastrophic": {
-        "pf": 3.1554,
-        "trades": 49,
+        "pf": 3.1691,
+        "trades": 50,
         "passes": true
       }
     }
@@ -466,10 +466,10 @@
       },
       "is_pf": 6.377,
       "is_trades": 8,
-      "oos_pf": 0.171,
+      "oos_pf": 0.395,
       "oos_dd": 0.0056,
-      "oos_sharpe": -7.954,
-      "oos_trades": 2
+      "oos_sharpe": -4.627,
+      "oos_trades": 3
     },
     {
       "window": 19,
@@ -484,8 +484,8 @@
       "is_trades": 8,
       "oos_pf": Infinity,
       "oos_dd": 0.0,
-      "oos_sharpe": 0.0,
-      "oos_trades": 1
+      "oos_sharpe": 82.316,
+      "oos_trades": 2
     }
   ],
   "contract_spec": {

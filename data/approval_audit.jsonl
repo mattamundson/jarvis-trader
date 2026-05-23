@@ -14,3 +14,7 @@
 {"ts": "2026-05-22T09:41:54.747455+00:00", "event": "extended", "candidate_id": 1, "minutes_requested": 1, "minutes_applied": 5, "new_expires_at": "2026-05-22T09:46:54.734125+00:00", "symbol": "MCL", "direction": "LONG"}
 {"ts": "2026-05-22T09:41:55.027211+00:00", "event": "approved", "candidate_id": 1, "symbol": "MCL", "direction": "LONG", "entry_price": 2010.0, "order_id": "TEST-42"}
 {"ts": "2026-05-22T09:41:55.104410+00:00", "event": "rejected", "candidate_id": 1, "reason": "not the right setup"}
+{"ts": "2026-05-23T07:18:34.139450+00:00", "event": "extended", "candidate_id": 1, "minutes_requested": 500, "minutes_applied": 120, "new_expires_at": "2026-05-23T09:18:34.135450+00:00", "symbol": "MCL", "direction": "LONG"}
+{"ts": "2026-05-23T07:18:34.163395+00:00", "event": "extended", "candidate_id": 1, "minutes_requested": 1, "minutes_applied": 5, "new_expires_at": "2026-05-23T07:23:34.160395+00:00", "symbol": "MCL", "direction": "LONG"}
+{"ts": "2026-05-23T07:18:34.380626+00:00", "event": "approved", "candidate_id": 1, "symbol": "MCL", "direction": "LONG", "entry_price": 2010.0, "order_id": "TEST-42"}
+{"ts": "2026-05-23T07:18:34.742004+00:00", "event": "rejected", "candidate_id": 1, "reason": "not the right setup"}
