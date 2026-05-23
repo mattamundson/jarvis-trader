@@ -83,8 +83,6 @@ REGIME_FILTER_VALUES = [False, True]
 MIN_OR_RANGE_PCT_VALUES = [0.0005, 0.0008, 0.0012, 0.0015]
 
 # Gate v2 thresholds (ALT path - matches MES rank11 / MNQ ORB rank1)
-GATE_FIXED_PARAMS_MIN_PF = 1.20
-GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
 # Cost tiers (same structure as MNQ ORB for cross-symbol consistency)
 
@@ -262,6 +260,10 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple:
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._constants import (  # noqa: E402
+    GATE_FIXED_PARAMS_MIN_PF,
+    GATE_WFO_CONSISTENCY_VALUES,
+)
 from backtest._gate_v2_helpers import (  # noqa: E402  # noqa: E402
     COST_SWEEP_TIERS,
     COST_TIER_ORDER,

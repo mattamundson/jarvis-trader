@@ -98,8 +98,6 @@ ATR_TRAIL_MULT_VALUES = [1.8, 2.0, 2.2]
 MIN_RV_ANNUALIZED_VALUES = [0.0, 9.0]
 
 # Gate v2 thresholds (ALT path -- matches MES rank11 runner)
-GATE_FIXED_PARAMS_MIN_PF = 1.20
-GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
 # Cost-sweep tiers
 COST_SWEEP_TIERS = {
@@ -108,7 +106,6 @@ COST_SWEEP_TIERS = {
     "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
     "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
 }
-COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 MIN_OOS_TRADES_PER_WINDOW = 1  # SMA trend generates 1-3 trades per 1-2 month OOS
 
@@ -258,6 +255,11 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | N
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._constants import (  # noqa: E402
+    COST_TIER_ORDER,
+    GATE_FIXED_PARAMS_MIN_PF,
+    GATE_WFO_CONSISTENCY_VALUES,
+)
 from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_DSR,
     GATE_DSR_ALT,

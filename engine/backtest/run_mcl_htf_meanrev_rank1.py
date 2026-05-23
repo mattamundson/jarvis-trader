@@ -116,8 +116,6 @@ HTF_RSI_UPPER_VALUES = [55.0, 60.0, 65.0]  # max daily RSI for LONG filter
 HTF_RSI_LOWER_VALUES = [35.0, 40.0, 45.0]  # min daily RSI for SHORT filter
 STOP_ATR_MULT_VALUES = [1.5, 2.0, 2.5]
 
-GATE_FIXED_PARAMS_MIN_PF = 1.20
-GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
 MIN_OOS_TRADES_PER_WINDOW = 2
 
@@ -127,7 +125,6 @@ COST_SWEEP_TIERS = {
     "pessimistic": {"commission": 1.70, "slippage_ticks": 2.0},
     "catastrophic": {"commission": 3.40, "slippage_ticks": 3.0},
 }
-COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 # ---------------------------------------------------------------------------
 # Data loading
@@ -283,6 +280,11 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | N
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._constants import (  # noqa: E402
+    COST_TIER_ORDER,
+    GATE_FIXED_PARAMS_MIN_PF,
+    GATE_WFO_CONSISTENCY_VALUES,
+)
 from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_DSR,
     GATE_DSR_ALT,

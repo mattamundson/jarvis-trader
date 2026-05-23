@@ -85,8 +85,6 @@ MIN_RV_ANNUALIZED = 0.0
 # Gate v2 thresholds
 
 # ALT-specific thresholds
-GATE_FIXED_PARAMS_MIN_PF = 1.20  # rank7 had 1.275
-GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]  # ALT accepts either
 
 # Cost-sweep tiers (must survive through at least "realistic")
 COST_SWEEP_TIERS = {
@@ -95,7 +93,6 @@ COST_SWEEP_TIERS = {
     "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
     "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
 }
-COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 MIN_OOS_TRADES_PER_WINDOW = 1  # was 5 — SMA trend generates 1-3 trades per 2-month OOS
 
@@ -232,6 +229,11 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | N
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._constants import (  # noqa: E402
+    COST_TIER_ORDER,
+    GATE_FIXED_PARAMS_MIN_PF,
+    GATE_WFO_CONSISTENCY_VALUES,
+)
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402

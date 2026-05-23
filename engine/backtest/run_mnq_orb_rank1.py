@@ -81,8 +81,6 @@ REGIME_FILTER_VALUES = [False, True]
 MIN_OR_RANGE_PCT_VALUES = [0.0005, 0.0008, 0.0012, 0.0015]
 
 # Gate v2 thresholds (ALT path — matches MES rank11 runner)
-GATE_FIXED_PARAMS_MIN_PF = 1.20
-GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
 # Cost tiers (same structure as MNQ trend runners for consistency)
 COST_SWEEP_TIERS = {
@@ -91,7 +89,6 @@ COST_SWEEP_TIERS = {
     "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
     "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
 }
-COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 MIN_OOS_TRADES_PER_WINDOW = 5  # ORB fires ~21-42/month; 5 is a soft sanity floor
 
@@ -267,6 +264,11 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple:
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._constants import (  # noqa: E402
+    COST_TIER_ORDER,
+    GATE_FIXED_PARAMS_MIN_PF,
+    GATE_WFO_CONSISTENCY_VALUES,
+)
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402

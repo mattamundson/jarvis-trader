@@ -63,7 +63,6 @@ VOL_MULT_VALUES = [0.8, 1.0]
 STOP_ATR_MULT = 2.0
 VOL_MA_PERIOD = 20
 
-GATE_FIXED_PARAMS_MIN_PF = 1.20
 GATE_WFO_CONSISTENCY = ["MODERATE", "STRONG"]
 
 MIN_OOS_TRADES = 5
@@ -150,6 +149,9 @@ def _best_is(df_train, grid):
     return best_p, best_r
 
 
+from backtest._constants import (  # noqa: E402
+    GATE_FIXED_PARAMS_MIN_PF,
+)
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf  # noqa: E402
 

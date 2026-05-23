@@ -106,8 +106,6 @@ MIN_RV_ANNUALIZED_VALUES = [0.0, 12.0]
 
 # Gate v2 thresholds: runner-specific ALT overrides only.
 # Core thresholds imported from _gate_v2_helpers (single source of truth).
-GATE_FIXED_PARAMS_MIN_PF = 1.20
-GATE_WFO_CONSISTENCY_VALUES = ["MODERATE", "STRONG"]
 
 # Cost-sweep tiers
 COST_SWEEP_TIERS = {
@@ -116,7 +114,6 @@ COST_SWEEP_TIERS = {
     "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
     "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
 }
-COST_TIER_ORDER = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 # Faster SMAs generate more crosses per window; 2 trades minimum avoids
 # single-trade window noise but keeps enough windows in the OOS sample.
@@ -266,6 +263,11 @@ def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | N
 # Gate v2 metric helpers
 # ---------------------------------------------------------------------------
 
+from backtest._constants import (  # noqa: E402
+    COST_TIER_ORDER,
+    GATE_FIXED_PARAMS_MIN_PF,
+    GATE_WFO_CONSISTENCY_VALUES,
+)
 from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_DSR,
     GATE_DSR_ALT,
