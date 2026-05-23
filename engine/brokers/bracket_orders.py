@@ -173,6 +173,75 @@ def build_bracket(
     return [entry_spec, stp_spec, tp_spec]
 
 
+async def _verify_parent_linkage(
+    ib_gateway,
+    symbol: str,
+    parent_id: str,
+    stp_id: str,
+) -> bool:
+    """
+    Post-submission check: confirm the STP child order has its parentId set
+    correctly to the entry order ID on the broker side.
+
+    IB processes the bracket atomically once the TP (transmit=True) leg
+    arrives, but there is a timing window — typically < 100 ms in paper mode
+    — where the MKT entry can fill before the broker acknowledges the STP
+    child's parentId linkage.  This check surfaces that race so it can be
+    monitored rather than silently accepted.
+
+    Returns True if the linkage is confirmed or cannot be checked (gateway
+    has no ``get_order_status``).  Returns False only when ``get_order_status``
+    clearly reports a wrong/missing parentId or raises an exception.
+    """
+    check_fn = getattr(ib_gateway, "get_order_status", None)
+    if not callable(check_fn):
+        logger.debug(
+            "_verify_parent_linkage: gateway has no get_order_status — skipping (symbol=%s)",
+            symbol,
+        )
+        return True
+
+    try:
+        status = await check_fn(int(stp_id))
+    except Exception as exc:
+        logger.warning(
+            "_verify_parent_linkage: get_order_status raised symbol=%s stp=%s: %s",
+            symbol,
+            stp_id,
+            exc,
+        )
+        return False
+
+    if not isinstance(status, dict):
+        logger.warning(
+            "_verify_parent_linkage: unexpected status type %s symbol=%s stp=%s",
+            type(status).__name__,
+            symbol,
+            stp_id,
+        )
+        return False
+
+    reported_parent = str(status.get("parent_order_id") or "")
+    if reported_parent == parent_id:
+        logger.debug(
+            "_verify_parent_linkage: OK symbol=%s parent=%s stp=%s",
+            symbol,
+            parent_id,
+            stp_id,
+        )
+        return True
+
+    logger.warning(
+        "_verify_parent_linkage: parentId mismatch symbol=%s stp=%s expected=%s got=%r — "
+        "STP may not be linked; monitor this position manually",
+        symbol,
+        stp_id,
+        parent_id,
+        reported_parent,
+    )
+    return False
+
+
 async def submit_bracket(
     ib_gateway,
     symbol: str,
@@ -377,6 +446,18 @@ async def submit_bracket(
             exc,
         )
 
+    # ── 4. Post-submission parent-linkage check ───────────────────────────────
+    # Confirms the STP child's parentId is set before the MKT entry can fill.
+    parent_linkage_verified = await _verify_parent_linkage(ib_gateway, symbol, parent_id, stp_id)
+    if not parent_linkage_verified:
+        logger.warning(
+            "submit_bracket: STP parentId linkage unconfirmed symbol=%s parent=%s stp=%s — "
+            "bracket is live; monitor position manually",
+            symbol,
+            parent_id,
+            stp_id,
+        )
+
     bracket_status = "attached" if tp_id is not None else "partial"
     return {
         "approved": True,
@@ -384,6 +465,7 @@ async def submit_bracket(
         "stop_order_id": stp_id,
         "target_order_id": tp_id,
         "bracket_status": bracket_status,
+        "parent_linkage_verified": parent_linkage_verified,
         "reason": (
             "Bracket order submitted (parent + STP + TP)"
             if tp_id

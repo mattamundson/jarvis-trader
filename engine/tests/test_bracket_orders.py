@@ -228,3 +228,127 @@ async def test_missing_stop_falls_back_to_single():
     mock_safety.submit_paper_order.assert_awaited_once()
     mock_safety.submit_entry_with_stop.assert_not_awaited()
     assert result["approved"] is True
+
+
+# ── _verify_parent_linkage tests ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_verify_parent_linkage_confirmed():
+    """get_order_status returns matching parentId → True."""
+    from brokers.bracket_orders import _verify_parent_linkage
+
+    fake_gw = MagicMock()
+    fake_gw.get_order_status = AsyncMock(return_value={"parent_order_id": "1001"})
+
+    result = await _verify_parent_linkage(fake_gw, "MES", "1001", "1002")
+
+    assert result is True
+    fake_gw.get_order_status.assert_awaited_once_with(1002)
+
+
+@pytest.mark.asyncio
+async def test_verify_parent_linkage_mismatch():
+    """get_order_status returns a different parentId → False."""
+    from brokers.bracket_orders import _verify_parent_linkage
+
+    fake_gw = MagicMock()
+    fake_gw.get_order_status = AsyncMock(return_value={"parent_order_id": "9999"})
+
+    result = await _verify_parent_linkage(fake_gw, "MES", "1001", "1002")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_verify_parent_linkage_missing_parent_key():
+    """get_order_status returns a dict without parent_order_id → False."""
+    from brokers.bracket_orders import _verify_parent_linkage
+
+    fake_gw = MagicMock()
+    fake_gw.get_order_status = AsyncMock(return_value={"status": "Submitted"})
+
+    result = await _verify_parent_linkage(fake_gw, "MES", "1001", "1002")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_verify_parent_linkage_gateway_raises():
+    """get_order_status raises → False (don't let verification crash the caller)."""
+    from brokers.bracket_orders import _verify_parent_linkage
+
+    fake_gw = MagicMock()
+    fake_gw.get_order_status = AsyncMock(side_effect=ConnectionError("IB disconnected"))
+
+    result = await _verify_parent_linkage(fake_gw, "MES", "1001", "1002")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_verify_parent_linkage_non_dict_status():
+    """get_order_status returns a non-dict (unexpected) → False."""
+    from brokers.bracket_orders import _verify_parent_linkage
+
+    fake_gw = MagicMock()
+    fake_gw.get_order_status = AsyncMock(return_value="OK")
+
+    result = await _verify_parent_linkage(fake_gw, "MES", "1001", "1002")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_verify_parent_linkage_no_method_on_gateway():
+    """Gateway without get_order_status → True (graceful skip, not a failure)."""
+    from brokers.bracket_orders import _verify_parent_linkage
+
+    class _MinimalGateway:
+        pass
+
+    result = await _verify_parent_linkage(_MinimalGateway(), "MES", "1001", "1002")
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_submit_bracket_includes_parent_linkage_verified_field():
+    """submit_bracket result includes parent_linkage_verified key on success path."""
+    from brokers.bracket_orders import build_bracket, submit_bracket
+
+    fake_gw = AsyncMock()
+    fake_gw.place_paper_order = AsyncMock(side_effect=[1001, 1002, 1003])
+    fake_gw.get_order_status = AsyncMock(return_value={"parent_order_id": "1001"})
+
+    entry, stp, tp = build_bracket(_make_parent(), stop_price=5690.0, target_price=5720.0)
+    result = await submit_bracket(fake_gw, "MES", entry, stp, tp)
+
+    assert (
+        "parent_linkage_verified" in result
+    ), "submit_bracket result must carry parent_linkage_verified for monitoring"
+    assert result["parent_linkage_verified"] is True
+    assert result["approved"] is True
+
+
+@pytest.mark.asyncio
+async def test_submit_bracket_linkage_unconfirmed_still_approved():
+    """Linkage check fails (parentId mismatch) but bracket is live — approved=True.
+
+    The bracket was already submitted to IB; we cannot roll it back at this
+    stage. The unconfirmed linkage is surfaced via the return field and a
+    WARNING log so operations can monitor manually.
+    """
+    from brokers.bracket_orders import build_bracket, submit_bracket
+
+    fake_gw = AsyncMock()
+    fake_gw.place_paper_order = AsyncMock(side_effect=[1001, 1002, 1003])
+    # Simulate IB reporting a wrong parentId (stale data during the race window)
+    fake_gw.get_order_status = AsyncMock(return_value={"parent_order_id": "0"})
+
+    entry, stp, tp = build_bracket(_make_parent(), stop_price=5690.0, target_price=5720.0)
+    result = await submit_bracket(fake_gw, "MES", entry, stp, tp)
+
+    assert result["approved"] is True, "Bracket is live even when linkage check fails"
+    assert result["parent_linkage_verified"] is False
+    assert result["bracket_status"] == "attached"
