@@ -9,10 +9,13 @@ Tools (all read-only, no DB writes):
   get_session_bias       — Corey's structured session bias for a trading date
   get_recent_signals     — Recent Discord bot signals for a symbol
   get_daily_sentiment    — Keyword-based daily sentiment score
-  search_commentary      — Full-text search Corey's raw commentary
+  search_commentary      — Full-text (FTS5/LIKE) search Corey's raw commentary
+  semantic_search        — KNN vector search via nomic-embed-text embeddings
   get_recent_bookmarks   — Recent URLs dropped into Matt's #general bookmark channel
   search_bookmarks       — Full-text search bookmark URL / title / description / content
   get_bookmark_stats     — Counts by source_type + domain for the bookmark feed
+  get_engine_health      — Engine health, IBKR status, kill switch, uptime
+  get_open_positions     — Open IBKR positions with PnL
 
 Run as MCP server:
   python -m discord.mcp_server
@@ -501,6 +504,103 @@ async def get_open_positions() -> dict:
                 return {"positions": positions, "count": len(positions)}
     except Exception as exc:
         return {"positions": [], "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# RAG semantic search
+# ---------------------------------------------------------------------------
+
+# vec_index.db lives in engine/data/ (same dir as jarvis_trader.db) so both
+# Windows (this MCP server) and WSL (run-vec-index.py via /mnt/c/...) can open
+# it natively without cross-OS locking incompatibilities.
+_VEC_INDEX_DB = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "vec_index.db"
+)
+
+
+@mcp.tool()
+async def semantic_search(query: str, limit: int = 8) -> dict:
+    """
+    Semantic (vector) search over Corey's indexed Discord commentary.
+
+    Embeds the query via local nomic-embed-text (Ollama) then runs KNN search
+    over vec_index.db. Unlike search_commentary (FTS keyword match), this finds
+    conceptually related messages even if exact words don't appear.
+
+    Args:
+        query:  Natural-language question, e.g. "ES breakout above value area"
+        limit:  Number of results to return (default 8, max 20)
+
+    Returns dict with 'results' list (rowid, similarity, content, ts, channel)
+    and 'index_size' count. Returns 'error' key if index is unavailable.
+    """
+    import json as _json
+
+    limit = min(max(1, limit), 20)
+
+    # Embed the query via Ollama (accessible from Windows at 127.0.0.1:11434)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "http://127.0.0.1:11434/api/embed",
+                json={"model": "nomic-embed-text", "input": [query]},
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status != 200:
+                    return {"results": [], "error": f"Ollama embed HTTP {resp.status}"}
+                q_vec = _json.dumps((await resp.json())["embeddings"][0])
+    except Exception as exc:
+        return {"results": [], "error": f"Ollama embed error: {exc}"}
+
+    # Query the WSL-native vec_index.db via UNC path
+    import sqlite3 as _sqlite3
+
+    try:
+        import sqlite_vec as _sqlite_vec
+    except ImportError:
+        return {"results": [], "error": "sqlite_vec not installed in engine venv"}
+
+    if not os.path.exists(_VEC_INDEX_DB):
+        return {"results": [], "error": "vec_index.db not found — run vec-index cron first"}
+
+    try:
+        idx = _sqlite3.connect(_VEC_INDEX_DB, timeout=5.0)
+        idx.enable_load_extension(True)
+        _sqlite_vec.load(idx)
+        idx.enable_load_extension(False)
+        idx.execute("PRAGMA journal_mode=WAL")
+
+        index_size = idx.execute("SELECT COUNT(*) FROM vec_commentary").fetchone()[0]
+        if index_size == 0:
+            idx.close()
+            return {"results": [], "index_size": 0, "error": "Index is empty"}
+
+        rows = idx.execute(
+            """
+            SELECT v.rowid, v.distance, m.content, m.ts, m.channel
+            FROM vec_commentary v
+            JOIN commentary_meta m ON m.rowid = v.rowid
+            WHERE v.embedding MATCH ?
+              AND k = ?
+            ORDER BY v.distance
+            """,
+            [q_vec, limit],
+        ).fetchall()
+        idx.close()
+    except Exception as exc:
+        return {"results": [], "error": f"vec_index query error: {exc}"}
+
+    results = [
+        {
+            "rowid": rid,
+            "similarity": round(1 - dist, 4),
+            "ts": ts or "",
+            "channel": channel or "market-updates",
+            "content": (content or "")[:400],
+        }
+        for rid, dist, content, ts, channel in rows
+    ]
+    return {"query": query, "index_size": index_size, "results": results}
 
 
 # ---------------------------------------------------------------------------

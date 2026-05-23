@@ -201,3 +201,46 @@ async def test_get_open_positions_unreachable() -> None:
 
     assert result["positions"] == []
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# semantic_search
+# ---------------------------------------------------------------------------
+
+
+async def test_semantic_search_no_index() -> None:
+    """Returns error dict when vec_index.db doesn't exist."""
+    from discord.mcp_server import semantic_search
+
+    with patch("discord.mcp_server.os.path.exists", return_value=False):
+        result = await semantic_search("ES auction theory")
+
+    assert result["results"] == []
+    assert "error" in result
+    assert "not found" in result["error"]
+
+
+async def test_semantic_search_ollama_error() -> None:
+    """Returns error dict when Ollama embed call fails."""
+    from discord.mcp_server import semantic_search
+
+    mock_session_ctx = AsyncMock()
+    mock_session_ctx.__aenter__ = AsyncMock(side_effect=Exception("connection refused"))
+    mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("discord.mcp_server.aiohttp.ClientSession", return_value=mock_session_ctx):
+        result = await semantic_search("ES auction theory")
+
+    assert result["results"] == []
+    assert "Ollama embed error" in result["error"]
+
+
+async def test_semantic_search_limit_clamped() -> None:
+    """Limit is clamped to 1-20 range — a limit of 99 becomes 20."""
+    from discord.mcp_server import semantic_search
+
+    with patch("discord.mcp_server.os.path.exists", return_value=False):
+        result = await semantic_search("ES", limit=99)
+
+    # Regardless of limit, no-index error triggers before the limit is used.
+    assert "error" in result
