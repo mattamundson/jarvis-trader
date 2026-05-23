@@ -196,6 +196,11 @@ from routers.alerts_router import (
     inject_dependencies as inject_alerts_deps,
 )
 from routers.notifications_router import router as notifications_router
+from routers.pipeline_board_router import router as pipeline_board_router
+from routers.config_router import router as config_router
+from routers.crypto_router import router as crypto_router
+from routers.openclaw_router import router as openclaw_router
+from routers.openclaw_router import inject_dependencies as inject_openclaw_deps
 from data.price_cache import PriceCache
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
@@ -1528,6 +1533,8 @@ async def lifespan(app: FastAPI):
     # The background loop is only started when the flag is explicitly set.
     inject_approval_queue_deps(safety_layer, db_path=str(db_manager._db_path))
     logger.info("✅ Approval queue router wired (prefix=/approvals)")
+    inject_openclaw_deps(db_manager, paper_tracker, safety_layer)
+    logger.info("✅ OpenClaw webhook router wired (prefix=/openclaw)")
 
     _autonomous_enabled_at_boot = os.environ.get("ENABLE_AUTONOMOUS_PIPELINE", "0").strip() == "1"
     if _autonomous_enabled_at_boot:
@@ -2581,6 +2588,10 @@ app.include_router(alerts_router)
 app.include_router(notifications_router)
 app.include_router(strategy_lab_router)
 
+app.include_router(pipeline_board_router)
+app.include_router(config_router)
+app.include_router(crypto_router)
+app.include_router(openclaw_router)
 
 # ── WebSocket Price Feed ────────────────────────────────────────────────────────
 from websocket.price_feed import price_feed_endpoint
