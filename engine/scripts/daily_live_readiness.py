@@ -67,6 +67,7 @@ logger = logging.getLogger("daily_live_readiness")
 _ET = ZoneInfo("America/New_York")
 _REPORT_DIR = _ENGINE_DIR / "data" / "live_readiness_reports"
 _DB_PATH = _ENGINE_DIR / "data" / "jarvis_trader.db"
+_STATE_FILE = _ENGINE_DIR / "data" / "live_readiness_state.json"
 
 # ---------------------------------------------------------------------------
 # Report renderer
@@ -218,6 +219,35 @@ async def _post_discord_headline(result: "ROIReadinessResult") -> None:
     logger.info("Discord live-readiness headline posted: %s", headline)
 
 
+def _write_state_file(result: "ROIReadinessResult", state_path: Path = _STATE_FILE) -> None:
+    """Write machine-readable go/no-go state JSON for other tools to consume."""
+    state = {
+        "evaluated_at": datetime.now(ZoneInfo("UTC")).isoformat(),
+        "snapshot_date": result.snapshot_date.isoformat(),
+        "status": result.status,
+        "go": result.status == "GREEN",
+        "pass_count": result.pass_count,
+        "total_gates": len(result.gates),
+        "consecutive_passing_days": result.consecutive_passing_days,
+        "days_to_live": result.days_to_live,
+        "gates": [
+            {
+                "gate_id": g.gate_id,
+                "name": g.name,
+                "passed": g.passed,
+                "observed": g.observed,
+                "threshold": g.threshold,
+            }
+            for g in result.gates
+        ],
+    }
+    try:
+        state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        logger.info("State file written: %s", state_path)
+    except OSError as exc:
+        logger.warning("Could not write state file %s: %s", state_path, exc)
+
+
 def _build_discord_headline(result: "ROIReadinessResult") -> str:
     """Build the 1-line headline string (used for stdout and Discord)."""
     g1 = next((g for g in result.gates if g.gate_id == "G1"), None)
@@ -321,6 +351,9 @@ def main() -> int:
     for g in result.gates:
         marker = "PASS" if g.passed else "FAIL"
         print(f"  [{marker}] {g.gate_id}: {g.observed}")
+
+    # Write machine-readable state file (consumed by dashboard, regime_alert, etc.)
+    _write_state_file(result)
 
     # Exit 0 on successful evaluation (report saved + headline emitted).
     # Gate status (GREEN/YELLOW/RED) is data, not a task-runner failure signal.
