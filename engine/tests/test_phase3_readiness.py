@@ -786,7 +786,7 @@ class TestEvaluateAllOverallLogic:
 
 
 @pytest.fixture()
-def readiness_client() -> TestClient:
+def readiness_client():
     """Bare FastAPI app mounting only the readiness router (auth dependency overridden)."""
     from middleware.auth import verify_api_key
     from routers.readiness_router import router
@@ -795,7 +795,8 @@ def readiness_client() -> TestClient:
     # Override the auth dependency so tests don't need a real API key
     app.dependency_overrides[verify_api_key] = lambda: "test-key"
     app.include_router(router)
-    return TestClient(app)
+    with TestClient(app) as client:
+        yield client
 
 
 class TestReadinessRoute:
