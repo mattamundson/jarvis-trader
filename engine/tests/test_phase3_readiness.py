@@ -15,7 +15,7 @@ import sqlite3
 import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Literal
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -819,7 +819,15 @@ class TestReadinessRoute:
         conn.commit()
         conn.close()
 
-        with patch("routers.readiness_router._default_db_path", return_value=fake_db):
+        _cov = Mock(
+            stdout="risk/safety_layer.py   1735   103   97%\n",
+            stderr="",
+            returncode=0,
+        )
+        with (
+            patch("readiness.phase3_criteria.subprocess.run", return_value=_cov),
+            patch("routers.readiness_router._default_db_path", return_value=fake_db),
+        ):
             resp = readiness_client.get("/readiness/phase3")
 
         assert resp.status_code == 200
@@ -857,7 +865,15 @@ class TestReadinessRoute:
         conn.commit()
         conn.close()
 
-        with patch("routers.readiness_router._default_db_path", return_value=fake_db):
+        _cov = Mock(
+            stdout="risk/safety_layer.py   1735   103   97%\n",
+            stderr="",
+            returncode=0,
+        )
+        with (
+            patch("readiness.phase3_criteria.subprocess.run", return_value=_cov),
+            patch("routers.readiness_router._default_db_path", return_value=fake_db),
+        ):
             resp = readiness_client.get("/readiness/phase3?format=markdown")
 
         assert resp.status_code == 200
