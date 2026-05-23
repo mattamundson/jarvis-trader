@@ -8,10 +8,18 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
-VALIDATION_GATES = {
+
+class _GateDef(TypedDict):
+    target: float
+    direction: str
+    label: str
+
+
+VALIDATION_GATES: dict[str, _GateDef] = {
     "profit_factor": {"target": 2.0, "direction": "gte", "label": "Profit Factor"},
     "sharpe_ratio": {"target": 1.5, "direction": "gte", "label": "Sharpe Ratio"},
     "win_rate": {"target": 55.0, "direction": "gte", "label": "Win Rate %"},
