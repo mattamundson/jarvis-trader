@@ -25,11 +25,13 @@ class TVStreamer:
     Manages WebSocket connection to TradingView and dispatches data.
     """
 
-    def __init__(self, symbols: List[str]):
+    def __init__(self, symbols: List[str], greeks_symbols: Optional[List[str]] = None):
         self.symbols = [s.upper() for s in symbols]
+        self.greeks_symbols = [s.upper() for s in greeks_symbols] if greeks_symbols else []
         self.redis_client = None
         self._running = False
         self._task = None
+        self._greeks_task = None
 
     async def connect_redis(self):
         """Initialise Redis connection for streaming."""
@@ -58,6 +60,23 @@ class TVStreamer:
             await self.redis_client.set(f"market:latest:{symbol}", payload)
         except Exception as e:
             logger.debug(f"Redis stream error for {symbol}: {e}")
+
+    async def _stream_greeks(self, symbol: str, data_manager):
+        """
+        Fetch Greeks from IBKR and publish to Redis.
+        """
+        if not self.redis_client or not data_manager:
+            return
+
+        try:
+            greeks = await data_manager.get_options_greeks(symbol)
+            if "error" not in greeks:
+                payload = json.dumps(greeks)
+                await self.redis_client.publish(f"market:greeks:{symbol}", payload)
+                await self.redis_client.set(f"market:greeks:latest:{symbol}", payload)
+                logger.debug(f"[TVStreamer] Streamed Greeks for {symbol}")
+        except Exception as e:
+            logger.debug(f"[TVStreamer] Greeks stream error for {symbol}: {e}")
 
     async def _persist_to_questdb(self, symbol: str, data: Dict[str, Any]):
         """
@@ -90,25 +109,46 @@ class TVStreamer:
         except Exception as e:
             logger.debug(f"[TVStreamer] QuestDB persistence error: {e}")
 
-    async def start(self):
+    async def start(self, data_manager=None):
         """Start the streaming loop."""
         if self._running:
             return
-        
+
         self._running = True
         await self.connect_redis()
-        
+
         logger.info(f"🚀 TVStreamer: Starting real-time stream for {self.symbols}")
         self._task = asyncio.create_task(self._run_loop())
+
+        if self.greeks_symbols and data_manager:
+            logger.info(f"🚀 TVStreamer: Starting Greeks stream for {self.greeks_symbols}")
+            self._greeks_task = asyncio.create_task(self._greeks_loop(data_manager))
 
     async def stop(self):
         """Gracefully stop the streamer."""
         self._running = False
         if self._task:
             self._task.cancel()
+        if self._greeks_task:
+            self._greeks_task.cancel()
         if self.redis_client:
             await self.redis_client.close()
         logger.info("🛑 TVStreamer: Stopped")
+
+    async def _greeks_loop(self, data_manager):
+        """
+        Periodically poll Greeks for active options.
+        """
+        while self._running:
+            try:
+                for symbol in self.greeks_symbols:
+                    await self._stream_greeks(symbol, data_manager)
+                await asyncio.sleep(10)  # Refresh Greeks every 10s
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[TVStreamer] Greeks loop error: {e}")
+                await asyncio.sleep(10)
 
     async def _run_loop(self):
         """
@@ -185,7 +225,9 @@ class TVStreamer:
                     proc.terminate()
                 await asyncio.sleep(5)
 
-def get_tv_streamer(symbols: Optional[List[str]] = None) -> TVStreamer:
+def get_tv_streamer(
+    symbols: Optional[List[str]] = None, greeks_symbols: Optional[List[str]] = None
+) -> TVStreamer:
     """Factory for TVStreamer singleton."""
     _symbols = symbols or ["MES", "MNQ", "MGC", "MCL"]
-    return TVStreamer(_symbols)
+    return TVStreamer(_symbols, greeks_symbols)

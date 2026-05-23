@@ -990,11 +990,20 @@ class IBGatewayConnector:
         balance = await self.get_account_balance()
         positions_list = await self.get_positions()
         positions_map = {p["symbol"]: p for p in positions_list}
-        return {
-            **balance,
-            "positions": positions_map,
-            "position_count": len(positions_list),
-        }
+        return {**balance, "positions": positions_map}
+
+    async def get_options_greeks(self, symbol: str) -> dict:
+        """
+        Fetch real-time Greeks for an option.
+        Relays to the underlying IBGatewayManager.
+        """
+        if not self.is_connected():
+            return {"error": "Not connected"}
+
+        if self._gateway:
+            return await self._gateway.get_options_greeks(symbol)
+
+        return {"error": "Gateway unavailable"}
 
     # ── Market Data ───────────────────────────────────────────────────────────
 
