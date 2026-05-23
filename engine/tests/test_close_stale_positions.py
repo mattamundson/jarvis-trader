@@ -24,8 +24,8 @@ def stale_positions_client():
     pr_mod.inject_dependencies(tracker, None)
 
     app.include_router(pr_mod.router, prefix="/portfolio")
-    client = TestClient(app)
-    yield client
+    with TestClient(app) as client:
+        yield client
 
     pr_mod.inject_dependencies(old_pt, old_db)
 
