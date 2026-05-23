@@ -459,11 +459,14 @@ class CronRegister(BaseApplier):
             )
 
         # `hermes cron add` is an alias for `cron create` with signature:
-        #   hermes cron add [--name N] [--profile P] [--deliver D] <schedule> [prompt]
-        # schedule and prompt are POSITIONAL, not flag-named.
+        #   hermes cron add [--name N] <schedule> [prompt]
+        # Use HERMES_PROFILE env-var prefix for non-default profiles (consistent
+        # with _list_existing_crons and rollback, which also use the prefix form).
+        profile_prefix = (
+            f"HERMES_PROFILE={shlex.quote(profile)} " if profile and profile != "default" else ""
+        )
         cmd_str = (
-            f"hermes cron add --name {shlex.quote(spec['name'])} "
-            + (f"--profile {shlex.quote(profile)} " if profile and profile != "default" else "")
+            f"{profile_prefix}hermes cron add --name {shlex.quote(spec['name'])} "
             + f"{shlex.quote(spec['schedule'])} {shlex.quote(spec['prompt'])}"
         )
 
