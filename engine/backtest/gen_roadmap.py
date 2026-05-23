@@ -130,10 +130,10 @@ def _get_done_ids(repo_root: Path, task_ids: list[str]) -> set[str]:
     # 2. Supplemental overrides (file-verified tasks)
     if _DONE_OVERRIDES.exists():
         for line in _DONE_OVERRIDES.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped and not stripped.startswith("#"):
-                if re.match(r"^P\d+-\d+$", stripped):
-                    done.add(stripped)
+            # Strip inline comments before matching
+            content = line.split("#")[0].strip()
+            if content and re.match(r"^P\d+-\d+$", content):
+                done.add(content)
 
     return done
 
