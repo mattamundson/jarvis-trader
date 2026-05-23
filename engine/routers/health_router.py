@@ -227,6 +227,44 @@ async def _get_ib_gateway_health() -> dict:
     return health
 
 
+@router.get("/system/data-integrity")
+async def get_data_integrity():
+    """
+    Returns real-time data freshness metrics from Redis.
+    Pattern: datasource:*:last_update
+    """
+    try:
+        import redis.asyncio as redis
+
+        r = redis.from_url(settings.REDIS_URL or "redis://localhost:6379/0", decode_responses=True)
+
+        keys = await r.keys("datasource:*:last_update")
+        results = []
+        now = datetime.now(timezone.utc)
+
+        for key in keys:
+            val = await r.get(key)
+            try:
+                last_update = datetime.fromisoformat(val)
+                latency = (now - last_update).total_seconds()
+                results.append(
+                    {
+                        "source": key.replace("datasource:", "").replace(":last_update", ""),
+                        "last_update": val,
+                        "latency_sec": round(latency, 2),
+                        "status": "healthy" if latency < 10 else "stale",
+                    }
+                )
+            except Exception:
+                continue
+
+        await r.close()
+        return {"timestamp": now.isoformat(), "sources": results, "count": len(results)}
+    except Exception as e:
+        logger.error(f"Data integrity check failed: {e}")
+        return {"error": str(e), "sources": [], "count": 0}
+
+
 @router.get(
     "/health",
     response_model=HealthResponse,

@@ -58,6 +58,11 @@ class TVStreamer:
             payload = json.dumps(data)
             await self.redis_client.publish(f"market:ticks:{symbol}", payload)
             await self.redis_client.set(f"market:latest:{symbol}", payload)
+            
+            # Freshness tracking (Phase 2.6)
+            now_ts = datetime.now(timezone.utc).isoformat()
+            await self.redis_client.set(f"datasource:ticks:{symbol}:last_update", now_ts)
+            await self.redis_client.set("datasource:tv_stream:last_update", now_ts)
         except Exception as e:
             logger.debug(f"Redis stream error for {symbol}: {e}")
 
@@ -74,6 +79,11 @@ class TVStreamer:
                 payload = json.dumps(greeks)
                 await self.redis_client.publish(f"market:greeks:{symbol}", payload)
                 await self.redis_client.set(f"market:greeks:latest:{symbol}", payload)
+                
+                # Freshness tracking (Phase 2.6)
+                now_ts = datetime.now(timezone.utc).isoformat()
+                await self.redis_client.set(f"datasource:greeks:{symbol}:last_update", now_ts)
+                
                 logger.debug(f"[TVStreamer] Streamed Greeks for {symbol}")
         except Exception as e:
             logger.debug(f"[TVStreamer] Greeks stream error for {symbol}: {e}")
