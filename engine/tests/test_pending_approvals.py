@@ -10,6 +10,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from unittest.mock import patch
+
 from config import TradingConfig
 from database.manager import DatabaseManager
 from risk.safety_layer import SafetyLayer
@@ -89,7 +91,11 @@ def test_approval_router_approve_flow(tmp_db: Path):
         pipeline_snapshot={"trade_decision": {"limit_price": 5823.50}},
     )
 
-    r = client.post(f"/pipeline/pending-approvals/{aid}/approve", json={})
+    # Patch is_strategy_authorized so MES's VALIDATION_ONLY_INSTRUMENTS gate
+    # doesn't block the approval-flow mechanics test. The gate itself is covered
+    # separately in test_validation_only_instruments.py.
+    with patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "")):
+        r = client.post(f"/pipeline/pending-approvals/{aid}/approve", json={})
     assert r.status_code == 200, r.text
     data = r.json()
     assert data["paper_trade_id"] == "paper-uuid-123"

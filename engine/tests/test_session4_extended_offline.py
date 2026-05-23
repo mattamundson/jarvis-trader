@@ -90,6 +90,7 @@ for _mod_name in _MODULES_TO_MOCK:
 from fastapi.testclient import TestClient  # noqa: E402
 
 import routers.analytics_router as _analytics_router_mod  # noqa: E402
+import routers.portfolio_router as _portfolio_router_mod  # noqa: E402
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -122,7 +123,8 @@ class _FakeDbManager:
 
         # Bootstrap the schema.
         conn = sqlite3.connect(str(self._db_path))
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS paper_trades (
                 trade_id    TEXT PRIMARY KEY,
                 symbol      TEXT NOT NULL,
@@ -137,8 +139,10 @@ class _FakeDbManager:
                 strategy_params TEXT,
                 notes       TEXT
             )
-        """)
-        conn.execute("""
+        """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS alert_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 alert_type  TEXT,
@@ -146,7 +150,8 @@ class _FakeDbManager:
                 message     TEXT,
                 created_at  TEXT
             )
-        """)
+        """
+        )
         conn.commit()
         conn.close()
 
@@ -237,7 +242,10 @@ class TestSession4ExtendedOffline(unittest.TestCase):
 
     def test_weekly_stats(self) -> None:
         """GET /portfolio/stats/weekly must return HTTP 200 with required fields."""
-        with patch.object(main_mod, "db_manager", self._db_mock):
+        with (
+            patch.object(main_mod, "db_manager", self._db_mock),
+            patch.object(_portfolio_router_mod, "db_manager", self._db_mock),
+        ):
             r = client.get("/portfolio/stats/weekly", headers=_AUTH)
         self.assertEqual(
             r.status_code,
