@@ -458,6 +458,24 @@ async def submit_bracket(
             stp_id,
         )
 
+    # ── 5. Register in account-level bracket registry ────────────────────────
+    # Enables kill-switch path to cancel pending entries before they fill.
+    try:
+        from brokers.active_bracket_registry import get_registry as _get_bracket_registry
+
+        _get_bracket_registry().register(
+            symbol=symbol,
+            entry_id=parent_id,
+            stp_id=stp_id,
+            tp_id=tp_id,
+            oca_group=entry_spec.get("oca_group"),
+        )
+    except Exception as _reg_exc:
+        logger.warning(
+            "submit_bracket: account-level registry registration failed (non-fatal): %s",
+            _reg_exc,
+        )
+
     bracket_status = "attached" if tp_id is not None else "partial"
     return {
         "approved": True,

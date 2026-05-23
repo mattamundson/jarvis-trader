@@ -543,6 +543,37 @@ class SafetyLayer:
             _reason_str = reason.value if hasattr(reason, "value") else str(reason)
             _schedule_background_coro(lambda: _oc_kill(reason=_reason_str, message=message))
 
+        # Account-level bracket cancel: prevent pending entry orders from
+        # filling after halt (§6.7 — additive to per-trade STP/TP protection).
+        # Leaves STP/TP children alive so already-open positions stay protected.
+        _gw = self._ib_gateway
+
+        async def _cancel_pending_bracket_entries() -> None:
+            try:
+                from brokers.active_bracket_registry import (
+                    get_registry as _get_bracket_registry,
+                )
+
+                result = await _get_bracket_registry().cancel_all_entries(_gw)
+                if result["cancelled"]:
+                    logger.critical(
+                        "activate_kill_switch: cancelled %d pending bracket entries: %s",
+                        len(result["cancelled"]),
+                        result["cancelled"],
+                    )
+                if result.get("errors"):
+                    logger.error(
+                        "activate_kill_switch: %d bracket cancel errors: %s",
+                        len(result["errors"]),
+                        result["errors"],
+                    )
+            except Exception as _exc:
+                logger.warning(
+                    "activate_kill_switch: bracket entry cancel raised (non-fatal): %s", _exc
+                )
+
+        _schedule_background_coro(_cancel_pending_bracket_entries)
+
     def deactivate_kill_switch(self, authorized_by: str = "human") -> None:
         """Resume trading. Only callable by human action (not by agents)."""
         self._kill_switch_active = False
