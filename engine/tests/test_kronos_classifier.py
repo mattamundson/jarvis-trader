@@ -108,12 +108,21 @@ async def test_classify_returns_neutral_dict_when_enabled_stub(
     monkeypatch: pytest.MonkeyPatch,
     bars_df: pd.DataFrame,
 ) -> None:
-    """Enabled flag (stub): classify(df) returns neutral dict mentioning stub."""
+    """Enabled flag, but _predict_sync returns None (package missing / load fail):
+    classify(df) must return the neutral stub dict.
+
+    We mock _predict_sync to return None so this test covers the
+    stub-fallback path regardless of whether the Kronos weights are
+    available in the test environment.
+    """
+    from unittest.mock import patch
+
     monkeypatch.setenv(_ENV_FLAG, "1")
     from agents.kronos_classifier import KronosClassifier
 
     clf = KronosClassifier()
-    result = await clf.classify(bars_df)
+    with patch.object(clf, "_predict_sync", return_value=None):
+        result = await clf.classify(bars_df)
 
     assert result["signal"] == pytest.approx(0.0)
     assert result["confidence"] == pytest.approx(0.0)

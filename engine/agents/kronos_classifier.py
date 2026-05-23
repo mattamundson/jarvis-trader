@@ -265,6 +265,8 @@ class KronosClassifier:
                     "confidence": 0.0,
                     "summary": f"missing column {col}",
                 }
+        if not is_kronos_enabled():
+            return {"signal": 0.0, "confidence": 0.0, "summary": "stub — ENABLE_KRONOS not set"}
 
         # Delegate through the async wrapper so the FastAPI event loop is not blocked
         # when the real predictor is wired.
