@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -15,7 +16,12 @@ from routers import portfolio_router as pr_mod
 
 @pytest.fixture()
 def stale_positions_client():
-    """Set up test client with PortfolioTracker."""
+    """Set up test client with PortfolioTracker.
+
+    Patches send_whatsapp_message to prevent the asyncio.create_task()
+    inside the route handler from making a real Twilio HTTP call during
+    TestClient teardown (which causes anyio thread-join to hang).
+    """
     old_pt, old_db = pr_mod.paper_tracker, pr_mod.db_manager
 
     app = FastAPI()
@@ -24,8 +30,12 @@ def stale_positions_client():
     pr_mod.inject_dependencies(tracker, None)
 
     app.include_router(pr_mod.router, prefix="/portfolio")
-    with TestClient(app) as client:
-        yield client
+    with patch(
+        "notifications.whatsapp.send_whatsapp_message",
+        new_callable=AsyncMock,
+    ):
+        with TestClient(app) as client:
+            yield client
 
     pr_mod.inject_dependencies(old_pt, old_db)
 
