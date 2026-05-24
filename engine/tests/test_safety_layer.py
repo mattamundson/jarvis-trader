@@ -3103,3 +3103,90 @@ class TestSubmitEntryWithStopSidecarExceptions:
         with patch("pathlib.Path.mkdir", side_effect=PermissionError("no write")):
             result = await safety.submit_entry_with_stop("MES", "BUY", 1, 5800.0, 5785.0)
         assert result["approved"] is True
+
+
+# ---------------------------------------------------------------------------
+# §C10 — submit_paper_bracket_order coverage (lines 1464–1550)
+# ---------------------------------------------------------------------------
+
+
+class TestSubmitPaperBracketOrder:
+    """Coverage for SafetyLayer.submit_paper_bracket_order — all branches."""
+
+    def _make_safety(self, mock_settings, *, live: bool = True, with_gw: bool = True):
+        mock_settings.LIVE_TRADING_ENABLED = live
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_DAILY_LOSS_PCT = 0.10
+        mock_settings.MAX_DRAWDOWN_PCT = 0.20
+        mock_settings.MAX_SINGLE_ORDER_VALUE = 500_000.0
+        mock_settings.MAX_FUTURES_MARGIN_PCT = 0.40
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
+        mock_settings.MAX_TRADE_LOSS_USD = 5000.0
+        safety = SafetyLayer(mock_settings)
+        if with_gw:
+            gw = AsyncMock()
+            gw.is_connected = Mock(return_value=True)
+            safety._ib_gateway = gw
+        return safety
+
+    @pytest.mark.asyncio
+    async def test_kill_switch_active_blocks_bracket(self, mock_settings):
+        """Kill switch active → immediate rejection before any validation (line 1464)."""
+        from risk.safety_layer import KillSwitchReason
+
+        safety = self._make_safety(mock_settings)
+        safety.activate_kill_switch(KillSwitchReason.MANUAL, "test halt")
+        result = await safety.submit_paper_bracket_order("MES", "BUY", 1, 5800.0)
+        assert result["approved"] is False
+        assert "Kill switch" in result["reason"]
+        assert result["order_id"] is None
+        assert result["routed_to_ib"] is False
+
+    @pytest.mark.asyncio
+    async def test_order_fails_safety_check_rejected(self, mock_settings):
+        """check_order rejects → approved=False returned (lines 1506–1512)."""
+        safety = self._make_safety(mock_settings)
+        rejected = RiskCheckResult(
+            approved=False,
+            rejection_reason="Simulated safety rejection",
+            warnings=[],
+            adjusted_order=None,
+        )
+        with patch.object(safety, "check_order", return_value=rejected):
+            result = await safety.submit_paper_bracket_order("MES", "BUY", 1, 5800.0)
+        assert result["approved"] is False
+        assert result["routed_to_ib"] is False
+
+    @pytest.mark.asyncio
+    async def test_ib_gateway_none_returns_unavailable(self, mock_settings):
+        """Gateway is None → 'Broker connector unavailable' (lines 1515–1521)."""
+        safety = self._make_safety(mock_settings, with_gw=False)
+        result = await safety.submit_paper_bracket_order("MES", "BUY", 1, 5800.0)
+        assert result["approved"] is False
+        assert "unavailable" in result["reason"].lower()
+        assert result["routed_to_ib"] is False
+
+    @pytest.mark.asyncio
+    async def test_bracket_placed_successfully(self, mock_settings):
+        """Gateway returns status='placed' → approved=True, routed_to_ib=True (lines 1534–1543)."""
+        safety = self._make_safety(mock_settings)
+        safety._ib_gateway.place_bracket_order = AsyncMock(
+            return_value={"status": "placed", "entry_id": "e1", "sl_id": "s1", "tp_id": "t1"}
+        )
+        result = await safety.submit_paper_bracket_order(
+            "MES", "BUY", 1, 5800.0, stop_loss=5785.0, take_profit=5830.0
+        )
+        assert result["approved"] is True
+        assert result["routed_to_ib"] is True
+
+    @pytest.mark.asyncio
+    async def test_bracket_placement_fails_but_checks_passed(self, mock_settings):
+        """Gateway returns non-'placed' status → approved=True but routed_to_ib=False (lines 1545–1550)."""
+        safety = self._make_safety(mock_settings)
+        safety._ib_gateway.place_bracket_order = AsyncMock(
+            return_value={"status": "error", "error": "connection lost"}
+        )
+        result = await safety.submit_paper_bracket_order("MES", "BUY", 1, 5800.0)
+        assert result["approved"] is True
+        assert result["routed_to_ib"] is False
+        assert "broker placement failed" in result["reason"].lower()
