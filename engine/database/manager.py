@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional
 
 from ._mixins_alerts import AlertsMixin
 from ._mixins_analytics import AnalyticsMixin
+from ._mixins_canaries import CanariesMixin
 from ._mixins_decisions import DecisionsMixin
 from ._mixins_journal import JournalMixin
 from ._mixins_llm_costs import LLMCostsMixin
@@ -57,6 +58,7 @@ logger = logging.getLogger("jarvis_trader.database")
 class DatabaseManager(
     TradesMixin,
     AnalyticsMixin,
+    CanariesMixin,
     DecisionsMixin,
     DailyPnLMixin,
     PositionsMixin,

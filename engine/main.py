@@ -325,6 +325,7 @@ memory_bridge: "MemoryBridge | None" = None
 redis_trigger: "RedisSignalTrigger | None" = None
 trailing_stop_manager: "TrailingStopManager | None" = None
 portfolio_allocator: "PortfolioAllocator | None" = None
+canary_manager: "CanaryManager | None" = None
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -425,7 +426,7 @@ async def _deliver_pipeline_whatsapp_if_eligible(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ib_paper_connector, schwab_connector, order_router, ws_manager, cost_tracker, loss_tracker, validation_alert_manager, sdk_pipeline, margin_monitor, breakout_analyst, harmonic_analyst, polymarket, openbb, risk_protections, model_drawer, arb_scout, sentiment_bridge, shadow_tracker, oms_manager, tv_streamer, memory_bridge, redis_trigger, trailing_stop_manager, portfolio_allocator
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ib_paper_connector, schwab_connector, order_router, ws_manager, cost_tracker, loss_tracker, validation_alert_manager, sdk_pipeline, margin_monitor, breakout_analyst, harmonic_analyst, polymarket, openbb, risk_protections, model_drawer, arb_scout, sentiment_bridge, shadow_tracker, oms_manager, tv_streamer, memory_bridge, redis_trigger, trailing_stop_manager, portfolio_allocator, canary_manager
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -436,7 +437,7 @@ async def lifespan(app: FastAPI):
     async def _complete_background_init():
         """Heavy lifting moved here to enable <10s server binding."""
         global data_manager, ib_paper_connector, schwab_connector, portfolio_allocator
-        global tv_streamer, redis_trigger, trailing_stop_manager
+        global tv_streamer, redis_trigger, trailing_stop_manager, canary_manager
 
         logger.info("⏳ Starting heavy background initialization...")
 
@@ -506,6 +507,16 @@ async def lifespan(app: FastAPI):
             logger.info("🚀 Event-driven signal trigger + Trail Stop active")
         except Exception as e:
             logger.warning(f"⚠️ Real-time fabric background failed: {e}")
+
+        # 5. A/B Canary Framework (Phase 7.3)
+        try:
+            from services.canary_manager import CanaryManager
+
+            canary_manager = CanaryManager(db_manager, data_manager)
+            await canary_manager.start()
+            logger.info("🚀 A/B Canary Framework activated (Shadow Testing loop)")
+        except Exception as e:
+            logger.warning(f"⚠️ CanaryManager background failed: {e}")
 
         logger.info("✨ Heavy background initialization FINISHED")
 
@@ -2573,6 +2584,10 @@ async def lifespan(app: FastAPI):
     # Stop Trailing stop manager
     if trailing_stop_manager:
         await trailing_stop_manager.stop()
+
+    # Stop Canary manager
+    if canary_manager:
+        await canary_manager.stop()
 
     # Stop Redis trigger
     if redis_trigger:
