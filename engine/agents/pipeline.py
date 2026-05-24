@@ -520,6 +520,7 @@ class TradingPipeline:
         db_manager=None,
         context_manager=None,
         shadow_tracker=None,
+        memory_bridge=None,
     ):
         """
         Args:
@@ -528,11 +529,13 @@ class TradingPipeline:
             db_manager:      Optional DatabaseManager — if set, pipeline runs are persisted
             context_manager: Optional context manager instance for pipeline execution context
             shadow_tracker:  Optional ShadowModeTracker for logging blocklisted signals
+            memory_bridge:   Optional MemoryBridge for persistent working memory
         """
         self._agents = agents
         self._safety = safety_layer
         self._db = db_manager
         self._shadow_tracker = shadow_tracker
+        self._memory = memory_bridge
         self._regime_engine = RegimeEngine()
         self.context_manager = context_manager
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
@@ -1217,6 +1220,25 @@ class TradingPipeline:
             except Exception as _sh_err:
                 logger.warning("[Pipeline] Shadow logging failed (non-fatal): %s", _sh_err)
 
+        # ── Phase 3.5: Working Memory Storage ───────────────────────────
+        # Store high-confidence or actionable reasoning for future recall.
+        if self._memory and final_action.lower() in ("buy", "sell"):
+            try:
+                self._memory.remember(
+                    agent_name="trader",
+                    content=trade_decision.get("reasoning", "")[:500], # Keep snippets concise
+                    symbol=symbol,
+                    topic="trade_thesis",
+                    metadata={
+                        "action": final_action,
+                        "confidence": float(
+                            fund_decision.get("final_conviction", 0.0) if fund_decision else 0.0
+                        ),
+                    }
+                )
+            except Exception as _mem_err:
+                logger.warning("[Pipeline] Working memory storage failed (non-fatal): %s", _mem_err)
+
         return pipeline_result
 
     # ── Technical-Only Fallback Helpers ───────────────────────────────────
@@ -1508,6 +1530,18 @@ class TradingPipeline:
                 historical_context = "\n\nHistorical edge context:\n" + "\n".join(
                     f"- {r}" for r in recs
                 )
+            
+            # Phase 3.5: Working Memory Recall
+            if self._memory:
+                working_memory = self._memory.recall(
+                    agent_name="technical-analyst",
+                    symbol=symbol,
+                    topic="general",
+                    limit=3
+                )
+                if working_memory:
+                    historical_context = f"{working_memory}\n{historical_context}"
+
         except Exception:
             pass  # learning context is optional — never block the pipeline
 
