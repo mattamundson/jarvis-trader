@@ -19,6 +19,8 @@ class MarketRegime(Enum):
     RANGING = "ranging"
     VOLATILE = "volatile"
     NEUTRAL = "neutral"
+    MEANREV = "meanrev"
+    CRISIS = "crisis"
 
 @dataclass
 class RegimeStatus:

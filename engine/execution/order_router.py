@@ -161,9 +161,10 @@ class OrderRouter:
             }
 
         elif self.is_options(order):
+            equity = order.get("portfolio_equity", 10000.0) # Default
             if self.schwab and self.schwab.is_connected:
                 logger.info("Routing %s options order to Schwab", symbol)
-                return await self.schwab.submit_options_order(order)
+                return await self.schwab.submit_options_order(order, portfolio_equity=equity)
             elif self.ibkr and self.ibkr.is_connected():
                 logger.info("Routing %s options order to IBKR (Schwab unavailable)", symbol)
                 return await self.ibkr.place_paper_order(order)

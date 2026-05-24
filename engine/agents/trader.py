@@ -303,6 +303,18 @@ class TraderAgent:
                 risk_notes="System safety halt. No trades until kill switch is manually cleared.",
             )
 
+        # ── Regime Safety Gate (Phase 8.2) ──────────────────────────────
+        # Analyst reports are passed via a wrapper in the real pipeline
+        regime_override = analyst_reports.get("regime_override")
+        if regime_override and regime_override.get("blocked"):
+            reason = regime_override.get("reason", "Regime block active")
+            logger.warning(f"[Trader] {symbol} — {reason}")
+            return self._hold_decision(
+                symbol=symbol,
+                reasoning=reason,
+                risk_notes="Systemic regime protection active (CRISIS/VOLATILE). No new entries allowed.",
+            )
+
         # ── Working Memory Recall (Phase 3.5) ─────────────────────────────
         working_memory = ""
         if self._memory:
