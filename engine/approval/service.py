@@ -478,46 +478,35 @@ def reject_pending_trade(
 
 def cancel_expired_approvals(db_manager, timeout_minutes: int = 5) -> int:
     """
-    Find all 'pending' approvals older than timeout_minutes and mark as 'rejected'.
+    Find all 'pending' approvals that have exceeded their dynamic lifetime
+    and mark as 'rejected'.
     Returns number of rows cancelled.
     """
     if db_manager is None:
         return 0
 
+    from risk.approval_timeout import is_expired
+
     rows = db_manager.list_pending_approvals(limit=100)
     if not rows:
         return 0
 
-    now = datetime.now(timezone.utc)
     expired_count = 0
 
     for row in rows:
-        created_at_str = row.get("created_at")
-        if not created_at_str:
-            continue
-
         try:
-            if isinstance(created_at_str, datetime):
-                created_at = created_at_str
-            else:
-                created_at_raw = str(created_at_str).strip()
-                created_at = datetime.fromisoformat(created_at_raw.replace("Z", "+00:00"))
-            if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
-            else:
-                created_at = created_at.astimezone(timezone.utc)
-            age = (now - created_at).total_seconds() / 60
-
-            if age > timeout_minutes:
+            if is_expired(row):
                 approval_id = row["approval_id"]
                 db_manager.resolve_pending_approval(
                     approval_id,
                     new_status="rejected",
                     resolved_by="system_timeout",
-                    rejection_reason=f"Expired after {timeout_minutes}m",
+                    rejection_reason="Dynamic approval timeout exceeded",
                 )
                 logger.info(
-                    "[APPROVAL] Auto-expired stale approval %s (%s)", approval_id[:8], row["symbol"]
+                    "[APPROVAL] Auto-expired stale approval %s (%s)",
+                    approval_id[:8],
+                    row["symbol"],
                 )
                 expired_count += 1
         except Exception as e:
@@ -526,3 +515,4 @@ def cancel_expired_approvals(db_manager, timeout_minutes: int = 5) -> int:
             )
 
     return expired_count
+
