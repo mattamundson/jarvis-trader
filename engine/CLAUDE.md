@@ -56,10 +56,10 @@
 
 | Symbol | TF | WFE | Status |
 |--------|----|-----|--------|
-| MCL | 1h | 0.82 | APPROVED — paper active (orders enabled) |
-| MNQ | 1h | 0.57 | APPROVED — paper active (orders enabled) |
+| MCL | 1h | 0.82 | HALTED — hypotheses A-E exhausted 2026-05-07; `DO_NOT_TRADE_SYMBOLS`; `paper_config.py enabled=False` |
+| MNQ | 1h | 0.57 | HALTED — trend/breakout/ORB all fail gate v2 (55 trades, 0 wins 2026-05-06/07); `DO_NOT_TRADE_SYMBOLS` |
 | MGC | 1d | 0.14 | HALTED-VALIDATION-ONLY — pipeline runs, NO paper orders (Wave 3, 2026-05-21) |
-| MES | 1h | 0.09 | REJECTED-VALIDATION-ONLY — pipeline runs, NO paper orders (Tier 3 authorized 2026-04-09) |
+| MES | 1h | 0.09 | VALIDATION-ONLY — pipeline runs, NO paper orders; P3-14 WFE/auth clarification pending |
 | SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 |
 
 ### Validation-only lifecycle
