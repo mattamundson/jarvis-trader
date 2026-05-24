@@ -49,3 +49,4 @@ P2-12   # Credential-guard hook tightened for python -c args (895029b in ~/.clau
 P2-14   # Cred-rotation audit trail (~/scripts/cred-rotation-audit.ps1 — ec4c812)
 P2-30   # hermes-safe-restart.sh at /root/.hermes/bin/ (pre-existing, stream-safe)
 P3-8    # Gate v2 FDR analysis complete (engine/data/GATE_V2_FDR_ANALYSIS.md; 46671a3)
+P3-29   # Session-coordination lockfile (~/scripts/claude-file-lock.ps1; a27741d)
