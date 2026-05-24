@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -18,11 +19,14 @@ from routers import portfolio_router as pr_mod
 def stale_positions_client():
     """Set up test client with PortfolioTracker.
 
-    Patches send_whatsapp_message to prevent the asyncio.create_task()
-    inside the route handler from making a real Twilio HTTP call during
-    TestClient teardown (which causes anyio thread-join to hang).
+    Sets TESTING=1 to suppress the OpenClaw subprocess.run() call in
+    tracker.close_trade(), and patches send_whatsapp_message to prevent
+    the asyncio.create_task() in the route handler from making a real
+    Twilio HTTP call. Both suppress teardown hangs in anyio's thread join.
     """
     old_pt, old_db = pr_mod.paper_tracker, pr_mod.db_manager
+    old_testing = os.environ.get("TESTING")
+    os.environ["TESTING"] = "1"
 
     app = FastAPI()
     tmp = Path(tempfile.mkdtemp()) / "paper_trade_audit.jsonl"
@@ -37,6 +41,10 @@ def stale_positions_client():
         with TestClient(app) as client:
             yield client
 
+    if old_testing is None:
+        os.environ.pop("TESTING", None)
+    else:
+        os.environ["TESTING"] = old_testing
     pr_mod.inject_dependencies(old_pt, old_db)
 
 
