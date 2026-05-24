@@ -50,3 +50,8 @@ P2-14   # Cred-rotation audit trail (~/scripts/cred-rotation-audit.ps1 — ec4c8
 P2-30   # hermes-safe-restart.sh at /root/.hermes/bin/ (pre-existing, stream-safe)
 P3-8    # Gate v2 FDR analysis complete (engine/data/GATE_V2_FDR_ANALYSIS.md; 46671a3)
 P3-29   # Session-coordination lockfile (~/scripts/claude-file-lock.ps1; a27741d)
+P0-3    # ibkr_execution_connected=true confirmed post-restart (2026-05-23); regression cleared
+P0-5    # /health verified post-restart: status=ok, llm_path_healthy=true, ibkr_execution_connected=true
+P2-13   # Wave 2 1P pre-staging YAML (~/.claude/handoffs/WAVE2_1P_PRESTAGE_2026-05-23.yaml); B6 use-check confirms firecrawl/supermemory not in engine/
+P2-18   # Stale — career-ops retired 2026-05-09; CV DOCX build no longer relevant
+P3-48   # Pre-flight permission gates rule (~/.claude/rules/destructive-op-gates.md; PROPOSING_DESTRUCTIVE_OP marker)
