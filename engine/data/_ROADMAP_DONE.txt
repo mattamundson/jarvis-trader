@@ -55,3 +55,6 @@ P0-5    # /health verified post-restart: status=ok, llm_path_healthy=true, ibkr_
 P2-13   # Wave 2 1P pre-staging YAML (~/.claude/handoffs/WAVE2_1P_PRESTAGE_2026-05-23.yaml); B6 use-check confirms firecrawl/supermemory not in engine/
 P2-18   # Stale — career-ops retired 2026-05-09; CV DOCX build no longer relevant
 P3-48   # Pre-flight permission gates rule (~/.claude/rules/destructive-op-gates.md; PROPOSING_DESTRUCTIVE_OP marker)
+P1-9    # Jarvis-EngineHealth-Hourly task already registered; check-engine-health.ps1 exists (cap 3/hr)
+P2-10   # Jarvis-PM2RestartWatch-15min registered; pm2-restart-watch.ps1 created (alert >5 restarts/hr via Telegram)
+P2-15   # Jarvis-RotationReminder-Weekly already registered; rotation-reminder.ps1 exists (Fridays 09:00)
