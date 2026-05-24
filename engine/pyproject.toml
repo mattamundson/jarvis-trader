@@ -37,6 +37,8 @@ addopts = [
     "--strict-markers",
     "--tb=short",
     "-ra",
+    "-m",
+    "not manual and not integration_ib",
 ]
 markers = [
     "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
