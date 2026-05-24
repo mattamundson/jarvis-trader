@@ -233,6 +233,7 @@ class TestGeminiPrimaryRouting:
             "fundamental_analyst",
             "hermes-upgrade-classifier",
             "bookmark_clusterer",
+            "kairos_dreaming",
         }
         assert expected == llm_client.GEMINI_PRIMARY_AGENTS
 
