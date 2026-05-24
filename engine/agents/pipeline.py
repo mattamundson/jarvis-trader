@@ -31,7 +31,8 @@ from typing import Any, Optional
 import pandas as pd
 
 from analysis.regime_engine import MarketRegime as _LegacyRegime
-from backtest.regime_classifier import RegimeClassifierV2, MarketRegime
+from analysis.regime_engine import RegimeStatus
+from backtest.regime_classifier import RegimeClassifierV2
 from database import repository
 
 try:
@@ -1560,18 +1561,20 @@ class TradingPipeline:
 
         # Phase 5.2: Intraday Regime V2
         regime_report = self._regime_engine.classify_latest(df) if df is not None else None
-        
+
         # Build compatibility object for prompts
-        from analysis.regime_engine import RegimeStatus, MarketRegime as _LegacyRegime
-        
+        # RegimeClassifierV2 uses "range"; legacy MarketRegime enum uses "ranging"
+        _REGIME_V2_MAP = {"range": "ranging"}
         regime_status = None
         if regime_report:
+            regime_str = regime_report["regime"].lower()
+            regime_str = _REGIME_V2_MAP.get(regime_str, regime_str)
             regime_status = RegimeStatus(
-                regime=_LegacyRegime(regime_report["regime"].lower()),
-                adx=0.0, # ADX not in V2 directly
+                regime=_LegacyRegime(regime_str),
+                adx=0.0,  # ADX not in V2 directly
                 atr_ratio=regime_report.get("atr_norm", 1.0),
                 volatility=0.0,
-                description=regime_report.get("description", "")
+                description=regime_report.get("description", ""),
             )
             logger.info(
                 "[Pipeline] %s — Regime V2 classified as %s",
