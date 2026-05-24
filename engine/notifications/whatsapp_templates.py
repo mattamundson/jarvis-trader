@@ -167,6 +167,10 @@ class SignalAlertTemplate:
 
         msg = "\n".join(lines).rstrip()
 
+        # Phase 4.1: Interactive instructions
+        if not kill_switch_active:
+            msg += "\n\nReply *Y* to approve, *N* to reject."
+
         # Hard cap at WhatsApp limit
         if len(msg) > MAX_WHATSAPP_CHARS:
             msg = msg[: MAX_WHATSAPP_CHARS - 4] + "…"

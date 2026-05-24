@@ -40,6 +40,7 @@ import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
 import { MESSprintGate } from "@/components/MESSprintGate";
+import PendingApprovals from "@/components/PendingApprovals";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -262,8 +263,10 @@ export default function DashboardPage() {
           </div>
 
           {/* Right column — safety + sentiment */}
-          <div className="col-span-12 lg:col-span-3 space-y-4">
+          <div className="col-span-12 lg:col-span-4 space-y-6">
+            <PendingApprovals />
             <KillSwitch
+
               isActive={safety?.kill_switch_active ?? false}
               reason={safety?.kill_switch_reason}
               onToggle={onKillSwitchToggle}

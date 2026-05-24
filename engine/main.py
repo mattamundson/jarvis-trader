@@ -126,6 +126,8 @@ from routers.paper_validation_router import router as paper_validation_router
 from routers.proactive_validation_router import router as proactive_validation_router
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
+from routers.whatsapp_router import router as whatsapp_router
+from routers.whatsapp_router import inject_dependencies as inject_whatsapp_deps
 from routers.instruments_router import router as instruments_router
 from routers.brokers_router import router as brokers_router
 from routers.brokers_router import inject_dependencies as inject_brokers_deps
@@ -2603,6 +2605,8 @@ app.include_router(validation_router)
 app.include_router(paper_validation_router)
 app.include_router(proactive_validation_router)
 app.include_router(webhook_router)
+app.include_router(whatsapp_router)
+inject_whatsapp_deps(db_manager, paper_tracker, safety_layer, data_manager)
 app.include_router(discord_router)
 app.include_router(experiments_router)
 app.include_router(backtest_router)

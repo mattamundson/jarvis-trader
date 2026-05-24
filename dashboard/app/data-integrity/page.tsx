@@ -59,7 +59,7 @@ export default function DataIntegrityPage() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <Badge variant={data?.count ? "outline" : "destructive"}>
+          <Badge variant={data?.count ? "info" : "bear"}>
             {data?.count || 0} active streams
           </Badge>
           <button
@@ -95,7 +95,7 @@ export default function DataIntegrityPage() {
                 </div>
                 <h3 className="font-semibold uppercase tracking-wider text-sm">{src.source}</h3>
               </div>
-              <Badge variant={src.status === "healthy" ? "success" : "warning"}>
+              <Badge variant={src.status === "healthy" ? "bull" : "warn"}>
                 {src.status}
               </Badge>
             </div>
@@ -157,8 +157,8 @@ export default function DataIntegrityPage() {
               Phase 2.6 targets achieved. Monitoring real-time futures ticks (MES, MNQ) and Options Greeks.
             </p>
             <div className="mt-4 flex gap-2">
-              <Badge variant="outline">ticks_buffer: 512</Badge>
-              <Badge variant="outline">greeks_cache: 10s</Badge>
+              <Badge variant="neutral">ticks_buffer: 512</Badge>
+              <Badge variant="neutral">greeks_cache: 10s</Badge>
             </div>
           </div>
         </div>
