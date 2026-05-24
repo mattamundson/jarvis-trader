@@ -706,6 +706,80 @@ class SchwabConnector:
             )
             return {"status": "error", "reason": str(exc)}
 
+    async def submit_options_spread_order(self, order: dict, portfolio_equity: float) -> dict:
+        """
+        Submit a two-leg vertical spread order (Credit/Debit).
+        order keys: symbol, type (BULL_PUT_SPREAD|BEAR_CALL_SPREAD), 
+                    short_option_symbol, long_option_symbol, 
+                    quantity, limit_price.
+        """
+        symbol = order.get("symbol", "UNKNOWN")
+        spread_type = order.get("type", "")
+        short_opt_sym_str = order.get("short_option_symbol", "")
+        long_opt_sym_str = order.get("long_option_symbol", "")
+        quantity = int(order.get("quantity", 0))
+        limit_price = order.get("limit_price")
+
+        logger.info(
+            "SchwabConnector.submit_options_spread_order | %s %s qty=%d limit=%s",
+            symbol,
+            spread_type,
+            quantity,
+            limit_price,
+        )
+
+        if not self.is_connected:
+            return {"status": "error", "reason": "Schwab not connected"}
+
+        try:
+            from schwab.orders.options import OptionSymbol  # noqa: PLC0415
+            from schwab.orders.generic import OrderBuilder  # noqa: PLC0415
+
+            short_opt_sym = OptionSymbol.parse_symbol(short_opt_sym_str)
+            long_opt_sym = OptionSymbol.parse_symbol(long_opt_sym_str)
+
+            # Build a multi-leg vertical spread order
+            # (Note: simpler to use OrderBuilder directly for multi-leg)
+            builder = OrderBuilder()
+            builder.set_order_strategy_type(OrderBuilder.OrderStrategyType.SINGLE)
+            builder.set_order_type(OrderBuilder.OrderType.NET_CREDIT if limit_price > 0 else OrderBuilder.OrderType.NET_DEBIT)
+            builder.set_price(abs(limit_price))
+            builder.set_session(OrderBuilder.Session.NORMAL)
+            builder.set_duration(OrderBuilder.Duration.DAY)
+
+            if spread_type == "BULL_PUT_SPREAD":
+                # Sell Short Put, Buy Long Put
+                builder.add_option_leg(OrderBuilder.Instruction.SELL_TO_OPEN, short_opt_sym, quantity)
+                builder.add_option_leg(OrderBuilder.Instruction.BUY_TO_OPEN, long_opt_sym, quantity)
+            elif spread_type == "BEAR_CALL_SPREAD":
+                # Sell Short Call, Buy Long Call
+                builder.add_option_leg(OrderBuilder.Instruction.SELL_TO_OPEN, short_opt_sym, quantity)
+                builder.add_option_leg(OrderBuilder.Instruction.BUY_TO_OPEN, long_opt_sym, quantity)
+            else:
+                return {"status": "error", "reason": f"Unsupported spread type: {spread_type}"}
+
+            spec = builder.build()
+            response = self._client.place_order(account_hash=self._account_hash, order_spec=spec)
+
+            if response.status_code in (200, 201):
+                order_id = response.headers.get("Location", "").split("/")[-1] or str(uuid.uuid4())
+                return {
+                    "status": "placed",
+                    "order_id": order_id,
+                    "symbol": symbol,
+                    "type": spread_type,
+                    "quantity": quantity,
+                    "limit_price": limit_price,
+                }
+
+            body = getattr(response, "text", str(getattr(response, "content", "")))
+            logger.error("SchwabConnector: spread FAILED | HTTP %s | %s", response.status_code, body)
+            return {"status": "error", "reason": f"HTTP {response.status_code}", "body": body}
+
+        except Exception as exc:
+            logger.error("SchwabConnector.submit_options_spread_order exception: %s", exc, exc_info=True)
+            return {"status": "error", "reason": str(exc)}
+
     async def place_paper_order(self, order: dict) -> dict:
         """
         Safety-integrated entry point — primary method for the order router.
