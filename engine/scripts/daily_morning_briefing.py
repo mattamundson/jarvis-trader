@@ -163,7 +163,6 @@ def load_active_strategies() -> list[dict[str, Any]]:
         logger.warning("paper_config not importable — active strategies unavailable")
         return []
 
-    now = datetime.now(_UTC)
     active: list[dict[str, Any]] = []
 
     for sym, cfg in PAPER_CONFIGS.items():
@@ -324,6 +323,70 @@ def render_overnight_regime(regime_map: dict[str, dict]) -> list[str]:
         sf = f"{r['sma_fast']:.2f}" if r.get("sma_fast") is not None else "—"
         ss = f"{r['sma_slow']:.2f}" if r.get("sma_slow") is not None else "—"
         lines.append(f"| {sym} | {regime} | {bias} | {close} | {atr} | {sf} | {ss} |")
+    lines.append("")
+    return lines
+
+
+_RV_ACTIVATION_GATE = 60  # trades required before RV filter can be enabled
+_RV_SYMBOLS = ("MES", "MGC")  # symbols with validated RV filter thresholds
+
+
+def fetch_rv_accumulation(db_path: Path | None = None) -> dict[str, int]:
+    """
+    Return {symbol: rv_tagged_count} — count of paper_trades rows where
+    strategy_params.rv_at_entry IS NOT NULL, per symbol.
+    """
+    path = db_path or _DB_PATH
+    if not path.exists():
+        return dict.fromkeys(_RV_SYMBOLS, 0)
+    try:
+        conn = sqlite3.connect(str(path))
+        try:
+            rows = conn.execute(
+                """
+                SELECT symbol,
+                       SUM(CASE WHEN json_extract(strategy_params, '$.rv_at_entry')
+                                     IS NOT NULL THEN 1 ELSE 0 END) AS tagged
+                FROM paper_trades
+                WHERE symbol IN ('MES', 'MGC')
+                GROUP BY symbol
+                """
+            ).fetchall()
+        finally:
+            conn.close()
+        result = dict.fromkeys(_RV_SYMBOLS, 0)
+        for sym, tagged in rows:
+            if sym in result:
+                result[sym] = int(tagged or 0)
+        return result
+    except Exception as exc:
+        logger.warning("fetch_rv_accumulation failed: %s", exc)
+        return dict.fromkeys(_RV_SYMBOLS, 0)
+
+
+def render_rv_accumulation(rv_counts: dict[str, int] | None = None) -> list[str]:
+    """Render RV filter calibration progress toward the 60-trade activation gate."""
+    if rv_counts is None:
+        rv_counts = fetch_rv_accumulation()
+
+    lines: list[str] = []
+    lines.append("### RV Filter Calibration Progress")
+    lines.append(f"*(activation gate: {_RV_ACTIVATION_GATE} tagged trades per symbol)*")
+    lines.append("")
+    lines.append("| Symbol | Tagged | Progress | Status |")
+    lines.append("|--------|--------|----------|--------|")
+    for sym in _RV_SYMBOLS:
+        count = rv_counts.get(sym, 0)
+        filled = min(count, _RV_ACTIVATION_GATE)
+        bar_len = 10
+        n_filled = round(filled / _RV_ACTIVATION_GATE * bar_len)
+        bar = "█" * n_filled + "░" * (bar_len - n_filled)
+        pct = round(count / _RV_ACTIVATION_GATE * 100)
+        if count >= _RV_ACTIVATION_GATE:
+            status = "**READY TO EVALUATE**"
+        else:
+            status = f"not ready ({pct}%)"
+        lines.append(f"| {sym} | {count}/{_RV_ACTIVATION_GATE} | `{bar}` | {status} |")
     lines.append("")
     return lines
 
@@ -664,6 +727,7 @@ def render_briefing(
     lines.extend(render_engine_status(health))
     lines.extend(render_active_strategies(active_strategies))
     lines.extend(render_overnight_regime(regime_map))
+    lines.extend(render_rv_accumulation())
     lines.extend(render_discord_overnight(discord_entries))
     lines.extend(render_calendar_placeholder())
     lines.extend(render_strategy_expectations(expectations))
