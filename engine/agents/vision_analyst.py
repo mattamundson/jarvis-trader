@@ -11,13 +11,18 @@ Channels, and Harmonic structures.
 import asyncio
 import base64
 import logging
-import os
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
-from playwright.async_api import async_playwright
-from llm.model_router import route_task, MODEL_SONNET
 from llm.client import JarvisLLMClient
+from llm.model_router import MODEL_SONNET, route_task
+
+try:
+    from playwright.async_api import async_playwright
+
+    _PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    _PLAYWRIGHT_AVAILABLE = False
 
 logger = logging.getLogger("jarvis_trader.agents.vision")
 
@@ -41,6 +46,7 @@ Return your response in valid JSON format:
 }}
 """
 
+
 class PatternVisionAnalystAgent:
     def __init__(self, llm_client=None):
         self.llm = llm_client or JarvisLLMClient()
@@ -53,31 +59,37 @@ class PatternVisionAnalystAgent:
         Navigate to TradingView and capture a screenshot of the chart.
         Returns the absolute path to the screenshot.
         """
+        if not _PLAYWRIGHT_AVAILABLE:
+            logger.warning(
+                "[Vision] playwright not installed — chart capture unavailable; run: pip install playwright && playwright install chromium"
+            )
+            return None
+
         logger.info(f"[Vision] Capturing chart for {symbol}...")
-        
+
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page(viewport={"width": 1920, "height": 1080})
-                
+
                 # TradingView Chart URL
                 # Note: This is a public URL. In production, we might use a saved layout URL.
                 url = f"https://www.tradingview.com/chart/?symbol={symbol}"
                 await page.goto(url, wait_until="networkidle", timeout=30000)
-                
+
                 # Wait for chart to stabilize
-                await asyncio.sleep(5) 
-                
+                await asyncio.sleep(5)
+
                 # Hide popups if possible (Best effort)
                 try:
                     await page.click("button[aria-label='Close']", timeout=2000)
-                except:
+                except Exception:
                     pass
-                
+
                 path = self.screenshot_dir / f"{symbol}_{int(asyncio.get_event_loop().time())}.png"
                 await page.screenshot(path=str(path))
                 await browser.close()
-                
+
                 logger.info(f"[Vision] Screenshot saved to {path}")
                 return str(path)
         except Exception as e:
@@ -93,7 +105,7 @@ class PatternVisionAnalystAgent:
             return {
                 "visual_verdict": "CAUTION",
                 "reasoning": "Visual capture failed. Proceeding with deterministic data only.",
-                "data_quality": "unavailable"
+                "data_quality": "unavailable",
             }
 
         try:
@@ -105,7 +117,7 @@ class PatternVisionAnalystAgent:
             # Note: JarvisLLMClient needs to support multi-modal messages.
             # We assume it follows the standard Claude message format.
             prompt = _VISION_PROMPT.format(symbol=symbol, bias=bias)
-            
+
             # Construct multi-modal message
             messages = [
                 {
@@ -119,10 +131,7 @@ class PatternVisionAnalystAgent:
                                 "data": encoded_string,
                             },
                         },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
+                        {"type": "text", "text": prompt},
                     ],
                 }
             ]
@@ -132,21 +141,24 @@ class PatternVisionAnalystAgent:
                 system="You are a senior technical analyst with expert chart pattern recognition skills.",
                 messages=messages,
                 max_tokens=1000,
-                agent_name="pattern_vision"
+                agent_name="pattern_vision",
             )
 
             if not llm_result.success:
                 raise RuntimeError(llm_result.error)
 
             import json
+
             result_text = llm_result.content.strip()
-            
+
             # Extract JSON block
             start = result_text.find("{")
             end = result_text.rfind("}") + 1
             if start != -1 and end > start:
                 parsed = json.loads(result_text[start:end])
-                logger.info(f"[Vision] Analysis complete for {symbol}: {parsed.get('visual_verdict')}")
+                logger.info(
+                    f"[Vision] Analysis complete for {symbol}: {parsed.get('visual_verdict')}"
+                )
                 return parsed
             else:
                 raise ValueError("No JSON found in vision response")
