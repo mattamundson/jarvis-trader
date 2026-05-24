@@ -1055,11 +1055,31 @@ class MarketDataManager:
         return {"last_price": None, "prev_close": None, "change_pct": None, "source": "unavailable"}
 
     async def get_batch_prices(self, symbols: list) -> dict:
-        """Get current prices for multiple symbols. Returns {symbol: price_dict}."""
-        results = {}
-        for symbol in symbols:
-            results[symbol] = await self.get_current_price(symbol)
-        return results
+        """
+        Get current prices for multiple symbols in parallel.
+        Uses get_tick_price to avoid TradingView high-latency chart switching.
+        """
+        if not symbols:
+            return {}
+
+        results = await asyncio.gather(
+            *[self.get_tick_price(s) for s in symbols], return_exceptions=True
+        )
+
+        batch = {}
+        for symbol, result in zip(symbols, results, strict=True):
+            if isinstance(result, Exception):
+                logger.warning(f"[market_data] Batch price failed for {symbol}: {result}")
+                batch[symbol] = {
+                    "last_price": None,
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "error",
+                }
+            else:
+                batch[symbol] = result
+
+        return batch
 
     async def get_vix(self) -> dict:
         """
@@ -1090,6 +1110,17 @@ class MarketDataManager:
                 return result
 
         return {"value": None, "source": "unavailable"}
+
+    async def get_options_greeks(self, symbol: str) -> dict:
+        """
+        Get real-time Greeks for an option.
+        Waterfall: IBKR → (Polygon unimplemented).
+        """
+        # Tier 1: IBKR
+        if self.ibkr and self.ibkr.is_connected:
+            return await self.ibkr.get_options_greeks(symbol)
+
+        return {"error": "Options Greeks data source unavailable"}
 
     async def get_options_expirations(self, symbol: str) -> list:
         """

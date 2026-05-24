@@ -103,7 +103,7 @@ _TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipp
 # This constant is checked in approval/service.py:ensure_approval_allowed() — a
 # second layer above the safety layer's DO_NOT_TRADE_SYMBOLS blocklist. The safety
 # layer is canonical; any conflict resolves in favor of safety.
-VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset({"MES", "MGC"})
+VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset()
 
 # ── Validation-Only Strategies (by stark_signal value) ────────────────────────
 # Strategy signals in this set are blocked from producing paper trades until
@@ -513,17 +513,26 @@ class TradingPipeline:
     All agents are optional — the pipeline degrades gracefully when absent.
     """
 
-    def __init__(self, agents: dict, safety_layer, db_manager=None, context_manager=None):
+    def __init__(
+        self,
+        agents: dict,
+        safety_layer,
+        db_manager=None,
+        context_manager=None,
+        shadow_tracker=None,
+    ):
         """
         Args:
             agents:          Dict of named agent instances (see class docstring)
             safety_layer:    SafetyLayer instance — provides get_status() and kill switch
             db_manager:      Optional DatabaseManager — if set, pipeline runs are persisted
             context_manager: Optional context manager instance for pipeline execution context
+            shadow_tracker:  Optional ShadowModeTracker for logging blocklisted signals
         """
         self._agents = agents
         self._safety = safety_layer
         self._db = db_manager
+        self._shadow_tracker = shadow_tracker
         self._regime_engine = RegimeEngine()
         self.context_manager = context_manager
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
@@ -1174,6 +1183,39 @@ class TradingPipeline:
                 logger.info(f"[Pipeline] WhatsApp alert queued for {symbol} {final_action.upper()}")
             except Exception as _wa_err:
                 logger.warning(f"[Pipeline] WhatsApp alert failed (non-fatal): {_wa_err}")
+
+        # ── Automated Shadow Mode Logging (P1.5) ───────────────────────────
+        # If the symbol is blocklisted (DO_NOT_TRADE_SYMBOLS) but the pipeline
+        # emitted a signal, log it to the shadow tracker for walk-forward validation.
+        if self._shadow_tracker and final_action.lower() in ("buy", "sell"):
+            try:
+                from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+                if symbol.upper() in DO_NOT_TRADE_SYMBOLS:
+                    _px = (
+                        trade_decision.get("limit_price")
+                        or trade_decision.get("stop_price")
+                        or trade_decision.get("entry_price")
+                        or 0.0
+                    )
+                    _stark_sig = (
+                        analyst_reports.get("technical", {})
+                        .get("indicators", {})
+                        .get("stark_signal", "unknown")
+                    )
+                    self._shadow_tracker.log_shadow_entry(
+                        symbol=symbol,
+                        side=final_action,
+                        quantity=float(final_quantity),
+                        price=float(_px),
+                        strategy_name=_stark_sig,
+                        reasoning=trade_decision.get("reasoning", ""),
+                        stop_loss=trade_decision.get("stop_price"),
+                        take_profit=trade_decision.get("target_price"),
+                    )
+                    logger.info("[Shadow] Auto-logged blocklisted signal for %s", symbol)
+            except Exception as _sh_err:
+                logger.warning("[Pipeline] Shadow logging failed (non-fatal): %s", _sh_err)
 
         return pipeline_result
 
