@@ -30,7 +30,8 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from analysis.regime_engine import RegimeEngine
+from analysis.regime_engine import MarketRegime as _LegacyRegime
+from backtest.regime_classifier import RegimeClassifierV2, MarketRegime
 from database import repository
 
 try:
@@ -536,7 +537,7 @@ class TradingPipeline:
         self._db = db_manager
         self._shadow_tracker = shadow_tracker
         self._memory = memory_bridge
-        self._regime_engine = RegimeEngine()
+        self._regime_engine = RegimeClassifierV2()
         self.context_manager = context_manager
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
         # _kronos is NOT set here — use _kronos_or_none property so that
@@ -1557,13 +1558,25 @@ class TradingPipeline:
                 logger.warning("regime prefetch failed — continuing without regime data: %s", exc)
                 df = None
 
-        regime_status = self._regime_engine.classify(df) if df is not None else None
-        if regime_status:
+        # Phase 5.2: Intraday Regime V2
+        regime_report = self._regime_engine.classify_latest(df) if df is not None else None
+        
+        # Build compatibility object for prompts
+        from analysis.regime_engine import RegimeStatus, MarketRegime as _LegacyRegime
+        
+        regime_status = None
+        if regime_report:
+            regime_status = RegimeStatus(
+                regime=_LegacyRegime(regime_report["regime"].lower()),
+                adx=0.0, # ADX not in V2 directly
+                atr_ratio=regime_report.get("atr_norm", 1.0),
+                volatility=0.0,
+                description=regime_report.get("description", "")
+            )
             logger.info(
-                "[Pipeline] %s — Regime classified as %s (%s)",
+                "[Pipeline] %s — Regime V2 classified as %s",
                 symbol,
-                regime_status.regime.value,
-                regime_status.description,
+                regime_report["regime"],
             )
 
         # Stage 1a: Run technical analyst first to extract price+ATR for Corey proximity boost

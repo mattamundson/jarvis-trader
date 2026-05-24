@@ -124,3 +124,32 @@ class RegimeClassifierV2:
             df = self.classify(df)
         counts = df["regime_v2"].value_counts(normalize=True) * 100
         return counts.to_dict()
+
+    def classify_latest(self, df: pd.DataFrame) -> dict:
+        """
+        Classify only the latest bar and return a descriptive dict.
+        """
+        if df.empty or len(df) < 50:
+            return {
+                "regime": MarketRegime.RANGE.value,
+                "description": "Insufficient data for V2 classification",
+                "atr_norm": 1.0,
+            }
+
+        classified = self.classify(df)
+        last_row = classified.iloc[-1]
+        
+        # Calculate some extra context for the prompt
+        atr_median = classified["atr"].tail(50).median()
+        atr_norm = last_row["atr"] / atr_median if atr_median > 0 else 1.0
+        
+        return {
+            "regime": last_row["regime_v2"],
+            "description": f"Market state: {last_row['regime_v2']} | ATR Norm: {atr_norm:.2f}",
+            "atr_norm": round(atr_norm, 3),
+            "ema_alignment": {
+                "8": round(last_row.get("ema_8", 0), 2),
+                "21": round(last_row.get("ema_21", 0), 2),
+                "34": round(last_row.get("ema_34", 0), 2),
+            }
+        }

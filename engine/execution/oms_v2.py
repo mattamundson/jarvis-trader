@@ -202,6 +202,39 @@ class OMSManager:
         # In a real system, we'd persist to DB first
         # del self.active_trades[trade.trade_id]
 
+    async def update_stop_loss(self, trade_id: str, new_stop_price: float):
+        """
+        Update the stop loss price for an active trade.
+        """
+        async with self._lock:
+            trade = self.active_trades.get(trade_id)
+            if not trade or trade.status != TradeState.ACTIVE:
+                logger.warning("[OMS] Cannot update SL: Trade %s not active", trade_id)
+                return
+
+            if not trade.stop_loss_id:
+                logger.warning("[OMS] Cannot update SL: Trade %s has no SL order ID", trade_id)
+                return
+
+            logger.info("[OMS] Updating SL for %s: %.2f -> %.2f", 
+                        trade.symbol, trade.stop_loss_price or 0.0, new_stop_price)
+            
+            try:
+                # Dispatch to router for modification
+                result = await self.router.modify_order(
+                    order_id=trade.stop_loss_id,
+                    new_price=new_stop_price
+                )
+                
+                if result.get("status") == "modified":
+                    trade.stop_loss_price = new_stop_price
+                    logger.info("[OMS] SL updated successfully for %s", trade.symbol)
+                else:
+                    logger.error("[OMS] Failed to update SL for %s: %s", 
+                                 trade.symbol, result.get("error"))
+            except Exception as e:
+                logger.error("[OMS] Exception during SL update for %s: %s", trade.symbol, e)
+
     def get_active_trades(self) -> List[Dict[str, Any]]:
         return [t.to_dict() for t in self.active_trades.values() if t.status == TradeState.ACTIVE]
 
