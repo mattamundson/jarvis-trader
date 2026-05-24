@@ -988,7 +988,7 @@ class DebateOrchestrator:
         from llm.client import JarvisLLMClient
 
         model = route_task("debate_orchestrator")
-        client = JarvisLLMClient()
+        client = JarvisLLMClient(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
 
         prompt = (
             "You are a quantitative trading evaluator. Review the bull and bear arguments, "

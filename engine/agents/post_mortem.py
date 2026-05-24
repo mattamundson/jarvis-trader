@@ -1,12 +1,13 @@
 """
 JARVIS TRADER — Post-Trade Analysis (Phase 3.3)
 ===============================================
-After every closed paper trade, Opus writes a 200-word analysis: 
+After every closed paper trade, Opus writes a 200-word analysis:
 what fired, what worked, what didn't.
 Stored in the trade_post_mortem table for weekly meta-learning.
 """
 
 import logging
+import os
 from datetime import datetime, timezone
 import json
 
@@ -46,12 +47,13 @@ Return your response in valid JSON format:
 }}
 """
 
+
 class PostTradeAnalyzer:
     def __init__(self, db_manager, llm_client=None):
         self.db = db_manager
-        self.llm = llm_client or JarvisLLMClient()
+        self.llm = llm_client or JarvisLLMClient(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
         self.model = route_task("post_trade_analysis", default_model=MODEL_OPUS)
-        
+
         # Ensure table exists
         self._ensure_table()
 
@@ -61,7 +63,8 @@ class PostTradeAnalyzer:
         try:
             with self.db._lock:
                 conn = self.db._get_connection()
-                conn.execute("""
+                conn.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS trade_post_mortem (
                         trade_id TEXT PRIMARY KEY,
                         symbol TEXT,
@@ -70,7 +73,8 @@ class PostTradeAnalyzer:
                         lesson TEXT,
                         created_at TEXT
                     )
-                """)
+                """
+                )
                 conn.commit()
                 conn.close()
         except Exception as e:
@@ -83,8 +87,10 @@ class PostTradeAnalyzer:
         if not self.llm:
             return {"error": "LLM client unavailable"}
 
-        logger.info(f"[PostMortem] Starting analysis for trade {trade_id} ({trade_data.get('symbol')})")
-        
+        logger.info(
+            f"[PostMortem] Starting analysis for trade {trade_id} ({trade_data.get('symbol')})"
+        )
+
         prompt = _POST_MORTEM_PROMPT.format(
             symbol=trade_data.get("symbol", "UNKNOWN"),
             side=trade_data.get("side", "UNKNOWN"),
@@ -93,7 +99,9 @@ class PostTradeAnalyzer:
             exit_price=trade_data.get("exit_price", 0.0),
             pnl=trade_data.get("pnl", 0.0),
             exit_reason=trade_data.get("exit_reason", "UNKNOWN"),
-            market_context=json.dumps(market_context, indent=2)[:1000] # Truncate to avoid context bloat
+            market_context=json.dumps(market_context, indent=2)[
+                :1000
+            ],  # Truncate to avoid context bloat
         )
 
         try:
@@ -102,17 +110,17 @@ class PostTradeAnalyzer:
                 model=self.model,
                 max_tokens=1000,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.0
+                temperature=0.0,
             )
-            
+
             result_text = response.content[0].text
-            
+
             # Extract JSON block
             start = result_text.find("{")
             end = result_text.rfind("}") + 1
             if start != -1 and end > start:
                 parsed = json.loads(result_text[start:end])
-                
+
                 # Persist
                 if self.db:
                     with self.db._lock:
@@ -125,12 +133,12 @@ class PostTradeAnalyzer:
                                 trade_data.get("pnl", 0.0),
                                 parsed.get("analysis", ""),
                                 parsed.get("lesson", ""),
-                                datetime.now(timezone.utc).isoformat()
-                            )
+                                datetime.now(timezone.utc).isoformat(),
+                            ),
                         )
                         conn.commit()
                         conn.close()
-                
+
                 logger.info(f"[PostMortem] Successfully analyzed trade {trade_id}")
                 return parsed
             else:
