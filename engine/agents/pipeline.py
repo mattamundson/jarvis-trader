@@ -105,7 +105,9 @@ _TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipp
 # This constant is checked in approval/service.py:ensure_approval_allowed() — a
 # second layer above the safety layer's DO_NOT_TRADE_SYMBOLS blocklist. The safety
 # layer is canonical; any conflict resolves in favor of safety.
-VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset({"MES", "MGC"})
+VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset(
+    {"MGC"}
+)  # MES promoted 2026-05-24 (Tier 3 auth)
 
 # ── Validation-Only Strategies (by stark_signal value) ────────────────────────
 # Strategy signals in this set are blocked from producing paper trades until
