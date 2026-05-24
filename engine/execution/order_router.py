@@ -223,6 +223,18 @@ class OrderRouter:
 
         return {"status": "error", "reason": "No connected broker found to cancel order"}
 
+    async def modify_order(self, order_id: str, new_price: float) -> dict:
+        """
+        Modify an existing order's price.
+        """
+        if self.ibkr and self.ibkr.is_connected():
+            return await self.ibkr.modify_order(order_id, new_price)
+
+        if self.schwab and self.schwab.is_connected:
+            return await self.schwab.modify_order(order_id, new_price)
+
+        return {"status": "error", "reason": "No connected broker found to modify order"}
+
     def status(self) -> dict:
         return {
             "ibkr_connected": bool(self.ibkr and self.ibkr.is_connected()),
