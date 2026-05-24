@@ -324,6 +324,7 @@ tv_streamer: "TVStreamer | None" = None
 memory_bridge: "MemoryBridge | None" = None
 redis_trigger: "RedisSignalTrigger | None" = None
 trailing_stop_manager: "TrailingStopManager | None" = None
+portfolio_allocator: "PortfolioAllocator | None" = None
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -424,7 +425,7 @@ async def _deliver_pipeline_whatsapp_if_eligible(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ib_paper_connector, schwab_connector, order_router, ws_manager, cost_tracker, loss_tracker, validation_alert_manager, sdk_pipeline, margin_monitor, breakout_analyst, harmonic_analyst, polymarket, openbb, risk_protections, model_drawer, arb_scout, sentiment_bridge, shadow_tracker, oms_manager, tv_streamer
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ib_paper_connector, schwab_connector, order_router, ws_manager, cost_tracker, loss_tracker, validation_alert_manager, sdk_pipeline, margin_monitor, breakout_analyst, harmonic_analyst, polymarket, openbb, risk_protections, model_drawer, arb_scout, sentiment_bridge, shadow_tracker, oms_manager, tv_streamer, memory_bridge, redis_trigger, trailing_stop_manager, portfolio_allocator
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -723,6 +724,16 @@ async def lifespan(app: FastAPI):
         logger.info(f"   Ollama model: {router_status['ollama']['model']}")
         logger.info(f"   Fallback: Anthropic {router_status['anthropic']['model']}")
 
+        # ── Portfolio Capital Allocator (Phase 8.1) ──────────────────────────
+        try:
+            from execution.portfolio_allocator import PortfolioAllocator
+
+            portfolio_allocator = PortfolioAllocator(db_manager)
+            await portfolio_allocator.calculate_allocations()
+            logger.info("✅ Portfolio Capital Allocator initialized (Kelly-fractional sizing active)")
+        except Exception as _ca_err:
+            logger.warning("⚠️  Portfolio Capital Allocator failed to init (non-fatal): %s", _ca_err)
+
         # Stage 1: Analysts
         technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
 
@@ -750,11 +761,18 @@ async def lifespan(app: FastAPI):
         bull_agent = BullResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
         bear_agent = BearResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
         debate_agent = DebateOrchestrator()
-
-        # Stages 3-5: Trader → Risk → Fund
-        trader_agent = TraderAgent(llm_client, db_manager=db_manager, memory_bridge=memory_bridge)
+        
+        # Stage 3/4: Risk & Fund Management
         risk_agent = RiskManagerAgent(llm_client)
         fund_agent = FundManagerAgent(llm_client)
+
+        # Stage 5: Trader (Phase 8.1)
+        trader_agent = TraderAgent(
+            llm_client,
+            db_manager=db_manager,
+            memory_bridge=memory_bridge,
+            portfolio_allocator=portfolio_allocator,
+        )
 
         # Stage 1 Enrichment
         breakout_analyst = BreakoutAgent(data_manager)

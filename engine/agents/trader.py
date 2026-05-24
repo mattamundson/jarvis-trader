@@ -251,7 +251,13 @@ class TraderAgent:
     # INSTRUMENT_MULTIPLIERS table in engine/utils/position_sizing.py
     _POINT_VALUES: dict = INSTRUMENT_MULTIPLIERS
 
-    def __init__(self, llm_client, db_manager=None, memory_bridge=None):
+    def __init__(
+        self,
+        llm_client,
+        db_manager=None,
+        memory_bridge=None,
+        portfolio_allocator=None,
+    ):
         """
         Args:
             llm_client: Object with .api_key attribute (Anthropic key).
@@ -260,10 +266,12 @@ class TraderAgent:
                         paper trades (falls back to fixed-fractional when
                         fewer than 10 trades exist or on any error).
             memory_bridge: Optional MemoryBridge for persistent working memory.
+            portfolio_allocator: Optional PortfolioAllocator for dynamic sizing.
         """
         self._llm = llm_client
         self._db = db_manager
         self._memory = memory_bridge
+        self._allocator = portfolio_allocator
 
     async def decide(
         self,
@@ -306,6 +314,17 @@ class TraderAgent:
             )
             if working_memory:
                 logger.info(f"[Trader] {symbol} — Recalled working memory")
+
+        # ── Portfolio-Aware Sizing (Phase 8.1) ────────────────────────────
+        # Fetch optimal risk percentage from allocator
+        risk_pct = 0.01  # baseline 1%
+        if self._allocator:
+            # Extract strategy name from technical analyst report if possible
+            tech = analyst_reports.get("technical", {})
+            strategy = tech.get("indicators", {}).get("stark_signal", "unknown")
+            risk_pct = self._allocator.get_risk_pct(strategy, symbol)
+            logger.info(f"[Trader] {symbol} — Allocator risk_pct: {risk_pct:.2%}")
+
         # ── Fixed-fractional position sizing ──────────────────────────────
         # account_value: use current_equity from SafetyLayer (broker-sourced);
         #   fall back to 10,000 if not yet synced from broker.
@@ -332,7 +351,7 @@ class TraderAgent:
             symbol=symbol,
             account_value=account_value,
             atr=atr,
-            risk_pct=0.01,
+            risk_pct=risk_pct,
             atr_stop_multiplier=0.70,
             max_contracts=max_contracts,
         )
