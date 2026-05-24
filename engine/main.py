@@ -322,6 +322,8 @@ shadow_tracker: ShadowModeTracker | None = None
 oms_manager: "OMSManager | None" = None
 tv_streamer: "TVStreamer | None" = None
 memory_bridge: "MemoryBridge | None" = None
+redis_trigger: "RedisSignalTrigger | None" = None
+trailing_stop_manager: "TrailingStopManager | None" = None
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -2488,12 +2490,40 @@ async def lifespan(app: FastAPI):
         tv_streamer = get_tv_streamer(greeks_symbols=greeks_watch)
         await tv_streamer.start(data_manager=data_manager)
         logger.info("🚀 Real-time data fabric activated (Ticks + Greeks)")
+
+        # ── Intraday Trend Following (Phase 5.1 - 5.3) ──
+        from events.redis_listener import RedisSignalTrigger
+        from services.trailing_stop_manager import TrailingStopManager
+
+        # P5.1: Redis-driven pipeline trigger (reacts to bar-close events)
+        redis_trigger = RedisSignalTrigger(
+            pipeline_callback=lambda sym: asyncio.create_task(
+                trading_pipeline.analyze_and_decide(sym, is_futures=True)
+            ),
+            symbols=["MES", "MGC", "MNQ", "MCL"],
+        )
+        await redis_trigger.start()
+        logger.info("🚀 Event-driven signal trigger active (Redis -> Pipeline)")
+
+        # P5.3: Automated trailing stops
+        trailing_stop_manager = TrailingStopManager(oms_manager, data_manager)
+        await trailing_stop_manager.start()
+        logger.info("🚀 Trailing stop manager active (1m monitor)")
+
     except Exception as _tv_exc:
         logger.warning("⚠️  Real-time data fabric failed to start: %s", _tv_exc)
 
     yield  # Server runs here
 
     # Teardown
+    # Stop Trailing stop manager
+    if trailing_stop_manager:
+        await trailing_stop_manager.stop()
+
+    # Stop Redis trigger
+    if redis_trigger:
+        await redis_trigger.stop()
+
     # Stop TV streamer
     if tv_streamer:
         try:
