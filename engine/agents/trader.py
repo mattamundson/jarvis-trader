@@ -149,15 +149,21 @@ class TradeDecision:
     target_1: Optional[float]  # T1 exit level (1st scale-out ~1/3 position)
     target_2: Optional[float]  # T2 exit level (stretch target)
     atr_used: Optional[float]  # ATR value used for stop/target calculation
-    rr_ratio: Optional[float]  # R:R = (target_1 - entry) / abs(entry - stop)
+
+    # Phase 5.4: Options Spread Parameters
+    is_spread: bool = False
+    short_option_symbol: Optional[str] = None
+    long_option_symbol: Optional[str] = None
+    net_credit: Optional[float] = None
+    rr_ratio: Optional[float] = None  # R:R = (target_1 - entry) / abs(entry - stop)
 
     # Signal metadata
-    signal_score: float  # -1.0 (strong sell) to +1.0 (strong buy)
-    confidence: float  # 0.0 to 1.0
+    signal_score: float = 0.0  # -1.0 (strong sell) to +1.0 (strong buy)
+    confidence: float = 0.0  # 0.0 to 1.0
 
     # Qualitative output
-    reasoning: str  # Full explanation of the decision
-    risk_notes: str  # What could go wrong
+    reasoning: str = ""  # Full explanation of the decision
+    risk_notes: str = ""  # What could go wrong
 
     # Audit trail
     timestamp: datetime = field(default_factory=datetime.now)
@@ -336,6 +342,13 @@ class TraderAgent:
             strategy = tech.get("indicators", {}).get("stark_signal", "unknown")
             risk_pct = self._allocator.get_risk_pct(strategy, symbol)
             logger.info(f"[Trader] {symbol} — Allocator risk_pct: {risk_pct:.2%}")
+
+        # ── Options Setup Evaluation (Phase 5.4) ──────────────────────────
+        options_setup = analyst_reports.get("options", {})
+        if options_setup.get("signal", 0) != 0:
+            logger.info(f"[Trader] {symbol} — Options setup detected: {options_setup.get('summary')}")
+            # We can choose to prioritize options if regime is RANGE or MEANREV
+            # For now, we'll let the LLM decide by including the setup in the prompt.
 
         # ── Fixed-fractional position sizing ──────────────────────────────
         # account_value: use current_equity from SafetyLayer (broker-sourced);
@@ -1198,9 +1211,15 @@ Signal: {analyst_reports.get("breakout", {}).get("signal", 0.0)} (weight: HIGH f
 === HARMONIC VISION ENRICHMENT (PHASE 4) ===
 Patterns: {analyst_reports.get("harmonic", {}).get("summary", "None detected")}
 Active Patterns: {analyst_reports.get("harmonic", {}).get("patterns", [])}
-Signal: {analyst_reports.get("harmonic", {}).get("signal", 0.0)} (weight: HIGH for reversal confluence)
+Signal: {analyst_reports.get("harmonic", {}).get("signal", 0.0)} (weight: HIGH for reversal confluence)    
+
+=== OPTIONS YIELD OVERLAY (PHASE 5) ===
+Options Signal: {analyst_reports.get("options", {}).get("signal", 0.0)}
+Best Spread: {json.dumps(analyst_reports.get("options", {}).get("best_spread"), indent=2)}
+Options Summary: {analyst_reports.get("options", {}).get("summary", "No options spreads available.")}
 
 {self._forward_recorder_section(forward_recorder)}
+
 === PORTFOLIO / RISK CONTEXT ===
 Live trading enabled: {live_enabled}
 Current equity: ${current_equity:,.2f}
@@ -1343,6 +1362,12 @@ Respond with JSON in exactly this format:
             rr_str = f" | R:R={rr_ratio:.2f}" if rr_ratio else ""
             reasoning = f"{reasoning}\n\n[Position Sizing] {position_size.reasoning}{rr_str}"
 
+        # Phase 5.4: Options Spread Fields
+        is_spread = bool(result.get("is_spread", False))
+        short_opt = result.get("short_option_symbol")
+        long_opt = result.get("long_option_symbol")
+        net_credit = result.get("net_credit")
+
         return TradeDecision(
             symbol=symbol,
             action=action,
@@ -1354,6 +1379,10 @@ Respond with JSON in exactly this format:
             target_1=target_1,
             target_2=target_2,
             atr_used=atr_used,
+            is_spread=is_spread,
+            short_option_symbol=short_opt,
+            long_option_symbol=long_opt,
+            net_credit=net_credit,
             rr_ratio=rr_ratio,
             time_in_force=time_in_force,
             signal_score=float(result.get("signal_score", 0.0)),
@@ -1363,7 +1392,6 @@ Respond with JSON in exactly this format:
             timestamp=datetime.now(),
             sizing_method=sizing_method,
         )
-
     @staticmethod
     def _forward_recorder_section(metric: Optional[dict]) -> str:
         """Render the MES forward-recorder feedback block when present.

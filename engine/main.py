@@ -1020,15 +1020,25 @@ async def lifespan(app: FastAPI):
                     # ── OMS v2 Execution (Phase 2.3) ──
                     if oms_manager and action.lower() in ("buy", "sell"):
                         try:
-                            await oms_manager.execute_bracket(
-                                symbol=symbol,
-                                action=action,
-                                quantity=qty,
-                                entry_price=float(price_info or 0.0),
-                                stop_loss=trade_dec.get("stop_price"),
-                                take_profit=trade_dec.get("target_price"),
-                                entry_type="MKT" if not trade_dec.get("limit_price") else "LMT",
-                            )
+                            if trade_dec.get("is_spread"):
+                                await oms_manager.execute_options_spread(
+                                    symbol=symbol,
+                                    spread_type=trade_dec.get("type") or trade_dec.get("spread_type") or "BULL_PUT_SPREAD",
+                                    short_opt=trade_dec.get("short_option_symbol"),
+                                    long_opt=trade_dec.get("long_option_symbol"),
+                                    quantity=qty,
+                                    net_credit=trade_dec.get("net_credit", 0.0),
+                                )
+                            else:
+                                await oms_manager.execute_bracket(
+                                    symbol=symbol,
+                                    action=action,
+                                    quantity=qty,
+                                    entry_price=float(price_info or 0.0),
+                                    stop_loss=trade_dec.get("stop_price"),
+                                    take_profit=trade_dec.get("target_price"),
+                                    entry_type="MKT" if not trade_dec.get("limit_price") else "LMT",
+                                )
                         except Exception as oms_exc:
                             logger.error("[Scheduler] OMS execution failed for %s: %s", symbol, oms_exc)
 

@@ -165,6 +165,69 @@ class OMSManager:
 
             return trade
 
+    async def execute_options_spread(
+        self,
+        symbol: str,
+        spread_type: str,
+        short_opt: str,
+        long_opt: str,
+        quantity: int,
+        net_credit: float,
+    ) -> BracketOrder:
+        """
+        Execute a multi-leg vertical options spread.
+        """
+        async with self._lock:
+            trade = BracketOrder(
+                symbol=symbol,
+                quantity=quantity,
+                entry_price=net_credit,
+                status=TradeState.PENDING_ENTRY,
+            )
+
+            logger.info(
+                "[OMS] Executing Options Spread for %s: %s %d @ %.2f (Short: %s, Long: %s)",
+                symbol,
+                spread_type,
+                quantity,
+                net_credit,
+                short_opt,
+                long_opt,
+            )
+
+            try:
+                # 1. Dispatch to router
+                order = {
+                    "symbol": symbol,
+                    "is_options": True,
+                    "is_spread": True,
+                    "type": spread_type,
+                    "short_option_symbol": short_opt,
+                    "long_option_symbol": long_opt,
+                    "quantity": quantity,
+                    "limit_price": net_credit,
+                    "order_type": "limit",
+                }
+
+                result = await self.router.route_order(order)
+
+                if result.get("status") == "placed":
+                    trade.entry_order_id = result.get("order_id")
+                    trade.status = TradeState.ACTIVE
+                    self.active_trades[trade.trade_id] = trade
+                    logger.info("[OMS] Options Spread placed successfully. ID: %s", trade.trade_id)
+                else:
+                    trade.status = TradeState.ERROR
+                    logger.error(
+                        "[OMS] Failed to place spread: %s", result.get("reason") or result.get("error")
+                    )
+
+            except Exception as e:
+                trade.status = TradeState.ERROR
+                logger.error("[OMS] Exception during spread execution for %s: %s", symbol, e)
+
+            return trade
+
     async def update_trade_status(self, broker_order_id: str, status: str, fill_price: float = 0.0):
         """
         Callback handler for broker order status updates.

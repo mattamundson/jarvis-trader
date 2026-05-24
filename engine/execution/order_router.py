@@ -164,6 +164,8 @@ class OrderRouter:
             equity = order.get("portfolio_equity", 10000.0) # Default
             if self.schwab and self.schwab.is_connected:
                 logger.info("Routing %s options order to Schwab", symbol)
+                if order.get("is_spread"):
+                    return await self.schwab.submit_options_spread_order(order, portfolio_equity=equity)
                 return await self.schwab.submit_options_order(order, portfolio_equity=equity)
             elif self.ibkr and self.ibkr.is_connected():
                 logger.info("Routing %s options order to IBKR (Schwab unavailable)", symbol)
