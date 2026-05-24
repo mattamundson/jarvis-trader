@@ -870,6 +870,38 @@ class IBGatewayConnector:
             "Set PAPER_TRADING=True for paper trading mode."
         )
 
+    async def modify_order(self, order_id: str, new_price: float) -> dict:
+        """
+        Modify a pending paper order's price.
+        """
+        if not self.is_connected():
+            return {"status": "error", "reason": "Not connected"}
+
+        if self._settings.PAPER_TRADING:
+            if order_id not in self._open_orders:
+                return {"status": "error", "error": "Order not found"}
+
+            order = self._open_orders[order_id]
+            if order["status"] != "pending":
+                return {
+                    "status": "error",
+                    "error": f"Cannot modify order in status: {order['status']}",
+                }
+
+            if order["order_type"] == "stop":
+                order["stop_price"] = new_price
+            elif order["order_type"] == "limit":
+                order["limit_price"] = new_price
+
+            logger.info(
+                "IBGatewayConnector: Paper order %s modified to price %.2f",
+                order_id,
+                new_price,
+            )
+            return {"status": "modified", "order_id": order_id, "new_price": new_price}
+
+        raise NotImplementedError("Live order modification not yet implemented.")
+
     async def get_order_status(self, order_id: str) -> dict:
         """
         Get the status of a specific order.

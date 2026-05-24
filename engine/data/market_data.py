@@ -998,6 +998,26 @@ class MarketDataManager:
         """
         is_futures = is_futures or symbol.upper() in FUTURES_MAP
 
+        # Tier 0: Redis Real-Time Fabric (Phase 2.1)
+        try:
+            import json
+            import redis
+            r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+            # Try symbol as-is and uppercase
+            for sym_key in [symbol, symbol.upper()]:
+                val = r.get(f"market:latest:{sym_key}")
+                if val:
+                    data = json.loads(val)
+                    if data.get("close"):
+                        return {
+                            "last_price": float(data["close"]),
+                            "prev_close": float(data.get("open", 0.0)),
+                            "change_pct": None,
+                            "source": "redis_fabric",
+                        }
+        except Exception as _redis_err:
+            logger.debug(f"[get_tick_price] Redis fetch failed for {symbol}: {_redis_err}")
+
         # Tier 1: IBKR snapshot (real-time L1, sub-100ms typical)
         if self.ibkr and self.ibkr.is_connected:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
