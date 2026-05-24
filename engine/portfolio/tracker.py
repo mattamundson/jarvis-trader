@@ -154,6 +154,7 @@ class PortfolioTracker:
         price: float,
         notes: str = "",
         atr_value: Optional[float] = None,
+        rv_at_entry: Optional[float] = None,
     ) -> str:
         """
         Log a new simulated entry.
@@ -200,6 +201,9 @@ class PortfolioTracker:
         # SQLite-first: write to DB before touching in-memory state.
         # If the DB write fails the exception propagates and in-memory is NOT updated,
         # preventing ghost positions on restart (Bug B9 / US-2004).
+        _sp: dict = {"notes": notes}
+        if rv_at_entry is not None:
+            _sp["rv_at_entry"] = round(float(rv_at_entry), 4)
         if self._db is not None:
             row_id = self._db.insert_paper_trade(
                 trade_id,
@@ -210,7 +214,7 @@ class PortfolioTracker:
                 entry_time=trade.entry_time,
                 stop_loss=None,
                 take_profit=None,
-                strategy_params={"notes": notes},
+                strategy_params=_sp,
                 idempotency_key=idem_key,
             )
             # Dedup check: if the DB returned a row_id for an EXISTING row but

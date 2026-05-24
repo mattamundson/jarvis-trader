@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 
 try:
@@ -177,6 +178,17 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 
         # 2. Compute all indicators (deterministic Python — no LLM)
         indicators = self._compute_indicators(df)
+
+        # 2-rv. 20-bar annualized realized volatility (1h bars only).
+        # Tags each pipeline run so paper trades accumulate rv_at_entry for
+        # forward validation of the RV filter (gate: 60+ live trades).
+        if not using_daily_fallback and len(df) >= 22:
+            _log_ret = np.log(df["close"] / df["close"].shift(1))
+            _rv_ann = _log_ret.rolling(20).std() * np.sqrt(252 * 24) * 100.0
+            _rv_last = _rv_ann.iloc[-1]
+            indicators["rv_20_ann_pct"] = round(float(_rv_last), 4) if pd.notna(_rv_last) else None
+        else:
+            indicators["rv_20_ann_pct"] = None
 
         # 2a. TradingView Live Indicator Injection (non-blocking)
         # Reads all JARVIS Pine Script indicators from TradingView Desktop

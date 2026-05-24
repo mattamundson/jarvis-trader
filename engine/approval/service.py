@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any, Optional
 
 from approval.snapshot import entry_price_from_snapshot
@@ -360,6 +359,17 @@ async def approve_pending_trade(
     )
 
     notes = str(snapshot.get("summary") or "")[:2000] if isinstance(snapshot, dict) else ""
+
+    # Extract rv_at_entry from the pipeline snapshot for forward validation tagging.
+    _rv_at_entry: Optional[float] = None
+    try:
+        _ind = (snapshot.get("analyst_reports") or {}).get("technical", {}).get("indicators", {})
+        _rv = _ind.get("rv_20_ann_pct") if isinstance(_ind, dict) else None
+        if _rv is not None:
+            _rv_at_entry = float(_rv)
+    except Exception:
+        pass
+
     try:
         trade_id = paper_tracker.open_trade(
             symbol=symbol,
@@ -367,6 +377,7 @@ async def approve_pending_trade(
             quantity=quantity,
             price=entry_price,
             notes=notes,
+            rv_at_entry=_rv_at_entry,
         )
     except Exception as exc:
         logger.exception("approve_pending_trade open_trade failed for %s", approval_id[:8])
@@ -515,4 +526,3 @@ def cancel_expired_approvals(db_manager, timeout_minutes: int = 5) -> int:
             )
 
     return expired_count
-

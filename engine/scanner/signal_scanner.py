@@ -438,7 +438,9 @@ class SignalScanner:
                     conviction = fund_decision.get("final_conviction", 0.0) or trade_dec.get(
                         "confidence", 0.0
                     )
-                    stc_val = (technical_report.get("indicators") or {}).get("stc_value")
+                    _indicators = technical_report.get("indicators") or {}
+                    stc_val = _indicators.get("stc_value")
+                    rv_at_entry = _indicators.get("rv_20_ann_pct")
 
                     trade_id = self._paper_tracker.add_paper_trade(
                         symbol=symbol,
@@ -462,6 +464,9 @@ class SignalScanner:
                             ),
                             "pipeline_conviction": round(float(conviction), 4),
                             "predicted_direction": final_action.upper(),
+                            "rv_at_entry": (
+                                round(float(rv_at_entry), 4) if rv_at_entry is not None else None
+                            ),
                         },
                     )
                     logger.info(
