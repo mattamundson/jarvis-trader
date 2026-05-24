@@ -1595,6 +1595,55 @@ def migration_033(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migration_034(conn: sqlite3.Connection) -> None:
+    """
+    034 — FOMC History.
+    Adds fomc_history table for Phase 6.5 news NLP.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS fomc_history (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            meeting_date TEXT NOT NULL UNIQUE,
+            statement   TEXT NOT NULL,
+            dot_plot    TEXT,
+            analysis    TEXT,
+            created_at  TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+
+
+def migration_035(conn: sqlite3.Connection) -> None:
+    """
+    035 — Canary Strategies.
+    Adds canary_strategies table for Phase 7.3 A/B canary framework.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS canary_strategies (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy_file   TEXT NOT NULL UNIQUE,
+            symbol          TEXT NOT NULL,
+            interval        TEXT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'active', -- active | passed | failed | retired
+            baseline_pf     REAL NOT NULL,
+            start_time      TEXT NOT NULL, -- ISO-8601 UTC
+            end_time        TEXT NOT NULL, -- ISO-8601 UTC
+            actual_end_time TEXT,          -- ISO-8601 UTC
+            live_pf         REAL DEFAULT 0.0,
+            num_trades      INTEGER DEFAULT 0,
+            metadata        TEXT DEFAULT '{}',
+            created_at      TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cs_status ON canary_strategies(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cs_symbol ON canary_strategies(symbol)")
+    conn.commit()
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1632,6 +1681,8 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_031,  # version 31
     migration_032,  # version 32
     migration_033,  # version 33
+    migration_034,  # version 34
+    migration_035,  # version 35
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1668,6 +1719,8 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Bracket order IDs: stop_order_id, target_order_id, bracket_status columns on paper_trades for atomic IB bracket traceability.",
     "NOT NULL constraint: idempotency_key promoted to NOT NULL on paper_trades; backfills historical NULLs with deterministic SHA-256 keys derived from entry_time bucket.",
     "Agent memory: agent_memory table for Phase 3.5 persistent working memory.",
+    "FOMC history: fomc_history table for Phase 6.5 news NLP.",
+    "Canary strategies: canary_strategies table for Phase 7.3 A/B canary framework.",
 ]
 
 

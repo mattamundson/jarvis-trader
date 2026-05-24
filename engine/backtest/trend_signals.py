@@ -34,7 +34,7 @@ SMA_TREND_PARAMS: dict[str, dict] = {
 }
 
 _ATR_PERIOD = 14
-_T1_MULT = 3.0   # static first target: 3× ATR from entry
+_T1_MULT = 3.0  # static first target: 3× ATR from entry
 _T2_MULT = 5.0
 _T3_MULT = 7.0
 
@@ -62,6 +62,9 @@ def generate_sma_trend_signals(
     atr_trail_mult: float = 2.0,
     min_rv_annualized: float = 0.0,
     rv_annual_factor: int | None = None,
+    vix_df: pd.DataFrame | None = None,
+    vix_min: float = 0.0,
+    vix_max: float = 999.0,
 ) -> pd.DataFrame:
     """
     Generate SMA trend-following signals compatible with the JARVIS Backtester.
@@ -73,6 +76,12 @@ def generate_sma_trend_signals(
             0.0 (default) = filter disabled.
         rv_annual_factor: Bars-per-year for RV annualization. Default None uses
             _RV_ANNUAL_FACTOR (252*24 for 1h bars). Pass 252 for daily bars.
+        vix_df: Optional DataFrame with a "close" column indexed by date
+            (daily VIX data). When provided, ENTRY_NOW is suppressed unless
+            the current day's VIX is in [vix_min, vix_max].
+            No-op when None (default, backward-compatible).
+        vix_min: Lower bound for VIX filter (inclusive). 0.0 = no lower bound.
+        vix_max: Upper bound for VIX filter (inclusive). 999.0 = no upper bound.
 
     Returns df with columns:
         entry_signal  : "ENTRY_NOW" | "NO_TRADE"
@@ -82,9 +91,19 @@ def generate_sma_trend_signals(
         regime        : "TRENDING_BULL" | "RANGE_BOUND"
         atr           : ATR(14) series
         rv_20_ann_pct : 20-bar annualized realized volatility (percent)
+        vix_level     : VIX at each bar (NaN when vix_df not provided)
     """
     df = df.copy()
     _rv_factor = rv_annual_factor if rv_annual_factor is not None else _RV_ANNUAL_FACTOR
+
+    # Precompute per-bar VIX levels (daily, forward-filled to 1h bars)
+    _vix_series: pd.Series | None = None
+    if vix_df is not None and not vix_df.empty:
+        vix_daily = vix_df["close"].copy()
+        vix_daily.index = pd.to_datetime(vix_daily.index).normalize()
+        bar_dates = df.index.normalize()
+        _vix_series = vix_daily.reindex(bar_dates, method="ffill")
+        _vix_series.index = df.index
 
     sma_f = df["close"].rolling(fast).mean()
     sma_s = df["close"].rolling(slow).mean()
@@ -102,17 +121,17 @@ def generate_sma_trend_signals(
     # because prev bar had NaN→fillna(False).  With wide trail stops this
     # synthetic entry never exits, producing 0 completed trades.
     prev_sma_s_valid = sma_s.shift(1).notna()
-    cross_up = above & ~prev_above & prev_sma_s_valid   # golden cross
-    cross_dn = ~above & prev_above & prev_sma_s_valid   # death cross
+    cross_up = above & ~prev_above & prev_sma_s_valid  # golden cross
+    cross_dn = ~above & prev_above & prev_sma_s_valid  # death cross
 
     n = len(df)
     entry_signal = np.full(n, "NO_TRADE", dtype=object)
-    exit_signal  = np.full(n, "NO_EXIT", dtype=object)
-    stop_level   = np.full(n, np.nan)
+    exit_signal = np.full(n, "NO_EXIT", dtype=object)
+    stop_level = np.full(n, np.nan)
     trailing_stop = np.full(n, np.nan)
-    target_1     = np.full(n, np.nan)
-    target_2     = np.full(n, np.nan)
-    target_3     = np.full(n, np.nan)
+    target_1 = np.full(n, np.nan)
+    target_2 = np.full(n, np.nan)
+    target_3 = np.full(n, np.nan)
 
     current_trail = np.nan
     in_trade = False
@@ -131,15 +150,21 @@ def generate_sma_trend_signals(
                 if pd.isna(rv_i) or float(rv_i) < min_rv_annualized:
                     continue  # leave entry_signal as NO_TRADE
 
+            # VIX range gate: skip entry when VIX is outside [vix_min, vix_max].
+            if _vix_series is not None:
+                vix_i = _vix_series.iloc[i]
+                if pd.isna(vix_i) or not (vix_min <= float(vix_i) <= vix_max):
+                    continue  # leave entry_signal as NO_TRADE
+
             entry_signal[i] = "ENTRY_NOW"
             initial_stop = price - atr_trail_mult * atr_i
-            stop_level[i]  = initial_stop
+            stop_level[i] = initial_stop
             current_trail = initial_stop
             in_trade = True
 
-            target_1[i]    = price + _T1_MULT * atr_i
-            target_2[i]    = price + _T2_MULT * atr_i
-            target_3[i]    = price + _T3_MULT * atr_i
+            target_1[i] = price + _T1_MULT * atr_i
+            target_2[i] = price + _T2_MULT * atr_i
+            target_3[i] = price + _T3_MULT * atr_i
 
         elif in_trade:
             # Update trail: only moves UP
@@ -156,14 +181,15 @@ def generate_sma_trend_signals(
                 current_trail = np.nan
 
     df["entry_signal"] = entry_signal
-    df["exit_signal"]  = exit_signal
-    df["stop_level"]   = stop_level
+    df["exit_signal"] = exit_signal
+    df["stop_level"] = stop_level
     df["trailing_stop"] = trailing_stop
-    df["target_1"]     = target_1
-    df["target_2"]     = target_2
-    df["target_3"]     = target_3
-    df["atr"]          = atr
+    df["target_1"] = target_1
+    df["target_2"] = target_2
+    df["target_3"] = target_3
+    df["atr"] = atr
     df["rv_20_ann_pct"] = rv_ann
+    df["vix_level"] = _vix_series if _vix_series is not None else np.nan
 
     df["bias"] = "NEUTRAL"
     df.loc[above, "bias"] = "STRONG_BULL"

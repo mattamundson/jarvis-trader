@@ -31,7 +31,8 @@ from typing import Any, Optional
 import pandas as pd
 
 from analysis.regime_engine import MarketRegime as _LegacyRegime
-from backtest.regime_classifier import RegimeClassifierV2, MarketRegime
+from analysis.regime_engine import RegimeStatus
+from backtest.regime_classifier import RegimeClassifierV2
 from database import repository
 
 try:
@@ -79,7 +80,7 @@ except Exception:  # pragma: no cover — optional dependency
     _RECIPE_LOADER_AVAILABLE = False
 
 from agents.kronos_classifier import KronosClassifier, is_kronos_enabled
-from agents.options_analyst import OptionsAnalyst, is_options_analyst_enabled
+from agents.options_analyst import is_options_analyst_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,9 @@ _TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipp
 # This constant is checked in approval/service.py:ensure_approval_allowed() — a
 # second layer above the safety layer's DO_NOT_TRADE_SYMBOLS blocklist. The safety
 # layer is canonical; any conflict resolves in favor of safety.
-VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset({"MES", "MGC"})
+VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset()
+# MES promoted 2026-05-24 (Tier 3 auth, p_edge=0.75 ALT PASS, SMA(60,200))
+# MGC promoted 2026-05-24 (Tier 3 auth, p_edge=0.6842 ALT PASS, SMA(50,120))
 
 # ── Validation-Only Strategies (by stark_signal value) ────────────────────────
 # Strategy signals in this set are blocked from producing paper trades until
@@ -539,6 +542,32 @@ class TradingPipeline:
         self._memory = memory_bridge
         self._regime_engine = RegimeClassifierV2()
         self.context_manager = context_manager
+
+        # Phase 3.7: Pattern Vision
+        try:
+            from agents.vision_analyst import PatternVisionAnalystAgent
+
+            self._vision_agent = PatternVisionAnalystAgent(
+                llm_client=agents.get("technical")._llm if agents.get("technical") else None
+            )
+        except ImportError:
+            logger.warning(
+                "[Pipeline] vision_analyst unavailable (playwright not installed) — vision stage will return CAUTION"
+            )
+            self._vision_agent = None
+
+        # Phase 5: Options Layer
+        from agents.options_analyst import OptionsAnalystAgent
+        from data.options_chain_live import OptionsChainService
+
+        # Assuming technical analyst has access to the primary data manager
+        _tech = agents.get("technical")
+        _ib_connector = getattr(getattr(_tech, "_data", None), "ibkr", None)
+
+        self._options_chain = OptionsChainService(_ib_connector) if _ib_connector else None
+        self._options_analyst = OptionsAnalystAgent(
+            self._options_chain, llm_client=_tech._llm if _tech else None
+        )
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
         # _kronos is NOT set here — use _kronos_or_none property so that
         # /admin/feature-flags toggles take effect without an engine restart.
@@ -1560,32 +1589,62 @@ class TradingPipeline:
 
         # Phase 5.2: Intraday Regime V2
         regime_report = self._regime_engine.classify_latest(df) if df is not None else None
-        
+        regime_name = regime_report["regime"] if regime_report else "RANGE"
+
         # Build compatibility object for prompts
-        from analysis.regime_engine import RegimeStatus, MarketRegime as _LegacyRegime
-        
+        # RegimeClassifierV2 uses uppercase values (RANGE, TREND, …); legacy
+        # MarketRegime enum uses lowercase (ranging, trending, …). Map first,
+        # then fall back to NEUTRAL so an unmapped value never crashes the run.
+        _REGIME_V2_MAP = {
+            "range": "ranging",
+            "trend": "trending",
+            "volatile": "volatile",
+            "meanrev": "ranging",
+            "crisis": "volatile",
+        }
         regime_status = None
         if regime_report:
+            regime_str = regime_report["regime"].lower()
+            regime_str = _REGIME_V2_MAP.get(regime_str, regime_str)
+            try:
+                _regime_enum = _LegacyRegime(regime_str)
+            except ValueError:
+                logger.debug(
+                    "[Pipeline] Unmapped regime value %r — defaulting to NEUTRAL", regime_str
+                )
+                _regime_enum = _LegacyRegime("neutral")
             regime_status = RegimeStatus(
-                regime=_LegacyRegime(regime_report["regime"].lower()),
-                adx=0.0, # ADX not in V2 directly
+                regime=_regime_enum,
+                adx=0.0,  # ADX not in V2 directly
                 atr_ratio=regime_report.get("atr_norm", 1.0),
                 volatility=0.0,
-                description=regime_report.get("description", "")
+                description=regime_report.get("description", ""),
             )
             logger.info(
                 "[Pipeline] %s — Regime V2 classified as %s",
                 symbol,
-                regime_report["regime"],
+                regime_name,
             )
 
-        # Stage 1a: Run technical analyst first to extract price+ATR for Corey proximity boost
+        # ── Phase 8.2: Regime-Router Logic ──
+        regime_override = None
+        if regime_name in ("CRISIS", "VOLATILE"):
+            logger.warning(
+                f"[Pipeline] 🛡️ Regime Routing: {regime_name} detected. Blocking new entries."
+            )
+            regime_override = {
+                "blocked": True,
+                "reason": f"Systemic risk protection: {regime_name} regime detected.",
+            }
+
+        # Stage 1a: Run technical analyst first
         technical_coro = self._call_agent_analyze(
             "technical",
             symbol,
             is_futures=is_futures,
             timeframe=timeframe,
-            historical_context=historical_context,
+            historical_context=f"{historical_context}\nREGIME CONTEXT: Market is currently {regime_name}. "
+            f"Prioritize {'Trend-Following' if 'TREND' in regime_name else 'Mean-Reversion'} setups.",
         )
         technical_result = await safe_analyze("technical", technical_coro)
 
@@ -1605,7 +1664,23 @@ class TradingPipeline:
             "harmonic", symbol, is_futures=is_futures, timeframe=timeframe
         )
         kronos_coro = self._call_agent_analyze_kronos(symbol, is_futures, timeframe)
-        options_coro = self._call_agent_analyze_options(symbol, current_price)
+        options_coro = self._call_agent_analyze_options(
+            symbol, current_price, underlying_bias=technical_result.get("bias", "NEUTRAL")
+        )
+
+        # Phase 3.7: Pattern Vision Analysis
+        if self._vision_agent is not None:
+            vision_coro = self._vision_agent.analyze(symbol, bias="NEUTRAL")
+        else:
+
+            async def _vision_unavailable():
+                return {
+                    "visual_verdict": "UNAVAILABLE",
+                    "reasoning": "playwright not installed",
+                    "data_quality": "unavailable",
+                }
+
+            vision_coro = _vision_unavailable()
 
         results = await asyncio.gather(
             safe_analyze("news", news_coro),
@@ -1616,6 +1691,7 @@ class TradingPipeline:
             safe_analyze("harmonic", harmonic_coro),
             safe_analyze("kronos", kronos_coro),
             safe_analyze("options", options_coro),
+            safe_analyze("vision", vision_coro),
         )
 
         return {
@@ -1628,7 +1704,9 @@ class TradingPipeline:
             "harmonic": results[5],
             "kronos": results[6],
             "options": results[7],
+            "vision": results[8],
             "regime_status": regime_status,
+            "regime_override": regime_override,
         }
 
     async def _call_agent_analyze(self, agent_name: str, symbol: str, **kwargs):
@@ -1686,28 +1764,16 @@ class TradingPipeline:
             return {"signal": 0.0, "confidence": 0.0, "summary": f"Kronos error: {e}"}
 
     @property
-    def _options_analyst_or_none(self) -> "OptionsAnalyst | None":
-        """Return an ``OptionsAnalyst`` instance when ``ENABLE_OPTIONS_ANALYST=1``, else ``None``.
-
-        Re-checks the env flag on every access (no startup caching) so that
-        ``/admin/feature-flags`` toggles take effect without an engine restart.
-        The instance is cached in ``_options_analyst_cached`` until the flag
-        flips off, avoiding repeated construction overhead during a single run.
-        """
+    def _options_analyst_or_none(self) -> Any:
+        """Return the Phase 5 OptionsAnalystAgent if enabled."""
         if not is_options_analyst_enabled():
-            self._options_analyst_cached = None  # type: ignore[attr-defined]
             return None
-        if not hasattr(self, "_options_analyst_cached") or self._options_analyst_cached is None:
-            self._options_analyst_cached = OptionsAnalyst()  # type: ignore[attr-defined]
-        return self._options_analyst_cached  # type: ignore[attr-defined]
+        return self._options_analyst
 
-    async def _call_agent_analyze_options(self, symbol: str, spot_price: Optional[float]) -> dict:
-        """Run the OptionsAnalyst and return a debate-compatible dict.
-
-        Returns a neutral dict when the analyst is disabled
-        (``ENABLE_OPTIONS_ANALYST != "1"``), when options data is unavailable,
-        or when the underlying module raises.  Never raises.
-        """
+    async def _call_agent_analyze_options(
+        self, symbol: str, spot_price: Optional[float], underlying_bias: str = "NEUTRAL"
+    ) -> dict:
+        """Run the OptionsAnalyst and return a debate-compatible dict."""
         analyst = self._options_analyst_or_none
         if analyst is None:
             return {
@@ -1717,7 +1783,7 @@ class TradingPipeline:
                 "indicators": {"weight": 0.0},
             }
         try:
-            return await analyst.analyze(symbol, spot_price=spot_price)
+            return await analyst.analyze(symbol, underlying_bias=underlying_bias)
         except Exception as exc:
             logger.warning("[Pipeline] OptionsAnalyst failed: %s", exc)
             return {

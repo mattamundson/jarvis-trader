@@ -161,6 +161,23 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": "gemini-2.0-flash",
     }
 
+    # Agents routed to Gemini 2.5-flash as primary provider (not as fallback).
+    # These are context-enrichment / classification tasks — not trade decisions.
+    # Keeps credit consumption on cost-efficient Gemini; Anthropic reserved for
+    # trader, risk_manager, fund_manager, and debate-stage agents.
+    GEMINI_PRIMARY_AGENTS: frozenset[str] = frozenset(
+        {
+            "news_analyst",
+            "social_analyst",
+            "deep_analyzer",
+            "technical_analyst",
+            "fundamental_analyst",
+            "hermes-upgrade-classifier",
+            "bookmark_clusterer",
+            "kairos_dreaming",
+        }
+    )
+
     MODEL_CONTEXT_LIMITS = {
         "claude-opus-4-7": 200_000,
         "claude-opus-4-6": 200_000,
@@ -423,6 +440,18 @@ class JarvisLLMClient:
             content = message.get("content", "")
             if isinstance(content, str):
                 total_chars += len(content)
+            elif isinstance(content, list):
+                # Multi-modal content
+                for part in content:
+                    if isinstance(part, dict):
+                        # Text part
+                        if part.get("type") == "text":
+                            total_chars += len(part.get("text", ""))
+                        # Image part (base64)
+                        elif part.get("type") == "image":
+                            # Base64 is ~33% larger than raw bytes, but we just need a proxy
+                            # We'll use a constant or proportional estimate
+                            total_chars += len(part.get("source", {}).get("data", "")) // 10
             elif isinstance(content, dict):
                 total_chars += len(str(content))
             else:
@@ -586,38 +615,42 @@ class JarvisLLMClient:
         retries = 0
         last_error = None
 
-        # Per-agent Gemini primary: bypass Anthropic retry loop for listed agents.
-        # On any Gemini exception, falls through to the Anthropic retry loop below.
+        # Proactive Gemini routing — enrichment agents bypass Anthropic to save costs.
+        # Class constant covers the default set; JARVIS_LLM_GEMINI_AGENTS env var extends it.
+        # Falls through to the Anthropic retry loop on any Gemini failure.
+        _gemini_agents = self.GEMINI_PRIMARY_AGENTS | self.gemini_primary_agents
         if (
-            self.provider == "anthropic"
-            and agent_name in self.gemini_primary_agents
-            and self.google_api_key
+            self.provider != "ollama"
+            and self.google_fallback_enabled
+            and agent_name in _gemini_agents
         ):
+            google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
             try:
                 google_result = await self._call_google(
                     system=system,
                     messages=working_messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
-                    model=self.gemini_primary_model,
+                    model=google_model,
                 )
+                self.google_fallback_count += 1
                 return await self._handle_success(
                     google_result,
-                    self.gemini_primary_model,
+                    google_model,
                     start_time,
-                    0,
+                    retries,
                     agent_name,
                     tier=tier,
                     proxy=proxy,
                     compressed_key=compressed_key,
                     cache_salt=cache_salt,
                 )
-            except Exception as exc:
+            except Exception as gex:
                 logger.warning(
-                    "[%s] Gemini primary failed for %s (%s) — falling back to Anthropic",
-                    self.gemini_primary_model,
+                    "[%s] Gemini primary failed for %s — falling through to Anthropic: %s",
+                    google_model,
                     agent_name,
-                    exc,
+                    gex,
                 )
 
         # Retry loop with exponential backoff

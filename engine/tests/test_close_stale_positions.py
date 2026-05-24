@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -15,8 +17,16 @@ from routers import portfolio_router as pr_mod
 
 @pytest.fixture()
 def stale_positions_client():
-    """Set up test client with PortfolioTracker."""
+    """Set up test client with PortfolioTracker.
+
+    Sets TESTING=1 to suppress the OpenClaw subprocess.run() call in
+    tracker.close_trade(), and patches send_whatsapp_message to prevent
+    the asyncio.create_task() in the route handler from making a real
+    Twilio HTTP call. Both suppress teardown hangs in anyio's thread join.
+    """
     old_pt, old_db = pr_mod.paper_tracker, pr_mod.db_manager
+    old_testing = os.environ.get("TESTING")
+    os.environ["TESTING"] = "1"
 
     app = FastAPI()
     tmp = Path(tempfile.mkdtemp()) / "paper_trade_audit.jsonl"
@@ -24,9 +34,17 @@ def stale_positions_client():
     pr_mod.inject_dependencies(tracker, None)
 
     app.include_router(pr_mod.router, prefix="/portfolio")
-    with TestClient(app) as client:
-        yield client
+    with patch(
+        "notifications.whatsapp.send_whatsapp_message",
+        new_callable=AsyncMock,
+    ):
+        with TestClient(app) as client:
+            yield client
 
+    if old_testing is None:
+        os.environ.pop("TESTING", None)
+    else:
+        os.environ["TESTING"] = old_testing
     pr_mod.inject_dependencies(old_pt, old_db)
 
 
