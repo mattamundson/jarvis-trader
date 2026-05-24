@@ -1563,14 +1563,29 @@ class TradingPipeline:
         regime_report = self._regime_engine.classify_latest(df) if df is not None else None
 
         # Build compatibility object for prompts
-        # RegimeClassifierV2 uses "range"; legacy MarketRegime enum uses "ranging"
-        _REGIME_V2_MAP = {"range": "ranging"}
+        # RegimeClassifierV2 uses uppercase values (RANGE, TREND, …); legacy
+        # MarketRegime enum uses lowercase (ranging, trending, …). Map first,
+        # then fall back to NEUTRAL so an unmapped value never crashes the run.
+        _REGIME_V2_MAP = {
+            "range": "ranging",
+            "trend": "trending",
+            "volatile": "volatile",
+            "meanrev": "ranging",
+            "crisis": "volatile",
+        }
         regime_status = None
         if regime_report:
             regime_str = regime_report["regime"].lower()
             regime_str = _REGIME_V2_MAP.get(regime_str, regime_str)
+            try:
+                _regime_enum = _LegacyRegime(regime_str)
+            except ValueError:
+                logger.debug(
+                    "[Pipeline] Unmapped regime value %r — defaulting to NEUTRAL", regime_str
+                )
+                _regime_enum = _LegacyRegime("neutral")
             regime_status = RegimeStatus(
-                regime=_LegacyRegime(regime_str),
+                regime=_regime_enum,
                 adx=0.0,  # ADX not in V2 directly
                 atr_ratio=regime_report.get("atr_norm", 1.0),
                 volatility=0.0,
