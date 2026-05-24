@@ -58,3 +58,5 @@ P3-48   # Pre-flight permission gates rule (~/.claude/rules/destructive-op-gates
 P1-9    # Jarvis-EngineHealth-Hourly task already registered; check-engine-health.ps1 exists (cap 3/hr)
 P2-10   # Jarvis-PM2RestartWatch-15min registered; pm2-restart-watch.ps1 created (alert >5 restarts/hr via Telegram)
 P2-15   # Jarvis-RotationReminder-Weekly already registered; rotation-reminder.ps1 exists (Fridays 09:00)
+P0-6    # Stale — commit 28ba9ff not found in any repo (dp600, jarvis-trader, scripts, ~/.claude); pushed in C1 per report
+P0-7    # Stale — cron-daily-triage.mjs not found; career-ops retired 2026-05-09, file never existed at ~/career-ops/
