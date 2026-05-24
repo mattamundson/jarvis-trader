@@ -324,6 +324,7 @@ tv_streamer: "TVStreamer | None" = None
 memory_bridge: "MemoryBridge | None" = None
 redis_trigger: "RedisSignalTrigger | None" = None
 trailing_stop_manager: "TrailingStopManager | None" = None
+portfolio_allocator: "PortfolioAllocator | None" = None
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -424,7 +425,7 @@ async def _deliver_pipeline_whatsapp_if_eligible(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and teardown on startup/shutdown"""
-    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ib_paper_connector, schwab_connector, order_router, ws_manager, cost_tracker, loss_tracker, validation_alert_manager, sdk_pipeline, margin_monitor, breakout_analyst, harmonic_analyst, polymarket, openbb, risk_protections, model_drawer, arb_scout, sentiment_bridge, shadow_tracker, oms_manager, tv_streamer
+    global data_manager, safety_layer, technical_analyst, trading_pipeline, scheduler, paper_tracker, db_manager, pnl_monitor, eod_scheduler, order_manager, ib_paper_connector, schwab_connector, order_router, ws_manager, cost_tracker, loss_tracker, validation_alert_manager, sdk_pipeline, margin_monitor, breakout_analyst, harmonic_analyst, polymarket, openbb, risk_protections, model_drawer, arb_scout, sentiment_bridge, shadow_tracker, oms_manager, tv_streamer, memory_bridge, redis_trigger, trailing_stop_manager, portfolio_allocator
 
     # Setup structured logging with file rotation FIRST, before any other initialization
     setup_logging(log_level=settings.LOG_LEVEL)
@@ -723,6 +724,16 @@ async def lifespan(app: FastAPI):
         logger.info(f"   Ollama model: {router_status['ollama']['model']}")
         logger.info(f"   Fallback: Anthropic {router_status['anthropic']['model']}")
 
+        # ── Portfolio Capital Allocator (Phase 8.1) ──────────────────────────
+        try:
+            from execution.portfolio_allocator import PortfolioAllocator
+
+            portfolio_allocator = PortfolioAllocator(db_manager)
+            await portfolio_allocator.calculate_allocations()
+            logger.info("✅ Portfolio Capital Allocator initialized (Kelly-fractional sizing active)")
+        except Exception as _ca_err:
+            logger.warning("⚠️  Portfolio Capital Allocator failed to init (non-fatal): %s", _ca_err)
+
         # Stage 1: Analysts
         technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
 
@@ -750,11 +761,18 @@ async def lifespan(app: FastAPI):
         bull_agent = BullResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
         bear_agent = BearResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
         debate_agent = DebateOrchestrator()
-
-        # Stages 3-5: Trader → Risk → Fund
-        trader_agent = TraderAgent(llm_client, db_manager=db_manager, memory_bridge=memory_bridge)
+        
+        # Stage 3/4: Risk & Fund Management
         risk_agent = RiskManagerAgent(llm_client)
         fund_agent = FundManagerAgent(llm_client)
+
+        # Stage 5: Trader (Phase 8.1)
+        trader_agent = TraderAgent(
+            llm_client,
+            db_manager=db_manager,
+            memory_bridge=memory_bridge,
+            portfolio_allocator=portfolio_allocator,
+        )
 
         # Stage 1 Enrichment
         breakout_analyst = BreakoutAgent(data_manager)
@@ -2297,38 +2315,38 @@ async def lifespan(app: FastAPI):
     # ── Weekly strategy discovery ──────────────────────────────────────────────
     try:
 
-        async def _run_weekly_discovery() -> None:
-            """Saturday midnight: generate + evaluate one LLM strategy per active instrument."""
+        async def _run_nightly_discovery() -> None:
+            """Nightly: generate + evaluate one LLM strategy per active instrument."""
             try:
                 from pathlib import Path as _Path
                 from strategies.discovery_loop import generate_strategy, evaluate_strategy_file
 
-                for _sym, _ivl in [("MCL", "1h"), ("MNQ", "1h")]:
-                    logger.info(f"[WeeklyDiscovery] Running cycle for {_sym}/{_ivl}")
+                for _sym, _ivl in [("MES", "1h"), ("MGC", "1h"), ("MCL", "1h"), ("MNQ", "1h")]:
+                    logger.info(f"[NightlyDiscovery] Running cycle for {_sym}/{_ivl}")
                     _path = await generate_strategy(symbol=_sym, interval=_ivl)
                     if _path is None:
-                        logger.warning(f"[WeeklyDiscovery] No strategy generated for {_sym}")
+                        logger.warning(f"[NightlyDiscovery] No strategy generated for {_sym}")
                         continue
                     _result = evaluate_strategy_file(
                         filename=_Path(_path).name, symbol=_sym, interval=_ivl
                     )
                     logger.info(
-                        f"[WeeklyDiscovery] {_sym} verdict={_result.get('verdict')} "
+                        f"[NightlyDiscovery] {_sym} verdict={_result.get('verdict')} "
                         f"sharpe={_result.get('sharpe', 0):.2f}"
                     )
             except Exception as _disc_err:
-                logger.error(f"[WeeklyDiscovery] Failed: {_disc_err}", exc_info=True)
+                logger.error(f"[NightlyDiscovery] Failed: {_disc_err}", exc_info=True)
 
         if scheduler is not None:
             scheduler.add_job(
-                _run_weekly_discovery,
-                CronTrigger(day_of_week="sat", hour=0, minute=0, timezone="America/Chicago"),
-                id="weekly_discovery",
-                name="Weekly Strategy Discovery",
+                _run_nightly_discovery,
+                CronTrigger(hour=1, minute=0, timezone="America/Chicago"),
+                id="nightly_discovery",
+                name="Nightly Strategy Discovery Loop",
                 max_instances=1,
                 replace_existing=True,
             )
-            logger.info("Weekly strategy discovery job registered (Saturday 00:00 Chicago)")
+            logger.info("✅ Nightly strategy discovery loop registered (01:00 CT)")
     except Exception as _weekly_err:
         logger.warning(f"Weekly discovery job init failed (non-fatal): {_weekly_err}")
 
@@ -2410,6 +2428,51 @@ async def lifespan(app: FastAPI):
                 replace_existing=True,
             )
             logger.info("Weekly gate v2 orchestrator registered (Saturday 01:00 Chicago)")
+
+        # ── Phase 7.6: Weekly Self-Audit & Drift Detection ──────────────────────
+        async def _run_weekly_self_audit() -> None:
+            """Sunday 18:00 CT: Meta-analysis of performance, drift, and optimization."""
+            try:
+                from agents.self_audit import WeeklySelfAuditAgent
+                from analytics.drift_detector import DriftDetector
+                from backtest.paper_config import ACTIVE_INSTRUMENTS
+
+                # 1. Performance Audit (P7.6)
+                auditor = WeeklySelfAuditAgent(db_manager)
+                audit_result = await auditor.run_audit()
+                if "report_md" in audit_result:
+                    logger.info("✅ Weekly self-audit complete — report written to docs/weekly_audit.md")
+                
+                # 2. Strategy Drift Detection (P7.2)
+                drifter = DriftDetector(db_manager)
+                for _sym in ACTIVE_INSTRUMENTS:
+                    _drift = await drifter.check_drift(_sym)
+                    if _drift.get("trigger_alert"):
+                        logger.warning(f"⚠️ [Pipeline] {_sym} drift detected — demoted to shadow-mode recommended.")
+
+                # 3. Monthly Re-Bayes (P7.4)
+                # Only runs on the first Sunday of the month
+                now = datetime.now()
+                if now.day <= 7:
+                    logger.info("[Main] First Sunday of month detected — triggering Bayesian re-optimization")
+                    from optimization.scheduled_rebayes import ScheduledRebayes
+                    optimizer = ScheduledRebayes(db_manager)
+                    await optimizer.run_monthly_rebayes()
+
+            except Exception as _audit_err:
+                logger.error(f"[SelfAudit] Failed: {_audit_err}", exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_weekly_self_audit,
+                CronTrigger(day_of_week="sun", hour=18, minute=0, timezone="America/Chicago"),
+                id="weekly_self_audit",
+                name="Weekly Meta-Learning Self-Audit",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("✅ Weekly self-audit & drift detection registered (Sunday 18:00 CT)")
+
     except Exception as _gv2_init_err:
         logger.warning(f"Weekly gate v2 job init failed (non-fatal): {_gv2_init_err}")
 
@@ -2500,7 +2563,7 @@ async def lifespan(app: FastAPI):
             pipeline_callback=lambda sym: asyncio.create_task(
                 trading_pipeline.analyze_and_decide(sym, is_futures=True)
             ),
-            symbols=["MES", "MGC", "MNQ", "MCL"],
+            symbols=["MES", "MGC", "MNQ", "MCL", "BTCUSD"],
         )
         await redis_trigger.start()
         logger.info("🚀 Event-driven signal trigger active (Redis -> Pipeline)")
