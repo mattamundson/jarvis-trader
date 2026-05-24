@@ -103,7 +103,7 @@ _TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipp
 # This constant is checked in approval/service.py:ensure_approval_allowed() — a
 # second layer above the safety layer's DO_NOT_TRADE_SYMBOLS blocklist. The safety
 # layer is canonical; any conflict resolves in favor of safety.
-VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset()
+VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset({"MES", "MGC"})
 
 # ── Validation-Only Strategies (by stark_signal value) ────────────────────────
 # Strategy signals in this set are blocked from producing paper trades until
@@ -1226,7 +1226,7 @@ class TradingPipeline:
             try:
                 self._memory.remember(
                     agent_name="trader",
-                    content=trade_decision.get("reasoning", "")[:500], # Keep snippets concise
+                    content=trade_decision.get("reasoning", "")[:500],  # Keep snippets concise
                     symbol=symbol,
                     topic="trade_thesis",
                     metadata={
@@ -1234,7 +1234,7 @@ class TradingPipeline:
                         "confidence": float(
                             fund_decision.get("final_conviction", 0.0) if fund_decision else 0.0
                         ),
-                    }
+                    },
                 )
             except Exception as _mem_err:
                 logger.warning("[Pipeline] Working memory storage failed (non-fatal): %s", _mem_err)
@@ -1530,14 +1530,11 @@ class TradingPipeline:
                 historical_context = "\n\nHistorical edge context:\n" + "\n".join(
                     f"- {r}" for r in recs
                 )
-            
+
             # Phase 3.5: Working Memory Recall
             if self._memory:
                 working_memory = self._memory.recall(
-                    agent_name="technical-analyst",
-                    symbol=symbol,
-                    topic="general",
-                    limit=3
+                    agent_name="technical-analyst", symbol=symbol, topic="general", limit=3
                 )
                 if working_memory:
                     historical_context = f"{working_memory}\n{historical_context}"
