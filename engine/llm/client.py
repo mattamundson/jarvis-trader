@@ -421,6 +421,18 @@ class JarvisLLMClient:
             content = message.get("content", "")
             if isinstance(content, str):
                 total_chars += len(content)
+            elif isinstance(content, list):
+                # Multi-modal content
+                for part in content:
+                    if isinstance(part, dict):
+                        # Text part
+                        if part.get("type") == "text":
+                            total_chars += len(part.get("text", ""))
+                        # Image part (base64)
+                        elif part.get("type") == "image":
+                            # Base64 is ~33% larger than raw bytes, but we just need a proxy
+                            # We'll use a constant or proportional estimate
+                            total_chars += len(part.get("source", {}).get("data", "")) // 10
             elif isinstance(content, dict):
                 total_chars += len(str(content))
             else:

@@ -829,26 +829,45 @@ class SchwabConnector:
                 order_id = order.get("order_id")
                 if not order_id:
                     continue
-                try:
-                    response = self._client.cancel_order(
-                        account_hash=self._account_hash, order_id=order_id
-                    )
-                    if response.status_code == 200:
-                        cancelled += 1
-                        logger.info("SchwabConnector: cancelled order %s", order_id)
-                    else:
-                        logger.warning(
-                            "SchwabConnector: cancel failed %s — HTTP %s",
-                            order_id,
-                            response.status_code,
-                        )
-                except Exception as exc:
-                    logger.error("SchwabConnector: error cancelling %s: %s", order_id, exc)
+                res = await self.cancel_order(order_id)
+                if res.get("status") == "cancelled":
+                    cancelled += 1
         except Exception as exc:
             logger.error("SchwabConnector.cancel_all_orders failed: %s", exc, exc_info=True)
 
         logger.info("SchwabConnector.cancel_all_orders: %d cancelled", cancelled)
         return cancelled
+
+    async def cancel_order(self, order_id: str) -> dict:
+        """Cancel a specific order by ID."""
+        if not self.is_connected:
+            return {"status": "error", "reason": "Not connected"}
+        try:
+            response = self._client.cancel_order(
+                account_hash=self._account_hash, order_id=order_id
+            )
+            if response.status_code == 200:
+                logger.info("SchwabConnector: cancelled order %s", order_id)
+                return {"status": "cancelled", "order_id": order_id}
+            return {"status": "error", "reason": f"HTTP {response.status_code}"}
+        except Exception as e:
+            return {"status": "error", "reason": str(e)}
+
+    async def modify_order(self, order_id: str, new_price: float) -> dict:
+        """Modify (replace) an existing order with a new price."""
+        if not self.is_connected:
+            return {"status": "error", "reason": "Not connected"}
+        try:
+            # Note: Schwab requires sending the full order spec for a replace.
+            # For Phase 5 implementation, we fetch the existing order first.
+            # This is a bit complex for a stateless connector, so we'll start
+            # by noting that 'modify' is a 'replace' in Schwab.
+            # In a real production run, we'd pull order details from get_orders.
+            
+            logger.warning("SchwabConnector: modify_order (replace) requires full spec. Not fully implemented.")
+            return {"status": "error", "reason": "Full-spec replace not yet implemented"}
+        except Exception as e:
+            return {"status": "error", "reason": str(e)}
 
     # ── Auth Helper ───────────────────────────────────────────────────────────
 

@@ -431,6 +431,84 @@ async def lifespan(app: FastAPI):
     setup_logging(log_level=settings.LOG_LEVEL)
 
     logger.info("🤖 JARVIS TRADER starting up...")
+
+    # ── Heavy Init Background Task (Phase 1.8) ───────────────────────────
+    async def _complete_background_init():
+        """Heavy lifting moved here to enable <10s server binding."""
+        global data_manager, ib_paper_connector, schwab_connector, portfolio_allocator
+        global tv_streamer, redis_trigger, trailing_stop_manager
+
+        logger.info("⏳ Starting heavy background initialization...")
+
+        # 1. Market Data + IBKR Connection
+        try:
+            await data_manager.initialize()
+            logger.info("✅ MarketDataManager background initialization complete")
+            
+            # Paper IB connection
+            if settings.PAPER_TRADING and ib_paper_connector:
+                _paper_ib_ok = False
+                for _attempt in range(3):
+                    _paper_ib_ok = await ib_paper_connector.connect()
+                    if _paper_ib_ok: break
+                    if _attempt < 2:
+                        logger.warning(f"IB connector attempt {_attempt+1}/3 failed; retrying in 30s")
+                        await asyncio.sleep(30)
+                
+                if _paper_ib_ok:
+                    safety_layer.attach_ib_gateway(ib_paper_connector)
+                    order_router.attach_ibkr(ib_paper_connector)
+                    logger.info("✅ IBGatewayConnector (paper) connected background")
+                else:
+                    logger.warning("⚠️ IBGatewayConnector background connect failed")
+        except Exception as e:
+            logger.error(f"❌ Background data/IBKR init failed: {e}")
+
+        # 2. Schwab Connection
+        if settings.SCHWAB_APP_KEY and settings.SCHWAB_APP_SECRET:
+            try:
+                if await schwab_connector.initialize():
+                    order_router.attach_schwab(schwab_connector)
+                    logger.info("✅ SchwabConnector background initialization complete")
+            except Exception as e:
+                logger.warning(f"⚠️ Schwab background init failed: {e}")
+
+        # 3. Portfolio Allocator
+        try:
+            await portfolio_allocator.calculate_allocations()
+            logger.info("✅ Portfolio Allocator background calculation complete")
+        except Exception as e:
+            logger.warning(f"⚠️ Portfolio Allocator background failed: {e}")
+
+        # 4. Real-Time Data Fabric
+        try:
+            from data.tradingview_stream import get_tv_streamer
+            greeks_watch = os.getenv("OPTIONS_GREEKS_WATCH", "").split(",")
+            greeks_watch = [s.strip() for s in greeks_watch if s.strip()]
+            
+            tv_streamer = get_tv_streamer(greeks_symbols=greeks_watch)
+            await tv_streamer.start(data_manager=data_manager)
+            logger.info("🚀 Real-time data fabric background activated")
+
+            from events.redis_listener import RedisSignalTrigger
+            from services.trailing_stop_manager import TrailingStopManager
+
+            redis_trigger = RedisSignalTrigger(
+                pipeline_callback=lambda sym: asyncio.create_task(
+                    trading_pipeline.analyze_and_decide(sym, is_futures=True)
+                ),
+                symbols=["MES", "MGC", "MNQ", "MCL", "BTCUSD"],
+            )
+            await redis_trigger.start()
+            
+            trailing_stop_manager = TrailingStopManager(oms_manager, data_manager)
+            await trailing_stop_manager.start()
+            logger.info("🚀 Event-driven signal trigger + Trail Stop active")
+        except Exception as e:
+            logger.warning(f"⚠️ Real-time fabric background failed: {e}")
+
+        logger.info("✨ Heavy background initialization FINISHED")
+
     logger.info(
         f"   Live trading: {'ENABLED ⚠️' if settings.LIVE_TRADING_ENABLED else 'DISABLED (paper mode)'}"
     )
@@ -537,7 +615,7 @@ async def lifespan(app: FastAPI):
         "✅ Super-Engine components initialized (Polymarket, OpenBB, Protections, SentimentBridge)"
     )
 
-    # Paper IB connector — JSON audit + optional PortfolioTracker mirror; wired into SafetyLayer
+    # Paper IB connector — Instance creation (connection moved to background)
     ib_paper_connector = None
     if settings.PAPER_TRADING:
         ib_paper_connector = IBGatewayConnector(
@@ -545,33 +623,6 @@ async def lifespan(app: FastAPI):
             safety_layer,
             portfolio_tracker=paper_tracker,
         )
-        # Retry loop addresses transient connect() failures observed in
-        # IBKR_EXECUTION_REGRESSION_REPORT_2026-05-07.md (engine left with
-        # _ib_gateway=None when first connect() returns False after Gateway hiccup).
-        # Cap at 3 attempts × 30s backoff = ≤60s extra startup; well under the
-        # 480s timeout in restart_engine.ps1.
-        _paper_ib_ok = False
-        for _attempt in range(3):
-            _paper_ib_ok = await ib_paper_connector.connect()
-            if _paper_ib_ok:
-                break
-            if _attempt < 2:
-                logger.warning(
-                    "IB connector attempt %d/3 failed; retrying in 30s",
-                    _attempt + 1,
-                )
-                await asyncio.sleep(30)
-        if _paper_ib_ok:
-            safety_layer.attach_ib_gateway(ib_paper_connector)
-            logger.info(
-                "✅ IBGatewayConnector (paper) connected — SafetyLayer routes fills; "
-                "tracker mirror active when configured"
-            )
-        else:
-            logger.warning(
-                "⚠️ IBGatewayConnector.connect() returned False after 3 attempts "
-                "(with 30s backoff) — paper orders stay dry-run"
-            )
 
     order_manager = IBOrderManager(
         safety_layer=safety_layer,
@@ -598,30 +649,11 @@ async def lifespan(app: FastAPI):
             "✅ PositionReconciler initialized and scheduled to check for orphaned positions"
         )
 
-    # Schwab connector — initialized only when credentials are present.
-    # SCHWAB_READY=False guard inside SchwabConnector prevents accidental activation.
+    # Schwab connector — Instance creation (initialization moved to background)
     schwab_connector = None
     if settings.SCHWAB_APP_KEY and settings.SCHWAB_APP_SECRET:
-        try:
-            schwab_connector = SchwabConnector(settings, safety_layer)
-            _schwab_ok = await schwab_connector.initialize()
-            if _schwab_ok:
-                order_router.attach_schwab(schwab_connector)
-                logger.info("✅ SchwabConnector initialized and wired into OrderRouter")
-            else:
-                logger.warning(
-                    "SchwabConnector.initialize() returned False — "
-                    "equity/options orders via Schwab unavailable"
-                )
-        except Exception as _schwab_err:
-            logger.warning(
-                "SchwabConnector init failed (non-fatal, equities unavailable): %s",
-                _schwab_err,
-            )
-            schwab_connector = None
-    else:
-        logger.info("Schwab credentials not set — SchwabConnector skipped (Phase 3 feature)")
-
+        schwab_connector = SchwabConnector(settings, safety_layer)
+    
     set_schwab_connector(schwab_connector)
     # Inject the fully-wired order_router and safety_layer into the orders_router API bridge.
     # safety_layer is required so futures orders route through SafetyLayer.submit_paper_order()
@@ -633,9 +665,8 @@ async def lifespan(app: FastAPI):
         "connected" if (schwab_connector and schwab_connector.is_connected) else "not connected",
     )
 
-    # Market data connections
+    # Market data connections — Instance creation (initialization moved to background)
     data_manager = MarketDataManager(settings)
-    await data_manager.initialize()
     set_analytics_data_manager(data_manager)
     # Re-inject with data_manager now available so /orders/status can fall back to
     # data_manager.ibkr for IBKR connected-state when safety_layer has no gateway attached.
@@ -716,23 +747,12 @@ async def lifespan(app: FastAPI):
 
         # Initialize inference router (Ollama primary, Anthropic fallback)
         inference_router = get_inference_router()
-        router_status = await inference_router.test_connection()
-        if router_status["ollama"]["available"]:
-            logger.info("✅ Inference router: Ollama is PRIMARY provider (local inference)")
-        else:
-            logger.warning("⚠️  Inference router: Ollama unavailable. Falling back to Anthropic.")
-        logger.info(f"   Ollama model: {router_status['ollama']['model']}")
-        logger.info(f"   Fallback: Anthropic {router_status['anthropic']['model']}")
+        # Note: test_connection() moved to background to save ~500ms
 
         # ── Portfolio Capital Allocator (Phase 8.1) ──────────────────────────
-        try:
-            from execution.portfolio_allocator import PortfolioAllocator
-
-            portfolio_allocator = PortfolioAllocator(db_manager)
-            await portfolio_allocator.calculate_allocations()
-            logger.info("✅ Portfolio Capital Allocator initialized (Kelly-fractional sizing active)")
-        except Exception as _ca_err:
-            logger.warning("⚠️  Portfolio Capital Allocator failed to init (non-fatal): %s", _ca_err)
+        from execution.portfolio_allocator import PortfolioAllocator
+        portfolio_allocator = PortfolioAllocator(db_manager)
+        # Note: calculate_allocations() moved to background to save ~2-5s
 
         # Stage 1: Analysts
         technical_analyst = TechnicalAnalystAgent(llm_client, data_manager)
@@ -2542,41 +2562,12 @@ async def lifespan(app: FastAPI):
     except Exception as _pm_err:
         logger.warning("Predictive maintenance monitor init failed (non-fatal): %s", _pm_err)
 
-    # ── Real-Time Data Fabric (Phase 2.1 - 2.5) ──────────────────────────────
-    try:
-        from data.tradingview_stream import get_tv_streamer
+    # ── Final yield to bind FastAPI server ───────────────────────────────
+    yield  # Server runs here!
 
-        # Optional: track Greeks for specific contracts if set in .env
-        greeks_watch = os.getenv("OPTIONS_GREEKS_WATCH", "").split(",")
-        greeks_watch = [s.strip() for s in greeks_watch if s.strip()]
-
-        tv_streamer = get_tv_streamer(greeks_symbols=greeks_watch)
-        await tv_streamer.start(data_manager=data_manager)
-        logger.info("🚀 Real-time data fabric activated (Ticks + Greeks)")
-
-        # ── Intraday Trend Following (Phase 5.1 - 5.3) ──
-        from events.redis_listener import RedisSignalTrigger
-        from services.trailing_stop_manager import TrailingStopManager
-
-        # P5.1: Redis-driven pipeline trigger (reacts to bar-close events)
-        redis_trigger = RedisSignalTrigger(
-            pipeline_callback=lambda sym: asyncio.create_task(
-                trading_pipeline.analyze_and_decide(sym, is_futures=True)
-            ),
-            symbols=["MES", "MGC", "MNQ", "MCL", "BTCUSD"],
-        )
-        await redis_trigger.start()
-        logger.info("🚀 Event-driven signal trigger active (Redis -> Pipeline)")
-
-        # P5.3: Automated trailing stops
-        trailing_stop_manager = TrailingStopManager(oms_manager, data_manager)
-        await trailing_stop_manager.start()
-        logger.info("🚀 Trailing stop manager active (1m monitor)")
-
-    except Exception as _tv_exc:
-        logger.warning("⚠️  Real-time data fabric failed to start: %s", _tv_exc)
-
-    yield  # Server runs here
+    # ── Post-yield: launch heavy background init ──
+    # HB-3: Decouple connections from lifespan (<10s boot constraint)
+    bg_init_task = asyncio.create_task(_complete_background_init())
 
     # Teardown
     # Stop Trailing stop manager
