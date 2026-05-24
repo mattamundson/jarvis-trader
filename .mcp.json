@@ -2,12 +2,12 @@
   "mcpServers": {
     "tradingview": {
       "command": "node",
-      "args": ["C:/Users/mattm/ThinkorSwim/jarvis-trader/tradingview-mcp/src/server.js"],
+      "args": ["C:/Users/mattm/master-jarvis/jarvis-trader/tradingview-mcp/src/server.js"],
       "env": {}
     },
     "kraken": {
-      "command": "kraken",
-      "args": ["mcp", "serve"],
+      "command": "wsl",
+      "args": ["/home/mattm/.cargo/bin/kraken", "mcp", "-s", "all", "--allow-dangerous"],
       "env": {}
     }
   }

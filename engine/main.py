@@ -2500,7 +2500,7 @@ async def lifespan(app: FastAPI):
             pipeline_callback=lambda sym: asyncio.create_task(
                 trading_pipeline.analyze_and_decide(sym, is_futures=True)
             ),
-            symbols=["MES", "MGC", "MNQ", "MCL"],
+            symbols=["MES", "MGC", "MNQ", "MCL", "BTCUSD"],
         )
         await redis_trigger.start()
         logger.info("🚀 Event-driven signal trigger active (Redis -> Pipeline)")
