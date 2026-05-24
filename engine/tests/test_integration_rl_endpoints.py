@@ -43,7 +43,7 @@ from live_engine_probe import jarvis_rl_integration_ready, rl_evaluate_contract_
 
 pytestmark = pytest.mark.slow
 
-BASE_URL = "http://localhost:8010"
+BASE_URL = "http://127.0.0.1:8010"
 
 
 # Read API key from engine .env so this file never hard-codes a secret.
