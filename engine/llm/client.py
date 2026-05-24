@@ -161,6 +161,22 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": "gemini-2.0-flash",
     }
 
+    # Agents routed to Gemini 2.5-flash as primary provider (not as fallback).
+    # These are context-enrichment / classification tasks — not trade decisions.
+    # Keeps credit consumption on cost-efficient Gemini; Anthropic reserved for
+    # trader, risk_manager, fund_manager, and debate-stage agents.
+    GEMINI_PRIMARY_AGENTS: frozenset[str] = frozenset(
+        {
+            "news_analyst",
+            "social_analyst",
+            "deep_analyzer",
+            "technical_analyst",
+            "fundamental_analyst",
+            "hermes-upgrade-classifier",
+            "bookmark_clusterer",
+        }
+    )
+
     MODEL_CONTEXT_LIMITS = {
         "claude-opus-4-7": 200_000,
         "claude-opus-4-6": 200_000,
@@ -567,6 +583,43 @@ class JarvisLLMClient:
         retries = 0
         last_error = None
 
+        # Proactive Gemini routing for non-decision agents — avoids burning
+        # Anthropic credits on enrichment tasks that don't need Sonnet quality.
+        # Falls through to the Anthropic retry loop on any Gemini failure.
+        if (
+            self.provider != "ollama"
+            and self.google_fallback_enabled
+            and agent_name in self.GEMINI_PRIMARY_AGENTS
+        ):
+            google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
+            try:
+                google_result = await self._call_google(
+                    system=system,
+                    messages=working_messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    model=google_model,
+                )
+                self.google_fallback_count += 1
+                return await self._handle_success(
+                    google_result,
+                    google_model,
+                    start_time,
+                    retries,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                )
+            except Exception as gex:
+                logger.warning(
+                    "[%s] Gemini primary failed for %s — falling through to Anthropic: %s",
+                    google_model,
+                    agent_name,
+                    gex,
+                )
+
         # Retry loop with exponential backoff
         while True:
             try:
@@ -888,7 +941,7 @@ class JarvisLLMClient:
         choices = data.get("choices") or []
         if not choices:
             raise RuntimeError(f"DeepSeek response missing choices: {str(data)[:300]}")
-        
+
         choice = choices[0].get("message") or {}
         text = choice.get("content", "")
         # DeepSeek specific reasoning field
