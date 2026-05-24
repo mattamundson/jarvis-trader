@@ -220,5 +220,129 @@ class TestLLMCallResult:
         assert "Rate limit" in result.error
 
 
+class TestGeminiPrimaryRouting:
+    """Test per-agent Gemini primary routing (Phase 3.5)."""
+
+    def test_empty_env_yields_empty_frozenset(self, monkeypatch, temp_db):
+        """Absent JARVIS_LLM_GEMINI_AGENTS → no agents rerouted."""
+        monkeypatch.delenv("JARVIS_LLM_GEMINI_AGENTS", raising=False)
+        client = JarvisLLMClient(api_key="test-key", db_path=temp_db)
+        assert client.gemini_primary_agents == frozenset()
+
+    def test_env_var_parsed_correctly(self, monkeypatch, temp_db):
+        """JARVIS_LLM_GEMINI_AGENTS is split on comma and stripped."""
+        monkeypatch.setenv(
+            "JARVIS_LLM_GEMINI_AGENTS", "news_analyst, social_analyst, deep_analyzer"
+        )
+        client = JarvisLLMClient(api_key="test-key", db_path=temp_db)
+        assert client.gemini_primary_agents == frozenset(
+            {"news_analyst", "social_analyst", "deep_analyzer"}
+        )
+
+    def test_default_gemini_model(self, monkeypatch, temp_db):
+        """Default Gemini primary model is gemini-2.5-flash."""
+        monkeypatch.delenv("JARVIS_LLM_GEMINI_PRIMARY_MODEL", raising=False)
+        client = JarvisLLMClient(api_key="test-key", db_path=temp_db)
+        assert client.gemini_primary_model == "gemini-2.5-flash"
+
+    def test_custom_gemini_model_override(self, monkeypatch, temp_db):
+        """JARVIS_LLM_GEMINI_PRIMARY_MODEL overrides the default."""
+        monkeypatch.setenv("JARVIS_LLM_GEMINI_PRIMARY_MODEL", "gemini-2.0-flash")
+        client = JarvisLLMClient(api_key="test-key", db_path=temp_db)
+        assert client.gemini_primary_model == "gemini-2.0-flash"
+
+    @pytest.mark.asyncio
+    async def test_listed_agent_calls_google(self, monkeypatch, temp_db):
+        """Agent in gemini_primary_agents routes to _call_google(), not Anthropic."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setenv("JARVIS_LLM_PROVIDER", "anthropic")
+        monkeypatch.setenv("JARVIS_LLM_GEMINI_AGENTS", "news_analyst")
+        monkeypatch.setenv("GOOGLE_API_KEY", "fake-google-key")
+
+        client = JarvisLLMClient(api_key="test-key", db_path=temp_db)
+
+        google_response = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=100, output_tokens=50),
+            content=[SimpleNamespace(text="Gemini says: market neutral")],
+        )
+        mock_google = AsyncMock(return_value=google_response)
+        mock_anthropic = AsyncMock()
+        client._call_google = mock_google
+        client._call_with_retry = mock_anthropic
+
+        result = await client.call(
+            model="claude-sonnet-4-6",
+            system="You are a news analyst.",
+            messages=[{"role": "user", "content": "Analyze the news."}],
+            agent_name="news_analyst",
+            compact=False,
+        )
+
+        assert result.success is True
+        assert result.model == "gemini-2.5-flash"
+        mock_google.assert_called_once()
+        mock_anthropic.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unlisted_agent_skips_google(self, monkeypatch, temp_db):
+        """Agent NOT in gemini_primary_agents does not call _call_google()."""
+        from unittest.mock import AsyncMock, patch
+
+        monkeypatch.setenv("JARVIS_LLM_PROVIDER", "anthropic")
+        monkeypatch.setenv("JARVIS_LLM_GEMINI_AGENTS", "news_analyst")
+        monkeypatch.setenv("GOOGLE_API_KEY", "fake-google-key")
+
+        client = JarvisLLMClient(api_key="test-key", db_path=temp_db)
+        mock_google = AsyncMock()
+        client._call_google = mock_google
+
+        with patch.object(client, "_call_with_retry", side_effect=Exception("anthropic offline")):
+            try:
+                await client.call(
+                    model="claude-sonnet-4-6",
+                    system="You are a trader.",
+                    messages=[{"role": "user", "content": "Should I trade?"}],
+                    agent_name="trader",
+                    compact=False,
+                )
+            except Exception:
+                pass
+
+        mock_google.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_gemini_failure_falls_back_to_anthropic(self, monkeypatch, temp_db):
+        """Gemini error triggers Anthropic fallback for listed agents."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setenv("JARVIS_LLM_PROVIDER", "anthropic")
+        monkeypatch.setenv("JARVIS_LLM_GEMINI_AGENTS", "news_analyst")
+        monkeypatch.setenv("GOOGLE_API_KEY", "fake-google-key")
+
+        client = JarvisLLMClient(api_key="test-key", db_path=temp_db)
+
+        anthropic_response = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=80, output_tokens=30),
+            content=[SimpleNamespace(text="Claude says: cautious")],
+        )
+        client._call_google = AsyncMock(side_effect=RuntimeError("Gemini 503"))
+        client._call_with_retry = AsyncMock(return_value=anthropic_response)
+
+        result = await client.call(
+            model="claude-sonnet-4-6",
+            system="You are a news analyst.",
+            messages=[{"role": "user", "content": "Analyze the news."}],
+            agent_name="news_analyst",
+            compact=False,
+        )
+
+        assert result.success is True
+        client._call_google.assert_called_once()
+        client._call_with_retry.assert_called_once()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

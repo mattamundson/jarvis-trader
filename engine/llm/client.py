@@ -255,6 +255,21 @@ class JarvisLLMClient:
         ).strip().lower() not in {"0", "false", "no", "off"}
         self.google_fallback_count = 0  # incremented on each successful fallback
 
+        # Phase 3.5 (2026-05-24): Per-agent Gemini primary routing.
+        # Agents listed in JARVIS_LLM_GEMINI_AGENTS bypass the Anthropic credit
+        # path and go directly to Gemini 2.5-flash. Absent env var → frozenset()
+        # (no rerouting, zero behavior change). On Gemini failure, falls back to
+        # the Anthropic retry loop transparently.
+        gemini_agents_raw = os.getenv("JARVIS_LLM_GEMINI_AGENTS", "").strip()
+        self.gemini_primary_agents: frozenset[str] = (
+            frozenset(a.strip() for a in gemini_agents_raw.split(",") if a.strip())
+            if gemini_agents_raw
+            else frozenset()
+        )
+        self.gemini_primary_model: str = os.getenv(
+            "JARVIS_LLM_GEMINI_PRIMARY_MODEL", "gemini-2.5-flash"
+        ).strip()
+
         # Phase 3.4 (2026-05-22): DeepSeek-R1 support for reasoning chains.
         self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
         self.deepseek_endpoint = os.getenv(
@@ -266,10 +281,14 @@ class JarvisLLMClient:
             if self.google_fallback_enabled
             else ("disabled (no key)" if not self.google_api_key else "disabled (env flag)")
         )
+        gemini_primary_status = (
+            f"{len(self.gemini_primary_agents)} agents" if self.gemini_primary_agents else "off"
+        )
         deepseek_status = "enabled" if self.deepseek_api_key else "disabled (no key)"
         logger.info(
             f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
-            f"(provider={self.provider}, google_fallback={google_status}, deepseek={deepseek_status})"
+            f"(provider={self.provider}, google_fallback={google_status}, "
+            f"gemini_primary={gemini_primary_status}, deepseek={deepseek_status})"
         )
 
     async def _handle_success(
@@ -566,6 +585,40 @@ class JarvisLLMClient:
         start_time = time.time()
         retries = 0
         last_error = None
+
+        # Per-agent Gemini primary: bypass Anthropic retry loop for listed agents.
+        # On any Gemini exception, falls through to the Anthropic retry loop below.
+        if (
+            self.provider == "anthropic"
+            and agent_name in self.gemini_primary_agents
+            and self.google_api_key
+        ):
+            try:
+                google_result = await self._call_google(
+                    system=system,
+                    messages=working_messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    model=self.gemini_primary_model,
+                )
+                return await self._handle_success(
+                    google_result,
+                    self.gemini_primary_model,
+                    start_time,
+                    0,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[%s] Gemini primary failed for %s (%s) — falling back to Anthropic",
+                    self.gemini_primary_model,
+                    agent_name,
+                    exc,
+                )
 
         # Retry loop with exponential backoff
         while True:
@@ -888,7 +941,7 @@ class JarvisLLMClient:
         choices = data.get("choices") or []
         if not choices:
             raise RuntimeError(f"DeepSeek response missing choices: {str(data)[:300]}")
-        
+
         choice = choices[0].get("message") or {}
         text = choice.get("content", "")
         # DeepSeek specific reasoning field
