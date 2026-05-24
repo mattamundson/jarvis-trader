@@ -1,0 +1,580 @@
+{
+  "symbol": "M2K",
+  "family": "trend",
+  "rank": 3,
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "FAIL",
+  "n_core_passed": 2,
+  "n_alt_passed": 2,
+  "created_at": "2026-05-24T19:40:17.185119+00:00",
+  "aux_freshness": {
+    "rolling_wfo": "2026-05-24T19:40:17.185119+00:00",
+    "fixed_params": "2026-05-24T19:40:17.185119+00:00",
+    "cost_sweep": "2026-05-24T19:40:17.185119+00:00"
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "FAIL",
+    "n_core_passed": 2,
+    "n_core_criteria": 4,
+    "n_alt_passed": 2,
+    "n_alt_criteria": 5,
+    "core_reasons": [
+      "FAIL mbb_pf_ci_lower=0.4652 >= 1.1",
+      "FAIL p_positive_edge=0.5000 >= 0.95",
+      "mc_95th_dd_pct=3.4500 <= 5.0",
+      "dsr=0.000000 >= 0.1 (not selection-bias)"
+    ],
+    "alt_reasons": [
+      "FAIL dsr=0.000000 >= 0.3 (alt floor)",
+      "FAIL rolling_wfo=WEAK in ['MODERATE', 'STRONG']",
+      "FAIL fixed_params_min_pf=0.045 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct=3.4500 <= 4.0 (alt ceiling)"
+    ],
+    "reasons": [
+      "FAIL mbb_pf_ci_lower=0.4652 >= 1.1",
+      "FAIL p_positive_edge=0.5000 >= 0.95",
+      "mc_95th_dd_pct=3.4500 <= 5.0",
+      "dsr=0.000000 >= 0.1 (not selection-bias)",
+      "FAIL dsr=0.000000 >= 0.3 (alt floor)",
+      "FAIL rolling_wfo=WEAK in ['MODERATE', 'STRONG']",
+      "FAIL fixed_params_min_pf=0.045 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct=3.4500 <= 4.0 (alt ceiling)"
+    ]
+  },
+  "wfo_config": {
+    "train_months": 6,
+    "test_months": 3,
+    "step_months": 3,
+    "n_windows": 6,
+    "n_oos_windows": 6,
+    "n_oos_windows_with_trades": 6,
+    "total_oos_trades": 41,
+    "grid_combos": 48,
+    "grid_fast_period": [
+      20,
+      30,
+      40,
+      50
+    ],
+    "grid_slow_period": [
+      80,
+      120,
+      160,
+      200
+    ],
+    "grid_atr_trail_mult": [
+      1.0,
+      1.5,
+      2.0
+    ]
+  },
+  "gate_v2_metrics": {
+    "pf_ci_lower": 0.4652,
+    "p_edge": 0.5,
+    "mc_95th_dd": 0.0345,
+    "mc_95th_dd_pct": 3.45,
+    "dsr": 0.0,
+    "wfo_consistency": "WEAK",
+    "fixed_params_min_pf": 0.0453,
+    "fixed_params_mean_pf": 0.9421,
+    "fixed_params_max_pf": 1.7084,
+    "n_combos_with_trades": 48,
+    "combo_results": [
+      {
+        "fast": 20,
+        "slow": 80,
+        "atr_trail_mult": 1.0,
+        "pf": 1.4922,
+        "trades": 26
+      },
+      {
+        "fast": 20,
+        "slow": 80,
+        "atr_trail_mult": 1.5,
+        "pf": 1.3783,
+        "trades": 92
+      },
+      {
+        "fast": 20,
+        "slow": 80,
+        "atr_trail_mult": 2.0,
+        "pf": 0.8369,
+        "trades": 58
+      },
+      {
+        "fast": 20,
+        "slow": 120,
+        "atr_trail_mult": 1.0,
+        "pf": 1.3773,
+        "trades": 57
+      },
+      {
+        "fast": 20,
+        "slow": 120,
+        "atr_trail_mult": 1.5,
+        "pf": 1.2448,
+        "trades": 61
+      },
+      {
+        "fast": 20,
+        "slow": 120,
+        "atr_trail_mult": 2.0,
+        "pf": 1.3658,
+        "trades": 68
+      },
+      {
+        "fast": 20,
+        "slow": 160,
+        "atr_trail_mult": 1.0,
+        "pf": 1.2833,
+        "trades": 57
+      },
+      {
+        "fast": 20,
+        "slow": 160,
+        "atr_trail_mult": 1.5,
+        "pf": 1.0921,
+        "trades": 57
+      },
+      {
+        "fast": 20,
+        "slow": 160,
+        "atr_trail_mult": 2.0,
+        "pf": 0.9311,
+        "trades": 57
+      },
+      {
+        "fast": 20,
+        "slow": 200,
+        "atr_trail_mult": 1.0,
+        "pf": 1.1376,
+        "trades": 31
+      },
+      {
+        "fast": 20,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "pf": 1.7084,
+        "trades": 50
+      },
+      {
+        "fast": 20,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 1.3222,
+        "trades": 33
+      },
+      {
+        "fast": 30,
+        "slow": 80,
+        "atr_trail_mult": 1.0,
+        "pf": 0.738,
+        "trades": 21
+      },
+      {
+        "fast": 30,
+        "slow": 80,
+        "atr_trail_mult": 1.5,
+        "pf": 1.3518,
+        "trades": 83
+      },
+      {
+        "fast": 30,
+        "slow": 80,
+        "atr_trail_mult": 2.0,
+        "pf": 0.6783,
+        "trades": 24
+      },
+      {
+        "fast": 30,
+        "slow": 120,
+        "atr_trail_mult": 1.0,
+        "pf": 0.6198,
+        "trades": 13
+      },
+      {
+        "fast": 30,
+        "slow": 120,
+        "atr_trail_mult": 1.5,
+        "pf": 0.3761,
+        "trades": 13
+      },
+      {
+        "fast": 30,
+        "slow": 120,
+        "atr_trail_mult": 2.0,
+        "pf": 0.2534,
+        "trades": 13
+      },
+      {
+        "fast": 30,
+        "slow": 160,
+        "atr_trail_mult": 1.0,
+        "pf": 1.1456,
+        "trades": 48
+      },
+      {
+        "fast": 30,
+        "slow": 160,
+        "atr_trail_mult": 1.5,
+        "pf": 0.917,
+        "trades": 43
+      },
+      {
+        "fast": 30,
+        "slow": 160,
+        "atr_trail_mult": 2.0,
+        "pf": 0.9853,
+        "trades": 38
+      },
+      {
+        "fast": 30,
+        "slow": 200,
+        "atr_trail_mult": 1.0,
+        "pf": 1.1843,
+        "trades": 34
+      },
+      {
+        "fast": 30,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "pf": 1.266,
+        "trades": 44
+      },
+      {
+        "fast": 30,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 0.9323,
+        "trades": 30
+      },
+      {
+        "fast": 40,
+        "slow": 80,
+        "atr_trail_mult": 1.0,
+        "pf": 1.1044,
+        "trades": 70
+      },
+      {
+        "fast": 40,
+        "slow": 80,
+        "atr_trail_mult": 1.5,
+        "pf": 0.3232,
+        "trades": 17
+      },
+      {
+        "fast": 40,
+        "slow": 80,
+        "atr_trail_mult": 2.0,
+        "pf": 0.287,
+        "trades": 19
+      },
+      {
+        "fast": 40,
+        "slow": 120,
+        "atr_trail_mult": 1.0,
+        "pf": 0.4498,
+        "trades": 15
+      },
+      {
+        "fast": 40,
+        "slow": 120,
+        "atr_trail_mult": 1.5,
+        "pf": 0.4346,
+        "trades": 18
+      },
+      {
+        "fast": 40,
+        "slow": 120,
+        "atr_trail_mult": 2.0,
+        "pf": 0.9542,
+        "trades": 56
+      },
+      {
+        "fast": 40,
+        "slow": 160,
+        "atr_trail_mult": 1.0,
+        "pf": 0.8571,
+        "trades": 35
+      },
+      {
+        "fast": 40,
+        "slow": 160,
+        "atr_trail_mult": 1.5,
+        "pf": 0.864,
+        "trades": 37
+      },
+      {
+        "fast": 40,
+        "slow": 160,
+        "atr_trail_mult": 2.0,
+        "pf": 1.0208,
+        "trades": 30
+      },
+      {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 1.0,
+        "pf": 1.2632,
+        "trades": 31
+      },
+      {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "pf": 0.9857,
+        "trades": 38
+      },
+      {
+        "fast": 40,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 0.7871,
+        "trades": 31
+      },
+      {
+        "fast": 50,
+        "slow": 80,
+        "atr_trail_mult": 1.0,
+        "pf": 1.4295,
+        "trades": 65
+      },
+      {
+        "fast": 50,
+        "slow": 80,
+        "atr_trail_mult": 1.5,
+        "pf": 0.0571,
+        "trades": 11
+      },
+      {
+        "fast": 50,
+        "slow": 80,
+        "atr_trail_mult": 2.0,
+        "pf": 0.0453,
+        "trades": 10
+      },
+      {
+        "fast": 50,
+        "slow": 120,
+        "atr_trail_mult": 1.0,
+        "pf": 0.9343,
+        "trades": 54
+      },
+      {
+        "fast": 50,
+        "slow": 120,
+        "atr_trail_mult": 1.5,
+        "pf": 0.5535,
+        "trades": 16
+      },
+      {
+        "fast": 50,
+        "slow": 120,
+        "atr_trail_mult": 2.0,
+        "pf": 0.8618,
+        "trades": 40
+      },
+      {
+        "fast": 50,
+        "slow": 160,
+        "atr_trail_mult": 1.0,
+        "pf": 1.1827,
+        "trades": 44
+      },
+      {
+        "fast": 50,
+        "slow": 160,
+        "atr_trail_mult": 1.5,
+        "pf": 1.253,
+        "trades": 44
+      },
+      {
+        "fast": 50,
+        "slow": 160,
+        "atr_trail_mult": 2.0,
+        "pf": 1.0996,
+        "trades": 44
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 1.0,
+        "pf": 0.771,
+        "trades": 23
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "pf": 1.2968,
+        "trades": 37
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 0.7886,
+        "trades": 21
+      }
+    ],
+    "cost_survives_through": "catastrophic",
+    "cost_tier_results": {
+      "optimistic": {
+        "pf": 1.7222,
+        "trades": 50,
+        "passes": true
+      },
+      "realistic": {
+        "pf": 1.7084,
+        "trades": 50,
+        "passes": true
+      },
+      "pessimistic": {
+        "pf": 1.7039,
+        "trades": 50,
+        "passes": true
+      },
+      "catastrophic": {
+        "pf": 1.7674,
+        "trades": 33,
+        "passes": true
+      }
+    }
+  },
+  "thresholds": {
+    "pf_ci_lower": 1.1,
+    "p_edge": 0.95,
+    "mc_95th_dd_core": 0.05,
+    "mc_95th_dd_alt": 0.04,
+    "dsr_core": 0.1,
+    "dsr_alt": 0.3,
+    "fixed_params_min_pf_alt": 1.2,
+    "wfo_consistency_alt": [
+      "MODERATE",
+      "STRONG"
+    ],
+    "cost_survives_through_min": "realistic"
+  },
+  "champion_params": {
+    "fast": 20,
+    "slow": 200,
+    "atr_trail_mult": 1.5
+  },
+  "windows": [
+    {
+      "window": 1,
+      "is_period": "2024-06 -> 2024-12",
+      "oos_period": "2024-12 -> 2025-03",
+      "best_params": {
+        "fast": 20,
+        "slow": 200,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 4.097,
+      "is_trades": 14,
+      "oos_pf": 4.455,
+      "oos_dd": 0.008,
+      "oos_sharpe": 9.471,
+      "oos_trades": 5
+    },
+    {
+      "window": 2,
+      "is_period": "2024-09 -> 2025-03",
+      "oos_period": "2025-03 -> 2025-06",
+      "best_params": {
+        "fast": 50,
+        "slow": 80,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 6.495,
+      "is_trades": 16,
+      "oos_pf": 1.208,
+      "oos_dd": 0.0196,
+      "oos_sharpe": 1.157,
+      "oos_trades": 9
+    },
+    {
+      "window": 3,
+      "is_period": "2024-12 -> 2025-06",
+      "oos_period": "2025-06 -> 2025-09",
+      "best_params": {
+        "fast": 20,
+        "slow": 120,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 6.647,
+      "is_trades": 12,
+      "oos_pf": 1.629,
+      "oos_dd": 0.0103,
+      "oos_sharpe": 3.029,
+      "oos_trades": 10
+    },
+    {
+      "window": 4,
+      "is_period": "2025-03 -> 2025-09",
+      "oos_period": "2025-09 -> 2025-12",
+      "best_params": {
+        "fast": 20,
+        "slow": 120,
+        "atr_trail_mult": 1.0
+      },
+      "is_pf": 3.796,
+      "is_trades": 16,
+      "oos_pf": 0.376,
+      "oos_dd": 0.0378,
+      "oos_sharpe": -6.183,
+      "oos_trades": 9
+    },
+    {
+      "window": 5,
+      "is_period": "2025-06 -> 2025-12",
+      "oos_period": "2025-12 -> 2026-03",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 1.0
+      },
+      "is_pf": 4.308,
+      "is_trades": 11,
+      "oos_pf": 0.413,
+      "oos_dd": 0.0134,
+      "oos_sharpe": -5.351,
+      "oos_trades": 4
+    },
+    {
+      "window": 6,
+      "is_period": "2025-09 -> 2026-03",
+      "oos_period": "2026-03 -> 2026-05",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 5.791,
+      "is_trades": 10,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0247,
+      "oos_sharpe": -22.477,
+      "oos_trades": 4
+    }
+  ],
+  "contract_spec": {
+    "symbol": "M2K",
+    "multiplier": 5.0,
+    "tick_size": 0.1,
+    "commission": 0.62,
+    "capital": 50000.0
+  },
+  "lineage": {
+    "rank1": "FAIL \u2014 wfo=WEAK, dsr=0.0, fixed_pf=0.22; MES params don't transfer",
+    "rank2": "not stored \u2014 1-month OOS structural problem same as rank1",
+    "rank3_hypothesis": "3-month non-overlapping OOS gives 3-6 trades/window"
+  }
+}
