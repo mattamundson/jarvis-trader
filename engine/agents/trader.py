@@ -251,7 +251,7 @@ class TraderAgent:
     # INSTRUMENT_MULTIPLIERS table in engine/utils/position_sizing.py
     _POINT_VALUES: dict = INSTRUMENT_MULTIPLIERS
 
-    def __init__(self, llm_client, db_manager=None):
+    def __init__(self, llm_client, db_manager=None, memory_bridge=None):
         """
         Args:
             llm_client: Object with .api_key attribute (Anthropic key).
@@ -259,9 +259,11 @@ class TraderAgent:
                         Half-Kelly sizing is attempted using recent closed
                         paper trades (falls back to fixed-fractional when
                         fewer than 10 trades exist or on any error).
+            memory_bridge: Optional MemoryBridge for persistent working memory.
         """
         self._llm = llm_client
         self._db = db_manager
+        self._memory = memory_bridge
 
     async def decide(
         self,
@@ -277,7 +279,7 @@ class TraderAgent:
             symbol:           Ticker / futures symbol (e.g. "MES", "AAPL")
             debate_result:    Output from DebateOrchestrator.run_debate() as dict
             analyst_reports:  Dict keyed by agent name → report dict
-                              Expected keys: "technical", "news", "social", "fundamental"
+                               Expected keys: "technical", "news", "social", "fundamental"
             safety_status:    Output from SafetyLayer.get_status()
 
         Returns:
@@ -293,6 +295,17 @@ class TraderAgent:
                 risk_notes="System safety halt. No trades until kill switch is manually cleared.",
             )
 
+        # ── Working Memory Recall (Phase 3.5) ─────────────────────────────
+        working_memory = ""
+        if self._memory:
+            working_memory = self._memory.recall(
+                agent_name="trader",
+                symbol=symbol,
+                topic="general",
+                limit=5
+            )
+            if working_memory:
+                logger.info(f"[Trader] {symbol} — Recalled working memory")
         # ── Fixed-fractional position sizing ──────────────────────────────
         # account_value: use current_equity from SafetyLayer (broker-sourced);
         #   fall back to 10,000 if not yet synced from broker.
@@ -1026,6 +1039,7 @@ class TraderAgent:
         analyst_reports: dict,
         safety_status: dict,
         position_size: PositionSizeResult,
+        working_memory: str = "",
     ) -> str:
         from config import settings  # local import to avoid circular deps
 
@@ -1034,6 +1048,16 @@ class TraderAgent:
         social = analyst_reports.get("social", {})
         forward_recorder = analyst_reports.get("forward_recorder_metric")
         regime_status = analyst_reports.get("regime_status")
+
+        # Phase 3.5: Working Memory Integration
+        memory_section = ""
+        if working_memory:
+            memory_section = f"""
+=== TRADER WORKING MEMORY (PHASE 3.5) ===
+The following observations and lessons were recalled from your prior sessions for {symbol}:
+{working_memory}
+Include these cross-session insights in your reasoning.
+"""
 
         # Safety context
         daily_pnl = safety_status.get("daily_pnl", 0.0)
@@ -1117,6 +1141,7 @@ Return null for entry_price, stop_price, target_1, target_2, atr_used, rr_ratio 
 
         return f"""Make a trade decision for {symbol}.
 
+{memory_section}
 {tpo_section}=== DETERMINISTIC REGIME-BASED ROUTER (PHASE 4) ===
 Current Regime: {getattr(regime_status, 'regime', 'NEUTRAL').value.upper() if regime_status else 'NEUTRAL'}
 Description: {getattr(regime_status, 'description', 'No deterministic regime status available.') if regime_status else 'None'}

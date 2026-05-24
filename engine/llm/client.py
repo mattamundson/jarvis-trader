@@ -137,6 +137,7 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
         "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
         "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+        "deepseek-reasoner": {"input": 0.55, "output": 2.19},
         "hermes3:latest": {"input": 0.0, "output": 0.0},
     }
 
@@ -146,6 +147,7 @@ class JarvisLLMClient:
         "claude-opus-4-6": "claude-sonnet-4-6",
         "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
         "claude-haiku-4-5-20251001": None,  # No fallback from Haiku
+        "deepseek-reasoner": "claude-sonnet-4-6",
     }
 
     # Phase 3 (2026-05-20): Anthropic → Gemini failover map. Used when an
@@ -166,6 +168,7 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": 200_000,
         "gemini-2.5-flash": 1_000_000,
         "gemini-2.0-flash": 1_000_000,
+        "deepseek-reasoner": 64_000,
         "hermes3:latest": 4_096,
     }
 
@@ -252,14 +255,21 @@ class JarvisLLMClient:
         ).strip().lower() not in {"0", "false", "no", "off"}
         self.google_fallback_count = 0  # incremented on each successful fallback
 
+        # Phase 3.4 (2026-05-22): DeepSeek-R1 support for reasoning chains.
+        self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+        self.deepseek_endpoint = os.getenv(
+            "DEEPSEEK_ENDPOINT", "https://api.deepseek.com/v1/chat/completions"
+        ).strip()
+
         google_status = (
             "enabled"
             if self.google_fallback_enabled
             else ("disabled (no key)" if not self.google_api_key else "disabled (env flag)")
         )
+        deepseek_status = "enabled" if self.deepseek_api_key else "disabled (no key)"
         logger.info(
             f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
-            f"(provider={self.provider}, google_fallback={google_status})"
+            f"(provider={self.provider}, google_fallback={google_status}, deepseek={deepseek_status})"
         )
 
     async def _handle_success(
@@ -828,6 +838,75 @@ class JarvisLLMClient:
             content=[SimpleNamespace(text=text)],
         )
 
+    async def _call_deepseek(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        model: str,
+    ):
+        """Single call to DeepSeek via OpenAI-compatible endpoint.
+
+        Returns a SimpleNamespace shaped like an Anthropic response.
+        Extracts reasoning_content if available (specific to DeepSeek-R1).
+        """
+        if not self.deepseek_api_key:
+            raise RuntimeError("deepseek_api_key not configured")
+
+        openai_messages: list[dict] = []
+        if system:
+            openai_messages.append({"role": "system", "content": system})
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            # DeepSeek OpenAI endpoint accepts the same role names as OpenAI.
+            openai_messages.append({"role": role, "content": content})
+
+        payload: dict = {
+            "model": model,
+            "messages": openai_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.deepseek_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        timeout = float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "180"))
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(self.deepseek_endpoint, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+
+        # OpenAI-shape response: {"choices":[{"message":{"content":...}}],"usage":{...}}
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError(f"DeepSeek response missing choices: {str(data)[:300]}")
+        
+        choice = choices[0].get("message") or {}
+        text = choice.get("content", "")
+        # DeepSeek specific reasoning field
+        reasoning = choice.get("reasoning_content", "")
+
+        # Wrap reasoning in <think> tags if present to match the expected skill pattern
+        if reasoning:
+            text = f"<think>\n{reasoning}\n</think>\n\n{text}"
+
+        usage = data.get("usage") or {}
+        input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
+        output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
+
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
+        )
+
     @retry(
         stop=stop_after_attempt(1),  # Single attempt; retries handled at call() level
         wait=wait_exponential(multiplier=1, min=1, max=4),
@@ -849,6 +928,16 @@ class JarvisLLMClient:
         if self.provider == "ollama":
             return await self._call_ollama(
                 system, messages, max_tokens, temperature, model=model, agent_name=agent_name
+            )
+
+        # DeepSeek-R1 (Phase 3.4) — primary reasoning provider
+        if model == "deepseek-reasoner":
+            return await self._call_deepseek(
+                system=system,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                model=model,
             )
 
         kwargs = {

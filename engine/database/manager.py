@@ -41,6 +41,7 @@ from ._mixins_analytics import AnalyticsMixin
 from ._mixins_decisions import DecisionsMixin
 from ._mixins_journal import JournalMixin
 from ._mixins_llm_costs import LLMCostsMixin
+from ._mixins_memory import MemoryMixin
 from ._mixins_pending_approvals import PendingApprovalsMixin
 from ._mixins_pnl import DailyPnLMixin
 from ._mixins_positions import PositionsMixin
@@ -66,6 +67,7 @@ class DatabaseManager(
     PendingApprovalsMixin,
     LLMCostsMixin,
     ReviewsMixin,
+    MemoryMixin,
 ):
     """
     Thread-safe SQLite manager for JARVIS TRADER.
@@ -180,6 +182,7 @@ class DatabaseManager(
             "settings",
             "trade_journal",
             "pipeline_runs",
+            "agent_memory",
         ]
         counts: Dict[str, int] = {}
         schema_version: int = 0

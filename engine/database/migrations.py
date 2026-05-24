@@ -1571,6 +1571,30 @@ def migration_021(conn: sqlite3.Connection) -> None:
     logger.info("Migration 021 applied — paper_trades stop_loss/take_profit columns.")
 
 
+def migration_033(conn: sqlite3.Connection) -> None:
+    """
+    033 — Agent memory.
+    Adds agent_memory table for Phase 3.5 persistent working memory.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_memory (
+            id          TEXT PRIMARY KEY,
+            agent_name  TEXT NOT NULL,
+            symbol      TEXT,
+            topic       TEXT DEFAULT 'general',
+            content     TEXT NOT NULL,
+            metadata    TEXT DEFAULT '{}',
+            created_at  TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_am_agent_name ON agent_memory(agent_name)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_am_symbol     ON agent_memory(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_am_topic      ON agent_memory(topic)")
+    conn.commit()
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1607,6 +1631,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_030,  # version 30
     migration_031,  # version 31
     migration_032,  # version 32
+    migration_033,  # version 33
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1642,6 +1667,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Order dedup: idempotency_key column + partial UNIQUE index on paper_trades to prevent duplicate submissions within a 5-second window.",
     "Bracket order IDs: stop_order_id, target_order_id, bracket_status columns on paper_trades for atomic IB bracket traceability.",
     "NOT NULL constraint: idempotency_key promoted to NOT NULL on paper_trades; backfills historical NULLs with deterministic SHA-256 keys derived from entry_time bucket.",
+    "Agent memory: agent_memory table for Phase 3.5 persistent working memory.",
 ]
 
 

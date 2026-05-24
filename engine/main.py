@@ -126,6 +126,8 @@ from routers.paper_validation_router import router as paper_validation_router
 from routers.proactive_validation_router import router as proactive_validation_router
 from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
+from routers.whatsapp_router import router as whatsapp_router
+from routers.whatsapp_router import inject_dependencies as inject_whatsapp_deps
 from routers.instruments_router import router as instruments_router
 from routers.brokers_router import router as brokers_router
 from routers.brokers_router import inject_dependencies as inject_brokers_deps
@@ -319,6 +321,7 @@ arb_scout: ArbScout | None = None
 shadow_tracker: ShadowModeTracker | None = None
 oms_manager: "OMSManager | None" = None
 tv_streamer: "TVStreamer | None" = None
+memory_bridge: "MemoryBridge | None" = None
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -688,7 +691,10 @@ async def lifespan(app: FastAPI):
     llm_provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
     llm_enabled = llm_provider == "ollama" or bool(settings.ANTHROPIC_API_KEY)
     if llm_enabled:
+        from llm.memory_bridge import MemoryBridge
+
         llm_client = JarvisLLMClient(api_key=settings.ANTHROPIC_API_KEY or "ollama-local")
+        memory_bridge = MemoryBridge(db_manager)
         direct_anthropic_key = settings.ANTHROPIC_API_KEY
         if getattr(llm_client, "provider", "").lower() == "ollama":
             os.environ["ANTHROPIC_API_KEY"] = ""
@@ -739,12 +745,12 @@ async def lifespan(app: FastAPI):
         corey_agent = CoreyAuctionAnalystAgent(llm_client=llm_client)
 
         # Stage 2: Debate
-        bull_agent = BullResearcherAgent(api_key=direct_anthropic_key)
-        bear_agent = BearResearcherAgent(api_key=direct_anthropic_key)
+        bull_agent = BullResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
+        bear_agent = BearResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
         debate_agent = DebateOrchestrator()
 
         # Stages 3-5: Trader → Risk → Fund
-        trader_agent = TraderAgent(llm_client, db_manager=db_manager)
+        trader_agent = TraderAgent(llm_client, db_manager=db_manager, memory_bridge=memory_bridge)
         risk_agent = RiskManagerAgent(llm_client)
         fund_agent = FundManagerAgent(llm_client)
 
@@ -777,6 +783,7 @@ async def lifespan(app: FastAPI):
             safety_layer=safety_layer,
             db_manager=db_manager,
             shadow_tracker=shadow_tracker,
+            memory_bridge=memory_bridge,
         )
 
         # Wire profiler instance into profiling_router
@@ -2598,6 +2605,8 @@ app.include_router(validation_router)
 app.include_router(paper_validation_router)
 app.include_router(proactive_validation_router)
 app.include_router(webhook_router)
+app.include_router(whatsapp_router)
+inject_whatsapp_deps(db_manager, paper_tracker, safety_layer, data_manager)
 app.include_router(discord_router)
 app.include_router(experiments_router)
 app.include_router(backtest_router)
