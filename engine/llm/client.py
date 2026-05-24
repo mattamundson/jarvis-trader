@@ -174,6 +174,7 @@ class JarvisLLMClient:
             "fundamental_analyst",
             "hermes-upgrade-classifier",
             "bookmark_clusterer",
+            "kairos_dreaming",
         }
     )
 
