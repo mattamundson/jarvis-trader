@@ -58,18 +58,19 @@
 |--------|----|-----|--------|
 | MCL | 1h | 0.82 | HALTED — hypotheses A-E exhausted 2026-05-07; `DO_NOT_TRADE_SYMBOLS`; `paper_config.py enabled=False` |
 | MNQ | 1h | 0.57 | HALTED — trend/breakout/ORB all fail gate v2 (55 trades, 0 wins 2026-05-06/07); `DO_NOT_TRADE_SYMBOLS` |
-| MGC | 1d | 0.14 | HALTED-VALIDATION-ONLY — pipeline runs, NO paper orders (Wave 3, 2026-05-21) |
+| MGC | 1h | 0.6842 (p_edge) | APPROVED — paper active, SMA(50,120) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24 |
 | MES | 1h | 0.75 (p_edge) | APPROVED — paper active, SMA(60,200) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24 |
 | SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 |
 
 ### Validation-only lifecycle
 
-MES and MGC are in `VALIDATION_ONLY_INSTRUMENTS` (defined in `engine/agents/pipeline.py`).
-The pipeline runs for these symbols so their verdicts appear in the dashboard and Discord
-briefing feed. The approval gate in `approval/service.py:ensure_approval_allowed()` blocks
-any paper order submission with HTTP 409.
+`VALIDATION_ONLY_INSTRUMENTS` (defined in `engine/agents/pipeline.py`) is currently empty —
+both MES and MGC were promoted to active paper trading on 2026-05-24 (Tier 3 auth).
+The pipeline runs for all approved symbols; verdicts appear in the dashboard and Discord briefing feed.
+The approval gate in `approval/service.py:ensure_approval_allowed()` blocks paper orders for any
+symbol remaining in this set with HTTP 409.
 
 Flip-to-active criteria (remove from `VALIDATION_ONLY_INSTRUMENTS` when ALL met):
-1. WFE >= 0.6 on a fresh rolling walk-forward run
-2. Gate v2 PASS (`pf_ci_lower>=1.10`, `p_edge>=0.95`, `mc_95th_dd<=5%`, `dsr>=0.10`)
+1. p_positive_edge >= 0.6 on a fresh rolling walk-forward run (ALT path)
+2. Gate v2 ALT PASS (`mc_95th_dd<=7%`, `dsr>=0.30`, `rolling_wfo=MODERATE+`, `fixed_params_min_pf>=1.2`)
 3. Explicit Tier 3 authorization from Amo

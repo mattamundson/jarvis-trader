@@ -34,7 +34,7 @@ def test_validation_only_constant_immutable():
     ), "VALIDATION_ONLY_INSTRUMENTS must be a frozenset to prevent accidental mutation"
     # MES promoted 2026-05-24 — must NOT be in validation-only
     assert "MES" not in VALIDATION_ONLY_INSTRUMENTS
-    assert "MGC" in VALIDATION_ONLY_INSTRUMENTS
+    assert "MGC" not in VALIDATION_ONLY_INSTRUMENTS
     # Confirm MCL and MNQ are NOT in validation-only (they have separate DO_NOT_TRADE handling)
     assert "MCL" not in VALIDATION_ONLY_INSTRUMENTS
     assert "MNQ" not in VALIDATION_ONLY_INSTRUMENTS
@@ -102,8 +102,12 @@ def test_mes_approval_allowed():
                 )
 
 
-def test_mgc_approval_blocked():
-    """MGC approval must raise ApprovalFlowError — no paper orders for validation-only."""
+def test_mgc_approval_allowed():
+    """MGC approval must NOT raise — MGC promoted to active paper trading 2026-05-24.
+
+    Tier 3 authorization granted: p_positive_edge=0.6842 (WFE criterion), ALT gate v2 PASS.
+    Champion params: SMA(fast=50, slow=120, atr_trail_mult=2.0).
+    """
     from approval.service import ApprovalFlowError, ensure_approval_allowed
 
     row = _make_approval_row("MGC")
@@ -112,12 +116,15 @@ def test_mgc_approval_blocked():
     with patch(
         "approval.service.approved_watchlist_symbols", return_value={"MES", "MNQ", "MCL", "MGC"}
     ):
-        with pytest.raises(ApprovalFlowError) as exc_info:
+        # Should not raise ApprovalFlowError for MGC — it's now an active instrument
+        try:
             ensure_approval_allowed(row, safety)
-
-    assert exc_info.value.status_code == 409
-    assert "VALIDATION_ONLY_INSTRUMENTS" in str(exc_info.value.detail)
-    assert "MGC" in str(exc_info.value.detail)
+        except ApprovalFlowError as e:
+            if "VALIDATION_ONLY_INSTRUMENTS" in str(e.detail):
+                pytest.fail(
+                    f"MGC was blocked by VALIDATION_ONLY_INSTRUMENTS — "
+                    f"it should be active since 2026-05-24 Tier 3 auth. Error: {e.detail}"
+                )
 
 
 def test_mcl_blocked_by_paper_config_not_validation_only():
@@ -204,15 +211,18 @@ def test_mes_active_not_validation_only():
     assert _pipeline_mod.VALIDATION_ONLY_INSTRUMENTS is VALIDATION_ONLY_INSTRUMENTS
 
 
-def test_mgc_pipeline_runs_but_no_order():
-    """Pipeline produces a verdict for MGC but the result is marked validation_only.
+def test_mgc_active_not_validation_only():
+    """MGC must NOT be in VALIDATION_ONLY_INSTRUMENTS — it is now active (2026-05-24).
 
-    Same reasoning as MES test above.
+    Tier 3 auth granted: p_positive_edge=0.6842, ALT gate v2 PASS, Tier 3 auth 2026-05-24.
+    Orders are now allowed through ensure_approval_allowed() for MGC.
     """
     from agents.pipeline import VALIDATION_ONLY_INSTRUMENTS
 
-    assert "MGC" in VALIDATION_ONLY_INSTRUMENTS
+    # MGC promoted — must not be in validation-only set
+    assert "MGC" not in VALIDATION_ONLY_INSTRUMENTS
 
+    # Confirm the constant is importable and stable across multiple imports
     from agents import pipeline as _pipeline_mod
 
     assert _pipeline_mod.VALIDATION_ONLY_INSTRUMENTS is VALIDATION_ONLY_INSTRUMENTS
