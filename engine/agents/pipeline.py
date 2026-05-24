@@ -80,7 +80,7 @@ except Exception:  # pragma: no cover — optional dependency
     _RECIPE_LOADER_AVAILABLE = False
 
 from agents.kronos_classifier import KronosClassifier, is_kronos_enabled
-from agents.options_analyst import OptionsAnalystAgent, is_options_analyst_enabled
+from agents.options_analyst import is_options_analyst_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -542,21 +542,32 @@ class TradingPipeline:
         self._memory = memory_bridge
         self._regime_engine = RegimeClassifierV2()
         self.context_manager = context_manager
-        
+
         # Phase 3.7: Pattern Vision
-        from agents.vision_analyst import PatternVisionAnalystAgent
-        self._vision_agent = PatternVisionAnalystAgent(llm_client=agents.get("technical")._llm if agents.get("technical") else None)
-        
+        try:
+            from agents.vision_analyst import PatternVisionAnalystAgent
+
+            self._vision_agent = PatternVisionAnalystAgent(
+                llm_client=agents.get("technical")._llm if agents.get("technical") else None
+            )
+        except ImportError:
+            logger.warning(
+                "[Pipeline] vision_analyst unavailable (playwright not installed) — vision stage will return CAUTION"
+            )
+            self._vision_agent = None
+
         # Phase 5: Options Layer
-        from data.options_chain_live import OptionsChainService
         from agents.options_analyst import OptionsAnalystAgent
-        
+        from data.options_chain_live import OptionsChainService
+
         # Assuming technical analyst has access to the primary data manager
         _tech = agents.get("technical")
         _ib_connector = getattr(getattr(_tech, "_data", None), "ibkr", None)
-        
+
         self._options_chain = OptionsChainService(_ib_connector) if _ib_connector else None
-        self._options_analyst = OptionsAnalystAgent(self._options_chain, llm_client=_tech._llm if _tech else None)
+        self._options_analyst = OptionsAnalystAgent(
+            self._options_chain, llm_client=_tech._llm if _tech else None
+        )
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
         # _kronos is NOT set here — use _kronos_or_none property so that
         # /admin/feature-flags toggles take effect without an engine restart.
@@ -1618,12 +1629,14 @@ class TradingPipeline:
         # ── Phase 8.2: Regime-Router Logic ──
         regime_override = None
         if regime_name in ("CRISIS", "VOLATILE"):
-            logger.warning(f"[Pipeline] 🛡️ Regime Routing: {regime_name} detected. Blocking new entries.")
+            logger.warning(
+                f"[Pipeline] 🛡️ Regime Routing: {regime_name} detected. Blocking new entries."
+            )
             regime_override = {
                 "blocked": True,
                 "reason": f"Systemic risk protection: {regime_name} regime detected.",
             }
-        
+
         # Stage 1a: Run technical analyst first
         technical_coro = self._call_agent_analyze(
             "technical",
@@ -1631,7 +1644,7 @@ class TradingPipeline:
             is_futures=is_futures,
             timeframe=timeframe,
             historical_context=f"{historical_context}\nREGIME CONTEXT: Market is currently {regime_name}. "
-                               f"Prioritize {'Trend-Following' if 'TREND' in regime_name else 'Mean-Reversion'} setups.",
+            f"Prioritize {'Trend-Following' if 'TREND' in regime_name else 'Mean-Reversion'} setups.",
         )
         technical_result = await safe_analyze("technical", technical_coro)
 
@@ -1656,8 +1669,19 @@ class TradingPipeline:
         )
 
         # Phase 3.7: Pattern Vision Analysis
-        vision_coro = self._vision_agent.analyze(symbol, bias="NEUTRAL") # Default bias
-        
+        if self._vision_agent is not None:
+            vision_coro = self._vision_agent.analyze(symbol, bias="NEUTRAL")
+        else:
+
+            async def _vision_unavailable():
+                return {
+                    "visual_verdict": "UNAVAILABLE",
+                    "reasoning": "playwright not installed",
+                    "data_quality": "unavailable",
+                }
+
+            vision_coro = _vision_unavailable()
+
         results = await asyncio.gather(
             safe_analyze("news", news_coro),
             safe_analyze("social", social_coro),
