@@ -2297,38 +2297,38 @@ async def lifespan(app: FastAPI):
     # ── Weekly strategy discovery ──────────────────────────────────────────────
     try:
 
-        async def _run_weekly_discovery() -> None:
-            """Saturday midnight: generate + evaluate one LLM strategy per active instrument."""
+        async def _run_nightly_discovery() -> None:
+            """Nightly: generate + evaluate one LLM strategy per active instrument."""
             try:
                 from pathlib import Path as _Path
                 from strategies.discovery_loop import generate_strategy, evaluate_strategy_file
 
-                for _sym, _ivl in [("MCL", "1h"), ("MNQ", "1h")]:
-                    logger.info(f"[WeeklyDiscovery] Running cycle for {_sym}/{_ivl}")
+                for _sym, _ivl in [("MES", "1h"), ("MGC", "1h"), ("MCL", "1h"), ("MNQ", "1h")]:
+                    logger.info(f"[NightlyDiscovery] Running cycle for {_sym}/{_ivl}")
                     _path = await generate_strategy(symbol=_sym, interval=_ivl)
                     if _path is None:
-                        logger.warning(f"[WeeklyDiscovery] No strategy generated for {_sym}")
+                        logger.warning(f"[NightlyDiscovery] No strategy generated for {_sym}")
                         continue
                     _result = evaluate_strategy_file(
                         filename=_Path(_path).name, symbol=_sym, interval=_ivl
                     )
                     logger.info(
-                        f"[WeeklyDiscovery] {_sym} verdict={_result.get('verdict')} "
+                        f"[NightlyDiscovery] {_sym} verdict={_result.get('verdict')} "
                         f"sharpe={_result.get('sharpe', 0):.2f}"
                     )
             except Exception as _disc_err:
-                logger.error(f"[WeeklyDiscovery] Failed: {_disc_err}", exc_info=True)
+                logger.error(f"[NightlyDiscovery] Failed: {_disc_err}", exc_info=True)
 
         if scheduler is not None:
             scheduler.add_job(
-                _run_weekly_discovery,
-                CronTrigger(day_of_week="sat", hour=0, minute=0, timezone="America/Chicago"),
-                id="weekly_discovery",
-                name="Weekly Strategy Discovery",
+                _run_nightly_discovery,
+                CronTrigger(hour=1, minute=0, timezone="America/Chicago"),
+                id="nightly_discovery",
+                name="Nightly Strategy Discovery Loop",
                 max_instances=1,
                 replace_existing=True,
             )
-            logger.info("Weekly strategy discovery job registered (Saturday 00:00 Chicago)")
+            logger.info("✅ Nightly strategy discovery loop registered (01:00 CT)")
     except Exception as _weekly_err:
         logger.warning(f"Weekly discovery job init failed (non-fatal): {_weekly_err}")
 
@@ -2410,6 +2410,51 @@ async def lifespan(app: FastAPI):
                 replace_existing=True,
             )
             logger.info("Weekly gate v2 orchestrator registered (Saturday 01:00 Chicago)")
+
+        # ── Phase 7.6: Weekly Self-Audit & Drift Detection ──────────────────────
+        async def _run_weekly_self_audit() -> None:
+            """Sunday 18:00 CT: Meta-analysis of performance, drift, and optimization."""
+            try:
+                from agents.self_audit import WeeklySelfAuditAgent
+                from analytics.drift_detector import DriftDetector
+                from backtest.paper_config import ACTIVE_INSTRUMENTS
+
+                # 1. Performance Audit (P7.6)
+                auditor = WeeklySelfAuditAgent(db_manager)
+                audit_result = await auditor.run_audit()
+                if "report_md" in audit_result:
+                    logger.info("✅ Weekly self-audit complete — report written to docs/weekly_audit.md")
+                
+                # 2. Strategy Drift Detection (P7.2)
+                drifter = DriftDetector(db_manager)
+                for _sym in ACTIVE_INSTRUMENTS:
+                    _drift = await drifter.check_drift(_sym)
+                    if _drift.get("trigger_alert"):
+                        logger.warning(f"⚠️ [Pipeline] {_sym} drift detected — demoted to shadow-mode recommended.")
+
+                # 3. Monthly Re-Bayes (P7.4)
+                # Only runs on the first Sunday of the month
+                now = datetime.now()
+                if now.day <= 7:
+                    logger.info("[Main] First Sunday of month detected — triggering Bayesian re-optimization")
+                    from optimization.scheduled_rebayes import ScheduledRebayes
+                    optimizer = ScheduledRebayes(db_manager)
+                    await optimizer.run_monthly_rebayes()
+
+            except Exception as _audit_err:
+                logger.error(f"[SelfAudit] Failed: {_audit_err}", exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_weekly_self_audit,
+                CronTrigger(day_of_week="sun", hour=18, minute=0, timezone="America/Chicago"),
+                id="weekly_self_audit",
+                name="Weekly Meta-Learning Self-Audit",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("✅ Weekly self-audit & drift detection registered (Sunday 18:00 CT)")
+
     except Exception as _gv2_init_err:
         logger.warning(f"Weekly gate v2 job init failed (non-fatal): {_gv2_init_err}")
 
