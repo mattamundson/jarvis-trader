@@ -619,7 +619,7 @@ def detect_soh(df: pd.DataFrame) -> bool:
     prior_low = df["low"].tail(40).iloc[:20].min() if len(df) >= 40 else recent_low
     no_thrust = (recent_high <= prior_high * 1.001) and (recent_low >= prior_low * 0.999)
 
-    return tight_range and light_vol and no_thrust
+    return bool(tight_range and light_vol and no_thrust)
 
 
 # ── Stops and Targets ─────────────────────────────────────────────────────────
@@ -810,17 +810,17 @@ def full_hidden_pivots_scan(
         timeframe=timeframe,
         pattern=pattern,
         bias=bias,
-        trigger_price=round(trigger, 4) if trigger else None,
-        tight_stop=round(tight_stop, 4) if tight_stop else None,
-        riskier_stop=round(riskier_stop, 4) if riskier_stop else None,
-        targets=[round(t, 4) for t in targets],
-        hp_ou_level=round(hp_ou, 4) if hp_ou else None,
-        hp_levels=[round(l, 4) for l in hp_levels],  # noqa: E741  # OHLC convention
+        trigger_price=float(round(trigger, 4)) if trigger else None,
+        tight_stop=float(round(tight_stop, 4)) if tight_stop else None,
+        riskier_stop=float(round(riskier_stop, 4)) if riskier_stop else None,
+        targets=[float(round(t, 4)) for t in targets],
+        hp_ou_level=float(round(hp_ou, 4)) if hp_ou else None,
+        hp_levels=[float(round(l, 4)) for l in hp_levels],  # noqa: E741  # OHLC convention
         ema_alignment=ema_alignment,
-        rs_rw_score=round(rs_score, 3),
+        rs_rw_score=float(round(rs_score, 3)),
         rs_rw_label=rs_label,
-        soh=soh,
+        soh=bool(soh),
         oscillator_state=osc_state,
-        confidence=round(confidence, 3),
+        confidence=float(round(confidence, 3)),
         notes=notes,
     )

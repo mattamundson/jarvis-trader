@@ -94,9 +94,12 @@ try:
         Future,
         LimitOrder,
         MarketOrder,
+        Option,
+        OptionComputation,
         Stock,
         StopLimitOrder,
         StopOrder,
+        Ticker,
     )
     from ib_async import (
         util as ib_util,
@@ -437,6 +440,7 @@ class IBGatewayManager:
         Supports:
           - Micro-futures from FUTURES_SYMBOL_MAP (MES, MNQ, etc.)
           - Plain equities (fallback — uses SMART routing)
+          - Options in format SYMBOL_YYMMDD[C/P]STRIKE
 
         Returns a Contract object or None if IB is unavailable.
         """
@@ -445,13 +449,13 @@ class IBGatewayManager:
 
         upper = symbol.upper()
 
+        # 1. Options Check (e.g. AAPL_260522C190)
+        if "_" in upper and any(c in upper for c in ("C", "P")):
+            return self._resolve_option_contract(upper)
+
+        # 2. Futures Check
         if upper in FUTURES_SYMBOL_MAP:
             spec = FUTURES_SYMBOL_MAP[upper]
-
-            # MCL (Micro Crude Oil) uses monthly expiry; all others use quarterly.
-            # Providing lastTradeDateOrContractMonth prevents IB Error 321
-            # ("Error validating request") which occurs when the contract spec is
-            # ambiguous because both exchange AND expiry are unspecified.
             if upper == "MCL":
                 contract_month = _nearest_front_month()
             else:
@@ -473,10 +477,93 @@ class IBGatewayManager:
             )
             return contract
 
-        # Generic equity fallback
+        # 3. Generic equity fallback
         contract = Stock(symbol=upper, exchange="SMART", currency="USD")
         logger.debug("Resolved %s → Stock(SMART)", symbol)
         return contract
+
+    def _resolve_option_contract(self, symbol: str) -> Optional[Option]:
+        """
+        Parse an option symbol (e.g. AAPL_260522C190) into an Option contract.
+        """
+        try:
+            # Format: UNDERLYING_YYMMDDCSTRIKE
+            parts = symbol.split("_")
+            underlying = parts[0]
+            rest = parts[1]
+
+            # Find C or P index
+            right_idx = rest.find("C")
+            if right_idx == -1:
+                right_idx = rest.find("P")
+
+            if right_idx == -1:
+                return None
+
+            expiry = "20" + rest[:right_idx]  # 260522 -> 20260522
+            right = rest[right_idx]  # C or P
+            strike = float(rest[right_idx + 1 :])
+
+            return Option(
+                symbol=underlying,
+                lastTradeDateOrContractMonth=expiry,
+                strike=strike,
+                right=right,
+                exchange="SMART",
+                currency="USD",
+            )
+        except Exception as exc:
+            logger.warning("Failed to resolve option contract for %s: %s", symbol, exc)
+            return None
+
+    async def get_options_greeks(self, symbol: str) -> dict:
+        """
+        Fetch real-time Greeks for a specific option symbol.
+        """
+        if self._ib is None or not self.is_connected():
+            return {"error": "Not connected"}
+
+        contract = self._resolve_contract(symbol)
+        if not contract or not isinstance(contract, Option):
+            return {"error": f"Invalid option symbol: {symbol}"}
+
+        qualified = await self._qualify_contract(contract)
+        if not qualified:
+            return {"error": f"Could not qualify contract: {symbol}"}
+
+        try:
+            # Request market data for Greeks
+            # We use snapshotted data for one-off requests
+            ticker = self._ib.reqMktData(qualified, "100,101,104,106", snapshot=True)
+
+            # Wait for data to populate (max 5s)
+            t0 = time.monotonic()
+            while time.monotonic() - t0 < 5.0:
+                if ticker.modelGreeks is not None:
+                    break
+                await asyncio.sleep(0.1)
+
+            greeks = ticker.modelGreeks
+            if greeks is None:
+                # Fallback to marketGreeks if model is unavailable
+                greeks = ticker.marketGreeks
+
+            if greeks is None:
+                return {"error": "Greeks unavailable for this contract", "symbol": symbol}
+
+            return {
+                "symbol": symbol,
+                "delta": greeks.delta,
+                "gamma": greeks.gamma,
+                "theta": greeks.theta,
+                "vega": greeks.vega,
+                "implied_vol": greeks.impliedVol,
+                "und_price": greeks.undPrice,
+                "timestamp": datetime.now().isoformat(),
+            }
+        except Exception as exc:
+            logger.error("get_options_greeks failed for %s: %s", symbol, exc)
+            return {"error": str(exc)}
 
     async def _qualify_contract(self, contract) -> Optional[object]:
         """
