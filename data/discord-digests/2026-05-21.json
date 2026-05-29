@@ -1,0 +1,127 @@
+{
+  "date": "2026-05-21",
+  "session_bias": {
+    "session_type": "trend_day",
+    "directional_bias": "bullish",
+    "conviction": 0.85,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 37
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 102.04,
+      "target2": 103.12,
+      "stop1": 100.24,
+      "win_rate": 82.56,
+      "rr": 0.62,
+      "timestamp": "2026-05-21T10:22:02.044-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 101.25,
+      "target2": 102.33,
+      "stop1": 99.45,
+      "win_rate": 82.49,
+      "rr": 0.62,
+      "timestamp": "2026-05-21T09:41:02.347-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 101.36,
+      "target2": 102.44,
+      "stop1": 99.56,
+      "win_rate": 82.42,
+      "rr": 0.62,
+      "timestamp": "2026-05-21T09:07:01.162-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 100.12,
+      "target2": 101.2,
+      "stop1": 98.32,
+      "win_rate": 82.4,
+      "rr": 0.62,
+      "timestamp": "2026-05-21T02:02:24.443-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 101.37,
+      "target2": 102.45,
+      "stop1": 99.57,
+      "win_rate": 82.35,
+      "rr": 0.61,
+      "timestamp": "2026-05-21T08:08:03.132-05:00"
+    }
+  ],
+  "corey_quote": "Strong markets don't just break out\u2014they hold the breakout. Right now the close will tell that story.",
+  "commentary_health": [
+    {
+      "date": "2026-05-22",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 37
+    },
+    {
+      "date": "2026-05-21",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 37
+    },
+    {
+      "date": "2026-05-20",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 25
+    },
+    {
+      "date": "2026-05-19",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 85
+    },
+    {
+      "date": "2026-05-18",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.75,
+      "message_count": 59
+    },
+    {
+      "date": "2026-05-17",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.8,
+      "message_count": 7
+    },
+    {
+      "date": "2026-05-16",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 37
+    }
+  ]
+}
