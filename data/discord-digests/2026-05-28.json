@@ -7,6 +7,13 @@
   "corey_quote": null,
   "commentary_health": [
     {
+      "date": "2026-05-29",
+      "data_quality": "stale",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 1
+    },
+    {
       "date": "2026-05-23",
       "data_quality": "fresh",
       "directional_bias": "neutral",
