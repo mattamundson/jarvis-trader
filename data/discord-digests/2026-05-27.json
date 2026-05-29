@@ -1,0 +1,38 @@
+{
+  "date": "2026-05-27",
+  "session_bias": null,
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": null,
+  "commentary_health": [
+    {
+      "date": "2026-05-23",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 1
+    },
+    {
+      "date": "2026-05-22",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.72,
+      "message_count": 53
+    },
+    {
+      "date": "2026-05-21",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 37
+    },
+    {
+      "date": "2026-05-20",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 25
+    }
+  ]
+}
