@@ -207,11 +207,38 @@ async def test_get_open_positions_unreachable() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _mock_embed_session() -> MagicMock:
+    """Mock aiohttp.ClientSession whose post() returns a fake 768-dim embedding.
+
+    semantic_search embeds the query via Ollama BEFORE checking the index, so
+    tests must stub the embed call or they hit the real endpoint (which can be
+    saturated by a background embed job, causing the test to hang).
+    """
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(return_value={"embeddings": [[0.0] * 768]})
+
+    post_ctx = AsyncMock()
+    post_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+    post_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    session = AsyncMock()
+    session.post = MagicMock(return_value=post_ctx)
+
+    session_ctx = AsyncMock()
+    session_ctx.__aenter__ = AsyncMock(return_value=session)
+    session_ctx.__aexit__ = AsyncMock(return_value=None)
+    return session_ctx
+
+
 async def test_semantic_search_no_index() -> None:
     """Returns error dict when vec_index.db doesn't exist."""
     from discord.mcp_server import semantic_search
 
-    with patch("discord.mcp_server.os.path.exists", return_value=False):
+    with (
+        patch("discord.mcp_server.aiohttp.ClientSession", return_value=_mock_embed_session()),
+        patch("discord.mcp_server.os.path.exists", return_value=False),
+    ):
         result = await semantic_search("ES auction theory")
 
     assert result["results"] == []
@@ -238,7 +265,10 @@ async def test_semantic_search_limit_clamped() -> None:
     """Limit is clamped to 1-20 range — a limit of 99 becomes 20."""
     from discord.mcp_server import semantic_search
 
-    with patch("discord.mcp_server.os.path.exists", return_value=False):
+    with (
+        patch("discord.mcp_server.aiohttp.ClientSession", return_value=_mock_embed_session()),
+        patch("discord.mcp_server.os.path.exists", return_value=False),
+    ):
         result = await semantic_search("ES", limit=99)
 
     # Regardless of limit, no-index error triggers before the limit is used.

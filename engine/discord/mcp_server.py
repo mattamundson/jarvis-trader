@@ -575,6 +575,12 @@ async def semantic_search(query: str, limit: int = 8) -> dict:
             idx.close()
             return {"results": [], "index_size": 0, "error": "Index is empty"}
 
+        # Over-fetch a larger candidate pool so the cross-encoder reranker has
+        # room to reorder; it is then cut down to `limit`. Without reranking
+        # (Tier 3) this collapses to the original top-`limit` vector order.
+        from engine.discord.reranker import overfetch_k, rerank
+
+        fetch_k = overfetch_k(limit)
         rows = idx.execute(
             """
             SELECT v.rowid, v.distance, m.content, m.ts, m.channel
@@ -584,23 +590,39 @@ async def semantic_search(query: str, limit: int = 8) -> dict:
               AND k = ?
             ORDER BY v.distance
             """,
-            [q_vec, limit],
+            [q_vec, fetch_k],
         ).fetchall()
         idx.close()
     except Exception as exc:
         return {"results": [], "error": f"vec_index query error: {exc}"}
 
-    results = [
+    # Build candidates carrying the FULL content (rerank quality depends on the
+    # whole document, not a 400-char preview); truncate only on the way out.
+    candidates = [
         {
             "rowid": rid,
             "similarity": round(1 - dist, 4),
             "ts": ts or "",
             "channel": channel or "market-updates",
-            "content": (content or "")[:400],
+            "_full_content": content or "",
         }
         for rid, dist, content, ts, channel in rows
     ]
-    return {"query": query, "index_size": index_size, "results": results}
+
+    ranked, rerank_tier = await rerank(query, candidates, top_n=limit, text_key="_full_content")
+
+    results = []
+    for cand in ranked:
+        full = cand.pop("_full_content", "")
+        cand["content"] = full[:400]
+        results.append(cand)
+
+    return {
+        "query": query,
+        "index_size": index_size,
+        "rerank": rerank_tier,
+        "results": results,
+    }
 
 
 # ---------------------------------------------------------------------------
