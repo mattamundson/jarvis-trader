@@ -23,7 +23,7 @@ SMA_TREND_PARAMS: dict[str, dict] = {
 }
 
 _ATR_PERIOD = 14
-_T1_MULT = 3.0   # static first target: 3× ATR from entry
+_T1_MULT = 3.0  # static first target: 3× ATR from entry
 _T2_MULT = 5.0
 _T3_MULT = 7.0
 
@@ -44,12 +44,36 @@ def _wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
     return tr.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
 
 
+def _wilder_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
+    """Wilder's Average Directional Index (ADX) — trend-strength, direction-agnostic.
+
+    ADX rises when one directional movement dominates (a real trend) and falls in
+    chop. Classic Wilder reading: ADX >= 20-25 = trend present. Used here as a
+    conditioner gate on the SMA-trend entry (only take the golden cross when the
+    market is actually trending). Same Wilder smoothing (ewm alpha=1/period) as ATR.
+    """
+    up = high.diff()
+    dn = -low.diff()
+    plus_dm = ((up > dn) & (up > 0)).astype(float) * up
+    minus_dm = ((dn > up) & (dn > 0)).astype(float) * dn
+    prev_c = close.shift(1)
+    tr = pd.concat([(high - low), (high - prev_c).abs(), (low - prev_c).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+    plus_di = 100.0 * plus_dm.ewm(alpha=1 / period, min_periods=period, adjust=False).mean() / atr
+    minus_di = 100.0 * minus_dm.ewm(alpha=1 / period, min_periods=period, adjust=False).mean() / atr
+    di_sum = (plus_di + minus_di).replace(0.0, np.nan)
+    dx = 100.0 * (plus_di - minus_di).abs() / di_sum
+    return dx.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+
+
 def generate_sma_trend_signals(
     df: pd.DataFrame,
     fast: int = 50,
     slow: int = 200,
     atr_trail_mult: float = 2.0,
     min_rv_annualized: float = 0.0,
+    adx_min: float = 0.0,
+    adx_period: int = 14,
 ) -> pd.DataFrame:
     """
     Generate SMA trend-following signals compatible with the JARVIS Backtester.
@@ -59,6 +83,11 @@ def generate_sma_trend_signals(
             vol (annualized %) at entry bar < threshold. Empirically the
             SMA trend edge concentrates at RV ≥ 9% (36-trade sample).
             0.0 (default) = filter disabled.
+        adx_min: If > 0, suppress ENTRY_NOW when Wilder ADX(adx_period) at the
+            entry bar < threshold (trend-strength conditioner): only take the
+            golden cross when the market is actually trending. Classic Wilder
+            threshold ~20-25. 0.0 (default) = disabled (backward-compatible).
+        adx_period: Wilder ADX lookback (default 14).
 
     Returns df with columns:
         entry_signal  : "ENTRY_NOW" | "NO_TRADE"
@@ -77,6 +106,8 @@ def generate_sma_trend_signals(
     # Realized vol: stddev of log returns over _RV_WINDOW bars, annualized as percent
     log_ret = np.log(df["close"] / df["close"].shift(1))
     rv_ann = log_ret.rolling(_RV_WINDOW).std() * np.sqrt(_RV_ANNUAL_FACTOR) * 100.0
+    # Trend-strength conditioner (default off): ADX(adx_period) at the entry bar.
+    adx = _wilder_adx(df["high"], df["low"], df["close"], adx_period) if adx_min > 0.0 else None
 
     # Force numpy bool dtype: NaN comparisons → False, shift with fill_value avoids
     # the object-dtype conversion that makes Python's ~bool give wrong results (Python 3.12+).
@@ -87,16 +118,16 @@ def generate_sma_trend_signals(
     # because prev bar had NaN→fillna(False).  With wide trail stops this
     # synthetic entry never exits, producing 0 completed trades.
     prev_sma_s_valid = sma_s.shift(1).notna()
-    cross_up = above & ~prev_above & prev_sma_s_valid   # golden cross
-    cross_dn = ~above & prev_above & prev_sma_s_valid   # death cross
+    cross_up = above & ~prev_above & prev_sma_s_valid  # golden cross
+    cross_dn = ~above & prev_above & prev_sma_s_valid  # death cross
 
     n = len(df)
     entry_signal = np.full(n, "NO_TRADE", dtype=object)
-    exit_signal  = np.full(n, "NO_EXIT", dtype=object)
-    stop_level   = np.full(n, np.nan)
-    target_1     = np.full(n, np.nan)
-    target_2     = np.full(n, np.nan)
-    target_3     = np.full(n, np.nan)
+    exit_signal = np.full(n, "NO_EXIT", dtype=object)
+    stop_level = np.full(n, np.nan)
+    target_1 = np.full(n, np.nan)
+    target_2 = np.full(n, np.nan)
+    target_3 = np.full(n, np.nan)
 
     for i in range(n):
         if pd.isna(sma_s.iloc[i]) or pd.isna(atr.iloc[i]):
@@ -111,21 +142,27 @@ def generate_sma_trend_signals(
                 rv_i = rv_ann.iloc[i]
                 if pd.isna(rv_i) or float(rv_i) < min_rv_annualized:
                     continue  # leave entry_signal as NO_TRADE
+            # ADX trend-strength gate: skip entry when the trend is too weak.
+            # ADX is NaN during warmup — treat as block (same as the rv gate).
+            if adx is not None:
+                adx_i = adx.iloc[i]
+                if pd.isna(adx_i) or float(adx_i) < adx_min:
+                    continue  # leave entry_signal as NO_TRADE
             entry_signal[i] = "ENTRY_NOW"
-            stop_level[i]  = price - atr_trail_mult * atr_i
-            target_1[i]    = price + _T1_MULT * atr_i
-            target_2[i]    = price + _T2_MULT * atr_i
-            target_3[i]    = price + _T3_MULT * atr_i
+            stop_level[i] = price - atr_trail_mult * atr_i
+            target_1[i] = price + _T1_MULT * atr_i
+            target_2[i] = price + _T2_MULT * atr_i
+            target_3[i] = price + _T3_MULT * atr_i
         elif cross_dn.iloc[i]:
             exit_signal[i] = "EXIT_NOW"
 
     df["entry_signal"] = entry_signal
-    df["exit_signal"]  = exit_signal
-    df["stop_level"]   = stop_level
-    df["target_1"]     = target_1
-    df["target_2"]     = target_2
-    df["target_3"]     = target_3
-    df["atr"]          = atr
+    df["exit_signal"] = exit_signal
+    df["stop_level"] = stop_level
+    df["target_1"] = target_1
+    df["target_2"] = target_2
+    df["target_3"] = target_3
+    df["atr"] = atr
     df["rv_20_ann_pct"] = rv_ann
 
     df["bias"] = "NEUTRAL"
