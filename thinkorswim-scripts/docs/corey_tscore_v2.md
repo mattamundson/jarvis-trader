@@ -202,8 +202,33 @@ edge map (trend/continuation is where MES edge lives; mean-reversion is dead).
 
 **CAVEAT — resolution, not edge.** The 1h profile is ~7 TPOs/session; the value area is coarse
 noise vs the 5m structure Corey trades. A 1h FAIL is **not** evidence the auction edge is absent —
-it tests a coarse proxy. **A faithful test requires 5m MES data, which is absent from
-`engine/backtest/cache/` (only 1h/1d exist).** For that reason these verdicts were written to a
-**scratch dir, NOT** the auto-mined `gate_v2_verdicts/` — the proposal ranker must not learn
-"auction family is dead" from a resolution-limited run. Promote to the ledger only after re-running
-on 5m bars. **Blocker to a real verdict: acquire 5m MES data (Polygon / IB / TV export).**
+it tests a coarse proxy. For that reason the 1h verdicts were written to a **scratch dir, NOT** the
+auto-mined `gate_v2_verdicts/`. (Polygon futures is blocklisted on the free plan;
+`refresh_ibkr_futures_data.py` only does 1h gap-fill — so 5m had to be pulled fresh from IBKR.)
+
+### Faithful 5m re-test (2026-05-30, commit `32d3d4a`) — SETTLED: no edge
+
+Pulled 5m MES from IBKR (`fetch_mes_5m_continuous.py`): a single front-month (MESM6) gave only
+~8 dense months, so the fetcher stitches prior quarters (MESZ5/U5/M5/H5, `includeExpired=True`)
+with a standard roll (nearest-unexpired wins) → **119k bars, 2024-09 → 2026-05, ~20 months, all dense.**
+
+Two stages, both `tpo_signals` modes, $50K:
+
+| stage | windows | breakout | reversion | read |
+|---|---|---|---|---|
+| 1h (coarse) | 7 (6/3/3) | fixed_pf 0.26, cost none | fixed_pf 0.44, cost none | dead — but resolution-ambiguous |
+| 5m, 8mo | 4 (4/2/1, overlapping) | **fixed_pf 1.70, survives catastrophic** | fixed_pf 1.62 | in-sample promise (regime artifact) |
+| **5m, 20mo** | **5 (6/3/3, non-overlap)** | **p_edge 0.20, pf_ci 0.40** | **p_edge 0.20, pf_ci 0.05** | **no edge — FAIL** |
+
+The 8-month in-sample PF 1.70 (cost-robust) was the lead that justified the full data pull — but it
+**did not generalize**: on 20 months across multiple regimes both readings cluster just below
+breakeven. This is a credible, well-powered, faithful-resolution FAIL, so the **20mo/5m verdicts were
+promoted to the live ledger** (the 1h and 8mo runs were kept out as artifacts). The proposal ranker
+now lists `tpo_breakout` and `tpo_reversion` as **DEAD** — the auction family is recorded as tested,
+on the right timeframe, with no edge on MES.
+
+Metric caveat in the verdict lineage: `fixed_params_min_pf` is measured on the single full-series
+backtest and is depressed by the −5% max-DD kill switch halting early; the per-window OOS
+`p_edge`/`pf_ci_lower` are the reliable edge signal. Untested extensions (not yet seeded): a
+*conditioned* auction rule (e.g. trade the value-edge cross only in a trend/VIX regime), or the same
+family on MGC 5m.
