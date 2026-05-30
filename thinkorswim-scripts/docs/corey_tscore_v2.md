@@ -137,3 +137,36 @@ No built-in alerts. Use as a **real-time scoreboard** for structural bias and pr
   - TPO Profile (upper) = *where* price congregated (levels)
   - TPO Score (lower) = *what the structure says* (positive/negative bias)
   - COHEN_MES_COMPOSITE (upper) = *when to trade* (regime + entry thresholds)
+
+## Generation-engine: from descriptive study to backtestable strategy (2026-05-30)
+
+Proposed as Experiment 3 of the strategy generation engine (`engine/generation/`). The edge
+ledger (49 verdicts as of 2026-05-30) contains **no auction/TPO family** — only trend/breakout/
+orb/donchian/mean_reversion. This study is the candidate first non-trend edge.
+
+**What already exists in Python:**
+- `engine/backtest/tpo_profile.py` → `vpoc`, `va_high`, `va_low` columns.
+- `engine/backtest/tpo_score.py::compute_tpo_score` → continuous −1..+1 `tpo_score` + `tpo_score_label`
+  (BUYERS_CONTROL/LEAN/NEUTRAL/SELLERS_LEAN/CONTROL) + `price_zone_label`.
+- `engine/strategies/stark_tpo_strategy.py` → AMT regime/structure classifier (INSIDE_VALUE /
+  GAP_IMBALANCE / BREAKOUT; TRENDING_BULL/BEAR/RANGING/VOLATILE).
+
+**What is missing for a gate-v2 verdict:**
+1. A **mechanical entry/exit rule.** The study is descriptive (it scores and labels; it does not
+   say "enter here, stop there"). Two near-inverse mechanical readings are both consistent with it:
+   - **A. Value-breakout / continuation** — enter in the score's direction on acceptance outside
+     value, target `ext1`, stop `rej2`. ("Trade with the auction"; matches the target labels.)
+   - **B. Value-reversion / fade** — fade outside-value extremes back to POC, target POC/VAbal, stop
+     beyond ProfileHigh/Low. ("Trade the auction failing to extend.")
+   Choosing the rule is the discretionary/human seed — the ranker cannot prior it.
+2. A Backtester-schema signal adapter (`tpo_score`+zone → `entry_signal`/`stop_level`/`target_1/2/3`),
+   e.g. `engine/backtest/tpo_signals.py`.
+3. A gate-v2 WFO runner `engine/backtest/run_mes_tpo_rank1.py` mirroring the trend runners, **$50K
+   ALT capital** (the $10K sizer floors high-notional instruments to 0 contracts — see the MNQ
+   false-degenerate artifact, 2026-05-30). MES first (a proven edge instrument).
+
+**Profile-type caveat to record in any verdict:** the ThinkScript uses a **time** profile (TPO);
+`tpo_profile.py` must be confirmed to use TPO-time (not volume) for fidelity to what the chart shows.
+`stark_tpo_strategy.py` uses a **volume** profile — time-at-price ≠ volume-at-price.
+
+Verdict output → `engine/data/gate_v2_verdicts/` → auto-ingested by `engine/generation/edge_ledger.py`.
