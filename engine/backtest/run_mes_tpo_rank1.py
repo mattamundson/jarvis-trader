@@ -14,11 +14,10 @@ Swept gate-v2 parameter: value_area_pct in {0.65, 0.70, 0.75} (IS selection,
 fixed-params sweep, DSR n_trials). Signals from tpo_signals.generate_tpo_signals,
 which uses the PRIOR-session TPO profile (no look-ahead, shift inside tpo_profile).
 
-CAVEATS recorded in the verdict lineage:
-  - Profile resolution: built from 1h bars (~7 TPOs/session). The chart Amo trades
-    uses 5m bars (far richer). A FAIL here is ambiguous: no edge OR profile too coarse.
-    No MES 5m cache exists as of 2026-05-30. Re-run on 5m for a faithful test.
-  - $50K ALT capital (the $10K sizer floors to 0 contracts -- MNQ artifact 2026-05-30).
+Profile resolution is timeframe-driven and recorded in the verdict lineage:
+  - 5m bars (~80 TPOs/session) -> faithful to the 5m chart Amo trades.
+  - 1h bars (~7 TPOs/session) -> coarse; a FAIL is resolution-ambiguous.
+  $50K ALT capital (the $10K sizer floors to 0 contracts -- MNQ artifact 2026-05-30).
 
 Usage (from engine/, live deps + data via env):
     JARVIS_ENGINE_ROOT=<live engine>  JARVIS_CACHE_DIR=...  JARVIS_VERDICTS_DIR=...
@@ -60,9 +59,10 @@ TICK_SIZE = 0.25
 COMMISSION = 0.62
 SLIPPAGE_TICKS = 2.0
 
-TRAIN_MONTHS = 6
-TEST_MONTHS = 3
-STEP_MONTHS = 3
+TRAIN_MONTHS = int(os.environ.get("JARVIS_TRAIN_MONTHS", "6"))
+TEST_MONTHS = int(os.environ.get("JARVIS_TEST_MONTHS", "3"))
+STEP_MONTHS = int(os.environ.get("JARVIS_STEP_MONTHS", "3"))
+DATA_START = os.environ.get("JARVIS_DATA_START")  # ISO floor, e.g. 2025-10-01 (skip thin data)
 
 VALUE_AREA_PCT_VALUES = [0.65, 0.70, 0.75]  # the swept gate-v2 parameter
 
@@ -109,6 +109,11 @@ def _load_data(data_file: Path) -> pd.DataFrame:
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Missing columns in {data_file.name}: {missing}")
+    if DATA_START:
+        floor = pd.Timestamp(DATA_START)
+        if df.index.tz is not None and floor.tz is None:
+            floor = floor.tz_localize(df.index.tz)
+        df = df[df.index >= floor]
     return df
 
 
@@ -310,9 +315,9 @@ def run_wfo() -> dict:
         return {}
     grid = list(VALUE_AREA_PCT_VALUES)
     n_combos = len(grid)
-    print(
-        f"=== MES TPO {MODE} | windows={len(windows)} | VA grid={grid} | 1h bars (coarse profile) ==="
-    )
+    tf = "5m" if "_5m" in data_file.name else ("1h" if "_1h" in data_file.name else "?")
+    note = " (coarse profile)" if tf == "1h" else ""
+    print(f"=== MES TPO {MODE} | windows={len(windows)} | VA grid={grid} | {tf} bars{note} ===")
 
     oos_results, window_records = [], []
     for win in windows:
@@ -431,8 +436,17 @@ def run_wfo() -> dict:
         "lineage": {
             "experiment": "generation-engine experiment 3: Corey auction/TPO family",
             "mechanical_rule": MODE,
-            "CAVEAT_profile_resolution": "built from 1h bars (~7 TPOs/session); chart uses 5m. "
-            "A FAIL is ambiguous (no edge OR profile too coarse). No MES 5m cache as of 2026-05-30.",
+            "data_file": data_file.name,
+            "bar_timeframe": tf,
+            "data_span": f"{df.index.min().date()} -> {df.index.max().date()}",
+            "profile_resolution_note": (
+                "5m bars (~80 TPOs/session) -- faithful to the 5m chart Corey trades."
+                if tf == "5m"
+                else "1h bars (~7 TPOs/session) -- COARSE vs the 5m chart; a FAIL is resolution-ambiguous."
+            ),
+            "kill_switch_note": "fixed_params_min_pf is measured on the single full-series "
+            "backtest and is depressed by the -5% max-DD kill switch halting early; the "
+            "per-window OOS p_edge/pf_ci_lower are the reliable edge signal.",
             "source_study": "thinkorswim-scripts/AA_CoreyTscorev2STUDY.ts (Corey Surles)",
             "no_lookahead": "prior-session profile via tpo_profile shift; verified",
         },
