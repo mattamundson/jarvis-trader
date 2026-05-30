@@ -62,7 +62,13 @@ SLIPPAGE_TICKS = 2.0
 
 ADX_MIN = float(os.environ.get("ADX_MIN", "20.0"))  # FIXED conditioner threshold (Wilder ~20)
 ADX_PERIOD = int(os.environ.get("ADX_PERIOD", "14"))
-FAMILY = "trend_adx_filter"
+# RV_MIN > 0 STACKS the realized-vol conditioner on top of ADX (P3). When both are on the
+# family is "trend_adx_rv_filter" -> ledger parses cond="adx_filter+rv_filter". generate_sma_
+# trend_signals applies both gates independently. RV annualization factor is 1h (module default).
+RV_MIN = float(os.environ.get("RV_MIN", "0.0"))
+_conds = [("adx", ADX_MIN > 0)] + [("rv", RV_MIN > 0)]
+_on = [seg for seg, active in _conds if active]
+FAMILY = "trend" + "".join(f"_{s}" for s in _on) + ("_filter" if _on else "")
 
 # Per-symbol trend grid + WFO config -- mirror each instrument's validated champion.
 _SYM_CFG = {
@@ -170,7 +176,13 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
 
 def _bt(df, fast, slow, atr_trail, commission=COMMISSION, slippage_ticks=SLIPPAGE_TICKS):
     sig = generate_sma_trend_signals(
-        df, fast=fast, slow=slow, atr_trail_mult=atr_trail, adx_min=ADX_MIN, adx_period=ADX_PERIOD
+        df,
+        fast=fast,
+        slow=slow,
+        atr_trail_mult=atr_trail,
+        adx_min=ADX_MIN,
+        adx_period=ADX_PERIOD,
+        min_rv_annualized=RV_MIN,
     )
     bt = Backtester(
         initial_capital=CAPITAL,
@@ -441,6 +453,7 @@ def run_wfo() -> dict:
         "alt_verdict": gate["alt_verdict"],
         "created_at": datetime.now(tz=timezone.utc).isoformat(),
         "adx_filter_config": {"adx_min": ADX_MIN, "adx_period": ADX_PERIOD},
+        "rv_filter_config": {"min_rv_annualized": RV_MIN} if RV_MIN > 0 else None,
         "wfo_config": {
             "train_months": TRAIN_MONTHS,
             "test_months": TEST_MONTHS,
@@ -479,12 +492,24 @@ def run_wfo() -> dict:
             "wfo_consistency_alt": GATE_WFO_CONSISTENCY_VALUES,
             "cost_survives_through_min": "realistic",
         },
-        "champion_params": {**champ, "adx_min": ADX_MIN, "adx_period": ADX_PERIOD},
+        "champion_params": {
+            **champ,
+            "adx_min": ADX_MIN,
+            "adx_period": ADX_PERIOD,
+            **({"min_rv_annualized": RV_MIN} if RV_MIN > 0 else {}),
+        },
         "windows": window_records,
         "lineage": {
-            "experiment": "generation-engine experiment 5: trend + ADX trend-strength conditioner",
+            "experiment": (
+                "generation-engine experiment 6: trend + ADX + RV stacked conditioners"
+                if RV_MIN > 0
+                else "generation-engine experiment 5: trend + ADX trend-strength conditioner"
+            ),
             "mechanical_rule": "sma_golden_cross_long",
-            "conditioning": f"adx_filter(min={ADX_MIN},period={ADX_PERIOD})",
+            "conditioning": (
+                f"adx_filter(min={ADX_MIN},period={ADX_PERIOD})"
+                + (f" + rv_filter(min_ann={RV_MIN})" if RV_MIN > 0 else "")
+            ),
             "data_file": data_file.name,
             "bar_timeframe": tf,
             "data_span": f"{df.index.min().date()} -> {df.index.max().date()}",

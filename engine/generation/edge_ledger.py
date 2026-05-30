@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import Any
 
@@ -41,22 +40,26 @@ COST_ORDER = ["none", "optimistic", "realistic", "pessimistic", "catastrophic"]
 COST_MIN_IDX = COST_ORDER.index("realistic")
 WFO_OK = {"MODERATE", "STRONG"}
 
-# A regime-conditioning suffix turns a base family into a conditioned variant.
-# Explicit map handles irregular names (vix verdicts are "*_vix", not "*_vix_filter").
+# Irregular conditioning names that don't follow the "<base>_<seg>_filter" contract.
+# (vix verdicts are named "*_vix", not "*_vix_filter".)
 _CONDITIONING_SUFFIX = {
-    "rv_filter": "rv_filter",
     "vix": "vix_filter",
-    "adx_filter": "adx_filter",
 }
-# Naming contract for new conditioner seeds: "<base>_<cond>_filter" (e.g. trend_adx_filter,
-# trend_session_filter). This generic fallback parses any such name so a new conditioner family
-# classifies as (base, "<cond>_filter") WITHOUT a code edit -- avoids the silo bug where an
-# unrecognized "trend_adx_filter" was recorded as its own base family with conditioning "none".
-_GENERIC_COND = re.compile(r"^(.+)_([a-z0-9]+)_filter$")
+# Naming contract: a conditioned family is "<base>_<seg>_filter" (single) or
+# "<base>_<seg1>_<seg2>_filter" (stacked), where each <seg> is a registered conditioner
+# segment below. The peeler strips known segments right-to-left, so:
+#   trend_adx_filter      -> (trend, "adx_filter")
+#   trend_adx_rv_filter   -> (trend, "adx_filter+rv_filter")   # canonical sorted "+"-join
+#   trend_session_filter  -> (trend, "session_filter")
+# Register a segment here to make it stackable; an UNREGISTERED single conditioner still
+# parses generically as (base, "<seg>_filter") so a new single seed never silos.
+_COND_SEGMENTS = {"adx", "rv", "session", "termstruct"}
 
 
 def normalize_family(fam: str | None) -> tuple[str, str]:
-    """Return (base_family, conditioning). meanrev is canonicalized to mean_reversion."""
+    """Return (base_family, conditioning). Conditioning is a single token, or a canonical
+    sorted "+"-join for stacked conditioners (e.g. "adx_filter+rv_filter"). meanrev is
+    canonicalized to mean_reversion."""
     fam = (fam or "?").strip()
     cond = "none"
     base = fam
@@ -67,10 +70,17 @@ def normalize_family(fam: str | None) -> tuple[str, str]:
             base = fam[: -len(token)]
             break
     else:
-        # No explicit suffix matched -- try the generic "<base>_<cond>_filter" contract.
-        m = _GENERIC_COND.match(fam)
-        if m:
-            base, cond = m.group(1), f"{m.group(2)}_filter"
+        # "<base>_<seg>..._filter": peel registered conditioner segments right-to-left.
+        if fam.endswith("_filter"):
+            parts = fam[: -len("_filter")].split("_")
+            conds = []
+            while len(parts) > 1 and parts[-1] in _COND_SEGMENTS:
+                conds.append(parts.pop() + "_filter")
+            if conds:
+                base, cond = "_".join(parts), "+".join(sorted(conds))
+            elif len(parts) > 1:
+                # Unregistered single conditioner: "<base>_<seg>_filter" by convention.
+                base, cond = "_".join(parts[:-1]), parts[-1] + "_filter"
     if base in ("meanrev", "mean_reversion"):
         base = "mean_reversion"
     return base, cond
