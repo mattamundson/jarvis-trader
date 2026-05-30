@@ -50,6 +50,7 @@ def generate_tpo_signals(
     df: pd.DataFrame,
     mode: str = "breakout",
     value_area_pct: float = 0.70,
+    trend_sma: int = 0,
     session_start_hour: int = 9,
     session_start_minute: int = 30,
     tz: str = "America/Chicago",
@@ -57,6 +58,11 @@ def generate_tpo_signals(
     """Generate auction (TPO) entry signals in Backtester schema.
 
     df must have a DatetimeIndex and open/high/low/close columns.
+
+    trend_sma > 0 adds a directional trend-regime gate: a long entry fires only
+    when close > SMA(trend_sma), a short only when close < SMA(trend_sma). This is
+    the conditioned-auction experiment -- does the value-edge-cross timing add edge
+    when aligned to the larger trend (the proven MES edge)?
     """
     if mode not in _MODES:
         raise ValueError(f"mode must be one of {_MODES}, got {mode!r}")
@@ -93,6 +99,8 @@ def generate_tpo_signals(
 
     c = close.to_numpy()
     w_a = width.to_numpy()
+    # Optional trend-regime gate (close vs SMA), computed on the same bars.
+    sma_a = close.rolling(trend_sma).mean().to_numpy() if trend_sma and trend_sma > 0 else None
 
     for i in range(n):
         r = w_a[i]
@@ -106,6 +114,13 @@ def generate_tpo_signals(
             go_long, go_short, reg = cross_up[i], cross_dn[i], "TPO_BREAKOUT"
         else:  # reversion -- exact direction-inverse
             go_long, go_short, reg = cross_dn[i], cross_up[i], "TPO_REVERSION"
+
+        if sma_a is not None:  # trend-regime gate
+            s = sma_a[i]
+            if not np.isfinite(s):
+                continue
+            go_long = go_long and ci > s
+            go_short = go_short and ci < s
 
         if go_long:
             entry_signal[i] = "ENTRY_NOW"

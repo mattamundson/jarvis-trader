@@ -51,11 +51,13 @@ _spec.loader.exec_module(_tpo_mod)
 generate_tpo_signals = _tpo_mod.generate_tpo_signals
 
 MODE = os.environ.get("TPO_MODE", "breakout").strip().lower()
+TREND_SMA = int(os.environ.get("TPO_TREND_SMA", "0"))  # >0 = trend-regime conditioned
+FAMILY = f"tpo_{MODE}_trend" if TREND_SMA > 0 else f"tpo_{MODE}"
 
-SYMBOL = "MES"
-MULTIPLIER = 5.0
+SYMBOL = os.environ.get("JARVIS_SYMBOL", "MES")
+MULTIPLIER = float(os.environ.get("JARVIS_MULTIPLIER", "5.0"))
 CAPITAL = 50_000.0  # ALT convention (see MNQ $10K false-degenerate artifact 2026-05-30)
-TICK_SIZE = 0.25
+TICK_SIZE = 0.25  # cosmetic; backtester derives real tick per symbol via _get_tick_size
 COMMISSION = 0.62
 SLIPPAGE_TICKS = 2.0
 
@@ -151,7 +153,7 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
 
 
 def _bt(df, va_pct, commission=COMMISSION, slippage_ticks=SLIPPAGE_TICKS):
-    sig = generate_tpo_signals(df, mode=MODE, value_area_pct=va_pct)
+    sig = generate_tpo_signals(df, mode=MODE, value_area_pct=va_pct, trend_sma=TREND_SMA)
     bt = Backtester(
         initial_capital=CAPITAL,
         risk_per_trade=0.01,
@@ -357,7 +359,7 @@ def run_wfo() -> dict:
         print(f"[MES-TPO-{MODE}] No OOS results.")
         return {
             "symbol": SYMBOL,
-            "family": f"tpo_{MODE}",
+            "family": FAMILY,
             "rank": 1,
             "verdict": "FAIL",
             "degenerate": True,
@@ -385,10 +387,10 @@ def run_wfo() -> dict:
         print(f"  {k:22}= {gate[k]}")
 
     VERDICTS_DIR.mkdir(parents=True, exist_ok=True)
-    verdict_file = VERDICTS_DIR / f"MES_tpo_{MODE}_rank1.json"
+    verdict_file = VERDICTS_DIR / f"{SYMBOL}_{FAMILY}_rank1.json"
     doc = {
         "symbol": SYMBOL,
-        "family": f"tpo_{MODE}",
+        "family": FAMILY,
         "rank": 1,
         "verdict": gate["verdict"],
         "passed_via": gate["passed_via"],
@@ -431,11 +433,12 @@ def run_wfo() -> dict:
             "wfo_consistency_alt": GATE_WFO_CONSISTENCY_VALUES,
             "cost_survives_through_min": "realistic",
         },
-        "champion_params": {"value_area_pct": champ_va, "mode": MODE},
+        "champion_params": {"value_area_pct": champ_va, "mode": MODE, "trend_sma": TREND_SMA},
         "windows": window_records,
         "lineage": {
             "experiment": "generation-engine experiment 3: Corey auction/TPO family",
             "mechanical_rule": MODE,
+            "conditioning": f"trend_sma={TREND_SMA}" if TREND_SMA > 0 else "none",
             "data_file": data_file.name,
             "bar_timeframe": tf,
             "data_span": f"{df.index.min().date()} -> {df.index.max().date()}",
