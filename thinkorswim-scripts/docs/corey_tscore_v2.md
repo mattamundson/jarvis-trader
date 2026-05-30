@@ -170,3 +170,40 @@ orb/donchian/mean_reversion. This study is the candidate first non-trend edge.
 `stark_tpo_strategy.py` uses a **volume** profile — time-at-price ≠ volume-at-price.
 
 Verdict output → `engine/data/gate_v2_verdicts/` → auto-ingested by `engine/generation/edge_ledger.py`.
+
+### Result (2026-05-30, commit `bde9df7`)
+
+Built and ran. Final design diverged from the plan above in two faithful-but-necessary ways
+discovered by smoke-testing against the live `Backtester`:
+
+1. **Exit geometry is entry-anchored value-width-R multiples, not literal POC/VAH touches.**
+   The backtester recomputes stops/targets as ATR multiples and **rejects any signal with
+   R:R < 1.2** (`backtester.py:801`). The original symmetric ±0.5R breakout gave R:R ≈ 1.0 →
+   *every* breakout trade silently rejected. Final: `stop = entry ∓ 0.40·R`,
+   `targets = entry ± {0.60, 1.20, 1.80}·R` where `R = |VAH−VAL|` (R:R₁ = 1.5). The two modes
+   became exact **direction-inverses** on the same VAH/VAL-cross events — a clean A/B isolating
+   continuation-vs-fade. (`tpo_signals.py`.)
+2. **ATR-warmup suppression.** TPO signals fire as soon as the prior-session profile exists
+   (~7 bars on 1h), *before* ATR(14) warms up. The backtester's `atr_val <= 0` guard does NOT
+   catch NaN (`NaN <= 0` is False) → NaN propagates into position sizing and crashes. Trend
+   strategies never hit this (SMA(200) warmup outlasts ATR). Adapter now nulls entries until ATR
+   is finite.
+
+**Gate-v2 verdict (MES, 1h, 2024-04 → 2026-05, $50K, VA grid {0.65,0.70,0.75}):** both modes
+**FAIL**.
+
+| mode | pf_ci_lower | p_edge | DSR | fixed_min_pf | cost_survives | OOS trades |
+|---|---|---|---|---|---|---|
+| breakout (continuation) | 0.43 | 0.14 | 0.0 | 0.26 | none | 141 |
+| reversion (fade) | 0.28 | 0.00 | 0.0 | 0.44 | none | 77 |
+
+Continuation > fade (reversion never had a profitable OOS window) — coherent with the existing
+edge map (trend/continuation is where MES edge lives; mean-reversion is dead).
+
+**CAVEAT — resolution, not edge.** The 1h profile is ~7 TPOs/session; the value area is coarse
+noise vs the 5m structure Corey trades. A 1h FAIL is **not** evidence the auction edge is absent —
+it tests a coarse proxy. **A faithful test requires 5m MES data, which is absent from
+`engine/backtest/cache/` (only 1h/1d exist).** For that reason these verdicts were written to a
+**scratch dir, NOT** the auto-mined `gate_v2_verdicts/` — the proposal ranker must not learn
+"auction family is dead" from a resolution-limited run. Promote to the ledger only after re-running
+on 5m bars. **Blocker to a real verdict: acquire 5m MES data (Polygon / IB / TV export).**
