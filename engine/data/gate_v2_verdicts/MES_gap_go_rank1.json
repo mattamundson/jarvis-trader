@@ -1,0 +1,168 @@
+{
+  "symbol": "MES",
+  "family": "gap_go",
+  "rank": 1,
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "FAIL",
+  "created_at": "2026-05-30T11:17:40.498633+00:00",
+  "wfo_config": {
+    "train_months": 6,
+    "test_months": 3,
+    "step_months": 3,
+    "n_windows": 5,
+    "n_oos_windows": 5,
+    "total_oos_trades": 82,
+    "grid_combos": 3,
+    "min_gap_pct_grid": [
+      0.0015,
+      0.0025,
+      0.004
+    ]
+  },
+  "gate_v2_metrics": {
+    "pf_ci_lower": 0.5828,
+    "p_edge": 0.0,
+    "mc_95th_dd": 0.051786,
+    "mc_95th_dd_pct": 5.1786,
+    "dsr": 0.0,
+    "wfo_consistency": "WEAK",
+    "fixed_params_min_pf": 0.7777,
+    "fixed_params_mean_pf": 1.2073,
+    "fixed_params_max_pf": 1.488,
+    "n_combos_with_trades": 3,
+    "combo_results": [
+      {
+        "min_gap_pct": 0.0015,
+        "pf": 1.488,
+        "trades": 35
+      },
+      {
+        "min_gap_pct": 0.0025,
+        "pf": 1.3562,
+        "trades": 28
+      },
+      {
+        "min_gap_pct": 0.004,
+        "pf": 0.7777,
+        "trades": 20
+      }
+    ],
+    "cost_survives_through": "none",
+    "cost_tier_results": {
+      "optimistic": {
+        "pf": 0.7271,
+        "trades": 21,
+        "passes": false
+      },
+      "realistic": {
+        "pf": 0.7777,
+        "trades": 20,
+        "passes": false
+      },
+      "pessimistic": {
+        "pf": 0.7822,
+        "trades": 20,
+        "passes": false
+      },
+      "catastrophic": {
+        "pf": 0.7929,
+        "trades": 20,
+        "passes": false
+      }
+    }
+  },
+  "thresholds": {
+    "pf_ci_lower": 1.1,
+    "p_edge": 0.95,
+    "mc_95th_dd_core": 0.05,
+    "mc_95th_dd_alt": 0.04,
+    "dsr_core": 0.1,
+    "dsr_alt": 0.3,
+    "fixed_params_min_pf_alt": 1.2,
+    "wfo_consistency_alt": [
+      "MODERATE",
+      "STRONG"
+    ],
+    "cost_survives_through_min": "realistic"
+  },
+  "champion_params": {
+    "min_gap_pct": 0.004,
+    "mode": "go"
+  },
+  "windows": [
+    {
+      "window": 1,
+      "is_period": "2024-09 -> 2025-03",
+      "oos_period": "2025-03 -> 2025-06",
+      "best_min_gap_pct": 0.0015,
+      "is_pf": 1.488,
+      "is_trades": 35,
+      "oos_pf": 0.458,
+      "oos_dd": 0.0501,
+      "oos_sharpe": -5.98,
+      "oos_trades": 14
+    },
+    {
+      "window": 2,
+      "is_period": "2024-12 -> 2025-06",
+      "oos_period": "2025-06 -> 2025-09",
+      "best_min_gap_pct": 0.004,
+      "is_pf": 1.107,
+      "is_trades": 46,
+      "oos_pf": 0.74,
+      "oos_dd": 0.0383,
+      "oos_sharpe": -2.074,
+      "oos_trades": 12
+    },
+    {
+      "window": 3,
+      "is_period": "2025-03 -> 2025-09",
+      "oos_period": "2025-09 -> 2025-12",
+      "best_min_gap_pct": 0.004,
+      "is_pf": 0.998,
+      "is_trades": 22,
+      "oos_pf": 0.743,
+      "oos_dd": 0.0522,
+      "oos_sharpe": -2.131,
+      "oos_trades": 18
+    },
+    {
+      "window": 4,
+      "is_period": "2025-06 -> 2025-12",
+      "oos_period": "2025-12 -> 2026-03",
+      "best_min_gap_pct": 0.004,
+      "is_pf": 0.753,
+      "is_trades": 27,
+      "oos_pf": 0.629,
+      "oos_dd": 0.0501,
+      "oos_sharpe": -3.43,
+      "oos_trades": 17
+    },
+    {
+      "window": 5,
+      "is_period": "2025-09 -> 2026-03",
+      "oos_period": "2026-03 -> 2026-05",
+      "best_min_gap_pct": 0.004,
+      "is_pf": 0.743,
+      "is_trades": 18,
+      "oos_pf": 0.952,
+      "oos_dd": 0.0381,
+      "oos_sharpe": -0.335,
+      "oos_trades": 21
+    }
+  ],
+  "lineage": {
+    "experiment": "generation-engine experiment 4: Corey RTH-gap family",
+    "mechanical_rule": "go",
+    "conditioning": "none",
+    "data_file": "MES_2024-09-22_2026-05-29_5m_cont.csv",
+    "bar_timeframe": "5m",
+    "data_span": "2024-09-22 -> 2026-05-29",
+    "gap_definition_note": "RTH-session gap: today's RTH open vs YESTERDAY's RTH close (ET 09:30-16:00), overnight excluded. Backtester runs on RTH-only bars (gap plays are intraday-RTH; EOD exit fits). NOT a 24h close-to-open gap.",
+    "kill_switch_note": "fixed_params_min_pf is measured on the single full-series backtest and is depressed by the -5% max-DD kill switch halting early; the per-window OOS p_edge/pf_ci_lower are the reliable edge signal.",
+    "source_study": "thinkorswim-scripts (Corey Gapfinder) / engine/backtest/gapfinder.py",
+    "no_lookahead": "prior-session RTH close (shift 1) for the gap; entry on first RTH bar"
+  }
+}

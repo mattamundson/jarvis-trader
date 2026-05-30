@@ -1,0 +1,430 @@
+{
+  "symbol": "MES",
+  "family": "trend_adx_filter",
+  "rank": 1,
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "FAIL",
+  "created_at": "2026-05-30T23:04:28.437487+00:00",
+  "adx_filter_config": {
+    "adx_min": 20.0,
+    "adx_period": 14
+  },
+  "wfo_config": {
+    "train_months": 6,
+    "test_months": 3,
+    "step_months": 1,
+    "n_windows": 19,
+    "n_oos_windows": 19,
+    "total_oos_trades": 42,
+    "grid_combos": 3,
+    "grid_fast_period": [
+      50,
+      55,
+      60
+    ],
+    "grid_slow_period": [
+      200
+    ],
+    "grid_atr_trail_mult": [
+      2.0
+    ]
+  },
+  "gate_v2_metrics": {
+    "pf_ci_lower": 1.4338,
+    "p_edge": 0.625,
+    "mc_95th_dd": 0.022926,
+    "mc_95th_dd_pct": 2.2926,
+    "dsr": 0.0,
+    "wfo_consistency": "MODERATE",
+    "fixed_params_min_pf": 0.9361,
+    "fixed_params_mean_pf": 1.2459,
+    "fixed_params_max_pf": 1.7109,
+    "n_combos_with_trades": 3,
+    "combo_results": [
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 0.9361,
+        "trades": 24
+      },
+      {
+        "fast": 55,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 1.0906,
+        "trades": 27
+      },
+      {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 1.7109,
+        "trades": 19
+      }
+    ],
+    "cost_survives_through": "catastrophic",
+    "cost_tier_results": {
+      "optimistic": {
+        "pf": 1.7538,
+        "trades": 19,
+        "passes": true
+      },
+      "realistic": {
+        "pf": 1.7109,
+        "trades": 19,
+        "passes": true
+      },
+      "pessimistic": {
+        "pf": 1.6453,
+        "trades": 19,
+        "passes": true
+      },
+      "catastrophic": {
+        "pf": 1.633,
+        "trades": 19,
+        "passes": true
+      }
+    }
+  },
+  "thresholds": {
+    "pf_ci_lower": 1.1,
+    "p_edge": 0.95,
+    "mc_95th_dd_core": 0.05,
+    "mc_95th_dd_alt": 0.04,
+    "dsr_core": 0.1,
+    "dsr_alt": 0.3,
+    "fixed_params_min_pf_alt": 1.2,
+    "wfo_consistency_alt": [
+      "MODERATE",
+      "STRONG"
+    ],
+    "cost_survives_through_min": "realistic"
+  },
+  "champion_params": {
+    "fast": 60,
+    "slow": 200,
+    "atr_trail_mult": 2.0,
+    "adx_min": 20.0,
+    "adx_period": 14
+  },
+  "windows": [
+    {
+      "window": 1,
+      "is_period": "2024-04 -> 2024-10",
+      "oos_period": "2024-10 -> 2025-01",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 2,
+      "oos_pf": 0.84,
+      "oos_dd": 0.0191,
+      "oos_sharpe": -1.093,
+      "oos_trades": 3
+    },
+    {
+      "window": 2,
+      "is_period": "2024-05 -> 2024-11",
+      "oos_period": "2024-11 -> 2025-02",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 4.182,
+      "is_trades": 4,
+      "oos_pf": 2.366,
+      "oos_dd": 0.01,
+      "oos_sharpe": 5.444,
+      "oos_trades": 3
+    },
+    {
+      "window": 3,
+      "is_period": "2024-06 -> 2024-12",
+      "oos_period": "2024-12 -> 2025-03",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 4.182,
+      "is_trades": 4,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 31.846,
+      "oos_trades": 2
+    },
+    {
+      "window": 4,
+      "is_period": "2024-07 -> 2025-01",
+      "oos_period": "2025-01 -> 2025-04",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 2.826,
+      "is_trades": 6,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 5,
+      "is_period": "2024-08 -> 2025-02",
+      "oos_period": "2025-02 -> 2025-05",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 3.228,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 6,
+      "is_period": "2024-09 -> 2025-03",
+      "oos_period": "2025-03 -> 2025-06",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 2.773,
+      "is_trades": 6,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 7,
+      "is_period": "2024-10 -> 2025-04",
+      "oos_period": "2025-04 -> 2025-07",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 1.242,
+      "is_trades": 4,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 8,
+      "is_period": "2024-11 -> 2025-05",
+      "oos_period": "2025-05 -> 2025-08",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 2.366,
+      "is_trades": 3,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 9,
+      "is_period": "2024-12 -> 2025-06",
+      "oos_period": "2025-06 -> 2025-09",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 3,
+      "oos_pf": 1.442,
+      "oos_dd": 0.0099,
+      "oos_sharpe": 2.031,
+      "oos_trades": 2
+    },
+    {
+      "window": 10,
+      "is_period": "2025-01 -> 2025-07",
+      "oos_period": "2025-07 -> 2025-10",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 2,
+      "oos_pf": 0.587,
+      "oos_dd": 0.0242,
+      "oos_sharpe": -3.531,
+      "oos_trades": 4
+    },
+    {
+      "window": 11,
+      "is_period": "2025-02 -> 2025-08",
+      "oos_period": "2025-08 -> 2025-11",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": Infinity,
+      "is_trades": 1,
+      "oos_pf": 0.018,
+      "oos_dd": 0.0228,
+      "oos_sharpe": -21.888,
+      "oos_trades": 4
+    },
+    {
+      "window": 12,
+      "is_period": "2025-03 -> 2025-09",
+      "oos_period": "2025-09 -> 2025-12",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 2.142,
+      "is_trades": 3,
+      "oos_pf": 1.082,
+      "oos_dd": 0.0151,
+      "oos_sharpe": 0.539,
+      "oos_trades": 4
+    },
+    {
+      "window": 13,
+      "is_period": "2025-04 -> 2025-10",
+      "oos_period": "2025-10 -> 2026-01",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 1.989,
+      "is_trades": 8,
+      "oos_pf": 1.016,
+      "oos_dd": 0.0099,
+      "oos_sharpe": 0.111,
+      "oos_trades": 4
+    },
+    {
+      "window": 14,
+      "is_period": "2025-05 -> 2025-11",
+      "oos_period": "2025-11 -> 2026-02",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 1.383,
+      "is_trades": 10,
+      "oos_pf": 0.635,
+      "oos_dd": 0.0156,
+      "oos_sharpe": -2.815,
+      "oos_trades": 4
+    },
+    {
+      "window": 15,
+      "is_period": "2025-06 -> 2025-12",
+      "oos_period": "2025-12 -> 2026-03",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 2.639,
+      "is_trades": 8,
+      "oos_pf": 0.07,
+      "oos_dd": 0.0157,
+      "oos_sharpe": -14.952,
+      "oos_trades": 3
+    },
+    {
+      "window": 16,
+      "is_period": "2025-07 -> 2026-01",
+      "oos_period": "2026-01 -> 2026-04",
+      "best_params": {
+        "fast": 55,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 1.861,
+      "is_trades": 9,
+      "oos_pf": 0.805,
+      "oos_dd": 0.0169,
+      "oos_sharpe": -1.369,
+      "oos_trades": 3
+    },
+    {
+      "window": 17,
+      "is_period": "2025-08 -> 2026-02",
+      "oos_period": "2026-02 -> 2026-05",
+      "best_params": {
+        "fast": 55,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 1.239,
+      "is_trades": 9,
+      "oos_pf": 1.691,
+      "oos_dd": 0.008,
+      "oos_sharpe": 2.882,
+      "oos_trades": 2
+    },
+    {
+      "window": 18,
+      "is_period": "2025-09 -> 2026-03",
+      "oos_period": "2026-03 -> 2026-05",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 1.044,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 19,
+      "is_period": "2025-10 -> 2026-04",
+      "oos_period": "2026-04 -> 2026-05",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 1.679,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    }
+  ],
+  "lineage": {
+    "experiment": "generation-engine experiment 5: trend + ADX trend-strength conditioner",
+    "mechanical_rule": "sma_golden_cross_long",
+    "conditioning": "adx_filter(min=20.0,period=14)",
+    "data_file": "MES_2024-04-26_2026-05-20_1h.csv",
+    "bar_timeframe": "1h",
+    "data_span": "2024-04-26 -> 2026-05-20",
+    "conditioner_note": "FIXED thesis-driven adx_min (Wilder ~20 'trend present'); NOT gridded -- gridding the conditioner threshold would snoop it and inflate DSR n_trials. Trend grid + WFO config mirror the validated champion run; ADX is the only new variable.",
+    "kill_switch_note": "fixed_params_min_pf is depressed by the -5% max-DD kill switch halting the single full-series backtest early; per-window OOS p_edge/pf_ci are reliable.",
+    "baseline": "trend family is the only gate-v2 PASS (MES/MGC); this seeds the adx_filter conditioner."
+  }
+}
