@@ -191,9 +191,11 @@ def rank() -> dict[str, Any]:
         "tier_B_novel_runnable": novel[:TOP_NOVEL],
         "tier_C_dead_do_not_run": dead,
         "vocabulary_note": (
-            "Ranker scores only observed conditioners (none, rv_filter, vix_filter). "
-            "New conditioner types (ADX/trend-strength, session-time, gold term-structure) "
-            "have no prior in the corpus and require a human seed before they can be ranked."
+            "Ranker scores only conditioners observed in the corpus: "
+            f"{', '.join(sorted({r.get('conditioning', 'none') for r in rows}))}. "
+            "Conditioner types with no prior yet (e.g. session-time, gold term-structure) "
+            "require a human seed -- a verdict named '<base>_<cond>_filter' -- before they "
+            "can be ranked."
         ),
     }
 

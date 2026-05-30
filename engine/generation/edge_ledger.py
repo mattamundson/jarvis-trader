@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -41,10 +42,17 @@ COST_MIN_IDX = COST_ORDER.index("realistic")
 WFO_OK = {"MODERATE", "STRONG"}
 
 # A regime-conditioning suffix turns a base family into a conditioned variant.
+# Explicit map handles irregular names (vix verdicts are "*_vix", not "*_vix_filter").
 _CONDITIONING_SUFFIX = {
     "rv_filter": "rv_filter",
     "vix": "vix_filter",
+    "adx_filter": "adx_filter",
 }
+# Naming contract for new conditioner seeds: "<base>_<cond>_filter" (e.g. trend_adx_filter,
+# trend_session_filter). This generic fallback parses any such name so a new conditioner family
+# classifies as (base, "<cond>_filter") WITHOUT a code edit -- avoids the silo bug where an
+# unrecognized "trend_adx_filter" was recorded as its own base family with conditioning "none".
+_GENERIC_COND = re.compile(r"^(.+)_([a-z0-9]+)_filter$")
 
 
 def normalize_family(fam: str | None) -> tuple[str, str]:
@@ -58,6 +66,11 @@ def normalize_family(fam: str | None) -> tuple[str, str]:
             cond = cond_name
             base = fam[: -len(token)]
             break
+    else:
+        # No explicit suffix matched -- try the generic "<base>_<cond>_filter" contract.
+        m = _GENERIC_COND.match(fam)
+        if m:
+            base, cond = m.group(1), f"{m.group(2)}_filter"
     if base in ("meanrev", "mean_reversion"):
         base = "mean_reversion"
     return base, cond
