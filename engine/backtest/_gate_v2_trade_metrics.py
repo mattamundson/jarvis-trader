@@ -1,0 +1,107 @@
+"""Trade-level gate-v2 risk metrics (drawdown MC + Deflated Sharpe).
+
+WHY THIS MODULE EXISTS
+----------------------
+The per-strategy gate-v2 runners (run_mes_trend_rank11.py, run_mgc_trend_rank4.py,
+and siblings) historically computed two ALT-lane metrics from **window-level**
+aggregates:
+
+    oos_dds     = [r.max_drawdown_pct for r in oos_results]   # one DD per WFO window
+    mc_95th_dd  = np.percentile(oos_dds, 95.0)                # percentile across windows
+    mean_sharpe = mean([r.sharpe_ratio for r in oos_results]) # mean of per-window Sharpes
+    dsr         = deflated_sharpe_ratio(sharpe=mean_sharpe, n_obs=max(all_trades, 30))
+
+Both are mis-specified for sparse strategies:
+
+* **mc_95th_dd window-level** takes ONE drawdown per WFO window and a percentile
+  across windows. A drawdown that builds across several trades inside the test set
+  is invisible — each window contributes only its own (small) max DD, and empty
+  windows contribute 0.0, dragging the percentile down. For MES (16 OOS trades /
+  19 windows, ~7 empty) this badly understates tail risk. The codebase already has
+  a correct trade-level permutation MC (`monte_carlo.bootstrap_max_dd`) — it just
+  was never wired into the gate runners. (`scripts/validate_strategy.py` uses it.)
+
+* **DSR from mean-of-window-Sharpes** feeds the Bailey/Lopez de Prado deflation a
+  Sharpe that is the arithmetic mean of per-window Sharpes (a 1-2 trade window
+  yields a giant, unstable Sharpe), with `n_obs` floored at 30 and hardcoded
+  Gaussian skew/kurt — producing a Phi(z) that rounds to 1.0 and auto-passes. The
+  correct path computes the Deflated Sharpe from the actual per-trade return series
+  with real skew/kurt (`deflated_sharpe.deflated_sharpe_from_returns`).
+
+This module centralises the CORRECT trade-level computation so every runner shares
+one tested implementation, matching `scripts/validate_strategy.py`.
+
+UNITS (critical — a 100x error here mis-certifies live strategies)
+------------------------------------------------------------------
+* `Trade.pnl` is in USD (dollars).
+* `monte_carlo.bootstrap_max_dd(...)["mc_95th"]` returns drawdown on a **0-100
+  scale** (`_compute_max_dd` does `abs(dd.min()) * 100`).
+* The gate compares `mc_95th_dd` (a **fraction**, e.g. GATE_MC_DD_ALT == 0.04) so
+  this module divides the 0-100 MC result by 100 to return a fraction.
+"""
+
+from __future__ import annotations
+
+from typing import Sequence
+
+import numpy as np
+
+from backtest.deflated_sharpe import deflated_sharpe_from_returns
+from backtest.monte_carlo import bootstrap_max_dd
+
+#: Drawdown returned when there are too few real trades to simulate a path.
+#: 1.0 == 100% == fail-safe (worse than any real gate ceiling).
+_DEGENERATE_DD_FRACTION = 1.0
+_MC_N_RESAMPLES = 10_000
+_MC_SEED = 42
+
+
+def concat_oos_trade_pnls(oos_results: Sequence) -> list[float]:
+    """Flatten the per-trade USD PnLs across every OOS window, in sequence.
+
+    Empty windows (0 trades) contribute nothing — unlike the window-level DD
+    metric, which counted them as 0.0 drawdown and diluted the percentile.
+    """
+    pnls: list[float] = []
+    for r in oos_results:
+        for t in getattr(r, "trades", []) or []:
+            pnls.append(float(t.pnl))
+    return pnls
+
+
+def trade_level_mc_95th_dd(
+    oos_results: Sequence,
+    initial_capital: float,
+    n_resamples: int = _MC_N_RESAMPLES,
+    seed: int = _MC_SEED,
+) -> float:
+    """95th-percentile max drawdown from a permutation MC on the OOS trade list.
+
+    Returns a **fraction** (0.04 == 4%), matching the gate's `mc_95th_dd`
+    convention. Fail-safe (1.0) when fewer than 2 real trades exist.
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    if len(pnls) < 2:
+        return _DEGENERATE_DD_FRACTION
+    mc = bootstrap_max_dd(pnls, initial_capital=initial_capital, n_resamples=n_resamples, seed=seed)
+    # bootstrap_max_dd reports on a 0-100 scale; the gate wants a fraction.
+    return float(mc["mc_95th"]) / 100.0
+
+
+def trade_level_dsr(
+    oos_results: Sequence,
+    n_grid_combos: int,
+    initial_capital: float,
+) -> float:
+    """Deflated Sharpe Ratio from the actual per-trade return series.
+
+    Mirrors `scripts/validate_strategy.py`: returns = per-trade PnL / capital,
+    real skew/kurt, n_obs = trade count. Fail-safe (0.0) when < 2 trades
+    (handled inside `deflated_sharpe_from_returns`).
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    returns = (np.asarray(pnls, dtype=float) / initial_capital).tolist()
+    result = deflated_sharpe_from_returns(
+        returns=returns, n_trials=max(int(n_grid_combos), 1), ann_factor=252.0
+    )
+    return float(result.get("dsr", 0.0))
