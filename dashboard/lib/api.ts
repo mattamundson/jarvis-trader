@@ -1546,16 +1546,38 @@ export interface BriefingRecentSignal {
   [key: string]: unknown;
 }
 
+/** One curated-knowledge hit from the gbrain brain (only present when enriched). */
+export interface KnowledgeContextHit {
+  slug: string;
+  title?: string | null;
+  type?: string | null;
+  /** First-stage vector similarity (0..1). */
+  similarity?: number | null;
+  /** Cross-encoder rerank score (0..1; both Voyage and local tiers normalized). */
+  rerank_score?: number | null;
+  /** Truncated content preview (≤400 chars). */
+  content?: string | null;
+}
+
 export interface BriefingResponse {
   symbol: string;
   headline?: string | null;
   corey_bias?: string | null;
   ib_levels?: BriefingIBLevels | null;
   recent_signal?: BriefingRecentSignal | null;
+  /** Advisory curated-knowledge hits — present ONLY when fetched with enriched:true. */
+  knowledge_context?: KnowledgeContextHit[] | null;
+  /** Rerank tier that produced knowledge_context: "voyage" | "local" | "off". */
+  knowledge_context_tier?: string | null;
 }
 
-export async function fetchDiscordBriefing(symbol: string): Promise<BriefingResponse> {
-  return fetchEngine<BriefingResponse>(`/discord/briefing?symbol=${encodeURIComponent(symbol)}`);
+export async function fetchDiscordBriefing(
+  symbol: string,
+  opts?: { enriched?: boolean }
+): Promise<BriefingResponse> {
+  const q = new URLSearchParams({ symbol });
+  if (opts?.enriched) q.set("enriched", "true");
+  return fetchEngine<BriefingResponse>(`/discord/briefing?${q.toString()}`);
 }
 
 // ── Parallel Paper A/B Testing ────────────────────────────────────────────────
