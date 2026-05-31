@@ -141,7 +141,15 @@ def _load_local() -> bool:
 
 
 def _local_scores_sync(query: str, docs: Sequence[str]) -> list[float]:
-    """Blocking cross-encoder inference. Run via executor, never on the loop."""
+    """Blocking cross-encoder inference. Run via executor, never on the loop.
+
+    bge-reranker-v2-m3 emits a raw pre-sigmoid logit per pair (unbounded, often
+    negative even for relevant docs). We apply sigmoid so the local tier returns
+    a 0..1 relevance probability — monotonic, so ordering is identical, but now
+    on the SAME scale as Voyage rerank-2.5. That makes a single `min_score` floor
+    mean the same thing on both tiers (and keeps the exposed rerank_score
+    interpretable instead of a meaningless logit like -4.85).
+    """
     import torch
 
     pairs = [[query, d] for d in docs]
@@ -154,7 +162,8 @@ def _local_scores_sync(query: str, docs: Sequence[str]) -> list[float]:
             max_length=512,
         )
         logits = _local_model(**inputs).logits.view(-1)
-    return logits.float().tolist()
+        scores = torch.sigmoid(logits)
+    return scores.float().tolist()
 
 
 async def _local_scores(query: str, docs: Sequence[str]) -> list[float] | None:
@@ -191,12 +200,19 @@ async def rerank(
     `min_score` is a relevance floor applied AFTER scoring and BEFORE the
     top_n truncation: candidates whose rerank score is below it are dropped,
     so low-relevance noise (e.g. archive pages that match on vocabulary but
-    not intent) can't pad the result set. Score scales differ by tier — Voyage
-    rerank-2.5 is a 0..1 relevance probability (0.2 is a sensible floor), while
-    the local bge cross-encoder emits unbounded logits (0.0 keeps the positive
-    half) — so a single `min_score` is tier-relative; tune per caller. The
-    "off"/identity tier has no scores to compare against, so `min_score` is a
-    no-op there (candidates pass through in vector order, truncated to top_n).
+    not intent) can't pad the result set. Both scoring tiers emit a 0..1
+    relevance probability (Voyage rerank-2.5 natively; the local bge tier via
+    sigmoid over its logits), so a single floor (0.2 is a sensible default)
+    means the same thing on either tier.
+
+    Never-empty guard: if the floor would drop EVERY candidate from a non-empty
+    pool (a tier-scale mismatch, or a uniformly low-relevance pool), the
+    reranked top_n is returned UNFILTERED rather than an empty list — the floor
+    only ever trims noise from a set that already has at least one above-floor
+    hit. This keeps a Voyage→local fallback from silently blanking results.
+
+    The "off"/identity tier has no scores to compare against, so `min_score` is
+    a no-op there (candidates pass through in vector order, truncated to top_n).
     """
     if not candidates:
         return [], "off"
@@ -219,14 +235,35 @@ async def rerank(
         if scores is None:
             continue
         ranked = sorted(zip(candidates, scores, strict=False), key=lambda cs: cs[1], reverse=True)
-        out = []
+        kept = []
         for cand, score in ranked:
             if score < min_score:
                 break  # sorted desc — everything past here is below the floor
             cand["rerank_score"] = round(float(score), 4)
-            out.append(cand)
-            if len(out) >= top_n:
+            kept.append(cand)
+            if len(kept) >= top_n:
                 break
+        if kept:
+            return kept, tier
+        # Never-empty guard: the floor dropped EVERY candidate from a non-empty
+        # pool. That means the floor doesn't match this tier's score distribution
+        # (e.g. a Voyage→local fallback where bge probabilities all sit low), not
+        # that the pool is worthless — the reranker still ordered it. Returning []
+        # here would silently blank search_knowledge / brief enrichment on a tier
+        # mismatch. Instead degrade to the reranked top_n unfiltered. The floor
+        # only ever trims noise from a set that has at least one above-floor hit
+        # (so the Q6 archive-leak fix still applies whenever any hit clears it).
+        logger.info(
+            "rerank: min_score=%.3f dropped all %d candidates on tier '%s'; "
+            "returning reranked top_n unfiltered (tier-scale mismatch / low pool)",
+            min_score,
+            len(candidates),
+            tier,
+        )
+        out = []
+        for cand, score in ranked[:top_n]:
+            cand["rerank_score"] = round(float(score), 4)
+            out.append(cand)
         return out, tier
 
     # Tier 3: identity — preserve vector order, just truncate.

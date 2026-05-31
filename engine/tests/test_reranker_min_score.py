@@ -76,6 +76,24 @@ async def test_min_score_respects_top_n_after_filter() -> None:
     assert [c["slug"] for c in out] == ["a", "b"]
 
 
+async def test_all_below_floor_returns_reranked_unfiltered() -> None:
+    """Never-empty guard: if the floor drops every candidate, return reranked top_n."""
+    # Every score is below the 0.2 floor (simulates a Voyage->local fallback whose
+    # sigmoid probabilities all sit low) — must NOT return an empty list.
+    scores = [0.15, 0.10, 0.05, 0.02]
+    with (
+        patch.dict("os.environ", {"RERANKER_MODE": "voyage"}),
+        patch.object(reranker, "_voyage_scores", AsyncMock(return_value=scores)),
+    ):
+        out, tier = await reranker.rerank("q", _cands(), top_n=3, min_score=0.2)
+
+    assert tier == "voyage"
+    # Reranked (sorted desc), truncated to top_n=3, NOT emptied by the floor.
+    assert [c["slug"] for c in out] == ["a", "b", "c"]
+    assert out[0]["rerank_score"] == 0.15  # still annotated despite being sub-floor
+    assert len(out) == 3
+
+
 async def test_off_tier_ignores_min_score() -> None:
     """The identity ('off') tier has no scores -> min_score is a no-op."""
     with patch.dict("os.environ", {"RERANKER_MODE": "off"}):
