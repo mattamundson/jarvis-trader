@@ -114,7 +114,7 @@ async def test_search_knowledge_ok() -> None:
     with (
         fake_ctx,
         patch(
-            "engine.discord.mcp_server.aiohttp.ClientSession",
+            "engine.discord.knowledge.aiohttp.ClientSession",
             return_value=_mock_post_session(200, _HITS),
         ),
     ):
@@ -148,7 +148,7 @@ async def test_search_knowledge_empty_hits() -> None:
     with (
         fake_ctx,
         patch(
-            "engine.discord.mcp_server.aiohttp.ClientSession",
+            "engine.discord.knowledge.aiohttp.ClientSession",
             return_value=_mock_post_session(200, {"results": []}),
         ),
     ):
@@ -170,7 +170,7 @@ async def test_search_knowledge_http_error() -> None:
     with (
         fake_ctx,
         patch(
-            "engine.discord.mcp_server.aiohttp.ClientSession",
+            "engine.discord.knowledge.aiohttp.ClientSession",
             return_value=_mock_post_session(503, {}),
         ),
     ):
@@ -195,7 +195,7 @@ async def test_search_knowledge_unreachable() -> None:
     fake_ctx, _ = _fake_reranker(_rerank)
     with (
         fake_ctx,
-        patch("engine.discord.mcp_server.aiohttp.ClientSession", return_value=mock_session_ctx),
+        patch("engine.discord.knowledge.aiohttp.ClientSession", return_value=mock_session_ctx),
     ):
         result = await search_knowledge("q", limit=5)
 
@@ -218,7 +218,7 @@ async def test_search_knowledge_limit_clamped_and_overfetched() -> None:
     with (
         fake_ctx,
         patch(
-            "engine.discord.mcp_server.aiohttp.ClientSession",
+            "engine.discord.knowledge.aiohttp.ClientSession",
             return_value=_mock_post_session(200, _HITS),
         ),
     ):

@@ -789,10 +789,16 @@ class TradingPipeline:
         # keyword sentiment + recent bot signal into a single dict that
         # bull/bear/debate can read without re-wiring 4 providers each.
         # Facade has a 5-min TTL; per-bar cost is negligible after first call.
+        # enriched_with_knowledge attaches advisory curated-knowledge hits
+        # (knowledge_context) for the agents' prompt context. It is ADVISORY ONLY —
+        # gate-v2/sizing/execution never read it — and fully fallback-safe (daemon
+        # down → field stays None), so the whole block stays non-fatal.
         try:
             from discord.briefing import get_discord_briefing
 
-            _briefing = await get_discord_briefing(symbol, lookback_hours=24)
+            _briefing = await get_discord_briefing(
+                symbol, lookback_hours=24, enriched_with_knowledge=True
+            )
             analyst_reports["discord_briefing"] = _briefing.to_dict()
             if _briefing.warnings:
                 logger.debug(
