@@ -508,26 +508,32 @@ interface RegimeStatusEntry {
   adaptive_stc_ob?: number;
 }
 
+// Fallback mirrors the live gate-v2 reality (see /backtest/paper-status):
+// MES/MGC trend = PASS (active forward-proving book); MCL/MNQ = DO_NOT_TRADE.
 const FALLBACK_PAPER: Record<string, PaperStatusEntry> = {
+  "MES_1h": {
+    status: "ACTIVE",
+    wfe: 1.0,
+    wfe_label: "PASS via alt",
+    cleared_date: "2026-05-31",
+    config: "gate-v2 trend rank11",
+  },
   "MGC_1d": {
     status: "ACTIVE",
-    wfe: 0.88,
-    wfe_label: "EXCELLENT",
-    cleared_date: "2026-03-29",
-    risk_per_trade: "0.25%",
-    config: "adaptive_regime=ON",
-  },
-  "MNQ_1h": {
-    status: "RESEARCH",
-    wfe: 0.34,
-    wfe_label: "ACCEPTABLE",
-    target_wfe: 0.40,
+    wfe: 1.0,
+    wfe_label: "PASS via alt",
+    cleared_date: "2026-05-31",
+    config: "gate-v2 trend rank4",
   },
   "MCL_1h": {
     status: "NO-TRADE",
-    wfe: -0.31,
-    wfe_label: "FAILED",
-    target_wfe: 0.40,
+    wfe: 0.0,
+    wfe_label: "DO-NOT-TRADE (routing-blocked)",
+  },
+  "MNQ_1h": {
+    status: "NO-TRADE",
+    wfe: 0.0,
+    wfe_label: "DO-NOT-TRADE (routing-blocked)",
   },
 };
 
