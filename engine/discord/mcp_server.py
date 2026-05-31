@@ -625,6 +625,85 @@ async def semantic_search(query: str, limit: int = 8) -> dict:
     }
 
 
+# The curated KNOWLEDGE brain (concepts, strategy/setup notes, X-bookmark tool
+# cards, synthesis) lives in a SEPARATE store from vec_index.db: a pglite/pgvector
+# brain embedded with voyage-finance-2 (1024-dim), served by the single-writer
+# gbrain daemon. We never open it here — we send text to its /search, which embeds
+# server-side and runs hybrid keyword+vector retrieval against the one connection.
+_GBRAIN_DAEMON_URL = os.environ.get("GBRAIN_DAEMON_URL", "http://127.0.0.1:8077")
+
+
+@mcp.tool()
+async def search_knowledge(query: str, limit: int = 8) -> dict:
+    """
+    Semantic search over the curated trading KNOWLEDGE brain (gbrain daemon).
+
+    This is the vault knowledge base — concepts, strategy/setup notes, X-bookmark
+    tool cards, and synthesis pages — embedded with voyage-finance-2 (1024-dim) and
+    served by the single-writer brain daemon (it embeds the query server-side; this
+    tool sends text only, never a key). Use it for "what do we KNOW about X" (e.g.
+    gamma exposure, a risk-sizing rule, a tool's capability). For "what did Corey
+    SAY" about live price action, use semantic_search (Discord commentary) instead.
+
+    Args:
+        query:  Natural-language question, e.g. "how do we size risk on a breakout"
+        limit:  Number of results to return (default 8, max 20)
+
+    Returns dict with 'results' list (slug, similarity, type, title, content) and
+    'rerank' tier. Returns 'error' key if the brain daemon is unavailable.
+    """
+    limit = min(max(1, limit), 20)
+    from engine.discord.reranker import overfetch_k, rerank
+
+    fetch_k = overfetch_k(limit)
+
+    # Ask the daemon for a larger candidate pool (server-side Voyage embed + hybrid
+    # keyword/vector); the cross-encoder then reorders down to `limit`. Same rerank
+    # path as semantic_search so quality is consistent across both stores.
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{_GBRAIN_DAEMON_URL}/search",
+                json={"query": query, "opts": {"limit": fetch_k}},
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status != 200:
+                    return {"results": [], "error": f"brain daemon /search HTTP {resp.status}"}
+                payload = await resp.json()
+    except Exception as exc:
+        return {"results": [], "error": f"brain daemon unreachable at {_GBRAIN_DAEMON_URL}: {exc}"}
+
+    hits = payload.get("results", []) or []
+    if not hits:
+        return {"query": query, "results": [], "rerank": "off"}
+
+    candidates = [
+        {
+            "slug": h.get("slug", ""),
+            "similarity": round(float(h.get("score", 0.0)), 4),
+            "type": h.get("type") or h.get("chunk_source") or "",
+            "title": h.get("title", ""),
+            "_full_content": h.get("chunk_text") or h.get("content") or "",
+        }
+        for h in hits
+    ]
+
+    ranked, rerank_tier = await rerank(query, candidates, top_n=limit, text_key="_full_content")
+
+    results = []
+    for cand in ranked:
+        full = cand.pop("_full_content", "")
+        cand["content"] = full[:400]
+        results.append(cand)
+
+    return {
+        "query": query,
+        "source": "gbrain-knowledge (voyage-finance-2/1024)",
+        "rerank": rerank_tier,
+        "results": results,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
