@@ -106,7 +106,7 @@ async def test_search_knowledge_ok() -> None:
     """Happy path: daemon returns hits, reranker reorders, content is truncated."""
     search_knowledge = _import_tool()
 
-    async def _rerank(query, candidates, top_n=8, text_key="_full_content"):
+    async def _rerank(query, candidates, top_n=8, text_key="_full_content", min_score=0.0):
         # echo candidates (already mapped) back, truncated to top_n, report tier
         return candidates[:top_n], "voyage"
 
@@ -210,7 +210,7 @@ async def test_search_knowledge_limit_clamped_and_overfetched() -> None:
 
     seen = {"top_n": None}
 
-    async def _rerank(query, candidates, top_n=8, text_key="_full_content"):
+    async def _rerank(query, candidates, top_n=8, text_key="_full_content", min_score=0.0):
         seen["top_n"] = top_n
         return candidates[:top_n], "voyage"
 
