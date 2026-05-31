@@ -2584,11 +2584,14 @@ async def lifespan(app: FastAPI):
         logger.warning("Predictive maintenance monitor init failed (non-fatal): %s", _pm_err)
 
     # ── Final yield to bind FastAPI server ───────────────────────────────
+    # HB-3: schedule heavy init BEFORE the yield. Post-yield code in a
+    # lifespan context manager runs at SHUTDOWN, so a post-yield create_task
+    # never runs at startup — that broke the IBKR data feed (2026-05-24).
+    # create_task does not await, so the <10s server-bind constraint holds.
+    asyncio.create_task(_complete_background_init())
+
     yield  # Server runs here!
 
-    # ── Post-yield: launch heavy background init ──
-    # HB-3: Decouple connections from lifespan (<10s boot constraint)
-    bg_init_task = asyncio.create_task(_complete_background_init())
 
     # Teardown
     # Stop Trailing stop manager
