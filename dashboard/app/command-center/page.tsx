@@ -322,9 +322,10 @@ export default function CommandCenterPage() {
   const liveWfeRows = useMemo(() => {
     if (!paperStatus) return WFE_ROWS;
     const keys: { k: string; symbol: string; tf: string; threshold: number }[] = [
+      { k: "MES_1h", symbol: "MES", tf: "1h", threshold: 0.3 },
+      { k: "MGC_1d", symbol: "MGC", tf: "1d", threshold: 0.3 },
       { k: "MCL_1h", symbol: "MCL", tf: "1h", threshold: 0.3 },
       { k: "MNQ_1h", symbol: "MNQ", tf: "1h", threshold: 0.3 },
-      { k: "MGC_1d", symbol: "MGC", tf: "1d", threshold: 0.3 },
     ];
     return keys.map(({ k, symbol, tf, threshold }) => {
       const row = paperStatus[k];

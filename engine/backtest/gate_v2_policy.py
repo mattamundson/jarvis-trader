@@ -16,11 +16,12 @@ Staleness: any verdict older than `MAX_VERDICT_AGE_DAYS` is treated as
 missing. This prevents a one-shot PASS from implicitly authorizing live
 trading forever without a fresh re-score.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -44,10 +45,20 @@ class VerdictSnapshot:
     coupling the read path to the write path — routing code that reads
     verdicts should never have to import heavy numpy/statistics deps.
     """
+
     __slots__ = (
-        "symbol", "family", "rank", "verdict", "passed_via",
-        "core_verdict", "alt_verdict", "n_core_passed", "n_alt_passed",
-        "created_at", "aux_freshness",
+        "symbol",
+        "family",
+        "rank",
+        "verdict",
+        "passed_via",
+        "core_verdict",
+        "alt_verdict",
+        "n_core_passed",
+        "n_alt_passed",
+        "created_at",
+        "aux_freshness",
+        "gate_v2_metrics",
     )
 
     def __init__(self, doc: dict):
@@ -62,6 +73,9 @@ class VerdictSnapshot:
         self.n_alt_passed = doc.get("n_alt_passed", 0)
         self.created_at = doc["created_at"]
         self.aux_freshness = doc.get("aux_freshness", {})
+        # Quantitative gate metrics (pf_ci_lower, mc_95th_dd_pct, dsr, ...) for
+        # advisory display. Empty dict on older verdict files that predate the key.
+        self.gate_v2_metrics = doc.get("gate_v2_metrics", {})
 
     def age_days(self, now: Optional[datetime] = None) -> float:
         now = now or datetime.now(tz=timezone.utc)
@@ -86,13 +100,12 @@ def _iter_verdict_files(verdicts_dir: Optional[Path] = None):
             logger.warning("gate_v2_policy: unreadable verdict file %s: %s", p, exc)
 
 
-def get_last_verdict(
-    symbol: str, verdicts_dir: Optional[Path] = None
-) -> Optional[VerdictSnapshot]:
+def get_last_verdict(symbol: str, verdicts_dir: Optional[Path] = None) -> Optional[VerdictSnapshot]:
     """Return the newest non-stale verdict for `symbol`, or None."""
     sym_upper = symbol.upper()
     candidates = [
-        v for v in _iter_verdict_files(verdicts_dir)
+        v
+        for v in _iter_verdict_files(verdicts_dir)
         if v.symbol.upper() == sym_upper and not v.is_stale()
     ]
     if not candidates:
@@ -101,9 +114,7 @@ def get_last_verdict(
     return candidates[0]
 
 
-def is_ungate_eligible(
-    symbol: str, verdicts_dir: Optional[Path] = None
-) -> bool:
+def is_ungate_eligible(symbol: str, verdicts_dir: Optional[Path] = None) -> bool:
     """Default-deny advisory: `True` iff the most recent non-stale verdict
     for `symbol` is a PASS.
 
