@@ -480,47 +480,79 @@ async def get_regime_status():
     description="Get Walk-Forward Efficiency (WFE) and paper-trading readiness status for MCL, MNQ, MGC, and MES symbols.",
 )
 async def get_paper_status():
-    """Walk-Forward Efficiency (WFE) and paper-trading readiness for each symbol."""
+    """Paper-trading readiness derived from LIVE gate-v2 verdicts — not a static dict.
+
+    Source of truth is `gate_v2_policy.is_strategy_authorized` (which unifies
+    VALIDATION_ONLY_INSTRUMENTS, paper_config.enabled, and a non-stale gate-v2
+    PASS verdict) plus the freshest verdict snapshot per symbol. This keeps the
+    dashboard from disagreeing with what the engine will actually trade.
+
+    Status semantics:
+      ACTIVE     — is_strategy_authorized() is True (enabled + fresh PASS verdict)
+      NO-TRADE   — a fresh verdict exists (possibly PASS) but the symbol is not
+                   authorized (paper_config disabled / validation-only)
+      FAIL       — a fresh verdict exists and is not PASS
+      NO-VERDICT — no fresh (<=14d) verdict on file (fail-safe: not authorized)
+
+    The numeric `wfe` field is retained for frontend compatibility and now
+    carries the deflated Sharpe (a current 0-1 quality metric) for ACTIVE rows;
+    gate-v2-native fields (verdict / pf_ci_lower / mc_95th_dd_pct / dsr) are
+    added alongside for a future verdict-native UI pass.
+    """
     try:
-        return {
-            "MCL_1h": {
-                "status": "ACTIVE",
-                "wfe": 0.82,
-                "wfe_label": "EXCELLENT",
-                "cleared_date": "2026-04-01",
-                "risk_per_trade": "0.25%",
-                "config": "static_regime=ON, stop=0.90x ATR, T1=1.50x ATR",
-            },
-            "MNQ_1h": {
-                "status": "ACTIVE",
-                "wfe": 0.57,
-                "wfe_label": "GOOD",
-                "cleared_date": "2026-04-01",
-                "risk_per_trade": "0.25%",
-                "config": "adaptive_regime=ON, stop=0.70x ATR, T1=1.00x ATR",
-            },
-            "MGC_1d": {
-                "status": "CLOSED",
-                "wfe": 0.00,
-                "wfe_label": "FAILED",
-                "closed_date": "2026-04-01",
-                "reason": "WFE=0.00, 0/14 valid windows (2022-2026 extended walk-forward)",
-            },
-            "MES_1h": {
-                "status": "CLOSED",
-                "wfe": 0.00,
-                "wfe_label": "FAILED",
-                "closed_date": "2026-04-01",
-                "reason": "Static WFE=0.09 (overfit) + adaptive WFE=0.00 (0/6 valid windows). STC+ATR incompatible with S&P 500 1h. Redesign required: ORB or VWAP.",
-            },
-            "SPY_1h": {
-                "status": "CLOSED",
-                "wfe": 0.00,
-                "wfe_label": "FAILED",
-                "closed_date": "2026-03-28",
-                "reason": "WFE=0.00, 0/6 valid windows. Same underlying as MES.",
-            },
-        }
+        from backtest.gate_v2_policy import get_last_verdict, is_strategy_authorized
+
+        # UI key -> (symbol, timeframe label). Trend edges (MES/MGC) are the live
+        # forward-proving book; MCL/MNQ are kept so the panel shows them dead.
+        ui_rows = [
+            ("MES_1h", "MES", "1h"),
+            ("MGC_1d", "MGC", "1d"),
+            ("MCL_1h", "MCL", "1h"),
+            ("MNQ_1h", "MNQ", "1h"),
+        ]
+
+        out: dict[str, dict] = {}
+        for key, symbol, _tf in ui_rows:
+            snap = get_last_verdict(symbol)
+            authorized, reason = is_strategy_authorized(symbol)
+            metrics = snap.gate_v2_metrics if snap else {}
+            dsr = float(metrics.get("dsr", 0.0) or 0.0)
+
+            if authorized:
+                status = "ACTIVE"
+                label = f"PASS via {snap.passed_via or 'core'}" if snap else "authorized"
+            elif snap is not None and snap.verdict == "PASS":
+                status, label = "NO-TRADE", reason
+            elif snap is not None:
+                status, label = "FAIL", "gate-v2 FAIL"
+            else:
+                status, label = "NO-VERDICT", "no fresh verdict (<=14d)"
+
+            # Legacy color column reflects authorization: only ACTIVE rows show
+            # their quality score; the true dsr is always in the native field.
+            row: dict = {
+                "status": status,
+                "wfe": round(dsr, 4) if status == "ACTIVE" else 0.0,
+                "wfe_label": label,
+                "gate": "v2",
+                "authorized": authorized,
+                "verdict": snap.verdict if snap else "NONE",
+                "passed_via": snap.passed_via if snap else None,
+                "family": snap.family if snap else None,
+                "rank": snap.rank if snap else None,
+                "created_at": snap.created_at if snap else None,
+                "pf_ci_lower": metrics.get("pf_ci_lower"),
+                "mc_95th_dd_pct": metrics.get("mc_95th_dd_pct"),
+                "dsr": metrics.get("dsr"),
+            }
+            if status == "ACTIVE":
+                row["cleared_date"] = (snap.created_at or "")[:10] if snap else None
+                row["config"] = f"gate-v2 {snap.family} rank{snap.rank}" if snap else None
+            else:
+                row["reason"] = label
+            out[key] = row
+
+        return out
     except Exception as e:
         logger.error(f"[BACKTEST] Paper status check failed: {e}")
         raise HTTPException(500, f"Failed to get paper status: {e}") from e
