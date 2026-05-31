@@ -88,6 +88,34 @@ _SYM_CFG = {
         "test": 2,
         "step": 1,
     },
+    # N1a Tier-B probes: does ADX rescue an instrument where plain trend FAILED?
+    # Grids mirror each symbol's prior trend runner; test=3/step=3 (non-overlapping)
+    # because the ADX gate thins entries -- avoids the 1-month OOS starvation that
+    # sank the prior MNQ/MCL/M2K runs. Multipliers per paper_config conventions.
+    "M2K": {  # run_m2k_trend_rank3 grid; $5/pt Micro Russell
+        "fast": [20, 30, 40, 50],
+        "slow": [80, 120, 160, 200],
+        "atr": [1.0, 1.5, 2.0],
+        "train": 6,
+        "test": 3,
+        "step": 3,
+    },
+    "MCL": {  # run_mcl_hypothesis_d grid; $100/pt Micro WTI
+        "fast": [40, 50, 60],
+        "slow": [150, 200, 250],
+        "atr": [1.5, 2.0, 2.5],
+        "train": 6,
+        "test": 3,
+        "step": 3,
+    },
+    "MNQ": {  # run_mnq_trend_rank3 faster-period grid; $2/pt Micro Nasdaq
+        "fast": [10, 12, 15],
+        "slow": [40, 50, 60],
+        "atr": [1.5, 2.0, 2.5],
+        "train": 6,
+        "test": 3,
+        "step": 3,
+    },
 }
 _cfg = _SYM_CFG.get(SYMBOL, _SYM_CFG["MES"])
 FAST_VALUES = _cfg["fast"]
