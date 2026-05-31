@@ -63,6 +63,13 @@ _TREND_INSTRUMENTS = frozenset({"MES", "MGC"})
 # (routing-blocked) so pooling their stale rows into the scorecard was noise.
 _TRACKED_INSTRUMENTS = ["MES", "MGC"]
 
+# Forward-proving baseline: the SQLite scorecard counts only paper trades that
+# close on/after this date, so the X/60 progress reflects the activated
+# collection run rather than the handful of pre-activation stale rows
+# (MCL/MES/MGC Apr-May 2026 + a TEST row). Lower bound only; applies to the
+# production SQLite path, NOT the JSON fixture path used by tests.
+FORWARD_PROVING_START_DATE = "2026-06-01"
+
 
 def _thresholds_for(instrument: str) -> dict:
     """Return the correct gate thresholds for the given instrument."""
@@ -331,9 +338,10 @@ class ValidationTracker:
                 FROM paper_trades
                 WHERE LOWER(status) = 'closed'
                   AND symbol IN ({placeholders})
+                  AND exit_time >= ?
                 ORDER BY exit_time
                 """,
-                _TRACKED_INSTRUMENTS,
+                [*_TRACKED_INSTRUMENTS, FORWARD_PROVING_START_DATE],
             )
             rows = [dict(r) for r in cur.fetchall()]
         finally:
