@@ -26,6 +26,23 @@ export async function fetchMasterStatus(): Promise<MasterStatus> {
   return res.json();
 }
 
+export type FinancesDetail = {
+  net_worth: number;
+  accounts: { name: string; org: string; balance: number; is_liability: boolean }[];
+  spend_by_category: Record<string, number>;
+  budget_status: { category: string; spent: number; limit: number; over_by: number }[];
+  recent: { posted: string; amount: number; description: string; category: string }[];
+};
+
+export async function fetchFinancesDetail(): Promise<FinancesDetail> {
+  const res = await fetch(`${BASE}/master/finances/detail`, {
+    headers: { "X-API-Key": KEY },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`finances detail ${res.status}`);
+  return res.json();
+}
+
 const BASE2 = process.env.NEXT_PUBLIC_MASTER_API_URL ?? "http://127.0.0.1:8030";
 
 export type CommandEvent =
