@@ -177,6 +177,7 @@ async def rerank(
     top_n: int,
     *,
     text_key: str = "content",
+    min_score: float = 0.0,
 ) -> tuple[list[dict], str]:
     """
     Rerank `candidates` against `query`, returning (top_n results, tier_used).
@@ -186,6 +187,16 @@ async def rerank(
     when a reranker ran, sorted best-first and truncated to `top_n`. The tier
     string ("voyage" | "local" | "off") records which path actually produced
     the ordering, so callers can surface it for observability.
+
+    `min_score` is a relevance floor applied AFTER scoring and BEFORE the
+    top_n truncation: candidates whose rerank score is below it are dropped,
+    so low-relevance noise (e.g. archive pages that match on vocabulary but
+    not intent) can't pad the result set. Score scales differ by tier — Voyage
+    rerank-2.5 is a 0..1 relevance probability (0.2 is a sensible floor), while
+    the local bge cross-encoder emits unbounded logits (0.0 keeps the positive
+    half) — so a single `min_score` is tier-relative; tune per caller. The
+    "off"/identity tier has no scores to compare against, so `min_score` is a
+    no-op there (candidates pass through in vector order, truncated to top_n).
     """
     if not candidates:
         return [], "off"
@@ -209,9 +220,13 @@ async def rerank(
             continue
         ranked = sorted(zip(candidates, scores, strict=False), key=lambda cs: cs[1], reverse=True)
         out = []
-        for cand, score in ranked[:top_n]:
+        for cand, score in ranked:
+            if score < min_score:
+                break  # sorted desc — everything past here is below the floor
             cand["rerank_score"] = round(float(score), 4)
             out.append(cand)
+            if len(out) >= top_n:
+                break
         return out, tier
 
     # Tier 3: identity — preserve vector order, just truncate.
