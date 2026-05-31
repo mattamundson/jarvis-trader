@@ -56,10 +56,19 @@ PASS_THRESHOLDS = PAPER_VALIDATION_GATES
 # Trend strategies win via high R:R (not frequency), so WR threshold is lower.
 # MES SMA(50,200) WFO validated at 44-46% WR — 55% would permanently block live deployment.
 _TREND_WIN_RATE_THRESHOLD = 45.0
-_TREND_INSTRUMENTS = frozenset({"MES"})
+_TREND_INSTRUMENTS = frozenset({"MES", "MGC"})
 
-# Instruments tracked for paper validation
-_TRACKED_INSTRUMENTS = ["MCL", "MNQ", "MES"]
+# Instruments tracked for paper validation — the live forward-proving book.
+# MES + MGC trend are the only gate-v2 PASS edges; MCL/MNQ are DO_NOT_TRADE
+# (routing-blocked) so pooling their stale rows into the scorecard was noise.
+_TRACKED_INSTRUMENTS = ["MES", "MGC"]
+
+# Forward-proving baseline: the SQLite scorecard counts only paper trades that
+# close on/after this date, so the X/60 progress reflects the activated
+# collection run rather than the handful of pre-activation stale rows
+# (MCL/MES/MGC Apr-May 2026 + a TEST row). Lower bound only; applies to the
+# production SQLite path, NOT the JSON fixture path used by tests.
+FORWARD_PROVING_START_DATE = "2026-06-01"
 
 
 def _thresholds_for(instrument: str) -> dict:
@@ -329,9 +338,10 @@ class ValidationTracker:
                 FROM paper_trades
                 WHERE LOWER(status) = 'closed'
                   AND symbol IN ({placeholders})
+                  AND exit_time >= ?
                 ORDER BY exit_time
                 """,
-                _TRACKED_INSTRUMENTS,
+                [*_TRACKED_INSTRUMENTS, FORWARD_PROVING_START_DATE],
             )
             rows = [dict(r) for r in cur.fetchall()]
         finally:
