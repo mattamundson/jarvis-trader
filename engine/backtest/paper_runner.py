@@ -584,6 +584,18 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
     _setup_logging()
     log = logging.getLogger("paper_runner")
 
+    # The runner is invoked standalone (the hourly Jarvis-PaperCollect task) in a
+    # separate process from the engine, so the SQLite singleton must be created
+    # HERE or load_positions + every tracker write silently degrade to empty
+    # state and no trades persist. init_db() is an idempotent locked singleton —
+    # a no-op when the engine already initialised it in-process.
+    try:
+        from database.manager import init_db
+
+        init_db()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("init_db() failed (%s) — continuing with degraded persistence", exc)
+
     (
         FUTURES_MAP,
         ACTIVE_INSTRUMENTS,
@@ -898,6 +910,16 @@ def migrate_jsonl_to_sqlite(jsonl_path: str) -> int:
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # Standalone invocation (e.g. the hourly Jarvis-PaperCollect task) may run
+    # under a cp1252 console; the box-drawing chars in status/summary output
+    # otherwise raise UnicodeEncodeError and fail the task. Force UTF-8 with a
+    # lossy fallback so output never crashes the cycle.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
+
     import argparse
 
     parser = argparse.ArgumentParser(
