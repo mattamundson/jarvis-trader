@@ -583,3 +583,28 @@ async def get_briefing(
     except Exception as exc:
         logger.exception("discord briefing failed for %s", symbol)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/knowledge")
+async def get_knowledge(
+    q: str = Query(..., description="Free-text query, e.g. 'how do we size risk on a breakout'"),
+    limit: int = Query(8, ge=1, le=20),
+    min_score: float = Query(0.2, ge=0.0, le=1.0, description="Reranker relevance floor"),
+):
+    """
+    Free-text retrieval over the curated KNOWLEDGE brain (gbrain daemon + rerank).
+
+    A thin reusable HTTP surface over discord.knowledge.search_knowledge_core — the
+    same reranked Voyage path as the search_knowledge MCP tool, but callable by any
+    HTTP consumer (the Master-Jarvis CommandChat, Hermes briefs, etc.) for an
+    arbitrary question. Returns {query, source, rerank (tier), results:[{slug,
+    similarity, type, title, content}]}; never raises (an unreachable daemon yields
+    an `error` key with empty results).
+    """
+    from discord.knowledge import search_knowledge_core
+
+    try:
+        return await search_knowledge_core(q, limit=limit, min_score=min_score)
+    except Exception as exc:
+        logger.exception("knowledge search failed for %r", q)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
