@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import useSWR from "swr";
 import { fetchMasterStatus } from "@/lib/masterApi";
 import { DomainTile } from "@/components/master/DomainTile";
@@ -23,9 +24,15 @@ export default function MasterPage() {
         Mission control · updated {new Date(data.ts).toLocaleTimeString()}
       </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tiles.map((s) => (
-          <DomainTile key={s.domain} s={s} />
-        ))}
+        {tiles.map((s) =>
+          s.domain === "finances" ? (
+            <Link key={s.domain} href="/master/finances" className="block">
+              <DomainTile s={s} />
+            </Link>
+          ) : (
+            <DomainTile key={s.domain} s={s} />
+          ),
+        )}
       </div>
       <CommandChat />
     </main>
