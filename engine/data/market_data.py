@@ -740,7 +740,7 @@ class MarketDataManager:
             host=self._config.IBKR_HOST,
             port=self._config.IBKR_PORT,
             client_id=self._config.IBKR_CLIENT_ID,
-            connect_timeout=getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0),
+            connect_timeout=max(30.0, getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 30.0)),
         )
         ibkr_connected = await self.ibkr.connect()
         if not ibkr_connected:
