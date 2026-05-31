@@ -25,7 +25,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from edge_ledger import COST_ORDER, WFO_OK, load_rows  # type: ignore
+from edge_ledger import COST_ORDER, load_rows  # type: ignore
 
 DATA_ROOT = Path(
     os.environ.get("JARVIS_DATA_ROOT", str(Path(__file__).resolve().parents[1] / "data"))
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(result, indent=2))
 
-    print(f"\n=== TIER A: ENABLE (already passed gate v2, verify-then-enable) ===")
+    print("\n=== TIER A: ENABLE (already passed gate v2, verify-then-enable) ===")
     for e in result["tier_A_enable"]:
         flag = " [archived run]" if e["is_archived"] else ""
         print(
