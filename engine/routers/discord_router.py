@@ -543,10 +543,19 @@ async def get_briefing(
     symbol: str = Query(..., description="JARVIS or Discord symbol (MCL, CL, MES, ES, ...)"),
     lookback_hours: int = Query(24, ge=1, le=168),
     for_date: Optional[str] = Query(None, description="YYYY-MM-DD (defaults to today)"),
+    enriched: bool = Query(
+        False,
+        description="Attach advisory curated-knowledge hits (gbrain) as knowledge_context",
+    ),
 ):
     """
     Unified Discord briefing: Corey session bias + IB levels + keyword sentiment
     + most-recent bot signal, aggregated through discord.briefing.get_discord_briefing.
+
+    With `enriched=true`, also attaches `knowledge_context`: the top curated gbrain
+    knowledge hits for a query derived from the session bias. That field is ADVISORY
+    (prompt context only) and fallback-safe — never an input to gate-v2/sizing. The
+    default (`enriched=false`) response is byte-identical to the pre-enrichment shape.
 
     5-minute TTL cache at the facade layer.
     """
@@ -565,7 +574,10 @@ async def get_briefing(
 
     try:
         briefing = await get_discord_briefing(
-            symbol=symbol, lookback_hours=lookback_hours, for_date=parsed_date
+            symbol=symbol,
+            lookback_hours=lookback_hours,
+            for_date=parsed_date,
+            enriched_with_knowledge=enriched,
         )
         return briefing.to_dict()
     except Exception as exc:
