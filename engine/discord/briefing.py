@@ -73,6 +73,9 @@ class DiscordBriefing:
     knowledge_context: Optional[list[dict]] = (
         None  # curated gbrain hits (only when enriched); ADVISORY — prompt context only, never gate/sizing input
     )
+    knowledge_context_tier: Optional[str] = (
+        None  # rerank tier that produced knowledge_context: voyage|local|off — observability for silent Voyage->local degradation
+    )
 
     @property
     def headline(self) -> str:
@@ -107,11 +110,13 @@ class DiscordBriefing:
             "actionable": self.actionable,
             "warnings": list(self.warnings),
         }
-        # Only surface knowledge_context when enrichment actually ran, so the
-        # default (non-enriched) payload stays byte-identical to the pre-feature
-        # shape — no spurious null key for the overwhelming-majority code path.
+        # Only surface knowledge_context (+ its rerank tier) when enrichment
+        # actually ran, so the default (non-enriched) payload stays byte-identical
+        # to the pre-feature shape — no spurious null key for the
+        # overwhelming-majority code path.
         if self.knowledge_context is not None:
             out["knowledge_context"] = self.knowledge_context
+            out["knowledge_context_tier"] = self.knowledge_context_tier
         return out
 
 
@@ -250,8 +255,9 @@ async def get_discord_briefing(
     # fallback-safe: any failure (daemon down, error dict, no hits) leaves
     # knowledge_context None and is logged as a non-fatal warning.
     knowledge_context: Optional[list[dict]] = None
+    knowledge_context_tier: Optional[str] = None
     if enriched_with_knowledge:
-        knowledge_context = await _fetch_knowledge_context(
+        knowledge_context, knowledge_context_tier = await _fetch_knowledge_context(
             symbol, corey_bias, knowledge_limit, knowledge_min_score, warnings
         )
 
@@ -267,6 +273,7 @@ async def get_discord_briefing(
         lookback_hours=lookback_hours,
         warnings=warnings,
         knowledge_context=knowledge_context,
+        knowledge_context_tier=knowledge_context_tier,
     )
     _cache[cache_key] = (briefing, time.monotonic())
     return briefing
@@ -278,13 +285,15 @@ async def _fetch_knowledge_context(
     limit: int,
     min_score: float,
     warnings: list[str],
-) -> Optional[list[dict]]:
+) -> tuple[Optional[list[dict]], Optional[str]]:
     """Derive a knowledge query from the session bias and pull curated gbrain hits.
 
-    Fallback-safe by contract: returns None (and appends a warning) on any error
-    or when the daemon yields nothing. The returned list is advisory prompt
-    context — slug/title/type/similarity/content per hit — and MUST NOT be wired
-    into gate-v2, sizing, or execution decisions.
+    Returns (hits_or_None, rerank_tier_or_None). Fallback-safe by contract:
+    returns (None, None) (and appends a warning) on any error or when the daemon
+    yields nothing. The hits are advisory prompt context — slug/title/type/
+    similarity/content per hit — and MUST NOT be wired into gate-v2, sizing, or
+    execution decisions. The tier (voyage|local|off) is surfaced for
+    observability so a silent Voyage->local rerank degradation is visible.
     """
     # Intent-bearing query from Corey's structured read (session type + direction)
     # plus the symbol, so retrieval targets the relevant strategy/risk knowledge.
@@ -298,13 +307,13 @@ async def _fetch_knowledge_context(
         res = await search_knowledge_core(query, limit=limit, min_score=min_score)
         if res.get("error"):
             warnings.append(f"knowledge_context_failed:{res['error'][:60]}")
-            return None
+            return None, None
         hits = res.get("results") or []
-        return hits or None
+        return (hits or None), (res.get("rerank") if hits else None)
     except Exception as exc:
         logger.warning("[DiscordBriefing] knowledge enrichment failed for %s: %s", symbol, exc)
         warnings.append(f"knowledge_context_failed:{type(exc).__name__}")
-        return None
+        return None, None
 
 
 def _fetch_recent_signal(
