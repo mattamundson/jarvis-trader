@@ -519,7 +519,7 @@ _VEC_INDEX_DB = os.path.join(
 
 
 @mcp.tool()
-async def semantic_search(query: str, limit: int = 8) -> dict:
+async def semantic_search(query: str, limit: int = 8, min_score: float = 0.2) -> dict:
     """
     Semantic (vector) search over Corey's indexed Discord commentary.
 
@@ -528,8 +528,12 @@ async def semantic_search(query: str, limit: int = 8) -> dict:
     conceptually related messages even if exact words don't appear.
 
     Args:
-        query:  Natural-language question, e.g. "ES breakout above value area"
-        limit:  Number of results to return (default 8, max 20)
+        query:      Natural-language question, e.g. "ES breakout above value area"
+        limit:      Number of results to return (default 8, max 20)
+        min_score:  Reranker relevance floor (default 0.2) — candidates scoring
+                    below it are dropped before the top-`limit` cut, so weak
+                    vocabulary-only matches don't pad results. Pass 0.0 to keep
+                    everything (no-op on the "off"/identity rerank tier).
 
     Returns dict with 'results' list (rowid, similarity, content, ts, channel)
     and 'index_size' count. Returns 'error' key if index is unavailable.
@@ -609,7 +613,9 @@ async def semantic_search(query: str, limit: int = 8) -> dict:
         for rid, dist, content, ts, channel in rows
     ]
 
-    ranked, rerank_tier = await rerank(query, candidates, top_n=limit, text_key="_full_content")
+    ranked, rerank_tier = await rerank(
+        query, candidates, top_n=limit, text_key="_full_content", min_score=min_score
+    )
 
     results = []
     for cand in ranked:
@@ -634,7 +640,7 @@ _GBRAIN_DAEMON_URL = os.environ.get("GBRAIN_DAEMON_URL", "http://127.0.0.1:8077"
 
 
 @mcp.tool()
-async def search_knowledge(query: str, limit: int = 8) -> dict:
+async def search_knowledge(query: str, limit: int = 8, min_score: float = 0.2) -> dict:
     """
     Semantic search over the curated trading KNOWLEDGE brain (gbrain daemon).
 
@@ -646,8 +652,11 @@ async def search_knowledge(query: str, limit: int = 8) -> dict:
     SAY" about live price action, use semantic_search (Discord commentary) instead.
 
     Args:
-        query:  Natural-language question, e.g. "how do we size risk on a breakout"
-        limit:  Number of results to return (default 8, max 20)
+        query:      Natural-language question, e.g. "how do we size risk on a breakout"
+        limit:      Number of results to return (default 8, max 20)
+        min_score:  Reranker relevance floor (default 0.2) — drops weakly-relevant
+                    hits (e.g. archive/handoff pages that match on vocabulary but
+                    not intent) before the top-`limit` cut. Pass 0.0 to keep all.
 
     Returns dict with 'results' list (slug, similarity, type, title, content) and
     'rerank' tier. Returns 'error' key if the brain daemon is unavailable.
@@ -688,7 +697,9 @@ async def search_knowledge(query: str, limit: int = 8) -> dict:
         for h in hits
     ]
 
-    ranked, rerank_tier = await rerank(query, candidates, top_n=limit, text_key="_full_content")
+    ranked, rerank_tier = await rerank(
+        query, candidates, top_n=limit, text_key="_full_content", min_score=min_score
+    )
 
     results = []
     for cand in ranked:
