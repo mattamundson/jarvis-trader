@@ -39,7 +39,7 @@ import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from discord.commentary_processor import CoreyCommentaryProcessor, CoreySessionBias
 from discord.ib_levels import IBLevelProvider
@@ -96,7 +96,7 @@ class DiscordBriefing:
         )
 
     def to_dict(self) -> dict:
-        out = {
+        out: dict[str, Any] = {
             "symbol": self.symbol,
             "discord_symbol": self.discord_symbol,
             "as_of": self.as_of.isoformat(),
