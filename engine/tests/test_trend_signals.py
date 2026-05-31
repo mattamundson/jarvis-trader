@@ -1,9 +1,14 @@
 """Tests for SMA trend-following signal generator."""
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.trend_signals import generate_sma_trend_signals, get_sma_trend_params, SMA_TREND_PARAMS
+from backtest.trend_signals import (
+    generate_sma_trend_signals,
+    get_sma_trend_params,
+    SMA_TREND_PARAMS,
+)
 
 
 def _make_df(n: int = 300, base: float = 5000.0, seed: int = 42) -> pd.DataFrame:
@@ -34,7 +39,16 @@ def _make_trending_df(n: int = 400) -> pd.DataFrame:
 
 def test_required_columns_present():
     df = generate_sma_trend_signals(_make_df(), fast=10, slow=50)
-    for col in ("entry_signal", "stop_level", "target_1", "target_2", "target_3", "bias", "regime", "atr"):
+    for col in (
+        "entry_signal",
+        "stop_level",
+        "target_1",
+        "target_2",
+        "target_3",
+        "bias",
+        "regime",
+        "atr",
+    ):
         assert col in df.columns, f"Missing column: {col}"
 
 
@@ -85,7 +99,7 @@ def test_regime_trending_bull_when_above():
 def test_get_sma_trend_params_mes():
     params = get_sma_trend_params("MES")
     assert params is not None
-    assert params["fast"] == 50
+    assert params["fast"] == 60
     assert params["slow"] == 200
     assert params["atr_trail_mult"] == 2.0
 
@@ -101,6 +115,7 @@ def test_no_nan_in_entry_signal():
 
 def test_generate_instrument_signals_routes_mes_to_trend():
     from backtest.signals import generate_instrument_signals, TREND_INSTRUMENTS
+
     assert "MES" in TREND_INSTRUMENTS
     df = generate_instrument_signals(_make_trending_df(), symbol="MES")
     assert "entry_signal" in df.columns
@@ -111,6 +126,7 @@ def test_generate_instrument_signals_routes_mes_to_trend():
 
 def test_mes_not_in_composite_instruments():
     from backtest.signals import COMPOSITE_INSTRUMENTS
+
     assert "MES" not in COMPOSITE_INSTRUMENTS
 
 
@@ -125,10 +141,10 @@ def test_rv_column_present_default_off():
 
 def test_rv_filter_blocks_when_threshold_exceeds_all():
     """Impossibly high threshold (999) suppresses ALL entries."""
-    df = generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100,
-                                    min_rv_annualized=999.0)
-    assert (df["entry_signal"] == "ENTRY_NOW").sum() == 0, \
-        "No entries should fire when RV threshold is unreachable"
+    df = generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100, min_rv_annualized=999.0)
+    assert (
+        df["entry_signal"] == "ENTRY_NOW"
+    ).sum() == 0, "No entries should fire when RV threshold is unreachable"
 
 
 def test_rv_filter_zero_matches_unfiltered():
@@ -140,3 +156,46 @@ def test_rv_filter_zero_matches_unfiltered():
     n_off = (df_off["entry_signal"] == "ENTRY_NOW").sum()
     n_on = (df_on["entry_signal"] == "ENTRY_NOW").sum()
     assert n_on <= n_off, f"Filter should never INCREASE entries: off={n_off} on={n_on}"
+
+
+# ── ADX trend-strength conditioner (generation-engine port, 2026-05-30) ──────
+def test_adx_default_off_is_noop():
+    """adx_min=0.0 (default) must produce identical entry signals to the baseline.
+
+    The strict no-op guarantee — porting ADX changes nothing at adx_min=0, so
+    live trend behavior is unchanged until a threshold is explicitly set.
+    """
+    df_in = _make_trending_df()
+    df_base = generate_sma_trend_signals(df_in, fast=20, slow=100)
+    df_off = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_min=0.0)
+    assert (
+        df_base["entry_signal"].values == df_off["entry_signal"].values
+    ).all(), "adx_min=0.0 must not alter entry signals vs baseline"
+
+
+def test_adx_filter_blocks_when_threshold_exceeds_all():
+    """Impossibly high ADX threshold (999) suppresses ALL entries."""
+    df = generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100, adx_min=999.0)
+    assert (
+        df["entry_signal"] == "ENTRY_NOW"
+    ).sum() == 0, "No entries should fire when ADX threshold is unreachable"
+
+
+def test_adx_filter_never_increases_entries():
+    """adx_min>0 can only suppress entries, never add them (vs default-off)."""
+    df_in = _make_trending_df()
+    df_off = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_min=0.0)
+    df_on = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_min=20.0)
+    n_off = (df_off["entry_signal"] == "ENTRY_NOW").sum()
+    n_on = (df_on["entry_signal"] == "ENTRY_NOW").sum()
+    assert n_on <= n_off, f"ADX filter should never INCREASE entries: off={n_off} on={n_on}"
+
+
+def test_adx_column_emitted_only_when_active():
+    """adx column is all-NaN when off, populated (some finite) when the gate is on."""
+    df_in = _make_trending_df()
+    df_off = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_min=0.0)
+    df_on = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_min=20.0)
+    assert "adx" in df_off.columns and "adx" in df_on.columns
+    assert df_off["adx"].notna().sum() == 0, "adx must be NaN when conditioner is off"
+    assert df_on["adx"].notna().sum() > 0, "adx must be computed when conditioner is on"

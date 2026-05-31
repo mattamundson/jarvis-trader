@@ -116,8 +116,7 @@ _GATE_V2_ROUTING_TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 def _is_gate_v2_routing_enforced() -> bool:
     """Check `GATE_V2_ENFORCE_ROUTING` env var (case-insensitive truthy set)."""
-    return os.environ.get("GATE_V2_ENFORCE_ROUTING", "").strip().lower() in \
-        _GATE_V2_ROUTING_TRUTHY
+    return os.environ.get("GATE_V2_ENFORCE_ROUTING", "").strip().lower() in _GATE_V2_ROUTING_TRUTHY
 
 
 def _force_no_trade(result):
@@ -158,12 +157,34 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
                 default_rv = float(env_rv)
             except (TypeError, ValueError):
                 default_rv = 0.0
-            # Allow caller overrides (e.g. optimizer varying fast/slow/min_rv_annualized)
+            # Config-controlled ADX trend-strength filter (off by default).
+            # Env var MGC_MIN_ADX enables the conditioner for live backtests
+            # without redeploying code — generation-engine validated MGC
+            # trend+ADX(20) PASS (gate v2 ALT). Same forward-validation bar as
+            # rv_filter: collect 60+ live ADX-tagged trades before authorizing.
+            env_adx = os.environ.get(f"{symbol.upper()}_MIN_ADX", "0.0")
+            try:
+                default_adx = float(env_adx)
+            except (TypeError, ValueError):
+                default_adx = 0.0
+            # Allow caller overrides (e.g. optimizer varying fast/slow/min_rv/adx)
             merged = {
                 **params,
                 "min_rv_annualized": default_rv,
-                **{k: v for k, v in kwargs.items()
-                   if k in ("fast", "slow", "atr_trail_mult", "min_rv_annualized")},
+                "adx_min": default_adx,
+                **{
+                    k: v
+                    for k, v in kwargs.items()
+                    if k
+                    in (
+                        "fast",
+                        "slow",
+                        "atr_trail_mult",
+                        "min_rv_annualized",
+                        "adx_min",
+                        "adx_period",
+                    )
+                },
             }
             result = generate_sma_trend_signals(df, **merged)
         else:
@@ -370,6 +391,7 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── RSI (period=14) for consensus module ─────────────────────────────
     from .indicators import rsi as _rsi
+
     df["rsi_14"] = _rsi(df["close"], period=14)
 
     # ── VWAP (session-reset daily) ────────────────────────────────────────
@@ -396,11 +418,13 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── Rate of Change (momentum, period=10) ──────────────────────────────
     from .indicators import compute_roc as _roc
+
     df["roc_10"] = _roc(df["close"], period=10)
 
     # ── VWAP z-score (mean-reversion distance) ────────────────────────────
     if "vwap" in df.columns and "atr" in df.columns:
         from .indicators import compute_vwap_zscore as _vwap_z
+
         df["vwap_zscore"] = _vwap_z(df["close"], df["vwap"], df["atr"])
     else:
         df["vwap_zscore"] = float("nan")
@@ -479,10 +503,26 @@ def layer2_structure(row: pd.Series) -> dict:
         result["position"] = "SELLER_CONTROL"
 
     # Discord IB level fields (additive — None when not injected)
-    result["discord_ibu50"] = float(row["discord_ibu50"]) if "discord_ibu50" in row and row["discord_ibu50"] is not None else None
-    result["discord_ibu100"] = float(row["discord_ibu100"]) if "discord_ibu100" in row and row["discord_ibu100"] is not None else None
-    result["discord_ibd50"] = float(row["discord_ibd50"]) if "discord_ibd50" in row and row["discord_ibd50"] is not None else None
-    result["discord_ibd100"] = float(row["discord_ibd100"]) if "discord_ibd100" in row and row["discord_ibd100"] is not None else None
+    result["discord_ibu50"] = (
+        float(row["discord_ibu50"])
+        if "discord_ibu50" in row and row["discord_ibu50"] is not None
+        else None
+    )
+    result["discord_ibu100"] = (
+        float(row["discord_ibu100"])
+        if "discord_ibu100" in row and row["discord_ibu100"] is not None
+        else None
+    )
+    result["discord_ibd50"] = (
+        float(row["discord_ibd50"])
+        if "discord_ibd50" in row and row["discord_ibd50"] is not None
+        else None
+    )
+    result["discord_ibd100"] = (
+        float(row["discord_ibd100"])
+        if "discord_ibd100" in row and row["discord_ibd100"] is not None
+        else None
+    )
 
     return result
 
@@ -647,14 +687,36 @@ def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str
             ema_slow_prev = float(row.get("ema_34", ema_slow))
             rsi_raw = row.get("rsi_14", 50.0)
             rsi_val = float(rsi_raw) if rsi_raw is not None and not pd.isna(rsi_raw) else 50.0
-            atr_val = float(row.get("atr", 1.0)) if not pd.isna(row.get("atr", float("nan"))) else 1.0
-            atr_sma_val = float(row.get("atr_sma20", atr_val)) if not pd.isna(row.get("atr_sma20", float("nan"))) else atr_val
+            atr_val = (
+                float(row.get("atr", 1.0)) if not pd.isna(row.get("atr", float("nan"))) else 1.0
+            )
+            atr_sma_val = (
+                float(row.get("atr_sma20", atr_val))
+                if not pd.isna(row.get("atr_sma20", float("nan")))
+                else atr_val
+            )
             vwap_val_raw = row.get("vwap", None)
-            vwap_val = float(vwap_val_raw) if vwap_val_raw is not None and not pd.isna(vwap_val_raw) else float(row.get("close", 0))
+            vwap_val = (
+                float(vwap_val_raw)
+                if vwap_val_raw is not None and not pd.isna(vwap_val_raw)
+                else float(row.get("close", 0))
+            )
             adx_norm_raw = row.get("adx_norm", None)
-            adx_norm_val = float(adx_norm_raw) if adx_norm_raw is not None and not pd.isna(adx_norm_raw) else 0.25
-            roc_val = float(row.get("roc_10", 0.0)) if not pd.isna(row.get("roc_10", float("nan"))) else 0.0
-            vwap_z_val = float(row.get("vwap_zscore", 0.0)) if not pd.isna(row.get("vwap_zscore", float("nan"))) else 0.0
+            adx_norm_val = (
+                float(adx_norm_raw)
+                if adx_norm_raw is not None and not pd.isna(adx_norm_raw)
+                else 0.25
+            )
+            roc_val = (
+                float(row.get("roc_10", 0.0))
+                if not pd.isna(row.get("roc_10", float("nan")))
+                else 0.0
+            )
+            vwap_z_val = (
+                float(row.get("vwap_zscore", 0.0))
+                if not pd.isna(row.get("vwap_zscore", float("nan")))
+                else 0.0
+            )
 
             consensus = compute_consensus(
                 ema_fast=ema_fast,
@@ -1017,8 +1079,9 @@ def inject_ib_levels(df: pd.DataFrame, symbol: str, db_path: str | None = None) 
             df[c] = None
     try:
         from discord.ib_levels import IBLevelProvider
+
         sym = IBLevelProvider.SYMBOL_MAP.get(symbol.upper(), symbol.upper())
-        p = (_ib_provider if _IB_AVAILABLE and db_path is None else IBLevelProvider(db_path=db_path))
+        p = _ib_provider if _IB_AVAILABLE and db_path is None else IBLevelProvider(db_path=db_path)
         dates = df.index.date if hasattr(df.index, "date") else [None] * len(df)
         seen: dict = {}
         for i, dt in enumerate(dates):

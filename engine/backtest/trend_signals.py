@@ -1,10 +1,10 @@
 """
 SMA trend-following signal generator for JARVIS TRADER.
 
-Validated on MES 1h via walk-forward optimization (2026-04-20):
-    SMA(50, 200) + 2.0×ATR trailing stop
-    Train PF 2.063 (2024-06→2025-06) | Test PF 1.689 (2025-06→2026-03)
-    WFE 0.819 | 6 WFO winners clustered near (fast=40-50, slow=180-200, trail=2.0-5.0)
+Validated on MES 1h via walk-forward optimization — rank11 champion (2026-05-06):
+    SMA(60, 200) + 2.0×ATR trailing stop
+    fixed_params PF: fast=60→2.156, fast=55→1.722, fast=50→1.351
+    gate v2 ALT PASS: dsr=1.0, wfo=STRONG, mc_dd=0.81%, fixed_params_min_pf=1.351
 
 Entry : fast SMA crosses above slow SMA (Golden Cross) — LONG only.
 Exit  : fast SMA crosses below slow SMA  OR  ATR trailing stop hit.
@@ -18,8 +18,19 @@ import numpy as np
 import pandas as pd
 
 # Walk-forward champion parameters
+# MES: rank11 champion (2026-05-06) — gate v2 ALT PASS
+# MNQ: rank1 baseline (2026-05-06) — inherited from MES champion; pending rank1 verdict
 SMA_TREND_PARAMS: dict[str, dict] = {
-    "MES": {"fast": 50, "slow": 200, "atr_trail_mult": 2.0},
+    "MES": {"fast": 60, "slow": 200, "atr_trail_mult": 2.0},
+    # MNQ baseline: MES champion params as starting point.
+    # point_value=$2 (vs MES $5), tick_size=0.25, commission=$0.62/contract.
+    # ATR in dollar terms differs from MES — trail_mult grid [1.8, 2.0, 2.2]
+    # in run_mnq_trend_rank1.py determines production value after rank1 verdict.
+    "MNQ": {"fast": 50, "slow": 200, "atr_trail_mult": 2.0},
+    # MGC: rank4 champion (2026-05-06) — gate v2 ALT PASS
+    # 8-combo grid fast=[40,50]×slow=[80,120]×atr=[1.5,2.0]; all combos PF>1.35
+    # dsr=1.0, wfo=STRONG, mc_dd=1.24%, cost=catastrophic. ALT ($50K+).
+    "MGC": {"fast": 50, "slow": 120, "atr_trail_mult": 2.0},
 }
 
 _ATR_PERIOD = 14
@@ -51,6 +62,10 @@ def _wilder_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
     chop. Classic Wilder reading: ADX >= 20-25 = trend present. Used here as a
     conditioner gate on the SMA-trend entry (only take the golden cross when the
     market is actually trending). Same Wilder smoothing (ewm alpha=1/period) as ATR.
+
+    Validated as a conditioner by the generation engine (2026-05-30): MGC trend+ADX(20)
+    PASSES gate v2 ALT (robust across adx_min 15-20); MES trend+ADX is a real FAIL.
+    Default off (adx_min=0.0) → strict no-op, live trend behavior unchanged.
     """
     up = high.diff()
     dn = -low.diff()
@@ -68,10 +83,14 @@ def _wilder_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
 
 def generate_sma_trend_signals(
     df: pd.DataFrame,
-    fast: int = 50,
+    fast: int = 60,
     slow: int = 200,
     atr_trail_mult: float = 2.0,
     min_rv_annualized: float = 0.0,
+    rv_annual_factor: int | None = None,
+    vix_df: pd.DataFrame | None = None,
+    vix_min: float = 0.0,
+    vix_max: float = 999.0,
     adx_min: float = 0.0,
     adx_period: int = 14,
 ) -> pd.DataFrame:
@@ -83,10 +102,19 @@ def generate_sma_trend_signals(
             vol (annualized %) at entry bar < threshold. Empirically the
             SMA trend edge concentrates at RV ≥ 9% (36-trade sample).
             0.0 (default) = filter disabled.
+        rv_annual_factor: Bars-per-year for RV annualization. Default None uses
+            _RV_ANNUAL_FACTOR (252*24 for 1h bars). Pass 252 for daily bars.
+        vix_df: Optional DataFrame with a "close" column indexed by date
+            (daily VIX data). When provided, ENTRY_NOW is suppressed unless
+            the current day's VIX is in [vix_min, vix_max].
+            No-op when None (default, backward-compatible).
+        vix_min: Lower bound for VIX filter (inclusive). 0.0 = no lower bound.
+        vix_max: Upper bound for VIX filter (inclusive). 999.0 = no upper bound.
         adx_min: If > 0, suppress ENTRY_NOW when Wilder ADX(adx_period) at the
             entry bar < threshold (trend-strength conditioner): only take the
             golden cross when the market is actually trending. Classic Wilder
             threshold ~20-25. 0.0 (default) = disabled (backward-compatible).
+            Generation-engine validated: MGC trend+ADX(20) PASS via ALT.
         adx_period: Wilder ADX lookback (default 14).
 
     Returns df with columns:
@@ -97,15 +125,27 @@ def generate_sma_trend_signals(
         regime        : "TRENDING_BULL" | "RANGE_BOUND"
         atr           : ATR(14) series
         rv_20_ann_pct : 20-bar annualized realized volatility (percent)
+        vix_level     : VIX at each bar (NaN when vix_df not provided)
+        adx           : Wilder ADX(adx_period) (NaN when adx_min not set)
     """
     df = df.copy()
+    _rv_factor = rv_annual_factor if rv_annual_factor is not None else _RV_ANNUAL_FACTOR
+
+    # Precompute per-bar VIX levels (daily, forward-filled to 1h bars)
+    _vix_series: pd.Series | None = None
+    if vix_df is not None and not vix_df.empty:
+        vix_daily = vix_df["close"].copy()
+        vix_daily.index = pd.to_datetime(vix_daily.index).normalize()
+        bar_dates = df.index.normalize()
+        _vix_series = vix_daily.reindex(bar_dates, method="ffill")
+        _vix_series.index = df.index
 
     sma_f = df["close"].rolling(fast).mean()
     sma_s = df["close"].rolling(slow).mean()
     atr = _wilder_atr(df["high"], df["low"], df["close"], _ATR_PERIOD)
     # Realized vol: stddev of log returns over _RV_WINDOW bars, annualized as percent
     log_ret = np.log(df["close"] / df["close"].shift(1))
-    rv_ann = log_ret.rolling(_RV_WINDOW).std() * np.sqrt(_RV_ANNUAL_FACTOR) * 100.0
+    rv_ann = log_ret.rolling(_RV_WINDOW).std() * np.sqrt(_rv_factor) * 100.0
     # Trend-strength conditioner (default off): ADX(adx_period) at the entry bar.
     adx = _wilder_adx(df["high"], df["low"], df["close"], adx_period) if adx_min > 0.0 else None
 
@@ -125,45 +165,76 @@ def generate_sma_trend_signals(
     entry_signal = np.full(n, "NO_TRADE", dtype=object)
     exit_signal = np.full(n, "NO_EXIT", dtype=object)
     stop_level = np.full(n, np.nan)
+    trailing_stop = np.full(n, np.nan)
     target_1 = np.full(n, np.nan)
     target_2 = np.full(n, np.nan)
     target_3 = np.full(n, np.nan)
+
+    current_trail = np.nan
+    in_trade = False
 
     for i in range(n):
         if pd.isna(sma_s.iloc[i]) or pd.isna(atr.iloc[i]):
             continue
         price = float(df["close"].iloc[i])
+        low_i = float(df["low"].iloc[i])
         atr_i = float(atr.iloc[i])
 
         if cross_up.iloc[i]:
             # Realized-vol gate: skip entry if vol is below threshold.
-            # rv may be NaN during the first _RV_WINDOW bars — treat as 0 (block).
             if min_rv_annualized > 0.0:
                 rv_i = rv_ann.iloc[i]
                 if pd.isna(rv_i) or float(rv_i) < min_rv_annualized:
                     continue  # leave entry_signal as NO_TRADE
+
+            # VIX range gate: skip entry when VIX is outside [vix_min, vix_max].
+            if _vix_series is not None:
+                vix_i = _vix_series.iloc[i]
+                if pd.isna(vix_i) or not (vix_min <= float(vix_i) <= vix_max):
+                    continue  # leave entry_signal as NO_TRADE
+
             # ADX trend-strength gate: skip entry when the trend is too weak.
-            # ADX is NaN during warmup — treat as block (same as the rv gate).
+            # ADX is NaN during warmup — treat as block (same as the rv/vix gates).
             if adx is not None:
                 adx_i = adx.iloc[i]
                 if pd.isna(adx_i) or float(adx_i) < adx_min:
                     continue  # leave entry_signal as NO_TRADE
+
             entry_signal[i] = "ENTRY_NOW"
-            stop_level[i] = price - atr_trail_mult * atr_i
+            initial_stop = price - atr_trail_mult * atr_i
+            stop_level[i] = initial_stop
+            current_trail = initial_stop
+            in_trade = True
+
             target_1[i] = price + _T1_MULT * atr_i
             target_2[i] = price + _T2_MULT * atr_i
             target_3[i] = price + _T3_MULT * atr_i
-        elif cross_dn.iloc[i]:
-            exit_signal[i] = "EXIT_NOW"
+
+        elif in_trade:
+            # Update trail: only moves UP
+            new_trail = price - atr_trail_mult * atr_i
+            if new_trail > current_trail:
+                current_trail = new_trail
+
+            trailing_stop[i] = current_trail
+
+            # Exit check
+            if low_i <= current_trail or cross_dn.iloc[i]:
+                exit_signal[i] = "EXIT_NOW"
+                in_trade = False
+                current_trail = np.nan
 
     df["entry_signal"] = entry_signal
     df["exit_signal"] = exit_signal
     df["stop_level"] = stop_level
+    df["trailing_stop"] = trailing_stop
     df["target_1"] = target_1
     df["target_2"] = target_2
     df["target_3"] = target_3
     df["atr"] = atr
     df["rv_20_ann_pct"] = rv_ann
+    df["vix_level"] = _vix_series if _vix_series is not None else np.nan
+    df["adx"] = adx if adx is not None else np.nan
 
     df["bias"] = "NEUTRAL"
     df.loc[above, "bias"] = "STRONG_BULL"
