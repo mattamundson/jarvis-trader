@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -71,6 +71,9 @@ class VerdictSnapshot:
     created_at: str  # ISO-8601
     aux_freshness: dict
     gate_v2: dict
+    # Quantitative gate metrics (pf_ci_lower, mc_95th_dd_pct, dsr, ...) for
+    # advisory display. Empty on older verdict files that predate the key.
+    gate_v2_metrics: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.symbol:
@@ -120,6 +123,7 @@ class VerdictSnapshot:
                 created_at=doc["created_at"],
                 aux_freshness=doc.get("aux_freshness") or {},
                 gate_v2=doc.get("gate_v2") or {},
+                gate_v2_metrics=doc.get("gate_v2_metrics") or {},
             )
         except KeyError as exc:
             raise ValueError(f"Missing required verdict field: {exc}") from exc
