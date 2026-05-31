@@ -85,9 +85,9 @@ MIN_RV_ANNUALIZED = 0.0
 
 
 COST_SWEEP_TIERS = {
-    "optimistic":   {"commission": 0.31, "slippage_ticks": 1.0},
-    "realistic":    {"commission": 0.62, "slippage_ticks": 2.0},
-    "pessimistic":  {"commission": 1.24, "slippage_ticks": 3.0},
+    "optimistic": {"commission": 0.31, "slippage_ticks": 1.0},
+    "realistic": {"commission": 0.62, "slippage_ticks": 2.0},
+    "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
     "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
 }
 
@@ -97,6 +97,7 @@ MIN_OOS_TRADES_PER_WINDOW = 1
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
+
 
 def _load_data(data_file: Path) -> pd.DataFrame:
     df = pd.read_csv(data_file)
@@ -123,6 +124,7 @@ def _find_data_file(data_dir: Path) -> Path:
 # Window generation
 # ---------------------------------------------------------------------------
 
+
 def _generate_windows(df: pd.DataFrame) -> list[dict]:
     data_start = df.index.min()
     data_end = df.index.max()
@@ -141,15 +143,17 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
         df_train = df[(df.index >= train_start) & (df.index < train_end)]
         df_test = df[(df.index >= test_start) & (df.index <= test_end)]
         if len(df_train) >= 30 and len(df_test) >= 30:
-            windows.append({
-                "window_num": wnum,
-                "train_start": train_start,
-                "train_end": train_end,
-                "test_start": test_start,
-                "test_end": test_end,
-                "n_train": len(df_train),
-                "n_test": len(df_test),
-            })
+            windows.append(
+                {
+                    "window_num": wnum,
+                    "train_start": train_start,
+                    "train_end": train_end,
+                    "test_start": test_start,
+                    "test_end": test_end,
+                    "n_train": len(df_train),
+                    "n_test": len(df_test),
+                }
+            )
             wnum += 1
         cursor += pd.DateOffset(months=STEP_MONTHS)
         if cursor >= data_end:
@@ -160,6 +164,7 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Signal + backtest execution
 # ---------------------------------------------------------------------------
+
 
 def _run_signals_and_backtest(
     df: pd.DataFrame,
@@ -197,9 +202,8 @@ def _run_signals_and_backtest(
 # IS grid search
 # ---------------------------------------------------------------------------
 
-def _best_is_params(
-    df_train: pd.DataFrame, grid: list[tuple]
-) -> tuple[dict | None, object | None]:
+
+def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | None, object | None]:
     best_pf = -1.0
     best_params = None
     best_result = None
@@ -248,6 +252,7 @@ from backtest._gate_v2_helpers import (  # noqa: E402
 # Fixed-params sweep
 # ---------------------------------------------------------------------------
 
+
 def _run_fixed_params_sweep(df: pd.DataFrame, grid: list[tuple]) -> dict:
     pfs = []
     combo_results = []
@@ -256,36 +261,49 @@ def _run_fixed_params_sweep(df: pd.DataFrame, grid: list[tuple]) -> dict:
             result = _run_signals_and_backtest(df, fast, slow, atr_trail_mult)
             if result.total_trades >= MIN_OOS_TRADES_PER_WINDOW:
                 pfs.append(result.profit_factor)
-                combo_results.append({
-                    "fast": fast, "slow": slow, "atr_trail_mult": atr_trail_mult,
-                    "pf": round(result.profit_factor, 4),
-                    "trades": result.total_trades,
-                })
-                print(f"    combo ({fast:3d},{slow:3d},{atr_trail_mult:.1f}): "
-                      f"PF={result.profit_factor:.4f}  trades={result.total_trades}")
+                combo_results.append(
+                    {
+                        "fast": fast,
+                        "slow": slow,
+                        "atr_trail_mult": atr_trail_mult,
+                        "pf": round(result.profit_factor, 4),
+                        "trades": result.total_trades,
+                    }
+                )
+                print(
+                    f"    combo ({fast:3d},{slow:3d},{atr_trail_mult:.1f}): "
+                    f"PF={result.profit_factor:.4f}  trades={result.total_trades}"
+                )
             else:
-                print(f"    combo ({fast:3d},{slow:3d},{atr_trail_mult:.1f}): "
-                      f"SKIP ({result.total_trades} trades)")
+                print(
+                    f"    combo ({fast:3d},{slow:3d},{atr_trail_mult:.1f}): "
+                    f"SKIP ({result.total_trades} trades)"
+                )
         except Exception as exc:
             print(f"  [WARN] fixed-params error ({fast},{slow},{atr_trail_mult}): {exc}")
 
     if not pfs:
-        return {"fixed_params_min_pf": 0.0, "fixed_params_mean_pf": 0.0,
-                "fixed_params_max_pf": 0.0, "n_combos_with_trades": 0,
-                "combo_results": combo_results}
+        return {
+            "fixed_params_min_pf": 0.0,
+            "fixed_params_mean_pf": 0.0,
+            "fixed_params_max_pf": 0.0,
+            "n_combos_with_trades": 0,
+            "combo_results": combo_results,
+        }
 
     return {
-        "fixed_params_min_pf":  round(float(min(pfs)), 4),
+        "fixed_params_min_pf": round(float(min(pfs)), 4),
         "fixed_params_mean_pf": round(float(np.mean(pfs)), 4),
-        "fixed_params_max_pf":  round(float(max(pfs)), 4),
+        "fixed_params_max_pf": round(float(max(pfs)), 4),
         "n_combos_with_trades": len(pfs),
-        "combo_results":        combo_results,
+        "combo_results": combo_results,
     }
 
 
 # ---------------------------------------------------------------------------
 # Cost sweep
 # ---------------------------------------------------------------------------
+
 
 def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
     results = {}
@@ -304,9 +322,11 @@ def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
             pf = result.profit_factor
             passes = pf > 1.0 and result.total_trades >= MIN_OOS_TRADES_PER_WINDOW
             results[tier] = {"pf": round(pf, 4), "trades": result.total_trades, "passes": passes}
-            print(f"    [{tier:12s}] commission={costs['commission']:.2f}  "
-                  f"slip={costs['slippage_ticks']:.1f}t  PF={pf:.4f}  "
-                  f"trades={result.total_trades}  {'PASS' if passes else 'FAIL'}")
+            print(
+                f"    [{tier:12s}] commission={costs['commission']:.2f}  "
+                f"slip={costs['slippage_ticks']:.1f}t  PF={pf:.4f}  "
+                f"trades={result.total_trades}  {'PASS' if passes else 'FAIL'}"
+            )
             if passes:
                 last_surviving = tier
         except Exception as exc:
@@ -319,37 +339,42 @@ def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
 # Gate v2 full evaluation
 # ---------------------------------------------------------------------------
 
+
 def _compute_gate_v2(
     oos_results: list,
     n_grid_combos: int,
     fixed_params_metrics: dict,
     cost_sweep_metrics: dict,
 ) -> dict:
-    from backtest.deflated_sharpe import deflated_sharpe_ratio
+    from backtest._gate_v2_trade_metrics import trade_level_dsr, trade_level_mc_95th_dd
 
-    oos_pfs     = [r.profit_factor    for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
-    oos_dds     = [r.max_drawdown_pct for r in oos_results]
-    oos_sharpes = [r.sharpe_ratio     for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
-    all_trades  = sum(r.total_trades  for r in oos_results)
+    oos_pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
+    oos_dds = [r.max_drawdown_pct for r in oos_results]
+    all_trades = sum(r.total_trades for r in oos_results)
 
     pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
-    p_edge      = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
-    mc_95th_dd  = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
-    mean_sharpe = float(np.mean(oos_sharpes)) if oos_sharpes else 0.0
-    n_obs       = max(all_trades, 30)
-    dsr_result  = deflated_sharpe_ratio(sharpe=mean_sharpe, n_trials=n_grid_combos, n_obs=n_obs)
-    dsr = dsr_result.get("dsr", 0.0) if isinstance(dsr_result, dict) else float(dsr_result)
+    p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
 
-    wfo_consistency       = _classify_wfo_consistency(oos_pfs)
-    fixed_params_min_pf   = fixed_params_metrics.get("fixed_params_min_pf", 0.0)
+    # Trade-level risk metrics (correct); legacy window-level DD retained for
+    # transparency only (not used for the gate). See _gate_v2_trade_metrics.
+    mc_95th_dd = trade_level_mc_95th_dd(oos_results, initial_capital=CAPITAL)
+    dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
+    mc_95th_dd_window_legacy = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
+
+    wfo_consistency = _classify_wfo_consistency(oos_pfs)
+    fixed_params_min_pf = fixed_params_metrics.get("fixed_params_min_pf", 0.0)
     cost_survives_through = cost_sweep_metrics.get("cost_survives_through", "none")
-    cost_tier_idx         = COST_TIER_ORDER.index(cost_survives_through) if cost_survives_through in COST_TIER_ORDER else -1
-    cost_realistic_idx    = COST_TIER_ORDER.index("realistic")
-    cost_passes           = cost_tier_idx >= cost_realistic_idx
+    cost_tier_idx = (
+        COST_TIER_ORDER.index(cost_survives_through)
+        if cost_survives_through in COST_TIER_ORDER
+        else -1
+    )
+    cost_realistic_idx = COST_TIER_ORDER.index("realistic")
+    cost_passes = cost_tier_idx >= cost_realistic_idx
 
     core_pass = (
         pf_ci_lower >= GATE_PF_CI_LOWER
-        and p_edge  >= GATE_P_EDGE
+        and p_edge >= GATE_P_EDGE
         and mc_95th_dd <= GATE_MC_DD_CORE
         and dsr >= GATE_DSR
     )
@@ -362,20 +387,36 @@ def _compute_gate_v2(
     )
 
     core_reasons = []
-    core_reasons.append(f"{'FAIL ' if pf_ci_lower < GATE_PF_CI_LOWER else ''}mbb_pf_ci_lower={pf_ci_lower:.4f} >= {GATE_PF_CI_LOWER}")
-    core_reasons.append(f"{'FAIL ' if p_edge < GATE_P_EDGE else ''}p_positive_edge={p_edge:.4f} >= {GATE_P_EDGE}")
-    core_reasons.append(f"mc_95th_dd_pct={mc_95th_dd*100:.4f} {'<=' if mc_95th_dd<=GATE_MC_DD_CORE else '>'} {GATE_MC_DD_CORE*100:.1f}")
+    core_reasons.append(
+        f"{'FAIL ' if pf_ci_lower < GATE_PF_CI_LOWER else ''}mbb_pf_ci_lower={pf_ci_lower:.4f} >= {GATE_PF_CI_LOWER}"
+    )
+    core_reasons.append(
+        f"{'FAIL ' if p_edge < GATE_P_EDGE else ''}p_positive_edge={p_edge:.4f} >= {GATE_P_EDGE}"
+    )
+    core_reasons.append(
+        f"mc_95th_dd_pct={mc_95th_dd*100:.4f} {'<=' if mc_95th_dd<=GATE_MC_DD_CORE else '>'} {GATE_MC_DD_CORE*100:.1f}"
+    )
     core_reasons.append(f"dsr={dsr:.6f} >= {GATE_DSR} (not selection-bias)")
 
     alt_reasons = []
-    alt_reasons.append(f"{'FAIL ' if dsr < GATE_DSR_ALT else ''}dsr={dsr:.6f} >= {GATE_DSR_ALT} (alt floor)")
-    alt_reasons.append(f"{'FAIL ' if wfo_consistency not in GATE_WFO_CONSISTENCY_VALUES else ''}rolling_wfo={wfo_consistency} in {GATE_WFO_CONSISTENCY_VALUES}")
-    alt_reasons.append(f"{'FAIL ' if fixed_params_min_pf < GATE_FIXED_PARAMS_MIN_PF else ''}fixed_params_min_pf={fixed_params_min_pf:.3f} >= {GATE_FIXED_PARAMS_MIN_PF}")
-    alt_reasons.append(f"{'FAIL ' if not cost_passes else ''}cost_survives_through={cost_survives_through} >= realistic")
-    alt_reasons.append(f"{'FAIL ' if mc_95th_dd > GATE_MC_DD_ALT else ''}mc_95th_dd_pct={mc_95th_dd*100:.4f} <= {GATE_MC_DD_ALT*100:.1f} (alt ceiling)")
+    alt_reasons.append(
+        f"{'FAIL ' if dsr < GATE_DSR_ALT else ''}dsr={dsr:.6f} >= {GATE_DSR_ALT} (alt floor)"
+    )
+    alt_reasons.append(
+        f"{'FAIL ' if wfo_consistency not in GATE_WFO_CONSISTENCY_VALUES else ''}rolling_wfo={wfo_consistency} in {GATE_WFO_CONSISTENCY_VALUES}"
+    )
+    alt_reasons.append(
+        f"{'FAIL ' if fixed_params_min_pf < GATE_FIXED_PARAMS_MIN_PF else ''}fixed_params_min_pf={fixed_params_min_pf:.3f} >= {GATE_FIXED_PARAMS_MIN_PF}"
+    )
+    alt_reasons.append(
+        f"{'FAIL ' if not cost_passes else ''}cost_survives_through={cost_survives_through} >= realistic"
+    )
+    alt_reasons.append(
+        f"{'FAIL ' if mc_95th_dd > GATE_MC_DD_ALT else ''}mc_95th_dd_pct={mc_95th_dd*100:.4f} <= {GATE_MC_DD_ALT*100:.1f} (alt ceiling)"
+    )
 
     n_core_passed = sum(1 for r in core_reasons if not r.startswith("FAIL"))
-    n_alt_passed  = sum(1 for r in alt_reasons  if not r.startswith("FAIL"))
+    n_alt_passed = sum(1 for r in alt_reasons if not r.startswith("FAIL"))
 
     if core_pass:
         verdict, passed_via = "PASS", "core"
@@ -385,24 +426,28 @@ def _compute_gate_v2(
         verdict, passed_via = "FAIL", None
 
     return {
-        "verdict": verdict, "passed_via": passed_via,
+        "verdict": verdict,
+        "passed_via": passed_via,
         "core_verdict": "PASS" if core_pass else "FAIL",
-        "alt_verdict":  "PASS" if alt_pass  else "FAIL",
-        "n_core_passed": n_core_passed, "n_alt_passed": n_alt_passed,
-        "pf_ci_lower":   round(pf_ci_lower, 4),
-        "p_edge":        round(p_edge, 4),
-        "mc_95th_dd":    round(mc_95th_dd, 6),
+        "alt_verdict": "PASS" if alt_pass else "FAIL",
+        "n_core_passed": n_core_passed,
+        "n_alt_passed": n_alt_passed,
+        "pf_ci_lower": round(pf_ci_lower, 4),
+        "p_edge": round(p_edge, 4),
+        "mc_95th_dd": round(mc_95th_dd, 6),
         "mc_95th_dd_pct": round(mc_95th_dd * 100, 4),
-        "dsr":           round(dsr, 6),
+        "mc_95th_dd_window_legacy": round(mc_95th_dd_window_legacy, 6),
+        "dsr": round(dsr, 6),
         "wfo_consistency": wfo_consistency,
-        "fixed_params_min_pf":  fixed_params_min_pf,
+        "fixed_params_min_pf": fixed_params_min_pf,
         "fixed_params_mean_pf": fixed_params_metrics.get("fixed_params_mean_pf", 0.0),
-        "fixed_params_max_pf":  fixed_params_metrics.get("fixed_params_max_pf", 0.0),
+        "fixed_params_max_pf": fixed_params_metrics.get("fixed_params_max_pf", 0.0),
         "cost_survives_through": cost_survives_through,
         "n_oos_windows": len(oos_results),
         "n_oos_windows_with_trades": len(oos_pfs),
         "total_oos_trades": all_trades,
-        "core_reasons": core_reasons, "alt_reasons": alt_reasons,
+        "core_reasons": core_reasons,
+        "alt_reasons": alt_reasons,
         "reasons": core_reasons + alt_reasons,
     }
 
@@ -411,8 +456,9 @@ def _compute_gate_v2(
 # Main WFO loop
 # ---------------------------------------------------------------------------
 
+
 def run_wfo() -> dict:
-    data_dir  = engine_root / "backtest" / "cache"
+    data_dir = engine_root / "backtest" / "cache"
     data_file = _find_data_file(data_dir)
 
     print(f"[MGC-R4] Loading {data_file.name} ...")
@@ -429,7 +475,9 @@ def run_wfo() -> dict:
 
     print(f"\n{'=' * 70}")
     print("=== MGC TREND RANK 4 -- TIGHT GRID, ALT PATH TARGET ===")
-    print(f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo")
+    print(
+        f"Windows: {len(windows)} | Train: {TRAIN_MONTHS}mo | Test: {TEST_MONTHS}mo | Step: {STEP_MONTHS}mo"
+    )
     print(f"Grid: {n_combos} combos")
     print(f"  fast_period    : {FAST_PERIOD_VALUES}  (exclude fast=30 lossy region)")
     print(f"  slow_period    : {SLOW_PERIOD_VALUES}  (exclude slow=160 lossy region)")
@@ -438,14 +486,18 @@ def run_wfo() -> dict:
     print(f"  multiplier     : ${MULTIPLIER:.0f}/point  (Micro Gold)")
     print(f"  tick_size      : {TICK_SIZE} pts = ${TICK_SIZE*MULTIPLIER:.2f}/tick")
     print(f"  TEST_MONTHS    : {TEST_MONTHS}  (2mo OOS window, confirmed viable in rank3)")
-    print(f"ALT thresholds: dsr>={GATE_DSR_ALT}, wfo in {GATE_WFO_CONSISTENCY_VALUES}, "
-          f"fixed>={GATE_FIXED_PARAMS_MIN_PF}, mc_dd<={GATE_MC_DD_ALT*100:.0f}%")
-    print("Rank3 result: dsr=1.0, wfo=STRONG, mc_dd=1.48%, cost=catastrophic, "
-          "fixed_min=0.45 (FAIL). Rank4 removes lossy combos.")
+    print(
+        f"ALT thresholds: dsr>={GATE_DSR_ALT}, wfo in {GATE_WFO_CONSISTENCY_VALUES}, "
+        f"fixed>={GATE_FIXED_PARAMS_MIN_PF}, mc_dd<={GATE_MC_DD_ALT*100:.0f}%"
+    )
+    print(
+        "Rank3 result: dsr=1.0, wfo=STRONG, mc_dd=1.48%, cost=catastrophic, "
+        "fixed_min=0.45 (FAIL). Rank4 removes lossy combos."
+    )
     print("All 8 rank4 combos have rank3 full-dataset PF > 1.35.")
     print(f"{'=' * 70}")
 
-    oos_results    = []
+    oos_results = []
     window_records = []
 
     for win in windows:
@@ -453,21 +505,25 @@ def run_wfo() -> dict:
         ts, te = win["train_start"], win["train_end"]
         os_, oe = win["test_start"], win["test_end"]
 
-        print(f"\nWindow {wnum}: IS {ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}  "
-              f"OOS {os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}  "
-              f"({win['n_train']} / {win['n_test']} bars)")
+        print(
+            f"\nWindow {wnum}: IS {ts.strftime('%Y-%m')}->{te.strftime('%Y-%m')}  "
+            f"OOS {os_.strftime('%Y-%m')}->{oe.strftime('%Y-%m')}  "
+            f"({win['n_train']} / {win['n_test']} bars)"
+        )
 
-        df_train = df[(df.index >= ts)  & (df.index < te)].copy()
-        df_test  = df[(df.index >= os_) & (df.index <= oe)].copy()
+        df_train = df[(df.index >= ts) & (df.index < te)].copy()
+        df_test = df[(df.index >= os_) & (df.index <= oe)].copy()
 
         best_params, is_result = _best_is_params(df_train, grid)
         if best_params is None:
             print("  [SKIP] No valid IS params")
             continue
 
-        print(f"  Best IS: fast={best_params['fast']}  slow={best_params['slow']}  "
-              f"trail={best_params['atr_trail_mult']}  "
-              f"PF={is_result.profit_factor:.2f}  trades={is_result.total_trades}")
+        print(
+            f"  Best IS: fast={best_params['fast']}  slow={best_params['slow']}  "
+            f"trail={best_params['atr_trail_mult']}  "
+            f"PF={is_result.profit_factor:.2f}  trades={is_result.total_trades}"
+        )
 
         try:
             oos_result = _run_signals_and_backtest(
@@ -480,24 +536,28 @@ def run_wfo() -> dict:
             print(f"  [SKIP] OOS error: {exc}")
             continue
 
-        print(f"  OOS: PF={oos_result.profit_factor:.2f}  "
-              f"DD={oos_result.max_drawdown_pct:.1%}  "
-              f"Sharpe={oos_result.sharpe_ratio:.2f}  "
-              f"trades={oos_result.total_trades}")
+        print(
+            f"  OOS: PF={oos_result.profit_factor:.2f}  "
+            f"DD={oos_result.max_drawdown_pct:.1%}  "
+            f"Sharpe={oos_result.sharpe_ratio:.2f}  "
+            f"trades={oos_result.total_trades}"
+        )
 
         oos_results.append(oos_result)
-        window_records.append({
-            "window":      wnum,
-            "is_period":   f"{ts.strftime('%Y-%m')} -> {te.strftime('%Y-%m')}",
-            "oos_period":  f"{os_.strftime('%Y-%m')} -> {oe.strftime('%Y-%m')}",
-            "best_params": best_params,
-            "is_pf":       round(is_result.profit_factor, 3),
-            "is_trades":   is_result.total_trades,
-            "oos_pf":      round(oos_result.profit_factor, 3),
-            "oos_dd":      round(oos_result.max_drawdown_pct, 4),
-            "oos_sharpe":  round(oos_result.sharpe_ratio, 3),
-            "oos_trades":  oos_result.total_trades,
-        })
+        window_records.append(
+            {
+                "window": wnum,
+                "is_period": f"{ts.strftime('%Y-%m')} -> {te.strftime('%Y-%m')}",
+                "oos_period": f"{os_.strftime('%Y-%m')} -> {oe.strftime('%Y-%m')}",
+                "best_params": best_params,
+                "is_pf": round(is_result.profit_factor, 3),
+                "is_trades": is_result.total_trades,
+                "oos_pf": round(oos_result.profit_factor, 3),
+                "oos_dd": round(oos_result.max_drawdown_pct, 4),
+                "oos_sharpe": round(oos_result.sharpe_ratio, 3),
+                "oos_trades": oos_result.total_trades,
+            }
+        )
 
     if not oos_results:
         print("\n[MGC-R4] No OOS results -- WFO aborted.")
@@ -506,8 +566,10 @@ def run_wfo() -> dict:
     # Fixed-params sweep
     print(f"\n[MGC-R4] Fixed-params sweep on full dataset ({n_combos} combos)...")
     fixed_params_metrics = _run_fixed_params_sweep(df, grid)
-    print(f"  fixed_params_min_pf = {fixed_params_metrics['fixed_params_min_pf']:.4f}  "
-          f"(need >= {GATE_FIXED_PARAMS_MIN_PF})")
+    print(
+        f"  fixed_params_min_pf = {fixed_params_metrics['fixed_params_min_pf']:.4f}  "
+        f"(need >= {GATE_FIXED_PARAMS_MIN_PF})"
+    )
 
     # Cost sweep (most-selected IS champion)
     param_votes = Counter(
@@ -516,12 +578,16 @@ def run_wfo() -> dict:
     )
     most_selected = param_votes.most_common(1)[0][0] if param_votes else (50, 120, 2.0)
     champion_params = {
-        "fast": most_selected[0], "slow": most_selected[1], "atr_trail_mult": most_selected[2],
+        "fast": most_selected[0],
+        "slow": most_selected[1],
+        "atr_trail_mult": most_selected[2],
     }
     print(f"\n[MGC-R4] Cost sweep (champion: {champion_params})...")
     cost_sweep_metrics = _run_cost_sweep(df, champion_params)
-    print(f"  cost_survives_through = {cost_sweep_metrics['cost_survives_through']}  "
-          f"(need >= 'realistic')")
+    print(
+        f"  cost_survives_through = {cost_sweep_metrics['cost_survives_through']}  "
+        f"(need >= 'realistic')"
+    )
 
     # Gate v2
     gate = _compute_gate_v2(oos_results, n_combos, fixed_params_metrics, cost_sweep_metrics)
@@ -530,16 +596,24 @@ def run_wfo() -> dict:
     print(f"=== GATE v2 VERDICT: {gate['verdict']} (via {gate['passed_via'] or 'NONE'}) ===")
     print(f"  pf_ci_lower          = {gate['pf_ci_lower']:.4f}  (need >= {GATE_PF_CI_LOWER})")
     print(f"  p_edge               = {gate['p_edge']:.4f}  (need >= {GATE_P_EDGE})")
-    print(f"  mc_95th_dd_pct       = {gate['mc_95th_dd_pct']:.4f}%  "
-          f"(core <= {GATE_MC_DD_CORE*100:.0f}% / alt <= {GATE_MC_DD_ALT*100:.0f}%)")
-    print(f"  dsr                  = {gate['dsr']:.6f}  "
-          f"(core >= {GATE_DSR} / alt >= {GATE_DSR_ALT})")
+    print(
+        f"  mc_95th_dd_pct       = {gate['mc_95th_dd_pct']:.4f}%  "
+        f"(core <= {GATE_MC_DD_CORE*100:.0f}% / alt <= {GATE_MC_DD_ALT*100:.0f}%)"
+    )
+    print(
+        f"  dsr                  = {gate['dsr']:.6f}  "
+        f"(core >= {GATE_DSR} / alt >= {GATE_DSR_ALT})"
+    )
     print(f"  wfo_consistency      = {gate['wfo_consistency']}")
-    print(f"  fixed_params_min_pf  = {gate['fixed_params_min_pf']:.4f}  (need >= {GATE_FIXED_PARAMS_MIN_PF})")
+    print(
+        f"  fixed_params_min_pf  = {gate['fixed_params_min_pf']:.4f}  (need >= {GATE_FIXED_PARAMS_MIN_PF})"
+    )
     print(f"  cost_survives_through= {gate['cost_survives_through']}")
     print(f"  core_verdict         = {gate['core_verdict']}")
     print(f"  alt_verdict          = {gate['alt_verdict']}")
-    print(f"  OOS windows          = {gate['n_oos_windows_with_trades']} with trades / {gate['n_oos_windows']} total")
+    print(
+        f"  OOS windows          = {gate['n_oos_windows_with_trades']} with trades / {gate['n_oos_windows']} total"
+    )
     print(f"  Total OOS trades     = {gate['total_oos_trades']}")
     print(f"{'=' * 70}")
 
@@ -549,32 +623,51 @@ def run_wfo() -> dict:
 
     now_iso = datetime.now(tz=timezone.utc).isoformat()
     verdict_doc = {
-        "symbol": SYMBOL, "family": "trend", "rank": 4,
-        "verdict": gate["verdict"], "passed_via": gate["passed_via"],
-        "core_verdict": gate["core_verdict"], "alt_verdict": gate["alt_verdict"],
-        "n_core_passed": gate["n_core_passed"], "n_alt_passed": gate["n_alt_passed"],
+        "symbol": SYMBOL,
+        "family": "trend",
+        "rank": 4,
+        "verdict": gate["verdict"],
+        "passed_via": gate["passed_via"],
+        "core_verdict": gate["core_verdict"],
+        "alt_verdict": gate["alt_verdict"],
+        "n_core_passed": gate["n_core_passed"],
+        "n_alt_passed": gate["n_alt_passed"],
         "created_at": now_iso,
         "aux_freshness": {"rolling_wfo": now_iso, "fixed_params": now_iso, "cost_sweep": now_iso},
         "gate_v2": {
-            "verdict": gate["verdict"], "passed_via": gate["passed_via"],
-            "core_verdict": gate["core_verdict"], "alt_verdict": gate["alt_verdict"],
-            "n_core_passed": gate["n_core_passed"], "n_core_criteria": 4,
-            "n_alt_passed": gate["n_alt_passed"], "n_alt_criteria": 5,
-            "core_reasons": gate["core_reasons"], "alt_reasons": gate["alt_reasons"],
+            "verdict": gate["verdict"],
+            "passed_via": gate["passed_via"],
+            "core_verdict": gate["core_verdict"],
+            "alt_verdict": gate["alt_verdict"],
+            "n_core_passed": gate["n_core_passed"],
+            "n_core_criteria": 4,
+            "n_alt_passed": gate["n_alt_passed"],
+            "n_alt_criteria": 5,
+            "core_reasons": gate["core_reasons"],
+            "alt_reasons": gate["alt_reasons"],
             "reasons": gate["reasons"],
         },
         "wfo_config": {
-            "train_months": TRAIN_MONTHS, "test_months": TEST_MONTHS, "step_months": STEP_MONTHS,
-            "n_windows": len(windows), "n_oos_windows": gate["n_oos_windows"],
+            "train_months": TRAIN_MONTHS,
+            "test_months": TEST_MONTHS,
+            "step_months": STEP_MONTHS,
+            "n_windows": len(windows),
+            "n_oos_windows": gate["n_oos_windows"],
             "n_oos_windows_with_trades": gate["n_oos_windows_with_trades"],
-            "total_oos_trades": gate["total_oos_trades"], "grid_combos": n_combos,
-            "grid_fast_period": FAST_PERIOD_VALUES, "grid_slow_period": SLOW_PERIOD_VALUES,
+            "total_oos_trades": gate["total_oos_trades"],
+            "grid_combos": n_combos,
+            "grid_fast_period": FAST_PERIOD_VALUES,
+            "grid_slow_period": SLOW_PERIOD_VALUES,
             "grid_atr_trail_mult": ATR_TRAIL_MULT_VALUES,
         },
         "gate_v2_metrics": {
-            "pf_ci_lower": gate["pf_ci_lower"], "p_edge": gate["p_edge"],
-            "mc_95th_dd": gate["mc_95th_dd"], "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
-            "dsr": gate["dsr"], "wfo_consistency": gate["wfo_consistency"],
+            "pf_ci_lower": gate["pf_ci_lower"],
+            "p_edge": gate["p_edge"],
+            "mc_95th_dd": gate["mc_95th_dd"],
+            "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
+            "mc_95th_dd_window_legacy": gate["mc_95th_dd_window_legacy"],
+            "dsr": gate["dsr"],
+            "wfo_consistency": gate["wfo_consistency"],
             "fixed_params_min_pf": gate["fixed_params_min_pf"],
             "fixed_params_mean_pf": gate["fixed_params_mean_pf"],
             "fixed_params_max_pf": gate["fixed_params_max_pf"],
@@ -584,9 +677,12 @@ def run_wfo() -> dict:
             "cost_tier_results": cost_sweep_metrics.get("tier_results", {}),
         },
         "thresholds": {
-            "pf_ci_lower": GATE_PF_CI_LOWER, "p_edge": GATE_P_EDGE,
-            "mc_95th_dd_core": GATE_MC_DD_CORE, "mc_95th_dd_alt": GATE_MC_DD_ALT,
-            "dsr_core": GATE_DSR, "dsr_alt": GATE_DSR_ALT,
+            "pf_ci_lower": GATE_PF_CI_LOWER,
+            "p_edge": GATE_P_EDGE,
+            "mc_95th_dd_core": GATE_MC_DD_CORE,
+            "mc_95th_dd_alt": GATE_MC_DD_ALT,
+            "dsr_core": GATE_DSR,
+            "dsr_alt": GATE_DSR_ALT,
             "fixed_params_min_pf_alt": GATE_FIXED_PARAMS_MIN_PF,
             "wfo_consistency_alt": GATE_WFO_CONSISTENCY_VALUES,
             "cost_survives_through_min": "realistic",
@@ -594,17 +690,21 @@ def run_wfo() -> dict:
         "champion_params": champion_params,
         "windows": window_records,
         "contract_spec": {
-            "symbol": SYMBOL, "multiplier": MULTIPLIER, "tick_size": TICK_SIZE,
-            "commission": COMMISSION, "capital": CAPITAL,
+            "symbol": SYMBOL,
+            "multiplier": MULTIPLIER,
+            "tick_size": TICK_SIZE,
+            "commission": COMMISSION,
+            "capital": CAPITAL,
             "note": "MGC DO_NOT_TRADE pending gate v2 PASS + live authorization",
         },
         "lineage": {
-            "family": "trend", "rank": 4,
+            "family": "trend",
+            "rank": 4,
             "rank1": "FAIL (sparsity) -- wfo=MODERATE, 5 OOS trades",
             "rank2": "FAIL (ATR=2.5 sparsity) -- wfo=STRONG, 4 OOS trades",
             "rank3": "FAIL (fixed_params_min=0.45) -- dsr=1.0, wfo=STRONG, 54 OOS trades; (30,160,2.0) was the blocker",
             "hypothesis": "Remove lossy (fast=30, slow=160) combos; all 8 remaining combos have "
-                          "full-dataset PF > 1.35. Maintain TEST_MONTHS=2 from rank3.",
+            "full-dataset PF > 1.35. Maintain TEST_MONTHS=2 from rank3.",
         },
     }
 
@@ -617,15 +717,16 @@ def run_wfo() -> dict:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main():
     verdict = run_wfo()
     if not verdict:
         print("[MGC-R4] No verdict produced.")
         sys.exit(1)
 
-    final      = verdict.get("verdict", "FAIL")
+    final = verdict.get("verdict", "FAIL")
     passed_via = verdict.get("passed_via")
-    gate       = verdict.get("gate_v2_metrics", {})
+    gate = verdict.get("gate_v2_metrics", {})
 
     if final == "PASS" and passed_via == "core":
         print("\n[PASS-CORE] MGC Trend Rank4 PASSES gate v2 (CORE path).")
@@ -649,10 +750,14 @@ def main():
         if n_trades == 0:
             print("  0 OOS trades -- no signal.")
         elif p_edge_val < GATE_P_EDGE:
-            print(f"  p_edge={p_edge_val:.4f}: {n_oos_with_trades}/{gate.get('n_oos_windows',0)} OOS windows had trades")
+            print(
+                f"  p_edge={p_edge_val:.4f}: {n_oos_with_trades}/{gate.get('n_oos_windows',0)} OOS windows had trades"
+            )
         if dsr_val < GATE_DSR_ALT:
-            print(f"  dsr={dsr_val:.6f} below ALT floor {GATE_DSR_ALT} -- "
-                  f"multiple testing ({n_combos} combos) deflated edge.")
+            print(
+                f"  dsr={dsr_val:.6f} below ALT floor {GATE_DSR_ALT} -- "
+                f"multiple testing ({n_combos} combos) deflated edge."
+            )
         if fixed_pf < GATE_FIXED_PARAMS_MIN_PF:
             print(f"  fixed_params_min_pf={fixed_pf:.4f} -- unexpected loser in tight grid.")
         print(f"  wfo_consistency={wfo}")
