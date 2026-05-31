@@ -2,6 +2,7 @@
 import useSWR from "swr";
 import { fetchMasterStatus } from "@/lib/masterApi";
 import { DomainTile } from "@/components/master/DomainTile";
+import { CommandChat } from "@/components/master/CommandChat";
 
 const ORDER = ["personal", "trading", "finances", "career", "health", "knowledge", "system"];
 
@@ -26,6 +27,7 @@ export default function MasterPage() {
           <DomainTile key={s.domain} s={s} />
         ))}
       </div>
+      <CommandChat />
     </main>
   );
 }
