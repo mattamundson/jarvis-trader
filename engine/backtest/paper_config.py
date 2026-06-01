@@ -133,6 +133,9 @@ MGC_PAPER_CONFIG = {
     "commission_per_contract": 0.62,
     "slippage_ticks": 2,
     "max_concurrent_positions": 1,
+    # Allow entry up to N bars after a crossover to catch signals missed while runner
+    # polls between 1h bar closes.  Enters at current-bar close, uses signal-bar levels.
+    "signal_lookback_bars": 2,
 }
 
 MCL_15M_CONFIG = {
@@ -253,6 +256,9 @@ MES_TREND_PAPER_CONFIG = {
     "commission_per_contract": 2.50,
     "slippage_ticks": 1,
     "max_concurrent_positions": 1,
+    # Allow entry up to N bars after a crossover to catch signals missed while runner
+    # polls between 1h bar closes.  Enters at current-bar close, uses signal-bar levels.
+    "signal_lookback_bars": 2,
 }
 
 MES_15M_CONFIG = {

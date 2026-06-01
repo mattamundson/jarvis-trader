@@ -601,28 +601,46 @@ def check_for_entry(
     cfg: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
     """
-    Look at the most recent bar for an ENTRY_NOW signal.
+    Look at the most recent N completed bars for an ENTRY_NOW signal.
+
+    N is cfg["signal_lookback_bars"] (default 1).  When a signal is found in a
+    lookback bar (not the most recent), we enter at the most-recent bar's close
+    price (not the signal bar's stale close) but retain the signal bar's stop
+    and target levels (calibrated to that bar's ATR).  This catches crossovers
+    that occurred while the runner polled between 1h bar closes.
 
     Returns a new position dict or None.
     """
     log = logging.getLogger(f"paper_runner.{symbol}")
 
-    last_bar = df_signals.iloc[-1]
-    entry_signal = str(last_bar.get("entry_signal", ""))
+    lookback = max(1, int(cfg.get("signal_lookback_bars", 1)))
+    n = len(df_signals)
 
-    if entry_signal != "ENTRY_NOW":
-        log.debug(f"{symbol}: No entry signal (got '{entry_signal}')")
+    signal_bar = None
+    for offset in range(1, lookback + 1):
+        if n < offset:
+            break
+        bar = df_signals.iloc[-offset]
+        if str(bar.get("entry_signal", "")) == "ENTRY_NOW":
+            signal_bar = bar
+            if offset > 1:
+                log.info(f"{symbol}: ENTRY_NOW found in lookback bar -{offset}")
+            break
+
+    if signal_bar is None:
+        log.debug(f"{symbol}: No entry signal in last {lookback} bars")
         return None
 
-    bias = str(last_bar.get("bias", ""))
+    last_bar = df_signals.iloc[-1]  # use current price for entry, signal-bar levels for stops
+    bias = str(signal_bar.get("bias", ""))
     side = "long" if bias in ("STRONG_BULL", "LEAN_BULL") else "short"
 
-    # Use pre-computed signal levels from the signal generator
+    # Enter at most-recent bar's close; use signal bar's levels (ATR-calibrated to crossover bar)
     entry_price = float(last_bar["close"])
-    stop_level = float(last_bar.get("stop_level", 0))
-    target_1 = float(last_bar.get("target_1", 0))
-    target_2 = float(last_bar.get("target_2", 0))
-    target_3 = float(last_bar.get("target_3", 0))
+    stop_level = float(signal_bar.get("stop_level", 0))
+    target_1 = float(signal_bar.get("target_1", 0))
+    target_2 = float(signal_bar.get("target_2", 0))
+    target_3 = float(signal_bar.get("target_3", 0))
 
     # Sanity check: stop and targets must be non-zero and directionally correct
     if side == "long":
