@@ -150,6 +150,20 @@ class TradingConfig(BaseSettings):
     )
     MAX_OVERNIGHT_CONTRACTS: int = Field(1, description="Max contracts to hold overnight")
 
+    # ── Correlation-Aware Sizing ─────────────────────────────────────────
+    INSTRUMENT_CORRELATION_PAIRS: dict = Field(
+        default={"MNQ-MES": 0.95, "MCL-MNQ": 0.10, "MCL-MES": 0.10},
+        description="Instrument pair correlation values for sizing reduction",
+    )
+    CORRELATION_THRESHOLD: float = Field(
+        0.80,
+        description="Correlation >= threshold triggers correlated pair sizing rule",
+    )
+    CORRELATED_PAIR_MAX_CONTRACTS: int = Field(
+        1,
+        description="Reduced max contracts when both instruments in a correlated pair are open",
+    )
+
     # Futures position-size gate uses MARGIN (not notional). 1 MES is ~$7,130
     # notional but only ~$1,320 overnight maintenance margin at IBKR. Against a
     # $10K paper account, notional-based math rejects every futures order as
