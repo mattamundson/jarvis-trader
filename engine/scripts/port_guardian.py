@@ -44,6 +44,7 @@ GRACE_SECONDS = 3
 HEALTHY_ORPHAN_BACKOFF = 30  # seconds to sleep before exiting when orphan is healthy
                               # but unkillable — gives PM2's restart_delay+min_uptime
                               # space to mark the slot as unstable instead of looping
+PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring failure
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENGINE_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = ENGINE_DIR.parent
@@ -109,12 +110,50 @@ def _verify_free(port: int, retries: int = 5, delay: float = 0.5) -> bool:
             s.settimeout(0.3)
             try:
                 s.connect(("127.0.0.1", port))
-                # Connected — port is in use
                 time.sleep(delay)
                 continue
             except (ConnectionRefusedError, socket.timeout):
                 return True
     return False
+
+
+def _wait_port_free(port: int, timeout: float = PORT_FREE_WAIT) -> bool:
+    """Poll until port is free or timeout expires. Returns True if free."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _verify_free(port, retries=1, delay=0.0):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _kill_pid(pid: int) -> bool:
+    """Kill a process: taskkill first, PowerShell Stop-Process as fallback.
+
+    taskkill can fail with exit code 1 for same-elevation processes in some
+    Windows states (e.g. process in DPC/APC wait). Stop-Process is more
+    reliable in that case. Returns True if either method succeeded.
+    """
+    # Primary: taskkill /F
+    try:
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/F"],
+            check=True, timeout=10, capture_output=True,
+        )
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        pass
+
+    # Fallback: PowerShell Stop-Process -Force
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             f"Stop-Process -Id {pid} -Force -ErrorAction Stop"],
+            check=True, timeout=10, capture_output=True,
+        )
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
 
 
 def _is_healthy(port: int) -> bool:
@@ -165,36 +204,32 @@ def main() -> int:
                 )
                 return 1
             print(f"[port_guardian] killing orphan PID {pid}", flush=True)
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(pid), "/F"],
-                    check=True,
-                    timeout=10,
-                    capture_output=True,
-                )
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                # Most common failure: target process is elevated and we're not.
-                # Check if the orphan is at least healthy — if yes, sleep+exit
-                # cleanly so PM2 doesn't crash-loop us hammering taskkill.
+            killed = _kill_pid(pid)
+            if not killed:
+                # Both taskkill and Stop-Process failed — process is likely elevated.
                 if _is_healthy(PORT):
                     print(
                         f"[port_guardian] CANNOT kill PID {pid} (likely elevated). "
-                        f"Engine on port {PORT} IS healthy and serving — exiting non-zero "
-                        f"after {HEALTHY_ORPHAN_BACKOFF}s backoff. "
+                        f"Engine on port {PORT} IS healthy — exiting non-zero after "
+                        f"{HEALTHY_ORPHAN_BACKOFF}s backoff. "
                         f"ACTION REQUIRED: kill PID {pid} via Task Manager (admin) "
-                        f"then `pm2 start jarvis-engine` to bring under PM2 management.",
+                        f"then `pm2 start jarvis-engine`.",
                         flush=True,
                     )
                     time.sleep(HEALTHY_ORPHAN_BACKOFF)
                     return 3
-                print(f"[port_guardian] taskkill failed for PID {pid}: {exc}", flush=True)
+                print(
+                    f"[port_guardian] CANNOT kill PID {pid} (both taskkill and "
+                    "Stop-Process failed, not elevated-healthy). Aborting.",
+                    flush=True,
+                )
                 return 2
 
-        # Wait for the OS to release the bind
-        time.sleep(GRACE_SECONDS)
-        if not _verify_free(PORT):
+        # Poll until the OS releases the bind (up to PORT_FREE_WAIT seconds)
+        if not _wait_port_free(PORT):
             print(
-                f"[port_guardian] port {PORT} still bound after grace period — aborting",
+                f"[port_guardian] port {PORT} still bound {PORT_FREE_WAIT}s after kill — "
+                "aborting",
                 flush=True,
             )
             return 2
