@@ -14,16 +14,14 @@ import logging
 import logging.handlers
 import os
 import signal
-import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, WebSocket
+from fastapi import APIRouter, FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from slowapi.errors import RateLimitExceeded
 
 from agents.bear_researcher import BearResearcherAgent
@@ -39,31 +37,9 @@ from agents.risk_manager import RiskManagerAgent
 from agents.social_analyst import SocialAnalystAgent
 from agents.corey_auction_analyst import CoreyAuctionAnalystAgent
 from agents.technical_analyst import TechnicalAnalystAgent
-from agents.thinkscript_generator import ThinkScriptGeneratorAgent
 from agents.trader import TraderAgent
-from schemas.thinkscript_registry import ScriptRegistry, ScriptWithDocs
-from utils.thinkscript_registry_loader import load_registry, read_doc
-from api.models import (
-    BarsResponse,
-    CircuitBreakerStatus,
-    DailyPnLResponse,
-    DecisionHistoryResponse,
-    DrawdownResponse,
-    NewsSentimentResponse,
-    PaperPerformanceResponse,
-    PaperPositionsResponse,
-    PaperTradeResponse,
-    PendingSignalsResponse,
-    PortfolioResponse,
-    RedditSentimentResponse,
-    SafetyConfigResponse,
-    StatsSummaryResponse,
-    TechnicalAnalysisResponse,
-    TradeHistoryResponse,
-)
 from config import settings
 from data.market_data import MarketDataManager
-from data.tradingview_stream import get_tv_streamer
 from database.schema import DatabaseManager, init_db
 from learning.model_drawer import ModelDrawer
 from strategies.arbitrage.polymarket_arb import ArbScout
@@ -113,7 +89,6 @@ from routers.portfolio_router import router as portfolio_router
 from routers.profiling_router import router as profiling_router
 from routers.profiling_router import set_profiler_instance
 from routers.reports_router import router as reports_router
-from routers.reports_router import inject_dependencies as inject_reports_deps
 from routers.strategy_lab_router import router as strategy_lab_router
 from routers.safety_router import inject_dependencies as inject_safety_router_deps
 from routers.safety_router import router as safety_router
@@ -124,7 +99,6 @@ from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.paper_validation_router import router as paper_validation_router
 from routers.proactive_validation_router import router as proactive_validation_router
-from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
 from routers.whatsapp_router import router as whatsapp_router
 from routers.whatsapp_router import inject_dependencies as inject_whatsapp_deps
@@ -319,13 +293,13 @@ sentiment_bridge: SentimentBridge | None = None
 model_drawer: ModelDrawer | None = None
 arb_scout: ArbScout | None = None
 shadow_tracker: ShadowModeTracker | None = None
-oms_manager: "OMSManager | None" = None
-tv_streamer: "TVStreamer | None" = None
-memory_bridge: "MemoryBridge | None" = None
-redis_trigger: "RedisSignalTrigger | None" = None
-trailing_stop_manager: "TrailingStopManager | None" = None
-portfolio_allocator: "PortfolioAllocator | None" = None
-canary_manager: "CanaryManager | None" = None
+oms_manager: "OMSManager | None" = None  # noqa: F821
+tv_streamer: "TVStreamer | None" = None  # noqa: F821
+memory_bridge: "MemoryBridge | None" = None  # noqa: F821
+redis_trigger: "RedisSignalTrigger | None" = None  # noqa: F821
+trailing_stop_manager: "TrailingStopManager | None" = None  # noqa: F821
+portfolio_allocator: "PortfolioAllocator | None" = None  # noqa: F821
+canary_manager: "CanaryManager | None" = None  # noqa: F821
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -445,17 +419,20 @@ async def lifespan(app: FastAPI):
         try:
             await data_manager.initialize()
             logger.info("✅ MarketDataManager background initialization complete")
-            
+
             # Paper IB connection
             if settings.PAPER_TRADING and ib_paper_connector:
                 _paper_ib_ok = False
                 for _attempt in range(3):
                     _paper_ib_ok = await ib_paper_connector.connect()
-                    if _paper_ib_ok: break
+                    if _paper_ib_ok:
+                        break
                     if _attempt < 2:
-                        logger.warning(f"IB connector attempt {_attempt+1}/3 failed; retrying in 30s")
+                        logger.warning(
+                            f"IB connector attempt {_attempt+1}/3 failed; retrying in 30s"
+                        )
                         await asyncio.sleep(30)
-                
+
                 if _paper_ib_ok:
                     safety_layer.attach_ib_gateway(ib_paper_connector)
                     order_router.attach_ibkr(ib_paper_connector)
@@ -484,9 +461,10 @@ async def lifespan(app: FastAPI):
         # 4. Real-Time Data Fabric
         try:
             from data.tradingview_stream import get_tv_streamer
+
             greeks_watch = os.getenv("OPTIONS_GREEKS_WATCH", "").split(",")
             greeks_watch = [s.strip() for s in greeks_watch if s.strip()]
-            
+
             tv_streamer = get_tv_streamer(greeks_symbols=greeks_watch)
             await tv_streamer.start(data_manager=data_manager)
             logger.info("🚀 Real-time data fabric background activated")
@@ -501,7 +479,7 @@ async def lifespan(app: FastAPI):
                 symbols=["MES", "MGC", "MNQ", "MCL", "BTCUSD"],
             )
             await redis_trigger.start()
-            
+
             trailing_stop_manager = TrailingStopManager(oms_manager, data_manager)
             await trailing_stop_manager.start()
             logger.info("🚀 Event-driven signal trigger + Trail Stop active")
@@ -664,7 +642,7 @@ async def lifespan(app: FastAPI):
     schwab_connector = None
     if settings.SCHWAB_APP_KEY and settings.SCHWAB_APP_SECRET:
         schwab_connector = SchwabConnector(settings, safety_layer)
-    
+
     set_schwab_connector(schwab_connector)
     # Inject the fully-wired order_router and safety_layer into the orders_router API bridge.
     # safety_layer is required so futures orders route through SafetyLayer.submit_paper_order()
@@ -757,11 +735,12 @@ async def lifespan(app: FastAPI):
         logger.info(f"✅ LLM client validated: {type(llm_client).__name__} has {_required_methods}")
 
         # Initialize inference router (Ollama primary, Anthropic fallback)
-        inference_router = get_inference_router()
+        get_inference_router()
         # Note: test_connection() moved to background to save ~500ms
 
         # ── Portfolio Capital Allocator (Phase 8.1) ──────────────────────────
         from execution.portfolio_allocator import PortfolioAllocator
+
         portfolio_allocator = PortfolioAllocator(db_manager)
         # Note: calculate_allocations() moved to background to save ~2-5s
 
@@ -792,7 +771,7 @@ async def lifespan(app: FastAPI):
         bull_agent = BullResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
         bear_agent = BearResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
         debate_agent = DebateOrchestrator()
-        
+
         # Stage 3/4: Risk & Fund Management
         risk_agent = RiskManagerAgent(llm_client)
         fund_agent = FundManagerAgent(llm_client)
@@ -1023,7 +1002,9 @@ async def lifespan(app: FastAPI):
                             if trade_dec.get("is_spread"):
                                 await oms_manager.execute_options_spread(
                                     symbol=symbol,
-                                    spread_type=trade_dec.get("type") or trade_dec.get("spread_type") or "BULL_PUT_SPREAD",
+                                    spread_type=trade_dec.get("type")
+                                    or trade_dec.get("spread_type")
+                                    or "BULL_PUT_SPREAD",
                                     short_opt=trade_dec.get("short_option_symbol"),
                                     long_opt=trade_dec.get("long_option_symbol"),
                                     quantity=qty,
@@ -1040,7 +1021,9 @@ async def lifespan(app: FastAPI):
                                     entry_type="MKT" if not trade_dec.get("limit_price") else "LMT",
                                 )
                         except Exception as oms_exc:
-                            logger.error("[Scheduler] OMS execution failed for %s: %s", symbol, oms_exc)
+                            logger.error(
+                                "[Scheduler] OMS execution failed for %s: %s", symbol, oms_exc
+                            )
 
                     await _deliver_pipeline_whatsapp_if_eligible(
                         symbol=symbol,
@@ -1620,7 +1603,13 @@ async def lifespan(app: FastAPI):
     from routers.market_router import inject_dependencies as inject_market_deps
 
     inject_market_deps(data_manager=data_manager)
-    inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
+    inject_brokers_deps(
+        ibkr=ib_paper_connector,
+        schwab=schwab_connector,
+        tracker=paper_tracker,
+        real_ibkr=data_manager.ibkr,
+        db_path=str(db_manager._db_path),
+    )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
@@ -2482,21 +2471,28 @@ async def lifespan(app: FastAPI):
                 auditor = WeeklySelfAuditAgent(db_manager)
                 audit_result = await auditor.run_audit()
                 if "report_md" in audit_result:
-                    logger.info("✅ Weekly self-audit complete — report written to docs/weekly_audit.md")
-                
+                    logger.info(
+                        "✅ Weekly self-audit complete — report written to docs/weekly_audit.md"
+                    )
+
                 # 2. Strategy Drift Detection (P7.2)
                 drifter = DriftDetector(db_manager)
                 for _sym in ACTIVE_INSTRUMENTS:
                     _drift = await drifter.check_drift(_sym)
                     if _drift.get("trigger_alert"):
-                        logger.warning(f"⚠️ [Pipeline] {_sym} drift detected — demoted to shadow-mode recommended.")
+                        logger.warning(
+                            f"⚠️ [Pipeline] {_sym} drift detected — demoted to shadow-mode recommended."
+                        )
 
                 # 3. Monthly Re-Bayes (P7.4)
                 # Only runs on the first Sunday of the month
                 now = datetime.now()
                 if now.day <= 7:
-                    logger.info("[Main] First Sunday of month detected — triggering Bayesian re-optimization")
+                    logger.info(
+                        "[Main] First Sunday of month detected — triggering Bayesian re-optimization"
+                    )
                     from optimization.scheduled_rebayes import ScheduledRebayes
+
                     optimizer = ScheduledRebayes(db_manager)
                     await optimizer.run_monthly_rebayes()
 
@@ -2591,7 +2587,6 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_complete_background_init())
 
     yield  # Server runs here!
-
 
     # Teardown
     # Stop Trailing stop manager
