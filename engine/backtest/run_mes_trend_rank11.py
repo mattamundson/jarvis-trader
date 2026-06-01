@@ -317,9 +317,17 @@ def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
     Run champion params at each cost tier to find how far the strategy survives.
     The ALT gate requires cost_survives_through >= "realistic".
     Rank9 survived through "pessimistic" — that's the baseline to match.
+
+    cost_survives_through = the most expensive tier such that THAT tier AND every
+    cheaper tier all pass (contiguous from optimistic). Per-tier PF is non-monotone
+    because slippage shifts entry fills -> stops/targets/trade selection, so a naive
+    "highest passing tier" can certify survival through a tier whose cheaper neighbor
+    failed -- overstating robustness. The contiguous rule only ever lowers survival,
+    the safe direction for a gate. All tiers still run so tier_results stays complete.
     """
     results = {}
-    last_surviving = None
+    cost_survives_through = "none"
+    survival_intact = True
 
     for tier in COST_TIER_ORDER:
         costs = COST_SWEEP_TIERS[tier]
@@ -345,14 +353,17 @@ def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
                 f"PF={pf:.4f}  trades={result.total_trades}  "
                 f"{'PASS' if passes else 'FAIL'}"
             )
-            if passes:
-                last_surviving = tier
+            if survival_intact and passes:
+                cost_survives_through = tier
+            elif not passes:
+                survival_intact = False
         except Exception as exc:
             print(f"  [WARN] cost-sweep error at {tier}: {exc}")
             results[tier] = {"pf": 0.0, "trades": 0, "passes": False}
+            survival_intact = False
 
     return {
-        "cost_survives_through": last_surviving or "none",
+        "cost_survives_through": cost_survives_through,
         "tier_results": results,
     }
 
