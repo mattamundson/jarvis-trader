@@ -297,3 +297,7 @@ engine/data/reconcile_snapshots/
 
 # Root-level runtime log (PM2 / startup output, not source)
 /logs.txt
+
+# Manual pre-edit backups — never commit; archive to ~/Archive/<year>/ instead
+*.bak
+*.bak-*
