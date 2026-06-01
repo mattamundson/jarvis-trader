@@ -25,22 +25,24 @@ _reconciler = None  # IBKRReconciler — lazily created on first use
 
 
 def inject_dependencies(
-    ibkr=None, schwab=None, tracker=None, real_ibkr=None, db_path: str = ""
+    ibkr=None, schwab=None, tracker=None, data_manager=None, db_path: str = ""
 ) -> None:
     """Wire connector and tracker singletons in from main.py lifespan."""
     global _ibkr, _real_ibkr, _schwab, _tracker, _reconciler
     _ibkr = ibkr
-    _real_ibkr = real_ibkr
+    _real_ibkr = getattr(data_manager, "ibkr", None) if data_manager else None
     _schwab = schwab
     _tracker = tracker
-    if real_ibkr is not None and db_path:
+    # Reconciler holds data_manager (not ibkr) because ibkr is initialized
+    # asynchronously in background after this call — resolved lazily on use.
+    if data_manager is not None and db_path:
         from execution.ibkr_reconciler import IBKRReconciler
 
-        _reconciler = IBKRReconciler(db_path, real_ibkr)
+        _reconciler = IBKRReconciler(db_path, data_manager)
     logger.info(
-        "brokers_router deps injected — IBKR mock: %s | real IBKR: %s | Schwab: %s | tracker: %s | reconciler: %s",
+        "brokers_router deps injected — IBKR mock: %s | data_manager: %s | Schwab: %s | tracker: %s | reconciler: %s",
         _ibkr is not None,
-        _real_ibkr is not None,
+        data_manager is not None,
         _schwab is not None,
         _tracker is not None,
         _reconciler is not None,
