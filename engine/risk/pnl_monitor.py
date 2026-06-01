@@ -76,6 +76,19 @@ class PnLMonitor:
         self._paper = paper_tracker
         self._starting_balance = starting_balance  # configured paper balance fallback
 
+        # Bug #2 fix: capture the tracker's total_pnl at session start so that
+        # _read_memory() computes daily_realized = session_delta (not lifetime).
+        # If the engine restarts daily the tracker starts at 0 and this is 0.
+        # For multi-day sessions it captures yesterday's closing pnl as the
+        # baseline, so only today's new trades count toward the daily limit.
+        self._session_start_pnl: float = 0.0
+        if paper_tracker is not None:
+            try:
+                perf = paper_tracker.get_performance()
+                self._session_start_pnl = float(perf.get("total_pnl", 0.0) or 0.0)
+            except Exception:
+                pass
+
         # Cache the last successfully-read state so sync callers always get
         # something even if an async IB call hasn't completed yet.
         # Seed with configured starting_balance so health checks always see > 0.
@@ -432,8 +445,13 @@ class PnLMonitor:
         try:
             perf = self._paper.get_performance()
             total_pnl = float(perf.get("total_pnl", 0.0) or 0.0)
-            # Paper tracker does not split daily from cumulative;
-            # treat the entire session P&L as the daily figure in paper mode.
+            # Bug #2 fix: compute daily_realized as the delta since session start,
+            # not the lifetime cumulative.  For daily-restart engines session_start_pnl
+            # is 0 and daily_realized == total_pnl (no change in behaviour).  For
+            # engines that run across day boundaries, only trades opened THIS session
+            # count toward the daily loss limit, preventing stale losses from blocking
+            # new sessions or inflating the equity peak used by the drawdown halt.
+            daily_realized = total_pnl - self._session_start_pnl
             starting = float(perf.get("starting_balance", 0.0) or 0.0)
             # Fall back to configured starting balance when tracker has no history
             if starting <= 0 and self._starting_balance > 0:
@@ -446,7 +464,7 @@ class PnLMonitor:
             dd_pct = ((current - peak) / peak) if peak > 0 else 0.0
 
             state = PnLState(
-                daily_realized_pnl=total_pnl,
+                daily_realized_pnl=daily_realized,
                 daily_unrealized_pnl=0.0,
                 total_pnl=total_pnl,
                 starting_balance=starting,
