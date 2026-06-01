@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS Ops Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0b0f1a;
+      --surface:   #131929;
+      --border:    #1e2b40;
+      --muted:     #4a5568;
+      --text:      #e2e8f0;
+      --dim:       #94a3b8;
+      --green:     #22c55e;
+      --yellow:    #eab308;
+      --red:       #ef4444;
+      --blue:      #3b82f6;
+      --pill-bg:   #1e2b40;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.05em; color: var(--blue); }
+    .header-meta { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--dim); }
+    #last-updated { color: var(--dim); }
+    .refresh-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+    .refresh-toggle input { cursor: pointer; }
+    #refresh-status { font-size: 11px; color: var(--muted); }
+
+    /* ── Main grid ── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      padding: 16px;
+    }
+    @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .panel-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin-bottom: 16px;
+    }
+
+    /* ── Big number ── */
+    .big-num { font-size: 38px; font-weight: 700; line-height: 1; }
+    .big-num.positive { color: var(--green); }
+    .big-num.negative { color: var(--red); }
+    .big-num.neutral  { color: var(--text); }
+    .big-label { font-size: 11px; color: var(--dim); margin-top: 4px; }
+
+    /* ── Progress bar ── */
+    .prog-bar-wrap { margin: 12px 0 4px; }
+    .prog-bar-track {
+      width: 100%;
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .prog-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+      background: var(--green);
+    }
+    .prog-bar-fill.warn { background: var(--yellow); }
+    .prog-bar-fill.neg  { background: var(--red); }
+    .prog-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); margin-top: 4px; }
+
+    /* ── Trade stats row ── */
+    .stat-row { display: flex; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
+    .stat-item { flex: 1; min-width: 60px; }
+    .stat-val { font-size: 22px; font-weight: 700; }
+    .stat-lbl { font-size: 10px; color: var(--dim); margin-top: 2px; }
+
+    /* ── Readiness circle ── */
+    .readiness-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .readiness-circle {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+      border: 4px solid transparent;
+      margin-bottom: 8px;
+    }
+    .readiness-circle.GREEN  { background: rgba(34,197,94,0.15);  border-color: var(--green);  color: var(--green); }
+    .readiness-circle.YELLOW { background: rgba(234,179,8,0.15);  border-color: var(--yellow); color: var(--yellow); }
+    .readiness-circle.RED    { background: rgba(239,68,68,0.15);  border-color: var(--red);    color: var(--red); }
+    .readiness-circle.UNKNOWN{ background: rgba(74,85,104,0.2);   border-color: var(--muted);  color: var(--muted); }
+    .readiness-circle .circle-label { font-size: 10px; font-weight: 400; margin-top: 2px; }
+    .days-to-live { font-size: 12px; color: var(--dim); text-align: center; }
+    .days-to-live span { font-weight: 700; color: var(--text); }
+
+    /* ── Gates list ── */
+    .gates-list { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+    .gate-row { display: flex; align-items: center; gap: 8px; }
+    .gate-chip {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      min-width: 36px;
+      text-align: center;
+    }
+    .gate-chip.pass { background: rgba(34,197,94,0.2);  color: var(--green); }
+    .gate-chip.fail { background: rgba(239,68,68,0.2);  color: var(--red); }
+    .gate-name { font-size: 12px; color: var(--text); flex: 1; }
+    .gate-obs  { font-size: 11px; color: var(--dim); white-space: nowrap; }
+
+    /* ── Health pills ── */
+    .health-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 12px;
+      background: var(--pill-bg);
+    }
+    .pill.ok      { background: rgba(34,197,94,0.15);  color: var(--green); }
+    .pill.warn    { background: rgba(234,179,8,0.15);  color: var(--yellow); }
+    .pill.bad     { background: rgba(239,68,68,0.15);  color: var(--red); }
+    .pill.unknown { color: var(--muted); }
+
+    .health-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+    .health-key { font-size: 11px; color: var(--dim); }
+    .health-val { font-size: 12px; font-weight: 600; }
+    .health-val.ok   { color: var(--green); }
+    .health-val.bad  { color: var(--red); }
+    .health-val.warn { color: var(--yellow); }
+
+    /* ── Sparkline ── */
+    .sparkline-wrap { margin-top: 14px; }
+    .sparkline-label { font-size: 10px; color: var(--dim); margin-bottom: 4px; }
+    .sparkline { display: flex; align-items: flex-end; gap: 3px; height: 28px; }
+    .spark-bar {
+      flex: 1;
+      border-radius: 2px 2px 0 0;
+      transition: background 0.3s;
+    }
+    .spark-bar.on  { background: var(--green); }
+    .spark-bar.off { background: var(--border); }
+
+    /* ── Reports section ── */
+    .reports-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      padding: 0 16px 16px;
+    }
+    @media (max-width: 900px) { .reports-grid { grid-template-columns: 1fr; } }
+    .report-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .report-card-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+    .report-date { font-size: 11px; color: var(--blue); margin-bottom: 6px; }
+    .report-excerpt { font-size: 12px; color: var(--dim); line-height: 1.6; }
+    .report-missing { font-size: 12px; color: var(--muted); font-style: italic; }
+
+    /* ── Divider ── */
+    .section-label {
+      padding: 4px 16px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── Error banner ── */
+    #error-banner {
+      display: none;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      color: var(--red);
+      padding: 8px 16px;
+      font-size: 12px;
+      margin: 8px 16px;
+      border-radius: 6px;
+    }
+
+    /* ── Kill switch warning ── */
+    .kill-switch-badge {
+      display: inline-block;
+      background: rgba(239,68,68,0.2);
+      color: var(--red);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Header health dots ── */
+    .header-health-dots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .health-dot-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .health-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .health-dot.healthy   { background: #4ade80; }
+    .health-dot.unhealthy { background: #ef4444; }
+    .health-dot.unknown   { background: #6b7280; }
+    .health-dot-label {
+      font-size: 10px;
+      color: var(--dim);
+      letter-spacing: 0.03em;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>JARVIS OPS</h1>
+  <div class="header-health-dots" id="header-health-dots">
+    <div class="health-dot-group">
+      <span class="health-dot unknown" id="dot-tv" title="tv_mcp_healthy"></span>
+      <span class="health-dot-label">TV</span>
+    </div>
+    <div class="health-dot-group">
+      <span class="health-dot unknown" id="dot-llm" title="llm_path_healthy"></span>
+      <span class="health-dot-label">LLM</span>
+    </div>
+    <div class="health-dot-group">
+      <span class="health-dot unknown" id="dot-ibkr-data" title="ibkr_data_connected"></span>
+      <span class="health-dot-label">IBKR-DATA</span>
+    </div>
+    <div class="health-dot-group">
+      <span class="health-dot unknown" id="dot-ibkr-exec" title="ibkr_execution_connected"></span>
+      <span class="health-dot-label">IBKR-EXEC</span>
+    </div>
+  </div>
+  <div class="header-meta">
+    <span id="last-updated">Loading…</span>
+    <label class="refresh-toggle">
+      <input type="checkbox" id="auto-refresh" checked>
+      Auto-refresh
+    </label>
+    <span id="refresh-status"></span>
+  </div>
+</header>
+
+<div id="error-banner"></div>
+
+<!-- ═══════════════════════════════════ THREE COLUMNS ═══════════════════════════ -->
+<div class="main-grid">
+
+  <!-- ── COL A: TODAY ── -->
+  <div class="panel" id="panel-today">
+    <div class="panel-title">Today</div>
+    <div id="pnl-big" class="big-num neutral">$—</div>
+    <div class="big-label">P&amp;L vs $<span id="pnl-target">250</span>/day target</div>
+
+    <div class="prog-bar-wrap">
+      <div class="prog-bar-track"><div id="pnl-bar" class="prog-bar-fill" style="width:0%"></div></div>
+      <div class="prog-bar-label">
+        <span>$0</span>
+        <span id="pnl-pct-label">0%</span>
+        <span>$250</span>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-item">
+        <div id="trades-total" class="stat-val">—</div>
+        <div class="stat-lbl">Trades</div>
+      </div>
+      <div class="stat-item">
+        <div id="trades-wins" class="stat-val" style="color:var(--green)">—</div>
+        <div class="stat-lbl">Wins</div>
+      </div>
+      <div class="stat-item">
+        <div id="trades-losses" class="stat-val" style="color:var(--red)">—</div>
+        <div class="stat-lbl">Losses</div>
+      </div>
+      <div class="stat-item">
+        <div id="win-rate" class="stat-val">—</div>
+        <div class="stat-lbl">Win %</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px; display:flex; align-items:center; justify-content:space-between;">
+      <div style="font-size:12px; color:var(--dim)">Open positions</div>
+      <div id="open-pos" style="font-size:20px; font-weight:700">—</div>
+    </div>
+  </div>
+
+  <!-- ── COL B: LIVE READINESS ── -->
+  <div class="panel" id="panel-readiness">
+    <div class="panel-title">Live Readiness</div>
+
+    <div class="readiness-center">
+      <div id="readiness-circle" class="readiness-circle UNKNOWN">
+        <span id="readiness-status-text">—</span>
+        <span class="circle-label" id="readiness-gate-count">0/7 gates</span>
+      </div>
+      <div class="days-to-live">Days to live: <span id="days-to-live">—</span></div>
+      <div class="days-to-live" style="margin-top:3px">Streak: <span id="streak">—</span> day(s)</div>
+    </div>
+
+    <div class="gates-list" id="gates-list">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+  <!-- ── COL C: ENGINE HEALTH ── -->
+  <div class="panel" id="panel-health">
+    <div class="panel-title">Engine Health</div>
+
+    <div class="health-row">
+      <span class="health-key">Engine status</span>
+      <span id="engine-status" class="health-val">—</span>
+    </div>
+    <div class="health-row">
+      <span class="health-key">Kill switch</span>
+      <span id="kill-switch" class="health-val">—</span>
+    </div>
+    <div class="health-row">
+      <span class="health-key">Last polled</span>
+      <span id="polled-at" class="health-val" style="color:var(--dim); font-size:11px">—</span>
+    </div>
+
+    <div class="health-pills" id="health-pills">
+      <!-- populated by JS -->
+    </div>
+
+    <div class="sparkline-wrap">
+      <div class="sparkline-label">7-day uptime (daily snapshot presence)</div>
+      <div class="sparkline" id="uptime-spark"></div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px">
+        <span>-7d</span><span>today</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ REPORTS ROW ════════════════════════════ -->
+<div class="section-label">Latest Reports</div>
+<div class="reports-grid">
+  <div class="report-card" id="card-briefing">
+    <div class="report-card-title">Live Readiness Report</div>
+    <div id="briefing-date" class="report-date">—</div>
+    <div id="briefing-excerpt" class="report-excerpt report-missing">Not yet generated today.</div>
+  </div>
+  <div class="report-card" id="card-posttrade">
+    <div class="report-card-title">Post-Trade Report</div>
+    <div id="posttrade-date" class="report-date">—</div>
+    <div id="posttrade-excerpt" class="report-excerpt report-missing">Not yet generated.</div>
+  </div>
+  <div class="report-card" id="card-career">
+    <div class="report-card-title">Career-Ops Recap</div>
+    <div id="career-date" class="report-date">—</div>
+    <div id="career-excerpt" class="report-excerpt report-missing">Not available.</div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// Configuration
+// ════════════════════════════════════════════════════════════
+const DATA_URL = "/operations/dashboard.json";
+const REFRESH_INTERVAL_MS = 60_000;
+let _refreshTimer = null;
+
+// ════════════════════════════════════════════════════════════
+// Helpers
+// ════════════════════════════════════════════════════════════
+function fmtMoney(v) {
+  if (v == null) return "—";
+  const abs = Math.abs(v).toFixed(2);
+  return (v >= 0 ? "+" : "-") + "$" + abs;
+}
+function fmtPct(v) {
+  if (v == null) return "—";
+  return v.toFixed(1) + "%";
+}
+function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+
+function relTime(isoStr) {
+  if (!isoStr) return "—";
+  const now = Date.now();
+  const dt = new Date(isoStr).getTime();
+  const sec = Math.round((now - dt) / 1000);
+  if (sec < 5)  return "just now";
+  if (sec < 60) return sec + "s ago";
+  if (sec < 3600) return Math.floor(sec/60) + "m ago";
+  return Math.floor(sec/3600) + "h ago";
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+function setClass(id, cls) {
+  const el = document.getElementById(id);
+  if (el) { el.className = el.className.replace(/\b(ok|bad|warn|unknown)\b/g, ""); el.classList.add(cls); }
+}
+
+// ════════════════════════════════════════════════════════════
+// Renderers
+// ════════════════════════════════════════════════════════════
+function renderToday(today) {
+  const pnl = today.pnl ?? 0;
+  const target = today.pnl_target ?? 250;
+  const pct = clamp((pnl / target) * 100, 0, 100);
+
+  const bigEl = document.getElementById("pnl-big");
+  const sign = pnl >= 0 ? "positive" : "negative";
+  bigEl.textContent = fmtMoney(pnl);
+  bigEl.className = "big-num " + sign;
+
+  const bar = document.getElementById("pnl-bar");
+  bar.style.width = pct + "%";
+  bar.className = "prog-bar-fill" + (pnl < 0 ? " neg" : pct < 50 ? " warn" : "");
+
+  setText("pnl-pct-label", fmtPct(pct));
+  setText("pnl-target", target);
+
+  setText("trades-total", today.total_trades ?? "—");
+  setText("trades-wins",  today.wins ?? "—");
+  setText("trades-losses", today.losses ?? "—");
+  setText("win-rate", today.win_rate != null ? fmtPct(today.win_rate) : "—");
+  setText("open-pos", today.open_positions ?? "—");
+}
+
+function renderReadiness(lr) {
+  const status = (lr.status || "UNKNOWN").toUpperCase();
+  const circle = document.getElementById("readiness-circle");
+  circle.className = "readiness-circle " + status;
+  setText("readiness-status-text", status);
+  setText("readiness-gate-count", (lr.pass_count ?? 0) + "/7 gates");
+  setText("days-to-live", lr.days_to_live ?? "—");
+  setText("streak", lr.consecutive_passing_days ?? "—");
+
+  const list = document.getElementById("gates-list");
+  list.innerHTML = "";
+  const gates = lr.gates || [];
+  if (gates.length === 0) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--muted)">Gate data unavailable</div>';
+    return;
+  }
+  gates.forEach(g => {
+    const row = document.createElement("div");
+    row.className = "gate-row";
+    row.innerHTML =
+      '<span class="gate-chip ' + (g.passed ? "pass" : "fail") + '">' + (g.passed ? "PASS" : "FAIL") + '</span>' +
+      '<span class="gate-name">' + escHtml(g.name || g.gate_id) + '</span>' +
+      '<span class="gate-obs">' + escHtml(g.observed || "") + '</span>';
+    list.appendChild(row);
+  });
+}
+
+function renderHealth(h, uptime7d) {
+  const ok = h.reachable && h.status === "ok";
+  const statusEl = document.getElementById("engine-status");
+  statusEl.textContent = h.status || "—";
+  statusEl.className = "health-val " + (ok ? "ok" : "bad");
+
+  const ksEl = document.getElementById("kill-switch");
+  if (h.kill_switch_active) {
+    ksEl.innerHTML = '<span class="kill-switch-badge">ACTIVE</span>';
+    ksEl.className = "health-val bad";
+  } else {
+    ksEl.textContent = "Inactive";
+    ksEl.className = "health-val ok";
+  }
+
+  setText("polled-at", relTime(h.polled_at));
+
+  const pills = document.getElementById("health-pills");
+  pills.innerHTML = "";
+  function addPill(label, ok2) {
+    const p = document.createElement("span");
+    p.className = "pill " + (ok2 ? "ok" : "bad");
+    p.textContent = label;
+    pills.appendChild(p);
+  }
+  addPill("TV MCP", !!h.tradingview_mcp_healthy);
+  addPill("LLM", !!h.llm_path_healthy);
+  const ibkrExec = h.ibkr_exec;
+  const ibkrData = h.ibkr_data;
+  addPill("IBKR Exec", !!(ibkrExec && (ibkrExec.connected || ibkrExec === true)));
+  addPill("IBKR Data", !!(ibkrData && (ibkrData.connected || ibkrData === true)));
+
+  // Sparkline
+  const spark = document.getElementById("uptime-spark");
+  spark.innerHTML = "";
+  const days = Array.isArray(uptime7d) ? uptime7d : Array(7).fill(false);
+  days.forEach(alive => {
+    const bar = document.createElement("div");
+    bar.className = "spark-bar " + (alive ? "on" : "off");
+    bar.style.height = (alive ? 28 : 8) + "px";
+    spark.appendChild(bar);
+  });
+}
+
+function renderReport(dateId, excerptId, report) {
+  if (!report) return;
+  const dateEl = document.getElementById(dateId);
+  const excEl = document.getElementById(excerptId);
+  if (dateEl) dateEl.textContent = report.date || "—";
+  if (excEl) {
+    excEl.textContent = report.excerpt ? report.excerpt.slice(0, 280) : "No content.";
+    excEl.className = "report-excerpt";
+  }
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+}
+
+// ════════════════════════════════════════════════════════════
+// Header health dots
+// ════════════════════════════════════════════════════════════
+function renderHeaderHealthDots(health) {
+  // health may be null/undefined when engine is unreachable
+  const dotMap = {
+    "dot-tv":        health ? health.tv_mcp_healthy : null,
+    "dot-llm":       health ? health.llm_path_healthy : null,
+    "dot-ibkr-data": health ? health.ibkr_data_connected : null,
+    "dot-ibkr-exec": health ? health.ibkr_execution_connected : null,
+  };
+  Object.entries(dotMap).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = "health-dot " + (val === null || val === undefined ? "unknown" : val ? "healthy" : "unhealthy");
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// Fetch + render
+// ════════════════════════════════════════════════════════════
+async function refresh() {
+  const banner = document.getElementById("error-banner");
+  try {
+    const resp = await fetch(DATA_URL, { cache: "no-store" });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+
+    banner.style.display = "none";
+
+    renderHeaderHealthDots(data.health || null);
+    renderToday(data.today || {});
+    renderReadiness(data.live_readiness || {});
+    renderHealth(data.engine_health || {}, data.uptime_7d || []);
+
+    const rpts = data.reports || {};
+    renderReport("briefing-date", "briefing-excerpt", rpts.morning_briefing);
+    renderReport("posttrade-date", "posttrade-excerpt", rpts.post_trade);
+    renderReport("career-date", "career-excerpt", rpts.career_recap);
+
+    const ts = data.generated_at ? new Date(data.generated_at).toLocaleTimeString() : "—";
+    setText("last-updated", "Updated " + ts);
+  } catch (err) {
+    banner.textContent = "Dashboard fetch failed: " + err.message;
+    banner.style.display = "block";
+    setText("last-updated", "Error — " + new Date().toLocaleTimeString());
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Auto-refresh
+// ════════════════════════════════════════════════════════════
+function startTimer() {
+  stopTimer();
+  _refreshTimer = setInterval(refresh, REFRESH_INTERVAL_MS);
+  document.getElementById("refresh-status").textContent = "every 60s";
+}
+function stopTimer() {
+  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+  document.getElementById("refresh-status").textContent = "paused";
+}
+
+document.getElementById("auto-refresh").addEventListener("change", function() {
+  this.checked ? startTimer() : stopTimer();
+});
+
+// Initial load
+refresh();
+startTimer();
+</script>
+</body>
+</html>

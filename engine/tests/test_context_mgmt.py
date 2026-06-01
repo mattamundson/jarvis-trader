@@ -1,10 +1,11 @@
 """Tests for context_mgmt module."""
 import pytest
+
 from utils.context_mgmt import (
-    needs_compaction,
-    drop_tool_responses,
-    compact_messages,
     COMPACT_THRESHOLD,
+    compact_messages,
+    drop_tool_responses,
+    needs_compaction,
 )
 
 

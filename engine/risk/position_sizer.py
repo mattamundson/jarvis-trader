@@ -27,7 +27,7 @@ def calculate_position_size(
     equity: float,
     risk_pct: float,  # e.g., 1.0 for 1%
     atr: float,
-    contract_multiplier: float,  # e.g., 5.0 for MES, 10.0 for MCL
+    contract_multiplier: float,  # e.g., 5.0 for MES, 100.0 for MCL, 2.0 for MNQ, 10.0 for MGC
     max_contracts: int = 2,
     max_position_pct: float = 5.0,
     drawdown_pct: float = 0.0,
@@ -39,7 +39,8 @@ def calculate_position_size(
         equity: Current account equity
         risk_pct: Risk per trade as % of equity (e.g., 1.0)
         atr: Average True Range (points)
-        contract_multiplier: $/point multiplier (e.g., 5.0 for MES, 10.0 for MCL)
+        contract_multiplier: $/point multiplier — MES=5.0, MNQ=2.0, MCL=100.0, MGC=10.0
+                             (authoritative table: utils/position_sizing.py INSTRUMENT_MULTIPLIERS)
         max_contracts: Hard limit on contracts (e.g., 2)
         max_position_pct: Max position value as % of equity (e.g., 5.0)
         drawdown_pct: Current drawdown from peak (e.g., 5.5)

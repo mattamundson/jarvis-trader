@@ -152,13 +152,29 @@ class PnLMonitor:
 
         Example: -0.08 means the account is 8% below its peak.
         """
-        peak = self.get_peak_balance()
-        if peak <= 0:
-            return 0.0
-
         state = self.get_current_pnl_state()
         current = state.current_balance
         if current <= 0:
+            return 0.0
+
+        # When the current state comes from the in-memory paper tracker and a
+        # tracker is wired, use the tracker's own equity curve peak.  This avoids
+        # false drawdown alarms where the DB's daily_pnl history (accumulated across
+        # engine restarts with compounded paper balances) is many multiples larger
+        # than the tracker's current session balance.
+        if state.source == "memory" and self._paper is not None:
+            try:
+                perf = self._paper.get_performance()
+                curve = perf.get("equity_curve", [])
+                peak = max((float(v) for v in curve if v is not None), default=0.0)
+                if peak > 0:
+                    return (current - peak) / peak
+            except Exception:
+                pass
+            return 0.0
+
+        peak = self.get_peak_balance()
+        if peak <= 0:
             return 0.0
 
         drawdown = (current - peak) / peak  # negative when current < peak

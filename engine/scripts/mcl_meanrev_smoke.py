@@ -22,14 +22,12 @@ from pathlib import Path
 
 import pandas as pd
 
-
 # Ensure engine is importable
 _ENGINE = Path(__file__).resolve().parents[1]
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
 from backtest.meanrev_signals import generate_bollinger_rsi_signals  # noqa: E402
-
 
 CACHE = _ENGINE / "backtest" / "cache" / "MCL_2024-01-01_2026-03-28_1h.csv"
 

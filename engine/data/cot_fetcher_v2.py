@@ -57,7 +57,7 @@ DB_PATH = Path(__file__).parent.parent / "data" / "cot_cache_v2.db"
 class CoTFetcherV2:
     """
     CFTC CoT data fetcher with SQLite caching.
-    
+
     Fetches from the correct Socrata endpoint and caches results locally
     to avoid hammering the CFTC API (data only updates weekly on Fridays).
     """
@@ -247,7 +247,7 @@ class CoTFetcherV2:
     def get_positioning(self, symbol: str) -> Optional[dict]:
         """
         Get latest CoT positioning for a symbol.
-        
+
         Returns cached result if fresh (< 12 hours old), otherwise fetches live.
         Returns None on failure (caller should fall back to neutral signal).
         """
@@ -274,7 +274,7 @@ class CoTFetcherV2:
     def get_cot_multiplier(self, symbol: str) -> float:
         """
         Return a position sizing multiplier based on CoT signal.
-        
+
         BULLISH  → 1.0  (no reduction)
         NEUTRAL  → 0.9  (slight reduction)
         BEARISH  → 0.7  (meaningful reduction — CoT is bearish headwind)

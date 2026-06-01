@@ -70,21 +70,29 @@ def test_get_price_snapshot_futures(client):
 
 
 def test_get_price_snapshot_caching(client):
-    """Test that /prices/snapshot returns consistent data (mocked data_manager)."""
-    import main as main_mod
+    """Test that /prices/snapshot returns consistent data (mocked data_manager).
 
-    mock_batch = {
-        "SPY": {
-            "last_price": 654.53,
-            "prev_close": 654.0,
-            "change_pct": 0.08,
-            "source": "polygon",
-        }
+    The router calls get_current_price(symbol) per symbol — not get_batch_prices.
+    Patch routers.prices_router._data_manager (the module-level reference the
+    endpoint actually reads) instead of main.data_manager.
+    """
+    import routers.prices_router as _pr
+
+    spy_data = {
+        "last_price": 654.53,
+        "prev_close": 654.0,
+        "change_pct": 0.08,
+        "source": "polygon",
     }
-    mock_dm = MagicMock()
-    mock_dm.get_batch_prices = AsyncMock(return_value=mock_batch)
 
-    with patch.object(main_mod, "data_manager", mock_dm):
+    mock_dm = MagicMock()
+
+    async def _get_current_price(sym, **_kw):
+        return spy_data if sym.upper() == "SPY" else {"last_price": None}
+
+    mock_dm.get_current_price = AsyncMock(side_effect=_get_current_price)
+
+    with patch.object(_pr, "_data_manager", mock_dm):
         response1 = client.get("/prices/snapshot?symbols=SPY")
         assert response1.status_code == 200
         data1 = response1.json()

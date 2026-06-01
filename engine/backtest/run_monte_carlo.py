@@ -4,19 +4,18 @@ JARVIS TRADER — Monte Carlo CLI Runner
 
 Run Monte Carlo simulations on backtest results with optional slippage modeling.
 
-Usage:
-    cd engine
-    python -m backtest.run_monte_carlo --results-file results/MES_1h_2024-06-01_2026-03-27.json --simulations 1000 --max-slippage 2
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/run_monte_carlo.py --results-file results/MES_1h_2024-06-01_2026-03-27.json --simulations 1000 --max-slippage 2
 
 Examples:
     # Basic: 1000 simulations, no slippage
-    python -m backtest.run_monte_carlo --results-file results/MES_1h_2024-06-01_2026-03-27.json
+    .venv/Scripts/python backtest/run_monte_carlo.py --results-file results/MES_1h_2024-06-01_2026-03-27.json
 
     # With slippage: 1000 sims, uniform 0-2 ticks per trade (MES)
-    python -m backtest.run_monte_carlo --results-file results/MES_1h_2024-06-01_2026-03-27.json --simulations 1000 --max-slippage 2
+    .venv/Scripts/python backtest/run_monte_carlo.py --results-file results/MES_1h_2024-06-01_2026-03-27.json --simulations 1000 --max-slippage 2
 
     # Different symbol: MCL with 1 tick slippage
-    python -m backtest.run_monte_carlo --results-file results/MCL_1h_2024-06-01_2026-03-27.json --symbol MCL --max-slippage 1
+    .venv/Scripts/python backtest/run_monte_carlo.py --results-file results/MCL_1h_2024-06-01_2026-03-27.json --symbol MCL --max-slippage 1
 """
 
 from __future__ import annotations

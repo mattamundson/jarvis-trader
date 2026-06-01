@@ -61,6 +61,13 @@ CONTRACT_SPECS: Dict[str, Dict[str, float]] = {
         "commission": 0.62,
         "slippage_ticks": 2,
     },
+    "M2K": {
+        "multiplier": 5.0,
+        "tick_size": 0.10,
+        "tick_value": 0.50,
+        "commission": 0.62,
+        "slippage_ticks": 1,
+    },
 }
 
 DEFAULT_SPEC = {

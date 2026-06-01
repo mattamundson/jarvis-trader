@@ -173,33 +173,29 @@ class KairosDreamer:
             f"Analyze these market observations from {target_date} and identify "
             f"3-5 key patterns or insights for a futures day-trader:\n\n{obs_text}"
         )
+        system = (
+            "You are a trading pattern analyst. "
+            "Identify recurring patterns in market observations. "
+            "Be concise and actionable."
+        )
         try:
-            # Support both direct Anthropic client and wrapped LLM clients
             if hasattr(self._client, "call"):
+                # JarvisLLMClient — returns LLMCallResult with .content: str
                 result = await self._client.call(
                     model="claude-haiku-4-5-20251001",
-                    system=(
-                        "You are a trading pattern analyst. "
-                        "Identify recurring patterns in market observations. "
-                        "Be concise and actionable."
-                    ),
+                    system=system,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=400,
+                    agent_name="kairos_dreaming",
                 )
-                content = result.get("content", [])
-                if content and isinstance(content, list):
-                    return content[0].get("text", "")
-                return str(result)
+                return result.content or None
 
             elif hasattr(self._client, "messages"):
-                # Direct anthropic.AsyncAnthropic client
+                # Raw anthropic.AsyncAnthropic — last-resort path
                 msg = await self._client.messages.create(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=400,
-                    system=(
-                        "You are a trading pattern analyst. "
-                        "Identify recurring patterns in market observations."
-                    ),
+                    system=system,
                     messages=[{"role": "user", "content": prompt}],
                 )
                 return msg.content[0].text if msg.content else ""

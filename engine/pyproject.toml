@@ -54,25 +54,75 @@ log_file = "pytest.log"
 log_file_level = "DEBUG"
 
 [tool.mypy]
-# Type checking configuration
+# Type checking configuration — baseline mode (provisioned 2026-05-07)
+# See ~/.claude/handoffs/MYPY_BASELINE_2026-05-07.md for triage + cleanup roadmap.
+# NOT a hard CI gate yet — visibility-only. Errors surface on `mypy engine/`.
 python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-check_untyped_defs = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-strict_optional = true
+
+# External deps lack stubs in this venv (ib_insync, freqtrade, polygon, kraken, etc.)
 ignore_missing_imports = true
 
-# Exclude patterns
-exclude = [".venv", "venv", "build", "dist", ".git"]
+# Hygiene knobs — flag stale # type: ignore + dead casts.
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_return_any = true
+warn_no_return = true
+
+# Catches comparing incompatible types (e.g. `if x == "true"` when x: bool).
+strict_equality = true
+
+# Show error codes so we can suppress specific errors with `# type: ignore[code]`.
+show_error_codes = true
+
+# __init__.py re-exports are common in this codebase.
+no_implicit_reexport = false
+
+# Type-check function bodies even when signature is untyped (gradual adoption).
+check_untyped_defs = true
+no_implicit_optional = true
+strict_optional = true
+
+# NOT enabling these initially — would explode the baseline.
+# Re-enable per-module once that module is clean:
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+# Engine is a namespace dir (no engine/__init__.py). Set the package base to
+# engine/ so submodules resolve as `llm.client` not `engine.llm.client`. This
+# matches the runtime convention (uvicorn cwd=engine/) and avoids the
+# "Source file found twice under different module names" error.
+mypy_path = "engine"
+explicit_package_bases = true
+namespace_packages = true
+
+# Exclude patterns — venv + build dirs + experimental sandbox + tests.
+# `exclude` is a single regex matched against module paths (cwd-relative).
+# We run mypy from engine/ so paths look like `tests/foo.py` not `engine/tests/foo.py`.
+exclude = '''(?x)(
+    /\.venv/
+    | ^\.venv/
+    | ^venv/
+    | ^build/
+    | ^dist/
+    | /\.git/
+    | ^learning/_experimental/    # WIP code, not part of runtime path
+    | ^tests/                     # tests excluded from baseline (1500+ noise errors)
+    | /test_[^/]+\.py$            # ad-hoc test harness scripts anywhere
+    | ^strategies/generated/      # auto-generated strategy code
+    | ^\.tmp/                     # local mypy log dir
+)'''
+
+# Run mypy from engine/ directory; explicit list lets us exclude tests cleanly.
+files = ["."]
 
 # Plugin configuration
 plugins = []
+
+# Per-module overrides — modules with inherited type debt that we explicitly
+# defer to the cleanup roadmap. Removing an entry here means the module is
+# expected to type-check cleanly. See MYPY_BASELINE_2026-05-07.md for context.
+# (Populated after the baseline run — currently empty, all errors visible.)
 
 [tool.isort]
 # Import sorting

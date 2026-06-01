@@ -1,0 +1,53 @@
+{
+  "symbol": "MES",
+  "family": "trend",
+  "rank": 7,
+  "verdict": "PASS",
+  "passed_via": "alt",
+  "core_verdict": "FAIL",
+  "alt_verdict": "PASS",
+  "n_core_passed": 2,
+  "n_alt_passed": 5,
+  "created_at": "2026-04-25T06:00:01.276558+00:00",
+  "aux_freshness": {
+    "rolling_wfo": "2026-04-21T08:49:37.803336+00:00",
+    "fixed_params": "2026-04-21T08:54:47.769489+00:00",
+    "cost_sweep": "2026-04-21T08:49:51.086839+00:00"
+  },
+  "gate_v2": {
+    "verdict": "PASS",
+    "passed_via": "alt",
+    "core_verdict": "FAIL",
+    "alt_verdict": "PASS",
+    "n_core_passed": 2,
+    "n_core_criteria": 4,
+    "n_alt_passed": 5,
+    "n_alt_criteria": 5,
+    "core_reasons": [
+      "FAIL mbb_pf_ci_lower=0.9247 < 1.1",
+      "FAIL p_positive_edge=0.8774 < 0.95",
+      "mc_95th_dd_pct=5.3969 <= 6.0",
+      "dsr=0.666582 >= 0.1 (not selection-bias)"
+    ],
+    "alt_reasons": [
+      "dsr=0.666582 >= 0.3 (alt floor)",
+      "rolling_wfo=STRONG in ['MODERATE', 'STRONG']",
+      "fixed_params_min_pf=1.275 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct=5.3969 <= 7.0 (alt ceiling)"
+    ],
+    "reasons": [
+      "FAIL mbb_pf_ci_lower=0.9247 < 1.1",
+      "FAIL p_positive_edge=0.8774 < 0.95",
+      "mc_95th_dd_pct=5.3969 <= 6.0",
+      "dsr=0.666582 >= 0.1 (not selection-bias)",
+      "dsr=0.666582 >= 0.3 (alt floor)",
+      "rolling_wfo=STRONG in ['MODERATE', 'STRONG']",
+      "fixed_params_min_pf=1.275 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct=5.3969 <= 7.0 (alt ceiling)"
+    ],
+    "n_passed": 2,
+    "n_criteria": 4
+  }
+}

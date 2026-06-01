@@ -191,7 +191,7 @@ class TestRunAllStartupChecks:
             FRED_API_KEY="test-key",
         )
         results = run_startup_checks(config)
-        assert len(results) == 8
+        assert len(results) == 9  # updated: +1 for _check_paper_config_do_not_trade_sync (2026-05-07)
         assert all(isinstance(r, CheckResult) for r in results)
 
     def test_run_all_checks_detects_failures(self):

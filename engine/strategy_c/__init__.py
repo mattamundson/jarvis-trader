@@ -18,11 +18,11 @@ Author: JARVIS TRADER (Strategy C Module)
 """
 
 from .engine import StrategyCEngine
-from .signals import StrategyCSignals
-from .vol_targeting import VolatilityTargeter
-from .vix_composite import VIXComposite
-from .macro_filter import MacroRegimeFilter
 from .live_signal import run_live_signal
+from .macro_filter import MacroRegimeFilter
+from .signals import StrategyCSignals
+from .vix_composite import VIXComposite
+from .vol_targeting import VolatilityTargeter
 
 __all__ = [
     "StrategyCEngine",

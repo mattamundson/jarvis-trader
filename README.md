@@ -8,19 +8,70 @@
 
 ## Table of Contents
 
-1. [Quick Overview](#quick-overview)
-2. [Architecture](#architecture)
-3. [Tech Stack](#tech-stack)
-4. [Quick Start](#quick-start)
-5. [Project Structure](#project-structure)
-6. [API Endpoints](#api-endpoints)
-7. [Safety Layer](#safety-layer)
-8. [Strategy](#strategy)
-9. [Testing](#testing)
-10. [Configuration](#configuration)
-11. [Operational Scripts](#operational-scripts)
-12. [Documentation Index](#documentation-index)
-13. [Paper Trading](#paper-trading)
+1. [Validation Results — WFO Campaign](#validation-results--wfo-campaign)
+2. [Quick Overview](#quick-overview)
+3. [Architecture](#architecture)
+4. [Tech Stack](#tech-stack)
+5. [Quick Start](#quick-start)
+6. [Project Structure](#project-structure)
+7. [API Endpoints](#api-endpoints)
+8. [Safety Layer](#safety-layer)
+9. [Strategy](#strategy)
+10. [Testing](#testing)
+11. [Configuration](#configuration)
+12. [Operational Scripts](#operational-scripts)
+13. [Documentation Index](#documentation-index)
+14. [Paper Trading](#paper-trading)
+
+---
+
+## Validation Results — WFO Campaign
+
+This system uses a **gate v2** validation framework with seven independent statistical criteria. A strategy must pass walk-forward optimization (WFO) across 18 rolling 6-month/1-month train/test windows on real market data before any capital is risked. Failing any single gate is grounds for parking the strategy.
+
+### Gate v2 Criteria (ALT path, $50K+ accounts)
+
+| Metric | Threshold | What it tests |
+|--------|-----------|---------------|
+| `pf_ci_lower` | ≥ 1.10 | Lower 5% bound of bootstrapped OOS profit factor — robustness, not point estimate |
+| `p_edge` | ≥ 0.95 | Fraction of OOS windows with PF > 1.0 — guards against single-window cherry-picks |
+| `mc_95th_dd` | ≤ 7% | 95th-percentile Monte Carlo drawdown — bounds tail risk |
+| `dsr` (deflated Sharpe) | ≥ 0.30 | Adjusts for multiple testing across grid combos |
+| `wfo_consistency` | MODERATE/STRONG | ≥55% of windows profitable |
+| `fixed_params_min_pf` | ≥ 1.20 | Worst combo on full dataset still profitable |
+| `cost_survives_through` | ≥ realistic | Edge survives 4× expected commission + slippage |
+
+### Live Validated Strategies (PASS gate v2)
+
+| Symbol | Strategy | Champion Params | p_edge | DSR | MC DD | Consistency |
+|--------|----------|-----------------|--------|-----|-------|-------------|
+| **MES** (Micro S&P 500) | SMA Trend rank11 | fast=60, slow=200, ATR×2.0 | 0.75 | 1.0 | 0.81% | STRONG |
+| **MGC** (Micro Gold) | SMA Trend rank4 | fast=50, slow=120, ATR×2.0 | 0.75 | 1.0 | 1.24% | STRONG |
+
+Both pass via the ALT path (account size ≥$50K). Verdicts expire 30 days from creation and require IBKR data refresh + re-validation before extension.
+
+### Strategies Evaluated and Parked (FAIL)
+
+The campaign explored 7 distinct strategy/symbol combinations beyond the two PASSes. Each FAIL is documented with full verdict JSON in `engine/data/gate_v2_verdicts/`.
+
+| Symbol | Family | Result | Root Cause |
+|--------|--------|--------|------------|
+| MNQ | SMA Trend ranks 1–2 | FAIL | Period scale mismatch — SMA crossovers too sparse in 2024–2025 bull regime; even short-period grid produced 0 OOS trades |
+| MNQ | Breakout ranks 1–7 | FAIL | Non-stationarity confirmed (IS PF < 0.75 for windows 9–15); regime shift mid-2025 |
+| MNQ | ORB rank 1 | FAIL | ATR/OR_range = 5–8× — stops blown by routine intraday volatility |
+| MES | ORB rank 1 | FAIL | Despite favorable 2–3× ATR/OR ratio, p_edge = 0.18; ORB has no edge in current regime regardless of geometry |
+| M2K | SMA Trend ranks 1–2 | FAIL | Rate-sensitivity whipsaws produce noise crossovers that don't correspond to genuine direction changes |
+| MCL | Mean-Rev hyp A/B/C | FAIL | Crude is event-driven (OPEC, geopolitics), not technical-pattern-driven |
+| MCL | SMA Trend hyp D/E | FAIL | Sparse signal frequency — daily crossovers <2/year insufficient for WFO |
+
+**Why this matters for a public reader:** The two validated strategies are interesting, but the FAIL ledger is what demonstrates rigor. Most retail trading systems publish their wins. This system publishes every losing hypothesis with the metric values that killed it, because parameter tuning to rescue a fundamentally absent signal is the most common failure mode in quantitative trading.
+
+### Engineering Patterns Worth Calling Out
+
+- **Bootstrap CI on profit factor**, not point estimates — using the 5th-percentile lower bound of resampled PF means a strategy must be robust to which trades happened to land in the OOS window, not just lucky.
+- **Inf-cap before percentile** — windows with zero losing trades produce `PF=inf`, which propagates NaN through `np.percentile` interpolation. Capping at 5.0 before the bootstrap is a small but load-bearing fix (`engine/backtest/run_mes_trend_rank11.py:380`).
+- **Gate v2 ALT path for capital scale** — accounts ≥$50K can use looser drawdown/DSR thresholds because position-size diversification reduces tail-event impact. Smaller accounts must pass the stricter CORE gate. Single codebase, two thresholds, decided at runtime.
+- **Routing layer separation** — `gate_v2_policy.is_ungate_eligible()` returns True if ANY non-stale PASS verdict exists for a symbol across all families. This decouples the question "does an edge exist for this symbol" from "which family generates the signal" — fixed in this campaign after a FAIL in one family was incorrectly blocking a PASS in another for the same symbol.
 
 ---
 
@@ -536,7 +587,95 @@ Fails fast with clear error messages pointing to missing variables.
 
 ## Operational Scripts
 
-All scripts in `scripts/`:
+### Portfolio & Verdict Tooling (Python — `engine/backtest/`)
+
+These three tools are the operational interface to the gate v2 campaign. Run from `engine/` directory.
+
+#### `show_verdict_history.py` — Portfolio dashboard
+
+Single source of truth for what's currently validated, parked, or about to expire. Scans all gate v2 verdict files and prints a sorted summary table.
+
+```bash
+.venv/Scripts/python -m backtest.show_verdict_history
+.venv/Scripts/python -m backtest.show_verdict_history --status PASS
+.venv/Scripts/python -m backtest.show_verdict_history --expiring-soon
+.venv/Scripts/python -m backtest.show_verdict_history --json   # for tooling
+```
+
+Returns exit code 1 if any PASS verdict is within 7 days of expiry — usable as a daily cron gate.
+
+#### `live_readiness.py` — Phase 1 deployment gate
+
+Single canonical check for all 7 mission-accomplished criteria. Returns exit code 0 only when every blocking check passes. Designed as the deployment-decision guard between "WFO campaign complete" and "live capital authorized."
+
+```bash
+.venv/Scripts/python -m backtest.live_readiness          # human-readable table
+.venv/Scripts/python -m backtest.live_readiness --json   # for tooling
+.venv/Scripts/python -m backtest.live_readiness --strict # advisory checks become blocking
+```
+
+Criteria checked: MES paper validation (30d/30 trades), second symbol validated, Phase 0 rotation complete, engine health stable, kill switch INACTIVE, all verdicts within 30-day TTL, `DO_NOT_TRADE_SYMBOLS` reflects verdict state.
+
+#### `export_ibkr_history.py` — Verdict-refresh data prep
+
+Fetches historical OHLCV bars from IB Gateway paper account (`127.0.0.1:4002`) and extends existing cache files. **Live port 4001 is permanently blocked** — paper port only.
+
+```bash
+# Refresh every PASS-verdict symbol in one command
+.venv/Scripts/python -m backtest.export_ibkr_history --refresh-all-pass-verdicts
+
+# Single symbol
+.venv/Scripts/python -m backtest.export_ibkr_history --symbol MES --interval 1h
+
+# Smoke-test without fetching
+.venv/Scripts/python -m backtest.export_ibkr_history --refresh-all-pass-verdicts --dry-run
+```
+
+Required for verdict refresh because Polygon futures data is blocklisted; IBKR is the only valid source. Auto-detects gap from cache cutoff to current date.
+
+#### `compare_verdicts.py` — Champion-param drift detection
+
+Diffs an old verdict against a freshly-rerun verdict to answer the binary question after a refresh: did the champion hold or did the regime shift?
+
+```bash
+.venv/Scripts/python -m backtest.compare_verdicts \
+    data/gate_v2_verdicts/archive/MES_trend_rank11.json \
+    data/gate_v2_verdicts/MES_trend_rank11.json
+```
+
+Detects: verdict transitions (PASS↔FAIL, alt↔core), >10% champion-param drift, metric deltas, OOS sample-size changes, and symbol/family mismatch sanity-check failures.
+
+Returns exit 0 if no drift (safe to commit refresh), 1 if review is needed.
+
+#### Verdict refresh end-to-end workflow
+
+Complete sequence when MES rank11 or MGC rank4 approach their 30-day TTL:
+
+```bash
+# 1. Bring up IB Gateway paper account (port 4002, API enabled, Read-Only OFF)
+
+# 2. Refresh both PASS-verdict caches with fresh IBKR data
+.venv/Scripts/python -m backtest.export_ibkr_history --refresh-all-pass-verdicts
+
+# 3. Re-run each PASS verdict against the extended cache
+.venv/Scripts/python -m backtest.run_mes_trend_rank11
+.venv/Scripts/python -m backtest.run_mgc_trend_rank4
+
+# 4. Diff the new verdict against the previous PASS to surface drift
+.venv/Scripts/python -m backtest.compare_verdicts \
+    data/gate_v2_verdicts/archive/MES_trend_rank11.json \
+    data/gate_v2_verdicts/MES_trend_rank11.json
+
+# 5. If drift is acceptable: commit the refreshed verdict
+#    If champion params shifted significantly: design rank12 with new grid
+git add data/gate_v2_verdicts/MES_trend_rank11.json
+git commit -m "feat(backtest): refresh MES rank11 verdict — expiry extended"
+
+# 6. Final readiness check
+.venv/Scripts/python -m backtest.live_readiness
+```
+
+### Trading Stack Scripts (Bash — `scripts/`)
 
 ### `start_paper_trading.sh`
 

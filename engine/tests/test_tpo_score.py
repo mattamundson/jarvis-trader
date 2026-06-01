@@ -8,12 +8,12 @@ no dependency on engine/backtest/tpo_profile.py computation.
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 

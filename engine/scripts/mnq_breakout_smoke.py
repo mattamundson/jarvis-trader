@@ -22,13 +22,11 @@ from pathlib import Path
 
 import pandas as pd
 
-
 _ENGINE = Path(__file__).resolve().parents[1]
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
 from backtest.breakout_signals import generate_donchian_breakout_signals  # noqa: E402
-
 
 CACHE = _ENGINE / "backtest" / "cache" / "MNQ_2024-04-01_2026-03-27_1h.csv"
 

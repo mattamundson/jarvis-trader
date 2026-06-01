@@ -37,8 +37,8 @@ ENGINE_DIR = Path(__file__).resolve().parent.parent
 if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
-from backtest import BacktestDataLoader, Backtester
-from backtest.trend_signals import generate_sma_trend_signals
+from backtest import BacktestDataLoader, Backtester  # noqa: E402
+from backtest.trend_signals import generate_sma_trend_signals  # noqa: E402
 
 SYMBOL = "MES"
 INTERVAL = "1h"
@@ -136,7 +136,6 @@ def _run_wfo_window(df_full: pd.DataFrame, window: dict) -> dict:
         return {"name": window["name"], "error": "no valid combos on train"}
 
     fast_c, slow_c, atr_c = best_params
-    train_result = {"pf": best_pf, "fast": fast_c, "slow": slow_c, "atr_trail": atr_c}
 
     # Apply champion to test (out-of-sample)
     test_result = _backtest_window(df_test.copy(), fast_c, slow_c, atr_c)

@@ -20,9 +20,10 @@ from typing import Optional
 import httpx
 
 from utils.position_sizing import (
+    INSTRUMENT_MULTIPLIERS,
     PositionSizeResult,
-    calculate_position_size,
     calculate_half_kelly_size,
+    calculate_position_size,
     compute_rolling_edge,
 )
 
@@ -53,6 +54,7 @@ def _get_advisor():
     if _advisor_instance is None:
         try:
             from agents.advisor_client import AdvisorClient
+
             _advisor_instance = AdvisorClient()
         except Exception as _err:  # pragma: no cover — defensive
             logger.info("AdvisorClient unavailable in trader: %s", _err)
@@ -60,9 +62,7 @@ def _get_advisor():
     return _advisor_instance if _advisor_instance is not False else None
 
 
-def _detect_corey_contradiction(
-    action: str, analyst_reports: Optional[dict]
-) -> Optional[dict]:
+def _detect_corey_contradiction(action: str, analyst_reports: Optional[dict]) -> Optional[dict]:
     """Detect a high-conviction Corey session bias that contradicts the trader action.
 
     Returns {"bias": str, "conviction": float} when Corey's directional_bias is
@@ -145,19 +145,25 @@ class TradeDecision:
     stop_price: Optional[float]
 
     # ATR-based trade geometry (None if hold or ATR unavailable)
-    entry_price: Optional[float]   # Intended entry price
-    target_1: Optional[float]      # T1 exit level (1st scale-out ~1/3 position)
-    target_2: Optional[float]      # T2 exit level (stretch target)
-    atr_used: Optional[float]      # ATR value used for stop/target calculation
-    rr_ratio: Optional[float]      # R:R = (target_1 - entry) / abs(entry - stop)
+    entry_price: Optional[float]  # Intended entry price
+    target_1: Optional[float]  # T1 exit level (1st scale-out ~1/3 position)
+    target_2: Optional[float]  # T2 exit level (stretch target)
+    atr_used: Optional[float]  # ATR value used for stop/target calculation
+
+    # Phase 5.4: Options Spread Parameters
+    is_spread: bool = False
+    short_option_symbol: Optional[str] = None
+    long_option_symbol: Optional[str] = None
+    net_credit: Optional[float] = None
+    rr_ratio: Optional[float] = None  # R:R = (target_1 - entry) / abs(entry - stop)
 
     # Signal metadata
-    signal_score: float  # -1.0 (strong sell) to +1.0 (strong buy)
-    confidence: float  # 0.0 to 1.0
+    signal_score: float = 0.0  # -1.0 (strong sell) to +1.0 (strong buy)
+    confidence: float = 0.0  # 0.0 to 1.0
 
     # Qualitative output
-    reasoning: str  # Full explanation of the decision
-    risk_notes: str  # What could go wrong
+    reasoning: str = ""  # Full explanation of the decision
+    risk_notes: str = ""  # What could go wrong
 
     # Audit trail
     timestamp: datetime = field(default_factory=datetime.now)
@@ -238,20 +244,26 @@ class TraderAgent:
     _SYMBOL_ATR_PARAMS: dict = {
         "MNQ": (0.70, 1.00, 1.80),
         "MCL": (0.50, 1.00, 2.618),
-        "MES": (1.00, 2.50, 4.00),   # Composite path params (COMP_STOP_ATR / COMP_T1_ATR / COMP_T2_ATR)
+        "MES": (
+            1.00,
+            2.50,
+            4.00,
+        ),  # Composite path params (COMP_STOP_ATR / COMP_T1_ATR / COMP_T2_ATR)
         "MGC": (0.70, 2.00, 3.236),
     }
     _DEFAULT_ATR_PARAMS = (0.70, 1.50, 2.50)  # Generic fallback
 
-    # Dollar value per point per instrument
-    _POINT_VALUES: dict = {
-        "MES": 5.0,
-        "MNQ": 2.0,
-        "MCL": 100.0,
-        "MGC": 10.0,
-    }
+    # Dollar value per point per instrument — sourced from the canonical
+    # INSTRUMENT_MULTIPLIERS table in engine/utils/position_sizing.py
+    _POINT_VALUES: dict = INSTRUMENT_MULTIPLIERS
 
-    def __init__(self, llm_client, db_manager=None):
+    def __init__(
+        self,
+        llm_client,
+        db_manager=None,
+        memory_bridge=None,
+        portfolio_allocator=None,
+    ):
         """
         Args:
             llm_client: Object with .api_key attribute (Anthropic key).
@@ -259,9 +271,13 @@ class TraderAgent:
                         Half-Kelly sizing is attempted using recent closed
                         paper trades (falls back to fixed-fractional when
                         fewer than 10 trades exist or on any error).
+            memory_bridge: Optional MemoryBridge for persistent working memory.
+            portfolio_allocator: Optional PortfolioAllocator for dynamic sizing.
         """
         self._llm = llm_client
         self._db = db_manager
+        self._memory = memory_bridge
+        self._allocator = portfolio_allocator
 
     async def decide(
         self,
@@ -277,7 +293,7 @@ class TraderAgent:
             symbol:           Ticker / futures symbol (e.g. "MES", "AAPL")
             debate_result:    Output from DebateOrchestrator.run_debate() as dict
             analyst_reports:  Dict keyed by agent name → report dict
-                              Expected keys: "technical", "news", "social", "fundamental"
+                               Expected keys: "technical", "news", "social", "fundamental"
             safety_status:    Output from SafetyLayer.get_status()
 
         Returns:
@@ -293,6 +309,47 @@ class TraderAgent:
                 risk_notes="System safety halt. No trades until kill switch is manually cleared.",
             )
 
+        # ── Regime Safety Gate (Phase 8.2) ──────────────────────────────
+        # Analyst reports are passed via a wrapper in the real pipeline
+        regime_override = analyst_reports.get("regime_override")
+        if regime_override and regime_override.get("blocked"):
+            reason = regime_override.get("reason", "Regime block active")
+            logger.warning(f"[Trader] {symbol} — {reason}")
+            return self._hold_decision(
+                symbol=symbol,
+                reasoning=reason,
+                risk_notes="Systemic regime protection active (CRISIS/VOLATILE). No new entries allowed.",
+            )
+
+        # ── Working Memory Recall (Phase 3.5) ─────────────────────────────
+        working_memory = ""
+        if self._memory:
+            working_memory = self._memory.recall(
+                agent_name="trader",
+                symbol=symbol,
+                topic="general",
+                limit=5
+            )
+            if working_memory:
+                logger.info(f"[Trader] {symbol} — Recalled working memory")
+
+        # ── Portfolio-Aware Sizing (Phase 8.1) ────────────────────────────
+        # Fetch optimal risk percentage from allocator
+        risk_pct = 0.01  # baseline 1%
+        if self._allocator:
+            # Extract strategy name from technical analyst report if possible
+            tech = analyst_reports.get("technical", {})
+            strategy = tech.get("indicators", {}).get("stark_signal", "unknown")
+            risk_pct = self._allocator.get_risk_pct(strategy, symbol)
+            logger.info(f"[Trader] {symbol} — Allocator risk_pct: {risk_pct:.2%}")
+
+        # ── Options Setup Evaluation (Phase 5.4) ──────────────────────────
+        options_setup = analyst_reports.get("options", {})
+        if options_setup.get("signal", 0) != 0:
+            logger.info(f"[Trader] {symbol} — Options setup detected: {options_setup.get('summary')}")
+            # We can choose to prioritize options if regime is RANGE or MEANREV
+            # For now, we'll let the LLM decide by including the setup in the prompt.
+
         # ── Fixed-fractional position sizing ──────────────────────────────
         # account_value: use current_equity from SafetyLayer (broker-sourced);
         #   fall back to 10,000 if not yet synced from broker.
@@ -307,7 +364,8 @@ class TraderAgent:
         if not atr or atr <= 0:
             logger.warning(
                 "[Trader] %s: ATR is %s — cannot compute stop/target, defaulting to HOLD",
-                symbol, atr,
+                symbol,
+                atr,
             )
 
         from config import settings  # local import to avoid circular deps at module level
@@ -318,7 +376,7 @@ class TraderAgent:
             symbol=symbol,
             account_value=account_value,
             atr=atr,
-            risk_pct=0.01,
+            risk_pct=risk_pct,
             atr_stop_multiplier=0.70,
             max_contracts=max_contracts,
         )
@@ -335,7 +393,7 @@ class TraderAgent:
         # result if PositionSizer is unavailable or raises.
         if _POSITION_SIZER_AVAILABLE and atr and atr > 0:
             try:
-                from utils.position_sizing import INSTRUMENT_MULTIPLIERS, _DEFAULT_MULTIPLIER
+                from utils.position_sizing import _DEFAULT_MULTIPLIER, INSTRUMENT_MULTIPLIERS
 
                 point_value = INSTRUMENT_MULTIPLIERS.get(symbol, _DEFAULT_MULTIPLIER)
                 sizer = _PositionSizer(
@@ -382,55 +440,56 @@ class TraderAgent:
         # Attempts to replace fixed-fractional with Half-Kelly if we have
         # enough closed paper trade history (≥ 10 trades).  Never blocks a
         # trade — any failure silently falls back to the fixed-fractional result.
-        sizing_method = 'fixed_fractional'
+        sizing_method = "fixed_fractional"
         sizing_info: dict = {}
 
         if self._db is not None:
             try:
                 recent_trades_raw = (
                     self._db.get_closed_trades(symbol=symbol, limit=20)
-                    if hasattr(self._db, 'get_closed_trades') else []
+                    if hasattr(self._db, "get_closed_trades")
+                    else []
                 )
                 # Normalise: each item needs a 'pnl' key
                 recent_trades = [
-                    {'pnl': t.get('pnl', t.get('realized_pnl', 0))}
+                    {"pnl": t.get("pnl", t.get("realized_pnl", 0))}
                     for t in (recent_trades_raw or [])
                 ]
                 edge = compute_rolling_edge(recent_trades)
 
-                if edge.get('sufficient_data'):
+                if edge.get("sufficient_data"):
                     # Dollar value of one tick per instrument = $/point × tick_size
                     # MES: $5/pt × 0.25 = $1.25   MNQ: $2/pt × 0.25 = $0.50
                     # MCL: $100/pt × 0.01 = $1.00  MGC: $10/pt × 0.10 = $1.00
-                    tick_value_map = {'MES': 1.25, 'MNQ': 0.50, 'MCL': 1.00, 'MGC': 1.00}
+                    tick_value_map = {"MES": 1.25, "MNQ": 0.50, "MCL": 1.00, "MGC": 1.00}
                     tick_value = tick_value_map.get(symbol, 1.25)
 
                     # ATR in ticks (atr in points / tick_size in points)
-                    tick_size_map = {'MES': 0.25, 'MNQ': 0.25, 'MCL': 0.01, 'MGC': 0.10}
+                    tick_size_map = {"MES": 0.25, "MNQ": 0.25, "MCL": 0.01, "MGC": 0.10}
                     tick_size = tick_size_map.get(symbol, 0.25)
                     atr_ticks = atr / tick_size if atr and atr > 0 else 60.0
 
                     sizing_info = calculate_half_kelly_size(
                         capital=account_value,
-                        win_rate=edge['win_rate'],
-                        avg_win_loss_ratio=edge['avg_win_loss_ratio'],
+                        win_rate=edge["win_rate"],
+                        avg_win_loss_ratio=edge["avg_win_loss_ratio"],
                         tick_value=tick_value,
                         atr_ticks=atr_ticks,
                         max_contracts=max_contracts,
                     )
-                    sizing_method = sizing_info.get('method', 'half_kelly')
+                    sizing_method = sizing_info.get("method", "half_kelly")
 
                     # Override contracts if Half-Kelly produced a valid result
-                    hk_contracts = sizing_info.get('contracts')
-                    if hk_contracts and sizing_method == 'half_kelly':
+                    hk_contracts = sizing_info.get("contracts")
+                    if hk_contracts and sizing_method == "half_kelly":
                         logger.info(
                             "[Trader] Half-Kelly sizing for %s: "
                             "kelly=%.4f half_kelly=%.4f risk_pct=%.2f%% => %d contract(s) "
                             "(was %d fixed-fractional)",
                             symbol,
-                            sizing_info.get('kelly_fraction', 0),
-                            sizing_info.get('half_kelly', 0),
-                            sizing_info.get('risk_pct', 0) * 100,
+                            sizing_info.get("kelly_fraction", 0),
+                            sizing_info.get("half_kelly", 0),
+                            sizing_info.get("risk_pct", 0) * 100,
                             hk_contracts,
                             position_size.contracts,
                         )
@@ -444,14 +503,13 @@ class TraderAgent:
                         )
                 else:
                     logger.debug(
-                        "[Trader] Half-Kelly skipped for %s: only %d closed trades "
-                        "(need ≥ 10).",
+                        "[Trader] Half-Kelly skipped for %s: only %d closed trades " "(need ≥ 10).",
                         symbol,
-                        edge.get('n_trades', 0),
+                        edge.get("n_trades", 0),
                     )
             except Exception as _hk_err:
                 # Half-Kelly is optional — never block a trade on sizing errors
-                sizing_method = 'fixed_fractional_fallback'
+                sizing_method = "fixed_fractional_fallback"
                 sizing_info = {}
                 logger.warning(
                     "[Trader] Half-Kelly sizing failed for %s (non-fatal): %s",
@@ -474,7 +532,8 @@ class TraderAgent:
                     # VIX EXTREME (≥ 40) — force HOLD immediately, no further sizing
                     logger.warning(
                         "[Trader] %s: VIX EXTREME (%.1f ≥ 40) — trading paused, returning HOLD",
-                        symbol, _vix_val,
+                        symbol,
+                        _vix_val,
                     )
                     return self._hold_decision(
                         symbol=symbol,
@@ -485,8 +544,11 @@ class TraderAgent:
                 logger.info(
                     "[Trader] VIX regime %s (%.1f): position sizing multiplier %.2fx "
                     "— contracts %d → %d",
-                    _vix_regime, _vix_val, _vix_size_pct,
-                    position_size.contracts, _vix_adjusted,
+                    _vix_regime,
+                    _vix_val,
+                    _vix_size_pct,
+                    position_size.contracts,
+                    _vix_adjusted,
                 )
                 position_size.contracts = _vix_adjusted
         except Exception as _vix_err:
@@ -524,23 +586,26 @@ class TraderAgent:
         except (TypeError, ValueError):
             _debate_score = 0.0
 
-        _high_conviction_bypass = (
-            abs(_debate_score) > 0.30 and _confluence_direction is not None
-        )
+        _high_conviction_bypass = abs(_debate_score) > 0.30 and _confluence_direction is not None
         if _high_conviction_bypass:
             logger.info(
                 "[Trader] %s: high-conviction bypass — |debate_score|=%.3f > 0.30, "
                 "skipping confluence gate for %s verdict",
-                symbol, abs(_debate_score), _debate_verdict,
+                symbol,
+                abs(_debate_score),
+                _debate_verdict,
             )
 
         _confluence_hold = False
         if _confluence_direction is not None and not _high_conviction_bypass:
-            confluence_mult = self._compute_confluence_multiplier(analyst_reports, _confluence_direction)
+            confluence_mult = self._compute_confluence_multiplier(
+                analyst_reports, _confluence_direction
+            )
             if confluence_mult == 0.0:
                 logger.warning(
                     "[Trader] %s: insufficient confluence for %s verdict — overriding to HOLD",
-                    symbol, _debate_verdict,
+                    symbol,
+                    _debate_verdict,
                 )
                 _confluence_hold = True
             else:
@@ -550,7 +615,10 @@ class TraderAgent:
                 if _new_contracts != _base_contracts:
                     logger.info(
                         "[Trader] %s: confluence_mult=%.2f → contracts %d → %d",
-                        symbol, confluence_mult, _base_contracts, _new_contracts,
+                        symbol,
+                        confluence_mult,
+                        _base_contracts,
+                        _new_contracts,
                     )
                     position_size.contracts = _new_contracts
 
@@ -567,6 +635,7 @@ class TraderAgent:
             try:
                 _advisor = _get_advisor()
                 if _advisor is not None and _advisor.is_available():
+
                     def _extract_thesis(report_obj, thesis_key):
                         if report_obj is None:
                             return ""
@@ -609,18 +678,23 @@ class TraderAgent:
                             logger.info(
                                 "[Trader] %s: advisor tiebreak OVERRIDES confluence hold "
                                 "(verdict=%s, confidence=%.2f) — executing at probe size (1 contract)",
-                                symbol, _verdict_obj.verdict, _verdict_obj.confidence,
+                                symbol,
+                                _verdict_obj.verdict,
+                                _verdict_obj.confidence,
                             )
                         else:
                             logger.info(
                                 "[Trader] %s: advisor agrees with confluence hold "
                                 "(advisor=%s, debate=%s) — honouring HOLD",
-                                symbol, _verdict_obj.verdict, _debate_verdict,
+                                symbol,
+                                _verdict_obj.verdict,
+                                _debate_verdict,
                             )
             except Exception as _adv_err:
                 logger.warning(
                     "[Trader] %s: confluence-advisor consult raised: %s",
-                    symbol, _adv_err,
+                    symbol,
+                    _adv_err,
                 )
 
             if not _advisor_override:
@@ -629,7 +703,11 @@ class TraderAgent:
                     reasoning=(
                         f"Confluence gate: debate verdict={_debate_verdict} but insufficient "
                         "Stage 1 agent agreement. Forcing HOLD to avoid low-confluence trade."
-                        + (f" Advisor consulted: {_advisor_reasoning[:120]}" if _advisor_reasoning else "")
+                        + (
+                            f" Advisor consulted: {_advisor_reasoning[:120]}"
+                            if _advisor_reasoning
+                            else ""
+                        )
                     ),
                     risk_notes="Less than 40% of analyst agents agreed with the debate direction.",
                 )
@@ -727,10 +805,14 @@ class TraderAgent:
                             logger.info(
                                 "[Trader] %s: Advisor refined low-confidence trade. "
                                 "confidence: %.2f → %.2f",
-                                symbol, float(result.get("confidence", 0.5)), refined.confidence,
+                                symbol,
+                                float(result.get("confidence", 0.5)),
+                                refined.confidence,
                             )
                 except Exception as _adv_err:
-                    logger.warning("[Trader] Advisor consultation raised for %s: %s", symbol, _adv_err)
+                    logger.warning(
+                        "[Trader] Advisor consultation raised for %s: %s", symbol, _adv_err
+                    )
                     # graceful: continue with original decision
 
             # Corey-contradiction override (Phase 4 D3):
@@ -773,7 +855,10 @@ class TraderAgent:
                         if opus_verdict == "HOLD" or opus_verdict == opposite_side:
                             logger.info(
                                 "[Trader] %s Corey contradiction → Opus override to HOLD "
-                                "(opus=%s, trader=%s)", symbol, opus_verdict, trader_side,
+                                "(opus=%s, trader=%s)",
+                                symbol,
+                                opus_verdict,
+                                trader_side,
                             )
                             decision = self._hold_decision(
                                 symbol=symbol,
@@ -799,18 +884,24 @@ class TraderAgent:
                             logger.info(
                                 "[Trader] %s Corey contradiction → Opus proceed, "
                                 "quantity %d → %d",
-                                symbol, original_qty, decision.quantity,
+                                symbol,
+                                original_qty,
+                                decision.quantity,
                             )
                 except Exception as _contra_err:
                     logger.warning(
                         "[Trader] Corey-contradiction advisor raised for %s: %s",
-                        symbol, _contra_err,
+                        symbol,
+                        _contra_err,
                     )
                     # graceful: continue with original decision
 
             logger.info(
                 "[Trader] %s decision: action=%s confidence=%.2f signal_score=%.2f",
-                symbol, decision.action, decision.confidence, decision.signal_score,
+                symbol,
+                decision.action,
+                decision.confidence,
+                decision.signal_score,
             )
             return decision
 
@@ -831,7 +922,9 @@ class TraderAgent:
         """Build a context payload for the tool inspection manager from existing trader inputs."""
         technical_report = analyst_reports.get("technical", {})
         fundamental_report = analyst_reports.get("fundamental", {})
-        indicators = technical_report.get("indicators", {}) if isinstance(technical_report, dict) else {}
+        indicators = (
+            technical_report.get("indicators", {}) if isinstance(technical_report, dict) else {}
+        )
 
         recent_volume = None
         if isinstance(technical_report, dict):
@@ -888,13 +981,17 @@ class TraderAgent:
             "quantity": decision.quantity,
         }
         inspection_result, messages = manager.inspect_all("ib_order", args, context)
-        message_text = "; ".join(message for message in messages if message) or "tool inspection triggered"
+        message_text = (
+            "; ".join(message for message in messages if message) or "tool inspection triggered"
+        )
 
         if inspection_result.value == "allow":
             return decision, False
 
         if inspection_result.value == "deny":
-            logger.warning("[Trader] %s: tool inspection denied execution — %s", symbol, message_text)
+            logger.warning(
+                "[Trader] %s: tool inspection denied execution — %s", symbol, message_text
+            )
             return (
                 self._hold_decision(
                     symbol=symbol,
@@ -971,7 +1068,10 @@ class TraderAgent:
         decision.reasoning += f"\n\n[Tool Inspection] {message_text}"
         if refined.notes:
             decision.reasoning += f"\n[Advisor Approval] {refined.notes}"
-        logger.info("[Trader] %s: tool inspection required approval and advisor allowed continuation", symbol)
+        logger.info(
+            "[Trader] %s: tool inspection required approval and advisor allowed continuation",
+            symbol,
+        )
         return decision, True
 
     # ── Prompt Construction ────────────────────────────────────────────────
@@ -983,14 +1083,25 @@ class TraderAgent:
         analyst_reports: dict,
         safety_status: dict,
         position_size: PositionSizeResult,
+        working_memory: str = "",
     ) -> str:
         from config import settings  # local import to avoid circular deps
 
         technical = analyst_reports.get("technical", {})
         news = analyst_reports.get("news", {})
         social = analyst_reports.get("social", {})
-        fundamental = analyst_reports.get("fundamental", {})
         forward_recorder = analyst_reports.get("forward_recorder_metric")
+        regime_status = analyst_reports.get("regime_status")
+
+        # Phase 3.5: Working Memory Integration
+        memory_section = ""
+        if working_memory:
+            memory_section = f"""
+=== TRADER WORKING MEMORY (PHASE 3.5) ===
+The following observations and lessons were recalled from your prior sessions for {symbol}:
+{working_memory}
+Include these cross-session insights in your reasoning.
+"""
 
         # Safety context
         daily_pnl = safety_status.get("daily_pnl", 0.0)
@@ -1056,39 +1167,59 @@ Stop multiplier: {stop_mult}× ATR | T1 multiplier: {t1_mult}× ATR | T2 multipl
 If ATR becomes available, calculate: stop = entry ± ({stop_mult} × ATR), T1 = entry ± ({t1_mult} × ATR).
 Return null for entry_price, stop_price, target_1, target_2, atr_used, rr_ratio when ATR is unknown."""
 
+        # Build the StarkTPO block only when a real signal is present.
+        # When stark_signal is absent (StarkTPO skipped or not ready), omit the
+        # entire HARD CONSTRAINT section so no spurious HOLD directive fires.
+        tpo_section = ""
+        if technical.get("stark_signal"):
+            tpo_section = (
+                "=== STARK-TPO ALGORITHMIC MATRIX (HARD CONSTRAINT) ===\n"
+                f"TPO Algorithmic Signal: {technical.get('stark_signal')}\n"
+                f"TPO Sub-Structure: {technical.get('stark_structure', 'UNKNOWN')}\n"
+                "\n"
+                "CRITICAL DIRECTIVE: The Stark-TPO algorithm has computed the raw math edge.\n"
+                "If the TPO Algorithmic Signal is 'HOLD', you MUST output 'hold'.\n"
+                "If the TPO Algorithmic Signal is 'LONG' or 'SHORT', weight it heavily but still apply risk judgment.\n"
+                "\n"
+            )
+
         return f"""Make a trade decision for {symbol}.
 
-=== BULL/BEAR DEBATE RESULT ===
-Verdict: {debate_result.get("verdict", "N/A")}
-Bull score: {debate_result.get("bull_score", "N/A")}
-Bear score: {debate_result.get("bear_score", "N/A")}
-Debate summary: {debate_result.get("summary", "N/A")}
-Key bull arguments: {debate_result.get("bull_arguments", [])}
-Key bear arguments: {debate_result.get("bear_arguments", [])}
+{memory_section}
+{tpo_section}=== DETERMINISTIC REGIME-BASED ROUTER (PHASE 4) ===
+Current Regime: {getattr(regime_status, 'regime', 'NEUTRAL').value.upper() if regime_status else 'NEUTRAL'}
+Description: {getattr(regime_status, 'description', 'No deterministic regime status available.') if regime_status else 'None'}
+ADX: {getattr(regime_status, 'adx', 0.0):.1f} | ATR Ratio: {getattr(regime_status, 'atr_ratio', 1.0):.2f}
 
-=== TECHNICAL ANALYSIS ===
-Signal: {technical.get("signal", "N/A")} | Confidence: {technical.get("confidence", "N/A")}
-Trend: {technical.get("trend", "N/A")} | Regime: {technical.get("regime", "N/A")}
-Current price: {technical.get("current_price", "N/A")}
-Support levels: {technical.get("support_levels", [])}
-Resistance levels: {technical.get("resistance_levels", [])}
-Summary: {technical.get("summary", "N/A")}
+ROUTING DIRECTIVES:
+- If regime=TRENDING: Prioritize 'Breakout Specialist' and 'STARK-TPO Alignment'.
+- If regime=RANGING: Prioritize 'Harmonic Vision' (reversal zones) and 'STC/Oscillator' confluence. Expect mean-reversion.
+- If regime=VOLATILE: Be extremely conservative. Require higher confidence (>0.8) for any entry.
 
-=== NEWS ANALYSIS ===
-Signal: {news.get("signal", "N/A")} | Confidence: {news.get("confidence", "N/A")}
-Event type: {news.get("event_type", "none")}
-Bullish catalysts: {news.get("catalysts_bull", [])}
-Bearish catalysts: {news.get("catalysts_bear", [])}
-Summary: {news.get("summary", "N/A")}
+=== NEWS & SENTIMENT OVERLAY ===
+News Event Type: {news.get("event_type", "none")}
+Bullish Catalysts: {news.get("catalysts_bull", [])}
+Bearish Catalysts: {news.get("catalysts_bear", [])}
+Social Signal: {social.get("signal", "N/A")}
 
-=== SOCIAL SENTIMENT ===
-Signal: {social.get("signal", "N/A")} | Confidence: {social.get("confidence", "N/A")}
-Summary: {social.get("summary", "N/A")}
+=== BREAKOUT SPECIALIST ENRICHMENT (PHASE 4) ===
+Breakout Status: {analyst_reports.get("breakout", {}).get("status", "N/A")} ({analyst_reports.get("breakout", {}).get("side", "N/A")})
+Value Area (VAH/VAL): {analyst_reports.get("breakout", {}).get("vah", "N/A")} / {analyst_reports.get("breakout", {}).get("val", "N/A")}
+POC: {analyst_reports.get("breakout", {}).get("poc", "N/A")}
+Signal: {analyst_reports.get("breakout", {}).get("signal", 0.0)} (weight: HIGH for breakouts)
 
-=== FUNDAMENTAL ANALYSIS ===
-Signal: {fundamental.get("signal", "N/A")} | Confidence: {fundamental.get("confidence", "N/A")}
-Summary: {fundamental.get("summary", "N/A")}
+=== HARMONIC VISION ENRICHMENT (PHASE 4) ===
+Patterns: {analyst_reports.get("harmonic", {}).get("summary", "None detected")}
+Active Patterns: {analyst_reports.get("harmonic", {}).get("patterns", [])}
+Signal: {analyst_reports.get("harmonic", {}).get("signal", 0.0)} (weight: HIGH for reversal confluence)    
+
+=== OPTIONS YIELD OVERLAY (PHASE 5) ===
+Options Signal: {analyst_reports.get("options", {}).get("signal", 0.0)}
+Best Spread: {json.dumps(analyst_reports.get("options", {}).get("best_spread"), indent=2)}
+Options Summary: {analyst_reports.get("options", {}).get("summary", "No options spreads available.")}
+
 {self._forward_recorder_section(forward_recorder)}
+
 === PORTFOLIO / RISK CONTEXT ===
 Live trading enabled: {live_enabled}
 Current equity: ${current_equity:,.2f}
@@ -1123,7 +1254,7 @@ Respond with JSON in exactly this format:
   "time_in_force": "<day|gtc|ioc>",
   "signal_score": <float -1.0 to 1.0>,
   "confidence": <float 0.0 to 1.0>,
-  "reasoning": "<thorough explanation of why this action was chosen, including R:R assessment>",
+  "reasoning": "<thorough explanation of why this action was chosen, integrating TPO structure with News sentiment>",
   "risk_notes": "<what could go wrong, key risks to monitor>"
 }}"""
 
@@ -1231,6 +1362,12 @@ Respond with JSON in exactly this format:
             rr_str = f" | R:R={rr_ratio:.2f}" if rr_ratio else ""
             reasoning = f"{reasoning}\n\n[Position Sizing] {position_size.reasoning}{rr_str}"
 
+        # Phase 5.4: Options Spread Fields
+        is_spread = bool(result.get("is_spread", False))
+        short_opt = result.get("short_option_symbol")
+        long_opt = result.get("long_option_symbol")
+        net_credit = result.get("net_credit")
+
         return TradeDecision(
             symbol=symbol,
             action=action,
@@ -1242,6 +1379,10 @@ Respond with JSON in exactly this format:
             target_1=target_1,
             target_2=target_2,
             atr_used=atr_used,
+            is_spread=is_spread,
+            short_option_symbol=short_opt,
+            long_option_symbol=long_opt,
+            net_credit=net_credit,
             rr_ratio=rr_ratio,
             time_in_force=time_in_force,
             signal_score=float(result.get("signal_score", 0.0)),
@@ -1251,7 +1392,6 @@ Respond with JSON in exactly this format:
             timestamp=datetime.now(),
             sizing_method=sizing_method,
         )
-
     @staticmethod
     def _forward_recorder_section(metric: Optional[dict]) -> str:
         """Render the MES forward-recorder feedback block when present.
@@ -1288,7 +1428,9 @@ Respond with JSON in exactly this format:
             f"a low hit rate warrants extra caution on high-conviction entries.\n"
         )
 
-    def _compute_confluence_multiplier(self, analyst_reports: dict, verdict_direction: str) -> float:
+    def _compute_confluence_multiplier(
+        self, analyst_reports: dict, verdict_direction: str
+    ) -> float:
         """
         Count how many Stage 1 agents agree with the verdict direction.
 
@@ -1319,10 +1461,10 @@ Respond with JSON in exactly this format:
                 continue
             # Try attribute access first (dataclass), then dict key access
             signal = None
-            for field in ("signal", "bias", "sentiment_score"):
-                signal = getattr(report, field, None)
+            for field_name in ("signal", "bias", "sentiment_score"):
+                signal = getattr(report, field_name, None)
                 if signal is None and isinstance(report, dict):
-                    signal = report.get(field)
+                    signal = report.get(field_name)
                 if signal is not None:
                     break
             if signal is None:
@@ -1349,11 +1491,11 @@ Respond with JSON in exactly this format:
         elif ratio >= 0.4:
             return 0.75
         elif ratio >= 0.2:
-            return 0.5   # Fix A (2026-04-10) — minority support still permits a half-size trade
+            return 0.5  # Fix A (2026-04-10) — minority support still permits a half-size trade
         elif ratio > 0.0:
             return 0.25  # Fix A (2026-04-10) — lone-voice support permits a quarter-size probe
         else:
-            return 0.0   # Zero agreement still forces HOLD (upstream Fix C may still override via advisor)
+            return 0.0  # Zero agreement still forces HOLD (upstream Fix C may still override via advisor)
 
     def _hold_decision(self, symbol: str, reasoning: str, risk_notes: str) -> TradeDecision:
         return TradeDecision(

@@ -5,11 +5,10 @@ JARVIS TRADER — Walk-Forward Validation CLI Runner
 Executes rolling walk-forward validation to detect overfitting in the parameter
 optimizer. Trains on historical windows and tests out-of-sample performance.
 
-Usage:
-    cd engine
-    .venv/Scripts/python -m backtest.run_walk_forward --symbol SPY --interval 1h
-    .venv/Scripts/python -m backtest.run_walk_forward --symbol MES --interval 1h --train-months 6 --test-months 2
-    .venv/Scripts/python -m backtest.run_walk_forward --symbol MCL --interval 1h --adaptive-regime --volume-filter
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/run_walk_forward.py --symbol MES --interval 1h
+    .venv/Scripts/python backtest/run_walk_forward.py --symbol MES --interval 1h --train-months 6 --test-months 2
+    .venv/Scripts/python backtest/run_walk_forward.py --symbol MCL --interval 1h --adaptive-regime --volume-filter
 
 Core Metrics:
     - WFE (Walk-Forward Efficiency) = OOS Sharpe / IS Sharpe

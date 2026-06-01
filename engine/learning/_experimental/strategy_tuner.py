@@ -7,6 +7,8 @@ Safety parameters are NEVER modified (Tier 3 only).
 import logging
 from dataclasses import dataclass
 
+from agents.research_agent import ResearchAgent, StrategyHypothesis, is_research_agent_enabled
+
 logger = logging.getLogger(__name__)
 
 SAFETY_PARAMS = {
@@ -200,3 +202,49 @@ class StrategyTuner:
 
         min_val, max_val, _ = TUNABLE_PARAMS[param_name]
         return max(min_val, min(max_val, suggested_value))
+
+    async def generate_hypothesis(
+        self,
+        symbol: str,
+        recent_trades: list[dict] | None = None,
+        current_params: dict | None = None,
+    ) -> StrategyHypothesis | None:
+        """Generate a strategy hypothesis via ResearchAgent.
+
+        Off-pipeline path — called after backtest completion or at scheduled
+        intervals. Returns None when ENABLE_RESEARCH_AGENT is unset (default).
+
+        Args:
+            symbol: e.g. "MES", "MNQ", "MCL".
+            recent_trades: optional last-N trade dicts to seed context.
+            current_params: optional current strategy params dict.
+
+        Returns:
+            A validated StrategyHypothesis, or None if the agent is disabled.
+        """
+        if not is_research_agent_enabled():
+            logger.debug("ResearchAgent disabled (ENABLE_RESEARCH_AGENT not set)")
+            return None
+        try:
+            researcher = ResearchAgent()
+            context: dict = {
+                "recent_trades": recent_trades or [],
+                "current_params": current_params or {},
+                "suggestions": (
+                    self.suggest_adjustments(recent_trades or [], current_params or {})
+                    if (recent_trades is not None and current_params is not None)
+                    else []
+                ),
+                "symbol": symbol,
+            }
+            hypothesis = await researcher.propose(symbol, context=context)
+            logger.info(
+                "[ResearchAgent] generated hypothesis %r for %s (confidence=%.2f)",
+                hypothesis.name,
+                symbol,
+                hypothesis.confidence,
+            )
+            return hypothesis
+        except Exception as exc:
+            logger.warning("[ResearchAgent] hypothesis generation failed: %s", exc)
+            return None

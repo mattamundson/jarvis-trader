@@ -34,16 +34,19 @@ import logging
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ._mixins_alerts import AlertsMixin
 from ._mixins_analytics import AnalyticsMixin
+from ._mixins_canaries import CanariesMixin
 from ._mixins_decisions import DecisionsMixin
 from ._mixins_journal import JournalMixin
 from ._mixins_llm_costs import LLMCostsMixin
+from ._mixins_memory import MemoryMixin
 from ._mixins_pending_approvals import PendingApprovalsMixin
 from ._mixins_pnl import DailyPnLMixin
 from ._mixins_positions import PositionsMixin
+from ._mixins_reviews import ReviewsMixin
 from ._mixins_settings import SettingsMixin
 from ._mixins_system_state import SystemStateMixin
 from ._mixins_trades import TradesMixin
@@ -55,6 +58,7 @@ logger = logging.getLogger("jarvis_trader.database")
 class DatabaseManager(
     TradesMixin,
     AnalyticsMixin,
+    CanariesMixin,
     DecisionsMixin,
     DailyPnLMixin,
     PositionsMixin,
@@ -64,6 +68,8 @@ class DatabaseManager(
     AlertsMixin,
     PendingApprovalsMixin,
     LLMCostsMixin,
+    ReviewsMixin,
+    MemoryMixin,
 ):
     """
     Thread-safe SQLite manager for JARVIS TRADER.
@@ -102,8 +108,8 @@ class DatabaseManager(
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA synchronous=NORMAL")  # safe with WAL, faster than FULL
-        conn.execute("PRAGMA cache_size=10000")    # 10000 pages ≈ 40 MB default page size
-        conn.execute("PRAGMA temp_store=MEMORY")   # keep temp tables in RAM
+        conn.execute("PRAGMA cache_size=10000")  # 10000 pages ≈ 40 MB default page size
+        conn.execute("PRAGMA temp_store=MEMORY")  # keep temp tables in RAM
         return conn
 
     # -- Lifecycle ------------------------------------------------------------
@@ -126,6 +132,44 @@ class DatabaseManager(
 
     # -- Diagnostics ----------------------------------------------------------
 
+    # -- Low-level Query API (Safe wrappers) ----------------------------------
+    # Use these for custom queries in learning/consolidator modules where
+    # a dedicated mixin method doesn't yet exist.
+
+    def execute(self, sql: str, params: tuple = ()) -> int:
+        """
+        Execute a DML/DDL statement (INSERT, UPDATE, DELETE, CREATE).
+        Returns the number of rows affected (rowcount).
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                cur = conn.execute(sql, params)
+                conn.commit()
+                return cur.rowcount
+            finally:
+                conn.close()
+
+    def fetch_one(self, sql: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
+        """Execute a query and return the first row as a dict, or None."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(sql, params).fetchone()
+                return dict(row) if row else None
+            finally:
+                conn.close()
+
+    def fetch_all(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
+        """Execute a query and return all rows as a list of dicts."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(sql, params).fetchall()
+                return [dict(r) for r in rows]
+            finally:
+                conn.close()
+
     def health_check(self) -> Dict[str, Any]:
         """
         Return a dict with row counts per table and the current schema version.
@@ -140,6 +184,7 @@ class DatabaseManager(
             "settings",
             "trade_journal",
             "pipeline_runs",
+            "agent_memory",
         ]
         counts: Dict[str, int] = {}
         schema_version: int = 0

@@ -249,7 +249,7 @@ async def get_hp_levels(
             "symbol": symbol.upper(),
             "timeframe": timeframe,
             "hp_ou_level": round(hp_ou, 4) if hp_ou else None,
-            "level_ladder": [round(l, 4) for l in levels],
+            "level_ladder": [round(l, 4) for l in levels],  # noqa: E741  # OHLC convention
             "swing_structure": {
                 "a_price": round(swing.a_price, 4),
                 "b_price": round(swing.b_price, 4),
@@ -261,7 +261,7 @@ async def get_hp_levels(
         raise
     except Exception as e:
         logger.error("HP levels failed for %s: %s", symbol, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/screen", response_model=ScanResponse)
@@ -346,7 +346,7 @@ async def check_confluence(
         import httpx
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(
-                f"http://localhost:8010/decisions/recent",
+                "http://localhost:8010/decisions/recent",
                 params={"limit": 5},
             )
             if resp.status_code == 200:

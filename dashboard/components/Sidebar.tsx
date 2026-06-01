@@ -19,6 +19,7 @@ import {
   History,
   Layers,
   LayoutDashboard,
+  LayoutGrid,
   LineChart,
   Menu,
   MessageSquare,
@@ -94,6 +95,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "System",
     items: [
+      { label: "Master", href: "/master", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { label: "Health", href: "/health", icon: <HeartPulse className="h-3.5 w-3.5" /> },
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },
       { label: "Settings", href: "/settings", icon: <Settings className="h-3.5 w-3.5" /> },

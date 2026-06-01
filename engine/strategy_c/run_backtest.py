@@ -11,19 +11,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import sys
 import warnings
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
@@ -31,7 +29,7 @@ warnings.filterwarnings("ignore")
 REPO_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from engine.strategy_c.engine import StrategyCEngine, StrategyCConfig
+from engine.strategy_c.engine import StrategyCConfig, StrategyCEngine  # noqa: E402
 
 OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -240,8 +238,8 @@ def _plot_metrics_table(ax, full, is_m, oos_m, retention):
         rows.append(["──────────", "──────", "──────", "──────"])
         sr_ret = retention.get("sharpe_retention_pct", 0)
         cagr_ret = retention.get("cagr_retention_pct", 0)
-        rows.append([f"OOS Sharpe Ret", f"{sr_ret:.0f}%", "", ""])
-        rows.append([f"OOS CAGR Ret  ", f"{cagr_ret:.0f}%", "", ""])
+        rows.append(["OOS Sharpe Ret", f"{sr_ret:.0f}%", "", ""])
+        rows.append(["OOS CAGR Ret  ", f"{cagr_ret:.0f}%", "", ""])
 
     table = ax.table(
         cellText=rows[1:],
@@ -253,7 +251,7 @@ def _plot_metrics_table(ax, full, is_m, oos_m, retention):
     table.set_fontsize(8)
     table.scale(1.0, 1.4)
 
-    for (row, col), cell in table.get_celld().items():
+    for (row, _col), cell in table.get_celld().items():
         cell.set_facecolor(PANEL_BG if row % 2 == 0 else "#1c2330")
         cell.set_edgecolor("#333333")
         if row == 0:
@@ -347,10 +345,10 @@ def _plot_allocation_timeline(ax, alloc_df):
                 color=GRAY, transform=ax.transAxes)
         return
 
-    asset_colors = {
-        "QQQ": TEAL, "SPY": BLUE, "EFA": PURPLE, "IEF": ORANGE,
-        "SHY": GRAY, "USMV": GREEN, "MTUM": GOLD, "XLK": "#FF6B6B", "XLV": "#45B7D1",
-    }
+    # asset_colors palette retained inline below for the stacked-allocation
+    # plot when wired (currently only the regime bands are rendered):
+    # QQQ=TEAL SPY=BLUE EFA=PURPLE IEF=ORANGE SHY=GRAY USMV=GREEN MTUM=GOLD
+    # XLK=#FF6B6B XLV=#45B7D1.
 
     # Parse holdings strings to compute stacked allocation
     risk_on_weeks = (alloc_df["risk_regime"] == "RISK_ON").sum()
@@ -404,7 +402,7 @@ def _plot_vol_regime_dist(ax, vol_df):
     counts = [(rv.between(lo, hi)).mean() * 100 for lo, hi in thresholds]
     bars = ax.bar(labels, counts, color=colors, alpha=0.8)
 
-    for bar, count in zip(bars, counts):
+    for bar, count in zip(bars, counts, strict=False):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
                 f"{count:.0f}%", ha="center", va="bottom", fontsize=7.5, color=WHITE)
 

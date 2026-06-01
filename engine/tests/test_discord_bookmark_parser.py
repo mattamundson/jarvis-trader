@@ -26,11 +26,12 @@ from discord.models import Bookmark
 from discord.parser import CHANNEL_MAP
 from discord.storage import init_tables, insert_bookmark
 
-
 JARVIS_CHANNEL = "1490851279180660819"
 
 
-def _msg(id_: str, content: str, timestamp: str = "2026-04-16T08:49:26.064-05:00", embeds=None) -> dict:
+def _msg(
+    id_: str, content: str, timestamp: str = "2026-04-16T08:49:26.064-05:00", embeds=None
+) -> dict:
     return {
         "id": id_,
         "content": content,
@@ -62,16 +63,12 @@ def test_first_url_wins_when_multiple():
 
 
 def test_trailing_punctuation_stripped():
-    parsed = bookmark_parser.parse_channel(
-        [_msg("3", "see (https://github.com/foo/bar),")]
-    )
+    parsed = bookmark_parser.parse_channel([_msg("3", "see (https://github.com/foo/bar),")])
     assert parsed[0]["url"] == "https://github.com/foo/bar"
 
 
 def test_www_prefix_dropped_from_domain():
-    parsed = bookmark_parser.parse_channel(
-        [_msg("4", "https://www.example.com/article")]
-    )
+    parsed = bookmark_parser.parse_channel([_msg("4", "https://www.example.com/article")])
     assert parsed[0]["domain"] == "example.com"
     assert parsed[0]["source_type"] == "other"
 
@@ -138,9 +135,7 @@ def test_insert_bookmark_and_idempotent_reimport():
         db_path = str(Path(td) / "test.db")
         init_tables(db_path)
 
-        parsed = bookmark_parser.parse_channel(
-            [_msg("10", "https://github.com/foo/bar")]
-        )
+        parsed = bookmark_parser.parse_channel([_msg("10", "https://github.com/foo/bar")])
         bm = Bookmark(**parsed[0])
 
         conn = sqlite3.connect(db_path)
@@ -168,11 +163,14 @@ def test_channel_map_has_jarvis_entry():
 # (clusterer, vault renderer, master-jarvis reader) can reason about WHY a
 # link was dropped, not just the link itself.
 
+
 def test_content_captured_from_message():
     parsed = bookmark_parser.parse_channel(
         [_msg("c1", "this looks useful for regime detection https://github.com/foo/bar")]
     )
-    assert parsed[0]["content"] == "this looks useful for regime detection https://github.com/foo/bar"
+    assert (
+        parsed[0]["content"] == "this looks useful for regime detection https://github.com/foo/bar"
+    )
 
 
 def test_author_metadata_captured():
@@ -183,11 +181,67 @@ def test_author_metadata_captured():
 
 
 def test_content_missing_author_safe():
-    msg = {"id": "c3", "content": "https://x.com/foo", "timestamp": "2026-04-16T08:49:26.064-05:00", "embeds": []}
+    msg = {
+        "id": "c3",
+        "content": "https://x.com/foo",
+        "timestamp": "2026-04-16T08:49:26.064-05:00",
+        "embeds": [],
+    }
     # No "author" key at all — parser must not raise
     parsed = bookmark_parser.parse_channel([msg])
     assert parsed[0]["author_id"] is None
     assert parsed[0]["author_name"] is None
+
+
+def test_attachment_urls_extracted_when_present():
+    """Path B (2026-05-20): DiscordChatExporter `attachments` list is captured.
+
+    Voice memos / PDFs / images attached to a message are joined as a
+    space-separated URL string in `attachment_urls`, matching the format
+    deep_analyzer.handlers._split_urls accepts.
+    """
+    msg = {
+        "id": "att1",
+        "content": "voice memo + chart https://github.com/foo/bar",
+        "timestamp": "2026-05-20T10:00:00Z",
+        "embeds": [],
+        "author": {"id": "1", "name": "amoszn"},
+        "attachments": [
+            {"url": "https://cdn.discordapp.com/attachments/1/2/memo.wav", "fileName": "memo.wav"},
+            {
+                "url": "https://cdn.discordapp.com/attachments/1/3/chart.png",
+                "fileName": "chart.png",
+            },
+        ],
+    }
+    parsed = bookmark_parser.parse_channel([msg])
+    assert len(parsed) == 1
+    assert parsed[0]["attachment_urls"] == (
+        "https://cdn.discordapp.com/attachments/1/2/memo.wav "
+        "https://cdn.discordapp.com/attachments/1/3/chart.png"
+    )
+
+
+def test_attachment_urls_none_when_no_attachments():
+    parsed = bookmark_parser.parse_channel([_msg("noatt", "https://github.com/foo/bar")])
+    assert parsed[0]["attachment_urls"] is None
+
+
+def test_attachment_with_missing_url_ignored():
+    """Tolerate malformed attachment entries — drop those without `url`."""
+    msg = {
+        "id": "att2",
+        "content": "https://github.com/foo/bar",
+        "timestamp": "2026-05-20T10:00:00Z",
+        "embeds": [],
+        "author": {"id": "1", "name": "amoszn"},
+        "attachments": [
+            {"fileName": "no-url.txt"},  # malformed
+            {"url": "https://cdn.discordapp.com/attachments/1/4/ok.png"},
+        ],
+    }
+    parsed = bookmark_parser.parse_channel([msg])
+    assert parsed[0]["attachment_urls"] == "https://cdn.discordapp.com/attachments/1/4/ok.png"
 
 
 def test_real_dce_author_shape_uses_username():
@@ -268,7 +322,8 @@ def test_init_tables_adds_content_columns_on_pre_workstream_a_db():
         # Pre-Workstream-A DDL: 8 columns, no content/author
         conn = sqlite3.connect(db_path)
         try:
-            conn.executescript("""
+            conn.executescript(
+                """
                 CREATE TABLE discord_bookmarks (
                     message_id TEXT PRIMARY KEY,
                     channel_id TEXT NOT NULL,
@@ -280,7 +335,8 @@ def test_init_tables_adds_content_columns_on_pre_workstream_a_db():
                     embed_description TEXT,
                     imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
-            """)
+            """
+            )
             conn.execute(
                 "INSERT INTO discord_bookmarks (message_id, channel_id, posted_at, url) "
                 "VALUES (?, ?, ?, ?)",
@@ -296,7 +352,9 @@ def test_init_tables_adds_content_columns_on_pre_workstream_a_db():
         # New columns exist; legacy row has NULL values (not errors)
         conn = sqlite3.connect(db_path)
         try:
-            cols = {row[1] for row in conn.execute("PRAGMA table_info(discord_bookmarks)").fetchall()}
+            cols = {
+                row[1] for row in conn.execute("PRAGMA table_info(discord_bookmarks)").fetchall()
+            }
             assert "content" in cols
             assert "author_id" in cols
             assert "author_name" in cols
@@ -397,6 +455,7 @@ def test_process_file_backfills_context_on_second_import():
     populate those fields via UPDATE, even though INSERT OR IGNORE skips the row.
     """
     import json
+
     from discord.parser import process_file
 
     sample_messages = [

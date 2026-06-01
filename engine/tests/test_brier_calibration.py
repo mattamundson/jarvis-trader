@@ -28,7 +28,8 @@ def _seed_trades(db_path: Path, rows):
     """Seed a minimal trade_outcomes table matching AgentFeedbackTracker schema."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS trade_outcomes (
                 trade_id TEXT PRIMARY KEY,
                 timestamp TEXT,
@@ -43,7 +44,8 @@ def _seed_trades(db_path: Path, rows):
                 fundamental_signal REAL,
                 corey_signal REAL
             )
-        """)
+        """
+        )
         for row in rows:
             conn.execute(
                 """
@@ -56,11 +58,18 @@ def _seed_trades(db_path: Path, rows):
             )
 
 
-def _mk_rows(agent_col_index, signals_and_pnls, now_iso="2026-04-16T12:00:00+00:00"):
+def _mk_rows(agent_col_index, signals_and_pnls, now_iso=None):
     """
     Build rows varying only one agent's signal column.
     signals_and_pnls: iterable of (signal, pnl_usd) tuples.
+
+    `now_iso` defaults to the current UTC time so rows stay inside the
+    30-day rolling window the BrierCalibrationTracker applies. Pass an
+    explicit historical ISO string only when deliberately exercising the
+    out-of-window branch.
     """
+    if now_iso is None:
+        now_iso = _fresh_iso()
     rows = []
     defaults = [0.0, 0.0, 0.0, 0.0, 0.0]  # technical, news, social, fundamental, corey
     for i, (sig, pnl) in enumerate(signals_and_pnls):
@@ -88,14 +97,17 @@ def tmp_db(tmp_path):
 
 def test_perfect_calibration_low_brier(tmp_db):
     # Agent 0 (technical) always signals with high confidence matching the outcome.
-    rows = _mk_rows(0, [
-        (0.9, 50.0),
-        (0.9, 40.0),
-        (-0.9, -30.0),
-        (-0.9, -60.0),
-        (0.8, 20.0),
-        (0.8, 45.0),
-    ])
+    rows = _mk_rows(
+        0,
+        [
+            (0.9, 50.0),
+            (0.9, 40.0),
+            (-0.9, -30.0),
+            (-0.9, -60.0),
+            (0.8, 20.0),
+            (0.8, 45.0),
+        ],
+    )
     _seed_trades(tmp_db, rows)
     tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
     brier = tracker.compute_brier("technical")
@@ -105,14 +117,17 @@ def test_perfect_calibration_low_brier(tmp_db):
 
 def test_confident_and_wrong_high_brier(tmp_db):
     # Agent shouts +0.95 but loses every trade.
-    rows = _mk_rows(0, [
-        (0.95, -50.0),
-        (0.95, -20.0),
-        (0.9, -30.0),
-        (0.9, -10.0),
-        (0.85, -40.0),
-        (0.8, -25.0),
-    ])
+    rows = _mk_rows(
+        0,
+        [
+            (0.95, -50.0),
+            (0.95, -20.0),
+            (0.9, -30.0),
+            (0.9, -10.0),
+            (0.85, -40.0),
+            (0.8, -25.0),
+        ],
+    )
     _seed_trades(tmp_db, rows)
     tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
     brier = tracker.compute_brier("technical")
@@ -122,14 +137,17 @@ def test_confident_and_wrong_high_brier(tmp_db):
 
 def test_cautious_agent_middling_brier(tmp_db):
     # Signal magnitude ~0.1 regardless of outcome — Brier stays low either way.
-    rows = _mk_rows(0, [
-        (0.1, 50.0),
-        (0.1, -30.0),
-        (-0.1, 20.0),
-        (-0.1, -40.0),
-        (0.1, -10.0),
-        (0.1, 5.0),
-    ])
+    rows = _mk_rows(
+        0,
+        [
+            (0.1, 50.0),
+            (0.1, -30.0),
+            (-0.1, 20.0),
+            (-0.1, -40.0),
+            (0.1, -10.0),
+            (0.1, 5.0),
+        ],
+    )
     _seed_trades(tmp_db, rows)
     tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
     brier = tracker.compute_brier("technical")
@@ -155,15 +173,29 @@ def test_missing_db_is_graceful(tmp_path):
 def test_brier_weights_reward_calibration(tmp_db):
     # technical (col 0): perfect calibration. news (col 1): confident+wrong.
     rows = []
-    rows += _mk_rows(0, [
-        (0.9, 50.0), (0.9, 40.0), (-0.9, -30.0),
-        (-0.9, -60.0), (0.8, 20.0), (0.8, 45.0),
-    ])
+    rows += _mk_rows(
+        0,
+        [
+            (0.9, 50.0),
+            (0.9, 40.0),
+            (-0.9, -30.0),
+            (-0.9, -60.0),
+            (0.8, 20.0),
+            (0.8, 45.0),
+        ],
+    )
     # Re-seed with news_signal populated on distinct trade_ids.
-    bad_rows = _mk_rows(1, [
-        (0.95, -50.0), (0.95, -20.0), (0.9, -30.0),
-        (0.9, -10.0), (0.85, -40.0), (0.8, -25.0),
-    ])
+    bad_rows = _mk_rows(
+        1,
+        [
+            (0.95, -50.0),
+            (0.95, -20.0),
+            (0.9, -30.0),
+            (0.9, -10.0),
+            (0.85, -40.0),
+            (0.8, -25.0),
+        ],
+    )
     # Offset ids so they don't collide with the first batch.
     bad_rows = [(f"b{r[0]}", *r[1:]) for r in bad_rows]
     rows += bad_rows
@@ -179,15 +211,18 @@ def test_brier_weights_reward_calibration(tmp_db):
 
 def test_zero_signal_trades_excluded(tmp_db):
     # Trades where the agent had no opinion (signal=0) must not inflate Brier.
-    rows = _mk_rows(0, [
-        (0.0, 50.0),  # no-opinion trade — should be skipped
-        (0.0, -20.0),
-        (0.9, 40.0),
-        (0.9, 30.0),
-        (-0.9, -10.0),
-        (-0.8, -25.0),
-        (0.8, 15.0),
-    ])
+    rows = _mk_rows(
+        0,
+        [
+            (0.0, 50.0),  # no-opinion trade — should be skipped
+            (0.0, -20.0),
+            (0.9, 40.0),
+            (0.9, 30.0),
+            (-0.9, -10.0),
+            (-0.8, -25.0),
+            (0.8, 15.0),
+        ],
+    )
     _seed_trades(tmp_db, rows)
     tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
     brier = tracker.compute_brier("technical")
@@ -195,11 +230,93 @@ def test_zero_signal_trades_excluded(tmp_db):
     assert brier < 0.06
 
 
+def _fresh_iso():
+    """Inside-window timestamp so the rolling 30d filter doesn't drop the row."""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def test_rolling_brier_excludes_cold_start_agents(tmp_db):
+    # technical has 6 closed signals (calibrated); news has 0 (cold start).
+    # Rolling 30d Brier should mirror technical's score, NOT average in
+    # news's BRIER_NEUTRAL sentinel — otherwise the system score would
+    # anchor at 0.25 forever until every agent has data.
+    rows = _mk_rows(
+        0,
+        [
+            (0.9, 50.0),
+            (0.9, 40.0),
+            (-0.9, -30.0),
+            (-0.9, -60.0),
+            (0.8, 20.0),
+            (0.8, 45.0),
+        ],
+        now_iso=_fresh_iso(),
+    )
+    _seed_trades(tmp_db, rows)
+    tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
+    rolling = tracker.compute_rolling_brier()
+    assert rolling is not None
+    # Should match the technical agent's Brier — close to perfect.
+    assert rolling < 0.05, f"Expected low rolling Brier, got {rolling}"
+
+
+def test_rolling_brier_none_when_no_agent_has_data(tmp_path):
+    # Empty DB → no agent meets min_trades → /health surface returns None,
+    # NOT 0.0 (which would falsely imply perfect calibration).
+    tracker = BrierCalibrationTracker(db_path=str(tmp_path / "empty.db"), min_trades=5)
+    assert tracker.compute_rolling_brier() is None
+
+
+def test_rolling_brier_averages_across_multiple_agents(tmp_db):
+    # technical (col 0): well-calibrated. news (col 1): confidently wrong.
+    fresh = _fresh_iso()
+    rows = _mk_rows(
+        0,
+        [
+            (0.9, 50.0),
+            (0.9, 40.0),
+            (-0.9, -30.0),
+            (-0.9, -60.0),
+            (0.8, 20.0),
+            (0.8, 45.0),
+        ],
+        now_iso=fresh,
+    )
+    bad_rows = _mk_rows(
+        1,
+        [
+            (0.95, -50.0),
+            (0.95, -20.0),
+            (0.9, -30.0),
+            (0.9, -10.0),
+            (0.85, -40.0),
+            (0.8, -25.0),
+        ],
+        now_iso=fresh,
+    )
+    bad_rows = [(f"b{r[0]}", *r[1:]) for r in bad_rows]
+    _seed_trades(tmp_db, rows + bad_rows)
+    tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
+    rolling = tracker.compute_rolling_brier(["technical", "news"])
+    assert rolling is not None
+    # Mean of ~0.02 (technical) and ~0.81 (news) lands mid-range.
+    assert 0.30 < rolling < 0.50, f"Expected mid-range mean, got {rolling}"
+
+
 def test_describe_reports_per_agent_brier(tmp_db):
-    rows = _mk_rows(0, [
-        (0.9, 50.0), (0.9, 40.0), (-0.9, -30.0),
-        (-0.9, -60.0), (0.8, 20.0), (0.8, 45.0),
-    ])
+    rows = _mk_rows(
+        0,
+        [
+            (0.9, 50.0),
+            (0.9, 40.0),
+            (-0.9, -30.0),
+            (-0.9, -60.0),
+            (0.8, 20.0),
+            (0.8, 45.0),
+        ],
+    )
     _seed_trades(tmp_db, rows)
     tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
     snapshot = tracker.describe()

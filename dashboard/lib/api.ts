@@ -111,8 +111,14 @@ export interface HealthResponse {
   kill_switch_active: boolean;
   paper_mode: boolean;
   ibkr_connected: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   schwab_connected: boolean;
   uptime_seconds: number;
+  tradingview_mcp_healthy?: boolean | null;
+  tradingview_mcp_details?: string | null;
+  llm_path_healthy?: boolean | null;
+  llm_available?: boolean | null;
 }
 
 export interface SafetyStatus {
@@ -397,10 +403,22 @@ export interface DiscordIntelligenceStatus {
 // ── History / persistence types (new SQLite endpoints) ────────────────────
 
 export interface TradeRecord {
-  id: number;
+  trade_id: string;
   symbol: string;
-  side: "BUY" | "SELL";
   quantity: number;
+  timestamp: string;
+  /** New canonical field: BUY | SELL | HOLD */
+  action: "BUY" | "SELL" | "HOLD";
+  /** Most recent price (exit if closed, else entry) */
+  price: number;
+  pnl: number | null;
+  /** LLM review grade A/B/C/D/F — null if not yet complete */
+  grade: string | null;
+  /** pending | complete | failed | null */
+  review_status: string | null;
+  // Legacy aliases returned by the API for backwards-compat with existing widgets
+  id: number;
+  side: "BUY" | "SELL";
   entry_price: number;
   exit_price: number | null;
   realized_pnl: number | null;
@@ -799,6 +817,27 @@ export async function toggleKillSwitch(
   const params = new URLSearchParams({ action });
   if (reason) params.set("reason", reason);
   return postEngine<KillSwitchStatus>(`/paper/kill-switch?${params.toString()}`);
+}
+
+// ── Super-Engine Status API ──────────────────────────────────────────────────
+
+export interface SuperEngineComponentStatus {
+  active: boolean;
+  type?: string;
+  last_check?: string;
+}
+
+export interface SuperEngineStatusResponse {
+  polymarket: SuperEngineComponentStatus;
+  openbb: SuperEngineComponentStatus;
+  regime_guard: SuperEngineComponentStatus;
+  sentiment_bridge: SuperEngineComponentStatus;
+  model_drawer: SuperEngineComponentStatus;
+  arb_scout: SuperEngineComponentStatus;
+}
+
+export async function fetchSuperEngineStatus(): Promise<SuperEngineStatusResponse> {
+  return fetchEngine<SuperEngineStatusResponse>("/super-engine/status");
 }
 
 export async function resetPendingSignals(): Promise<{ cleared: number }> {
@@ -1348,4 +1387,285 @@ export async function fetchTVHealth(): Promise<TVBridgeHealth> {
 export interface RecentPipelineReasoningResponse {
   decisions: RecentPipelineDecision[];
   count: number;
+}
+export interface ShadowMetricsResponse {
+  count: number;
+  total_pnl: number;
+  win_rate: number;
+  avg_win: number;
+  avg_loss: number;
+}
+
+export async function fetchShadowMetrics(strategyName?: string): Promise<ShadowMetricsResponse> {
+  const q = strategyName ? `?strategy_name=${encodeURIComponent(strategyName)}` : "";
+  return fetchEngine<ShadowMetricsResponse>(`/pipeline/shadow-metrics${q}`);
+}
+
+export interface Pm2StatusResponse {
+  found: boolean;
+  status?: string;
+  restart_count?: number;
+  unstable_restarts?: number;
+  uptime_ms?: number;
+  memory_mb?: number;
+  cpu_pct?: number;
+  pid?: number;
+  note?: string;
+  error?: string;
+}
+
+export async function fetchPm2Status(): Promise<Pm2StatusResponse> {
+  return fetchEngine<Pm2StatusResponse>("/health/pm2");
+}
+
+export interface OpenPositionsResponse {
+  positions: Array<{
+    symbol: string;
+    action: string;
+    quantity: number;
+    entry_price: number;
+    stop_loss?: number;
+    broker_stp_order_id?: string;
+    unrealized_pnl?: number;
+    // strategy_params are JSON-encoded into notes by add_paper_trade()
+    notes?: string;
+  }>;
+  count: number;
+}
+
+export async function fetchOpenPositions(): Promise<OpenPositionsResponse> {
+  return fetchEngine<OpenPositionsResponse>("/portfolio/paper/positions");
+}
+
+// ── Discord Bookmark Feed (recent + search) ──────────────────────────────────
+
+export interface BookmarkRow {
+  posted_at: string;
+  url: string;
+  domain: string | null;
+  source_type: string | null;
+  embed_title: string | null;
+  embed_description: string | null;
+  content: string | null;
+  author_name?: string | null;
+}
+
+export interface BookmarkFeedResponse {
+  data: BookmarkRow[];
+  hours?: number;
+  limit?: number;
+  query?: string;
+  days?: number;
+}
+
+export async function fetchBookmarksRecent(opts?: {
+  hours?: number;
+  limit?: number;
+}): Promise<BookmarkFeedResponse> {
+  const q = new URLSearchParams();
+  if (opts?.hours != null) q.set("hours", String(opts.hours));
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return fetchEngine<BookmarkFeedResponse>(`/discord/bookmarks/recent${suffix}`);
+}
+
+export async function fetchBookmarksSearch(opts: {
+  query: string;
+  days?: number;
+  limit?: number;
+}): Promise<BookmarkFeedResponse> {
+  const q = new URLSearchParams({ query: opts.query });
+  if (opts.days != null) q.set("days", String(opts.days));
+  if (opts.limit != null) q.set("limit", String(opts.limit));
+  return fetchEngine<BookmarkFeedResponse>(`/discord/bookmarks/search?${q.toString()}`);
+}
+
+// ── QuantStats / Portfolio Tearsheet ─────────────────────────────────────────
+
+export interface RollingSharpPoint {
+  date: string;
+  value: number;
+}
+
+/** GET /reports/quantstats — institutional-grade portfolio metrics */
+export interface QuantStatsMetrics {
+  n_trades: number;
+  start_date: string;
+  end_date: string;
+  source: "pnl_snapshots" | "paper_trades";
+  sortino: number | null;
+  sharpe: number | null;
+  calmar: number | null;
+  /** Negative number, e.g. -0.12 means -12% max drawdown */
+  max_dd: number | null;
+  max_dd_duration_days: number;
+  win_rate: number | null;
+  profit_factor: number | null;
+  monthly_returns: Record<string, number>;
+  rolling_sharpe_30d: RollingSharpPoint[];
+}
+
+export async function fetchQuantStats(opts?: {
+  days?: number;
+  run_id?: string;
+}): Promise<QuantStatsMetrics> {
+  const q = new URLSearchParams();
+  if (opts?.days != null) q.set("days", String(opts.days));
+  if (opts?.run_id != null) q.set("run_id", opts.run_id);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return fetchEngine<QuantStatsMetrics>(`/reports/quantstats${suffix}`);
+}
+
+// ── Jarvis Ask (command-center /jarvis/ask) ───────────────────────────────────
+
+export interface JarvisAskResponse {
+  answer: string;
+  sources: string[];
+  actions_taken: string[];
+  elapsed_ms: number;
+  intent: string;
+}
+
+export async function fetchJarvisAsk(question: string): Promise<JarvisAskResponse> {
+  return postEngine<JarvisAskResponse>("/jarvis/ask", { question });
+}
+
+// ── Discord Briefing (command-center /discord/briefing) ──────────────────────
+
+export interface BriefingIBLevels {
+  high?: number | null;
+  low?: number | null;
+  range?: number | null;
+  [key: string]: unknown;
+}
+
+export interface BriefingRecentSignal {
+  direction?: string | null;
+  confidence?: number | null;
+  timestamp?: string | null;
+  [key: string]: unknown;
+}
+
+/** One curated-knowledge hit from the gbrain brain (only present when enriched). */
+export interface KnowledgeContextHit {
+  slug: string;
+  title?: string | null;
+  type?: string | null;
+  /** First-stage vector similarity (0..1). */
+  similarity?: number | null;
+  /** Cross-encoder rerank score (0..1; both Voyage and local tiers normalized). */
+  rerank_score?: number | null;
+  /** Truncated content preview (≤400 chars). */
+  content?: string | null;
+}
+
+export interface BriefingResponse {
+  symbol: string;
+  headline?: string | null;
+  corey_bias?: string | null;
+  ib_levels?: BriefingIBLevels | null;
+  recent_signal?: BriefingRecentSignal | null;
+  /** Advisory curated-knowledge hits — present ONLY when fetched with enriched:true. */
+  knowledge_context?: KnowledgeContextHit[] | null;
+  /** Rerank tier that produced knowledge_context: "voyage" | "local" | "off". */
+  knowledge_context_tier?: string | null;
+}
+
+export async function fetchDiscordBriefing(
+  symbol: string,
+  opts?: { enriched?: boolean }
+): Promise<BriefingResponse> {
+  const q = new URLSearchParams({ symbol });
+  if (opts?.enriched) q.set("enriched", "true");
+  return fetchEngine<BriefingResponse>(`/discord/briefing?${q.toString()}`);
+}
+
+// ── Parallel Paper A/B Testing ────────────────────────────────────────────────
+
+export interface EquityCurvePoint {
+  date: string;
+  equity: number;
+}
+
+/** GET /portfolio/paper/account/{account_id}/stats */
+export interface AccountStatsResponse {
+  account_id: "A" | "B";
+  days: number;
+  n_trades: number;
+  win_rate: number | null;
+  sortino: number | null;
+  sharpe: number | null;
+  calmar: number | null;
+  max_dd: number | null;
+  equity_curve: EquityCurvePoint[];
+}
+
+export async function fetchAccountStats(
+  accountId: "A" | "B",
+  days: 30 | 90 | 180 = 30
+): Promise<AccountStatsResponse> {
+  return fetchEngine<AccountStatsResponse>(
+    `/portfolio/paper/account/${accountId}/stats?days=${days}`
+  );
+}
+
+// ── Risk Attribution ─────────────────────────────────────────────────────────
+
+/** Per-analyst window-level stats returned by GET /attribution/window */
+export interface AnalystWindowStats {
+  total: number;
+  mean: number;
+  std: number;
+  max_loss: number;
+  win_rate_top: number;
+}
+
+/** Per-day attribution entry nested inside WindowAttributionResponse.daily */
+export interface DailyAttributionEntry {
+  date: string;
+  total_pnl: number;
+  n_trades: number;
+  attribution: Record<string, number>;
+  top_contributor: string | null;
+  residual: number;
+  attributed_trade_count: number;
+  unattributed_trade_count: number;
+}
+
+/** GET /attribution/window — rolling N-day attribution */
+export interface RiskAttributionResponse {
+  start_date: string;
+  end_date: string;
+  days_with_trades: number;
+  total_pnl: number;
+  n_trades: number;
+  per_analyst: Record<string, AnalystWindowStats>;
+  top_contributor_by_abs: string;
+  daily: DailyAttributionEntry[];
+}
+
+/** GET /attribution/daily */
+export interface DailyAttributionResponse {
+  date: string;
+  total_pnl: number;
+  n_trades: number;
+  attribution: Record<string, number>;
+  top_contributor: string | null;
+  residual: number;
+  attributed_trade_count: number;
+  unattributed_trade_count: number;
+}
+
+export async function fetchRiskAttribution(opts?: {
+  days?: number;
+}): Promise<RiskAttributionResponse> {
+  const days = opts?.days ?? 30;
+  return fetchEngine<RiskAttributionResponse>(`/attribution/window?days=${days}`);
+}
+
+export async function fetchDailyAttribution(
+  date?: string
+): Promise<DailyAttributionResponse> {
+  const suffix = date ? `?date=${date}` : "";
+  return fetchEngine<DailyAttributionResponse>(`/attribution/daily${suffix}`);
 }

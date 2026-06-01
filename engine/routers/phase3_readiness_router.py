@@ -124,11 +124,17 @@ async def get_phase3_readiness() -> dict:
             all_pass = False
 
         try:
+            # MAX_SINGLE_ORDER_VALUE was intentionally raised from $5k to $100k in
+            # handoff-2026-04-09-2354 to allow futures notional (MES contract is
+            # ~$35k notional per-contract; the old $5k cap rejected every futures
+            # order). Gate now accepts anything up to $100k. Lower is also fine
+            # (stricter = safer). This honors the post-futures-fix policy without
+            # hard-coding a single value.
             position_ok = (
                 settings.MAX_CONTRACTS_PER_INSTRUMENT == 2
                 and settings.MAX_OVERNIGHT_CONTRACTS == 1
                 and settings.MAX_POSITION_SIZE_PCT == 0.05
-                and settings.MAX_SINGLE_ORDER_VALUE == 5000.0
+                and 0 < settings.MAX_SINGLE_ORDER_VALUE <= 100_000.0
                 and settings.MAX_MARGIN_UTILIZATION == 0.40
             )
             gates["position_limits_verified"] = {
@@ -182,3 +188,171 @@ async def get_phase3_readiness() -> dict:
     except Exception as e:
         logger.error("[PHASE3] Readiness check failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Phase 3 readiness check error: {e}") from e
+
+
+@router.get("/system/mes-sprint-gate", tags=["system"])
+async def mes_sprint_gate() -> dict:
+    """MES Sprint Gate — aggregates 6 prerequisite checks for the April 30 live flip."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    checks: list[dict] = []
+    all_pass = True
+
+    # 1. HB-1 paper smoke flag file present.
+    flag = _Path(__file__).resolve().parent.parent / "data" / "hb1_smoke_passed.json"
+    smoke_ok = flag.exists()
+    checks.append(
+        {
+            "name": "smoke_test",
+            "pass": smoke_ok,
+            "detail": str(flag) if smoke_ok else "Run engine/scripts/hb1_paper_smoke.py first",
+        }
+    )
+    if not smoke_ok:
+        all_pass = False
+
+    # 2. Bracket paper trades — read sidecar bumped by SafetyLayer.submit_entry_with_stop.
+    # Sidecar is preferred over paper_trades.notes because the writer chain
+    # (paper_trade_logger → portfolio_tracker → DB) currently drops notes
+    # (writes empty string). The sidecar is incremented at the bracket call site.
+    bracket_count = 0
+    bracket_sidecar = _Path(__file__).resolve().parent.parent / "data" / "bracket_trade_count.json"
+    try:
+        if bracket_sidecar.exists():
+            sc = _json.loads(bracket_sidecar.read_text(encoding="utf-8"))
+            bracket_count = int(sc.get("MES", {}).get("count", 0) or 0)
+    except Exception as exc:  # noqa: BLE001 — gate must never raise
+        logger.warning("mes-sprint-gate: bracket sidecar read failed: %s", exc)
+    bracket_ok = bracket_count >= 5
+    checks.append(
+        {
+            "name": "bracket_trades",
+            "pass": bracket_ok,
+            "value": f"{bracket_count}/5",
+            "detail": (
+                f"Need {max(0, 5 - bracket_count)} more bracket trades" if not bracket_ok else "OK"
+            ),
+        }
+    )
+    if not bracket_ok:
+        all_pass = False
+
+    # 3. Kill switch clean (uses injected SafetyLayer if available).
+    ks_active = False
+    if _safety_layer is not None:
+        ks_active = bool(getattr(_safety_layer, "_kill_switch_active", False))
+    ks_ok = not ks_active
+    checks.append(
+        {
+            "name": "kill_switch_clean",
+            "pass": ks_ok,
+            "detail": "Kill switch inactive" if ks_ok else "KILL SWITCH ACTIVE — trading halted",
+        }
+    )
+    if not ks_ok:
+        all_pass = False
+
+    # 4. pm2 restarts ≤ 5 in rolling 72h (read sidecar JSON).
+    restart_count = 0
+    restart_file = _Path(__file__).resolve().parent.parent / "data" / "pm2_restart_count_72h.json"
+    try:
+        restart_data = _json.loads(restart_file.read_text(encoding="utf-8"))
+        restart_count = int(restart_data.get("restarts_72h", 0) or 0)
+    except Exception:
+        restart_count = 0  # no sidecar yet — benefit of the doubt
+    restart_ok = restart_count <= 5
+    checks.append(
+        {
+            "name": "pm2_restarts",
+            "pass": restart_ok,
+            "value": f"{restart_count}/5 (72h)",
+            "detail": (
+                "Stable"
+                if restart_ok
+                else f"{restart_count} restarts in 72h — investigate before flipping live"
+            ),
+        }
+    )
+    if not restart_ok:
+        all_pass = False
+
+    # 5. Loss streak < 3 (consecutive losing closed trades by entry_time DESC).
+    streak = 0
+    try:
+        from database.manager import get_db
+
+        db = get_db()
+        recent = db.fetch_all(
+            "SELECT pnl FROM paper_trades "
+            "WHERE status = 'closed' AND pnl IS NOT NULL "
+            "ORDER BY entry_time DESC LIMIT 10"
+        )
+        for r in recent:
+            if (r.get("pnl") or 0) < 0:
+                streak += 1
+            else:
+                break
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("mes-sprint-gate: loss streak query failed: %s", exc)
+    streak_ok = streak < 3
+    checks.append(
+        {
+            "name": "loss_streak",
+            "pass": streak_ok,
+            "value": str(streak),
+            "detail": f"Current streak: {streak}" + (" — WARNING" if streak >= 2 else ""),
+        }
+    )
+    if not streak_ok:
+        all_pass = False
+
+    # 6. Today's intra-session drawdown < 2% (NOT all-time drawdown from peak).
+    # Pre-flight protection is "is the trader currently bleeding today" — historical
+    # peak-to-current can show stale paper-account volatility that has nothing to do
+    # with going-live readiness. Compute as daily_pnl / starting_balance, then take
+    # only the negative side (positive PnL = no drawdown today).
+    daily_drawdown = 0.0
+    if _safety_layer is not None:
+        try:
+            pnl_mon = getattr(_safety_layer, "_pnl_monitor", None)
+            if pnl_mon is not None and hasattr(pnl_mon, "get_current_pnl_state"):
+                state = pnl_mon.get_current_pnl_state()
+                daily_pnl = float(
+                    (getattr(state, "daily_realized_pnl", 0.0) or 0.0)
+                    + (getattr(state, "daily_unrealized_pnl", 0.0) or 0.0)
+                )
+                starting = float(getattr(state, "starting_balance", 0.0) or 0.0)
+                if starting > 0:
+                    pct = daily_pnl / starting
+                    daily_drawdown = -pct if pct < 0 else 0.0  # 0 if up, positive if down
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("mes-sprint-gate: daily drawdown read failed: %s", exc)
+    dd_ok = daily_drawdown < 0.02
+    checks.append(
+        {
+            "name": "drawdown",
+            "pass": dd_ok,
+            "value": f"{daily_drawdown * 100:.2f}%",
+            "detail": (f"Today's drawdown: {daily_drawdown * 100:.2f}% (limit 2%, intra-session)"),
+        }
+    )
+    if not dd_ok:
+        all_pass = False
+
+    # PENDING is reserved for "only thing missing is data that fills over time"
+    # — i.e., bracket count is the SOLE failing check. Anything else failing → FAIL.
+    other_checks_pass = all(c["pass"] for c in checks if c["name"] != "bracket_trades")
+    if all_pass:
+        overall = "PASS"
+    elif (not bracket_ok) and other_checks_pass:
+        overall = "PENDING"
+    else:
+        overall = "FAIL"
+    return {
+        "overall": overall,
+        "ready_for_live": all_pass,
+        "checks": checks,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "notes": "MES Sprint Gate v1 — iteration 1 of many",
+    }

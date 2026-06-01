@@ -23,7 +23,6 @@ from agents.tail_risk_researcher import (
     TailRiskResearcherAgent,
 )
 
-
 # ── Pure-function tests ──────────────────────────────────────────────────────
 
 def test_parse_json_plain():

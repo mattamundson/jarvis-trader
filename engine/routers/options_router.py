@@ -355,6 +355,80 @@ async def get_options_positions(status: Optional[str] = "OPEN"):
 
 
 # ---------------------------------------------------------------------------
+# Options Analyst endpoints (stage 6 — added 2026-05-20)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/skew/{symbol}", tags=["options", "analyst"])
+async def get_options_skew(symbol: str):
+    """Return put/call skew and IV term-structure summary for a symbol.
+
+    Useful for inspecting the raw signals that feed into the OptionsAnalyst
+    without running the full pipeline.  Requires an active chain fetcher.
+    """
+    logger.info("[options_router] GET /options/skew/%s", symbol)
+
+    result: dict = {"symbol": symbol.upper(), "timestamp": datetime.utcnow().isoformat()}
+
+    try:
+        from options.chain_fetcher import get_pc_skew, get_term_structure  # type: ignore[import]
+
+        skew = get_pc_skew(symbol.upper())
+        result["pc_skew"] = skew
+        result["skew_available"] = skew is not None
+    except ImportError:
+        result["pc_skew"] = None
+        result["skew_available"] = False
+        result["skew_note"] = "chain_fetcher not available"
+    except Exception as exc:
+        logger.debug("[options_router] skew fetch error: %s", exc)
+        result["pc_skew"] = None
+        result["skew_available"] = False
+
+    try:
+        from options.chain_fetcher import get_term_structure  # type: ignore[import]
+
+        term = get_term_structure(symbol.upper())
+        result["term_structure"] = term
+        result["term_available"] = term is not None
+    except ImportError:
+        result["term_structure"] = None
+        result["term_available"] = False
+    except Exception as exc:
+        logger.debug("[options_router] term_structure fetch error: %s", exc)
+        result["term_structure"] = None
+        result["term_available"] = False
+
+    return result
+
+
+@router.get("/analyst/{symbol}", tags=["options", "analyst"])
+async def get_options_analyst_verdict(symbol: str, spot_price: Optional[float] = None):
+    """Run the OptionsAnalyst directly and return its verdict.
+
+    Useful for debugging the stage-6 signal without triggering the full
+    pipeline.  The analyst respects ``ENABLE_OPTIONS_ANALYST`` — when the
+    flag is ``0`` it returns a neutral/disabled dict rather than an error.
+    """
+    logger.info("[options_router] GET /options/analyst/%s spot_price=%s", symbol, spot_price)
+
+    try:
+        from agents.options_analyst import OptionsAnalyst, is_options_analyst_enabled
+
+        analyst = OptionsAnalyst()
+        result = await analyst.analyze(symbol.upper(), spot_price=spot_price)
+        return {
+            "symbol": symbol.upper(),
+            "enabled": is_options_analyst_enabled(),
+            "verdict": result,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    except Exception as exc:
+        logger.exception("[options_router] analyst verdict error for %s: %s", symbol, exc)
+        raise HTTPException(status_code=500, detail=f"OptionsAnalyst error: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
 # Multi-Market Module Endpoints (added 2026-04-01)
 # ---------------------------------------------------------------------------
 

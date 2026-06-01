@@ -13,11 +13,21 @@ import os
 import urllib.error
 import urllib.request
 
-DEFAULT_BASE = "http://localhost:8010"
+DEFAULT_BASE = "http://127.0.0.1:8010"
 
 
 def _api_key_for_probe() -> str:
-    return os.environ.get("JARVIS_API_KEY") or os.environ.get("API_KEY") or "test-key"
+    key = os.environ.get("JARVIS_API_KEY") or os.environ.get("API_KEY")
+    if not key:
+        from pathlib import Path
+
+        env_file = Path(__file__).parent.parent / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("API_KEY="):
+                    key = line.split("=", 1)[1].strip()
+                    break
+    return key or "test-key"
 
 
 def _get_json(base: str, path: str, timeout: float = 5.0) -> tuple[int, object]:

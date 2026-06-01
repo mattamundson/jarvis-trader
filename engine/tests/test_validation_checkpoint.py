@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
+
 from routers.paper_validation_router import (
+    STARTING_CAPITAL,
     GateResult,
     ValidationCheckpointResponse,
-    STARTING_CAPITAL,
 )
 
 

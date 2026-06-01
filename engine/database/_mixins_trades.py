@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from utils.trade_invariants import is_inverted_stop
 
-from ._helpers import _from_json, _to_json, _utcnow
+from ._helpers import _from_json, _to_json, _utcnow, compute_order_idempotency_key
 
 logger = logging.getLogger("jarvis_trader.database")
 
@@ -34,18 +34,27 @@ class TradesMixin:
         status: str = "open",
         strategy_params: Optional[Any] = None,
         notes: str = "",
+        account_id: str = "A",
     ) -> int:
         """
         Insert a new trade record (typically called on trade open).
 
+        Parameters
+        ----------
+        account_id:
+            'A' = production config (default; backwards-compatible).
+            'B' = challenger config (set by parallel_paper.dual_emit_paper_trade
+            when ENABLE_PARALLEL_PAPER=1).
+
         Returns the auto-incremented ``id`` primary key.
         """
         entry_time = entry_time or _utcnow()
+        idempotency_key = compute_order_idempotency_key(symbol, side, quantity, entry_price)
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, strategy_params, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, strategy_params, notes, account_id, idempotency_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             trade_id,
@@ -57,6 +66,8 @@ class TradesMixin:
             status,
             _to_json(strategy_params),
             notes,
+            account_id,
+            idempotency_key,
         )
         with self._lock:
             conn = self._connect()
@@ -193,6 +204,7 @@ class TradesMixin:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         strategy_params: Optional[Any] = None,
+        idempotency_key: str = "",  # REQUIRED — empty string signals a missing key at call site
     ) -> int:
         """
         Insert a new paper trade record with status='open'.
@@ -202,8 +214,51 @@ class TradesMixin:
         their dedicated columns AND mirrored into ``strategy_params`` for
         backwards-compatible JSON reads.
 
-        Returns the auto-incremented ``id`` primary key (SQLite rowid).
+        Idempotency guard (migration_030 / migration_032):
+            ``idempotency_key`` is now a REQUIRED parameter.  The schema-level
+            NOT NULL constraint added in migration_032 means a NULL key can no
+            longer be stored.  Callers MUST supply a key computed by
+            ``database._helpers.compute_order_idempotency_key``; omitting it
+            raises TypeError at the Python layer before any DB round-trip.
+
+            If a row with the supplied key already exists in ``paper_trades``,
+            the INSERT is skipped and the existing row's SQLite ``id`` is
+            returned.  A WARNING is logged so the caller can detect the
+            deduplicated submission in the audit log.
+
+        Args:
+            trade_id:          UUID string from PortfolioTracker.
+            symbol:            Instrument ticker (e.g. "MES").
+            side:              "buy" | "sell" | "buy_to_open" | "sell_to_open".
+            quantity:          Number of contracts.
+            entry_price:       Fill price.
+            entry_time:        ISO-8601 UTC string; defaults to current UTC time.
+            stop_loss:         Stop-loss price (optional).
+            take_profit:       Take-profit price (optional).
+            strategy_params:   Arbitrary dict or JSON-serialisable value (optional).
+            idempotency_key:   REQUIRED — 32-char hex key from
+                               ``compute_order_idempotency_key``.  Passing the
+                               empty-string default raises TypeError so callers
+                               discover the missing argument immediately.
+
+        Returns:
+            The auto-incremented ``id`` primary key (SQLite rowid).
+
+        Raises:
+            TypeError:   If ``idempotency_key`` is the empty string (i.e. the
+                         caller did not supply a key — fail-fast at the Python
+                         layer before touching the DB).
+            ValueError:  If ``stop_loss`` is on the wrong side of ``entry_price``
+                         for the given ``side`` (inverted-stop guard).
         """
+        if not idempotency_key:
+            raise TypeError(
+                "insert_paper_trade() requires a non-empty idempotency_key. "
+                "Compute one via database._helpers.compute_order_idempotency_key() "
+                "before calling this method. "
+                "See migration_032 and docs/runbooks/HEALTH_API_CONTRACT.md §paper_trades."
+            )
+
         entry_time = entry_time or _utcnow()
 
         if is_inverted_stop(side, entry_price, stop_loss):
@@ -212,6 +267,29 @@ class TradesMixin:
                 f"entry_price={entry_price} stop_loss={stop_loss}. "
                 "See docs/incident-notes/2026-04-09-mcl-inverted-stop.md"
             )
+
+        # ── Idempotency pre-check ─────────────────────────────────────────────
+        # Check for an existing row BEFORE attempting INSERT.  This avoids
+        # relying on UNIQUE constraint exceptions (which vary in SQLite versions)
+        # and gives us a clean WARNING + early-return.
+        with self._lock:
+            conn = self._connect()
+            try:
+                existing = conn.execute(
+                    "SELECT id, trade_id FROM paper_trades WHERE idempotency_key = ?",
+                    (idempotency_key,),
+                ).fetchone()
+            finally:
+                conn.close()
+        if existing is not None:
+            logger.warning(
+                "[DB] insert_paper_trade DEDUPLICATED — idempotency_key=%s already exists "
+                "(existing id=%s trade_id=%s). Returning existing id without INSERT.",
+                idempotency_key,
+                existing[0],
+                existing[1][:8] if existing[1] else "?",
+            )
+            return existing[0]  # type: ignore[return-value]
 
         # Mirror stop_loss / take_profit into strategy_params for backwards
         # compatibility, while also writing them to their dedicated columns.
@@ -228,8 +306,8 @@ class TradesMixin:
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, stop_loss, strategy_params, notes)
-            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, '')
+                 status, stop_loss, strategy_params, notes, idempotency_key)
+            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, '', ?)
         """
         params = (
             trade_id,
@@ -240,6 +318,7 @@ class TradesMixin:
             entry_time,
             stop_loss,
             _to_json(merged_params) if merged_params else None,
+            idempotency_key,
         )
         with self._lock:
             conn = self._connect()
@@ -249,7 +328,8 @@ class TradesMixin:
                 row_id: int = cur.lastrowid  # type: ignore[assignment]
                 logger.debug(
                     f"[DB] insert_paper_trade id={row_id} trade_id={trade_id[:8]} "
-                    f"symbol={symbol} side={side} qty={quantity} @{entry_price}"
+                    f"symbol={symbol} side={side} qty={quantity} @{entry_price} "
+                    f"idem_key={idempotency_key}"
                 )
                 return row_id
             finally:
@@ -370,6 +450,92 @@ class TradesMixin:
                     d["strategy_params"] = _from_json(d.get("strategy_params"))
                     result.append(d)
                 return result
+            finally:
+                conn.close()
+
+    def update_paper_trade_strategy_params(
+        self,
+        trade_id: str,
+        strategy_params: dict,
+    ) -> bool:
+        """
+        Merge ``strategy_params`` into an existing paper_trades row.
+
+        Reads the current strategy_params JSON blob, merges the supplied dict
+        (supplied keys win on collision), and writes back atomically.  No-ops
+        gracefully when the trade_id is not found (returns False).
+
+        Returns True when exactly one row was updated.
+        """
+        sql_read = "SELECT strategy_params FROM paper_trades WHERE trade_id = ?"
+        sql_write = "UPDATE paper_trades SET strategy_params = ? WHERE trade_id = ?"
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(sql_read, (trade_id,)).fetchone()
+                if row is None:
+                    logger.warning(
+                        "[DB] update_paper_trade_strategy_params: trade_id=%s not found",
+                        trade_id[:8] if trade_id else "?",
+                    )
+                    return False
+                existing = _from_json(row[0]) if row[0] else {}
+                if not isinstance(existing, dict):
+                    existing = {}
+                existing.update(strategy_params)
+                cur = conn.execute(sql_write, (_to_json(existing), trade_id))
+                conn.commit()
+                return cur.rowcount == 1
+            finally:
+                conn.close()
+
+    def update_paper_trade_bracket_ids(
+        self,
+        trade_id: str,
+        stop_order_id: Optional[str],
+        target_order_id: Optional[str],
+        bracket_status: Optional[str],
+    ) -> bool:
+        """
+        Write bracket order IDs (migration_031 columns) onto an existing
+        paper_trades row.
+
+        Called by approval.service.approve_pending_trade after a bracket
+        submission so the stop/target order IDs are queryable directly from
+        the trade row rather than requiring JSON deserialisation of
+        strategy_params.
+
+        Returns True when exactly one row was updated.  No-ops gracefully
+        (returns False) when the trade_id is not found.
+        """
+        sql = """
+            UPDATE paper_trades
+               SET stop_order_id   = ?,
+                   target_order_id = ?,
+                   bracket_status  = ?
+             WHERE trade_id = ?
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                cur = conn.execute(sql, (stop_order_id, target_order_id, bracket_status, trade_id))
+                conn.commit()
+                found = cur.rowcount == 1
+                if not found:
+                    logger.warning(
+                        "[DB] update_paper_trade_bracket_ids: trade_id=%s not found",
+                        trade_id[:8] if trade_id else "?",
+                    )
+                else:
+                    logger.debug(
+                        "[DB] update_paper_trade_bracket_ids: trade_id=%s "
+                        "stop=%s target=%s status=%s",
+                        trade_id[:8],
+                        stop_order_id,
+                        target_order_id,
+                        bracket_status,
+                    )
+                return found
             finally:
                 conn.close()
 

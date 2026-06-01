@@ -13,8 +13,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.trader import _detect_corey_contradiction  # noqa: E402
 from agents.advisor_client import AdvisorVerdict  # noqa: E402
+from agents.trader import _detect_corey_contradiction  # noqa: E402
 
 
 def _briefing(bias="neutral", conv=0.0):
@@ -108,8 +108,9 @@ def _mock_verdict(verdict_str, confidence=0.7):
 @pytest.mark.asyncio
 async def test_opus_hold_overrides_buy_to_hold():
     """Opus returning HOLD on a buy+contradiction should flip the decision."""
-    from agents.trader import TraderAgent, TradeDecision
     from datetime import datetime
+
+    from agents.trader import TradeDecision, TraderAgent
 
     mock_advisor = MagicMock()
     mock_advisor.consult_debate_tiebreak = AsyncMock(return_value=_mock_verdict("HOLD"))

@@ -52,8 +52,19 @@ import numpy as np
 import pandas as pd
 
 # Default MCL-targeted params — refined via backtest in P1.1
+# MGC: rank1 baseline (2026-05-07) — pending gate v2 verdict
+#      Same defaults as MCL; rank1 sweeps BB_period × BB_std × stop_atr_mult.
+#      Production champion params will replace this block after rank1 PASS.
 MEANREV_PARAMS: dict[str, dict] = {
     "MCL": {
+        "bb_period": 20,
+        "bb_std": 2.0,
+        "rsi_period": 14,
+        "rsi_long": 30.0,
+        "rsi_short": 70.0,
+        "stop_atr_mult": 1.5,
+    },
+    "MGC": {
         "bb_period": 20,
         "bb_std": 2.0,
         "rsi_period": 14,
@@ -81,6 +92,11 @@ def _build_regime_gate(
     bbwidth_pct: float,
     bbwidth_lookback: int,
     keltner_atr_mult: float,
+    rv_min: float = 0.0,
+    rv_max: float = 999.0,
+    rv_lookback: int = 20,
+    sentiment_db_path: str = "",
+    sentiment_block_bearish: bool = True,
 ) -> pd.Series:
     """Return a boolean Series — True = entry allowed, False = suppressed.
 
@@ -92,6 +108,11 @@ def _build_regime_gate(
                     (volatility-expansion phase = trend burst)
         keltner  : suppress when price is outside BOTH Bollinger AND Keltner
                     (extreme dislocation confirmed by ATR, not just SD)
+        rv_band  : allow entry only when realized volatility (close-to-close,
+                    annualized %) is within [rv_min, rv_max].  Hypothesis C
+                    for MCL re-validation — filters out both ultra-low vol
+                    (thin, directionless) and ultra-high vol (trending shock)
+                    environments where mean-reversion has no edge.
     Unknown modes fall back to all-True (effectively no gate).
     """
     from backtest.indicators import compute_adx, keltner_channels
@@ -99,7 +120,6 @@ def _build_regime_gate(
     close = df["close"]
     high = df["high"]
     low = df["low"]
-    n = len(df)
     all_true = pd.Series(True, index=df.index)
 
     if mode == "adx":
@@ -114,8 +134,7 @@ def _build_regime_gate(
         # bars. rank normalized to [0, 100]. Allow entry when rank <= pct
         # (current vol is in the calm-to-normal range, not top-pct%).
         rank = bb_width.rolling(bbwidth_lookback, min_periods=max(5, bbwidth_lookback // 4)).apply(
-            lambda w: 100.0 * (w.iloc[-1] <= w).sum() / len(w)
-            if len(w) > 0 else 50.0,
+            lambda w: 100.0 * (w.iloc[-1] <= w).sum() / len(w) if len(w) > 0 else 50.0,
             raw=False,
         )
         # Above definition gives the "rank of current value among window"
@@ -126,7 +145,11 @@ def _build_regime_gate(
 
     if mode == "keltner":
         kc_upper, _kc_basis, kc_lower = keltner_channels(
-            close, high, low, sma_len=20, atr_factor=keltner_atr_mult,
+            close,
+            high,
+            low,
+            sma_len=20,
+            atr_factor=keltner_atr_mult,
         )
         outside_bb_up = close > bb_upper
         outside_bb_dn = close < bb_lower
@@ -137,6 +160,74 @@ def _build_regime_gate(
         # setup. Allow entry when price breaches Bollinger but NOT Keltner.
         trend_ext = (outside_bb_up & outside_kc_up) | (outside_bb_dn & outside_kc_dn)
         return (~trend_ext).fillna(False)
+
+    if mode == "rv_band":
+        close = df["close"]
+        # Resample to daily to compute conventional daily annualized RV.
+        # Intraday (1h) close-to-close std × sqrt(252) understates because bars
+        # are not daily — resample first so the RV values match the 20-50%
+        # annualized convention used in the gate v2 parameter grid.
+        try:
+            daily_close = close.resample("1D").last().dropna()
+        except TypeError:
+            # Non-DatetimeIndex fallback: use raw 1h returns (rare case)
+            daily_close = None
+
+        if daily_close is not None and len(daily_close) >= max(5, rv_lookback // 2):
+            daily_log_ret = np.log(daily_close / daily_close.shift(1))
+            daily_rv = (
+                daily_log_ret.rolling(rv_lookback, min_periods=max(5, rv_lookback // 2)).std()
+                * np.sqrt(252)
+                * 100.0
+            )
+            # Forward-fill daily RV back to the original (intraday) index.
+            rv = daily_rv.reindex(close.index, method="ffill")
+        else:
+            daily_log_ret = np.log(close / close.shift(1))
+            rv = (
+                daily_log_ret.rolling(
+                    rv_lookback * 23, min_periods=max(10, rv_lookback * 23 // 2)
+                ).std()
+                * np.sqrt(252 * 23)
+                * 100.0
+            )
+
+        return ((rv >= rv_min) & (rv <= rv_max)).fillna(False)
+
+    if mode == "sentiment_overlay":
+        if not sentiment_db_path:
+            return all_true
+        try:
+            import sqlite3
+
+            conn = sqlite3.connect(sentiment_db_path)
+            bias_df = pd.read_sql_query(
+                "SELECT date, directional_bias FROM corey_session_bias ORDER BY date",
+                conn,
+                parse_dates=["date"],
+            )
+            conn.close()
+        except Exception as exc:
+            import warnings
+
+            warnings.warn(
+                f"sentiment_overlay DB read failed (path={sentiment_db_path!r}): {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return all_true
+        if bias_df.empty:
+            return all_true
+        bias_df = bias_df.set_index("date")
+        if not isinstance(close.index, pd.DatetimeIndex):
+            return all_true
+        daily_bias = bias_df["directional_bias"].resample("1D").last()
+        if sentiment_block_bearish:
+            daily_allowed = daily_bias != "bearish"
+        else:
+            daily_allowed = pd.Series(True, index=daily_bias.index)
+        allowed = daily_allowed.reindex(close.index, method="ffill").fillna(True)
+        return allowed.astype(bool)
 
     # Unknown mode — fail safe to all-True (no gating).
     return all_true
@@ -154,7 +245,7 @@ def _wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     rsi = 100.0 - (100.0 / (1.0 + rs))
     # "No losses in window" → RSI = 100 (definitional).
     # Warmup bars (avg_loss NaN) must stay NaN so downstream warm-guards skip them.
-    no_losses = (avg_loss == 0.0)
+    no_losses = avg_loss == 0.0
     rsi = rsi.mask(no_losses, 100.0)
     return rsi
 
@@ -167,11 +258,20 @@ def generate_bollinger_rsi_signals(
     rsi_long: float = 30.0,
     rsi_short: float = 70.0,
     stop_atr_mult: float = 1.5,
+    signal_direction: str = "both",
     regime_filter_mode: str = "none",
     regime_filter_adx_threshold: float = 20.0,
     regime_filter_bbwidth_pct: float = 40.0,
     regime_filter_bbwidth_lookback: int = 100,
     regime_filter_keltner_atr_mult: float = 1.5,
+    regime_filter_min_rv: float = 20.0,
+    regime_filter_max_rv: float = 50.0,
+    regime_filter_rv_lookback: int = 20,
+    sentiment_db_path: str = "",
+    sentiment_block_bearish: bool = True,
+    htf_rsi_period: int = 0,
+    htf_rsi_upper: float = 60.0,
+    htf_rsi_lower: float = 40.0,
 ) -> pd.DataFrame:
     """Generate Bollinger + RSI mean-reversion signals.
 
@@ -200,6 +300,29 @@ def generate_bollinger_rsi_signals(
             rank (default 100 bars).
         regime_filter_keltner_atr_mult: ATR multiplier for Keltner channel
             used in "keltner" mode (default 1.5, matching indicator default).
+        regime_filter_min_rv: lower annualized RV bound (%) for "rv_band" mode
+            (default 20.0 — below this, market is too thin for mean-reversion).
+        regime_filter_max_rv: upper annualized RV bound (%) for "rv_band" mode
+            (default 50.0 — above this, market is trending/shocked, not ranging).
+        regime_filter_rv_lookback: rolling window (bars) for RV computation in
+            "rv_band" mode (default 20 = ~1 month of 1h bars on CME futures).
+        htf_rsi_period: Wilder RSI period computed on daily bars for HTF
+            conditioning. 0 = disabled (default, backward-compatible). When
+            > 0, the 1h close is resampled to daily, RSI is computed on daily
+            bars, then forward-filled back to the 1h index. This gates entries
+            by daily RSI to avoid buying intraday dips against a daily
+            overbought reading (LONG) or shorting bounces into a daily oversold
+            reading (SHORT). Hypothesis F for MCL — the six prior hypotheses
+            (A-E) show mean-rev edge exists intraday but is destroyed by
+            multi-day trending regimes; HTF RSI filtering targets exactly that.
+        htf_rsi_upper: LONG entries are suppressed when the forward-filled
+            daily RSI >= this threshold (default 60.0 — avoids buying 1h dips
+            when the daily chart is already overbought). Only active when
+            htf_rsi_period > 0.
+        htf_rsi_lower: SHORT entries are suppressed when the forward-filled
+            daily RSI <= this threshold (default 40.0 — avoids shorting 1h
+            bounces when the daily chart is already oversold). Only active when
+            htf_rsi_period > 0.
 
     Returns:
         Copy of df with added columns documented in the module docstring.
@@ -230,6 +353,16 @@ def generate_bollinger_rsi_signals(
     long_cond = long_cond & ~conflict
     short_cond = short_cond & ~conflict
 
+    # ── Direction filter ─────────────────────────────────────────────────
+    # "both" (default) keeps symmetric LONG+SHORT behavior.
+    # "short_only" zeroes longs — isolates fade-highs edge when the underlying
+    #   has a persistent uptrend (e.g. MES bull regime from rank11 PASS).
+    # "long_only" zeroes shorts — for persistent-downtrend underlyings.
+    if signal_direction == "short_only":
+        long_cond = long_cond & False
+    elif signal_direction == "long_only":
+        short_cond = short_cond & False
+
     # ── Regime filter (optional) ─────────────────────────────────────────
     # Default "none" preserves original behavior. Non-default modes AND an
     # additional gate into the entry condition to suppress trend-day chop
@@ -244,9 +377,36 @@ def generate_bollinger_rsi_signals(
             bbwidth_pct=regime_filter_bbwidth_pct,
             bbwidth_lookback=regime_filter_bbwidth_lookback,
             keltner_atr_mult=regime_filter_keltner_atr_mult,
+            rv_min=regime_filter_min_rv,
+            rv_max=regime_filter_max_rv,
+            rv_lookback=regime_filter_rv_lookback,
+            sentiment_db_path=sentiment_db_path,
+            sentiment_block_bearish=sentiment_block_bearish,
         )
         long_cond = long_cond & regime_gate
         short_cond = short_cond & regime_gate
+
+    # ── HTF RSI filter (optional) ────────────────────────────────────────
+    # Daily RSI conditioning: resample 1h close → daily, compute Wilder RSI,
+    # forward-fill to 1h index, then AND into directional entry conditions.
+    # htf_rsi_period=0 skips entirely (default, backward-compatible).
+    if htf_rsi_period > 0:
+        try:
+            daily_close = df["close"].resample("1D").last().dropna()
+            htf_rsi_daily = _wilder_rsi(daily_close, period=htf_rsi_period)
+            # Forward-fill daily values to every 1h bar (each 1h bar inherits
+            # the most recent daily close's RSI value).
+            htf_rsi_1h = htf_rsi_daily.reindex(df.index, method="ffill")
+        except (TypeError, AttributeError):
+            # Non-DatetimeIndex or other resampling failure — fail safe to
+            # neutral (50.0) which passes all threshold comparisons.
+            htf_rsi_1h = pd.Series(50.0, index=df.index)
+
+        htf_warm = htf_rsi_1h.notna()
+        # LONG: only when daily is not overbought (RSI < htf_rsi_upper).
+        long_cond = long_cond & (htf_rsi_1h < htf_rsi_upper).fillna(False) & htf_warm
+        # SHORT: only when daily is not oversold (RSI > htf_rsi_lower).
+        short_cond = short_cond & (htf_rsi_1h > htf_rsi_lower).fillna(False) & htf_warm
 
     # ── Exit logic: midband cross ─────────────────────────────────────────
     # Midband cross in either direction — simple reversion-complete signal.

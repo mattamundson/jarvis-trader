@@ -88,6 +88,8 @@ def _build_reconciliation(
     ibkr_positions: list,
     schwab_positions: list,
     paper_positions: list,
+    ibkr_connected: bool,
+    schwab_connected: bool,
 ) -> dict:
     """
     Flag mismatches between paper tracker and live broker positions.
@@ -95,7 +97,36 @@ def _build_reconciliation(
     A discrepancy is raised when:
     - A paper position exists for a symbol but neither live broker reports it.
     - A live broker position exists but no corresponding paper position is open.
+    - Neither broker is queryable (blind state — empty discrepancy lists are NOT
+      a clean state, they are a no-data state, surfaced explicitly).
+
+    Returns a dict with:
+      - discrepancies: list of mismatch entries
+      - health: "ok" | "partial" | "blind" — data quality of this reconciliation
+      - ibkr_queryable / schwab_queryable: which sides we could read
     """
+    last_checked = datetime.now(timezone.utc).isoformat()
+
+    # Blind state — neither broker queryable; an empty discrepancy list here is
+    # silent failure (see project_tracker_broker_drift_2026_04_24.md). Surface it.
+    if not ibkr_connected and not schwab_connected:
+        return {
+            "discrepancies": [
+                {
+                    "symbol": None,
+                    "type": "all_brokers_disconnected",
+                    "detail": (
+                        "Cannot reconcile — neither IBKR nor Schwab is connected. "
+                        "An empty discrepancy list is NOT a clean state; it's a blind state."
+                    ),
+                }
+            ],
+            "health": "blind",
+            "ibkr_queryable": False,
+            "schwab_queryable": False,
+            "last_checked": last_checked,
+        }
+
     live_symbols: set[str] = set()
     for p in ibkr_positions:
         live_symbols.add(p["symbol"].upper())
@@ -124,9 +155,14 @@ def _build_reconciliation(
             }
         )
 
+    health = "ok" if (ibkr_connected and schwab_connected) else "partial"
+
     return {
         "discrepancies": discrepancies,
-        "last_checked": datetime.now(timezone.utc).isoformat(),
+        "health": health,
+        "ibkr_queryable": ibkr_connected,
+        "schwab_queryable": schwab_connected,
+        "last_checked": last_checked,
     }
 
 
@@ -144,9 +180,15 @@ def _build_reconciliation(
 async def get_broker_positions():
     """Return unified position view across all brokers plus paper tracker."""
     try:
+        # Snapshot connection state once -- avoids drift if the underlying
+        # connectors flap during a single request, and lets the reconciler
+        # see the same "queryable" answer the response reports.
+        ibkr_conn = _ibkr_connected()
+        schwab_conn = _schwab_connected()
+
         # IBKR positions
         ibkr_raw: list = []
-        if _ibkr_connected():
+        if ibkr_conn:
             try:
                 ibkr_raw = await _ibkr.get_positions() or []
             except Exception as exc:
@@ -156,7 +198,7 @@ async def get_broker_positions():
 
         # Schwab positions
         schwab_raw: list = []
-        if _schwab_connected():
+        if schwab_conn:
             try:
                 schwab_raw = await _schwab.get_positions() or []
             except Exception as exc:
@@ -174,15 +216,21 @@ async def get_broker_positions():
 
         paper_normalised = [_normalise_paper_position(p) for p in paper_raw]
 
-        reconciliation = _build_reconciliation(ibkr_normalised, schwab_normalised, paper_normalised)
+        reconciliation = _build_reconciliation(
+            ibkr_normalised,
+            schwab_normalised,
+            paper_normalised,
+            ibkr_connected=ibkr_conn,
+            schwab_connected=schwab_conn,
+        )
 
         return {
             "ibkr": {
-                "connected": _ibkr_connected(),
+                "connected": ibkr_conn,
                 "positions": ibkr_normalised,
             },
             "schwab": {
-                "connected": _schwab_connected(),
+                "connected": schwab_conn,
                 "positions": schwab_normalised,
             },
             "paper": {

@@ -22,11 +22,11 @@ Usage:
 API Reference: https://docs.anthropic.com/managed-agents (public beta)
 """
 
-import os
-import logging
 import asyncio
-from typing import Optional, Dict, Any, List
+import logging
+import os
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ MANAGED_AGENTS_API = "https://api.anthropic.com/v1/agents"
 @dataclass
 class ManagedAgentConfig:
     """Configuration for a single managed agent deployment."""
+
     agent_id: str
     name: str
     model: str = "claude-sonnet-4-6"
@@ -51,6 +52,7 @@ class ManagedAgentConfig:
 @dataclass
 class Stage1AnalysisResult:
     """Result from Stage 1 analysis (either custom or managed path)."""
+
     technical: Optional[Any] = None
     news: Optional[Any] = None
     social: Optional[Any] = None
@@ -88,9 +90,7 @@ class ManagedAgentBridge:
                 "ManagedAgentBridge: MANAGED MODE ACTIVE — using Anthropic Managed Agents API"
             )
         else:
-            logger.debug(
-                "ManagedAgentBridge: custom pipeline mode (USE_MANAGED_AGENTS not set)"
-            )
+            logger.debug("ManagedAgentBridge: custom pipeline mode (USE_MANAGED_AGENTS not set)")
 
     def _detect_managed_mode(self) -> bool:
         """Check if managed mode is enabled via environment variable."""
@@ -100,6 +100,84 @@ class ManagedAgentBridge:
     def is_managed_mode(self) -> bool:
         """Return True if bridge is in managed agent mode."""
         return self._managed_mode
+
+    async def run_stage1(
+        self,
+        symbol: str,
+        *,
+        custom_runner: Optional[Any] = None,
+        is_futures: bool = False,
+        errors: Optional[List] = None,
+        timeframe: str = "1h",
+        bars_json: str = "",
+        additional_context: str = "",
+    ) -> Any:
+        """
+        Unified Stage 1 dispatcher — routes to managed or custom path.
+
+        Acceptance-criteria entry point for US-H1: a single `run_stage1()` that
+        implements both paths and logs which one is active.
+
+        Parameters
+        ----------
+        symbol : str
+            Instrument symbol (e.g. "MES", "MNQ", "MCL").
+
+        custom_runner : async callable, required when managed mode is OFF
+            Must match the signature of TradingPipeline._run_analysts:
+                async (symbol, is_futures, errors, timeframe="1h") -> dict
+            Returns a dict of analyst reports keyed by analyst name.
+
+        is_futures, errors, timeframe : passed to custom_runner
+
+        bars_json, additional_context : passed to run_stage1_managed when
+            managed mode is active
+
+        Returns
+        -------
+        Custom path: dict (whatever custom_runner returns — typically the
+                     analyst_reports dict from TradingPipeline._run_analysts)
+        Managed path: Stage1AnalysisResult (this module's dataclass)
+
+        Raises
+        ------
+        ValueError if managed mode is OFF and custom_runner is None.
+
+        Notes
+        -----
+        The return shapes intentionally differ — callers in the custom path
+        already expect the dict from `_run_analysts`, while managed-mode
+        callers can use the richer Stage1AnalysisResult dataclass for
+        per-analyst error tracking. If you need shape-equivalence, normalize
+        on the caller side.
+        """
+        if errors is None:
+            errors = []
+
+        if self._managed_mode:
+            logger.info(
+                "ManagedAgentBridge.run_stage1: MANAGED path active for %s",
+                symbol,
+            )
+            return await self.run_stage1_managed(
+                symbol=symbol,
+                bars_json=bars_json,
+                additional_context=additional_context,
+            )
+
+        if custom_runner is None:
+            raise ValueError(
+                "ManagedAgentBridge.run_stage1: custom_runner is required when "
+                "USE_MANAGED_AGENTS is not enabled. Pass the existing "
+                "TradingPipeline._run_analysts (or any async callable matching "
+                "its signature)."
+            )
+
+        logger.info(
+            "ManagedAgentBridge.run_stage1: CUSTOM path active for %s",
+            symbol,
+        )
+        return await custom_runner(symbol, is_futures, errors, timeframe=timeframe)
 
     async def run_stage1_managed(
         self,
@@ -124,9 +202,7 @@ class ManagedAgentBridge:
             Stage1AnalysisResult with all analyst outputs
         """
         if not self._managed_mode:
-            raise RuntimeError(
-                "run_stage1_managed() called but managed mode is not active"
-            )
+            raise RuntimeError("run_stage1_managed() called but managed mode is not active")
 
         if not self._api_key:
             logger.error("ANTHROPIC_API_KEY not set — cannot use managed agents")
@@ -176,7 +252,7 @@ class ManagedAgentBridge:
                 latency_ms=int(time.time() * 1000 - start_ms),
             )
 
-            for (name, _), result in zip(analyst_tasks, results):
+            for (name, _), result in zip(analyst_tasks, results, strict=False):
                 if isinstance(result, Exception):
                     stage1_result.errors[name] = str(result)
                     logger.warning("Managed agent %s failed: %s", name, result)
@@ -247,12 +323,10 @@ class ManagedAgentBridge:
                     content = data.get("content", [{}])[0].get("text", "")
                     return {"analyst": analyst_name, "response": content, "raw": data}
                 else:
-                    raise Exception(
-                        f"API {response.status_code}: {response.text[:200]}"
-                    )
+                    raise Exception(f"API {response.status_code}: {response.text[:200]}")
 
         except Exception as e:
-            raise RuntimeError(f"{analyst_name} managed call failed: {e}")
+            raise RuntimeError(f"{analyst_name} managed call failed: {e}") from e
 
     # ── Prompt builders ────────────────────────────────────────────────────────
 
@@ -317,7 +391,6 @@ class ManagedAgentBridge:
             )
         else:
             logger.info(
-                "Claude Managed Agents: inactive (custom pipeline active) | "
-                "Set %s=true to enable",
+                "Claude Managed Agents: inactive (custom pipeline active) | Set %s=true to enable",
                 USE_MANAGED_AGENTS_ENV,
             )

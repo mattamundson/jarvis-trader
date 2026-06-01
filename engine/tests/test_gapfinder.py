@@ -8,7 +8,6 @@ import pytest
 
 from backtest.gapfinder import compute_gaps
 
-
 TZ = "America/Chicago"
 
 # RTH open for US futures in winter (CST = UTC-6): 09:30 CT = 15:30 UTC

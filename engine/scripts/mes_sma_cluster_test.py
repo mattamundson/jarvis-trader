@@ -28,9 +28,8 @@ ENGINE_DIR = Path(__file__).resolve().parent.parent
 if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
-from backtest import BacktestDataLoader, Backtester
-from backtest.signals import generate_instrument_signals
-from backtest.trend_signals import _wilder_atr, generate_sma_trend_signals
+from backtest import BacktestDataLoader, Backtester  # noqa: E402
+from backtest.trend_signals import generate_sma_trend_signals  # noqa: E402
 
 SYMBOL = "MES"
 INTERVAL = "1h"
@@ -177,7 +176,7 @@ def main():
         },
         "all_results": results_sorted,
     }
-    out_path = ENGINE_DIR / "backtest" / "results" / f"MES_1h_SMA_cluster_test.json"
+    out_path = ENGINE_DIR / "backtest" / "results" / "MES_1h_SMA_cluster_test.json"
     out_path.write_text(json.dumps(out, indent=2, default=str))
     print(f"\n[cluster] Saved: {out_path.name}")
     return 0 if all_pass else 1

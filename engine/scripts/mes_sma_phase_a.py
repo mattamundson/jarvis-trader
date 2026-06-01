@@ -26,12 +26,12 @@ ENGINE_DIR = Path(__file__).resolve().parent.parent
 if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
-from backtest import BacktestDataLoader, Backtester
-from backtest.evaluation_harness import evaluate
-from backtest.monte_carlo import bootstrap_pf, run_monte_carlo, run_slippage_stress
-from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals
-from backtest.trend_signals import get_sma_trend_params
-
+from backtest import BacktestDataLoader, Backtester  # noqa: E402
+from backtest.evaluation_harness import evaluate  # noqa: E402
+from backtest.monte_carlo import bootstrap_pf, run_monte_carlo, run_slippage_stress  # noqa: E402
+from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals  # noqa: E402
+from backtest.trade_manager import BacktestResult  # noqa: E402
+from backtest.trend_signals import get_sma_trend_params  # noqa: E402
 
 SYMBOL = "MES"
 INTERVAL = "1h"
@@ -43,7 +43,7 @@ N_SIMULATIONS = 10_000
 SEED = 42
 
 
-def run_mes_backtest() -> "BacktestResult":
+def run_mes_backtest() -> BacktestResult:
     """Reproduce the exact backtest the /backtest/run API runs for MES."""
     loader = BacktestDataLoader()
     df = loader.load(SYMBOL, START, END, INTERVAL)
@@ -169,14 +169,14 @@ def print_summary(report: dict) -> None:
 
     print()
     print("=" * 70)
-    print(f"MES SMA(50,200) — Phase A Stress-Test Report")
+    print("MES SMA(50,200) — Phase A Stress-Test Report")
     print("=" * 70)
     print(f"Backtest: {bt['total_trades']} trades | WR {bt['win_rate']:.1%} | "
           f"PF {bt['profit_factor']:.3f} | Sharpe {bt['sharpe_ratio']:.3f} | "
           f"MaxDD {bt['max_drawdown_pct']:.2%}")
     print()
     print(f"Monte Carlo (clean, {mc_clean['n_simulations']:,} perms):")
-    pf_dist = mc_clean["distribution"].get("profit_factor")  # may not exist
+    # NOTE: profit_factor distribution not always present in mc_clean; skip for now.
     fc_dist = mc_clean["distribution"]["final_capital"]
     dd_dist = mc_clean["distribution"]["max_drawdown_pct"]
     sh_dist = mc_clean["distribution"]["sharpe_ratio"]
@@ -198,7 +198,7 @@ def print_summary(report: dict) -> None:
           f"{mc_clean['confidence']['prob_profitable']:.2f}%)")
     print(f"  verdict: {mc_slip['verdict']}")
     bpf = report["bootstrap_pf_ci"]
-    print(f"Bootstrap PF CI (10k IID resamples):")
+    print("Bootstrap PF CI (10k IID resamples):")
     print(f"  median={bpf.get('median_pf', 0.0):.3f}  "
           f"p5={bpf.get('pf_ci_95_low', 0.0):.3f}  "
           f"p95={bpf.get('pf_ci_95_high', 0.0):.3f}  "

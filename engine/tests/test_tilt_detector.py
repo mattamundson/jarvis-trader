@@ -353,6 +353,7 @@ class TestSafetyLayerIntegration:
             MAX_POSITION_SIZE_PCT = 0.25
             MAX_ORDERS_PER_MINUTE = 10
             MAX_CONTRACTS_PER_INSTRUMENT = 5
+            MAX_OVERNIGHT_CONTRACTS = 5
 
         sl = SafetyLayer(FakeConfig())
         assert hasattr(sl, "tilt_detector")
@@ -370,6 +371,7 @@ class TestSafetyLayerIntegration:
             MAX_POSITION_SIZE_PCT = 0.25
             MAX_ORDERS_PER_MINUTE = 10
             MAX_CONTRACTS_PER_INSTRUMENT = 5
+            MAX_OVERNIGHT_CONTRACTS = 5
 
         sl = SafetyLayer(FakeConfig())
         td = TiltDetector()
@@ -388,6 +390,7 @@ class TestSafetyLayerIntegration:
             MAX_POSITION_SIZE_PCT = 0.25
             MAX_ORDERS_PER_MINUTE = 10
             MAX_CONTRACTS_PER_INSTRUMENT = 5
+            MAX_OVERNIGHT_CONTRACTS = 5
 
         sl = SafetyLayer(FakeConfig())
         td = TiltDetector()
@@ -420,6 +423,7 @@ class TestSafetyLayerIntegration:
             MAX_POSITION_SIZE_PCT = 0.25
             MAX_ORDERS_PER_MINUTE = 10
             MAX_CONTRACTS_PER_INSTRUMENT = 5
+            MAX_OVERNIGHT_CONTRACTS = 5
 
         sl = SafetyLayer(FakeConfig())
         td = TiltDetector()

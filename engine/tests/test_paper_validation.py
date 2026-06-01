@@ -22,10 +22,10 @@ import pytest
 
 from paper.validation_gate_config import PAPER_VALIDATION_GATES
 from paper.validation_tracker import (
-    PASS_THRESHOLDS,
     _TRACKED_INSTRUMENTS,
-    _thresholds_for,
+    PASS_THRESHOLDS,
     ValidationTracker,
+    _thresholds_for,
 )
 
 
@@ -81,13 +81,13 @@ class TestTradeRecording:
                 "pnl": 500.0,
                 "pnl_pct": 10.0,
                 "recorded_at": "2026-04-02T12:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             }
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
-        assert tracker.metrics["MCL"].total_trades == 1
-        assert tracker.metrics["MCL"].winning_trades == 1
+        assert tracker.metrics["MES"].total_trades == 1
+        assert tracker.metrics["MES"].winning_trades == 1
 
     def test_load_winning_and_losing_trades(self, temp_data_dir):
         """Loading multiple trades computes correct counts."""
@@ -104,7 +104,7 @@ class TestTradeRecording:
                 "pnl": 500.0,
                 "pnl_pct": 10.0,
                 "recorded_at": "2026-04-02T12:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -118,14 +118,14 @@ class TestTradeRecording:
                 "pnl": -400.0,
                 "pnl_pct": -8.0,
                 "recorded_at": "2026-04-02T13:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
-        assert tracker.metrics["MCL"].total_trades == 2
-        assert tracker.metrics["MCL"].winning_trades == 1
-        assert tracker.metrics["MCL"].losing_trades == 1
+        assert tracker.metrics["MES"].total_trades == 2
+        assert tracker.metrics["MES"].winning_trades == 1
+        assert tracker.metrics["MES"].losing_trades == 1
 
 
 class TestWinRate:
@@ -133,7 +133,7 @@ class TestWinRate:
 
     def test_win_rate_zero_trades(self, tracker):
         """Win rate is 0 when no trades."""
-        assert tracker.metrics["MCL"].win_rate_pct == 0.0
+        assert tracker.metrics["MES"].win_rate_pct == 0.0
 
     def test_win_rate_all_winning(self, tracker, temp_data_dir):
         """Win rate is 100% with all winners."""
@@ -150,13 +150,13 @@ class TestWinRate:
                 "pnl": 500.0,
                 "pnl_pct": 10.0,
                 "recorded_at": f"2026-04-02T{12 + i}:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             }
             for i in range(5)
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
-        assert tracker.metrics["MCL"].win_rate_pct == 100.0
+        assert tracker.metrics["MES"].win_rate_pct == 100.0
 
     def test_win_rate_all_losing(self, tracker, temp_data_dir):
         """Win rate is 0% with all losers."""
@@ -173,13 +173,13 @@ class TestWinRate:
                 "pnl": -500.0,
                 "pnl_pct": -10.0,
                 "recorded_at": f"2026-04-02T{12 + i}:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             }
             for i in range(5)
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
-        assert tracker.metrics["MCL"].win_rate_pct == 0.0
+        assert tracker.metrics["MES"].win_rate_pct == 0.0
 
     def test_win_rate_mixed(self, tracker, temp_data_dir):
         """Win rate is correct with mixed trades."""
@@ -196,7 +196,7 @@ class TestWinRate:
                 "pnl": 500.0,
                 "pnl_pct": 10.0,
                 "recorded_at": "2026-04-02T12:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -210,7 +210,7 @@ class TestWinRate:
                 "pnl": -400.0,
                 "pnl_pct": -8.0,
                 "recorded_at": "2026-04-02T13:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -224,13 +224,13 @@ class TestWinRate:
                 "pnl": 600.0,
                 "pnl_pct": 12.0,
                 "recorded_at": "2026-04-02T14:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
         # 2 wins, 1 loss = 66.67%
-        assert abs(tracker.metrics["MCL"].win_rate_pct - 66.67) < 0.01
+        assert abs(tracker.metrics["MES"].win_rate_pct - 66.67) < 0.01
 
 
 class TestProfitFactor:
@@ -238,7 +238,7 @@ class TestProfitFactor:
 
     def test_profit_factor_no_trades(self, tracker):
         """Profit factor is 0 with no trades."""
-        assert tracker.metrics["MCL"].profit_factor == 0.0
+        assert tracker.metrics["MES"].profit_factor == 0.0
 
     def test_profit_factor_only_winners(self, tracker, temp_data_dir):
         """Profit factor is high with only winners."""
@@ -255,7 +255,7 @@ class TestProfitFactor:
                 "pnl": 500.0,
                 "pnl_pct": 10.0,
                 "recorded_at": "2026-04-02T12:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -269,13 +269,13 @@ class TestProfitFactor:
                 "pnl": 600.0,
                 "pnl_pct": 12.0,
                 "recorded_at": "2026-04-02T13:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
         # Gross profit = 1100, gross loss = 0, PF = 1100
-        assert tracker.metrics["MCL"].profit_factor == 1100.0
+        assert tracker.metrics["MES"].profit_factor == 1100.0
 
     def test_profit_factor_only_losers(self, tracker, temp_data_dir):
         """Profit factor is 0 with only losers."""
@@ -292,7 +292,7 @@ class TestProfitFactor:
                 "pnl": -500.0,
                 "pnl_pct": -10.0,
                 "recorded_at": "2026-04-02T12:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -306,12 +306,12 @@ class TestProfitFactor:
                 "pnl": -600.0,
                 "pnl_pct": -12.0,
                 "recorded_at": "2026-04-02T13:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
-        assert tracker.metrics["MCL"].profit_factor == 0.0
+        assert tracker.metrics["MES"].profit_factor == 0.0
 
     def test_profit_factor_mixed(self, tracker, temp_data_dir):
         """Profit factor is gross_profit / gross_loss."""
@@ -328,7 +328,7 @@ class TestProfitFactor:
                 "pnl": 1000.0,
                 "pnl_pct": 20.0,
                 "recorded_at": "2026-04-02T12:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -342,13 +342,13 @@ class TestProfitFactor:
                 "pnl": -500.0,
                 "pnl_pct": -10.0,
                 "recorded_at": "2026-04-02T13:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
         # Gross profit = 1000, gross loss = 500, PF = 2.0
-        assert abs(tracker.metrics["MCL"].profit_factor - 2.0) < 0.01
+        assert abs(tracker.metrics["MES"].profit_factor - 2.0) < 0.01
 
 
 class TestValidationThresholds:
@@ -357,11 +357,11 @@ class TestValidationThresholds:
     def test_validation_fails_before_30_days(self, tracker):
         """Validation fails even if metrics pass but days < 30."""
         # Empty tracker has no days, so should fail
-        assert not tracker.is_validated("MCL")
+        assert not tracker.is_validated("MES")
 
     def test_validation_status_structure(self, tracker):
         """get_progress returns correct structure."""
-        progress = tracker.get_progress("MCL")
+        progress = tracker.get_progress("MES")
         assert "instrument" in progress
         assert "total_trades" in progress
         assert "win_rate_pct" in progress
@@ -392,7 +392,7 @@ class TestConsecutiveLosses:
                 "pnl": -500.0,
                 "pnl_pct": -10.0,
                 "recorded_at": "2026-04-02T12:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -406,7 +406,7 @@ class TestConsecutiveLosses:
                 "pnl": -500.0,
                 "pnl_pct": -10.0,
                 "recorded_at": "2026-04-02T13:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -420,12 +420,12 @@ class TestConsecutiveLosses:
                 "pnl": 500.0,
                 "pnl_pct": 10.0,
                 "recorded_at": "2026-04-02T14:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
-        assert tracker.metrics["MCL"].consecutive_losses == 0
+        assert tracker.metrics["MES"].consecutive_losses == 0
 
     def test_max_consecutive_losses_tracked(self, tracker, temp_data_dir):
         """Max consecutive losses is recorded."""
@@ -443,7 +443,7 @@ class TestConsecutiveLosses:
                     "pnl": -500.0,
                     "pnl_pct": -10.0,
                     "recorded_at": f"2026-04-02T{12 + i}:00:00",
-                    "symbol": "MCL",
+                    "symbol": "MES",
                 }
                 for i in range(3)
             ]
@@ -460,7 +460,7 @@ class TestConsecutiveLosses:
                     "pnl": 500.0,
                     "pnl_pct": 10.0,
                     "recorded_at": "2026-04-02T16:00:00",
-                    "symbol": "MCL",
+                    "symbol": "MES",
                 }
             ]
             + [
@@ -476,14 +476,14 @@ class TestConsecutiveLosses:
                     "pnl": -500.0,
                     "pnl_pct": -10.0,
                     "recorded_at": f"2026-04-02T{17 + i}:00:00",
-                    "symbol": "MCL",
+                    "symbol": "MES",
                 }
                 for i in range(5)
             ]
         )
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
-        assert tracker.metrics["MCL"].max_consecutive_losses == 5
+        assert tracker.metrics["MES"].max_consecutive_losses == 5
 
     def test_breakeven_trades_do_not_count_as_losses(self, tracker, temp_data_dir):
         """Regression: pnl == 0 breakevens must not advance the loss streak.
@@ -506,13 +506,13 @@ class TestConsecutiveLosses:
                 "pnl": 0.0,
                 "pnl_pct": 0.0,
                 "recorded_at": f"2026-04-02T{12 + i:02d}:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             }
             for i in range(11)
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
         tracker = ValidationTracker(data_dir=temp_data_dir)
-        mcl = tracker.metrics["MCL"]
+        mcl = tracker.metrics["MES"]
         assert mcl.consecutive_losses == 0, "breakevens must not advance streak"
         assert mcl.losing_trades == 0, "breakevens must not count as losses"
         assert mcl.winning_trades == 0, "breakevens must not count as wins"
@@ -528,8 +528,8 @@ class TestDashboardData:
         assert "timestamp" in data
         assert "instruments" in data
         assert "overall_pass" in data
-        assert "MCL" in data["instruments"]
-        assert "MNQ" in data["instruments"]
+        assert "MES" in data["instruments"]
+        assert "MGC" in data["instruments"]
 
     def test_dashboard_overall_pass(self, tracker):
         """overall_pass is False when instruments don't pass."""
@@ -556,7 +556,7 @@ class TestSerialization:
                 "pnl": 500.0,
                 "pnl_pct": 10.0,
                 "recorded_at": "2026-04-02T12:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -570,15 +570,15 @@ class TestSerialization:
                 "pnl": -400.0,
                 "pnl_pct": -8.0,
                 "recorded_at": "2026-04-02T13:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades)
 
         # Create new tracker to load from disk
         tracker = ValidationTracker(data_dir=temp_data_dir)
-        assert tracker.metrics["MCL"].total_trades == 2
-        assert tracker.metrics["MCL"].winning_trades == 1
+        assert tracker.metrics["MES"].total_trades == 2
+        assert tracker.metrics["MES"].winning_trades == 1
 
 
 class TestGetAllTrades:
@@ -586,7 +586,7 @@ class TestGetAllTrades:
 
     def test_get_all_trades_empty(self, tracker):
         """Getting trades returns empty list when none recorded."""
-        trades = tracker.get_all_trades("MCL")
+        trades = tracker.get_all_trades("MES")
         assert trades == []
 
     def test_get_all_trades_populated(self, tracker, temp_data_dir):
@@ -604,7 +604,7 @@ class TestGetAllTrades:
                 "pnl": 500.0,
                 "pnl_pct": 10.0,
                 "recorded_at": "2026-04-02T12:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
             {
                 "entry_date": "2026-04-02",
@@ -618,13 +618,13 @@ class TestGetAllTrades:
                 "pnl": -400.0,
                 "pnl_pct": -8.0,
                 "recorded_at": "2026-04-02T13:00:00",
-                "symbol": "MCL",
+                "symbol": "MES",
             },
         ]
-        _create_mock_tracker_file(temp_data_dir, "MCL", trades_data)
+        _create_mock_tracker_file(temp_data_dir, "MES", trades_data)
         tracker = ValidationTracker(data_dir=temp_data_dir)
 
-        trades = tracker.get_all_trades("MCL")
+        trades = tracker.get_all_trades("MES")
         assert len(trades) == 2
         assert trades[0]["pnl"] == 500.0
         assert trades[1]["pnl"] == -400.0

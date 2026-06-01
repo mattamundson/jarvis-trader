@@ -187,8 +187,8 @@ function PerfStat({
 
 function PositionRow({ pos }: { pos: PaperPosition }) {
   const isLong =
-    pos.action.toLowerCase() === "buy" ||
-    pos.action.toLowerCase() === "long";
+    (pos.action ?? "").toLowerCase() === "buy" ||
+    (pos.action ?? "").toLowerCase() === "long";
 
   const entryTime = (() => {
     try {

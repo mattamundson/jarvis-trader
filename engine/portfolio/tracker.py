@@ -27,9 +27,17 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("jarvis_trader.portfolio")
+
+try:
+    from database._helpers import compute_order_idempotency_key as _compute_idem_key
+except ImportError:
+    try:
+        from engine.database._helpers import compute_order_idempotency_key as _compute_idem_key
+    except ImportError:
+        _compute_idem_key = None  # type: ignore[assignment]
 
 # Default JSONL storage path — sits next to this file at engine/portfolio/trades.jsonl
 _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
@@ -146,6 +154,7 @@ class PortfolioTracker:
         price: float,
         notes: str = "",
         atr_value: Optional[float] = None,
+        rv_at_entry: Optional[float] = None,
     ) -> str:
         """
         Log a new simulated entry.
@@ -159,6 +168,23 @@ class PortfolioTracker:
             ATR at entry time.  Stored on the trade for later use by
             check_and_move_breakeven().
         """
+        # ── Idempotency key: compute before generating trade_id so that a
+        # duplicate call within the same 5-second window can be collapsed to
+        # the existing row without creating a ghost trade_id.
+        idem_key: Optional[str] = None
+        if _compute_idem_key is not None:
+            try:
+                idem_key = _compute_idem_key(symbol, action, float(quantity), float(price))
+            except Exception as _ik_err:
+                logger.debug("[TRACKER] idempotency key compute failed (non-fatal): %s", _ik_err)
+
+        # If an idempotency key is available, check for an existing open trade
+        # in the in-memory dict first (fast path, avoids DB round-trip).
+        if idem_key is not None and self._db is not None:
+            # The DB mixin will do the definitive check; we just need to return
+            # the correct trade_id if the mixin deduplicates.
+            pass  # resolved below after insert_paper_trade returns
+
         trade_id = str(uuid.uuid4())
         trade = PaperTrade(
             trade_id=trade_id,
@@ -175,8 +201,11 @@ class PortfolioTracker:
         # SQLite-first: write to DB before touching in-memory state.
         # If the DB write fails the exception propagates and in-memory is NOT updated,
         # preventing ghost positions on restart (Bug B9 / US-2004).
+        _sp: dict = {"notes": notes}
+        if rv_at_entry is not None:
+            _sp["rv_at_entry"] = round(float(rv_at_entry), 4)
         if self._db is not None:
-            self._db.insert_paper_trade(
+            row_id = self._db.insert_paper_trade(
                 trade_id,
                 symbol=trade.symbol,
                 side=trade.action,
@@ -185,8 +214,39 @@ class PortfolioTracker:
                 entry_time=trade.entry_time,
                 stop_loss=None,
                 take_profit=None,
-                strategy_params={"notes": notes},
+                strategy_params=_sp,
+                idempotency_key=idem_key,
             )
+            # Dedup check: if the DB returned a row_id for an EXISTING row but
+            # the trade_id we generated is NOT in _open, the mixin deduplicated
+            # this submission.  Return the existing trade_id from the DB row.
+            if idem_key is not None:
+                try:
+                    existing_row = self._db.get_trade_by_id(trade_id)
+                    if existing_row is None:
+                        # Our generated trade_id was not inserted — fetch the
+                        # deduplicated row by row_id to get its trade_id.
+                        with self._db._lock:
+                            _conn = self._db._connect()
+                            try:
+                                _r = _conn.execute(
+                                    "SELECT trade_id FROM paper_trades WHERE id = ?", (row_id,)
+                                ).fetchone()
+                            finally:
+                                _conn.close()
+                        if _r is not None:
+                            existing_trade_id: str = _r[0]
+                            logger.warning(
+                                "[TRACKER] open_trade DEDUPLICATED — returning existing trade_id=%s "
+                                "(idem_key=%s)",
+                                existing_trade_id[:8],
+                                idem_key,
+                            )
+                            return existing_trade_id
+                except Exception as _dedup_err:
+                    logger.debug(
+                        "[TRACKER] dedup resolution failed (non-fatal, continuing): %s", _dedup_err
+                    )
 
         # DB write succeeded (or no DB configured) — update in-memory and JSONL
         self._open[trade_id] = trade
@@ -203,11 +263,12 @@ class PortfolioTracker:
         # Publish trade opened event
         try:
             from events.bus import publish as publish_event
+
             publish_event(
-                'trade_opened',
-                f'{symbol.upper()} {action.upper()} {quantity} @ {price}',
+                "trade_opened",
+                f"{symbol.upper()} {action.upper()} {quantity} @ {price}",
                 symbol=symbol.upper(),
-                severity='info'
+                severity="info",
             )
         except Exception:
             pass
@@ -348,15 +409,30 @@ class PortfolioTracker:
         # Publish trade closed event
         try:
             from events.bus import publish as publish_event
-            severity = 'warn' if trade.pnl and trade.pnl < 0 else 'info'
+
+            severity = "warn" if trade.pnl and trade.pnl < 0 else "info"
             publish_event(
-                'trade_closed',
-                f'{trade.symbol} closed pnl={trade.pnl}',
+                "trade_closed",
+                f"{trade.symbol} closed pnl={trade.pnl}",
                 symbol=trade.symbol,
-                severity=severity
+                severity=severity,
             )
         except Exception:
             pass
+
+        # Queue post-trade LLM review (non-blocking, best-effort)
+        try:
+            import asyncio as _asyncio_rv
+            import os as _os_rv
+
+            from analytics.trade_review import queue_trade_review as _queue_review
+
+            if not _os_rv.getenv("TESTING"):
+                _loop_rv = _asyncio_rv.get_event_loop()
+                if _loop_rv.is_running():
+                    _loop_rv.create_task(_queue_review(trade))
+        except Exception as _rv_exc:
+            logger.debug("[REVIEW] Post-trade review skipped: %s", _rv_exc)
 
         return trade
 
@@ -401,10 +477,7 @@ class PortfolioTracker:
         for tid in drop:
             self._open.pop(tid, None)
 
-        return [
-            t.to_dict()
-            for t in sorted(valid, key=lambda t: t.entry_time, reverse=True)
-        ]
+        return [t.to_dict() for t in sorted(valid, key=lambda t: t.entry_time, reverse=True)]
 
     def get_performance(self) -> dict:
         """
@@ -436,7 +509,9 @@ class PortfolioTracker:
                     t.pnl = row.get("pnl") or row.get("realized_pnl")
                     closed.append(t)
             except Exception as exc:
-                logger.warning("[TRACKER] get_performance: SQLite read failed, using in-memory: %s", exc)
+                logger.warning(
+                    "[TRACKER] get_performance: SQLite read failed, using in-memory: %s", exc
+                )
                 closed = self._closed
         else:
             closed = self._closed
@@ -517,6 +592,7 @@ class PortfolioTracker:
         initial: float = 10_000.0
         try:
             from config import settings  # type: ignore[import]
+
             initial = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0) or 10_000.0)
         except Exception:
             pass
@@ -527,14 +603,13 @@ class PortfolioTracker:
             if self._db is not None:
                 rows = self._db.get_closed_trades(limit=100_000)
                 total_pnl = sum(
-                    float(r.get("pnl") or 0.0)
-                    for r in rows
-                    if r.get("pnl") is not None
+                    float(r.get("pnl") or 0.0) for r in rows if r.get("pnl") is not None
                 )
             else:
                 # Fallback: query the SQLite file directly using SQLITE_DB_PATH
                 try:
                     from config import settings as _cfg  # type: ignore[import]
+
                     db_path = getattr(_cfg, "SQLITE_DB_PATH", None)
                 except Exception:
                     db_path = None
@@ -555,7 +630,9 @@ class PortfolioTracker:
         self._starting_balance_cache: float = balance
         logger.debug(
             "[TRACKER] starting_balance computed: initial=%.2f + pnl=%.2f = %.2f",
-            initial, total_pnl, balance,
+            initial,
+            total_pnl,
+            balance,
         )
         return balance
 
@@ -580,6 +657,17 @@ class PortfolioTracker:
 
         Returns the trade_id string.
         """
+        # ── Idempotency key ───────────────────────────────────────────────────
+        idem_key: Optional[str] = None
+        if _compute_idem_key is not None:
+            try:
+                idem_key = _compute_idem_key(symbol, side, float(quantity), float(entry_price))
+            except Exception as _ik_err:
+                logger.debug(
+                    "[TRACKER] add_paper_trade: idempotency key compute failed (non-fatal): %s",
+                    _ik_err,
+                )
+
         notes = json.dumps(strategy_params) if strategy_params else ""
         trade_id = str(uuid.uuid4())
         trade = PaperTrade(
@@ -595,7 +683,7 @@ class PortfolioTracker:
 
         # SQLite-first: persist before updating in-memory (Bug B9 / US-2004).
         if self._db is not None:
-            self._db.insert_paper_trade(
+            row_id = self._db.insert_paper_trade(
                 trade_id,
                 symbol=trade.symbol,
                 side=side,
@@ -605,7 +693,36 @@ class PortfolioTracker:
                 stop_loss=stop_loss,
                 take_profit=take_profit,
                 strategy_params=strategy_params,
+                idempotency_key=idem_key,
             )
+            # Dedup check: if the DB mixin collapsed this to an existing row,
+            # return its trade_id instead of the freshly-generated one.
+            if idem_key is not None:
+                try:
+                    existing_row = self._db.get_trade_by_id(trade_id)
+                    if existing_row is None:
+                        with self._db._lock:
+                            _conn = self._db._connect()
+                            try:
+                                _r = _conn.execute(
+                                    "SELECT trade_id FROM paper_trades WHERE id = ?", (row_id,)
+                                ).fetchone()
+                            finally:
+                                _conn.close()
+                        if _r is not None:
+                            existing_trade_id: str = _r[0]
+                            logger.warning(
+                                "[TRACKER] add_paper_trade DEDUPLICATED — returning existing "
+                                "trade_id=%s (idem_key=%s)",
+                                existing_trade_id[:8],
+                                idem_key,
+                            )
+                            return existing_trade_id
+                except Exception as _dedup_err:
+                    logger.debug(
+                        "[TRACKER] add_paper_trade dedup resolution failed (non-fatal): %s",
+                        _dedup_err,
+                    )
 
         # DB write succeeded (or no DB configured) — update in-memory and JSONL
         self._open[trade_id] = trade
@@ -698,11 +815,14 @@ class PortfolioTracker:
           * AgentFeedbackTracker import or write fails (best-effort, never blocks close)
         """
         import os as _os_af
+
         if _os_af.getenv("TESTING"):
             return
         try:
             from engine.analytics.agent_feedback import AgentFeedbackTracker
+
             analyst_signals: dict = {}
+            regime: Optional[str] = None
             if self._db is not None:
                 row = self._db.get_trade_by_id(trade_id) or {}
                 sp = row.get("strategy_params")
@@ -710,11 +830,13 @@ class PortfolioTracker:
                 if isinstance(sp, str) and sp:
                     try:
                         import json as _json_af
+
                         sp = _json_af.loads(sp)
                     except Exception:
                         sp = None
                 if isinstance(sp, dict):
                     analyst_signals = sp.get("analyst_signals") or {}
+                    regime = sp.get("regime")
             if not analyst_signals:
                 return  # Legacy trades without signals — safe no-op
             action_lower = (trade.action or "").lower()
@@ -725,6 +847,7 @@ class PortfolioTracker:
                 direction=direction,
                 pnl_usd=float(trade.pnl or 0.0),
                 analyst_signals={k: float(v) for k, v in analyst_signals.items()},
+                regime=regime,
             )
             logger.info(
                 "[FEEDBACK] Recorded outcome for %s pnl=%+.2f signals=%s",
@@ -734,6 +857,72 @@ class PortfolioTracker:
             )
         except Exception as _af_exc:
             logger.debug("[FEEDBACK] record_outcome skipped: %s", _af_exc)
+
+    def set_broker_metadata(self, trade_id: str, metadata: dict) -> bool:
+        """
+        Attach broker order IDs (entry_order_id, stp_order_id, etc.) to an
+        open trade record so the portfolio survives restarts without losing
+        bracket linkage.
+
+        Persists by updating the ``strategy_params`` JSON blob in SQLite (merged
+        with any existing params) and mirroring the values onto the in-memory
+        PaperTrade object's ``notes`` field for the JSONL audit trail.
+
+        Parameters
+        ----------
+        trade_id : str
+            UUID of the open trade returned by open_trade().
+        metadata : dict
+            Arbitrary key/value pairs to store (e.g.
+            {"entry_order_id": "1234", "stp_order_id": "1235"}).
+
+        Returns
+        -------
+        True if the update succeeded (in-memory + DB), False if trade_id is
+        unknown or DB write failed (logged at WARNING level).
+        """
+        trade = self._open.get(trade_id)
+        if trade is None:
+            logger.warning("[TRACKER] set_broker_metadata: unknown trade_id %s", trade_id[:8])
+            return False
+
+        # Update in-memory notes (append JSON blob so JSONL log is readable)
+        try:
+            existing_notes = json.loads(trade.notes) if trade.notes else {}
+        except (json.JSONDecodeError, TypeError):
+            existing_notes = {"_notes": trade.notes} if trade.notes else {}
+        existing_notes.update(metadata)
+        trade.notes = json.dumps(existing_notes)
+
+        # Persist to SQLite when db_manager is available
+        if self._db is not None:
+            try:
+                # Merge with whatever strategy_params the row already holds
+                row = self._db.get_trade_by_id(trade_id) or {}
+                sp = row.get("strategy_params")
+                if isinstance(sp, str) and sp:
+                    try:
+                        sp = json.loads(sp)
+                    except Exception:
+                        sp = {}
+                if not isinstance(sp, dict):
+                    sp = {}
+                sp.update(metadata)
+                self._db.update_paper_trade_strategy_params(trade_id, sp)
+            except Exception as exc:
+                logger.warning(
+                    "[TRACKER] set_broker_metadata: DB update failed for %s: %s",
+                    trade_id[:8],
+                    exc,
+                )
+                return False
+
+        logger.info(
+            "[TRACKER] Broker metadata set for trade %s: %s",
+            trade_id[:8],
+            list(metadata.keys()),
+        )
+        return True
 
     def update_position(
         self,
@@ -854,6 +1043,48 @@ class PortfolioTracker:
 
         return [t.to_dict() for t in reversed(self._closed[-limit:])]
 
+    def get_trades_by_date(self, date_str: str) -> List[dict]:
+        """
+        Return closed trades whose ``exit_time`` falls on the given calendar date.
+
+        Parameters
+        ----------
+        date_str : str
+            ISO calendar date in "YYYY-MM-DD" form.  Compared against the
+            prefix of each trade's exit_time.  Empty / malformed input returns [].
+
+        Returns
+        -------
+        List of closed-trade dicts.  Each dict includes both ``pnl`` (the
+        canonical column) and ``realized_pnl`` (alias expected by the EOD
+        summary task at main.py:1136).  Caller contract: EOD job sums
+        ``t.get("realized_pnl", 0)`` across the returned list.
+        """
+        if not isinstance(date_str, str) or len(date_str) < 10:
+            return []
+        prefix = date_str[:10]
+
+        rows: List[dict]
+        if self._db is not None:
+            try:
+                rows = list(self._db.get_trade_history(limit=1000, status="closed") or [])
+            except Exception as exc:
+                logger.error("DB get_trade_history failed in get_trades_by_date: %s", exc)
+                rows = [t.to_dict() for t in self._closed]
+        else:
+            rows = [t.to_dict() for t in self._closed]
+
+        result: List[dict] = []
+        for r in rows:
+            exit_time = r.get("exit_time")
+            if not isinstance(exit_time, str) or not exit_time.startswith(prefix):
+                continue
+            enriched = dict(r)
+            if "realized_pnl" not in enriched:
+                enriched["realized_pnl"] = float(enriched.get("pnl") or 0.0)
+            result.append(enriched)
+        return result
+
     def get_performance_summary(self) -> dict:
         """
         Extended performance summary.
@@ -942,39 +1173,84 @@ class PortfolioTracker:
 
     # ── Session management helpers ────────────────────────────────────────────
 
-    def flatten_all_positions(self, exit_price: Optional[float] = None) -> List[dict]:
+    def flatten_all_positions(
+        self,
+        exit_price: Optional[float] = None,
+        market_price_fn: Optional[Callable[[str], Optional[float]]] = None,
+    ) -> List[dict]:
         """
         Close all open positions at session end.
 
         Parameters
         ----------
         exit_price : float, optional
-            Price to use for all closes.  If None, uses each trade's entry_price
-            as a fallback (zero P&L result) so the ledger stays balanced.
+            Blanket price for every close.  Use only when you genuinely want
+            every symbol closed at the same price (rare — most EOD flows
+            should pass market_price_fn instead).
+        market_price_fn : callable, optional
+            Per-symbol price fetcher: ``symbol -> float | None``.  Preferred
+            input when closing at market: allows each symbol to settle at its
+            own last-known price.  If both args are provided, market_price_fn
+            wins per-symbol and exit_price is used when the fetcher returns
+            None.
+
+        Resolution order for each position:
+          1. ``market_price_fn(symbol)`` if provided and returns non-None
+          2. ``exit_price`` if provided
+          3. ``trade.entry_price`` **as a last-resort fallback that produces
+             $0 P&L** — this is the source of the 2026-04-23 Phase-3 metrics
+             bug and is now escalated to ERROR-level logging so the condition
+             is visible.  Callers should strive to provide a real price.
 
         Returns
         -------
         List of closed trade dicts (one per position that was open).
         """
         closed: List[dict] = []
-        # Snapshot keys — avoid mutation-during-iteration
+        breakeven_fallback_count = 0
         open_ids = list(self._open.keys())
         for trade_id in open_ids:
             trade = self._open.get(trade_id)
             if trade is None:
                 continue
-            # Determine exit price
-            price = exit_price if exit_price is not None else trade.entry_price
+
+            price: Optional[float] = None
+            if market_price_fn is not None:
+                try:
+                    fetched = market_price_fn(trade.symbol)
+                    if fetched is not None:
+                        price = float(fetched)
+                except Exception as exc:
+                    logger.warning(
+                        "flatten_all_positions: market_price_fn raised for %s: %s",
+                        trade.symbol,
+                        exc,
+                    )
+            if price is None and exit_price is not None:
+                price = float(exit_price)
+            if price is None and trade.entry_price is not None:
+                price = float(trade.entry_price)
+                breakeven_fallback_count += 1
             if price is None:
                 logger.warning(
                     "flatten_all_positions: no price for trade %s, skipping", trade_id[:8]
                 )
                 continue
+
             try:
-                result = self.close_trade(trade_id, exit_price=float(price))
+                result = self.close_trade(trade_id, exit_price=price)
                 closed.append(result.to_dict())
             except Exception as exc:
                 logger.warning("flatten_all_positions: failed to close %s: %s", trade_id[:8], exc)
+
+        if breakeven_fallback_count > 0:
+            logger.error(
+                "flatten_all_positions: %d position(s) closed at entry_price "
+                "(breakeven fallback). P&L will be $0 for those trades; "
+                "profit_factor and win_rate will be corrupted. Pass a "
+                "market_price_fn to avoid this.",
+                breakeven_fallback_count,
+            )
         logger.info("flatten_all_positions: closed %d positions", len(closed))
         return closed
 

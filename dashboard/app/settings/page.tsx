@@ -512,7 +512,11 @@ function RiskParametersPanel({ data }: { data: SafetyConfig | undefined }) {
 // ── IB Gateway Panel ──────────────────────────────────────────────────────
 
 function IBGatewayPanel({ data }: { data: IBGatewayStatus | undefined; config: SafetyConfig | undefined }) {
-  const connected = data?.ibkr_connected ?? false;
+  // Prefer execution-connector state when /health exposes it (newer engines).
+  // Falls back to legacy ibkr_connected (OR of execution + data) on older engines.
+  // The execution path is what actually routes orders — this surface needs to
+  // reflect that, not the data-feed connector that's separately healthy.
+  const connected = (data?.ibkr_execution_connected ?? data?.ibkr_connected) ?? false;
   const paperMode = data?.paper_mode ?? true;
 
   return (

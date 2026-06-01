@@ -161,9 +161,12 @@ class OrderRouter:
             }
 
         elif self.is_options(order):
+            equity = order.get("portfolio_equity", 10000.0) # Default
             if self.schwab and self.schwab.is_connected:
                 logger.info("Routing %s options order to Schwab", symbol)
-                return await self.schwab.submit_options_order(order)
+                if order.get("is_spread"):
+                    return await self.schwab.submit_options_spread_order(order, portfolio_equity=equity)
+                return await self.schwab.submit_options_order(order, portfolio_equity=equity)
             elif self.ibkr and self.ibkr.is_connected():
                 logger.info("Routing %s options order to IBKR (Schwab unavailable)", symbol)
                 return await self.ibkr.place_paper_order(order)
@@ -176,6 +179,64 @@ class OrderRouter:
                 raise RuntimeError(f"Schwab not connected — cannot route equity order for {symbol}")
             logger.info("Routing %s equity order to Schwab", symbol)
             return await self.schwab.place_paper_order(order)
+
+    async def route_bracket_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        entry_type: str = "MKT",
+        limit_price: Optional[float] = None,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+    ) -> dict:
+        """
+        Route a bracket order (Entry + SL + TP) to the correct broker.
+        """
+        sym_upper = symbol.upper()
+
+        if self.is_futures(sym_upper):
+            if not self.ibkr or not self.ibkr.is_connected():
+                raise RuntimeError(f"IBKR not connected — cannot route futures bracket for {symbol}")
+
+            logger.info("Routing %s bracket order to IBKR", symbol)
+            return await self.ibkr.place_bracket_order(
+                symbol=symbol,
+                action=action,
+                quantity=quantity,
+                entry_type=entry_type,
+                limit_price=limit_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+            )
+
+        raise NotImplementedError(f"Bracket orders not yet supported for non-futures: {symbol}")
+
+    async def cancel_order(self, order_id: str) -> dict:
+        """
+        Cancel an order by ID. Dispatches to the appropriate broker.
+        """
+        # For now, IDs are UUIDs (IBKR paper) or numeric (IBKR live / Schwab)
+        # We'll try IBKR first as it's the primary broker for active trades.
+        if self.ibkr and self.ibkr.is_connected():
+            return await self.ibkr.cancel_order(order_id)
+
+        if self.schwab and self.schwab.is_connected:
+            return await self.schwab.cancel_order(order_id)
+
+        return {"status": "error", "reason": "No connected broker found to cancel order"}
+
+    async def modify_order(self, order_id: str, new_price: float) -> dict:
+        """
+        Modify an existing order's price.
+        """
+        if self.ibkr and self.ibkr.is_connected():
+            return await self.ibkr.modify_order(order_id, new_price)
+
+        if self.schwab and self.schwab.is_connected:
+            return await self.schwab.modify_order(order_id, new_price)
+
+        return {"status": "error", "reason": "No connected broker found to modify order"}
 
     def status(self) -> dict:
         return {

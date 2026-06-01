@@ -39,7 +39,7 @@ import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from discord.commentary_processor import CoreyCommentaryProcessor, CoreySessionBias
 from discord.ib_levels import IBLevelProvider
@@ -55,20 +55,27 @@ CACHE_TTL_SECONDS = 300  # 5-minute TTL — matches DiscordSignalContext.STATS_T
 # Result dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DiscordBriefing:
     """One-shot Discord intelligence summary for a symbol."""
 
-    symbol: str                              # normalized uppercase JARVIS symbol (e.g. "MCL")
-    discord_symbol: str                      # mapped Discord full symbol (e.g. "CL")
-    as_of: datetime                          # when this briefing was assembled (UTC)
-    corey_bias: CoreySessionBias             # structured session bias from commentary_processor
-    ib_levels: Optional[dict]                # ib_high/low/ibu50/ibu100/ibd50/ibd100/auction_context, or None
-    keyword_sentiment: float                 # -1.0..+1.0 from sentiment_provider
-    regime_multiplier: float                 # 0.7..1.3 from sentiment_provider
-    recent_signal: Optional[dict]            # most recent discord_bot_signals row within lookback, or None
-    lookback_hours: int                      # window used for recent_signal
+    symbol: str  # normalized uppercase JARVIS symbol (e.g. "MCL")
+    discord_symbol: str  # mapped Discord full symbol (e.g. "CL")
+    as_of: datetime  # when this briefing was assembled (UTC)
+    corey_bias: CoreySessionBias  # structured session bias from commentary_processor
+    ib_levels: Optional[dict]  # ib_high/low/ibu50/ibu100/ibd50/ibd100/auction_context, or None
+    keyword_sentiment: float  # -1.0..+1.0 from sentiment_provider
+    regime_multiplier: float  # 0.7..1.3 from sentiment_provider
+    recent_signal: Optional[dict]  # most recent discord_bot_signals row within lookback, or None
+    lookback_hours: int  # window used for recent_signal
     warnings: list[str] = field(default_factory=list)
+    knowledge_context: Optional[list[dict]] = (
+        None  # curated gbrain hits (only when enriched); ADVISORY — prompt context only, never gate/sizing input
+    )
+    knowledge_context_tier: Optional[str] = (
+        None  # rerank tier that produced knowledge_context: voyage|local|off — observability for silent Voyage->local degradation
+    )
 
     @property
     def headline(self) -> str:
@@ -89,7 +96,7 @@ class DiscordBriefing:
         )
 
     def to_dict(self) -> dict:
-        return {
+        out: dict[str, Any] = {
             "symbol": self.symbol,
             "discord_symbol": self.discord_symbol,
             "as_of": self.as_of.isoformat(),
@@ -103,6 +110,14 @@ class DiscordBriefing:
             "actionable": self.actionable,
             "warnings": list(self.warnings),
         }
+        # Only surface knowledge_context (+ its rerank tier) when enrichment
+        # actually ran, so the default (non-enriched) payload stays byte-identical
+        # to the pre-feature shape — no spurious null key for the
+        # overwhelming-majority code path.
+        if self.knowledge_context is not None:
+            out["knowledge_context"] = self.knowledge_context
+            out["knowledge_context_tier"] = self.knowledge_context_tier
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -114,8 +129,10 @@ _ib_provider: Optional[IBLevelProvider] = None
 _sentiment: Optional[SentimentProvider] = None
 _signal_ctx: Optional[DiscordSignalContext] = None
 
-# (symbol_upper, for_date_iso, lookback_hours) -> (briefing, fetch_time_monotonic)
-_cache: dict[tuple[str, str, int], tuple[DiscordBriefing, float]] = {}
+# (symbol_upper, for_date_iso, lookback_hours, enriched) -> (briefing, fetch_time_monotonic)
+# `enriched` is part of the key so an enriched request never returns a plain
+# cached briefing (or vice versa) — the two have different shapes.
+_cache: dict[tuple[str, str, int, bool], tuple[DiscordBriefing, float]] = {}
 
 
 def _get_processor() -> CoreyCommentaryProcessor:
@@ -155,10 +172,15 @@ def clear_cache() -> None:
 # Main entrypoint
 # ---------------------------------------------------------------------------
 
+
 async def get_discord_briefing(
     symbol: str,
     lookback_hours: int = 24,
     for_date: Optional[date] = None,
+    *,
+    enriched_with_knowledge: bool = False,
+    knowledge_limit: int = 3,
+    knowledge_min_score: float = 0.2,
 ) -> DiscordBriefing:
     """
     Return the unified Discord briefing for `symbol`.
@@ -167,6 +189,15 @@ async def get_discord_briefing(
         symbol:          JARVIS micro or Discord full symbol (MCL/CL, MES/ES, etc.)
         lookback_hours:  window for `recent_signal` probe (default 24h)
         for_date:        trading date to brief on (default today, useful for backtests)
+        enriched_with_knowledge:
+                         when True, attach `knowledge_context` — the top curated
+                         gbrain knowledge hits for a query derived from Corey's
+                         session bias + symbol. ADVISORY context only: it is
+                         fallback-safe (a daemon-down/error leaves it None, never
+                         raises) and MUST NOT feed gate-v2 / sizing / execution.
+                         Off by default so existing callers are byte-identical.
+        knowledge_limit:     max curated hits to attach (default 3)
+        knowledge_min_score: reranker relevance floor for those hits (default 0.2)
 
     Returns:
         DiscordBriefing. Never raises for missing data — falls back to neutral
@@ -176,7 +207,7 @@ async def get_discord_briefing(
     if for_date is None:
         for_date = date.today()
 
-    cache_key = (symbol, for_date.isoformat(), lookback_hours)
+    cache_key = (symbol, for_date.isoformat(), lookback_hours, enriched_with_knowledge)
     cached = _cache.get(cache_key)
     if cached is not None:
         briefing, fetched_at = cached
@@ -191,6 +222,7 @@ async def get_discord_briefing(
     except Exception as exc:
         logger.warning("[DiscordBriefing] Corey bias fetch failed for %s: %s", symbol, exc)
         from discord.commentary_processor import _neutral_bias
+
         corey_bias = _neutral_bias(for_date, message_count=0)
         warnings.append(f"corey_bias_failed:{type(exc).__name__}")
 
@@ -218,6 +250,17 @@ async def get_discord_briefing(
     # Recent signal (sync) — use raw DB query instead of get_features (which needs ATR/price)
     recent_signal = _fetch_recent_signal(discord_symbol, lookback_hours, warnings)
 
+    # Optional curated-knowledge enrichment (opt-in). ADVISORY ONLY — attached for
+    # agent prompt context; never consulted by gate-v2 / sizing / execution. Fully
+    # fallback-safe: any failure (daemon down, error dict, no hits) leaves
+    # knowledge_context None and is logged as a non-fatal warning.
+    knowledge_context: Optional[list[dict]] = None
+    knowledge_context_tier: Optional[str] = None
+    if enriched_with_knowledge:
+        knowledge_context, knowledge_context_tier = await _fetch_knowledge_context(
+            symbol, corey_bias, knowledge_limit, knowledge_min_score, warnings
+        )
+
     briefing = DiscordBriefing(
         symbol=symbol,
         discord_symbol=discord_symbol,
@@ -229,9 +272,48 @@ async def get_discord_briefing(
         recent_signal=recent_signal,
         lookback_hours=lookback_hours,
         warnings=warnings,
+        knowledge_context=knowledge_context,
+        knowledge_context_tier=knowledge_context_tier,
     )
     _cache[cache_key] = (briefing, time.monotonic())
     return briefing
+
+
+async def _fetch_knowledge_context(
+    symbol: str,
+    corey_bias: CoreySessionBias,
+    limit: int,
+    min_score: float,
+    warnings: list[str],
+) -> tuple[Optional[list[dict]], Optional[str]]:
+    """Derive a knowledge query from the session bias and pull curated gbrain hits.
+
+    Returns (hits_or_None, rerank_tier_or_None). Fallback-safe by contract:
+    returns (None, None) (and appends a warning) on any error or when the daemon
+    yields nothing. The hits are advisory prompt context — slug/title/type/
+    similarity/content per hit — and MUST NOT be wired into gate-v2, sizing, or
+    execution decisions. The tier (voyage|local|off) is surfaced for
+    observability so a silent Voyage->local rerank degradation is visible.
+    """
+    # Intent-bearing query from Corey's structured read (session type + direction)
+    # plus the symbol, so retrieval targets the relevant strategy/risk knowledge.
+    query = (
+        f"{symbol} {corey_bias.session_type} {corey_bias.directional_bias} "
+        "trading setup levels risk management"
+    ).strip()
+    try:
+        from discord.knowledge import search_knowledge_core
+
+        res = await search_knowledge_core(query, limit=limit, min_score=min_score)
+        if res.get("error"):
+            warnings.append(f"knowledge_context_failed:{res['error'][:60]}")
+            return None, None
+        hits = res.get("results") or []
+        return (hits or None), (res.get("rerank") if hits else None)
+    except Exception as exc:
+        logger.warning("[DiscordBriefing] knowledge enrichment failed for %s: %s", symbol, exc)
+        warnings.append(f"knowledge_context_failed:{type(exc).__name__}")
+        return None, None
 
 
 def _fetch_recent_signal(
@@ -244,23 +326,20 @@ def _fetch_recent_signal(
     since = datetime.utcnow() - timedelta(hours=lookback_hours)
     since_str = since.strftime("%Y-%m-%dT%H:%M:%S")
     try:
-        conn = sqlite3.connect(signal_ctx.db_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT symbol, direction, signal_type, entry_price,
-                   target1, target2, stop1, win_rate, timestamp
-            FROM discord_bot_signals
-            WHERE symbol = ?
-              AND timestamp >= ?
-            ORDER BY timestamp DESC
-            LIMIT 1
-            """,
-            (discord_symbol, since_str),
-        )
-        row = cur.fetchone()
-        conn.close()
+        with sqlite3.connect(signal_ctx.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT symbol, direction, signal_type, entry_price,
+                       target1, target2, stop1, win_rate, timestamp
+                FROM discord_bot_signals
+                WHERE symbol = ?
+                  AND timestamp >= ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                (discord_symbol, since_str),
+            ).fetchone()
         return dict(row) if row else None
     except Exception as exc:
         logger.warning(

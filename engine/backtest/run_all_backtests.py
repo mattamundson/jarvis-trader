@@ -3,11 +3,10 @@
 JARVIS TRADER -- Full Backtesting Matrix
 Runs all symbol/timeframe combinations and produces comparison report.
 
-Usage:
-    python -m backtest.run_all_backtests
-    python -m backtest.run_all_backtests --symbols SPY MES MNQ --intervals 1h 1d
-    python -m backtest.run_all_backtests --compare-old
-    python -m backtest.run_all_backtests --symbols SPY --intervals 1h --compare-old
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/run_all_backtests.py
+    .venv/Scripts/python backtest/run_all_backtests.py --symbols MES MGC --intervals 1h 1d
+    .venv/Scripts/python backtest/run_all_backtests.py --compare-old
 """
 
 from __future__ import annotations

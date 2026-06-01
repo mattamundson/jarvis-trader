@@ -1,0 +1,5 @@
+# JARVIS TRADER - Phase 1 Migration Requirements
+# Run: pip install -r requirements-postgres.txt
+sqlalchemy==2.0.38
+alembic==1.14.1
+asyncpg==0.30.0

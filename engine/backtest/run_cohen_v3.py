@@ -10,16 +10,14 @@ with v3 enhancements:
   - Vol-adjusted position sizing (target_vol=7%)
   - EMA trend filter (50/200 EMA crossover gate)
 
-Usage:
-    cd /home/user/workspace/jarvis-trader/jarvis-trader
-    python3 engine/backtest/run_cohen_v3.py 2>&1
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/run_cohen_v3.py
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -42,15 +40,15 @@ logger = logging.getLogger("run_cohen_v3")
 # ── v3 Configuration ──────────────────────────────────────────────────────────
 V3_CONFIG = {
     "version": "v3",
-    "entry_threshold": 0.55,       # unchanged from v2
-    "circuit_breaker_dd": 0.10,    # v3: 10% (was 15%)
+    "entry_threshold": 0.55,  # unchanged from v2
+    "circuit_breaker_dd": 0.10,  # v3: 10% (was 15%)
     "adx_thresholds": {
         "MES": 25,
-        "MNQ": 20,                 # v3: relaxed
-        "MCL": 20,                 # v3: relaxed
+        "MNQ": 20,  # v3: relaxed
+        "MCL": 20,  # v3: relaxed
     },
-    "data_window_years": 2,        # v3: 2 years (was 1)
-    "target_vol": 0.07,            # v3: 7% annualised
+    "data_window_years": 2,  # v3: 2 years (was 1)
+    "target_vol": 0.07,  # v3: 7% annualised
     "vol_lookback": 20,
     "ema_fast": 50,
     "ema_slow": 200,
@@ -106,6 +104,7 @@ YF_TICKERS = {
 # ─────────────────────────────────────────────────────────────────────────────
 # Data loading with synthetic fallback
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def load_data_yf(symbol: str, start: str, end: str, interval: str = "1h") -> pd.DataFrame | None:
     """Try to load OHLCV data from Yahoo Finance."""
@@ -174,13 +173,13 @@ def generate_synthetic_data(
         if regime_duration <= 0:
             r = rng.random()
             if r < 0.15:
-                regime = 1   # trending up
+                regime = 1  # trending up
                 regime_duration = rng.integers(20, 60)
             elif r < 0.30:
                 regime = -1  # trending down
                 regime_duration = rng.integers(20, 60)
             else:
-                regime = 0   # ranging
+                regime = 0  # ranging
                 regime_duration = rng.integers(10, 40)
         else:
             regime_duration -= 1
@@ -232,6 +231,7 @@ def generate_synthetic_data(
 # Simplified self-contained backtester
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class SimpleBacktester:
     """
     Lightweight event-driven backtester that consumes composite signal columns.
@@ -243,7 +243,7 @@ class SimpleBacktester:
         self,
         initial_capital: float = 10_000.0,
         risk_per_trade: float = 0.01,
-        max_drawdown: float = 0.10,   # v3: 10% circuit breaker
+        max_drawdown: float = 0.10,  # v3: 10% circuit breaker
         commission: float = 2.50,
         slippage_ticks: int = 1,
         tick_size: float = 0.25,
@@ -279,7 +279,7 @@ class SimpleBacktester:
         entry_idx = None
         circuit_broken = False
         circuit_break_bar = -999
-        circuit_break_capital = capital  # capital at time of break
+        # _circuit_break_capital snapshot updated inside loop (diagnostic only)
 
         for i, (idx_val, row) in enumerate(df.iterrows()):
             current_close = float(row["close"])
@@ -289,7 +289,6 @@ class SimpleBacktester:
             if current_dd >= self.max_drawdown and not circuit_broken:
                 circuit_broken = True
                 circuit_break_bar = i
-                circuit_break_capital = capital
                 logger.info(
                     f"{symbol}: Circuit breaker triggered at bar {i} "
                     f"(drawdown={current_dd:.1%} >= {self.max_drawdown:.1%})"
@@ -301,7 +300,9 @@ class SimpleBacktester:
                 circuit_broken = False
                 # Reset peak to current capital so CB doesn't immediately re-trigger
                 peak_capital = max(peak_capital, capital)
-                logger.info(f"{symbol}: Circuit breaker reset at bar {i}, peak_capital reset to {peak_capital:.2f}")
+                logger.info(
+                    f"{symbol}: Circuit breaker reset at bar {i}, peak_capital reset to {peak_capital:.2f}"
+                )
 
             # ── Manage open trade ────────────────────────────────────────
             if in_trade:
@@ -313,16 +314,18 @@ class SimpleBacktester:
                         pnl = (exit_price - entry_price) * multiplier * contracts
                         pnl -= self.commission * contracts * 2
                         capital += pnl
-                        trades.append({
-                            "entry_idx": entry_idx,
-                            "exit_idx": idx_val,
-                            "direction": "LONG",
-                            "entry_price": entry_price,
-                            "exit_price": exit_price,
-                            "pnl": pnl,
-                            "exit_reason": "STOP",
-                            "contracts": contracts,
-                        })
+                        trades.append(
+                            {
+                                "entry_idx": entry_idx,
+                                "exit_idx": idx_val,
+                                "direction": "LONG",
+                                "entry_price": entry_price,
+                                "exit_price": exit_price,
+                                "pnl": pnl,
+                                "exit_reason": "STOP",
+                                "contracts": contracts,
+                            }
+                        )
                         in_trade = False
                     elif float(row["high"]) >= target_1:
                         # Target hit
@@ -330,16 +333,18 @@ class SimpleBacktester:
                         pnl = (exit_price - entry_price) * multiplier * contracts
                         pnl -= self.commission * contracts * 2
                         capital += pnl
-                        trades.append({
-                            "entry_idx": entry_idx,
-                            "exit_idx": idx_val,
-                            "direction": "LONG",
-                            "entry_price": entry_price,
-                            "exit_price": exit_price,
-                            "pnl": pnl,
-                            "exit_reason": "TARGET",
-                            "contracts": contracts,
-                        })
+                        trades.append(
+                            {
+                                "entry_idx": entry_idx,
+                                "exit_idx": idx_val,
+                                "direction": "LONG",
+                                "entry_price": entry_price,
+                                "exit_price": exit_price,
+                                "pnl": pnl,
+                                "exit_reason": "TARGET",
+                                "contracts": contracts,
+                            }
+                        )
                         in_trade = False
 
                 elif direction == "SHORT":
@@ -348,40 +353,40 @@ class SimpleBacktester:
                         pnl = (entry_price - exit_price) * multiplier * contracts
                         pnl -= self.commission * contracts * 2
                         capital += pnl
-                        trades.append({
-                            "entry_idx": entry_idx,
-                            "exit_idx": idx_val,
-                            "direction": "SHORT",
-                            "entry_price": entry_price,
-                            "exit_price": exit_price,
-                            "pnl": pnl,
-                            "exit_reason": "STOP",
-                            "contracts": contracts,
-                        })
+                        trades.append(
+                            {
+                                "entry_idx": entry_idx,
+                                "exit_idx": idx_val,
+                                "direction": "SHORT",
+                                "entry_price": entry_price,
+                                "exit_price": exit_price,
+                                "pnl": pnl,
+                                "exit_reason": "STOP",
+                                "contracts": contracts,
+                            }
+                        )
                         in_trade = False
                     elif float(row["low"]) <= target_1:
                         exit_price = target_1 - self.slippage
                         pnl = (entry_price - exit_price) * multiplier * contracts
                         pnl -= self.commission * contracts * 2
                         capital += pnl
-                        trades.append({
-                            "entry_idx": entry_idx,
-                            "exit_idx": idx_val,
-                            "direction": "SHORT",
-                            "entry_price": entry_price,
-                            "exit_price": exit_price,
-                            "pnl": pnl,
-                            "exit_reason": "TARGET",
-                            "contracts": contracts,
-                        })
+                        trades.append(
+                            {
+                                "entry_idx": entry_idx,
+                                "exit_idx": idx_val,
+                                "direction": "SHORT",
+                                "entry_price": entry_price,
+                                "exit_price": exit_price,
+                                "pnl": pnl,
+                                "exit_reason": "TARGET",
+                                "contracts": contracts,
+                            }
+                        )
                         in_trade = False
 
             # ── New entry ────────────────────────────────────────────────
-            if (
-                not in_trade
-                and not circuit_broken
-                and row.get("entry_signal") == "ENTRY_NOW"
-            ):
+            if not in_trade and not circuit_broken and row.get("entry_signal") == "ENTRY_NOW":
                 entry_price = current_close + (
                     self.slippage if row.get("bias") == "STRONG_BULL" else -self.slippage
                 )
@@ -405,9 +410,7 @@ class SimpleBacktester:
                         contracts = max(1, int(risk_dollars / risk_per_contract))
                         contracts = min(contracts, 10)  # cap at 10 contracts
 
-                        direction = (
-                            "LONG" if row.get("bias") == "STRONG_BULL" else "SHORT"
-                        )
+                        direction = "LONG" if row.get("bias") == "STRONG_BULL" else "SHORT"
                         stop_level = sl
                         target_1 = t1
                         entry_idx = idx_val
@@ -427,16 +430,18 @@ class SimpleBacktester:
                 pnl = (entry_price - last_close) * multiplier * contracts
             pnl -= self.commission * contracts * 2
             capital += pnl
-            trades.append({
-                "entry_idx": entry_idx,
-                "exit_idx": df.index[-1],
-                "direction": direction,
-                "entry_price": entry_price,
-                "exit_price": last_close,
-                "pnl": pnl,
-                "exit_reason": "END_OF_DATA",
-                "contracts": contracts,
-            })
+            trades.append(
+                {
+                    "entry_idx": entry_idx,
+                    "exit_idx": df.index[-1],
+                    "direction": direction,
+                    "entry_price": entry_price,
+                    "exit_price": last_close,
+                    "pnl": pnl,
+                    "exit_reason": "END_OF_DATA",
+                    "contracts": contracts,
+                }
+            )
 
         # ── Compute metrics ──────────────────────────────────────────────
         equity_arr = np.array(equity_curve)
@@ -450,8 +455,10 @@ class SimpleBacktester:
         win_rate = len(winners) / n_trades if n_trades > 0 else 0.0
         gross_profit = sum(t["pnl"] for t in winners)
         gross_loss = abs(sum(t["pnl"] for t in losers))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else (
-            float("inf") if gross_profit > 0 else 0.0
+        profit_factor = (
+            gross_profit / gross_loss
+            if gross_loss > 0
+            else (float("inf") if gross_profit > 0 else 0.0)
         )
 
         # Sharpe ratio (annualised, using 1h bars → 252*6.5 bars/year)
@@ -496,6 +503,7 @@ class SimpleBacktester:
 # Main runner
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def run_v3_backtest(symbol: str, config: dict) -> dict:
     """Run v3 composite backtest for a single symbol."""
     print(f"\n{'='*60}")
@@ -518,7 +526,7 @@ def run_v3_backtest(symbol: str, config: dict) -> dict:
 
     data_source = "yfinance"
     if df is None or df.empty or len(df) < 100:
-        print(f"  [INFO] Live data unavailable — using synthetic data")
+        print("  [INFO] Live data unavailable — using synthetic data")
         # 2 years of hourly bars (252 trading days × 6.5 hours)
         n_bars = int(252 * 6.5 * config["data_window_years"])
         df = generate_synthetic_data(symbol, n_bars=n_bars)
@@ -528,13 +536,14 @@ def run_v3_backtest(symbol: str, config: dict) -> dict:
     print(f"  Price rng: {df['close'].min():.2f} – {df['close'].max():.2f}")
 
     # ── Generate composite signals ────────────────────────────────────────
-    print(f"  Generating v3 composite signals...")
+    print("  Generating v3 composite signals...")
 
     try:
         from backtest.composite_signals_v3 import generate_composite_signals
     except ImportError:
         # Direct import if module path not set up
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
             "composite_signals_v3",
             _SCRIPT_DIR / "composite_signals_v3.py",
@@ -552,12 +561,10 @@ def run_v3_backtest(symbol: str, config: dict) -> dict:
 
     n_entry = (df_signals["entry_signal"] == "ENTRY_NOW").sum()
     n_long = (
-        (df_signals["entry_signal"] == "ENTRY_NOW")
-        & (df_signals["bias"] == "STRONG_BULL")
+        (df_signals["entry_signal"] == "ENTRY_NOW") & (df_signals["bias"] == "STRONG_BULL")
     ).sum()
     n_short = (
-        (df_signals["entry_signal"] == "ENTRY_NOW")
-        & (df_signals["bias"] == "STRONG_BEAR")
+        (df_signals["entry_signal"] == "ENTRY_NOW") & (df_signals["bias"] == "STRONG_BEAR")
     ).sum()
     print(f"  Signals  : {n_entry} entries ({n_long} LONG, {n_short} SHORT)")
 
@@ -583,7 +590,7 @@ def run_v3_backtest(symbol: str, config: dict) -> dict:
 def print_results_table(results: dict[str, dict]) -> None:
     """Print clean results table."""
     print(f"\n{'='*75}")
-    print(f"  COHEN v3 BACKTEST RESULTS")
+    print("  COHEN v3 BACKTEST RESULTS")
     print(f"{'='*75}")
     header = f"{'Symbol':<8} {'Trades':>7} {'Win Rate':>10} {'PF':>8} {'Sharpe':>8} {'Max DD':>8} {'CAGR':>8}"
     print(header)
@@ -615,9 +622,8 @@ def print_comparison_table(v3_results: dict[str, dict]) -> None:
         total_trades = sum(r["n_trades"] for r in all_v3)
         if total_trades > 0:
             agg_wr = sum(r["win_rate"] * r["n_trades"] for r in all_v3) / total_trades
-            agg_pf = (
-                sum(r.get("gross_profit", 0) for r in all_v3)
-                / max(sum(r.get("gross_loss", 0) for r in all_v3), 1)
+            agg_pf = sum(r.get("gross_profit", 0) for r in all_v3) / max(
+                sum(r.get("gross_loss", 0) for r in all_v3), 1
             )
             agg_sharpe = sum(r["sharpe"] for r in all_v3) / len(all_v3)
             agg_dd = max(r["max_drawdown"] for r in all_v3)
@@ -637,7 +643,7 @@ def print_comparison_table(v3_results: dict[str, dict]) -> None:
         v3_agg = None
 
     print(f"\n{'='*80}")
-    print(f"  VERSION COMPARISON: v1 vs v2 vs v3")
+    print("  VERSION COMPARISON: v1 vs v2 vs v3")
     print(f"{'='*80}")
     print(
         f"{'Version':<10} {'Trades':>7} {'Win Rate':>10} {'PF':>8} "
@@ -682,9 +688,11 @@ def main():
     print("=" * 60)
     print(f"  Run time : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  Instruments: {', '.join(INSTRUMENTS)}")
-    print(f"  Config   : v3 ({V3_CONFIG['data_window_years']}yr window, "
-          f"CB={V3_CONFIG['circuit_breaker_dd']:.0%}, "
-          f"EMA filter, vol-sizing)")
+    print(
+        f"  Config   : v3 ({V3_CONFIG['data_window_years']}yr window, "
+        f"CB={V3_CONFIG['circuit_breaker_dd']:.0%}, "
+        f"EMA filter, vol-sizing)"
+    )
     print()
 
     # ── Run backtests ────────────────────────────────────────────────────
@@ -726,7 +734,7 @@ def main():
     json_payload = {
         "version": "v3",
         "run_timestamp": datetime.now().isoformat(),
-        "config": {k: v for k, v in V3_CONFIG.items()},
+        "config": dict(V3_CONFIG.items()),
         "instruments": {s: serialise(r) for s, r in all_results.items()},
         "aggregate": v3_agg,
         "comparison": {
@@ -759,9 +767,7 @@ def main():
                     "v2": HISTORICAL_RESULTS["v2"],
                     "v3": v3_agg,
                 },
-                "v3_by_symbol": {
-                    s: serialise(r) for s, r in all_results.items()
-                },
+                "v3_by_symbol": {s: serialise(r) for s, r in all_results.items()},
             },
             f,
             indent=2,

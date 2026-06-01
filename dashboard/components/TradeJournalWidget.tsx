@@ -168,7 +168,7 @@ export function TradeJournalWidget() {
                   day: "numeric",
                 });
 
-                const isLong = trade.side.toLowerCase().includes("buy");
+                const isLong = (trade.side ?? "").toLowerCase().includes("buy");
                 const dirColor = isLong ? "text-bull" : "text-bear";
                 const dirLabel = isLong ? "LONG" : "SHORT";
 

@@ -966,7 +966,7 @@ async def get_validation_checkpoint():
     - ON_TRACK otherwise
     """
     try:
-        from datetime import datetime, date
+        from datetime import datetime
 
         db = get_db()
 
@@ -981,7 +981,6 @@ async def get_validation_checkpoint():
             return float(t.get("pnl") or 0.0)
 
         win_count = sum(1 for t in closed_trades if _pnl(t) > 0)
-        loss_count = sum(1 for t in closed_trades if _pnl(t) < 0)
         win_rate = (win_count / trade_count) if trade_count > 0 else None
 
         # Profit factor computation

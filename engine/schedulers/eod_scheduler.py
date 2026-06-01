@@ -10,6 +10,7 @@ Schedule
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -38,7 +39,9 @@ async def _check_wfe_decay(symbol: str, wfe_value: float) -> None:
             f"Strategy edge is weakening. Monitor closely."
         )
 
-    logger.warning("[EOD] WFE decay alert for %s: severity=%s wfe=%.2f", symbol, severity, wfe_value)
+    logger.warning(
+        "[EOD] WFE decay alert for %s: severity=%s wfe=%.2f", symbol, severity, wfe_value
+    )
 
     # Discord alert
     try:
@@ -88,7 +91,9 @@ async def _save_wfe_snapshots() -> None:
                         if wfe_val is not None:
                             await _check_wfe_decay(symbol, float(wfe_val))
                     except Exception as _parse_exc:
-                        logger.debug("[EOD] WFE decay check parse error for %s: %s", symbol, _parse_exc)
+                        logger.debug(
+                            "[EOD] WFE decay check parse error for %s: %s", symbol, _parse_exc
+                        )
         except Exception as exc:
             logger.warning("[EOD] WFE snapshot failed for %s: %s", symbol, exc)
 
@@ -119,20 +124,33 @@ class EODScheduler:
         whatsapp_notifier: Any = None,
         learning_consolidator: Any = None,
         capital_allocator: Any = None,
+        market_price_fn: Any = None,
     ) -> None:
+        """
+        Parameters
+        ----------
+        market_price_fn : Callable[[str], Optional[float]], optional
+            Per-symbol last-known price fetcher used by ``run_session_flatten``
+            to close each open position at a real market price instead of
+            defaulting to entry_price (the 2026-04-23 Phase-3 metrics bug).
+            When None, flatten falls back to entry_price and logs ERROR so
+            the condition is visible.
+        """
         self._db = db_manager
         self._tracker = portfolio_tracker
         self._notifier = whatsapp_notifier
         self._consolidator = learning_consolidator
         self._capital_allocator = capital_allocator
+        self._market_price_fn = market_price_fn
         self._alert_manager = None  # Injected by main.py after ValidationAlertManager is created
         logger.info(
-            "EODScheduler initialised — db=%s tracker=%s whatsapp=%s consolidator=%s allocator=%s",
+            "EODScheduler initialised — db=%s tracker=%s whatsapp=%s consolidator=%s allocator=%s market_price_fn=%s",
             "yes" if self._db else "no",
             "yes" if self._tracker else "no",
             "yes" if self._notifier else "no",
             "yes" if self._consolidator else "no",
             "yes" if self._capital_allocator else "no",
+            "yes" if self._market_price_fn else "no",
         )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -606,18 +624,73 @@ class EODScheduler:
             return
 
         try:
-            # Call flatten_all_positions if available
-            if hasattr(self._tracker, "flatten_all_positions"):
-                closed = self._tracker.flatten_all_positions()
-                count = len(closed) if isinstance(closed, list) else 0
-                net_pnl = sum(t.get("pnl", 0) for t in closed) if isinstance(closed, list) else 0.0
-                logger.info(
-                    "[EODScheduler] Session flatten complete: closed %d positions, net P&L: $%.2f",
-                    count,
-                    net_pnl,
-                )
-            else:
+            if not hasattr(self._tracker, "flatten_all_positions"):
                 logger.warning("[EODScheduler] flatten_all_positions not available on tracker")
+                return
+
+            flatten_kwargs: Dict[str, Any] = {}
+            if self._market_price_fn is not None:
+                if asyncio.iscoroutinefunction(self._market_price_fn):
+                    # Async fetcher (e.g. MarketDataManager.get_current_price): we
+                    # can't call it from inside flatten_all_positions (sync) while
+                    # the APScheduler loop is already running, so pre-snapshot each
+                    # open symbol's price into a dict and hand flatten a sync
+                    # lookup closure.
+                    snapshot: Dict[str, Optional[float]] = {}
+                    open_positions = (
+                        self._tracker.get_open_positions()
+                        if hasattr(self._tracker, "get_open_positions")
+                        else []
+                    )
+                    seen: set = set()
+                    for pos in open_positions:
+                        sym = (
+                            pos.get("symbol")
+                            if isinstance(pos, dict)
+                            else getattr(pos, "symbol", None)
+                        )
+                        if not sym or sym in seen:
+                            continue
+                        seen.add(sym)
+                        try:
+                            result = await self._market_price_fn(sym)
+                        except Exception as exc:
+                            logger.warning(
+                                "[EODScheduler] price snapshot failed for %s: %s", sym, exc
+                            )
+                            snapshot[sym] = None
+                            continue
+                        if isinstance(result, dict):
+                            price = (
+                                result.get("last_price")
+                                or result.get("price")
+                                or result.get("last")
+                                or result.get("close")
+                            )
+                        else:
+                            price = result
+                        try:
+                            snapshot[sym] = float(price) if price not in (None, 0, 0.0) else None
+                        except (TypeError, ValueError):
+                            snapshot[sym] = None
+                    resolved = sum(1 for v in snapshot.values() if v is not None)
+                    logger.info(
+                        "[EODScheduler] market-price snapshot built: %d/%d symbols resolved",
+                        resolved,
+                        len(snapshot),
+                    )
+                    flatten_kwargs["market_price_fn"] = snapshot.get
+                else:
+                    flatten_kwargs["market_price_fn"] = self._market_price_fn
+
+            closed = self._tracker.flatten_all_positions(**flatten_kwargs)
+            count = len(closed) if isinstance(closed, list) else 0
+            net_pnl = sum(t.get("pnl", 0) for t in closed) if isinstance(closed, list) else 0.0
+            logger.info(
+                "[EODScheduler] Session flatten complete: closed %d positions, net P&L: $%.2f",
+                count,
+                net_pnl,
+            )
         except Exception as exc:
             logger.exception("[EODScheduler] session_flatten failed: %s", exc)
 

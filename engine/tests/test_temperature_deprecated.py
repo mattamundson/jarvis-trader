@@ -59,6 +59,7 @@ class TestLowLevelCallDropsTemperature:
 
     def _make_client_with_mock(self, monkeypatch):
         import asyncio
+
         from llm.client import JarvisLLMClient
 
         client = JarvisLLMClient.__new__(JarvisLLMClient)
@@ -76,12 +77,14 @@ class TestLowLevelCallDropsTemperature:
                     usage = _Usage()
                     content = [type("B", (), {"text": "ok"})()]
                     stop_reason = "end_turn"
+
                 return _Resp()
 
         class FakeAnthropic:
             messages = FakeMessages()
 
         client.client = FakeAnthropic()
+        client.provider = "anthropic"  # override class default so _call_with_retry skips Ollama
         return client, captured, asyncio
 
     def test_opus_4_7_drops_temperature_at_wire(self, monkeypatch):

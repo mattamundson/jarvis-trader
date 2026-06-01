@@ -30,8 +30,8 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from audit_polygon_contamination import (  # noqa: E402
-    classify,
     FUTURES_PRICE_BAND,
+    classify,
 )
 
 

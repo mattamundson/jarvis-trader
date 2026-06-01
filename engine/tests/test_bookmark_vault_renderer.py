@@ -24,10 +24,10 @@ from discord.models import Bookmark
 from discord.storage import init_tables, insert_bookmark
 from scripts.render_bookmarks_to_vault import (
     github_slug,
-    x_post_slug,
     other_slug,
     render_page_for_bookmark,
     render_vault,
+    x_post_slug,
 )
 
 JARVIS_CHANNEL = "1490851279180660819"
@@ -86,17 +86,17 @@ def test_other_slug_uses_domain_and_message_id():
 # ── Page rendering ────────────────────────────────────────────────────────────
 
 def _bm(**kwargs) -> Bookmark:
-    defaults = dict(
-        message_id="m1",
-        channel_id=JARVIS_CHANNEL,
-        posted_at="2026-04-18T12:00:00+00:00",
-        url="https://github.com/foo/bar",
-        domain="github.com",
-        source_type="github",
-        content="check this out https://github.com/foo/bar",
-        author_id="592060613732204544",
-        author_name="AmoSZN",
-    )
+    defaults = {
+        "message_id": "m1",
+        "channel_id": JARVIS_CHANNEL,
+        "posted_at": "2026-04-18T12:00:00+00:00",
+        "url": "https://github.com/foo/bar",
+        "domain": "github.com",
+        "source_type": "github",
+        "content": "check this out https://github.com/foo/bar",
+        "author_id": "592060613732204544",
+        "author_name": "AmoSZN",
+    }
     defaults.update(kwargs)
     return Bookmark(**defaults)
 

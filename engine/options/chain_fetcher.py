@@ -2,6 +2,10 @@
 JARVIS Trader Options Engine — Chain Fetcher
 Fetches real options chain data via Polygon.io / MarketDataManager, computes Greeks,
 and provides delta-based filtering and IV Rank calculation.
+
+Extended (2026-05-20): get_pc_skew + get_term_structure wired to Polygon options API
+via ``_polygon_skew`` helpers.  Both functions are synchronous and return None on
+any data failure so callers (OptionsAnalyst, options_router) abstain gracefully.
 """
 
 import logging
@@ -11,6 +15,162 @@ from datetime import date, datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Public API — get_pc_skew
+# ---------------------------------------------------------------------------
+
+
+def get_pc_skew(symbol: str, expiry: Optional[str] = None) -> Optional[float]:
+    """Compute the 25-delta put/call IV skew for ``symbol`` via Polygon.
+
+    When ``expiry`` is None, picks the nearest weekly expiry that is
+    >= 2 days and <= 14 days out (avoids 0DTE noise and LEAPs).
+
+    Skew convention (matches OptionsAnalyst._skew_signal):
+        positive  -> put IV > call IV -> bearish skew (puts richer than calls)
+        negative  -> call IV > put IV -> bullish skew
+
+    Returned as **percentage points**: (put_iv_25d - call_iv_25d) * 100.
+    OptionsAnalyst normalises: signal = -skew / 50.0 -> +/-1.0 at +/-50 pts.
+
+    Args:
+        symbol: Underlying ticker (e.g. "SPY", "MES").
+        expiry: Optional "YYYY-MM-DD" expiry.  None -> auto-select.
+
+    Returns:
+        Float skew in percentage-point units, or None on missing data.
+    """
+    try:
+        from ._polygon_skew import (
+            fetch_chain_snapshot,
+            iv_at_delta,
+            nearest_expiry,
+        )
+
+        chosen_expiry = expiry or nearest_expiry(symbol, min_days=2, max_days=14)
+        if not chosen_expiry:
+            logger.debug("[chain_fetcher] get_pc_skew: no expiry for %s", symbol)
+            return None
+
+        contracts = fetch_chain_snapshot(symbol, chosen_expiry)
+        if not contracts:
+            logger.debug("[chain_fetcher] get_pc_skew: empty chain %s %s", symbol, chosen_expiry)
+            return None
+
+        put_iv = iv_at_delta(contracts, target_delta=0.25, side="put")
+        call_iv = iv_at_delta(contracts, target_delta=0.25, side="call")
+
+        if put_iv is None or call_iv is None:
+            logger.debug(
+                "[chain_fetcher] get_pc_skew: insufficient delta data %s (put=%s call=%s)",
+                symbol,
+                put_iv,
+                call_iv,
+            )
+            return None
+
+        skew_pts = (put_iv - call_iv) * 100.0
+        logger.info(
+            "[chain_fetcher] get_pc_skew %s expiry=%s put_iv_25d=%.4f call_iv_25d=%.4f skew=%.2fpts",
+            symbol,
+            chosen_expiry,
+            put_iv,
+            call_iv,
+            skew_pts,
+        )
+        return skew_pts
+
+    except Exception as exc:
+        logger.warning("[chain_fetcher] get_pc_skew(%s) error: %s", symbol, exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Public API — get_term_structure
+# ---------------------------------------------------------------------------
+
+
+def get_term_structure(symbol: str) -> Optional[dict]:
+    """Compute the IV term-structure slope across the front 3 expiries.
+
+    Fetches ATM IV (average of ATM call + put) for the front-week,
+    front-month, and second-month expiries.
+
+    Slope convention (matches OptionsAnalyst._term_signal):
+        positive slope -> front-week IV > front-month IV -> backwardation (fear)
+        negative slope -> front-week IV < front-month IV -> contango (normal)
+    OptionsAnalyst normalises: signal = -slope / 20.0 -> +/-1.0 at +/-20 pts.
+
+    Args:
+        symbol: Underlying ticker.
+
+    Returns:
+        Dict with keys: slope, front_week_atm_iv, front_month_atm_iv,
+        second_month_atm_iv, regime, spot, symbol, computed_at.
+        None when fewer than 2 expiries have valid ATM IV.
+    """
+    try:
+        from datetime import timezone
+
+        from ._polygon_skew import (
+            atm_iv,
+            fetch_chain_snapshot,
+            front_n_expiries,
+            spot_price_from_polygon,
+        )
+
+        expiries = front_n_expiries(symbol, n=3)
+        if len(expiries) < 2:
+            logger.debug("[chain_fetcher] get_term_structure: fewer than 2 expiries for %s", symbol)
+            return None
+
+        spot = spot_price_from_polygon(symbol)
+        if spot is None or spot <= 0:
+            logger.debug("[chain_fetcher] get_term_structure: no spot for %s", symbol)
+            return None
+
+        atm_ivs: list[Optional[float]] = []
+        for exp in expiries:
+            contracts = fetch_chain_snapshot(symbol, exp)
+            atm_ivs.append(atm_iv(contracts, spot))
+
+        while len(atm_ivs) < 3:
+            atm_ivs.append(None)
+
+        front_week_iv, front_month_iv, second_month_iv = atm_ivs[0], atm_ivs[1], atm_ivs[2]
+
+        if front_week_iv is None or front_month_iv is None:
+            logger.debug("[chain_fetcher] get_term_structure: missing front-2 IVs for %s", symbol)
+            return None
+
+        slope = (front_week_iv - front_month_iv) * 100.0
+        regime = "backwardation" if slope > 1.0 else ("contango" if slope < -1.0 else "flat")
+
+        result = {
+            "symbol": symbol,
+            "spot": round(spot, 4),
+            "front_week_atm_iv": round(front_week_iv, 6),
+            "front_month_atm_iv": round(front_month_iv, 6),
+            "second_month_atm_iv": (
+                round(second_month_iv, 6) if second_month_iv is not None else None
+            ),
+            "slope": round(slope, 4),
+            "regime": regime,
+            "computed_at": datetime.now(tz=timezone.utc).isoformat(),
+        }
+        logger.info(
+            "[chain_fetcher] get_term_structure %s slope=%.2fpts regime=%s",
+            symbol,
+            slope,
+            regime,
+        )
+        return result
+
+    except Exception as exc:
+        logger.warning("[chain_fetcher] get_term_structure(%s) error: %s", symbol, exc)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +218,7 @@ class OptionsChain:
     symbol: str
     expiry: date
     underlying_price: float
-    iv_rank: float  # 0–100
+    iv_rank: float  # 0-100
     calls: list[OptionsContract] = field(default_factory=list)
     puts: list[OptionsContract] = field(default_factory=list)
     fetched_at: datetime = field(default_factory=datetime.utcnow)
@@ -104,7 +264,7 @@ def _build_contract(
     underlying_price: float,
     risk_free_rate: float = 0.05,
 ) -> OptionsContract:
-    """Build an :class:`OptionsContract` from a chain row."""
+    """Build an OptionsContract from a chain row."""
     from .greeks_monitor import calculate_greeks
 
     bid = _safe_float(getattr(row, "bid", 0))
@@ -124,8 +284,13 @@ def _build_contract(
     dte_days = max((expiry - today).days, 1)
     T = dte_days / 365.0
 
-    # Calculate Greeks if IV is available
-    greeks: dict[str, float] = {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0, "rho": 0.0}
+    greeks: dict[str, float] = {
+        "delta": 0.0,
+        "gamma": 0.0,
+        "theta": 0.0,
+        "vega": 0.0,
+        "rho": 0.0,
+    }
     if iv > 0 and underlying_price > 0 and T > 0:
         try:
             greeks = calculate_greeks(
@@ -174,21 +339,20 @@ def fetch_chain(
     """Fetch a live options chain via MarketDataManager / Polygon.
 
     Args:
-        symbol:         Ticker symbol (e.g. ``"SPY"``, ``"QQQ"``).
-        expiry_dates:   List of expiry date strings (``"YYYY-MM-DD"``).
-                        If ``None``, uses the nearest available expiry.
+        symbol:         Ticker symbol (e.g. "SPY", "QQQ").
+        expiry_dates:   List of expiry date strings ("YYYY-MM-DD").
+                        If None, uses the nearest available expiry.
         risk_free_rate: Annualised risk-free rate for Greeks calculation
                         (default 0.05 = 5 %).
         data_manager:   Optional MarketDataManager instance. When provided,
                         used for spot price and expiry lookups.
 
     Returns:
-        :class:`OptionsChain` with Greeks attached, or ``None`` on error.
+        OptionsChain with Greeks attached, or None on error.
     """
     import asyncio
 
     try:
-        # ── Spot price ───────────────────────────────────────────────────
         underlying_price: Optional[float] = None
 
         if data_manager is not None:
@@ -203,7 +367,6 @@ def fetch_chain(
             logger.error("[chain_fetcher] Cannot determine underlying price for %s", symbol)
             return None
 
-        # ── Available expiries ───────────────────────────────────────────
         available_expiries: list[str] = []
 
         if data_manager is not None:
@@ -234,10 +397,6 @@ def fetch_chain(
             target_expiry_str = available_expiries[0]
 
         expiry = date.fromisoformat(target_expiry_str)
-
-        # ── Historical bars for IV calc ──────────────────────────────────
-        # Without a live options chain source, we build an empty chain
-        # and compute IV Rank from historical price data.
         calls: list[OptionsContract] = []
         puts: list[OptionsContract] = []
 
@@ -282,13 +441,13 @@ def filter_by_delta(
     """Filter contracts by absolute delta range.
 
     Args:
-        chain:       :class:`OptionsChain` to filter.
+        chain:       OptionsChain to filter.
         min_delta:   Minimum absolute delta (inclusive, e.g. 0.20).
         max_delta:   Maximum absolute delta (inclusive, e.g. 0.40).
-        option_type: ``"call"``, ``"put"``, or ``None`` for both.
+        option_type: "call", "put", or None for both.
 
     Returns:
-        Filtered list of :class:`OptionsContract` instances.
+        Filtered list of OptionsContract instances.
     """
     contracts: list[OptionsContract] = []
 
@@ -308,13 +467,12 @@ def find_strike_by_delta(
     """Find the contract closest to a target delta.
 
     Args:
-        chain:        :class:`OptionsChain` to search.
+        chain:        OptionsChain to search.
         target_delta: Target absolute delta (e.g. 0.30).
-        option_type:  ``"call"`` or ``"put"``.
+        option_type:  "call" or "put".
 
     Returns:
-        The :class:`OptionsContract` with delta closest to ``target_delta``,
-        or ``None`` if no contracts are available.
+        The OptionsContract with delta closest to target_delta, or None.
     """
     source = chain.calls if option_type.lower() == "call" else chain.puts
     if not source:
@@ -322,7 +480,7 @@ def find_strike_by_delta(
 
     best = min(source, key=lambda c: abs(abs(c.delta) - target_delta))
     logger.debug(
-        "[chain_fetcher] find_strike_by_delta target=%.2f → strike=%.2f delta=%.4f",
+        "[chain_fetcher] find_strike_by_delta target=%.2f -> strike=%.2f delta=%.4f",
         target_delta,
         best.strike,
         best.delta,
@@ -343,9 +501,6 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
     close-to-close returns (historical volatility), and computes IVR against
     the resulting 1-year range.
 
-    The resulting IVR is an approximation — for true IVR you need a term
-    structure database with daily ATM IV snapshots.
-
     Args:
         symbol:       Ticker symbol.
         days:         Look-back window in trading days (default 252 = 1 year).
@@ -355,11 +510,11 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
         IV Rank in [0, 100].  Returns 50.0 (neutral) on data failure.
     """
     import asyncio
+    from datetime import timedelta
 
     try:
         closes = None
 
-        # Try data_manager first
         if data_manager is not None:
             try:
                 loop = asyncio.get_event_loop()
@@ -375,11 +530,8 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
             except Exception as exc:
                 logger.warning("[chain_fetcher] data_manager bars failed for IVR: %s", exc)
 
-        # Fallback to BacktestDataLoader
         if closes is None or len(closes) < 20:
             try:
-                from datetime import timedelta
-
                 from backtest.data_loader import BacktestDataLoader
 
                 end_date = datetime.utcnow().strftime("%Y-%m-%d")
@@ -395,7 +547,6 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
             logger.warning("[chain_fetcher] Insufficient history for IVR calc on %s", symbol)
             return 50.0
 
-        # Annualised historical volatility using a 21-day rolling window
         log_returns = closes.pct_change().dropna()
         rolling_vol = log_returns.rolling(21).std() * math.sqrt(252)
         rolling_vol = rolling_vol.dropna()
@@ -411,7 +562,7 @@ def get_iv_rank(symbol: str, days: int = 252, data_manager=None) -> float:
 
         ivr = iv_rank(current_iv, high_52w, low_52w)
         logger.debug(
-            "[chain_fetcher] IVR %s: current=%.4f high=%.4f low=%.4f → IVR=%.1f",
+            "[chain_fetcher] IVR %s: current=%.4f high=%.4f low=%.4f -> IVR=%.1f",
             symbol,
             current_iv,
             high_52w,
@@ -446,7 +597,7 @@ def fetch_nearest_expiries(
         data_manager:   Optional MarketDataManager for data fetching.
 
     Returns:
-        List of :class:`OptionsChain` instances (may be shorter than ``count``
+        List of OptionsChain instances (may be shorter than count
         if fewer expiries are available).
     """
     import asyncio

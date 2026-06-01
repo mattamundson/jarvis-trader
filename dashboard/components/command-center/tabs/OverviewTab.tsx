@@ -27,6 +27,8 @@ interface HealthData {
   kill_switch_active: boolean;
   uptime_seconds: number;
   ibkr_connected: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   paper_trading?: boolean;
   version?: string;
 }

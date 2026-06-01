@@ -110,6 +110,42 @@ function SignalPill({
   return <span className={classes}>{label}</span>;
 }
 
+// Countdown timer for 5-minute auto-expiry
+function ExpiryTimer({ createdAt }: { createdAt: string }) {
+  const [timeLeft, setTimeLeft] = React.useState<number>(0);
+
+  React.useEffect(() => {
+    const calculateTimeLeft = () => {
+      const expiryTime = new Date(createdAt).getTime() + 5 * 60 * 1000;
+      const now = new Date().getTime();
+      return Math.max(0, Math.floor((expiryTime - now) / 1000));
+    };
+
+    setTimeLeft(calculateTimeLeft());
+    const interval = setInterval(() => {
+      const next = calculateTimeLeft();
+      setTimeLeft(next);
+      if (next <= 0) clearInterval(interval);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [createdAt]);
+
+  if (timeLeft <= 0) {
+    return <span className="text-red-600 font-bold text-xs uppercase animate-pulse">Expired</span>;
+  }
+
+  const mins = Math.floor(timeLeft / 60);
+  const secs = timeLeft % 60;
+  const isUrgent = timeLeft < 60;
+
+  return (
+    <span className={`font-mono text-xs ${isUrgent ? "text-red-500 font-bold animate-pulse" : "text-amber-700"}`}>
+      Expires in {mins}:{secs.toString().padStart(2, "0")}
+    </span>
+  );
+}
+
 export default function ApprovalPanel() {
   // SWR for pending approvals (5s refresh)
   const { data, error, isLoading, mutate } = useSWR<PendingApprovalsResponse>(
@@ -234,9 +270,12 @@ export default function ApprovalPanel() {
                         {approval.action.toUpperCase()}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-500">
-                      {timeAgo(approval.created_at)}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-xs text-gray-500">
+                        {timeAgo(approval.created_at)}
+                      </span>
+                      <ExpiryTimer createdAt={approval.created_at} />
+                    </div>
                   </div>
 
                   {/* Details row */}

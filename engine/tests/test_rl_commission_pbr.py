@@ -32,7 +32,7 @@ stable_baselines3 = pytest.importorskip(
 )
 
 from strategies.rl_config import COMMISSION_BY_INSTRUMENT, REWARD_CONFIG
-from strategies.rl_environment import TradingEnvironment, Action
+from strategies.rl_environment import Action, TradingEnvironment
 
 
 def _make_synthetic_df(n_bars: int = 200) -> pd.DataFrame:

@@ -211,7 +211,7 @@ class CompetitionHarness:
         scores = {sid: self._score_competitor(c, start, end) for sid, c in self.competitors.items()}
         score_list = [scores[sid] for sid in self.competitors]
         new_weights = _softmax(score_list, self.softmax_temperature)
-        weight_map = dict(zip(self.competitors, new_weights))
+        weight_map = dict(zip(self.competitors, new_weights, strict=False))
 
         for sid, c in self.competitors.items():
             c.weight = weight_map[sid]

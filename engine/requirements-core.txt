@@ -37,12 +37,16 @@ alpaca-py==0.35.0         # Alpaca — paper trading data, free with API key
 schwab-py==1.5.1          # Charles Schwab Trader API (1.4.2 yanked / unavailable on PyPI)
 
 # ── Technical Analysis ─────────────────────────────────────────────────────
-pandas-ta==0.4.67b0       # 150+ indicators, pure Python (no C binary needed)
+pandas-ta==0.4.67b0       # 150+ indicators. Windows: requires alligator.py:6 patch (comment `from posix import pread` — see project_engine_boot_state_2026_05_04_eve.md)
+
+# ── ML / Predictions ───────────────────────────────────────────────────────
+xgboost==3.2.0            # Used by engine/learning/model_drawer.py — Win amd64 wheel (101.7 MB)
 
 # ── Data Processing ────────────────────────────────────────────────────────
 pandas>=2.2.3
 numpy>=2.2.6
 scipy>=1.15.2
+quantstats==0.0.81        # Portfolio analytics (Sortino/Calmar/max-DD/monthly returns). Used by engine/backtest/stark_forge.py + engine/reports/quantstats_metrics.py.
 
 # ── Databases ──────────────────────────────────────────────────────────────
 asyncpg==0.31.0           # Async PostgreSQL driver (pure Python, no build needed)
@@ -53,6 +57,9 @@ redis[hiredis]==5.2.1     # Redis async client (hiredis optional, for faster par
 httpx==0.28.1
 websockets==14.2
 aiohttp==3.11.14
+
+# ── Messaging / Alerts ─────────────────────────────────────────────────────
+twilio==9.10.9            # WhatsApp approval webhook + outbound alerts (whatsapp_router.py)
 
 # ── Sentiment & News ───────────────────────────────────────────────────────
 finnhub-python==2.4.22    # Finnhub — free tier: 60 req/min
@@ -66,7 +73,7 @@ apscheduler==3.11.0
 
 # ── RL / session tests (full pytest on CI) ─────────────────────────────────
 gymnasium==1.0.0          # TradingEnvironment + test_rl_module
-torch==2.5.1              # stable-baselines3 backend (CPU wheels on Linux CI)
+torch>=2.5.1              # stable-baselines3 backend (CPU wheels on Linux CI)
 stable-baselines3==2.7.1  # RL tests; 2.4.x pins numpy<2.0 (conflicts with numpy>=2.2.x)
 pytz==2024.2              # journal/session routes (test_session4_*)
 
@@ -86,3 +93,4 @@ pytest==8.3.5
 pytest-asyncio==0.26.0
 pytest-timeout==2.3.1
 pytest-cov==5.0.0  # tier-1 CI uses --cov=engine
+hypothesis==6.152.4  # property-based tests (test_gate_v2_properties, etc.)

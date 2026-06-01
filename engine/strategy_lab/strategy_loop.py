@@ -7,6 +7,7 @@ Inspired by: github.com/rv64m/autotrade
 Usage:
     python -m strategy_lab.strategy_loop --symbol MES --max_iterations 50
 """
+
 import argparse
 import json
 import logging
@@ -49,15 +50,20 @@ def run_strategy_loop(
         sys.path.insert(0, engine_root)
 
     try:
-        from anthropic import Anthropic
+        from llm.client import JarvisLLMClient
     except ImportError:
-        logger.error("anthropic package not installed. Run: pip install anthropic")
-        return {'error': 'anthropic not installed', 'eligible_count': 0}
+        logger.error("JarvisLLMClient unavailable — engine.llm.client import failed")
+        return {"error": "jarvis_llm_client not importable", "eligible_count": 0}
 
-    from strategy_lab.strategy_generator import generate_strategy_variant
     from strategy_lab.strategy_evaluator import evaluate_strategy_variant
+    from strategy_lab.strategy_generator import generate_strategy_variant
 
-    client = Anthropic()
+    # Routes through JarvisLLMClient so Anthropic credit-exhaustion silently
+    # falls over to Gemini (when GOOGLE_API_KEY is set) and the call is tracked
+    # in the cost DB.
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    db_path = os.getenv("JARVIS_LLM_COST_DB", "data/llm_costs.db")
+    client = JarvisLLMClient(api_key=api_key, db_path=db_path)
     results: list = []
     best_strategies: list = []
     best_pf = 0.0
@@ -68,7 +74,7 @@ def run_strategy_loop(
     print(f"\n{'='*60}")
     print(f"[STRATEGY LAB] Autonomous loop — {max_iterations} iterations on {symbol}")
     print(f"[STRATEGY LAB] Period: {start} -> {end}")
-    print(f"[STRATEGY LAB] Gates: Risk (DD<15%) | Profit (Sharpe>=1.2, Calmar>=0.8, PF>=1.8)")
+    print("[STRATEGY LAB] Gates: Risk (DD<15%) | Profit (Sharpe>=1.2, Calmar>=0.8, PF>=1.8)")
     print(f"{'='*60}\n")
 
     for i in range(max_iterations):
@@ -80,8 +86,8 @@ def run_strategy_loop(
         # Generate variant
         try:
             variant = generate_strategy_variant(client, results, focus_area=focus)
-            params = variant['parameters']
-            name = variant['strategy_name']
+            params = variant["parameters"]
+            name = variant["strategy_name"]
             print(f"         Strategy: {name}")
             print(
                 f"         STC {params['stc_oversold']}/{params['stc_overbought']} | "
@@ -93,26 +99,28 @@ def run_strategy_loop(
             continue
 
         # Evaluate
-        result = evaluate_strategy_variant(variant['parameters'], symbol=symbol, start=start, end=end)
-        result['strategy_name'] = name
-        result['description'] = variant.get('description', '')
-        result['iteration'] = iteration_num
-        result['focus_area'] = focus
-        result['timestamp'] = datetime.now().isoformat()
+        result = evaluate_strategy_variant(
+            variant["parameters"], symbol=symbol, start=start, end=end
+        )
+        result["strategy_name"] = name
+        result["description"] = variant.get("description", "")
+        result["iteration"] = iteration_num
+        result["focus_area"] = focus
+        result["timestamp"] = datetime.now().isoformat()
 
-        verdict = result['verdict']
-        metrics = result.get('metrics', {})
-        pf = metrics.get('profit_factor', metrics.get('pf', 0)) or 0
-        sharpe = metrics.get('sharpe_ratio', metrics.get('sharpe', 0)) or 0
-        n_trades = metrics.get('total_trades', metrics.get('n_trades', 0)) or 0
+        verdict = result["verdict"]
+        metrics = result.get("metrics", {})
+        pf = metrics.get("profit_factor", metrics.get("pf", 0)) or 0
+        sharpe = metrics.get("sharpe_ratio", metrics.get("sharpe", 0)) or 0
+        n_trades = metrics.get("total_trades", metrics.get("n_trades", 0)) or 0
 
-        verdict_symbol = "ELIGIBLE" if verdict == 'ELIGIBLE' else f"x {verdict}"
+        verdict_symbol = "ELIGIBLE" if verdict == "ELIGIBLE" else f"x {verdict}"
         print(f"         [{verdict_symbol}] PF={pf:.2f} | Sharpe={sharpe:.2f} | N={n_trades}")
 
-        for violation in result.get('violations', []):
+        for violation in result.get("violations", []):
             print(f"           ! {violation}")
 
-        if verdict == 'ELIGIBLE' and pf > best_pf:
+        if verdict == "ELIGIBLE" and pf > best_pf:
             best_pf = pf
             best_strategies.append(result)
             print(f"         ** NEW BEST -- PF={pf:.2f}")
@@ -120,21 +128,19 @@ def run_strategy_loop(
             sorted_best = sorted(
                 best_strategies,
                 key=lambda x: (
-                    x.get('metrics', {}).get('profit_factor')
-                    or x.get('metrics', {}).get('pf')
-                    or 0
+                    x.get("metrics", {}).get("profit_factor") or x.get("metrics", {}).get("pf") or 0
                 ),
                 reverse=True,
             )[:10]
             BEST_STRATEGIES_FILE.write_text(json.dumps(sorted_best, indent=2))
 
         results.append(result)
-        with open(RESULTS_FILE, 'a') as f:
-            f.write(json.dumps(result) + '\n')
+        with open(RESULTS_FILE, "a") as f:
+            f.write(json.dumps(result) + "\n")
 
         print()
 
-    eligible_count = sum(1 for r in results if r['verdict'] == 'ELIGIBLE')
+    eligible_count = sum(1 for r in results if r["verdict"] == "ELIGIBLE")
 
     print(f"\n{'='*60}")
     print("[STRATEGY LAB COMPLETE]")
@@ -146,13 +152,11 @@ def run_strategy_loop(
         best = max(
             best_strategies,
             key=lambda x: (
-                x.get('metrics', {}).get('profit_factor')
-                or x.get('metrics', {}).get('pf')
-                or 0
+                x.get("metrics", {}).get("profit_factor") or x.get("metrics", {}).get("pf") or 0
             ),
         )
         print(f"  Best strategy: {best.get('strategy_name', 'unknown')}")
-        p = best.get('parameters', {})
+        p = best.get("parameters", {})
         print(
             f"  Params: STC {p.get('stc_oversold')}/{p.get('stc_overbought')} | "
             f"Stop {p.get('atr_stop_mult')}x | TF {p.get('timeframe')}"
@@ -162,11 +166,11 @@ def run_strategy_loop(
     print(f"{'='*60}\n")
 
     return {
-        'eligible_count': eligible_count,
-        'total_evaluated': len(results),
-        'best_pf': best_pf,
-        'best_strategy': best_strategies[0] if best_strategies else None,
-        'results_file': str(RESULTS_FILE),
+        "eligible_count": eligible_count,
+        "total_evaluated": len(results),
+        "best_pf": best_pf,
+        "best_strategy": best_strategies[0] if best_strategies else None,
+        "results_file": str(RESULTS_FILE),
     }
 
 

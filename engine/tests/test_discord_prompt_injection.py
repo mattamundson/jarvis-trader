@@ -1,6 +1,7 @@
 """Tests for US-2503 — Discord context injection into TechnicalAnalyst prompt."""
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 def _make_analyst():
@@ -74,7 +75,8 @@ async def test_alignment_labels():
 
 def test_get_discord_context_method_exists():
     """TechnicalAnalystAgent has _get_discord_context async method."""
-    from agents.technical_analyst import TechnicalAnalystAgent
     import inspect
+
+    from agents.technical_analyst import TechnicalAnalystAgent
     assert hasattr(TechnicalAnalystAgent, "_get_discord_context")
     assert inspect.iscoroutinefunction(TechnicalAnalystAgent._get_discord_context)

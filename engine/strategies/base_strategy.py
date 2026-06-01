@@ -7,7 +7,7 @@ Bridges autotrade's strategy-as-code pattern with JARVIS's existing Backtester.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
+from typing import Tuple
 
 import pandas as pd
 

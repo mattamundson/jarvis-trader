@@ -1,14 +1,22 @@
 name: JARVIS TRADER CI
+
+# 1. Global permissions for the workflow token
+permissions:
+  contents: read
+
+# 2. Workflow triggers
 on:
   push:
     branches: [main, master, develop]
   pull_request:
     branches: [main, master]
 
+# 3. Concurrency management
 concurrency:
   group: jarvis-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 4. Jobs definition
 jobs:
   engine-lint:
     name: Engine Lint (Python)
@@ -286,7 +294,6 @@ jobs:
           fi
           echo "Security scan passed: no high-signal secret patterns matched."
 
-  # Final job: summary
   ci-summary:
     name: CI Summary
     needs:

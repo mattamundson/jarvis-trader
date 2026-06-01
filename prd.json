@@ -1,5 +1,5 @@
 {
-  "project": "JARVIS TRADER — Cutting-Edge Upgrade (Tracks A/B/F/G/H)",
+  "project": "JARVIS TRADER \u2014 Cutting-Edge Upgrade (Tracks A/B/F/G/H)",
   "branchName": "ralph/jarvis-upgrades",
   "description": "Wire unused modules, implement alpha combination engine, optimize token costs, add institutional options flow analysis, integrate Claude Managed Agents + Twitter research (Advisor Strategy, RTK proxy, IC ensemble)",
   "userStories": [
@@ -69,8 +69,8 @@
       "description": "As JARVIS TRADER, I want position size scaled by analyst agreement so that high-confluence signals get 1.5x sizing and conflicted signals are held",
       "acceptanceCriteria": [
         "_compute_confluence() helper added to trader.py",
-        "4+ agents aligned → 1.5x multiplier",
-        "1 or fewer agents aligned → HOLD override",
+        "4+ agents aligned \u2192 1.5x multiplier",
+        "1 or fewer agents aligned \u2192 HOLD override",
         "Applied AFTER VIX scaling (compounding)",
         "All existing tests pass"
       ],
@@ -96,17 +96,17 @@
     {
       "id": "US-F1",
       "title": "IC-Weighted Alpha Combination in Debate",
-      "description": "As JARVIS TRADER, I want analyst signals weighted by their Information Coefficient (historical accuracy) so that high-IC analysts have more influence on the debate outcome (IR = IC × √N)",
+      "description": "As JARVIS TRADER, I want analyst signals weighted by their Information Coefficient (historical accuracy) so that high-IC analysts have more influence on the debate outcome (IR = IC \u00d7 \u221aN)",
       "acceptanceCriteria": [
         "IC scores loaded from AgentFeedbackTracker in debate.py",
         "_ic_weighted_signal() helper applies IC weighting to signals",
-        "IR score computed and logged (IR = avg_IC × √N)",
+        "IR score computed and logged (IR = avg_IC \u00d7 \u221aN)",
         "Builds on Track E agent weights (not duplicate)",
         "All existing tests pass"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Created 2026-04-10: engine/analytics/ic_ensemble.py provides ICWeightedEnsemble class reading from trade_outcomes table. Smoke test passes (equal-weight fallback when DB empty). Wiring into debate.py Stage 2 aggregation pending — current AgentFeedbackTracker weights already applied in debate.py."
+      "notes": "Created 2026-04-10: engine/analytics/ic_ensemble.py provides ICWeightedEnsemble class reading from trade_outcomes table. Smoke test passes (equal-weight fallback when DB empty). Wiring into debate.py Stage 2 aggregation pending \u2014 current AgentFeedbackTracker weights already applied in debate.py."
     },
     {
       "id": "US-F2",
@@ -121,8 +121,8 @@
         "All existing tests pass"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": "Not implemented this session. Owner: future session."
+      "passes": true,
+      "notes": "VERIFIED 2026-05-06: _scan_institutional_flow() exists at social_analyst.py:677 with all 6 steps. IV rank>70 returns flow_bias=0 (line 696-702). Flow data injected into LLM prompt context (line 166-170). Graceful fallback when options data unavailable (lines 687-688, 749). 38/38 tests pass. Implementation predates this verification \u2014 PRD note was stale."
     },
     {
       "id": "US-G1",
@@ -152,16 +152,16 @@
         "All existing tests pass"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Not implemented this session. Awaiting Anthropic Managed Agents API stabilization. Owner: future session."
+      "passes": true,
+      "notes": "IMPLEMENTED 2026-05-06: ManagedAgentBridge in engine/agents/managed_agent_bridge.py. USE_MANAGED_AGENTS env var toggles modes (truthy: true/1/yes/on; falsy default). New unified run_stage1() dispatches to either custom_runner (default) or run_stage1_managed (when env enabled). Both paths log active route. 25 unit tests cover mode detection (parametrized truthy/falsy), custom dispatch, managed dispatch, error cases, logging, status reporting. Existing managed-path scaffolding kept (managed-agents-2026-04-08 beta header, prompt builders for technical/news/social/fundamental/corey)."
     },
     {
       "id": "US-F3",
-      "title": "Claude Advisor Strategy Client (NEW — Twitter research)",
+      "title": "Claude Advisor Strategy Client (NEW \u2014 Twitter research)",
       "description": "As a pipeline agent, I want to consult Opus as an advisor when I hit inconclusive debates or low-confidence trades, so that +2.7pp accuracy and 11.9% cost reduction are realized vs. running Opus throughout",
       "acceptanceCriteria": [
         "engine/agents/advisor_client.py exists with AdvisorClient, AdvisorVerdict, AdvisorRefinement classes",
-        "should_consult_debate(score, threshold) returns True when |score-threshold| within ±0.05",
+        "should_consult_debate(score, threshold) returns True when |score-threshold| within \u00b10.05",
         "should_consult_trader(confidence) returns True when confidence < 0.5",
         "consult_debate_tiebreak is async and uses JarvisLLMClient.call()",
         "consult_trader_refinement is async and refines entry/stop/target",
@@ -177,7 +177,7 @@
     },
     {
       "id": "US-G2",
-      "title": "RTK-Inspired Token Proxy (NEW — Twitter research)",
+      "title": "RTK-Inspired Token Proxy (NEW \u2014 Twitter research)",
       "description": "As the LLM pipeline, I want client-side prompt compression, response caching, and context trimming so that token transport cost drops 25-60% per pipeline run",
       "acceptanceCriteria": [
         "engine/utils/token_proxy.py exists with TokenProxy class + TokenProxyMetrics dataclass",
@@ -193,18 +193,18 @@
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Created 2026-04-10. Source: https://x.com/seelffff/status/2042247428930248939. Smoke test: 43→32 char compression (25.58% savings), cache roundtrip OK."
+      "notes": "Created 2026-04-10. Source: https://x.com/seelffff/status/2042247428930248939. Smoke test: 43\u219232 char compression (25.58% savings), cache roundtrip OK."
     },
     {
       "id": "US-H2",
-      "title": "IC-Weighted Signal Ensemble Module (NEW — Twitter research)",
+      "title": "IC-Weighted Signal Ensemble Module (NEW \u2014 Twitter research)",
       "description": "As the Stage 2 synthesizer, I want analyst signals weighted by their rolling 30-day Information Coefficient so that historically predictive analysts dominate and bad analysts are muted",
       "acceptanceCriteria": [
         "engine/analytics/ic_ensemble.py exists with ICWeightedEnsemble class",
         "compute_ic(agent) returns Spearman correlation of signal vs pnl_usd over 30-day window",
         "get_ensemble_weights() returns {agent: weight} summing to 1.0",
-        "Negative ICs → weight 0 (muted), positive → normalized by total",
-        "Insufficient data → equal-weight fallback",
+        "Negative ICs \u2192 weight 0 (muted), positive \u2192 normalized by total",
+        "Insufficient data \u2192 equal-weight fallback",
         "Reuses existing trade_outcomes schema from AgentFeedbackTracker",
         "scipy preferred, manual Spearman fallback on scipy absence",
         "weighted_consensus(reports) returns clamped [-1.0, 1.0] value",

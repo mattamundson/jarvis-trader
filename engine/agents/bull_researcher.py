@@ -103,8 +103,17 @@ class BullResearcherAgent:
     ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
     ANTHROPIC_VERSION = "2023-06-01"
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, memory_bridge=None):
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        self._memory = memory_bridge
+        # Phase 3.4: Optional reasoning chains
+        from llm.reasoning_client import ReasoningChainClient
+        from llm.client import JarvisLLMClient
+        
+        self._reasoning_client = ReasoningChainClient(
+            llm_client=JarvisLLMClient(api_key=self._api_key)
+        )
+        self._reasoning_enabled = os.getenv("REASONING_CHAINS_ENABLED", "False").lower() == "true"
 
     async def analyze(self, symbol: str, analyst_reports: dict) -> BullReport:
         """
@@ -127,26 +136,47 @@ class BullResearcherAgent:
         """
         prompt = self._build_prompt(symbol, analyst_reports)
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    self.ANTHROPIC_API_URL,
-                    headers={
-                        "x-api-key": self._api_key,
-                        "anthropic-version": self.ANTHROPIC_VERSION,
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": self.MODEL,
-                        "max_tokens": self.MAX_TOKENS,
-                        "system": self.SYSTEM_PROMPT,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
+        # Phase 3.5: Inject Working Memory
+        if self._memory:
+            working_memory = self._memory.recall(
+                agent_name="bull-researcher",
+                symbol=symbol,
+                topic="general",
+                limit=3
+            )
+            if working_memory:
+                prompt = f"{working_memory}\n\nCurrent market reports:\n{prompt}"
 
-            response_text = data["content"][0]["text"].strip()
+        try:
+            if self._reasoning_enabled:
+                logger.info(f"[BullResearcher] {symbol} — Using reasoning chain (DeepSeek-R1)")
+                result = await self._reasoning_client.reason_then_decide(
+                    context=prompt,
+                    question=f"Build the strongest possible bullish case for {symbol}.",
+                    decision_prompt=self.SYSTEM_PROMPT,
+                    agent_name="BullResearcher"
+                )
+                response_text = result["decision"]
+            else:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        self.ANTHROPIC_API_URL,
+                        headers={
+                            "x-api-key": self._api_key,
+                            "anthropic-version": self.ANTHROPIC_VERSION,
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": self.MODEL,
+                            "max_tokens": self.MAX_TOKENS,
+                            "system": self.SYSTEM_PROMPT,
+                            "messages": [{"role": "user", "content": prompt}],
+                        },
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    response_text = data["content"][0]["text"].strip()
+
             result = self._parse_json(response_text)
 
             report = BullReport(

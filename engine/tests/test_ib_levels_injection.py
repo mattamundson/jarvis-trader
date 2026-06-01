@@ -1,8 +1,9 @@
 """Tests for US-2502 — IBLevelProvider injection into signals.py Layer 2."""
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import MagicMock, patch
 
 
 def _make_df(n: int = 5) -> pd.DataFrame:

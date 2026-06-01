@@ -16,12 +16,15 @@ Cost per token (as of 2026-03-29):
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Literal, Optional
 
 import anthropic
+import httpx
 from anthropic import APIConnectionError, APIStatusError, RateLimitError
 from tenacity import (
     retry,
@@ -34,12 +37,14 @@ from .cost_tracker import CostTracker
 
 try:
     from utils.token_proxy import get_token_proxy
+
     _TOKEN_PROXY_AVAILABLE = True
 except Exception as _tp_err:
     _TOKEN_PROXY_AVAILABLE = False
 
 try:
     from utils.context_mgmt import drop_tool_responses, needs_compaction
+
     _CONTEXT_MGMT_AVAILABLE = True
 except Exception:
     _CONTEXT_MGMT_AVAILABLE = False
@@ -68,7 +73,11 @@ def _is_credit_exhaustion(body_or_text: object) -> bool:
     if body_or_text is None:
         return False
     s = str(body_or_text).lower()
-    return "credit balance is too low" in s or "credit_balance_too_low" in s or "credit balance too low" in s
+    return (
+        "credit balance is too low" in s
+        or "credit_balance_too_low" in s
+        or "credit balance too low" in s
+    )
 
 
 _TEMPERATURE_DEPRECATED_PREFIXES = ("claude-opus-4-7",)
@@ -118,11 +127,18 @@ class JarvisLLMClient:
     """
 
     # Cost per million tokens (as of 2026-03-29; Opus 4.7 added 2026-04-16, same tier as 4.6)
+    # Gemini cost via OpenAI-compatible endpoint (Phase 3, 2026-05-20):
+    # gemini-2.5-flash: $0.30/MTok input, $2.50/MTok output (~10x cheaper than Sonnet)
+    # gemini-2.0-flash: $0.10/MTok input, $0.40/MTok output (~30x cheaper than Sonnet)
     COST_PER_MTOK = {
         "claude-opus-4-7": {"input": 15.0, "output": 75.0},
         "claude-opus-4-6": {"input": 15.0, "output": 75.0},
         "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
         "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
+        "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
+        "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+        "deepseek-reasoner": {"input": 0.55, "output": 2.19},
+        "hermes3:latest": {"input": 0.0, "output": 0.0},
     }
 
     # Model fallback chain when overloaded
@@ -131,14 +147,52 @@ class JarvisLLMClient:
         "claude-opus-4-6": "claude-sonnet-4-6",
         "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
         "claude-haiku-4-5-20251001": None,  # No fallback from Haiku
+        "deepseek-reasoner": "claude-sonnet-4-6",
     }
+
+    # Phase 3 (2026-05-20): Anthropic → Gemini failover map. Used when an
+    # Anthropic call hits credit-exhaustion or persistent 5xx and a Google
+    # API key is configured. Quality tiering is preserved across providers:
+    # Opus/Sonnet → gemini-2.5-flash (best Gemini), Haiku → gemini-2.0-flash.
+    GOOGLE_FAILOVER_MAP = {
+        "claude-opus-4-7": "gemini-2.5-flash",
+        "claude-opus-4-6": "gemini-2.5-flash",
+        "claude-sonnet-4-6": "gemini-2.5-flash",
+        "claude-haiku-4-5-20251001": "gemini-2.0-flash",
+    }
+
+    # Agents routed to Gemini 2.5-flash as primary provider (not as fallback).
+    # These are context-enrichment / classification tasks — not trade decisions.
+    # Keeps credit consumption on cost-efficient Gemini; Anthropic reserved for
+    # trader, risk_manager, fund_manager, and debate-stage agents.
+    GEMINI_PRIMARY_AGENTS: frozenset[str] = frozenset(
+        {
+            "news_analyst",
+            "social_analyst",
+            "deep_analyzer",
+            "technical_analyst",
+            "fundamental_analyst",
+            "hermes-upgrade-classifier",
+            "bookmark_clusterer",
+            "kairos_dreaming",
+        }
+    )
 
     MODEL_CONTEXT_LIMITS = {
         "claude-opus-4-7": 200_000,
         "claude-opus-4-6": 200_000,
         "claude-sonnet-4-6": 200_000,
         "claude-haiku-4-5-20251001": 200_000,
+        "gemini-2.5-flash": 1_000_000,
+        "gemini-2.0-flash": 1_000_000,
+        "deepseek-reasoner": 64_000,
+        "hermes3:latest": 4_096,
     }
+
+    # Class-level default — read at line 445/650 etc. Subclasses or callers that
+    # bypass __init__ (mocks, __new__, pickle) get the default rather than an
+    # AttributeError.  __init__ overwrites with the env-derived value.
+    provider: str = "ollama"
 
     def __init__(self, api_key: str, db_path: str = "data/llm_costs.db"):
         """
@@ -148,13 +202,92 @@ class JarvisLLMClient:
             api_key: Anthropic API key
             db_path: Path to SQLite cost tracking database
         """
-        self.api_key = api_key
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+        self.provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
+        self.api_key = "" if self.provider == "ollama" else api_key
+        self.ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+        self.ollama_model = os.getenv("OLLAMA_MODEL", "hermes3:latest")
+        self.ollama_num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
+        self.ollama_num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "256"))
+        self.ollama_keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "5m")
+        # Per-agent model overrides. Format: "agent_a=model_x,agent_b=model_y".
+        # Use '=' for agent→model so Ollama tag colons (e.g. "llama3.2:3b") survive parsing.
+        # Empty / unparseable entries fall back to OLLAMA_MODEL.
+        self.ollama_model_per_agent: dict[str, str] = {}
+        per_agent_raw = os.getenv("OLLAMA_MODEL_PER_AGENT", "").strip()
+        if per_agent_raw:
+            for spec in per_agent_raw.split(","):
+                spec = spec.strip()
+                if not spec or "=" not in spec:
+                    continue
+                agent, model_name = spec.split("=", 1)
+                agent = agent.strip()
+                model_name = model_name.strip()
+                if agent and model_name:
+                    self.ollama_model_per_agent[agent] = model_name
+        # Per-agent context window overrides. Format: "agent_a=2048,agent_b=3072".
+        # Falls back to OLLAMA_NUM_CTX for agents not listed. Reduces KV-cache
+        # allocation on CPU for lightweight agents (e.g. social_analyst, news_analyst).
+        self.ollama_num_ctx_per_agent: dict[str, int] = {}
+        per_ctx_raw = os.getenv("OLLAMA_NUM_CTX_PER_AGENT", "").strip()
+        if per_ctx_raw:
+            for spec in per_ctx_raw.split(","):
+                spec = spec.strip()
+                if not spec or "=" not in spec:
+                    continue
+                agent, ctx_str = spec.split("=", 1)
+                agent = agent.strip()
+                ctx_str = ctx_str.strip()
+                try:
+                    if agent and ctx_str:
+                        self.ollama_num_ctx_per_agent[agent] = int(ctx_str)
+                except ValueError:
+                    logger.warning(
+                        f"OLLAMA_NUM_CTX_PER_AGENT: invalid value '{ctx_str}' for agent '{agent}' — skipped"
+                    )
+        self.client = (
+            None if self.provider == "ollama" else anthropic.AsyncAnthropic(api_key=api_key)
+        )
         self.cost_tracker = CostTracker(db_path=db_path)
-        self.default_model = "claude-sonnet-4-6"
-        self.fast_model = "claude-haiku-4-5-20251001"
+        self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
+        self.fast_model = (
+            self.ollama_model if self.provider == "ollama" else "claude-haiku-4-5-20251001"
+        )
         self.compaction_count = 0
-        logger.info(f"✅ JarvisLLMClient initialized with cost tracking at {db_path}")
+
+        # Phase 3 (2026-05-20): Google/Gemini provider — transparent fallback
+        # when the Anthropic primary path hits credit-exhaustion or 5xx errors.
+        # Reads GOOGLE_API_KEY or GEMINI_API_KEY from env. Absent key silently
+        # disables the fallback (no behavior change from pre-Phase-3). Uses
+        # Gemini's OpenAI-compatible endpoint so we reuse the messages/choices
+        # shape without adding google-generativeai as a runtime dep.
+        self.google_api_key = (
+            os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
+        ).strip()
+        self.google_endpoint = os.getenv(
+            "GOOGLE_OPENAI_ENDPOINT",
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        ).strip()
+        self.google_fallback_enabled = self.google_api_key != "" and os.getenv(
+            "JARVIS_LLM_GOOGLE_FALLBACK", "1"
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        self.google_fallback_count = 0  # incremented on each successful fallback
+
+        # Phase 3.4 (2026-05-22): DeepSeek-R1 support for reasoning chains.
+        self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+        self.deepseek_endpoint = os.getenv(
+            "DEEPSEEK_ENDPOINT", "https://api.deepseek.com/v1/chat/completions"
+        ).strip()
+
+        google_status = (
+            "enabled"
+            if self.google_fallback_enabled
+            else ("disabled (no key)" if not self.google_api_key else "disabled (env flag)")
+        )
+        deepseek_status = "enabled" if self.deepseek_api_key else "disabled (no key)"
+        logger.info(
+            f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
+            f"(provider={self.provider}, google_fallback={google_status}, deepseek={deepseek_status})"
+        )
 
     async def _handle_success(
         self,
@@ -214,7 +347,9 @@ class JarvisLLMClient:
         # TokenProxy — cache successful result
         if proxy is not None and compressed_key is not None:
             try:
-                proxy.set_cached(compressed_key, result_obj, model=str(current_model), salt=cache_salt)
+                proxy.set_cached(
+                    compressed_key, result_obj, model=str(current_model), salt=cache_salt
+                )
             except Exception:
                 pass  # graceful — cache write failure never breaks API call
 
@@ -271,7 +406,9 @@ class JarvisLLMClient:
             return None
         return self.FALLBACK_CHAIN[current_model]
 
-    def _resolve_model_for_tier(self, model: str, tier: Literal["fast", "default", "advisor"]) -> str:
+    def _resolve_model_for_tier(
+        self, model: str, tier: Literal["fast", "default", "advisor"]
+    ) -> str:
         if tier == "fast":
             return self.fast_model
         if model:
@@ -284,6 +421,18 @@ class JarvisLLMClient:
             content = message.get("content", "")
             if isinstance(content, str):
                 total_chars += len(content)
+            elif isinstance(content, list):
+                # Multi-modal content
+                for part in content:
+                    if isinstance(part, dict):
+                        # Text part
+                        if part.get("type") == "text":
+                            total_chars += len(part.get("text", ""))
+                        # Image part (base64)
+                        elif part.get("type") == "image":
+                            # Base64 is ~33% larger than raw bytes, but we just need a proxy
+                            # We'll use a constant or proportional estimate
+                            total_chars += len(part.get("source", {}).get("data", "")) // 10
             elif isinstance(content, dict):
                 total_chars += len(str(content))
             else:
@@ -295,8 +444,7 @@ class JarvisLLMClient:
             return "No prior context."
 
         middle_text = "\n".join(
-            f"{msg.get('role', 'unknown')}: {msg.get('content', '')}"
-            for msg in middle_messages
+            f"{msg.get('role', 'unknown')}: {msg.get('content', '')}" for msg in middle_messages
         )
         middle_text = middle_text[:12000]
 
@@ -366,7 +514,12 @@ class JarvisLLMClient:
             compacted = drop_tool_responses(compacted, drop_ratio)
 
         self.compaction_count += 1
-        logger.info("[%s] context compaction triggered for %s (count=%d)", model, agent_name, self.compaction_count)
+        logger.info(
+            "[%s] context compaction triggered for %s (count=%d)",
+            model,
+            agent_name,
+            self.compaction_count,
+        )
         return compacted
 
     async def call(
@@ -398,6 +551,8 @@ class JarvisLLMClient:
         """
         working_messages = [dict(message) for message in messages]
         current_model = self._resolve_model_for_tier(model, tier)
+        if self.provider == "ollama":
+            current_model = self.ollama_model_per_agent.get(agent_name, self.ollama_model)
 
         if compact:
             try:
@@ -408,7 +563,9 @@ class JarvisLLMClient:
                     agent_name=agent_name,
                 )
             except Exception as exc:
-                logger.debug("[%s] context compaction skipped for %s: %s", current_model, agent_name, exc)
+                logger.debug(
+                    "[%s] context compaction skipped for %s: %s", current_model, agent_name, exc
+                )
 
         # TokenProxy — compress + cache check
         proxy = None
@@ -418,8 +575,14 @@ class JarvisLLMClient:
             try:
                 proxy = get_token_proxy()
                 last_msg = working_messages[-1]
-                if isinstance(last_msg, dict) and "content" in last_msg and isinstance(last_msg["content"], str):
-                    compressed, cached = proxy.optimize(last_msg["content"], model=str(current_model), salt=cache_salt)
+                if (
+                    isinstance(last_msg, dict)
+                    and "content" in last_msg
+                    and isinstance(last_msg["content"], str)
+                ):
+                    compressed, cached = proxy.optimize(
+                        last_msg["content"], model=str(current_model), salt=cache_salt
+                    )
                     if cached is not None:
                         return cached  # cache hit — skip API call entirely
                     last_msg["content"] = compressed
@@ -433,6 +596,43 @@ class JarvisLLMClient:
         retries = 0
         last_error = None
 
+        # Proactive Gemini routing for non-decision agents — avoids burning
+        # Anthropic credits on enrichment tasks that don't need Sonnet quality.
+        # Falls through to the Anthropic retry loop on any Gemini failure.
+        if (
+            self.provider != "ollama"
+            and self.google_fallback_enabled
+            and agent_name in self.GEMINI_PRIMARY_AGENTS
+        ):
+            google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
+            try:
+                google_result = await self._call_google(
+                    system=system,
+                    messages=working_messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    model=google_model,
+                )
+                self.google_fallback_count += 1
+                return await self._handle_success(
+                    google_result,
+                    google_model,
+                    start_time,
+                    retries,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                )
+            except Exception as gex:
+                logger.warning(
+                    "[%s] Gemini primary failed for %s — falling through to Anthropic: %s",
+                    google_model,
+                    agent_name,
+                    gex,
+                )
+
         # Retry loop with exponential backoff
         while True:
             try:
@@ -442,10 +642,18 @@ class JarvisLLMClient:
                     messages=working_messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    agent_name=agent_name,
                 )
                 return await self._handle_success(
-                    result, current_model, start_time, retries, agent_name,
-                    tier=tier, proxy=proxy, compressed_key=compressed_key, cache_salt=cache_salt
+                    result,
+                    current_model,
+                    start_time,
+                    retries,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
                 )
 
             except RateLimitError as e:
@@ -518,12 +726,62 @@ class JarvisLLMClient:
                     logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
 
                 if _is_credit_exhaustion(body_str):
+                    # Phase 3: Anthropic credits exhausted — try transparent
+                    # Gemini fallback before declaring the call failed. The
+                    # fallback preserves quality tier (Opus/Sonnet -> 2.5-flash,
+                    # Haiku -> 2.0-flash) and returns a normal LLMCallResult so
+                    # call sites are provider-agnostic.
+                    if self.google_fallback_enabled:
+                        google_model = self.GOOGLE_FAILOVER_MAP.get(
+                            current_model, "gemini-2.5-flash"
+                        )
+                        logger.warning(
+                            f"[{current_model}] credit-exhaustion for {agent_name} -- "
+                            f"attempting Gemini fallback ({google_model})"
+                        )
+                        try:
+                            google_result = await self._call_google(
+                                system=system,
+                                messages=working_messages,
+                                max_tokens=max_tokens,
+                                temperature=temperature,
+                                model=google_model,
+                            )
+                            self.google_fallback_count += 1
+                            # Successful failover -- mark path healthy with note
+                            _LLM_PATH_STATE["healthy"] = True
+                            _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
+                                timezone.utc
+                            ).isoformat()
+                            _LLM_PATH_STATE["last_failure_reason"] = (
+                                f"anthropic credit-exhaustion -> gemini fallback ok "
+                                f"(count: {self.google_fallback_count})"
+                            )
+                            _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                            return await self._handle_success(
+                                google_result,
+                                google_model,
+                                start_time,
+                                retries,
+                                agent_name,
+                                tier=tier,
+                                proxy=proxy,
+                                compressed_key=compressed_key,
+                                cache_salt=cache_salt,
+                            )
+                        except Exception as gex:
+                            logger.error(
+                                f"[{google_model}] Gemini fallback also failed for {agent_name}: {gex}"
+                            )
+                            # fall through to the unhealthy-path handling below
+
                     _LLM_PATH_STATE["healthy"] = False
                     _LLM_PATH_STATE["last_failure_ts"] = datetime.now(timezone.utc).isoformat()
                     _LLM_PATH_STATE["last_failure_reason"] = body_str[:500]
                     _LLM_PATH_STATE["last_failure_agent"] = agent_name
                     try:
                         from notifications.openclaw_notifier import notify_credits_exhausted
+
                         asyncio.create_task(
                             notify_credits_exhausted(reason=body_str[:300], agent=agent_name)
                         )
@@ -533,6 +791,186 @@ class JarvisLLMClient:
 
         return await self._handle_failure(
             last_error, current_model, start_time, retries, agent_name, tier=tier
+        )
+
+    def _messages_to_ollama_prompt(self, system: str, messages: list[dict]) -> str:
+        parts: list[str] = []
+        if system:
+            parts.append(f"System:\n{system}")
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            parts.append(f"{role.title()}:\n{content}")
+        parts.append("Assistant:")
+        return "\n\n".join(parts)
+
+    async def _call_ollama(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        model: str | None = None,
+        agent_name: str = "unknown",
+    ):
+        prompt = self._messages_to_ollama_prompt(system, messages)
+        num_ctx = self.ollama_num_ctx_per_agent.get(agent_name, self.ollama_num_ctx)
+        payload = {
+            "model": model or self.ollama_model,
+            "prompt": prompt,
+            "stream": False,
+            "keep_alive": self.ollama_keep_alive,
+            "options": {
+                "num_ctx": num_ctx,
+                "num_predict": min(max_tokens, self.ollama_num_predict),
+                "temperature": temperature,
+            },
+        }
+        timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180"))
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(f"{self.ollama_host}/api/generate", json=payload)
+            response.raise_for_status()
+            data = response.json()
+        text = data.get("response", "")
+        input_tokens = int(data.get("prompt_eval_count") or self._estimate_tokens(system, messages))
+        output_tokens = int(data.get("eval_count") or max(1, len(text) // 4))
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
+        )
+
+    async def _call_google(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        model: str,
+    ):
+        """Single call to Gemini via OpenAI-compatible endpoint.
+
+        Returns a SimpleNamespace shaped like an Anthropic response so the
+        rest of the success/cost-tracking path is provider-agnostic. Raises
+        httpx exceptions on transport failure; the caller's retry/fallback
+        logic decides what to do with them.
+
+        Notes:
+          - "system" is collapsed into a leading {"role":"system"} message.
+          - tool/cache/extra fields are not forwarded; this is the minimum
+            shape needed by the trading agents that go through call().
+        """
+        if not self.google_api_key:
+            raise RuntimeError("google_api_key not configured")
+
+        openai_messages: list[dict] = []
+        if system:
+            openai_messages.append({"role": "system", "content": system})
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            # Gemini OpenAI endpoint accepts the same role names as OpenAI.
+            openai_messages.append({"role": role, "content": content})
+
+        payload: dict = {
+            "model": model,
+            "messages": openai_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        timeout = float(os.getenv("GOOGLE_TIMEOUT_SECONDS", "60"))
+        headers = {
+            "Authorization": f"Bearer {self.google_api_key}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(self.google_endpoint, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+
+        # OpenAI-shape response: {"choices":[{"message":{"content":...}}],"usage":{...}}
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError(f"Gemini response missing choices: {str(data)[:300]}")
+        text = (choices[0].get("message") or {}).get("content", "")
+        usage = data.get("usage") or {}
+        input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
+        output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
+        )
+
+    async def _call_deepseek(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        model: str,
+    ):
+        """Single call to DeepSeek via OpenAI-compatible endpoint.
+
+        Returns a SimpleNamespace shaped like an Anthropic response.
+        Extracts reasoning_content if available (specific to DeepSeek-R1).
+        """
+        if not self.deepseek_api_key:
+            raise RuntimeError("deepseek_api_key not configured")
+
+        openai_messages: list[dict] = []
+        if system:
+            openai_messages.append({"role": "system", "content": system})
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            # DeepSeek OpenAI endpoint accepts the same role names as OpenAI.
+            openai_messages.append({"role": role, "content": content})
+
+        payload: dict = {
+            "model": model,
+            "messages": openai_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.deepseek_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        timeout = float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "180"))
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(self.deepseek_endpoint, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+
+        # OpenAI-shape response: {"choices":[{"message":{"content":...}}],"usage":{...}}
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError(f"DeepSeek response missing choices: {str(data)[:300]}")
+
+        choice = choices[0].get("message") or {}
+        text = choice.get("content", "")
+        # DeepSeek specific reasoning field
+        reasoning = choice.get("reasoning_content", "")
+
+        # Wrap reasoning in <think> tags if present to match the expected skill pattern
+        if reasoning:
+            text = f"<think>\n{reasoning}\n</think>\n\n{text}"
+
+        usage = data.get("usage") or {}
+        input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
+        output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
+
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
         )
 
     @retry(
@@ -547,11 +985,27 @@ class JarvisLLMClient:
         messages: list[dict],
         max_tokens: int,
         temperature: float,
+        agent_name: str = "unknown",
     ):
         """
-        Low-level async call to Anthropic API.
+        Low-level async call to the configured LLM provider.
         Retries are handled at the call() level.
         """
+        if self.provider == "ollama":
+            return await self._call_ollama(
+                system, messages, max_tokens, temperature, model=model, agent_name=agent_name
+            )
+
+        # DeepSeek-R1 (Phase 3.4) — primary reasoning provider
+        if model == "deepseek-reasoner":
+            return await self._call_deepseek(
+                system=system,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                model=model,
+            )
+
         kwargs = {
             "model": model,
             "system": system,
@@ -641,4 +1095,3 @@ def set_billing_error_active(active: bool) -> None:
 def is_billing_error_active() -> bool:
     """Return True if a billing/credit error has been detected."""
     return _billing_error_active
-

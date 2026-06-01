@@ -10,6 +10,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+try:
+    from engine.learning.promotion import get_promotion_engine
+except ImportError:
+    get_promotion_engine = None
+
 
 class TradingMemoryConsolidator:
     """
@@ -20,6 +25,7 @@ class TradingMemoryConsolidator:
     def __init__(self, db_manager=None, llm_client=None):
         self._db = db_manager
         self._client = llm_client
+        self._promotion_engine = get_promotion_engine(db_manager) if get_promotion_engine else None
 
     async def consolidate_daily(self, target_date: str = None) -> dict:
         """
@@ -35,7 +41,7 @@ class TradingMemoryConsolidator:
         logger.info(f"Memory consolidation starting for {target_date}")
 
         # Fetch trades for the day
-        trades = await self._fetch_trades(target_date)
+        trades = self._fetch_trades(target_date)
         if not trades:
             return {"date": target_date, "status": "no_trades", "patterns": [], "accuracy": {}}
 
@@ -56,6 +62,11 @@ class TradingMemoryConsolidator:
         if self._client and len(trades) > 0:
             insights = await self._generate_insights(trades, patterns, accuracy)
 
+        # Promotion check
+        promotion_report = None
+        if self._promotion_engine:
+            promotion_report = self._promotion_engine.generate_promotion_report()
+
         result = {
             "date": target_date,
             "status": "complete",
@@ -63,6 +74,7 @@ class TradingMemoryConsolidator:
             "patterns_extracted": len(patterns),
             "accuracy": accuracy,
             "insights": insights,
+            "promotion_report": promotion_report,
         }
         logger.info(f"Memory consolidation complete: {len(patterns)} patterns, accuracy={accuracy}")
         return result
@@ -73,7 +85,7 @@ class TradingMemoryConsolidator:
             return []
         cutoff = (date.today() - timedelta(days=14)).isoformat()
         try:
-            rows = await self._db.fetch_all(
+            rows = self._db.fetch_all(
                 "SELECT * FROM trading_patterns WHERE is_active=1 AND last_seen >= ? ORDER BY win_rate DESC LIMIT 20",
                 (cutoff,),
             )
@@ -88,15 +100,19 @@ class TradingMemoryConsolidator:
             return {"days": days, "total": 0, "correct": 0, "accuracy_pct": 0}
         try:
             cutoff = (date.today() - timedelta(days=days)).isoformat()
-            rows = await self._db.fetch_all(
-                "SELECT direction, COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins "
-                "FROM paper_trades WHERE entry_time >= ? GROUP BY direction",
+            # paper_trades uses 'side' (buy/sell), not 'direction'
+            rows = self._db.fetch_all(
+                "SELECT side, COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins "
+                "FROM paper_trades WHERE entry_time >= ? GROUP BY side",
                 (cutoff,),
             )
             result = {"days": days, "by_direction": {}, "total": 0, "correct": 0}
             for row in rows or []:
                 d = dict(row)
-                result["by_direction"][d.get("direction", "unknown")] = {
+                side = d.get("side", "unknown")
+                # Map side to direction for reporting consistency
+                direction = "long" if "buy" in side.lower() or "long" in side.lower() else "short"
+                result["by_direction"][direction] = {
                     "total": d.get("total", 0),
                     "wins": d.get("wins", 0),
                     "accuracy_pct": round(d.get("wins", 0) / max(d.get("total", 1), 1) * 100, 1),
@@ -125,14 +141,18 @@ class TradingMemoryConsolidator:
 
         for hour, pnls in hour_pnl.items():
             if len(pnls) >= 2:
-                win_rate = sum(1 for p in pnls if p > 0) / len(pnls)
+                wins = sum(1 for p in pnls if p > 0)
+                win_rate = wins / len(pnls)
                 avg_return = sum(pnls) / len(pnls)
                 if win_rate > 0.6 or win_rate < 0.3:
                     patterns.append(
                         {
-                            "name": f"hour_{hour:02d}_performance",
+                            "pattern_type": f"hour_{hour:02d}_performance",
+                            "symbol": "GLOBAL",
                             "category": "time",
                             "conditions": json.dumps({"hour": hour}),
+                            "win_count": wins,
+                            "loss_count": len(pnls) - wins,
                             "win_rate": round(win_rate, 3),
                             "avg_return": round(avg_return, 2),
                             "frequency": len(pnls),
@@ -140,20 +160,24 @@ class TradingMemoryConsolidator:
                     )
 
         # Pattern 2: Direction bias
-        long_trades = [t for t in trades if t.get("direction", "").lower() == "long"]
-        short_trades = [t for t in trades if t.get("direction", "").lower() == "short"]
+        long_trades = [t for t in trades if t.get("side", "").lower() in ("long", "buy")]
+        short_trades = [t for t in trades if t.get("side", "").lower() in ("short", "sell")]
 
         for direction, direction_trades in [("long", long_trades), ("short", short_trades)]:
             if len(direction_trades) >= 2:
                 pnls = [t.get("pnl", 0) for t in direction_trades]
-                win_rate = sum(1 for p in pnls if p > 0) / len(pnls)
+                wins = sum(1 for p in pnls if p > 0)
+                win_rate = wins / len(pnls)
                 patterns.append(
                     {
-                        "name": f"{direction}_bias_today",
+                        "pattern_type": f"direction_{direction}",
+                        "symbol": direction_trades[0].get("symbol", "GLOBAL"),
                         "category": "regime",
                         "conditions": json.dumps(
                             {"direction": direction, "date": date.today().isoformat()}
                         ),
+                        "win_count": wins,
+                        "loss_count": len(pnls) - wins,
                         "win_rate": round(win_rate, 3),
                         "avg_return": round(sum(pnls) / len(pnls), 2),
                         "frequency": len(pnls),
@@ -176,12 +200,13 @@ class TradingMemoryConsolidator:
             "total_pnl": round(sum(t.get("pnl", 0) for t in trades), 2),
         }
 
-    async def _fetch_trades(self, target_date: str) -> list[dict]:
+    def _fetch_trades(self, target_date: str) -> list[dict]:
         """Fetch paper trades for the given date from DB."""
         if not self._db:
             return []
         try:
-            rows = await self._db.fetch_all(
+            # paper_trades uses DATE(entry_time) or similar
+            rows = self._db.fetch_all(
                 "SELECT * FROM paper_trades WHERE DATE(entry_time) = ? ORDER BY entry_time",
                 (target_date,),
             )
@@ -195,34 +220,48 @@ class TradingMemoryConsolidator:
         if not self._db:
             return
         try:
-            existing = await self._db.fetch_one(
-                "SELECT id, frequency FROM trading_patterns WHERE name = ?", (pattern["name"],)
+            # Use pattern_hash for uniqueness per symbol
+            import hashlib
+            key = f"{pattern.get('symbol', 'GLOBAL')}:{pattern['pattern_type']}"
+            pattern_hash = hashlib.md5(key.encode()).hexdigest()[:16]
+
+            existing = self._db.fetch_one(
+                "SELECT id, win_count, loss_count FROM trading_patterns WHERE pattern_hash = ?",
+                (pattern_hash,),
             )
             if existing:
-                await self._db.execute(
-                    "UPDATE trading_patterns SET win_rate=?, avg_return=?, frequency=frequency+?, "
-                    "last_seen=?, is_active=1 WHERE name=?",
+                new_win = existing["win_count"] + pattern["win_count"]
+                new_loss = existing["loss_count"] + pattern["loss_count"]
+                new_win_rate = round(new_win / (new_win + new_loss), 3) if (new_win + new_loss) > 0 else 0.0
+
+                self._db.execute(
+                    "UPDATE trading_patterns SET win_count=?, loss_count=?, win_rate=?, avg_return=?, "
+                    "sample_count=win_count+loss_count, last_seen=?, is_active=1 WHERE pattern_hash=?",
                     (
-                        pattern["win_rate"],
+                        new_win,
+                        new_loss,
+                        new_win_rate,
                         pattern["avg_return"],
-                        pattern["frequency"],
                         today,
-                        pattern["name"],
+                        pattern_hash,
                     ),
                 )
             else:
-                await self._db.execute(
-                    "INSERT INTO trading_patterns (name, category, conditions, frequency, win_rate, "
-                    "avg_return, last_seen, first_seen, is_active, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+                self._db.execute(
+                    "INSERT INTO trading_patterns "
+                    "(pattern_hash, symbol, pattern_type, conditions, win_count, loss_count, "
+                    "win_rate, avg_return, sample_count, last_seen, created_at, is_active) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
                     (
-                        pattern["name"],
-                        pattern["category"],
+                        pattern_hash,
+                        pattern.get("symbol", "GLOBAL"),
+                        pattern["pattern_type"],
                         pattern["conditions"],
-                        pattern["frequency"],
+                        pattern["win_count"],
+                        pattern["loss_count"],
                         pattern["win_rate"],
                         pattern["avg_return"],
-                        today,
+                        pattern["win_count"] + pattern["loss_count"],
                         today,
                         datetime.now().isoformat(),
                     ),
@@ -236,7 +275,7 @@ class TradingMemoryConsolidator:
             return
         try:
             cutoff = (date.today() - timedelta(days=30)).isoformat()
-            await self._db.execute(
+            self._db.execute(
                 "UPDATE trading_patterns SET is_active=0 WHERE last_seen < ?", (cutoff,)
             )
         except Exception as e:

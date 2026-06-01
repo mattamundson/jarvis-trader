@@ -15,8 +15,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.bull_researcher import BullReport, BullResearcherAgent  # noqa: E402
 from agents.bear_researcher import BearReport, BearResearcherAgent  # noqa: E402
+from agents.bull_researcher import BullReport, BullResearcherAgent  # noqa: E402
 
 
 def _make_bull_report(conviction=0.5, price_target=None):

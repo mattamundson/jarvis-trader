@@ -202,7 +202,6 @@ def compute_consensus(
         )
     else:
         max_agree = max(bull_count, bear_count)
-        direction = "LONG" if bull_count >= bear_count else "SHORT"
         return ConsensusResult(
             direction="HOLD",
             factors_agree=max_agree,

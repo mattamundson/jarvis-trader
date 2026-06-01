@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -90,20 +89,20 @@ async def load_strategy_file(filename: str):
             "strategy": instance.metadata(),
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/run-cycle")
 async def run_discovery_cycle(symbol: str = "MCL", interval: str = "1h"):
     """Trigger one LLM strategy generation + evaluation loop."""
-    from strategies.discovery_loop import generate_strategy, evaluate_strategy_file
+    from strategies.discovery_loop import evaluate_strategy_file, generate_strategy
 
     # Step 1: Generate strategy via LLM
     try:
         strategy_path = await generate_strategy(symbol=symbol, interval=interval)
     except Exception as e:
         logger.error(f"[discovery] generate_strategy raised: {e}")
-        raise HTTPException(status_code=500, detail=f"Strategy generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Strategy generation failed: {e}") from e
 
     if strategy_path is None:
         raise HTTPException(
@@ -118,7 +117,7 @@ async def run_discovery_cycle(symbol: str = "MCL", interval: str = "1h"):
         result = evaluate_strategy_file(filename=filename, symbol=symbol, interval=interval)
     except Exception as e:
         logger.error(f"[discovery] evaluate_strategy_file raised: {e}")
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {e}") from e
 
     eligible = result.get("verdict") == "ELIGIBLE"
     metrics = {
@@ -140,12 +139,12 @@ async def run_discovery_cycle(symbol: str = "MCL", interval: str = "1h"):
 async def get_evaluation_gates():
     """Return current evaluation harness gate thresholds."""
     from backtest.evaluation_harness import (
-        MIN_TRADES,
-        MIN_EXPOSURE_PCT,
-        MIN_SHARPE,
-        MIN_CALMAR,
-        MIN_PROFIT_FACTOR,
         MAX_DRAWDOWN_PCT,
+        MIN_CALMAR,
+        MIN_EXPOSURE_PCT,
+        MIN_PROFIT_FACTOR,
+        MIN_SHARPE,
+        MIN_TRADES,
     )
 
     return {
