@@ -1073,6 +1073,7 @@ async def lifespan(app: FastAPI):
                 # and trips the watchdog again within 5-10 minutes.
                 try:
                     from zoneinfo import ZoneInfo
+
                     _ct = ZoneInfo("America/Chicago")
                     _now = datetime.now(_ct)
                     if _now.weekday() >= 5 or not (9 <= _now.hour < 16):
@@ -1626,7 +1627,7 @@ async def lifespan(app: FastAPI):
         ibkr=ib_paper_connector,
         schwab=schwab_connector,
         tracker=paper_tracker,
-        real_ibkr=data_manager.ibkr,
+        data_manager=data_manager,
         db_path=str(db_manager._db_path),
     )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)

@@ -37,37 +37,55 @@ class IBKRReconciler:
     ----------
     db_path : str | Path
         Path to the JARVIS SQLite database (jarvis_trader.db).
-    ibkr_gateway : IBGatewayManager
-        The real (not mock) IBGatewayManager with a live ib_async connection.
-        Must have a get_executions() method.
+    data_manager : MarketDataManager
+        Passed at injection time; `data_manager.ibkr` is resolved lazily on each
+        reconcile() call because the IBKRDataConnector is initialized asynchronously
+        after the router is wired (background init runs after FastAPI lifespan).
     """
 
-    def __init__(self, db_path: str | Path, ibkr_gateway: Any) -> None:
+    def __init__(self, db_path: str | Path, data_manager: Any) -> None:
         self._db_path = str(db_path)
-        self._gw = ibkr_gateway
+        self._dm = data_manager
+
+    def _get_connector(self):
+        """Resolve the IBKRDataConnector lazily from data_manager.ibkr."""
+        if self._dm is None:
+            return None
+        ibkr = getattr(self._dm, "ibkr", None)
+        if ibkr is None:
+            logger.warning(
+                "IBKRReconciler: data_manager.ibkr is None — "
+                "background init may not have completed yet"
+            )
+        return ibkr
 
     async def reconcile(self) -> dict:
         """
         Fetch fills from IBKR and upsert into ibkr_fills.
 
+        data_manager.ibkr is resolved lazily because background init (which
+        creates the IBKRDataConnector and connects) runs after the router is
+        wired at startup.
+
         Returns
         -------
         dict with:
-            imported   : int  — number of NEW fills inserted this call
-            skipped    : int  — fills already in DB (exec_id collision)
-            total_in_db: int  — total ibkr_fills rows after import
-            fills      : list[dict] — the raw fills returned by IBKR
-            connected  : bool — whether the gateway was reachable
+            imported    : int  — number of NEW fills inserted this call
+            skipped     : int  — fills already in DB (exec_id collision)
+            total_in_db : int  — total ibkr_fills rows after import
+            fills_from_ib: int — raw fills returned by IBKR
+            connected   : bool — whether the gateway was reachable
         """
         fills: list[dict] = []
-        connected = self._gw is not None
+        gw = self._get_connector()
+        connected = gw is not None
 
         if not connected:
             logger.warning("IBKRReconciler: no gateway — skipping reconcile")
-            return self._summary(fills, imported=0, skipped=0)
+            return self._summary(fills, imported=0, skipped=0, connected=False)
 
         try:
-            fills = await self._gw.get_executions()
+            fills = await gw.get_executions()
         except Exception as exc:
             logger.error("IBKRReconciler get_executions failed: %s", exc)
             connected = False

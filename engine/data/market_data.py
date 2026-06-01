@@ -426,6 +426,44 @@ class IBKRDataConnector:
     def is_connected(self) -> bool:
         return self._connected
 
+    async def get_executions(self) -> list[dict]:
+        """
+        Return recent IB execution fills via reqExecutionsAsync().
+        Same schema as IBGatewayManager.get_executions() so IBKRReconciler
+        can use either connector interchangeably.
+        """
+        if not self._ib or not self._connected:
+            return []
+        try:
+            fills = await self._ib.reqExecutionsAsync()
+            result = []
+            for fill in fills:
+                contract = fill.contract
+                execution = fill.execution
+                commission_report = fill.commissionReport
+                result.append(
+                    {
+                        "exec_id": execution.execId,
+                        "account": execution.acctNumber,
+                        "symbol": contract.symbol,
+                        "sec_type": contract.secType,
+                        "expiry": getattr(contract, "lastTradeDateOrContractMonth", ""),
+                        "side": execution.side,
+                        "quantity": execution.shares,
+                        "price": execution.price,
+                        "avg_price": execution.avgPrice,
+                        "commission": getattr(commission_report, "commission", None),
+                        "exchange": execution.exchange,
+                        "currency": contract.currency,
+                        "fill_time": str(execution.time),
+                        "order_id": execution.orderId,
+                    }
+                )
+            return result
+        except Exception as exc:
+            logger.warning("IBKRDataConnector.get_executions failed: %s", exc)
+            return []
+
     async def health_check(self) -> dict:
         return {
             "status": "connected" if self._connected else "disconnected",
@@ -1001,7 +1039,9 @@ class MarketDataManager:
         # Tier 0: Redis Real-Time Fabric (Phase 2.1)
         try:
             import json
+
             import redis
+
             r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
             # Try symbol as-is and uppercase
             for sym_key in [symbol, symbol.upper()]:
