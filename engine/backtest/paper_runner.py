@@ -40,11 +40,12 @@ import json
 import logging
 import logging.handlers
 import os
+import re
 import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -200,6 +201,31 @@ def _engine_api_key() -> Optional[str]:
     return k or None
 
 
+def _engine_base_url() -> str:
+    """Engine base URL for the data feed. Defaults to the local engine so the
+    standalone Jarvis-PaperCollect task works without any env wiring."""
+    base = os.environ.get("JARVIS_ENGINE_URL", "").strip().rstrip("/")
+    return base or "http://127.0.0.1:8010"
+
+
+def _resolve_api_key() -> Optional[str]:
+    """API key for engine calls. Prefer env vars; fall back to engine/.env (the
+    canonical local secret store) so the scheduled task — which runs with a bare
+    environment — can still authenticate to the bars endpoint."""
+    k = _engine_api_key()
+    if k:
+        return k
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    try:
+        for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            m = re.match(r"\s*(API_KEY|JARVIS_API_KEY|X_API_KEY)\s*=\s*(.+)", line)
+            if m:
+                return m.group(2).strip().strip('"').strip("'")
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
 def _post_engine_json(path: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """POST JSON to engine. Returns parsed body or None on failure."""
     base = _engine_sync_url()
@@ -293,44 +319,117 @@ def _notify(message: str) -> None:
 # ── Bar Fetching ──────────────────────────────────────────────────────────────
 
 
-def fetch_bars(symbol: str, futures_map: Dict[str, str], bars: int = 150) -> Optional[pd.DataFrame]:
+def fetch_bars(
+    symbol: str,
+    futures_map: Dict[str, str],
+    bars: int = 150,
+    timeframe: str = "1h",
+) -> Optional[pd.DataFrame]:
     """
-    Fetch recent 1h OHLCV bars for a futures symbol via Polygon.io.
+    Fetch recent OHLCV bars for a futures symbol from the running engine's
+    /analyze/bars endpoint (IBKR Tier-1 / TradingView Tier-0 live feed).
 
-    Uses BacktestDataLoader which handles Polygon API calls and disk caching.
-    Returns None if data is unavailable or too thin for indicator warmup.
+    Replaces the old Polygon-only path: Polygon's free plan is futures-blocklisted
+    (returns the wrong asset, e.g. CL=Colgate-Palmolive), so the standalone runner
+    had no working data source and every cycle no-opped on `data_error`. The engine
+    already maintains the live IBKR/TV feed, so the runner asks it directly — one
+    source of truth shared with the dashboard and pipeline.
+
+    `limit` is sized to clear the slowest SMA warmup (MES SMA-200 crossover needs
+    >200 1h bars); the endpoint clamps to its own ceiling. Returns None on any
+    failure so the cycle fails-soft (degrades to `data_error`, never crashes).
     """
-    from backtest.data_loader import BacktestDataLoader
-
     log = logging.getLogger(f"paper_runner.{symbol}")
 
-    end_dt = datetime.now(timezone.utc).replace(tzinfo=None)
-    start_dt = end_dt - timedelta(days=90)
-    start_str = start_dt.strftime("%Y-%m-%d")
-    end_str = end_dt.strftime("%Y-%m-%d")
+    # Lookback window sized to guarantee enough completed bars for SMA warmup.
+    days_map = {"5m": 7, "15m": 21, "1h": 60, "4h": 180, "1d": 500}
+    days = days_map.get(timeframe, 60)
+    # Request well above the SMA-200 floor; the endpoint clamps to its own cap.
+    limit = max(bars, 400)
 
+    base = _engine_base_url()
+    key = _resolve_api_key()
+    url = (
+        f"{base}/analyze/bars/{symbol}"
+        f"?interval={timeframe}&futures=true&days={days}&limit={limit}"
+    )
+    req = urllib.request.Request(url, headers={"X-API-Key": key or ""})
     try:
-        loader = BacktestDataLoader()
-        df = loader.load(symbol, start_str, end_str, interval="1h")
-    except Exception as exc:
-        log.error(f"Bar fetch failed for {symbol}: {exc}")
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            payload = json.load(resp)
+    except Exception as exc:  # noqa: BLE001
+        log.error(f"Engine bar fetch failed for {symbol} {timeframe}: {exc}")
         return None
 
-    if df is None or df.empty:
-        log.error(f"Bar fetch returned no data for {symbol}")
+    records = payload.get("bars") or []
+    if not records:
+        log.error(f"Engine returned no {timeframe} bars for {symbol}")
         return None
 
-    # Ensure standard lowercase columns are present
+    df = pd.DataFrame(records)
+    if "timestamp" not in df.columns:
+        log.error(f"{symbol}: engine bars missing 'timestamp' column")
+        return None
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    df = df.set_index("timestamp").sort_index()
     df.columns = [c.lower() for c in df.columns]
     cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
     df = df[cols].dropna(subset=["open", "high", "low", "close"])
 
     if len(df) < 60:
-        log.warning(f"Only {len(df)} bars for {symbol} — need >=60 for indicator warmup")
+        log.warning(
+            f"Only {len(df)} {timeframe} bars for {symbol} — need >=60 for indicator warmup"
+        )
         return None
 
-    log.debug(f"Fetched {len(df)} 1h bars for {symbol}")
+    log.debug(f"Fetched {len(df)} {timeframe} bars for {symbol} from engine")
     return df
+
+
+# ── Entry-evaluation dedup state (one entry decision per closed 1h bar) ────────
+
+
+def _entry_eval_path() -> Path:
+    return _RESULTS_DIR / "last_entry_eval.json"
+
+
+def _load_entry_eval() -> Dict[str, str]:
+    """Map of symbol -> last completed 1h bar timestamp already evaluated for entry.
+
+    Persisted across the 5-minute task invocations so a crossover bar is acted on
+    exactly once — without this, a position stopped out mid-hour would re-enter the
+    same crossover bar on the next 5-minute poll.
+    """
+    try:
+        return json.loads(_entry_eval_path().read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_entry_eval(state: Dict[str, str]) -> None:
+    try:
+        _entry_eval_path().write_text(json.dumps(state), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _latest_mgmt_bar(
+    symbol: str,
+    futures_map: Dict[str, str],
+    df_1h_signals: pd.DataFrame,
+) -> Tuple[pd.Series, str]:
+    """Return the freshest bar to manage an open position against.
+
+    Prefers the latest 5-minute bar (intrabar stop/target accuracy — the validated
+    edge entered on 1h closes, but checking exits only hourly misses intrabar fills).
+    Falls back to the latest 1h bar if the 5m feed is unavailable, so management never
+    silently stops working.
+    """
+    df_5m = fetch_bars(symbol, futures_map, timeframe="5m")
+    if df_5m is not None and not df_5m.empty:
+        return df_5m.iloc[-1], str(df_5m.index[-1])
+    return df_1h_signals.iloc[-1], str(df_1h_signals.index[-1])
 
 
 # ── Position Management ───────────────────────────────────────────────────────
@@ -618,6 +717,7 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
         log.info(f"Active instruments: {ACTIVE_INSTRUMENTS}")
 
     positions = load_positions()
+    last_entry_eval = _load_entry_eval()
     summary: Dict[str, Any] = {}
 
     for symbol in ACTIVE_INSTRUMENTS:
@@ -643,14 +743,14 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             summary[symbol] = {"action": "kill_switch", "reason": kill_reason}
             continue
 
-        # ── Fetch bars ────────────────────────────────────────────────────────
-        df = fetch_bars(symbol, FUTURES_MAP)
+        # ── Fetch 1h bars (validated entry timeframe) ─────────────────────────
+        df = fetch_bars(symbol, FUTURES_MAP, timeframe="1h")
         if df is None:
             log.error(f"{symbol}: bar fetch failed — skipping cycle")
             summary[symbol] = {"action": "data_error"}
             continue
 
-        # ── Compute signals ───────────────────────────────────────────────────
+        # ── Compute 1h signals ────────────────────────────────────────────────
         try:
             if cfg.get("strategy") == "sma_trend":
                 # Route SMA trend instruments (MES) through generate_instrument_signals()
@@ -684,13 +784,17 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
         last_bar = df_signals.iloc[-1]
         current_time = str(df_signals.index[-1])
 
-        # ── Manage open position ──────────────────────────────────────────────
         action = "no_signal"
         closed_record = None
 
         if symbol in positions:
+            # ── Manage open position against the latest 5m bar ────────────────
+            # Entries stay on the validated 1h edge, but exits are checked at 5m
+            # granularity so an intrabar stop/target fill isn't missed or mispriced
+            # the way an hourly-only check would.
+            mgmt_bar, mgmt_time = _latest_mgmt_bar(symbol, FUTURES_MAP, df_signals)
             updated_pos, closed_record = manage_open_position(
-                symbol, positions[symbol], last_bar, current_time, cfg, tracker
+                symbol, positions[symbol], mgmt_bar, mgmt_time, cfg, tracker
             )
             if updated_pos is None:
                 # Position closed
@@ -704,13 +808,25 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
                 positions[symbol] = updated_pos
                 action = "holding"
 
-        # ── Check for new entry (only if no open position) ────────────────────
+        # ── Check for new entry (only if flat) ────────────────────────────────
         elif cfg.get("max_concurrent_positions", 1) > len([s for s in positions if s == symbol]):
-            new_pos = check_for_entry(symbol, df_signals, cfg)
-            if new_pos:
-                positions[symbol] = new_pos
-                _try_sync_engine_open(new_pos)
-                action = "entered"
+            # Evaluate entry only on a freshly CLOSED 1h bar: drop the in-progress
+            # last bar so the signal is read off a completed crossover (the validated
+            # behaviour), and act on each bar at most once. Dedup matters now that we
+            # poll every 5 min — without it, a position stopped out mid-hour would
+            # re-enter the same crossover bar on the next poll.
+            completed = df_signals.iloc[:-1]
+            if len(completed) >= 2:
+                completed_ts = str(completed.index[-1])
+                if completed_ts != last_entry_eval.get(symbol):
+                    last_entry_eval[symbol] = completed_ts
+                    new_pos = check_for_entry(symbol, completed, cfg)
+                    if new_pos:
+                        positions[symbol] = new_pos
+                        _try_sync_engine_open(new_pos)
+                        action = "entered"
+                else:
+                    action = "entry_evaluated"
 
         summary[symbol] = {
             "action": action,
@@ -728,6 +844,7 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
 
     # ── Persist state ─────────────────────────────────────────────────────────
     save_positions(positions)
+    _save_entry_eval(last_entry_eval)
 
     if not quiet:
         log.info("═" * 64)
