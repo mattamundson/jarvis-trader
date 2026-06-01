@@ -1077,7 +1077,6 @@ async def lifespan(app: FastAPI):
                 # and trips the watchdog again within 5-10 minutes.
                 try:
                     from zoneinfo import ZoneInfo
-
                     _ct = ZoneInfo("America/Chicago")
                     _now = datetime.now(_ct)
                     if _now.weekday() >= 5 or not (9 <= _now.hour < 16):
