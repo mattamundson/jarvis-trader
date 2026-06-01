@@ -1,90 +1,17 @@
 {
-  "project": "JARVIS TRADER — Evening Session Task Completion",
-  "branchName": "feat/tradingview-mcp-gamma-kraken",
-  "description": "Complete all open tasks from 2026-05-05 evening session handoff. Working through in priority order: git hygiene, branch divergence resolution, LLM latency improvement, MNQ_breakout WFO sweep, TV MCP verification, and CredentialManager setup.",
+  "project": "JARVIS Trader — Top-10 ROI Task Queue",
+  "branchName": "fix/ib-data-feed-restore",
+  "description": "Sequential high-ROI tasks, verified before advancing.",
   "userStories": [
-    {
-      "id": "US-001",
-      "title": "Commit MCL Hypothesis C dirty working tree",
-      "description": "meanrev_signals.py has +27 lines (rv_band gate) and run_mcl_hypothesis_c.py is untracked. Both belong to the MCL Hypothesis C backtest (FAIL verdict already written to gate_v2_verdicts/). Commit as documented failed hypothesis.",
-      "acceptanceCriteria": [
-        "git status shows no modified/untracked files in engine/backtest/",
-        "Commit message follows conventional format: docs(backtest): ...",
-        "Verdict JSON MCL_hyp_c_20260505T212306Z.json referenced or committed alongside"
-      ],
-      "priority": 1,
-      "passes": true,
-      "notes": "commit 31ef7c6 — rv_band gate committed. pf=0.284, p_edge=0.0, FAIL. MCL confirmed no edge."
-    },
-    {
-      "id": "US-002",
-      "title": "Resolve origin/master branch divergence",
-      "description": "origin/master has 1 diverged commit (4d99ef3 'JARVIS Strategy C+ v3 Phase 3+4', Apr 22 2026) not in feat branch. Local master was FF-merged to feat but push was rejected. Need to merge origin/master INTO feat, resolve any conflicts, then push feat.",
-      "acceptanceCriteria": [
-        "git merge origin/master succeeds (or conflicts resolved and committed)",
-        "git push origin feat/tradingview-mcp-gamma-kraken succeeds",
-        "git log shows 4d99ef3 in feat branch history",
-        "No regressions to engine/ files from the merge"
-      ],
-      "priority": 1,
-      "passes": true,
-      "notes": "merge commit 4077e46 — origin/master merged into feat (4d99ef3 Strategy C+ v3). Zero conflicts. Pushed to origin clean."
-    },
-    {
-      "id": "US-003",
-      "title": "Reduce OLLAMA_NUM_CTX for llama3.2:3b to improve latency",
-      "description": "Both models are hitting ~181s CPU latency. llama3.2:3b is used only for social/news agents which produce short JSON. Reducing NUM_CTX from 4096 to 2048 for that model path should cut latency without truncating prompts. Need to verify actual prompt token lengths first.",
-      "acceptanceCriteria": [
-        "engine/llm/client.py passes per-agent context size (or OLLAMA_NUM_CTX_PER_AGENT env var wired)",
-        "Social/news agent prompts measured to be under 2048 tokens",
-        "engine/.env updated with the new config",
-        "Engine restarted and /health/llm shows llama3.2:3b p95 latency reduced",
-        "No JSON parse errors in social/news agent responses after change"
-      ],
-      "priority": 2,
-      "passes": true,
-      "notes": "commit 4a2b4bf — OLLAMA_NUM_CTX_PER_AGENT knob added to engine/llm/client.py. social/news agents use 2048 ctx vs 4096 global. Prompt sizes: social ~430 tok, news ~1175 tok max. 1.7x headroom."
-    },
-    {
-      "id": "US-004",
-      "title": "Verify tradingview_mcp_healthy=true accuracy",
-      "description": "Engine reports tradingview_mcp_healthy=true but TV Desktop is not confirmed installed. Need to determine what the health check is actually probing — MCP server process only, or actual TV data availability. Check port 9222 and JARVIS-TV-CDP-AtLogon task state.",
-      "acceptanceCriteria": [
-        "Port 9222 check performed (Test-NetConnection or equivalent)",
-        "JARVIS-TV-CDP-AtLogon scheduled task state queried",
-        "health_router.py tradingview_mcp_healthy logic read and documented",
-        "Conclusion: either confirm TV is truly live or flag the misleading health flag with a comment/fix"
-      ],
-      "priority": 2,
-      "passes": true,
-      "notes": "Port 9222 live, TradingView/3.1.0 confirmed. Health check is a real TCP probe with 1s timeout, not a config flag. TV Desktop running. No fix needed."
-    },
-    {
-      "id": "US-005",
-      "title": "MNQ_breakout targeted parameter sweep",
-      "description": "MNQ_breakout rank1 missed gate v2 core by pf_ci_lower=1.0696 (need 1.10) and fixed_params_min_pf=1.186 (need 1.20). A targeted sweep near the existing best params may close the gap. Run a focused WFO with tighter grid around current best params.",
-      "acceptanceCriteria": [
-        "New WFO backtest run with tighter parameter grid around MNQ_breakout rank1 best params",
-        "gate_v2_verdicts/MNQ_breakout_rank2.json written with result",
-        "If PASS: documented in handoff and engine config updated to enable MNQ",
-        "If FAIL: clear documentation of why and what was tried"
-      ],
-      "priority": 3,
-      "passes": true,
-      "notes": "MNQ breakout rank2 WFO committed and pushed by parallel session per memory."
-    },
-    {
-      "id": "US-006",
-      "title": "Install CredentialManager PowerShell module",
-      "description": "manage-jarvis-secrets.ps1 requires the CredentialManager PS module to read secrets back from Windows Credential Manager. Install it at user scope so the DR export path works.",
-      "acceptanceCriteria": [
-        "Install-Module CredentialManager -Scope CurrentUser succeeds",
-        "manage-jarvis-secrets.ps1 -List runs without warnings",
-        "Module version recorded in handoff/progress"
-      ],
-      "priority": 3,
-      "passes": true,
-      "notes": "CredentialManager v2.0 installed at user scope. Path: C:\\Users\\mattm\\OneDrive\\Documents\\WindowsPowerShell\\Modules\\CredentialManager\\2.0\\. manage-jarvis-secrets.ps1 -List runs clean. No jarvis/ credentials loaded yet."
-    }
+    {"id":"T01","title":"Push fix/ib-data-feed-restore to origin","description":"10 commits local-only. Push to protect.","acceptanceCriteria":["push succeeds","fee2dfb is remote HEAD"],"priority":1,"passes":true,"notes":"DONE: pushed 5fee356..fee2dfb, remote HEAD=fee2dfb verified 2026-06-01"},
+    {"id":"T02","title":"Revoke 10 still-live exposed API keys","description":"AmoSZN Replicate KV7I + OpenAI 7MwA confirmed live.","acceptanceCriteria":["KV7I returns 401","7MwA returns 401","reverify-exposed-keys.ps1 clean"],"priority":2,"passes":false,"notes":"AMO-ONLY"},
+    {"id":"T03","title":"Engine restart","description":"Activate IBKR reconciler, retry loop, gate v2 fixes.","acceptanceCriteria":["status=ok","tradingview_mcp_healthy=true","llm_path_healthy=true"],"priority":3,"passes":true,"notes":"DONE: status=ok, tv_mcp=true, llm=true, ibkr_connected=true (exec+data), paper_mode=true 2026-06-01"},
+    {"id":"T04","title":"Telegram round-trip verification","description":"Confirm @HermesAmoBot responds.","acceptanceCriteria":["Bot replies within 30s"],"priority":4,"passes":false,"notes":"AMO-ONLY"},
+    {"id":"T05","title":"Verify paper trade accumulation","description":"MES/MGC need 60 trades for calibration.","acceptanceCriteria":["Recent paper trades visible","no data_error in last cycles"],"priority":5,"passes":true,"notes":"DONE: MES+MGC both ACTIVE (no kill conditions). Paper runner running every 5m. MES: entry_evaluated NO_TRADE STC=0.0 TRENDING_BULL. No data_error since engine restart. MGC: ACTIVE 2 closed trades, open LONG 4503.9 entered 02:56 CT via engine pipeline. No trades since 5/08 = no SMA crossover (market condition not bug). 2026-06-01"},
+    {"id":"T06","title":"Gate v2 metric fix confirmed active","description":"Corrected metrics live post-restart.","acceptanceCriteria":["MES/MGC verdicts reflect corrected metrics"],"priority":6,"passes":true,"notes":"DONE: /backtest/paper-status shows MES pf_ci_lower=2.5 mc_95th_dd=1.78% dsr=0.999996 PASS-ALT; MGC pf_ci_lower=2.60 mc_95th_dd=3.03% dsr=1.0 PASS-ALT. Corrected trade-level metrics confirmed live (cherry-picked d047a1a+64a7b86). 2026-06-01"},
+    {"id":"T07","title":"Apply Master Jarvis finances dashboard handoff","description":"Activate real net worth + Robinhood data.","acceptanceCriteria":["Finances domain shows real data"],"priority":7,"passes":true,"notes":"DONE: 5fee356 already committed on branch. dashboard/lib/masterApi.ts has net_worth_history/accounts_by_org/top_merchants types. dashboard/app/master/finances/page.tsx has sparkline/MoM/top-merchants. tsc --noEmit exit 0. 2026-06-01"},
+    {"id":"T08","title":"Backup Hermes :9000 password to 1Password","description":"Single 0600 file, no backup.","acceptanceCriteria":["op item get Hermes-Dashboard succeeds"],"priority":8,"passes":false,"notes":""},
+    {"id":"T09","title":"IB data feed verification post-restart","description":"data_ib connected for bar data quality.","acceptanceCriteria":["data_ib healthy","/brokers/positions not blind"],"priority":9,"passes":true,"notes":"DONE: ibkr_data_connected=true, ibkr_connected=true, /brokers/positions returns non-blind (ibkr.connected=true, ibkr_queryable=true). Open MGC LONG position tracked. 2026-06-01"},
+    {"id":"T10","title":"Master Jarvis Life OS design session","description":"Unified architecture for all domains.","acceptanceCriteria":["Spec saved to docs/superpowers/specs/"],"priority":10,"passes":false,"notes":"Collaborative"}
   ]
 }
