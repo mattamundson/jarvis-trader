@@ -391,6 +391,71 @@ async def search_bookmarks(
 
 
 @mcp.tool()
+async def get_tweet_by_url(url: str) -> dict:
+    """
+    Look up a stored X/Twitter post by URL from the discord_bookmarks table.
+
+    Use this instead of WebFetch for x.com URLs — WebFetch cannot access X.com
+    but the nightly DiscordChatExporter pipeline stores tweet content in the
+    local database.
+
+    Args:
+        url: The full x.com/twitter.com URL (e.g. https://x.com/KoroushAK/status/...)
+
+    Returns dict with:
+        found: bool
+        url: str
+        embed_title: str
+        embed_description: str (tweet body if stored)
+        content: str (Discord message context)
+        posted_at: str (ISO timestamp)
+    If not found, returns {found: false, url: url, message: "not in bookmarks"}.
+    """
+    db_path = _default_db_path()
+    normalized = url.replace("twitter.com", "x.com")
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT posted_at, url, domain, source_type, embed_title,
+                       embed_description, content, author_name
+                FROM discord_bookmarks
+                WHERE url = ? OR url = ?
+                ORDER BY posted_at DESC
+                LIMIT 1
+                """,
+                (url, normalized),
+            ).fetchone()
+        if row:
+            return {"found": True, **dict(row)}
+        # Fuzzy fallback: match on status ID
+        import re as _re
+        m = _re.search(r"/status/(\d+)", url)
+        if m:
+            status_id = m.group(1)
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    """
+                    SELECT posted_at, url, domain, source_type, embed_title,
+                           embed_description, content, author_name
+                    FROM discord_bookmarks
+                    WHERE url LIKE ?
+                    ORDER BY posted_at DESC
+                    LIMIT 1
+                    """,
+                    (f"%{status_id}%",),
+                ).fetchone()
+            if row:
+                return {"found": True, **dict(row)}
+        return {"found": False, "url": url, "message": "not in bookmarks — run nightly sync or check URL"}
+    except Exception as exc:
+        logger.warning("[get_tweet_by_url] DB error for %r: %s", url, exc)
+        return {"found": False, "url": url, "message": f"DB error: {exc}"}
+
+
+@mcp.tool()
 async def get_bookmark_stats(days: int = 30) -> dict:
     """
     Aggregate stats for the bookmark feed over the last N days.
