@@ -26,12 +26,36 @@ export async function fetchMasterStatus(): Promise<MasterStatus> {
   return res.json();
 }
 
+export type Account = {
+  name: string;
+  org: string;
+  balance: number;
+  is_liability: boolean;
+};
+
+export type NetWorthPoint = {
+  day: string;
+  ts: number;
+  net_worth: number;
+  assets: number;
+  liabilities: number;
+};
+
+export type MonthOverMonth = Record<
+  string,
+  { this: number; last: number; delta: number }
+>;
+
 export type FinancesDetail = {
   net_worth: number;
-  accounts: { name: string; org: string; balance: number; is_liability: boolean }[];
+  accounts: Account[];
+  accounts_by_org: Record<string, Account[]>;
   spend_by_category: Record<string, number>;
   budget_status: { category: string; spent: number; limit: number; over_by: number }[];
   recent: { posted: string; amount: number; description: string; category: string }[];
+  net_worth_history: NetWorthPoint[];
+  month_over_month: MonthOverMonth;
+  top_merchants: { merchant: string; total: number }[];
 };
 
 export async function fetchFinancesDetail(): Promise<FinancesDetail> {
