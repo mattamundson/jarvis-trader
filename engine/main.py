@@ -876,11 +876,14 @@ async def lifespan(app: FastAPI):
             try:
                 import sqlite3 as _sqlite3
 
-                with _sqlite3.connect(settings.SQLITE_DB_PATH) as _conn:
-                    _existing = _conn.execute(
-                        "SELECT id, side FROM paper_trades WHERE symbol=? AND status='open' LIMIT 1",
-                        (symbol,),
-                    ).fetchone()
+                def _check_open_position():
+                    with _sqlite3.connect(settings.SQLITE_DB_PATH) as _conn:
+                        return _conn.execute(
+                            "SELECT id, side FROM paper_trades WHERE symbol=? AND status='open' LIMIT 1",
+                            (symbol,),
+                        ).fetchone()
+
+                _existing = await asyncio.to_thread(_check_open_position)
                 if _existing is not None:
                     logger.info(
                         "[Scanner guard] %s already has open position id=%s side=%s — skipping scan",
@@ -1064,6 +1067,22 @@ async def lifespan(app: FastAPI):
             # HB-3: Decouple initial scan from lifespan (<10s boot constraint)
             async def delayed_watchlist_scan():
                 await asyncio.sleep(10)
+                # Only run during scheduled market hours (Mon-Fri 9:00-15:59 CT).
+                # Without this gate the watchdog-restart cycle fires a full
+                # 9-analyst LLM pipeline run at 3 AM, which saturates the event loop
+                # and trips the watchdog again within 5-10 minutes.
+                try:
+                    from zoneinfo import ZoneInfo
+                    _ct = ZoneInfo("America/Chicago")
+                    _now = datetime.now(_ct)
+                    if _now.weekday() >= 5 or not (9 <= _now.hour < 16):
+                        logger.info(
+                            "⏰ Skipping delayed initial scan — outside market hours (%s CT)",
+                            _now.strftime("%H:%M %a"),
+                        )
+                        return
+                except Exception:
+                    pass  # ZoneInfo unavailable — fall through and run anyway
                 logger.info("⏰ Running delayed initial watchlist scan (10s post-boot)")
                 try:
                     await run_watchlist_analysis()

@@ -807,16 +807,28 @@ export interface KillSwitchStatus {
 }
 
 export async function fetchKillSwitchStatus(): Promise<KillSwitchStatus> {
-  return fetchEngine<KillSwitchStatus>("/paper/kill-switch");
+  const status = await fetchEngine<{
+    kill_switch_active: boolean;
+    kill_switch_reason: string | null;
+  }>("/safety/status");
+  return {
+    active: status.kill_switch_active,
+    reason: status.kill_switch_reason,
+    activated_at: null,
+  };
 }
 
 export async function toggleKillSwitch(
   action: "activate" | "deactivate",
   reason?: string
 ): Promise<KillSwitchStatus> {
-  const params = new URLSearchParams({ action });
-  if (reason) params.set("reason", reason);
-  return postEngine<KillSwitchStatus>(`/paper/kill-switch?${params.toString()}`);
+  if (action === "activate") {
+    const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+    await postEngine<{ status: string }>(`/safety/kill-switch/activate${qs}`);
+  } else {
+    await postEngine<{ status: string }>("/safety/kill-switch/deactivate");
+  }
+  return fetchKillSwitchStatus();
 }
 
 // ── Super-Engine Status API ──────────────────────────────────────────────────
