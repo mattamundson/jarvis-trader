@@ -1,7 +1,12 @@
 "use client";
 import Link from "next/link";
 import useSWR from "swr";
-import { fetchFinancesDetail, type FinancesDetail } from "@/lib/masterApi";
+import {
+  fetchFinancesDetail,
+  type Account,
+  type FinancesDetail,
+  type NetWorthPoint,
+} from "@/lib/masterApi";
 
 function fmt(n: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -9,6 +14,10 @@ function fmt(n: number): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+function signed(n: number): string {
+  return `${n >= 0 ? "+" : "−"}${fmt(Math.abs(n))}`;
 }
 
 function fmtDate(posted: string): string {
@@ -44,49 +53,86 @@ export default function FinancesDetailPage() {
   const spendEntries = Object.entries(data.spend_by_category).sort((a, b) => b[1] - a[1]);
   const maxSpend = spendEntries.length > 0 ? Math.max(...spendEntries.map(([, v]) => v)) : 1;
 
+  const history = data.net_worth_history ?? [];
+  const change30d =
+    history.length >= 2
+      ? history[history.length - 1].net_worth - history[0].net_worth
+      : null;
+
+  const momEntries = Object.entries(data.month_over_month ?? {})
+    .filter(([, v]) => v.this > 0 || v.last > 0)
+    .sort((a, b) => Math.abs(b[1].delta) - Math.abs(a[1].delta));
+
+  const byOrg = data.accounts_by_org ?? {};
+  const orgs = Object.keys(byOrg).sort();
+
   return (
     <main className="p-6 space-y-8">
       <Header />
 
-      {/* Net Worth */}
+      {/* Net Worth + trend */}
       <section>
         <p className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Net Worth</p>
-        <p
-          className={`text-4xl font-bold ${
-            data.net_worth < 0 ? "text-red-400" : "text-emerald-400"
-          }`}
-        >
-          {fmt(data.net_worth)}
-        </p>
+        <div className="flex items-end gap-4 flex-wrap">
+          <p
+            className={`text-4xl font-bold ${
+              data.net_worth < 0 ? "text-red-400" : "text-emerald-400"
+            }`}
+          >
+            {fmt(data.net_worth)}
+          </p>
+          {change30d !== null && (
+            <span
+              className={`mb-1 rounded px-2 py-0.5 text-sm font-medium ${
+                change30d >= 0
+                  ? "bg-emerald-900/40 text-emerald-400"
+                  : "bg-red-900/40 text-red-400"
+              }`}
+            >
+              {signed(change30d)} ({history.length}d)
+            </span>
+          )}
+          <div className="mb-1">
+            <Sparkline points={history} />
+          </div>
+        </div>
       </section>
 
-      {/* Accounts */}
+      {/* Accounts, grouped by institution */}
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
           Accounts
         </h2>
-        <div className="space-y-2">
-          {data.accounts.map((acct) => (
-            <div
-              key={`${acct.org}-${acct.name}`}
-              className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3"
-            >
-              <div>
-                <span className="text-sm font-medium text-zinc-100">{acct.name}</span>
-                <span className="ml-2 text-xs text-zinc-500">{acct.org}</span>
-                {acct.is_liability && (
-                  <span className="ml-2 rounded bg-red-900/50 px-1.5 py-0.5 text-xs font-medium text-red-400">
-                    liability
-                  </span>
-                )}
+        <div className="space-y-5">
+          {orgs.map((org) => (
+            <div key={org}>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                {org}
+              </p>
+              <div className="space-y-2">
+                {byOrg[org].map((acct: Account) => (
+                  <div
+                    key={`${acct.org}-${acct.name}`}
+                    className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3"
+                  >
+                    <div>
+                      <span className="text-sm font-medium text-zinc-100">{acct.name}</span>
+                      {acct.is_liability && (
+                        <span className="ml-2 rounded bg-red-900/50 px-1.5 py-0.5 text-xs font-medium text-red-400">
+                          liability
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={`text-sm font-semibold tabular-nums ${
+                        acct.balance < 0 || acct.is_liability ? "text-red-400" : "text-zinc-100"
+                      }`}
+                    >
+                      {acct.balance < 0 ? `−${fmt(Math.abs(acct.balance))}` : fmt(acct.balance)}
+                    </span>
+                  </div>
+                ))}
               </div>
-              <span
-                className={`text-sm font-semibold tabular-nums ${
-                  acct.balance < 0 || acct.is_liability ? "text-red-400" : "text-zinc-100"
-                }`}
-              >
-                {acct.balance < 0 ? `−${fmt(Math.abs(acct.balance))}` : fmt(acct.balance)}
-              </span>
             </div>
           ))}
         </div>
@@ -97,41 +143,96 @@ export default function FinancesDetailPage() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
           Spend this month
         </h2>
-        <div className="space-y-3">
-          {spendEntries.map(([cat, spent]) => {
-            const budget = budgetMap.get(cat);
-            const isOver = budget && budget.over_by > 0;
-            const pct = maxSpend > 0 ? (spent / maxSpend) * 100 : 0;
-            return (
-              <div key={cat}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm text-zinc-200">{cat}</span>
+        {spendEntries.length === 0 ? (
+          <p className="text-sm text-zinc-500">No spend recorded this month.</p>
+        ) : (
+          <div className="space-y-3">
+            {spendEntries.map(([cat, spent]) => {
+              const budget = budgetMap.get(cat);
+              const isOver = budget && budget.over_by > 0;
+              const pct = maxSpend > 0 ? (spent / maxSpend) * 100 : 0;
+              return (
+                <div key={cat}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-zinc-200">{cat}</span>
+                    <span
+                      className={`text-sm font-semibold tabular-nums ${
+                        isOver ? "text-amber-400" : "text-zinc-100"
+                      }`}
+                    >
+                      {isOver ? `${fmt(spent)} / ${fmt(budget.limit)}` : fmt(spent)}
+                      {isOver && (
+                        <span className="ml-1 text-xs text-red-400">
+                          (+{fmt(budget.over_by)})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-zinc-800">
+                    <div
+                      className={`h-2 rounded-full ${isOver ? "bg-amber-500" : "bg-emerald-500"}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Month over month */}
+      {momEntries.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+            vs last month
+          </h2>
+          <div className="space-y-2">
+            {momEntries.map(([cat, v]) => (
+              <div
+                key={cat}
+                className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2"
+              >
+                <span className="text-sm text-zinc-200">{cat}</span>
+                <span className="flex items-center gap-3 text-sm tabular-nums">
+                  <span className="text-zinc-400">
+                    {fmt(v.this)} <span className="text-zinc-600">/ {fmt(v.last)}</span>
+                  </span>
                   <span
-                    className={`text-sm font-semibold tabular-nums ${
-                      isOver ? "text-amber-400" : "text-zinc-100"
+                    className={`font-semibold ${
+                      v.delta > 0 ? "text-amber-400" : "text-emerald-400"
                     }`}
                   >
-                    {isOver
-                      ? `${fmt(spent)} / ${fmt(budget.limit)}`
-                      : fmt(spent)}
-                    {isOver && (
-                      <span className="ml-1 text-xs text-red-400">
-                        (+{fmt(budget.over_by)})
-                      </span>
-                    )}
+                    {signed(v.delta)}
                   </span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-zinc-800">
-                  <div
-                    className={`h-2 rounded-full ${isOver ? "bg-amber-500" : "bg-emerald-500"}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
+                </span>
               </div>
-            );
-          })}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Top merchants */}
+      {data.top_merchants && data.top_merchants.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+            Top merchants this month
+          </h2>
+          <div className="space-y-2">
+            {data.top_merchants.map((m) => (
+              <div
+                key={m.merchant}
+                className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2"
+              >
+                <span className="text-sm text-zinc-200">{m.merchant}</span>
+                <span className="text-sm font-semibold tabular-nums text-zinc-100">
+                  {fmt(m.total)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Recent transactions */}
       <section>
@@ -176,6 +277,34 @@ export default function FinancesDetailPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function Sparkline({ points }: { points: NetWorthPoint[] }) {
+  if (points.length < 2) return null;
+  const w = 240;
+  const h = 48;
+  const values = points.map((p) => p.net_worth);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const coords = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * w;
+    const y = h - ((v - min) / span) * h;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const rising = values[values.length - 1] >= values[0];
+  return (
+    <svg width={w} height={h} className="overflow-visible">
+      <polyline
+        points={coords.join(" ")}
+        fill="none"
+        stroke={rising ? "#34d399" : "#f87171"}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
