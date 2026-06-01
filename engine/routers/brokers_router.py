@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/brokers", tags=["brokers"])
@@ -346,3 +347,33 @@ async def reconcile_fills():
     except Exception as exc:
         logger.exception("brokers/reconcile failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"Reconcile failed: {exc}") from exc
+
+
+class _CSVImportRequest(BaseModel):
+    csv_path: str
+    statement_date: str = "20260529"
+
+
+@router.post(
+    "/import-csv-positions",
+    summary="Import IBKR open futures positions from activity-statement CSV",
+    description=(
+        "Parses an IBKR activity-statement CSV and imports open Futures positions "
+        "as synthetic fills keyed by 'CSV_POS_{account}_{symbol}_{date}' (idempotent). "
+        "Use to bootstrap ibkr_fills with pre-existing positions that pre-date the "
+        "live reconciler (e.g. DUP662235 demo positions from a downloaded statement)."
+    ),
+)
+async def import_csv_positions(req: _CSVImportRequest):
+    """Import futures open-position records from a downloaded IBKR activity statement."""
+    if _reconciler is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Reconciler not initialised — engine started without real IBKR gateway.",
+        )
+    try:
+        result = _reconciler.import_csv_positions(req.csv_path, req.statement_date)
+        return result
+    except Exception as exc:
+        logger.exception("brokers/import-csv-positions failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"CSV import failed: {exc}") from exc

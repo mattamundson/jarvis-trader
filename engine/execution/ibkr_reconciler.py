@@ -177,6 +177,134 @@ class IBKRReconciler:
             logger.error("IBKRReconciler get_fills failed: %s", exc)
             return []
 
+    def import_csv_positions(self, csv_path: str, statement_date: str = "") -> dict:
+        """
+        Import open Futures positions from an IBKR activity-statement CSV as
+        synthetic fills.  exec_id = 'CSV_POS_{account}_{symbol}_{date}' so
+        repeated calls are idempotent and records are distinguishable from live
+        fills returned by reqExecutionsAsync.
+
+        Only Futures rows in the 'Open Positions' section are imported;
+        Stocks and other asset classes are skipped.
+        """
+        import csv as _csv
+
+        account = "DUP662235"
+        parsed: list[dict] = []
+
+        try:
+            with open(csv_path, newline="", encoding="utf-8") as fh:
+                for row in _csv.reader(fh):
+                    if len(row) < 5:
+                        continue
+                    # Extract account ID from the Statement header section
+                    if row[0] == "Account Information" and row[1] == "Data" and row[2] == "Account":
+                        raw = row[3].split("(")[0].strip()
+                        if raw:
+                            account = raw
+                        continue
+                    # Open Positions,Data,Summary,Futures,USD,SYMBOL,QTY,MULT,COST_PRICE,...
+                    if (
+                        row[0] == "Open Positions"
+                        and row[1] == "Data"
+                        and row[2] == "Summary"
+                        and row[3].strip() == "Futures"
+                        and len(row) >= 9
+                    ):
+                        try:
+                            parsed.append(
+                                {
+                                    "currency": row[4].strip(),
+                                    "symbol": row[5].strip(),
+                                    "quantity": float(row[6].strip()),
+                                    "price": float(row[8].strip().replace(",", "")),
+                                }
+                            )
+                        except (ValueError, IndexError) as exc:
+                            logger.warning("import_csv_positions: skipping row %s — %s", row, exc)
+        except Exception as exc:
+            logger.error("import_csv_positions read failed (%s): %s", csv_path, exc)
+            return {
+                "imported": 0,
+                "skipped": 0,
+                "total_in_db": 0,
+                "fills_from_csv": 0,
+                "error": str(exc),
+            }
+
+        if not statement_date:
+            statement_date = "20260529"
+
+        # Normalise to YYYY-MM-DD for fill_time
+        if len(statement_date) == 8:
+            fill_date = (
+                f"{statement_date[:4]}-{statement_date[4:6]}-{statement_date[6:]}T00:00:00+00:00"
+            )
+        else:
+            fill_date = f"{statement_date}T00:00:00+00:00"
+
+        imported = 0
+        skipped = 0
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        if parsed:
+            try:
+                with closing(sqlite3.connect(self._db_path)) as conn:
+                    for p in parsed:
+                        exec_id = f"CSV_POS_{account}_{p['symbol']}_{statement_date}"
+                        if conn.execute(
+                            "SELECT 1 FROM ibkr_fills WHERE exec_id = ?", (exec_id,)
+                        ).fetchone():
+                            skipped += 1
+                            continue
+                        conn.execute(
+                            """
+                            INSERT INTO ibkr_fills
+                                (exec_id, account, symbol, sec_type, expiry, side,
+                                 quantity, price, avg_price, commission, exchange,
+                                 currency, fill_time, order_id, imported_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                exec_id,
+                                account,
+                                p["symbol"],
+                                "FUT",
+                                "",
+                                "BOT",
+                                p["quantity"],
+                                p["price"],
+                                p["price"],
+                                None,
+                                None,
+                                p["currency"],
+                                fill_date,
+                                None,
+                                now_iso,
+                            ),
+                        )
+                        imported += 1
+                    conn.commit()
+            except Exception as exc:
+                logger.error("import_csv_positions DB write failed: %s", exc)
+
+        total = 0
+        try:
+            with closing(sqlite3.connect(self._db_path)) as conn:
+                row = conn.execute("SELECT COUNT(*) FROM ibkr_fills").fetchone()
+                total = row[0] if row else 0
+        except Exception:
+            pass
+
+        return {
+            "imported": imported,
+            "skipped": skipped,
+            "total_in_db": total,
+            "fills_from_csv": len(parsed),
+            "account": account,
+            "statement_date": statement_date,
+        }
+
     def _summary(
         self,
         fills: list[dict],
