@@ -9,18 +9,14 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+try:
+    from utils.position_sizing import INSTRUMENT_MULTIPLIERS as INSTRUMENT_POINT_VALUES
+except ImportError:
+    from engine.utils.position_sizing import INSTRUMENT_MULTIPLIERS as INSTRUMENT_POINT_VALUES
+
 logger = logging.getLogger(__name__)
 
 _CT = ZoneInfo("America/Chicago")
-
-INSTRUMENT_POINT_VALUES: dict[str, float] = {
-    "MCL": 100.0,
-    "MNQ": 2.0,
-    "MES": 5.0,
-    "MGC": 10.0,
-    "ES": 50.0,
-    "NQ": 20.0,
-}
 
 # Module-level globals — injected via inject_morning_brief_deps()
 _data_manager = None
@@ -78,16 +74,25 @@ async def assemble_morning_brief(
                     dm.get_current_price("MNQ"),
                     return_exceptions=True,
                 )
-                prices["MCL"] = (
-                    float(results[0])
-                    if not isinstance(results[0], Exception) and results[0] is not None
-                    else None
-                )
-                prices["MNQ"] = (
-                    float(results[1])
-                    if not isinstance(results[1], Exception) and results[1] is not None
-                    else None
-                )
+
+                def _extract_price(r) -> float | None:
+                    if isinstance(r, Exception) or r is None:
+                        return None
+                    if isinstance(r, dict):
+                        return (
+                            float(
+                                r.get("last_price")
+                                or r.get("close")
+                                or r.get("price")
+                                or r.get("last")
+                                or 0
+                            )
+                            or None
+                        )
+                    return float(r)
+
+                prices["MCL"] = _extract_price(results[0])
+                prices["MNQ"] = _extract_price(results[1])
             except Exception as exc:
                 logger.warning("[MorningBrief] Price fetch failed: %s", exc)
 
@@ -151,7 +156,7 @@ async def assemble_morning_brief(
         if pt is not None:
             try:
                 midnight_ct = now_ct.replace(hour=0, minute=0, second=0, microsecond=0)
-                all_closed = pt.get_closed_trades() if hasattr(pt, 'get_closed_trades') else []
+                all_closed = pt.get_closed_trades() if hasattr(pt, "get_closed_trades") else []
                 for t in all_closed:
                     closed_str = t.get("exit_time") or t.get("closed_at") or ""
                     if closed_str and closed_str >= midnight_ct.isoformat()[:10]:
@@ -219,7 +224,9 @@ async def assemble_morning_brief(
                 cur = pos_price_map.get(sym)
                 unr = _compute_unrealized(pos, cur)
                 unr_str = f"${unr:+.2f}" if unr is not None else "open"
-                lines.append(f"  OPEN: {sym} {action} x{qty} @ ${entry:.2f} | unrealized: {unr_str}")
+                lines.append(
+                    f"  OPEN: {sym} {action} x{qty} @ ${entry:.2f} | unrealized: {unr_str}"
+                )
             lines.append("")
 
         pnl_str = f"${daily_pnl:+.2f}" if daily_pnl is not None else "N/A"

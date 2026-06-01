@@ -86,6 +86,8 @@ def generate_donchian_breakout_signals(
     vol_ma_period: int = 20,
     vol_mult: float = 1.0,
     stop_atr_mult: float = 2.0,
+    ema_trend_period: int = 0,
+    atr_regime_mult: float = 0.0,
 ) -> pd.DataFrame:
     """Generate Donchian-channel breakout signals.
 
@@ -117,6 +119,24 @@ def generate_donchian_breakout_signals(
     vol_ma = volume.rolling(vol_ma_period).mean()
     atr = _wilder_atr(high, low, close, _ATR_PERIOD)
 
+    # Regime filter: EMA trend direction gate (ema_trend_period=0 disables, backward compatible).
+    if ema_trend_period > 0:
+        ema_trend = close.ewm(span=ema_trend_period, adjust=False).mean()
+        ema_warm = ema_trend.notna()
+        long_ema_ok = (close > ema_trend) & ema_warm
+        short_ema_ok = (close < ema_trend) & ema_warm
+    else:
+        ema_trend = pd.Series(np.nan, index=df.index)
+        long_ema_ok = pd.Series(True, index=df.index)
+        short_ema_ok = pd.Series(True, index=df.index)
+
+    # Regime filter: ATR expansion gate (atr_regime_mult=0.0 disables, backward compatible).
+    if atr_regime_mult > 0.0:
+        atr_sma50 = atr.rolling(50).mean()
+        atr_regime_active = (atr > atr_sma50 * atr_regime_mult) & atr_sma50.notna()
+    else:
+        atr_regime_active = pd.Series(True, index=df.index)
+
     # vol_mult=0 disables the filter (always passes). Otherwise require
     # volume > mult × MA. NaN MA (warmup) → gate fails.
     if vol_mult <= 0:
@@ -134,8 +154,8 @@ def generate_donchian_breakout_signals(
         & vol_ma.notna()
     )
 
-    long_cond = (close > donchian_high) & vol_ok & warm
-    short_cond = (close < donchian_low) & vol_ok & warm
+    long_cond = (close > donchian_high) & vol_ok & warm & long_ema_ok & atr_regime_active
+    short_cond = (close < donchian_low) & vol_ok & warm & short_ema_ok & atr_regime_active
 
     # Conflict guard — channel_high < channel_low is impossible in a
     # valid dataset, but close can straddle a single-bar channel when
@@ -200,6 +220,8 @@ def generate_donchian_breakout_signals(
     df["donchian_low"] = donchian_low
     df["vol_ma"] = vol_ma
     df["atr_14"] = atr
+    df["ema_trend"] = ema_trend
+    df["atr_regime_active"] = atr_regime_active
 
     return df
 

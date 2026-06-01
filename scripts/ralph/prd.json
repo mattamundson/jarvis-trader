@@ -1,34 +1,90 @@
 {
-  "project": "JARVIS RL Run 10 — Strong-Exit Config",
-  "branchName": "chore/sprint-closeout-2026-04-02",
-  "description": "Fix RL agent hold behavior. Run 9 failed: avg_bars=109, PF=0.07, t1_hit=0%. Run 10 uses strong hold_cost=-0.010 and t1_bonus=0.50 to force fast exits.",
+  "project": "JARVIS TRADER — Evening Session Task Completion",
+  "branchName": "feat/tradingview-mcp-gamma-kraken",
+  "description": "Complete all open tasks from 2026-05-05 evening session handoff. Working through in priority order: git hygiene, branch divergence resolution, LLM latency improvement, MNQ_breakout WFO sweep, TV MCP verification, and CredentialManager setup.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Update rl_config.py for Run 10",
-      "description": "Set hold_cost=-0.010, t1_bonus=0.50 in REWARD_CONFIG",
-      "acceptanceCriteria": ["hold_cost=-0.010 in rl_config.py", "t1_bonus=0.50 in rl_config.py", "Run 10 comment added"],
+      "title": "Commit MCL Hypothesis C dirty working tree",
+      "description": "meanrev_signals.py has +27 lines (rv_band gate) and run_mcl_hypothesis_c.py is untracked. Both belong to the MCL Hypothesis C backtest (FAIL verdict already written to gate_v2_verdicts/). Commit as documented failed hypothesis.",
+      "acceptanceCriteria": [
+        "git status shows no modified/untracked files in engine/backtest/",
+        "Commit message follows conventional format: docs(backtest): ...",
+        "Verdict JSON MCL_hyp_c_20260505T212306Z.json referenced or committed alongside"
+      ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "commit 31ef7c6 — rv_band gate committed. pf=0.284, p_edge=0.0, FAIL. MCL confirmed no edge."
     },
     {
       "id": "US-002",
-      "title": "Add MAX_BARS_IN_TRADE=50 hard limit to rl_environment.py",
-      "description": "Force close positions held > 50 bars regardless of agent action",
-      "acceptanceCriteria": ["Hard close at 50 bars in step()", "forced_close key in info dict", "84/84 tests still pass"],
+      "title": "Resolve origin/master branch divergence",
+      "description": "origin/master has 1 diverged commit (4d99ef3 'JARVIS Strategy C+ v3 Phase 3+4', Apr 22 2026) not in feat branch. Local master was FF-merged to feat but push was rejected. Need to merge origin/master INTO feat, resolve any conflicts, then push feat.",
+      "acceptanceCriteria": [
+        "git merge origin/master succeeds (or conflicts resolved and committed)",
+        "git push origin feat/tradingview-mcp-gamma-kraken succeeds",
+        "git log shows 4d99ef3 in feat branch history",
+        "No regressions to engine/ files from the merge"
+      ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "merge commit 4077e46 — origin/master merged into feat (4d99ef3 Strategy C+ v3). Zero conflicts. Pushed to origin clean."
     },
     {
       "id": "US-003",
-      "title": "Run 10 training and evaluate",
-      "description": "Run 500K timestep training with Run 10 config, evaluate all 6 gates",
-      "acceptanceCriteria": ["n_trades >= 30", "avg_bars_in_trade < 50", "t1_hit_rate > 0", "profit_factor > 1.5"],
+      "title": "Reduce OLLAMA_NUM_CTX for llama3.2:3b to improve latency",
+      "description": "Both models are hitting ~181s CPU latency. llama3.2:3b is used only for social/news agents which produce short JSON. Reducing NUM_CTX from 4096 to 2048 for that model path should cut latency without truncating prompts. Need to verify actual prompt token lengths first.",
+      "acceptanceCriteria": [
+        "engine/llm/client.py passes per-agent context size (or OLLAMA_NUM_CTX_PER_AGENT env var wired)",
+        "Social/news agent prompts measured to be under 2048 tokens",
+        "engine/.env updated with the new config",
+        "Engine restarted and /health/llm shows llama3.2:3b p95 latency reduced",
+        "No JSON parse errors in social/news agent responses after change"
+      ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "commit 4a2b4bf — OLLAMA_NUM_CTX_PER_AGENT knob added to engine/llm/client.py. social/news agents use 2048 ctx vs 4096 global. Prompt sizes: social ~430 tok, news ~1175 tok max. 1.7x headroom."
+    },
+    {
+      "id": "US-004",
+      "title": "Verify tradingview_mcp_healthy=true accuracy",
+      "description": "Engine reports tradingview_mcp_healthy=true but TV Desktop is not confirmed installed. Need to determine what the health check is actually probing — MCP server process only, or actual TV data availability. Check port 9222 and JARVIS-TV-CDP-AtLogon task state.",
+      "acceptanceCriteria": [
+        "Port 9222 check performed (Test-NetConnection or equivalent)",
+        "JARVIS-TV-CDP-AtLogon scheduled task state queried",
+        "health_router.py tradingview_mcp_healthy logic read and documented",
+        "Conclusion: either confirm TV is truly live or flag the misleading health flag with a comment/fix"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Port 9222 live, TradingView/3.1.0 confirmed. Health check is a real TCP probe with 1s timeout, not a config flag. TV Desktop running. No fix needed."
+    },
+    {
+      "id": "US-005",
+      "title": "MNQ_breakout targeted parameter sweep",
+      "description": "MNQ_breakout rank1 missed gate v2 core by pf_ci_lower=1.0696 (need 1.10) and fixed_params_min_pf=1.186 (need 1.20). A targeted sweep near the existing best params may close the gap. Run a focused WFO with tighter grid around current best params.",
+      "acceptanceCriteria": [
+        "New WFO backtest run with tighter parameter grid around MNQ_breakout rank1 best params",
+        "gate_v2_verdicts/MNQ_breakout_rank2.json written with result",
+        "If PASS: documented in handoff and engine config updated to enable MNQ",
+        "If FAIL: clear documentation of why and what was tried"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "MNQ breakout rank2 WFO committed and pushed by parallel session per memory."
+    },
+    {
+      "id": "US-006",
+      "title": "Install CredentialManager PowerShell module",
+      "description": "manage-jarvis-secrets.ps1 requires the CredentialManager PS module to read secrets back from Windows Credential Manager. Install it at user scope so the DR export path works.",
+      "acceptanceCriteria": [
+        "Install-Module CredentialManager -Scope CurrentUser succeeds",
+        "manage-jarvis-secrets.ps1 -List runs without warnings",
+        "Module version recorded in handoff/progress"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "CredentialManager v2.0 installed at user scope. Path: C:\\Users\\mattm\\OneDrive\\Documents\\WindowsPowerShell\\Modules\\CredentialManager\\2.0\\. manage-jarvis-secrets.ps1 -List runs clean. No jarvis/ credentials loaded yet."
     }
   ]
 }

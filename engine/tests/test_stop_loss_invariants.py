@@ -24,7 +24,6 @@ from pathlib import Path
 
 import pytest
 
-
 ENGINE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = ENGINE_DIR / "data" / "jarvis_trader.db"
 JSONL_PATH = ENGINE_DIR / "portfolio" / "trades.jsonl"
@@ -48,8 +47,7 @@ def test_no_inverted_stops_in_sqlite():
             "WHERE stop_loss IS NOT NULL AND entry_price IS NOT NULL"
         )
         violations: list[tuple] = [
-            row for row in cur.fetchall()
-            if _is_inverted(row[2], row[3], row[4])
+            row for row in cur.fetchall() if _is_inverted(row[2], row[3], row[4])
         ]
     finally:
         conn.close()
@@ -86,24 +84,30 @@ def test_no_inverted_stops_in_jsonl():
 class TestStopLossInvariantHelper:
     """Unit tests for the helper itself — make sure it doesn't have its own bug."""
 
-    @pytest.mark.parametrize("side,entry,stop", [
-        ("buy", 100.0, 95.0),         # long stop below — correct
-        ("long", 50.0, 49.0),
-        ("sell", 100.0, 105.0),       # short stop above — correct
-        ("short", 50.0, 51.0),
-        ("buy", 100.0, None),         # missing data — not inverted
-        (None, 100.0, 95.0),
-    ])
+    @pytest.mark.parametrize(
+        "side,entry,stop",
+        [
+            ("buy", 100.0, 95.0),  # long stop below — correct
+            ("long", 50.0, 49.0),
+            ("sell", 100.0, 105.0),  # short stop above — correct
+            ("short", 50.0, 51.0),
+            ("buy", 100.0, None),  # missing data — not inverted
+            (None, 100.0, 95.0),
+        ],
+    )
     def test_helper_accepts_valid_or_missing(self, side, entry, stop):
         assert not _is_inverted(side, entry, stop)
 
-    @pytest.mark.parametrize("side,entry,stop", [
-        ("buy", 100.0, 105.0),        # long stop ABOVE — wrong (the bug)
-        ("long", 50.0, 51.0),
-        ("buy_to_open", 84.20, 86.00),  # the original 2026-04-09 MCL case
-        ("sell", 100.0, 95.0),        # short stop BELOW — wrong
-        ("short", 50.0, 49.0),
-    ])
+    @pytest.mark.parametrize(
+        "side,entry,stop",
+        [
+            ("buy", 100.0, 105.0),  # long stop ABOVE — wrong (the bug)
+            ("long", 50.0, 51.0),
+            ("buy_to_open", 84.20, 86.00),  # the original 2026-04-09 MCL case
+            ("sell", 100.0, 95.0),  # short stop BELOW — wrong
+            ("short", 50.0, 49.0),
+        ],
+    )
     def test_helper_flags_inverted(self, side, entry, stop):
         assert _is_inverted(side, entry, stop)
 
@@ -116,6 +120,7 @@ class TestInsertPaperTradeGuard:
 
     def _fresh_db(self, tmp_path):
         from database.manager import DatabaseManager
+
         db_file = tmp_path / "guard.db"
         return DatabaseManager(db_path=str(db_file))
 
@@ -129,6 +134,7 @@ class TestInsertPaperTradeGuard:
                 quantity=1,
                 entry_price=84.20,
                 stop_loss=86.00,  # ABOVE entry on a long — the 2026-04-09 shape
+                idempotency_key="test-inverted-long-key-0000000000000000",
             )
 
     def test_insert_paper_trade_rejects_inverted_short_stop(self, tmp_path):
@@ -141,6 +147,7 @@ class TestInsertPaperTradeGuard:
                 quantity=1,
                 entry_price=84.20,
                 stop_loss=82.00,  # BELOW entry on a short — same class of bug
+                idempotency_key="test-inverted-short-key-000000000000000",
             )
 
     # Positive-control ("accepts correct stop") deliberately omitted:

@@ -1,0 +1,9 @@
+run_date,source_file,symbol,family,rank,verdict,passed_via,p_edge,wfo_consistency,pf_ci_lower,dsr,mc_95th_dd_pct,n_oos_windows,total_oos_trades
+2026-05-06T11:28:01.625663+00:00,MGC_trend_rank1.json,MGC,trend,1,FAIL,,0.6,MODERATE,,0.0,0.0931,18,5
+2026-05-06T11:42:19.302885+00:00,MGC_trend_rank2.json,MGC,trend,2,FAIL,,0.75,STRONG,,0.0,0.0095,18,4
+2026-05-06T11:56:31.252143+00:00,MGC_trend_rank3.json,MGC,trend,3,FAIL,,0.75,STRONG,,1.0,1.4829,18,54
+2026-05-07T02:31:24.460694+00:00,MGC_trend_rank4_pre-refresh-2026-05-06.json,MGC,trend,4,PASS,alt,0.75,STRONG,,1.0,1.2442,18,61
+2026-05-07T05:39:28.338767+00:00,MGC_trend_rank4_pre-refresh-2026-05-20.json,MGC,trend,4,PASS,alt,0.6842,MODERATE,2.5759,1.0,1.2386,19,65
+2026-05-07T06:04:53.194305+00:00,MGC_meanrev_rank1.json,MGC,mean_reversion,1,FAIL,,0.3158,WEAK,0.7225,0.0,5.6897,19,325
+2026-05-07T06:44:21.834971+00:00,MGC_meanrev_rank2.json,MGC,mean_reversion,2,FAIL,,0.25,WEAK,0.4973,0.0,5.1303,19,148
+2026-05-21T09:01:28.932112+00:00,MGC_trend_rank4.json,MGC,trend,4,PASS,alt,0.6842,MODERATE,2.5968,1.0,1.2386,19,67

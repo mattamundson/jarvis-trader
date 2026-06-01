@@ -10,21 +10,33 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
 if TYPE_CHECKING:
     from ib_async import Future
+
     from execution.schwab_connector import SchwabConnector
 
 import pandas as pd
+
+from data.polygon_stream import PolygonStreamer
+
+# Lazy import — bars_repository requires sqlite3 which is always available,
+# but importing at module level makes the hot path slightly heavier; use a
+# try/except so a missing file never crashes startup.
+try:
+    from data.bars_repository import save_bars as _save_bars
+except Exception:  # pragma: no cover
+    _save_bars = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
 # Optional TradingView real-time feed — imported lazily so it never breaks startup
 try:
     from data.tradingview_feed import TradingViewFeed as _TradingViewFeed
+
     _tv_feed = _TradingViewFeed()
 except Exception:
     _tv_feed = None  # type: ignore[assignment]
@@ -35,10 +47,10 @@ except Exception:
 #   NQ/ES/GC/MCL/MNQ/MES/MGC = no data on current plan ❌
 # Micro futures use standard contract prices — tick value differs but price is identical.
 FUTURES_MAP = {
-    "MCL": "CL",   # Micro Crude Oil  → CL (same price, 1/10 contract size)
-    "MNQ": "NQ",   # Micro Nasdaq-100 → NQ (same price, 1/10 contract size)
-    "MES": "ES",   # Micro E-mini S&P → ES (same price, 1/10 contract size)
-    "MGC": "GC",   # Micro Gold       → GC (same price, 1/10 contract size)
+    "MCL": "CL",  # Micro Crude Oil  → CL (same price, 1/10 contract size)
+    "MNQ": "NQ",  # Micro Nasdaq-100 → NQ (same price, 1/10 contract size)
+    "MES": "ES",  # Micro E-mini S&P → ES (same price, 1/10 contract size)
+    "MGC": "GC",  # Micro Gold       → GC (same price, 1/10 contract size)
     "CL": "CL",
     "NQ": "NQ",
     "ES": "ES",
@@ -69,10 +81,25 @@ POLYGON_FUTURES_MAP: dict[str, str] = {
 # Symbols Polygon free plan returns the WRONG asset for.
 # Callers MUST check this set and skip Polygon for any match — empty result
 # is preferred over silent stock-vs-futures data substitution.
-POLYGON_FUTURES_BLOCKLIST: frozenset[str] = frozenset({
-    "MCL", "MNQ", "MES", "MGC", "M2K", "MYM",
-    "CL",  "NQ",  "ES",  "GC",  "RTY", "YM", "SI", "ZB", "ZN",
-})
+POLYGON_FUTURES_BLOCKLIST: frozenset[str] = frozenset(
+    {
+        "MCL",
+        "MNQ",
+        "MES",
+        "MGC",
+        "M2K",
+        "MYM",
+        "CL",
+        "NQ",
+        "ES",
+        "GC",
+        "RTY",
+        "YM",
+        "SI",
+        "ZB",
+        "ZN",
+    }
+)
 
 # Scale factors: micro price == standard price (same underlying price,
 # just different notional/tick size), so factor is 1.0 for all.
@@ -221,15 +248,33 @@ class IBKRDataConnector:
         return c
 
     async def _resolve_front_month(self, symbol: str, exchange: str) -> Future:
-        """Resolve futures symbol to the nearest expiry (front month) contract."""
+        """Resolve futures symbol to the nearest non-expired (front month) contract.
+
+        IBKR's reqContractDetailsAsync returns *all* contracts including ones
+        whose `lastTradeDateOrContractMonth` is already in the past. Sorting
+        ascending and taking [0] therefore returns the most-recently-expired
+        contract (e.g. MGCJ6 after 2026-04-28), and any historical query
+        ending after that expiry returns "HMDS query returned no data".
+        Fix: drop expired contracts before picking the front month.
+        """
         from ib_async import Future
 
         generic = Future(symbol, exchange=exchange, currency="USD")
         try:
             details = await self._ib.reqContractDetailsAsync(generic)
             if details:
-                # Sort by expiry ascending, return the nearest (front month)
-                details.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth)
+                today_yyyymmdd = date.today().strftime("%Y%m%d")
+                live = [
+                    d
+                    for d in details
+                    if (d.contract.lastTradeDateOrContractMonth or "") >= today_yyyymmdd
+                ]
+                if live:
+                    live.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth)
+                    return live[0].contract
+                # Degenerate: nothing live. Fall back to the most-recent expired
+                # so historical queries that end before today still resolve.
+                details.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth, reverse=True)
                 return details[0].contract
         except Exception as e:
             logger.warning(f"Could not resolve front month for {symbol}: {e}")
@@ -314,7 +359,9 @@ class IBKRDataConnector:
                         "source": "ibkr",
                     }
         except Exception as e:
-            logger.debug(f"IBKR reqTickersAsync failed for {symbol} (will try historical fallback): {e}")
+            logger.debug(
+                f"IBKR reqTickersAsync failed for {symbol} (will try historical fallback): {e}"
+            )
 
         # Fallback: use last historical bar close (works even without L1 subscription)
         try:
@@ -325,9 +372,7 @@ class IBKRDataConnector:
             if not bars_df.empty and "close" in bars_df.columns:
                 last_close = float(bars_df.iloc[-1]["close"])
                 prev_close = float(bars_df.iloc[-2]["close"]) if len(bars_df) >= 2 else None
-                change_pct = (
-                    ((last_close - prev_close) / prev_close * 100) if prev_close else None
-                )
+                change_pct = ((last_close - prev_close) / prev_close * 100) if prev_close else None
                 logger.info(f"IBKR historical fallback price for {symbol}: {last_close}")
                 return {
                     "last_price": last_close,
@@ -399,7 +444,7 @@ class PolygonDataConnector:
 
     # Class-level rate limiter shared across all instances
     _call_timestamps: list[float] = []
-    _RATE_LIMIT = 4          # conservative (free tier = 5/min)
+    _RATE_LIMIT = 4  # conservative (free tier = 5/min)
     _RATE_WINDOW = 60.0
     # Simple sync cache: {key: {"data": ..., "ts": float}}
     _cache: dict[str, dict] = {}
@@ -415,7 +460,9 @@ class PolygonDataConnector:
         self._call_timestamps[:] = [t for t in self._call_timestamps if now - t < self._RATE_WINDOW]
         if len(self._call_timestamps) >= self._RATE_LIMIT:
             wait = self._RATE_WINDOW - (now - self._call_timestamps[0])
-            logger.warning(f"[polygon] Rate guard: {len(self._call_timestamps)} calls in 60s, next slot in {wait:.0f}s")
+            logger.warning(
+                f"[polygon] Rate guard: {len(self._call_timestamps)} calls in 60s, next slot in {wait:.0f}s"
+            )
             return False
         self._call_timestamps.append(now)
         return True
@@ -490,7 +537,9 @@ class PolygonDataConnector:
         except Exception as e:
             error_str = str(e).lower()
             if "429" in str(e) or "too many" in error_str:
-                logger.warning(f"[polygon] 429 rate limit for {symbol} bars — returning expired cache")
+                logger.warning(
+                    f"[polygon] 429 rate limit for {symbol} bars — returning expired cache"
+                )
                 expired = self._cache_get_expired(cache_key)
                 return expired if expired is not None else pd.DataFrame()
             logger.warning(f"Polygon get_historical_bars failed for {symbol}: {e}")
@@ -503,7 +552,12 @@ class PolygonDataConnector:
     def get_last_price(self, symbol: str) -> dict:
         """Get latest price via most recent 1-minute bar. Works for equities and futures."""
         if not self._client:
-            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_unavailable"}
+            return {
+                "last_price": None,
+                "prev_close": None,
+                "change_pct": None,
+                "source": "polygon_unavailable",
+            }
 
         cache_key = f"price:{symbol}"
         cached = self._cache_get(cache_key)
@@ -514,7 +568,12 @@ class PolygonDataConnector:
             expired = self._cache_get_expired(cache_key)
             if expired:
                 return {**expired, "source": "polygon_cache_expired"}
-            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_rate_limited"}
+            return {
+                "last_price": None,
+                "prev_close": None,
+                "change_pct": None,
+                "source": "polygon_rate_limited",
+            }
 
         try:
             today = datetime.now().strftime("%Y-%m-%d")
@@ -525,7 +584,12 @@ class PolygonDataConnector:
                 self._client.list_aggs(symbol, 1, "minute", two_days_ago, today, limit=10)
             )
             if not recent_bars:
-                return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_empty"}
+                return {
+                    "last_price": None,
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "polygon_empty",
+                }
 
             last_price = float(recent_bars[-1].close)
             prev_bars = list(
@@ -534,19 +598,36 @@ class PolygonDataConnector:
             prev_close = float(prev_bars[-1].close) if prev_bars else None
             change_pct = ((last_price - prev_close) / prev_close * 100) if prev_close else None
 
-            result = {"last_price": last_price, "prev_close": prev_close, "change_pct": change_pct, "source": "polygon"}
+            result = {
+                "last_price": last_price,
+                "prev_close": prev_close,
+                "change_pct": change_pct,
+                "source": "polygon",
+            }
             self._cache_set(cache_key, result)
             return result
         except Exception as e:
             error_str = str(e).lower()
             if "429" in str(e) or "too many" in error_str:
-                logger.warning(f"[polygon] 429 rate limit for {symbol} price — returning expired cache")
+                logger.warning(
+                    f"[polygon] 429 rate limit for {symbol} price — returning expired cache"
+                )
                 expired = self._cache_get_expired(cache_key)
                 if expired:
                     return {**expired, "source": "polygon_cache_expired"}
-                return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_rate_limited"}
+                return {
+                    "last_price": None,
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "polygon_rate_limited",
+                }
             logger.warning(f"Polygon get_last_price failed for {symbol}: {e}")
-            return {"last_price": None, "prev_close": None, "change_pct": None, "source": "polygon_error"}
+            return {
+                "last_price": None,
+                "prev_close": None,
+                "change_pct": None,
+                "source": "polygon_error",
+            }
 
     def get_vix_value(self) -> dict:
         """Get VIX index value. Polygon indices use 'I:VIX' ticker."""
@@ -644,6 +725,7 @@ class MarketDataManager:
         self.ibkr: Optional[IBKRDataConnector] = None
         self.schwab: Optional["SchwabConnector"] = None
         self.polygon: Optional[PolygonDataConnector] = None
+        self.polygon_streamer: Optional[PolygonStreamer] = None
         self.finnhub: Optional[FinnhubConnector] = None
         self.reddit = RedditSentimentConnector()
 
@@ -658,7 +740,7 @@ class MarketDataManager:
             host=self._config.IBKR_HOST,
             port=self._config.IBKR_PORT,
             client_id=self._config.IBKR_CLIENT_ID,
-            connect_timeout=getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0),
+            connect_timeout=max(30.0, getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 30.0)),
         )
         ibkr_connected = await self.ibkr.connect()
         if not ibkr_connected:
@@ -670,6 +752,12 @@ class MarketDataManager:
         if self._config.POLYGON_API_KEY:
             self.polygon = PolygonDataConnector(self._config.POLYGON_API_KEY)
             self.polygon.connect()
+
+            # Tier 2.5: Real-time stream (requires Polygon plan with WebSocket access)
+            if getattr(self._config, "POLYGON_STREAM_ENABLED", True):
+                watchlist = ["SPY", "QQQ", "AAPL", "TSLA", "NVDA", "MSFT", "AMD", "META"]
+                self.polygon_streamer = PolygonStreamer(self._config.POLYGON_API_KEY, watchlist)
+                # Connection is started by main.py in the background
         else:
             logger.warning("POLYGON_API_KEY not set — set it in .env for price data fallback.")
 
@@ -710,6 +798,8 @@ class MarketDataManager:
                         f"TV returned {len(tv_df)} bars for {symbol} "
                         f"({timeframe}, last bar {age_hours:.1f}h old)"
                     )
+                    if _save_bars is not None:
+                        _save_bars(tv_df, symbol, timeframe, "tv")
                     return tv_df
                 logger.warning(
                     f"[{symbol}] TV returned stale bars ({age_hours:.1f}h old) — falling through"
@@ -733,6 +823,8 @@ class MarketDataManager:
                 logger.info(f"IBKR returned {len(df)} bars for {symbol}")
                 df.attrs["source"] = "ibkr"
                 df.attrs["symbol"] = symbol
+                if _save_bars is not None:
+                    _save_bars(df, symbol, timeframe, "ibkr")
                 return df
 
         # Tier 2: Polygon — SKIPPED for futures (Polygon free plan returns
@@ -758,6 +850,8 @@ class MarketDataManager:
                 logger.info(f"Polygon returned {len(df)} bars for {symbol}")
                 df.attrs["source"] = "polygon"
                 df.attrs["symbol"] = symbol
+                if _save_bars is not None:
+                    _save_bars(df, symbol, timeframe, "polygon")
                 return df
             logger.warning(f"Polygon returned no data for {symbol} ({timespan}/{multiplier})")
         elif self.polygon and symbol.upper() in POLYGON_FUTURES_BLOCKLIST:
@@ -830,8 +924,14 @@ class MarketDataManager:
             try:
                 # Map micro futures to TradingView continuous contract symbols
                 tv_symbol_map = {
-                    "MCL": "MCL1!", "MNQ": "MNQ1!", "MES": "MES1!", "MGC": "MGC1!",
-                    "CL": "CL1!", "NQ": "NQ1!", "ES": "ES1!", "GC": "GC1!",
+                    "MCL": "MCL1!",
+                    "MNQ": "MNQ1!",
+                    "MES": "MES1!",
+                    "MGC": "MGC1!",
+                    "CL": "CL1!",
+                    "NQ": "NQ1!",
+                    "ES": "ES1!",
+                    "GC": "GC1!",
                 }
                 tv_symbol = tv_symbol_map.get(symbol.upper(), symbol)
                 quote = _tv_feed.get_quote(tv_symbol)
@@ -846,7 +946,19 @@ class MarketDataManager:
             except Exception as _tv_err:
                 logger.debug(f"TradingView Tier 2.5 failed for {symbol}: {_tv_err}")
 
-        # Tier 3: Polygon — SKIPPED for futures (returns wrong asset on free plan).
+        # Tier 3: Polygon Stream Cache (Fastest Tier 2 fallback)
+        if self.polygon_streamer and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
+            stream_bar = self.polygon_streamer.get_latest_bar(symbol.upper())
+            if stream_bar and stream_bar.get("close"):
+                logger.info(f"Polygon Stream Tier 3 price for {symbol}: {stream_bar['close']}")
+                return {
+                    "last_price": float(stream_bar["close"]),
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "polygon_stream",
+                }
+
+        # Tier 4: Polygon REST — SKIPPED for futures (returns wrong asset on free plan).
         # See POLYGON_FUTURES_BLOCKLIST. Stocks/ETFs still flow through.
         if self.polygon and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
             polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
@@ -859,7 +971,7 @@ class MarketDataManager:
                 f"(futures — see incident 2026-04-16)"
             )
 
-        # Tier 4: CSV cache last close
+        # Tier 5: CSV cache last close
         df = self._load_csv_cache(symbol, "1d", 2)
         if not df.empty and "close" in df.columns:
             last_close = float(df.iloc[-1]["close"])
@@ -886,6 +998,26 @@ class MarketDataManager:
         """
         is_futures = is_futures or symbol.upper() in FUTURES_MAP
 
+        # Tier 0: Redis Real-Time Fabric (Phase 2.1)
+        try:
+            import json
+            import redis
+            r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+            # Try symbol as-is and uppercase
+            for sym_key in [symbol, symbol.upper()]:
+                val = r.get(f"market:latest:{sym_key}")
+                if val:
+                    data = json.loads(val)
+                    if data.get("close"):
+                        return {
+                            "last_price": float(data["close"]),
+                            "prev_close": float(data.get("open", 0.0)),
+                            "change_pct": None,
+                            "source": "redis_fabric",
+                        }
+        except Exception as _redis_err:
+            logger.debug(f"[get_tick_price] Redis fetch failed for {symbol}: {_redis_err}")
+
         # Tier 1: IBKR snapshot (real-time L1, sub-100ms typical)
         if self.ibkr and self.ibkr.is_connected:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
@@ -911,14 +1043,25 @@ class MarketDataManager:
             except Exception as _schwab_err:
                 logger.debug(f"[get_tick_price] Schwab failed for {symbol}: {_schwab_err}")
 
-        # Tier 3: Polygon (stocks/ETFs only — futures blocklisted)
+        # Tier 3: Polygon Stream Cache
+        if self.polygon_streamer and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
+            stream_bar = self.polygon_streamer.get_latest_bar(symbol.upper())
+            if stream_bar and stream_bar.get("close"):
+                return {
+                    "last_price": float(stream_bar["close"]),
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "polygon_stream",
+                }
+
+        # Tier 4: Polygon REST (stocks/ETFs only — futures blocklisted)
         if self.polygon and symbol.upper() not in POLYGON_FUTURES_BLOCKLIST:
             polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
             result = self.polygon.get_last_price(polygon_symbol)
             if result.get("last_price"):
                 return result
 
-        # Tier 4: CSV cache last close
+        # Tier 5: CSV cache last close
         df = self._load_csv_cache(symbol, "1d", 2)
         if not df.empty and "close" in df.columns:
             last_close = float(df.iloc[-1]["close"])
@@ -932,11 +1075,31 @@ class MarketDataManager:
         return {"last_price": None, "prev_close": None, "change_pct": None, "source": "unavailable"}
 
     async def get_batch_prices(self, symbols: list) -> dict:
-        """Get current prices for multiple symbols. Returns {symbol: price_dict}."""
-        results = {}
-        for symbol in symbols:
-            results[symbol] = await self.get_current_price(symbol)
-        return results
+        """
+        Get current prices for multiple symbols in parallel.
+        Uses get_tick_price to avoid TradingView high-latency chart switching.
+        """
+        if not symbols:
+            return {}
+
+        results = await asyncio.gather(
+            *[self.get_tick_price(s) for s in symbols], return_exceptions=True
+        )
+
+        batch = {}
+        for symbol, result in zip(symbols, results, strict=True):
+            if isinstance(result, Exception):
+                logger.warning(f"[market_data] Batch price failed for {symbol}: {result}")
+                batch[symbol] = {
+                    "last_price": None,
+                    "prev_close": None,
+                    "change_pct": None,
+                    "source": "error",
+                }
+            else:
+                batch[symbol] = result
+
+        return batch
 
     async def get_vix(self) -> dict:
         """
@@ -967,6 +1130,17 @@ class MarketDataManager:
                 return result
 
         return {"value": None, "source": "unavailable"}
+
+    async def get_options_greeks(self, symbol: str) -> dict:
+        """
+        Get real-time Greeks for an option.
+        Waterfall: IBKR → (Polygon unimplemented).
+        """
+        # Tier 1: IBKR
+        if self.ibkr and self.ibkr.is_connected:
+            return await self.ibkr.get_options_greeks(symbol)
+
+        return {"error": "Options Greeks data source unavailable"}
 
     async def get_options_expirations(self, symbol: str) -> list:
         """
@@ -1005,7 +1179,9 @@ class MarketDataManager:
             if "timestamp" in df.columns:
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
                 df = df.sort_values("timestamp")
-            bars_per_day = {"1m": 390, "5m": 78, "15m": 26, "1h": 24, "4h": 6, "1d": 1}.get(timeframe, 24)
+            bars_per_day = {"1m": 390, "5m": 78, "15m": 26, "1h": 24, "4h": 6, "1d": 1}.get(
+                timeframe, 24
+            )
             df = df.tail(lookback_days * bars_per_day).copy()
             if not df.empty:
                 logger.warning(f"[{symbol}] Using CSV cache: {matches[-1].name} ({len(df)} bars)")

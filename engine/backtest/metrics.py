@@ -24,7 +24,6 @@ import numpy as np
 
 from backtest.trade_manager import BacktestResult, Trade
 
-
 # Annualization factor for Sharpe/Sortino when computed over per-trade returns.
 # Approximates a full-time futures strategy taking ~1 trade per trading day. Using this
 # fixed factor keeps Sharpe comparable across intervals (1h, 1d, 15m) — the alternative

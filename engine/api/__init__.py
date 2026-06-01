@@ -21,6 +21,8 @@ from .models import (
     # IB Gateway
     IBConnectionTestResponse,
     IBConnectResponse,
+    JarvisQuickAnalysisRequest,
+    JarvisQuickAnalysisResponse,
     KillSwitchToggleResponse,
     NewsSentimentResponse,
     OrderActionEnum,
@@ -49,8 +51,6 @@ from .models import (
     StatusEnum,
     # Analysis
     TechnicalAnalysisResponse,
-    JarvisQuickAnalysisRequest,
-    JarvisQuickAnalysisResponse,
     # Historical
     TradeHistoryResponse,
     # WebSocket

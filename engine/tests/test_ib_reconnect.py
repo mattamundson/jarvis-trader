@@ -219,8 +219,8 @@ class TestHeartbeatMonitoring:
     """Heartbeat monitoring and disconnection detection."""
 
     @pytest.mark.asyncio
-    async def test_heartbeat_interval_60_seconds(self, settings_paper, safety_layer_mock):
-        """Heartbeat checks connection every 60 seconds."""
+    async def test_heartbeat_interval_5_seconds(self, settings_paper, safety_layer_mock):
+        """Heartbeat checks connection every 5 seconds (paired with 15s deadman-switch threshold)."""
         from execution.ib_gateway_connector import IBGatewayConnector
 
         connector = IBGatewayConnector(settings_paper, safety_layer_mock)
@@ -234,7 +234,7 @@ class TestHeartbeatMonitoring:
             except asyncio.CancelledError:
                 pass
 
-            mock_sleep.assert_called_once_with(60)
+            mock_sleep.assert_called_once_with(5)
 
         await connector.disconnect()
 

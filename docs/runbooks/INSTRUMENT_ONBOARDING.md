@@ -12,3 +12,63 @@
 ## Do not skip
 
 - MES-class WFE failures (below gate) must remain **DO NOT TRADE** until re-validated.
+
+---
+
+## Validation-only instruments (MES, MGC)
+
+Some instruments are included in `FUTURES_WATCHLIST` for pipeline signal generation and
+dashboard visibility, but are blocked from generating paper orders. This is the
+**validation-only** state, codified as `VALIDATION_ONLY_INSTRUMENTS` in
+`engine/agents/pipeline.py`.
+
+### Current validation-only instruments (as of 2026-05-21)
+
+| Symbol | WFE | Reason | Added |
+|--------|-----|--------|-------|
+| MES | 0.09 | REJECTED 2026-04-02; Tier 3 paper walk-forward authorized 2026-04-09 | Wave 3 |
+| MGC | 0.14 | HALTED; pipeline-only for trend-signal validation | Wave 3 |
+
+### Lifecycle
+
+```
+WATCHLIST + VALIDATION_ONLY
+    pipeline runs → verdict logged → dashboard/briefing updated
+    approval gate blocks paper orders (HTTP 409)
+         |
+         v  [WFE >= 0.6 + gate v2 PASS + Tier 3 auth]
+WATCHLIST + ORDER_ELIGIBLE
+    pipeline runs → verdict → human approval → paper order submitted
+```
+
+### Guard location
+
+The block is in `approval/service.py:ensure_approval_allowed()`. If a human-approval
+API call arrives for a validation-only symbol, it returns HTTP 409 with a message
+referencing `VALIDATION_ONLY_INSTRUMENTS` and the flip-to-active criteria.
+
+The guard fires **after** the kill-switch check and **after** the watchlist membership
+check, so the safety layer's canonical `DO_NOT_TRADE_SYMBOLS` always wins if there is
+ever an overlap (there should never be — `DO_NOT_TRADE_SYMBOLS` blocks signal generation
+entirely; `VALIDATION_ONLY_INSTRUMENTS` blocks order submission only).
+
+### Flip-to-active criteria
+
+Remove a symbol from `VALIDATION_ONLY_INSTRUMENTS` when ALL of the following are met:
+
+1. WFE >= 0.6 on a fresh rolling walk-forward run (use `engine/backtest/rolling_wfe_scheduler.py`)
+2. Gate v2 PASS: `pf_ci_lower >= 1.10`, `p_edge >= 0.95`, `mc_95th_dd <= 5%`, `dsr >= 0.10`
+3. Explicit Tier 3 authorization from Amo (document in a `[safety-review]` commit)
+
+After removal, re-run the test suite (`pytest engine/tests/test_validation_only_instruments.py`)
+to confirm the constant and approval gate reflect the updated state.
+
+### Interaction with autonomous scheduler
+
+When `ENABLE_AUTONOMOUS_PIPELINE=1` (env flag), validation-only instruments will still
+appear in the candidate generation loop and produce scored verdicts. However, because
+they cannot enter the approval queue (the queue only receives non-HOLD verdicts for
+order-eligible symbols), their candidates will never reach the approval queue. Verdict
+events still fire on the event bus (`pipeline_run` events), so the dashboard and
+Discord briefing see them. This is the intended behavior — validation-only instruments
+generate observable signal history without consuming approval queue capacity.

@@ -125,9 +125,7 @@ class ICWeightedEnsemble:
             return []
 
         signal_col = f"{agent_name}_signal"
-        cutoff_iso = (
-            datetime.now(timezone.utc) - timedelta(days=self.window_days)
-        ).isoformat()
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=self.window_days)).isoformat()
 
         try:
             with sqlite3.connect(str(self.db_path)) as conn:
@@ -255,7 +253,7 @@ class ICWeightedEnsemble:
         if total <= 0.0:
             # Equal-weight fallback — every agent gets 1/n.
             n = len(agent_list)
-            return {agent: 1.0 / n for agent in agent_list}
+            return dict.fromkeys(agent_list, 1.0 / n)
 
         return {agent: value / total for agent, value in positive.items()}
 
@@ -383,9 +381,7 @@ class BrierCalibrationTracker:
             return []
 
         signal_col = f"{agent_name}_signal"
-        cutoff_iso = (
-            datetime.now(timezone.utc) - timedelta(days=self.window_days)
-        ).isoformat()
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=self.window_days)).isoformat()
 
         try:
             with sqlite3.connect(str(self.db_path)) as conn:
@@ -456,12 +452,47 @@ class BrierCalibrationTracker:
         total = sum(inverse.values())
         if total <= 0.0:
             n = len(agent_list)
-            return {a: 1.0 / n for a in agent_list}
+            return dict.fromkeys(agent_list, 1.0 / n)
         return {a: v / total for a, v in inverse.items()}
 
     def get_brier_summary(self) -> Dict[str, float]:
         """Diagnostic — per-agent Brier across the window."""
         return {agent: self.compute_brier(agent) for agent in self.agents}
+
+    def compute_rolling_brier(
+        self,
+        agents: Optional[List[str]] = None,
+    ) -> Optional[float]:
+        """
+        Single-number Brier surface for /health.
+
+        Returns the **mean** Brier across all agents that have ≥ ``min_trades``
+        non-zero closed signals in the rolling window. Agents with insufficient
+        data (the BRIER_NEUTRAL sentinel) are excluded so a cold-start agent
+        does not anchor the system score at 0.25.
+
+        Returns ``None`` when no agent has enough data — this lets the
+        /health payload distinguish "no signal closures yet" from
+        "model is perfectly calibrated" (Brier=0.0).
+
+        Range: 0.0 (perfect) → 1.0 (always confidently wrong). Lower is better.
+        """
+        agent_list = list(agents) if agents else list(self.agents)
+        real_briers: List[float] = []
+        for agent in agent_list:
+            pairs = self._fetch_pairs(agent)
+            if len(pairs) < self.min_trades:
+                continue
+            total = 0.0
+            for signal, pnl in pairs:
+                confidence = min(1.0, abs(signal))
+                correct = 1.0 if (signal > 0) == (pnl > 0) else 0.0
+                total += (confidence - correct) ** 2
+            real_briers.append(total / len(pairs))
+
+        if not real_briers:
+            return None
+        return sum(real_briers) / len(real_briers)
 
     def describe(self) -> Dict[str, object]:
         """Full snapshot for logging / dashboard."""

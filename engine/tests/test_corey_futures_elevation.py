@@ -20,7 +20,6 @@ from agents.debate import (  # noqa: E402
     _apply_corey_futures_elevation,
 )
 
-
 # ── Basic contract assertions ────────────────────────────────────────────────
 
 

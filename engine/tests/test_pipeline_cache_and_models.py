@@ -19,7 +19,6 @@ from fastapi.testclient import TestClient
 
 from routers import pipeline_router as pr_mod
 
-
 # ---------------------------------------------------------------------------
 # Minimal FastAPI app wrapping the pipeline router
 # ---------------------------------------------------------------------------
@@ -106,7 +105,8 @@ def test_invalidate_all_false_when_redis_unavailable(pipeline_client: TestClient
 @pytest.mark.asyncio
 async def test_cache_signal_then_invalidate_removes_entry():
     """After cache_signal(), invalidate_signal() returns True and clears the key."""
-    from cache import signal_cache, redis_client as rc
+    from cache import redis_client as rc
+    from cache import signal_cache
 
     # Reset the in-memory fallback for a clean slate
     rc._fallback_cache.clear()
@@ -134,7 +134,8 @@ async def test_cache_signal_then_invalidate_removes_entry():
 @pytest.mark.asyncio
 async def test_invalidate_signal_nonexistent_key_returns_false():
     """invalidate_signal() on a key that doesn't exist returns False."""
-    from cache import signal_cache, redis_client as rc
+    from cache import redis_client as rc
+    from cache import signal_cache
 
     rc._fallback_cache.clear()
 
@@ -145,7 +146,8 @@ async def test_invalidate_signal_nonexistent_key_returns_false():
 @pytest.mark.asyncio
 async def test_get_cached_signal_returns_none_when_empty():
     """get_cached_signal() returns None when cache is empty."""
-    from cache import signal_cache, redis_client as rc
+    from cache import redis_client as rc
+    from cache import signal_cache
 
     rc._fallback_cache.clear()
 

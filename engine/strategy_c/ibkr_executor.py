@@ -15,10 +15,10 @@ Architecture:
 Usage:
     # Check current signal only (no orders):
     python -m engine.strategy_c.ibkr_executor --check-only
-    
+
     # Generate orders (requires human approval):
     python -m engine.strategy_c.ibkr_executor --submit
-    
+
     # Paper execute (no IBKR needed, logs to paper_trades.db):
     python -m engine.strategy_c.ibkr_executor --paper
 
@@ -30,7 +30,6 @@ import argparse
 import json
 import logging
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -65,7 +64,7 @@ EXECUTION_LOG = Path(__file__).parent / "output" / "execution_log.json"
 class StrategyCExecutor:
     """
     IBKR execution manager for Strategy C+ weekly rebalancing.
-    
+
     All orders are submitted through the jarvis-trader engine API,
     which enforces the safety layer and human approval gate.
     """
@@ -147,19 +146,19 @@ class StrategyCExecutor:
     ) -> list[dict]:
         """
         Convert Strategy C+ signal into IBKR rebalance orders.
-        
+
         For each holding:
           - Compute target dollar amount = account_value × weight
           - Look up current price to compute shares
           - Generate BUY/SELL orders to reach target weights
-          
+
         Parameters
         ----------
         signal : dict
             Live signal from StrategyCEngine.get_live_signal()
         account_value_usd : float
             Total account value for position sizing
-            
+
         Returns
         -------
         list[dict] : List of order dicts in jarvis-trader order format
@@ -215,10 +214,10 @@ class StrategyCExecutor:
     def submit_for_approval(self, orders: list[dict]) -> dict:
         """
         Submit orders to the jarvis-trader approval queue.
-        
+
         Orders are NOT executed until a human approves via the dashboard
         (http://localhost:3010) or the /v1/approvals/approve endpoint.
-        
+
         This is the REQUIRE_HUMAN_APPROVAL safety invariant.
         """
         if not orders:
@@ -366,7 +365,7 @@ class StrategyCExecutor:
 def _print_signal_summary(signal: dict) -> None:
     """Print a compact signal summary to console."""
     print("\n" + "=" * 55)
-    print(f"  STRATEGY C+  WEEKLY SIGNAL")
+    print("  STRATEGY C+  WEEKLY SIGNAL")
     print(f"  {signal.get('generated_at', 'unknown')}")
     print("=" * 55)
     layers = signal.get("layers", {})
@@ -377,7 +376,7 @@ def _print_signal_summary(signal: dict) -> None:
     print(f"  Combined Scale:{signal.get('combined_scale', 0):.3f}")
     print(f"  Vol Scale:     {vol.get('scale', 0):.3f}  (realized {vol.get('realized_vol_pct', 0):.1f}%)")
     print(f"  VIX:           {vix.get('vix', 0):.1f}  ({vix.get('vix_regime', '?')})  score={vix.get('composite_score', 0):.3f}")
-    print(f"\n  Holdings:")
+    print("\n  Holdings:")
     for tk, wt in sorted(signal.get("holdings", {}).items(), key=lambda x: -x[1]):
         bar = "█" * max(1, int(wt * 25))
         print(f"    {tk:<6} {wt:.1%}  {bar}")

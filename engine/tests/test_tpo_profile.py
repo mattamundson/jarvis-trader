@@ -10,7 +10,6 @@ import pytest
 
 from backtest.tpo_profile import compute_tpo_profile
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _make_df(dates_prices: list[tuple], tz: str = "America/Chicago") -> pd.DataFrame:

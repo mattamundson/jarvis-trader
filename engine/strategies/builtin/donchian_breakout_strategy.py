@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Tuple
 
-import numpy as np
 import pandas as pd
 
 from strategies.base_strategy import BaseStrategy
@@ -59,11 +58,11 @@ class DonchianBreakoutStrategy(BaseStrategy):
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """Generate Donchian breakout signals with 5-gate confirmation."""
         from backtest.indicators import (
+            atr_regime,
             donchian_channels,
             ema_slope,
-            atr_regime,
-            volume_regime,
             rsi,
+            volume_regime,
             wilder_atr,
         )
 

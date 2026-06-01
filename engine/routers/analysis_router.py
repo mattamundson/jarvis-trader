@@ -15,7 +15,8 @@ from api.models import (
     RedditSentimentResponse,
     TechnicalAnalysisResponse,
 )
-from backtest.indicators import compute_vwap, stc as compute_stc
+from backtest.indicators import compute_vwap
+from backtest.indicators import stc as compute_stc
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +90,16 @@ async def get_bars(
     interval: str | None = None,
     days: int = 7,
     futures: bool = False,
+    limit: int = 200,
 ):
     """Get OHLCV bars for a symbol, including VWAP and STC per bar.
 
     `interval` is accepted as an alias for `timeframe` (matches pandas/ohlcv convention).
     Precedence: explicit `timeframe` > `interval` > default `5m`.
+
+    `limit` caps how many trailing bars are returned (default 200). Callers that
+    need a long SMA warmup (e.g. the paper runner's SMA-200 crossover, which needs
+    >200 1h bars) request more; clamped to 1000 to bound payload size.
     """
     if not data_manager:
         raise HTTPException(503, "Data manager not initialized")
@@ -109,34 +115,34 @@ async def get_bars(
 
         # Compute VWAP (session-reset daily)
         try:
-            df['vwap'] = compute_vwap(df, session_reset=True)
+            df["vwap"] = compute_vwap(df, session_reset=True)
         except Exception as vwap_err:
             logger.warning(f"[ANALYSIS] VWAP computation failed for {symbol}: {vwap_err}")
-            df['vwap'] = float('nan')
+            df["vwap"] = float("nan")
 
         # Compute STC oscillator (STC 23/50/10/3 matching strategy config)
         try:
-            df['stc'] = compute_stc(df['close'], fast=23, slow=50, k_period=10, d_period=3)
+            df["stc"] = compute_stc(df["close"], fast=23, slow=50, k_period=10, d_period=3)
         except Exception as stc_err:
             logger.warning(f"[ANALYSIS] STC computation failed for {symbol}: {stc_err}")
-            df['stc'] = float('nan')
+            df["stc"] = float("nan")
 
         # Compute EMA ribbon (8/21/34) for chart overlay — exponential moving averages
         try:
-            df['ema_8'] = df['close'].ewm(span=8, adjust=False).mean()
-            df['ema_21'] = df['close'].ewm(span=21, adjust=False).mean()
-            df['ema_34'] = df['close'].ewm(span=34, adjust=False).mean()
+            df["ema_8"] = df["close"].ewm(span=8, adjust=False).mean()
+            df["ema_21"] = df["close"].ewm(span=21, adjust=False).mean()
+            df["ema_34"] = df["close"].ewm(span=34, adjust=False).mean()
         except Exception as ema_err:
             logger.warning(f"[ANALYSIS] EMA computation failed for {symbol}: {ema_err}")
-            df['ema_8'] = float('nan')
-            df['ema_21'] = float('nan')
-            df['ema_34'] = float('nan')
+            df["ema_8"] = float("nan")
+            df["ema_21"] = float("nan")
+            df["ema_34"] = float("nan")
 
-        # Tail 200 bars and build response, replacing NaN with None for JSON safety
-        tail_df = df.tail(200)
+        # Tail `limit` bars (clamped) and build response, NaN -> None for JSON safety
+        tail_df = df.tail(max(1, min(limit, 1000)))
         bars_records = tail_df.to_dict(orient="records")
         for bar in bars_records:
-            for key in ('vwap', 'stc', 'ema_8', 'ema_21', 'ema_34'):
+            for key in ("vwap", "stc", "ema_8", "ema_21", "ema_34"):
                 val = bar.get(key)
                 if val is not None and (isinstance(val, float) and (val != val)):  # nan check
                     bar[key] = None
@@ -144,8 +150,12 @@ async def get_bars(
                     bar[key] = None
 
         # Compute summary fields from last bar
-        last_close = float(tail_df['close'].iloc[-1]) if len(tail_df) else None
-        last_vwap = float(tail_df['vwap'].iloc[-1]) if len(tail_df) and not tail_df['vwap'].isna().iloc[-1] else None
+        last_close = float(tail_df["close"].iloc[-1]) if len(tail_df) else None
+        last_vwap = (
+            float(tail_df["vwap"].iloc[-1])
+            if len(tail_df) and not tail_df["vwap"].isna().iloc[-1]
+            else None
+        )
 
         return {
             "symbol": symbol,
@@ -154,9 +164,13 @@ async def get_bars(
             "count": len(df),
             "vwap_current": last_vwap,
             "vwap_trend": (
-                "above" if last_close is not None and last_vwap is not None and last_close > last_vwap
-                else "below" if last_close is not None and last_vwap is not None and last_close < last_vwap
-                else None
+                "above"
+                if last_close is not None and last_vwap is not None and last_close > last_vwap
+                else (
+                    "below"
+                    if last_close is not None and last_vwap is not None and last_close < last_vwap
+                    else None
+                )
             ),
         }
     except HTTPException:

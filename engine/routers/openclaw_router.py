@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -54,11 +54,26 @@ def _normalise_sender(raw: str) -> str:
 
 
 def _send_reply(message: str) -> None:
-    """Send confirmation WhatsApp reply — fire-and-forget, never raises."""
+    """Send confirmation WhatsApp reply — fire-and-forget, never raises.
+
+    send_whatsapp_message is async; we schedule it as a task on the
+    running event loop and never await the result. Bug history: prior to
+    2026-05-07 the call was `send_whatsapp_message(message)` which
+    silently dropped the unawaited coroutine — every webhook reply
+    quietly failed (mypy: unused-coroutine).
+    """
+    import asyncio
+
     try:
         from notifications.openclaw_notifier import send_whatsapp_message
 
-        send_whatsapp_message(message)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # Not inside an async context — fall back to a synchronous run
+            asyncio.run(send_whatsapp_message(message))
+        else:
+            loop.create_task(send_whatsapp_message(message))
     except Exception as exc:
         logger.debug("[OPENCLAW] Reply send skipped: %s", exc)
 

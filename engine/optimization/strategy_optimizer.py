@@ -23,15 +23,15 @@ CLI usage:
     python -m engine.optimization.strategy_optimizer --symbol MES --iterations 20
 """
 
-import json
-import sys
-import random
-import logging
 import argparse
+import json
+import logging
+import random
+import sys
 from copy import deepcopy
-from pathlib import Path
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List, Tuple
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 # Allow running as a script (`python optimization/strategy_optimizer.py`)
 # in addition to module form (`python -m engine.optimization.strategy_optimizer`).
@@ -364,7 +364,7 @@ class StrategyOptimizer:
         logger.info("Starting optimization loop: symbol=%s, interval=%s, max_iter=%d",
                     self.symbol, self.interval, max_iterations)
 
-        for i in range(max_iterations):
+        for _i in range(max_iterations):
             result = self.run_one_iteration()
 
             if result["status"] == "CRASH":

@@ -1,5 +1,6 @@
 """Monitoring and observability for JARVIS TRADER."""
 
+from . import predictive_maintenance  # noqa: F401 — ensure submodule importable
 from .metrics import (
     record_llm_call,
     record_llm_cost,

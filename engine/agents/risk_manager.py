@@ -124,16 +124,23 @@ class RiskManagerAgent:
     # Resolved at runtime based on LIVE_TRADING_ENABLED
     SYSTEM_PROMPT = SYSTEM_PROMPT_PAPER  # default; overridden in __init__
 
-    def __init__(self, llm_client):
+    def __init__(self, llm_client, db_manager=None):
         """
         Args:
             llm_client: Object with .api_key attribute (Anthropic key).
+            db_manager: Optional DatabaseManager.
         """
         self._llm = llm_client
+        self._db = db_manager
         self.is_paper_mode = not settings.LIVE_TRADING_ENABLED
         self.SYSTEM_PROMPT = (
             self.SYSTEM_PROMPT_PAPER if self.is_paper_mode else self.SYSTEM_PROMPT_LIVE
         )
+
+        # Phase 8.3: Cross-Asset Hedger
+        from risk.hedger import PortfolioHedger
+
+        self._hedger = PortfolioHedger(db_manager)
 
     async def review(
         self,
@@ -156,7 +163,9 @@ class RiskManagerAgent:
         """
         # ── Layer 1: Hard Rules (Python, no LLM) ──────────────────────────
 
-        veto, hard_checks_detail = self._hard_rules_check(trade_decision, safety_status, portfolio)
+        veto, hard_checks_detail, modified_quantity = self._hard_rules_check(
+            trade_decision, safety_status, portfolio
+        )
         if veto is not None:
             logger.warning(f"[RiskManager] Hard veto for {trade_decision.get('symbol')}: {veto}")
             return RiskDecision(
@@ -190,7 +199,9 @@ class RiskManagerAgent:
                 trade_decision.get("symbol"),
                 vix_reason,
             )
-            vix_detail = hard_checks_detail + [{"check": "vix_limit", "passed": False, "detail": vix_reason}]
+            vix_detail = hard_checks_detail + [
+                {"check": "vix_limit", "passed": False, "detail": vix_reason}
+            ]
             return RiskDecision(
                 approved=False,
                 veto_reason=vix_reason,
@@ -202,11 +213,25 @@ class RiskManagerAgent:
             )
 
         # VIX passed — record it in the audit trail
-        hard_checks_detail.append({"check": "vix_limit", "passed": True, "detail": "VIX within normal range"})
+        hard_checks_detail.append(
+            {"check": "vix_limit", "passed": True, "detail": "VIX within normal range"}
+        )
 
         # ── Layer 2: Soft Rules (LLM reasoning) ───────────────────────────
 
-        return await self._llm_review(trade_decision, safety_status, portfolio, hard_checks_detail)
+        # Phase 8.3: Apply scaled quantity from correlation check
+        if modified_quantity < trade_decision.get("quantity", 0):
+            logger.info(
+                "[RiskManager] Applying scaled quantity: %d -> %d",
+                trade_decision.get("quantity"),
+                modified_quantity,
+            )
+            trade_decision["quantity"] = modified_quantity
+            trade_decision["modified_by_risk"] = True
+
+        return await self._llm_review(
+            trade_decision, safety_status, portfolio, hard_checks_detail
+        )
 
     # ── VIX Risk Check ────────────────────────────────────────────────────
 
@@ -245,9 +270,9 @@ class RiskManagerAgent:
         trade: dict,
         safety: dict,
         portfolio: dict,
-    ) -> tuple[Optional[str], list]:
+    ) -> tuple[Optional[str], list, int]:
         """
-        Returns (veto_reason, checks_detail).
+        Returns (veto_reason, checks_detail, modified_quantity).
 
         veto_reason: non-None string if any hard rule is violated, else None.
         checks_detail: list of dicts — {check, passed, detail} for each check run.
@@ -258,9 +283,9 @@ class RiskManagerAgent:
         def _pass(check: str, detail: str = "") -> None:
             checks.append({"check": check, "passed": True, "detail": detail})
 
-        def _fail(check: str, detail: str) -> tuple[str, list]:
+        def _fail(check: str, detail: str) -> tuple[str, list, int]:
             checks.append({"check": check, "passed": False, "detail": detail})
-            return detail, checks
+            return detail, checks, 0
 
         # 1. Kill switch
         if safety.get("kill_switch_active", False):
@@ -270,7 +295,7 @@ class RiskManagerAgent:
 
         action = trade.get("action", "hold")
         if action == "hold":
-            return None, checks  # Hold always passes hard rules
+            return None, checks, 0  # Hold always passes hard rules
 
         # 2. Daily loss limit — compare daily_pnl against max_daily_loss config
         daily_pnl = safety.get("daily_pnl", 0.0)
@@ -325,7 +350,24 @@ class RiskManagerAgent:
                     f"Estimated order value ${estimated_value:,.2f} exceeds "
                     f"max single order value ${max_order_value:,.2f}",
                 )
-            _pass("order_value_limit", f"Estimated value ${estimated_value:,.2f} within ${max_order_value:,.2f}")
+            _pass(
+                "order_value_limit", f"Estimated value ${estimated_value:,.2f} within ${max_order_value:,.2f}"
+            )
+
+        # 4b. Dynamic Beta Correlation Scaling (Phase 8.3)
+        scaled_qty = quantity
+        try:
+            corr_factor = self._hedger.get_correlation_scaling_factor(trade.get("symbol"), portfolio)
+            if corr_factor < 1.0:
+                scaled_qty = max(1, int(quantity * corr_factor))
+                _pass(
+                    "correlation_scaling",
+                    f"Beta-correlation high; scaled quantity {quantity} -> {scaled_qty} (factor: {corr_factor:.1f})",
+                )
+            else:
+                _pass("correlation_scaling", "No correlation scaling required")
+        except Exception as _corr_err:
+            logger.debug(f"[RiskManager] Correlation scaling failed: {_corr_err}")
 
         # 5. Correlation / directional-exposure check
         if _CORRELATION_MONITOR_AVAILABLE:
@@ -349,14 +391,16 @@ class RiskManagerAgent:
                         f"({monitor.total_net_exposure_pct():.1%} of capital, "
                         f"limit {monitor.max_directional_pct:.0%})",
                     )
-                _pass("correlation_exposure", f"Net exposure within limit ({monitor.max_directional_pct:.0%})")
+                _pass(
+                    "correlation_exposure", f"Net exposure within limit ({monitor.max_directional_pct:.0%})"
+                )
             except Exception as _cm_err:
                 logger.warning("[RiskManager] CorrelationMonitor check failed (non-fatal): %s", _cm_err)
                 _pass("correlation_exposure", f"Check skipped (non-fatal): {_cm_err}")
         else:
             _pass("correlation_exposure", "CorrelationMonitor not available — skipped")
 
-        return None, checks  # All hard rules passed
+        return None, checks, scaled_qty  # All hard rules passed
 
     # ── LLM Soft Review ───────────────────────────────────────────────────
 

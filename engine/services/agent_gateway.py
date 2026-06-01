@@ -85,6 +85,9 @@ class OllamaBackendConfig:
     backend: str
     model: str
     base_url: str
+    timeout_seconds: float = 60.0
+    num_ctx: int = 4096
+    max_history_messages: int = 4
 
 
 @dataclass(slots=True)
@@ -302,14 +305,26 @@ class OllamaAgentAdapter(BaseAgentAdapter):
             base_url=self.primary.base_url,
         )
 
-    async def _send_ollama(self, history: list[dict], message: str) -> tuple[str, int]:
+    async def _send_ollama(
+        self,
+        history: list[dict],
+        message: str,
+        *,
+        model: str | None = None,
+        timeout_seconds: float | None = None,
+        num_ctx: int | None = None,
+    ) -> tuple[str, int]:
         payload = {
-            "model": self.primary.model,
+            "model": model or self.primary.model,
             "messages": history + [{"role": "user", "content": message}],
             "stream": False,
+            "options": {
+                "num_ctx": num_ctx or self.primary.num_ctx,
+                "num_predict": 384,
+            },
         }
         start = time.perf_counter()
-        async with httpx.AsyncClient(timeout=180.0) as client:
+        async with httpx.AsyncClient(timeout=timeout_seconds or self.primary.timeout_seconds) as client:
             response = await client.post(f"{self.primary.base_url.rstrip('/')}/api/chat", json=payload)
             response.raise_for_status()
             data = response.json()
@@ -341,9 +356,52 @@ class OllamaAgentAdapter(BaseAgentAdapter):
         content = data["choices"][0]["message"]["content"]
         return str(content).strip(), latency_ms
 
+    async def send_with_model(
+        self,
+        history: list[dict],
+        message: str,
+        session_id: str,
+        *,
+        model: str,
+        backend: str,
+        timeout_seconds: float,
+        num_ctx: int,
+    ) -> AdapterResponse:
+        try:
+            reply_text, latency_ms = await self._send_ollama(
+                history[-self.primary.max_history_messages :],
+                message,
+                model=model,
+                timeout_seconds=timeout_seconds,
+                num_ctx=num_ctx,
+            )
+            return AdapterResponse(
+                agent=self.agent_name,
+                backend=backend,
+                model=model,
+                session_id=session_id,
+                reply_text=reply_text,
+                latency_ms=latency_ms,
+                health_state="ok",
+            )
+        except Exception as exc:
+            return AdapterResponse(
+                agent=self.agent_name,
+                backend=backend,
+                model=model,
+                session_id=session_id,
+                reply_text=f"{self.agent_name} {backend} backend unavailable: {exc}",
+                latency_ms=0,
+                health_state="error",
+                error=str(exc),
+            )
+
     async def send(self, history: list[dict], message: str, session_id: str) -> AdapterResponse:
         try:
-            reply_text, latency_ms = await self._send_ollama(history, message)
+            reply_text, latency_ms = await self._send_ollama(
+                history[-self.primary.max_history_messages :],
+                message,
+            )
             return AdapterResponse(
                 agent=self.agent_name,
                 backend=self.primary.backend,
@@ -443,7 +501,10 @@ class SharedAgentGateway:
                 backend="gateway",
                 model="n/a",
                 session_id="empty",
-                reply_text="Send a message or use /status, /model, /openclaw, /hermes, /both, /agent, or /reset.",
+                reply_text=(
+                    "Send a message or use /status, /fast, /deep, /code, "
+                    "/model, /openclaw, /hermes, /both, /agent, or /reset."
+                ),
                 latency_ms=0,
                 health_state="ok",
             )
@@ -458,6 +519,36 @@ class SharedAgentGateway:
             return await self._status_response(inbound, active_agent)
         if lower.startswith("/model"):
             return await self._model_response(inbound, active_agent, text)
+        if lower.startswith("/fast"):
+            return await self._dispatch_profile(
+                inbound,
+                active_agent,
+                text[len("/fast") :].strip(),
+                profile="fast",
+                model="llama3.2:3b",
+                timeout_seconds=45.0,
+                num_ctx=4096,
+            )
+        if lower.startswith("/deep"):
+            return await self._dispatch_profile(
+                inbound,
+                active_agent,
+                text[len("/deep") :].strip(),
+                profile="deep",
+                model="qwen2.5:7b",
+                timeout_seconds=180.0,
+                num_ctx=8192,
+            )
+        if lower.startswith("/code"):
+            return await self._dispatch_profile(
+                inbound,
+                active_agent,
+                text[len("/code") :].strip(),
+                profile="code",
+                model="qwen2.5-coder:7b",
+                timeout_seconds=180.0,
+                num_ctx=8192,
+            )
         if lower.startswith("/reset"):
             session_id = self.store.reset_session(inbound.channel, inbound.user_id, active_agent)
             return AdapterResponse(
@@ -520,6 +611,55 @@ class SharedAgentGateway:
         self.store.append_assistant_message(inbound.channel, inbound.user_id, target_agent, reply.reply_text)
         return reply
 
+    async def _dispatch_profile(
+        self,
+        inbound: InboundMessage,
+        active_agent: AgentName,
+        message_text: str,
+        *,
+        profile: str,
+        model: str,
+        timeout_seconds: float,
+        num_ctx: int,
+    ) -> AdapterResponse:
+        if not message_text:
+            return AdapterResponse(
+                agent=active_agent,
+                backend="gateway",
+                model="n/a",
+                session_id=f"{inbound.channel}:{inbound.user_id}:{active_agent}",
+                reply_text=f"Send a prompt after /{profile}.",
+                latency_ms=0,
+                health_state="ok",
+            )
+
+        session_id = self.store.append_user_message(
+            inbound.channel, inbound.user_id, active_agent, message_text
+        )
+        history = self.store.get_history(
+            inbound.channel,
+            inbound.user_id,
+            active_agent,
+            limit=min(self.config.max_history_messages, 4),
+        )
+        adapter = self.adapters[active_agent]
+        if hasattr(adapter, "send_with_model"):
+            reply = await adapter.send_with_model(  # type: ignore[attr-defined]
+                history[:-1],
+                message_text,
+                session_id,
+                model=model,
+                backend=f"ollama-{profile}",
+                timeout_seconds=timeout_seconds,
+                num_ctx=num_ctx,
+            )
+        else:
+            reply = await adapter.send(history[:-1], message_text, session_id)
+        self.store.append_assistant_message(
+            inbound.channel, inbound.user_id, active_agent, reply.reply_text
+        )
+        return reply
+
     async def _dispatch_both(self, inbound: InboundMessage, message_text: str) -> AdapterResponse:
         """Fan out one prompt to BOTH adapters in parallel, merge replies.
 
@@ -567,7 +707,7 @@ class SharedAgentGateway:
 
         sections: list[str] = []
         any_error = False
-        for agent, result in zip(agents, results):
+        for agent, result in zip(agents, results, strict=False):
             header = f"**{agent.capitalize()}:**"
             if isinstance(result, BaseException):
                 any_error = True
@@ -641,7 +781,8 @@ class SharedAgentGateway:
                 f"backend={health.backend}\n"
                 f"model={health.model}\n"
                 f"state={health.state}\n"
-                f"\nCommands: /model list | /model set <name>"
+                f"\nCommands: /fast <prompt> | /deep <prompt> | /code <prompt> | "
+                f"/model list | /model set <name>"
             )
 
         return AdapterResponse(

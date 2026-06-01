@@ -1,0 +1,62 @@
+# _ROADMAP_DONE.txt — supplemental done overrides for gen_roadmap.py
+#
+# Lists task IDs verified done via file inspection (not via git commit message).
+# Format: one task ID per line. Comments start with #.
+# Generator: engine/backtest/gen_roadmap.py reads this alongside git log.
+#
+# Verification source for each entry is in the prior triage session
+# (commit c96143b "chore(roadmap): triage 29 completed tasks into Done section")
+# and subsequent work in this session.
+
+# ── Previously verified via file/task inspection (c96143b triage) ─────────────
+P1-5    # TV CDP watchdog script (Jarvis-TVCDP-Watch-30min task verified Ready)
+P1-7    # Tests for 3 unawaited coroutine fixes (test_unawaited_coroutine_fixes.py)
+P1-8    # test_calibration_full_warmup_sets_ready_flag passing (62s, 1 passed)
+P1-10   # Jarvis-LiveReadiness-Daily task verified Ready (first run successful)
+P1-14   # Cache filename contract test (tests/test_cache_filename_contract.py — 41 tests)
+P2-1    # Cache-selector centralized: 35/37 runners use _find_latest_cache; 2 exceptions
+P2-4    # Dashboard /health widget (EngineHealthWidget.tsx — TV MCP, LLM, IBKR dots)
+P2-5    # Property-based verdict drift tests (89bbc6a — 16 Hypothesis tests)
+P2-7    # Live readiness 7-criteria smoke tests (test_live_readiness.py — 36 tests)
+P2-19   # Parallel agent deployment pattern (~/.claude/rules/agent-deployment.md)
+P2-20   # Handoff INDEX.md (~/.claude/handoffs/INDEX.md via handoff-index-gen.ps1)
+P2-21   # .gitattributes CRLF normalization (* text=auto eol=lf, *.ps1 text eol=crlf)
+P2-22   # Pre-commit mypy hook scoped to engine/backtest/ (6cfc42d)
+P2-23   # pytest invocation wrapper (~/scripts/jarvis-test.ps1)
+P2-25   # AskUserQuestion + hook interaction documented in ~/.claude/CLAUDE.md
+P2-29   # HERMES_RUNBOOK.md reference in CLAUDE.md hooks section
+P3-5    # 1P naming convention (~/.claude/rules/secret-1p-naming.md)
+P3-27   # Memory file weekly trim (~/scripts/memory-trim.ps1 verified exists)
+P3-30   # HEREDOC pattern standardized in ~/.claude/rules/git-hygiene.md
+P3-31   # pyarrow ImportError resolved (pyarrow imports cleanly in engine venv)
+P3-34   # Typed VerdictSchema Pydantic model (2679db5 — 19 tests)
+P3-36   # ThresholdConfig YAML-loadable per-symbol in compare_verdicts.py
+P3-44   # Database backups committed (2afef84)
+P3-46   # is_strategy_authorized() unifies VALIDATION_ONLY + paper_config + gate v2
+P3-47   # Agent prompt forbidden-commands list in rules/agent-deployment.md
+P3-49   # ~/.coldstore naming in place; ~/.archive removed
+
+# ── dp600-stark-v2 tasks verified via git log in ~/Code/dp600-stark-v2/ ───────
+P3-19   # Lighthouse Perf 63→90 on dp600-stark-v2 (fae1c51)
+P3-20   # dp600-stark-v2 README + CONTRIBUTING + ARCHITECTURE docs (b87e56c)
+P3-21   # dp600-stark-v2 80% coverage threshold gate (b4d4a11)
+P3-22   # dp600-stark-v2 E2E suite (Playwright — a19a8e8)
+P3-23   # dp600-stark-v2 pre-commit hook (husky + lint-staged — 96ea3c0)
+P3-28   # Handoff INDEX.md auto-gen (~/scripts/handoff-index-gen.ps1 + INDEX.md exists)
+
+# ── This session ──────────────────────────────────────────────────────────────
+P2-12   # Credential-guard hook tightened for python -c args (895029b in ~/.claude)
+P2-14   # Cred-rotation audit trail (~/scripts/cred-rotation-audit.ps1 — ec4c812)
+P2-30   # hermes-safe-restart.sh at /root/.hermes/bin/ (pre-existing, stream-safe)
+P3-8    # Gate v2 FDR analysis complete (engine/data/GATE_V2_FDR_ANALYSIS.md; 46671a3)
+P3-29   # Session-coordination lockfile (~/scripts/claude-file-lock.ps1; a27741d)
+P0-3    # ibkr_execution_connected=true confirmed post-restart (2026-05-23); regression cleared
+P0-5    # /health verified post-restart: status=ok, llm_path_healthy=true, ibkr_execution_connected=true
+P2-13   # Wave 2 1P pre-staging YAML (~/.claude/handoffs/WAVE2_1P_PRESTAGE_2026-05-23.yaml); B6 use-check confirms firecrawl/supermemory not in engine/
+P2-18   # Stale — career-ops retired 2026-05-09; CV DOCX build no longer relevant
+P3-48   # Pre-flight permission gates rule (~/.claude/rules/destructive-op-gates.md; PROPOSING_DESTRUCTIVE_OP marker)
+P1-9    # Jarvis-EngineHealth-Hourly task already registered; check-engine-health.ps1 exists (cap 3/hr)
+P2-10   # Jarvis-PM2RestartWatch-15min registered; pm2-restart-watch.ps1 created (alert >5 restarts/hr via Telegram)
+P2-15   # Jarvis-RotationReminder-Weekly already registered; rotation-reminder.ps1 exists (Fridays 09:00)
+P0-6    # Stale — commit 28ba9ff not found in any repo (dp600, jarvis-trader, scripts, ~/.claude); pushed in C1 per report
+P0-7    # Stale — cron-daily-triage.mjs not found; career-ops retired 2026-05-09, file never existed at ~/career-ops/

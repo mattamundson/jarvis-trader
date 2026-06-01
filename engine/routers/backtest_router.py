@@ -164,6 +164,7 @@ async def run_backtest(request: BacktestRequest):
             multiplier = loader.get_multiplier(request.symbol)
             from backtest.signals import TREND_INSTRUMENTS
             from backtest.trend_signals import get_sma_trend_params
+
             is_trend = request.symbol.upper() in TREND_INSTRUMENTS
             trend_params = get_sma_trend_params(request.symbol) if is_trend else None
             backtester = Backtester(
@@ -479,47 +480,79 @@ async def get_regime_status():
     description="Get Walk-Forward Efficiency (WFE) and paper-trading readiness status for MCL, MNQ, MGC, and MES symbols.",
 )
 async def get_paper_status():
-    """Walk-Forward Efficiency (WFE) and paper-trading readiness for each symbol."""
+    """Paper-trading readiness derived from LIVE gate-v2 verdicts — not a static dict.
+
+    Source of truth is `gate_v2_policy.is_strategy_authorized` (which unifies
+    VALIDATION_ONLY_INSTRUMENTS, paper_config.enabled, and a non-stale gate-v2
+    PASS verdict) plus the freshest verdict snapshot per symbol. This keeps the
+    dashboard from disagreeing with what the engine will actually trade.
+
+    Status semantics:
+      ACTIVE     — is_strategy_authorized() is True (enabled + fresh PASS verdict)
+      NO-TRADE   — a fresh verdict exists (possibly PASS) but the symbol is not
+                   authorized (paper_config disabled / validation-only)
+      FAIL       — a fresh verdict exists and is not PASS
+      NO-VERDICT — no fresh (<=14d) verdict on file (fail-safe: not authorized)
+
+    The numeric `wfe` field is retained for frontend compatibility and now
+    carries the deflated Sharpe (a current 0-1 quality metric) for ACTIVE rows;
+    gate-v2-native fields (verdict / pf_ci_lower / mc_95th_dd_pct / dsr) are
+    added alongside for a future verdict-native UI pass.
+    """
     try:
-        return {
-            "MCL_1h": {
-                "status": "ACTIVE",
-                "wfe": 0.82,
-                "wfe_label": "EXCELLENT",
-                "cleared_date": "2026-04-01",
-                "risk_per_trade": "0.25%",
-                "config": "static_regime=ON, stop=0.90x ATR, T1=1.50x ATR",
-            },
-            "MNQ_1h": {
-                "status": "ACTIVE",
-                "wfe": 0.57,
-                "wfe_label": "GOOD",
-                "cleared_date": "2026-04-01",
-                "risk_per_trade": "0.25%",
-                "config": "adaptive_regime=ON, stop=0.70x ATR, T1=1.00x ATR",
-            },
-            "MGC_1d": {
-                "status": "CLOSED",
-                "wfe": 0.00,
-                "wfe_label": "FAILED",
-                "closed_date": "2026-04-01",
-                "reason": "WFE=0.00, 0/14 valid windows (2022-2026 extended walk-forward)",
-            },
-            "MES_1h": {
-                "status": "CLOSED",
-                "wfe": 0.00,
-                "wfe_label": "FAILED",
-                "closed_date": "2026-04-01",
-                "reason": "Static WFE=0.09 (overfit) + adaptive WFE=0.00 (0/6 valid windows). STC+ATR incompatible with S&P 500 1h. Redesign required: ORB or VWAP.",
-            },
-            "SPY_1h": {
-                "status": "CLOSED",
-                "wfe": 0.00,
-                "wfe_label": "FAILED",
-                "closed_date": "2026-03-28",
-                "reason": "WFE=0.00, 0/6 valid windows. Same underlying as MES.",
-            },
-        }
+        from backtest.gate_v2_policy import get_last_verdict, is_strategy_authorized
+
+        # UI key -> (symbol, timeframe label). Trend edges (MES/MGC) are the live
+        # forward-proving book; MCL/MNQ are kept so the panel shows them dead.
+        ui_rows = [
+            ("MES_1h", "MES", "1h"),
+            ("MGC_1d", "MGC", "1d"),
+            ("MCL_1h", "MCL", "1h"),
+            ("MNQ_1h", "MNQ", "1h"),
+        ]
+
+        out: dict[str, dict] = {}
+        for key, symbol, _tf in ui_rows:
+            snap = get_last_verdict(symbol)
+            authorized, reason = is_strategy_authorized(symbol)
+            metrics = snap.gate_v2_metrics if snap else {}
+            dsr = float(metrics.get("dsr", 0.0) or 0.0)
+
+            if authorized:
+                status = "ACTIVE"
+                label = f"PASS via {snap.passed_via or 'core'}" if snap else "authorized"
+            elif snap is not None and snap.verdict == "PASS":
+                status, label = "NO-TRADE", reason
+            elif snap is not None:
+                status, label = "FAIL", "gate-v2 FAIL"
+            else:
+                status, label = "NO-VERDICT", "no fresh verdict (<=14d)"
+
+            # Legacy color column reflects authorization: only ACTIVE rows show
+            # their quality score; the true dsr is always in the native field.
+            row: dict = {
+                "status": status,
+                "wfe": round(dsr, 4) if status == "ACTIVE" else 0.0,
+                "wfe_label": label,
+                "gate": "v2",
+                "authorized": authorized,
+                "verdict": snap.verdict if snap else "NONE",
+                "passed_via": snap.passed_via if snap else None,
+                "family": snap.family if snap else None,
+                "rank": snap.rank if snap else None,
+                "created_at": snap.created_at if snap else None,
+                "pf_ci_lower": metrics.get("pf_ci_lower"),
+                "mc_95th_dd_pct": metrics.get("mc_95th_dd_pct"),
+                "dsr": metrics.get("dsr"),
+            }
+            if status == "ACTIVE":
+                row["cleared_date"] = (snap.created_at or "")[:10] if snap else None
+                row["config"] = f"gate-v2 {snap.family} rank{snap.rank}" if snap else None
+            else:
+                row["reason"] = label
+            out[key] = row
+
+        return out
     except Exception as e:
         logger.error(f"[BACKTEST] Paper status check failed: {e}")
         raise HTTPException(500, f"Failed to get paper status: {e}") from e
@@ -702,6 +735,114 @@ async def get_paper_runner_status():
     }
 
 
+# ── Monte Carlo ──────────────────────────────────────────────────────────────
+
+
+class MonteCarloRequest(BaseModel):
+    """Request for Monte Carlo simulation on backtest results."""
+
+    results_file: str
+    simulations: int = 1_000
+    max_slippage_ticks: float = 0.0
+    symbol: str = None
+    initial_capital: float = 100_000.0
+
+
+@router.post("/backtest/monte-carlo")
+async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
+    """Run Monte Carlo simulation on backtest results to validate strategy robustness."""
+    try:
+        from backtest.monte_carlo import _load_result_from_json, run_monte_carlo
+
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent.parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = (
+                    Path(__file__).parent.parent / "backtest" / "results" / req.results_file
+                )
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        logger.info(f"[MONTE-CARLO] Loading {results_path.name}")
+        bt_result = _load_result_from_json(str(results_path))
+
+        symbol = req.symbol
+        if not symbol:
+            stem = results_path.stem
+            for part in stem.split("_"):
+                if part.isupper() and len(part) <= 4:
+                    symbol = part
+                    break
+        if not symbol:
+            symbol = "MES"
+
+        logger.info(f"[MONTE-CARLO] Running {req.simulations:,} simulations for {symbol}")
+        mc_results = run_monte_carlo(
+            bt_result,
+            n_simulations=req.simulations,
+            initial_capital=req.initial_capital,
+            max_slippage_ticks=req.max_slippage_ticks,
+            symbol=symbol,
+            seed=42,
+        )
+
+        return mc_results
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO] File error: {e}")
+        raise HTTPException(404, f"Results file not found: {e}") from e
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO] Simulation failed: {e}")
+        raise HTTPException(500, f"Monte Carlo simulation failed: {e}") from e
+
+
+@router.post("/backtest/monte-carlo/chart")
+async def generate_monte_carlo_chart(req: MonteCarloRequest) -> dict:
+    """Generate an interactive HTML equity curve fan chart from Monte Carlo results."""
+    try:
+        from backtest.monte_carlo_viz import save_fan_chart
+
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent.parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = (
+                    Path(__file__).parent.parent / "backtest" / "results" / req.results_file
+                )
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        stem = results_path.stem
+        mc_json_path = results_path.parent / f"{stem}_monte_carlo.json"
+        if not mc_json_path.exists():
+            raise FileNotFoundError(
+                f"Monte Carlo JSON not found. Run /backtest/monte-carlo first to generate {mc_json_path.name}"
+            )
+
+        logger.info(f"[MONTE-CARLO-VIZ] Generating chart from {mc_json_path.name}")
+        html_path = save_fan_chart(str(mc_json_path))
+
+        return {
+            "chart_path": str(html_path),
+            "status": "success",
+            "message": f"Chart generated: {Path(html_path).name}",
+        }
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO-VIZ] File error: {e}")
+        raise HTTPException(404, f"Error: {e}") from e
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO-VIZ] Chart generation failed: {e}")
+        raise HTTPException(500, f"Chart generation failed: {e}") from e
+
+
 # ── TOS Signal Comparison endpoints ──────────────────────────────────────────
 
 
@@ -869,3 +1010,51 @@ async def validate_stc_math(
     except Exception as e:
         logger.error(f"[STC-VALIDATE] Failed: {e}")
         raise HTTPException(500, f"STC math validation failed: {e}") from e
+
+
+@router.get("/paper/pending-signals")
+async def get_pending_signals():
+    """Return pending entry signals generated by the daily MGC scanner."""
+    import json as _json
+    from pathlib import Path
+
+    pending_file = Path(__file__).parent.parent / "backtest" / "results" / "pending_signals.json"
+    if not pending_file.exists():
+        return {"signals": [], "count": 0}
+
+    try:
+        signals = _json.loads(pending_file.read_text(encoding="utf-8"))
+    except Exception:
+        signals = []
+
+    return {"signals": signals, "count": len(signals)}
+
+
+@router.get("/paper/mgc-performance")
+async def get_mgc_paper_performance():
+    """Return current MGC paper trading performance metrics."""
+    try:
+        from backtest.paper_config import MGC_PAPER_CONFIG
+        from backtest.paper_tracker import PaperTradeTracker
+
+        tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
+        metrics = tracker.get_metrics()
+
+        should_kill, kill_reason = tracker.check_kill_conditions()
+        metrics["kill_threshold_breached"] = should_kill
+        metrics["kill_reason"] = kill_reason if should_kill else None
+        metrics["monthly_summary"] = tracker.monthly_summary()
+        metrics["config"] = {
+            "symbol": MGC_PAPER_CONFIG["symbol"],
+            "interval": MGC_PAPER_CONFIG["interval"],
+            "adaptive_regime": MGC_PAPER_CONFIG["adaptive_regime"],
+            "risk_per_trade": MGC_PAPER_CONFIG["risk_per_trade"],
+            "initial_capital": MGC_PAPER_CONFIG["initial_capital"],
+            "wfe": 0.88,
+        }
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Performance query failed: {e}")
+        raise HTTPException(500, f"Failed to get MGC performance: {e}") from e

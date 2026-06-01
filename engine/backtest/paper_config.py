@@ -18,7 +18,7 @@ MCL_PAPER_CONFIG = {
     #  Instrument
     "symbol": "MCL",
     "interval": "1h",
-    "enabled": True,  # WFE=0.82 EXCELLENT  APPROVED
+    "enabled": False,  # 2026-05-07: MCL hypotheses A-E exhausted; in DO_NOT_TRADE_SYMBOLS
     #  Capital & Sizing
     "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk (conservative)
@@ -58,7 +58,7 @@ MNQ_PAPER_CONFIG = {
     #  Instrument
     "symbol": "MNQ",
     "interval": "1h",
-    "enabled": True,  # WFE=0.57 GOOD  APPROVED (adaptive regime only)
+    "enabled": False,  # 2026-05-07: MNQ trend/breakout/ORB all FAIL gate v2; in DO_NOT_TRADE_SYMBOLS. The 55 trades / 0 wins on 2026-05-06/07 came from this config firing despite the verdict gate; disabling at config layer ensures sync with verdict layer.
     #  Capital & Sizing
     "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk
@@ -94,40 +94,44 @@ MNQ_PAPER_CONFIG = {
 }
 
 MGC_PAPER_CONFIG = {
-    #  Instrument
+    #  Instrument — SMA(50,120) trend-following, 1h bars
+    #  Gate v2 verdict: PASS via ALT (dsr=1.0, wfo=STRONG, fixed_params_min_pf=1.357)
+    #  Verdict file: engine/data/gate_v2_verdicts/MGC_trend_rank4.json (created 2026-05-06)
+    #  WFO champion params: SMA(fast=50, slow=120, atr_trail_mult=2.0) — fixed_params PF=2.987
+    #  rank4 grid fast=[40,50]×slow=[80,120]×atr=[1.5,2.0]: all 8 combos PF>1.35
+    #  ALT routing applies: mc_95th_dd=1.24% ≤ 7.0% ceiling (requires $50K+ account sizing)
     "symbol": "MGC",
-    "interval": "1d",
-    "enabled": False,  # WFE=0.00 (2022-2026 extended, 0/14 valid windows)  CLOSED (v2.9)
+    "interval": "1h",
+    "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
+    "enabled": True,  # Gate v2 ALT PASS — authorized for paper trading 2026-05-06
     #  Capital & Sizing
-    "initial_capital": 10_000.0,
-    "risk_per_trade": 0.0025,
-    #  Strategy Mode
-    "regime_filter": False,  # OFF: anti-predictive for gold daily
-    "adaptive_regime": False,  # OFF: no valid windows even with adaptive
+    "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
+    "risk_per_trade": 0.0025,  # 0.25% risk per trade
+    #  Strategy Mode — SMA trend uses its own param block
+    "regime_filter": False,
+    "adaptive_regime": False,
+    "composite": False,
     "volume_filter": False,
     "mtf_filter": False,
-    #  STC Signal Parameters (last known, NOT validated  strategy CLOSED)
-    "stc_params": {
-        "stc_os": 17,
-        "stc_ob": 88,
-        "stop_atr_mult": 0.30,
-        "t1_atr_mult": 1.50,
-        "t2_atr_mult": 2.618,
-        "t3_atr_mult": 4.00,
+    #  SMA Trend Parameters (walk-forward champion from WFO rank4)
+    "sma_params": {
+        "fast": 50,
+        "slow": 120,
+        "atr_trail_mult": 2.0,
     },
-    #  Kill Thresholds
+    #  Kill Thresholds — calibrated to ALT routing 7% MC DD ceiling
     "kill_threshold": {
-        "consecutive_losses": 2,
-        "consecutive_months_underperform": 1,
-        "monthly_loss_pct": -0.02,
-        "max_daily_loss": -0.01,
-        "rolling_wfe_minimum": 0.50,  # Threshold deliberately high since strategy is closed
+        "consecutive_losses": 4,
+        "consecutive_months_underperform": 2,
+        "monthly_loss_pct": -0.04,
+        "max_daily_loss": -0.02,
+        "rolling_wfe_minimum": 0.40,
     },
     #  Contract Specifications
-    "multiplier": 10.0,  # $10/troy oz for MGC (Micro Gold, 10 oz)
+    "multiplier": 10.0,  # $10/point for MGC (Micro Gold, 10 oz)
     "tick_size": 0.10,
-    "commission_per_contract": 2.50,
-    "slippage_ticks": 1,
+    "commission_per_contract": 0.62,
+    "slippage_ticks": 2,
     "max_concurrent_positions": 1,
 }
 
@@ -135,7 +139,7 @@ MCL_15M_CONFIG = {
     #  Instrument (15-minute timeframe)
     "symbol": "MCL",
     "interval": "15m",
-    "enabled": True,  # Enabled for trade frequency validation
+    "enabled": False,  # 2026-05-07: MCL parked at all timeframes; in DO_NOT_TRADE_SYMBOLS
     #  Capital & Sizing
     "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk (conservative)
@@ -174,7 +178,7 @@ MNQ_15M_CONFIG = {
     #  Instrument (15-minute timeframe)
     "symbol": "MNQ",
     "interval": "15m",
-    "enabled": True,  # Enabled for trade frequency validation
+    "enabled": False,  # 2026-05-07: params explicitly say "need WF validation before live"; not validated; in DO_NOT_TRADE_SYMBOLS
     #  Capital & Sizing
     "initial_capital": 10_000.0,
     "risk_per_trade": 0.0025,  # 0.25% risk
@@ -203,6 +207,48 @@ MNQ_15M_CONFIG = {
     },
     #  Contract Specifications
     "multiplier": 2.0,
+    "tick_size": 0.25,
+    "commission_per_contract": 2.50,
+    "slippage_ticks": 1,
+    "max_concurrent_positions": 1,
+}
+
+MES_TREND_PAPER_CONFIG = {
+    #  Instrument — SMA(60,200) trend-following, 1h bars
+    #  Gate v2 verdict: PASS via ALT (dsr=1.0, rolling_wfo=STRONG, fixed_params_min_pf=1.3506)
+    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rank11.json (created 2026-05-06)
+    #  WFO champion params: SMA(fast=60, slow=200, atr_trail_mult=2.0)  — fixed_params PF=2.156
+    #  rank11 grid [50,55,60]×[200]×[2.0]: PF=[1.35,1.72,2.16]; fast=60 is the champion
+    #  ALT routing applies: mc_95th_dd=0.81% ≤ 7.0% ceiling (requires $50K+ account sizing)
+    "symbol": "MES",
+    "interval": "1h",
+    "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
+    "enabled": True,  # Gate v2 ALT PASS — authorized for paper trading 2026-05-05
+    #  Capital & Sizing
+    "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
+    "risk_per_trade": 0.0025,  # 0.25% risk per trade
+    #  Strategy Mode — SMA trend uses its own param block, not STC params
+    "regime_filter": False,  # SMA crossover IS the regime filter; external filter redundant
+    "adaptive_regime": False,
+    "composite": False,
+    "volume_filter": False,
+    "mtf_filter": False,
+    #  SMA Trend Parameters (walk-forward champion from WFO rank11)
+    "sma_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+    },
+    #  Kill Thresholds — calibrated to ALT routing 7% MC DD ceiling
+    "kill_threshold": {
+        "consecutive_losses": 4,       # SMA trend has lower win rate (~44%) — allow longer runs
+        "consecutive_months_underperform": 2,
+        "monthly_loss_pct": -0.04,     # Slightly wider than STC strategies (higher R:R profile)
+        "max_daily_loss": -0.02,
+        "rolling_wfe_minimum": 0.40,
+    },
+    #  Contract Specifications
+    "multiplier": 5.0,       # $5/point for MES (Micro E-mini S&P 500)
     "tick_size": 0.25,
     "commission_per_contract": 2.50,
     "slippage_ticks": 1,
@@ -252,6 +298,7 @@ PAPER_CONFIGS = {
     "MCL": MCL_PAPER_CONFIG,
     "MNQ": MNQ_PAPER_CONFIG,
     "MGC": MGC_PAPER_CONFIG,
+    "MES": MES_TREND_PAPER_CONFIG,
 }
 
 #  15-minute configs (intraday scanner)

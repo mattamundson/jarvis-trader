@@ -34,7 +34,7 @@ class TestGapDown:
             {"open": 96,  "high": 97,  "low": 95, "close": 96,  "volume": 500},
         ])
         result = compute_chetan_gaps(df)
-        assert result.loc[1, "chetan_gap_detected"] is True or result.loc[1, "chetan_gap_detected"] == True
+        assert result.loc[1, "chetan_gap_detected"] is True or result.loc[1, "chetan_gap_detected"]
         assert result.loc[1, "chetan_gap_direction"] == "DOWN"
 
     def test_gap_down_zone_bounds(self):
@@ -54,7 +54,7 @@ class TestGapDown:
             {"open": 99,  "high": 100.10, "low": 99,  "close": 99,  "volume": 500},
         ])
         result = compute_chetan_gaps(df)
-        assert result.loc[1, "chetan_gap_detected"] == True
+        assert result.loc[1, "chetan_gap_detected"]
         assert result.loc[1, "chetan_gap_direction"] == "DOWN"
 
 
@@ -70,7 +70,7 @@ class TestGapUp:
             {"open": 103, "high": 104, "low": 102.5, "close": 103, "volume": 500},
         ])
         result = compute_chetan_gaps(df)
-        assert result.loc[1, "chetan_gap_detected"] == True
+        assert result.loc[1, "chetan_gap_detected"]
         assert result.loc[1, "chetan_gap_direction"] == "UP"
 
     def test_gap_up_zone_bounds(self):
@@ -96,7 +96,7 @@ class TestNoGap:
             {"open": 101, "high": 103, "low": 100, "close": 102, "volume": 500},
         ])
         result = compute_chetan_gaps(df)
-        assert result.loc[1, "chetan_gap_detected"] == False
+        assert not result.loc[1, "chetan_gap_detected"]
         assert result.loc[1, "chetan_gap_direction"] == "NONE"
 
     def test_no_gap_zone_bounds_are_nan(self):
@@ -112,7 +112,7 @@ class TestNoGap:
         """First bar has no prior bar → always NONE."""
         df = _make_df([_base_row()])
         result = compute_chetan_gaps(df)
-        assert result.loc[0, "chetan_gap_detected"] == False
+        assert not result.loc[0, "chetan_gap_detected"]
         assert result.loc[0, "chetan_gap_direction"] == "NONE"
 
 
@@ -128,7 +128,7 @@ class TestMinGapFilter:
             {"open": 98,  "high": 99.00, "low": 97,  "close": 98,  "volume": 500},
         ])
         result = compute_chetan_gaps(df)
-        assert result.loc[1, "chetan_gap_detected"] == False
+        assert not result.loc[1, "chetan_gap_detected"]
 
     def test_custom_threshold_respected(self):
         """Gap of 0.08 (below 0.10 but above 0.05) detected when min_gap_points=0.05."""
@@ -137,7 +137,7 @@ class TestMinGapFilter:
             {"open": 98,  "high": 99.00, "low": 97,  "close": 98,  "volume": 500},
         ])
         result = compute_chetan_gaps(df, min_gap_points=0.05)
-        assert result.loc[1, "chetan_gap_detected"] == True
+        assert result.loc[1, "chetan_gap_detected"]
         assert result.loc[1, "chetan_gap_direction"] == "DOWN"
 
     def test_zero_threshold_catches_any_separation(self):
@@ -147,7 +147,7 @@ class TestMinGapFilter:
             {"open": 99,  "high": 100.00, "low": 99, "close": 99.5, "volume": 500},
         ])
         result = compute_chetan_gaps(df, min_gap_points=0.0)
-        assert result.loc[1, "chetan_gap_detected"] == True
+        assert result.loc[1, "chetan_gap_detected"]
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,48 @@
 # Phase 3 Live Trading Readiness Checklist
 
 **Status**: Pre-deployment validation framework
-**Last Updated**: 2026-04-02
+**Last Updated**: 2026-05-20
 **Owner**: Matt (Trader)
+
+## Programmatic Check (run this first)
+
+The 10 graduation criteria below are now codified as a programmatic GO/WAIT/NO-GO check.
+Run it before reviewing the manual checklist:
+
+```bash
+# HTTP (requires engine running on port 8010):
+curl -H "X-API-Key: <key>" http://127.0.0.1:8010/readiness/phase3
+
+# Markdown report:
+curl -H "X-API-Key: <key>" "http://127.0.0.1:8010/readiness/phase3?format=markdown"
+
+# CLI (standalone, no engine required):
+engine/.venv/Scripts/python scripts/phase3_readiness_report.py
+# Exit 0=GO, 1=WAIT, 2=NO-GO
+```
+
+The 10 codified criteria with their thresholds:
+
+| # | Criterion | Severity | Threshold |
+|---|-----------|----------|-----------|
+| C1 | `paper_trading_window` | BLOCKER | >= 60 calendar days of paper trading |
+| C2 | `paper_trades_count` | BLOCKER | >= 100 completed closed trades |
+| C3 | `win_rate` | BLOCKER | >= 55% win rate (last 60 days) |
+| C4 | `profit_factor` | BLOCKER | >= 1.5 profit factor (last 60 days) |
+| C5 | `max_drawdown` | BLOCKER | <= 8% max drawdown from peak (last 60 days) |
+| C6 | `sortino_ratio` | BLOCKER | >= 1.0 annualised Sortino (last 60 days) |
+| C7 | `consecutive_loss_streak` | WARNING | Max losing streak <= 5 (last 60 days) |
+| C8 | `kill_switch_invocations` | BLOCKER | Kill switch triggered <= 2 times (last 60 days) |
+| C9 | `engine_uptime_stability` | WARNING | Engine restarts < 1/day avg (last 30 days) |
+| C10 | `safety_layer_test_coverage` | BLOCKER | test_safety_layer.py >= 95% line coverage |
+
+**Note:** The programmatic check is necessary-but-not-sufficient. Matt must also
+complete the manual checklist below (hardware kill switch, OCO orders, IB port 4001
+unblocked, [safety-review] PR approved, capital commitment confirmed).
+
+See `docs/runbooks/PHASE3_READINESS_CRITERIA.md` for full formula and rationale.
+
+---
 
 ## Overview
 

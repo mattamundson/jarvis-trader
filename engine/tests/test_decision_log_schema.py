@@ -24,7 +24,6 @@ from schemas.decision_log import (
     parse_decision_row,
 )
 
-
 # ---------------------------------------------------------------------------
 # Sample payloads — modeled after real row shapes
 # ---------------------------------------------------------------------------

@@ -48,7 +48,7 @@ this module is a pure research/screening tool.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -98,7 +98,6 @@ def compute_hedge_ratio(y_prices: np.ndarray, x_prices: np.ndarray) -> tuple[flo
     y = np.asarray(y_prices, dtype=float)
     x = np.asarray(x_prices, dtype=float)
 
-    n = len(y)
     x_mean = x.mean()
     y_mean = y.mean()
 

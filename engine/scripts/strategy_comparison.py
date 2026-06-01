@@ -20,19 +20,18 @@ import sys
 from itertools import product
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 ENGINE_DIR = Path(__file__).resolve().parent.parent
 if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
-from backtest import BacktestDataLoader, Backtester
-from backtest.adx_ema_signals import generate_adx_ema_signals
-from backtest.atr_channel_signals import generate_atr_channel_signals
-from backtest.donchian_signals import generate_donchian_signals
-from backtest.rsi_breakout_signals import generate_rsi_breakout_signals
-from backtest.trend_signals import generate_sma_trend_signals
+from backtest import BacktestDataLoader, Backtester  # noqa: E402
+from backtest.adx_ema_signals import generate_adx_ema_signals  # noqa: E402
+from backtest.atr_channel_signals import generate_atr_channel_signals  # noqa: E402
+from backtest.donchian_signals import generate_donchian_signals  # noqa: E402
+from backtest.rsi_breakout_signals import generate_rsi_breakout_signals  # noqa: E402
+from backtest.trend_signals import generate_sma_trend_signals  # noqa: E402
 
 SYMBOL = "MES"
 MULTIPLIER = 5.0
@@ -42,18 +41,18 @@ TEST_END = "2026-03-27"
 FULL_START = "2024-06-01"
 
 # Backtester config shared across all strategies
-_BT_KWARGS = dict(
-    initial_capital=CAPITAL,
-    trailing_stop=True,
-    t1_exit_pct=1.0,
-    t2_exit_pct=0.0,
-    strict_trailing=True,
-    eod_close=False,
-    use_targets=False,
-    fixed_contracts=1,
-    max_drawdown=0.99,
-    max_daily_loss=0.99,
-)
+_BT_KWARGS = {
+    "initial_capital": CAPITAL,
+    "trailing_stop": True,
+    "t1_exit_pct": 1.0,
+    "t2_exit_pct": 0.0,
+    "strict_trailing": True,
+    "eod_close": False,
+    "use_targets": False,
+    "fixed_contracts": 1,
+    "max_drawdown": 0.99,
+    "max_daily_loss": 0.99,
+}
 
 # Grids
 SMA_GRID = {

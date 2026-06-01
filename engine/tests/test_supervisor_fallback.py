@@ -24,7 +24,6 @@ from notifications.supervisor_fallback import (
     try_with_fallback,
 )
 
-
 # ---------------------------------------------------------------------------
 # detect_refusal — positive cases
 # ---------------------------------------------------------------------------

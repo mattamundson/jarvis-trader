@@ -195,7 +195,9 @@ def _get_all_trades() -> list[dict]:
                 normalised.append(trade)
             return normalised
         except Exception as exc:
-            logger.error("_get_all_trades: SQLite query failed, falling back to ValidationTracker: %s", exc)
+            logger.error(
+                "_get_all_trades: SQLite query failed, falling back to ValidationTracker: %s", exc
+            )
 
     # Fallback — ValidationTracker reads stale JSON; only used when no DB is wired
     try:
@@ -883,11 +885,11 @@ class CalibrationAgentEntry(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    brier_score: float              # Mean Brier over window; lower is better
-    brier_weight: float             # Normalized inverse-Brier weight (sums to 1.0)
-    ic_score: float                 # Spearman IC over window
-    sample_count: int               # Non-zero-signal trade count in window
-    ready: bool                     # True when sample_count >= min_trades
+    brier_score: float  # Mean Brier over window; lower is better
+    brier_weight: float  # Normalized inverse-Brier weight (sums to 1.0)
+    ic_score: float  # Spearman IC over window
+    sample_count: int  # Non-zero-signal trade count in window
+    ready: bool  # True when sample_count >= min_trades
 
 
 class CalibrationDiagnosticsResponse(BaseModel):
@@ -895,15 +897,15 @@ class CalibrationDiagnosticsResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    brier_enabled: bool             # Reflects BRIER_CALIBRATION_ENABLED env var
-    brier_blend_alpha: float        # Current blend alpha (debate.BRIER_BLEND_ALPHA)
-    min_trades_threshold: int       # Minimum sample size before calibration activates
-    window_days: int                # Rolling window length
-    agents: list[str]               # Tracked analyst names
+    brier_enabled: bool  # Reflects BRIER_CALIBRATION_ENABLED env var
+    brier_blend_alpha: float  # Current blend alpha (debate.BRIER_BLEND_ALPHA)
+    min_trades_threshold: int  # Minimum sample size before calibration activates
+    window_days: int  # Rolling window length
+    agents: list[str]  # Tracked analyst names
     per_agent: dict[str, CalibrationAgentEntry]
-    total_outcomes: int             # Total rows in trade_outcomes within window
-    ready_to_activate: bool         # All agents have >= min_trades
-    neutral_sentinel: float         # Brier value returned when insufficient data
+    total_outcomes: int  # Total rows in trade_outcomes within window
+    ready_to_activate: bool  # All agents have >= min_trades
+    neutral_sentinel: float  # Brier value returned when insufficient data
     timestamp: str
 
 
@@ -923,21 +925,21 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
     and ICWeightedEnsemble. Both trackers degrade gracefully when the table
     is missing or empty — the endpoint never returns 500 on cold-start.
     """
-    import os as _os
     import sqlite3 as _sqlite
 
     try:
-        from analytics.agent_feedback import AGENT_NAMES, DB_PATH as FB_DB_PATH
-        from analytics.ic_ensemble import (
-            BRIER_NEUTRAL,
-            BrierCalibrationTracker,
-            ICWeightedEnsemble,
-            DEFAULT_WINDOW_DAYS,
-            MIN_TRADES_FOR_IC,
-        )
         # Pull live blend alpha from debate module so the endpoint tracks the
         # constant if it's ever tuned per-regime.
         from agents.debate import BRIER_BLEND_ALPHA, _is_brier_enabled
+        from analytics.agent_feedback import AGENT_NAMES
+        from analytics.agent_feedback import DB_PATH as FB_DB_PATH
+        from analytics.ic_ensemble import (
+            BRIER_NEUTRAL,
+            DEFAULT_WINDOW_DAYS,
+            MIN_TRADES_FOR_IC,
+            BrierCalibrationTracker,
+            ICWeightedEnsemble,
+        )
     except Exception as exc:
         logger.error("[Calibration] import failed: %s", exc)
         raise HTTPException(status_code=503, detail=f"calibration deps unavailable: {exc}") from exc
@@ -952,35 +954,44 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
         brier_weights = brier.get_calibration_weights(agents)
     except Exception as exc:
         logger.warning("[Calibration] Brier compute failed: %s", exc)
-        brier_scores = {a: BRIER_NEUTRAL for a in agents}
+        brier_scores = dict.fromkeys(agents, BRIER_NEUTRAL)
         brier_weights = {a: 1.0 / len(agents) for a in agents}
 
     try:
         ic_scores = {a: ic.compute_ic(a) for a in agents}
     except Exception as exc:
         logger.warning("[Calibration] IC compute failed: %s", exc)
-        ic_scores = {a: 0.0 for a in agents}
+        ic_scores = dict.fromkeys(agents, 0.0)
 
     # Per-agent sample count — direct SQL so it stays cheap.
-    sample_counts: dict[str, int] = {a: 0 for a in agents}
+    sample_counts: dict[str, int] = dict.fromkeys(agents, 0)
     total_outcomes = 0
     try:
         if FB_DB_PATH.exists():
-            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+            from datetime import datetime as _dt
+            from datetime import timedelta as _td
+            from datetime import timezone as _tz
+
             cutoff = (_dt.now(_tz.utc) - _td(days=DEFAULT_WINDOW_DAYS)).isoformat()
             with _sqlite.connect(str(FB_DB_PATH)) as conn:
-                total_outcomes = conn.execute(
-                    "SELECT COUNT(*) FROM trade_outcomes WHERE timestamp >= ?",
-                    (cutoff,),
-                ).fetchone()[0] or 0
+                total_outcomes = (
+                    conn.execute(
+                        "SELECT COUNT(*) FROM trade_outcomes WHERE timestamp >= ?",
+                        (cutoff,),
+                    ).fetchone()[0]
+                    or 0
+                )
                 for a in agents:
                     sig_col = f"{a}_signal"
                     try:
-                        n = conn.execute(
-                            f"SELECT COUNT(*) FROM trade_outcomes "
-                            f"WHERE timestamp >= ? AND {sig_col} IS NOT NULL AND {sig_col} != 0",
-                            (cutoff,),
-                        ).fetchone()[0] or 0
+                        n = (
+                            conn.execute(
+                                f"SELECT COUNT(*) FROM trade_outcomes "
+                                f"WHERE timestamp >= ? AND {sig_col} IS NOT NULL AND {sig_col} != 0",
+                                (cutoff,),
+                            ).fetchone()[0]
+                            or 0
+                        )
                         sample_counts[a] = int(n)
                     except _sqlite.DatabaseError:
                         # Column missing on a newly-created DB → leave 0
@@ -1002,6 +1013,7 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
         )
 
     from datetime import timezone as _tz_iso
+
     return CalibrationDiagnosticsResponse(
         brier_enabled=_is_brier_enabled(),
         brier_blend_alpha=float(BRIER_BLEND_ALPHA),
@@ -1014,3 +1026,35 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
         neutral_sentinel=float(BRIER_NEUTRAL),
         timestamp=datetime.now(_tz_iso.utc).isoformat(),
     )
+
+
+@router.get("/mtf")
+async def get_mtf_analysis(symbol: str = "MES"):
+    """Multi-timeframe STC analysis for a single symbol.
+    Returns 1h, 4h, and 1d STC signals with alignment and recommendation.
+    """
+    try:
+        from analytics.mtf_analyzer import analyze_mtf
+
+        sym = symbol.strip().upper()
+        result = await analyze_mtf(sym, _data_mgr)
+        return {
+            "symbol": result.symbol,
+            "recommendation": result.recommendation,
+            "alignment": result.alignment,
+            "confidence": result.confidence,
+            "aligned_timeframes": result.aligned_timeframes,
+            "total_timeframes": result.total_timeframes,
+            "source": result.source,
+            "timeframes": {
+                s.timeframe: {
+                    "stc_value": s.stc_value,
+                    "stc_signal": s.stc_signal,
+                    "price": s.price,
+                    "source": s.source,
+                }
+                for s in result.signals
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e

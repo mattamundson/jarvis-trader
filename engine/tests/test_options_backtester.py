@@ -36,7 +36,6 @@ from backtest.options_backtester import (
 )
 from options.chain_fetcher import OptionsChain, OptionsContract
 
-
 # ── Fixtures: synthetic chain ────────────────────────────────────────────────
 
 def _mk_contract(strike, opt_type, delta, bid=1.00, ask=1.10, expiry=None):

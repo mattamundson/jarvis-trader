@@ -13,7 +13,8 @@ $pm2Managed = $false
 try {
     $pm2Json = pm2 jlist 2>$null | Out-String
     if ($pm2Json -match '"name"\s*:\s*"jarvis-engine"') { $pm2Managed = $true }
-} catch {}
+}
+catch {}
 
 if ($pm2Managed) {
     Write-Host "Detected jarvis-engine under PM2 - using pm2 restart (port-kill path skipped)"
@@ -26,56 +27,70 @@ if ($pm2Managed) {
 
     pm2 restart jarvis-engine | Out-Host
     Write-Host "Waiting for engine to come up..."
-    # Poll /health with a 360s ceiling. Full startup (SafetyLayer, PnL,
+    # Poll /health with a 480s ceiling. Full startup (SafetyLayer, PnL,
     # RL model load, scheduler, IB init, scanner first-pass retry cascade)
     # was observed at 229s on 2026-04-21 after the advisor temperature fix
-    # restart. Prior 180s ceiling produced a false-ERROR on a successful
-    # boot because the scanner's TV-feed retries kept uvicorn from binding.
+    # restart and at ~401s on 2026-05-07 due to a slow Polygon WS handshake.
+    # Prior 360s ceiling was tight; bumped to 480s to handle Polygon latency.
     $startTime = Get-Date
-    $deadline  = $startTime.AddSeconds(360)
-    $healthy   = $false
+    $deadline = $startTime.AddSeconds(480)
+    $healthy = $false
     $lastProgressPrint = 0
     while ((Get-Date) -lt $deadline) {
         try {
-            $r = Invoke-WebRequest -Uri "http://localhost:8010/health" -UseBasicParsing -TimeoutSec 3
+            $r = Invoke-WebRequest -Uri "http://127.0.0.1:8010/health" -UseBasicParsing -TimeoutSec 3
             if ($r.StatusCode -eq 200) { $healthy = $true; break }
-        } catch {}
+        }
+        catch {}
         Start-Sleep -Seconds 2
-        # Reassure operator at 60s / 180s / 300s marks — scanner first-pass
-        # and RL model load can keep uvicorn from binding until ~230s.
+        # Reassure operator at 60s / 240s / 420s marks — scanner first-pass
+        # and RL model load can keep uvicorn from binding until ~230s;
+        # Polygon WS handshake can extend to ~400s in degraded conditions.
         $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
         if ($elapsed -ge 60 -and $lastProgressPrint -lt 60) {
             Write-Host '  [60s] still booting (uvicorn not yet bound; normal up to ~230s)'
             $lastProgressPrint = 60
-        } elseif ($elapsed -ge 180 -and $lastProgressPrint -lt 180) {
-            Write-Host '  [180s] still booting (scanner retry cascade; steady-state bind ~229s)'
-            $lastProgressPrint = 180
-        } elseif ($elapsed -ge 300 -and $lastProgressPrint -lt 300) {
-            Write-Host '  [300s] still booting (if this keeps going past 360s, check pm2 logs for crash)'
-            $lastProgressPrint = 300
+        }
+        elseif ($elapsed -ge 240 -and $lastProgressPrint -lt 240) {
+            Write-Host '  [240s] still booting (scanner retry cascade or Polygon WS handshake)'
+            $lastProgressPrint = 240
+        }
+        elseif ($elapsed -ge 420 -and $lastProgressPrint -lt 420) {
+            Write-Host '  [420s] still booting (if this keeps going past 480s, check pm2 logs for crash)'
+            $lastProgressPrint = 420
         }
     }
     if (-not $healthy) {
-        Write-Host "ERROR: engine did not respond on /health within 360s after pm2 restart."
+        Write-Host "ERROR: engine did not respond on /health within 480s after pm2 restart."
         Write-Host "Last 30 error-log lines for triage:"
         try {
             pm2 logs jarvis-engine --nostream --lines 30 --err 2>&1 | Select-Object -Last 30 | Out-Host
-        } catch {
+        }
+        catch {
             Write-Host "  (pm2 logs fetch failed: $($_.Exception.Message))"
         }
         exit 1
     }
 
-    # Verify the cycle actually happened. PM2 has been observed no-op'ing on
-    # transient conditions. A fresh restart's pm_uptime should be less than
-    # the time we spent waiting — if uptime exceeds our elapsed script time,
-    # the process started BEFORE this script ran, which means pm2 didn't cycle.
-    # Parse pm_uptime via regex — ConvertFrom-Json trips over PM2's duplicate
-    # case-insensitive env-var keys (USERNAME vs username) on Windows.
+    # Advisory pm2 cycle check — informational only.
+    #
+    # History: this block previously exit-1'd whenever the pm_uptime regex
+    # appeared to exceed the elapsed-script time, on the theory that a fresh
+    # restart's uptime should be < script wall time + a 5s skew tolerance.
+    # In practice the comparison consistently false-positived (verified twice
+    # in 24h, 2026-05-06 + 2026-05-07) on restarts /health had already
+    # confirmed clean. Likely causes:
+    #   - pm2 jlist reads the prior process record on the brief window
+    #     between SIGKILL of the old worker and ts-update of the new one
+    #   - `pm2 restart` returns asynchronously; the regex captures a
+    #     monotonic-clock pm_uptime that doesn't always reset relative to
+    #     wall-clock at the moment of polling
+    # /health is the canonical pass/fail signal. If we got here, the engine
+    # answered 200 within 480s, which is sufficient. Surface the uptime as
+    # a warning when it looks suspicious; never block on it.
     $uptimeMs = -1
     try {
         $raw = (pm2 jlist 2>$null | Out-String)
-        # Locate the jarvis-engine record and pull its pm_uptime number.
         $idx = $raw.IndexOf('"name":"jarvis-engine"')
         if ($idx -ge 0) {
             $slice = $raw.Substring($idx)
@@ -85,27 +100,27 @@ if ($pm2Managed) {
                 $uptimeMs = $nowMs - [int64]$m.Groups[1].Value
             }
         }
-    } catch {
-        Write-Host "Could not read pm2 jlist for uptime verification: $($_.Exception.Message)"
+    }
+    catch {
+        Write-Host "WARN: could not read pm2 jlist for uptime advisory: $($_.Exception.Message)"
     }
 
-    if ($uptimeMs -lt 0) {
-        Write-Host "ERROR: could not verify pm2 restart (jlist unreadable). Aborting so caller doesn't mistake this for success."
-        exit 1
-    }
-    # Cycle detector: uptime must be <= elapsed-since-script-start (with 5s
-    # clock-skew tolerance). Previous static 60000ms cutoff broke when real
-    # startup grew past 60s — healthy restarts taking 197s were flagged as
-    # stale because the cutoff was shorter than the successful bind time.
     $elapsedMs = [int64]((Get-Date) - $startTime).TotalMilliseconds
     $cycleBudgetMs = $elapsedMs + 5000
-    if ($uptimeMs -gt $cycleBudgetMs) {
-        Write-Host ("ERROR: pm2 restart did NOT cycle the process - uptime=" + $uptimeMs + "ms exceeds elapsed=" + $elapsedMs + "ms (+5s tolerance).")
-        Write-Host "  Stale uvicorn is still running. Try: pm2 delete jarvis-engine ; then re-run this script."
-        exit 1
+
+    if ($uptimeMs -lt 0) {
+        Write-Host "WARN: pm2 jlist unreadable; relying on /health for canonical status."
+    }
+    elseif ($uptimeMs -gt $cycleBudgetMs) {
+        Write-Host ("WARN: pm2 uptime regex inconclusive (got " + $uptimeMs + "ms vs elapsed " + $elapsedMs + "ms); falling through to /health polling for canonical status.")
+        Write-Host ("  /health returned 200 within 480s, so the engine is up. If you suspect a stale uvicorn, run: pm2 delete jarvis-engine ; .\restart_engine.ps1")
+    }
+    else {
+        Write-Host ("Engine UP: 200 (pm2 uptime " + $uptimeMs + "ms / elapsed " + $elapsedMs + "ms - fresh)")
+        exit 0
     }
 
-    Write-Host ("Engine UP: 200 (pm2 uptime " + $uptimeMs + "ms / elapsed " + $elapsedMs + "ms - fresh)")
+    Write-Host "Engine UP: 200 (/health canonical; pm2 uptime advisory only)"
     exit 0
 }
 
@@ -133,8 +148,8 @@ function Get-ListenPids8010 {
 # against the live Windows process list and kill only the intersection.
 function Kill-WSL2SafePids8010 {
     $netstatPids = (netstat -ano 2>$null | Select-String ":\b8010\b\s" | ForEach-Object {
-        ($_ -split '\s+')[-1]
-    }) | Sort-Object -Unique | Where-Object { $_ -match '^\d+$' }
+            ($_ -split '\s+')[-1]
+        }) | Sort-Object -Unique | Where-Object { $_ -match '^\d+$' }
 
     if (-not $netstatPids) { return }
 
@@ -176,7 +191,8 @@ if ($stillListen.Count -gt 0) {
             Write-Host "  → Right-click Task Manager → Run as Administrator → find python.exe → End Task → re-run this script."
             exit 1
         }
-    } catch {
+    }
+    catch {
         Write-Host "Engine not responding on /health: $($_.Exception.Message)"
     }
     exit 1
@@ -204,20 +220,58 @@ if (Test-Path $envFile) {
 if ($taskExists) {
     Write-Host "Starting via Task Scheduler (no admin required)..."
     schtasks /run /tn $taskName
-} else {
+}
+else {
+    # Capture stdout/stderr so import-time crashes (e.g. NameError on a missing
+    # response_model class) leave a trail. Without redirection, -WindowStyle
+    # Hidden swallowed the 2026-05-05 CircuitBreakerStatus NameError silently —
+    # /health stayed unreachable while the only signal was a missing process.
+    $bootLog = Join-Path $repoRoot "engine\logs\engine-boot.log"
+    $bootErrLog = Join-Path $repoRoot "engine\logs\engine-boot-error.log"
     Start-Process -FilePath $pythonExe `
         -ArgumentList "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8010", "--log-level", "warning" `
         -WorkingDirectory (Join-Path $repoRoot "engine") `
+        -RedirectStandardOutput $bootLog `
+        -RedirectStandardError  $bootErrLog `
         -WindowStyle Hidden
 }
 
 Write-Host "Waiting for engine to start..."
-Start-Sleep 15
-
-try {
-    $r = Invoke-WebRequest -Uri "http://localhost:8010/health" -UseBasicParsing -TimeoutSec 5
-    Write-Host "Engine UP: $($r.StatusCode)"
-} catch {
-    Write-Host "Engine not responding"
+# Poll /health for up to 480s — matches the PM2-path ceiling. Non-PM2 starts
+# via task scheduler or direct Start-Process both boot asynchronously; the
+# 15s sleep used previously would always time-out on a 229s typical startup.
+$startTime2 = Get-Date
+$deadline2 = $startTime2.AddSeconds(480)
+$healthy2 = $false
+$lastProgressPrint2 = 0
+while ((Get-Date) -lt $deadline2) {
+    try {
+        $r = Invoke-WebRequest -Uri "http://127.0.0.1:8010/health" -UseBasicParsing -TimeoutSec 3
+        if ($r.StatusCode -eq 200) { $healthy2 = $true; break }
+    }
+    catch {}
+    Start-Sleep -Seconds 2
+    $elapsed2 = [int]((Get-Date) - $startTime2).TotalSeconds
+    if ($elapsed2 -ge 60 -and $lastProgressPrint2 -lt 60) {
+        Write-Host "  [60s] still booting (normal up to ~230s)"
+        $lastProgressPrint2 = 60
+    }
+    elseif ($elapsed2 -ge 240 -and $lastProgressPrint2 -lt 240) {
+        Write-Host "  [240s] still booting (scanner retry or Polygon WS)"
+        $lastProgressPrint2 = 240
+    }
+    elseif ($elapsed2 -ge 420 -and $lastProgressPrint2 -lt 420) {
+        Write-Host "  [420s] still booting (check engine-boot-error.log for crash)"
+        $lastProgressPrint2 = 420
+    }
+}
+if (-not $healthy2) {
+    Write-Host "ERROR: engine did not respond on /health within 480s."
+    $bootErrLog2 = Join-Path $repoRoot "engine\logs\engine-boot-error.log"
+    if (Test-Path $bootErrLog2) {
+        Write-Host "Last 20 lines of engine-boot-error.log:"
+        Get-Content $bootErrLog2 -Tail 20 | Out-Host
+    }
     exit 1
 }
+Write-Host "Engine UP: 200 (/health)"

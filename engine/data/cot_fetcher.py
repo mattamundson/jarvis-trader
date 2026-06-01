@@ -16,13 +16,14 @@ Usage:
     #           commercial_trend, last_updated}
 """
 
-import requests
 import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+import requests
 
 logger = logging.getLogger(__name__)
 

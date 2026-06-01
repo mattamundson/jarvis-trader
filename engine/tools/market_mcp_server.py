@@ -29,7 +29,6 @@ import json
 import logging
 
 import httpx
-
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 logger = logging.getLogger(__name__)
@@ -239,6 +238,21 @@ def create_market_mcp_server(
             data = {"logged": False, "error": str(exc)}
         return {"content": [{"type": "text", "text": json.dumps(data)}]}
 
+    @tool(
+        "get_options_greeks",
+        "Get real-time Greeks (Delta, Gamma, Theta, Vega, IV) for a specific "
+        "option contract. Format: UNDERLYING_YYMMDDCSTRIKE (e.g. AAPL_260522C190).",
+        {"symbol": str},
+    )
+    async def get_options_greeks(args: dict) -> dict:
+        symbol = str(args["symbol"]).upper()
+        try:
+            result = await data_manager.get_options_greeks(symbol)
+        except Exception as exc:
+            logger.warning("[MarketMCP] get_options_greeks error for %s: %s", symbol, exc)
+            result = {"error": str(exc), "symbol": symbol}
+        return {"content": [{"type": "text", "text": json.dumps(result)}]}
+
     return create_sdk_mcp_server(
         "jarvis-market-tools",
         version="1.0.0",
@@ -249,5 +263,6 @@ def create_market_mcp_server(
             get_social_sentiment,
             get_safety_status,
             log_paper_trade,
+            get_options_greeks,
         ],
     )

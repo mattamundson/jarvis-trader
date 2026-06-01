@@ -47,6 +47,8 @@ interface HealthData {
   kill_switch_active: boolean;
   uptime_seconds: number;
   ibkr_connected: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   paper_trading?: boolean;
   version?: string;
 }
@@ -322,9 +324,10 @@ export default function CommandCenterPage() {
   const liveWfeRows = useMemo(() => {
     if (!paperStatus) return WFE_ROWS;
     const keys: { k: string; symbol: string; tf: string; threshold: number }[] = [
+      { k: "MES_1h", symbol: "MES", tf: "1h", threshold: 0.3 },
+      { k: "MGC_1d", symbol: "MGC", tf: "1d", threshold: 0.3 },
       { k: "MCL_1h", symbol: "MCL", tf: "1h", threshold: 0.3 },
       { k: "MNQ_1h", symbol: "MNQ", tf: "1h", threshold: 0.3 },
-      { k: "MGC_1d", symbol: "MGC", tf: "1d", threshold: 0.3 },
     ];
     return keys.map(({ k, symbol, tf, threshold }) => {
       const row = paperStatus[k];
@@ -1241,12 +1244,13 @@ export default function CommandCenterPage() {
               <span className="text-xs text-slate-500">IBKR Gateway</span>
               <Badge
                 className={`text-xs font-mono py-0 border ${
-                  health?.ibkr_connected
+                  (health?.ibkr_execution_connected ?? health?.ibkr_connected)
                     ? "bg-green-950 text-green-400 border-green-800"
                     : "bg-red-950 text-red-400 border-red-800"
                 }`}
+                title="Reports execution-connector state when /health exposes ibkr_execution_connected; falls back to legacy ibkr_connected (OR of execution + data) on older engines."
               >
-                {health?.ibkr_connected ? "CONNECTED" : "DISCONNECTED"}
+                {(health?.ibkr_execution_connected ?? health?.ibkr_connected) ? "CONNECTED" : "DISCONNECTED"}
               </Badge>
             </div>
             <div className="flex justify-between items-center">

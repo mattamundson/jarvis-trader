@@ -44,6 +44,9 @@ async def notify_pending_approval_queued(
     action: str,
     quantity: Optional[float] = None,
     entry_price: Optional[float] = None,
+    stop_price: Optional[float] = None,
+    target_price: Optional[float] = None,
+    confidence: Optional[float] = None,
 ) -> None:
     """Non-raising: WebSocket + WhatsApp + Telegram (if configured) + optional Discord."""
     from websocket.events import emit_pending_approval_created
@@ -68,11 +71,15 @@ async def notify_pending_approval_queued(
     try:
         from notifications.whatsapp import send_whatsapp_message
 
+        stp_str = f" | STP: {float(stop_price):.4f}" if stop_price else ""
+        tgt_str = f" | TGT: {float(target_price):.4f}" if target_price else ""
+        conf_str = f" | Conf: {float(confidence):.2f}" if confidence else ""
+        px_clean = f" @ {float(entry_price):.4f}" if entry_price else ""
+
         msg = (
-            f"*JARVIS — APPROVAL REQUIRED*\n\n"
-            f"{sym} {act}{qty_part}{px_part}\n"
-            f"ID: {approval_id[:8]}…\n\n"
-            f"Dashboard:\n{approve_url}"
+            f"JARVIS: {sym} {act}{px_clean}{stp_str}{tgt_str}{conf_str}\n"
+            f"ID: {approval_id[:8]}…\n"
+            f"Reply Y to approve, N to reject"
         )
         await send_whatsapp_message(msg, alert_type="pending_approval", symbol=sym)
     except Exception as e:

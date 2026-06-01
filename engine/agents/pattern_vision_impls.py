@@ -164,7 +164,7 @@ def _render_candlestick_png(
         body_width = 0.6
 
         for i, (_, row) in enumerate(df.iterrows()):
-            o, h, l, c = row["open"], row["high"], row["low"], row["close"]
+            o, h, l, c = row["open"], row["high"], row["low"], row["close"]  # noqa: E741  # OHLC convention
             up = c >= o
             color = "#2ca02c" if up else "#d62728"
             ax.add_patch(

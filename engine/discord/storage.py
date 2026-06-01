@@ -2,6 +2,7 @@ import logging
 import sqlite3
 from typing import Optional
 
+from . import storage_questdb as _qdb
 from .models import Bookmark, BotSignal, CoreyAlert, CoreyCommentary, IBReport
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,8 @@ CREATE TABLE IF NOT EXISTS discord_bot_signals (
     source_channel TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_bot_signals_symbol_ts
+  ON discord_bot_signals(symbol, timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS discord_ib_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,19 +94,56 @@ CREATE TABLE IF NOT EXISTS discord_bookmarks (
     content TEXT,
     author_id TEXT,
     author_name TEXT,
-    imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    attachment_urls TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_bookmarks_posted ON discord_bookmarks(posted_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bookmarks_domain ON discord_bookmarks(domain);
 CREATE INDEX IF NOT EXISTS idx_bookmarks_source_type ON discord_bookmarks(source_type);
+
+CREATE TABLE IF NOT EXISTS discord_daily_sentiment (
+    date TEXT NOT NULL PRIMARY KEY,
+    sentiment_score REAL NOT NULL,
+    post_count INTEGER NOT NULL,
+    source TEXT DEFAULT 'discord_corey_commentary',
+    computed_at TEXT NOT NULL
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS discord_commentary_fts
+USING fts5(content, timestamp, channel);
+
+CREATE TRIGGER IF NOT EXISTS discord_commentary_fts_ai
+AFTER INSERT ON discord_corey_commentary BEGIN
+    INSERT INTO discord_commentary_fts(rowid, content, timestamp, channel)
+    VALUES (new.id, new.content, new.timestamp, new.channel);
+END;
+
+CREATE TRIGGER IF NOT EXISTS discord_commentary_fts_ad
+AFTER DELETE ON discord_corey_commentary BEGIN
+    INSERT INTO discord_commentary_fts(discord_commentary_fts, rowid, content, timestamp, channel)
+    VALUES ('delete', old.id, old.content, old.timestamp, old.channel);
+END;
+
+-- AFTER UPDATE trigger: keep FTS in lock-step if discord_corey_commentary rows
+-- are ever updated (no current update path exists, but adding this trigger
+-- prevents silent FTS drift if an edit-message feature is added later).
+CREATE TRIGGER IF NOT EXISTS discord_commentary_fts_au
+AFTER UPDATE ON discord_corey_commentary BEGIN
+    INSERT INTO discord_commentary_fts(discord_commentary_fts, rowid, content, timestamp, channel)
+    VALUES ('delete', old.id, old.content, old.timestamp, old.channel);
+    INSERT INTO discord_commentary_fts(rowid, content, timestamp, channel)
+    VALUES (new.id, new.content, new.timestamp, new.channel);
+END;
 """
 
-# Columns added post-Phase-B (Workstream A, 2026-04-20). ALTER handles pre-existing DBs;
-# CREATE TABLE above handles fresh ones. Both paths converge on the same shape.
+# Columns added post-Phase-B (Workstream A, 2026-04-20) and post-Path-B
+# (2026-05-20, attachment_urls). ALTER handles pre-existing DBs; CREATE TABLE
+# above handles fresh ones. Both paths converge on the same shape.
 _BOOKMARK_MIGRATION_COLUMNS = [
     ("content", "TEXT"),
     ("author_id", "TEXT"),
     ("author_name", "TEXT"),
+    ("attachment_urls", "TEXT"),
 ]
 
 
@@ -116,6 +156,13 @@ def init_tables(db_path: str) -> None:
     """
     conn = sqlite3.connect(db_path)
     try:
+        mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+        if mode != "wal":
+            logger.warning(
+                "WAL mode not activated for %s (got %r) — concurrent writer lock contention possible",
+                db_path,
+                mode,
+            )
         conn.executescript(CREATE_TABLES_SQL)
         existing_cols = {
             row[1] for row in conn.execute("PRAGMA table_info(discord_bookmarks)").fetchall()
@@ -128,6 +175,25 @@ def init_tables(db_path: str) -> None:
                     # Racing a concurrent init is fine — the column now exists.
                     if "duplicate column name" not in str(e).lower():
                         raise
+        # Bootstrap FTS index for existing databases that had rows before the
+        # virtual table was added (CREATE TRIGGER only fires on new inserts).
+        try:
+            fts_count = conn.execute("SELECT COUNT(*) FROM discord_commentary_fts").fetchone()[0]
+            if fts_count == 0:
+                src_count = conn.execute(
+                    "SELECT COUNT(*) FROM discord_corey_commentary"
+                ).fetchone()[0]
+                if src_count > 0:
+                    conn.execute(
+                        """
+                        INSERT INTO discord_commentary_fts(rowid, content, timestamp, channel)
+                        SELECT id, content, timestamp, channel FROM discord_corey_commentary
+                        """
+                    )
+                    logger.info("Bootstrapped discord_commentary_fts with %d rows", src_count)
+        except sqlite3.OperationalError:
+            pass  # FTS5 unavailable in this SQLite build — LIKE fallback still works
+
         conn.commit()
     finally:
         conn.close()  # `with sqlite3.connect(...)` only commits, never closes — Windows holds file lock otherwise
@@ -171,10 +237,18 @@ def insert_bot_signal(conn: sqlite3.Connection, signal: BotSignal) -> bool:
                 signal.source_channel,
             ),
         )
-        return conn.execute("SELECT changes()").fetchone()[0] > 0
+        inserted = conn.execute("SELECT changes()").fetchone()[0] > 0
     except sqlite3.Error as e:
         logger.error(f"Error inserting bot signal {signal.message_id}: {e}")
         return False
+    # Dual-write to QuestDB shadow (non-blocking; errors logged, not raised)
+    try:
+        _qdb.insert_bot_signal_ts(signal)
+    except Exception as exc:  # pragma: no cover — _qdb functions never raise, but belt+suspenders
+        logger.warning(
+            "QuestDB dual-write hook failed for bot signal %s: %s", signal.message_id, exc
+        )
+    return inserted
 
 
 def insert_ib_report(conn: sqlite3.Connection, report: IBReport) -> bool:
@@ -208,10 +282,18 @@ def insert_ib_report(conn: sqlite3.Connection, report: IBReport) -> bool:
                 report.source_channel,
             ),
         )
-        return conn.execute("SELECT changes()").fetchone()[0] > 0
+        inserted = conn.execute("SELECT changes()").fetchone()[0] > 0
     except sqlite3.Error as e:
         logger.error(f"Error inserting IB report {report.message_id}: {e}")
         return False
+    # Dual-write to QuestDB shadow (non-blocking; errors logged, not raised)
+    try:
+        _qdb.insert_ib_report_ts(report)
+    except Exception as exc:  # pragma: no cover
+        logger.warning(
+            "QuestDB dual-write hook failed for IB report %s: %s", report.message_id, exc
+        )
+    return inserted
 
 
 def insert_corey_alert(conn: sqlite3.Connection, alert: CoreyAlert) -> bool:
@@ -256,10 +338,18 @@ def insert_corey_commentary(conn: sqlite3.Connection, commentary: CoreyCommentar
                 commentary.author_id,
             ),
         )
-        return conn.execute("SELECT changes()").fetchone()[0] > 0
+        inserted = conn.execute("SELECT changes()").fetchone()[0] > 0
     except sqlite3.Error as e:
         logger.error(f"Error inserting commentary {commentary.message_id}: {e}")
         return False
+    # Dual-write to QuestDB shadow (non-blocking; errors logged, not raised)
+    try:
+        _qdb.insert_corey_commentary_ts(commentary)
+    except Exception as exc:  # pragma: no cover
+        logger.warning(
+            "QuestDB dual-write hook failed for commentary %s: %s", commentary.message_id, exc
+        )
+    return inserted
 
 
 def insert_bookmark(conn: sqlite3.Connection, bookmark: Bookmark) -> bool:
@@ -269,8 +359,9 @@ def insert_bookmark(conn: sqlite3.Connection, bookmark: Bookmark) -> bool:
             """
             INSERT OR IGNORE INTO discord_bookmarks
             (message_id, channel_id, posted_at, url, domain, source_type,
-             embed_title, embed_description, content, author_id, author_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             embed_title, embed_description, content, author_id, author_name,
+             attachment_urls)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 bookmark.message_id,
@@ -284,6 +375,7 @@ def insert_bookmark(conn: sqlite3.Connection, bookmark: Bookmark) -> bool:
                 bookmark.content,
                 bookmark.author_id,
                 bookmark.author_name,
+                bookmark.attachment_urls,
             ),
         )
         return conn.execute("SELECT changes()").fetchone()[0] > 0
@@ -344,7 +436,11 @@ def get_stats(db_path: str) -> dict:
         bm_row = conn.execute(
             "SELECT COUNT(*), MIN(posted_at), MAX(posted_at) FROM discord_bookmarks"
         ).fetchone()
-        stats["discord_bookmarks"] = {"count": bm_row[0], "earliest": bm_row[1], "latest": bm_row[2]}
+        stats["discord_bookmarks"] = {
+            "count": bm_row[0],
+            "earliest": bm_row[1],
+            "latest": bm_row[2],
+        }
         bm_sources = conn.execute(
             "SELECT source_type, COUNT(*) FROM discord_bookmarks GROUP BY source_type ORDER BY COUNT(*) DESC"
         ).fetchall()

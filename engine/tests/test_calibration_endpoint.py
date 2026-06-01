@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -24,10 +25,17 @@ if _ENGINE_ROOT not in sys.path:
     sys.path.insert(0, _ENGINE_ROOT)
 
 
+# Mirrors AGENT_NAMES in engine/analytics/agent_feedback.py (7 agents post Phase 3).
+_TEST_AGENTS = ("technical", "news", "social", "fundamental", "corey", "breakout", "harmonic")
+
+
 def _init_schema(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
-        conn.execute("""
+        # Schema mirrors AgentFeedbackTracker._init_db post 2026-04-25 migration:
+        # 7 *_signal columns + regime, keeping cold-start parity with production.
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS trade_outcomes (
                 trade_id TEXT PRIMARY KEY,
                 timestamp TEXT,
@@ -40,14 +48,25 @@ def _init_schema(db_path: Path) -> None:
                 news_signal REAL,
                 social_signal REAL,
                 fundamental_signal REAL,
-                corey_signal REAL
+                corey_signal REAL,
+                breakout_signal REAL,
+                harmonic_signal REAL,
+                regime TEXT
             )
-        """)
+        """
+        )
 
 
-def _seed_rows(db_path: Path, agent_idx: int, n: int, now_iso: str = "2026-04-17T00:00:00+00:00"):
-    """Seed n rows where only the given agent column has a non-zero signal."""
-    cols = [0.0, 0.0, 0.0, 0.0, 0.0]
+def _seed_rows(db_path: Path, agent_idx: int, n: int, now_iso: str | None = None):
+    """Seed n rows where only the given agent column has a non-zero signal.
+
+    agent_idx must be in [0, len(_TEST_AGENTS)).
+    """
+    if now_iso is None:
+        now_iso = datetime.now(timezone.utc).isoformat()
+    if not (0 <= agent_idx < len(_TEST_AGENTS)):
+        raise ValueError(f"agent_idx {agent_idx} out of range; expected 0..{len(_TEST_AGENTS) - 1}")
+    cols = [0.0] * len(_TEST_AGENTS)
     with sqlite3.connect(db_path) as conn:
         for i in range(n):
             sigs = list(cols)
@@ -55,8 +74,9 @@ def _seed_rows(db_path: Path, agent_idx: int, n: int, now_iso: str = "2026-04-17
             conn.execute(
                 "INSERT OR REPLACE INTO trade_outcomes "
                 "(trade_id, timestamp, symbol, direction, pnl_usd, pnl_pct, outcome, "
-                " technical_signal, news_signal, social_signal, fundamental_signal, corey_signal) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " technical_signal, news_signal, social_signal, fundamental_signal, corey_signal, "
+                " breakout_signal, harmonic_signal) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     f"t{agent_idx}_{i}",
                     now_iso,
@@ -79,10 +99,11 @@ def client_with_db(tmp_path, monkeypatch):
     # Patch both import paths — router imports via `analytics.*`, but the
     # debate module (loaded by _is_brier_enabled() indirectly) may use the
     # `engine.*` path. Patch both to be safe.
-    import analytics.agent_feedback as af_short
-    import analytics.ic_ensemble as ic_short
     import engine.analytics.agent_feedback as af_eng
     import engine.analytics.ic_ensemble as ic_eng
+
+    import analytics.agent_feedback as af_short
+    import analytics.ic_ensemble as ic_short
 
     monkeypatch.setattr(af_short, "DB_PATH", db_path)
     monkeypatch.setattr(af_eng, "DB_PATH", db_path)
@@ -110,16 +131,23 @@ def test_calibration_cold_db_returns_neutral(client_with_db):
 
     # Shape
     assert set(data.keys()) >= {
-        "brier_enabled", "brier_blend_alpha", "min_trades_threshold",
-        "window_days", "agents", "per_agent", "total_outcomes",
-        "ready_to_activate", "neutral_sentinel", "timestamp",
+        "brier_enabled",
+        "brier_blend_alpha",
+        "min_trades_threshold",
+        "window_days",
+        "agents",
+        "per_agent",
+        "total_outcomes",
+        "ready_to_activate",
+        "neutral_sentinel",
+        "timestamp",
     }
     # Cold state
     assert data["total_outcomes"] == 0
     assert data["ready_to_activate"] is False
     assert data["neutral_sentinel"] == pytest.approx(0.25)
     # All agents present, all sample_counts=0, all brier_score=neutral, ic_score=0
-    for agent in ("technical", "news", "social", "fundamental", "corey"):
+    for agent in _TEST_AGENTS:
         entry = data["per_agent"][agent]
         assert entry["sample_count"] == 0
         assert entry["ready"] is False
@@ -143,15 +171,22 @@ def test_calibration_partial_warmup(client_with_db):
 
 
 def test_calibration_full_warmup_sets_ready_flag(client_with_db):
-    """All 5 agents above min_trades → ready_to_activate=True."""
+    """All 7 agents above min_trades → ready_to_activate=True.
+
+    Phase 3 (2026-04-25) extended AGENT_NAMES from 5 to 7 — added `breakout`
+    and `harmonic`. The endpoint requires *all* tracked agents to have
+    sample_count >= MIN_TRADES_FOR_IC before flipping ready_to_activate=True,
+    so the fixture must seed all 7.
+    """
     client, db_path = client_with_db
-    for i in range(5):
+    n_agents = len(_TEST_AGENTS)
+    for i in range(n_agents):
         _seed_rows(db_path, agent_idx=i, n=5)  # 5 rows per agent
 
     data = client.get("/analytics/calibration").json()
-    assert data["total_outcomes"] == 25
+    assert data["total_outcomes"] == 5 * n_agents
     assert data["ready_to_activate"] is True
-    for agent in ("technical", "news", "social", "fundamental", "corey"):
+    for agent in _TEST_AGENTS:
         entry = data["per_agent"][agent]
         assert entry["sample_count"] == 5
         assert entry["ready"] is True

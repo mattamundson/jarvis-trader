@@ -11,8 +11,7 @@ Instruments mapped to sectors:
 """
 
 import logging
-from typing import Optional, Dict, Any
-from datetime import datetime, timezone
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 

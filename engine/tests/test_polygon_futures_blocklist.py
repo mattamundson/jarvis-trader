@@ -20,7 +20,6 @@ from data.market_data import (
     POLYGON_FUTURES_MAP,
 )
 
-
 # Symbols the trading pipeline actively uses (must always be blocked).
 KNOWN_FUTURES = ["MCL", "MNQ", "MES", "MGC", "CL", "NQ", "ES", "GC"]
 

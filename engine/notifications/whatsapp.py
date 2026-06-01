@@ -46,7 +46,7 @@ class WhatsAppNotifier:
             None,
             "",
         }
-        self.enabled = not any(
+        self.enabled = all([self.account_sid, self.auth_token, self.from_number, self.to_number]) and not any(
             v in placeholders
             for v in [self.account_sid, self.auth_token, self.from_number, self.to_number]
         )
@@ -74,7 +74,15 @@ class WhatsAppNotifier:
                     data = resp.json()
                     logger.info(f"WhatsApp sent SID={data.get('sid')}")
                     return True
-                logger.warning(f"Twilio error {resp.status_code}: {resp.text[:200]}")
+
+                # Diagnostic for 401 Unauthorized
+                error_msg = f"Twilio error {resp.status_code}: {resp.text[:200]}"
+                if resp.status_code == 401:
+                    sid_status = "HIDDEN" if self.account_sid and self.account_sid.startswith("AC") else "INVALID_OR_MISSING_AC_PREFIX"
+                    token_status = "PRESENT" if self.auth_token else "MISSING"
+                    error_msg += f" | SID Status: {sid_status} | Token Status: {token_status}"
+
+                logger.warning(error_msg)
                 return False
         except Exception as e:
             logger.error(f"WhatsApp send failed: {e}")

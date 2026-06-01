@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Optional
 
@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # DB path helper (mirrors signal_context.py convention)
 # ---------------------------------------------------------------------------
+
 
 def _default_db_path() -> str:
     # DB lives at engine/data/jarvis_trader.db. Anchor at engine/ root, not
@@ -66,20 +67,21 @@ CREATE TABLE IF NOT EXISTS corey_session_bias (
 # Dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CoreySessionBias:
     """Structured session bias extracted from Corey's commentary."""
 
     date: date
-    session_type: str           # "range_day" | "trend_day" | "outside_bar" | "inside_bar" | "uncertain"
-    directional_bias: str       # "bullish" | "bearish" | "neutral"
-    key_levels: list[float]     # price levels mentioned in commentary
-    ib_bias: str                # "above_ib" | "below_ib" | "inside_ib" | "not_mentioned"
+    session_type: str  # "range_day" | "trend_day" | "outside_bar" | "inside_bar" | "uncertain"
+    directional_bias: str  # "bullish" | "bearish" | "neutral"
+    key_levels: list[float]  # price levels mentioned in commentary
+    ib_bias: str  # "above_ib" | "below_ib" | "inside_ib" | "not_mentioned"
     specific_triggers: list[str]  # max 5 actionable statements
-    conviction: float           # 0.0-1.0
-    corey_quote: str            # single most actionable sentence
-    message_count: int          # number of commentary messages used
-    data_quality: str           # "fresh" | "stale" | "none"
+    conviction: float  # 0.0-1.0
+    corey_quote: str  # single most actionable sentence
+    message_count: int  # number of commentary messages used
+    data_quality: str  # "fresh" | "stale" | "none"
 
     def to_dict(self) -> dict:
         return {
@@ -173,13 +175,24 @@ class CoreyCommentaryProcessor:
         self._ensure_cache_table()
 
     def _ensure_cache_table(self) -> None:
-        """Create the cache table if it doesn't exist."""
+        """Create the cache table if it doesn't exist.
+
+        R-I-5: Logs include the resolved db_path so a wrong-path failure
+        (e.g., split-brain DB pointing at the stale repo-root copy) is
+        diagnosable from the warning text alone, instead of surfacing
+        later as an obscure 'no such table: corey_session_bias' from
+        downstream code.
+        """
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(_CREATE_CACHE_TABLE)
                 conn.commit()
         except Exception as e:
-            logger.warning("[CoreyProcessor] Could not create cache table: %s", e)
+            logger.warning(
+                "[CoreyProcessor] Could not create cache table at %s: %s",
+                self.db_path,
+                e,
+            )
 
     # ── Public API ─────────────────────────────────────────────────────────
 
@@ -213,11 +226,22 @@ class CoreyCommentaryProcessor:
             if days_old > self.STALE_DAYS:
                 logger.info(
                     "[CoreyProcessor] Commentary is %d days old (from %s) — will be marked stale",
-                    days_old, actual_date,
+                    days_old,
+                    actual_date,
                 )
 
         # Call LLM
         result = await self._llm_extract(for_date, rows)
+        # Don't pin LLM failures to the day-level cache: if Anthropic returns 4xx
+        # (credit balance, transient bad-request) the cached "none" would persist
+        # until midnight even after billing/connectivity is restored mid-session.
+        # Successful extractions and the "no rows exist" branch above still cache.
+        if result.data_quality == "none" and len(rows) > 0:
+            logger.info(
+                "[CoreyProcessor] Skipping cache for %s — LLM failed with rows present; will retry next call",
+                for_date,
+            )
+            return result
         self._save_to_cache(result)
         return result
 
@@ -227,24 +251,23 @@ class CoreyCommentaryProcessor:
         """Fetch all commentary rows for the given date (market-updates + tathedog/general)."""
         date_str = for_date.isoformat()
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT content, timestamp, channel
-                FROM discord_corey_commentary
-                WHERE DATE(timestamp) = ?
-                  AND (
-                      channel = 'market-updates'
-                      OR (channel = 'general' AND author_id = ?)
-                  )
-                ORDER BY timestamp ASC
-                """,
-                (date_str, TATHEDOG_AUTHOR_ID),
-            )
-            rows = [dict(r) for r in cur.fetchall()]
-            conn.close()
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT content, timestamp, channel
+                    FROM discord_corey_commentary
+                    WHERE DATE(timestamp) = ?
+                      AND (
+                          channel = 'market-updates'
+                          OR (channel = 'general' AND author_id = ?)
+                      )
+                    ORDER BY timestamp ASC
+                    """,
+                    (date_str, TATHEDOG_AUTHOR_ID),
+                )
+                rows = [dict(r) for r in cur.fetchall()]
             return rows
         except Exception as e:
             logger.warning("[CoreyProcessor] DB fetch failed for %s: %s", date_str, e)
@@ -276,7 +299,7 @@ class CoreyCommentaryProcessor:
         data_quality = "fresh" if days_old <= self.STALE_DAYS else "stale"
 
         # Build message block (cap at 6000 chars to stay within Haiku token budget)
-        messages_text = _build_message_block(rows, max_chars=6000)
+        messages_text = _build_message_block(rows, max_chars=60000)
         prompt = _LLM_PROMPT_TEMPLATE.format(
             date=for_date.isoformat(),
             n_messages=len(rows),
@@ -324,7 +347,35 @@ class CoreyCommentaryProcessor:
             )
 
         except Exception as e:
-            logger.error("[CoreyProcessor] LLM extraction failed: %s", e)
+            # Surface the actual Anthropic response body when available — a bare
+            # "400 Bad Request" hides "credit balance is too low" vs other 400s.
+            body_excerpt = ""
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                try:
+                    body_excerpt = (resp.text or "")[:400]
+                except Exception:
+                    body_excerpt = ""
+            logger.error(
+                "[CoreyProcessor] LLM extraction failed: %s%s",
+                e,
+                f" | body={body_excerpt!r}" if body_excerpt else "",
+            )
+            # WARNING — visible sentinel so silent degradation is always logged.
+            # data_quality='none' means the bias is unknown, NOT that it is neutral.
+            # Downstream consumers must not treat 'none' as a directional signal.
+            logger.warning(
+                "[CoreyProcessor] DEGRADED TO NEUTRAL for %s — "
+                "data_quality='none' because LLM extraction failed (%d messages present). "
+                "This date will NOT be cached; next call will retry the LLM.",
+                for_date.isoformat(),
+                len(rows),
+            )
+            # data_quality must be 'none' on any LLM exception — the rows-present
+            # branch previously wrote 'fresh'/'stale' here, which downstream
+            # correlation queries (discord_correlation.py filters on data_quality
+            # IN ('fresh','stale')) would silently include as content-empty
+            # neutral noise. 'none' is the explicit "no LLM-extracted bias" sentinel.
             return CoreySessionBias(
                 date=for_date,
                 session_type="uncertain",
@@ -335,25 +386,45 @@ class CoreyCommentaryProcessor:
                 conviction=0.0,
                 corey_quote="",
                 message_count=len(rows),
-                data_quality=data_quality if rows else "none",
+                data_quality="none",
             )
 
     # ── Cache ───────────────────────────────────────────────────────────────
 
     def _load_from_cache(self, for_date: date) -> Optional[CoreySessionBias]:
-        """Return cached result for the date, or None if not cached."""
+        """Return cached result for the date, or None if not cached.
+
+        Poisoned rows — data_quality='none' with message_count > 0 — are
+        treated as a cache miss and evicted. They represent a prior LLM
+        failure (e.g. billing outage) on a date that had real commentary.
+        Returning them would permanently suppress extraction for that date
+        even after the outage is resolved (2026-05-11 regression root cause).
+
+        Genuine no-data rows (data_quality='none' AND message_count=0) are
+        returned as-is; the answer is stable — there really was no commentary.
+        """
         date_str = for_date.isoformat()
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT * FROM corey_session_bias WHERE date = ?", (date_str,)
-            )
-            row = cur.fetchone()
-            conn.close()
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM corey_session_bias WHERE date = ?", (date_str,))
+                row = cur.fetchone()
             if row is None:
                 return None
+
+            # Evict poisoned rows: failed LLM extraction on a date with real messages.
+            if row["data_quality"] == "none" and int(row["message_count"]) > 0:
+                logger.warning(
+                    "[CoreyProcessor] Evicting poisoned cache for %s "
+                    "(data_quality='none' but message_count=%d — prior LLM failure). "
+                    "Will re-extract.",
+                    date_str,
+                    int(row["message_count"]),
+                )
+                self._evict_cache(for_date)
+                return None
+
             return CoreySessionBias(
                 date=for_date,
                 session_type=row["session_type"],
@@ -398,7 +469,11 @@ class CoreyCommentaryProcessor:
                     ),
                 )
                 conn.commit()
-            logger.debug("[CoreyProcessor] Cached session bias for %s (quality=%s)", date_str, bias.data_quality)
+            logger.debug(
+                "[CoreyProcessor] Cached session bias for %s (quality=%s)",
+                date_str,
+                bias.data_quality,
+            )
         except Exception as e:
             logger.warning("[CoreyProcessor] Cache save failed: %s", e)
 
@@ -413,26 +488,50 @@ class CoreyCommentaryProcessor:
         except Exception as e:
             logger.warning("[CoreyProcessor] Cache invalidation failed: %s", e)
 
+    def _evict_cache(self, for_date: date) -> None:
+        """Delete a poisoned cache row so the next call triggers fresh LLM extraction."""
+        date_str = for_date.isoformat()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("DELETE FROM corey_session_bias WHERE date = ?", (date_str,))
+                conn.commit()
+        except Exception as e:
+            logger.warning("[CoreyProcessor] Cache eviction failed for %s: %s", date_str, e)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _build_message_block(rows: list[dict], max_chars: int = 6000) -> str:
-    """Build a single text block from commentary rows, newest-first trimming if needed."""
-    lines = []
+
+def _build_message_block(rows: list[dict], max_chars: int = 60000) -> str:
+    """Build a single text block from commentary rows for the LLM extractor.
+
+    Walks newest-first to fill the budget so end-of-session updates
+    (e.g., a Power Hour revision that pivots the bias) anchor the synthesis
+    rather than getting dropped when an earlier morning post exhausts the
+    budget. The output is then re-sorted chronologically (oldest→newest)
+    so the LLM still reads the day's narrative in sequence.
+
+    Input rows are expected ASC (oldest first) — see _fetch_commentary.
+    """
+    selected: list[tuple[str, str]] = []
     total = 0
-    for row in rows:
-        ts = row.get("timestamp", "")[:16]
+    for row in reversed(rows):
         content = (row.get("content") or "").strip()
         if not content:
             continue
+        ts_full = row.get("timestamp", "")
+        ts = ts_full[:16]
         line = f"[{ts}] {content}"
         if total + len(line) > max_chars:
             break
-        lines.append(line)
+        selected.append((ts_full, line))
         total += len(line)
-    return "\n".join(lines) if lines else "(no messages)"
+    if not selected:
+        return "(no messages)"
+    selected.sort(key=lambda x: x[0])
+    return "\n".join(line for _, line in selected)
 
 
 def _parse_date(ts_str: str) -> Optional[date]:

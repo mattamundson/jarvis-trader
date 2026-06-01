@@ -32,7 +32,15 @@ import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
+import { BookmarkFeedPanel } from "@/components/BookmarkFeedPanel";
 import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
+import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
+import { EngineHealthWidget } from "@/components/EngineHealthWidget";
+import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
+import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
+import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
+import { MESSprintGate } from "@/components/MESSprintGate";
+import PendingApprovals from "@/components/PendingApprovals";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -204,8 +212,22 @@ export default function DashboardPage() {
         {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
         <ProactiveValidationWidget />
 
-        {/* Signal Flow — per-instrument STC values and pipeline block stage */}
-        <SignalFlowWidget />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Signal Flow — per-instrument STC values and pipeline block stage */}
+          <SignalFlowWidget />
+
+          {/* Super-Engine Infrastructure Status */}
+          <SuperEngineStatusWidget />
+
+          {/* Engine Health — live /health subsystem checks (TV MCP, LLM, IBKR) */}
+          <EngineHealthWidget />
+
+          {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
+          <Pm2StabilityWidget />
+
+          {/* MES Sprint Gate — April 30 live-flip prerequisite aggregator */}
+          <MESSprintGate />
+        </div>
 
         {/* Walk-Forward / Paper Trading Status */}
         <WFEStatusCard />
@@ -218,6 +240,7 @@ export default function DashboardPage() {
           {/* Left column — positions + performance + regime */}
           <div className="col-span-12 lg:col-span-3 space-y-4">
             <SessionTodayWidget />
+            <InstitutionalProfileWidget defaultSymbol="MES" />
             <PositionsPanel
               positions={portfolio?.positions ?? []}
               totalEquity={portfolio?.total_equity ?? 0}
@@ -229,6 +252,7 @@ export default function DashboardPage() {
               equityCurve={[]}
             />
             <RegimeDisplay />
+            <ShadowPerformanceWidget />
             <MTFConfirmationWidget symbol="MES" />
             <DualTFWidget />
           </div>
@@ -239,8 +263,10 @@ export default function DashboardPage() {
           </div>
 
           {/* Right column — safety + sentiment */}
-          <div className="col-span-12 lg:col-span-3 space-y-4">
+          <div className="col-span-12 lg:col-span-4 space-y-6">
+            <PendingApprovals />
             <KillSwitch
+
               isActive={safety?.kill_switch_active ?? false}
               reason={safety?.kill_switch_reason}
               onToggle={onKillSwitchToggle}
@@ -295,6 +321,9 @@ export default function DashboardPage() {
 
             {/* Bookmark Themes — Claude-clustered weekly themes from Discord bookmarks */}
             <BookmarkThemesPanel />
+
+            {/* Bookmark Feed — recent and searchable Discord bookmark rows */}
+            <BookmarkFeedPanel />
 
             {/* Strategy Parameters */}
             <StrategyParamsPanel />
@@ -479,26 +508,32 @@ interface RegimeStatusEntry {
   adaptive_stc_ob?: number;
 }
 
+// Fallback mirrors the live gate-v2 reality (see /backtest/paper-status):
+// MES/MGC trend = PASS (active forward-proving book); MCL/MNQ = DO_NOT_TRADE.
 const FALLBACK_PAPER: Record<string, PaperStatusEntry> = {
+  "MES_1h": {
+    status: "ACTIVE",
+    wfe: 1.0,
+    wfe_label: "PASS via alt",
+    cleared_date: "2026-05-31",
+    config: "gate-v2 trend rank11",
+  },
   "MGC_1d": {
     status: "ACTIVE",
-    wfe: 0.88,
-    wfe_label: "EXCELLENT",
-    cleared_date: "2026-03-29",
-    risk_per_trade: "0.25%",
-    config: "adaptive_regime=ON",
-  },
-  "MNQ_1h": {
-    status: "RESEARCH",
-    wfe: 0.34,
-    wfe_label: "ACCEPTABLE",
-    target_wfe: 0.40,
+    wfe: 1.0,
+    wfe_label: "PASS via alt",
+    cleared_date: "2026-05-31",
+    config: "gate-v2 trend rank4",
   },
   "MCL_1h": {
     status: "NO-TRADE",
-    wfe: -0.31,
-    wfe_label: "FAILED",
-    target_wfe: 0.40,
+    wfe: 0.0,
+    wfe_label: "DO-NOT-TRADE (routing-blocked)",
+  },
+  "MNQ_1h": {
+    status: "NO-TRADE",
+    wfe: 0.0,
+    wfe_label: "DO-NOT-TRADE (routing-blocked)",
   },
 };
 

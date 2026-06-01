@@ -23,13 +23,16 @@ import datetime as _dt
 import logging
 import os
 import uuid
-from pathlib import Path
 import zoneinfo
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
 
+from analysis.regime_engine import MarketRegime as _LegacyRegime
+from analysis.regime_engine import RegimeStatus
+from backtest.regime_classifier import RegimeClassifierV2
 from database import repository
 
 try:
@@ -56,7 +59,7 @@ except Exception:  # pragma: no cover — optional dependency
     _WA_AVAILABLE = False
 
 try:
-    from analysis.hidden_pivots import full_hidden_pivots_scan, HPScanResult
+    from analysis.hidden_pivots import HPScanResult, full_hidden_pivots_scan
 
     _HP_AVAILABLE = True
 except Exception:  # pragma: no cover — optional dependency
@@ -71,9 +74,13 @@ except Exception:  # pragma: no cover — optional dependency
 
 try:
     from services.recipe_loader import RecipeLoader
+
     _RECIPE_LOADER_AVAILABLE = True
 except Exception:  # pragma: no cover — optional dependency
     _RECIPE_LOADER_AVAILABLE = False
+
+from agents.kronos_classifier import KronosClassifier, is_kronos_enabled
+from agents.options_analyst import is_options_analyst_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +88,56 @@ logger = logging.getLogger(__name__)
 TIME_OF_DAY_FILTER_ENABLED: bool = True
 _TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipped
 
-__all__ = ["TradingPipeline", "pre_filter_signal"]
+# ── Validation-Only Instruments ────────────────────────────────────────────────
+# Instruments in this set are included in the pipeline for signal generation and
+# dashboard visibility, but their verdicts NEVER reach the order submission path.
+#
+# These are instruments whose WFE scores are below the paper-trading threshold,
+# kept in the watchlist for continued walk-forward validation only:
+#   MES — WFE=0.09 (REJECTED 2026-04-02); Tier 3 paper walk-forward authorized 2026-04-09
+#   MGC — WFE=0.14 (HALTED); pipeline-only for validation feedback
+#
+# Flip-to-active criteria (remove from this set when ALL met):
+#   1. WFE >= 0.6 on a fresh rolling walk-forward run
+#   2. Gate v2 PASS (pf_ci_lower>=1.10, p_edge>=0.95, mc_95th_dd<=5%, dsr>=0.10)
+#   3. Explicit Tier 3 authorization from Amo
+#
+# This constant is checked in approval/service.py:ensure_approval_allowed() — a
+# second layer above the safety layer's DO_NOT_TRADE_SYMBOLS blocklist. The safety
+# layer is canonical; any conflict resolves in favor of safety.
+VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset()
+# MES promoted 2026-05-24 (Tier 3 auth, p_edge=0.75 ALT PASS, SMA(60,200))
+# MGC promoted 2026-05-24 (Tier 3 auth, p_edge=0.6842 ALT PASS, SMA(50,120))
+
+# ── Validation-Only Strategies (by stark_signal value) ────────────────────────
+# Strategy signals in this set are blocked from producing paper trades until
+# a full WFO run exists AND gate v2 returns PASS. The pipeline still runs to
+# completion and the stark_signal is visible in the dashboard; only the
+# scanner's paper-mode bypass (signal_scanner.py) is blocked.
+#
+# Current entries:
+#   SHORT_GAP_FILL — StarkTPOStrategy.GAP_IMBALANCE short-side signal.
+#     Gated 2026-05-21 following the 2026-05-09 to 2026-05-11 phantom-price
+#     drawdown incident.  Root-cause: NULL wfe_snapshots metrics indicate no
+#     completed WFO run; signal bypassed gate v2 entirely.
+#     Incident doc: docs/session-logs/drawdown-root-cause-may-9-to-11.md
+#
+# Flip-to-active criteria (remove from this set when ALL met):
+#   1. WFE >= 0.6 on a fresh rolling walk-forward run (wfe_snapshots non-NULL)
+#   2. Gate v2 PASS (pf_ci_lower>=1.10, p_edge>=0.95, mc_95th_dd<=5%, dsr>=0.10)
+#   3. Explicit Tier 3 authorization from Amo
+#
+# NOTE: this is a STRATEGY gate (blocks by stark_signal name), distinct from
+# VALIDATION_ONLY_INSTRUMENTS (blocks by symbol).  Existing open positions are
+# NOT force-closed — the gate only prevents NEW paper submissions.
+VALIDATION_ONLY_STRATEGIES: frozenset[str] = frozenset({"SHORT_GAP_FILL"})
+
+__all__ = [
+    "TradingPipeline",
+    "pre_filter_signal",
+    "VALIDATION_ONLY_INSTRUMENTS",
+    "VALIDATION_ONLY_STRATEGIES",
+]
 
 # ── Economic Calendar Blackout ─────────────────────────────────────────────────
 _ECONOMIC_BLACKOUT_EVENTS: list[dict] = [
@@ -316,7 +372,9 @@ async def pre_filter_signal(
                 }
             )
             return _make_hold_result(
-                symbol, is_futures, f"VIX > {float(vix_extreme_threshold):g} — fear extreme, no directional edge"
+                symbol,
+                is_futures,
+                f"VIX > {float(vix_extreme_threshold):g} — fear extreme, no directional edge",
             )
 
         # ── Check 2: ATR spike ────────────────────────────────────────────
@@ -336,8 +394,10 @@ async def pre_filter_signal(
             )
 
         # ── Check 3: MTF misalignment ─────────────────────────────────────
-        if _data_mgr is not None and _cfg.MTF_FILTER_ENABLED and await _check_mtf_misalignment(
-            symbol, timeframe, is_futures, _data_mgr
+        if (
+            _data_mgr is not None
+            and _cfg.MTF_FILTER_ENABLED
+            and await _check_mtf_misalignment(symbol, timeframe, is_futures, _data_mgr)
         ):
             logger.info("[pre_filter_signal] %s SKIP — MTF misalignment (4h vs 1h STC)", symbol)
             record_signal_debug(
@@ -366,10 +426,14 @@ async def pre_filter_signal(
                         logger.info(
                             "[pre_filter_signal] %s SKIP — low conviction hour %02d:00 ET "
                             "(win_rate=%.2f < %.2f threshold)",
-                            symbol, _current_hour_et, _hour_conviction, _TIME_OF_DAY_MIN_CONVICTION,
+                            symbol,
+                            _current_hour_et,
+                            _hour_conviction,
+                            _TIME_OF_DAY_MIN_CONVICTION,
                         )
                         return _make_hold_result(
-                            symbol, is_futures,
+                            symbol,
+                            is_futures,
                             f"low conviction hour — {_current_hour_et:02d}:00 ET win_rate={_hour_conviction:.2f}",
                         )
             except Exception as _tod_err:
@@ -453,19 +517,60 @@ class TradingPipeline:
     All agents are optional — the pipeline degrades gracefully when absent.
     """
 
-    def __init__(self, agents: dict, safety_layer, db_manager=None, context_manager=None):
+    def __init__(
+        self,
+        agents: dict,
+        safety_layer,
+        db_manager=None,
+        context_manager=None,
+        shadow_tracker=None,
+        memory_bridge=None,
+    ):
         """
         Args:
             agents:          Dict of named agent instances (see class docstring)
             safety_layer:    SafetyLayer instance — provides get_status() and kill switch
             db_manager:      Optional DatabaseManager — if set, pipeline runs are persisted
             context_manager: Optional context manager instance for pipeline execution context
+            shadow_tracker:  Optional ShadowModeTracker for logging blocklisted signals
+            memory_bridge:   Optional MemoryBridge for persistent working memory
         """
         self._agents = agents
         self._safety = safety_layer
-        self.db_manager = db_manager
+        self._db = db_manager
+        self._shadow_tracker = shadow_tracker
+        self._memory = memory_bridge
+        self._regime_engine = RegimeClassifierV2()
         self.context_manager = context_manager
+
+        # Phase 3.7: Pattern Vision
+        try:
+            from agents.vision_analyst import PatternVisionAnalystAgent
+
+            self._vision_agent = PatternVisionAnalystAgent(
+                llm_client=agents.get("technical")._llm if agents.get("technical") else None
+            )
+        except ImportError:
+            logger.warning(
+                "[Pipeline] vision_analyst unavailable (playwright not installed) — vision stage will return CAUTION"
+            )
+            self._vision_agent = None
+
+        # Phase 5: Options Layer
+        from agents.options_analyst import OptionsAnalystAgent
+        from data.options_chain_live import OptionsChainService
+
+        # Assuming technical analyst has access to the primary data manager
+        _tech = agents.get("technical")
+        _ib_connector = getattr(getattr(_tech, "_data", None), "ibkr", None)
+
+        self._options_chain = OptionsChainService(_ib_connector) if _ib_connector else None
+        self._options_analyst = OptionsAnalystAgent(
+            self._options_chain, llm_client=_tech._llm if _tech else None
+        )
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
+        # _kronos is NOT set here — use _kronos_or_none property so that
+        # /admin/feature-flags toggles take effect without an engine restart.
 
     async def analyze_and_decide(
         self,
@@ -554,11 +659,13 @@ class TradingPipeline:
 
         # ── Pre-Filter Gate (STC, VIX, ATR spike, MTF) ────────────────────────
         recipe_vix_threshold = (
-            float(active_recipe.parameters.entry_max_vix)
-            if active_recipe is not None else 35.0
+            float(active_recipe.parameters.entry_max_vix) if active_recipe is not None else 35.0
         )
         pre_filter_result = await pre_filter_signal(
-            symbol, timeframe, is_futures, self._agents,
+            symbol,
+            timeframe,
+            is_futures,
+            self._agents,
             vix_extreme_threshold=recipe_vix_threshold,
         )
         if pre_filter_result is not None:
@@ -597,8 +704,11 @@ class TradingPipeline:
                         }
                         logger.info(
                             "[Pipeline] %s HiddenPivots: bias=%s pattern=%s ema=%s confidence=%.2f",
-                            symbol, hp_result.bias, hp_result.pattern,
-                            hp_result.ema_alignment, hp_result.confidence,
+                            symbol,
+                            hp_result.bias,
+                            hp_result.pattern,
+                            hp_result.ema_alignment,
+                            hp_result.confidence,
                         )
                     else:
                         hp_result = None
@@ -625,8 +735,10 @@ class TradingPipeline:
 
         # ── A1: Wire IBLevelProvider — Discord IB report levels ──────────────
         try:
-            from discord.ib_levels import IBLevelProvider
             from datetime import date as _date
+
+            from discord.ib_levels import IBLevelProvider
+
             _ib_provider = IBLevelProvider()
             _ib_data = _ib_provider.get_levels(symbol, _date.today())
             if _ib_data:
@@ -642,8 +754,12 @@ class TradingPipeline:
                     "source": "discord_ib_report",
                 }
                 # Cross-validate with TV IB if available
-                _tv_ib_high = (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_high")
-                _tv_ib_low = (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_low")
+                _tv_ib_high = (
+                    (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_high")
+                )
+                _tv_ib_low = (
+                    (analyst_reports.get("technical") or {}).get("indicators", {}).get("tv_ib_low")
+                )
                 if _tv_ib_high and _ib_data.get("ib_high"):
                     _discord_ib = float(_ib_data["ib_high"])
                     _tv_ib = float(_tv_ib_high)
@@ -651,9 +767,14 @@ class TradingPipeline:
                     if _pct_diff > 0.5:
                         logger.warning(
                             "[Pipeline] %s IB cross-validation: Discord=%.2f vs TV=%.2f (%.1f%% diff)",
-                            symbol, _discord_ib, _tv_ib, _pct_diff
+                            symbol,
+                            _discord_ib,
+                            _tv_ib,
+                            _pct_diff,
                         )
-                        analyst_reports["ib_levels"]["cross_validation"] = f"Discord/TV diff={_pct_diff:.1f}%"
+                        analyst_reports["ib_levels"][
+                            "cross_validation"
+                        ] = f"Discord/TV diff={_pct_diff:.1f}%"
                 logger.info(
                     "[Pipeline] %s IBLevels: H=%.2f L=%.2f range=%.2f",
                     symbol,
@@ -668,14 +789,22 @@ class TradingPipeline:
         # keyword sentiment + recent bot signal into a single dict that
         # bull/bear/debate can read without re-wiring 4 providers each.
         # Facade has a 5-min TTL; per-bar cost is negligible after first call.
+        # enriched_with_knowledge attaches advisory curated-knowledge hits
+        # (knowledge_context) for the agents' prompt context. It is ADVISORY ONLY —
+        # gate-v2/sizing/execution never read it — and fully fallback-safe (daemon
+        # down → field stays None), so the whole block stays non-fatal.
         try:
             from discord.briefing import get_discord_briefing
-            _briefing = await get_discord_briefing(symbol, lookback_hours=24)
+
+            _briefing = await get_discord_briefing(
+                symbol, lookback_hours=24, enriched_with_knowledge=True
+            )
             analyst_reports["discord_briefing"] = _briefing.to_dict()
             if _briefing.warnings:
                 logger.debug(
                     "[Pipeline] Discord briefing warnings for %s: %s",
-                    symbol, _briefing.warnings,
+                    symbol,
+                    _briefing.warnings,
                 )
         except Exception as _brief_err:
             logger.debug("[Pipeline] Discord briefing failed (non-fatal): %s", _brief_err)
@@ -686,13 +815,19 @@ class TradingPipeline:
 
         pipeline_result["analyst_reports"] = analyst_reports
 
+        # ── Pipeline WS: emit analyst signals (fire-and-forget, never blocks) ──
+        try:
+            from websocket.pipeline_ws import emit_analyst_signals
+
+            asyncio.create_task(emit_analyst_signals(symbol, analyst_reports))
+        except Exception:  # pragma: no cover
+            pass
+
         # ── Technical-Only Fallback: LLM credits exhausted ────────────────
         # If all three LLM analysts (news, social, fundamental) failed with
         # Anthropic 400 errors AND technical has a clear STC signal, skip the
         # LLM debate/trader and synthesize directly from technicals.
-        _tech_fallback = self._check_technical_only_fallback(
-            symbol, analyst_reports, errors
-        )
+        _tech_fallback = self._check_technical_only_fallback(symbol, analyst_reports, errors)
         if _tech_fallback is not None:
             pipeline_result.update(_tech_fallback)
             pipeline_result["completed_at"] = datetime.now().isoformat()
@@ -783,17 +918,19 @@ class TradingPipeline:
 
             min_confluence = float(active_recipe.parameters.min_confluence)
             if float(trade_decision.get("confidence", 0.0) or 0.0) < min_confluence:
-                trade_decision.update({
-                    "action": "hold",
-                    "quantity": 0,
-                    "reasoning": (
-                        f"{trade_decision.get('reasoning', '')}\n\n[Recipe] confidence below min_confluence "
-                        f"({float(trade_decision.get('confidence', 0.0) or 0.0):.2f} < {min_confluence:.2f}); forcing HOLD."
-                    ).strip(),
-                    "risk_notes": (
-                        f"{trade_decision.get('risk_notes', '')} | Recipe confluence floor triggered"
-                    ).strip(" |"),
-                })
+                trade_decision.update(
+                    {
+                        "action": "hold",
+                        "quantity": 0,
+                        "reasoning": (
+                            f"{trade_decision.get('reasoning', '')}\n\n[Recipe] confidence below min_confluence "
+                            f"({float(trade_decision.get('confidence', 0.0) or 0.0):.2f} < {min_confluence:.2f}); forcing HOLD."
+                        ).strip(),
+                        "risk_notes": (
+                            f"{trade_decision.get('risk_notes', '')} | Recipe confluence floor triggered"
+                        ).strip(" |"),
+                    }
+                )
                 pipeline_result["recipe_confluence_gate"] = {
                     "min_confluence": min_confluence,
                     "trade_confidence": float(trade_decision.get("confidence", 0.0) or 0.0),
@@ -850,6 +987,7 @@ class TradingPipeline:
         if final_action not in ("hold", "HOLD"):
             try:
                 from config import settings as _cfg
+
                 raw_confidence = float(trade_decision.get("confidence", 0.0))
                 if is_futures:
                     boosted = raw_confidence + float(_cfg.FUTURES_CONFIDENCE_BOOST)
@@ -880,7 +1018,7 @@ class TradingPipeline:
                 try:
                     from learning.confidence_scorer import get_confidence_adjustment
 
-                    adjustment = await get_confidence_adjustment(symbol, self.db_manager)
+                    adjustment = await get_confidence_adjustment(symbol, self._db)
                     adjusted_confidence = boosted * adjustment
                     logger.info(
                         "Confidence adjusted %.2f → %.2f (multiplier: %.2f)",
@@ -906,7 +1044,11 @@ class TradingPipeline:
                     logger.info(
                         "[Pipeline] %s: confidence %.2f (boosted from %.2f) below threshold %.2f "
                         "— downgrading %s → HOLD",
-                        symbol, boosted, raw_confidence, min_thresh, final_action.upper(),
+                        symbol,
+                        boosted,
+                        raw_confidence,
+                        min_thresh,
+                        final_action.upper(),
                     )
                     final_action = "hold"
                     final_quantity = 0
@@ -919,7 +1061,11 @@ class TradingPipeline:
                     logger.debug(
                         "[Pipeline] %s: confidence %.2f (boosted %.2f) ≥ threshold %.2f — "
                         "%s passes gate",
-                        symbol, raw_confidence, boosted, min_thresh, final_action.upper(),
+                        symbol,
+                        raw_confidence,
+                        boosted,
+                        min_thresh,
+                        final_action.upper(),
                     )
             except Exception as _cg_err:
                 logger.warning("[Pipeline] Confidence gate error (non-fatal): %s", _cg_err)
@@ -936,13 +1082,11 @@ class TradingPipeline:
             _hp_bias = hp_result.bias  # "LONG" | "SHORT" | "WATCH" | "SOH"
             _action_is_long = final_action.lower() == "buy"
             _action_is_short = final_action.lower() == "sell"
-            _hp_conflicts = (
-                (_hp_bias == "LONG" and _action_is_short)
-                or (_hp_bias == "SHORT" and _action_is_long)
+            _hp_conflicts = (_hp_bias == "LONG" and _action_is_short) or (
+                _hp_bias == "SHORT" and _action_is_long
             )
-            _hp_confirms = (
-                (_hp_bias == "LONG" and _action_is_long)
-                or (_hp_bias == "SHORT" and _action_is_short)
+            _hp_confirms = (_hp_bias == "LONG" and _action_is_long) or (
+                _hp_bias == "SHORT" and _action_is_short
             )
             _old_boosted = pipeline_result.get("boosted_confidence", 0.0)
             if _hp_conflicts:
@@ -954,7 +1098,11 @@ class TradingPipeline:
                 logger.warning(
                     "[Pipeline] %s HiddenPivots CONFLICT: HP=%s but final_action=%s — "
                     "reducing conviction %.2f → %.2f (-0.15, not overriding verdict)",
-                    symbol, _hp_bias, final_action.upper(), _old_boosted, _new_boosted,
+                    symbol,
+                    _hp_bias,
+                    final_action.upper(),
+                    _old_boosted,
+                    _new_boosted,
                 )
             elif _hp_confirms:
                 _new_boosted = min(1.0, _old_boosted + 0.10)
@@ -965,7 +1113,11 @@ class TradingPipeline:
                 logger.info(
                     "[Pipeline] %s HiddenPivots CONFIRMS: HP=%s aligns with final_action=%s — "
                     "boosting conviction %.2f → %.2f (+0.10)",
-                    symbol, _hp_bias, final_action.upper(), _old_boosted, _new_boosted,
+                    symbol,
+                    _hp_bias,
+                    final_action.upper(),
+                    _old_boosted,
+                    _new_boosted,
                 )
             else:
                 # WATCH / SOH — neutral, no adjustment
@@ -1020,6 +1172,25 @@ class TradingPipeline:
         except Exception as e:
             logger.debug(f"Failed to emit pipeline_complete event: {e}")
 
+        # ── Pipeline WS: emit verdict to subscribed dashboard clients ────────
+        # Fire-and-forget via create_task — broadcast failure NEVER affects pipeline.
+        try:
+            from websocket.pipeline_ws import emit_verdict
+
+            _verdict_payload = {
+                "final_action": final_action,
+                "final_quantity": final_quantity,
+                "requires_human": requires_human,
+                "confidence": float(
+                    fund_decision.get("final_conviction", 0.0) if fund_decision else 0.0
+                ),
+                "regime": analyst_reports.get("technical", {}).get("regime", "UNKNOWN"),
+                "elapsed_seconds": elapsed,
+            }
+            asyncio.create_task(emit_verdict(symbol, _verdict_payload))
+        except Exception:  # pragma: no cover
+            pass
+
         # Add cache_hit flag for logging
         pipeline_result["cache_hit"] = False
 
@@ -1030,13 +1201,14 @@ class TradingPipeline:
         # Publish pipeline result event
         try:
             from events.bus import publish as publish_event
-            _ev_action = pipeline_result.get('final_action', 'HOLD').upper()
-            _ev_conviction = pipeline_result.get('boosted_confidence', 0.0)
+
+            _ev_action = pipeline_result.get("final_action", "HOLD").upper()
+            _ev_conviction = pipeline_result.get("boosted_confidence", 0.0)
             publish_event(
-                'pipeline_run',
-                f'{symbol} → {_ev_action} confidence={_ev_conviction:.0%}',
+                "pipeline_run",
+                f"{symbol} → {_ev_action} confidence={_ev_conviction:.0%}",
                 symbol=symbol,
-                severity='info'
+                severity="info",
             )
         except Exception as e:
             logger.warning(f"Failed to publish pipeline event: {e}")
@@ -1046,14 +1218,62 @@ class TradingPipeline:
             try:
                 from notifications.whatsapp import get_notifier
 
-                asyncio.create_task(
-                    get_notifier().alert_pipeline_result(symbol, pipeline_result)
-                )
-                logger.info(
-                    f"[Pipeline] WhatsApp alert queued for {symbol} {final_action.upper()}"
-                )
+                asyncio.create_task(get_notifier().alert_pipeline_result(symbol, pipeline_result))
+                logger.info(f"[Pipeline] WhatsApp alert queued for {symbol} {final_action.upper()}")
             except Exception as _wa_err:
                 logger.warning(f"[Pipeline] WhatsApp alert failed (non-fatal): {_wa_err}")
+
+        # ── Automated Shadow Mode Logging (P1.5) ───────────────────────────
+        # If the symbol is blocklisted (DO_NOT_TRADE_SYMBOLS) but the pipeline
+        # emitted a signal, log it to the shadow tracker for walk-forward validation.
+        if self._shadow_tracker and final_action.lower() in ("buy", "sell"):
+            try:
+                from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+                if symbol.upper() in DO_NOT_TRADE_SYMBOLS:
+                    _px = (
+                        trade_decision.get("limit_price")
+                        or trade_decision.get("stop_price")
+                        or trade_decision.get("entry_price")
+                        or 0.0
+                    )
+                    _stark_sig = (
+                        analyst_reports.get("technical", {})
+                        .get("indicators", {})
+                        .get("stark_signal", "unknown")
+                    )
+                    self._shadow_tracker.log_shadow_entry(
+                        symbol=symbol,
+                        side=final_action,
+                        quantity=float(final_quantity),
+                        price=float(_px),
+                        strategy_name=_stark_sig,
+                        reasoning=trade_decision.get("reasoning", ""),
+                        stop_loss=trade_decision.get("stop_price"),
+                        take_profit=trade_decision.get("target_price"),
+                    )
+                    logger.info("[Shadow] Auto-logged blocklisted signal for %s", symbol)
+            except Exception as _sh_err:
+                logger.warning("[Pipeline] Shadow logging failed (non-fatal): %s", _sh_err)
+
+        # ── Phase 3.5: Working Memory Storage ───────────────────────────
+        # Store high-confidence or actionable reasoning for future recall.
+        if self._memory and final_action.lower() in ("buy", "sell"):
+            try:
+                self._memory.remember(
+                    agent_name="trader",
+                    content=trade_decision.get("reasoning", "")[:500],  # Keep snippets concise
+                    symbol=symbol,
+                    topic="trade_thesis",
+                    metadata={
+                        "action": final_action,
+                        "confidence": float(
+                            fund_decision.get("final_conviction", 0.0) if fund_decision else 0.0
+                        ),
+                    },
+                )
+            except Exception as _mem_err:
+                logger.warning("[Pipeline] Working memory storage failed (non-fatal): %s", _mem_err)
 
         return pipeline_result
 
@@ -1073,7 +1293,9 @@ class TradingPipeline:
         has_anthropic_url = "api.anthropic.com" in low or "anthropic" in low
         has_4xx = "400" in low or "bad request" in low or "client error" in low
         # Explicit credit/billing mention regardless of status code
-        has_credit_ref = any(kw in low for kw in ("credit", "billing", "credit_balance", "insufficient"))
+        has_credit_ref = any(
+            kw in low for kw in ("credit", "billing", "credit_balance", "insufficient")
+        )
         return (has_anthropic_url and has_4xx) or (has_anthropic_url and has_credit_ref)
 
     @staticmethod
@@ -1132,6 +1354,7 @@ class TradingPipeline:
                 get_last_session_hypothesis,
                 get_recent_hit_rate,
             )
+
             hit_rate, samples = get_recent_hit_rate(n=10, max_age_days=14)
             last = get_last_session_hypothesis()
             analyst_reports["forward_recorder_metric"] = {
@@ -1141,9 +1364,7 @@ class TradingPipeline:
                 "last_hypothesis": last,
             }
         except Exception as exc:
-            logger.debug(
-                "[Pipeline] forward_recorder_metric failed (non-fatal): %s", exc
-            )
+            logger.debug("[Pipeline] forward_recorder_metric failed (non-fatal): %s", exc)
 
     def _check_technical_only_fallback(
         self,
@@ -1162,9 +1383,14 @@ class TradingPipeline:
         Returns a partial pipeline_result update dict if fallback fires, or None to continue.
         """
         # Count how many of the three LLM analyst errors look like Anthropic 400s
-        llm_agent_names = ("news analyst failed", "social analyst failed", "fundamental analyst failed")
+        llm_agent_names = (
+            "news analyst failed",
+            "social analyst failed",
+            "fundamental analyst failed",
+        )
         llm_400_errors = [
-            e for e in errors
+            e
+            for e in errors
             if any(name in e.lower() for name in llm_agent_names)
             and self._is_anthropic_400_error(e)
         ]
@@ -1187,13 +1413,16 @@ class TradingPipeline:
         logger.warning(
             "[Pipeline] %s — LLM credits exhausted, using technical-only fallback. "
             "STC=%.1f, signal=%s, conviction=3/10",
-            symbol, stc_val, stc_signal,
+            symbol,
+            stc_val,
+            stc_signal,
         )
 
         if stc_action == "hold":
             logger.info(
                 "[Pipeline] %s — technical-only fallback: STC=%.1f is NEUTRAL → HOLD",
-                symbol, stc_val,
+                symbol,
+                stc_val,
             )
             return {
                 "final_action": "hold",
@@ -1317,7 +1546,8 @@ class TradingPipeline:
                     logger.warning(
                         "[Pipeline] %s analyst abstained (weight=0.0, reason=%s) — "
                         "excluded from confidence computation",
-                        name, reason,
+                        name,
+                        reason,
                     )
                 return result
             except Exception as e:
@@ -1336,16 +1566,91 @@ class TradingPipeline:
                 historical_context = "\n\nHistorical edge context:\n" + "\n".join(
                     f"- {r}" for r in recs
                 )
+
+            # Phase 3.5: Working Memory Recall
+            if self._memory:
+                working_memory = self._memory.recall(
+                    agent_name="technical-analyst", symbol=symbol, topic="general", limit=3
+                )
+                if working_memory:
+                    historical_context = f"{working_memory}\n{historical_context}"
+
         except Exception:
             pass  # learning context is optional — never block the pipeline
 
-        # Stage 1a: Run technical analyst first to extract price+ATR for Corey proximity boost
+        # Stage 0: Regime Analysis (Deterministic)
+        # Note: Requires access to data manager or bars; assuming technical agent provides access
+        # or we fetch here. For this implementation, we assume the technical agent's data manager.
+        _tech_agent = self._agents.get("technical")
+        _data_mgr = getattr(_tech_agent, "_data", None)
+        df = None
+        if _data_mgr:
+            try:
+                df = await _data_mgr.get_bars(
+                    symbol, lookback_days=30, timeframe=timeframe, is_futures=is_futures
+                )
+            except Exception as exc:
+                logger.warning("regime prefetch failed — continuing without regime data: %s", exc)
+                df = None
+
+        # Phase 5.2: Intraday Regime V2
+        regime_report = self._regime_engine.classify_latest(df) if df is not None else None
+        regime_name = regime_report["regime"] if regime_report else "RANGE"
+
+        # Build compatibility object for prompts
+        # RegimeClassifierV2 uses uppercase values (RANGE, TREND, …); legacy
+        # MarketRegime enum uses lowercase (ranging, trending, …). Map first,
+        # then fall back to NEUTRAL so an unmapped value never crashes the run.
+        _REGIME_V2_MAP = {
+            "range": "ranging",
+            "trend": "trending",
+            "volatile": "volatile",
+            "meanrev": "ranging",
+            "crisis": "volatile",
+        }
+        regime_status = None
+        if regime_report:
+            regime_str = regime_report["regime"].lower()
+            regime_str = _REGIME_V2_MAP.get(regime_str, regime_str)
+            try:
+                _regime_enum = _LegacyRegime(regime_str)
+            except ValueError:
+                logger.debug(
+                    "[Pipeline] Unmapped regime value %r — defaulting to NEUTRAL", regime_str
+                )
+                _regime_enum = _LegacyRegime("neutral")
+            regime_status = RegimeStatus(
+                regime=_regime_enum,
+                adx=0.0,  # ADX not in V2 directly
+                atr_ratio=regime_report.get("atr_norm", 1.0),
+                volatility=0.0,
+                description=regime_report.get("description", ""),
+            )
+            logger.info(
+                "[Pipeline] %s — Regime V2 classified as %s",
+                symbol,
+                regime_name,
+            )
+
+        # ── Phase 8.2: Regime-Router Logic ──
+        regime_override = None
+        if regime_name in ("CRISIS", "VOLATILE"):
+            logger.warning(
+                f"[Pipeline] 🛡️ Regime Routing: {regime_name} detected. Blocking new entries."
+            )
+            regime_override = {
+                "blocked": True,
+                "reason": f"Systemic risk protection: {regime_name} regime detected.",
+            }
+
+        # Stage 1a: Run technical analyst first
         technical_coro = self._call_agent_analyze(
             "technical",
             symbol,
             is_futures=is_futures,
             timeframe=timeframe,
-            historical_context=historical_context,
+            historical_context=f"{historical_context}\nREGIME CONTEXT: Market is currently {regime_name}. "
+            f"Prioritize {'Trend-Following' if 'TREND' in regime_name else 'Mean-Reversion'} setups.",
         )
         technical_result = await safe_analyze("technical", technical_coro)
 
@@ -1357,15 +1662,42 @@ class TradingPipeline:
         news_coro = self._call_agent_analyze("news", symbol)
         social_coro = self._call_agent_analyze("social", symbol)
         fundamental_coro = self._call_agent_analyze("fundamental", symbol)
-        corey_coro = self._call_agent_analyze(
-            "corey", symbol, current_price=current_price, atr=atr
+        corey_coro = self._call_agent_analyze("corey", symbol, current_price=current_price, atr=atr)
+        breakout_coro = self._call_agent_analyze(
+            "breakout", symbol, is_futures=is_futures, timeframe=timeframe
         )
+        harmonic_coro = self._call_agent_analyze(
+            "harmonic", symbol, is_futures=is_futures, timeframe=timeframe
+        )
+        kronos_coro = self._call_agent_analyze_kronos(symbol, is_futures, timeframe)
+        options_coro = self._call_agent_analyze_options(
+            symbol, current_price, underlying_bias=technical_result.get("bias", "NEUTRAL")
+        )
+
+        # Phase 3.7: Pattern Vision Analysis
+        if self._vision_agent is not None:
+            vision_coro = self._vision_agent.analyze(symbol, bias="NEUTRAL")
+        else:
+
+            async def _vision_unavailable():
+                return {
+                    "visual_verdict": "UNAVAILABLE",
+                    "reasoning": "playwright not installed",
+                    "data_quality": "unavailable",
+                }
+
+            vision_coro = _vision_unavailable()
 
         results = await asyncio.gather(
             safe_analyze("news", news_coro),
             safe_analyze("social", social_coro),
             safe_analyze("fundamental", fundamental_coro),
             safe_analyze("corey", corey_coro),
+            safe_analyze("breakout", breakout_coro),
+            safe_analyze("harmonic", harmonic_coro),
+            safe_analyze("kronos", kronos_coro),
+            safe_analyze("options", options_coro),
+            safe_analyze("vision", vision_coro),
         )
 
         return {
@@ -1374,6 +1706,13 @@ class TradingPipeline:
             "social": results[1],
             "fundamental": results[2],
             "corey": results[3],
+            "breakout": results[4],
+            "harmonic": results[5],
+            "kronos": results[6],
+            "options": results[7],
+            "vision": results[8],
+            "regime_status": regime_status,
+            "regime_override": regime_override,
         }
 
     async def _call_agent_analyze(self, agent_name: str, symbol: str, **kwargs):
@@ -1382,6 +1721,83 @@ class TradingPipeline:
         if agent is None:
             return {"signal": 0.0, "confidence": 0.0, "summary": f"{agent_name} unavailable"}
         return await agent.analyze(symbol, **kwargs)
+
+    @property
+    def _kronos_or_none(self) -> "KronosClassifier | None":
+        """Return a ``KronosClassifier`` instance when ``ENABLE_KRONOS=1``, else ``None``.
+
+        Re-checks the env flag on every access (no startup caching) so that
+        ``/admin/feature-flags`` toggles take effect without an engine restart.
+        The instance itself is cached in ``_kronos_cached`` until the flag flips
+        off, avoiding repeated construction overhead during a single run.
+        """
+        if not is_kronos_enabled():
+            self._kronos_cached = None  # type: ignore[attr-defined]
+            return None
+        if not hasattr(self, "_kronos_cached") or self._kronos_cached is None:
+            self._kronos_cached = KronosClassifier()  # type: ignore[attr-defined]
+        return self._kronos_cached  # type: ignore[attr-defined]
+
+    async def _call_agent_analyze_kronos(
+        self, symbol: str, is_futures: bool, timeframe: str
+    ) -> dict:
+        """Run the Kronos classifier and return a debate-compatible dict.
+
+        Returns a neutral dict when Kronos is disabled (``ENABLE_KRONOS != "1"``),
+        when data is unavailable, or when fewer than ``MIN_BARS`` rows are present.
+        ``classify()`` now accepts a ``pd.DataFrame`` directly (paper schema);
+        no ``.to_dict("records")`` conversion needed.
+        """
+        kronos = self._kronos_or_none
+        if kronos is None:
+            return {"signal": 0.0, "confidence": 0.0, "summary": "Kronos disabled"}
+        try:
+            _tech = self._agents.get("technical")
+            _data_mgr = getattr(_tech, "_data", None)
+            if _data_mgr is None:
+                return {"signal": 0.0, "confidence": 0.0, "summary": "data unavailable"}
+            df = await _data_mgr.get_bars(
+                symbol, lookback_days=10, timeframe=timeframe, is_futures=is_futures
+            )
+            if df is None or df.empty or len(df) < 20:
+                return {"signal": 0.0, "confidence": 0.0, "summary": "insufficient bars"}
+            # Pass the DataFrame and symbol directly — classify() validates shape
+            # internally and uses the per-instrument calibrated threshold.
+            result = await kronos.classify(df, symbol=symbol)
+            return result
+        except Exception as e:
+            logger.warning("[Pipeline] Kronos classify failed: %s", e)
+            return {"signal": 0.0, "confidence": 0.0, "summary": f"Kronos error: {e}"}
+
+    @property
+    def _options_analyst_or_none(self) -> Any:
+        """Return the Phase 5 OptionsAnalystAgent if enabled."""
+        if not is_options_analyst_enabled():
+            return None
+        return self._options_analyst
+
+    async def _call_agent_analyze_options(
+        self, symbol: str, spot_price: Optional[float], underlying_bias: str = "NEUTRAL"
+    ) -> dict:
+        """Run the OptionsAnalyst and return a debate-compatible dict."""
+        analyst = self._options_analyst_or_none
+        if analyst is None:
+            return {
+                "signal": 0.0,
+                "confidence": 0.0,
+                "summary": "options analyst disabled",
+                "indicators": {"weight": 0.0},
+            }
+        try:
+            return await analyst.analyze(symbol, underlying_bias=underlying_bias)
+        except Exception as exc:
+            logger.warning("[Pipeline] OptionsAnalyst failed: %s", exc)
+            return {
+                "signal": 0.0,
+                "confidence": 0.0,
+                "summary": f"options analyst error: {exc}",
+                "indicators": {"weight": 0.0},
+            }
 
     async def _run_debate(
         self,
@@ -1490,7 +1906,9 @@ class TradingPipeline:
                         logger.warning(
                             "[Pipeline] %s — LLM credits exhausted, using technical-only "
                             "fallback (TraderAgent). STC=%.1f, signal=%s, conviction=3/10",
-                            symbol, stc_val, stc_signal,
+                            symbol,
+                            stc_val,
+                            stc_signal,
                         )
                         return {
                             "symbol": symbol,

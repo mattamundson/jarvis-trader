@@ -18,7 +18,6 @@ import time
 from itertools import product
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 _HERE = Path(__file__).resolve().parent
@@ -26,8 +25,8 @@ _ENGINE = _HERE.parent
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
-from backtest.data_loader import BacktestDataLoader  # noqa: E402
 from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
+from backtest.data_loader import BacktestDataLoader  # noqa: E402
 
 SYMBOLS = ["MES", "MCL", "MNQ"]
 INTERVAL = "1h"
@@ -58,7 +57,7 @@ MES_WINNER = {"fast": 50, "slow": 200, "trail": 2.0}
 
 
 def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    h, l, c = df["high"], df["low"], df["close"]
+    h, l, c = df["high"], df["low"], df["close"]  # noqa: E741  # OHLC convention
     prev_c = c.shift(1)
     tr = pd.concat([(h - l), (h - prev_c).abs(), (l - prev_c).abs()], axis=1).max(axis=1)
     return tr.rolling(period).mean()
@@ -79,14 +78,12 @@ def _run(df: pd.DataFrame, symbol: str, fast: int, slow: int, trail: float) -> d
     in_pos = False
     entry = 0.0
     trail_stop = 0.0
-    entry_time = None
     trades = []
 
     for i in range(len(df)):
         if pd.isna(sma_slow.iloc[i]):
             continue
         price = float(df["close"].iloc[i])
-        bar_time = df.index[i]
 
         if in_pos:
             if trail > 0 and not pd.isna(atr.iloc[i]):
@@ -103,7 +100,6 @@ def _run(df: pd.DataFrame, symbol: str, fast: int, slow: int, trail: float) -> d
         else:
             if sma_fast.iloc[i] > sma_slow.iloc[i] and i > 0 and sma_fast.iloc[i-1] <= sma_slow.iloc[i-1]:
                 entry = price
-                entry_time = bar_time
                 trail_stop = price - trail * float(atr.iloc[i]) if trail > 0 and not pd.isna(atr.iloc[i]) else 0.0
                 in_pos = True
 
@@ -171,7 +167,7 @@ def main():
     print("STAGE 2: focused WFO grid per symbol (100 combos each)", flush=True)
     print("=" * 72, flush=True)
 
-    combos = [dict(zip(GRID.keys(), vals)) for vals in product(*GRID.values())]
+    combos = [dict(zip(GRID.keys(), vals, strict=False)) for vals in product(*GRID.values())]
     combos = [c for c in combos if c["fast"] < c["slow"]]
 
     for sym in SYMBOLS:
@@ -199,7 +195,7 @@ def main():
         per_sym_results.sort(key=lambda x: x["min_pf"], reverse=True)
         winners = [r for r in per_sym_results if r["min_pf"] >= 1.5 and r["train_n"] >= 10 and r["test_n"] >= 10]
         print(f"  {len(winners)} WF winners (min_PF>=1.5, n>=10 each window)", flush=True)
-        print(f"  Top 5:", flush=True)
+        print("  Top 5:", flush=True)
         print(f"  {'min_PF':>7} {'tr_PF':>6} {'te_PF':>6} {'tr_n':>4} {'te_n':>4} {'tr_ret':>7} {'te_ret':>7}  params", flush=True)
         for r in per_sym_results[:5]:
             p = r["params"]

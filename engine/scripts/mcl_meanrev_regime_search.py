@@ -230,7 +230,7 @@ def main() -> int:
 
     print(f"Running {symbol} {args.interval} {args.start}->{args.end} "
           f"regime={args.regime_filter_mode}", flush=True)
-    r = _run(df, **{k: v for k, v in params.items()}, spec=spec)
+    r = _run(df, **dict(params.items()), spec=spec)
     print(f"  PF={r['pf']} WR={r['wr']}% n={r['total_trades']} ret={r['ret_pct']:+.2f}%",
           flush=True)
 

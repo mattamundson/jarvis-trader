@@ -5,11 +5,10 @@ JARVIS TRADER — COHEN-MES Composite Backtest Runner
 Runs the composite MES strategy (STC + ORB + VWAP, regime-adaptive)
 through the standard walk-forward backtester.
 
-Usage:
-    cd engine
-    .venv/Scripts/python -m backtest.run_composite_backtest
-    .venv/Scripts/python -m backtest.run_composite_backtest --start 2024-06-01 --end 2026-03-31
-    .venv/Scripts/python -m backtest.run_composite_backtest --threshold 0.3
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/run_composite_backtest.py
+    .venv/Scripts/python backtest/run_composite_backtest.py --start 2024-06-01 --end 2026-03-31
+    .venv/Scripts/python backtest/run_composite_backtest.py --threshold 0.3
 """
 
 from __future__ import annotations
@@ -212,7 +211,9 @@ def _run_single_instrument(args):
     pf = r.get("profit_factor", 0.0)
     wr = r.get("win_rate", 0.0)
     ret = r.get("total_return_pct", 0.0)
-    max_dd = r.get("max_drawdown_pct", 0.0)  # FIX: was "max_drawdown" which never existed → always 0
+    max_dd = r.get(
+        "max_drawdown_pct", 0.0
+    )  # FIX: was "max_drawdown" which never existed → always 0
     n_trades = r.get("total_trades", 0)
 
     print("\nKEY METRICS (COHEN-MES Composite):")
@@ -276,13 +277,13 @@ def _run_single_instrument(args):
         "signal_contributions": {
             "stc": int(df.get("stc_contrib", pd.Series(False)).sum()) if hasattr(df, "get") else 0,
             "orb": int(df.get("orb_contrib", pd.Series(False)).sum()) if hasattr(df, "get") else 0,
-            "vwap": int(df.get("vwap_contrib", pd.Series(False)).sum())
-            if hasattr(df, "get")
-            else 0,
+            "vwap": (
+                int(df.get("vwap_contrib", pd.Series(False)).sum()) if hasattr(df, "get") else 0
+            ),
         },
-        "regime_distribution": regime_dist.value_counts().to_dict()
-        if regime_dist is not None
-        else {},
+        "regime_distribution": (
+            regime_dist.value_counts().to_dict() if regime_dist is not None else {}
+        ),
         "trades": [
             {
                 "entry_date": str(t.get("entry_date", "")),
@@ -459,7 +460,9 @@ def _write_composite_report(results, instruments, args):
         sharpe = result.get("sharpe", 0.0)
         wr = result.get("win_rate", 0.0)
         n_trades = result.get("n_trades", 0)
-        max_dd = result.get("max_drawdown", 0.0)  # from json_payload line 272 — writer-side key is "max_drawdown"
+        max_dd = result.get(
+            "max_drawdown", 0.0
+        )  # from json_payload line 272 — writer-side key is "max_drawdown"
 
         if wfe is None:
             recommendation = "INSUFFICIENT_DATA"

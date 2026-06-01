@@ -3,7 +3,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.trend_signals import generate_sma_trend_signals, get_sma_trend_params, SMA_TREND_PARAMS
+from backtest.trend_signals import (
+    SMA_TREND_PARAMS,
+    generate_sma_trend_signals,
+    get_sma_trend_params,
+)
 
 
 def _make_df(n: int = 300, base: float = 5000.0, seed: int = 42) -> pd.DataFrame:
@@ -52,14 +56,14 @@ def test_entry_only_on_golden_cross():
 def test_stop_below_entry_for_long():
     df = generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100, atr_trail_mult=2.0)
     entries = df[df["entry_signal"] == "ENTRY_NOW"]
-    for idx, row in entries.iterrows():
+    for _idx, row in entries.iterrows():
         assert row["stop_level"] < row["close"], f"Stop {row['stop_level']} >= close {row['close']}"
 
 
 def test_target_above_entry_for_long():
     df = generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100)
     entries = df[df["entry_signal"] == "ENTRY_NOW"]
-    for idx, row in entries.iterrows():
+    for _idx, row in entries.iterrows():
         assert row["target_1"] > row["close"]
         assert row["target_2"] > row["target_1"]
         assert row["target_3"] > row["target_2"]
@@ -85,7 +89,7 @@ def test_regime_trending_bull_when_above():
 def test_get_sma_trend_params_mes():
     params = get_sma_trend_params("MES")
     assert params is not None
-    assert params["fast"] == 50
+    assert params["fast"] == 60
     assert params["slow"] == 200
     assert params["atr_trail_mult"] == 2.0
 
@@ -100,9 +104,10 @@ def test_no_nan_in_entry_signal():
 
 
 def test_generate_instrument_signals_routes_mes_to_trend():
-    from backtest.signals import generate_instrument_signals, TREND_INSTRUMENTS
+    from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals
     assert "MES" in TREND_INSTRUMENTS
-    df = generate_instrument_signals(_make_trending_df(), symbol="MES")
+    # Use 700 bars: champion SMA(60,200) needs 200-bar warmup + decline + rise for golden cross
+    df = generate_instrument_signals(_make_trending_df(n=700), symbol="MES")
     assert "entry_signal" in df.columns
     assert "bias" in df.columns
     # Should have at least one ENTRY_NOW on trending data

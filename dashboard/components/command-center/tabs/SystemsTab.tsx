@@ -28,6 +28,8 @@ interface HealthData {
   kill_switch_active: boolean;
   uptime_seconds: number;
   ibkr_connected: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   paper_trading?: boolean;
   version?: string;
 }
@@ -379,12 +381,13 @@ function EngineHealthCard({
             <Badge
               className={cn(
                 "text-xs font-mono py-0 px-1.5 border",
-                data?.ibkr_connected
+                (data?.ibkr_execution_connected ?? data?.ibkr_connected)
                   ? "bg-green-950 text-green-300 border-green-800"
                   : "bg-red-950 text-red-300 border-red-800"
               )}
+              title="Reports execution-connector state when /health exposes ibkr_execution_connected; falls back to legacy ibkr_connected (OR of execution + data) on older engines."
             >
-              {data?.ibkr_connected ? (
+              {(data?.ibkr_execution_connected ?? data?.ibkr_connected) ? (
                 <><Wifi className="w-2.5 h-2.5 mr-0.5 inline" />CONNECTED</>
               ) : (
                 <><WifiOff className="w-2.5 h-2.5 mr-0.5 inline" />DISCONNECTED</>

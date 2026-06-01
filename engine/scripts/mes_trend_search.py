@@ -33,8 +33,8 @@ _ENGINE = _HERE.parent
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
-from backtest.data_loader import BacktestDataLoader  # noqa: E402
 from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
+from backtest.data_loader import BacktestDataLoader  # noqa: E402
 
 # SYMBOL_SPECS is derived from the canonical CONTRACT_SPECS source so that
 # commission / tick_size / multiplier / slippage never drift between research
@@ -61,7 +61,7 @@ GRID = {
 
 
 def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    h, l, c = df["high"], df["low"], df["close"]
+    h, l, c = df["high"], df["low"], df["close"]  # noqa: E741  # OHLC convention
     prev_c = c.shift(1)
     tr = pd.concat([(h - l), (h - prev_c).abs(), (l - prev_c).abs()], axis=1).max(axis=1)
     return tr.rolling(period).mean()
@@ -82,7 +82,6 @@ def _run(df: pd.DataFrame, fast: int, slow: int, atr_trail_mult: float, spec: di
     in_pos = False
     entry = 0.0
     trail_stop = 0.0
-    peak = 0.0
     entry_time = None
     trades = []
 
@@ -128,7 +127,6 @@ def _run(df: pd.DataFrame, fast: int, slow: int, atr_trail_mult: float, spec: di
                     trail_stop = price - atr_trail_mult * float(atr.iloc[i])
                 else:
                     trail_stop = 0.0
-                peak = price
                 in_pos = True
 
     # Force-close any open position at the last bar
@@ -190,7 +188,7 @@ def main():
     print(f"Contract spec: mult={spec['multiplier']} tick={spec['tick_size']} "
           f"tick_value=${spec['multiplier']*spec['tick_size']:.2f}", flush=True)
 
-    combos = [dict(zip(GRID.keys(), vals)) for vals in product(*GRID.values())]
+    combos = [dict(zip(GRID.keys(), vals, strict=False)) for vals in product(*GRID.values())]
     combos = [c for c in combos if c["fast"] < c["slow"]]
     print(f"Trend grid: {len(combos)} valid combos", flush=True)
 

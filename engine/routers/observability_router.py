@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import asdict, is_dataclass
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import APIKeyHeader
 
@@ -26,7 +27,7 @@ def _require_key(key: str = Depends(_api_key_header)):
 
 
 @router.get("/advisor/status")
-def advisor_status(_=Depends(_require_key)):
+def advisor_status(_=Depends(_require_key)):  # noqa: B008 — FastAPI dependency-injection idiom
     try:
         from agents.advisor_client import AdvisorClient
         client = AdvisorClient()
@@ -44,7 +45,7 @@ def advisor_status(_=Depends(_require_key)):
 
 
 @router.get("/ic-ensemble/describe")
-def ic_ensemble_describe(_=Depends(_require_key)):
+def ic_ensemble_describe(_=Depends(_require_key)):  # noqa: B008 — FastAPI dependency-injection idiom
     try:
         from analytics.ic_ensemble import ICWeightedEnsemble
         ensemble = ICWeightedEnsemble()
@@ -57,7 +58,7 @@ def ic_ensemble_describe(_=Depends(_require_key)):
 
 
 @router.get("/token-proxy/metrics")
-def token_proxy_metrics(_=Depends(_require_key)):
+def token_proxy_metrics(_=Depends(_require_key)):  # noqa: B008 — FastAPI dependency-injection idiom
     try:
         from utils.token_proxy import get_token_proxy
         proxy = get_token_proxy()

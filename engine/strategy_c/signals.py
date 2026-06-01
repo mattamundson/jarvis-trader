@@ -27,10 +27,10 @@ Walk-forward validated momentum lookbacks (from jarvis-trader WF harness):
 """
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
 from typing import Optional
 
+import numpy as np
+import pandas as pd
 
 # Default universe — can be overridden in StrategyCConfig
 RISK_ON_CORE = ["QQQ", "SPY", "EFA"]
@@ -44,7 +44,7 @@ MOM_WEIGHTS = {52: 0.70, 13: 0.20, 4: 0.10}
 class StrategyCSignals:
     """
     Enhanced Dual Momentum signal generator with factor tilts.
-    
+
     Parameters
     ----------
     risk_on : list
@@ -91,14 +91,14 @@ class StrategyCSignals:
     ) -> pd.Series:
         """
         Compute multi-horizon momentum ranking score for each asset.
-        
+
         For each asset at a given bar index:
           score = Σ weight_k * (price[t] / price[t - k_weeks] - 1)
-        
+
         Returns pd.Series of scores indexed by asset ticker.
         """
         if as_of_idx < max(MOM_WEIGHTS.keys()):
-            return pd.Series({a: np.nan for a in assets})
+            return pd.Series(dict.fromkeys(assets, np.nan))
 
         scores = {}
         for asset in assets:
@@ -129,7 +129,7 @@ class StrategyCSignals:
     ) -> pd.DataFrame:
         """
         Generate weekly asset allocation signals for the full backtest period.
-        
+
         Parameters
         ----------
         weekly_prices : pd.DataFrame
@@ -137,7 +137,7 @@ class StrategyCSignals:
         t1_lag : bool
             Apply T+1 execution lag (signal generated Friday, executed next open)
             This is critical for realistic backtest — avoids look-ahead bias.
-            
+
         Returns
         -------
         DataFrame with columns: signal (asset name), weight (0 or 1/n for top-n),
@@ -208,7 +208,7 @@ class StrategyCSignals:
             # ── Step 3: Select top-N assets ────────────────────────────────────
             top_assets = scores.nlargest(min(self.top_n, len(scores))).index.tolist()
             weight = 1.0 / len(top_assets)
-            holdings = {a: weight for a in top_assets}
+            holdings = dict.fromkeys(top_assets, weight)
 
             records.append({
                 "date": date,
@@ -255,7 +255,7 @@ class StrategyCSignals:
     ) -> dict:
         """
         Generate the CURRENT WEEK's signal for live use.
-        
+
         Returns dict with holdings, risk_regime, and scores.
         """
         df = self.generate_signals(weekly_prices, t1_lag=True)

@@ -36,7 +36,6 @@ from analysis.pair_spread import (
     screen_pair,
 )
 
-
 # ── Hedge ratio (OLS) ────────────────────────────────────────────────────────
 
 def test_hedge_ratio_recovers_known_slope():

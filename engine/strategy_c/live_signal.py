@@ -16,6 +16,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Force UTF-8 stdout/stderr on Windows — _print_signal_alert and logger calls
+# use em-dashes, box-drawing chars, and block chars that fail under cp1252.
+# This must run before any print/logging.basicConfig.
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -29,19 +39,19 @@ def run_live_signal(
 ) -> dict:
     """
     Run the Strategy C+ live signal generator.
-    
+
     Parameters
     ----------
     save_path : str, optional
         Override output path for live signal JSON
     notify : bool
         Whether to send console alert with signal summary
-        
+
     Returns
     -------
     dict : Complete live signal
     """
-    from .engine import StrategyCEngine, StrategyCConfig
+    from .engine import StrategyCConfig, StrategyCEngine
 
     logger.info("=" * 60)
     logger.info("STRATEGY C+ WEEKLY SIGNAL — %s", datetime.now().strftime("%Y-%m-%d %H:%M CT"))
@@ -88,7 +98,7 @@ def run_live_signal(
 def _print_signal_alert(signal: dict) -> None:
     """Print a human-readable signal alert for the weekly email/dashboard."""
     print("\n" + "=" * 60)
-    print("  ⚡ STRATEGY C+ WEEKLY SIGNAL")
+    print("  [*] STRATEGY C+ WEEKLY SIGNAL")
     print(f"  Generated: {signal.get('generated_at', 'unknown')}")
     print("=" * 60)
 
@@ -101,7 +111,7 @@ def _print_signal_alert(signal: dict) -> None:
     print(f"\n  RISK REGIME:     {mom.get('risk_regime', 'UNKNOWN')}")
     print(f"  COMBINED SCALE:  {signal.get('combined_scale', 0):.1%}")
 
-    print(f"\n  ── Signal Layers ──")
+    print("\n  ── Signal Layers ──")
     print(f"  Momentum:        {mom.get('risk_regime', '?')} | "
           f"Abs mom pass: {mom.get('absolute_mom_pass', False)}")
     print(f"  Vol Targeting:   scale={vol.get('scale', 0):.3f} | "
@@ -114,13 +124,13 @@ def _print_signal_alert(signal: dict) -> None:
     print(f"  Macro Filter:    mult={macro.get('multiplier', 1.0):.3f} | "
           f"yield_curve={macro.get('yield_curve', 'N/A')}")
 
-    print(f"\n  ── Final Holdings ──")
+    print("\n  ── Final Holdings ──")
     holdings = signal.get("holdings", {})
     for ticker, weight in sorted(holdings.items(), key=lambda x: -x[1]):
         bar = "█" * int(weight * 20)
         print(f"  {ticker:<6} {weight:.1%}  {bar}")
 
-    print(f"\n  ── IBKR Execution ──")
+    print("\n  ── IBKR Execution ──")
     ibkr = signal.get("ibkr_instructions", {})
     print(f"  Account: {ibkr.get('account', 'N/A')} ({ibkr.get('mode', 'N/A')})")
     print(f"  Timing:  {ibkr.get('execution_timing', 'N/A')}")

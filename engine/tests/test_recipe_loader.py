@@ -1,7 +1,9 @@
 """Tests for engine.services.recipe_loader."""
-import pytest
 from pathlib import Path
-from services.recipe_loader import RecipeLoader, RecipeValidationError, Recipe, RecipeParameters
+
+import pytest
+
+from services.recipe_loader import Recipe, RecipeLoader, RecipeParameters, RecipeValidationError
 
 
 def test_load_valid_recipe_from_yaml(tmp_path):

@@ -271,7 +271,14 @@ def send_alert(symbol: str, wfe: float, verdict: str, prev_wfe: Optional[float])
             # Stable / minor change — no alert
             return
 
-        notifier.send(msg)
+        # WhatsAppNotifier.send is async; the scheduler is sync, so we drive
+        # it through asyncio.run.  Bug history: prior to 2026-05-07 this was
+        # `notifier.send(msg)` — the unawaited coroutine was silently dropped
+        # and rolling-WFE HALT/OVERFIT alerts never reached the user
+        # (mypy: unused-coroutine).
+        import asyncio
+
+        asyncio.run(notifier.send(msg))
         logger.info(f"  [{symbol}] WhatsApp alert sent: {verdict}")
 
     except Exception as e:

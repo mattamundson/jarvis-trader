@@ -23,7 +23,7 @@ import argparse
 import json
 import logging
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -202,18 +202,18 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Gate v2 orchestrator (Phase 2)")
     ap.add_argument("--results-file", required=True)
     ap.add_argument("--symbol", required=True)
-    ap.add_argument("--family", required=True, choices=["trend", "meanrev"])
+    ap.add_argument("--family", required=True, choices=["trend", "meanrev", "breakout"])
     ap.add_argument("--rank", type=int, default=1)
     ap.add_argument(
         "--reports-dir",
         default=str(_ENGINE / "scripts" / "validation_reports"),
         help="Directory containing aux validator reports",
     )
-    ap.add_argument(
-        "--output-dir",
+    ap.add_argument("--output-dir",
         default=str(_ENGINE / "data" / "gate_v2_verdicts"),
         help="Directory to write consolidated verdict JSON",
     )
+    ap.add_argument("--initial-capital", type=float, default=10_000.0)
     ap.add_argument("--n-resamples", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
@@ -225,6 +225,7 @@ def main() -> int:
         rank=args.rank,
         reports_dir=Path(args.reports_dir),
         output_dir=Path(args.output_dir),
+        initial_capital=args.initial_capital,
         n_resamples=args.n_resamples,
         seed=args.seed,
     )

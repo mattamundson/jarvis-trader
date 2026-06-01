@@ -23,8 +23,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from agents.advisor_client import AdvisorClient, AdvisorVerdict
-from utils.token_proxy import TokenProxy, get_token_proxy
 from analytics.ic_ensemble import ICWeightedEnsemble
+from utils.token_proxy import TokenProxy, get_token_proxy
 
 
 class TestAdvisorClientGracefulDegradation:
@@ -284,7 +284,6 @@ class TestAdvisorConsultDebateMocked:
 
     def test_advisor_consult_debate_mocked(self):
         """Mock consult_debate_tiebreak; verify non-HOLD verdict flows through."""
-        from unittest import mock
 
         client = AdvisorClient()
         mocked_verdict = AdvisorVerdict(
@@ -347,7 +346,7 @@ class TestTokenProxySingletonAndCache:
         assert proxy1.metrics is proxy2.metrics, "Metrics must be shared"
 
 
-class TestICWeightedEnsembleEqualWeightFallback:
+class TestICWeightedEnsembleEqualWeightFallbackNonexistent:
     """ICWeightedEnsemble.get_ensemble_weights on nonexistent DB."""
 
     def test_ic_weighted_ensemble_equal_weight_fallback(self):

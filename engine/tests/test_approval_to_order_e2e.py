@@ -112,7 +112,8 @@ class _FakeDbManagerWithApprovals:
         self._lock = threading.Lock()
 
         conn = sqlite3.connect(str(self._db_path))
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS paper_trades (
                 trade_id    TEXT PRIMARY KEY,
                 symbol      TEXT NOT NULL,
@@ -127,8 +128,10 @@ class _FakeDbManagerWithApprovals:
                 strategy_params TEXT,
                 notes       TEXT
             )
-        """)
-        conn.execute("""
+        """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS alert_log (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 alert_type TEXT,
@@ -136,8 +139,10 @@ class _FakeDbManagerWithApprovals:
                 message    TEXT,
                 created_at TEXT
             )
-        """)
-        conn.execute("""
+        """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS pending_trade_approvals (
                 id                     INTEGER PRIMARY KEY AUTOINCREMENT,
                 approval_id            TEXT UNIQUE NOT NULL,
@@ -154,7 +159,8 @@ class _FakeDbManagerWithApprovals:
                 paper_trade_id         TEXT,
                 ib_order_id            TEXT
             )
-        """)
+        """
+        )
         conn.commit()
         conn.close()
 
@@ -490,24 +496,30 @@ class TestApprovalToOrderE2E:
         client, db = self._make_client_and_db()
 
         approval_id = db.insert_pending_approval(
-            symbol="MCL",
+            symbol="MES",
             action="BUY",
             quantity=1,
-            entry_price=70.0,
+            entry_price=5823.50,
             pipeline_snapshot={"signal": "long", "summary": "Bull regime"},
         )
 
-        r = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            headers=_AUTH,
-        )
+        # Patch the gate v2 authorization check: this test exercises the approval
+        # flow (DB row → paper trade), not the instrument authorization gate.
+        # VALIDATION_ONLY_INSTRUMENTS check is covered by test_approval_service.py.
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "test bypass")
+        ):
+            r = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                headers=_AUTH,
+            )
 
         assert r.status_code == 200, f"Approve returned {r.status_code}: {r.text}"
 
         body = r.json()
         assert body.get("status") == "approved", f"Unexpected body status: {body}"
         assert body.get("approval_id") == approval_id
-        assert body.get("symbol") == "MCL"
+        assert body.get("symbol") == "MES"
 
         # Verify DB row is resolved
         row = db.get_pending_approval(approval_id)
@@ -536,19 +548,24 @@ class TestApprovalToOrderE2E:
         main.db_manager = db
         main.safety_layer = sl
 
+        # Use MES (in default config watchlist), not MGC (only in .env override).
+        # Tests run from project root where engine/.env isn't on load_dotenv() path.
         approval_id = db.insert_pending_approval(
-            symbol="MNQ",
+            symbol="MES",
             action="BUY",
             quantity=2,
-            entry_price=21000.0,
+            entry_price=5823.50,
             pipeline_snapshot={"signal": "long"},
         )
 
         client = TestClient(app, raise_server_exceptions=False)
-        r = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            headers=_AUTH,
-        )
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "test bypass")
+        ):
+            r = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                headers=_AUTH,
+            )
 
         assert r.status_code == 200, f"Approve returned {r.status_code}: {r.text}"
         body = r.json()
@@ -599,25 +616,28 @@ class TestApprovalToOrderE2E:
         client, db = self._make_client_and_db()
 
         approval_id = db.insert_pending_approval(
-            symbol="MCL",
+            symbol="MES",
             action="BUY",
             quantity=1,
-            entry_price=70.0,
+            entry_price=5823.50,
             pipeline_snapshot={},
         )
 
-        # First approve
-        r1 = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            headers=_AUTH,
-        )
-        assert r1.status_code == 200, f"First approve failed: {r1.status_code} — {r1.text}"
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "test bypass")
+        ):
+            # First approve
+            r1 = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                headers=_AUTH,
+            )
+            assert r1.status_code == 200, f"First approve failed: {r1.status_code} — {r1.text}"
 
-        # Second approve — must be 409 (already resolved)
-        r2 = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            headers=_AUTH,
-        )
+            # Second approve — must be 409 (already resolved)
+            r2 = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                headers=_AUTH,
+            )
         assert (
             r2.status_code == 409
         ), f"Expected 409 on double-approve, got {r2.status_code} — {r2.text}"
@@ -682,29 +702,34 @@ class TestApprovalToOrderE2E:
         main.safety_layer = sl
 
         approval_id = db.insert_pending_approval(
-            symbol="MCL",
+            symbol="MES",
             action="BUY",
             quantity=1,
-            entry_price=70.0,
+            entry_price=5823.50,
             pipeline_snapshot={},
         )
 
         client = TestClient(app, raise_server_exceptions=False)
-        r = client.post(
-            f"/pipeline/pending-approvals/{approval_id}/approve",
-            json={"entry_price": 72.5},
-            headers=_AUTH,
-        )
+        with patch(
+            "backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "test bypass")
+        ):
+            r = client.post(
+                f"/pipeline/pending-approvals/{approval_id}/approve",
+                json={"entry_price": 5825.0},
+                headers=_AUTH,
+            )
 
         assert r.status_code == 200, f"Approve with override returned {r.status_code}: {r.text}"
         body = r.json()
         assert (
-            body.get("entry_price") == 72.5
-        ), f"Expected overridden price 72.5, got {body.get('entry_price')}"
+            body.get("entry_price") == 5825.0
+        ), f"Expected overridden price 5825.0, got {body.get('entry_price')}"
         # Verify open_trade was called with the overridden price
         call_kwargs = pt.open_trade.call_args
         assert call_kwargs is not None
-        assert call_kwargs.kwargs.get("price") == 72.5, f"open_trade price mismatch: {call_kwargs}"
+        assert (
+            call_kwargs.kwargs.get("price") == 5825.0
+        ), f"open_trade price mismatch: {call_kwargs}"
 
     # ── Test 9: get single pending approval ────────────────────────────────
 

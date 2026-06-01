@@ -8,7 +8,7 @@ Signal stack (applied multiplicatively to position sizing):
   Layer 2: ES/NQ realized vol targeting → scale [0.0, 1.0]
   Layer 3: VIX composite (4-component) → multiplier [0.0, 1.0]
   Layer 4: Macro regime filter (yield curve + CoT) → multiplier [0.5, 1.1]
-  
+
 Final weight = DM_weight × vol_scale × vix_multiplier × macro_multiplier
 
 Target statistics (from reverse-engineered dashboard):
@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -40,11 +39,11 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
-from .signals import StrategyCSignals
-from .vol_targeting import VolatilityTargeter
-from .vix_composite import VIXComposite
-from .macro_filter import MacroRegimeFilter
-from .mtf_filter import MTFFilter
+from .macro_filter import MacroRegimeFilter  # noqa: E402
+from .mtf_filter import MTFFilter  # noqa: E402
+from .signals import StrategyCSignals  # noqa: E402
+from .vix_composite import VIXComposite  # noqa: E402
+from .vol_targeting import VolatilityTargeter  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +112,7 @@ class StrategyCConfig:
 class StrategyCEngine:
     """
     Strategy C+ full backtest and live signal engine.
-    
+
     Usage:
         engine = StrategyCEngine()
         results = engine.run_backtest()
@@ -217,7 +216,7 @@ class StrategyCEngine:
     ) -> dict:
         """
         Run the full Strategy C+ backtest.
-        
+
         Returns comprehensive results dict including:
           - Equity curve
           - Per-period metrics (CAGR, Sharpe, Sortino, Calmar, MDD)
@@ -357,7 +356,7 @@ class StrategyCEngine:
     ) -> tuple[pd.Series, pd.DataFrame]:
         """
         Compute weekly portfolio returns from layered signals.
-        
+
         Each week:
           1. Look up held assets from signal_df (holdings dict)
           2. Compute asset return (this week's close / last week's close - 1)
@@ -507,7 +506,7 @@ class StrategyCEngine:
     def _compute_deflated_sharpe(self, equity: pd.Series) -> dict:
         """
         Compute Bailey-López de Prado Deflated Sharpe Ratio.
-        
+
         Accounts for the multiple testing penalty from grid search over
         vol targeting and VIX composite parameters.
         """
@@ -535,7 +534,7 @@ class StrategyCEngine:
     def get_live_signal(self) -> dict:
         """
         Generate the live signal for the current week.
-        
+
         Returns a full signal dict suitable for the IBKR execution layer
         and the dashboard widget.
         """
@@ -643,7 +642,7 @@ class StrategyCEngine:
     def _generate_ibkr_instructions(self, scaled_holdings: dict) -> dict:
         """
         Generate IBKR execution instructions from scaled holdings.
-        
+
         Maps ETF holdings to executable IBKR orders.
         Respects paper trading constraint (LIVE_TRADING_ENABLED = False).
         """
@@ -743,18 +742,18 @@ class StrategyCEngine:
         fmt(oos, "OUT-OF-SAMPLE (OOS)")
 
         if retention:
-            print(f"\n  ── OOS Retention ──")
+            print("\n  ── OOS Retention ──")
             for k, v in retention.items():
                 print(f"     {k}: {v:.1f}%")
 
         if dsr and "dsr" in dsr:
-            print(f"\n  ── Deflated Sharpe (Bailey-LdP 2014) ──")
+            print("\n  ── Deflated Sharpe (Bailey-LdP 2014) ──")
             print(f"     Raw Sharpe:      {dsr.get('raw_sharpe', 0):.4f}")
             print(f"     Expected Max SR: {dsr.get('expected_max_sharpe', 0):.4f} ({dsr.get('n_trials', 0)} trials)")
             print(f"     DSR p-value:     {dsr.get('dsr', 0):.4f}  "
                   f"{'✓ PASSES' if dsr.get('passes_at_10pct') else '✗ FAILS'} at 10%")
 
-        print(f"\n  ── Vol Targeting Stats ──")
+        print("\n  ── Vol Targeting Stats ──")
         print(f"     Target:          {vol_stats.get('vol_target_pct', 0):.1f}%")
         print(f"     Mean scale:      {vol_stats.get('mean_scale', 0):.4f}")
         print(f"     At max (1.0):    {vol_stats.get('pct_at_max', 0):.1f}% of weeks")

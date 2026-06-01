@@ -91,6 +91,87 @@ client = TestClient(app, raise_server_exceptions=False)
 
 _AUTH = {"X-API-Key": settings.API_KEY}
 
+import sqlite3 as _sqlite3
+import tempfile as _tempfile
+import threading as _threading
+from pathlib import Path as _Path
+
+from routers import portfolio_router as _portfolio_router  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Minimal in-process SQLite DB for portfolio_router contract tests
+# ---------------------------------------------------------------------------
+
+_TMP_FILE = _tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_TMP_FILE.close()
+_TMP_DB_PATH = _Path(_TMP_FILE.name)
+
+_tmp_init = _sqlite3.connect(str(_TMP_DB_PATH))
+_tmp_init.execute(
+    """CREATE TABLE IF NOT EXISTS paper_trades (
+        trade_id TEXT PRIMARY KEY, symbol TEXT, side TEXT,
+        entry_price REAL, exit_price REAL, quantity INTEGER,
+        pnl REAL, status TEXT DEFAULT 'open', entry_time TEXT,
+        exit_time TEXT, strategy_params TEXT, notes TEXT
+    )"""
+)
+_tmp_init.execute(
+    """CREATE TABLE IF NOT EXISTS alert_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, alert_type TEXT,
+        status TEXT, message TEXT, created_at TEXT
+    )"""
+)
+_tmp_init.commit()
+_tmp_init.close()
+
+
+class _FakeContractDb:
+    """Minimal db_manager for contract tests — backed by a real SQLite file."""
+
+    def __init__(self, db_path: _Path) -> None:
+        self._db_path = db_path
+        self._lock = _threading.Lock()
+
+    def get_closed_trades(self, limit: int = 10000, symbol=None) -> list:
+        conn = _sqlite3.connect(str(self._db_path))
+        conn.row_factory = _sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT * FROM paper_trades WHERE status='closed' ORDER BY exit_time ASC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def get_alert_history(self, limit: int = 100, alert_type=None) -> list:
+        conn = _sqlite3.connect(str(self._db_path))
+        conn.row_factory = _sqlite3.Row
+        try:
+            if alert_type:
+                rows = conn.execute(
+                    "SELECT * FROM alert_log WHERE alert_type=? ORDER BY id DESC LIMIT ?",
+                    (alert_type, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM alert_log ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def get_trade_history(self, limit: int = 100) -> list:
+        return self.get_closed_trades(limit=limit)
+
+    def _connect(self) -> _sqlite3.Connection:
+        conn = _sqlite3.connect(str(self._db_path))
+        conn.row_factory = _sqlite3.Row
+        return conn
+
+
+_fake_contract_db = _FakeContractDb(_TMP_DB_PATH)
+
 
 # ===========================================================================
 # TestSession4Endpoints — mirrors TestSession4Endpoints in test_integration.py
@@ -99,6 +180,16 @@ _AUTH = {"X-API-Key": settings.API_KEY}
 
 class TestSession4Endpoints:
     """Contract tests for the first wave of Session 4 endpoints."""
+
+    def setup_method(self, _method) -> None:
+        """Inject a working fake db_manager before each test.
+
+        Collection-time injection from other files can leave db_manager pointing
+        to a non-existent path, causing 500 instead of the expected 200/503.
+        A real in-memory-backed fake lets body-validation (400) and stats (200)
+        both work correctly without a live engine.
+        """
+        _portfolio_router.db_manager = _fake_contract_db
 
     # ── GET /analytics/performance/rolling ────────────────────────────────
 
@@ -237,6 +328,10 @@ class TestSession4Endpoints:
 
 class TestSession4ExtendedEndpoints:
     """Contract tests for Session 4 extended endpoints (analytics, weekly, notifications)."""
+
+    def setup_method(self, _method) -> None:
+        """Inject a working fake db_manager before each test (same as TestSession4Endpoints)."""
+        _portfolio_router.db_manager = _fake_contract_db
 
     # ── GET /analytics/trades/by-day ──────────────────────────────────────
 

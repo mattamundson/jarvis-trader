@@ -9,12 +9,11 @@ No filesystem, no network, no os/sys/subprocess.
 
 from __future__ import annotations
 
-import logging
-import signal
 import importlib
 import importlib.util
+import logging
 from pathlib import Path
-from typing import Optional, Type
+from typing import Type
 
 from strategies.base_strategy import BaseStrategy
 
@@ -111,7 +110,7 @@ def load_strategy_sandboxed(path: Path) -> Type[BaseStrategy]:
     except SandboxError:
         raise
     except Exception as e:
-        raise SandboxError(f"Failed to load strategy: {e}")
+        raise SandboxError(f"Failed to load strategy: {e}") from e
 
     # Step 3: Find BaseStrategy subclass
     candidates = []

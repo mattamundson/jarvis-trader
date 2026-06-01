@@ -25,12 +25,18 @@ logger = logging.getLogger(__name__)
 # Instrument multiplier table  ($ per 1 full point of price movement)
 # ---------------------------------------------------------------------------
 INSTRUMENT_MULTIPLIERS: dict[str, float] = {
-    # Root symbols used inside JARVIS
-    "MES": 5.0,
-    "MNQ": 2.0,
-    "MCL": 100.0,
-    "MGC": 10.0,
-    # Continuous / front-month futures tickers (Yahoo / ib_insync style)
+    # Micro futures — primary JARVIS universe
+    "MES": 5.0,      # Micro E-mini S&P 500
+    "MNQ": 2.0,      # Micro E-mini Nasdaq-100
+    "MCL": 100.0,    # Micro WTI Crude Oil
+    "MGC": 10.0,     # Micro Gold
+    "MHG": 2500.0,   # Micro Copper (used by safety-layer gating)
+    "M2K": 5.0,      # Micro Russell 2000
+    "MSI": 1000.0,   # Micro Silver
+    # Full-size S&P / Nasdaq futures — used by morning_brief for display context
+    "ES": 50.0,
+    "NQ": 20.0,
+    # Continuous / front-month tickers (Yahoo / ib_insync style)
     "MES=F": 5.0,
     "NQ=F": 2.0,
     "CL=F": 100.0,

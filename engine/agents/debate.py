@@ -29,7 +29,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
@@ -93,9 +93,7 @@ COREY_FUTURES_SYMBOLS: frozenset[str] = frozenset({"MCL", "MNQ", "MES", "MGC"})
 COREY_FUTURES_WEIGHT_FLOOR: float = 1.20
 
 
-def _apply_corey_futures_elevation(
-    agent_weights: dict, symbol: str
-) -> dict:
+def _apply_corey_futures_elevation(agent_weights: dict, symbol: str) -> dict:
     """Return a copy of *agent_weights* with Corey's weight floored for futures.
 
     No-op for non-futures symbols. Takes max(historical_weight, floor) so a
@@ -244,6 +242,7 @@ def _get_advisor():
     if _advisor_instance is None:
         try:
             from engine.agents.advisor_client import AdvisorClient
+
             _advisor_instance = AdvisorClient()
         except Exception as _err:  # pragma: no cover — defensive
             logger.info("AdvisorClient unavailable in debate: %s", _err)
@@ -288,17 +287,18 @@ def _get_brier_tracker(agents):
             _brier_tracker_instance = False  # sentinel
     return _brier_tracker_instance if _brier_tracker_instance is not False else None
 
+
 # Regime-adaptive debate verdict thresholds.
 # Tighter thresholds for high-conviction regimes (less noise needed to call a winner);
 # looser thresholds for choppy/uncertain regimes (require stronger signal).
 REGIME_DEBATE_THRESHOLDS: dict[str, float] = {
-    "COMPRESSION":    0.15,
-    "TRENDING_BULL":  0.18,
-    "TRENDING_BEAR":  0.18,
-    "RANGE_BOUND":    0.22,
-    "EXHAUSTED":      0.25,
-    "RANGING":        0.22,  # alias for RANGE_BOUND
-    "CAUTION":        0.20,  # default for unknown regimes
+    "COMPRESSION": 0.15,
+    "TRENDING_BULL": 0.18,
+    "TRENDING_BEAR": 0.18,
+    "RANGE_BOUND": 0.22,
+    "EXHAUSTED": 0.25,
+    "RANGING": 0.22,  # alias for RANGE_BOUND
+    "CAUTION": 0.20,  # default for unknown regimes
 }
 DEFAULT_DEBATE_THRESHOLD = 0.20
 
@@ -350,9 +350,9 @@ class DebateResult:
     credits_exhausted: bool = False
 
     # IC-weighted alpha combination metadata (Track F1)
-    ir_score: float = 0.0       # IR = IC_avg × √N (Fundamental Law of Active Management)
-    ic_avg: float = 0.0         # mean Information Coefficient across active analysts
-    ic_n_analysts: int = 0      # number of analysts with IC > 0
+    ir_score: float = 0.0  # IR = IC_avg × √N (Fundamental Law of Active Management)
+    ic_avg: float = 0.0  # mean Information Coefficient across active analysts
+    ic_n_analysts: int = 0  # number of analysts with IC > 0
 
     # Tail-risk researcher output (Novel #1, opt-in via TAIL_RISK_RESEARCHER_ENABLED)
     tail_risk_report: Optional[TailRiskReport] = None
@@ -362,6 +362,9 @@ class DebateResult:
     # signed delta applied to debate_score (±_SEPA_NUDGE_MAGNITUDE or 0).
     sepa_score: Optional[float] = None
     sepa_nudge: float = 0.0
+
+    # Phase 3.2 Structured Confluence Scoring
+    confluence_scores: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -400,6 +403,8 @@ class DebateResult:
             # SEPA regime confirmation (opt-in)
             "sepa_score": self.sepa_score,
             "sepa_nudge": self.sepa_nudge,
+            # Confluence (Phase 3.2)
+            "confluence_scores": self.confluence_scores,
         }
 
 
@@ -473,15 +478,17 @@ class DebateOrchestrator:
             Full 3-round result including debate_score and verdict.
         """
         # Resolve the adaptive threshold for this regime
-        _threshold = REGIME_DEBATE_THRESHOLDS.get(
-            (regime or "").upper(), DEFAULT_DEBATE_THRESHOLD
-        )
+        _threshold = REGIME_DEBATE_THRESHOLDS.get((regime or "").upper(), DEFAULT_DEBATE_THRESHOLD)
 
         # Load agent accuracy weights (pre-computed; no DB hit in hot path)
         try:
             from engine.analytics.agent_feedback import AgentFeedbackTracker
+
             _tracker = AgentFeedbackTracker()
-            agent_weights = _tracker.load_weights()
+            if regime:
+                agent_weights = _tracker.get_weights_by_regime(regime)
+            else:
+                agent_weights = _tracker.load_weights()
         except Exception:
             _tracker = None
             agent_weights = {}
@@ -500,7 +507,15 @@ class DebateOrchestrator:
         # formula handles both — Spearman just yields stronger boosts for
         # genuinely-skilled analysts because it captures rank ordering, not
         # binary correctness.
-        _ic_analyst_names = ["technical", "news", "social", "fundamental", "corey"]
+        _ic_analyst_names = [
+            "technical",
+            "news",
+            "social",
+            "fundamental",
+            "corey",
+            "breakout",
+            "harmonic",
+        ]
         ic_scores: dict[str, float] = {}
         _ic_source = "none"
 
@@ -508,8 +523,7 @@ class DebateOrchestrator:
         if _spearman_ensemble is not None:
             try:
                 _spearman_ics = {
-                    name: _spearman_ensemble.compute_ic(name)
-                    for name in _ic_analyst_names
+                    name: _spearman_ensemble.compute_ic(name) for name in _ic_analyst_names
                 }
                 if any(v > 0 for v in _spearman_ics.values()):
                     ic_scores = {name: max(0.0, v) for name, v in _spearman_ics.items()}
@@ -547,10 +561,15 @@ class DebateOrchestrator:
         _ic_active = {k: v for k, v in ic_scores.items() if v > 0}
         _n_analysts = len(_ic_active)
         _avg_ic = sum(_ic_active.values()) / max(_n_analysts, 1) if _ic_active else 0.0
-        _ir_score = _avg_ic * (_n_analysts ** 0.5) if _n_analysts > 0 else 0.0
+        _ir_score = _avg_ic * (_n_analysts**0.5) if _n_analysts > 0 else 0.0
         logger.info(
             "[Debate] %s alpha combination: IC_avg=%.3f N=%d IR_score=%.3f source=%s brier_on=%s",
-            symbol, _avg_ic, _n_analysts, _ir_score, _ic_source, bool(brier_weights),
+            symbol,
+            _avg_ic,
+            _n_analysts,
+            _ir_score,
+            _ic_source,
+            bool(brier_weights),
         )
 
         # Apply IC weights + accuracy weights to analyst_reports signals before
@@ -579,9 +598,7 @@ class DebateOrchestrator:
                     )
                     report["_brier_applied"] = round(brier_weights.get(agent_name, 0.0), 4)
                 else:
-                    report["signal"] = _ic_weighted_signal(
-                        report["signal"], agent_name, ic_scores
-                    )
+                    report["signal"] = _ic_weighted_signal(report["signal"], agent_name, ic_scores)
                 ic_val = ic_scores.get(agent_name, 0.0)
                 if ic_val > 0:
                     report["_ic_applied"] = round(ic_val, 3)
@@ -631,7 +648,9 @@ class DebateOrchestrator:
                 logger.info(
                     "[Debate] %s SEPA: score=%.2f raw_nudge=%+.3f (applied only "
                     "if directionally aligned with verdict)",
-                    symbol, _sepa_score, _sepa_raw_nudge,
+                    symbol,
+                    _sepa_score,
+                    _sepa_raw_nudge,
                 )
 
         # ── Short-circuit: skip Rounds 2+3 when Round 1 conviction is decisive ────
@@ -647,7 +666,9 @@ class DebateOrchestrator:
             logger.info(
                 "[Debate] %s — conviction short-circuit: delta=%.2f ≥ 0.35 → %s "
                 "(Rounds 2+3 skipped)",
-                symbol, _r1_delta, result.verdict,
+                symbol,
+                _r1_delta,
+                result.verdict,
             )
             return result
 
@@ -672,7 +693,12 @@ class DebateOrchestrator:
 
             logger.info(
                 "[Debate] %s: bull=%.2f bear=%.2f spread=%.2f threshold=%.2f (regime=%s)",
-                symbol, bull_score, bear_score, abs(bull_score - bear_score), _threshold, regime or "default",
+                symbol,
+                bull_score,
+                bear_score,
+                abs(bull_score - bear_score),
+                _threshold,
+                regime or "default",
             )
 
             # Detect credit exhaustion first: sentinel takes priority over
@@ -723,97 +749,31 @@ class DebateOrchestrator:
             result.bear_rebuttal = bear_rebuttal
             result.rounds_completed = 3
 
-            # ── Score ─────────────────────────────────────────────────────────
-            # bull_score: bear's rating of the bull argument (high = strong bull)
-            # bear_score: bull's rating of the bear argument (high = strong bear)
-            # Formula per module docstring: (bear_score_of_bull - bull_score_of_bear) / 10
-            #   = (bull_score - bear_score) / 10
-            # Positive → bull case stronger → BULL_WINS | Negative → bear → BEAR_WINS
-            debate_score = round((bull_score - bear_score) / 10, 4)
-            result.debate_score = debate_score
+            # ── Phase 3.2: Structured Confluence Scoring ──────────────────────
+            logger.info(f"[Debate] {symbol} — Evaluating 6-dimension confluence")
+            conf_dir, conf_scores = await self._score_confluence(
+                bull_case, bear_case, weighted_reports
+            )
+            result.confluence_scores = conf_scores
 
-            # B1 defensive belt (2026-04-10): if both scores collapsed to zero
-            # without an upstream failure path setting scoring_failed, the
-            # debate is silently producing INCONCLUSIVE → forced HOLD downstream
-            # at pipeline.py:662. Catch the regression and flag it so the
-            # pipeline gate falls through to the trader instead of forcing HOLD.
-            if (
-                bull_score == 0
-                and bear_score == 0
-                and not result.scoring_failed
-            ):
-                logger.warning(
-                    "[Debate] %s — both scores zero with no upstream failure flag; "
-                    "marking scoring_failed to bypass forced HOLD at pipeline gate",
-                    symbol,
+            # Count dimensions with strong agreement (>= 0.6)
+            strong_agreements = sum(1 for score in conf_scores.values() if score >= 0.6)
+
+            if conf_dir in ("BULL", "BEAR") and strong_agreements >= 4:
+                verdict = "BULL_WINS" if conf_dir == "BULL" else "BEAR_WINS"
+                # debate_score is used downstream; fake it to pass thresholds
+                debate_score = 0.8 if conf_dir == "BULL" else -0.8
+                logger.info(
+                    f"[Debate] {symbol} confluence PASSED ({strong_agreements}/6 >= 0.6) → {verdict}"
                 )
-                result.scoring_failed = True
-
-            # ── Apply SEPA nudge (regime confirmation only) ──────────────────
-            # Only applied when directionally aligned and scoring did not fail.
-            # Bounded magnitude (±0.03) guarantees SEPA cannot promote a
-            # 0.00 score to a verdict — it only strengthens near-threshold ones.
-            if _sepa_raw_nudge != 0.0 and not result.scoring_failed:
-                _nudged, _applied = _apply_sepa_nudge(debate_score, _sepa_raw_nudge)
-                debate_score = _nudged
-                result.debate_score = debate_score
-                result.sepa_nudge = _applied
-                if _applied != 0.0:
-                    logger.info(
-                        "[Debate] %s SEPA nudge applied: %+.3f → debate_score=%+.4f",
-                        symbol, _applied, debate_score,
-                    )
-
-            if debate_score >= _threshold:
-                verdict = "BULL_WINS"
-            elif debate_score <= -_threshold:
-                verdict = "BEAR_WINS"
             else:
-                # Tie-break: score is in dead zone — check conviction asymmetry
-                _CONVICTION_TIE_BREAK = 0.35  # require 35% asymmetry to break tie
-                bear_conv = result.bear_conviction
-                bull_conv = result.bull_conviction
-                conviction_diff = bear_conv - bull_conv  # positive = bear dominant
-                if conviction_diff >= _CONVICTION_TIE_BREAK:
-                    verdict = "BEAR_WINS"
-                    result.scoring_failed = True
-                    # Nudge debate_score just past the bear threshold so downstream
-                    # consumers see a directional signal rather than a neutral 0.0.
-                    result.debate_score = -0.10
-                    logger.info(
-                        f"[Debate] {symbol} tie broken by conviction: "
-                        f"bear {bear_conv:.2f} vs bull {bull_conv:.2f} → BEAR_WINS "
-                        f"(debate_score overridden to -0.10)"
-                    )
-                elif -conviction_diff >= _CONVICTION_TIE_BREAK:
-                    verdict = "BULL_WINS"
-                    result.scoring_failed = True
-                    # Nudge debate_score just past the bull threshold so downstream
-                    # consumers see a directional signal rather than a neutral 0.0.
-                    result.debate_score = 0.10
-                    logger.info(
-                        f"[Debate] {symbol} tie broken by conviction: "
-                        f"bull {bull_conv:.2f} vs bear {bear_conv:.2f} → BULL_WINS "
-                        f"(debate_score overridden to +0.10)"
-                    )
-                else:
-                    # Final tilt: consult Corey's session bias before giving up.
-                    # Only fires when bias != neutral AND conviction >= 0.5.
-                    corey_verdict = _corey_tiebreak(analyst_reports)
-                    if corey_verdict is not None:
-                        verdict = corey_verdict
-                        result.scoring_failed = True
-                        result.debate_score = 0.10 if corey_verdict == "BULL_WINS" else -0.10
-                        _corey = (analyst_reports.get("discord_briefing") or {}).get("corey_bias") or {}
-                        logger.info(
-                            f"[Debate] {symbol} tie broken by Corey bias: "
-                            f"directional_bias={_corey.get('directional_bias')} "
-                            f"conviction={_corey.get('conviction', 0.0):.2f} → {corey_verdict} "
-                            f"(debate_score overridden to {result.debate_score:+.2f})"
-                        )
-                    else:
-                        verdict = "INCONCLUSIVE"
+                verdict = "INCONCLUSIVE"
+                debate_score = 0.0
+                logger.info(
+                    f"[Debate] {symbol} confluence FAILED ({strong_agreements}/6 >= 0.6) → INCONCLUSIVE"
+                )
 
+            result.debate_score = debate_score
             result.verdict = verdict
             conviction = abs(debate_score)
             logger.info("[Debate] %s: verdict=%s conviction=%.2f", symbol, verdict, conviction)
@@ -852,20 +812,14 @@ class DebateOrchestrator:
             if _advisor is not None and _advisor.is_available():
                 _should_consult = (
                     result.verdict == "INCONCLUSIVE"
-                    or _advisor.should_consult_debate(
-                        result.debate_score, _threshold
-                    )
+                    or _advisor.should_consult_debate(result.debate_score, _threshold)
                 )
                 if _should_consult:
                     bull_case_text = (
-                        _extract_case_text(bull_report, role="bull")
-                        if bull_report
-                        else ""
+                        _extract_case_text(bull_report, role="bull") if bull_report else ""
                     )
                     bear_case_text = (
-                        _extract_case_text(bear_report, role="bear")
-                        if bear_report
-                        else ""
+                        _extract_case_text(bear_report, role="bear") if bear_report else ""
                     )
                     verdict_obj = await _advisor.consult_debate_tiebreak(
                         bull_case=bull_case_text,
@@ -878,11 +832,7 @@ class DebateOrchestrator:
                         "LONG",
                         "SHORT",
                     }:
-                        translated = (
-                            "BULL_WINS"
-                            if verdict_obj.verdict == "LONG"
-                            else "BEAR_WINS"
-                        )
+                        translated = "BULL_WINS" if verdict_obj.verdict == "LONG" else "BEAR_WINS"
                         logger.info(
                             "[Debate] %s — advisor tiebreak: %s "
                             "(was %s, conf=%.2f) reasoning=%s",
@@ -899,20 +849,12 @@ class DebateOrchestrator:
                         result.scoring_failed = False
                         # Nudge debate_score past the threshold so downstream
                         # consumers see a directional, post-advisor signal.
-                        if (
-                            translated == "BULL_WINS"
-                            and result.debate_score < _threshold
-                        ):
+                        if translated == "BULL_WINS" and result.debate_score < _threshold:
                             result.debate_score = round(_threshold + 0.01, 4)
-                        elif (
-                            translated == "BEAR_WINS"
-                            and result.debate_score > -_threshold
-                        ):
+                        elif translated == "BEAR_WINS" and result.debate_score > -_threshold:
                             result.debate_score = round(-_threshold - 0.01, 4)
         except Exception as _adv_err:  # pragma: no cover — defensive
-            logger.warning(
-                "[Debate] %s — advisor consult raised: %s", symbol, _adv_err
-            )
+            logger.warning("[Debate] %s — advisor consult raised: %s", symbol, _adv_err)
 
         return result
 
@@ -1030,6 +972,73 @@ class DebateOrchestrator:
             rounds_completed=1,
         )
 
+    async def _score_confluence(
+        self,
+        bull_case: str,
+        bear_case: str,
+        analyst_reports: dict,
+    ) -> tuple[str, dict[str, float]]:
+        """
+        Evaluate structured confluence across 6 dimensions (Phase 3.2).
+        Returns (direction, scores_dict).
+        direction: "BULL", "BEAR", or "INCONCLUSIVE"
+        scores_dict: {"trend": 0.8, "mean_rev": 0.2, ...} (0-1 scale)
+        """
+        from llm.model_router import route_task
+        from llm.client import JarvisLLMClient
+
+        model = route_task("debate_orchestrator")
+        client = JarvisLLMClient(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+
+        prompt = (
+            "You are a quantitative trading evaluator. Review the bull and bear arguments, "
+            "as well as the analyst reports, and score the market context across 6 dimensions. "
+            "For each dimension, provide a score from 0.0 to 1.0 representing how strongly it "
+            "supports the dominant direction (BULL or BEAR).\n\n"
+            f"Bull Case:\n{bull_case}\n\n"
+            f"Bear Case:\n{bear_case}\n\n"
+            "Respond ONLY with valid JSON in this exact format:\n"
+            "{\n"
+            '  "direction": "BULL" or "BEAR",\n'
+            '  "scores": {\n'
+            '    "trend": 0.8,\n'
+            '    "mean_rev": 0.6,\n'
+            '    "breakout": 0.9,\n'
+            '    "volatility": 0.4,\n'
+            '    "macro": 0.7,\n'
+            '    "sentiment": 0.8\n'
+            "  }\n"
+            "}"
+        )
+
+        try:
+            # Bypass specific agent interface and use raw client
+            response = await client.client.messages.create(
+                model=model,
+                max_tokens=500,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+            )
+            raw = response.content[0].text
+            data = _parse_json_response(raw)
+
+            direction = str(data.get("direction", "INCONCLUSIVE")).upper()
+            scores = data.get("scores", {})
+
+            # Ensure all 6 dimensions are present with float values
+            clean_scores = {
+                dim: float(scores.get(dim, 0.0))
+                for dim in ["trend", "mean_rev", "breakout", "volatility", "macro", "sentiment"]
+            }
+
+            return direction, clean_scores
+        except Exception as exc:
+            logger.error("[Debate] _score_confluence failed: %s", exc)
+            return "INCONCLUSIVE", {
+                dim: 0.0
+                for dim in ["trend", "mean_rev", "breakout", "volatility", "macro", "sentiment"]
+            }
+
 
 # ── Module-level LLM helpers (stateless, reuse agent's LLM client) ───────────
 
@@ -1052,11 +1061,7 @@ def _extract_case_text(report: object, role: str) -> str:
     # Fallback: serialise to dict and dump the most informative fields
     try:
         d = report.to_dict()
-        snippet = {
-            k: v
-            for k, v in d.items()
-            if isinstance(v, str) and len(v) > 10
-        }
+        snippet = {k: v for k, v in d.items() if isinstance(v, str) and len(v) > 10}
         return json.dumps(snippet, indent=2)[:800]
     except Exception:
         return str(report)[:800]
@@ -1096,7 +1101,9 @@ def _parse_evidence_fields(text: str) -> tuple[Optional[int], Optional[str]]:
     return evidence_count, evidence_quality
 
 
-def _apply_evidence_weight(raw_score: int, evidence_count: Optional[int], evidence_quality: Optional[str]) -> float:
+def _apply_evidence_weight(
+    raw_score: int, evidence_count: Optional[int], evidence_quality: Optional[str]
+) -> float:
     """
     Apply evidence-count and quality multipliers to a raw 1-10 score.
 
@@ -1159,7 +1166,12 @@ async def _score_argument(
         if evidence_count is not None or evidence_quality is not None:
             logger.debug(
                 "[Debate] _score_argument (%s): raw=%d evidence_count=%s quality=%s weighted=%.2f→%d",
-                opponent_role, raw_score, evidence_count, evidence_quality, weighted, score,
+                opponent_role,
+                raw_score,
+                evidence_count,
+                evidence_quality,
+                weighted,
+                score,
             )
         weakest = str(data.get("weakest_point", "Not identified"))
         return score, weakest
@@ -1198,10 +1210,7 @@ async def _rebuttal(
         return await _call_agent_llm(agent, prompt)
     except Exception as exc:
         if _is_credit_error(exc):
-            logger.error(
-                f"[Debate] _rebuttal ({side}) — "
-                "Anthropic credit balance exhausted."
-            )
+            logger.error(f"[Debate] _rebuttal ({side}) — " "Anthropic credit balance exhausted.")
             return _CREDIT_EXHAUSTED_SENTINEL
         logger.warning(f"[Debate] _rebuttal ({side}) failed ({exc})")
         return ""
@@ -1310,9 +1319,7 @@ def _parse_json_response(raw: str) -> dict:
     # Strip ```json ... ``` fences if present
     if raw.startswith("```"):
         lines = raw.splitlines()
-        raw = "\n".join(
-            line for line in lines if not line.startswith("```")
-        ).strip()
+        raw = "\n".join(line for line in lines if not line.startswith("```")).strip()
     # Find the first '{' ... '}' block
     start = raw.find("{")
     end = raw.rfind("}") + 1

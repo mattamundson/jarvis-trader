@@ -1,5 +1,6 @@
 """Integration tests for the ThinkScript registry YAML and loader."""
 import pytest
+
 from utils.thinkscript_registry_loader import load_registry
 
 

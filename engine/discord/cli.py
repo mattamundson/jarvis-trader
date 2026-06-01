@@ -49,6 +49,11 @@ def main():
         action="store_true",
         help="Show stats from existing DB and exit (requires --db)",
     )
+    parser.add_argument(
+        "--trigger-commentary",
+        action="store_true",
+        help="After import, fire CoreyCommentaryProcessor to refresh today's session bias (skipped if 0 new rows inserted)",
+    )
 
     args = parser.parse_args()
 
@@ -106,7 +111,7 @@ def main():
         print("\n=== Per-Channel Breakdown ===")
         for ch in summary["channels"]:
             name = ch.get("file", "?")
-            print(f"  {name}")
+            print(f"  {name.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8')}")
             print(
                 f"    Messages: {ch.get('messages_total', 0):,} | Parsed: {ch.get('parsed', 0):,}",
                 end="",
@@ -114,6 +119,32 @@ def main():
             if not args.dry_run:
                 print(f" | Inserted: {ch.get('inserted', 0):,}", end="")
             print()
+
+        # Commentary trigger — skipped in dry-run, skipped if 0 new rows
+        if args.trigger_commentary and not args.dry_run:
+            inserted = summary.get("total_inserted", 0)
+            if inserted > 0:
+                import asyncio
+                from datetime import date
+
+                from .commentary_processor import CoreyCommentaryProcessor
+
+                logger.info("Triggering commentary processor (%d new rows)...", inserted)
+                processor = CoreyCommentaryProcessor(db_path=args.db)
+                processor.invalidate_cache(date.today())
+                bias = asyncio.run(processor.get_session_bias())
+                logger.info(
+                    "Commentary processor complete — bias=%s conviction=%.2f quality=%s",
+                    bias.directional_bias,
+                    bias.conviction,
+                    bias.data_quality,
+                )
+                if bias.data_quality == "none":
+                    logger.warning(
+                        "Commentary processor returned no-data result; check ANTHROPIC_API_KEY and DB."
+                    )
+            else:
+                logger.info("Skipping commentary processor — 0 new rows inserted.")
 
         return 0
 
