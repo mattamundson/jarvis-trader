@@ -27,8 +27,10 @@ from data.polygon_stream import PolygonStreamer
 # but importing at module level makes the hot path slightly heavier; use a
 # try/except so a missing file never crashes startup.
 try:
+    from data.bars_repository import load_bars as _load_bars
     from data.bars_repository import save_bars as _save_bars
 except Exception:  # pragma: no cover
+    _load_bars = None  # type: ignore[assignment]
     _save_bars = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
@@ -864,6 +866,38 @@ class MarketDataManager:
                 if _save_bars is not None:
                     _save_bars(df, symbol, timeframe, "ibkr")
                 return df
+
+        # Tier 1.5: SQLite bars cache — warm cache from previously-fetched IBKR data.
+        # Fills the gap when IBKR is connected but reqHistoricalDataAsync returns
+        # empty (e.g. weekend/holiday API behaviour). Tolerates up to 72h staleness
+        # so Friday-close data survives through a full weekend.
+        if _load_bars is not None:
+            try:
+                cached_df = _load_bars(symbol, timeframe)
+                if not cached_df.empty and "timestamp" in cached_df.columns:
+                    last_ts = pd.to_datetime(cached_df["timestamp"]).max()
+                    if last_ts.tzinfo is not None:
+                        age_hours = (datetime.now(last_ts.tzinfo) - last_ts).total_seconds() / 3600
+                    else:
+                        age_hours = (datetime.utcnow() - last_ts).total_seconds() / 3600
+                    if age_hours <= 72:
+                        bars_per_day = {
+                            "1m": 390, "5m": 78, "15m": 26, "1h": 24, "4h": 6, "1d": 1
+                        }.get(timeframe, 24)
+                        n_bars = lookback_days * bars_per_day
+                        cached_df = cached_df.tail(n_bars).copy()
+                        logger.info(
+                            f"SQLite cache returned {len(cached_df)} bars for {symbol} "
+                            f"(last bar {age_hours:.1f}h ago)"
+                        )
+                        cached_df.attrs["source"] = "sqlite_cache"
+                        cached_df.attrs["symbol"] = symbol
+                        return cached_df
+                    logger.debug(
+                        f"[{symbol}] SQLite cache stale ({age_hours:.1f}h) — falling through"
+                    )
+            except Exception as _exc:
+                logger.debug(f"[{symbol}] SQLite cache load failed: {_exc}")
 
         # Tier 2: Polygon — SKIPPED for futures (Polygon free plan returns
         # the wrong asset, e.g. `CL` = Colgate-Palmolive stock, not crude oil).
