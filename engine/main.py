@@ -75,6 +75,8 @@ from routers.health_router import inject_dependencies as inject_health_router_de
 from routers.health_router import router as health_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
+from routers.journal_review_router import router as journal_review_router
+from routers.journal_review_router import inject_dependencies as inject_journal_review_deps
 from routers.jarvis_router import router as jarvis_router
 from routers.kairos_router import router as kairos_router
 from routers.learning_router import router as learning_router
@@ -525,6 +527,7 @@ async def lifespan(app: FastAPI):
     db_manager = init_db(db_path="data/jarvis_trader.db")
     db_manager.initialize()
     set_journal_db(db_manager)
+    inject_journal_review_deps(db_path=settings.SQLITE_DB_PATH, llm=None)
     set_analytics_db(db_manager)
     set_decisions_db(db_manager)
     logger.info("✅ SQLite database initialized at data/jarvis_trader.db")
@@ -839,6 +842,7 @@ async def lifespan(app: FastAPI):
 
             init_review_service(llm_client, db_manager)
             inject_trades_deps(db_manager, llm_client)
+            inject_journal_review_deps(db_path=settings.SQLITE_DB_PATH, llm=llm_client)
             logger.info("✅ Trade Review Service initialised — post-trade LLM grading active")
         except Exception as _rv_init_exc:
             logger.warning("⚠️  Trade Review Service init failed (non-fatal): %s", _rv_init_exc)
@@ -2719,6 +2723,7 @@ app.include_router(health_router)
 app.include_router(phase3_readiness_router)
 app.include_router(readiness_router)
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(journal_review_router, prefix="/journal", tags=["journal-review"])
 app.include_router(jarvis_router)
 app.include_router(trades_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
