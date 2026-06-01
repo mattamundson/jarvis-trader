@@ -438,7 +438,7 @@ async def lifespan(app: FastAPI):
                     order_router.attach_ibkr(ib_paper_connector)
                     logger.info("✅ IBGatewayConnector (paper) connected background")
                 else:
-                    logger.warning("⚠️ IBGatewayConnector background connect failed")
+                    logger.warning("⚠️ IBGatewayConnector background connect failed after 3 attempts")
         except Exception as e:
             logger.error(f"❌ Background data/IBKR init failed: {e}")
 
