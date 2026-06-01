@@ -4,7 +4,7 @@ import React, { useState, useCallback } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
-import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals } from "@/lib/api";
+import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals, fetchKillSwitchStatus } from "@/lib/api";
 import type { MGCSignalResponse, PendingSignal, MGCPerformanceResponse, PaperTradePayload, KillSwitchStatus } from "@/lib/api";
 import { OpenPositionsWidget } from "@/components/OpenPositionsWidget";
 import { RiskStatusWidget } from "@/components/RiskStatusWidget";
@@ -330,8 +330,8 @@ function SignalStat({ label, value, color }: { label: string; value: string; col
 
 function KillSwitchPanel() {
   const { data: ks, error, mutate } = useSWR<KillSwitchStatus>(
-    "/paper/kill-switch",
-    fetcher,
+    "kill-switch-status",
+    fetchKillSwitchStatus,
     { refreshInterval: 30_000, shouldRetryOnError: false }
   );
   const [acting, setActing] = useState(false);
