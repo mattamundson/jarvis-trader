@@ -152,7 +152,7 @@ export function DualTFWidget({ symbols = "MCL,MNQ,MES" }: { symbols?: string }) 
 
       {data && !isLoading && (
         <div className="space-y-2">
-          {data.symbols.map((row) => (
+          {(data.symbols ?? []).map((row) => (
             <SymbolRow key={row.symbol} row={row} />
           ))}
         </div>

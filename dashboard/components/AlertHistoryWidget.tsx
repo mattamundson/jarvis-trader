@@ -114,7 +114,7 @@ export function AlertHistoryWidget() {
       )}
 
       {/* Empty state */}
-      {data && data.alerts.length === 0 && (
+      {data && (data.alerts ?? []).length === 0 && (
         <div className="flex flex-col items-center justify-center py-6 gap-2">
           <Bell className="h-8 w-8 text-zinc-700" />
           <p className="font-mono text-xs text-zinc-600">No alerts fired today</p>
@@ -125,9 +125,9 @@ export function AlertHistoryWidget() {
       )}
 
       {/* Alert timeline */}
-      {data && data.alerts.length > 0 && (
+      {data && (data.alerts ?? []).length > 0 && (
         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-          {data.alerts.map((alert, idx) => {
+          {(data.alerts ?? []).map((alert, idx) => {
             const severity = classifyAlert(alert.key);
             const styles = severityStyles(severity);
             return (
