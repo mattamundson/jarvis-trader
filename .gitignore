@@ -301,3 +301,7 @@ engine/data/reconcile_snapshots/
 # Manual pre-edit backups — never commit; archive to ~/Archive/<year>/ instead
 *.bak
 *.bak-*
+
+# Session transcripts -- secret-leak vector (added 2026-06-01, post-trufflehog sweep)
+.claude/projects/
+docs/session-logs/**/*.jsonl
