@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
@@ -613,42 +614,55 @@ class IBGatewayManager:
         quantity: int,
         limit_price: Optional[float],
         aux_price: Optional[float],
+        order_ref: Optional[str] = None,
     ) -> Optional[object]:
-        """Build appropriate IB order object. Returns order or None."""
+        """Build appropriate IB order object. Returns order or None.
+
+        ``order_ref``, when provided, is set as the IB ``orderRef`` tag so that
+        JARVIS-originated fills can be distinguished from the paper account's
+        pre-seeded demo activity (DUP662235 carries demo positions) during
+        reconciliation — see ``ibkr_reconciler`` / the execution-fidelity gate.
+        """
+        order: Optional[object]
         if order_type_upper == "MKT":
-            return MarketOrder(action=action_upper, totalQuantity=quantity)
-        if order_type_upper == "LMT":
+            order = MarketOrder(action=action_upper, totalQuantity=quantity)
+        elif order_type_upper == "LMT":
             if limit_price is None:
                 logger.error("place_paper_order: limit_price required for LMT order")
                 return None
-            return LimitOrder(
+            order = LimitOrder(
                 action=action_upper,
                 totalQuantity=quantity,
                 lmtPrice=limit_price,
             )
-        if order_type_upper == "STP":
+        elif order_type_upper == "STP":
             if aux_price is None:
                 logger.error("place_paper_order: aux_price (stop price) required for STP order")
                 return None
-            return StopOrder(
+            order = StopOrder(
                 action=action_upper,
                 totalQuantity=quantity,
                 stopPrice=aux_price,
             )
-        if order_type_upper in ("STP_LMT", "STPLMT"):
+        elif order_type_upper in ("STP_LMT", "STPLMT"):
             if aux_price is None or limit_price is None:
                 logger.error(
                     "place_paper_order: both aux_price and limit_price required for STP_LMT"
                 )
                 return None
-            return StopLimitOrder(
+            order = StopLimitOrder(
                 action=action_upper,
                 totalQuantity=quantity,
                 lmtPrice=limit_price,
                 stopPrice=aux_price,
             )
-        logger.error("place_paper_order: unsupported order_type '%s'", order_type_upper)
-        return None
+        else:
+            logger.error("place_paper_order: unsupported order_type '%s'", order_type_upper)
+            return None
+
+        if order_ref:
+            order.orderRef = order_ref
+        return order
 
     async def place_paper_order(
         self,
@@ -659,6 +673,7 @@ class IBGatewayManager:
         limit_price: Optional[float] = None,
         aux_price: Optional[float] = None,
         parent_order_id: Optional[int] = None,
+        order_ref: Optional[str] = None,
     ) -> Optional[int]:
         """
         Place an order on the IB paper account (port 4002 only).
@@ -673,6 +688,11 @@ class IBGatewayManager:
             parent_order_id: IB orderId of the parent entry when placing a
                              child STP — sets Order.parentId so IB links the
                              child to the entry fill atomically at the broker.
+            order_ref:       IB ``orderRef`` tag. Defaults to a generated
+                             ``JARVIS-<uuid>`` so every JARVIS-routed fill is
+                             distinguishable from the account's pre-seeded demo
+                             activity during reconciliation. Pass an explicit
+                             value to link related orders (e.g. entry + child).
 
         Returns:
             IB order ID (int) on success, None on failure.
@@ -683,8 +703,14 @@ class IBGatewayManager:
 
         order_type_upper = order_type.upper()
 
+        # Tag every JARVIS-routed order so reconciliation can filter our fills
+        # out of the demo-seed portfolio. Inert until ALLOW_PAPER_SIMULATED_ORDERS
+        # is enabled (this real-IB path is only used when the flag is True).
+        if order_ref is None:
+            order_ref = f"JARVIS-{uuid.uuid4().hex[:12]}"
+
         logger.info(
-            "place_paper_order | symbol=%s action=%s qty=%d type=%s lmt=%s aux=%s parent=%s",
+            "place_paper_order | symbol=%s action=%s qty=%d type=%s lmt=%s aux=%s parent=%s ref=%s",
             symbol,
             action_upper,
             quantity,
@@ -692,6 +718,7 @@ class IBGatewayManager:
             limit_price,
             aux_price,
             parent_order_id,
+            order_ref,
         )
 
         try:
@@ -706,7 +733,8 @@ class IBGatewayManager:
                 return None
 
             ib_order = self._build_order_object(
-                order_type_upper, action_upper, quantity, limit_price, aux_price
+                order_type_upper, action_upper, quantity, limit_price, aux_price,
+                order_ref=order_ref,
             )
             if ib_order is None:
                 return None
@@ -721,13 +749,14 @@ class IBGatewayManager:
             order_id: int = trade.order.orderId
 
             logger.info(
-                "Order placed | symbol=%s action=%s qty=%d type=%s order_id=%d parent=%s",
+                "Order placed | symbol=%s action=%s qty=%d type=%s order_id=%d parent=%s ref=%s",
                 symbol,
                 action_upper,
                 quantity,
                 order_type_upper,
                 order_id,
                 parent_order_id,
+                order_ref,
             )
             return order_id
 
