@@ -35,7 +35,13 @@ logger = logging.getLogger(__name__)
 # advisory eligibility flips to default-deny.
 MAX_VERDICT_AGE_DAYS = 14
 
-_VALID_VERDICTS = frozenset({"PASS", "FAIL"})
+# INSUFFICIENT_SAMPLE (Init 2B): the strategy's total OOS trade count is below
+# MIN_OOS_TRADES_TOTAL, so the gate refuses rather than certifying on thin
+# evidence. It is a non-PASS verdict, so is_ungate_eligible / is_strategy_
+# authorized correctly DENY (only "PASS" authorizes) while preserving the
+# reason for dashboards — instead of an unknown string making the file
+# unreadable and the reason being lost.
+_VALID_VERDICTS = frozenset({"PASS", "FAIL", "INSUFFICIENT_SAMPLE"})
 _VALID_PASSED_VIA = frozenset({"core", "alt"})
 _VALID_CORE_VERDICTS = frozenset({"PASS", "FAIL"})
 _VALID_ALT_VERDICTS = frozenset({"PASS", "FAIL", "UNSCORED"})
@@ -212,6 +218,7 @@ def is_strategy_authorized(
     """
     # Lazy imports avoid circular dependencies at module load time.
     from agents.pipeline import VALIDATION_ONLY_INSTRUMENTS  # noqa: PLC0415
+
     from backtest.paper_config import PAPER_CONFIGS  # noqa: PLC0415
 
     sym_upper = symbol.upper()

@@ -142,7 +142,7 @@ def _is_rating_drop(diff: dict[str, Any], cfg: ThresholdConfig | None = None) ->
     """Return True if the new verdict represents a degradation vs. the old one.
 
     Degradation criteria (any one is sufficient):
-    - Verdict dropped: PASS -> FAIL
+    - Verdict dropped: PASS -> FAIL or PASS -> INSUFFICIENT_SAMPLE
     - Path downgraded: PASS-core -> PASS-alt (loss of core margin)
     - pf_ci_lower fell by more than cfg.rating_drop_pf_ci (default 15%)
     - dsr fell by more than cfg.rating_drop_dsr (default 20%)
@@ -153,7 +153,7 @@ def _is_rating_drop(diff: dict[str, Any], cfg: ThresholdConfig | None = None) ->
     # Verdict-level drop
     old_v = diff.get("old_verdict")
     new_v = diff.get("new_verdict")
-    if old_v == "PASS" and new_v == "FAIL":
+    if old_v == "PASS" and new_v in ("FAIL", "INSUFFICIENT_SAMPLE"):
         return True
     # Core -> alt downgrade
     old_via = diff.get("old_passed_via")
