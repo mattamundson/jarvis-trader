@@ -21,6 +21,19 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
+try:  # dual-path import (engine.* as package vs bare under engine/ cwd)
+    from engine.analytics.outcome_hygiene import (
+        MAX_PLAUSIBLE_ABS_PNL_USD,
+        is_plausible_pnl,
+        sanitize_outcome_rows,
+    )
+except ImportError:  # pragma: no cover
+    from analytics.outcome_hygiene import (
+        MAX_PLAUSIBLE_ABS_PNL_USD,
+        is_plausible_pnl,
+        sanitize_outcome_rows,
+    )
+
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "data" / "agent_feedback.db"
@@ -97,6 +110,24 @@ class AgentFeedbackTracker:
         outcome = "WIN" if pnl_usd > 0 else "LOSS"
         ts = timestamp or datetime.now(timezone.utc).isoformat()
 
+        # Ingestion guards (analytics/outcome_hygiene): corrupt or logically
+        # duplicate rows must never enter trade_outcomes - they skew both the
+        # live directional-accuracy weights and the Brier/IC surface.
+        if not is_plausible_pnl(pnl_usd):
+            logger.warning(
+                "[Feedback] Rejecting implausible P&L for %s %s: pnl=%.2f "
+                "(>$%d) - not recorded",
+                trade_id, symbol, pnl_usd, int(MAX_PLAUSIBLE_ABS_PNL_USD),
+            )
+            return
+        if self._is_logical_duplicate(trade_id, symbol, ts, pnl_usd):
+            logger.warning(
+                "[Feedback] Skipping logical-duplicate outcome for %s %s @ %s "
+                "pnl=%.2f (same symbol+second+pnl under a different trade_id)",
+                trade_id, symbol, ts[:19], pnl_usd,
+            )
+            return
+
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO trade_outcomes
@@ -117,6 +148,24 @@ class AgentFeedbackTracker:
             ))
 
         logger.debug("Recorded trade outcome: %s %s PnL=%.2f", trade_id, outcome, pnl_usd)
+
+    def _is_logical_duplicate(
+        self, trade_id: str, symbol: str, ts: str, pnl_usd: float
+    ) -> bool:
+        """True if a DIFFERENT trade_id already recorded the same logical
+        outcome (same symbol + wall-clock second + pnl_usd). Catches the
+        N-times-logged triplicate artifact at write time."""
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                row = conn.execute(
+                    "SELECT trade_id FROM trade_outcomes "
+                    "WHERE symbol = ? AND substr(timestamp, 1, 19) = ? "
+                    "AND ABS(pnl_usd - ?) < 0.005 AND trade_id != ? LIMIT 1",
+                    (symbol, ts[:19], pnl_usd, trade_id),
+                ).fetchone()
+            return row is not None
+        except sqlite3.DatabaseError:
+            return False
 
     def get_weights(
         self, window_days_short: int = 30, window_days_long: int = 90
@@ -169,7 +218,10 @@ class AgentFeedbackTracker:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
         signal_col = f"{agent_name}_signal"
 
-        query = f"SELECT direction, outcome, {signal_col} FROM trade_outcomes WHERE timestamp > ? AND {signal_col} != 0"
+        query = (
+            f"SELECT direction, outcome, {signal_col}, timestamp, pnl_usd "
+            f"FROM trade_outcomes WHERE timestamp > ? AND {signal_col} != 0"
+        )
         params = [cutoff]
 
         if regime:
@@ -179,12 +231,18 @@ class AgentFeedbackTracker:
         with sqlite3.connect(DB_PATH) as conn:
             rows = conn.execute(query, tuple(params)).fetchall()
 
+        # Strip corrupt / logically-duplicate rows before scoring so a single
+        # bad or N-times-logged outcome cannot skew an agent's accuracy.
+        rows = sanitize_outcome_rows(
+            rows, context=f"accuracy/{agent_name}", signal_idx=2, pnl_idx=4, ts_idx=3
+        )
+
         if len(rows) < 5:  # Need at least 5 trades for meaningful accuracy
             return 0.5  # Default to neutral if insufficient data
 
         correct = 0
         total = 0
-        for direction, outcome, signal in rows:
+        for direction, outcome, signal, _ts, _pnl in rows:
             if signal is None:
                 continue
             # Check if agent predicted correctly
