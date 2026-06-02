@@ -1,0 +1,90 @@
+{
+  "backtest": "BT-10",
+  "strategy": "Cohen MES Composite (VWAP+ORB+STC, Regime-Adaptive)",
+  "symbol": "SPY_1h (MES proxy)",
+  "run_timestamp": "2026-06-02T07:35:50.970487+00:00",
+  "data_range": "2023-07-05 13:30:00+00:00 \u2192 2026-06-01 19:30:00+00:00",
+  "config": {
+    "entry_threshold": 0.55,
+    "adx_min": 25.0,
+    "stop_atr_mult": 0.9,
+    "t1_atr_mult": 1.5,
+    "t2_atr_mult": 2.618,
+    "band_mult": 3.0,
+    "stc_fast": 23,
+    "stc_slow": 50,
+    "stc_os": 15,
+    "stc_ob": 83,
+    "volatile_atr_pct_threshold": 2.0
+  },
+  "signal_stats": {
+    "n_long_signals": 81,
+    "n_short_signals": 83,
+    "regime_trending_bars": 4305,
+    "regime_ranging_bars": 763,
+    "regime_volatile_bars": 14
+  },
+  "metrics": {
+    "n_trades": 135,
+    "n_long": 66,
+    "n_short": 69,
+    "win_rate": 0.5333,
+    "long_win_rate": 0.5909,
+    "short_win_rate": 0.4783,
+    "profit_factor": 0.9485,
+    "sharpe": -0.3806,
+    "sortino": -0.8458,
+    "calmar": -0.1116,
+    "cagr": -0.0114,
+    "max_drawdown_pct": 0.1021,
+    "max_drawdown_dollars": 1100.57,
+    "tail_ratio": 0.9745,
+    "gain_to_pain": 0.9485,
+    "exposure": 0.093,
+    "max_consecutive_losses": 4,
+    "skew": -0.1538,
+    "total_return_pct": -0.0325,
+    "final_capital": 9675.21,
+    "avg_win": 69.16,
+    "avg_loss": 83.33,
+    "avg_rr": 0.83,
+    "pf_ci_lower_90": 0.6932,
+    "p_edge": 0.3835,
+    "dsr": 0.1006,
+    "gate_v2_core": false,
+    "gate_v2_alt": false,
+    "gate_v2_verdict": "FAIL",
+    "gates_passed": "4",
+    "gates_total": 10
+  },
+  "gates_detail": {
+    "sortino_ge_1.0": "False",
+    "calmar_ge_0.5": "False",
+    "tail_ratio_ge_1.0": "False",
+    "exposure_ge_0.15": false,
+    "gain_to_pain_ge_0.5": "True",
+    "consec_losses_le_8": true,
+    "skew_ge_neg1.5": true,
+    "sharpe_ge_1.5": "False",
+    "win_rate_ge_55pct": false,
+    "max_dd_le_15pct": "True"
+  },
+  "exit_breakdown": {
+    "T1": {
+      "n": 19,
+      "pnl": 1506.2353281878068
+    },
+    "EOD": {
+      "n": 66,
+      "pnl": 2064.229044567876
+    },
+    "STOP": {
+      "n": 43,
+      "pnl": -4424.325344479679
+    },
+    "T2": {
+      "n": 7,
+      "pnl": 583.5740087035157
+    }
+  }
+}
