@@ -67,6 +67,56 @@ export async function fetchFinancesDetail(): Promise<FinancesDetail> {
   return res.json();
 }
 
+// ---- Scheduler (master-api in-process scheduler) ----
+
+export type SchedulerJob = {
+  name: string;
+  interval_s: number;
+  tier: string;
+  last_run: string | null;
+  last_status: string | null;
+};
+
+export type MasterSchedulerStatus = {
+  running: boolean;
+  jobs: SchedulerJob[];
+};
+
+export type SchedulerRun = {
+  id: number;
+  job: string;
+  status: string; // ok | degraded | error | skipped
+  started_ts: string;
+  finished_ts: string | null;
+  duration_ms: number | null;
+  detail: string | null;
+};
+
+export type SchedulerRunsResponse = {
+  runs: SchedulerRun[];
+  count: number;
+};
+
+export async function fetchMasterSchedulerStatus(): Promise<MasterSchedulerStatus> {
+  const res = await fetch(`${BASE}/master/scheduler/status`, {
+    headers: { "X-API-Key": KEY },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`scheduler status ${res.status}`);
+  return res.json();
+}
+
+export async function fetchMasterSchedulerRuns(
+  limit = 8,
+): Promise<SchedulerRunsResponse> {
+  const res = await fetch(`${BASE}/master/scheduler/runs?limit=${limit}`, {
+    headers: { "X-API-Key": KEY },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`scheduler runs ${res.status}`);
+  return res.json();
+}
+
 const BASE2 = process.env.NEXT_PUBLIC_MASTER_API_URL ?? "http://127.0.0.1:8030";
 
 export type CommandEvent =
