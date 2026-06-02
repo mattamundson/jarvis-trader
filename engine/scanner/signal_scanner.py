@@ -432,52 +432,65 @@ class SignalScanner:
                     technical_report = (result.get("analyst_reports") or {}).get("technical") or {}
                     fund_decision = result.get("fund_decision") or {}
                     stop_price = trade_dec.get("stop_price") or None
-                    target_price = (
-                        trade_dec.get("target_price") or trade_dec.get("take_profit") or None
-                    )
-                    conviction = fund_decision.get("final_conviction", 0.0) or trade_dec.get(
-                        "confidence", 0.0
-                    )
-                    _indicators = technical_report.get("indicators") or {}
-                    stc_val = _indicators.get("stc_value")
-                    rv_at_entry = _indicators.get("rv_20_ann_pct")
-
-                    trade_id = self._paper_tracker.add_paper_trade(
-                        symbol=symbol,
-                        side=final_action,
-                        quantity=float(quantity) if quantity else 1.0,
-                        entry_price=float(entry_price),
-                        stop_loss=float(stop_price) if stop_price else None,
-                        take_profit=float(target_price) if target_price else None,
-                        strategy_params={
-                            "source": "scanner",
-                            "approval_id": approval_id,
-                            "conviction": round(float(conviction), 4),
-                            "direction": final_action.upper(),
-                            "summary": result.get("summary", ""),
-                            "regime": technical_report.get("regime") or "unknown",
-                            "bias": technical_report.get("trend")
-                            or technical_report.get("bias")
-                            or "unknown",
-                            "entry_stc_value": (
-                                round(float(stc_val), 2) if stc_val is not None else None
-                            ),
-                            "pipeline_conviction": round(float(conviction), 4),
-                            "predicted_direction": final_action.upper(),
-                            "rv_at_entry": (
-                                round(float(rv_at_entry), 4) if rv_at_entry is not None else None
-                            ),
-                        },
-                    )
-                    logger.info(
-                        "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
-                        "executed=True reason=paper_mode_bypass trade_id=%s",
-                        symbol,
-                        final_action,
-                        _confidence,
-                        0.0,
-                        trade_id[:8],
-                    )
+                    # Safety gate: never auto-execute a paper trade without a stop.
+                    # A position with no stop has undefined risk — refuse it.
+                    if stop_price is None:
+                        logger.critical(
+                            "[SAFETY] paper_mode_bypass BLOCKED for %s %s — "
+                            "no stop_loss in trade_decision; refusing auto-execution. "
+                            "trade_decision=%r",
+                            symbol,
+                            final_action,
+                            trade_dec,
+                        )
+                    else:
+                        target_price = (
+                            trade_dec.get("target_price") or trade_dec.get("take_profit") or None
+                        )
+                        conviction = fund_decision.get("final_conviction", 0.0) or trade_dec.get(
+                            "confidence", 0.0
+                        )
+                        _indicators = technical_report.get("indicators") or {}
+                        stc_val = _indicators.get("stc_value")
+                        rv_at_entry = _indicators.get("rv_20_ann_pct")
+                        trade_id_inner = self._paper_tracker.add_paper_trade(
+                            symbol=symbol,
+                            side=final_action,
+                            quantity=float(quantity) if quantity else 1.0,
+                            entry_price=float(entry_price),
+                            stop_loss=float(stop_price),
+                            take_profit=float(target_price) if target_price else None,
+                            strategy_params={
+                                "source": "scanner",
+                                "approval_id": approval_id,
+                                "conviction": round(float(conviction), 4),
+                                "direction": final_action.upper(),
+                                "summary": result.get("summary", ""),
+                                "regime": technical_report.get("regime") or "unknown",
+                                "bias": technical_report.get("trend")
+                                or technical_report.get("bias")
+                                or "unknown",
+                                "entry_stc_value": (
+                                    round(float(stc_val), 2) if stc_val is not None else None
+                                ),
+                                "pipeline_conviction": round(float(conviction), 4),
+                                "predicted_direction": final_action.upper(),
+                                "rv_at_entry": (
+                                    round(float(rv_at_entry), 4)
+                                    if rv_at_entry is not None
+                                    else None
+                                ),
+                            },
+                        )
+                        logger.info(
+                            "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                            "executed=True reason=paper_mode_bypass trade_id=%s",
+                            symbol,
+                            final_action,
+                            _confidence,
+                            0.0,
+                            trade_id_inner[:8],
+                        )
                 except Exception as _paper_exc:
                     logger.error(
                         "[Scanner] Paper trade auto-log failed for %s: %s", symbol, _paper_exc

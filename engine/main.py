@@ -16,7 +16,7 @@ import os
 import signal
 import sqlite3
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -2292,23 +2292,42 @@ async def lifespan(app: FastAPI):
     try:
 
         async def _sync_safety_equity() -> None:
-            """Pull current equity + daily P&L from PnLMonitor and push to SafetyLayer."""
+            """Push JARVIS paper-trade P&L to SafetyLayer circuit breakers.
+
+            Reads daily PnL directly from paper_trades (trades closed today),
+            not from pnl_monitor.  pnl_monitor reads IBKR DUP662235 demo
+            account data (pre-seeded NAV $3.97M) whose daily swing contaminates
+            the daily_pnl SQLite table and causes false kill-switch fires.
+            2026-06-01 incident: -$678k IBKR demo delta fired kill switch on a
+            real -$1,284 scanner paper trade.
+            """
             try:
-                if safety_layer is None or pnl_monitor is None:
-                    logger.warning(
-                        "[sync_safety_equity] early-return: safety_layer=%s pnl_monitor=%s",
-                        safety_layer is not None,
-                        pnl_monitor is not None,
-                    )
+                if safety_layer is None:
                     return
-                state = pnl_monitor.get_current_pnl_state()
-                equity = (
-                    state.current_balance
-                    if state.current_balance > 0
-                    else safety_layer._current_equity
+                today_str = date.today().isoformat()
+                paper_daily_pnl = 0.0
+                if db_manager is not None:
+                    try:
+                        closed_today = [
+                            t for t in db_manager.get_closed_trades(limit=200)
+                            if (t.get("exit_time") or "").startswith(today_str)
+                        ]
+                        paper_daily_pnl = sum(
+                            float(t.get("pnl") or 0.0) for t in closed_today
+                        )
+                    except Exception as _db_exc:
+                        logger.warning(
+                            "[sync_safety_equity] paper_trades query failed: %s", _db_exc
+                        )
+                config_equity = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0))
+                safety_layer.sync_from_broker(config_equity, paper_daily_pnl)
+                logger.debug(
+                    "[sync_safety_equity] equity=%.2f daily_pnl=%.2f "
+                    "source=paper_trades today=%s",
+                    config_equity,
+                    paper_daily_pnl,
+                    today_str,
                 )
-                daily_pnl = pnl_monitor.get_daily_pnl()
-                safety_layer.sync_from_broker(equity, daily_pnl)
             except Exception as exc:
                 logger.warning("[sync_safety_equity] error: %s", exc, exc_info=True)
 
@@ -2327,6 +2346,100 @@ async def lifespan(app: FastAPI):
             logger.info("✅ SafetyLayer equity sync job registered — fires every 60 seconds")
     except Exception as _sync_err:
         logger.warning(f"SafetyLayer equity sync job init failed (non-fatal): {_sync_err}")
+
+    # Open position stop monitor — closes scanner-opened paper_trades when
+    # stop_loss is breached.  Runs every 5 minutes.
+    # Fixes the 2026-06-01 incident where MGC trade #178 rode -128 pts
+    # (stop was 6.4 pts) because scanner-opened trades had no stop poller.
+    try:
+
+        async def _monitor_open_stops() -> None:
+            """Close open paper_trades whose stop_loss price has been breached."""
+            try:
+                if db_manager is None or data_manager is None:
+                    return
+                open_trades = db_manager.get_open_trades()
+                if not open_trades:
+                    return
+                from portfolio.tracker import INSTRUMENT_MULTIPLIERS as _MULT, _DEFAULT_MULTIPLIER as _DEF_MULT  # noqa: E501
+                for _trade in open_trades:
+                    _stop = _trade.get("stop_loss")
+                    if _stop is None:
+                        continue
+                    _stop_f = float(_stop)
+                    _sym = (_trade.get("symbol") or "").upper()
+                    if not _sym:
+                        continue
+                    _side = (_trade.get("side") or "buy").lower()
+                    _entry = float(_trade.get("entry_price") or 0.0)
+                    _tid = _trade.get("trade_id", "")
+                    try:
+                        _pd = await data_manager.get_current_price(_sym, is_futures=True)
+                        _cur = float(
+                            _pd.get("last_price")
+                            or _pd.get("price")
+                            or _pd.get("last")
+                            or _pd.get("close")
+                            or 0.0
+                        )
+                        if not _cur:
+                            continue
+                    except Exception as _pe:
+                        logger.debug("[stop_monitor] price fetch %s: %s", _sym, _pe)
+                        continue
+                    _is_long = "buy" in _side
+                    _hit = (_is_long and _cur <= _stop_f) or (
+                        not _is_long and _cur >= _stop_f
+                    )
+                    if not _hit:
+                        continue
+                    _mult = _MULT.get(_sym, _DEF_MULT)
+                    _qty = float(_trade.get("quantity") or 1.0)
+                    _pnl = (
+                        (_stop_f - _entry) * _qty * _mult
+                        if _is_long
+                        else (_entry - _stop_f) * _qty * _mult
+                    )
+                    logger.warning(
+                        "[stop_monitor] STOP HIT %s %s id=%s entry=%.2f "
+                        "stop=%.2f current=%.2f pnl=%.2f",
+                        _sym, _side, _tid[:8] if _tid else "?",
+                        _entry, _stop_f, _cur, _pnl,
+                    )
+                    _closed = False
+                    if paper_tracker is not None:
+                        try:
+                            paper_tracker.close_paper_trade(
+                                trade_id=_tid,
+                                exit_price=_stop_f,
+                                pnl=_pnl,
+                            )
+                            _closed = True
+                        except KeyError:
+                            pass
+                    if not _closed:
+                        db_manager.close_trade(
+                            trade_id=_tid,
+                            exit_price=_stop_f,
+                            pnl=_pnl,
+                            notes="stop_monitor: stop_loss breached",
+                        )
+            except Exception as exc:
+                logger.warning("[stop_monitor] error: %s", exc, exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _monitor_open_stops,
+                "interval",
+                minutes=5,
+                id="monitor_open_stops",
+                name="Open Position Stop Monitor",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("✅ Stop monitor job registered — fires every 5 minutes")
+    except Exception as _stop_mon_err:
+        logger.warning(f"Stop monitor init failed (non-fatal): {_stop_mon_err}")
 
     # ── RL executor — MES paper validation (experimental, non-blocking) ───────
     try:
