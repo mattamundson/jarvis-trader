@@ -305,6 +305,39 @@ def test_rolling_brier_averages_across_multiple_agents(tmp_db):
     assert 0.30 < rolling < 0.50, f"Expected mid-range mean, got {rolling}"
 
 
+def test_corrupt_pnl_excluded_from_brier(tmp_db):
+    # Five well-calibrated rows + one row carrying a corrupted (demo-seed) P&L
+    # far above the plausibility cap. The corrupt row is confidently WRONG, so
+    # if it were counted it would spike the Brier; the guard must drop it and
+    # leave only the five clean rows (~0.02). Regression for the 2026-06-02
+    # agent_feedback.db pollution (+$10,102.98 MES rows).
+    good = _mk_rows(0, [(0.9, 50.0), (0.9, 40.0), (-0.9, -30.0), (-0.9, -60.0), (0.8, 20.0)])
+    corrupt = _mk_rows(0, [(0.9, -10102.98)])  # |pnl| > $5,000 → dropped
+    corrupt = [(f"corrupt{r[0]}", *r[1:]) for r in corrupt]
+    _seed_trades(tmp_db, good + corrupt)
+    tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
+    brier = tracker.compute_brier("technical")
+    assert brier < 0.05, f"corrupt-P&L row must be excluded; got {brier}"
+
+
+def test_duplicate_outcomes_collapsed_in_brier(tmp_db):
+    # The 2026-06-02 triplicate artifact: one logical losing trade logged 3×
+    # with the same wall-clock second and identical (signal, pnl) but distinct
+    # trade_ids. Dedup must count it once, not triple-weight it.
+    fresh = _fresh_iso()
+    good = _mk_rows(0, [(0.9, 50.0), (0.9, 40.0), (0.8, 30.0), (0.85, 45.0)], now_iso=fresh)
+    dup = []
+    for k in range(3):
+        sigs = [0.9, 0.0, 0.0, 0.0, 0.0]  # technical=0.9, confident & wrong
+        dup.append((f"dup{k}", fresh, "MCL", "SHORT", -20.0, 0.0, "LOSS", *sigs))
+    _seed_trades(tmp_db, good + dup)
+    tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
+    brier = tracker.compute_brier("technical")
+    # Deduped: 4 good (~0.02) + 1 bad (~0.81) over 5 rows → ~0.178.
+    # NOT deduped would be 4 good + 3 bad over 7 rows → ~0.359.
+    assert 0.14 < brier < 0.22, f"duplicates must collapse to one; got {brier}"
+
+
 def test_describe_reports_per_agent_brier(tmp_db):
     rows = _mk_rows(
         0,
