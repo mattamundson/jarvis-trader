@@ -1677,6 +1677,35 @@ def migration_036(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migration_037(conn: sqlite3.Connection) -> None:
+    """
+    037 — ibkr_fills order provenance columns.
+
+    Adds order_ref and parent_order_id so reconciled real IB fills can be
+    matched back to JARVIS-originated orders. place_paper_order stamps an IB
+    orderRef of JARVIS-<uuid> on every order; get_executions surfaces it into
+    the reconciler. These columns let the execution-fidelity forward-test
+    compare real fills against paper_trades intent and filter out DUP662235's
+    pre-seeded demo-seed activity (which carries no JARVIS- orderRef).
+
+    Idempotent: skips columns that already exist (manually-altered DBs).
+    """
+    for stmt in (
+        "ALTER TABLE ibkr_fills ADD COLUMN order_ref TEXT",
+        "ALTER TABLE ibkr_fills ADD COLUMN parent_order_id INTEGER",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ibkr_fills_order_ref ON ibkr_fills(order_ref)"
+    )
+    conn.commit()
+    logger.info("Migration 037 applied — ibkr_fills order_ref/parent_order_id columns.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1717,6 +1746,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_034,  # version 34
     migration_035,  # version 35
     migration_036,  # version 36
+    migration_037,  # version 37
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1756,6 +1786,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "FOMC history: fomc_history table for Phase 6.5 news NLP.",
     "Canary strategies: canary_strategies table for Phase 7.3 A/B canary framework.",
     "IBKR fills import: ibkr_fills table for raw execution fills from IB, keyed by exec_id.",
+    "IBKR fills order provenance: order_ref + parent_order_id columns on ibkr_fills for JARVIS-tagged fill reconciliation (execution-fidelity forward-test).",
 ]
 
 

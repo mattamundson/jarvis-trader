@@ -965,7 +965,11 @@ class IBGatewayManager:
 
         Each dict: exec_id, account, symbol, sec_type, expiry, side (BOT/SLD),
         quantity, price, avg_price, commission, exchange, currency, fill_time,
-        order_id.
+        order_id, order_ref.
+
+        ``order_ref`` carries the IB orderRef stamped by place_paper_order
+        (JARVIS-<uuid>), letting the reconciler distinguish JARVIS-originated
+        fills from the DUP662235 demo-seed activity.
         """
         if not IB_INSYNC_AVAILABLE or not self.is_connected():
             logger.warning("get_executions: not connected")
@@ -994,6 +998,7 @@ class IBGatewayManager:
                         "currency": contract.currency,
                         "fill_time": str(execution.time),
                         "order_id": execution.orderId,
+                        "order_ref": getattr(execution, "orderRef", "") or "",
                     }
                 )
             return result

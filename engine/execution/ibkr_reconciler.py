@@ -112,8 +112,9 @@ class IBKRReconciler:
                             INSERT INTO ibkr_fills
                                 (exec_id, account, symbol, sec_type, expiry, side,
                                  quantity, price, avg_price, commission, exchange,
-                                 currency, fill_time, order_id, imported_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 currency, fill_time, order_id, order_ref,
+                                 parent_order_id, imported_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 exec_id,
@@ -130,6 +131,8 @@ class IBKRReconciler:
                                 fill.get("currency", "USD"),
                                 fill.get("fill_time", ""),
                                 fill.get("order_id"),
+                                fill.get("order_ref", ""),
+                                fill.get("parent_order_id"),
                                 now_iso,
                             ),
                         )
@@ -326,3 +329,170 @@ class IBKRReconciler:
             "fills_from_ib": len(fills),
             "connected": connected,
         }
+
+    def compare_fills_to_trades(
+        self,
+        symbol: str,
+        match_window_sec: int = 3600,
+    ) -> dict:
+        """Compare reconciled real IB fills to paper_trades intent for ``symbol``.
+
+        Thin instance wrapper around :func:`compare_fills_to_trades` so callers
+        holding a reconciler can measure fidelity without knowing the db path.
+        """
+        return compare_fills_to_trades(self._db_path, symbol, match_window_sec)
+
+
+# ── Side mapping & parsing helpers ──────────────────────────────────────────────
+
+# paper_trades.side (intent) -> ibkr_fills.side (IB execution report) equivalence.
+_TRADE_TO_FILL_SIDE = {"buy": "BOT", "sell": "SLD"}
+
+
+def _parse_ts(value: Any) -> Optional[datetime]:
+    """Lenient ISO timestamp parse. Accepts 'T' or space separators, optional tz.
+
+    Real fill_time is ``str(execution.time)`` ("2026-06-02 14:30:00+00:00");
+    paper_trades.entry_time is ISO. Returns a tz-aware UTC datetime or None.
+    """
+    if not value:
+        return None
+    s = str(value).strip().replace(" ", "T", 1)
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def compare_fills_to_trades(
+    db_path: str | Path,
+    symbol: str,
+    match_window_sec: int = 3600,
+) -> dict:
+    """Measure execution fidelity: real JARVIS fills vs paper_trades intent.
+
+    Only fills tagged with a ``JARVIS-`` orderRef are considered — the
+    DUP662235 demo-seed activity (untagged) is filtered out and reported as
+    ``n_demo_excluded``. Each intended paper_trades entry is matched to the
+    nearest unconsumed JARVIS real fill of the corresponding side
+    (buy↔BOT, sell↔SLD) within ``match_window_sec``; entry slippage is the
+    signed (real_fill_price − intended_entry_price) in price points.
+
+    Read-only and resilient: returns a structured dict even when the table or
+    columns are absent (e.g. before migration 037), so callers never raise.
+    The matching is a time-proximity heuristic — until paper_trades carries a
+    stored order_ref join key, ``match_method`` documents the limitation.
+    """
+    sym = symbol.upper()
+    result: dict[str, Any] = {
+        "symbol": sym,
+        "n_real_fills": 0,
+        "n_demo_excluded": 0,
+        "n_paper_trades": 0,
+        "n_matched": 0,
+        "n_unmatched_trades": 0,
+        "n_unmatched_fills": 0,
+        "avg_abs_slippage_pts": None,
+        "max_abs_slippage_pts": None,
+        "match_window_sec": match_window_sec,
+        "match_method": "side+nearest-time (no stored order_ref join key yet)",
+        "matches": [],
+    }
+
+    try:
+        with closing(sqlite3.connect(str(db_path))) as conn:
+            conn.row_factory = sqlite3.Row
+            # JARVIS-tagged real fills only.
+            real_fills = conn.execute(
+                """
+                SELECT side, price, fill_time, order_ref
+                FROM   ibkr_fills
+                WHERE  UPPER(symbol) = ? AND order_ref LIKE 'JARVIS-%'
+                ORDER  BY fill_time ASC
+                """,
+                (sym,),
+            ).fetchall()
+            demo_row = conn.execute(
+                """
+                SELECT COUNT(*) FROM ibkr_fills
+                WHERE  UPPER(symbol) = ?
+                  AND  (order_ref IS NULL OR order_ref NOT LIKE 'JARVIS-%')
+                """,
+                (sym,),
+            ).fetchone()
+            trades = conn.execute(
+                """
+                SELECT side, entry_price, entry_time
+                FROM   paper_trades
+                WHERE  UPPER(symbol) = ? AND entry_price IS NOT NULL
+                ORDER  BY entry_time ASC
+                """,
+                (sym,),
+            ).fetchall()
+    except sqlite3.OperationalError as exc:
+        # Missing table/column (pre-migration) — return the empty scaffold.
+        logger.debug("compare_fills_to_trades: %s", exc)
+        return result
+    except Exception as exc:
+        logger.warning("compare_fills_to_trades failed: %s", exc)
+        return result
+
+    result["n_real_fills"] = len(real_fills)
+    result["n_demo_excluded"] = int(demo_row[0]) if demo_row else 0
+    result["n_paper_trades"] = len(trades)
+
+    # Greedy nearest-time matching, each real fill consumed at most once.
+    consumed: set[int] = set()
+    slippages: list[float] = []
+    for tr in trades:
+        want_side = _TRADE_TO_FILL_SIDE.get(str(tr["side"]).lower())
+        t_ts = _parse_ts(tr["entry_time"])
+        if want_side is None or t_ts is None:
+            continue
+        best_idx: Optional[int] = None
+        best_gap: Optional[float] = None
+        for i, fl in enumerate(real_fills):
+            if i in consumed or str(fl["side"]).upper() != want_side:
+                continue
+            f_ts = _parse_ts(fl["fill_time"])
+            if f_ts is None:
+                continue
+            gap = abs((f_ts - t_ts).total_seconds())
+            if gap > match_window_sec:
+                continue
+            if best_gap is None or gap < best_gap:
+                best_gap, best_idx = gap, i
+        if best_idx is None:
+            continue
+        consumed.add(best_idx)
+        fill = real_fills[best_idx]
+        try:
+            slip = float(fill["price"]) - float(tr["entry_price"])
+        except (TypeError, ValueError):
+            continue
+        slippages.append(abs(slip))
+        result["matches"].append(
+            {
+                "side": str(tr["side"]).lower(),
+                "intended_entry_price": float(tr["entry_price"]),
+                "real_fill_price": float(fill["price"]),
+                "slippage_pts": round(slip, 6),
+                "trade_entry_time": tr["entry_time"],
+                "fill_time": fill["fill_time"],
+                "order_ref": fill["order_ref"],
+                "gap_sec": round(best_gap, 1) if best_gap is not None else None,
+            }
+        )
+
+    result["n_matched"] = len(result["matches"])
+    result["n_unmatched_trades"] = result["n_paper_trades"] - result["n_matched"]
+    result["n_unmatched_fills"] = result["n_real_fills"] - len(consumed)
+    if slippages:
+        result["avg_abs_slippage_pts"] = round(sum(slippages) / len(slippages), 6)
+        result["max_abs_slippage_pts"] = round(max(slippages), 6)
+    return result

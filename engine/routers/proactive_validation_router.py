@@ -715,6 +715,61 @@ def _check_pf_floor(rows: list[sqlite3.Row]) -> ValidationCheck:
     )
 
 
+def _check_real_fill_reconciliation(
+    symbol: str, measuring_real_fills: bool
+) -> ValidationCheck:
+    """Fidelity 6: real JARVIS fills reconciled against paper_trades intent.
+
+    Reads ibkr_fills filtered to JARVIS-tagged orderRefs (DUP662235 demo-seed
+    activity excluded) and matches each to a paper_trades entry, measuring entry
+    slippage. This is what makes fidelity *measured* rather than self-referential.
+    insufficient_data until the IBKR order path is live
+    (ALLOW_PAPER_SIMULATED_ORDERS=True) and matched JARVIS fills exist.
+    """
+    if not measuring_real_fills:
+        return ValidationCheck(
+            name="Real-Fill Reconciliation",
+            status="insufficient_data",
+            value="simulated mode",
+            threshold="JARVIS real fills matched to intent",
+            message="ALLOW_PAPER_SIMULATED_ORDERS=False — no real IB fills to reconcile",
+        )
+    try:
+        from execution.ibkr_reconciler import compare_fills_to_trades
+
+        cmp = compare_fills_to_trades(_DB_PATH, symbol)
+    except Exception as exc:
+        logger.warning("real-fill reconciliation failed: %s", exc)
+        return ValidationCheck(
+            name="Real-Fill Reconciliation",
+            status="insufficient_data",
+            value="reconciler error",
+            threshold="JARVIS real fills matched to intent",
+            message=f"Reconciliation error: {exc}",
+        )
+    if cmp["n_matched"] == 0:
+        return ValidationCheck(
+            name="Real-Fill Reconciliation",
+            status="insufficient_data",
+            value=(
+                f"{cmp['n_real_fills']} JARVIS fills, "
+                f"{cmp['n_demo_excluded']} demo excluded, 0 matched"
+            ),
+            threshold="≥1 JARVIS fill matched to a paper_trade",
+            message="No JARVIS real fills matched to paper_trades intent yet",
+        )
+    return ValidationCheck(
+        name="Real-Fill Reconciliation",
+        status="pass",
+        value=(
+            f"{cmp['n_matched']} matched, avg|slip|={cmp['avg_abs_slippage_pts']} pts, "
+            f"max={cmp['max_abs_slippage_pts']} pts; {cmp['n_demo_excluded']} demo excluded"
+        ),
+        threshold="JARVIS fills matched to intent",
+        message="Real IB fills reconciled against paper_trades intent",
+    )
+
+
 @router.get("/execution-fidelity", response_model=ExecutionFidelityReport)
 async def get_execution_fidelity(
     symbol: str = Query(default="MES", description="Instrument symbol (MCL, MNQ, MES, MGC)"),
@@ -746,6 +801,7 @@ async def get_execution_fidelity(
         _check_broker_link(health),
         _check_kill_switch_state(health),
         _check_pf_floor(rows),
+        _check_real_fill_reconciliation(sym, measuring_real_fills),
     ]
 
     statuses = [c.status for c in checks]
