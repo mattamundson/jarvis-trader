@@ -18,12 +18,13 @@ import {
   WifiOff,
   Power,
   ChevronRight,
+  BookOpen,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, fetchJournalStats, type JournalTradeStats } from "@/lib/api";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
@@ -316,6 +317,12 @@ export default function CommandCenterPage() {
     "/portfolio/history/trades",
     fetcher,
     { refreshInterval }
+  );
+
+  const { data: journalStats } = useSWR<JournalTradeStats>(
+    "/journal/review/stats?limit=30",
+    fetcher,
+    { refreshInterval: 60_000, shouldRetryOnError: false }
   );
 
   const engineOnline = !healthErr && !!health;
@@ -1284,7 +1291,78 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          ROW 6 — SIGNAL FEED (full width)
+          ROW 6 — JOURNAL REVIEW STATS
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mt-3 mb-3">
+        <a href="/journal-review" className="block">
+          <Card className="bg-slate-900/60 border border-cyan-900/50 hover:border-cyan-600/60 transition-colors cursor-pointer">
+            <CardHeader className="pb-1.5 pt-3 px-4">
+              <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
+                <BookOpen className="w-3 h-3" />
+                JOURNAL REVIEW
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              {!journalStats ? (
+                <span className="text-xs text-slate-500 font-mono">Loading…</span>
+              ) : (
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-xs text-slate-500 mb-0.5">Trades</div>
+                    <div className="font-mono text-sm text-white font-bold">
+                      {journalStats.total_trades}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 mb-0.5">Win Rate</div>
+                    <div
+                      className={`font-mono text-sm font-bold ${
+                        journalStats.win_rate >= 0.5
+                          ? "text-green-400"
+                          : journalStats.win_rate >= 0.35
+                          ? "text-yellow-400"
+                          : "text-red-400"
+                      }`}
+                    >
+                      {(journalStats.win_rate * 100).toFixed(0)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 mb-0.5">EV / Trade</div>
+                    <div
+                      className={`font-mono text-sm font-bold ${
+                        journalStats.expected_value_usd >= 0
+                          ? "text-green-400"
+                          : "text-red-400"
+                      }`}
+                    >
+                      {journalStats.expected_value_usd >= 0 ? "+" : ""}
+                      {journalStats.expected_value_usd.toFixed(0)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 mb-0.5">Diagnosis</div>
+                    <Badge
+                      className={`text-xs font-mono py-0 border ${
+                        journalStats.diagnosis === "solid"
+                          ? "bg-green-950 text-green-400 border-green-800"
+                          : journalStats.diagnosis === "insufficient_data"
+                          ? "bg-slate-800 text-slate-400 border-slate-700"
+                          : "bg-red-950 text-red-400 border-red-800"
+                      }`}
+                    >
+                      {journalStats.diagnosis.replace("_", " ").toUpperCase()}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </a>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          ROW 7 — SIGNAL FEED (full width)
       ═══════════════════════════════════════════════════════ */}
       <div className="mt-3">
         <SignalFeedWidget />

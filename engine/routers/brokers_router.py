@@ -1,35 +1,52 @@
 """
 Brokers router — consolidated position view across IBKR and Schwab.
 
-GET /brokers/positions — combined live + paper positions with reconciliation
-GET /brokers/status   — connectivity status for all brokers
+GET  /brokers/positions  — combined live + paper positions with reconciliation
+GET  /brokers/status     — connectivity status for all brokers
+GET  /brokers/executions — cached IBKR fills from ibkr_fills table
+POST /brokers/reconcile  — pull live fills from IBKR and import into ibkr_fills
 """
 
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/brokers", tags=["brokers"])
 
 # Module-level refs injected by main.py at startup
-_ibkr = None
+_ibkr = None  # IBGatewayConnector (mock, for paper-sim order routing)
+_real_ibkr = None  # IBGatewayManager   (real ib_async connection, for read-side data)
 _schwab = None
 _tracker = None
+_reconciler = None  # IBKRReconciler — lazily created on first use
 
 
-def inject_dependencies(ibkr=None, schwab=None, tracker=None) -> None:
+def inject_dependencies(
+    ibkr=None, schwab=None, tracker=None, data_manager=None, db_path: str = ""
+) -> None:
     """Wire connector and tracker singletons in from main.py lifespan."""
-    global _ibkr, _schwab, _tracker
+    global _ibkr, _real_ibkr, _schwab, _tracker, _reconciler
     _ibkr = ibkr
+    _real_ibkr = getattr(data_manager, "ibkr", None) if data_manager else None
     _schwab = schwab
     _tracker = tracker
+    # Reconciler holds data_manager (not ibkr) because ibkr is initialized
+    # asynchronously in background after this call — resolved lazily on use.
+    if data_manager is not None and db_path:
+        from execution.ibkr_reconciler import IBKRReconciler
+
+        _reconciler = IBKRReconciler(db_path, data_manager)
     logger.info(
-        "brokers_router deps injected — IBKR: %s | Schwab: %s | tracker: %s",
+        "brokers_router deps injected — IBKR mock: %s | data_manager: %s | Schwab: %s | tracker: %s | reconciler: %s",
         _ibkr is not None,
+        data_manager is not None,
         _schwab is not None,
         _tracker is not None,
+        _reconciler is not None,
     )
 
 
@@ -278,3 +295,85 @@ async def get_broker_status():
     except Exception as exc:
         logger.exception("brokers/status failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"Broker status check failed: {exc}") from exc
+
+
+@router.get(
+    "/executions",
+    summary="Cached IBKR execution fills",
+    description=(
+        "Returns fills previously imported from IB via POST /brokers/reconcile. "
+        "Reads only from the local ibkr_fills table — does NOT hit the live gateway."
+    ),
+)
+async def get_executions(
+    symbol: Optional[str] = Query(None, description="Filter by symbol, e.g. MES"),
+    account: Optional[str] = Query(None, description="Filter by account ID, e.g. DUP662235"),
+    limit: int = Query(200, ge=1, le=1000, description="Max rows returned"),
+):
+    """Return fills from the ibkr_fills cache table."""
+    if _reconciler is None:
+        return {
+            "fills": [],
+            "count": 0,
+            "message": "Reconciler not initialised — engine started without real IBKR gateway or db_path.",
+        }
+    try:
+        fills = _reconciler.get_fills(symbol=symbol, account=account, limit=limit)
+        return {"fills": fills, "count": len(fills)}
+    except Exception as exc:
+        logger.exception("brokers/executions failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Execution fetch failed: {exc}") from exc
+
+
+@router.post(
+    "/reconcile",
+    summary="Pull live IBKR fills and import into ibkr_fills",
+    description=(
+        "Calls reqExecutionsAsync() on the live IB gateway and upserts new fills "
+        "into the ibkr_fills table keyed by exec_id (idempotent). "
+        "Returns a summary: imported (new), skipped (duplicate), total_in_db."
+    ),
+)
+async def reconcile_fills():
+    """Import live IBKR execution fills into the local cache."""
+    if _reconciler is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Reconciler not initialised — engine started without real IBKR gateway.",
+        )
+    try:
+        result = await _reconciler.reconcile()
+        return result
+    except Exception as exc:
+        logger.exception("brokers/reconcile failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Reconcile failed: {exc}") from exc
+
+
+class _CSVImportRequest(BaseModel):
+    csv_path: str
+    statement_date: str = "20260529"
+
+
+@router.post(
+    "/import-csv-positions",
+    summary="Import IBKR open futures positions from activity-statement CSV",
+    description=(
+        "Parses an IBKR activity-statement CSV and imports open Futures positions "
+        "as synthetic fills keyed by 'CSV_POS_{account}_{symbol}_{date}' (idempotent). "
+        "Use to bootstrap ibkr_fills with pre-existing positions that pre-date the "
+        "live reconciler (e.g. DUP662235 demo positions from a downloaded statement)."
+    ),
+)
+async def import_csv_positions(req: _CSVImportRequest):
+    """Import futures open-position records from a downloaded IBKR activity statement."""
+    if _reconciler is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Reconciler not initialised — engine started without real IBKR gateway.",
+        )
+    try:
+        result = _reconciler.import_csv_positions(req.csv_path, req.statement_date)
+        return result
+    except Exception as exc:
+        logger.exception("brokers/import-csv-positions failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"CSV import failed: {exc}") from exc

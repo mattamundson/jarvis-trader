@@ -63,7 +63,8 @@ export function MTFConfirmationWidget({ symbol = "MES" }: { symbol?: string }) {
           );
           setData({ ...(payload as unknown as MTFData), signals });
         } else {
-          setData(payload as unknown as MTFData);
+          const normalized = payload as unknown as MTFData;
+          setData({ ...normalized, signals: normalized.signals ?? [] });
         }
       } catch {
         setData(null);

@@ -4,6 +4,11 @@
 #
 # Safe: stages ONLY data/discord-digests/YYYY-MM-DD.json -- never git add -A.
 
+# Don't treat native-command stderr (Python logging) as terminating; explicit
+# $LASTEXITCODE checks below handle real failures. See ~/.claude/rules/windows-pitfalls.md
+# ("2>&1 wraps stderr as a RemoteException object").
+$ErrorActionPreference = 'Continue'
+
 # ---------------------------------------------------------------------------
 # 1. Paths
 # ---------------------------------------------------------------------------

@@ -14,16 +14,14 @@ import logging
 import logging.handlers
 import os
 import signal
-import sqlite3
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional, Tuple
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional, Tuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, WebSocket
+from fastapi import APIRouter, FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from slowapi.errors import RateLimitExceeded
 
 from agents.bear_researcher import BearResearcherAgent
@@ -39,31 +37,9 @@ from agents.risk_manager import RiskManagerAgent
 from agents.social_analyst import SocialAnalystAgent
 from agents.corey_auction_analyst import CoreyAuctionAnalystAgent
 from agents.technical_analyst import TechnicalAnalystAgent
-from agents.thinkscript_generator import ThinkScriptGeneratorAgent
 from agents.trader import TraderAgent
-from schemas.thinkscript_registry import ScriptRegistry, ScriptWithDocs
-from utils.thinkscript_registry_loader import load_registry, read_doc
-from api.models import (
-    BarsResponse,
-    CircuitBreakerStatus,
-    DailyPnLResponse,
-    DecisionHistoryResponse,
-    DrawdownResponse,
-    NewsSentimentResponse,
-    PaperPerformanceResponse,
-    PaperPositionsResponse,
-    PaperTradeResponse,
-    PendingSignalsResponse,
-    PortfolioResponse,
-    RedditSentimentResponse,
-    SafetyConfigResponse,
-    StatsSummaryResponse,
-    TechnicalAnalysisResponse,
-    TradeHistoryResponse,
-)
 from config import settings
 from data.market_data import MarketDataManager
-from data.tradingview_stream import get_tv_streamer
 from database.schema import DatabaseManager, init_db
 from learning.model_drawer import ModelDrawer
 from strategies.arbitrage.polymarket_arb import ArbScout
@@ -99,6 +75,8 @@ from routers.health_router import inject_dependencies as inject_health_router_de
 from routers.health_router import router as health_router
 from routers.journal_router import router as journal_router
 from routers.journal_router import set_db_manager as set_journal_db
+from routers.journal_review_router import router as journal_review_router
+from routers.journal_review_router import inject_dependencies as inject_journal_review_deps
 from routers.jarvis_router import router as jarvis_router
 from routers.kairos_router import router as kairos_router
 from routers.learning_router import router as learning_router
@@ -113,7 +91,6 @@ from routers.portfolio_router import router as portfolio_router
 from routers.profiling_router import router as profiling_router
 from routers.profiling_router import set_profiler_instance
 from routers.reports_router import router as reports_router
-from routers.reports_router import inject_dependencies as inject_reports_deps
 from routers.strategy_lab_router import router as strategy_lab_router
 from routers.safety_router import inject_dependencies as inject_safety_router_deps
 from routers.safety_router import router as safety_router
@@ -124,7 +101,6 @@ from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.paper_validation_router import router as paper_validation_router
 from routers.proactive_validation_router import router as proactive_validation_router
-from routers.webhook_router import get_recent_webhooks
 from routers.webhook_router import router as webhook_router
 from routers.whatsapp_router import router as whatsapp_router
 from routers.whatsapp_router import inject_dependencies as inject_whatsapp_deps
@@ -319,13 +295,13 @@ sentiment_bridge: SentimentBridge | None = None
 model_drawer: ModelDrawer | None = None
 arb_scout: ArbScout | None = None
 shadow_tracker: ShadowModeTracker | None = None
-oms_manager: "OMSManager | None" = None
-tv_streamer: "TVStreamer | None" = None
-memory_bridge: "MemoryBridge | None" = None
-redis_trigger: "RedisSignalTrigger | None" = None
-trailing_stop_manager: "TrailingStopManager | None" = None
-portfolio_allocator: "PortfolioAllocator | None" = None
-canary_manager: "CanaryManager | None" = None
+oms_manager: "OMSManager | None" = None  # noqa: F821
+tv_streamer: "TVStreamer | None" = None  # noqa: F821
+memory_bridge: "MemoryBridge | None" = None  # noqa: F821
+redis_trigger: "RedisSignalTrigger | None" = None  # noqa: F821
+trailing_stop_manager: "TrailingStopManager | None" = None  # noqa: F821
+portfolio_allocator: "PortfolioAllocator | None" = None  # noqa: F821
+canary_manager: "CanaryManager | None" = None  # noqa: F821
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -445,23 +421,26 @@ async def lifespan(app: FastAPI):
         try:
             await data_manager.initialize()
             logger.info("✅ MarketDataManager background initialization complete")
-            
+
             # Paper IB connection
             if settings.PAPER_TRADING and ib_paper_connector:
                 _paper_ib_ok = False
                 for _attempt in range(3):
                     _paper_ib_ok = await ib_paper_connector.connect()
-                    if _paper_ib_ok: break
+                    if _paper_ib_ok:
+                        break
                     if _attempt < 2:
-                        logger.warning(f"IB connector attempt {_attempt+1}/3 failed; retrying in 30s")
+                        logger.warning(
+                            f"IB connector attempt {_attempt+1}/3 failed; retrying in 30s"
+                        )
                         await asyncio.sleep(30)
-                
+
                 if _paper_ib_ok:
                     safety_layer.attach_ib_gateway(ib_paper_connector)
                     order_router.attach_ibkr(ib_paper_connector)
                     logger.info("✅ IBGatewayConnector (paper) connected background")
                 else:
-                    logger.warning("⚠️ IBGatewayConnector background connect failed")
+                    logger.warning("⚠️ IBGatewayConnector background connect failed after 3 attempts")
         except Exception as e:
             logger.error(f"❌ Background data/IBKR init failed: {e}")
 
@@ -484,9 +463,10 @@ async def lifespan(app: FastAPI):
         # 4. Real-Time Data Fabric
         try:
             from data.tradingview_stream import get_tv_streamer
+
             greeks_watch = os.getenv("OPTIONS_GREEKS_WATCH", "").split(",")
             greeks_watch = [s.strip() for s in greeks_watch if s.strip()]
-            
+
             tv_streamer = get_tv_streamer(greeks_symbols=greeks_watch)
             await tv_streamer.start(data_manager=data_manager)
             logger.info("🚀 Real-time data fabric background activated")
@@ -501,7 +481,7 @@ async def lifespan(app: FastAPI):
                 symbols=["MES", "MGC", "MNQ", "MCL", "BTCUSD"],
             )
             await redis_trigger.start()
-            
+
             trailing_stop_manager = TrailingStopManager(oms_manager, data_manager)
             await trailing_stop_manager.start()
             logger.info("🚀 Event-driven signal trigger + Trail Stop active")
@@ -547,6 +527,7 @@ async def lifespan(app: FastAPI):
     db_manager = init_db(db_path="data/jarvis_trader.db")
     db_manager.initialize()
     set_journal_db(db_manager)
+    inject_journal_review_deps(db_path=settings.SQLITE_DB_PATH, llm=None)
     set_analytics_db(db_manager)
     set_decisions_db(db_manager)
     logger.info("✅ SQLite database initialized at data/jarvis_trader.db")
@@ -664,7 +645,7 @@ async def lifespan(app: FastAPI):
     schwab_connector = None
     if settings.SCHWAB_APP_KEY and settings.SCHWAB_APP_SECRET:
         schwab_connector = SchwabConnector(settings, safety_layer)
-    
+
     set_schwab_connector(schwab_connector)
     # Inject the fully-wired order_router and safety_layer into the orders_router API bridge.
     # safety_layer is required so futures orders route through SafetyLayer.submit_paper_order()
@@ -757,11 +738,12 @@ async def lifespan(app: FastAPI):
         logger.info(f"✅ LLM client validated: {type(llm_client).__name__} has {_required_methods}")
 
         # Initialize inference router (Ollama primary, Anthropic fallback)
-        inference_router = get_inference_router()
+        get_inference_router()
         # Note: test_connection() moved to background to save ~500ms
 
         # ── Portfolio Capital Allocator (Phase 8.1) ──────────────────────────
         from execution.portfolio_allocator import PortfolioAllocator
+
         portfolio_allocator = PortfolioAllocator(db_manager)
         # Note: calculate_allocations() moved to background to save ~2-5s
 
@@ -792,7 +774,7 @@ async def lifespan(app: FastAPI):
         bull_agent = BullResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
         bear_agent = BearResearcherAgent(api_key=direct_anthropic_key, memory_bridge=memory_bridge)
         debate_agent = DebateOrchestrator()
-        
+
         # Stage 3/4: Risk & Fund Management
         risk_agent = RiskManagerAgent(llm_client)
         fund_agent = FundManagerAgent(llm_client)
@@ -860,6 +842,7 @@ async def lifespan(app: FastAPI):
 
             init_review_service(llm_client, db_manager)
             inject_trades_deps(db_manager, llm_client)
+            inject_journal_review_deps(db_path=settings.SQLITE_DB_PATH, llm=llm_client)
             logger.info("✅ Trade Review Service initialised — post-trade LLM grading active")
         except Exception as _rv_init_exc:
             logger.warning("⚠️  Trade Review Service init failed (non-fatal): %s", _rv_init_exc)
@@ -897,11 +880,14 @@ async def lifespan(app: FastAPI):
             try:
                 import sqlite3 as _sqlite3
 
-                with _sqlite3.connect(settings.SQLITE_DB_PATH) as _conn:
-                    _existing = _conn.execute(
-                        "SELECT id, side FROM paper_trades WHERE symbol=? AND status='open' LIMIT 1",
-                        (symbol,),
-                    ).fetchone()
+                def _check_open_position():
+                    with _sqlite3.connect(settings.SQLITE_DB_PATH) as _conn:
+                        return _conn.execute(
+                            "SELECT id, side FROM paper_trades WHERE symbol=? AND status='open' LIMIT 1",
+                            (symbol,),
+                        ).fetchone()
+
+                _existing = await asyncio.to_thread(_check_open_position)
                 if _existing is not None:
                     logger.info(
                         "[Scanner guard] %s already has open position id=%s side=%s — skipping scan",
@@ -1023,7 +1009,9 @@ async def lifespan(app: FastAPI):
                             if trade_dec.get("is_spread"):
                                 await oms_manager.execute_options_spread(
                                     symbol=symbol,
-                                    spread_type=trade_dec.get("type") or trade_dec.get("spread_type") or "BULL_PUT_SPREAD",
+                                    spread_type=trade_dec.get("type")
+                                    or trade_dec.get("spread_type")
+                                    or "BULL_PUT_SPREAD",
                                     short_opt=trade_dec.get("short_option_symbol"),
                                     long_opt=trade_dec.get("long_option_symbol"),
                                     quantity=qty,
@@ -1040,7 +1028,9 @@ async def lifespan(app: FastAPI):
                                     entry_type="MKT" if not trade_dec.get("limit_price") else "LMT",
                                 )
                         except Exception as oms_exc:
-                            logger.error("[Scheduler] OMS execution failed for %s: %s", symbol, oms_exc)
+                            logger.error(
+                                "[Scheduler] OMS execution failed for %s: %s", symbol, oms_exc
+                            )
 
                     await _deliver_pipeline_whatsapp_if_eligible(
                         symbol=symbol,
@@ -1081,6 +1071,22 @@ async def lifespan(app: FastAPI):
             # HB-3: Decouple initial scan from lifespan (<10s boot constraint)
             async def delayed_watchlist_scan():
                 await asyncio.sleep(10)
+                # Only run during scheduled market hours (Mon-Fri 9:00-15:59 CT).
+                # Without this gate the watchdog-restart cycle fires a full
+                # 9-analyst LLM pipeline run at 3 AM, which saturates the event loop
+                # and trips the watchdog again within 5-10 minutes.
+                try:
+                    from zoneinfo import ZoneInfo
+                    _ct = ZoneInfo("America/Chicago")
+                    _now = datetime.now(_ct)
+                    if _now.weekday() >= 5 or not (9 <= _now.hour < 16):
+                        logger.info(
+                            "⏰ Skipping delayed initial scan — outside market hours (%s CT)",
+                            _now.strftime("%H:%M %a"),
+                        )
+                        return
+                except Exception:
+                    pass  # ZoneInfo unavailable — fall through and run anyway
                 logger.info("⏰ Running delayed initial watchlist scan (10s post-boot)")
                 try:
                     await run_watchlist_analysis()
@@ -1620,7 +1626,13 @@ async def lifespan(app: FastAPI):
     from routers.market_router import inject_dependencies as inject_market_deps
 
     inject_market_deps(data_manager=data_manager)
-    inject_brokers_deps(ibkr=ib_paper_connector, schwab=schwab_connector, tracker=paper_tracker)
+    inject_brokers_deps(
+        ibkr=ib_paper_connector,
+        schwab=schwab_connector,
+        tracker=paper_tracker,
+        data_manager=data_manager,
+        db_path=str(db_manager._db_path),
+    )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
@@ -2292,23 +2304,42 @@ async def lifespan(app: FastAPI):
     try:
 
         async def _sync_safety_equity() -> None:
-            """Pull current equity + daily P&L from PnLMonitor and push to SafetyLayer."""
+            """Push JARVIS paper-trade P&L to SafetyLayer circuit breakers.
+
+            Reads daily PnL directly from paper_trades (trades closed today),
+            not from pnl_monitor.  pnl_monitor reads IBKR DUP662235 demo
+            account data (pre-seeded NAV $3.97M) whose daily swing contaminates
+            the daily_pnl SQLite table and causes false kill-switch fires.
+            2026-06-01 incident: -$678k IBKR demo delta fired kill switch on a
+            real -$1,284 scanner paper trade.
+            """
             try:
-                if safety_layer is None or pnl_monitor is None:
-                    logger.warning(
-                        "[sync_safety_equity] early-return: safety_layer=%s pnl_monitor=%s",
-                        safety_layer is not None,
-                        pnl_monitor is not None,
-                    )
+                if safety_layer is None:
                     return
-                state = pnl_monitor.get_current_pnl_state()
-                equity = (
-                    state.current_balance
-                    if state.current_balance > 0
-                    else safety_layer._current_equity
+                today_str = date.today().isoformat()
+                paper_daily_pnl = 0.0
+                if db_manager is not None:
+                    try:
+                        closed_today = [
+                            t for t in db_manager.get_closed_trades(limit=200)
+                            if (t.get("exit_time") or "").startswith(today_str)
+                        ]
+                        paper_daily_pnl = sum(
+                            float(t.get("pnl") or 0.0) for t in closed_today
+                        )
+                    except Exception as _db_exc:
+                        logger.warning(
+                            "[sync_safety_equity] paper_trades query failed: %s", _db_exc
+                        )
+                config_equity = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0))
+                safety_layer.sync_from_broker(config_equity, paper_daily_pnl)
+                logger.debug(
+                    "[sync_safety_equity] equity=%.2f daily_pnl=%.2f "
+                    "source=paper_trades today=%s",
+                    config_equity,
+                    paper_daily_pnl,
+                    today_str,
                 )
-                daily_pnl = pnl_monitor.get_daily_pnl()
-                safety_layer.sync_from_broker(equity, daily_pnl)
             except Exception as exc:
                 logger.warning("[sync_safety_equity] error: %s", exc, exc_info=True)
 
@@ -2327,6 +2358,100 @@ async def lifespan(app: FastAPI):
             logger.info("✅ SafetyLayer equity sync job registered — fires every 60 seconds")
     except Exception as _sync_err:
         logger.warning(f"SafetyLayer equity sync job init failed (non-fatal): {_sync_err}")
+
+    # Open position stop monitor — closes scanner-opened paper_trades when
+    # stop_loss is breached.  Runs every 5 minutes.
+    # Fixes the 2026-06-01 incident where MGC trade #178 rode -128 pts
+    # (stop was 6.4 pts) because scanner-opened trades had no stop poller.
+    try:
+
+        async def _monitor_open_stops() -> None:
+            """Close open paper_trades whose stop_loss price has been breached."""
+            try:
+                if db_manager is None or data_manager is None:
+                    return
+                open_trades = db_manager.get_open_trades()
+                if not open_trades:
+                    return
+                from portfolio.tracker import INSTRUMENT_MULTIPLIERS as _MULT, _DEFAULT_MULTIPLIER as _DEF_MULT  # noqa: E501
+                for _trade in open_trades:
+                    _stop = _trade.get("stop_loss")
+                    if _stop is None:
+                        continue
+                    _stop_f = float(_stop)
+                    _sym = (_trade.get("symbol") or "").upper()
+                    if not _sym:
+                        continue
+                    _side = (_trade.get("side") or "buy").lower()
+                    _entry = float(_trade.get("entry_price") or 0.0)
+                    _tid = _trade.get("trade_id", "")
+                    try:
+                        _pd = await data_manager.get_current_price(_sym, is_futures=True)
+                        _cur = float(
+                            _pd.get("last_price")
+                            or _pd.get("price")
+                            or _pd.get("last")
+                            or _pd.get("close")
+                            or 0.0
+                        )
+                        if not _cur:
+                            continue
+                    except Exception as _pe:
+                        logger.debug("[stop_monitor] price fetch %s: %s", _sym, _pe)
+                        continue
+                    _is_long = "buy" in _side
+                    _hit = (_is_long and _cur <= _stop_f) or (
+                        not _is_long and _cur >= _stop_f
+                    )
+                    if not _hit:
+                        continue
+                    _mult = _MULT.get(_sym, _DEF_MULT)
+                    _qty = float(_trade.get("quantity") or 1.0)
+                    _pnl = (
+                        (_stop_f - _entry) * _qty * _mult
+                        if _is_long
+                        else (_entry - _stop_f) * _qty * _mult
+                    )
+                    logger.warning(
+                        "[stop_monitor] STOP HIT %s %s id=%s entry=%.2f "
+                        "stop=%.2f current=%.2f pnl=%.2f",
+                        _sym, _side, _tid[:8] if _tid else "?",
+                        _entry, _stop_f, _cur, _pnl,
+                    )
+                    _closed = False
+                    if paper_tracker is not None:
+                        try:
+                            paper_tracker.close_paper_trade(
+                                trade_id=_tid,
+                                exit_price=_stop_f,
+                                pnl=_pnl,
+                            )
+                            _closed = True
+                        except KeyError:
+                            pass
+                    if not _closed:
+                        db_manager.close_trade(
+                            trade_id=_tid,
+                            exit_price=_stop_f,
+                            pnl=_pnl,
+                            notes="stop_monitor: stop_loss breached",
+                        )
+            except Exception as exc:
+                logger.warning("[stop_monitor] error: %s", exc, exc_info=True)
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _monitor_open_stops,
+                "interval",
+                minutes=5,
+                id="monitor_open_stops",
+                name="Open Position Stop Monitor",
+                max_instances=1,
+                replace_existing=True,
+            )
+            logger.info("✅ Stop monitor job registered — fires every 5 minutes")
+    except Exception as _stop_mon_err:
+        logger.warning(f"Stop monitor init failed (non-fatal): {_stop_mon_err}")
 
     # ── RL executor — MES paper validation (experimental, non-blocking) ───────
     try:
@@ -2482,21 +2607,28 @@ async def lifespan(app: FastAPI):
                 auditor = WeeklySelfAuditAgent(db_manager)
                 audit_result = await auditor.run_audit()
                 if "report_md" in audit_result:
-                    logger.info("✅ Weekly self-audit complete — report written to docs/weekly_audit.md")
-                
+                    logger.info(
+                        "✅ Weekly self-audit complete — report written to docs/weekly_audit.md"
+                    )
+
                 # 2. Strategy Drift Detection (P7.2)
                 drifter = DriftDetector(db_manager)
                 for _sym in ACTIVE_INSTRUMENTS:
                     _drift = await drifter.check_drift(_sym)
                     if _drift.get("trigger_alert"):
-                        logger.warning(f"⚠️ [Pipeline] {_sym} drift detected — demoted to shadow-mode recommended.")
+                        logger.warning(
+                            f"⚠️ [Pipeline] {_sym} drift detected — demoted to shadow-mode recommended."
+                        )
 
                 # 3. Monthly Re-Bayes (P7.4)
                 # Only runs on the first Sunday of the month
                 now = datetime.now()
                 if now.day <= 7:
-                    logger.info("[Main] First Sunday of month detected — triggering Bayesian re-optimization")
+                    logger.info(
+                        "[Main] First Sunday of month detected — triggering Bayesian re-optimization"
+                    )
                     from optimization.scheduled_rebayes import ScheduledRebayes
+
                     optimizer = ScheduledRebayes(db_manager)
                     await optimizer.run_monthly_rebayes()
 
@@ -2591,7 +2723,6 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_complete_background_init())
 
     yield  # Server runs here!
-
 
     # Teardown
     # Stop Trailing stop manager
@@ -2704,6 +2835,7 @@ app.include_router(health_router)
 app.include_router(phase3_readiness_router)
 app.include_router(readiness_router)
 app.include_router(journal_router, prefix="/journal", tags=["journal"])
+app.include_router(journal_review_router, prefix="/journal", tags=["journal-review"])
 app.include_router(jarvis_router)
 app.include_router(trades_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])

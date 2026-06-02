@@ -1644,6 +1644,39 @@ def migration_035(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migration_036(conn: sqlite3.Connection) -> None:
+    """
+    036 — IBKR fills import.
+    Raw execution fills from IB, keyed by exec_id for idempotent imports.
+    Populated via POST /brokers/reconcile using the live IBGatewayManager.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ibkr_fills (
+            exec_id     TEXT PRIMARY KEY,
+            account     TEXT NOT NULL,
+            symbol      TEXT NOT NULL,
+            sec_type    TEXT NOT NULL DEFAULT 'FUT',
+            expiry      TEXT NOT NULL DEFAULT '',
+            side        TEXT NOT NULL,
+            quantity    REAL NOT NULL,
+            price       REAL NOT NULL,
+            avg_price   REAL,
+            commission  REAL,
+            exchange    TEXT,
+            currency    TEXT NOT NULL DEFAULT 'USD',
+            fill_time   TEXT NOT NULL,
+            order_id    INTEGER,
+            imported_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ibkr_fills_account ON ibkr_fills(account)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ibkr_fills_symbol ON ibkr_fills(symbol)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ibkr_fills_fill_time ON ibkr_fills(fill_time)")
+    conn.commit()
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1683,6 +1716,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_033,  # version 33
     migration_034,  # version 34
     migration_035,  # version 35
+    migration_036,  # version 36
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1721,6 +1755,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Agent memory: agent_memory table for Phase 3.5 persistent working memory.",
     "FOMC history: fomc_history table for Phase 6.5 news NLP.",
     "Canary strategies: canary_strategies table for Phase 7.3 A/B canary framework.",
+    "IBKR fills import: ibkr_fills table for raw execution fills from IB, keyed by exec_id.",
 ]
 
 
