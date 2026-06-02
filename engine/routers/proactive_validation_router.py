@@ -35,7 +35,7 @@ from pydantic import BaseModel
 
 from backtest.backtester import BacktestResult, Trade
 from backtest.monte_carlo import run_monte_carlo
-from paper.validation_gate_config import PAPER_VALIDATION_GATES
+from paper.validation_gate_config import EXECUTION_FIDELITY_GATES, PAPER_VALIDATION_GATES
 from paper.validation_tracker import ValidationTracker
 
 logger = logging.getLogger(__name__)
@@ -166,6 +166,29 @@ def _load_wfe_latest(symbol: str) -> Optional[float]:
         return float(row["profit_factor"]) if row else None
     except Exception as exc:
         logger.warning("proactive_validation: WFE query failed: %s", exc)
+        conn.close()
+        return None
+
+
+def _load_latest_health() -> Optional[sqlite3.Row]:
+    """Return the most recent health_snapshots row (broker + kill-switch state)."""
+    conn = _db_conn()
+    if not conn:
+        return None
+    try:
+        cur = conn.execute(
+            """
+            SELECT reachable, ibkr_data, ibkr_exec, kill_switch, ts_utc
+            FROM   health_snapshots
+            ORDER  BY ts_utc DESC
+            LIMIT  1
+            """
+        )
+        row = cur.fetchone()
+        conn.close()
+        return row
+    except Exception as exc:
+        logger.warning("execution_fidelity: health query failed: %s", exc)
         conn.close()
         return None
 
@@ -567,4 +590,195 @@ async def get_proactive_validation(
         checks=checks,
         summary=summary,
         next_milestone=_next_milestone(checks, total_trades, days_active),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Execution-fidelity gate (ADVISORY — gates nothing; see validation_gate_config)
+# ---------------------------------------------------------------------------
+#
+# Answers "does live execution match the backtest's assumptions?" (slippage,
+# fill price, broker link, kill-switch) on a SMALL sample of real fills — NOT
+# "does the strategy have edge?" (that is proven by the gate-v2 WFO). This
+# endpoint is observational instrumentation: it does not touch live_readiness.py
+# or phase3_criteria.py, and it cannot enable live trading. Substituting fidelity
+# for the edge gate in the live-readiness VERDICT is a separate [safety-review]
+# change requiring explicit approval. See docs/TRADE_SYSTEM_SCOPE_AND_ROADMAP.md
+# Part 4.
+
+
+class ExecutionFidelityReport(BaseModel):
+    symbol: str
+    generated_at: str
+    overall: Literal["APPROVED", "INSUFFICIENT_DATA", "NOT_APPROVED"]
+    measuring_real_fills: bool
+    checks: list[ValidationCheck]
+    summary: str
+    advisory_note: str
+
+
+def _check_fill_sample(total_trades: int) -> ValidationCheck:
+    """Fidelity 1: sample size vs fidelity min_fills (NOT the 60-trade edge gate)."""
+    minimum = int(EXECUTION_FIDELITY_GATES["min_fills"])
+    if total_trades >= minimum:
+        return ValidationCheck(
+            name="Fill Sample",
+            status="pass",
+            value=f"{total_trades} fills",
+            threshold=f"≥{minimum}",
+            message=f"Fidelity sample met ({total_trades}/{minimum})",
+        )
+    return ValidationCheck(
+        name="Fill Sample",
+        status="insufficient_data",
+        value=f"{total_trades}/{minimum}",
+        threshold=f"≥{minimum}",
+        message=f"Need {minimum - total_trades} more fills for fidelity confidence",
+    )
+
+
+def _check_broker_link(health: Optional[sqlite3.Row]) -> ValidationCheck:
+    """Fidelity 2: latest health snapshot — IBKR data + execution both connected."""
+    if health is None:
+        return ValidationCheck(
+            name="Broker Link",
+            status="insufficient_data",
+            value="No health snapshot",
+            threshold="ibkr_data=1 AND ibkr_exec=1",
+            message="No health_snapshots row available",
+        )
+    data_ok = bool(health["ibkr_data"]) if health["ibkr_data"] is not None else False
+    exec_ok = bool(health["ibkr_exec"]) if health["ibkr_exec"] is not None else False
+    if data_ok and exec_ok:
+        status: Literal["pass", "warn", "fail", "insufficient_data"] = "pass"
+        msg = "IBKR data + execution both connected"
+    else:
+        status = "fail"
+        msg = f"IBKR link degraded (data={data_ok}, exec={exec_ok})"
+    return ValidationCheck(
+        name="Broker Link",
+        status=status,
+        value=f"data={data_ok} exec={exec_ok} @ {health['ts_utc']}",
+        threshold="ibkr_data=1 AND ibkr_exec=1",
+        message=msg,
+    )
+
+
+def _check_kill_switch_state(health: Optional[sqlite3.Row]) -> ValidationCheck:
+    """Fidelity 3: kill switch must be inactive in the latest health snapshot."""
+    if health is None:
+        return ValidationCheck(
+            name="Kill Switch",
+            status="insufficient_data",
+            value="No health snapshot",
+            threshold="kill_switch=0",
+            message="No health_snapshots row available",
+        )
+    active = bool(health["kill_switch"]) if health["kill_switch"] is not None else False
+    return ValidationCheck(
+        name="Kill Switch",
+        status="fail" if active else "pass",
+        value="ACTIVE" if active else "inactive",
+        threshold="kill_switch=0",
+        message="Kill switch ACTIVE — halt in effect" if active else "Kill switch inactive",
+    )
+
+
+def _check_pf_floor(rows: list[sqlite3.Row]) -> ValidationCheck:
+    """Fidelity 4: realized PF sign-check (>=1.0). NOT the 2.0 edge gate."""
+    floor = float(EXECUTION_FIDELITY_GATES["min_realized_pf_floor"])
+    pnls = [float(r["pnl"]) for r in rows if r["pnl"] is not None]
+    if not pnls:
+        return ValidationCheck(
+            name="PF Floor",
+            status="insufficient_data",
+            value="No closed pnl",
+            threshold=f"PF≥{floor} (sign-check)",
+            message="No realized P&L recorded",
+        )
+    gross_profit = sum(p for p in pnls if p > 0)
+    gross_loss = abs(sum(p for p in pnls if p < 0))
+    if gross_loss == 0:
+        pf = float("inf") if gross_profit > 0 else 0.0
+    else:
+        pf = gross_profit / gross_loss
+    pf_disp = "inf" if pf == float("inf") else f"{pf:.2f}"
+    status: Literal["pass", "warn", "fail", "insufficient_data"] = "pass" if pf >= floor else "fail"
+    return ValidationCheck(
+        name="PF Floor",
+        status=status,
+        value=f"PF={pf_disp} ({len(pnls)} fills)",
+        threshold=f"PF≥{floor} (sign-check, NOT edge)",
+        message="Realized PF above breakeven floor"
+        if status == "pass"
+        else f"Realized PF {pf_disp} below {floor} floor",
+    )
+
+
+@router.get("/execution-fidelity", response_model=ExecutionFidelityReport)
+async def get_execution_fidelity(
+    symbol: str = Query(default="MES", description="Instrument symbol (MCL, MNQ, MES, MGC)"),
+) -> ExecutionFidelityReport:
+    """
+    ADVISORY execution-fidelity report — does live execution match backtest
+    assumptions? Gates NOTHING (does not alter live-readiness). Edge is proven
+    separately by the gate-v2 WFO. See docs/TRADE_SYSTEM_SCOPE_AND_ROADMAP.md Part 4.
+    """
+    sym = symbol.upper()
+    generated_at = datetime.now(tz=timezone.utc).isoformat()
+
+    # Honesty flag: fidelity on simulated paper_trades is self-referential — the
+    # simulator defines its own slippage. Only real broker fills make this meaningful.
+    try:
+        from config import settings
+
+        measuring_real_fills = bool(getattr(settings, "ALLOW_PAPER_SIMULATED_ORDERS", False))
+    except Exception:
+        measuring_real_fills = False
+
+    rows = _load_closed_trades(sym)
+    health = _load_latest_health()
+    total_trades = len(rows)
+
+    checks = [
+        _check_fill_sample(total_trades),
+        _check_slippage(rows),
+        _check_broker_link(health),
+        _check_kill_switch_state(health),
+        _check_pf_floor(rows),
+    ]
+
+    statuses = [c.status for c in checks]
+    if "fail" in statuses:
+        overall: Literal["APPROVED", "INSUFFICIENT_DATA", "NOT_APPROVED"] = "NOT_APPROVED"
+    elif "insufficient_data" in statuses:
+        overall = "INSUFFICIENT_DATA"
+    else:
+        overall = "APPROVED"
+
+    pass_count = sum(1 for c in checks if c.status == "pass")
+    summary = f"{pass_count}/{len(checks)} fidelity checks passing — {overall}"
+
+    if not measuring_real_fills:
+        advisory_note = (
+            "SIMULATED MODE (ALLOW_PAPER_SIMULATED_ORDERS=False): paper_trades are "
+            "internally simulated, so slippage/fill metrics are self-referential and "
+            "NOT yet a true execution-fidelity signal. Enable the IBKR order path for "
+            "real fills. This endpoint is advisory and gates no live-trading decision."
+        )
+    else:
+        advisory_note = (
+            "Measuring real IBKR paper fills. Advisory only — does not gate "
+            "live trading; the live-readiness verdict is unchanged. Edge is proven "
+            "separately by the gate-v2 WFO."
+        )
+
+    return ExecutionFidelityReport(
+        symbol=sym,
+        generated_at=generated_at,
+        overall=overall,
+        measuring_real_fills=measuring_real_fills,
+        checks=checks,
+        summary=summary,
+        advisory_note=advisory_note,
     )

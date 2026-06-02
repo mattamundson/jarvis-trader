@@ -807,16 +807,28 @@ export interface KillSwitchStatus {
 }
 
 export async function fetchKillSwitchStatus(): Promise<KillSwitchStatus> {
-  return fetchEngine<KillSwitchStatus>("/paper/kill-switch");
+  const status = await fetchEngine<{
+    kill_switch_active: boolean;
+    kill_switch_reason: string | null;
+  }>("/safety/status");
+  return {
+    active: status.kill_switch_active,
+    reason: status.kill_switch_reason,
+    activated_at: null,
+  };
 }
 
 export async function toggleKillSwitch(
   action: "activate" | "deactivate",
   reason?: string
 ): Promise<KillSwitchStatus> {
-  const params = new URLSearchParams({ action });
-  if (reason) params.set("reason", reason);
-  return postEngine<KillSwitchStatus>(`/paper/kill-switch?${params.toString()}`);
+  if (action === "activate") {
+    const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+    await postEngine<{ status: string }>(`/safety/kill-switch/activate${qs}`);
+  } else {
+    await postEngine<{ status: string }>("/safety/kill-switch/deactivate");
+  }
+  return fetchKillSwitchStatus();
 }
 
 // ── Super-Engine Status API ──────────────────────────────────────────────────
@@ -1668,4 +1680,89 @@ export async function fetchDailyAttribution(
 ): Promise<DailyAttributionResponse> {
   const suffix = date ? `?date=${date}` : "";
   return fetchEngine<DailyAttributionResponse>(`/attribution/daily${suffix}`);
+}
+
+// ---------------------------------------------------------------------------
+// Journal Review — Koroush AK framework
+// ---------------------------------------------------------------------------
+
+export interface JournalTradeStats {
+  total_trades: number;
+  win_rate: number;
+  avg_win_usd: number;
+  avg_loss_usd: number;
+  risk_reward_ratio: number;
+  expected_value_usd: number;
+  trades_per_week: number;
+  diagnosis: "win_rate" | "avg_loss" | "avg_win" | "solid" | "insufficient_data";
+}
+
+export interface JournalBreakdownRow {
+  group_key: string;
+  group_value: string;
+  count: number;
+  win_rate: number;
+  net_pnl: number;
+  avg_pnl: number;
+  flagged: boolean;
+  flag_reason: string;
+}
+
+export interface JournalBreakdown {
+  by_symbol: JournalBreakdownRow[];
+  by_side: JournalBreakdownRow[];
+  by_regime: JournalBreakdownRow[];
+  by_bias: JournalBreakdownRow[];
+  flags: JournalBreakdownRow[];
+}
+
+export interface JournalAnalysis {
+  analysis: string;
+  trade_count: number;
+  has_journal_data: boolean;
+}
+
+export interface JournalFormalizeResult {
+  pressure_tested: string;
+  falsifiable_rule: string;
+  journal_columns: string[];
+  sample_size: number;
+  pass_threshold: string;
+  fail_threshold: string;
+  abandonment_criteria: string;
+  raw_llm_output: string;
+}
+
+export interface MonthlyReview {
+  stats: JournalTradeStats;
+  breakdown: JournalBreakdown;
+  llm_analysis: string;
+  generated_at: string;
+  trade_count: number;
+}
+
+export async function fetchJournalStats(limit = 30): Promise<JournalTradeStats> {
+  return fetchEngine<JournalTradeStats>(`/journal/review/stats?limit=${limit}`);
+}
+
+export async function fetchJournalBreakdown(limit = 30): Promise<JournalBreakdown> {
+  return fetchEngine<JournalBreakdown>(`/journal/review/breakdown?limit=${limit}`);
+}
+
+export async function analyzeJournalPatterns(
+  limit = 100
+): Promise<JournalAnalysis> {
+  return postEngine<JournalAnalysis>("/journal/review/analyze", { limit });
+}
+
+export async function formalizeInsight(
+  observation: string
+): Promise<JournalFormalizeResult> {
+  return postEngine<JournalFormalizeResult>("/journal/review/formalize", {
+    observation,
+  });
+}
+
+export async function fetchMonthlyReview(limit = 30): Promise<MonthlyReview> {
+  return fetchEngine<MonthlyReview>(`/journal/review/monthly?limit=${limit}`);
 }

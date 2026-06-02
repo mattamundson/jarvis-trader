@@ -324,6 +324,9 @@ export default function JournalPage() {
             <Link href="/journal" className="text-xs text-accent font-semibold">
               Journal
             </Link>
+            <Link href="/journal-review" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Review
+            </Link>
             <Link href="/paper" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Paper Trading
             </Link>

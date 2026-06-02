@@ -297,9 +297,15 @@ class EODScheduler:
         starting_balance = self._get_starting_balance(today)
         metrics = self._collect_tracker_metrics(today)
 
-        realized_pnl: float = metrics["realized_pnl"]
+        # Bug #1 fix: metrics["realized_pnl"] is the LIFETIME cumulative from
+        # get_performance().  Use it as an absolute equity anchor so ending_balance
+        # is always _DEFAULT_STARTING_BALANCE + lifetime_pnl, then compute the
+        # true daily delta as ending - starting.  Without this fix, the cumulative
+        # was re-added to yesterday's ending every day, ballooning equity.
+        lifetime_pnl: float = metrics["realized_pnl"]
         unrealized_pnl: float = metrics["unrealized_pnl"]
-        ending_balance = round(starting_balance + realized_pnl, 4)
+        ending_balance = round(_DEFAULT_STARTING_BALANCE + lifetime_pnl, 4)
+        realized_pnl = round(ending_balance - starting_balance, 4)  # true daily delta
 
         snapshot = {
             "date": today,
@@ -504,9 +510,12 @@ class EODScheduler:
         starting_balance = self._get_starting_balance(today)
         metrics = self._collect_tracker_metrics(today)
 
-        realized_pnl: float = metrics["realized_pnl"]
+        # Same Bug #1 fix as run_eod_snapshot: compute absolute equity from
+        # initial capital + lifetime pnl, then derive daily delta.
+        lifetime_pnl: float = metrics["realized_pnl"]
         unrealized_pnl: float = metrics["unrealized_pnl"]
-        ending_balance = round(starting_balance + realized_pnl, 4)
+        ending_balance = round(_DEFAULT_STARTING_BALANCE + lifetime_pnl, 4)
+        realized_pnl = round(ending_balance - starting_balance, 4)
 
         return {
             "date": today,

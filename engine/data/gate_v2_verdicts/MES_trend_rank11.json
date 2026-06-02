@@ -8,11 +8,11 @@
   "alt_verdict": "PASS",
   "n_core_passed": 3,
   "n_alt_passed": 5,
-  "created_at": "2026-05-22T09:01:22.925323+00:00",
+  "created_at": "2026-06-02T03:59:00.335620+00:00",
   "aux_freshness": {
-    "rolling_wfo": "2026-05-22T09:01:22.925323+00:00",
-    "fixed_params": "2026-05-22T09:01:22.925323+00:00",
-    "cost_sweep": "2026-05-22T09:01:22.925323+00:00"
+    "rolling_wfo": "2026-06-02T03:59:00.335620+00:00",
+    "fixed_params": "2026-06-02T03:59:00.335620+00:00",
+    "cost_sweep": "2026-06-02T03:59:00.335620+00:00"
   },
   "gate_v2": {
     "verdict": "PASS",
@@ -26,26 +26,26 @@
     "core_reasons": [
       "mbb_pf_ci_lower=2.5000 >= 1.1",
       "FAIL p_positive_edge=0.7500 < 0.95",
-      "mc_95th_dd_pct=0.8055 <= 5.0",
-      "dsr=1.000000 >=  0.1 (not selection-bias)"
+      "mc_95th_dd_pct=1.7827 <= 5.0",
+      "dsr=0.999996 >=  0.1 (not selection-bias)"
     ],
     "alt_reasons": [
-      "dsr=1.000000 >=  0.3 (alt floor)",
+      "dsr=0.999996 >=  0.3 (alt floor)",
       "rolling_wfo=STRONG in ['MODERATE', 'STRONG']",
       "fixed_params_min_pf=1.524 >= 1.2",
       "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct=0.8055 <= 4.0 (alt ceiling)"
+      "mc_95th_dd_pct=1.7827 <= 4.0 (alt ceiling)"
     ],
     "reasons": [
       "mbb_pf_ci_lower=2.5000 >= 1.1",
       "FAIL p_positive_edge=0.7500 < 0.95",
-      "mc_95th_dd_pct=0.8055 <= 5.0",
-      "dsr=1.000000 >=  0.1 (not selection-bias)",
-      "dsr=1.000000 >=  0.3 (alt floor)",
+      "mc_95th_dd_pct=1.7827 <= 5.0",
+      "dsr=0.999996 >=  0.1 (not selection-bias)",
+      "dsr=0.999996 >=  0.3 (alt floor)",
       "rolling_wfo=STRONG in ['MODERATE', 'STRONG']",
       "fixed_params_min_pf=1.524 >= 1.2",
       "cost_survives_through=catastrophic >= realistic",
-      "mc_95th_dd_pct=0.8055 <= 4.0 (alt ceiling)"
+      "mc_95th_dd_pct=1.7827 <= 4.0 (alt ceiling)"
     ],
     "n_passed": 3,
     "n_criteria": 4
@@ -74,9 +74,10 @@
   "gate_v2_metrics": {
     "pf_ci_lower": 2.5,
     "p_edge": 0.75,
-    "mc_95th_dd": 0.008055,
-    "mc_95th_dd_pct": 0.8055,
-    "dsr": 1.0,
+    "mc_95th_dd": 0.017827,
+    "mc_95th_dd_pct": 1.7827,
+    "mc_95th_dd_window_legacy": 0.008055,
+    "dsr": 0.999996,
     "wfo_consistency": "STRONG",
     "fixed_params_min_pf": 1.5237,
     "fixed_params_mean_pf": 1.8743,

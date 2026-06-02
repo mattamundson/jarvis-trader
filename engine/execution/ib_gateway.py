@@ -28,7 +28,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
@@ -95,11 +95,9 @@ try:
         LimitOrder,
         MarketOrder,
         Option,
-        OptionComputation,
         Stock,
         StopLimitOrder,
         StopOrder,
-        Ticker,
     )
     from ib_async import (
         util as ib_util,
@@ -318,9 +316,7 @@ class IBGatewayManager:
                 self._config.port,
             )
             self._status = IBConnectionStatus.ERROR
-            self._last_error = (
-                f"Port {self._config.port} (live trading) is permanently disabled"
-            )
+            self._last_error = f"Port {self._config.port} (live trading) is permanently disabled"
             return False
 
         if not IB_INSYNC_AVAILABLE:
@@ -929,6 +925,53 @@ class IBGatewayManager:
         """
         summary = await self.get_account_summary()
         return float(summary.get("NetLiquidation", 0.0))
+
+    async def get_executions(self) -> list[dict]:
+        """
+        Return recent IB execution fills as a list of dicts.
+
+        Calls reqExecutionsAsync() with no filter to fetch all fills from the
+        current and recent sessions (IB typically surfaces the current day +
+        prior session fills while the session is live).
+
+        Each dict: exec_id, account, symbol, sec_type, expiry, side (BOT/SLD),
+        quantity, price, avg_price, commission, exchange, currency, fill_time,
+        order_id.
+        """
+        if not IB_INSYNC_AVAILABLE or not self.is_connected():
+            logger.warning("get_executions: not connected")
+            return []
+
+        try:
+            fills = await self._ib.reqExecutionsAsync()
+            result = []
+            for fill in fills:
+                contract = fill.contract
+                execution = fill.execution
+                commission_report = fill.commissionReport
+                result.append(
+                    {
+                        "exec_id": execution.execId,
+                        "account": execution.acctNumber,
+                        "symbol": contract.symbol,
+                        "sec_type": contract.secType,
+                        "expiry": getattr(contract, "lastTradeDateOrContractMonth", ""),
+                        "side": execution.side,  # "BOT" or "SLD"
+                        "quantity": execution.shares,
+                        "price": execution.price,
+                        "avg_price": execution.avgPrice,
+                        "commission": getattr(commission_report, "commission", None),
+                        "exchange": execution.exchange,
+                        "currency": contract.currency,
+                        "fill_time": str(execution.time),
+                        "order_id": execution.orderId,
+                    }
+                )
+            return result
+
+        except Exception as exc:
+            logger.error("get_executions failed: %s", exc, exc_info=True)
+            return []
 
     # ── Health check ──────────────────────────────────────────────────────
 
