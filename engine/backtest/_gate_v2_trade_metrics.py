@@ -47,7 +47,7 @@ from typing import Sequence
 import numpy as np
 
 from backtest.deflated_sharpe import deflated_sharpe_from_returns
-from backtest.monte_carlo import bootstrap_max_dd
+from backtest.monte_carlo import bootstrap_max_dd, bootstrap_win_rate
 
 #: Drawdown returned when there are too few real trades to simulate a path.
 #: 1.0 == 100% == fail-safe (worse than any real gate ceiling).
@@ -105,3 +105,18 @@ def trade_level_dsr(
         returns=returns, n_trials=max(int(n_grid_combos), 1), ann_factor=252.0
     )
     return float(result.get("dsr", 0.0))
+
+
+def trade_level_win_rate_ci_lower(oos_results: Sequence) -> float:
+    """95% bootstrap CI lower bound on win rate, from the SAME concatenated OOS
+    trade list used by the DD/DSR metrics (no new data path).
+
+    Complements DSR: a strategy carried by a few outlier wins can pass the
+    risk-adjusted-return gate while winning unreliably; this binds on win
+    reliability. Fail-safe (0.0) when fewer than 2 trades — so an enforcing gate
+    default-denies on a degenerate sample rather than waving it through.
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    if len(pnls) < 2:
+        return 0.0
+    return float(bootstrap_win_rate(pnls)["win_rate_ci_95_low"])
