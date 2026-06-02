@@ -49,6 +49,16 @@ GATE_DSR: float = 0.10
 #: Deflated Sharpe ratio floor — ALT path (trend strategies on daily bars).
 GATE_DSR_ALT: float = 0.30
 
+#: Bootstrap win-rate CI lower-bound floor (Init 2C). Complements DSR — which a
+#: few large outlier wins can carry — by binding on win RELIABILITY. SHADOW /
+#: NOT YET ENFORCED: the runners record ``win_rate_ci_lower`` into gate_v2_metrics,
+#: but this threshold stays ``None`` until calibrated empirically against the
+#: historical PASS set (one refresh cycle of recorded values). Guessing a value
+#: would be exactly the selection bias the gate exists to prevent. Wiring it into
+#: the ALT ``alt_pass`` conjunction is the explicit enforce step that follows
+#: calibration.
+GATE_WIN_RATE_CI_LOWER: float | None = None
+
 #: Bootstrap sample count for PF CI estimation.
 N_BOOTSTRAP: int = 2000
 
