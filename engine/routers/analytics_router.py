@@ -904,7 +904,11 @@ class CalibrationDiagnosticsResponse(BaseModel):
     agents: list[str]  # Tracked analyst names
     per_agent: dict[str, CalibrationAgentEntry]
     total_outcomes: int  # Total rows in trade_outcomes within window
-    ready_to_activate: bool  # All agents have >= min_trades
+    ready_to_activate: bool  # True when every signal-emitting agent meets the floor
+    active_agents: list[str]  # agents with >=1 non-zero-signal outcome in window
+    blocked_by: list[str]  # active agents still below min_trades_threshold
+    rows_excluded_corrupt: int  # window rows dropped by the magnitude guard
+    rows_excluded_duplicate: int  # window rows dropped as logical duplicates
     neutral_sentinel: float  # Brier value returned when insufficient data
     timestamp: str
 
@@ -966,6 +970,8 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
     # Per-agent sample count — direct SQL so it stays cheap.
     sample_counts: dict[str, int] = dict.fromkeys(agents, 0)
     total_outcomes = 0
+    rows_excluded_corrupt = 0
+    rows_excluded_duplicate = 0
     try:
         if FB_DB_PATH.exists():
             from datetime import datetime as _dt
@@ -996,14 +1002,25 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
                     except _sqlite.DatabaseError:
                         # Column missing on a newly-created DB → leave 0
                         pass
+
+                # W5: agent-independent integrity counts over the window.
+                try:
+                    try:
+                        from engine.analytics.outcome_hygiene import window_integrity
+                    except ImportError:  # pragma: no cover
+                        from analytics.outcome_hygiene import window_integrity
+
+                    rows_excluded_corrupt, rows_excluded_duplicate = window_integrity(
+                        conn, cutoff
+                    )
+                except Exception as _ig_exc:
+                    logger.debug("[Calibration] integrity scan skipped: %s", _ig_exc)
     except Exception as exc:
         logger.warning("[Calibration] sample-count query failed: %s", exc)
 
     per_agent: dict[str, CalibrationAgentEntry] = {}
-    all_ready = True
     for a in agents:
         ready = sample_counts[a] >= MIN_TRADES_FOR_IC
-        all_ready = all_ready and ready
         per_agent[a] = CalibrationAgentEntry(
             brier_score=round(float(brier_scores[a]), 6),
             brier_weight=round(float(brier_weights.get(a, 0.0)), 6),
@@ -1011,6 +1028,12 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
             sample_count=sample_counts[a],
             ready=ready,
         )
+
+    # W6: readiness over agents that actually emit signals; perennially-silent
+    # agents (e.g. breakout/harmonic) no longer block activation forever.
+    active_agents = [a for a in agents if sample_counts[a] > 0]
+    blocked_by = [a for a in active_agents if sample_counts[a] < MIN_TRADES_FOR_IC]
+    ready_to_activate = bool(active_agents) and not blocked_by
 
     from datetime import timezone as _tz_iso
 
@@ -1022,7 +1045,11 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
         agents=agents,
         per_agent=per_agent,
         total_outcomes=int(total_outcomes),
-        ready_to_activate=all_ready,
+        ready_to_activate=ready_to_activate,
+        active_agents=active_agents,
+        blocked_by=blocked_by,
+        rows_excluded_corrupt=int(rows_excluded_corrupt),
+        rows_excluded_duplicate=int(rows_excluded_duplicate),
         neutral_sentinel=float(BRIER_NEUTRAL),
         timestamp=datetime.now(_tz_iso.utc).isoformat(),
     )
