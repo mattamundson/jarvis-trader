@@ -232,14 +232,16 @@ from backtest._constants import (  # noqa: E402
     GATE_FIXED_PARAMS_MIN_PF,
     GATE_WFO_CONSISTENCY_VALUES,
 )
-from backtest._gate_v2_helpers import (  # noqa: E402
+from backtest._gate_v2_helpers import (  # noqa: E402  # noqa: E402
     GATE_DSR,
     GATE_DSR_ALT,
     GATE_MC_DD_ALT,
     GATE_MC_DD_CORE,
     GATE_P_EDGE,
     GATE_PF_CI_LOWER,
+    MIN_OOS_TRADES_TOTAL,
     _find_latest_cache,  # noqa: E402
+    sample_adequacy_enforced,
 )  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
@@ -385,6 +387,7 @@ def _compute_gate_v2(
     oos_pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
     oos_dds = [r.max_drawdown_pct for r in oos_results]
     all_trades = sum(r.total_trades for r in oos_results)
+    sample_adequate = all_trades >= MIN_OOS_TRADES_TOTAL
 
     pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
     p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
@@ -474,7 +477,13 @@ def _compute_gate_v2(
     n_core_passed = sum(1 for r in core_reasons if not r.startswith("FAIL"))
     n_alt_passed = sum(1 for r in alt_reasons if not r.startswith("FAIL"))
 
-    if core_pass:
+    if sample_adequacy_enforced() and not sample_adequate:
+        # Init 2B: too few total OOS trades to certify — refuse rather than
+        # certify an edge on a thin (luck-dominated) sample. Shadow by default;
+        # enforced only when GATE_V2_ENFORCE_SAMPLE_ADEQUACY=1.
+        verdict = "INSUFFICIENT_SAMPLE"
+        passed_via = None
+    elif core_pass:
         verdict = "PASS"
         passed_via = "core"
     elif alt_pass:
@@ -507,6 +516,8 @@ def _compute_gate_v2(
         "n_oos_windows": len(oos_results),
         "n_oos_windows_with_trades": len(oos_pfs),
         "total_oos_trades": all_trades,
+        "min_oos_trades_total": MIN_OOS_TRADES_TOTAL,
+        "sample_adequate": sample_adequate,
         "core_reasons": core_reasons,
         "alt_reasons": alt_reasons,
         "reasons": core_reasons + alt_reasons,
@@ -780,6 +791,9 @@ def run_wfo() -> dict:
             "combo_results": fixed_params_metrics.get("combo_results", []),
             "cost_survives_through": gate["cost_survives_through"],
             "cost_tier_results": cost_sweep_metrics.get("tier_results", {}),
+            "total_oos_trades": gate["total_oos_trades"],
+            "min_oos_trades_total": gate["min_oos_trades_total"],
+            "sample_adequate": gate["sample_adequate"],
         },
         "thresholds": {
             "pf_ci_lower": GATE_PF_CI_LOWER,
