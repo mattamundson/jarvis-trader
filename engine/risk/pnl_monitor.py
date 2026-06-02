@@ -266,8 +266,9 @@ class PnLMonitor:
             return False
 
         state = self._cached_state
-        if state.source == "memory" and self._paper is not None:
-            # Freshen from paper tracker before writing
+        if self._paper is not None and (state.source in ("memory", "ib")):
+            # Always prefer paper tracker for EOD snapshots — prevents IB demo
+            # account NAV from contaminating daily_pnl peak balance calculations.
             memory_state = self._read_memory()
             if memory_state:
                 state = memory_state
