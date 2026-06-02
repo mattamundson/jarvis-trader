@@ -818,6 +818,42 @@ class PortfolioTracker:
 
         if _os_af.getenv("TESTING"):
             return
+
+        # W4: surface an implausible per-trade P&L at the source. Covers the
+        # paper_trades record (which feeds analytics beyond trade_outcomes).
+        # Alert-only - never blocks the close. See analytics/outcome_hygiene.
+        try:
+            try:
+                from engine.analytics.outcome_hygiene import (
+                    MAX_PLAUSIBLE_ABS_PNL_USD,
+                    is_plausible_pnl,
+                )
+            except ImportError:  # pragma: no cover
+                from analytics.outcome_hygiene import (
+                    MAX_PLAUSIBLE_ABS_PNL_USD,
+                    is_plausible_pnl,
+                )
+            _pnl_outlier = float(trade.pnl or 0.0)
+            if not is_plausible_pnl(_pnl_outlier):
+                logger.warning(
+                    "[PAPER] Implausible close P&L for %s %s: pnl=%+.2f (>$%d) - "
+                    "possible upstream P&L corruption",
+                    trade.symbol, trade_id[:8], _pnl_outlier, int(MAX_PLAUSIBLE_ABS_PNL_USD),
+                )
+                try:
+                    from events.bus import publish as _publish_outlier
+
+                    _publish_outlier(
+                        "trade_pnl_outlier",
+                        f"{trade.symbol} close pnl={_pnl_outlier:+.2f} exceeds plausibility bound",
+                        symbol=trade.symbol,
+                        severity="warn",
+                    )
+                except Exception:
+                    pass
+        except Exception as _outlier_exc:
+            logger.debug("[PAPER] P&L outlier check skipped: %s", _outlier_exc)
+
         try:
             from engine.analytics.agent_feedback import AgentFeedbackTracker
 
