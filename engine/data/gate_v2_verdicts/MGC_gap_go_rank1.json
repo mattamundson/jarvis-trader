@@ -1,0 +1,192 @@
+{
+  "symbol": "MGC",
+  "family": "gap_go",
+  "rank": 1,
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "FAIL",
+  "created_at": "2026-05-30T11:19:51.851445+00:00",
+  "wfo_config": {
+    "train_months": 6,
+    "test_months": 3,
+    "step_months": 3,
+    "n_windows": 7,
+    "n_oos_windows": 7,
+    "total_oos_trades": 183,
+    "grid_combos": 3,
+    "min_gap_pct_grid": [
+      0.0015,
+      0.0025,
+      0.004
+    ]
+  },
+  "gate_v2_metrics": {
+    "pf_ci_lower": 0.4904,
+    "p_edge": 0.4286,
+    "mc_95th_dd": 0.055274,
+    "mc_95th_dd_pct": 5.5274,
+    "dsr": 0.0,
+    "wfo_consistency": "WEAK",
+    "fixed_params_min_pf": 1.3492,
+    "fixed_params_mean_pf": 1.4207,
+    "fixed_params_max_pf": 1.5416,
+    "n_combos_with_trades": 3,
+    "combo_results": [
+      {
+        "min_gap_pct": 0.0015,
+        "pf": 1.3712,
+        "trades": 23
+      },
+      {
+        "min_gap_pct": 0.0025,
+        "pf": 1.3492,
+        "trades": 69
+      },
+      {
+        "min_gap_pct": 0.004,
+        "pf": 1.5416,
+        "trades": 90
+      }
+    ],
+    "cost_survives_through": "catastrophic",
+    "cost_tier_results": {
+      "optimistic": {
+        "pf": 1.5934,
+        "trades": 90,
+        "passes": true
+      },
+      "realistic": {
+        "pf": 1.5416,
+        "trades": 90,
+        "passes": true
+      },
+      "pessimistic": {
+        "pf": 1.5315,
+        "trades": 90,
+        "passes": true
+      },
+      "catastrophic": {
+        "pf": 1.5171,
+        "trades": 90,
+        "passes": true
+      }
+    }
+  },
+  "thresholds": {
+    "pf_ci_lower": 1.1,
+    "p_edge": 0.95,
+    "mc_95th_dd_core": 0.05,
+    "mc_95th_dd_alt": 0.04,
+    "dsr_core": 0.1,
+    "dsr_alt": 0.3,
+    "fixed_params_min_pf_alt": 1.2,
+    "wfo_consistency_alt": [
+      "MODERATE",
+      "STRONG"
+    ],
+    "cost_survives_through_min": "realistic"
+  },
+  "champion_params": {
+    "min_gap_pct": 0.004,
+    "mode": "go"
+  },
+  "windows": [
+    {
+      "window": 1,
+      "is_period": "2024-05 -> 2024-11",
+      "oos_period": "2024-11 -> 2025-02",
+      "best_min_gap_pct": 0.004,
+      "is_pf": 1.898,
+      "is_trades": 71,
+      "oos_pf": 0.582,
+      "oos_dd": 0.0529,
+      "oos_sharpe": -3.43,
+      "oos_trades": 19
+    },
+    {
+      "window": 2,
+      "is_period": "2024-08 -> 2025-02",
+      "oos_period": "2025-02 -> 2025-05",
+      "best_min_gap_pct": 0.004,
+      "is_pf": 1.138,
+      "is_trades": 51,
+      "oos_pf": 1.713,
+      "oos_dd": 0.0452,
+      "oos_sharpe": 3.193,
+      "oos_trades": 41
+    },
+    {
+      "window": 3,
+      "is_period": "2024-11 -> 2025-05",
+      "oos_period": "2025-05 -> 2025-08",
+      "best_min_gap_pct": 0.0025,
+      "is_pf": 1.023,
+      "is_trades": 64,
+      "oos_pf": 1.227,
+      "oos_dd": 0.0529,
+      "oos_sharpe": 1.236,
+      "oos_trades": 42
+    },
+    {
+      "window": 4,
+      "is_period": "2025-02 -> 2025-08",
+      "oos_period": "2025-08 -> 2025-11",
+      "best_min_gap_pct": 0.0015,
+      "is_pf": 1.783,
+      "is_trades": 21,
+      "oos_pf": 1.105,
+      "oos_dd": 0.0504,
+      "oos_sharpe": 0.57,
+      "oos_trades": 26
+    },
+    {
+      "window": 5,
+      "is_period": "2025-05 -> 2025-11",
+      "oos_period": "2025-11 -> 2026-02",
+      "best_min_gap_pct": 0.0015,
+      "is_pf": 1.267,
+      "is_trades": 36,
+      "oos_pf": 0.184,
+      "oos_dd": 0.0521,
+      "oos_sharpe": -13.769,
+      "oos_trades": 9
+    },
+    {
+      "window": 6,
+      "is_period": "2025-08 -> 2026-02",
+      "oos_period": "2026-02 -> 2026-05",
+      "best_min_gap_pct": 0.004,
+      "is_pf": 1.11,
+      "is_trades": 45,
+      "oos_pf": 0.879,
+      "oos_dd": 0.0561,
+      "oos_sharpe": -0.851,
+      "oos_trades": 37
+    },
+    {
+      "window": 7,
+      "is_period": "2025-11 -> 2026-05",
+      "oos_period": "2026-05 -> 2026-05",
+      "best_min_gap_pct": 0.004,
+      "is_pf": 0.184,
+      "is_trades": 9,
+      "oos_pf": 0.093,
+      "oos_dd": 0.0533,
+      "oos_sharpe": -18.443,
+      "oos_trades": 9
+    }
+  ],
+  "lineage": {
+    "experiment": "generation-engine experiment 4: Corey RTH-gap family",
+    "mechanical_rule": "go",
+    "conditioning": "none",
+    "data_file": "MGC_2024-05-01_2026-05-29_5m_cont.csv",
+    "bar_timeframe": "5m",
+    "data_span": "2024-05-01 -> 2026-05-29",
+    "gap_definition_note": "RTH-session gap: today's RTH open vs YESTERDAY's RTH close (ET 09:30-16:00), overnight excluded. Backtester runs on RTH-only bars (gap plays are intraday-RTH; EOD exit fits). NOT a 24h close-to-open gap.",
+    "kill_switch_note": "fixed_params_min_pf is measured on the single full-series backtest and is depressed by the -5% max-DD kill switch halting early; the per-window OOS p_edge/pf_ci_lower are the reliable edge signal.",
+    "source_study": "thinkorswim-scripts (Corey Gapfinder) / engine/backtest/gapfinder.py",
+    "no_lookahead": "prior-session RTH close (shift 1) for the gap; entry on first RTH bar"
+  }
+}
