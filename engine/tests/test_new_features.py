@@ -486,30 +486,44 @@ class TestAgentFeedback:
                 DEFAULT_WEIGHT, abs=0.01
             ), f"Agent {agent} weight should be {DEFAULT_WEIGHT} with no history, got {weight}"
 
-    def test_record_outcome_win_no_crash(self):
+    def test_record_outcome_win_no_crash(self, tmp_path):
+        import sys
+        from unittest.mock import patch
+
         from engine.analytics.agent_feedback import AgentFeedbackTracker
 
-        tracker = AgentFeedbackTracker()
-        # Should not raise
-        tracker.record_outcome(
-            trade_id="test-win-001",
-            symbol="MES",
-            direction="LONG",
-            pnl_usd=150.0,
-            analyst_signals={"technical": 0.6, "news": 0.3, "social": 0.1},
-        )
+        # Isolate the write. AgentFeedbackTracker reads the module-level DB_PATH
+        # at call time, so redirect it to a temp DB instead of the production
+        # engine/data/agent_feedback.db. Patch the module the class actually
+        # lives in (robust to the engine.* vs bare-package import aliasing).
+        af_mod = sys.modules[AgentFeedbackTracker.__module__]
+        with patch.object(af_mod, "DB_PATH", tmp_path / "agent_feedback_test.db"):
+            tracker = AgentFeedbackTracker()
+            # Should not raise
+            tracker.record_outcome(
+                trade_id="test-win-001",
+                symbol="MES",
+                direction="LONG",
+                pnl_usd=150.0,
+                analyst_signals={"technical": 0.6, "news": 0.3, "social": 0.1},
+            )
 
-    def test_record_outcome_loss_no_crash(self):
+    def test_record_outcome_loss_no_crash(self, tmp_path):
+        import sys
+        from unittest.mock import patch
+
         from engine.analytics.agent_feedback import AgentFeedbackTracker
 
-        tracker = AgentFeedbackTracker()
-        tracker.record_outcome(
-            trade_id="test-loss-001",
-            symbol="MCL",
-            direction="SHORT",
-            pnl_usd=-80.0,
-            analyst_signals={"technical": -0.4, "news": -0.2, "social": 0.0},
-        )
+        af_mod = sys.modules[AgentFeedbackTracker.__module__]
+        with patch.object(af_mod, "DB_PATH", tmp_path / "agent_feedback_test.db"):
+            tracker = AgentFeedbackTracker()
+            tracker.record_outcome(
+                trade_id="test-loss-001",
+                symbol="MCL",
+                direction="SHORT",
+                pnl_usd=-80.0,
+                analyst_signals={"technical": -0.4, "news": -0.2, "social": 0.0},
+            )
 
     def test_agent_names_include_expected_analysts(self):
         from engine.analytics.agent_feedback import AGENT_NAMES
