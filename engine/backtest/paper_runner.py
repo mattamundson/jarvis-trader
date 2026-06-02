@@ -68,7 +68,7 @@ def _setup_logging() -> None:
     handlers: list[logging.Handler] = [
         logging.StreamHandler(sys.stdout),
         logging.handlers.RotatingFileHandler(
-            str(RUNNER_LOG_FILE), maxBytes=5 * 1024 * 1024, backupCount=3
+            str(RUNNER_LOG_FILE), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
         ),
     ]
     logging.basicConfig(
