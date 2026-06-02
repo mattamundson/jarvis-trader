@@ -134,6 +134,13 @@ class HealthResponse(BaseModel):
         None,
         description="Whether the IBKR market-data connector is connected — independent lifecycle from the execution connector",
     )
+    ibgateway_alive: Optional[bool] = Field(
+        None,
+        description="Whether IB Gateway is accepting TCP connections on the configured IB port (process-level liveness). Distinct from ibkr_*_connected: the Gateway can be up (port open) while a connector has dropped (recoverable via POST /data/reconnect), or the Gateway itself can be down (port closed) — the failure mode that left trade #178's stop unenforced for 13h.",
+    )
+    ibgateway_port: Optional[int] = Field(
+        None, description="The IB port probed for ibgateway_alive (4002 paper / 4001 live)"
+    )
     schwab_connected: bool = Field(False, description="Whether Schwab is connected")
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
