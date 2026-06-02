@@ -40,34 +40,61 @@ safety-adjacent and requires explicit [safety-review] approval before any change
 
 ---
 
-## Part 2 — ⚠️ The Two-Ledger Integrity Gap (critical)
+## Part 2 — The Two Ledgers: Separated BY DESIGN (resolved 2026-06-01)
 
-The system keeps **two trade ledgers that do not reconcile:**
+The system keeps two trade ledgers. They do not reconcile **on purpose** — this was
+initially flagged as a possible integrity bug, then resolved to an intentional design:
 
 | | `paper_trades` | `ibkr_fills` |
 |---|---|---|
-| Source | paper_runner simulation | Real IB paper account |
-| Account | `'A'` (internal label) | `DUP662235` (real IB) |
+| Source | paper_runner simulation | DUP662235 IB paper **demo account** |
+| Account | `'A'` (internal label) | `DUP662235` (real IB paper) |
 | Rows (2026-06-01) | 5 closed | 4 fills (all BOT, no sells) |
 | Read by journal-review? | **YES** | no |
 | Counted by validation gate? | **YES** | no |
-| Prices realistic? | yes | **no** — MES @7611, MNQ @30490 vs real ~6000 / ~21000 |
+| Origin | JARVIS strategy signals | **NOT JARVIS** — demo/manual activity |
 
-**Implications:**
-- The journal and the validation gate measure **only the simulation.** Real orders that
-  hit the IB paper account are invisible to both.
-- The 4 `ibkr_fills` (imported in one batch at 09:16:38 UTC) have prices far above real
-  contract levels — consistent with the pre-seeded **"Individual Demo"** portfolio noise
-  documented in `project_paper_account_40pct_demo_seed_2026_05_31.md`, **not** JARVIS-placed
-  trades. But they are genuine fills on the real IB paper account, with real CME exec_ids.
+**Resolution — the separation is deliberate, documented in
+`engine/execution/ibkr_reconciler.py:8-12`:**
+> "covers the DUP662235 demo account where 90 MES + 37 MNQ contracts exist in IBKR but
+> were never submitted through JARVIS (`ALLOW_PAPER_SIMULATED_ORDERS` is False, so the
+> IBKR-facing path was never exercised). The reconciler gives JARVIS read-side visibility
+> into those fills **without touching paper_trades or the order-routing pipeline.**"
 
-**Recommended action (verify, don't assume):**
-1. Identify the producer of the 4 fills — engine pipeline, a manual test, or demo-account
-   seeding. Check `order_router` / `ib_gateway` logs around 09:03–09:06 UTC 2026-06-01.
-2. Decide the reconciliation policy: either (a) `ibkr_fills` should flow into `paper_trades`
-   for a single source of truth, or (b) they are demo-account noise to be explicitly
-   excluded (and the demo account should be reset/segregated before forward-test counting
-   begins). Until decided, **the journal is an incomplete record of broker activity.**
+**Confirming evidence (all five agree the fills are non-JARVIS):**
+1. `ALLOW_PAPER_SIMULATED_ORDERS=False` in `engine/.env` — JARVIS has never routed an
+   order to IBKR; the IBKR order path is gated off (`safety_layer.py:956`).
+2. The `decisions` log shows **zero buy decisions** for MES/MNQ at the 09:03–09:06 fill
+   times — only `hold`/one `sell`.
+3. **MNQ is on `DO_NOT_TRADE_SYMBOLS`** — JARVIS is forbidden from trading it, yet 2 MNQ
+   buys appear → cannot be JARVIS.
+4. `commission=0.0` on all fills (JARVIS bracket orders track commission).
+5. `IBKRReconciler.reconcile()` imports IB executions for **read-side visibility only**,
+   idempotent on `exec_id`, and never writes `paper_trades`.
+
+`/brokers/positions` currently shows the IB paper account **flat** (0 positions) — the demo
+fills are not open exposure. So: the journal/validation reading only `paper_trades` is
+**correct behavior** — they rightly ignore demo-account noise. There is no current bug.
+
+### The real, forward-looking gap (build before forward-test, NOT now)
+
+When forward-test begins — `ALLOW_PAPER_SIMULATED_ORDERS` flips to True and JARVIS routes
+real orders to IB paper — genuine JARVIS fills will land in `ibkr_fills` **mixed with the
+demo noise**, and today there is:
+- no mechanism to distinguish JARVIS-originated fills (by `order_id` matched to a
+  JARVIS-submitted order) from demo/manual fills, and
+- no path to flow genuine JARVIS fills into `paper_trades` for journaling/validation.
+
+**Reconciliation requirement for forward-test (do at flip time):**
+1. Tag every IBKR-submitted order with a JARVIS order id at submission; persist the
+   id→exec_id link so `ibkr_fills` can be classified JARVIS-vs-external.
+2. On reconcile, flow JARVIS-originated fills into `paper_trades` (single source of truth
+   for the journal + validation); leave demo/manual fills tagged `external` and excluded.
+3. Reset or segregate the DUP662235 demo positions before counting begins, so the
+   pre-seeded 90 MES + 37 MNQ never contaminate forward-test metrics.
+
+Until the flip, no action is needed and **no data should be merged** — merging demo noise
+into `paper_trades` would corrupt the validation ledger, the opposite of the goal.
 
 ---
 
@@ -240,8 +267,10 @@ proper experiment with an uncertain outcome — it may also fail the gate. It is
 
 ## Recommended order of operations
 
-1. **Resolve the two-ledger gap (Part 2)** — verify the 4 `ibkr_fills`, set a reconciliation
-   policy. This is integrity, do it first.
+1. **Two-ledger gap (Part 2)** — ✅ RESOLVED 2026-06-01: separation is by design; all
+   `ibkr_fills` are non-JARVIS demo-account activity (`ALLOW_PAPER_SIMULATED_ORDERS=False`).
+   No bug, no action now. The forward-test reconciliation requirement is documented in
+   Part 2 to be built when the IBKR order path is enabled.
 2. **Decouple validation (Part 4)** — `[safety-review]` PR; correct regardless of frequency.
-3. **Multi-entry WFO (Part 5)** — the real frequency project, once 1–2 are settled.
+3. **Multi-entry WFO (Part 5)** — the real frequency project, once #2 is settled.
 4. **Skip the graveyard** — no more SMA/intraday-variant tweaking.
