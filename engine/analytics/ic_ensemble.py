@@ -43,11 +43,15 @@ AgentFeedbackTracker after each closed trade) and exposes two primary methods:
 from __future__ import annotations
 
 import logging
-import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+try:  # dual-path import (engine.* as package vs bare under engine/ cwd)
+    from engine.analytics.outcome_hygiene import sanitize_outcome_rows
+except ImportError:  # pragma: no cover
+    from analytics.outcome_hygiene import sanitize_outcome_rows
 
 logger = logging.getLogger(__name__)
 
@@ -84,68 +88,6 @@ MIN_TRADES_FOR_IC = 5
 # Rolling lookback window.
 DEFAULT_WINDOW_DAYS = 30
 
-# Corrupt-input guard. A single closed micro-futures paper trade cannot
-# realistically realize a P&L beyond the max single-order value
-# (config.MAX_SINGLE_ORDER_VALUE = $5,000). Outcomes whose |pnl_usd| exceeds
-# this are treated as upstream P&L corruption (e.g. demo-seed NAV leakage) and
-# excluded from calibration so one bad row can't dominate the Brier/IC surface.
-# Overridable via env for unusual account sizes. See the agent_feedback.db
-# pollution incident, 2026-06-02 (corrupted +$10,102.98 MES triplicates).
-MAX_PLAUSIBLE_ABS_PNL_USD = float(os.getenv("CALIBRATION_MAX_ABS_PNL_USD", "5000.0"))
-
-
-def _sanitize_outcome_rows(
-    rows: List[Tuple[float, float, Optional[str]]],
-    *,
-    context: str,
-) -> List[Tuple[float, float]]:
-    """Drop corrupt and duplicate outcome rows before calibration.
-
-    Parameters
-    ----------
-    rows
-        ``(signal, pnl_usd, timestamp)`` triples straight from the DB.
-    context
-        Short label for the log line (e.g. ``"Brier/news"``).
-
-    Two guards, both observable (logged at WARNING, never silent):
-
-    * **Magnitude** — ``|pnl_usd| > MAX_PLAUSIBLE_ABS_PNL_USD`` is treated as
-      upstream P&L corruption and dropped.
-    * **Duplicate** — rows sharing the same wall-clock second *and* identical
-      ``(signal, pnl)`` are one logical trade logged N times (the 2026-06-02
-      triplicate artifact). Keep only the first occurrence. The second-level
-      timestamp in the key makes a false collapse of two genuinely independent
-      trades effectively impossible.
-
-    Returns the surviving ``(signal, pnl)`` pairs in input order.
-    """
-    cleaned: List[Tuple[float, float]] = []
-    seen: set = set()
-    n_corrupt = 0
-    n_dup = 0
-    for signal, pnl, ts in rows:
-        if abs(pnl) > MAX_PLAUSIBLE_ABS_PNL_USD:
-            n_corrupt += 1
-            continue
-        key = ((ts or "")[:19], round(signal, 6), round(pnl, 6))
-        if key in seen:
-            n_dup += 1
-            continue
-        seen.add(key)
-        cleaned.append((signal, pnl))
-    if n_corrupt or n_dup:
-        logger.warning(
-            "[Calibration] %s: excluded %d corrupt (|pnl|>$%.0f) + %d duplicate "
-            "outcome rows; %d of %d retained",
-            context,
-            n_corrupt,
-            MAX_PLAUSIBLE_ABS_PNL_USD,
-            n_dup,
-            len(cleaned),
-            len(rows),
-        )
-    return cleaned
 
 
 class ICWeightedEnsemble:
@@ -215,7 +157,7 @@ class ICWeightedEnsemble:
                         rows.append((float(signal), float(pnl), ts))
                     except (TypeError, ValueError):
                         continue
-                return _sanitize_outcome_rows(rows, context=f"IC/{agent_name}")
+                return [(sig, pnl) for sig, pnl, _ in sanitize_outcome_rows(rows, context=f"IC/{agent_name}")]
         except sqlite3.DatabaseError as e:
             logger.warning("ICWeightedEnsemble DB error for %s: %s", agent_name, e)
             return []
@@ -472,7 +414,7 @@ class BrierCalibrationTracker:
                         rows.append((float(signal), float(pnl), ts))
                     except (TypeError, ValueError):
                         continue
-                return _sanitize_outcome_rows(rows, context=f"Brier/{agent_name}")
+                return [(sig, pnl) for sig, pnl, _ in sanitize_outcome_rows(rows, context=f"Brier/{agent_name}")]
         except sqlite3.DatabaseError as e:
             logger.warning("BrierCalibrationTracker DB error for %s: %s", agent_name, e)
             return []
