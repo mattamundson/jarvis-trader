@@ -222,3 +222,99 @@ async def rolling_performance(days: int = 30):
         "total_trades": 0,
         "win_rate": 0.0,
     }
+
+@router.post("/analyze/technical", response_model=TechnicalAnalysisResponse)
+async def run_technical_analysis(req: AnalysisRequest):
+    """Run the Technical Analyst agent on a symbol"""
+    if not technical_analyst:
+        raise HTTPException(503, "Technical analyst not available (no API key)")
+
+    report = await technical_analyst.analyze(req.symbol, req.timeframe, req.is_futures)
+
+    return {
+        "symbol": report.symbol,
+        "timestamp": report.timestamp.isoformat(),
+        "timeframe": report.timeframe,
+        "signal": report.signal,
+        "confidence": report.confidence,
+        "trend": report.trend,
+        "regime": report.regime,
+        "is_overbought": report.is_overbought,
+        "is_oversold": report.is_oversold,
+        "summary": report.summary,
+        "reasoning": report.reasoning,
+        "scores": {
+            "trend": report.trend_score,
+            "momentum": report.momentum_score,
+            "volatility": report.volatility_score,
+            "volume": report.volume_score,
+        },
+        "levels": {
+            "current_price": report.current_price,
+            "support": report.support_levels,
+            "resistance": report.resistance_levels,
+        },
+        "raw_indicators": report.indicators,
+    }
+
+
+
+@router.get("/analyze/bars/{symbol}", response_model=BarsResponse)
+async def get_bars(
+    symbol: str,
+    timeframe: str | None = None,
+    interval: str | None = None,
+    days: int = 7,
+    futures: bool = False,
+):
+    """Get OHLCV bars for a symbol.
+
+    `interval` is accepted as an alias for `timeframe` (pandas/ohlcv convention).
+    Precedence: explicit `timeframe` > `interval` > default `5m`.
+    """
+    if not data_manager:
+        raise HTTPException(503, "Data manager not initialized")
+
+    timeframe = timeframe or interval or "5m"
+
+    df = await data_manager.get_bars(
+        symbol, lookback_days=days, timeframe=timeframe, is_futures=futures
+    )
+    if df.empty:
+        raise HTTPException(404, f"No data available for {symbol}")
+
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "bars": df.tail(200).to_dict(orient="records"),
+        "count": len(df),
+    }
+
+
+
+@router.get("/llm/stats")
+async def get_llm_stats(days_back: int = 0):
+    """
+    Get LLM API usage and cost statistics for a given day.
+
+    Query Parameters:
+        days_back: 0 for today, 1 for yesterday, etc. (default: 0)
+
+    Returns:
+        date: ISO date string
+        total_calls: Total LLM API calls made
+        total_cost_usd: Total cost in USD
+        success_rate: Percentage of successful calls (0-1)
+        avg_latency_ms: Average API latency in milliseconds
+        per_model: Dict[model_name] -> {calls, input_tokens, output_tokens, cost_usd}
+        per_agent: Dict[agent_name] -> {calls, cost_usd}
+    """
+    if not cost_tracker:
+        raise HTTPException(500, "Cost tracker not initialized")
+    try:
+        return await cost_tracker.get_daily_summary(days_back=days_back)
+    except Exception as e:
+        logger.error(f"[LLM-STATS] Daily summary failed: {e}")
+        raise HTTPException(500, f"Failed to get LLM stats: {e}") from e
+
+

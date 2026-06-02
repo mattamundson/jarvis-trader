@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 
 from api.models import KillSwitchToggleResponse, SafetyStatusResponse
+from config import settings
 from middleware.rate_limit import limiter
 from risk.safety_layer import KillSwitchReason
 
@@ -400,3 +401,94 @@ async def get_position_size(
     except Exception as e:
         logger.error(f"[POSITION-SIZE] Calculate error: {e}")
         raise HTTPException(500, f"Failed to calculate position size: {e}") from e
+
+
+@router.get("/config")
+async def get_safety_config():
+    """
+    Return current risk parameter configuration (read-only).
+    Sourced from settings singleton — reflects .env values at startup.
+    """
+    return {
+        "max_daily_loss_pct": settings.MAX_DAILY_LOSS_PCT,
+        "max_drawdown_pct": settings.MAX_DRAWDOWN_PCT,
+        "max_position_size_pct": settings.MAX_POSITION_SIZE_PCT,
+        "max_contracts_per_instrument": settings.MAX_CONTRACTS_PER_INSTRUMENT,
+        "max_overnight_contracts": settings.MAX_OVERNIGHT_CONTRACTS,
+        "max_orders_per_minute": settings.MAX_ORDERS_PER_MINUTE,
+        "max_single_order_value": settings.MAX_SINGLE_ORDER_VALUE,
+        "max_margin_utilization": settings.MAX_MARGIN_UTILIZATION,
+        "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
+        "require_human_approval": settings.REQUIRE_HUMAN_APPROVAL,
+        "ibkr_host": settings.IBKR_HOST,
+        "ibkr_port": settings.IBKR_PORT,
+        "ibkr_client_id": settings.IBKR_CLIENT_ID,
+        "ibkr_paper_mode": settings.IBKR_PAPER_MODE,
+    }
+
+
+@router.get("/loss-tracker")
+async def get_loss_tracker_status_bare():
+    """
+    Return consecutive loss tracking state.
+
+    Returns:
+        global_consecutive_losses: Total consecutive losses (all symbols)
+        symbol_losses: Dict[symbol] -> consecutive loss count
+        position_size_multiplier: 1.0 / 0.5 / 0.25 / 0.0 based on loss streak
+        is_halted: True if trading is paused due to loss limit
+        halt_until: ISO timestamp when trading resumes (if halted)
+        last_trade_symbol: Which symbol was last traded
+        last_trade_timestamp: When the last trade executed
+        config: Loss threshold configuration
+    """
+    if not _loss_tracker:
+        raise HTTPException(500, "Loss tracker not initialized")
+    try:
+        return _loss_tracker.get_status()
+    except Exception as e:
+        logger.error(f"[LOSS-TRACKER] Status query failed: {e}")
+        raise HTTPException(500, f"Failed to get loss tracker status: {e}") from e
+
+@router.get("/safety/circuit-breakers", response_model=CircuitBreakerStatus)
+async def get_circuit_breakers():
+    """
+    Current circuit breaker state for all safety limits.
+
+    Returns a snapshot of every circuit breaker without triggering any
+    state changes.  Safe to poll frequently (e.g. every 5 seconds from
+    the dashboard).
+
+    Response fields:
+        daily_pnl            — today's P&L in dollars (realized + unrealized)
+        daily_limit          — max allowed daily loss in dollars (negative)
+        daily_pnl_pct        — daily P&L as fraction of starting balance
+        daily_limit_pct      — configured daily loss limit (e.g. -0.02)
+        daily_limit_breached — True when daily loss limit has been exceeded
+        drawdown_pct         — current drawdown from peak (negative fraction)
+        drawdown_limit_pct   — configured max drawdown limit (e.g. -0.10)
+        drawdown_breached    — True when max drawdown has been exceeded
+        kill_switch_active   — whether the kill switch is currently on
+        kill_switch_reason   — reason string or null
+        pnl_source           — data origin: "ib" | "sqlite" | "memory"
+        current_balance      — current account balance in dollars
+        starting_balance     — balance at start of today in dollars
+        orders_last_minute   — number of orders placed in the last 60 seconds
+        all_clear            — True when no circuit breaker has tripped
+    """
+    if not safety_layer:
+        raise HTTPException(500, "Safety layer not initialized")
+    return safety_layer.check_circuit_breakers()
+
+
+
+@router.post("/safety/reset-daily-pnl", response_model=dict)
+async def reset_daily_pnl():
+    """Reset the in-memory daily P&L counter (useful for testing)."""
+    if not safety_layer:
+        raise HTTPException(500, "Safety layer not initialized")
+    safety_layer._daily_realized_pnl = 0.0
+    safety_layer._daily_order_count = 0
+    return {"status": "daily_pnl_reset", "message": "Daily P&L counter cleared"}
+
+

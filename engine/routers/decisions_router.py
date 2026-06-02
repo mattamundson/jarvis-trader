@@ -275,3 +275,49 @@ async def log_decision(decision: dict):
 
 
 # ── Sentiment feed ────────────────────────────────────────────────────────
+
+@router.get("/decisions/recent")
+async def get_recent_decisions(limit: int = 20):
+    """Return most recent agent decisions — queries SQLite first, falls back to in-memory."""
+    if db_manager:
+        try:
+            rows = db_manager.get_decisions(limit=limit)
+            if rows:
+                # Normalise to the same shape the dashboard expects
+                return [
+                    {
+                        "id": r.get("id"),
+                        "timestamp": r.get("timestamp"),
+                        "symbol": r.get("symbol"),
+                        "action": r.get("action"),
+                        "confidence": r.get("confidence"),
+                        "source": (r.get("signal_data_json") or {}).get("source", "db"),
+                        "summary": r.get("reasoning") or "",
+                    }
+                    for r in rows
+                ]
+        except Exception as _db_err:
+            logger.warning(f"[DB] get_decisions failed, falling back to in-memory: {_db_err}")
+    return _decision_log[-limit:]
+
+
+
+@router.post("/decisions/log")
+async def log_decision(decision: dict):
+    """Internal: agents call this to log decisions"""
+    _log_decision(
+        symbol=decision.get("symbol", "UNKNOWN"),
+        action=decision.get("action", "hold"),
+        confidence=float(decision.get("confidence", 0.0)),
+        source=decision.get("source", "api"),
+        summary=decision.get("summary", ""),
+        reasoning=decision.get("reasoning", ""),
+        regime=decision.get("regime"),
+        signal_data=decision,
+    )
+    return {"ok": True}
+
+
+# ── Sentiment feed ────────────────────────────────────────────────────────
+
+

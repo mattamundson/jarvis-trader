@@ -869,3 +869,770 @@ async def validate_stc_math(
     except Exception as e:
         logger.error(f"[STC-VALIDATE] Failed: {e}")
         raise HTTPException(500, f"STC math validation failed: {e}") from e
+
+
+# ── Migrated from main.py inline routes ──────────────────────────────────────
+
+
+@router.get("/paper/mgc-performance")
+async def get_mgc_paper_performance():
+    """
+    Return current MGC paper trading performance metrics.
+
+    Reads from the PaperTradeTracker JSON store and returns:
+    total trades, P&L, win rate, profit factor, max drawdown,
+    regime breakdown, exit reason breakdown, and kill condition status.
+    """
+    try:
+        from backtest.paper_config import MGC_PAPER_CONFIG
+        from backtest.paper_tracker import PaperTradeTracker
+
+        tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
+        metrics = tracker.get_metrics()
+
+        # Add kill condition check
+        should_kill, kill_reason = tracker.check_kill_conditions()
+        metrics["kill_threshold_breached"] = should_kill
+        metrics["kill_reason"] = kill_reason if should_kill else None
+        metrics["monthly_summary"] = tracker.monthly_summary()
+        metrics["config"] = {
+            "symbol": MGC_PAPER_CONFIG["symbol"],
+            "interval": MGC_PAPER_CONFIG["interval"],
+            "adaptive_regime": MGC_PAPER_CONFIG["adaptive_regime"],
+            "risk_per_trade": MGC_PAPER_CONFIG["risk_per_trade"],
+            "initial_capital": MGC_PAPER_CONFIG["initial_capital"],
+            "wfe": 0.88,
+        }
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Performance query failed: {e}")
+        raise HTTPException(500, f"Failed to get MGC performance: {e}") from e
+
+
+# ── Monte Carlo Backtest Analysis ────────────────────────────────────────────
+
+
+class MonteCarloRequest(BaseModel):
+    """Request for Monte Carlo simulation on backtest results."""
+
+    results_file: str  # Path to JSON results file (relative to backtest/results/)
+    simulations: int = 1_000  # Number of simulations (default: 1000)
+    max_slippage_ticks: float = 0.0  # Max random slippage per trade in ticks (default: 0)
+    symbol: str = None  # Instrument symbol (auto-detected if None)
+    initial_capital: float = 100_000.0  # Starting capital for simulation
+
+
+@router.post("/backtest/monte-carlo")
+async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
+    """
+    Run Monte Carlo simulation on backtest results to validate strategy robustness.
+
+    Shuffles trade order N times with optional slippage modeling to generate a
+    distribution of possible outcomes. Returns percentile statistics across all
+    simulations plus confidence metrics (probability of ruin, 2x return target, etc).
+
+    Request:
+        results_file: Path to backtest JSON (e.g., "MES_1h_2024-06-01_2026-03-27.json")
+        simulations: Number of Monte Carlo runs (default: 1000)
+        max_slippage_ticks: Uniform random slippage 0-N ticks per trade (default: 0)
+        symbol: Instrument symbol for tick value lookup (auto if None)
+        initial_capital: Starting capital (default: 100000)
+
+    Returns:
+        percentile_statistics: p5, p25, median, p75, p95 for final capital, max drawdown, Sharpe
+        confidence_metrics: prob_profitable, prob_ruin, prob_2x, VaR 5%, CVaR
+        verdict: EXCELLENT/GOOD/MARGINAL/POOR based on distribution quality
+    """
+    try:
+        from pathlib import Path
+
+        from backtest.monte_carlo import _load_result_from_json, run_monte_carlo
+
+        # Resolve file path
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            # Try relative to backtest/results/
+            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = Path(__file__).parent / "backtest" / "results" / req.results_file
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        # Load backtest result
+        logger.info(f"[MONTE-CARLO] Loading {results_path.name}")
+        bt_result = _load_result_from_json(str(results_path))
+
+        # Auto-detect symbol from filename if not provided
+        symbol = req.symbol
+        if not symbol:
+            stem = results_path.stem
+            for part in stem.split("_"):
+                if part.isupper() and len(part) <= 4:
+                    symbol = part
+                    break
+        if not symbol:
+            symbol = "MES"
+
+        # Run simulation
+        logger.info(f"[MONTE-CARLO] Running {req.simulations:,} simulations for {symbol}")
+        mc_results = run_monte_carlo(
+            bt_result,
+            n_simulations=req.simulations,
+            initial_capital=req.initial_capital,
+            max_slippage_ticks=req.max_slippage_ticks,
+            symbol=symbol,
+            seed=42,
+        )
+
+        return mc_results
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO] File error: {e}")
+        raise HTTPException(404, f"Results file not found: {e}") from e
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO] Simulation failed: {e}")
+        raise HTTPException(500, f"Monte Carlo simulation failed: {e}") from e
+
+
+@router.post("/backtest/monte-carlo/chart")
+async def generate_monte_carlo_chart(req: MonteCarloRequest) -> dict:
+    """
+    Generate an interactive HTML equity curve fan chart from Monte Carlo results.
+
+    Creates a visualization showing median equity curve plus 25th-75th and 5th-95th
+    percentile bands. Useful for assessing visual robustness and trade sequencing risk.
+
+    Returns:
+        chart_path: Full file path to generated HTML
+        url: Relative URL if served via static files
+    """
+    try:
+        from pathlib import Path
+
+        from backtest.monte_carlo_viz import save_fan_chart
+
+        # Resolve file path (same as monte-carlo endpoint)
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = Path(__file__).parent / "backtest" / "results" / req.results_file
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        # But we need the JSON results from run_monte_carlo first!
+        # Check if _monte_carlo.json exists
+        stem = results_path.stem
+        mc_json_path = results_path.parent / f"{stem}_monte_carlo.json"
+        if not mc_json_path.exists():
+            raise FileNotFoundError(
+                f"Monte Carlo JSON not found. Run /backtest/monte-carlo first to generate {mc_json_path.name}"
+            )
+
+        logger.info(f"[MONTE-CARLO-VIZ] Generating chart from {mc_json_path.name}")
+        html_path = save_fan_chart(str(mc_json_path))
+
+        return {
+            "chart_path": str(html_path),
+            "status": "success",
+            "message": f"Chart generated: {Path(html_path).name}",
+        }
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO-VIZ] File error: {e}")
+        raise HTTPException(404, f"Error: {e}") from e
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO-VIZ] Chart generation failed: {e}")
+        raise HTTPException(500, f"Chart generation failed: {e}") from e
+
+@router.post("/backtest/run")
+async def run_backtest(request: BacktestRequest):
+    """Run a backtest for a symbol over the specified date range."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _run():
+        from backtest import BacktestDataLoader, Backtester, generate_signals
+
+        loader = BacktestDataLoader()
+        df = loader.load(request.symbol, request.start, request.end, request.interval)
+        if df is None or df.empty:
+            raise ValueError(f"No data for {request.symbol}")
+        df = generate_signals(df)
+        multiplier = loader.get_multiplier(request.symbol)
+        backtester = Backtester(
+            initial_capital=request.capital,
+            risk_per_trade=request.risk_per_trade,
+        )
+        result = backtester.run(df, request.symbol, multiplier)
+        return result.to_dict()
+
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as pool:
+        result = await loop.run_in_executor(pool, _run)
+    return result
+
+
+class WalkForwardRequest(BaseModel):
+    """Request for walk-forward validation."""
+
+    symbol: str
+    start: str  # ISO date
+    end: str  # ISO date
+    interval: str = "1h"
+    capital: float = 100_000.0
+    adaptive_regime: bool = True
+    volume_filter: bool = False
+    mtf_filter: bool = False
+
+
+
+@router.post("/backtest/walk-forward")
+async def run_walk_forward(request: WalkForwardRequest):
+    """
+    Execute walk-forward validation on a symbol over a date range.
+
+    Walk-Forward Analysis:
+    1. Split data into overlapping train/test windows (6m train, 3m test, 3m step)
+    2. For each window: optimize parameters on train data
+    3. Validate optimized parameters on out-of-sample test data
+    4. Compute Walk-Forward Efficiency (WFE = avg_oos_return / avg_is_return)
+
+    WFE Interpretation:
+        > 0.50: Strategy generalizes well
+        0.30-0.50: Acceptable, some degradation
+        < 0.30: Likely overfit
+
+    Request:
+        symbol: Instrument (e.g., "MES", "NQ", "SPY")
+        start: Start date (ISO format, e.g., "2024-06-01")
+        end: End date (ISO format, e.g., "2026-03-27")
+        interval: Timeframe ("1h", "1d", "5m", etc.) — default "1h"
+        capital: Initial capital (default 100000)
+        adaptive_regime: Include regime filters (default True)
+        volume_filter: Apply volume filters (default False)
+        mtf_filter: Apply multi-timeframe filters (default False)
+
+    Returns:
+        windows: List of walk-forward windows with IS/OOS results
+        summary: Aggregate metrics (avg_wfe, total_is_pnl, total_oos_pnl, etc.)
+        verdict: PASS/CAUTION/FAIL based on WFE threshold
+    """
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+
+        from backtest.data_loader import BacktestDataLoader
+        from backtest.signals import generate_signals
+        from backtest.walk_forward import WalkForwardValidator
+
+        def _run_walk_forward():
+            loader = BacktestDataLoader()
+
+            # Load 1h data
+            df_1h = loader.load(request.symbol, request.start, request.end, request.interval)
+            if df_1h is None or df_1h.empty:
+                raise ValueError(f"No data for {request.symbol}")
+
+            df_1h = generate_signals(
+                df_1h, symbol=request.symbol, adaptive_regime=request.adaptive_regime
+            )
+
+            # Load daily data if MTF filter requested
+            df_daily = None
+            if request.mtf_filter:
+                df_daily = loader.load(request.symbol, request.start, request.end, "1d")
+                if df_daily is not None:
+                    df_daily = generate_signals(
+                        df_daily, symbol=request.symbol, adaptive_regime=request.adaptive_regime
+                    )
+
+            multiplier = loader.get_multiplier(request.symbol)
+
+            # Run walk-forward
+            validator = WalkForwardValidator(train_months=6, test_months=3, step_months=3)
+            result = validator.run(
+                df_1h,
+                symbol=request.symbol,
+                multiplier=multiplier,
+                capital=request.capital,
+                top_n_params=1,
+                fast=True,
+                adaptive_regime=request.adaptive_regime,
+                volume_filter=request.volume_filter,
+                mtf_filter=request.mtf_filter,
+                df_daily=df_daily,
+            )
+            return result
+
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            result = await loop.run_in_executor(pool, _run_walk_forward)
+
+        return result
+
+    except ValueError as e:
+        logger.error(f"[WALK-FORWARD] Data error: {e}")
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error(f"[WALK-FORWARD] Validation failed: {e}")
+        raise HTTPException(500, f"Walk-forward validation failed: {e}") from e
+
+
+class RegimeAnalysisRequest(BaseModel):
+    """Request for regime analysis on backtest results."""
+
+    results_file: str  # Path to JSON results file (relative to backtest/results/)
+    symbol: str = None  # Auto-detected if None
+
+
+
+@router.post("/backtest/regime-analysis")
+async def analyze_regime(request: RegimeAnalysisRequest):
+    """
+    Analyze backtest results broken down by market regime.
+
+    Classifies each trade into a regime category and computes performance
+    metrics per regime. Identifies which regimes are profitable and which
+    should be avoided.
+
+    Regime Categories:
+        TRENDING_UP: EMA ribbon bullish + positive phase
+        TRENDING_DOWN: EMA ribbon bearish + negative phase
+        RANGE_BOUND: Compressed EMAs + low volatility
+        HIGH_VOLATILITY: ATR consumed > 80% or extreme phase
+        TRANSITION: Regime changed within last 5 bars
+
+    Request:
+        results_file: Path to backtest JSON (e.g., "MES_1h_results.json")
+        symbol: Instrument symbol for regime classification (auto if None)
+
+    Returns:
+        regime_metrics: Dict[regime] -> {trade_count, win_rate, profit_factor, total_pnl, sharpe_ratio, etc.}
+        overall_verdict: EXCELLENT/GOOD/ACCEPTABLE/POOR based on regime consistency
+        best_regime: Most profitable regime
+        worst_regime: Least profitable regime
+    """
+    try:
+        from pathlib import Path
+
+        from backtest.monte_carlo import _load_result_from_json
+        from backtest.regime_analysis import RegimeAnalyzer
+
+        # Resolve file path
+        results_path = Path(request.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = Path(__file__).parent / "backtest" / "results" / request.results_file
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        # Load backtest result
+        logger.info(f"[REGIME-ANALYSIS] Loading {results_path.name}")
+        bt_result = _load_result_from_json(str(results_path))
+
+        # Auto-detect symbol from filename if not provided
+        symbol = request.symbol
+        if not symbol:
+            stem = results_path.stem
+            for part in stem.split("_"):
+                if part.isupper() and len(part) <= 4:
+                    symbol = part
+                    break
+        if not symbol:
+            symbol = "MES"
+
+        # Run regime analysis
+        logger.info(f"[REGIME-ANALYSIS] Analyzing {len(bt_result.trades)} trades for {symbol}")
+        RegimeAnalyzer()
+        regime_stats = {}
+
+        # Classify each trade by regime and accumulate stats
+        for trade in bt_result.trades:
+            regime = trade.get("regime", "UNKNOWN")
+            if regime not in regime_stats:
+                regime_stats[regime] = {
+                    "trade_count": 0,
+                    "winning_trades": 0,
+                    "losing_trades": 0,
+                    "total_pnl": 0.0,
+                    "trades": [],
+                }
+
+            pnl = trade.get("pnl", 0.0)
+            is_win = pnl >= 0
+
+            regime_stats[regime]["trade_count"] += 1
+            if is_win:
+                regime_stats[regime]["winning_trades"] += 1
+            else:
+                regime_stats[regime]["losing_trades"] += 1
+            regime_stats[regime]["total_pnl"] += pnl
+            regime_stats[regime]["trades"].append(trade)
+
+        # Compute derived metrics
+        for _, stats in regime_stats.items():
+            count = stats["trade_count"]
+            stats["win_rate"] = stats["winning_trades"] / count if count > 0 else 0.0
+            pnls = [t.get("pnl", 0.0) for t in stats["trades"]]
+            gross_profit = sum(p for p in pnls if p > 0)
+            gross_loss = abs(sum(p for p in pnls if p < 0))
+            stats["profit_factor"] = gross_profit / gross_loss if gross_loss > 0 else 0.0
+            stats["avg_win"] = (
+                stats["total_pnl"] / stats["winning_trades"] if stats["winning_trades"] > 0 else 0.0
+            )
+            stats["avg_loss"] = (
+                stats["total_pnl"] / stats["losing_trades"] if stats["losing_trades"] > 0 else 0.0
+            )
+            # Clean up trades from output
+            del stats["trades"]
+
+        # Determine verdict
+        if not regime_stats:
+            verdict = "NO_DATA"
+        else:
+            avg_wrate = sum(s.get("win_rate", 0) for s in regime_stats.values()) / len(regime_stats)
+            if avg_wrate >= 0.60:
+                verdict = "EXCELLENT"
+            elif avg_wrate >= 0.55:
+                verdict = "GOOD"
+            elif avg_wrate >= 0.50:
+                verdict = "ACCEPTABLE"
+            else:
+                verdict = "POOR"
+
+        best_regime = (
+            max(regime_stats.items(), key=lambda x: x[1].get("total_pnl", 0))[0]
+            if regime_stats
+            else None
+        )
+        worst_regime = (
+            min(regime_stats.items(), key=lambda x: x[1].get("total_pnl", 0))[0]
+            if regime_stats
+            else None
+        )
+
+        return {
+            "regime_metrics": regime_stats,
+            "overall_verdict": verdict,
+            "best_regime": best_regime,
+            "worst_regime": worst_regime,
+            "regime_count": len(regime_stats),
+        }
+
+    except FileNotFoundError as e:
+        logger.error(f"[REGIME-ANALYSIS] File error: {e}")
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error(f"[REGIME-ANALYSIS] Analysis failed: {e}")
+        raise HTTPException(500, f"Regime analysis failed: {e}") from e
+
+
+# ── Regime & Paper-Trading Status ─────────────────────────────────────────
+
+
+
+@router.get("/backtest/regime-status")
+async def get_regime_status():
+    """
+    Current regime classification for tracked symbols.
+
+    Runs RegimeClassifier on recent bars and returns the current regime,
+    30-day breakdown, and key regime indicators for each symbol.
+    Falls back to static data if market data is unavailable.
+    """
+    try:
+        from backtest.regime import RegimeClassifier
+
+        results = {}
+
+        # --- MNQ 1h ---
+        try:
+            if not data_manager:
+                raise ValueError("data_manager not initialized")
+            nq = await data_manager.get_bars("MNQ", lookback_days=10, timeframe="1h")
+            if nq is not None and len(nq) >= 20:
+                rc = RegimeClassifier()
+                nq_classified = rc.classify(nq)
+                last_regime = (
+                    nq_classified["regime_type"].iloc[-1] if len(nq_classified) > 0 else "UNKNOWN"
+                )
+                # 30-day breakdown (use available bars)
+                regime_counts = nq_classified["regime_type"].value_counts(normalize=True) * 100
+                results["MNQ_1h"] = {
+                    "current_regime": str(last_regime),
+                    "regime_breakdown_30d": {str(k): round(v, 1) for k, v in regime_counts.items()},
+                }
+            else:
+                raise ValueError("Insufficient MNQ data")
+        except Exception:
+            results["MNQ_1h"] = {
+                "current_regime": "RANGING",
+                "regime_breakdown_30d": {"TRENDING": 15.3, "RANGING": 80.5, "VOLATILE": 4.2},
+            }
+
+        # --- MGC 1d ---
+        try:
+            if not data_manager:
+                raise ValueError("data_manager not initialized")
+            gc = await data_manager.get_bars("MGC", lookback_days=60, timeframe="1d")
+            if gc is not None and len(gc) >= 20:
+                rc = RegimeClassifier()
+                gc_classified = rc.classify(gc)
+                last_regime = (
+                    gc_classified["regime_type"].iloc[-1] if len(gc_classified) > 0 else "UNKNOWN"
+                )
+                last_row = gc_classified.iloc[-1]
+                results["MGC_1d"] = {
+                    "current_regime": str(last_regime),
+                    "adaptive_stc_os": int(last_row.get("adaptive_stc_os", 15)),
+                    "adaptive_stc_ob": int(last_row.get("adaptive_stc_ob", 92)),
+                }
+            else:
+                raise ValueError("Insufficient MGC data")
+        except Exception:
+            results["MGC_1d"] = {
+                "current_regime": "TRENDING",
+                "adaptive_stc_os": 15,
+                "adaptive_stc_ob": 92,
+            }
+
+        return results
+
+    except ImportError:
+        # RegimeClassifier not available — return static fallback
+        return {
+            "MNQ_1h": {
+                "current_regime": "RANGING",
+                "regime_breakdown_30d": {"TRENDING": 15.3, "RANGING": 80.5, "VOLATILE": 4.2},
+            },
+            "MGC_1d": {
+                "current_regime": "TRENDING",
+                "adaptive_stc_os": 15,
+                "adaptive_stc_ob": 92,
+            },
+        }
+
+
+
+@router.get("/backtest/paper-status")
+async def get_paper_status():
+    """
+    Walk-Forward Efficiency (WFE) and paper-trading readiness for each symbol.
+
+    Returns the current status (ACTIVE / RESEARCH / NO-TRADE), WFE score,
+    and configuration details for symbols being tracked.
+    """
+    return {
+        "MGC_1d": {
+            "status": "ACTIVE",
+            "wfe": 0.88,
+            "wfe_label": "EXCELLENT",
+            "cleared_date": "2026-03-29",
+            "risk_per_trade": "0.25%",
+            "config": "adaptive_regime=ON",
+        },
+        "MNQ_1h": {
+            "status": "RESEARCH",
+            "wfe": 0.34,
+            "wfe_label": "ACCEPTABLE",
+            "target_wfe": 0.40,
+        },
+        "MCL_1h": {
+            "status": "NO-TRADE",
+            "wfe": -0.31,
+            "wfe_label": "FAILED",
+            "target_wfe": 0.40,
+        },
+    }
+
+
+# ── MGC Paper Trading — Live Signal Generation ──────────────────────────────
+
+
+class MGCTradeLogRequest(BaseModel):
+    entry_date: str
+    exit_date: str
+    entry_price: float
+    exit_price: float
+    contracts: int = 1
+    direction: str = "LONG"
+    exit_reason: str = "unknown"
+    regime_type: str = "unknown"
+
+
+
+@router.get("/paper/mgc-signal")
+async def get_mgc_signal():
+    """
+    Generate today's MGC (Gold Micro) signal using the walk-forward validated
+    adaptive regime strategy (WFE=0.88).
+
+    Fetches 200 daily bars via data_manager, runs the full indicator +
+    regime + signal pipeline, and returns the last bar's signal with entry/exit
+    levels.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    if not data_manager:
+        raise HTTPException(503, "Data manager not initialized")
+
+    # Fetch data asynchronously before entering the sync thread worker
+    gc_df = await data_manager.get_bars("MGC", lookback_days=200, timeframe="1d")
+    if gc_df is None or len(gc_df) < 50:
+        raise HTTPException(503, "Insufficient MGC data from data_manager")
+
+    def _generate_signal(gc):
+        from backtest.paper_config import MGC_PAPER_CONFIG
+        from backtest.signals import generate_signals
+
+        # Run full signal pipeline with adaptive regime
+        df = generate_signals(
+            gc,
+            symbol="MGC",
+            adaptive_regime=True,
+            regime_filter=True,
+        )
+
+        if df.empty:
+            return {"error": "Signal generation returned empty DataFrame"}
+
+        # Extract last bar
+        last = df.iloc[-1]
+        config = MGC_PAPER_CONFIG
+
+        # Determine direction from bias
+        bias = str(last.get("bias", "NEUTRAL"))
+        if bias in ("STRONG_BULL", "LEAN_BULL"):
+            direction = "LONG"
+        elif bias in ("STRONG_BEAR", "LEAN_BEAR"):
+            direction = "SHORT"
+        else:
+            direction = None
+
+        entry_signal = str(last.get("entry_signal", "NO_TRADE"))
+        regime_type = str(last.get("regime_type", "UNKNOWN"))
+
+        # Map signal to simplified output
+        if entry_signal == "ENTRY_NOW":
+            signal = "ENTRY_NOW"
+        elif entry_signal == "WAIT_FOR_PULLBACK":
+            signal = "WAIT_FOR_PULLBACK"
+        elif entry_signal == "FADE_EXTREME":
+            signal = "FADE_EXTREME"
+        else:
+            signal = "NO_ENTRY"
+
+        # Get date from index
+        signal_date = (
+            str(df.index[-1].date()) if hasattr(df.index[-1], "date") else str(df.index[-1])[:10]
+        )
+
+        return {
+            "date": signal_date,
+            "symbol": "MGC",
+            "signal": signal,
+            "direction": direction,
+            "regime": regime_type,
+            "adaptive_stc_os": int(last.get("adaptive_stc_os", 15)),
+            "adaptive_stc_ob": int(last.get("adaptive_stc_ob", 92)),
+            "entry_price": round(float(last["close"]), 2),
+            "stop_level": round(float(last.get("stop_level", 0)), 2),
+            "target_1": round(float(last.get("target_1", 0)), 2),
+            "target_2": round(float(last.get("target_2", 0)), 2),
+            "atr": round(float(last.get("atr", 0)), 2),
+            "bias": bias,
+            "stc_val": round(float(last.get("stc_val", 50)), 2),
+            "stc_signal": str(last.get("stc_signal", "neutral")),
+            "ema_trend": str(last.get("ema_trend", "neutral")),
+            "config": f"adaptive_regime=ON, risk={config['risk_per_trade'] * 100:.2f}%",
+        }
+
+    try:
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            result = await loop.run_in_executor(pool, _generate_signal, gc_df)
+        if "error" in result:
+            raise HTTPException(503, result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Signal generation failed: {e}")
+        raise HTTPException(500, f"MGC signal generation failed: {e}") from e
+
+
+
+@router.post("/paper/mgc-log-trade")
+async def log_mgc_paper_trade(req: MGCTradeLogRequest):
+    """
+    Log a completed MGC paper trade and return updated performance metrics.
+
+    The trade is recorded via PaperTradeTracker (JSON persistence in
+    backtest/results/paper_trades_MGC.json) with automatic P&L calculation
+    including commission and slippage.
+    """
+    try:
+        from backtest.paper_config import MGC_PAPER_CONFIG
+        from backtest.paper_tracker import PaperTradeTracker
+
+        tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
+
+        trade_dict = {
+            "entry_date": req.entry_date,
+            "exit_date": req.exit_date,
+            "entry_price": req.entry_price,
+            "exit_price": req.exit_price,
+            "contracts": req.contracts,
+            "side": req.direction.lower(),
+            "exit_reason": req.exit_reason,
+            "regime_type": req.regime_type.lower(),
+        }
+
+        tracker.add_trade(trade_dict)
+
+        # Check kill conditions
+        should_kill, kill_reason = tracker.check_kill_conditions()
+
+        metrics = tracker.get_metrics()
+        metrics["trade_logged"] = True
+        metrics["kill_threshold_breached"] = should_kill
+        metrics["kill_reason"] = kill_reason if should_kill else None
+
+        # Send WhatsApp alert for new trade
+        try:
+            from notifications.whatsapp import get_notifier
+
+            notifier = get_notifier()
+            if notifier.enabled:
+                trade_dict.get("pnl", 0)
+                msg = (
+                    f"JARVIS PAPER-MGC: {req.direction} trade closed\n"
+                    f"Entry: {req.entry_price:.2f} -> Exit: {req.exit_price:.2f}\n"
+                    f"Reason: {req.exit_reason}\n"
+                    f"Total trades: {metrics['total_trades']}, "
+                    f"Win rate: {metrics['win_rate']:.0%}"
+                )
+                if should_kill:
+                    msg += f"\n*** KILL THRESHOLD BREACHED: {kill_reason} ***"
+                asyncio.create_task(notifier.send(msg))
+        except Exception:
+            pass  # notification failure should not block the trade log
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Trade log failed: {e}")
+        raise HTTPException(500, f"Failed to log MGC paper trade: {e}") from e
+
+

@@ -766,6 +766,39 @@ async def get_dual_tf_status(
     }
 
 
+@router.get("/mtf")
+async def get_mtf_analysis(symbol: str = "MES"):
+    """
+    Multi-timeframe STC analysis for a single symbol.
+    Returns 1h, 4h, and 1d STC signals with alignment and recommendation.
+    """
+    try:
+        from analytics.mtf_analyzer import analyze_mtf
+
+        sym = symbol.strip().upper()
+        result = await analyze_mtf(sym, _data_mgr)
+        return {
+            "symbol": result.symbol,
+            "recommendation": result.recommendation,
+            "alignment": result.alignment,
+            "confidence": result.confidence,
+            "aligned_timeframes": result.aligned_timeframes,
+            "total_timeframes": result.total_timeframes,
+            "source": result.source,
+            "timeframes": {
+                s.timeframe: {
+                    "stc_value": s.stc_value,
+                    "stc_signal": s.stc_signal,
+                    "price": s.price,
+                    "source": s.source,
+                }
+                for s in result.signals
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /analytics/pipeline/confidence-stats (US-2131)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1014,3 +1047,149 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
         neutral_sentinel=float(BRIER_NEUTRAL),
         timestamp=datetime.now(_tz_iso.utc).isoformat(),
     )
+
+@router.get("/analytics/performance/rolling")
+async def get_rolling_performance(days: int = 30):
+    """Get rolling performance metrics for the last N days (7, 14, or 30)."""
+    if not db_manager:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+    days = max(1, min(days, 90))  # clamp to 1-90 days
+    try:
+        from analytics.performance import PerformanceCalculator
+
+        calc = PerformanceCalculator(db_manager)
+        return calc.calculate_rolling(days=days)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+
+@router.get("/analytics/performance/compare")
+async def get_analytics_performance_compare():
+    """
+    Compare current forward-test metrics against backtest targets.
+
+    Forward metrics (from live paper trading in SQLite) are compared to the
+    reference backtest results: PF=5.27, Sharpe=4.16.
+
+    Returns per-metric diffs, retention percentages, and a ``degradation_ok``
+    flag that is True when forward results still exceed the paper thresholds
+    (PF > 2.0 and Sharpe > 1.5).
+    """
+    if not db_manager:
+        return {
+            "forward": {},
+            "backtest": {"profit_factor": 5.27, "sharpe_ratio": 4.16},
+            "comparison": {},
+            "degradation_ok": False,
+            "note": "Database not initialized.",
+        }
+    try:
+        from analytics.performance import PerformanceCalculator
+
+        calc = PerformanceCalculator(db_manager)
+        return calc.compare_to_backtest()
+    except Exception as exc:
+        logger.error(f"[Analytics] compare_to_backtest failed: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}") from exc
+
+
+
+@router.get("/analytics/trades/by-day")
+async def get_trades_by_day():
+    """Day-of-week breakdown of paper trade performance.
+    Returns win rate, avg pnl, count for each day (Mon-Fri).
+    """
+    try:
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                rows = conn.execute(
+                    """SELECT
+                         strftime('%w', exit_time) AS dow,
+                         COUNT(*) AS cnt,
+                         SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                         SUM(pnl) AS total_pnl,
+                         AVG(pnl) AS avg_pnl
+                       FROM paper_trades
+                       WHERE status = 'closed' AND exit_time IS NOT NULL
+                       GROUP BY dow
+                       ORDER BY dow"""
+                ).fetchall()
+            finally:
+                conn.close()
+
+        DAY_NAMES = {
+            "0": "Sun",
+            "1": "Mon",
+            "2": "Tue",
+            "3": "Wed",
+            "4": "Thu",
+            "5": "Fri",
+            "6": "Sat",
+        }
+        result = []
+        for row in rows:
+            dow, cnt, wins, total_pnl, avg_pnl = row
+            result.append(
+                {
+                    "day": DAY_NAMES.get(str(dow), str(dow)),
+                    "count": cnt,
+                    "wins": wins,
+                    "losses": cnt - wins,
+                    "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
+                    "total_pnl": round(total_pnl or 0, 2),
+                    "avg_pnl": round(avg_pnl or 0, 2),
+                }
+            )
+        return {"days": result, "total_days_analyzed": len(result)}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+
+
+@router.get("/analytics/trades/by-symbol")
+async def get_trades_by_symbol():
+    """Per-symbol breakdown of paper trade performance."""
+    try:
+        with db_manager._lock:
+            conn = sqlite3.connect(str(db_manager._db_path))
+            try:
+                rows = conn.execute(
+                    """SELECT
+                         symbol,
+                         COUNT(*) AS cnt,
+                         SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                         SUM(pnl) AS total_pnl,
+                         AVG(pnl) AS avg_pnl,
+                         MAX(pnl) AS best_trade,
+                         MIN(pnl) AS worst_trade
+                       FROM paper_trades
+                       WHERE status = 'closed'
+                       GROUP BY symbol
+                       ORDER BY total_pnl DESC"""
+                ).fetchall()
+            finally:
+                conn.close()
+
+        result = []
+        for row in rows:
+            symbol, cnt, wins, total_pnl, avg_pnl, best, worst = row
+            result.append(
+                {
+                    "symbol": symbol,
+                    "count": cnt,
+                    "wins": wins,
+                    "losses": cnt - wins,
+                    "win_rate": round(wins / cnt, 3) if cnt > 0 else 0.0,
+                    "total_pnl": round(total_pnl or 0, 2),
+                    "avg_pnl": round(avg_pnl or 0, 2),
+                    "best_trade": round(best or 0, 2),
+                    "worst_trade": round(worst or 0, 2),
+                }
+            )
+        return {"symbols": result, "total_symbols": len(result)}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+

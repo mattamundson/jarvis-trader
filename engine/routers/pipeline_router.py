@@ -9,6 +9,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from config import settings
+
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 logger = logging.getLogger(__name__)
 
@@ -789,5 +791,286 @@ async def run_sdk_pipeline(request: PipelineRunRequest):
     )
 
     return result
+
+
+# ── Migrated from main.py inline routes ──────────────────────────────────────
+
+# Supporting definitions carried over from main.py so the migrated handlers below
+# remain functional (in-memory decision ring buffer + logger + request model).
+_decision_log: list[dict] = []  # In-memory ring buffer, 100 entries
+
+
+def _log_decision(
+    symbol: str,
+    action: str,
+    confidence: float = 0.0,
+    source: str = "unknown",
+    summary: str = "",
+    reasoning: str = "",
+    regime: str | None = None,
+    signal_data: dict | None = None,
+    full_pipeline_data: dict | None = None,
+) -> None:
+    """Append a decision to the in-memory ring buffer AND persist to SQLite."""
+    entry: dict = {
+        "id": len(_decision_log) + 1,
+        "timestamp": datetime.now().isoformat(),
+        "symbol": symbol,
+        "action": action,
+        "confidence": confidence,
+        "source": source,
+        "summary": summary,
+    }
+    _decision_log.append(entry)
+    if len(_decision_log) > 100:
+        _decision_log.pop(0)
+
+    # Persist to SQLite (non-blocking best-effort — never crash the caller)
+    if _db_manager:
+        try:
+            _db_manager.insert_decision(
+                symbol=symbol,
+                action=action,
+                confidence=confidence,
+                regime=regime,
+                signal_data=signal_data or {"source": source, "summary": summary},
+                reasoning=reasoning or summary,
+                full_pipeline_data=full_pipeline_data,
+            )
+        except Exception as _db_err:
+            logger.warning(f"[DB] Failed to persist decision for {symbol}: {_db_err}")
+
+
+class PipelineRequest(BaseModel):
+    symbol: str
+    is_futures: bool = False
+    interval: str = "1h"
+
+
+@router.post("/run")
+async def run_pipeline_full(req: PipelineRequest):
+    """Run the full 5-stage AI trading pipeline for a symbol"""
+    if not _trading_pipeline:
+        raise HTTPException(503, "Pipeline not available (no ANTHROPIC_API_KEY)")
+
+    result = await _trading_pipeline.analyze_and_decide(
+        req.symbol, req.is_futures, timeframe=req.interval
+    )
+
+    final_action = result.get("final_action", "hold")
+
+    # Log to decision feed (in-memory + SQLite)
+    _fund_dec = result.get("fund_decision") or {}
+    _trade_dec = result.get("trade_decision") or {}
+    _log_decision(
+        symbol=req.symbol,
+        action=final_action,
+        confidence=float(
+            result.get("boosted_confidence")
+            or _fund_dec.get("final_conviction")
+            or _trade_dec.get("confidence")
+            or 0.0
+        ),
+        source="pipeline",
+        summary=result.get("summary", ""),
+        reasoning=_trade_dec.get("reasoning", ""),
+        full_pipeline_data=result,
+    )
+
+    # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
+    # Guard: only log approved instruments (FUTURES_WATCHLIST) — never DO NOT TRADE symbols
+    _approved_for_paper = {s.upper() for s in (settings.FUTURES_WATCHLIST or [])}
+    if (
+        not settings.LIVE_TRADING_ENABLED
+        and final_action != "hold"
+        and req.symbol.upper() in _approved_for_paper
+    ):
+        try:
+            trade_dec = result.get("trade_decision") or {}
+            # Prefer limit_price, fall back to stop_price, then last known price from indicators
+            entry_price = (
+                trade_dec.get("limit_price")
+                or trade_dec.get("stop_price")
+                or (result.get("technical", {}) or {}).get("current_price")
+            )
+            final_qty = result.get("final_quantity", 1) or 1
+
+            # Human-gate: when requires_human=True, insert a pending approval row
+            # and skip immediately opening the paper trade
+            if result.get("requires_human") and _db_manager:
+                approval_id = _db_manager.insert_pending_approval(
+                    symbol=req.symbol,
+                    action=final_action,
+                    quantity=float(final_qty),
+                    entry_price=float(entry_price) if entry_price else None,
+                    pipeline_snapshot=result,
+                    timeframe=result.get("timeframe", "1h"),
+                )
+                result["pending_approval_id"] = approval_id
+                logger.info(
+                    f"[PAPER] Human gate — inserted pending approval {approval_id[:8]} "
+                    f"for {req.symbol} {final_action.upper()}"
+                )
+                # Fire-and-forget: WebSocket + WhatsApp + Telegram fan-out
+                try:
+                    from notifications.pending_approval_notify import (
+                        notify_pending_approval_queued as _notify_approval,
+                    )
+
+                    asyncio.create_task(
+                        _notify_approval(
+                            approval_id=approval_id,
+                            symbol=req.symbol,
+                            action=final_action,
+                            quantity=float(final_qty),
+                            entry_price=float(entry_price) if entry_price else None,
+                        )
+                    )
+                except Exception as _notify_exc:
+                    logger.warning("[PAPER] Approval notify task failed: %s", _notify_exc)
+                # OpenClaw WhatsApp alert (direct WSL path, non-blocking)
+                try:
+                    from notifications.openclaw_notifier import (
+                        notify_approval_required as _oc_approval,
+                    )
+
+                    asyncio.create_task(
+                        _oc_approval(
+                            symbol=req.symbol,
+                            action=final_action,
+                            quantity=float(final_qty),
+                            entry_price=float(entry_price) if entry_price else 0.0,
+                        )
+                    )
+                except Exception as _oc_exc:
+                    logger.warning("[PAPER] OpenClaw approval notify failed: %s", _oc_exc)
+            elif _paper_tracker and entry_price:
+                # Persist per-analyst signals so AgentFeedbackTracker.record_outcome
+                # can compute Brier/IC calibration when this trade closes (Novel #2).
+                _analyst_reports = result.get("analyst_reports") or {}
+                _analyst_signals = {
+                    name: float(rep.get("signal", 0.0))
+                    for name, rep in _analyst_reports.items()
+                    if isinstance(rep, dict)
+                    and name in ("technical", "news", "social", "fundamental", "corey")
+                }
+                trade_id = _paper_tracker.add_paper_trade(
+                    symbol=req.symbol,
+                    side=final_action,
+                    quantity=float(final_qty),
+                    entry_price=float(entry_price),
+                    stop_loss=float(trade_dec.get("stop_price")) if trade_dec.get("stop_price") else None,
+                    take_profit=float(trade_dec.get("target_price") or trade_dec.get("take_profit") or 0) or None,
+                    strategy_params={
+                        "source": "pipeline",
+                        "summary": result.get("summary", ""),
+                        "predicted_direction": final_action.upper(),
+                        "analyst_signals": _analyst_signals,
+                    },
+                )
+                result["paper_trade_id"] = trade_id
+                logger.info(
+                    f"[PAPER] Auto-logged {req.symbol} {final_action.upper()} "
+                    f"qty={final_qty} @ {entry_price:.4f}  id={trade_id[:8]}"
+                )
+            elif not entry_price:
+                logger.warning(
+                    f"[PAPER] Skipped auto-log for {req.symbol} {final_action.upper()} "
+                    f"— could not determine entry price from pipeline result"
+                )
+        except Exception as exc:
+            logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
+
+    # Auto-log to paper tracker when not in live mode and the pipeline decided to trade
+    if not settings.LIVE_TRADING_ENABLED and final_action != "hold" and _paper_tracker:
+        try:
+            trade_dec = result.get("trade_decision") or {}
+            # Prefer limit_price, fall back to stop_price, then last known price from indicators
+            entry_price = (
+                trade_dec.get("limit_price")
+                or trade_dec.get("stop_price")
+                or (result.get("technical", {}) or {}).get("current_price")
+            )
+            final_qty = result.get("final_quantity", 1) or 1
+
+            if entry_price:
+                trade_id = _paper_tracker.open_trade(
+                    symbol=req.symbol,
+                    action=final_action,
+                    quantity=float(final_qty),
+                    price=float(entry_price),
+                    notes=result.get("summary", ""),
+                )
+                result["paper_trade_id"] = trade_id
+                logger.info(
+                    f"[PAPER] Auto-logged {req.symbol} {final_action.upper()} "
+                    f"qty={final_qty} @ {entry_price:.4f}  id={trade_id[:8]}"
+                )
+            else:
+                logger.warning(
+                    f"[PAPER] Skipped auto-log for {req.symbol} {final_action.upper()} "
+                    f"— could not determine entry price from pipeline result"
+                )
+        except Exception as exc:
+            logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
+
+    # Send WhatsApp alert for non-HOLD signals
+    from notifications.whatsapp import get_notifier
+
+    notifier = get_notifier()
+    asyncio.create_task(notifier.alert_pipeline_result(req.symbol, result))
+
+    return result
+
+
+@router.get("/status")
+async def pipeline_status():
+    """Pipeline availability and last run info"""
+    return {
+        "available": _trading_pipeline is not None,
+        "sdk_available": _sdk_pipeline is not None,
+        "last_run": _decision_log[-1] if _decision_log else None,
+        "decision_count": len(_decision_log),
+    }
+
+
+@router.get("/history")
+async def get_pipeline_history(limit: int = 50, symbol: str = ""):
+    """
+    Return historical pipeline run records from SQLite.
+
+    Each record corresponds to one TradingPipeline execution triggered by
+    a TradingView webhook or manual call.
+
+    Query params:
+        limit  : max rows to return (default 50, capped at 200)
+        symbol : filter by ticker symbol (optional, case-insensitive)
+    """
+    if not _db_manager:
+        return {"runs": [], "count": 0, "note": "db_manager not initialized"}
+    try:
+        limit = min(max(1, limit), 200)
+        runs = _db_manager.get_pipeline_history(
+            limit=limit,
+            symbol=symbol.upper() if symbol else None,
+        )
+        return {"runs": runs, "count": len(runs)}
+    except Exception as exc:
+        logger.error(f"[DB] get_pipeline_history failed: {exc}")
+        return {"runs": [], "count": 0, "error": str(exc)}
+
+
+
+@router.get("/signals/stats")
+async def signals_stats():
+    """Return webhook signal statistics including deduplication cache size."""
+    from routers.webhook_router import _dedup_cache as _webhook_dedup
+
+    recent = get_recent_webhooks(limit=50)
+    return {
+        "total_received": len(recent),
+        "recent_webhooks": recent[:10],
+        "dedup_cache_size": len(_webhook_dedup),
+    }
 
 
