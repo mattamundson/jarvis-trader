@@ -382,7 +382,11 @@ def _compute_gate_v2(
     cost_sweep_metrics: dict,
 ) -> dict:
     """Compute all gate v2 metrics including ALT-specific checks."""
-    from backtest._gate_v2_trade_metrics import trade_level_dsr, trade_level_mc_95th_dd
+    from backtest._gate_v2_trade_metrics import (
+        trade_level_dsr,
+        trade_level_mc_95th_dd,
+        trade_level_win_rate_ci_lower,
+    )
 
     oos_pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
     oos_dds = [r.max_drawdown_pct for r in oos_results]
@@ -399,6 +403,7 @@ def _compute_gate_v2(
     # for the gate decision. See _gate_v2_trade_metrics for the rationale.
     mc_95th_dd = trade_level_mc_95th_dd(oos_results, initial_capital=CAPITAL)
     dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
+    win_rate_ci_lower = trade_level_win_rate_ci_lower(oos_results)  # Init 2C (shadow; not gated)
     mc_95th_dd_window_legacy = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
 
     # ALT metrics
@@ -518,6 +523,7 @@ def _compute_gate_v2(
         "total_oos_trades": all_trades,
         "min_oos_trades_total": MIN_OOS_TRADES_TOTAL,
         "sample_adequate": sample_adequate,
+        "win_rate_ci_lower": round(win_rate_ci_lower, 4),
         "core_reasons": core_reasons,
         "alt_reasons": alt_reasons,
         "reasons": core_reasons + alt_reasons,
@@ -794,6 +800,7 @@ def run_wfo() -> dict:
             "total_oos_trades": gate["total_oos_trades"],
             "min_oos_trades_total": gate["min_oos_trades_total"],
             "sample_adequate": gate["sample_adequate"],
+            "win_rate_ci_lower": gate["win_rate_ci_lower"],
         },
         "thresholds": {
             "pf_ci_lower": GATE_PF_CI_LOWER,
