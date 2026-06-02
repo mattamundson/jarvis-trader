@@ -748,6 +748,249 @@ class SafetyLayerTestCoverageCriterion(Phase3Criterion):
 
 
 # ---------------------------------------------------------------------------
+# Edge-mode decoupling (OPT-IN — default behavior is unchanged)
+# ---------------------------------------------------------------------------
+# Two NEW criteria + an OPT-IN evaluator that lets the walk-forward edge proof
+# (gate-v2 PASS on 2+ years of OOS data) + a small sample of REAL execution
+# fidelity substitute for the paper-accrual edge gates (100 trades / 60 days).
+#
+# SAFETY DESIGN (why this cannot weaken the current posture):
+#   - The default mode is "paper_accrual" — evaluate_all_criteria and the 10
+#     criteria in _ALL_CRITERIA are UNCHANGED and remain the default everywhere.
+#   - The two new criteria declare severity "info", so even when added to a
+#     report they never block by default.
+#   - The "wfo_plus_fidelity" mode is reached ONLY via READINESS_EDGE_MODE or an
+#     explicit argument, and it requires ExecutionFidelity to PASS — which itself
+#     requires ALLOW_PAPER_SIMULATED_ORDERS=True (real fills). While that flag is
+#     False the mode yields NO-GO, so it is inert until forward-test is enabled.
+#   - This module remains informational only (per the file invariants): it never
+#     reads/writes LIVE_TRADING_ENABLED, never imports safety_layer, never mutates
+#     config. Live trading still requires the separate hardcoded flags + the human
+#     [safety-review] checklist.
+
+VERDICT_TTL_DAYS = 30
+
+EDGE_MODE_PAPER_ACCRUAL = "paper_accrual"
+EDGE_MODE_WFO_FIDELITY = "wfo_plus_fidelity"
+_VALID_EDGE_MODES = (EDGE_MODE_PAPER_ACCRUAL, EDGE_MODE_WFO_FIDELITY)
+
+# Edge-accrual criteria — demoted to informational under wfo_plus_fidelity mode
+# because the walk-forward analysis already proves edge.
+_EDGE_ACCRUAL_NAMES = frozenset(
+    {
+        "paper_trading_window",
+        "paper_trades_count",
+        "win_rate",
+        "profit_factor",
+        "max_drawdown",
+        "sortino_ratio",
+    }
+)
+
+
+def _edge_mode() -> str:
+    """Resolve the readiness edge mode from env (default: paper_accrual)."""
+    raw = os.environ.get("READINESS_EDGE_MODE", EDGE_MODE_PAPER_ACCRUAL).strip().lower()
+    return raw if raw in _VALID_EDGE_MODES else EDGE_MODE_PAPER_ACCRUAL
+
+
+def _paper_sim_enabled() -> bool:
+    """Read ONLY ALLOW_PAPER_SIMULATED_ORDERS (never LIVE_TRADING_ENABLED).
+
+    Indirection so tests can monkeypatch. Lazy-imports config to avoid a
+    module-load dependency; falls back to the env var if config is unavailable.
+    """
+    try:
+        from config import settings
+
+        return bool(getattr(settings, "ALLOW_PAPER_SIMULATED_ORDERS", False))
+    except Exception:
+        return os.environ.get("ALLOW_PAPER_SIMULATED_ORDERS", "false").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+
+
+def _verdicts_dir() -> str:
+    engine_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(engine_dir, "data", "gate_v2_verdicts")
+
+
+def _scan_current_pass_symbols(verdicts_dir: str, now: datetime | None = None) -> set[str]:
+    """Symbols with a current (<= VERDICT_TTL_DAYS old) gate-v2 PASS verdict."""
+    import json as _json
+
+    now = now or _now_utc()
+    out: set[str] = set()
+    if not os.path.isdir(verdicts_dir):
+        return out
+    for fname in os.listdir(verdicts_dir):
+        if not fname.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(verdicts_dir, fname), encoding="utf-8") as fh:
+                v = _json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if str(v.get("verdict", "")).upper() != "PASS":
+            continue
+        created = v.get("created_at")
+        if not created:
+            continue
+        try:
+            age_days = (now - _parse_iso(str(created))).days
+        except ValueError:
+            continue
+        if age_days <= VERDICT_TTL_DAYS:
+            sym = str(v.get("symbol", "")).upper()
+            if sym:
+                out.add(sym)
+    return out
+
+
+class WalkForwardEdgeCriterion(Phase3Criterion):
+    """C11 (edge-mode) — every actively-traded symbol has a current gate-v2 PASS.
+
+    The walk-forward edge proof: gate-v2 PASS on 2+ years of out-of-sample data.
+    Under READINESS_EDGE_MODE=wfo_plus_fidelity this is the evidence that lets the
+    paper-accrual edge gates be treated as informational. Declared severity 'info'
+    so it NEVER affects the default (paper_accrual) verdict.
+    """
+
+    name: str = "walk_forward_edge"
+    description: str = (
+        "Every actively-traded symbol has a current (<= 30-day) gate-v2 PASS "
+        "verdict. This is the walk-forward edge proof (out-of-sample on 2+ years) "
+        "that substitutes for paper-accrual edge gates under wfo_plus_fidelity mode."
+    )
+    severity: Literal["blocker", "warning", "info"] = "info"
+
+    def check(self, db_path: str) -> tuple[bool, str]:
+        verdicts_dir = _verdicts_dir()
+        current_pass = _scan_current_pass_symbols(verdicts_dir)
+        if not current_pass:
+            return False, f"No current gate-v2 PASS verdicts (<= {VERDICT_TTL_DAYS}d)"
+
+        traded: set[str] = set()
+        try:
+            conn = _open_db(db_path)
+            try:
+                rows = conn.execute(
+                    "SELECT DISTINCT symbol FROM paper_trades WHERE status = 'closed'"
+                ).fetchall()
+                traded = {str(r["symbol"]).upper() for r in rows if r["symbol"]}
+            finally:
+                conn.close()
+        except Exception as exc:
+            return False, f"DB error: {exc}"
+
+        if not traded:
+            return (
+                True,
+                f"No closed paper trades yet; current PASS verdicts: {sorted(current_pass)}",
+            )
+
+        missing = traded - current_pass
+        if not missing:
+            return True, f"All traded symbols have current PASS verdicts: {sorted(traded)}"
+        return (
+            False,
+            f"Traded symbols missing current PASS verdict: {sorted(missing)} "
+            f"(have: {sorted(current_pass)})",
+        )
+
+
+class ExecutionFidelityCriterion(Phase3Criterion):
+    """C12 (edge-mode) — execution fidelity on REAL broker fills.
+
+    Requires ALLOW_PAPER_SIMULATED_ORDERS=True (so real fills exist), >= min_fills
+    closed trades, avg slippage within bounds, broker connected, kill switch
+    inactive, and realized PF >= 1.0 (sign-check, NOT the 2.0 edge gate). Declared
+    severity 'info' so it never affects the default verdict; promoted to blocker
+    only under wfo_plus_fidelity mode. Inert while ALLOW_PAPER_SIMULATED_ORDERS is
+    False (returns FAIL → wfo mode yields NO-GO).
+    """
+
+    name: str = "execution_fidelity"
+    description: str = (
+        "Execution fidelity on REAL IB paper fills: >= 15 fills, avg slippage "
+        "<= 1.5 ticks, broker connected, kill switch inactive, realized PF >= 1.0 "
+        "(sign-check). Requires ALLOW_PAPER_SIMULATED_ORDERS=True; inert otherwise."
+    )
+    severity: Literal["blocker", "warning", "info"] = "info"
+
+    def check(self, db_path: str) -> tuple[bool, str]:
+        if not _paper_sim_enabled():
+            return (
+                False,
+                "ALLOW_PAPER_SIMULATED_ORDERS=False: orders are simulated, no real "
+                "broker fills to measure. Enable the IBKR paper order path before "
+                "relying on execution fidelity.",
+            )
+
+        try:
+            from paper.validation_gate_config import EXECUTION_FIDELITY_GATES
+
+            min_fills = int(EXECUTION_FIDELITY_GATES["min_fills"])
+            max_slip = float(EXECUTION_FIDELITY_GATES["max_avg_slippage_ticks"])
+            pf_floor = float(EXECUTION_FIDELITY_GATES["min_realized_pf_floor"])
+        except Exception:
+            min_fills, max_slip, pf_floor = 15, 1.5, 1.0
+
+        try:
+            conn = _open_db(db_path)
+            try:
+                trade_rows = conn.execute(
+                    "SELECT pnl, slippage_ticks FROM paper_trades "
+                    "WHERE status = 'closed' AND pnl IS NOT NULL"
+                ).fetchall()
+                health = conn.execute(
+                    "SELECT ibkr_data, ibkr_exec, kill_switch FROM health_snapshots "
+                    "ORDER BY ts_utc DESC LIMIT 1"
+                ).fetchone()
+            finally:
+                conn.close()
+        except Exception as exc:
+            return False, f"DB error: {exc}"
+
+        n = len(trade_rows)
+        if n < min_fills:
+            return False, f"Only {n} real fills; need >= {min_fills} for fidelity"
+
+        slips = [
+            float(r["slippage_ticks"]) for r in trade_rows if r["slippage_ticks"] is not None
+        ]
+        avg_slip = (sum(slips) / len(slips)) if slips else 0.0
+        if slips and avg_slip > max_slip:
+            return False, f"Avg slippage {avg_slip:.2f}t > {max_slip}t threshold"
+
+        pnls = [float(r["pnl"]) for r in trade_rows]
+        gp = sum(p for p in pnls if p > 0)
+        gl = abs(sum(p for p in pnls if p < 0))
+        pf = (gp / gl) if gl > 0 else (float("inf") if gp > 0 else 0.0)
+        if pf < pf_floor:
+            return False, f"Realized PF {pf:.2f} < {pf_floor} floor"
+
+        if health is None:
+            return False, "No health snapshot for broker/kill-switch state"
+        data_ok = bool(health["ibkr_data"]) if health["ibkr_data"] is not None else False
+        exec_ok = bool(health["ibkr_exec"]) if health["ibkr_exec"] is not None else False
+        ks_active = bool(health["kill_switch"]) if health["kill_switch"] is not None else False
+        if not (data_ok and exec_ok):
+            return False, f"Broker link degraded (data={data_ok}, exec={exec_ok})"
+        if ks_active:
+            return False, "Kill switch ACTIVE"
+
+        pf_disp = "inf" if pf == float("inf") else f"{pf:.2f}"
+        return (
+            True,
+            f"{n} real fills, avg slip {avg_slip:.2f}t, PF {pf_disp}, broker up, "
+            "kill switch inactive",
+        )
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -763,6 +1006,38 @@ _ALL_CRITERIA: list[Phase3Criterion] = [
     EngineUptimeStabilityCriterion(),
     SafetyLayerTestCoverageCriterion(),
 ]
+
+# Criteria set for wfo_plus_fidelity mode: the 4 operational/safety criteria +
+# the 2 WFO/fidelity substitutes (promoted to blockers) + the 6 edge-accrual
+# criteria (demoted to info). _ALL_CRITERIA above is intentionally untouched.
+_WFO_MODE_CRITERIA: list[Phase3Criterion] = [
+    WalkForwardEdgeCriterion(),
+    ExecutionFidelityCriterion(),
+    ConsecutiveLossStreakCriterion(),
+    KillSwitchInvocationsCriterion(),
+    EngineUptimeStabilityCriterion(),
+    SafetyLayerTestCoverageCriterion(),
+    PaperTradingWindowCriterion(),
+    PaperTradesCountCriterion(),
+    WinRateCriterion(),
+    ProfitFactorCriterion(),
+    MaxDrawdownCriterion(),
+    SortinoRatioCriterion(),
+]
+
+
+def _effective_severity(name: str, declared: str, mode: str) -> str:
+    """Severity used for verdict computation under a given edge mode.
+
+    paper_accrual: declared severity (unchanged).
+    wfo_plus_fidelity: edge-accrual criteria -> info; WFO/fidelity -> blocker.
+    """
+    if mode == EDGE_MODE_WFO_FIDELITY:
+        if name in _EDGE_ACCRUAL_NAMES:
+            return "info"
+        if name in ("walk_forward_edge", "execution_fidelity"):
+            return "blocker"
+    return declared
 
 
 # ---------------------------------------------------------------------------
@@ -858,6 +1133,97 @@ def evaluate_all_criteria(db_path: str) -> dict:
         },
         "criteria": results,
         "evaluated_at": _now_utc().isoformat(),
+    }
+
+
+def evaluate_with_edge_mode(db_path: str, mode: str | None = None) -> dict:
+    """Evaluate readiness under a chosen edge mode (OPT-IN; default unchanged).
+
+    mode=None reads READINESS_EDGE_MODE (default "paper_accrual").
+
+    paper_accrual (DEFAULT):
+        Identical to evaluate_all_criteria — the 10 standard criteria, standard
+        severities — plus an ``edge_mode`` key. Byte-identical verdict.
+
+    wfo_plus_fidelity (OPT-IN):
+        The walk-forward edge proof (gate-v2 PASS) + real-fill execution fidelity
+        become BLOCKERS; the 6 paper-accrual edge gates (window, count, win-rate,
+        PF, drawdown, sortino) are demoted to INFO. The 4 operational/safety
+        criteria keep their declared severity. Because ExecutionFidelity requires
+        ALLOW_PAPER_SIMULATED_ORDERS=True (real fills), this mode yields NO-GO
+        while that flag is False — inert until forward-test is enabled.
+
+    Same return shape as evaluate_all_criteria, with an added top-level
+    ``edge_mode`` key.
+    """
+    mode = (mode or _edge_mode()).strip().lower()
+    if mode not in _VALID_EDGE_MODES:
+        mode = EDGE_MODE_PAPER_ACCRUAL
+
+    if mode == EDGE_MODE_PAPER_ACCRUAL:
+        report = evaluate_all_criteria(db_path)
+        report["edge_mode"] = EDGE_MODE_PAPER_ACCRUAL
+        return report
+
+    # wfo_plus_fidelity
+    results = []
+    severity_breakdown: dict[str, dict] = {
+        "blocker": {"pass": 0, "fail": 0},
+        "warning": {"pass": 0, "fail": 0},
+        "info": {"pass": 0, "fail": 0},
+    }
+    blocker_fail_count = 0
+    warning_fail_count = 0
+
+    for criterion in _WFO_MODE_CRITERIA:
+        try:
+            passed, evidence = criterion.check(db_path)
+        except Exception as exc:
+            passed = False
+            evidence = f"Unhandled exception in check: {exc}"
+            logger.exception("Phase3 criterion %s raised", criterion.name)
+
+        severity = _effective_severity(criterion.name, criterion.severity, mode)
+        status = "PASS" if passed else "FAIL"
+        severity_breakdown[severity]["pass" if passed else "fail"] += 1
+
+        if not passed:
+            if severity == "blocker":
+                blocker_fail_count += 1
+            elif severity == "warning":
+                warning_fail_count += 1
+
+        results.append(
+            {
+                "name": criterion.name,
+                "description": criterion.description,
+                "status": status,
+                "evidence": evidence,
+                "severity": severity,
+            }
+        )
+
+    total_pass = sum(1 for r in results if r["status"] == "PASS")
+    total_fail = len(results) - total_pass
+
+    if blocker_fail_count > 0:
+        overall = "NO-GO"
+    elif warning_fail_count > 1:
+        overall = "WAIT"
+    else:
+        overall = "GO"
+
+    return {
+        "summary": {
+            "pass": total_pass,
+            "fail": total_fail,
+            "total": len(results),
+            "severity_breakdown": severity_breakdown,
+            "overall": overall,
+        },
+        "criteria": results,
+        "evaluated_at": _now_utc().isoformat(),
+        "edge_mode": EDGE_MODE_WFO_FIDELITY,
     }
 
 
