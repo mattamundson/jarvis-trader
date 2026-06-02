@@ -145,6 +145,10 @@ def test_calibration_cold_db_returns_neutral(client_with_db):
     # Cold state
     assert data["total_outcomes"] == 0
     assert data["ready_to_activate"] is False
+    assert data["active_agents"] == []
+    assert data["blocked_by"] == []
+    assert data["rows_excluded_corrupt"] == 0
+    assert data["rows_excluded_duplicate"] == 0
     assert data["neutral_sentinel"] == pytest.approx(0.25)
     # All agents present, all sample_counts=0, all brier_score=neutral, ic_score=0
     for agent in _TEST_AGENTS:
@@ -155,8 +159,11 @@ def test_calibration_cold_db_returns_neutral(client_with_db):
         assert entry["brier_score"] == pytest.approx(0.25)
 
 
-def test_calibration_partial_warmup(client_with_db):
-    """Only technical has samples; ready_to_activate stays False."""
+def test_calibration_single_active_agent_is_ready(client_with_db):
+    """W6 honest gate: when only technical emits signals (>= min_trades) and the
+    other agents are silent, readiness is True - perennially-silent agents no
+    longer block activation. active_agents lists technical; blocked_by is empty.
+    """
     client, db_path = client_with_db
     _seed_rows(db_path, agent_idx=0, n=6)  # technical only, 6 rows (>= min_trades=5)
 
@@ -165,9 +172,48 @@ def test_calibration_partial_warmup(client_with_db):
     assert data["per_agent"]["technical"]["sample_count"] == 6
     assert data["per_agent"]["technical"]["ready"] is True
     assert data["per_agent"]["news"]["sample_count"] == 0
-    assert data["per_agent"]["news"]["ready"] is False
-    # Not fully ready — news/social/fundamental/corey still empty
+    assert data["active_agents"] == ["technical"]
+    assert data["blocked_by"] == []
+    assert data["ready_to_activate"] is True
+
+
+def test_calibration_active_agent_below_floor_blocks(client_with_db):
+    """W6: an agent that emits signals but sits below min_trades blocks readiness
+    and appears in blocked_by."""
+    client, db_path = client_with_db
+    _seed_rows(db_path, agent_idx=0, n=6)  # technical ready
+    _seed_rows(db_path, agent_idx=1, n=2)  # news active but below floor (2 < 5)
+
+    data = client.get("/analytics/calibration").json()
+    assert "news" in data["blocked_by"]
+    assert "technical" not in data["blocked_by"]
+    assert set(data["active_agents"]) == {"technical", "news"}
     assert data["ready_to_activate"] is False
+
+
+def test_calibration_reports_integrity_exclusions(client_with_db):
+    """W5: corrupt-magnitude and logical-duplicate rows are surfaced via the
+    rows_excluded_* fields."""
+    client, db_path = client_with_db
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO trade_outcomes "
+            "(trade_id, timestamp, symbol, direction, pnl_usd, pnl_pct, outcome, technical_signal) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("corrupt", now, "MES", "LONG", 10102.98, 0.0, "WIN", 0.9),
+        )
+        for k in range(2):
+            conn.execute(
+                "INSERT OR REPLACE INTO trade_outcomes "
+                "(trade_id, timestamp, symbol, direction, pnl_usd, pnl_pct, outcome, technical_signal) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (f"dup{k}", now, "MES", "SHORT", -20.0, 0.0, "LOSS", 0.9),
+            )
+
+    data = client.get("/analytics/calibration").json()
+    assert data["rows_excluded_corrupt"] >= 1
+    assert data["rows_excluded_duplicate"] >= 1
 
 
 def test_calibration_full_warmup_sets_ready_flag(client_with_db):
