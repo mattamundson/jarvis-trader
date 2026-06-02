@@ -172,6 +172,13 @@ engine/data/paper_trades.json
 # .env with negation for .env.example
 !engine/.env.example
 
+# Claude Code worktrees (machine-local, auto-created by EnterWorktree)
+.claude/worktrees/
+
+# Strategy scratch / trash directories
+engine/strategies/.trash/
+engine/strategies/results.jsonl
+
 # Screenshots from TradingView MCP and manual testing
 screenshots/
 tradingview-mcp/screenshots/
