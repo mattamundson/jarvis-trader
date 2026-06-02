@@ -1,0 +1,10 @@
+# Local state caches - regenerated each run
+.disk-watch-state.json
+.memory-hygiene-state.json
+.memory-watch-state.json
+.vault-drift-state*.json
+.regression-alerts.log
+.sweep-orphan-claude-procs.log
+.memory-watch.log
+*.bak-*
+*.broken-*
