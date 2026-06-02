@@ -54,6 +54,41 @@ _LLM_COST_24H_WARN_USD = float(os.getenv("LLM_COST_24H_WARN_USD", "5.0"))
 _BRIER_CACHE_TTL_SEC = 30.0
 _brier_cache: dict = {"checked_at": 0.0, "value": None}
 
+# IB Gateway process-liveness cache. This is a *port* probe (is the Gateway
+# accepting TCP on the configured IB port?), deliberately distinct from the
+# connector-state booleans (ibkr_*_connected). The Gateway being down — not the
+# connector dropping — is what silently disabled stop enforcement for ~13h on
+# 2026-06-01 (trade #178). Cached 30s like the TV-CDP probe so /health stays cheap.
+_IBGW_CACHE_TTL_SEC = 30.0
+_ibgw_health_cache: dict = {"checked_at": 0.0, "alive": False, "port": None}
+
+
+def _check_ibgateway_alive() -> tuple[bool, int]:
+    """Probe whether IB Gateway is accepting TCP connections on the IB port.
+
+    Uses 127.0.0.1 explicitly (never 'localhost' — it resolves to ::1 first on
+    Windows and the Gateway binds IPv4). 0.5s timeout, cached 30s. Returns
+    (alive, port). A True here with ibkr_data_connected=False means the connector
+    dropped but the Gateway is up (recover via POST /data/reconnect); a False
+    means the Gateway process itself is down (needs a relaunch + login).
+    """
+    port = int(getattr(settings, "IBKR_PORT", 4002) or 4002)
+    now = time.monotonic()
+    if now - _ibgw_health_cache.get("checked_at", 0.0) < _IBGW_CACHE_TTL_SEC:
+        return _ibgw_health_cache["alive"], _ibgw_health_cache.get("port") or port
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.5)
+    try:
+        alive = sock.connect_ex(("127.0.0.1", port)) == 0
+    except Exception:
+        alive = False
+    finally:
+        sock.close()
+
+    _ibgw_health_cache.update(checked_at=now, alive=alive, port=port)
+    return alive, port
+
 
 def _compute_brier_30d_rolling() -> float | None:
     """Cached 30d rolling Brier surface.
@@ -311,6 +346,7 @@ async def _health_inner() -> dict:
         pass
 
     tv_mcp_healthy, tv_mcp_details, tv_mcp_status = _check_tradingview_mcp_health()
+    ibgateway_alive, ibgateway_port = _check_ibgateway_alive()
 
     status = "ok" if (db_ok and llm_path_healthy) else "degraded"
 
@@ -325,6 +361,8 @@ async def _health_inner() -> dict:
         "ibkr_connected": ib_health.get("status") == "connected",
         "ibkr_execution_connected": ib_health.get("execution_connected", False),
         "ibkr_data_connected": ib_health.get("data_connected", False),
+        "ibgateway_alive": ibgateway_alive,
+        "ibgateway_port": ibgateway_port,
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
         "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,
