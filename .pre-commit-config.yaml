@@ -79,6 +79,14 @@ repos:
           - --no-error-summary
         files: ^engine/backtest/.*\.py$
         pass_filenames: true
+      - id: gate-v2-no-window-level
+        name: gate-v2 metric integrity (enabled strategies must use trade-level gate)
+        language: system
+        entry: engine/.venv/Scripts/python
+        args:
+          - engine/scripts/check_gate_v2_integrity.py
+        files: ^engine/backtest/(run_.*|paper_config)\.py$
+        pass_filenames: true
 
   # ── TypeScript / Next.js ─────────────────────────────────────────────────────
   - repo: https://github.com/pre-commit/mirrors-prettier
