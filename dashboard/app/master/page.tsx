@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { fetchMasterStatus } from "@/lib/masterApi";
 import { DomainTile } from "@/components/master/DomainTile";
 import { CommandChat } from "@/components/master/CommandChat";
+import { SchedulerPanel } from "@/components/master/SchedulerPanel";
 
 const ORDER = ["personal", "trading", "finances", "career", "health", "knowledge", "system"];
 
@@ -34,6 +35,7 @@ export default function MasterPage() {
           ),
         )}
       </div>
+      <SchedulerPanel />
       <CommandChat />
     </main>
   );
