@@ -555,7 +555,11 @@ async def _gateway_session(
             elif op == OP_HEARTBEAT:
                 # Server requests immediate heartbeat
                 hb = json.dumps({"op": OP_HEARTBEAT, "d": last_seq})
-                await ws.send_str(hb)
+                try:
+                    await ws.send_str(hb)
+                except Exception as _hb_exc:
+                    logger.warning("reaction_watcher: server-requested heartbeat failed: %s", _hb_exc)
+                    return session_id, last_seq, True
 
         elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING):
             logger.warning(
