@@ -19,6 +19,11 @@ import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
 
+try:  # dual-path import (engine.* package vs bare under engine/ cwd)
+    from engine.analytics.outcome_hygiene import window_integrity
+except ImportError:  # pragma: no cover
+    from analytics.outcome_hygiene import window_integrity
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +33,40 @@ def _default_db_path() -> str:
     # repo-root data/jarvis_trader.db that was accidentally created).
     engine_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(engine_root, "data", "jarvis_trader.db")
+
+
+def _calibration_integrity(db_path: str, for_date: date, window_days: int = 30) -> dict:
+    """Scan the sibling agent_feedback.db trade_outcomes table for corrupt /
+    duplicate rows within the rolling window (analytics/outcome_hygiene).
+
+    Standing detector for a repeat of the 2026-06-02 trade_outcomes pollution.
+    Best-effort: returns a zeroed report (alert=False) when the DB or table is
+    absent. Read-only (mode=ro), additive -- never mutates calibration state.
+    """
+    fb_path = Path(db_path).parent / "agent_feedback.db"
+    report = {
+        "total_outcomes": 0,
+        "rows_excluded_corrupt": 0,
+        "rows_excluded_duplicate": 0,
+        "alert": False,
+        "window_days": window_days,
+    }
+    if not fb_path.exists():
+        return report
+    cutoff = (for_date - timedelta(days=window_days)).isoformat()
+    try:
+        with sqlite3.connect(f"file:{fb_path}?mode=ro", uri=True) as conn:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM trade_outcomes WHERE timestamp >= ?", (cutoff,)
+            ).fetchone()[0]
+            corrupt, dup = window_integrity(conn, cutoff)
+    except sqlite3.DatabaseError:
+        return report
+    report["total_outcomes"] = total
+    report["rows_excluded_corrupt"] = corrupt
+    report["rows_excluded_duplicate"] = dup
+    report["alert"] = bool(corrupt or dup)
+    return report
 
 
 def generate_digest(for_date: date, db_path: str) -> dict:
@@ -47,6 +86,7 @@ def generate_digest(for_date: date, db_path: str) -> dict:
         "top_signals": [],
         "corey_quote": None,
         "commentary_health": [],
+        "calibration_integrity": None,
     }
 
     with sqlite3.connect(db_path) as conn:
@@ -118,6 +158,12 @@ def generate_digest(for_date: date, db_path: str) -> dict:
         ).fetchall()
         digest["top_signals"] = [dict(row) for row in signals]
 
+    # Calibration integrity -- standing detector for a repeat of the 2026-06-02
+    # trade_outcomes pollution. Reads the sibling agent_feedback.db (NOT the
+    # signals db_path); additive + read-only. alert=True when corrupt/duplicate
+    # rows are present so the daily digest surfaces it without a manual audit.
+    digest["calibration_integrity"] = _calibration_integrity(db_path, for_date)
+
     return digest
 
 
@@ -181,6 +227,21 @@ def main() -> int:
         digest["sentiment_label"] or "n/a",
         health_fresh,
     )
+    ci = digest.get("calibration_integrity") or {}
+    if ci.get("alert"):
+        logger.warning(
+            "  CALIBRATION INTEGRITY ALERT: %d corrupt + %d duplicate row(s) in "
+            "trade_outcomes (last %dd) -- investigate agent_feedback.db",
+            ci.get("rows_excluded_corrupt", 0),
+            ci.get("rows_excluded_duplicate", 0),
+            ci.get("window_days", 30),
+        )
+    else:
+        logger.info(
+            "  calibration integrity: clean (%d outcomes, last %dd)",
+            ci.get("total_outcomes", 0),
+            ci.get("window_days", 30),
+        )
     return 0
 
 
