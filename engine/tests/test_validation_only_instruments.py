@@ -14,7 +14,7 @@ Verifies that:
 The order submission guard lives in approval/service.py:ensure_approval_allowed().
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -314,6 +314,7 @@ def test_approval_queue_blocks_validation_only_strategy(tmp_path):
     with (
         patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
         patch("agents.pipeline.VALIDATION_ONLY_STRATEGIES", {stark_signal}),
+        patch("routers.approval_queue_router._AUDIT_LOG_PATH", tmp_path / "audit.jsonl"),
     ):
         inject_approval_queue_deps(mock_safety, db_path)
         client = TestClient(app)
@@ -367,7 +368,7 @@ def test_approval_queue_allows_non_validation_only_strategy(tmp_path):
 
     mock_safety = MagicMock()
     mock_safety.get_status.return_value = {"kill_switch_active": False}
-    mock_safety.submit_paper_order = MagicMock(
+    mock_safety.submit_paper_order = AsyncMock(
         return_value={"approved": False, "reason": "blocked_by_safety_layer"}
     )
 
@@ -377,6 +378,7 @@ def test_approval_queue_allows_non_validation_only_strategy(tmp_path):
     with (
         patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
         patch("agents.pipeline.VALIDATION_ONLY_STRATEGIES", set()),
+        patch("routers.approval_queue_router._AUDIT_LOG_PATH", tmp_path / "audit.jsonl"),
     ):
         inject_approval_queue_deps(mock_safety, db_path)
         client = TestClient(app)
