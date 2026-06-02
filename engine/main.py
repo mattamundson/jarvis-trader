@@ -302,6 +302,7 @@ redis_trigger: "RedisSignalTrigger | None" = None  # noqa: F821
 trailing_stop_manager: "TrailingStopManager | None" = None  # noqa: F821
 portfolio_allocator: "PortfolioAllocator | None" = None  # noqa: F821
 canary_manager: "CanaryManager | None" = None  # noqa: F821
+paper_stop_monitor: "PaperStopMonitor | None" = None  # noqa: F821
 
 
 def _log_pipeline_whatsapp_to_alert_log(
@@ -414,6 +415,7 @@ async def lifespan(app: FastAPI):
         """Heavy lifting moved here to enable <10s server binding."""
         global data_manager, ib_paper_connector, schwab_connector, portfolio_allocator
         global tv_streamer, redis_trigger, trailing_stop_manager, canary_manager
+        global paper_stop_monitor
 
         logger.info("⏳ Starting heavy background initialization...")
 
@@ -497,6 +499,19 @@ async def lifespan(app: FastAPI):
             logger.info("🚀 A/B Canary Framework activated (Shadow Testing loop)")
         except Exception as e:
             logger.warning(f"⚠️ CanaryManager background failed: {e}")
+
+        # 6. Paper Stop-Loss Monitor (Initiative 1, Track A2)
+        # Feed-independent backstop: enforces open paper stops via the tick-price
+        # path even when the historical-bar pipeline (and thus the paper_runner
+        # bar-loop) is dark. Closes the gap that caused trade #178's −$1,284 loss.
+        try:
+            from services.paper_stop_monitor import PaperStopMonitor
+
+            paper_stop_monitor = PaperStopMonitor(db_manager, data_manager)
+            await paper_stop_monitor.start()
+            logger.info("🛡️ Paper stop-loss monitor activated (feed-independent backstop)")
+        except Exception as e:
+            logger.warning(f"⚠️ PaperStopMonitor background failed: {e}")
 
         logger.info("✨ Heavy background initialization FINISHED")
 
@@ -2732,6 +2747,10 @@ async def lifespan(app: FastAPI):
     # Stop Canary manager
     if canary_manager:
         await canary_manager.stop()
+
+    # Stop Paper stop-loss monitor
+    if paper_stop_monitor:
+        await paper_stop_monitor.stop()
 
     # Stop Redis trigger
     if redis_trigger:

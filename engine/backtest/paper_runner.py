@@ -414,6 +414,55 @@ def _save_entry_eval(state: Dict[str, str]) -> None:
         pass
 
 
+# ── Data-starvation guard (Initiative 1, Track A1) ─────────────────────────────
+# A paper stop can only be enforced when bars are flowing. When fetch_bars()
+# returns None the cycle silently skips management — so an open position is left
+# UNPROTECTED with no signal to the operator. That silent no-op is exactly what
+# turned trade #178's −$64 planned risk into a −$1,284 realized loss during the
+# 2026-06-01 IB-Gateway outage. We persist a per-symbol consecutive-error counter
+# and make the blindness LOUD once a starved symbol is also holding a position.
+DATA_ERROR_ALERT_THRESHOLD = 3  # ~15 min at the 5-minute poll cadence
+DATA_ERROR_REANNOUNCE_EVERY = 12  # re-alert hourly while the feed stays dark
+
+
+def _data_error_path() -> Path:
+    return _RESULTS_DIR / "data_error_state.json"
+
+
+def _load_data_error_state() -> Dict[str, int]:
+    """Map of symbol -> consecutive data_error count, persisted across cycles."""
+    try:
+        raw = json.loads(_data_error_path().read_text(encoding="utf-8"))
+        return {str(k): int(v) for k, v in raw.items()}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_data_error_state(state: Dict[str, int]) -> None:
+    try:
+        _data_error_path().write_text(json.dumps(state), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def should_alert_data_error(
+    count: int,
+    threshold: int = DATA_ERROR_ALERT_THRESHOLD,
+    reannounce_every: int = DATA_ERROR_REANNOUNCE_EVERY,
+) -> bool:
+    """Alert on the first cross of the threshold, then periodically while dark.
+
+    Fires at exactly ``count == threshold`` (first time blindness is confirmed),
+    then again every ``reannounce_every`` cycles after that — loud enough to be
+    noticed, quiet enough not to spam every poll for hours.
+    """
+    if count < threshold:
+        return False
+    if count == threshold:
+        return True
+    return reannounce_every > 0 and (count - threshold) % reannounce_every == 0
+
+
 def _latest_mgmt_bar(
     symbol: str,
     futures_map: Dict[str, str],
@@ -736,6 +785,7 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
 
     positions = load_positions()
     last_entry_eval = _load_entry_eval()
+    data_err_state = _load_data_error_state()
     summary: Dict[str, Any] = {}
 
     for symbol in ACTIVE_INSTRUMENTS:
@@ -764,9 +814,49 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
         # ── Fetch 1h bars (validated entry timeframe) ─────────────────────────
         df = fetch_bars(symbol, FUTURES_MAP, timeframe="1h")
         if df is None:
-            log.error(f"{symbol}: bar fetch failed — skipping cycle")
-            summary[symbol] = {"action": "data_error"}
+            has_open = symbol in positions
+            count = data_err_state.get(symbol, 0) + 1
+            data_err_state[symbol] = count
+            log.error(
+                f"{symbol}: bar fetch failed — skipping cycle "
+                f"(consecutive data_error #{count}, open_position={has_open})"
+            )
+            # New entries are already skipped for this symbol (the `continue`
+            # below). The defect this guards is the SILENT part: an open position
+            # with a dark feed is unprotected and nothing said so. Make it loud.
+            if has_open and should_alert_data_error(count):
+                pos = positions.get(symbol, {})
+                stop = pos.get("stop")
+                side = str(pos.get("side", "?")).upper()
+                log.critical(
+                    f"{symbol}: STOP UNENFORCED — bar feed dark for {count} consecutive "
+                    f"cycles (~{count * 5}m) with an OPEN {side} position "
+                    f"(entry={pos.get('entry_price', '?')}, stop={stop}). The bar-loop "
+                    f"cannot evaluate the stop until the feed recovers."
+                )
+                _notify(
+                    f"🚨 JARVIS PAPER | {symbol} STOP UNENFORCED\n"
+                    f"Bar feed dark {count} cycles (~{count * 5}m) with OPEN {side}.\n"
+                    f"Entry {pos.get('entry_price', '?')} | Stop {stop}\n"
+                    f"Bar-loop blind; in-process stop-monitor is the backstop."
+                )
+            summary[symbol] = {
+                "action": "data_error",
+                "consecutive": count,
+                "open_position": has_open,
+            }
             continue
+
+        # Feed recovered for this symbol — clear the counter and, if we had been
+        # alerting, announce the all-clear so the operator knows it's resolved.
+        if data_err_state.get(symbol):
+            prior = data_err_state.pop(symbol)
+            if prior >= DATA_ERROR_ALERT_THRESHOLD:
+                log.info(f"{symbol}: bar feed recovered after {prior} starved cycles")
+                _notify(
+                    f"✅ JARVIS PAPER | {symbol} bar feed recovered "
+                    f"after {prior} starved cycles"
+                )
 
         # ── Compute 1h signals ────────────────────────────────────────────────
         try:
@@ -863,6 +953,7 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
     # ── Persist state ─────────────────────────────────────────────────────────
     save_positions(positions)
     _save_entry_eval(last_entry_eval)
+    _save_data_error_state(data_err_state)
 
     if not quiet:
         log.info("═" * 64)
