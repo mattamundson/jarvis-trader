@@ -149,6 +149,9 @@ async def test_shadow_mode_fires_translated_vertex_call(monkeypatch, temp_db):
     # Ensure the Gemini-primary branch is inert so the direct path runs.
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    # Disable the module-level TokenProxy cache so the call hits the real path
+    # (the cache is a singleton shared across tests and would short-circuit).
+    monkeypatch.setattr("llm.client._TOKEN_PROXY_AVAILABLE", False)
 
     client = JarvisLLMClient(api_key="k", db_path=temp_db)
     assert client.vertex_shadow_enabled is True
@@ -173,4 +176,73 @@ async def test_shadow_mode_fires_translated_vertex_call(monkeypatch, temp_db):
     await asyncio.sleep(0.05)
     assert shadow_calls.get("model") == "claude-sonnet-4-5@20250929"
     assert client.vertex_shadow_count == 1
+    await client.close()
+
+
+# --- Task 5: Vertex failover on credit-exhaustion ---------------------------
+
+def test_failover_disabled_by_default(monkeypatch, temp_db):
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda api_key=None: SimpleNamespace())
+    monkeypatch.setenv("JARVIS_LLM_PROVIDER", "anthropic")
+    monkeypatch.delenv("JARVIS_LLM_VERTEX_FAILOVER", raising=False)
+    monkeypatch.delenv("JARVIS_LLM_VERTEX_SHADOW", raising=False)
+
+    client = JarvisLLMClient(api_key="k", db_path=temp_db)
+    # Off by default (gated-flip): no aux Vertex client is even built.
+    assert client.vertex_failover_enabled is False
+    assert client._aux_vertex_client is None
+
+
+async def test_credit_exhaustion_fails_over_to_vertex(monkeypatch, temp_db):
+    vertex_calls = {}
+
+    class FakeDirectMessages:
+        async def create(self, **kwargs):
+            raise Exception("Your credit balance is too low to access the Anthropic API")
+
+    class FakeDirect:
+        def __init__(self, api_key=None):
+            self.messages = FakeDirectMessages()
+
+    class FakeVertexMessages:
+        async def create(self, **kwargs):
+            vertex_calls.update(kwargs)
+            return _resp("vertex-rescue")
+
+    class FakeVertex:
+        def __init__(self, project_id=None, region=None):
+            self.messages = FakeVertexMessages()
+
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", FakeDirect)
+    monkeypatch.setattr(anthropic, "AsyncAnthropicVertex", FakeVertex)
+    monkeypatch.setenv("JARVIS_LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("JARVIS_LLM_VERTEX_FAILOVER", "1")
+    monkeypatch.setenv("JARVIS_LLM_VERTEX_SHADOW", "0")
+    monkeypatch.delenv("JARVIS_VERTEX_MODEL_MAP", raising=False)
+    # Disable the Gemini fallback so we prove the VERTEX path served the call.
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    # Disable the module-level TokenProxy cache so the call hits the real path.
+    monkeypatch.setattr("llm.client._TOKEN_PROXY_AVAILABLE", False)
+
+    client = JarvisLLMClient(api_key="k", db_path=temp_db)
+    assert client.vertex_failover_enabled is True
+
+    result = await client.call(
+        model="claude-sonnet-4-6",
+        system="s",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=16,
+        agent_name="trader",
+        temperature=0.5,
+        compact=False,
+    )
+    # Direct path was credit-exhausted; Vertex rescued the call transparently.
+    assert result.success is True
+    assert result.content == "vertex-rescue"
+    # Cost/logging stay keyed on the direct alias, not the Vertex id.
+    assert result.model == "claude-sonnet-4-6"
+    # The wire call used the translated Vertex @-pinned id.
+    assert vertex_calls.get("model") == "claude-sonnet-4-5@20250929"
+    assert client.vertex_failover_count == 1
     await client.close()
