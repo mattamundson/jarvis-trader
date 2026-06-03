@@ -356,6 +356,10 @@ class JarvisLLMClient:
             f"(provider={self.provider}, google_fallback={google_status}, deepseek={deepseek_status})"
         )
 
+    def _gemini_provider_label(self) -> str:
+        """Provider tag for a Gemini-served call: Vertex when configured, else AI-Studio."""
+        return "vertex-gemini" if self.gemini_use_vertex else "google"
+
     async def _handle_success(
         self,
         result,
@@ -367,8 +371,13 @@ class JarvisLLMClient:
         proxy=None,
         compressed_key=None,
         cache_salt: str = "",
+        provider: str | None = None,
     ) -> LLMCallResult:
-        """Handle successful API call."""
+        """Handle successful API call.
+
+        ``provider`` records the serving provider for the Task 9 cost A/B; when
+        omitted it defaults to the client's configured provider (the direct path).
+        """
         # Any success clears the credit-exhaustion health flag (transient recovery)
         if not _LLM_PATH_STATE["healthy"]:
             _LLM_PATH_STATE["healthy"] = True
@@ -380,6 +389,7 @@ class JarvisLLMClient:
         input_tokens = result.usage.input_tokens
         output_tokens = result.usage.output_tokens
         cost = self._calculate_cost(current_model, input_tokens, output_tokens)
+        serving_provider = provider or self.provider
 
         # Log to database
         await self.cost_tracker.log_call(
@@ -391,6 +401,7 @@ class JarvisLLMClient:
             latency_ms=latency_ms,
             agent_name=agent_name,
             success=True,
+            provider=serving_provider,
         )
 
         # Log to console
@@ -430,6 +441,7 @@ class JarvisLLMClient:
         retries: int,
         agent_name: str,
         tier: str = "default",
+        provider: str | None = None,
     ) -> LLMCallResult:
         """Handle failed API call after retries exhausted."""
         latency_ms = int((time.time() - start_time) * 1000)
@@ -445,6 +457,7 @@ class JarvisLLMClient:
             latency_ms=latency_ms,
             agent_name=agent_name,
             success=False,
+            provider=provider or self.provider,
         )
 
         logger.error(
@@ -691,6 +704,7 @@ class JarvisLLMClient:
                     proxy=proxy,
                     compressed_key=compressed_key,
                     cache_salt=cache_salt,
+                    provider=self._gemini_provider_label(),
                 )
             except Exception as gex:
                 logger.warning(
@@ -845,6 +859,7 @@ class JarvisLLMClient:
                                 proxy=proxy,
                                 compressed_key=compressed_key,
                                 cache_salt=cache_salt,
+                                provider="vertex",
                             )
                         except Exception as vex:
                             logger.warning(
@@ -897,6 +912,7 @@ class JarvisLLMClient:
                                 proxy=proxy,
                                 compressed_key=compressed_key,
                                 cache_salt=cache_salt,
+                                provider=self._gemini_provider_label(),
                             )
                         except Exception as gex:
                             logger.error(
@@ -1326,6 +1342,7 @@ class JarvisLLMClient:
         latency_ms: int,
         agent_name: str = "unknown",
         success: bool = True,
+        provider: str = "external",
     ) -> None:
         """
         Record cost metrics for an LLM call made via raw HTTP (not via .call()).
@@ -1340,6 +1357,8 @@ class JarvisLLMClient:
             latency_ms: Elapsed wall-clock milliseconds for the HTTP round-trip
             agent_name: Calling agent identifier (for per-agent cost breakdown)
             success: True if the HTTP call returned a 2xx status
+            provider: Serving provider tag (default 'external' — these bypass the
+                central routing, so they are neither direct nor Vertex by default)
         """
         cost = self._calculate_cost(model, input_tokens, output_tokens)
         await self.cost_tracker.log_call(
@@ -1351,6 +1370,7 @@ class JarvisLLMClient:
             latency_ms=latency_ms,
             agent_name=agent_name,
             success=success,
+            provider=provider,
         )
 
     async def get_daily_stats(self) -> dict:
