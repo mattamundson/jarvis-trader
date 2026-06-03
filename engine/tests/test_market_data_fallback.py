@@ -37,8 +37,13 @@ def _disable_tv_tier_0(monkeypatch):
     source attributions unreachable. Stubbing `_tv_feed` to None restores
     the pre-P0.2 contract for these regression tests without affecting
     the production tier order.
+
+    Also disables the SQLite Tier-1.5 cache (_load_bars) so that
+    production bar data in the local SQLite database does not intercept
+    tests that are designed to exercise the Polygon/CSV fallback tiers.
     """
     monkeypatch.setattr(market_data_module, "_tv_feed", None)
+    monkeypatch.setattr(market_data_module, "_load_bars", None)
 
 
 def _fresh_bars(n: int = 50) -> pd.DataFrame:
