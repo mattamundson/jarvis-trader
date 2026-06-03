@@ -13,10 +13,10 @@ API or to Claude-on-Vertex (Google Cloud). Provider is selected via the existing
                         is no SDK client object on that route).
   - anything else    -> ``anthropic.AsyncAnthropic(api_key)`` (direct API).
 
-Vertex serves Claude under version-pinned model ids that differ from the direct
-API aliases this stack uses internally (e.g. ``claude-sonnet-4-6`` ->
-``claude-sonnet-4-5@20250929``). :func:`to_vertex_model_id` translates; the map
-is env-overridable so a catalog change is a config edit, not a code change.
+Vertex serves Claude under model ids that differ from the direct API aliases this
+stack uses internally (e.g. ``claude-sonnet-4-6`` -> ``claude-sonnet-4-6@default``).
+:func:`to_vertex_model_id` translates; the map is env-overridable so a catalog
+change is a config edit, not a code change.
 
 Regions: Claude-on-Vertex is region-pinned and (per the Vertex integration plan)
 served from ``us-east5`` — DISTINCT from the Gemini region (``us-central1`` in
@@ -37,17 +37,30 @@ logger = logging.getLogger(__name__)
 DEFAULT_VERTEX_PROJECT = "jarvis-trading-493009"
 DEFAULT_VERTEX_REGION = "us-east5"  # Claude on Vertex; Gemini uses us-central1.
 
-# Direct Anthropic alias -> Vertex version-pinned model id.
-# [UNVERIFIED] These are best-known mappings and MUST be confirmed against the
-# live Vertex catalog (integration plan Task 1 smoke test) before flipping
-# JARVIS_LLM_PROVIDER=vertex in production. Override/extend at runtime with
-# JARVIS_VERTEX_MODEL_MAP ("alias=vertex-id,alias2=vertex-id2"). Any model not
-# in the map passes through unchanged (see to_vertex_model_id).
+# Direct Anthropic alias -> Vertex model id.
+# VERIFIED against the live Vertex Model Garden catalog 2026-06-03 (gcloud ai
+# model-garden models list --filter=anthropic, project jarvis-trading-493009).
+# Every right-hand id below is present in that catalog. NOTE: the models still
+# report CAN_PREDICT=No until the Anthropic offering is enabled in the GCP
+# Marketplace (console-only) — so these are correct ids that 404 with a
+# "publisher model not accessible" message until that gate is cleared, NOT wrong
+# ids. Override/extend at runtime with JARVIS_VERTEX_MODEL_MAP
+# ("alias=vertex-id,alias2=vertex-id2"). Any model not in the map passes through
+# unchanged (see to_vertex_model_id), surfacing an explicit 404 rather than a
+# silent substitution.
 DEFAULT_DIRECT_TO_VERTEX: dict[str, str] = {
-    "claude-opus-4-7": "claude-opus-4-1@20250805",
-    "claude-opus-4-6": "claude-opus-4-1@20250805",
-    "claude-sonnet-4-6": "claude-sonnet-4-5@20250929",
+    # Sonnet — 4-6 has an exact Vertex match (floating @default; only version on Vertex)
+    "claude-sonnet-4-6": "claude-sonnet-4-6@default",
+    "claude-sonnet-4-5": "claude-sonnet-4-5@20250929",
+    # Haiku
     "claude-haiku-4-5-20251001": "claude-haiku-4-5@20251001",
+    "claude-haiku-4-5": "claude-haiku-4-5@20251001",
+    # Opus — newest tiers are present as floating @default; older ones are date-pinned
+    "claude-opus-4-8": "claude-opus-4-8@default",
+    "claude-opus-4-7": "claude-opus-4-7@default",
+    "claude-opus-4-6": "claude-opus-4-6@default",
+    "claude-opus-4-5": "claude-opus-4-5@20251101",
+    "claude-opus-4-1": "claude-opus-4-1@20250805",
 }
 
 
