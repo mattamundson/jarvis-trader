@@ -1542,6 +1542,37 @@ export async function fetchJarvisAsk(question: string): Promise<JarvisAskRespons
   return postEngine<JarvisAskResponse>("/jarvis/ask", { question });
 }
 
+// ── Calibration diagnostics (/analytics/calibration) ─────────────────────────
+
+export interface CalibrationAgentEntry {
+  brier_score: number;
+  brier_weight: number;
+  ic_score: number;
+  sample_count: number;
+  ready: boolean;
+}
+
+export interface CalibrationDiagnostics {
+  brier_enabled: boolean;
+  brier_blend_alpha: number;
+  min_trades_threshold: number;
+  window_days: number;
+  agents: string[];
+  per_agent: Record<string, CalibrationAgentEntry>;
+  total_outcomes: number;
+  ready_to_activate: boolean;
+  active_agents: string[];
+  blocked_by: string[];
+  rows_excluded_corrupt: number;
+  rows_excluded_duplicate: number;
+  neutral_sentinel: number;
+  timestamp: string;
+}
+
+export async function fetchCalibration(): Promise<CalibrationDiagnostics> {
+  return fetchEngine<CalibrationDiagnostics>("/analytics/calibration");
+}
+
 // ── Discord Briefing (command-center /discord/briefing) ──────────────────────
 
 export interface BriefingIBLevels {
