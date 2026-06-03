@@ -235,9 +235,18 @@ export function RegimeDisplay() {
                   {meta.label}
                 </span>
                 <span
-                  className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-widest uppercase ${meta.badgeBg} ${meta.badgeBorder} ${meta.colorClass}`}
+                  className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-widest uppercase ${
+                    allStubs
+                      ? "border-amber-500/50 bg-amber-500/10 text-amber-400"
+                      : `${meta.badgeBg} ${meta.badgeBorder} ${meta.colorClass}`
+                  }`}
+                  title={
+                    allStubs
+                      ? "5-layer filter is not wired to live data — this regime is reference-only, not a live signal"
+                      : undefined
+                  }
                 >
-                  {(regime.confidence * 100).toFixed(0)}%
+                  {allStubs ? "NOT LIVE" : `${(regime.confidence * 100).toFixed(0)}%`}
                 </span>
               </div>
               <div className="flex flex-col items-end gap-0.5">
@@ -247,6 +256,14 @@ export function RegimeDisplay() {
                 <TradeFilterBadge filter={regime.trade_filter} />
               </div>
             </div>
+
+            {/* Loud not-live disclaimer when the 5-layer filter is unwired */}
+            {allStubs && (
+              <p className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] font-medium leading-snug text-amber-400">
+                Reference only — all 5 regime layers are stubs (not wired to live
+                data). Do not treat this regime or confidence as a live signal.
+              </p>
+            )}
 
             {/* 5-layer indicators */}
             <div>
@@ -275,12 +292,6 @@ export function RegimeDisplay() {
               </div>
             )}
 
-            {/* Stub note */}
-            {allStubs && (
-              <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
-                All 5 layers are stubs — connect live data feeds in Phase 3 for full activation.
-              </p>
-            )}
           </div>
         )}
       </CardContent>

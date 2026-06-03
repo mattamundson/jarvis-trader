@@ -117,7 +117,12 @@ export function MTFConfirmationWidget({ symbol = "MES" }: { symbol?: string }) {
           <div className="flex items-center gap-2">
             <Badge variant={variant}>{data.alignment}</Badge>
             {data.source === "stub" && (
-              <span className="text-xs text-muted-foreground">(stub)</span>
+              <span
+                className="rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-amber-400"
+                title="MTF confirmation is stub data — not wired to a live feed; not a live signal"
+              >
+                not live
+              </span>
             )}
           </div>
           <span className="text-xs text-muted-foreground">
