@@ -8,9 +8,11 @@ import {
   type SafetyStatus,
 } from "@/lib/api";
 
-// Drawdown thresholds (engine kill switch halts at -10%).
-const DRAWDOWN_LIMIT = 0.1;
-const DRAWDOWN_WARN = 0.08; // approaching the halt
+// The real drawdown halt limit is config/.env-driven and surfaced by the engine
+// as drawdown_limit_pct (a negative decimal). We fall back to -10% only if the
+// field is absent. "Approaching" = within 80% of the live limit.
+const DRAWDOWN_LIMIT_FALLBACK = 0.1;
+const DRAWDOWN_WARN_FRACTION = 0.8;
 const DRAWDOWN_IMPLAUSIBLE = 0.5; // >50% on a paper book ⇒ likely data contamination
 
 type Severity = "critical" | "warn";
@@ -49,17 +51,26 @@ export function AnomalySentinel() {
       });
     }
 
-    const dd = safety?.current_drawdown;
+    // Engine returns current drawdown as drawdown_pct and the live limit as
+    // drawdown_limit_pct (negative decimal). drawdown_breached is authoritative.
+    // Magnitude — the engine reports drawdown_pct positive, but guard against
+    // either sign convention so a flip can never silently disable the alert.
+    const dd =
+      typeof safety?.drawdown_pct === "number" ? Math.abs(safety.drawdown_pct) : undefined;
+    const limit =
+      typeof safety?.drawdown_limit_pct === "number"
+        ? Math.abs(safety.drawdown_limit_pct)
+        : DRAWDOWN_LIMIT_FALLBACK;
     if (typeof dd === "number" && dd > 0) {
       if (dd >= DRAWDOWN_IMPLAUSIBLE) {
         out.push({
           severity: "critical",
           message: `Implausible drawdown ${(dd * 100).toFixed(1)}% — likely P&L data contamination, verify before trusting`,
         });
-      } else if (dd >= DRAWDOWN_WARN) {
+      } else if (safety?.drawdown_breached || dd >= limit * DRAWDOWN_WARN_FRACTION) {
         out.push({
           severity: "critical",
-          message: `Drawdown ${(dd * 100).toFixed(1)}% approaching the ${(DRAWDOWN_LIMIT * 100).toFixed(0)}% halt`,
+          message: `Drawdown ${(dd * 100).toFixed(1)}% ${safety?.drawdown_breached ? "breached" : "approaching"} the ${(limit * 100).toFixed(0)}% halt`,
         });
       }
     }
