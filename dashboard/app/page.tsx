@@ -544,17 +544,23 @@ const FALLBACK_REGIME: Record<string, RegimeStatusEntry> = {
 };
 
 function WFEStatusCard() {
-  const { data: paperData } = useSWR<Record<string, PaperStatusEntry>>(
-    "/backtest/paper-status",
-    fetcher,
-    { refreshInterval: 30_000, fallbackData: FALLBACK_PAPER, shouldRetryOnError: false }
-  );
+  const { data: paperData, error: paperError } = useSWR<
+    Record<string, PaperStatusEntry>
+  >("/backtest/paper-status", fetcher, {
+    refreshInterval: 30_000,
+    shouldRetryOnError: false,
+  });
   const { data: regimeData } = useSWR<Record<string, RegimeStatusEntry>>(
     "/backtest/regime-status",
     fetcher,
-    { refreshInterval: 30_000, fallbackData: FALLBACK_REGIME, shouldRetryOnError: false }
+    { refreshInterval: 30_000, shouldRetryOnError: false }
   );
 
+  // No fallbackData: until the engine returns live paper-status, paperData is
+  // undefined. We still render the static reference values so the card keeps
+  // its shape, but flag it loudly as NOT LIVE — the frozen numbers (e.g. the
+  // cleared_date stamps) must never be mistaken for current state.
+  const usingFallback = !paperData;
   const paper = paperData ?? FALLBACK_PAPER;
   const regime = regimeData ?? FALLBACK_REGIME;
 
@@ -589,6 +595,23 @@ function WFEStatusCard() {
           <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border" style={{ borderColor: "#00d4ff33", backgroundColor: "#00d4ff10", color: "#00d4ff" }}>
             WFE
           </span>
+          {usingFallback && (
+            <span
+              className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
+              style={{
+                borderColor: paperError ? "#ff444455" : "#ffcc0055",
+                backgroundColor: paperError ? "#ff444415" : "#ffcc0015",
+                color: paperError ? "#ff6666" : "#ffcc00",
+              }}
+              title={
+                paperError
+                  ? "Engine unreachable — showing static reference values, not live data"
+                  : "Awaiting live engine data — showing static reference values"
+              }
+            >
+              {paperError ? "⚠ REFERENCE · ENGINE UNREACHABLE" : "REFERENCE · NOT LIVE"}
+            </span>
+          )}
         </div>
         <span className="font-mono text-[9px]" style={{ color: "#555" }}>
           Walk-Forward Efficiency
