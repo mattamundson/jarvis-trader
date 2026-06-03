@@ -116,21 +116,23 @@ function resolveLayerState(
 }
 
 function LayerDot({ label, state }: { label: string; state: "active_aligned" | "active_misaligned" | "stub" }) {
+  // stub layers render muted gray (inactive), never bg-warn — a yellow dot
+  // reads as a live caution signal and is exactly the "stub looks live" lie.
   const dotColor =
     state === "active_aligned"
       ? "bg-bull"
       : state === "active_misaligned"
       ? "bg-bear"
-      : "bg-warn";
+      : "bg-muted-foreground/40";
   const textColor =
     state === "active_aligned"
       ? "text-bull"
       : state === "active_misaligned"
       ? "text-bear"
-      : "text-warn";
+      : "text-muted-foreground/60";
   const title =
     state === "stub"
-      ? `${label}: stub (live data feed needed)`
+      ? `${label}: not wired yet (Phase 3 — live data feed needed)`
       : state === "active_aligned"
       ? `${label}: active, aligned`
       : `${label}: active, misaligned`;
@@ -250,9 +252,16 @@ export function RegimeDisplay() {
 
             {/* 5-layer indicators */}
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-                5-Layer Filter
-              </p>
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  5-Layer Filter
+                </p>
+                {allStubs && (
+                  <span className="rounded border border-muted-foreground/30 bg-muted/20 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-widest text-muted-foreground/70">
+                    Not wired · Phase 3
+                  </span>
+                )}
+              </div>
               <div className="flex items-end gap-3">
                 <LayerDot label="VIX" state={vixState} />
                 <LayerDot label="MTF" state={mtfState} />
