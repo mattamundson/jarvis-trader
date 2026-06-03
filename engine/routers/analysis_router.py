@@ -196,6 +196,8 @@ async def get_llm_stats(days_back: int = 0):
         avg_latency_ms: Average API latency in milliseconds
         per_model: Dict[model_name] -> {calls, input_tokens, output_tokens, cost_usd}
         per_agent: Dict[agent_name] -> {calls, cost_usd}
+        per_provider: Dict[provider] -> {calls, input_tokens, output_tokens, cost_usd}
+            where provider is direct|vertex|google|vertex-gemini|ollama|external
     """
     if not cost_tracker:
         raise HTTPException(500, "Cost tracker not initialized")

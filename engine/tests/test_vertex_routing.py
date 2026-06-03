@@ -6,6 +6,7 @@ credentials or network access. pytest runs in asyncio auto mode, so async tests
 need no explicit marker.
 """
 
+import sqlite3
 from types import SimpleNamespace
 
 import anthropic
@@ -245,6 +246,13 @@ async def test_credit_exhaustion_fails_over_to_vertex(monkeypatch, temp_db):
     # The wire call used the translated Vertex @-pinned id.
     assert vertex_calls.get("model") == "claude-sonnet-4-5@20250929"
     assert client.vertex_failover_count == 1
+
+    # Task 9: the cost row for a Vertex-served failover must be tagged provider='vertex',
+    # not 'direct' — otherwise the cost A/B can't attribute spend to GCP.
+    conn = sqlite3.connect(temp_db)
+    providers = [r[0] for r in conn.execute("SELECT provider FROM llm_calls").fetchall()]
+    conn.close()
+    assert providers == ["vertex"]
     await client.close()
 
 
@@ -307,4 +315,11 @@ async def test_analyst_routes_to_vertex_gemini(monkeypatch, temp_db):
     assert captured["project"] == "proj-g"
     assert captured["location"] == "us-central1"
     assert captured["model"] == "gemini-2.5-flash"
+
+    # Task 9: a Gemini-on-Vertex call is tagged 'vertex-gemini' (distinct from the
+    # AI-Studio 'google' tag) so GCP-billed Gemini spend is attributable.
+    conn = sqlite3.connect(temp_db)
+    providers = [r[0] for r in conn.execute("SELECT provider FROM llm_calls").fetchall()]
+    conn.close()
+    assert providers == ["vertex-gemini"]
     await client.close()
