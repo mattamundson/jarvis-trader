@@ -67,6 +67,69 @@ export async function fetchFinancesDetail(): Promise<FinancesDetail> {
   return res.json();
 }
 
+// ---- Trading: honest realized P&L (read-time deduped view) ----
+
+export type RealizedTrade = {
+  symbol: string;
+  direction: string;
+  entry_time: string | null;
+  exit_time: string | null;
+  pnl_usd: number;
+  grade: string | null;
+};
+
+export type EngineSim = {
+  ok: boolean;
+  raw_rows: number;
+  trades: number;
+  net_realized: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  gross_win: number;
+  gross_loss: number;
+  profit_factor: number;
+  trade_list: RealizedTrade[];
+  error?: string | null;
+};
+
+export type IbkrAccount = {
+  account: string;
+  as_of: string;
+  is_demo: boolean;
+  nav_total: number;
+  cash: number;
+  stock_value: number;
+  realized_ytd: number;
+  unrealized_total: number;
+  unrealized_stocks: number;
+  unrealized_futures: number;
+  top_unrealized_position?: {
+    symbol: string;
+    description: string;
+    cost_price: number;
+    close_price: number;
+    unrealized_pnl: number;
+  };
+  note: string;
+};
+
+export type RealizedPnl = {
+  engine_sim: EngineSim;
+  ibkr_account: IbkrAccount | null;
+  headline: string;
+  caveats: string[];
+};
+
+export async function fetchRealizedPnl(): Promise<RealizedPnl> {
+  const res = await fetch(`${BASE}/master/trading/realized`, {
+    headers: { "X-API-Key": KEY },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`trading realized ${res.status}`);
+  return res.json();
+}
+
 // ---- Scheduler (master-api in-process scheduler) ----
 
 export type SchedulerJob = {
