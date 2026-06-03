@@ -246,3 +246,65 @@ async def test_credit_exhaustion_fails_over_to_vertex(monkeypatch, temp_db):
     assert vertex_calls.get("model") == "claude-sonnet-4-5@20250929"
     assert client.vertex_failover_count == 1
     await client.close()
+
+
+# --- Task 6: Gemini-on-Vertex for the analyst tier --------------------------
+
+async def test_analyst_routes_to_vertex_gemini(monkeypatch, temp_db):
+    from google import genai
+
+    captured = {}
+
+    class FakeModels:
+        def generate_content(self, model=None, contents=None, config=None):
+            captured["model"] = model
+            captured["contents"] = contents
+            return SimpleNamespace(
+                text="gemini-vertex-answer",
+                usage_metadata=SimpleNamespace(
+                    prompt_token_count=11, candidates_token_count=22
+                ),
+            )
+
+    class FakeGenaiClient:
+        def __init__(self, vertexai=None, project=None, location=None):
+            captured["vertexai"] = vertexai
+            captured["project"] = project
+            captured["location"] = location
+            self.models = FakeModels()
+
+    monkeypatch.setattr(genai, "Client", FakeGenaiClient)
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda api_key=None: SimpleNamespace())
+    monkeypatch.setenv("JARVIS_LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("JARVIS_GEMINI_USE_VERTEX", "1")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "proj-g")
+    monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+    monkeypatch.setattr("llm.client._TOKEN_PROXY_AVAILABLE", False)
+    # No AI-Studio key — Vertex Gemini must work without it.
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    client = JarvisLLMClient(api_key="k", db_path=temp_db)
+    assert client.gemini_use_vertex is True
+    # Vertex Gemini counts as "gemini available" even with no AI-Studio key.
+    assert client.gemini_enabled is True
+
+    result = await client.call(
+        model="claude-sonnet-4-6",
+        system="sys",
+        messages=[{"role": "user", "content": "analyze"}],
+        max_tokens=32,
+        agent_name="news_analyst",  # a GEMINI_PRIMARY_AGENT
+        temperature=0.3,
+        compact=False,
+    )
+    assert result.success is True
+    assert result.content == "gemini-vertex-answer"
+    assert result.model == "gemini-2.5-flash"  # GOOGLE_FAILOVER_MAP[sonnet]
+    assert result.input_tokens == 11 and result.output_tokens == 22
+    # Confirm it went through the Vertex genai client, not the AI-Studio endpoint.
+    assert captured["vertexai"] is True
+    assert captured["project"] == "proj-g"
+    assert captured["location"] == "us-central1"
+    assert captured["model"] == "gemini-2.5-flash"
+    await client.close()
