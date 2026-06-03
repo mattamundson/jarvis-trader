@@ -289,29 +289,46 @@ class JarvisLLMClient:
             "DEEPSEEK_ENDPOINT", "https://api.deepseek.com/v1/chat/completions"
         ).strip()
 
-        # Vertex shadow mode (Vertex integration 2026-06-02): when
-        # JARVIS_LLM_VERTEX_SHADOW=1 AND the primary provider is NOT vertex,
-        # build a second Vertex-backed client and fire a parallel call after
-        # each successful primary Anthropic call — purely to log a
-        # latency/length comparison. It never affects the returned result or the
-        # trading decision. Silently disabled if the Vertex client can't be
-        # built (e.g. ADC not configured yet), so it's safe to enable early.
-        self.vertex_shadow_enabled = os.getenv(
-            "JARVIS_LLM_VERTEX_SHADOW", "0"
-        ).strip().lower() in {"1", "true", "yes", "on"} and self.provider not in {
-            "ollama",
-            "vertex",
-        }
-        self._shadow_vertex_client = None
+        # Vertex shadow + failover (Vertex integration 2026-06-02). Both ride a
+        # single auxiliary Vertex client, built only when the primary provider
+        # is direct Anthropic — shadow/failover are meaningless under ollama and
+        # redundant when vertex is already primary.
+        #   - JARVIS_LLM_VERTEX_SHADOW=1: fire a parallel Vertex call after each
+        #     successful direct call to log a latency/length A/B. Never affects
+        #     the returned result.
+        #   - JARVIS_LLM_VERTEX_FAILOVER=1: on Anthropic credit-exhaustion, serve
+        #     the call from Claude-on-Vertex (same model family, GCP-billed so
+        #     unaffected by the credit outage) BEFORE the Gemini fallback.
+        # Failover defaults OFF (gated-flip pattern): flip to 1 once ADC is set
+        # up. Both silently disable if the Vertex client can't be built (e.g. ADC
+        # not configured yet), so they're safe to leave wired.
+        _truthy = {"1", "true", "yes", "on"}
+        _primary_is_direct = self.provider not in {"ollama", "vertex"}
+        self.vertex_shadow_enabled = (
+            os.getenv("JARVIS_LLM_VERTEX_SHADOW", "0").strip().lower() in _truthy
+            and _primary_is_direct
+        )
+        self.vertex_failover_enabled = (
+            os.getenv("JARVIS_LLM_VERTEX_FAILOVER", "0").strip().lower() in _truthy
+            and _primary_is_direct
+        )
         self.vertex_shadow_count = 0
-        if self.vertex_shadow_enabled:
+        self.vertex_failover_count = 0
+        self._aux_vertex_client = None
+        if self.vertex_shadow_enabled or self.vertex_failover_enabled:
             try:
-                self._shadow_vertex_client = get_anthropic_client(provider="vertex")
+                self._aux_vertex_client = get_anthropic_client(provider="vertex")
             except Exception as exc:
                 logger.warning(
-                    "vertex shadow disabled — could not build Vertex client: %s", exc
+                    "vertex shadow/failover disabled — could not build Vertex client: %s",
+                    exc,
                 )
                 self.vertex_shadow_enabled = False
+                self.vertex_failover_enabled = False
+        # Back-compat alias used by the shadow helper (same underlying client).
+        self._shadow_vertex_client = (
+            self._aux_vertex_client if self.vertex_shadow_enabled else None
+        )
 
         google_status = (
             "enabled"
@@ -773,6 +790,55 @@ class JarvisLLMClient:
                     logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
 
                 if _is_credit_exhaustion(body_str):
+                    # Task 5: Claude-on-Vertex failover FIRST — same model family
+                    # (best output continuity) and GCP-billed, so it is unaffected
+                    # by the Anthropic credit outage. Falls through to the Gemini
+                    # fallback below if Vertex is unavailable or also fails.
+                    if self.vertex_failover_enabled and self._aux_vertex_client is not None:
+                        try:
+                            vertex_result = await self._call_vertex_failover(
+                                current_model,
+                                system,
+                                working_messages,
+                                max_tokens,
+                                temperature,
+                            )
+                            self.vertex_failover_count += 1
+                            _LLM_PATH_STATE["healthy"] = True
+                            _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
+                                timezone.utc
+                            ).isoformat()
+                            _LLM_PATH_STATE["last_failure_reason"] = (
+                                f"anthropic credit-exhaustion -> vertex failover ok "
+                                f"(count: {self.vertex_failover_count})"
+                            )
+                            _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                            logger.warning(
+                                "[%s] credit-exhaustion for %s -- served via "
+                                "Claude-on-Vertex failover (count: %d)",
+                                current_model,
+                                agent_name,
+                                self.vertex_failover_count,
+                            )
+                            return await self._handle_success(
+                                vertex_result,
+                                current_model,
+                                start_time,
+                                retries,
+                                agent_name,
+                                tier=tier,
+                                proxy=proxy,
+                                compressed_key=compressed_key,
+                                cache_salt=cache_salt,
+                            )
+                        except Exception as vex:
+                            logger.warning(
+                                "[%s] Vertex failover failed for %s -- trying Gemini next: %s",
+                                current_model,
+                                agent_name,
+                                vex,
+                            )
+
                     # Phase 3: Anthropic credits exhausted — try transparent
                     # Gemini fallback before declaring the call failed. The
                     # fallback preserves quality tier (Opus/Sonnet -> 2.5-flash,
@@ -911,6 +977,31 @@ class JarvisLLMClient:
             )
         except Exception as exc:
             logger.warning("vertex_shadow failed agent=%s: %s", agent_name, exc)
+
+    async def _call_vertex_failover(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+    ):
+        """Single Claude-on-Vertex call used as a credit-exhaustion failover.
+
+        Uses the auxiliary Vertex client and the translated model id, and returns
+        the native Anthropic Message shape so the normal success/cost path stays
+        provider-agnostic (cost is keyed on the original alias by the caller).
+        """
+        vertex_model = to_vertex_model_id(model)
+        kwargs = {
+            "model": vertex_model,
+            "system": system,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+        if not _temperature_deprecated(model):
+            kwargs["temperature"] = temperature
+        return await self._aux_vertex_client.messages.create(**kwargs)
 
     def _messages_to_ollama_prompt(self, system: str, messages: list[dict]) -> str:
         parts: list[str] = []
