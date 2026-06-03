@@ -26,8 +26,12 @@ export default function MasterPage() {
       </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map((s) =>
-          s.domain === "finances" ? (
-            <Link key={s.domain} href="/master/finances" className="block">
+          s.domain === "finances" || s.domain === "trading" ? (
+            <Link
+              key={s.domain}
+              href={s.domain === "finances" ? "/master/finances" : "/master/trading"}
+              className="block"
+            >
               <DomainTile s={s} />
             </Link>
           ) : (
