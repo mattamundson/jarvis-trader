@@ -24,11 +24,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { fetchEngine, fetchJournalStats, type JournalTradeStats } from "@/lib/api";
+import { fetchEngine, fetchJournalStats, toggleKillSwitch, type JournalTradeStats } from "@/lib/api";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { useToast } from "@/lib/toast-context";
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
@@ -376,24 +377,44 @@ export default function CommandCenterPage() {
   const ordersPerMin = safety?.orders_last_minute ?? 0;
   const ordersProgress = Math.min((ordersPerMin / 40) * 100, 100);
 
+  const { addToast } = useToast();
+
   const handleKillSwitch = useCallback(async () => {
+    const activating = !killSwitchActive;
     if (
       !confirm(
-        "Activate KILL SWITCH? This will halt all trading immediately."
+        activating
+          ? "Activate KILL SWITCH? This will halt all trading immediately."
+          : "Deactivate the kill switch and allow trading to resume?"
       )
     )
       return;
     try {
-      await fetchEngine("/safety/kill-switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ activate: true }),
-      });
+      // Use the verified helper — it hits /safety/kill-switch/activate +
+      // /deactivate (the bare /safety/kill-switch route is a 404).
+      await toggleKillSwitch(
+        activating ? "activate" : "deactivate",
+        activating ? "Manual kill from command center" : undefined
+      );
+      addToast(
+        activating
+          ? "Kill switch ACTIVATED — all trading halted."
+          : "Kill switch deactivated — trading re-armed.",
+        activating ? "warning" : "success"
+      );
       mutateHealth();
-    } catch {
-      // silently handle — kill switch endpoint may not exist yet
+    } catch (err) {
+      // A safety control that fails must fail LOUDLY — never swallow.
+      addToast(
+        `Kill switch ${
+          activating ? "activation" : "deactivation"
+        } FAILED — trading may NOT be halted. ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`,
+        "error"
+      );
     }
-  }, [mutateHealth]);
+  }, [killSwitchActive, addToast, mutateHealth]);
 
   return (
     <div
