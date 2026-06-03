@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { AnomalySentinel } from "@/components/AnomalySentinel";
 import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
 import { JarvisCommandBar } from "@/components/JarvisCommandBar";
 import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
@@ -38,6 +39,7 @@ export default function RootLayout({
           <EngineWebSocketProvider>
             <PendingApprovalToastListener />
             <EngineAvailabilityHint />
+            <AnomalySentinel />
             <JarvisCommandBar />
             <div className="flex min-h-screen">
               <Sidebar />
