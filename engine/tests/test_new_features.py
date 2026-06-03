@@ -549,46 +549,35 @@ class TestTokenOptimizer:
     """Tests for Track G: token cost optimizer."""
 
     def test_import(self):
-        try:
-            from engine.utils.token_optimizer import MODEL_HAIKU, MODEL_SONNET, TokenOptimizer
+        from engine.utils.token_optimizer import MODEL_HAIKU, MODEL_SONNET, TokenOptimizer
 
-            assert TokenOptimizer is not None
-        except ImportError:
-            pytest.skip("TokenOptimizer not yet implemented")
+        assert TokenOptimizer is not None
 
     def test_high_stakes_always_sonnet(self):
-        try:
-            from engine.utils.token_optimizer import MODEL_SONNET, TokenOptimizer
-        except ImportError:
-            pytest.skip("TokenOptimizer not yet implemented")
+        from engine.utils.token_optimizer import MODEL_SONNET, TokenOptimizer
+
         opt = TokenOptimizer()
         for agent in ["trader", "risk_manager", "fund_manager"]:
             model = opt.select_model(agent, signal_strength=0.1)
             assert model == MODEL_SONNET, f"{agent} should always use Sonnet"
 
     def test_haiku_routing_for_weak_signal(self):
-        try:
-            from engine.utils.token_optimizer import MODEL_HAIKU, TokenOptimizer
-        except ImportError:
-            pytest.skip("TokenOptimizer not yet implemented")
+        from engine.utils.token_optimizer import MODEL_HAIKU, TokenOptimizer
+
         opt = TokenOptimizer()
         model = opt.select_model("social", signal_strength=0.2)
         assert model == MODEL_HAIKU
 
     def test_sonnet_for_strong_signal(self):
-        try:
-            from engine.utils.token_optimizer import MODEL_SONNET, TokenOptimizer
-        except ImportError:
-            pytest.skip("TokenOptimizer not yet implemented")
+        from engine.utils.token_optimizer import MODEL_SONNET, TokenOptimizer
+
         opt = TokenOptimizer()
         model = opt.select_model("social", signal_strength=0.8)
         assert model == MODEL_SONNET
 
     def test_prompt_cache_adds_cache_control(self):
-        try:
-            from engine.utils.token_optimizer import TokenOptimizer
-        except ImportError:
-            pytest.skip("TokenOptimizer not yet implemented")
+        from engine.utils.token_optimizer import TokenOptimizer
+
         opt = TokenOptimizer()
         block = opt.add_prompt_cache("test system prompt")
         assert "cache_control" in block
@@ -596,10 +585,8 @@ class TestTokenOptimizer:
         assert block["text"] == "test system prompt"
 
     def test_compress_prunes_low_ic_agent(self):
-        try:
-            from engine.utils.token_optimizer import TokenOptimizer
-        except ImportError:
-            pytest.skip("TokenOptimizer not yet implemented")
+        from engine.utils.token_optimizer import TokenOptimizer
+
         opt = TokenOptimizer()
         mock_report = MagicMock()
         mock_report.signal = 0.1
@@ -607,10 +594,8 @@ class TestTokenOptimizer:
         assert result is None  # Below IC threshold — pruned
 
     def test_compress_keeps_high_ic_agent(self):
-        try:
-            from engine.utils.token_optimizer import TokenOptimizer
-        except ImportError:
-            pytest.skip("TokenOptimizer not yet implemented")
+        from engine.utils.token_optimizer import TokenOptimizer
+
         opt = TokenOptimizer()
         mock_report = MagicMock()
         mock_report.signal = 0.6
