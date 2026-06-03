@@ -24,7 +24,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { fetchEngine, fetchJournalStats, type JournalTradeStats } from "@/lib/api";
+import {
+  fetchEngine,
+  fetchJournalStats,
+  toggleKillSwitch,
+  type JournalTradeStats,
+} from "@/lib/api";
+import { useToast } from "@/lib/toast-context";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
@@ -276,6 +282,8 @@ export default function CommandCenterPage() {
     return () => clearInterval(timer);
   }, []);
 
+  const { addToast } = useToast();
+
   const {
     data: health,
     error: healthErr,
@@ -377,23 +385,28 @@ export default function CommandCenterPage() {
   const ordersProgress = Math.min((ordersPerMin / 40) * 100, 100);
 
   const handleKillSwitch = useCallback(async () => {
-    if (
-      !confirm(
-        "Activate KILL SWITCH? This will halt all trading immediately."
-      )
-    )
-      return;
+    const isActive = health?.kill_switch_active ?? false;
+    const action = isActive ? "deactivate" : "activate";
+    const confirmMsg = isActive
+      ? "Deactivate KILL SWITCH? Trading controls will be re-armed."
+      : "Activate KILL SWITCH? This will halt all trading immediately.";
+    if (!confirm(confirmMsg)) return;
     try {
-      await fetchEngine("/safety/kill-switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ activate: true }),
-      });
-      mutateHealth();
-    } catch {
-      // silently handle — kill switch endpoint may not exist yet
+      await toggleKillSwitch(action, isActive ? undefined : "manual: command-center");
+      await mutateHealth();
+      addToast(
+        isActive ? "Kill switch deactivated" : "Kill switch ACTIVATED — trading halted",
+        isActive ? "info" : "warning"
+      );
+    } catch (err) {
+      // A safety control must fail LOUDLY — never swallow.
+      addToast(
+        `Kill switch ${action} FAILED — ${err instanceof Error ? err.message : "unknown error"}. Verify engine state manually.`,
+        "error"
+      );
+      await mutateHealth();
     }
-  }, [mutateHealth]);
+  }, [health?.kill_switch_active, mutateHealth, addToast]);
 
   return (
     <div
