@@ -194,16 +194,16 @@ class JarvisLLMClient:
     # AttributeError.  __init__ overwrites with the env-derived value.
     provider: str = "ollama"
 
-    def __init__(self, api_key: str, db_path: str = "data/llm_costs.db"):
+    def __init__(self, api_key: Optional[str] = None, db_path: str = "data/llm_costs.db"):
         """
         Initialize the LLM client.
 
         Args:
-            api_key: Anthropic API key
+            api_key: Anthropic API key (not required when JARVIS_LLM_PROVIDER=ollama)
             db_path: Path to SQLite cost tracking database
         """
         self.provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
-        self.api_key = "" if self.provider == "ollama" else api_key
+        self.api_key = "" if self.provider == "ollama" else (api_key or "")
         self.ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
         self.ollama_model = os.getenv("OLLAMA_MODEL", "hermes3:latest")
         self.ollama_num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "4096"))

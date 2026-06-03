@@ -80,7 +80,6 @@ except Exception:  # pragma: no cover — optional dependency
     _RECIPE_LOADER_AVAILABLE = False
 
 from agents.kronos_classifier import KronosClassifier, is_kronos_enabled
-from agents.options_analyst import is_options_analyst_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -547,8 +546,9 @@ class TradingPipeline:
         try:
             from agents.vision_analyst import PatternVisionAnalystAgent
 
+            tech = agents.get("technical")
             self._vision_agent = PatternVisionAnalystAgent(
-                llm_client=agents.get("technical")._llm if agents.get("technical") else None
+                llm_client=getattr(tech, "_llm", None)
             )
         except ImportError:
             logger.warning(
@@ -566,7 +566,7 @@ class TradingPipeline:
 
         self._options_chain = OptionsChainService(_ib_connector) if _ib_connector else None
         self._options_analyst = OptionsAnalystAgent(
-            self._options_chain, llm_client=_tech._llm if _tech else None
+            self._options_chain, llm_client=getattr(_tech, "_llm", None)
         )
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
         # _kronos is NOT set here — use _kronos_or_none property so that
@@ -1633,7 +1633,7 @@ class TradingPipeline:
             )
 
         # ── Phase 8.2: Regime-Router Logic ──
-        regime_override = None
+        regime_override: dict = {}
         if regime_name in ("CRISIS", "VOLATILE"):
             logger.warning(
                 f"[Pipeline] 🛡️ Regime Routing: {regime_name} detected. Blocking new entries."
@@ -1723,6 +1723,41 @@ class TradingPipeline:
         return await agent.analyze(symbol, **kwargs)
 
     @property
+    def _options_analyst_or_none(self):
+        """Return an OptionsAnalyst when ENABLE_OPTIONS_ANALYST=1, else None. Re-checked on each access."""
+        from agents.options_analyst import OptionsAnalyst, is_options_analyst_enabled
+
+        if not is_options_analyst_enabled():
+            self._options_analyst_cached = None
+            return None
+        if not hasattr(self, "_options_analyst_cached") or self._options_analyst_cached is None:
+            self._options_analyst_cached = OptionsAnalyst()
+        return self._options_analyst_cached
+
+    async def _call_agent_analyze_options(
+        self, symbol: str, spot_price: Optional[float], underlying_bias: str = "NEUTRAL"
+    ) -> dict:
+        """Call the OptionsAnalyst if enabled, else return a neutral disabled dict."""
+        analyst = self._options_analyst_or_none
+        if analyst is None:
+            return {
+                "signal": 0.0,
+                "confidence": 0.0,
+                "summary": "options analyst disabled",
+                "indicators": {"weight": 0.0},
+            }
+        try:
+            return await analyst.analyze(symbol, spot_price=spot_price)
+        except Exception as exc:
+            logger.warning("[Pipeline] OptionsAnalyst failed: %s", exc)
+            return {
+                "signal": 0.0,
+                "confidence": 0.0,
+                "summary": f"options analyst error: {exc}",
+                "indicators": {"weight": 0.0},
+            }
+
+    @property
     def _kronos_or_none(self) -> "KronosClassifier | None":
         """Return a ``KronosClassifier`` instance when ``ENABLE_KRONOS=1``, else ``None``.
 
@@ -1768,36 +1803,6 @@ class TradingPipeline:
         except Exception as e:
             logger.warning("[Pipeline] Kronos classify failed: %s", e)
             return {"signal": 0.0, "confidence": 0.0, "summary": f"Kronos error: {e}"}
-
-    @property
-    def _options_analyst_or_none(self) -> Any:
-        """Return the Phase 5 OptionsAnalystAgent if enabled."""
-        if not is_options_analyst_enabled():
-            return None
-        return self._options_analyst
-
-    async def _call_agent_analyze_options(
-        self, symbol: str, spot_price: Optional[float], underlying_bias: str = "NEUTRAL"
-    ) -> dict:
-        """Run the OptionsAnalyst and return a debate-compatible dict."""
-        analyst = self._options_analyst_or_none
-        if analyst is None:
-            return {
-                "signal": 0.0,
-                "confidence": 0.0,
-                "summary": "options analyst disabled",
-                "indicators": {"weight": 0.0},
-            }
-        try:
-            return await analyst.analyze(symbol, underlying_bias=underlying_bias)
-        except Exception as exc:
-            logger.warning("[Pipeline] OptionsAnalyst failed: %s", exc)
-            return {
-                "signal": 0.0,
-                "confidence": 0.0,
-                "summary": f"options analyst error: {exc}",
-                "indicators": {"weight": 0.0},
-            }
 
     async def _run_debate(
         self,
