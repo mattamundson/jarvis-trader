@@ -37,6 +37,7 @@ import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
 import { EngineHealthWidget } from "@/components/EngineHealthWidget";
 import { ConfidenceGauge } from "@/components/ConfidenceGauge";
+import { HonestPnlCard } from "@/components/HonestPnlCard";
 import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
@@ -225,6 +226,9 @@ export default function DashboardPage() {
 
           {/* JARVIS Calibration — Brier/IC ensemble calibration (honest empty state) */}
           <ConfidenceGauge />
+
+          {/* Deduped realized record via the honest-metrics layer (not raw tables) */}
+          <HonestPnlCard />
 
           {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
           <Pm2StabilityWidget />
