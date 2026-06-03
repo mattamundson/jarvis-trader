@@ -79,8 +79,10 @@ def test_google_cloud_project_fallback(monkeypatch):
 
 def test_model_translation_default_map(monkeypatch):
     monkeypatch.delenv("JARVIS_VERTEX_MODEL_MAP", raising=False)
-    assert pf.to_vertex_model_id("claude-sonnet-4-6") == "claude-sonnet-4-5@20250929"
+    # Verified against the live Vertex Model Garden catalog 2026-06-03.
+    assert pf.to_vertex_model_id("claude-sonnet-4-6") == "claude-sonnet-4-6@default"
     assert pf.to_vertex_model_id("claude-haiku-4-5-20251001") == "claude-haiku-4-5@20251001"
+    assert pf.to_vertex_model_id("claude-opus-4-8") == "claude-opus-4-8@default"
 
 
 def test_model_translation_passthrough_on_unknown(monkeypatch):

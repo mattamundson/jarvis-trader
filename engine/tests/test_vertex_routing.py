@@ -72,7 +72,7 @@ async def test_call_with_retry_translates_model_for_vertex(monkeypatch, temp_db)
         agent_name="t",
     )
     # The wire call must use the translated Vertex @-pinned id.
-    assert captured["model"] == "claude-sonnet-4-5@20250929"
+    assert captured["model"] == "claude-sonnet-4-6@default"
     await client.close()
 
 
@@ -175,7 +175,7 @@ async def test_shadow_mode_fires_translated_vertex_call(monkeypatch, temp_db):
     import asyncio
 
     await asyncio.sleep(0.05)
-    assert shadow_calls.get("model") == "claude-sonnet-4-5@20250929"
+    assert shadow_calls.get("model") == "claude-sonnet-4-6@default"
     assert client.vertex_shadow_count == 1
     await client.close()
 
@@ -244,7 +244,7 @@ async def test_credit_exhaustion_fails_over_to_vertex(monkeypatch, temp_db):
     # Cost/logging stay keyed on the direct alias, not the Vertex id.
     assert result.model == "claude-sonnet-4-6"
     # The wire call used the translated Vertex @-pinned id.
-    assert vertex_calls.get("model") == "claude-sonnet-4-5@20250929"
+    assert vertex_calls.get("model") == "claude-sonnet-4-6@default"
     assert client.vertex_failover_count == 1
 
     # Task 9: the cost row for a Vertex-served failover must be tagged provider='vertex',
