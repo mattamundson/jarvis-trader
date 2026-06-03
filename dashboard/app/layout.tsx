@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
+import { JarvisCommandBar } from "@/components/JarvisCommandBar";
 import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
 import { EngineWebSocketProvider } from "@/lib/engine-websocket-context";
 import { ToastProvider } from "@/lib/toast-context";
@@ -37,6 +38,7 @@ export default function RootLayout({
           <EngineWebSocketProvider>
             <PendingApprovalToastListener />
             <EngineAvailabilityHint />
+            <JarvisCommandBar />
             <div className="flex min-h-screen">
               <Sidebar />
               <main className="flex-1 min-w-0 overflow-x-hidden">
