@@ -314,18 +314,54 @@ class PnLMonitor:
             logger.error(f"[PnLMonitor] record_eod_snapshot DB write failed: {exc}")
             return False
 
+    # A paper account 10x-ing its starting capital during forward validation is
+    # already wildly implausible; a demo / IB-contaminated daily_pnl row (e.g. a
+    # $3.97M IB NAV against a $10k paper book — ~400x) is far beyond that. The
+    # daily_pnl table carries no source column, so we cannot filter by source on
+    # the read path — instead we exclude rows whose ending_balance exceeds this
+    # plausibility ceiling. This stops a single contaminated row from re-inflating
+    # the equity peak and falsely tripping (or, inverted, masking) the max-drawdown
+    # kill switch. Excluding a row biases the peak DOWN (smaller drawdown), the
+    # fail-safe direction; the multiple is kept generous to avoid masking a real
+    # breach from genuine (if improbable) gains.
+    PLAUSIBLE_PEAK_MULTIPLE = 10.0
+
+    def _plausible_peak_ceiling(self) -> float:
+        """Upper bound on a believable paper equity peak, or 0.0 if no anchor."""
+        if self._starting_balance and self._starting_balance > 0:
+            return self._starting_balance * self.PLAUSIBLE_PEAK_MULTIPLE
+        return 0.0
+
     def get_peak_balance(self) -> float:
         """
         Return the highest account balance recorded in the SQLite daily_pnl
         history.  Falls back to the in-memory paper tracker equity peak if the
         DB has no rows, or to zero if neither is available.
+
+        Rows whose ending_balance exceeds the plausibility ceiling (see
+        ``PLAUSIBLE_PEAK_MULTIPLE``) are treated as demo/IB contamination and
+        excluded so they cannot inflate the peak used by the drawdown breaker.
         """
         # Try SQLite history first
         if self._db is not None:
             try:
                 rows = self._db.get_daily_pnl()
                 if rows:
-                    peak = max(r.get("ending_balance", 0.0) or 0.0 for r in rows)
+                    balances = [r.get("ending_balance", 0.0) or 0.0 for r in rows]
+                    ceiling = self._plausible_peak_ceiling()
+                    if ceiling > 0:
+                        plausible = [b for b in balances if b <= ceiling]
+                        dropped = len(balances) - len(plausible)
+                        if dropped:
+                            logger.warning(
+                                "[PnLMonitor] get_peak_balance excluded %d implausible "
+                                "daily_pnl row(s) above ceiling %.2f "
+                                "(demo/IB contamination guard)",
+                                dropped,
+                                ceiling,
+                            )
+                        balances = plausible
+                    peak = max(balances, default=0.0)
                     if peak > 0:
                         return peak
             except Exception as exc:
