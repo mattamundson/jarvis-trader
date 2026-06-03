@@ -18,8 +18,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-import httpx
-
 logger = logging.getLogger(__name__)
 
 __all__ = ["BearReport", "BearResearcherAgent"]
@@ -100,19 +98,22 @@ class BearResearcherAgent:
 
     MODEL = "claude-sonnet-4-6"
     MAX_TOKENS = 1200
-    ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-    ANTHROPIC_VERSION = "2023-06-01"
 
     def __init__(self, api_key: Optional[str] = None, memory_bridge=None):
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self._memory = memory_bridge
         # Phase 3.4: Optional reasoning chains
-        from llm.reasoning_client import ReasoningChainClient
         from llm.client import JarvisLLMClient
+        from llm.reasoning_client import ReasoningChainClient
 
-        self._reasoning_client = ReasoningChainClient(
-            llm_client=JarvisLLMClient(api_key=self._api_key)
-        )
+        # Single shared client (Vertex integration 2026-06-02). The debate
+        # call-sites below now route through it instead of bypassing central
+        # routing with their own httpx POST to api.anthropic.com — so they
+        # inherit provider selection (Vertex), failover, health, and cost
+        # tracking like every other agent. NOTE: they now honor
+        # JARVIS_LLM_PROVIDER (previously they were hard-wired to Anthropic).
+        self._llm_client = JarvisLLMClient(api_key=self._api_key)
+        self._reasoning_client = ReasoningChainClient(llm_client=self._llm_client)
         self._reasoning_enabled = os.getenv("REASONING_CHAINS_ENABLED", "False").lower() == "true"
 
     async def analyze(self, symbol: str, analyst_reports: dict) -> BearReport:
@@ -158,24 +159,16 @@ class BearResearcherAgent:
                 )
                 response_text = result["decision"]
             else:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(
-                        self.ANTHROPIC_API_URL,
-                        headers={
-                            "x-api-key": self._api_key,
-                            "anthropic-version": self.ANTHROPIC_VERSION,
-                            "content-type": "application/json",
-                        },
-                        json={
-                            "model": self.MODEL,
-                            "max_tokens": self.MAX_TOKENS,
-                            "system": self.SYSTEM_PROMPT,
-                            "messages": [{"role": "user", "content": prompt}],
-                        },
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    response_text = data["content"][0]["text"].strip()
+                result_obj = await self._llm_client.call(
+                    model=self.MODEL,
+                    system=self.SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=self.MAX_TOKENS,
+                    agent_name="bear_researcher",
+                )
+                if not result_obj.success:
+                    raise RuntimeError(result_obj.error or "bear_researcher LLM call failed")
+                response_text = (result_obj.content or "").strip()
 
             result = self._parse_json(response_text)
 
@@ -253,23 +246,14 @@ class BearResearcherAgent:
         callers (e.g. DebateOrchestrator) can use evidence-adjusted scores.
         Falls back to raw text when no ASSESSMENT block is present.
         """
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                self.ANTHROPIC_API_URL,
-                headers={
-                    "x-api-key": self._api_key,
-                    "anthropic-version": self.ANTHROPIC_VERSION,
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": self.MODEL,
-                    "max_tokens": 256,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-        raw_text = data["content"][0]["text"].strip()
+        result_obj = await self._llm_client.call(
+            model=self.MODEL,
+            system="",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=256,
+            agent_name="bear_researcher",
+        )
+        raw_text = (result_obj.content or "").strip() if result_obj.success else ""
 
         # Evidence-weighted score enhancement (backward-compatible)
         assessment = self._parse_assessment(raw_text)
@@ -382,23 +366,14 @@ Respond with valid JSON in exactly this format (no text outside the JSON):
     async def _call_llm(self, prompt: str) -> str:
         """Generic LLM call used by DebateOrchestrator for adversarial scoring/rebuttals."""
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    self.ANTHROPIC_API_URL,
-                    headers={
-                        "x-api-key": self._api_key,
-                        "anthropic-version": self.ANTHROPIC_VERSION,
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": self.MODEL,
-                        "max_tokens": 512,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data["content"][0]["text"].strip()
+            result_obj = await self._llm_client.call(
+                model=self.MODEL,
+                system="",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=512,
+                agent_name="bear_researcher",
+            )
+            return (result_obj.content or "").strip() if result_obj.success else ""
         except Exception as exc:
             logger.warning(f"BearResearcherAgent._call_llm failed: {exc}")
             return ""
