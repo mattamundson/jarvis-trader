@@ -132,6 +132,12 @@ export interface SafetyStatus {
   peak_equity: number;
   current_drawdown: number;
   orders_today: number;
+  // Fields actually returned by the engine /safety/status handler
+  // (engine/routers/safety_router.py). Current drawdown is `drawdown_pct`; the
+  // limit is config/.env-driven (`drawdown_limit_pct`, a negative decimal).
+  drawdown_pct?: number;
+  drawdown_limit_pct?: number;
+  drawdown_breached?: boolean;
 }
 
 export interface TechnicalReport {
